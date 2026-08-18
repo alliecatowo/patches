@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 import { createFakeApi, flush, renderApp } from './harness.js';
 
 describe('debug', () => {

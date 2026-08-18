@@ -8,10 +8,6 @@ export interface UploadProgress {
   totalBytes: number;
 }
 
-/** Node's `fetch` (undici) requires `duplex: 'half'` on any request with a streaming
- * body — there is no public type for it yet, so this is the narrowest possible cast. */
-type StreamingRequestInit = RequestInit & { duplex: 'half' };
-
 const UPLOAD_CHUNK_BYTES = 64 * 1024;
 
 /**
@@ -47,7 +43,7 @@ export async function putToPresignedUrl(
     headers: { 'Content-Type': local.mimeType, 'Content-Length': String(total) },
     body,
     duplex: 'half',
-  } as StreamingRequestInit);
+  });
 
   if (!response.ok) {
     throw new Error(`Upload failed (HTTP ${String(response.status)}).`);
