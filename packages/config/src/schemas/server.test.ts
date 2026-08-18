@@ -11,6 +11,26 @@ describe('serverEnvSchema', () => {
     expect(result.INVITE_ONLY).toBe(true);
   });
 
+  it('rejects a GRPC_PORT outside the valid port range', () => {
+    expect(serverEnvSchema.safeParse({ ...base, GRPC_PORT: '70000' }).success).toBe(false);
+    expect(serverEnvSchema.safeParse({ ...base, GRPC_PORT: '0' }).success).toBe(false);
+  });
+
+  it('requires PUBLIC_ORIGIN to carry an http(s) scheme', () => {
+    expect(serverEnvSchema.safeParse({ PUBLIC_ORIGIN: 'http://localhost:50051' }).success).toBe(
+      true,
+    );
+    expect(serverEnvSchema.safeParse({ PUBLIC_ORIGIN: 'https://patches.example' }).success).toBe(
+      true,
+    );
+    // Bare `host:port` reads as `scheme:opaque` to a URL parser — must be rejected, not
+    // silently accepted as if `host` were the hostname.
+    expect(serverEnvSchema.safeParse({ PUBLIC_ORIGIN: 'localhost:50051' }).success).toBe(false);
+    expect(serverEnvSchema.safeParse({ PUBLIC_ORIGIN: 'ftp://patches.example' }).success).toBe(
+      false,
+    );
+  });
+
   it('allows missing JWT keys outside production', () => {
     expect(serverEnvSchema.safeParse({ ...base, NODE_ENV: 'development' }).success).toBe(true);
   });
