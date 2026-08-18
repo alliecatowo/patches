@@ -1,8 +1,16 @@
 {
   "name": "@patches/tui",
   "version": "0.1.0",
-  "private": true,
+  "description": "Patches — terminal-native social media. Ink/React TUI client.",
+  "license": "MIT",
+  "private": false,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "patches": "./dist/cli.js"
   },
