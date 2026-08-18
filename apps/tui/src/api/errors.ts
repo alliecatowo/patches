@@ -29,6 +29,11 @@ function statusOf(error: unknown): number | undefined {
   return typeof code === 'number' ? code : undefined;
 }
 
+/** Exposed for callers (e.g. `SessionManager`) that need to branch on the raw status. */
+export function grpcStatusCode(error: unknown): number | undefined {
+  return statusOf(error);
+}
+
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -105,6 +110,9 @@ export function describeGrpcError(error: unknown, target: string): FriendlyError
       };
     case GrpcStatus.NOT_FOUND:
       return { title: fromServer ?? 'That no longer exists.', hint: '', retryable: false, code };
+    case GrpcStatus.ALREADY_EXISTS:
+      // e.g. HANDLE_TAKEN — the server's message names the field, so it wins over a generic one.
+      return { title: fromServer ?? 'That is already taken.', hint: '', retryable: false, code };
     case GrpcStatus.UNIMPLEMENTED:
       return {
         title: `${target} does not support this feature.`,

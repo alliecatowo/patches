@@ -4,7 +4,12 @@ import { DEFAULT_TARGET, parseArgs } from './args.js';
 
 describe('parseArgs', () => {
   it('opens the TUI against the default local server with no arguments', () => {
-    expect(parseArgs([])).toEqual({ command: 'tui', target: DEFAULT_TARGET, insecure: false });
+    expect(parseArgs([])).toEqual({
+      command: 'tui',
+      target: DEFAULT_TARGET,
+      insecure: false,
+      rest: [],
+    });
   });
 
   it('reads the server from --server and --server=', () => {
@@ -49,6 +54,7 @@ describe('parseArgs', () => {
       command: 'ping',
       target: '127.0.0.1:1234',
       insecure: true,
+      rest: [],
     });
   });
 
@@ -62,5 +68,44 @@ describe('parseArgs', () => {
     const args = parseArgs(['--server']);
     expect(args.command).toBe('help');
     expect(args.error).toContain('--server');
+  });
+
+  it('recognises --node as an alias for --server', () => {
+    expect(parseArgs(['--node', 'patches.social:443']).target).toBe('patches.social:443');
+    expect(parseArgs(['--node=patches.social:443']).target).toBe('patches.social:443');
+  });
+
+  it('recognises the auth subcommands', () => {
+    expect(parseArgs(['register']).command).toBe('register');
+    expect(parseArgs(['login']).command).toBe('login');
+    expect(parseArgs(['logout']).command).toBe('logout');
+    expect(parseArgs(['accounts']).command).toBe('accounts');
+    expect(parseArgs(['whoami']).command).toBe('whoami');
+  });
+
+  it('collects unrecognised flags after an auth subcommand into rest, instead of erroring', () => {
+    const args = parseArgs(['register', '--handle', 'alice', '--email', 'alice@example.com']);
+    expect(args.command).toBe('register');
+    expect(args.error).toBeUndefined();
+    expect(args.rest).toEqual(['--handle', 'alice', '--email', 'alice@example.com']);
+  });
+
+  it("still recognises --server/--insecure among an auth subcommand's flags", () => {
+    const args = parseArgs(['login', '--ssh', '--server', 'patches.social:443']);
+    expect(args.command).toBe('login');
+    expect(args.target).toBe('patches.social:443');
+    expect(args.rest).toEqual(['--ssh']);
+  });
+
+  it('lets an auth subcommand handle its own --help instead of the global one', () => {
+    const args = parseArgs(['register', '--help']);
+    expect(args.command).toBe('register');
+    expect(args.rest).toEqual(['--help']);
+  });
+
+  it('still rejects an unknown argument for non-auth commands', () => {
+    const args = parseArgs(['ping', '--wat']);
+    expect(args.command).toBe('help');
+    expect(args.error).toContain('--wat');
   });
 });
