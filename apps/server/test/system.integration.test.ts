@@ -1,12 +1,17 @@
-import { status as GrpcStatus } from '@grpc/grpc-js';
+import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import {
+  createNodeClient,
   ERROR_CODE_METADATA_KEY,
+  type GetNodeInfoRequest,
+  type GetNodeInfoResponse,
   type GetServerInfoRequest,
   type GetServerInfoResponse,
   MIN_CLIENT_VERSION,
+  type NodeGrpcClient,
   type PingRequest,
   type PingResponse,
   PROTOCOL_VERSION,
+  REGISTRATION_MODE,
   timestampToDate,
 } from '@patches/proto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,18 +20,22 @@ import {
   callUnary,
   expectRejection,
   startTestServer,
+  TEST_NODE_DOMAIN,
   type TestServer,
 } from './support/test-server.js';
 
 const CURRENT_CLIENT_VERSION = MIN_CLIENT_VERSION;
 
 let server: TestServer;
+let node: NodeGrpcClient;
 
 beforeAll(async () => {
   server = await startTestServer();
+  node = createNodeClient(server.url, grpcCredentials.createInsecure());
 });
 
 afterAll(async () => {
+  node.close();
   await server.close();
 });
 
@@ -125,5 +134,26 @@ describe('patches.v1.SystemService/Ping', () => {
 
     expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
     expect(error.metadata.get(ERROR_CODE_METADATA_KEY)[0]).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('patches.v1.NodeService/GetNodeInfo (P1-014)', () => {
+  it('is callable with no authorization metadata at all (spec §163, §168)', async () => {
+    const response = await callUnary<GetNodeInfoRequest, GetNodeInfoResponse>(
+      node.getNodeInfo.bind(node),
+      {},
+    );
+
+    expect(response.domain).toBe(TEST_NODE_DOMAIN);
+    expect(response.softwareVersion).toMatch(/^\d+\.\d+\.\d+/);
+    // `prepareServerEnv` defaults INVITE_ONLY=true for the test suite (support/env.ts).
+    expect(response.registrationMode).toBe(REGISTRATION_MODE.INVITE_ONLY);
+    expect(response.limits?.postBodyMaxChars).toBe(5000);
+    expect(response.limits?.handleMaxChars).toBe(30);
+    expect(response.limits?.bioMaxChars).toBe(500);
+    // No `tier`/`plan`/`premium` field exists on the message at all (spec §174) — this is a
+    // compile-time guarantee (the generated type has no such property), not something a
+    // runtime assertion can usefully re-check.
+    expect(Array.isArray(response.capabilities)).toBe(true);
   });
 });

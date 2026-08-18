@@ -12,10 +12,14 @@ import {
   type GetActorResponse,
   type ListFollowersRequest,
   type ListFollowersResponse,
+  type ListFollowingRequest,
+  type ListFollowingResponse,
+  type SearchActorsRequest,
+  type SearchActorsResponse,
   type UpdateProfileRequest,
   type UpdateProfileResponse,
 } from '@patches/proto';
-import { createTestUser } from '@patches/testkit';
+import { createTestFollow, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -126,6 +130,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             bio: originalBio,
             locationText: '',
             websiteUrl: '',
+            nameplate: undefined,
             updateMask: fieldMask(['bio']),
           },
           { accessToken: bob.accessToken },
@@ -147,6 +152,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             bio: 'this should be ignored',
             locationText: '',
             websiteUrl: '',
+            nameplate: undefined,
             updateMask: fieldMask(['display_name']),
           },
           { accessToken: bob.accessToken },
@@ -168,6 +174,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             bio: '',
             locationText: '',
             websiteUrl: '',
+            nameplate: undefined,
             updateMask: fieldMask(['display_name']),
           },
         );
@@ -182,21 +189,110 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             bio: '',
             locationText: '',
             websiteUrl: 'not-a-url',
+            nameplate: undefined,
             updateMask: fieldMask(['website_url']),
           },
           { accessToken: alice.accessToken },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
       });
+
+      it('updates the nameplate but never lets the caller set badges (spec §173)', async () => {
+        await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: {
+              nameColor: '#7C3AED',
+              glyph: '*',
+              // Server-attested only — must be discarded, not adopted.
+              badges: ['self-appointed-admin'],
+              avatarFrame: '',
+              statusLine: 'building patches',
+              profileBorder: '',
+            },
+            updateMask: fieldMask(['nameplate']),
+          },
+          { accessToken: bob.accessToken },
+        );
+
+        const response = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: bob.actorId },
+        );
+        expect(response.actor?.nameplate?.nameColor).toBe('#7C3AED');
+        expect(response.actor?.nameplate?.statusLine).toBe('building patches');
+        expect(response.actor?.nameplate?.badges).toEqual([]);
+      });
     });
 
-    describe('Phase 3 RPCs', () => {
-      it('ListFollowers returns UNIMPLEMENTED rather than an invented empty list', async () => {
-        const error = await expectRejection<ListFollowersRequest, ListFollowersResponse>(
-          actors.listFollowers.bind(actors),
-          { actorId: alice.actorId, cursor: '', limit: 0 },
+    describe('SearchActors', () => {
+      it('matches handle prefix / display name, newest first, bounded by limit', async () => {
+        const prefix = `zzsearch${testSuffix()}`;
+        const first = await registerTestActor(auth, dataSource, inviterUserId, {
+          handle: `${prefix}one`,
+          displayName: 'Search Target One',
+        });
+        const second = await registerTestActor(auth, dataSource, inviterUserId, {
+          handle: `${prefix}two`,
+          displayName: 'Search Target Two',
+        });
+
+        const page = await callUnary<SearchActorsRequest, SearchActorsResponse>(
+          actors.searchActors.bind(actors),
+          { query: prefix, cursor: '', limit: 10 },
         );
-        expect(error.code).toBe(GrpcStatus.UNIMPLEMENTED);
+        expect(page.actors.map((actor) => actor.id)).toEqual([second.actorId, first.actorId]);
+        expect(page.page?.hasMore).toBe(false);
+      });
+
+      it('rejects an empty query', async () => {
+        const error = await expectRejection<SearchActorsRequest, SearchActorsResponse>(
+          actors.searchActors.bind(actors),
+          { query: '', cursor: '', limit: 10 },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+    });
+
+    describe('ListFollowers / ListFollowing', () => {
+      it('lists both directions and GetActor reports real follower/following counts', async () => {
+        const follower = await registerTestActor(auth, dataSource, inviterUserId);
+        const followee = await registerTestActor(auth, dataSource, inviterUserId);
+
+        await createTestFollow(dataSource.manager, {
+          followerActorId: follower.actorId,
+          followeeActorId: followee.actorId,
+        });
+
+        const followers = await callUnary<ListFollowersRequest, ListFollowersResponse>(
+          actors.listFollowers.bind(actors),
+          { actorId: followee.actorId, cursor: '', limit: 10 },
+        );
+        expect(followers.actors.map((actor) => actor.id)).toEqual([follower.actorId]);
+
+        const following = await callUnary<ListFollowingRequest, ListFollowingResponse>(
+          actors.listFollowing.bind(actors),
+          { actorId: follower.actorId, cursor: '', limit: 10 },
+        );
+        expect(following.actors.map((actor) => actor.id)).toEqual([followee.actorId]);
+
+        const followeeProfile = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: followee.actorId },
+        );
+        expect(followeeProfile.actor?.counts?.followers).toBe(1);
+        expect(followeeProfile.actor?.counts?.following).toBe(0);
+
+        const followerProfile = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: follower.actorId },
+        );
+        expect(followerProfile.actor?.counts?.following).toBe(1);
+        expect(followerProfile.actor?.counts?.followers).toBe(0);
       });
     });
   },
