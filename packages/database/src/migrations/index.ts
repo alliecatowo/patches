@@ -1,5 +1,6 @@
 import { CreateAppMeta1755400000000 } from './1755400000000-CreateAppMeta.js';
 import { Phase1Schema1787036506325 } from './1787036506325-Phase1Schema.js';
+import { Phase3SocialGraph1787055340075 } from './1787055340075-Phase3SocialGraph.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -13,4 +14,8 @@ import { Phase1Schema1787036506325 } from './1787036506325-Phase1Schema.js';
  * `dist/migrations/index.cjs` (CJS), so the array is correct in every context without any
  * runtime path/glob detection.
  */
-export const ALL_MIGRATIONS = [CreateAppMeta1755400000000, Phase1Schema1787036506325];
+export const ALL_MIGRATIONS = [
+  CreateAppMeta1755400000000,
+  Phase1Schema1787036506325,
+  Phase3SocialGraph1787055340075,
+];
