@@ -1,9 +1,12 @@
 import { Actor } from './actor.entity.js';
 import { AppMeta } from './app-meta.entity.js';
 import { AuthCode } from './auth-code.entity.js';
+import { Block } from './block.entity.js';
 import { Credential } from './credential.entity.js';
+import { Follow } from './follow.entity.js';
 import { Invite } from './invite.entity.js';
 import { Media } from './media.entity.js';
+import { Mute } from './mute.entity.js';
 import { OutboxJob } from './outbox-job.entity.js';
 import { Post } from './post.entity.js';
 import { PostMedia } from './post-media.entity.js';
@@ -13,9 +16,10 @@ import { User } from './user.entity.js';
 
 /**
  * Every entity in the schema, imported explicitly (not globbed) so the same array works
- * identically from TS source (CLI, tests) and from the built dist (ESM + CJS). Phase 3
- * appends the social-graph tables (`follows`, `blocks`, `mutes`, `likes`, `bookmarks`,
- * `notifications`, `reports`, `admin_audit_log`; see `docs/architecture/data-model.md`).
+ * identically from TS source (CLI, tests) and from the built dist (ESM + CJS). Phase 3 adds
+ * the social-graph tables (`follows`, `blocks`, `mutes`); `likes`, `bookmarks`,
+ * `notifications`, `reports`, `admin_audit_log` remain planned (see
+ * `docs/architecture/data-model.md`).
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -30,4 +34,7 @@ export const ALL_ENTITIES = [
   Media,
   Post,
   PostMedia,
+  Follow,
+  Block,
+  Mute,
 ] as const;

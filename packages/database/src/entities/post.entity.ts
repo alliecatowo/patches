@@ -71,6 +71,10 @@ export class Post {
   @Column({ type: 'text', default: 'PUBLIC' })
   declare visibility: PostVisibility;
 
+  /** Optional click-to-reveal label (e.g. "spoilers"); null means none. */
+  @Column({ type: 'text', nullable: true })
+  declare contentWarning: string | null;
+
   @Column({ type: 'uuid', nullable: true })
   declare inReplyToId: string | null;
 

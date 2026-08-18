@@ -18,3 +18,10 @@ export type {
 
 export { createTestPost } from './content.js';
 export type { CreateTestPostOptions } from './content.js';
+
+export { createTestBlock, createTestFollow, createTestMute } from './social-graph.js';
+export type {
+  CreateTestBlockOptions,
+  CreateTestFollowOptions,
+  CreateTestMuteOptions,
+} from './social-graph.js';

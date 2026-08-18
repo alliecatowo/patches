@@ -18,6 +18,14 @@ export type PostType = (typeof POST_TYPES)[number];
 export const POST_VISIBILITIES = ['PUBLIC', 'UNLISTED', 'FOLLOWERS'] as const;
 export type PostVisibility = (typeof POST_VISIBILITIES)[number];
 
+/**
+ * Follow edge status (`INITIAL_VISION.md` §50). `NONE` is deliberately absent from this list:
+ * it is represented by no `follows` row existing at all, not a row with that status — see
+ * `follow.entity.ts`.
+ */
+export const FOLLOW_STATUSES = ['PENDING', 'FOLLOWING'] as const;
+export type FollowStatus = (typeof FOLLOW_STATUSES)[number];
+
 export const MEDIA_STATES = ['PENDING_UPLOAD', 'PROCESSING', 'READY', 'FAILED', 'DELETED'] as const;
 export type MediaState = (typeof MEDIA_STATES)[number];
 
