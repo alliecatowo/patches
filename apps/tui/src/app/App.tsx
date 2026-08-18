@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Box, Text, useApp, useInput, useStdin, useWindowSize } from 'ink';
-import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import type { Actor, Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
@@ -19,6 +19,7 @@ import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
+import { SearchScreen } from '../screens/SearchScreen.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 
 export interface AppProps {
@@ -28,11 +29,11 @@ export interface AppProps {
   env?: NodeJS.ProcessEnv;
 }
 
-type Screen = 'connect' | 'help' | 'login' | 'compose' | 'profile' | 'local' | 'home';
+type Screen = 'connect' | 'help' | 'login' | 'compose' | 'profile' | 'local' | 'home' | 'search';
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
-  return screen === 'login' || screen === 'compose';
+  return screen === 'login' || screen === 'compose' || screen === 'search';
 }
 
 function emptyDraft(): ComposeDraft {
@@ -60,6 +61,11 @@ export function App({
     () => new SessionManager({ api, store: credentialStore, nodeOrigin: api.target }),
   );
   const [session, setSession] = useState<ActiveSession | undefined>(sessionManager.session);
+  // Stable across renders (sessionManager is a `useState` initializer) — passed to
+  // screens that key an effect off it (`ProfileScreen`'s relationship fetch); an
+  // inline `() => sessionManager.ensureAccessToken()` would be a new function every
+  // render and re-trigger that effect on every keystroke.
+  const ensureAccessToken = useCallback(() => sessionManager.ensureAccessToken(), [sessionManager]);
 
   const [store] = useState<DraftStore>(() => draftStore ?? new FileDraftStore());
   const [draft, setDraft] = useState<ComposeDraft>(emptyDraft);
@@ -154,11 +160,16 @@ export function App({
         requireSession('compose');
         return;
       }
+      if (input === '/') {
+        go('search');
+        return;
+      }
       if (pendingGo) {
         setPendingGo(false);
         if (input === 'p') openOwnProfile();
         else if (input === 'l') go('local');
-        else if (input === 'h') go('home');
+        else if (input === 'h') requireSession('home');
+        else if (input === 's') go('search');
         return;
       }
       if (input === 'g') {
@@ -183,7 +194,22 @@ export function App({
         {screen === 'local' && (
           <LocalScreen api={api} isActive={screen === 'local'} onOpenAuthor={openAuthorProfile} />
         )}
-        {screen === 'home' && <HomeScreen />}
+        {screen === 'home' && session !== undefined && (
+          <HomeScreen
+            api={api}
+            isActive={screen === 'home'}
+            ensureAccessToken={ensureAccessToken}
+            onOpenAuthor={openAuthorProfile}
+          />
+        )}
+        {screen === 'search' && (
+          <SearchScreen
+            api={api}
+            isActive={screen === 'search'}
+            onOpenActor={(actor) => openProfile(actor.id, actor)}
+            onCancel={() => setScreen(priorScreen)}
+          />
+        )}
         {screen === 'profile' && profileTarget !== undefined && (
           <ProfileScreen
             api={api}
@@ -191,6 +217,8 @@ export function App({
             knownActor={profileTarget.knownActor}
             isActive={screen === 'profile'}
             onOpenAuthor={openAuthorProfile}
+            viewerActorId={session?.userId}
+            ensureAccessToken={ensureAccessToken}
           />
         )}
         {screen === 'login' && (
@@ -213,7 +241,7 @@ export function App({
             onChange={updateDraft}
             onCancel={() => setScreen(priorScreen)}
             isActive={screen === 'compose'}
-            ensureAccessToken={() => sessionManager.ensureAccessToken()}
+            ensureAccessToken={ensureAccessToken}
             onSubmitted={(post) => {
               const cleared = emptyDraft();
               setDraft(cleared);
@@ -244,8 +272,10 @@ export function App({
 function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'login') return ['Esc cancel'];
   if (screen === 'compose') return ['Ctrl+S post', 'Esc keep draft'];
+  if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
   const keys = [
     'g h/l/p go',
+    '/ search',
     'c compose',
     authenticated ? 'L account' : 'L login',
     '? help',

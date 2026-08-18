@@ -164,6 +164,13 @@ export class FakeApiHandle {
     return post;
   }
 
+  /** Seeds a follow relationship directly (bypassing `FollowActor`), for home-feed/relationship tests. */
+  addFollow(followerId: string, followingId: string): void {
+    const following = this.follows.get(followerId) ?? new Set<string>();
+    following.add(followingId);
+    this.follows.set(followerId, following);
+  }
+
   private toActor(user: FakeUser): Actor {
     const postCount = this.posts.filter((post) => post.author?.id === user.id).length;
     const followingCount = this.follows.get(user.id)?.size ?? 0;

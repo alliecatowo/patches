@@ -251,3 +251,24 @@ callers, so pixel screenshots need the human.
 **Learning:** A conditional `UPDATE … WHERE …` that ends up matching nothing has still locked the candidate row until end-of-transaction. Touching that row from another connection while the outer transaction is open blocks — and Postgres's deadlock detector can't see it (one side is idle-in-transaction). Do side-effect writes _after_ the detecting transaction settles (rollback first, then revoke). Also: peer-keyed rate limits need a much higher ceiling than subject-keyed ones, or one gRPC connection reused across a test file trips them.
 
 **Action taken:** `AuthService.refreshSession` defers the revoke; implementer memory `postgres-cross-connection-self-deadlock.md`.
+
+## 2026-08-18 — `apps/tui` Ink-render tests flake under vitest's default file parallelism
+
+**Context:** `pnpm --filter @patches/tui test` intermittently failed one otherwise-deterministic
+`ink-testing-library` snapshot assertion (a different test each run) — roughly 1 in 3 runs,
+never the same test twice. Bisecting showed it wasn't specific to any one test's logic: it
+reproduced on tests that existed and passed reliably before this change too.
+
+**Learning:** Every `apps/tui` test file renders a real Ink tree and drives it via
+`harness.tsx`'s `flush()`, a real (not faked) `setTimeout`. With vitest's default
+`fileParallelism: true`, 15+ such files run concurrently across worker threads/processes,
+and under enough CPU contention a `flush()` occasionally resolved before a React state
+update from a promise chain had actually committed — a real race, not a bug in the
+component under test. No other package in the repo drives Ink, so this is unique to `tui`.
+
+**Action taken:** `apps/tui/vitest.config.ts` sets `fileParallelism: false` (serializes this
+project's test files only — other packages still run in parallel). 9 consecutive full-suite
+runs were clean afterward vs. ~1-in-3 failing before. Total suite time roughly doubled
+(~6s → ~12s), an acceptable tradeoff for a project this size. If `apps/tui`'s test count
+grows enough that serial execution becomes a real cost, the next step would be `pool: 'forks'`
+with a small `maxForks` rather than reverting to full parallelism.
