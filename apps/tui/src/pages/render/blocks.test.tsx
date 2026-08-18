@@ -44,8 +44,37 @@ function context(overrides: Partial<PageRenderContext> = {}): PageRenderContext 
   };
 }
 
-async function flush(ms = 20): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Polls `lastFrame()` until `predicate` holds, instead of sleeping a fixed
+ * duration — mirrors `apps/tui/test/harness.tsx`'s `waitForFrame`/`expectFrame`;
+ * this file renders `PageBlocksView` directly rather than through the full `App`
+ * harness, so it keeps its own copy rather than importing a `test/`-only helper.
+ */
+async function waitForFrame(
+  lastFrame: () => string | undefined,
+  predicate: (frame: string) => boolean,
+  timeoutMs = 2000,
+): Promise<string> {
+  const stepMs = 10;
+  const deadline = Date.now() + timeoutMs;
+  let frame = lastFrame() ?? '';
+  while (!predicate(frame)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`waitForFrame: timed out after ${timeoutMs}ms. Last frame:\n${frame}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+    frame = lastFrame() ?? '';
+  }
+  return frame;
+}
+
+/** Shorthand: waits until the frame contains `text`, returns the frame. */
+async function expectFrame(
+  lastFrame: () => string | undefined,
+  text: string,
+  timeoutMs = 2000,
+): Promise<string> {
+  return waitForFrame(lastFrame, (frame) => frame.includes(text), timeoutMs);
 }
 
 describe('PageBlocksView (P45-004/005)', () => {
@@ -140,8 +169,7 @@ describe('PageBlocksView (P45-004/005)', () => {
       <PageBlocksView blocks={blocks} context={context({ api })} selectedLinkIndex={undefined} />,
     );
     expect(lastFrame() ?? '').toContain('Loading posts');
-    await flush();
-    expect(lastFrame() ?? '').toContain('a recent post');
+    await expectFrame(lastFrame, 'a recent post');
   });
 
   it('resolves TopEight actors to nameplates and skips remote refs', async () => {
@@ -171,9 +199,7 @@ describe('PageBlocksView (P45-004/005)', () => {
     const { lastFrame } = render(
       <PageBlocksView blocks={blocks} context={context({ api })} selectedLinkIndex={undefined} />,
     );
-    await flush();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('@bob');
+    const frame = await expectFrame(lastFrame, '@bob');
     expect(frame).toContain('@remote@otherserver.example');
   });
 
@@ -196,8 +222,7 @@ describe('PageBlocksView (P45-004/005)', () => {
     const { lastFrame } = render(
       <PageBlocksView blocks={blocks} context={context({ api })} selectedLinkIndex={undefined} />,
     );
-    await flush();
-    expect(lastFrame() ?? '').toContain('lovely page!');
+    await expectFrame(lastFrame, 'lovely page!');
   });
 
   it('renders NowPlaying, AsciiArt, Spacer, Badges, Friends as documented placeholders/content', () => {

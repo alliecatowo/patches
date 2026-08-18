@@ -17,3 +17,4 @@
 - [Hybrid app gRPC interceptors break HTTP](nestjs-hybrid-app-grpc-interceptors-break-http.md) — a gRPC-only APP_INTERCEPTOR/APP_FILTER throws on context.switchToRpc() for an HTTP request in a hybrid app, hanging every request with no response
 - [TS private field bracket access in tests](ts-private-field-bracket-access-in-tests.md) — `instance['field']` bypasses TS's private-field restriction (dot notation doesn't); use it to spy on a private Logger etc. instead of `as any`
 - [Ink useInput stale-closure setState](ink-useinput-stale-closure-setstate.md) — compute the next text-field value from setState's own `current`, never the outer render's closured state, or same-tick keystrokes overwrite each other
+- [Ink flush-to-poll conversion hazards](ink-flush-to-poll-conversion-hazards.md) — waitForFrame can resolve on a stale substring, or resolve so fast it drops the next press(); verify with isolated -t runs, not just the whole file

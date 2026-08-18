@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
  * P4-004: minimal moderation UI — `B` block/unblock and `M` mute/unmute on a
@@ -10,6 +10,7 @@ import { createFakeApi, flush, KEY, renderApp } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -22,7 +23,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 async function pressGo(press: (input: string) => void, letter: string): Promise<void> {
@@ -41,25 +47,24 @@ describe('Moderation (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'l');
 
     press('p'); // open bob's profile
-    await flush(60);
-    await flush(60); // relationship fetch
 
-    expect(lastFrame() ?? '').toContain('B to block');
+    await expectFrame(lastFrame, 'B to block');
 
-    press('B');
     await flush();
 
-    expect(lastFrame() ?? '').toContain('Block @bob? y/n');
+    press('B');
+
+    await expectFrame(lastFrame, 'Block @bob? y/n');
+
+    await flush();
 
     press('y');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('B to unblock');
+    await expectFrame(lastFrame, 'B to unblock');
     unmount();
   });
 
@@ -71,21 +76,28 @@ describe('Moderation (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'l');
 
-    press('p');
-    await flush(60);
-    await flush(60);
+    press('p'); // open bob's profile
+
+    await expectFrame(lastFrame, 'M to mute');
+
+    await flush();
 
     press('M');
-    await flush();
-    press('n');
+
+    await expectFrame(lastFrame, 'y/n');
+
     await flush();
 
-    const frame = lastFrame() ?? '';
+    press('n');
+
+    // 'M to mute' is a persistent hint shown whether or not the confirm is
+    // open, so wait on the confirm prompt actually disappearing rather than
+    // on 'M to mute' — which was already present before the cancel.
+    const frame = await waitForFrame(lastFrame, (f) => !f.includes('y/n'));
     expect(frame).toContain('M to mute');
-    expect(frame).not.toContain('y/n');
     unmount();
   });
 
@@ -97,21 +109,17 @@ describe('Moderation (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'l');
 
     press('!');
-    await flush(60);
 
-    let frame = lastFrame() ?? '';
-    expect(frame).toContain('Report post');
+    const frame = await expectFrame(lastFrame, 'Report post');
     expect(frame).toContain('Spam');
 
     press(KEY.ctrlS);
-    await flush(60);
 
-    frame = lastFrame() ?? '';
-    expect(frame).toContain('Report submitted');
+    await expectFrame(lastFrame, 'Report submitted');
     unmount();
   });
 });

@@ -344,3 +344,53 @@ printed lines) before concluding hooks ran out of order.
 needed — nothing referenced the media rows being deleted in that suite). General rule for any
 future integration test: before reaching for `TRUNCATE ... CASCADE` on a table with incoming
 FKs, check every table that has a FK _pointing at_ it (`grep -rn "() => <Entity>" packages/database/src/entities`), not just the tables you intend to also clear.
+
+## 2026-08-18 — Converting fixed `flush()` sleeps to condition-based `waitForFrame`/`expectFrame` polling can trade one flake for two subtler ones
+
+**Context:** `apps/tui/test/harness.tsx`'s `flush(ms)` (fixed `setTimeout` sleep) caused
+intermittent failures in `apps/tui/test/{screens,social,thread,moderation,media-attach}.test.tsx`
+because a poll of `lastFrame()` could fire before a pending promise/render had actually
+committed. Replacing every `press(); await flush(); expect(lastFrame()...).toContain(X)` with
+`press(); await expectFrame(lastFrame, X)` (polls every 10ms up to a timeout, throws with the
+last frame on timeout) fixes that class of race — but introduced two new failure modes that
+only show up as reliable, deterministic failures (not flakes), so they're easy to mistake for
+"my conversion changed behavior" bugs rather than pre-existing races the fixed sleep happened to
+paper over:
+
+1. **Premature resolution on a substring/persistent string.** `expectFrame(lastFrame, 'following')`
+   resolves instantly if the frame already says `'not following'` (substring match) — same trap
+   for waiting on `'@bob'`/`'Root post'` when that text is already visible in a feed list *before*
+   navigating to the screen that's supposed to show it fresh, or waiting on `'photo.png'` when a
+   raw file path being typed already contains that substring before Enter confirms the attach. Fix:
+   pick a target string that is unique to the *settled* state — a screen header, a badge like
+   `'[1] photo.png'`, or a compound predicate (`f.includes(X) && !f.includes(Y)`) — never the first
+   substring that happens to become true.
+2. **A poll that resolves the instant its condition is true removes the incidental "settle" grace
+   period a fixed sleep provided.** `press()` called synchronously right after a resolved
+   `waitForFrame` can be silently dropped if it depends on a `useInput` handler that hasn't
+   re-subscribed with a just-committed closure yet (e.g. pressing `n` for `loadMore` right after
+   `'n / space for more'` appears, or a global key like `c`/`g` right after login sets `session` —
+   the status bar visibly shows `@handle` but the app-level input handler still has a stale
+   `session === undefined` closure for a few more ms). A fixed `flush(20/60)` used to happen to
+   cover this gap; a tight poll doesn't. Symptom: the frame just stops changing forever, and
+   `waitForFrame` times out. Fix: keep one small `await flush()` between a resolved wait and the
+   *next* `press()` wherever that press depends on effects resubscribing (screen transitions,
+   post-login global keys) — this is a deliberate exception to "no fixed sleeps", not a leftover.
+
+**How to actually verify a de-flake fix, not just "the full file passed a few times":** run each
+changed test *in isolation* via `vitest run <file> -t "<exact title>"` (in zsh, split multi-line
+`grep -oP` output with `${(@f)$(...)}`, not `IFS=$'\n'; for x in $var` — zsh doesn't word-split an
+unquoted `$var` by default the way bash does). A whole-file run can accidentally pass because an
+earlier test in the same file "warms up" something (first bcrypt-style hash, first module import)
+that the target test silently depends on; running the file alone doesn't catch that, running the
+single test alone does. Also verify against a `git worktree add <path> HEAD` with only your
+changed files copied in — that isolates "is this bug mine" from "is another agent's concurrent
+uncommitted WIP in the shared checkout the actual cause" (see the shared-checkout hazard entries).
+
+**Action taken:** `apps/tui/test/harness.tsx` gained `waitForFrame`/`expectFrame`; every
+`flush()`-then-assert pair across `apps/tui/test/*.test.tsx` and
+`apps/tui/src/pages/render/blocks.test.tsx` (which keeps its own local copy — it renders
+`PageBlocksView` directly, not through the `App` harness) was converted, with the two hazards
+above fixed by hand rather than mechanically. The shared `loginAs(press, handle, password)`
+helper in every file that had one now takes `lastFrame` and waits for the status bar's `· @handle`
+badge (plus one settle `flush()`) instead of a fixed `flush(60)` after the final login `Enter`.

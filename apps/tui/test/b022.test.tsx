@@ -1,7 +1,7 @@
 import { CREDENTIAL_TYPE } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
  * B-022: nameplate `avatarFrame`/`profileBorder` text-mode rendering, the plain-mode
@@ -11,6 +11,7 @@ import { createFakeApi, flush, KEY, renderApp } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -23,7 +24,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 async function pressGo(press: (input: string) => void, letter: string): Promise<void> {
@@ -61,10 +67,8 @@ describe('Nameplate decoration (B-022)', () => {
     press(KEY.enter);
     await flush();
     press(KEY.enter);
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('‹ Alice ›');
+    const frame = await expectFrame(lastFrame, '‹ Alice ›');
     expect(frame).toContain('[verified]');
     expect(frame).toContain('building patches');
     expect(frame).toContain('╭'); // round border corner
@@ -103,10 +107,8 @@ describe('Plain mode (B-022, spec §173)', () => {
     press(KEY.enter);
     await flush();
     press(KEY.enter);
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('@alice');
+    const frame = await expectFrame(lastFrame, '@alice');
     expect(frame).not.toContain('★');
     expect(frame).not.toContain('[verified]');
     expect(frame).not.toContain('‹ Alice ›');
@@ -136,17 +138,19 @@ describe('Plain mode (B-022, spec §173)', () => {
     await flush();
 
     await pressGo(press, 'l');
-    expect(lastFrame() ?? '').toContain('★');
+    await expectFrame(lastFrame, '★');
 
-    press('P');
     await flush();
 
-    expect(lastFrame() ?? '').not.toContain('★');
-
     press('P');
+
+    await waitForFrame(lastFrame, (f) => !f.includes('★'));
+
     await flush();
 
-    expect(lastFrame() ?? '').toContain('★');
+    press('P');
+
+    await expectFrame(lastFrame, '★');
     unmount();
   });
 });
@@ -163,13 +167,11 @@ describe('Accounts screen (B-022)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     press('L');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Account');
+    const frame = await expectFrame(lastFrame, 'Account');
     expect(frame).toContain('@alice');
     expect(frame).toContain('CREDENTIAL_TYPE_PASSWORD');
     unmount();
@@ -181,14 +183,13 @@ describe('Accounts screen (B-022)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake, env: {} });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     press('L');
     await flush(60);
     press('a');
-    await flush(60);
 
-    expect(lastFrame() ?? '').toContain('No SSH agent is running');
+    await expectFrame(lastFrame, 'No SSH agent is running');
     unmount();
   });
 
@@ -198,15 +199,13 @@ describe('Accounts screen (B-022)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     press('L');
     await flush(60);
     press('x');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('@alice');
+    await waitForFrame(lastFrame, (f) => !f.includes('@alice'));
     unmount();
   });
 });

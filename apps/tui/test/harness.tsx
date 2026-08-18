@@ -73,4 +73,38 @@ export async function flush(ms = 20): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Polls `lastFrame()` until `predicate` holds, instead of sleeping a fixed
+ * duration — under load a fixed `flush()` can resolve before the pending
+ * promise/render actually settles, which is the source of the intermittent
+ * `screens.test.tsx` failures this replaces. Throws with the last observed
+ * frame on timeout so failures are debuggable.
+ */
+export async function waitForFrame(
+  lastFrame: () => string | undefined,
+  predicate: (frame: string) => boolean,
+  timeoutMs = 2000,
+): Promise<string> {
+  const stepMs = 10;
+  const deadline = Date.now() + timeoutMs;
+  let frame = lastFrame() ?? '';
+  while (!predicate(frame)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`waitForFrame: timed out after ${timeoutMs}ms. Last frame:\n${frame}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+    frame = lastFrame() ?? '';
+  }
+  return frame;
+}
+
+/** Shorthand: waits until the frame contains `text`, returns the frame. */
+export async function expectFrame(
+  lastFrame: () => string | undefined,
+  text: string,
+  timeoutMs = 2000,
+): Promise<string> {
+  return waitForFrame(lastFrame, (frame) => frame.includes(text), timeoutMs);
+}
+
 export { createFakeApi, type FakeApiHandle, type FakeApiOptions } from './fake-api.js';
