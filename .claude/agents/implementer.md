@@ -6,6 +6,7 @@ effort: high
 memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent
 color: green
+maxTurns: 90
 ---
 
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the authoritative spec (§0, §154). `CLAUDE.md` and `docs/agents/HARNESS.md` govern the harness you operate in.

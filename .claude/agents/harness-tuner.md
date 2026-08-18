@@ -5,6 +5,7 @@ model: sonnet
 effort: medium
 tools: Read, Grep, Glob, Write, Edit, Bash
 color: magenta
+maxTurns: 40
 ---
 
 You tune the harness that runs every other agent in this repo. The harness is meant to be tweaked (CLAUDE.md working agreement #5) — this is in-scope work, not a distraction.
