@@ -1,4 +1,6 @@
 import { type Server } from '@grpc/grpc-js';
+import { type PackageDefinition } from '@grpc/proto-loader';
+import { ReflectionService } from '@grpc/reflection';
 import { type GrpcOptions, Transport } from '@nestjs/microservices';
 import { getProtoFiles, GRPC_PACKAGES, PROTO_LOADER_OPTIONS } from '@patches/proto';
 import { HealthImplementation, type ServingStatus } from 'grpc-health-check';
@@ -24,9 +26,18 @@ export interface GrpcMicroserviceSetup {
  * Patches-specific RPC, so Fly.io and grpc-health-probe work out of the box.
  * Nest has no abstraction for it: it is attached to the raw `grpc.Server` through
  * `onLoadPackageDefinition`.
+ *
+ * `reflection` (B-006) attaches the standard `grpc.reflection.v1alpha.ServerReflection`
+ * service the same way, gated behind `GRPC_REFLECTION` (default off — see
+ * `env.schema.ts`'s doc comment for why). This is what lets `grpcurl -plaintext <host>
+ * list`/`describe` work against a running server without shipping it any `.proto` files.
  */
-export function createGrpcMicroservice(url: string): GrpcMicroserviceSetup {
+export function createGrpcMicroservice(
+  url: string,
+  options: { reflection?: boolean } = {},
+): GrpcMicroserviceSetup {
   const health = new HealthImplementation({ '': 'NOT_SERVING' });
+  const { reflection = false } = options;
 
   return {
     options: {
@@ -36,8 +47,11 @@ export function createGrpcMicroservice(url: string): GrpcMicroserviceSetup {
         package: [...GRPC_PACKAGES],
         protoPath: [...getProtoFiles()],
         loader: PROTO_LOADER_OPTIONS,
-        onLoadPackageDefinition: (_pkg: unknown, server: Server) => {
+        onLoadPackageDefinition: (pkg: PackageDefinition, server: Server) => {
           health.addToServer(server);
+          if (reflection) {
+            new ReflectionService(pkg).addToServer(server);
+          }
         },
       },
     },

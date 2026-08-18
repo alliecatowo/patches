@@ -42,6 +42,11 @@ export class AppConfigService {
     return this.get('INSTANCE_NAME');
   }
 
+  /** Whether to attach `grpc.reflection.v1alpha.ServerReflection` (B-006). */
+  get grpcReflection(): boolean {
+    return this.get('GRPC_REFLECTION');
+  }
+
   get databaseUrl(): string | undefined {
     return this.get('DATABASE_URL');
   }

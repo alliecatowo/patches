@@ -28,12 +28,19 @@ describe('validateEnv', () => {
       INSTANCE_NAME: 'patches-dev',
       PUBLIC_ORIGIN: 'http://localhost:3000',
       INVITE_ONLY: true,
+      GRPC_REFLECTION: false,
     });
     expect(env.DATABASE_URL).toBeUndefined();
   });
 
   it('coerces GRPC_PORT from its string environment form', () => {
     expect(validateEnv({ GRPC_PORT: '50052' }).GRPC_PORT).toBe(50_052);
+  });
+
+  it('parses GRPC_REFLECTION as a boolean-ish env value (B-006, dev-only default off)', () => {
+    expect(validateEnv({ GRPC_REFLECTION: 'true' }).GRPC_REFLECTION).toBe(true);
+    expect(validateEnv({ GRPC_REFLECTION: '1' }).GRPC_REFLECTION).toBe(true);
+    expect(validateEnv({}).GRPC_REFLECTION).toBe(false);
   });
 
   it('refuses to boot on an out-of-range port', () => {
