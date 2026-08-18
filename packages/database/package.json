@@ -3,7 +3,32 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo",
+    "typeorm": "tsx ./node_modules/typeorm/cli.js",
+    "migration:run": "pnpm typeorm migration:run -d src/cli/data-source.ts",
+    "migration:revert": "pnpm typeorm migration:revert -d src/cli/data-source.ts",
+    "migration:show": "pnpm typeorm migration:show -d src/cli/data-source.ts",
+    "migration:generate": "node scripts/migration-name-command.mjs generate",
+    "migration:create": "node scripts/migration-name-command.mjs create"
+  },
   "dependencies": {
     "@patches/config": "workspace:*",
     "pg": "catalog:",
@@ -12,6 +37,7 @@
   },
   "devDependencies": {
     "@types/pg": "catalog:",
-    "tsup": "catalog:"
+    "tsup": "catalog:",
+    "tsx": "catalog:"
   }
 }
