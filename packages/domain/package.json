@@ -1,0 +1,10 @@
+{
+  "name": "@patches/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "devDependencies": {
+    "tsup": "catalog:"
+  }
+}

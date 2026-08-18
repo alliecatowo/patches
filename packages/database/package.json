@@ -1,0 +1,17 @@
+{
+  "name": "@patches/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "dependencies": {
+    "@patches/config": "workspace:*",
+    "pg": "catalog:",
+    "reflect-metadata": "catalog:",
+    "typeorm": "catalog:"
+  },
+  "devDependencies": {
+    "@types/pg": "catalog:",
+    "tsup": "catalog:"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@patches/testkit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "dependencies": {
+    "@patches/config": "workspace:*",
+    "@patches/database": "workspace:*",
+    "pg": "catalog:",
+    "typeorm": "catalog:"
+  },
+  "devDependencies": {
+    "tsup": "catalog:"
+  }
+}
