@@ -70,6 +70,17 @@ const envObjectSchema = z.object({
    * default as the server's copy of this variable.
    */
   PUBLIC_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),
+
+  /**
+   * B-026: same AES-256-GCM key as the federating `apps/server` node's copy of this variable
+   * (`FederationDeliverHandler` decrypts `federation_keys.private_key_*` to sign outgoing
+   * deliveries — see `packages/database/src/crypto/federation-key-cipher.ts`). Optional here
+   * unconditionally, unlike the server's copy: this worker has no `FEDERATION_ENABLED` flag of
+   * its own to gate the requirement on, and a worker that never claims a `FEDERATION_DELIVER`
+   * job never needs it — an unset key only surfaces as an error if such a job is actually
+   * claimed with no way to decrypt its signer's key.
+   */
+  FEDERATION_KEY_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

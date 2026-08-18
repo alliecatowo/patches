@@ -2,8 +2,14 @@ import { generateKeyPair } from 'node:crypto';
 import { promisify } from 'node:util';
 
 import { Injectable } from '@nestjs/common';
-import { FederationKey } from '@patches/database';
+import {
+  decryptFederationPrivateKeyPem,
+  encryptFederationPrivateKeyPem,
+  FederationKey,
+} from '@patches/database';
 import type { EntityManager } from 'typeorm';
+
+import { AppConfigService } from '../../../config/app-config.service.js';
 
 const generateKeyPairAsync = promisify(generateKeyPair);
 
@@ -13,11 +19,15 @@ const generateKeyPairAsync = promisify(generateKeyPair);
  * most local actors in the two-node lab never federate, so eagerly minting a keypair for
  * every `Register` would be pure waste.
  *
- * See `FederationKey`'s doc comment for why `privateKeyPem` is stored plain (a documented
- * v0.1 gap, not an oversight).
+ * `privateKeyPem` is encrypted at rest (B-026, AES-256-GCM under `FEDERATION_KEY_ENCRYPTION_
+ * KEY`) — see `packages/database/src/crypto/federation-key-cipher.ts` for the cipher, shared
+ * verbatim with `apps/worker`'s `FederationDeliverHandler`, which also needs to decrypt to
+ * sign outgoing deliveries.
  */
 @Injectable()
 export class KeyService {
+  constructor(private readonly config: AppConfigService) {}
+
   /**
    * Returns the actor's keypair, generating and persisting one on first use. Takes the
    * caller's `EntityManager` (not `@InjectDataSource`) so this can run inside the same
@@ -31,7 +41,7 @@ export class KeyService {
     const repository = manager.getRepository(FederationKey);
     const existing = await repository.findOne({ where: { actorId } });
     if (existing !== null) {
-      return { publicKeyPem: existing.publicKeyPem, privateKeyPem: existing.privateKeyPem };
+      return { publicKeyPem: existing.publicKeyPem, privateKeyPem: this.decrypt(existing) };
     }
 
     const { publicKey, privateKey } = await generateKeyPairAsync('rsa', {
@@ -39,10 +49,17 @@ export class KeyService {
       publicKeyEncoding: { type: 'spki', format: 'pem' },
       privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     });
+    const encrypted = encryptFederationPrivateKeyPem(privateKey, this.encryptionKey());
 
     try {
       await repository.save(
-        repository.create({ actorId, publicKeyPem: publicKey, privateKeyPem: privateKey }),
+        repository.create({
+          actorId,
+          publicKeyPem: publicKey,
+          privateKeyCiphertext: encrypted.ciphertext,
+          privateKeyIv: encrypted.iv,
+          privateKeyTag: encrypted.tag,
+        }),
       );
       return { publicKeyPem: publicKey, privateKeyPem: privateKey };
     } catch (error) {
@@ -51,8 +68,27 @@ export class KeyService {
       // rather than proceed with a keypair nobody else will ever see again.
       if (!isUniqueViolation(error)) throw error;
       const winner = await repository.findOneOrFail({ where: { actorId } });
-      return { publicKeyPem: winner.publicKeyPem, privateKeyPem: winner.privateKeyPem };
+      return { publicKeyPem: winner.publicKeyPem, privateKeyPem: this.decrypt(winner) };
     }
+  }
+
+  private decrypt(key: FederationKey): string {
+    return decryptFederationPrivateKeyPem(
+      { ciphertext: key.privateKeyCiphertext, iv: key.privateKeyIv, tag: key.privateKeyTag },
+      this.encryptionKey(),
+    );
+  }
+
+  /** `envSchema`'s `superRefine` guarantees this is set whenever federation is enabled — the
+   * only caller of `KeyService` is `ActivityPubFederationGateway`, which is only ever wired up
+   * under that same flag (`federation.module.ts`), so reaching here with it unset would be a
+   * configuration bug, not a normal runtime state. */
+  private encryptionKey(): string {
+    const key = this.config.federationKeyEncryptionKey;
+    if (key === undefined) {
+      throw new Error('FEDERATION_KEY_ENCRYPTION_KEY is not set.');
+    }
+    return key;
   }
 }
 

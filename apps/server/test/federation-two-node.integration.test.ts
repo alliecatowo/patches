@@ -99,7 +99,11 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
         { accessToken: alice.accessToken },
       );
 
-      const deliveredFollow = await drainFederationDeliveries(nodeA.dataSource);
+      const deliveredFollow = await drainFederationDeliveries(
+        nodeA.dataSource,
+        undefined,
+        nodeA.federationKeyEncryptionKey,
+      );
       expect(deliveredFollow).toBeGreaterThan(0);
 
       // A-036: the delivered Follow must have bumped node B's `inbox_handled` counter —
@@ -112,7 +116,11 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
       const domainA = new URL(nodeA.publicOrigin).host;
       expect(metrics[`inbox_handled{domain=${domainA},type=Follow}`]).toBeGreaterThan(0);
 
-      const deliveredAccept = await drainFederationDeliveries(nodeB.dataSource);
+      const deliveredAccept = await drainFederationDeliveries(
+        nodeB.dataSource,
+        undefined,
+        nodeB.federationKeyEncryptionKey,
+      );
       expect(deliveredAccept).toBeGreaterThan(0);
 
       const relationship = await callUnary<GetRelationshipRequest, GetRelationshipResponse>(
@@ -138,7 +146,11 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
       );
       expect(created.post?.id).toBeDefined();
 
-      const deliveredCreate = await drainFederationDeliveries(nodeB.dataSource);
+      const deliveredCreate = await drainFederationDeliveries(
+        nodeB.dataSource,
+        undefined,
+        nodeB.federationKeyEncryptionKey,
+      );
       expect(deliveredCreate).toBeGreaterThan(0);
 
       const homeFeed = await callUnary<ListHomeFeedRequest, ListHomeFeedResponse>(
@@ -155,7 +167,11 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
         { id: created.post?.id ?? '' },
         { accessToken: bob.accessToken },
       );
-      const deliveredDelete = await drainFederationDeliveries(nodeB.dataSource);
+      const deliveredDelete = await drainFederationDeliveries(
+        nodeB.dataSource,
+        undefined,
+        nodeB.federationKeyEncryptionKey,
+      );
       expect(deliveredDelete).toBeGreaterThan(0);
 
       const tombstoned = await nodeA.dataSource

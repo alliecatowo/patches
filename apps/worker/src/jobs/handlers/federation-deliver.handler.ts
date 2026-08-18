@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Actor,
+  decryptFederationPrivateKeyPem,
+  DomainBlock,
   FederationKey,
   federationDeliverPayloadSchema,
   type JobType,
@@ -56,6 +58,24 @@ export class FederationDeliverHandler implements JobHandler {
     const { actorId, inboxUrl, activity, activityId } =
       federationDeliverPayloadSchema.parse(payload);
 
+    // B-027 worker-side re-check: `DeliveryService.enqueue` already filters blocked domains at
+    // enqueue time, but a job can sit `PENDING` for a while (retries, backoff) — re-checking
+    // here catches a domain blocked *after* this job was queued. **Deliberately duplicated**
+    // from `apps/server`'s `DomainBlockService.isBlocked`, same reasoning as this file's other
+    // duplicated federation primitives (`delivery-client.ts`'s doc comment): no cross-app-`src`
+    // import convention exists in this repo.
+    const blockedHost = safeHost(inboxUrl);
+    if (blockedHost !== undefined) {
+      const blocked = await this.dataSource
+        .getRepository(DomainBlock)
+        .findOne({ where: { domain: blockedHost.toLowerCase() } });
+      if (blocked !== null) {
+        this.logger.warn(JSON.stringify({ activityId, inboxUrl, outcome: 'DOMAIN_BLOCKED' }));
+        deliveryMetrics.increment('deliveries_failed', { outcome: 'DOMAIN_BLOCKED' });
+        return;
+      }
+    }
+
     const [actor, key] = await Promise.all([
       this.dataSource.getRepository(Actor).findOne({ where: { id: actorId } }),
       this.dataSource.getRepository(FederationKey).findOne({ where: { actorId } }),
@@ -69,6 +89,18 @@ export class FederationDeliverHandler implements JobHandler {
       return;
     }
 
+    const encryptionKey = this.config.federationKeyEncryptionKey;
+    if (encryptionKey === undefined) {
+      // Permanent for this attempt, but not the signer's fault — surfaces loudly rather than
+      // silently dead-lettering, since it means the worker was never given the same
+      // FEDERATION_KEY_ENCRYPTION_KEY as the server node that created this key (B-026).
+      throw new Error('FEDERATION_KEY_ENCRYPTION_KEY is not set; cannot decrypt signing key.');
+    }
+    const privateKeyPem = decryptFederationPrivateKeyPem(
+      { ciphertext: key.privateKeyCiphertext, iv: key.privateKeyIv, tag: key.privateKeyTag },
+      encryptionKey,
+    );
+
     const body = JSON.stringify(activity);
     const target = new URL(inboxUrl);
     const date = new Date().toUTCString();
@@ -81,7 +113,7 @@ export class FederationDeliverHandler implements JobHandler {
       date,
       digest,
       keyId,
-      privateKeyPem: key.privateKeyPem,
+      privateKeyPem,
     });
 
     const response = await safeFetch(inboxUrl, {
@@ -120,5 +152,15 @@ export class FederationDeliverHandler implements JobHandler {
       deliveryMetrics.increment('deliveries_failed', { outcome: 'RETRY' });
     }
     throw new Error(`Delivery to "${inboxUrl}" failed with status ${String(response.status)}.`);
+  }
+}
+
+/** `undefined` for an unparseable `inboxUrl` — treated as "can't tell, deliver as scheduled"
+ * here (the enqueue-time check in `DeliveryService` already rejected anything malformed). */
+function safeHost(inboxUrl: string): string | undefined {
+  try {
+    return new URL(inboxUrl).host;
+  } catch {
+    return undefined;
   }
 }
