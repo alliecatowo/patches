@@ -34,6 +34,38 @@ export interface MediaSource {
   mime: string;
 }
 
+/**
+ * Reject anything above this before it ever reaches `sharp()` (spec §153: bound
+ * untrusted input). This is defense in depth ahead of Phase 5's real upload limits —
+ * without it, `prepare()` would happily buffer and decode a client-supplied file of
+ * any size.
+ */
+export const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Pixel-count ceiling passed to every `sharp()` call. Guards against decompression
+ * bombs — a small file (well under {@link MAX_INPUT_BYTES}) that decodes to an
+ * enormous pixel buffer, e.g. a crafted PNG. 20,000,000 px comfortably covers any
+ * real photo (~5000×4000) while still bounding worst-case memory use.
+ */
+const SHARP_INPUT_LIMITS = { limitInputPixels: 20_000_000 } as const;
+
+/** Thrown by `prepare()` when the source bytes exceed {@link MAX_INPUT_BYTES}. */
+export class MediaTooLargeError extends Error {
+  constructor(byteLength: number) {
+    super(
+      `Image is ${String(byteLength)} bytes, which exceeds the ${String(MAX_INPUT_BYTES)}-byte limit.`,
+    );
+    this.name = 'MediaTooLargeError';
+  }
+}
+
+function assertBoundedInput(bytes: Uint8Array): void {
+  if (bytes.byteLength > MAX_INPUT_BYTES) {
+    throw new MediaTooLargeError(bytes.byteLength);
+  }
+}
+
 /** The cell budget the image must fit inside. */
 export interface PrepareOptions {
   maxCols: number;
@@ -107,6 +139,7 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
   }
 
   async prepare(source: MediaSource, opts: PrepareOptions): Promise<PreparedImage> {
+    assertBoundedInput(source.bytes);
     const maxCols = clamp(Math.floor(opts.maxCols), 1, MAX_GRID);
     const maxRows = clamp(Math.floor(opts.maxRows), 1, MAX_GRID);
     const hash = contentHash(source.bytes);
@@ -124,7 +157,7 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
 
     // `rotate()` with no argument applies the EXIF orientation and drops the tag, so the
     // pixels we transmit are the pixels the user expects to see.
-    const { data, info } = await sharp(source.bytes)
+    const { data, info } = await sharp(source.bytes, SHARP_INPUT_LIMITS)
       .rotate()
       .resize({
         width: maxCols * this.#cellWidthPx,
@@ -200,11 +233,12 @@ export class FallbackMediaRenderer implements TerminalMediaRenderer {
   #nextId = 1;
 
   async prepare(source: MediaSource, opts: PrepareOptions): Promise<PreparedImage> {
+    assertBoundedInput(source.bytes);
     let widthPx = 0;
     let heightPx = 0;
     let format = mimeSubtype(source.mime);
     try {
-      const metadata = await sharp(source.bytes).metadata();
+      const metadata = await sharp(source.bytes, SHARP_INPUT_LIMITS).metadata();
       widthPx = metadata.width ?? 0;
       heightPx = metadata.height ?? 0;
       format = metadata.format ?? format;
