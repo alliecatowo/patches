@@ -1,7 +1,11 @@
 import { createHash, generateKeyPairSync, randomUUID, sign as cryptoSign } from 'node:crypto';
 
-import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
-import { Credential, OutboxJob, RefreshToken, User } from '@patches/database';
+import {
+  credentials as grpcCredentials,
+  status as GrpcStatus,
+  type ServiceError,
+} from '@grpc/grpc-js';
+import { Credential, OutboxJob, RefreshToken, SshLoginChallenge, User } from '@patches/database';
 import {
   type AddCredentialRequest,
   type AddCredentialResponse,
@@ -382,6 +386,51 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
     });
 
+    describe('concurrent refresh reuse (§36)', () => {
+      it('lets exactly one of two simultaneous presentations of the same token through', async () => {
+        const handle = `racer${suffix()}`;
+        const password = 'racing-the-refresh-endpoint';
+        const { session } = await register({ handle, password });
+        const refreshToken = session?.refreshToken ?? '';
+
+        const results = await Promise.allSettled([
+          callUnary<RefreshSessionRequest, RefreshSessionResponse>(auth.refreshSession.bind(auth), {
+            refreshToken,
+          }),
+          callUnary<RefreshSessionRequest, RefreshSessionResponse>(auth.refreshSession.bind(auth), {
+            refreshToken,
+          }),
+        ]);
+
+        const fulfilled = results.filter(
+          (result): result is PromiseFulfilledResult<RefreshSessionResponse> =>
+            result.status === 'fulfilled',
+        );
+        const rejected = results.filter(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        // Postgres's row lock on the conditional UPDATE is what decides this, not which
+        // promise happened to be created first — exactly one racer wins.
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expect((rejected[0]?.reason as ServiceError).code).toBe(GrpcStatus.UNAUTHENTICATED);
+
+        // The race being detected as reuse ends the whole family — including the token the
+        // "winning" racer just received.
+        const winningToken = fulfilled[0]?.value.session?.refreshToken ?? '';
+        const afterRace = await expectRejection<RefreshSessionRequest, RefreshSessionResponse>(
+          auth.refreshSession.bind(auth),
+          { refreshToken: winningToken },
+        );
+        expect(afterRace.code).toBe(GrpcStatus.UNAUTHENTICATED);
+
+        const userId = await userIdForHandle(handle);
+        const sessionId = sessionIdOf(session?.accessToken ?? '');
+        const family = await dataSource.getRepository(RefreshToken).findBy({ userId, sessionId });
+        expect(family.every((token) => token.revokedAt !== null)).toBe(true);
+      });
+    });
+
     describe('Login', () => {
       it('accepts the recovery email as well as the handle', async () => {
         const handle = `byemail${suffix()}`;
@@ -563,6 +612,78 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         // same answer — that is the no-enumeration requirement.
         expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
         expect(error.details).toBe('SSH authentication failed.');
+      });
+
+      it('rejects a signature made for a different node (cross-node replay, §166)', async () => {
+        const identity = sshIdentity();
+        const handle = `sshcross${suffix()}`;
+        await register({ handle, sshPublicKey: identity.publicKeyLine, password: '' });
+
+        const challenge = await callUnary<BeginSshLoginRequest, BeginSshLoginResponse>(
+          auth.beginSshLogin.bind(auth),
+          { publicKeyOpenssh: identity.publicKeyLine, fingerprint: '' },
+        );
+        const credential = await dataSource
+          .getRepository(Credential)
+          .findOneByOrFail({ userId: await userIdForHandle(handle), type: 'SSH_PUBLIC_KEY' });
+
+        // The exact blob this node would build, except for the node domain — as if the
+        // signature had been captured for `other.example` and replayed here.
+        const foreignBlob = buildSshChallengeBlob({
+          nodeDomain: 'other.example',
+          challengeId: challenge.challengeId,
+          nonce: Buffer.from(challenge.nonce),
+          fingerprint: credential.identifier ?? '',
+          expiresAt: timestampToDate(challenge.expiresAt) ?? new Date(0),
+        });
+
+        const error = await expectRejection<CompleteSshLoginRequest, CompleteSshLoginResponse>(
+          auth.completeSshLogin.bind(auth),
+          {
+            challengeId: challenge.challengeId,
+            publicKeyOpenssh: identity.publicKeyLine,
+            signature: identity.sign(foreignBlob),
+            signatureFormat: 'ssh-ed25519',
+          },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('rejects a challenge past its TTL (§166)', async () => {
+        const identity = sshIdentity();
+        const handle = `sshexpired${suffix()}`;
+        await register({ handle, sshPublicKey: identity.publicKeyLine, password: '' });
+
+        const challenge = await callUnary<BeginSshLoginRequest, BeginSshLoginResponse>(
+          auth.beginSshLogin.bind(auth),
+          { publicKeyOpenssh: identity.publicKeyLine, fingerprint: '' },
+        );
+        const credential = await dataSource
+          .getRepository(Credential)
+          .findOneByOrFail({ userId: await userIdForHandle(handle), type: 'SSH_PUBLIC_KEY' });
+
+        await dataSource
+          .getRepository(SshLoginChallenge)
+          .update({ id: challenge.challengeId }, { expiresAt: new Date(Date.now() - 1000) });
+
+        const blob = buildSshChallengeBlob({
+          nodeDomain: TEST_NODE_DOMAIN,
+          challengeId: challenge.challengeId,
+          nonce: Buffer.from(challenge.nonce),
+          fingerprint: credential.identifier ?? '',
+          expiresAt: timestampToDate(challenge.expiresAt) ?? new Date(0),
+        });
+
+        const error = await expectRejection<CompleteSshLoginRequest, CompleteSshLoginResponse>(
+          auth.completeSshLogin.bind(auth),
+          {
+            challengeId: challenge.challengeId,
+            publicKeyOpenssh: identity.publicKeyLine,
+            signature: identity.sign(blob),
+            signatureFormat: 'ssh-ed25519',
+          },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
       });
     });
 
