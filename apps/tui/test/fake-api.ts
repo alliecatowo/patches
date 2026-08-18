@@ -3,28 +3,41 @@ import { randomUUID } from 'node:crypto';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import {
   dateToTimestamp,
+  FOLLOW_STATE,
   POST_TYPE,
   POST_VISIBILITY,
   type Actor,
   type CreatePostRequest,
   type CreatePostResponse,
+  type FollowActorRequest,
+  type FollowActorResponse,
   type GetActorByHandleRequest,
   type GetActorByHandleResponse,
   type GetActorRequest,
   type GetActorResponse,
+  type GetRelationshipRequest,
+  type GetRelationshipResponse,
   type GetServerInfoResponse,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
+  type ListHomeFeedRequest,
+  type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
   type LoginRequest,
   type LoginResponse,
+  type PageInfo,
   type Post,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
   type RegisterResponse,
+  type Relationship,
+  type SearchActorsRequest,
+  type SearchActorsResponse,
   type Session,
+  type UnfollowActorRequest,
+  type UnfollowActorResponse,
 } from '@patches/proto';
 
 import type { PatchesApi } from '../src/api/client.js';
@@ -76,6 +89,7 @@ export class FakeApiHandle {
   private readonly posts: Post[] = []; // newest first
   private readonly sessions = new Map<string, FakeSession>(); // keyed by accessToken
   private readonly refreshTokens = new Map<string, FakeSession>(); // keyed by refreshToken
+  private readonly follows = new Map<string, Set<string>>(); // followerId -> Set<followingId>
   private readonly pageSize: number;
   private readonly serverInfo: GetServerInfoResponse;
 
@@ -113,8 +127,23 @@ export class FakeApiHandle {
       listCredentials: () => Promise.resolve({ credentials: [] }),
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
+      searchActors: (request: SearchActorsRequest) => this.searchActors(request),
       listActorPosts: (request: ListActorPostsRequest) => this.listActorPosts(request),
       listLocalFeed: (request: ListLocalFeedRequest) => this.listLocalFeed(request),
+      listHomeFeed: (request: ListHomeFeedRequest, accessToken: string) =>
+        this.listHomeFeed(request, accessToken),
+      followActor: (request: FollowActorRequest, accessToken: string) =>
+        this.followActor(request, accessToken),
+      unfollowActor: (request: UnfollowActorRequest, accessToken: string) =>
+        this.unfollowActor(request, accessToken),
+      getRelationship: (request: GetRelationshipRequest, accessToken: string) =>
+        this.getRelationship(request, accessToken),
+      addCredential: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      revokeCredential: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      getNodeInfo: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       createPost: (request: CreatePostRequest, accessToken: string) =>
         this.createPost(request, accessToken),
       close: () => undefined,
@@ -137,6 +166,10 @@ export class FakeApiHandle {
 
   private toActor(user: FakeUser): Actor {
     const postCount = this.posts.filter((post) => post.author?.id === user.id).length;
+    const followingCount = this.follows.get(user.id)?.size ?? 0;
+    const followerCount = [...this.follows.values()].filter((following) =>
+      following.has(user.id),
+    ).length;
     return {
       id: user.id,
       handle: user.handle,
@@ -147,7 +180,7 @@ export class FakeApiHandle {
       avatar: undefined,
       isLocal: true,
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
-      counts: { followers: 0, following: 0, posts: postCount },
+      counts: { followers: followerCount, following: followingCount, posts: postCount },
       nameplate: undefined,
     };
   }
@@ -246,29 +279,117 @@ export class FakeApiHandle {
     return Promise.resolve({ actor: this.toActor(user) });
   }
 
-  private paginate(all: readonly Post[], cursor: string, limit: number) {
+  /** Cursor pagination shared by every `ListXxx`/`SearchActors` RPC below. */
+  private paginate<T>(
+    all: readonly T[],
+    cursor: string,
+    limit: number,
+  ): { items: T[]; page: PageInfo } {
     const start = cursor === '' ? 0 : Number(cursor);
     // `pageSize` is a hard cap, not just a fallback for `limit <= 0` — real screens
     // always pass a concrete `limit` (e.g. 20), so a small `fakeOptions.pageSize`
     // must still win to let pagination tests exercise "load more" without seeding
-    // hundreds of posts (see the `FakeApiOptions.pageSize` doc comment above).
+    // hundreds of posts/actors (see the `FakeApiOptions.pageSize` doc comment above).
     const requested = limit > 0 ? limit : this.pageSize;
     const effectiveLimit = Math.min(requested, this.pageSize);
     const page = all.slice(start, start + effectiveLimit);
     const next = start + page.length;
     return {
-      posts: page,
+      items: page,
       page: { nextCursor: next < all.length ? String(next) : '', hasMore: next < all.length },
     };
   }
 
   private listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
     const forActor = this.posts.filter((post) => post.author?.id === request.actorId);
-    return Promise.resolve(this.paginate(forActor, request.cursor, request.limit));
+    const { items, page } = this.paginate(forActor, request.cursor, request.limit);
+    return Promise.resolve({ posts: items, page });
   }
 
   private listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
-    return Promise.resolve(this.paginate(this.posts, request.cursor, request.limit));
+    const { items, page } = this.paginate(this.posts, request.cursor, request.limit);
+    return Promise.resolve({ posts: items, page });
+  }
+
+  /** The caller's own posts plus posts from actors they follow (spec §52, §137). */
+  private listHomeFeed(
+    request: ListHomeFeedRequest,
+    accessToken: string,
+  ): Promise<ListHomeFeedResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const following = this.follows.get(session.userId) ?? new Set<string>();
+    const relevant = this.posts.filter(
+      (post) => post.author?.id === session.userId || following.has(post.author?.id ?? ''),
+    );
+    const { items, page } = this.paginate(relevant, request.cursor, request.limit);
+    return Promise.resolve({ posts: items, page });
+  }
+
+  /** Handle-prefix + display-name substring match (spec §112) — no ranking, insertion order. */
+  private searchActors(request: SearchActorsRequest): Promise<SearchActorsResponse> {
+    const query = request.query.trim().toLowerCase();
+    const matches =
+      query === ''
+        ? []
+        : [...this.users.values()].filter(
+            (user) =>
+              user.handle.toLowerCase().startsWith(query) ||
+              user.displayName.toLowerCase().includes(query),
+          );
+    const { items, page } = this.paginate(matches, request.cursor, request.limit);
+    return Promise.resolve({ actors: items.map((user) => this.toActor(user)), page });
+  }
+
+  private relationship(callerId: string, targetId: string): Relationship {
+    return {
+      state:
+        (this.follows.get(callerId)?.has(targetId) ?? false)
+          ? FOLLOW_STATE.FOLLOWING
+          : FOLLOW_STATE.NONE,
+      followedBy: this.follows.get(targetId)?.has(callerId) ?? false,
+      blocking: false,
+      muting: false,
+    };
+  }
+
+  private followActor(
+    request: FollowActorRequest,
+    accessToken: string,
+  ): Promise<FollowActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const following = this.follows.get(session.userId) ?? new Set<string>();
+    following.add(request.actorId);
+    this.follows.set(session.userId, following);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private unfollowActor(
+    request: UnfollowActorRequest,
+    accessToken: string,
+  ): Promise<UnfollowActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    this.follows.get(session.userId)?.delete(request.actorId);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private getRelationship(
+    request: GetRelationshipRequest,
+    accessToken: string,
+  ): Promise<GetRelationshipResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
   }
 
   private createPost(request: CreatePostRequest, accessToken: string): Promise<CreatePostResponse> {

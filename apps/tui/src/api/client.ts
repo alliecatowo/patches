@@ -5,11 +5,15 @@ import {
   createActorClient,
   createAuthClient,
   createFeedClient,
+  createNodeClient,
   createPostClient,
+  createSocialGraphClient,
   createSystemClient,
   DEADLINES_MS,
   METADATA_KEYS,
   type ActorGrpcClient,
+  type AddCredentialRequest,
+  type AddCredentialResponse,
   type AuthGrpcClient,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
@@ -18,15 +22,22 @@ import {
   type CreatePostRequest,
   type CreatePostResponse,
   type FeedGrpcClient,
+  type FollowActorRequest,
+  type FollowActorResponse,
   type GetActorByHandleRequest,
   type GetActorByHandleResponse,
   type GetActorRequest,
   type GetActorResponse,
   type GetCurrentSessionResponse,
+  type GetNodeInfoResponse,
+  type GetRelationshipRequest,
+  type GetRelationshipResponse,
   type GetServerInfoResponse,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
   type ListCredentialsResponse,
+  type ListHomeFeedRequest,
+  type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
   type LoginRequest,
@@ -34,13 +45,21 @@ import {
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type NodeGrpcClient,
   type PingResponse,
   type PostGrpcClient,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
   type RegisterResponse,
+  type RevokeCredentialRequest,
+  type RevokeCredentialResponse,
+  type SearchActorsRequest,
+  type SearchActorsResponse,
+  type SocialGraphGrpcClient,
   type SystemGrpcClient,
+  type UnfollowActorRequest,
+  type UnfollowActorResponse,
 } from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
@@ -67,6 +86,8 @@ export class PatchesApi {
   private readonly actor: ActorGrpcClient;
   private readonly post: PostGrpcClient;
   private readonly feed: FeedGrpcClient;
+  private readonly socialGraph: SocialGraphGrpcClient;
+  private readonly node: NodeGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -78,6 +99,8 @@ export class PatchesApi {
     this.actor = createActorClient(options.target, channelCredentials);
     this.post = createPostClient(options.target, channelCredentials);
     this.feed = createFeedClient(options.target, channelCredentials);
+    this.socialGraph = createSocialGraphClient(options.target, channelCredentials);
+    this.node = createNodeClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -132,6 +155,27 @@ export class PatchesApi {
     return unary(this.auth.listCredentials.bind(this.auth), {}, DEADLINES_MS.auth, accessToken);
   }
 
+  /** Adds a PASSWORD or SSH_PUBLIC_KEY credential to the caller's account (spec §165). */
+  async addCredential(
+    request: AddCredentialRequest,
+    accessToken: string,
+  ): Promise<AddCredentialResponse> {
+    return unary(this.auth.addCredential.bind(this.auth), request, DEADLINES_MS.auth, accessToken);
+  }
+
+  /** Server-side fails this on the account's last remaining credential (spec §165). */
+  async revokeCredential(
+    request: RevokeCredentialRequest,
+    accessToken: string,
+  ): Promise<RevokeCredentialResponse> {
+    return unary(
+      this.auth.revokeCredential.bind(this.auth),
+      request,
+      DEADLINES_MS.auth,
+      accessToken,
+    );
+  }
+
   // ---- ActorService / FeedService — public reads, no access token required ----
 
   async getActor(request: GetActorRequest): Promise<GetActorResponse> {
@@ -142,12 +186,67 @@ export class PatchesApi {
     return unary(this.actor.getActorByHandle.bind(this.actor), request, DEADLINES_MS.unary);
   }
 
+  async searchActors(request: SearchActorsRequest): Promise<SearchActorsResponse> {
+    return unary(this.actor.searchActors.bind(this.actor), request, DEADLINES_MS.unary);
+  }
+
   async listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
     return unary(this.feed.listActorPosts.bind(this.feed), request, DEADLINES_MS.unary);
   }
 
   async listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
     return unary(this.feed.listLocalFeed.bind(this.feed), request, DEADLINES_MS.unary);
+  }
+
+  // ---- FeedService / SocialGraphService — the caller's own network, requires a session ----
+
+  async listHomeFeed(
+    request: ListHomeFeedRequest,
+    accessToken: string,
+  ): Promise<ListHomeFeedResponse> {
+    return unary(this.feed.listHomeFeed.bind(this.feed), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async followActor(
+    request: FollowActorRequest,
+    accessToken: string,
+  ): Promise<FollowActorResponse> {
+    return unary(
+      this.socialGraph.followActor.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unfollowActor(
+    request: UnfollowActorRequest,
+    accessToken: string,
+  ): Promise<UnfollowActorResponse> {
+    return unary(
+      this.socialGraph.unfollowActor.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getRelationship(
+    request: GetRelationshipRequest,
+    accessToken: string,
+  ): Promise<GetRelationshipResponse> {
+    return unary(
+      this.socialGraph.getRelationship.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- NodeService — unauthenticated node discovery (spec §174) ----
+
+  async getNodeInfo(): Promise<GetNodeInfoResponse> {
+    return unary(this.node.getNodeInfo.bind(this.node), {}, DEADLINES_MS.unary);
   }
 
   // ---- PostService — requires an authenticated session ----
@@ -162,6 +261,8 @@ export class PatchesApi {
     this.actor.close();
     this.post.close();
     this.feed.close();
+    this.socialGraph.close();
+    this.node.close();
   }
 }
 
