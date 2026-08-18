@@ -1,3 +1,4 @@
+import { present } from '../api/present.js';
 import { timestampToDate, type Post } from '@patches/proto';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
@@ -23,7 +24,7 @@ export interface PostRowProps {
  */
 export function PostRow({ post, selected = false }: PostRowProps): ReactElement {
   const createdAt = timestampToDate(post.createdAt);
-  const when = createdAt === undefined ? '' : formatRelativeTime(createdAt);
+  const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
 
   return (
@@ -39,12 +40,12 @@ export function PostRow({ post, selected = false }: PostRowProps): ReactElement 
       ) : (
         <Text wrap="wrap">{post.body === '' ? post.linkUrl : post.body}</Text>
       )}
-      {post.counts === undefined ? null : (
+      {present(post.counts) ? (
         <Text color={theme.muted}>
           ♥ {post.counts.likes} · {post.counts.replies}{' '}
           {post.counts.replies === 1 ? 'reply' : 'replies'}
         </Text>
-      )}
+      ) : null}
     </Box>
   );
 }

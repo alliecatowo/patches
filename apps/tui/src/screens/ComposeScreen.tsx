@@ -1,3 +1,4 @@
+import { present } from '../api/present.js';
 import { POST_VISIBILITY, type Post } from '@patches/proto';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -62,7 +63,7 @@ export function ComposeScreen({
         accessToken,
       );
       setSend({ status: 'idle' });
-      if (response.post !== undefined) onSubmitted(response.post);
+      if (present(response.post)) onSubmitted(response.post);
     } catch (error) {
       setSend({ status: 'error', error: describeGrpcError(error, api.target) });
     }
