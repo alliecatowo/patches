@@ -22,7 +22,19 @@ plugins:
       - snakeToCamel=keys_json
       - env=node
       - useOptionals=none
-      - stringEnums=false
+      # `stringEnums=true` (NOT the `false` default): proto-loader is the actual
+      # runtime (de)serializer here (same reasoning as useDate/forceLong above),
+      # and with `enums: String` in PROTO_LOADER_OPTIONS it always *decodes* enum
+      # fields to their string name (e.g. "POST_TYPE_NOTE"), never the numeric
+      # wire value — verified empirically: proto-loader accepts either a number
+      # or a string on encode, but only ever emits the string name on decode.
+      # `stringEnums=false` would generate a TS numeric enum (`PostType.POST_TYPE_NOTE
+      # = 1`) whose members type-check against the field but are never what's
+      # actually on the object at runtime — a silent `1 !== "POST_TYPE_NOTE"`
+      # landmine. `stringEnums=true` generates a TS enum whose members are the
+      # string names themselves (`PostType.POST_TYPE_NOTE = "POST_TYPE_NOTE"`),
+      # matching the real runtime shape.
+      - stringEnums=true
     strategy: all
 inputs:
   - directory: proto

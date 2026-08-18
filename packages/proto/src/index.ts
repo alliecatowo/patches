@@ -20,8 +20,104 @@ export type {
   SystemServiceClient,
   SystemServiceController,
 } from './generated/patches/v1/system.js';
+export type {
+  Actor,
+  ActorCounts,
+  ActorServiceClient,
+  ActorServiceController,
+  GetActorByHandleRequest,
+  GetActorByHandleResponse,
+  GetActorRequest,
+  GetActorResponse,
+  ListFollowersRequest,
+  ListFollowersResponse,
+  ListFollowingRequest,
+  ListFollowingResponse,
+  MediaRef,
+  SearchActorsRequest,
+  SearchActorsResponse,
+  UpdateProfileRequest,
+  UpdateProfileResponse,
+} from './generated/patches/v1/actors.js';
+export type {
+  AddCredentialRequest,
+  AddCredentialResponse,
+  AuthServiceClient,
+  AuthServiceController,
+  BeginGitHubLoginRequest,
+  BeginGitHubLoginResponse,
+  BeginSshLoginRequest,
+  BeginSshLoginResponse,
+  CompleteSshLoginRequest,
+  CompleteSshLoginResponse,
+  Credential,
+  GetCurrentSessionRequest,
+  GetCurrentSessionResponse,
+  ListCredentialsRequest,
+  ListCredentialsResponse,
+  LoginRequest,
+  LoginResponse,
+  LogoutAllSessionsRequest,
+  LogoutAllSessionsResponse,
+  LogoutRequest,
+  LogoutResponse,
+  PollGitHubLoginRequest,
+  PollGitHubLoginResponse,
+  RefreshSessionRequest,
+  RefreshSessionResponse,
+  RegisterRequest,
+  RegisterResponse,
+  RequestPasswordResetRequest,
+  RequestPasswordResetResponse,
+  ResendVerificationRequest,
+  ResendVerificationResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
+  RevokeCredentialRequest,
+  RevokeCredentialResponse,
+  Session,
+  VerifyEmailRequest,
+  VerifyEmailResponse,
+} from './generated/patches/v1/auth.js';
+// Enum *types* only here — `export type` is erased at compile time, unlike a value export
+// (see `enums.ts` for why the runtime values come from a hand-mirrored module instead).
+export type { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+export type {
+  ListActorPostsRequest,
+  ListActorPostsResponse,
+  ListHomeFeedRequest,
+  ListHomeFeedResponse,
+  ListLocalFeedRequest,
+  ListLocalFeedResponse,
+  FeedServiceClient,
+  FeedServiceController,
+} from './generated/patches/v1/feeds.js';
+export type {
+  CreatePostRequest,
+  CreatePostResponse,
+  DeletePostRequest,
+  DeletePostResponse,
+  GetPostRequest,
+  GetPostResponse,
+  ListRepliesRequest,
+  ListRepliesResponse,
+  MediaAttachment,
+  Post,
+  PostCounts,
+  PostServiceClient,
+  PostServiceController,
+  PostViewerState,
+} from './generated/patches/v1/posts.js';
+export type { PostType, PostVisibility } from './generated/patches/v1/posts.js';
 
-export { createSystemClient } from './client.js';
+export { CREDENTIAL_TYPE, GITHUB_LOGIN_STATUS, POST_TYPE, POST_VISIBILITY } from './enums.js';
+export {
+  createActorClient,
+  createAuthClient,
+  createFeedClient,
+  createPostClient,
+  createSystemClient,
+} from './client.js';
 export {
   DEADLINES_MS,
   ERROR_CODE_METADATA_KEY,
@@ -33,6 +129,13 @@ export {
   PROTOCOL_VERSION,
   SERVICE_NAMES,
 } from './constants.js';
-export type { GrpcUnaryCall, SystemGrpcClient } from './constants.js';
-export { PROTO_DIR, protoFile, protoFiles } from './proto-path.js';
+export type {
+  ActorGrpcClient,
+  AuthGrpcClient,
+  FeedGrpcClient,
+  GrpcUnaryCall,
+  PostGrpcClient,
+  SystemGrpcClient,
+} from './constants.js';
+export { getProtoDir, getProtoFiles, protoFile } from './proto-path.js';
 export { dateToTimestamp, timestampToDate } from './timestamps.js';

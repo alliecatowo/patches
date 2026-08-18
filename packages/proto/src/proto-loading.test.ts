@@ -4,52 +4,109 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dateToTimestamp,
+  getProtoDir,
+  getProtoFiles,
   METADATA_KEYS,
   PATCHES_PACKAGE_NAME,
-  PROTO_DIR,
   PROTO_LOADER_OPTIONS,
   PROTOCOL_VERSION,
-  protoFiles,
   SERVICE_NAMES,
   timestampToDate,
 } from './index.js';
 
 function loadPatchesPackage(): Record<string, unknown> {
-  const definition = loadSync([...protoFiles], PROTO_LOADER_OPTIONS);
+  const definition = loadSync([...getProtoFiles()], PROTO_LOADER_OPTIONS);
   const root = loadPackageDefinition(definition) as unknown as {
     patches: { v1: Record<string, unknown> };
   };
   return root.patches.v1;
 }
 
+function serviceMethodNames(pkg: Record<string, unknown>, serviceName: string): string[] {
+  const service = pkg[serviceName] as ServiceClientConstructor;
+  expect(typeof service).toBe('function');
+  return Object.keys(service.service).sort();
+}
+
 describe('proto files', () => {
-  it('resolves PROTO_DIR to a directory that actually contains the schemas', () => {
-    expect(PROTO_DIR).toMatch(/proto$/);
-    expect(protoFiles.length).toBeGreaterThan(0);
-    for (const file of protoFiles) {
-      expect(file.startsWith(PROTO_DIR)).toBe(true);
+  it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
+    expect(getProtoDir()).toMatch(/proto$/);
+    const files = getProtoFiles();
+    expect(files.length).toBe(6);
+    for (const file of files) {
+      expect(file.startsWith(getProtoDir())).toBe(true);
     }
   });
 
-  it('loads with proto-loader and exposes the declared services', () => {
+  it('loads with proto-loader and exposes every declared service', () => {
     const pkg = loadPatchesPackage();
 
-    expect(Object.keys(pkg)).toEqual(expect.arrayContaining([SERVICE_NAMES.system, 'PageInfo']));
+    expect(Object.keys(pkg)).toEqual(
+      expect.arrayContaining([
+        SERVICE_NAMES.system,
+        SERVICE_NAMES.auth,
+        SERVICE_NAMES.actor,
+        SERVICE_NAMES.post,
+        SERVICE_NAMES.feed,
+        'PageInfo',
+      ]),
+    );
+  });
 
-    const systemService = pkg[SERVICE_NAMES.system] as ServiceClientConstructor;
-    expect(typeof systemService).toBe('function');
-    expect(Object.keys(systemService.service).sort()).toEqual(['GetServerInfo', 'Ping']);
+  it('declares the full AuthService RPC surface, including the credential/SSH/GitHub RPCs', () => {
+    const methods = serviceMethodNames(loadPatchesPackage(), SERVICE_NAMES.auth);
+    expect(methods).toEqual(
+      [
+        'AddCredential',
+        'BeginGitHubLogin',
+        'BeginSshLogin',
+        'CompleteSshLogin',
+        'GetCurrentSession',
+        'ListCredentials',
+        'Login',
+        'Logout',
+        'LogoutAllSessions',
+        'PollGitHubLogin',
+        'RefreshSession',
+        'Register',
+        'RequestPasswordReset',
+        'ResendVerification',
+        'ResetPassword',
+        'RevokeCredential',
+        'VerifyEmail',
+      ].sort(),
+    );
+  });
+
+  it('declares the full ActorService/PostService/FeedService RPC surfaces', () => {
+    const pkg = loadPatchesPackage();
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.actor)).toEqual(
+      [
+        'GetActor',
+        'GetActorByHandle',
+        'ListFollowers',
+        'ListFollowing',
+        'SearchActors',
+        'UpdateProfile',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.post)).toEqual(
+      ['CreatePost', 'DeletePost', 'GetPost', 'ListReplies'].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.feed)).toEqual(
+      ['ListActorPosts', 'ListHomeFeed', 'ListLocalFeed'].sort(),
+    );
   });
 
   it('declares every RPC as unary and fully-qualified under patches.v1', () => {
-    const systemService = loadPatchesPackage()[SERVICE_NAMES.system] as ServiceClientConstructor;
-
-    for (const method of Object.values(systemService.service)) {
-      expect(method.requestStream).toBe(false);
-      expect(method.responseStream).toBe(false);
-      expect(method.path.startsWith(`/${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system}/`)).toBe(
-        true,
-      );
+    const pkg = loadPatchesPackage();
+    for (const serviceName of Object.values(SERVICE_NAMES)) {
+      const service = pkg[serviceName] as ServiceClientConstructor;
+      for (const method of Object.values(service.service)) {
+        expect(method.requestStream).toBe(false);
+        expect(method.responseStream).toBe(false);
+        expect(method.path.startsWith(`/${PATCHES_PACKAGE_NAME}.${serviceName}/`)).toBe(true);
+      }
     }
   });
 

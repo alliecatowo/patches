@@ -8,23 +8,35 @@ Patches' canonical client/server application protocol — the contract between a
 > credential-management RPCs (§168); a `NodeService` and a `PageService` are added. See
 > [`auth.md`](./auth.md) and [`pages.md`](./pages.md).
 
+**Implementation status.** `packages/proto/proto/patches/v1/` currently defines
+`common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto` —
+the full `AuthService` (including SSH login, the GitHub device-flow RPC pair, and credential
+management), `ActorService`, `PostService`, and `FeedService` surfaces below, schema-only
+(no server-side handlers yet). `BeginGitHubLogin`/`PollGitHubLogin` are schema-defined now but
+their server implementation is deferred to Phase 6 (§176). `NodeService`, `PageService`,
+`SocialGraphService`, `MediaService`, `ReactionService`, `ModerationService`, and
+`NotificationService` — and the MVP-marked RPCs (`EditPost`, `Repost`, `ListBookmarks`) — are
+**planned**, not yet present in `packages/proto`. Per-RPC status is called out inline below.
+
 ## 1. Schema layout
 
 Protocol Buffers, proto3, package `patches.v1`:
 
 ```text
 packages/proto/proto/patches/v1/
-├── common.proto
-├── auth.proto
-├── node.proto
-├── users.proto
-├── actors.proto
-├── pages.proto
-├── posts.proto
-├── feeds.proto
-├── media.proto
-├── moderation.proto
-└── notifications.proto
+├── common.proto     # implemented
+├── system.proto     # implemented
+├── auth.proto       # implemented
+├── node.proto       # planned
+├── users.proto       # planned — no separate `users.proto` is currently expected;
+│                       # actor-facing user data flows through auth.proto's Session/GetCurrentSession
+├── actors.proto      # implemented
+├── pages.proto       # planned
+├── posts.proto       # implemented
+├── feeds.proto       # implemented
+├── media.proto       # planned
+├── moderation.proto  # planned
+└── notifications.proto  # planned
 ```
 
 ```proto
@@ -59,7 +71,7 @@ service ModerationService
 
 ## 3. RPCs by service
 
-### AuthService (§48)
+### AuthService (§48) — implemented in `auth.proto`
 
 | RPC                    | Notes                                                   |
 | ---------------------- | ------------------------------------------------------- |
@@ -73,8 +85,10 @@ service ModerationService
 | `ResetPassword`        | consumes the reset code                                 |
 | `GetCurrentSession`    | returns session/actor info for the current access token |
 
-Added by Amendment A (§168). Every login RPC returns the **same session envelope**, so client
-session handling is identical regardless of credential type.
+Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
+session envelope**, so client session handling is identical regardless of credential type.
+`BeginGitHubLogin`/`PollGitHubLogin` are schema-only until their Phase 6 server
+implementation (§176).
 
 | RPC                | Notes                                                                           |
 | ------------------ | ------------------------------------------------------------------------------- |
@@ -97,7 +111,7 @@ Notes:
 - Flows, the signed-blob composition, and the no-enumeration rule are in
   [`auth.md`](./auth.md).
 
-### NodeService (§163, §168)
+### NodeService (§163, §168) — planned, not yet in `packages/proto`
 
 | RPC           | Notes                                                                                                          |
 | ------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -107,7 +121,7 @@ Clients discover node policy here rather than assuming the reference node's beha
 is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
 on capabilities only.
 
-### PageService (§170–§172)
+### PageService (§170–§172) — planned, not yet in `packages/proto`
 
 **Phase 4.5.** The server stores, validates, versions and serves the page document; it never
 renders it.
@@ -122,18 +136,18 @@ renders it.
 The document is inert data — no executable user code, in any client, ever (§172). Renderers
 ignore unknown block types gracefully; the server rejects them on write.
 
-### ActorService (§49)
+### ActorService (§49) — implemented in `actors.proto`
 
-| RPC                | Notes                                                          |
-| ------------------ | -------------------------------------------------------------- |
-| `GetActor`         | by ID                                                          |
-| `GetActorByHandle` |                                                                |
-| `UpdateProfile`    | display name, bio, location, website, avatar, nameplate (§173) |
-| `SearchActors`     | handle prefix + display-name match (§112)                      |
-| `ListFollowers`    | cursor-paginated                                               |
-| `ListFollowing`    | cursor-paginated                                               |
+| RPC                | Notes                                                                                                                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetActor`         | by ID                                                                                                                                                                                                     |
+| `GetActorByHandle` |                                                                                                                                                                                                           |
+| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`, selected by a `google.protobuf.FieldMask` (`update_mask`); avatar and nameplate (§173) are not yet fields — added once `MediaService`/nameplates ship |
+| `SearchActors`     | handle prefix + display-name match (§112)                                                                                                                                                                 |
+| `ListFollowers`    | cursor-paginated                                                                                                                                                                                          |
+| `ListFollowing`    | cursor-paginated                                                                                                                                                                                          |
 
-### SocialGraphService (§50)
+### SocialGraphService (§50) — planned, not yet in `packages/proto`
 
 | RPC             | Notes                                                                                                 |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -144,16 +158,16 @@ ignore unknown block types gracefully; the server rejects them on write.
 | `BlockActor`    | also clears any existing follow in either direction                                                   |
 | `UnblockActor`  |                                                                                                       |
 
-### PostService (§51)
+### PostService (§51) — `CreatePost`/`GetPost`/`DeletePost`/`ListReplies` implemented in `posts.proto`
 
-| RPC           | Notes                                                       |
-| ------------- | ----------------------------------------------------------- |
-| `CreatePost`  | requires `client_request_id`; idempotent                    |
-| `GetPost`     |                                                             |
-| `DeletePost`  | soft delete / tombstone                                     |
-| `ListReplies` | cursor-paginated, bounded depth                             |
-| `EditPost`    | MVP                                                         |
-| `Repost`      | possible later; **quote-posts are explicitly out of scope** |
+| RPC           | Notes                                                                    |
+| ------------- | ------------------------------------------------------------------------ |
+| `CreatePost`  | requires `client_request_id`; idempotent                                 |
+| `GetPost`     |                                                                          |
+| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                     |
+| `ListReplies` | cursor-paginated, bounded depth (`max_depth`)                            |
+| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                              |
+| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned** |
 
 ### FeedService (§52)
 
@@ -166,7 +180,7 @@ ignore unknown block types gracefully; the server rejects them on write.
 
 Explicitly never added: `GetRecommendedFeed`, `GetForYouFeed` (§52, §153).
 
-### MediaService (§54)
+### MediaService (§54) — planned, not yet in `packages/proto`
 
 | RPC                   | Returns                                                              |
 | --------------------- | -------------------------------------------------------------------- |
@@ -174,14 +188,14 @@ Explicitly never added: `GetRecommendedFeed`, `GetForYouFeed` (§52, §153).
 | `FinalizeMediaUpload` | queues processing (transitions `PENDING_UPLOAD` → `PROCESSING`)      |
 | `GetMediaDownload`    | authorized short-lived download URL, dimensions, MIME, thumbnail URL |
 
-### ReactionService (§53)
+### ReactionService (§53) — planned, not yet in `packages/proto`
 
 | RPC                               | Notes                  |
 | --------------------------------- | ---------------------- |
 | `LikePost` / `UnlikePost`         | required if likes ship |
 | `BookmarkPost` / `UnbookmarkPost` | bookmarks are private  |
 
-### ModerationService (§55)
+### ModerationService (§55) — planned, not yet in `packages/proto`
 
 | RPC           | Notes |
 | ------------- | ----- |
@@ -190,7 +204,7 @@ Explicitly never added: `GetRecommendedFeed`, `GetForYouFeed` (§52, §153).
 
 No user-facing RPC exposes internal moderator notes.
 
-### NotificationService (§56)
+### NotificationService (§56) — planned, not yet in `packages/proto`
 
 | RPC                        | Notes            |
 | -------------------------- | ---------------- |

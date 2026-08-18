@@ -2,12 +2,80 @@ import type { CallOptions, Client, ClientUnaryCall, Metadata, ServiceError } fro
 import type { Options as ProtoLoaderOptions } from '@grpc/proto-loader';
 
 import type {
+  GetActorByHandleRequest,
+  GetActorByHandleResponse,
+  GetActorRequest,
+  GetActorResponse,
+  ListFollowersRequest,
+  ListFollowersResponse,
+  ListFollowingRequest,
+  ListFollowingResponse,
+  SearchActorsRequest,
+  SearchActorsResponse,
+  UpdateProfileRequest,
+  UpdateProfileResponse,
+} from './generated/patches/v1/actors.js';
+import type {
+  AddCredentialRequest,
+  AddCredentialResponse,
+  BeginGitHubLoginRequest,
+  BeginGitHubLoginResponse,
+  BeginSshLoginRequest,
+  BeginSshLoginResponse,
+  CompleteSshLoginRequest,
+  CompleteSshLoginResponse,
+  GetCurrentSessionRequest,
+  GetCurrentSessionResponse,
+  ListCredentialsRequest,
+  ListCredentialsResponse,
+  LoginRequest,
+  LoginResponse,
+  LogoutAllSessionsRequest,
+  LogoutAllSessionsResponse,
+  LogoutRequest,
+  LogoutResponse,
+  PollGitHubLoginRequest,
+  PollGitHubLoginResponse,
+  RefreshSessionRequest,
+  RefreshSessionResponse,
+  RegisterRequest,
+  RegisterResponse,
+  RequestPasswordResetRequest,
+  RequestPasswordResetResponse,
+  ResendVerificationRequest,
+  ResendVerificationResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
+  RevokeCredentialRequest,
+  RevokeCredentialResponse,
+  VerifyEmailRequest,
+  VerifyEmailResponse,
+} from './generated/patches/v1/auth.js';
+import type {
+  ListHomeFeedRequest,
+  ListHomeFeedResponse,
+  ListLocalFeedRequest,
+  ListLocalFeedResponse,
+  ListActorPostsRequest,
+  ListActorPostsResponse,
+} from './generated/patches/v1/feeds.js';
+import type {
+  CreatePostRequest,
+  CreatePostResponse,
+  DeletePostRequest,
+  DeletePostResponse,
+  GetPostRequest,
+  GetPostResponse,
+  ListRepliesRequest,
+  ListRepliesResponse,
+} from './generated/patches/v1/posts.js';
+import type {
   GetServerInfoRequest,
   GetServerInfoResponse,
   PingRequest,
   PingResponse,
 } from './generated/patches/v1/system.js';
-import { PROTO_DIR } from './proto-path.js';
+import { getProtoDir } from './proto-path.js';
 
 /**
  * Wire protocol version spoken by this schema (spec §83).
@@ -32,6 +100,10 @@ export const GRPC_PACKAGES: readonly string[] = Object.freeze([PATCHES_PACKAGE_N
 /** Service names, as they appear in the `.proto` (used by `@GrpcMethod`). */
 export const SERVICE_NAMES = Object.freeze({
   system: 'SystemService',
+  auth: 'AuthService',
+  actor: 'ActorService',
+  post: 'PostService',
+  feed: 'FeedService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -71,7 +143,13 @@ export const PROTO_LOADER_OPTIONS: ProtoLoaderOptions = Object.freeze({
   enums: String,
   defaults: true,
   oneofs: true,
-  includeDirs: [PROTO_DIR],
+  // A getter, not a data property (A-010): `Object.freeze` only locks the property
+  // descriptor, not the getter's return value, so this still defers the `getProtoDir()`
+  // directory check to the first time something actually reads `includeDirs` (i.e. when
+  // `@grpc/proto-loader` loads the schema) instead of at this module's import time.
+  get includeDirs() {
+    return [getProtoDir()];
+  },
 });
 
 /**
@@ -94,4 +172,50 @@ export type GrpcUnaryCall<Request, Response> = (
 export interface SystemGrpcClient extends Client {
   getServerInfo: GrpcUnaryCall<GetServerInfoRequest, GetServerInfoResponse>;
   ping: GrpcUnaryCall<PingRequest, PingResponse>;
+}
+
+/** `patches.v1.AuthService` as seen by a raw grpc-js client. */
+export interface AuthGrpcClient extends Client {
+  register: GrpcUnaryCall<RegisterRequest, RegisterResponse>;
+  verifyEmail: GrpcUnaryCall<VerifyEmailRequest, VerifyEmailResponse>;
+  resendVerification: GrpcUnaryCall<ResendVerificationRequest, ResendVerificationResponse>;
+  login: GrpcUnaryCall<LoginRequest, LoginResponse>;
+  refreshSession: GrpcUnaryCall<RefreshSessionRequest, RefreshSessionResponse>;
+  logout: GrpcUnaryCall<LogoutRequest, LogoutResponse>;
+  logoutAllSessions: GrpcUnaryCall<LogoutAllSessionsRequest, LogoutAllSessionsResponse>;
+  requestPasswordReset: GrpcUnaryCall<RequestPasswordResetRequest, RequestPasswordResetResponse>;
+  resetPassword: GrpcUnaryCall<ResetPasswordRequest, ResetPasswordResponse>;
+  getCurrentSession: GrpcUnaryCall<GetCurrentSessionRequest, GetCurrentSessionResponse>;
+  beginSshLogin: GrpcUnaryCall<BeginSshLoginRequest, BeginSshLoginResponse>;
+  completeSshLogin: GrpcUnaryCall<CompleteSshLoginRequest, CompleteSshLoginResponse>;
+  beginGitHubLogin: GrpcUnaryCall<BeginGitHubLoginRequest, BeginGitHubLoginResponse>;
+  pollGitHubLogin: GrpcUnaryCall<PollGitHubLoginRequest, PollGitHubLoginResponse>;
+  listCredentials: GrpcUnaryCall<ListCredentialsRequest, ListCredentialsResponse>;
+  addCredential: GrpcUnaryCall<AddCredentialRequest, AddCredentialResponse>;
+  revokeCredential: GrpcUnaryCall<RevokeCredentialRequest, RevokeCredentialResponse>;
+}
+
+/** `patches.v1.ActorService` as seen by a raw grpc-js client. */
+export interface ActorGrpcClient extends Client {
+  getActor: GrpcUnaryCall<GetActorRequest, GetActorResponse>;
+  getActorByHandle: GrpcUnaryCall<GetActorByHandleRequest, GetActorByHandleResponse>;
+  updateProfile: GrpcUnaryCall<UpdateProfileRequest, UpdateProfileResponse>;
+  searchActors: GrpcUnaryCall<SearchActorsRequest, SearchActorsResponse>;
+  listFollowers: GrpcUnaryCall<ListFollowersRequest, ListFollowersResponse>;
+  listFollowing: GrpcUnaryCall<ListFollowingRequest, ListFollowingResponse>;
+}
+
+/** `patches.v1.PostService` as seen by a raw grpc-js client. */
+export interface PostGrpcClient extends Client {
+  createPost: GrpcUnaryCall<CreatePostRequest, CreatePostResponse>;
+  getPost: GrpcUnaryCall<GetPostRequest, GetPostResponse>;
+  deletePost: GrpcUnaryCall<DeletePostRequest, DeletePostResponse>;
+  listReplies: GrpcUnaryCall<ListRepliesRequest, ListRepliesResponse>;
+}
+
+/** `patches.v1.FeedService` as seen by a raw grpc-js client. */
+export interface FeedGrpcClient extends Client {
+  listHomeFeed: GrpcUnaryCall<ListHomeFeedRequest, ListHomeFeedResponse>;
+  listLocalFeed: GrpcUnaryCall<ListLocalFeedRequest, ListLocalFeedResponse>;
+  listActorPosts: GrpcUnaryCall<ListActorPostsRequest, ListActorPostsResponse>;
 }

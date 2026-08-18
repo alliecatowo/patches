@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "patches/v1/common.proto";
+import "patches/v1/posts.proto";
+
+// Chronological, fan-out-on-read feeds (spec §52, §59). Never `GetRecommendedFeed`/
+// `GetForYouFeed` — there is no engagement-ranked feed in this product (spec §153).
+service FeedService {
+  // The caller's home timeline: local + followed actors, fan-out-on-read, chronological.
+  rpc ListHomeFeed(ListHomeFeedRequest) returns (ListHomeFeedResponse);
+
+  // All local public posts, chronological.
+  rpc ListLocalFeed(ListLocalFeedRequest) returns (ListLocalFeedResponse);
+
+  // A given actor's posts, chronological.
+  rpc ListActorPosts(ListActorPostsRequest) returns (ListActorPostsResponse);
+}
+
+message ListHomeFeedRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListHomeFeedResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
+
+message ListLocalFeedRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListLocalFeedResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
+
+message ListActorPostsRequest {
+  string actor_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListActorPostsResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
