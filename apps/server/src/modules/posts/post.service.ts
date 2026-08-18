@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
@@ -15,6 +15,7 @@ import {
 import { DataSource, In, IsNull, type EntityManager, type SelectQueryBuilder } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import { clampLimit, decodeCursor, pageInfoFor, type Cursor } from '../feeds/pagination.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import { toPostView, type PostMediaSummary, type PostView } from './post.dto.js';
@@ -79,6 +80,7 @@ export class PostService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly notifications: NotificationsService,
+    @Inject(FEDERATION_GATEWAY) private readonly federation: FederationGateway,
   ) {}
 
   /**
@@ -167,6 +169,12 @@ export class PostService {
         );
       }
 
+      // P8-002/P8-003: delivers `Create(Note)` to the author's remote followers, enqueued in
+      // this same transaction (`FederationGateway`'s doc comment). No-op (`NoopFederationGateway`
+      // or `publishPost`'s own visibility check) unless federation is enabled and the post is
+      // `PUBLIC`.
+      await this.federation.publishPost(manager, id);
+
       const mentionActorIds =
         parsed.body === undefined
           ? []
@@ -244,6 +252,9 @@ export class PostService {
 
       if (post.deletedAt === null) {
         await posts.update({ id, deletedAt: IsNull() }, { deletedAt: new Date() });
+        // P8-002/P8-003: only on the transition into tombstoned — a retried `DeletePost` on
+        // an already-deleted post must not re-deliver `Delete`.
+        await this.federation.publishDelete(manager, id);
       }
 
       const tombstoned = await posts.findOneOrFail({
