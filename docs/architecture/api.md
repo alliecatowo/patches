@@ -24,10 +24,12 @@ so the feed/relationship reads below already honor them, but nothing writes to t
 `FeedService`'s `ListLocalFeed`/`ListActorPosts`/`ListHomeFeed` all have server handlers
 (P3-002) with keyset-paginated, visibility+block+mute-aware SQL (§59, §62–63) — see §3's
 `FeedService` table for the exact scoping. `NodeService.GetNodeInfo` (`node.proto`) has a
-server handler (P1-014). `PageService`, `MediaService`, `ReactionService`,
-`ModerationService`, and `NotificationService` — and the MVP-marked RPCs (`EditPost`,
-`Repost`, `ListBookmarks`) — are **planned**, not yet present in `packages/proto`. Per-RPC
-status is called out inline below.
+server handler (P1-014). `PageService` (`pages.proto`, Phase 4.5) has server handlers for
+every RPC — `GetPage`/`UpdatePage`/`ListPageRevisions`/`ListGuestbook`/`SignGuestbook`/
+`RemoveGuestbookEntry`/`ReportGuestbookEntry` — as of P45-003. `MediaService`,
+`ReactionService`, `ModerationService`, and `NotificationService` — and the MVP-marked RPCs
+(`EditPost`, `Repost`, `ListBookmarks`) — are **planned**, not yet present in
+`packages/proto`. Per-RPC status is called out inline below.
 
 ## 1. Schema layout
 
@@ -42,7 +44,7 @@ packages/proto/proto/patches/v1/
 ├── users.proto       # planned — no separate `users.proto` is currently expected;
 │                       # actor-facing user data flows through auth.proto's Session/GetCurrentSession
 ├── actors.proto      # implemented
-├── pages.proto       # planned
+├── pages.proto       # implemented (P45-003)
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
 ├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship only)
@@ -134,17 +136,20 @@ Clients discover node policy here rather than assuming the reference node's beha
 is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
 on capabilities only.
 
-### PageService (§170–§172) — planned, not yet in `packages/proto`
+### PageService (§170–§172) — implemented in `pages.proto` (P45-003)
 
 **Phase 4.5.** The server stores, validates, versions and serves the page document; it never
-renders it.
+renders it. See [`pages.md`](./pages.md) §4 for implementation notes beyond this table.
 
-| RPC             | Notes                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| `GetPage`       | by actor (+ optional slug); returns the current revision document                           |
-| `UpdatePage`    | validated **strictly** against the declared schema version; writes a new immutable revision |
-| `ListGuestbook` | cursor-paginated                                                                            |
-| `SignGuestbook` | rate-limited (§102); blocked actors rejected; plain text ≤ 500 chars                        |
+| RPC                    | Notes                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GetPage`              | by handle (+ optional slug, empty = "index"); anonymous, block-aware (§62); returns the current revision document and a convenience `theme` extract    |
+| `UpdatePage`           | authenticated; always the caller's own page; validated **strictly** against the declared schema version (§171); writes a new immutable revision        |
+| `ListPageRevisions`    | authenticated; the caller's own page's revision history, cursor-paginated                                                                              |
+| `ListGuestbook`        | anonymous, block-aware (§62); cursor-paginated; excludes removed entries                                                                               |
+| `SignGuestbook`        | authenticated; rate-limited on both peer and actor (§102); blocked-either-direction actors rejected (uniform `NOT_FOUND`, §62); plain text ≤ 500 chars |
+| `RemoveGuestbookEntry` | authenticated, page owner only today (moderator removal is a documented follow-up); idempotent                                                         |
+| `ReportGuestbookEntry` | authenticated; bounded report (§64), reuses `reports.subject_type = 'GUESTBOOK_ENTRY'`                                                                 |
 
 The document is inert data — no executable user code, in any client, ever (§172). Renderers
 ignore unknown block types gracefully; the server rejects them on write.
@@ -343,6 +348,9 @@ included in error metadata/messages where useful.
 | `POST_NOT_FOUND`             | `NOT_FOUND`           |
 | `POST_FORBIDDEN`             | `PERMISSION_DENIED`   |
 | `POST_TOO_LONG`              | `INVALID_ARGUMENT`    |
+| `PAGE_NOT_FOUND`             | `NOT_FOUND`           |
+| `PAGE_FORBIDDEN`             | `PERMISSION_DENIED`   |
+| `GUESTBOOK_ENTRY_NOT_FOUND`  | `NOT_FOUND`           |
 | `MEDIA_TOO_LARGE`            | `INVALID_ARGUMENT`    |
 | `MEDIA_UNSUPPORTED_TYPE`     | `INVALID_ARGUMENT`    |
 | `MEDIA_NOT_READY`            | `FAILED_PRECONDITION` |

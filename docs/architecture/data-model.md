@@ -892,7 +892,8 @@ entities.
 
 ## Page tables (§170–§172)
 
-**Status: planned** (Phase 4.5)
+**Status: implemented** (`Phase45Pages1787062912872`, P45-002; `PageService` server handlers
+land with P45-003)
 
 Patches Pages are a portable declarative document stored server-side and rendered by clients.
 The server never renders. Block vocabulary, limits, and security rules are in
@@ -900,66 +901,73 @@ The server never renders. Block vocabulary, limits, and security rules are in
 
 ### `pages`
 
-One row per actor — the actor's site, pointing at its current revision.
+One row per actor — the actor's site, pointing at its current revision. Created lazily on the
+actor's first `UpdatePage` call, not at registration.
 
-| Column                | Type          | Nullable | Notes                        |
-| --------------------- | ------------- | -------- | ---------------------------- |
-| `id`                  | `uuid`        | no       | PK                           |
-| `actor_id`            | `uuid`        | no       | FK → `actors.id`, **unique** |
-| `current_revision_id` | `uuid`        | yes      | FK → `page_revisions.id`     |
-| `schema_version`      | `int`         | no       | document schema version      |
-| `published_at`        | `timestamptz` | yes      | null while unpublished       |
-| `created_at`          | `timestamptz` | no       |                              |
-| `updated_at`          | `timestamptz` | no       |                              |
+| Column                | Type          | Nullable | Notes                                                                                                                                                     |
+| --------------------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                                                                                        |
+| `actor_id`            | `uuid`        | no       | FK → `actors.id` `ON DELETE CASCADE`, **unique**                                                                                                          |
+| `current_revision_id` | `uuid`        | yes      | FK → `page_revisions.id` `ON DELETE SET NULL`; null only in the brief instant between the row's creation and its first revision insert (same transaction) |
+| `visibility`          | `text` (enum) | no       | `PUBLIC` \| `UNLISTED` (default `PUBLIC`) — `posts.visibility`'s vocabulary minus `FOLLOWERS`, which has no meaning for a Page                            |
+| `created_at`          | `timestamptz` | no       |                                                                                                                                                           |
+| `updated_at`          | `timestamptz` | no       | touched whenever `current_revision_id` is repointed                                                                                                       |
 
 ### `page_revisions`
 
-Immutable snapshots — a bad edit is recoverable and moderation has an audit trail.
+Immutable snapshots — a bad edit is recoverable and moderation has an audit trail. Rows are
+never updated or deleted by `PageService`.
 
-| Column               | Type          | Nullable | Notes                                            |
-| -------------------- | ------------- | -------- | ------------------------------------------------ |
-| `id`                 | `uuid`        | no       | PK                                               |
-| `page_id`            | `uuid`        | no       | FK → `pages.id`                                  |
-| `revision_number`    | `int`         | no       | monotonic per page                               |
-| `document`           | `jsonb`       | no       | the `PatchesPage` document; ≤ 64 KiB serialized  |
-| `schema_version`     | `int`         | no       | validated strictly against this version on write |
-| `byte_size`          | `int`         | no       | enforced against the document limit              |
-| `created_by_user_id` | `uuid`        | no       | FK → `users.id`                                  |
-| `created_at`         | `timestamptz` | no       |                                                  |
+| Column                | Type          | Nullable | Notes                                                                                          |
+| --------------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                             |
+| `page_id`             | `uuid`        | no       | FK → `pages.id` `ON DELETE CASCADE`                                                            |
+| `revision_number`     | `int`         | no       | monotonic per page, starting at 1                                                              |
+| `document`            | `jsonb`       | no       | the `PatchesPage` document; ≤ 64 KiB serialized                                                |
+| `byte_size`           | `int`         | no       | UTF-8 byte size of the serialized document; enforced against the document limit                |
+| `created_by_actor_id` | `uuid`        | no       | FK → `actors.id` `ON DELETE CASCADE` — the caller of `UpdatePage`, always the page's own owner |
+| `created_at`          | `timestamptz` | no       |                                                                                                |
 
-**Constraints**: `UNIQUE (page_id, revision_number)`. Rows are never updated.
+**Constraints**: `UNIQUE (page_id, revision_number)`. No separate `schema_version` column —
+the document's own `version` field (validated on write, §171) is authoritative; nothing reads
+schema version off this row.
 
 ### `page_assets`
 
-Media attached to a page, counted against `capabilities.maxSiteStorageBytes` (§174).
+Media attached to a page, counted against `capabilities.maxSiteStorageBytes` (§174). Not yet
+written to by anything — `Image`/`Gallery` blocks exist in the schema at Phase 4.5, but
+populating this table from them is Phase 5 media-pipeline work (P45-005).
 
-| Column       | Type          | Nullable | Notes                                         |
-| ------------ | ------------- | -------- | --------------------------------------------- |
-| `id`         | `uuid`        | no       | PK                                            |
-| `page_id`    | `uuid`        | no       | FK → `pages.id`                               |
-| `media_id`   | `uuid`        | no       | FK → `media.id` — always Patches media (§172) |
-| `byte_size`  | `bigint`      | no       | denormalized for cheap storage accounting     |
-| `created_at` | `timestamptz` | no       |                                               |
+| Column       | Type          | Nullable | Notes                                                             |
+| ------------ | ------------- | -------- | ----------------------------------------------------------------- |
+| `id`         | `uuid`        | no       | PK                                                                |
+| `page_id`    | `uuid`        | no       | FK → `pages.id` `ON DELETE CASCADE`                               |
+| `media_id`   | `uuid`        | no       | FK → `media.id` `ON DELETE CASCADE` — always Patches media (§172) |
+| `byte_size`  | `bigint`      | no       | denormalized for cheap storage accounting                         |
+| `created_at` | `timestamptz` | no       |                                                                   |
 
 **Constraints**: `UNIQUE (page_id, media_id)`. Remote URLs are never referenced — arbitrary
 remote media is an SSRF, tracking, and visitor-IP-leak vector (§172).
 
 ### `guestbook_entries`
 
-Visitor entries. Treated as hostile input (§172).
+Visitor entries, one guestbook per `page_id` (not per sub-page, see [`pages.md`](./pages.md)
+§4). Treated as hostile input (§172).
 
-| Column            | Type          | Nullable | Notes                                                     |
-| ----------------- | ------------- | -------- | --------------------------------------------------------- |
-| `id`              | `uuid`        | no       | PK                                                        |
-| `page_id`         | `uuid`        | no       | FK → `pages.id`                                           |
-| `author_actor_id` | `uuid`        | yes      | FK → `actors.id`; nullable for future remote signers      |
-| `body`            | `text`        | no       | plain text, ≤ 500 characters, control characters stripped |
-| `status`          | `text` (enum) | no       | `VISIBLE` \| `HIDDEN` \| `PENDING` \| `SPAM`              |
-| `created_at`      | `timestamptz` | no       |                                                           |
-| `deleted_at`      | `timestamptz` | yes      | removable by page owner and by moderators                 |
+| Column                | Type          | Nullable | Notes                                                                                                                                         |
+| --------------------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                                                                            |
+| `page_id`             | `uuid`        | no       | FK → `pages.id` `ON DELETE CASCADE`                                                                                                           |
+| `author_actor_id`     | `uuid`        | yes      | FK → `actors.id` `ON DELETE SET NULL`; nullable for a future non-local/remote signer — never null for anything `SignGuestbook` itself creates |
+| `body`                | `text`        | no       | plain text, ≤ 500 characters, sanitized (control characters/escape sequences stripped)                                                        |
+| `created_at`          | `timestamptz` | no       |                                                                                                                                               |
+| `removed_at`          | `timestamptz` | yes      | tombstone, not `@DeleteDateColumn` — an owner-removed entry stays distinguishable from one that never existed                                 |
+| `removed_by_actor_id` | `uuid`        | yes      | FK → `actors.id` `ON DELETE SET NULL`                                                                                                         |
 
-Blocked actors cannot sign (§62). Creation is rate-limited (§102) and entries are reportable
-(§64).
+No `status` enum column — a removed entry is `removed_at IS NOT NULL`; `ListGuestbook`
+excludes it. Blocked actors cannot sign (§62). Creation is rate-limited on both peer and actor
+(§102) and entries are reportable (§64) via `reports.subject_type = 'GUESTBOOK_ENTRY'`
+(`reports.subject_guestbook_entry_id`) rather than a dedicated guestbook-report table.
 
 ---
 
@@ -991,7 +999,8 @@ invites(created_by_user_id, created_at)
 pages(actor_id) UNIQUE
 page_revisions(page_id, revision_number) UNIQUE
 page_assets(page_id, media_id) UNIQUE
-guestbook_entries(page_id, created_at DESC, id DESC)
+guestbook_entries(page_id, created_at) -- ListGuestbook's keyset order also ties on `id`,
+                                          which isn't part of this index (B-follow-up)
 
 posts(author_actor_id, created_at DESC, id DESC)
 posts(created_at DESC, id DESC)
