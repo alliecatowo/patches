@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "noEmit": true,
+    // Same TS5074 workaround as packages/config's tsconfig.json: tsup's dts build spawns tsc
+    // without a tsBuildInfoFile, which the base config's `incremental: true` makes fail.
+    "incremental": false
+  },
+  // tsup.config.ts/vitest.config.ts are included (rather than relying on eslint.config.js's
+  // allowDefaultProject list, per packages/proto's precedent) so typescript-eslint's project
+  // service can type-check them without a package.json-adjacent eslint.config.js edit, which
+  // is outside this task's owned file set.
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
+}
