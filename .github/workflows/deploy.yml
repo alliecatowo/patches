@@ -1,0 +1,39 @@
+# Status: planned (Phase 7) — see docs/operations/deployment.md
+#
+# This workflow is a placeholder. It is `workflow_dispatch`-only — no `push` or
+# `pull_request` triggers — so it never runs automatically today and never exposes
+# `secrets.FLY_API_TOKEN` to a pull request built from a fork. Each deploy step is also
+# guarded by `vars.FLY_DEPLOY_ENABLED == 'true'`, a repo/environment variable that stays
+# unset until Phase 7 actually wires up Fly.io deployment, so a stray manual dispatch
+# before then is a safe no-op rather than a broken deploy attempt.
+
+name: Deploy
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy (Fly.io)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+
+      - name: Set up flyctl
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
