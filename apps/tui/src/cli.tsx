@@ -2,8 +2,14 @@
 import { render } from 'ink';
 
 import { PatchesApi } from './api/client.js';
+import { runAccounts } from './cli/accounts.js';
 import { parseArgs, USAGE } from './cli/args.js';
+import { createNodeIo } from './cli/io.js';
+import { runLogin } from './cli/login.js';
+import { runLogout } from './cli/logout.js';
 import { runPing } from './cli/ping.js';
+import { runRegister } from './cli/register.js';
+import { runWhoami } from './cli/whoami.js';
 import { App } from './app/App.js';
 import { installTerminalCleanup } from './terminal/cleanup.js';
 import { TUI_VERSION } from './version.js';
@@ -31,6 +37,16 @@ async function main(): Promise<number> {
     process.stdout.write(json);
     return exitCode;
   }
+
+  const io = createNodeIo();
+  const { target, insecure, rest } = args;
+
+  if (args.command === 'register')
+    return runRegister(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'login') return runLogin(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'logout') return runLogout(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'accounts') return runAccounts(rest, { io, env: process.env });
+  if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

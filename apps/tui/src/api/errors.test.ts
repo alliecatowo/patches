@@ -39,6 +39,15 @@ describe('describeGrpcError (spec §81)', () => {
     expect(friendly.hint).toContain('Sign in');
   });
 
+  it('surfaces ALREADY_EXISTS with the server message (e.g. HANDLE_TAKEN)', () => {
+    const friendly = describeGrpcError(
+      grpcError(GrpcStatus.ALREADY_EXISTS, 'That handle is taken.'),
+      TARGET,
+    );
+    expect(friendly.title).toBe('That handle is taken.');
+    expect(friendly.retryable).toBe(false);
+  });
+
   it('never surfaces a stack trace, even if the server sends one', () => {
     const leaky = 'boom\n    at Object.<anonymous> (/srv/app/main.js:1:1)';
     const friendly = describeGrpcError(grpcError(GrpcStatus.INTERNAL, leaky), TARGET);

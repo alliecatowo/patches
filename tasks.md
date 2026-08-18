@@ -44,7 +44,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
 - [ ] P1-005 — Auth gRPC controller + auth guard/interceptor reading `authorization` metadata; error code mapping
 - [x] P1-006 — Outbox/jobs table + worker claim loop (SKIP LOCKED, backoff, dead-letter) + email jobs; EmailProvider (console/mailpit/resend)
-- [ ] P1-007 — TUI: `patches register|login|logout|accounts`, CredentialStore keyed by **node origin + user id** (@napi-rs/keyring + guarded file fallback), auto-refresh
+- [x] P1-007 — TUI: `patches register|login|logout|accounts`, CredentialStore keyed by **node origin + user id** (@napi-rs/keyring + guarded file fallback), auto-refresh
 - [ ] P1-008 — Rate limiting for login/register/reset/verify/challenge-issuance (db-backed for sensitive flows)
 - [ ] P1-009 — Tests: unit (token rotation, hashing, validation) + gRPC integration (register→verify→login→refresh)
 - [ ] P1-010 — Research note `docs/research/ssh-signature-verification.md`: which Node library verifies OpenSSH-format public-key signatures, verified against official docs (blocks P1-011)
