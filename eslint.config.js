@@ -22,7 +22,35 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['*.js', '*.mjs', '*.ts'],
+          // Root-level scripts/configs, plus every package's own build/test config files
+          // (vitest.config.ts, vitest.config.mts, vitest.integration.config.mts,
+          // tsup.config.ts, ...) — letting typescript-eslint fall back to its default,
+          // tsconfig-less program for these means each package's tsconfig.json doesn't
+          // have to `include` them just to keep typed linting from erroring (B-005).
+          // `**` is disallowed here (typescript-eslint caps default-project matching to
+          // bounded globs to avoid every file in the repo silently falling back to it —
+          // https://tseslint.com/allowdefaultproject-glob-too-wide), so this is spelled
+          // out one path segment per depth instead of a single recursive pattern.
+          // Scoped to the packages whose tsconfig.json no longer `include`s its own
+          // config files (B-005) — a file can't appear both here *and* in a tsconfig's
+          // `include`, so packages not listed here (apps/tui, packages/proto,
+          // packages/media) keep including their config files in tsconfig.json until
+          // someone applies the same change there.
+          allowDefaultProject: [
+            '*.js',
+            '*.mjs',
+            '*.ts',
+            'apps/server/*.config.{ts,mts,cts}',
+            'apps/worker/*.config.{ts,mts,cts}',
+            'packages/config/*.config.{ts,mts,cts}',
+            'packages/database/*.config.{ts,mts,cts}',
+            'packages/testkit/*.config.{ts,mts,cts}',
+            'packages/terminal-media/*.config.{ts,mts,cts}',
+          ],
+          // Default cap is 8; the six packages above contribute 13 matching config files,
+          // all small and cheap to parse standalone (no type info needed) — raising this is
+          // the documented escape hatch, not a performance red flag at this file count.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
         },
         tsconfigRootDir: import.meta.dirname,
       },
