@@ -7,6 +7,7 @@ import {
 import type { EntityManager } from 'typeorm';
 
 import type { ActivityStreamsDocument } from '../activitystreams/documents.js';
+import { FederationMetricsService } from '../federation-metrics.service.js';
 
 /** Outbound-delivery max attempts before a `FEDERATION_DELIVER` job dead-letters
  * (`docs/architecture/jobs.md` §5-6) — generous relative to email jobs since a remote
@@ -22,6 +23,8 @@ const FEDERATION_DELIVER_MAX_ATTEMPTS = 12;
  */
 @Injectable()
 export class DeliveryService {
+  constructor(private readonly metrics: FederationMetricsService) {}
+
   /**
    * One job per unique inbox URL (shared-inbox deduped) — `activity` must already have a
    * unique `id` (`ActivityIdService`). Idempotency key is `(activityId, inboxUrl)`
@@ -55,10 +58,21 @@ export class DeliveryService {
             idempotencyKey: `federation-deliver:${activityId}:${inboxUrl}`,
           }),
         );
+        this.metrics.increment('deliveries_enqueued', { domain: hostOf(inboxUrl) });
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
       }
     }
+  }
+}
+
+/** Best-effort label only — an unparseable `inboxUrl` would already have failed
+ * `federationDeliverPayloadSchema.parse` above, so this never actually throws in practice. */
+function hostOf(inboxUrl: string): string | undefined {
+  try {
+    return new URL(inboxUrl).host;
+  } catch {
+    return undefined;
   }
 }
 

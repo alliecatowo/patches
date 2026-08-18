@@ -15,6 +15,7 @@ import {
   safeFetch,
   signRequest,
 } from '../../federation/delivery-client.js';
+import { deliveryMetrics } from '../../federation/delivery-metrics.js';
 import { ACTIVITY_JSON_CONTENT_TYPE } from '../../federation/federation.constants.js';
 import { type JobContext, type JobHandler } from '../job-handler.js';
 
@@ -23,6 +24,15 @@ import { type JobContext, type JobHandler } from '../job-handler.js';
  * errors, 5xx, timeouts) is retryable and left to throw so `JobRunner`'s existing backoff/
  * dead-letter path (`markOutboxJobFailed`) handles it, same as every other job type. */
 const TERMINAL_STATUS_CODES = new Set([400, 401, 403, 404, 410, 422]);
+
+/** Mirrors `apps/server/.../delivery.service.ts`'s `FEDERATION_DELIVER_MAX_ATTEMPTS` —
+ * **deliberately duplicated**, same reasoning as `delivery-client.ts`'s doc comment. `JobContext
+ * .attempt` is the attempt number the claim already incremented to, so `attempt >=` this value
+ * means `JobRunner.processJob`'s own `job.attempts >= job.maxAttempts` check (`markOutboxJob
+ * Failed`) will dead-letter the job right after this handler throws — used only to label the
+ * `deliveries_dead` counter from inside the one place that already knows the outcome; it never
+ * changes retry behavior, which stays entirely `JobRunner`'s call. */
+const FEDERATION_DELIVER_MAX_ATTEMPTS = 12;
 
 /**
  * `FEDERATION_DELIVER` (P8-004, P8-005): signs (`draft-cavage-http-signatures-12`) and POSTs
@@ -42,7 +52,7 @@ export class FederationDeliverHandler implements JobHandler {
     private readonly config: AppConfigService,
   ) {}
 
-  async handle(payload: unknown, _ctx: JobContext): Promise<void> {
+  async handle(payload: unknown, ctx: JobContext): Promise<void> {
     const { actorId, inboxUrl, activity, activityId } =
       federationDeliverPayloadSchema.parse(payload);
 
@@ -55,6 +65,7 @@ export class FederationDeliverHandler implements JobHandler {
       // this delivery). Retrying can never produce a signer, so this is a no-op completion,
       // matching `ProcessMediaHandler`'s "the row is gone" precedent.
       this.logger.warn(JSON.stringify({ activityId, outcome: 'SIGNER_MISSING' }));
+      deliveryMetrics.increment('deliveries_failed', { outcome: 'SIGNER_MISSING' });
       return;
     }
 
@@ -87,7 +98,10 @@ export class FederationDeliverHandler implements JobHandler {
       policy: defaultSafeFetchPolicy(this.config.isProduction),
     });
 
-    if (response.status >= 200 && response.status < 300) return;
+    if (response.status >= 200 && response.status < 300) {
+      deliveryMetrics.increment('deliveries_succeeded');
+      return;
+    }
     if (TERMINAL_STATUS_CODES.has(response.status)) {
       this.logger.warn(
         JSON.stringify({
@@ -97,7 +111,13 @@ export class FederationDeliverHandler implements JobHandler {
           outcome: 'REJECTED_TERMINAL',
         }),
       );
+      deliveryMetrics.increment('deliveries_failed', { outcome: 'REJECTED_TERMINAL' });
       return;
+    }
+    if (ctx.attempt >= FEDERATION_DELIVER_MAX_ATTEMPTS) {
+      deliveryMetrics.increment('deliveries_dead');
+    } else {
+      deliveryMetrics.increment('deliveries_failed', { outcome: 'RETRY' });
     }
     throw new Error(`Delivery to "${inboxUrl}" failed with status ${String(response.status)}.`);
   }

@@ -5,12 +5,14 @@ import { AppConfigService } from '../../config/app-config.service.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
 import { PagesModule } from '../pages/pages.module.js';
 import { MAX_INBOUND_BODY_BYTES } from './federation.constants.js';
+import { FederationMetricsService } from './federation-metrics.service.js';
 import {
   FEDERATION_GATEWAY,
   NoopFederationGateway,
   type FederationGateway,
 } from './federation-gateway.js';
 import { ActorController } from './http/actor.controller.js';
+import { FederationMetricsController } from './http/federation-metrics.controller.js';
 import { InboxController } from './http/inbox.controller.js';
 import { OutboxController } from './http/outbox.controller.js';
 import { rawBodyCollector } from './http/raw-body.middleware.js';
@@ -88,7 +90,13 @@ class LazyFederationGateway implements FederationGateway {
  */
 @Module({
   imports: [NotificationsModule, PagesModule],
-  controllers: [WebfingerController, ActorController, OutboxController, InboxController],
+  controllers: [
+    WebfingerController,
+    ActorController,
+    OutboxController,
+    InboxController,
+    FederationMetricsController,
+  ],
   providers: [
     KeyService,
     RemoteActorService,
@@ -99,6 +107,7 @@ class LazyFederationGateway implements FederationGateway {
     ActorDocumentService,
     WebfingerService,
     PeerRateLimiterService,
+    FederationMetricsService,
     ActivityPubFederationGateway,
     { provide: FEDERATION_GATEWAY, useClass: LazyFederationGateway },
   ],

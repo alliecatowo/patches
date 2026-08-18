@@ -101,6 +101,17 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
 
       const deliveredFollow = await drainFederationDeliveries(nodeA.dataSource);
       expect(deliveredFollow).toBeGreaterThan(0);
+
+      // A-036: the delivered Follow must have bumped node B's `inbox_handled` counter —
+      // `GET /federation/metrics` is loopback-only (`FederationMetricsController`), which this
+      // request satisfies since both the test process and node B's HTTP listener are on
+      // `127.0.0.1`.
+      const metricsResponse = await fetch(`${nodeB.publicOrigin}/federation/metrics`);
+      expect(metricsResponse.status).toBe(200);
+      const metrics = (await metricsResponse.json()) as Record<string, number>;
+      const domainA = new URL(nodeA.publicOrigin).host;
+      expect(metrics[`inbox_handled{domain=${domainA},type=Follow}`]).toBeGreaterThan(0);
+
       const deliveredAccept = await drainFederationDeliveries(nodeB.dataSource);
       expect(deliveredAccept).toBeGreaterThan(0);
 
