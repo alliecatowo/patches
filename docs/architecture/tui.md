@@ -59,29 +59,32 @@ Network calls never live directly inside render components — they go through
 ## 3. Navigation model (§69)
 
 Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverable
-via `?` help):
+via `?` help). **Status** marks what actually exists today (`apps/tui/src/app/App.tsx`)
+vs. spec-planned:
 
-| Key       | Action                          |
-| --------- | ------------------------------- |
-| `j` / `↓` | next item                       |
-| `k` / `↑` | previous item                   |
-| `Enter`   | open selected post/thread       |
-| `c`       | compose                         |
-| `r`       | reply                           |
-| `l`       | like/unlike                     |
-| `b`       | bookmark/unbookmark             |
-| `f`       | follow/unfollow selected actor  |
-| `m`       | mute                            |
-| `B`       | block                           |
-| `/`       | search                          |
-| `g h`     | go home                         |
-| `g l`     | go local                        |
-| `g n`     | go notifications                |
-| `g p`     | go own profile                  |
-| `R`       | refresh                         |
-| `?`       | help                            |
-| `q`       | back / quit (context-dependent) |
-| `Esc`     | cancel modal/action             |
+| Key       | Action                                      | Status                                   |
+| --------- | ------------------------------------------- | ---------------------------------------- |
+| `j` / `↓` | next item                                   | implemented (`PostList`, `SearchScreen`) |
+| `k` / `↑` | previous item                               | implemented                              |
+| `Enter`   | open selected post's author / search result | implemented (no thread screen yet)       |
+| `v`       | reveal/hide a content-warning-gated post    | implemented                              |
+| `c`       | compose                                     | implemented                              |
+| `r`       | reply                                       | planned (Phase 4)                        |
+| `l`       | like/unlike                                 | planned (Phase 4)                        |
+| `b`       | bookmark/unbookmark                         | planned (Phase 4)                        |
+| `f`       | follow/unfollow the profile being viewed    | implemented                              |
+| `m`       | mute                                        | planned (Phase 6)                        |
+| `B`       | block                                       | planned (Phase 6)                        |
+| `/`       | search                                      | implemented                              |
+| `g h`     | go home                                     | implemented (requires a session)         |
+| `g l`     | go local                                    | implemented                              |
+| `g s`     | go search (alternate to `/`)                | implemented                              |
+| `g n`     | go notifications                            | planned (Phase 4)                        |
+| `g p`     | go own profile                              | implemented                              |
+| `R`       | reconnect (connect screen only)             | implemented                              |
+| `?`       | help                                        | implemented                              |
+| `q`       | quit                                        | implemented                              |
+| `Esc`     | cancel modal/action                         | implemented (login, compose, search)     |
 
 ## 4. Full-screen behavior (§70)
 
@@ -369,43 +372,68 @@ Refresh tokens are never silently stored world-readable.
   that wraps the same `ssh-enroll.ts` logic is a follow-up, not required for
   P1-013's acceptance criteria.
 
-## 13. Screens landed so far (B-015, P2-003, B-016)
+## 13. Screens landed so far (B-015, P2-003, B-016, B-017, P3-003)
 
-Beyond the connect screen, `App.tsx` now switches between: `help`, `login` (inline,
-password or SSH-key via `ssh-login.ts`), `compose`, `profile` (own profile via `g p`;
-generic over any `actorId`), `local` (`g l`), and `home` (`g h` — placeholder until
-Phase 3's fan-out feed). The status bar shows `@handle` once signed in.
+`App.tsx` switches between: `help`, `login` (inline, password or SSH-key via
+`ssh-login.ts`), `compose`, `profile` (own profile via `g p`, or any actor's — see
+"profile targeting" below), `local` (`g l`), `home` (`g h`), and `search` (`/` or
+`g s`). The status bar shows `@handle` once signed in.
 
 - **Auth**: `L` opens `LoginScreen`; `Q`/`Esc` cancel (in the password field, only
   `Esc` — a password may legitimately contain `Q`). Reuses `SessionManager` and
   `CredentialStore` from `P1-007` — no parallel session/token logic. An unauthenticated
-  `c`/`g p` shows a "Log in first" notice instead of the screen.
+  `c`/`g p`/`g h` shows a "Log in first" notice instead of the screen.
 - **Compose**: `Ctrl+S` is the only submit; `Enter` always inserts a newline. The draft
   (`compose/draft-store.ts`) is lifted into `App` state so it survives switching
   screens, and mirrored to `$XDG_DATA_HOME/patches/compose-draft.json` (falling back to
   `~/.local/share`) so a crash doesn't lose it (spec §80). `CreatePost` carries one
   `client_request_id` for the draft's lifetime, reused on retry (spec §45).
-- **Profile / Local feed**: share `components/PostList.tsx` + `PostRow.tsx` and the
-  `hooks/usePaginatedPosts.ts` cursor-pagination hook (never offset — spec §46). `n` or
-  `space` loads the next page once `page.hasMore` is true.
+- **Profile / Local / Home feed**: share `components/PostList.tsx` + `PostRow.tsx` and
+  the `hooks/usePaginatedPosts.ts` cursor-pagination hook (never offset — spec §46). `n`
+  or `space` loads the next page once `page.hasMore` is true, consistently across all
+  three. Home (`ListHomeFeed`) requires a session (carries the access token as call
+  metadata, like `CreatePost`); Local (`ListLocalFeed`) and a given actor's timeline
+  (`ListActorPosts`) are public reads.
 - **B-016**: `describeGrpcError(error, target, { context: 'credentials' })` maps
   `UNAUTHENTICATED` from `Login`/`Register` to "Wrong handle/email or password.";
   every other `UNAUTHENTICATED` (an expired session mid-use) keeps "Your session is no
   longer valid." Both the CLI (`login`/`register` commands) and the inline `LoginScreen`
   pass `context: 'credentials'`.
 
-**PostList selection (B-017)**: `j`/`k`/arrow keys move a highlighted row in
-`components/PostList.tsx`; `Enter` opens that post's author profile — `App` tracks an
-arbitrary `profileTarget` (not just the caller's own via `g p`), so this works whether
-or not the viewer is signed in, and the post's already-embedded `author` (an `Actor`
-summary) is reused directly rather than triggering a `GetActor` round trip.
+**Profile targeting (B-017)**: `App` tracks an arbitrary `profileTarget` (not just the
+caller's own), so `ProfileScreen` works whether or not the viewer is signed in.
+`PostList`'s `j`/`k`/arrow keys move a highlighted row; `Enter` opens that post's
+author profile, reusing the post's already-embedded `author` (an `Actor` summary)
+rather than triggering a `GetActor` round trip. Search results and the compose
+screen's "post created" transition go through the same `openProfile`.
 
-Known gaps, tracked as follow-ups rather than blocking this slice:
+**Search (P3-003)**: `/` or `g s` opens `SearchScreen`
+(`ActorService.SearchActors` — handle-prefix + display-name match, spec §112).
+Typing edits the query; the first `Enter` runs the search, after which `j`/`k`/`Enter`
+select and open a result's profile exactly like `PostList`. `Esc` cancels back to the
+previous screen.
 
-- `Actor.nameplate`/`Post.content_warning` now exist in `packages/proto` (Amendment A
-  §173, landed after this slice started) but `PostRow`/`ProfileScreen` don't render
-  them yet — nameplate colour-degradation and content-warning collapsing are P3-003
-  follow-up work.
+**Follow control (P3-003)**: `ProfileScreen` shows `following`/`not following` (plus
+`follows you` when true) and an `f` toggle whenever the viewer is signed in and
+looking at someone else's profile — never on your own. Backed by
+`SocialGraphService.GetRelationship`/`FollowActor`/`UnfollowActor`; the relationship
+fetch is keyed by `actorId` the same way `useActor`'s "loading" state is (derived, not
+written synchronously in the effect — see the code comment for why
+`react-hooks/set-state-in-effect` requires that shape).
+
+**Nameplates and content warnings (B-018/B-019)**: `components/Nameplate.tsx` renders
+`@handle` styled by `Actor.nameplate` (spec §173) — a colour (or the first stop of a
+`"start,end"` gradient; Ink's `<Text>` has no gradient primitive) plus a glyph.
+Truecolor→256→16→none degradation is left to Ink/chalk's own `getColorDepth()`/
+`NO_COLOR` detection rather than reimplemented client-side. `ProfileScreen` also shows
+`nameplate.statusLine` and `nameplate.badges` (`avatarFrame`/`profileBorder` are not
+rendered — no text-mode analogue yet). `Post.content_warning` collapses `PostRow`'s
+body behind a click-to-reveal banner; `v` on the selected `PostList` row toggles
+per-post reveal state (never persisted). `format/sanitize.ts` strips C0/C1 control
+characters from every rendered user string (handle, display name, bio, body, content
+warning, nameplate glyph) so a hostile value can't smuggle terminal escapes into the
+render tree (spec §153/§104) — a spec-required "plain mode that strips all
+decoration" toggle is not yet built; tracked as a follow-up.
 
 ## 14. Testing (B-015)
 
