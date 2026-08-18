@@ -10,7 +10,9 @@ export type Command =
   | 'logout'
   | 'accounts'
   | 'whoami'
-  | 'keys';
+  | 'keys'
+  | 'verify'
+  | 'profile';
 
 const AUTH_COMMANDS: readonly Command[] = [
   'register',
@@ -19,6 +21,8 @@ const AUTH_COMMANDS: readonly Command[] = [
   'accounts',
   'whoami',
   'keys',
+  'verify',
+  'profile',
 ];
 
 export interface ParsedArgs {
@@ -112,6 +116,8 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'accounts':
       case 'whoami':
       case 'keys':
+      case 'verify':
+      case 'profile':
         result.command = argument;
         break;
       case '--insecure':
@@ -168,6 +174,9 @@ Usage:
   patches accounts             list accounts stored on this machine
   patches whoami                show who you are signed in as
   patches keys <add|list|remove> manage SSH-key credentials on your account
+  patches verify <code>        confirm your email with the code it was sent
+  patches verify --resend      ask the server to resend the verification email
+  patches profile edit [opts]  edit your display name/bio/location/website
   patches --version            print the client version
 
 Options:
@@ -178,6 +187,6 @@ Options:
   -h, --help                     show this message
   -v, --version                  show the client version
 
-Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` for
-subcommand-specific options.
+Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` /
+\`patches profile edit --help\` for subcommand-specific options.
 `;
