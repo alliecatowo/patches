@@ -16,6 +16,11 @@ import { compareSemver, parseSemver } from '../version.js';
 
 const MIN_CLIENT_SEMVER = parseSemver(MIN_CLIENT_VERSION);
 
+/** `x-request-id` is logged and echoed back verbatim, so it is capped and shape-checked
+ * before either happens (spec §103) — a caller-controlled value otherwise flows straight
+ * into structured logs and response metadata. */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
 /**
  * Establishes per-RPC correlation data and enforces the §83 client version gate.
  *
@@ -27,7 +32,7 @@ export class RequestContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const metadata = context.switchToRpc().getContext<Metadata>();
 
-    const requestId = readMetadata(metadata, METADATA_KEYS.requestId) ?? randomUUID();
+    const requestId = sanitizeRequestId(readMetadata(metadata, METADATA_KEYS.requestId));
     const client = readMetadata(metadata, METADATA_KEYS.client);
     const clientVersion = readMetadata(metadata, METADATA_KEYS.clientVersion);
 
@@ -94,6 +99,16 @@ export function assertClientSupported(clientVersion: string | undefined): void {
         `${MIN_CLIENT_VERSION} or newer. Upgrade with: npm install -g patches@latest`,
     );
   }
+}
+
+/**
+ * Validate/cap the inbound `x-request-id` (spec §103): anything absent, oversized, or
+ * outside `[A-Za-z0-9._-]` is replaced with a freshly generated id rather than trusted
+ * as-is — it is never safe to log or echo a caller-supplied value unchecked.
+ */
+export function sanitizeRequestId(raw: string | undefined): string {
+  if (raw !== undefined && REQUEST_ID_PATTERN.test(raw)) return raw;
+  return randomUUID();
 }
 
 function readMetadata(metadata: Metadata | undefined, key: string): string | undefined {

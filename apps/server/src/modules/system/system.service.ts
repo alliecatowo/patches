@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   dateToTimestamp,
   type GetServerInfoResponse,
@@ -9,7 +9,7 @@ import {
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { readServerVersion } from './server-build.js';
+import { SERVER_VERSION } from './server-version.provider.js';
 
 /** Longest nonce `Ping` will echo back, in bytes (spec §58 — limits always exist). */
 const MAX_NONCE_BYTES = 64;
@@ -22,9 +22,10 @@ const FEATURES: readonly string[] = Object.freeze(['system.ping']);
 
 @Injectable()
 export class SystemService {
-  private readonly serverVersion = readServerVersion();
-
-  constructor(private readonly config: AppConfigService) {}
+  constructor(
+    private readonly config: AppConfigService,
+    @Inject(SERVER_VERSION) private readonly serverVersion: string,
+  ) {}
 
   getServerInfo(now: Date = new Date()): GetServerInfoResponse {
     return {

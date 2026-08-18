@@ -2,7 +2,7 @@ import { MIN_CLIENT_VERSION } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 
 import { AppError } from '../errors/app-error.js';
-import { assertClientSupported } from './request-context.interceptor.js';
+import { assertClientSupported, sanitizeRequestId } from './request-context.interceptor.js';
 
 function codeOf(fn: () => void): string {
   try {
@@ -57,5 +57,36 @@ describe('assertClientSupported (spec §83)', () => {
     expect(() => {
       assertClientSupported(undefined);
     }).not.toThrow();
+  });
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+describe('sanitizeRequestId (spec §103)', () => {
+  it('accepts a well-formed id unchanged', () => {
+    expect(sanitizeRequestId('abc-DEF_123.456')).toBe('abc-DEF_123.456');
+  });
+
+  it('accepts exactly 64 characters', () => {
+    const id = 'a'.repeat(64);
+    expect(sanitizeRequestId(id)).toBe(id);
+  });
+
+  it('generates a fresh id when none is supplied', () => {
+    expect(sanitizeRequestId(undefined)).toMatch(UUID_RE);
+  });
+
+  it('replaces an id over 64 characters', () => {
+    expect(sanitizeRequestId('a'.repeat(65))).toMatch(UUID_RE);
+  });
+
+  it('replaces an id with characters outside [A-Za-z0-9._-]', () => {
+    for (const bad of ['has spaces', 'semi;colon', 'new\nline', '<script>', 'emoji-🙂']) {
+      expect(sanitizeRequestId(bad)).toMatch(UUID_RE);
+    }
+  });
+
+  it('replaces an empty string', () => {
+    expect(sanitizeRequestId('')).toMatch(UUID_RE);
   });
 });
