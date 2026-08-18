@@ -2,6 +2,7 @@ import { type Metadata } from '@grpc/grpc-js';
 import { Controller, UseGuards } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import {
+  type Actor as ProtoActor,
   type ActorServiceController,
   ActorServiceControllerMethods,
   type GetActorByHandleRequest,
@@ -22,16 +23,14 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
+import { ActorService, type ActorListPage } from './actor.service.js';
 import { toProtoActor } from './actor.mapper.js';
-import { ActorService } from './actor.service.js';
 
 /**
  * Transport adapter for `patches.v1.ActorService` — protobuf in, protobuf out, no business
- * logic (spec §128). `GetActor`/`GetActorByHandle` are readable anonymously; `UpdateProfile`
- * requires an authenticated session and always targets the caller's own actor.
- *
- * `SearchActors`/`ListFollowers`/`ListFollowing` need `SocialGraphService`/search (Phase 3,
- * spec §50, §112) and return `NOT_IMPLEMENTED` rather than an invented empty result.
+ * logic (spec §128). `GetActor`/`GetActorByHandle`/`SearchActors`/`ListFollowers`/
+ * `ListFollowing` are readable anonymously; `UpdateProfile` requires an authenticated session
+ * and always targets the caller's own actor.
  */
 @Controller()
 @ActorServiceControllerMethods()
@@ -60,22 +59,50 @@ export class ActorController implements ActorServiceController {
       bio: request.bio,
       locationText: request.locationText,
       websiteUrl: request.websiteUrl,
+      // `@grpc/proto-loader` decodes an unset message-typed field as `null`, not `undefined`
+      // (same pattern as LEARNINGS: proto-fieldmask-wire-shape) — ts-proto's generated type
+      // only claims `undefined`, so this checks both.
+      ...(request.nameplate === undefined || request.nameplate === null
+        ? {}
+        : {
+            nameplate: {
+              nameColor: request.nameplate.nameColor,
+              glyph: request.nameplate.glyph,
+              avatarFrame: request.nameplate.avatarFrame,
+              statusLine: request.nameplate.statusLine,
+              profileBorder: request.nameplate.profileBorder,
+            },
+          }),
       updateMask: fieldMaskPaths(request.updateMask),
     });
     return { actor: toProtoActor(profile) };
   }
 
-  searchActors(@Payload() _request: SearchActorsRequest): SearchActorsResponse {
-    throw notImplemented('SearchActors');
+  async searchActors(@Payload() request: SearchActorsRequest): Promise<SearchActorsResponse> {
+    return toResponse(await this.actors.searchActors(request.query, request.cursor, request.limit));
   }
 
-  listFollowers(@Payload() _request: ListFollowersRequest): ListFollowersResponse {
-    throw notImplemented('ListFollowers');
+  async listFollowers(@Payload() request: ListFollowersRequest): Promise<ListFollowersResponse> {
+    return toResponse(
+      await this.actors.listFollowers(request.actorId, request.cursor, request.limit),
+    );
   }
 
-  listFollowing(@Payload() _request: ListFollowingRequest): ListFollowingResponse {
-    throw notImplemented('ListFollowing');
+  async listFollowing(@Payload() request: ListFollowingRequest): Promise<ListFollowingResponse> {
+    return toResponse(
+      await this.actors.listFollowing(request.actorId, request.cursor, request.limit),
+    );
   }
+}
+
+function toResponse(page: ActorListPage): {
+  actors: ProtoActor[];
+  page: { nextCursor: string; hasMore: boolean };
+} {
+  return {
+    actors: page.actors.map(toProtoActor),
+    page: { nextCursor: page.nextCursor, hasMore: page.hasMore },
+  };
 }
 
 function requireSession(session: AccessTokenClaims | undefined): AccessTokenClaims {
@@ -83,10 +110,6 @@ function requireSession(session: AccessTokenClaims | undefined): AccessTokenClai
     throw new AppError('AUTH_INVALID_CREDENTIALS', 'Authentication required.');
   }
   return session;
-}
-
-function notImplemented(rpc: string): AppError {
-  return new AppError('NOT_IMPLEMENTED', `${rpc} is not available on this node yet.`);
 }
 
 /**

@@ -44,6 +44,7 @@ export class PostController implements PostServiceController {
       ...optional('body', request.body),
       ...optional('linkUrl', request.linkUrl),
       visibility: postVisibilityFromProto(request.visibility),
+      ...optional('contentWarning', request.contentWarning),
       ...optional('inReplyToId', request.inReplyToId),
       mediaIds: request.mediaIds,
     });

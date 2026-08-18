@@ -13,6 +13,15 @@ export const DISPLAY_NAME_MAX_LENGTH = 80;
 export const BIO_MAX_LENGTH = 500;
 export const LOCATION_TEXT_MAX_LENGTH = 100;
 export const WEBSITE_URL_MAX_LENGTH = 2048;
+export const SEARCH_QUERY_MAX_LENGTH = 100;
+
+/** Serialized-JSON byte budget for `actors.nameplate` (spec §173). */
+export const NAMEPLATE_MAX_BYTES = 2048;
+const NAME_COLOR_MAX_LENGTH = 32;
+const GLYPH_MAX_LENGTH = 8;
+const STATUS_LINE_MAX_LENGTH = LOCATION_TEXT_MAX_LENGTH;
+const AVATAR_FRAME_MAX_LENGTH = 64;
+const PROFILE_BORDER_MAX_LENGTH = 64;
 
 export const displayNameSchema = z
   .string()
@@ -48,6 +57,29 @@ export const websiteUrlSchema = z
   .pipe(z.url({ protocol: /^https?$/, error: 'website URL must be a valid http(s) URL' }));
 
 export const uuidInputSchema = z.uuid('must be a valid id');
+
+export const searchQuerySchema = z
+  .string()
+  .trim()
+  .min(1, 'query is required')
+  .max(
+    SEARCH_QUERY_MAX_LENGTH,
+    `search query must be at most ${String(SEARCH_QUERY_MAX_LENGTH)} characters`,
+  );
+
+/**
+ * Client-writable nameplate fields (spec §173). `badges` is deliberately absent from this
+ * schema — it is server-attested only, and `ActorService.updateProfile` never reads a client-
+ * supplied value for it (see the caller).
+ */
+export const nameplateInputSchema = z.object({
+  nameColor: z.string().trim().max(NAME_COLOR_MAX_LENGTH).optional(),
+  glyph: z.string().trim().max(GLYPH_MAX_LENGTH).optional(),
+  avatarFrame: z.string().trim().max(AVATAR_FRAME_MAX_LENGTH).optional(),
+  statusLine: z.string().trim().max(STATUS_LINE_MAX_LENGTH).optional(),
+  profileBorder: z.string().trim().max(PROFILE_BORDER_MAX_LENGTH).optional(),
+});
+export type NameplateInput = z.infer<typeof nameplateInputSchema>;
 
 export function parseInput<Schema extends z.ZodType>(
   schema: Schema,

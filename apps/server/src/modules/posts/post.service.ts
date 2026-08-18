@@ -24,6 +24,7 @@ export interface CreatePostInput {
   body?: string;
   linkUrl?: string;
   visibility: DbPostVisibility;
+  contentWarning?: string;
   inReplyToId?: string;
   mediaIds: string[];
 }
@@ -72,6 +73,7 @@ export class PostService {
         postType: parsed.linkUrl !== undefined ? 'LINK' : 'NOTE',
         linkUrl: parsed.linkUrl ?? null,
         visibility: parsed.visibility,
+        contentWarning: parsed.contentWarning ?? null,
         inReplyToId: parsed.inReplyToId ?? null,
         rootPostId,
         isLocal: true,

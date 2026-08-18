@@ -40,9 +40,9 @@ export function credentialTypeFromProto(value: CredentialType): AddableCredentia
 }
 
 /**
- * `counts` and `avatar` are left unset rather than zeroed: this is the caller's own actor as
- * seen by the auth surface, and `ActorService` owns the social projection. A zeroed `counts`
- * would assert "no followers" where the truth is "not loaded".
+ * `counts`, `avatar` and `nameplate` are left unset rather than zeroed/empty: this is the
+ * caller's own actor as seen by the auth surface, and `ActorService` owns the social/identity
+ * projection. A zeroed `counts` would assert "no followers" where the truth is "not loaded".
  */
 export function toProtoActor(actor: ActorSummary): Actor {
   return {
@@ -56,6 +56,7 @@ export function toProtoActor(actor: ActorSummary): Actor {
     isLocal: actor.isLocal,
     joinedAt: dateToTimestamp(actor.joinedAt),
     counts: undefined,
+    nameplate: undefined,
   };
 }
 

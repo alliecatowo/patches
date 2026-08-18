@@ -27,6 +27,15 @@ const linkUrlSchema = z
   .max(LINK_URL_MAX_LENGTH, `link URL must be at most ${String(LINK_URL_MAX_LENGTH)} characters`)
   .pipe(z.url({ protocol: /^https?$/, error: 'link URL must be a valid http(s) URL' }));
 
+/** Same length budget as `body` (spec §58) — a content warning is a label, not a second post. */
+const contentWarningSchema = z
+  .string()
+  .trim()
+  .max(
+    POST_BODY_MAX_LENGTH,
+    `content warning must be at most ${String(POST_BODY_MAX_LENGTH)} characters`,
+  );
+
 export const uuidInputSchema = z.uuid('must be a valid id');
 
 export const createPostInputSchema = z
@@ -35,6 +44,7 @@ export const createPostInputSchema = z
     body: bodySchema.optional(),
     linkUrl: linkUrlSchema.optional(),
     visibility: z.enum(['PUBLIC', 'UNLISTED', 'FOLLOWERS']),
+    contentWarning: contentWarningSchema.optional(),
     inReplyToId: uuidInputSchema.optional(),
     mediaIds: z
       .array(uuidInputSchema)

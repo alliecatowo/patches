@@ -55,6 +55,7 @@ export function toProtoPost(view: PostView): ProtoPost {
     postType: POST_TYPE_TO_PROTO[view.postType],
     linkUrl: view.linkUrl ?? '',
     visibility: POST_VISIBILITY_TO_PROTO[view.visibility],
+    contentWarning: view.contentWarning ?? '',
     inReplyToId: view.inReplyToId ?? '',
     rootPostId: view.rootPostId,
     media: view.media.map(toProtoMediaAttachment),
