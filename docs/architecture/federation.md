@@ -197,16 +197,22 @@ wrong actor/URI/delivery assumption is cheap to fix now and expensive later.
 
 Known F1-scope gaps, left for a follow-up rather than blocking the lab:
 
-- the outbox (`GET /users/:handle/outbox`) returns the newest 20 public posts, not a true
-  keyset-paginated `OrderedCollection` with paging;
-- outbound delivery does not consult `domain_blocks` before enqueueing (inbound activities
-  from a blocked domain _are_ rejected, both directions is the P8-006 target);
-- `domain_blocks` has no write path yet (no RPC, no admin-CLI command) — rows must be
-  inserted by hand today;
 - `followers`/`following` AS2 collection endpoints are advertised on the actor document but
   not yet served (a remote peer fetching them gets a 404);
 - avatar `icon` is never populated on the actor document (no public media URL resolver
   wired in yet).
+
+Resolved since the list above was first written: the outbox now serves a real keyset-paginated
+`OrderedCollection`/`OrderedCollectionPage` (B-027, `OutboxCollectionService.buildCollection`/
+`buildPage`); outbound delivery consults `domain_blocks` both at enqueue
+(`DeliveryService.enqueue`) and again at delivery time
+(`apps/worker`'s `FederationDeliverHandler`, in case a domain was blocked after a job was
+already queued); `domain_blocks` has a write path (`patches-admin domain block|unblock|list`,
+audited, B-027); and `federation_keys.private_key_pem` is encrypted at rest with AES-256-GCM
+under an operator-supplied `FEDERATION_KEY_ENCRYPTION_KEY` rather than stored plain (B-026,
+`packages/database/src/crypto/federation-key-cipher.ts`) — previously a documented, deliberate
+v0.1 gap (`FederationKey`'s doc comment used to explain why), now closed before any real
+federation is enabled.
 
 ### Stage F2 — interoperability (**v0.3–v0.4**, Phases 10–11)
 
@@ -248,7 +254,8 @@ posture):
 - [ ] ActivityStreams objects validate _(no formal AS2/JSON-LD schema validation — shape-
       checked only, e.g. `id`/`type`/`actor` presence)_
 - [x] inbox works _(local lab, P8-002)_
-- [x] outbox works _(local lab, P8-002 — newest-20 only, not true paging; see §4 Stage F1)_
+- [x] outbox works _(local lab, P8-002; real keyset `OrderedCollectionPage` pagination as of
+      B-027, `OutboxCollectionService.buildPage`)_
 - [x] `Follow` works _(local lab, P8-002)_
 - [x] `Accept` works _(local lab, P8-002)_
 - [x] `Create` works _(local lab, P8-002)_
@@ -262,12 +269,15 @@ posture):
 - [x] SSRF defenses exist _(P8-006, `safeFetch`/`isDisallowedIp`)_
 - [x] remote response sizes bounded _(P8-006, `safeFetch` byte cap)_
 - [x] remote request timeouts exist _(P8-006, `safeFetch` 10s timeout)_
-- [ ] domain blocking exists _(partial: `domain_blocks` enforced on inbound in `InboxService`;
-      no write path (RPC/admin-CLI) yet, and outbound delivery doesn't consult it — see §4)_
+- [x] domain blocking exists _(B-027: `domain_blocks` enforced on inbound in `InboxService`;
+      `DeliveryService.enqueue` filters outbound at enqueue time, and `FederationDeliverHandler`
+      re-checks at delivery time — see §4 and §7)_
 - [x] remote delete/tombstones work _(local lab, same as `Delete` above)_
-- [ ] moderator can block remote server _(no RPC/CLI to write `domain_blocks` yet)_
+- [x] moderator can block remote server _(B-027: `patches-admin domain block|unblock|list`,
+      audited)_
 - [x] federation telemetry exists _(A-036 — in-memory counters, `GET /federation/metrics`
-      loopback-only, periodic structured log; `docs/operations/federation.md` "Metrics")_
+      loopback-only, periodic structured log; B-030 adds the same periodic log on `apps/worker`;
+      `docs/operations/federation.md` "Metrics")_
 - [x] two Patches servers interoperate _(P8-008, `federation-two-node.integration.test.ts`)_
 - [ ] at least one mainstream Fediverse implementation interoperates _(F2 scope, not started)_
 
@@ -296,6 +306,13 @@ A remote actor is never trusted merely because it speaks ActivityPub.
 Remote entities fit the **existing** tables, as designed — federation did not require a
 parallel schema. `RemoteActorService` (`apps/server/src/modules/federation/services/
 remote-actor.service.ts`) upserts:
+
+`ActorService.ResolveActor` (B-028, `actors.proto`) is the client-facing entry point onto this
+same path: given `acct:user@domain`, it calls `RemoteActorService.resolveByAcct` and returns
+the (possibly newly-discovered) remote actor so a TUI client can immediately
+`SocialGraphService.FollowActor` it — `NOT_IMPLEMENTED` when `FEDERATION_ENABLED=false`, and
+rate-limited per caller (`ActorResolveRateLimitService`) since each call is a real outbound
+fetch to a caller-named host.
 
 Remote actor:
 

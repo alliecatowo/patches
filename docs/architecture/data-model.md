@@ -263,6 +263,9 @@ erDiagram
         uuid id PK
         bytea nonce
         text claimed_handle
+        text purpose
+        uuid bound_user_id
+        text bound_fingerprint
         timestamptz expires_at
         timestamptz consumed_at
         timestamptz created_at
@@ -407,14 +410,17 @@ credential MUST fail; adding a credential MUST require an authenticated session;
 Server-issued nonces for SSH challenge/response login (§166,
 [`auth.md`](./auth.md) §4).
 
-| Column           | Type          | Nullable | Notes                                           |
-| ---------------- | ------------- | -------- | ----------------------------------------------- |
-| `id`             | `uuid`        | no       | PK; the challenge id bound into the signed blob |
-| `nonce`          | `bytea`       | no       | ≥ 32 bytes from a CSPRNG                        |
-| `claimed_handle` | `text`        | yes      | set only when the client claims a handle        |
-| `expires_at`     | `timestamptz` | no       | TTL ≤ 120 seconds                               |
-| `consumed_at`    | `timestamptz` | yes      | single-use; consumed atomically                 |
-| `created_at`     | `timestamptz` | no       |                                                 |
+| Column              | Type          | Nullable | Notes                                                      |
+| ------------------- | ------------- | -------- | ---------------------------------------------------------- |
+| `id`                | `uuid`        | no       | PK; the challenge id bound into the signed blob            |
+| `nonce`             | `bytea`       | no       | ≥ 32 bytes from a CSPRNG                                   |
+| `claimed_handle`    | `text`        | yes      | set only when the client claims a handle (login only)      |
+| `purpose`           | `text`        | no       | `LOGIN` (default) or `ENROLL` (CHECK constraint, B-025)    |
+| `bound_user_id`     | `uuid`        | yes      | enrollment only: the user this proof may be redeemed for   |
+| `bound_fingerprint` | `text`        | yes      | enrollment only: the fingerprint of the key being enrolled |
+| `expires_at`        | `timestamptz` | no       | TTL ≤ 120 seconds                                          |
+| `consumed_at`       | `timestamptz` | yes      | single-use; consumed atomically                            |
+| `created_at`        | `timestamptz` | no       |                                                            |
 
 Expired rows are swept by a periodic job. Challenges are issued regardless of whether any
 supplied fingerprint is enrolled — see the no-enumeration rule in §166.
