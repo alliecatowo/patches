@@ -59,3 +59,9 @@ Run `/verify` scoped to the package(s) you touched (`pnpm --filter <workspace> b
 - Run single-purpose commands. Do NOT chain `pkill`, `rm -rf`, or process control with `git commit` — such compound commands get rejected and stall you.
 - Start background servers with `run_in_background`, note the PID, and stop them with `kill <pid>` as its own command.
 - Run `git commit` as its own command with explicit paths. If a command is rejected, rephrase it more narrowly and continue — never stop and wait for the orchestrator.
+
+## Turn budget (you have `maxTurns`; running out mid-edit loses nothing but wastes a resume)
+
+- **Commit early, commit often.** As soon as one coherent slice is green (`typecheck` + the tests you added), commit it with explicit paths and keep going. Never sit on 60 uncommitted files.
+- Combine checks into one command per package (`mise exec -- pnpm --filter X typecheck && … && …`) and read files with `sed -n` ranges — each tool call is a turn.
+- When roughly two-thirds of your turns are spent, stop adding scope: verify what exists, tick only the finished parts, commit, push, and report exactly what remains. A precise "left undone" list is a successful outcome; a half-written file at the turn cap is not.
