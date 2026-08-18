@@ -8,10 +8,10 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 - [x] H-001 — CLAUDE.md operating manual
 - [x] H-002 — `.claude/settings.json` with pnpm-only guard, prettier post-edit hook, session-start summary
-- [ ] H-003 — Agent roster in `.claude/agents/` (researcher, implementer, reviewer, architect, verifier, docs, spec-auditor)
-- [ ] H-004 — Skills: `/task`, `/verify`, `/retro`, `/audit`, `/proto-change`, `/migration`, `/phase`
-- [ ] H-005 — Path-scoped rules in `.claude/rules/` (server, tui, proto, database)
-- [ ] H-006 — `docs/agents/HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`
+- [x] H-003 — Agent roster in `.claude/agents/` (researcher, implementer, reviewer, architect, verifier, docs, spec-auditor)
+- [x] H-004 — Skills: `/task`, `/verify`, `/retro`, `/audit`, `/proto-change`, `/migration`, `/phase`
+- [x] H-005 — Path-scoped rules in `.claude/rules/` (server, tui, proto, database)
+- [x] H-006 — `docs/agents/HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`
 
 ## Phase 0 — repository and risk spikes (spec §134, §157)
 
