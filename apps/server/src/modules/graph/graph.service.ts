@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Actor, Block, Follow, Mute } from '@patches/database';
 import { z } from 'zod';
 import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import type { RelationshipView } from './graph.dto.js';
 
@@ -28,12 +29,19 @@ export class GraphService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly notifications: NotificationsService,
+    @Inject(FEDERATION_GATEWAY) private readonly federation: FederationGateway,
   ) {}
 
   /**
    * v0 local accounts transition straight to `FOLLOWING` (spec §50) — idempotent (following an
    * already-followed actor is a no-op, not an error) and self-follow/blocked-either-direction
    * are rejected.
+   *
+   * Following a **remote** actor (P8-002/P8-003) instead stays `PENDING` until that actor's
+   * node sends back `Accept` — `InboxService` flips it to `FOLLOWING` on receipt. The `Follow`
+   * activity delivery is enqueued in the same transaction as the row write
+   * (`FederationGateway.followRemoteActor`), so "follow row created, no delivery job" can
+   * never happen; `NoopFederationGateway` makes this a no-op when federation is disabled.
    */
   async followActor(viewerActorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
@@ -60,11 +68,14 @@ export class GraphService {
             follows.create({
               followerActorId: viewerActorId,
               followeeActorId: targetActorId,
-              status: 'FOLLOWING',
-              acceptedAt: new Date(),
+              status: target.isLocal ? 'FOLLOWING' : 'PENDING',
+              acceptedAt: target.isLocal ? new Date() : null,
             }),
           );
           created = true;
+          if (!target.isLocal) {
+            await this.federation.followRemoteActor(manager, viewerActorId, targetActorId);
+          }
         } catch (error) {
           // Two concurrent FollowActor calls race the (follower_actor_id, followee_actor_id)
           // unique index — the loser just means the row already exists, which is exactly what
@@ -85,14 +96,19 @@ export class GraphService {
     return relationship;
   }
 
-  /** Idempotent: unfollowing an actor the caller does not follow is not an error. */
+  /** Idempotent: unfollowing an actor the caller does not follow is not an error. Delivers
+   * `Undo(Follow)` when the (former) followee is remote (P8-002/P8-003). */
   async unfollowActor(viewerActorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
 
     return this.dataSource.transaction(async (manager) => {
-      await manager
+      const target = await manager.getRepository(Actor).findOne({ where: { id: targetActorId } });
+      const result = await manager
         .getRepository(Follow)
         .delete({ followerActorId: viewerActorId, followeeActorId: targetActorId });
+      if ((result.affected ?? 0) > 0 && target !== null && !target.isLocal) {
+        await this.federation.unfollowRemoteActor(manager, viewerActorId, targetActorId);
+      }
       return this.relationshipFor(manager, viewerActorId, targetActorId);
     });
   }

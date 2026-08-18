@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Bookmark, Like } from '@patches/database';
 import { DataSource } from 'typeorm';
 
+import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { toPostViews } from '../feeds/post-batch.js';
 import { NotificationsService } from '../notifications/notification.service.js';
@@ -41,8 +42,11 @@ export class ReactionsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly posts: PostService,
     private readonly notifications: NotificationsService,
+    @Inject(FEDERATION_GATEWAY) private readonly federation: FederationGateway,
   ) {}
 
+  /** Delivers `Like` when the post's author is remote (P8-002/P8-003) — no-op for a local
+   * post (`FederationGateway.likeRemotePost`'s own check) or when federation is disabled. */
   async likePost(actorId: string, postIdRaw: string): Promise<PostView> {
     const postId = parseInput(uuidInputSchema, postIdRaw);
     const post = await this.posts.getPost(postId, actorId);
@@ -55,6 +59,7 @@ export class ReactionsService {
       try {
         await likes.save(likes.create({ actorId, postId }));
         wasNew = true;
+        await this.federation.likeRemotePost(manager, actorId, postId);
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
       }
@@ -66,11 +71,17 @@ export class ReactionsService {
     return this.posts.getPost(postId, actorId);
   }
 
-  /** Idempotent: unliking a post the caller has not liked is not an error. */
+  /** Idempotent: unliking a post the caller has not liked is not an error. Delivers
+   * `Undo(Like)` when the post's author is remote (P8-002/P8-003). */
   async unlikePost(actorId: string, postIdRaw: string): Promise<PostView> {
     const postId = parseInput(uuidInputSchema, postIdRaw);
     await this.posts.getPost(postId, actorId);
-    await this.dataSource.getRepository(Like).delete({ actorId, postId });
+    await this.dataSource.transaction(async (manager) => {
+      const result = await manager.getRepository(Like).delete({ actorId, postId });
+      if ((result.affected ?? 0) > 0) {
+        await this.federation.unlikeRemotePost(manager, actorId, postId);
+      }
+    });
     return this.posts.getPost(postId, actorId);
   }
 
