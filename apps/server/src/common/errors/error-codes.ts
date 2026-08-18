@@ -28,6 +28,12 @@ export const ERROR_CODES = [
    * client can tell "you must upgrade" apart from other FAILED_PRECONDITIONs.
    */
   'CLIENT_VERSION_UNSUPPORTED',
+  /**
+   * Also not in §57's starter list: an RPC that exists in the schema but is not implemented
+   * on this node yet (the GitHub device-flow pair, which lands in Phase 6 per §176). A client
+   * must be able to tell "this node cannot do that" apart from "that request was wrong".
+   */
+  'NOT_IMPLEMENTED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -56,6 +62,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   VALIDATION_ERROR: GrpcStatus.INVALID_ARGUMENT,
   INTERNAL_ERROR: GrpcStatus.INTERNAL,
   CLIENT_VERSION_UNSUPPORTED: GrpcStatus.FAILED_PRECONDITION,
+  NOT_IMPLEMENTED: GrpcStatus.UNIMPLEMENTED,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

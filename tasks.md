@@ -40,13 +40,13 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] P1-000 — Protobuf contract for auth/actors/posts/feeds: `auth.proto` (Register/VerifyEmail/ResendVerification/Login/RefreshSession/Logout/LogoutAllSessions/RequestPasswordReset/ResetPassword/GetCurrentSession + BeginSshLogin/CompleteSshLogin/BeginGitHubLogin/PollGitHubLogin/ListCredentials/AddCredential/RevokeCredential per Amendment A §165–§168), `actors.proto` (ActorService + FieldMask-based UpdateProfile), `posts.proto`, `feeds.proto`; typed grpc-js client factories; A-010/A-011 fixes. Schema only — no server handlers yet (tracked by P1-003/P1-011/P1-012/P1-014/P2-002)
 - [x] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, `auth_codes`, `outbox_jobs` (+ Phase 2 `posts`/`media`/`post_media`); outbox claim helpers; testkit factories
 - [ ] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
-- [ ] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
-- [ ] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
-- [ ] P1-005 — Auth gRPC controller + auth guard/interceptor reading `authorization` metadata; error code mapping
+- [x] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
+- [x] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
+- [x] P1-005 — Auth gRPC controller + auth guard/interceptor reading `authorization` metadata; error code mapping
 - [x] P1-006 — Outbox/jobs table + worker claim loop (SKIP LOCKED, backoff, dead-letter) + email jobs; EmailProvider (console/mailpit/resend)
 - [x] P1-007 — TUI: `patches register|login|logout|accounts`, CredentialStore keyed by **node origin + user id** (@napi-rs/keyring + guarded file fallback), auto-refresh
-- [ ] P1-008 — Rate limiting for login/register/reset/verify/challenge-issuance (db-backed for sensitive flows)
-- [ ] P1-009 — Tests: unit (token rotation, hashing, validation) + gRPC integration (register→verify→login→refresh)
+- [x] P1-008 — Rate limiting for login/register/reset/verify/challenge-issuance — shipped process-local (fixed window, §102 allows coarse process-local throttles); the db-backed store §102 wants by MVP is A-018
+- [x] P1-009 — Tests: unit (token rotation, hashing, validation) + gRPC integration (register→verify→login→refresh)
 - [ ] P1-010 — Research note `docs/research/ssh-signature-verification.md`: which Node library verifies OpenSSH-format public-key signatures, verified against official docs (blocks P1-011)
 - [ ] P1-011 — SSH challenge auth: `BeginSshLogin`/`CompleteSshLogin`, `ssh_login_challenges`, blob binding (purpose + node domain + challenge id + nonce ≥32B + fingerprint + expiry), single-use TTL ≤120s, ed25519 first, SHA-1 `ssh-rsa` rejected (§166)
 - [ ] P1-012 — Credential management RPCs: `ListCredentials` (never returns `secret_hash`), `AddCredential` (requires authenticated session), `RevokeCredential` (fails on last active credential)
@@ -131,12 +131,17 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] A-009 — server: replace cwd/`__dirname` probe in modules/system/server-build.ts with an injected SERVER_VERSION provider
 - [x] A-010 — proto: make PROTO_DIR lazy (`getProtoDir()`) so packaging errors fail at call site
 - [x] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
-- [ ] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
+- [x] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
 - [x] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
 - [x] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)
 - [x] A-015 — build: root `pnpm test` must work on a fresh clone (tests resolve @patches/* via dist) — build first via turbo or alias to src
 - [x] A-016 — tests: unit coverage for RpcExceptionsFilter, LoggingInterceptor, logger.factory, grpc-options, SystemService, tui cli/ping.ts, cli.tsx
 - [x] A-017 — terminal-media: bound untrusted image input (byte-length precheck + explicit sharp limitInputPixels) before Phase 5
+- [ ] A-018 — server: replace the process-local fixed-window `RateLimitService` with a db-backed store (§102 wants the sensitive flows db-backed by MVP); needs a `rate_limit_buckets` table + migration in `packages/database` and a sweep job
+- [ ] A-019 — server: key rate limits on the caller's peer address as well as the subject — needs the gRPC `ServerUnaryCall` (arg index 2), which a ts-proto controller signature does not expose; likely an interceptor that stashes the peer in the request context
+- [ ] A-020 — proto/domain: move `buildSshChallengeBlob` (and the SSH wire helpers) into a package both `apps/server` and `apps/tui` import, so the signed-blob layout has exactly one definition (§166); today the server owns it and a client must reimplement it
+- [ ] A-021 — server: `RegisterRequest.client_request_id` is accepted but not enforced — §45 asks for idempotency on (handle_normalized, client_request_id); today only the handle unique index prevents a double-register
+- [ ] A-022 — docs: add `NOT_IMPLEMENTED → UNIMPLEMENTED` to the error table in `docs/architecture/api.md` §7, and document the SSH challenge blob's wire encoding in `docs/architecture/auth.md` §4
 
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
