@@ -359,10 +359,10 @@ paper over:
 
 1. **Premature resolution on a substring/persistent string.** `expectFrame(lastFrame, 'following')`
    resolves instantly if the frame already says `'not following'` (substring match) — same trap
-   for waiting on `'@bob'`/`'Root post'` when that text is already visible in a feed list *before*
+   for waiting on `'@bob'`/`'Root post'` when that text is already visible in a feed list _before_
    navigating to the screen that's supposed to show it fresh, or waiting on `'photo.png'` when a
    raw file path being typed already contains that substring before Enter confirms the attach. Fix:
-   pick a target string that is unique to the *settled* state — a screen header, a badge like
+   pick a target string that is unique to the _settled_ state — a screen header, a badge like
    `'[1] photo.png'`, or a compound predicate (`f.includes(X) && !f.includes(Y)`) — never the first
    substring that happens to become true.
 2. **A poll that resolves the instant its condition is true removes the incidental "settle" grace
@@ -374,11 +374,11 @@ paper over:
    `session === undefined` closure for a few more ms). A fixed `flush(20/60)` used to happen to
    cover this gap; a tight poll doesn't. Symptom: the frame just stops changing forever, and
    `waitForFrame` times out. Fix: keep one small `await flush()` between a resolved wait and the
-   *next* `press()` wherever that press depends on effects resubscribing (screen transitions,
+   _next_ `press()` wherever that press depends on effects resubscribing (screen transitions,
    post-login global keys) — this is a deliberate exception to "no fixed sleeps", not a leftover.
 
 **How to actually verify a de-flake fix, not just "the full file passed a few times":** run each
-changed test *in isolation* via `vitest run <file> -t "<exact title>"` (in zsh, split multi-line
+changed test _in isolation_ via `vitest run <file> -t "<exact title>"` (in zsh, split multi-line
 `grep -oP` output with `${(@f)$(...)}`, not `IFS=$'\n'; for x in $var` — zsh doesn't word-split an
 unquoted `$var` by default the way bash does). A whole-file run can accidentally pass because an
 earlier test in the same file "warms up" something (first bcrypt-style hash, first module import)
@@ -394,3 +394,29 @@ uncommitted WIP in the shared checkout the actual cause" (see the shared-checkou
 above fixed by hand rather than mechanically. The shared `loginAs(press, handle, password)`
 helper in every file that had one now takes `lastFrame` and waits for the status bar's `· @handle`
 badge (plus one settle `flush()`) instead of a fixed `flush(60)` after the final login `Enter`.
+
+## 2026-08-18 — Ink `useInput`: index/mode state must use the functional `setState` form, not the render closure, for rapid same-tick key presses
+
+`useInput`'s handler is re-created fresh every render (Ink 7 wraps it in React's
+`useEffectEvent`, so it always sees the latest closure — no registration staleness there), but
+that doesn't save you from React's own batching: a test loop like `for (...) press('j');` with no
+`await` between presses fires every keystroke before React commits the first one's state update,
+so every call in the loop reads the _same_ pre-update value off the render closure. `setMode({
+mode: 'addPicker', typeIndex: mode.typeIndex + 1 })` written that way only ever moves the
+selection by one no matter how many `j`s fired — the last write wins, and it computed from the
+same stale `mode.typeIndex` every time. Symptom in a test: a `for` loop pressing a nav key N times
+lands on index 1, not N (`apps/tui/src/screens/PageBlocksEditorScreen.tsx`'s `a` type-picker `j`
+navigation, caught by `apps/tui/test/page-blocks-editor.test.tsx`'s "shows the first validation
+error" test selecting `Markdown` instead of `Gallery` after five `j`s). Fix: `setMode((current) =>
+current.mode === 'addPicker' ? { ...: Math.min(current.typeIndex + 1, max) } : current)` — derive
+the next value from the updater's own `current`, never the outer render's closured state, exactly
+`EditProfileScreen.updateField`'s existing convention, and it applies to _any_ multi-step index/
+mode state a `useInput` handler advances, not just free-text typing.
+
+Separately, the "resubscription lag" hazard this file's 2026-08-18 `flush()`/`waitForFrame` entry
+above describes also hit a screen swap that isn't a top-level `App` screen change: `PageScreen`
+returning a completely different child tree (`<PageBlocksEditorScreen>` in place of its own body,
+gated by local state rather than `App`'s `screen`) needed the same one `await flush()` after the
+`waitForFrame` that first observes the new screen's header text, before the first `press()` that
+depends on the new screen's `useInput` hook actually being subscribed. The general rule is "any
+screen transition, not just the ones App.tsx's `screen` state drives."

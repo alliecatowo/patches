@@ -5,6 +5,7 @@ import {
   type GetActorByHandleResponse,
   type ListActorPostsResponse,
   type ListGuestbookResponse,
+  type ListMutualFollowsResponse,
 } from '@patches/proto';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
@@ -27,6 +28,11 @@ function fakeApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
     listGuestbook: () =>
       Promise.resolve<ListGuestbookResponse>({
         entries: [],
+        page: { nextCursor: '', hasMore: false },
+      }),
+    listMutualFollows: () =>
+      Promise.resolve<ListMutualFollowsResponse>({
+        actors: [],
         page: { nextCursor: '', hasMore: false },
       }),
   };
@@ -225,13 +231,12 @@ describe('PageBlocksView (P45-004/005)', () => {
     await expectFrame(lastFrame, 'lovely page!');
   });
 
-  it('renders NowPlaying, AsciiArt, Spacer, Badges, Friends as documented placeholders/content', () => {
+  it('renders NowPlaying, AsciiArt, Spacer, Badges as documented placeholders/content', () => {
     const blocks: RenderablePageBlock[] = [
       { type: 'NowPlaying', text: 'a great song' },
       { type: 'AsciiArt', art: '(o_o)' },
       { type: 'Spacer', size: 'lg' },
       { type: 'Badges' },
-      { type: 'Friends', limit: 5 },
     ];
     const { lastFrame } = render(
       <PageBlocksView blocks={blocks} context={context()} selectedLinkIndex={undefined} />,
@@ -240,7 +245,46 @@ describe('PageBlocksView (P45-004/005)', () => {
     expect(frame).toContain('a great song');
     expect(frame).toContain('(o_o)');
     expect(frame).toContain('[badges unavailable]');
-    expect(frame).toContain('[friends list unavailable]');
+  });
+
+  it('renders Friends via ListMutualFollows, and an empty state (B-024)', async () => {
+    const api = fakeApi({
+      listMutualFollows: ({ actorId }) =>
+        actorId === 'actor-1'
+          ? Promise.resolve<ListMutualFollowsResponse>({
+              actors: [
+                {
+                  id: 'actor-bob',
+                  handle: 'bob',
+                  displayName: '',
+                  bio: '',
+                  locationText: '',
+                  websiteUrl: '',
+                  avatar: undefined,
+                  isLocal: true,
+                  joinedAt: undefined,
+                  counts: undefined,
+                  nameplate: undefined,
+                },
+              ],
+              page: { nextCursor: '', hasMore: false },
+            })
+          : Promise.reject(new Error('unexpected actorId')),
+    });
+    const blocks: RenderablePageBlock[] = [{ type: 'Friends', limit: 5 }];
+    const { lastFrame } = render(
+      <PageBlocksView blocks={blocks} context={context({ api })} selectedLinkIndex={undefined} />,
+    );
+    const frame = await expectFrame(lastFrame, '@bob');
+    expect(frame).not.toContain('unavailable');
+  });
+
+  it('renders an empty state when there are no mutual follows', async () => {
+    const blocks: RenderablePageBlock[] = [{ type: 'Friends', limit: 5 }];
+    const { lastFrame } = render(
+      <PageBlocksView blocks={blocks} context={context()} selectedLinkIndex={undefined} />,
+    );
+    await expectFrame(lastFrame, 'No mutual follows yet.');
   });
 
   it('renders an unrecognized block type as a visible placeholder, never failing the page', () => {
