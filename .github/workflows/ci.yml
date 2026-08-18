@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality (format, lint, typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  proto:
+    name: proto (buf + generated code freshness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          # buf breaking needs `main`'s history available to diff against.
+          fetch-depth: "0"
+
+      - name: Fetch main (buf breaking diff target)
+        if: github.event_name == 'pull_request'
+        run: git fetch origin main:main
+
+      - run: pnpm proto:format
+      - run: pnpm proto:lint
+
+      # Skipped on push to main: there is no meaningful "main vs main" diff, and this
+      # is also the point at which a deliberate breaking change (reviewed on its PR)
+      # is expected to land. `-- --against ...` forwards the arg through pnpm to
+      # whatever `buf breaking` invocation packages/proto's own `breaking` script
+      # wraps (see docs/research/nestjs-grpc-protobuf.md §2 for the `.git#branch=...`
+      # ref form). ASSUMPTION: that script does not already hardcode its own
+      # `--against` — reconcile if it does.
+      - name: buf breaking (against main)
+        if: github.event_name == 'pull_request'
+        run: pnpm proto:breaking -- --against '.git#branch=main,subdir=packages/proto'
+
+      - name: Generate protobuf TypeScript
+        run: pnpm proto:gen
+
+      - name: Fail if generated code is stale or wasn't committed
+        run: git diff --exit-code -- packages/proto/src/generated
+
+  build-test:
+    name: build-test (build + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      - run: pnpm test
+
+      # Optional: only uploads whatever coverage output the vitest projects already
+      # produce on their own (no coverage flag is forced here — not every project is
+      # guaranteed to have a coverage provider configured yet). Never fails the job.
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: "**/coverage/**"
+          if-no-files-found: ignore
+          retention-days: 14
+
+  integration:
+    name: integration (Postgres + migrations)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: patches
+          POSTGRES_PASSWORD: patches
+          POSTGRES_DB: patches_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patches -d patches_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Migration validation and the integration suite deliberately share the single
+      # `patches_test` database here — see docs/operations/ci.md ("Why one database")
+      # for why that's the simplest robust option rather than provisioning a second
+      # `patches` database. Migration validation runs first (before `test:integration`)
+      # so the schema is in place by the time tests connect.
+      DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
+      TEST_DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
+    steps:
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+
+      - name: Run migrations
+        run: pnpm db:migrate
+
+      - name: Show migration status (informational)
+        run: pnpm db:show
+
+      # ASSUMPTION (documented, see docs/operations/ci.md): TypeORM 1.x's
+      # `migration:run` exits 0 and logs "no migrations pending" when there is
+      # nothing left to apply, rather than erroring. Running it a second time
+      # immediately after the first is therefore the assertion that 0 migrations
+      # are pending — more robust than string-matching `db:show`'s output, whose
+      # exact format packages/database hasn't defined yet.
+      - name: Assert no pending migrations (second run must be a no-op)
+        run: pnpm db:migrate
+
+      - name: Revert last migration (prove down works)
+        run: pnpm db:revert
+
+      - name: Re-apply migration (prove up works again)
+        run: pnpm db:migrate
+
+      - run: pnpm test:integration
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v4
+        with:
+          version: 2026.8.1
+          install: true
+          cache: true
+        env:
+          # Only need the actionlint binary here — no workspace install, no Node/pnpm.
+          MISE_DISABLE_TOOLS: node,pnpm,docker-compose
+      - run: actionlint .github/workflows/*.yml
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [quality, proto, build-test, integration, actionlint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all jobs to have succeeded
+        run: |
+          echo "${{ toJSON(needs) }}"
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || \
+             [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more required jobs did not succeed." >&2
+            exit 1
+          fi

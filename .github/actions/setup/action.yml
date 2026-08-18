@@ -1,0 +1,64 @@
+name: Setup toolchain
+description: >
+  Checkout, install Node + pnpm (pnpm/setup@v2), install buf + actionlint via mise
+  (mise's own node/pnpm/docker-compose installs are disabled here — see
+  docs/operations/ci.md for why), then `pnpm install --frozen-lockfile`. Also restores
+  the Turborepo local cache. Used by every CI job that needs the workspace installed.
+
+inputs:
+  fetch-depth:
+    description: >
+      Passed straight to actions/checkout. Use "0" for jobs that need full git history
+      (e.g. the proto job's `buf breaking --against main` diff).
+    required: false
+    default: "1"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    # pnpm 11 + Node in one step. Chosen over jdx/mise-action for node/pnpm specifically
+    # because mise-action installing pnpm from mise.toml was unreliable in trial runs
+    # (see docs/operations/ci.md "Toolchain setup" for the exact failure mode observed
+    # and re-verify before reversing this decision). pnpm/setup@v2 reads the pnpm
+    # version from this repo's `packageManager` field (pnpm@11.22.0), so it stays in
+    # sync with mise.toml without repeating the version here.
+    - name: Install Node + pnpm
+      uses: pnpm/setup@v2
+      with:
+        runtime: node@24.19.0
+        cache: true
+
+    # buf and actionlint have no first-class GitHub Action of their own worth adding on
+    # top of pnpm/setup, so install them from the same mise.toml pins via mise-action.
+    # node/pnpm/docker-compose are disabled here to avoid mise re-installing/shadowing
+    # what pnpm/setup already put on PATH (docker-compose isn't needed in CI at all —
+    # Postgres runs as a native `services:` container in the integration job).
+    - name: Install buf + actionlint (mise)
+      uses: jdx/mise-action@v4
+      with:
+        version: 2026.8.1
+        install: true
+        cache: true
+      env:
+        MISE_DISABLE_TOOLS: node,pnpm,docker-compose
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    # Turbo's local cache. Shared key across jobs on purpose: turbo hashes tasks by
+    # their actual inputs, so a `build`/`gen` cache entry produced by one job can be
+    # reused by another job that needs the same task with the same inputs. Concurrent
+    # jobs racing to save the same key is harmless (actions/cache no-ops on a duplicate
+    # key, it doesn't fail the step).
+    - name: Restore turbo cache
+      uses: actions/cache@v4
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-
