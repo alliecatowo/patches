@@ -124,4 +124,27 @@ describe('parseArgs', () => {
     expect(args.command).toBe('help');
     expect(args.error).toContain('--wat');
   });
+
+  it('parses visit @handle into a visitTarget with an empty (index) slug', () => {
+    const args = parseArgs(['visit', '@alice']);
+    expect(args.command).toBe('tui');
+    expect(args.visitTarget).toEqual({ handle: 'alice', slug: '' });
+  });
+
+  it('parses visit @handle/slug into a visitTarget with that sub-page', () => {
+    const args = parseArgs(['visit', '@alice/about']);
+    expect(args.visitTarget).toEqual({ handle: 'alice', slug: 'about' });
+  });
+
+  it('combines visit with connection flags', () => {
+    const args = parseArgs(['visit', '@alice', '--server', '127.0.0.1:1234']);
+    expect(args.visitTarget).toEqual({ handle: 'alice', slug: '' });
+    expect(args.target).toBe('127.0.0.1:1234');
+  });
+
+  it('explains a visit with no target, or a target missing the leading @', () => {
+    expect(parseArgs(['visit']).command).toBe('help');
+    expect(parseArgs(['visit']).error).toContain('visit');
+    expect(parseArgs(['visit', 'alice']).command).toBe('help');
+  });
 });

@@ -2,9 +2,10 @@ import { render } from 'ink-testing-library';
 
 type RenderResult = ReturnType<typeof render>;
 
-import { App } from '../src/app/App.js';
+import { App, type AppProps } from '../src/app/App.js';
 import { MemoryCredentialStore, type CredentialStore } from '../src/auth/credential-store.js';
 import { MemoryDraftStore, type DraftStore } from '../src/compose/draft-store.js';
+import { MemoryPageDraftStore } from '../src/pages/draft-store.js';
 import { createFakeApi, type FakeApiHandle, type FakeApiOptions } from './fake-api.js';
 
 /**
@@ -29,6 +30,7 @@ export interface RenderAppOptions {
   credentialStore?: CredentialStore;
   draftStore?: DraftStore;
   env?: NodeJS.ProcessEnv;
+  pageEditorOptions?: AppProps['pageEditorOptions'];
 }
 
 export interface RenderAppResult extends RenderResult {
@@ -49,7 +51,14 @@ export function renderApp(options: RenderAppOptions = {}): RenderAppResult {
   const env = options.env ?? {};
 
   const rendered = render(
-    <App api={fake.api} credentialStore={credentialStore} draftStore={draftStore} env={env} />,
+    <App
+      api={fake.api}
+      credentialStore={credentialStore}
+      draftStore={draftStore}
+      env={env}
+      pageDraftStore={new MemoryPageDraftStore()}
+      pageEditorOptions={options.pageEditorOptions}
+    />,
   );
 
   return {

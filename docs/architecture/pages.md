@@ -5,10 +5,12 @@ stored on the actor's node and rendered by clients. Source of truth: `INITIAL_VI
 §170–§172 (Amendment A), ADR
 [0012](../decisions/0012-patches-pages-portable-declarative.md).
 
-**Status: partially implemented (Phase 4.5).** The document schema/validator
-(`packages/domain`), storage (§3), and `PageService` (§4) are implemented and tested — see
-`apps/server/src/modules/pages/`. The Ink renderer, `patches visit`, and nameplate rendering
-(P45-004, P45-006, P45-007) are still planned.
+**Status: implemented (Phase 4.5).** The document schema/validator (`packages/domain`),
+storage (§3), `PageService` (§4, `apps/server/src/modules/pages/`), the Ink renderer
+(`apps/tui/src/pages/render/`), `patches visit`, and nameplate rendering (P45-004..007) are
+all implemented and tested. Deferred: a structured block-by-block page editor (the TUI editor
+is `$EDITOR`-on-raw-JSON only, see §6) and a `Friends` block data source (see §6 — no
+"list mutual follows" RPC exists yet); both are tracked as follow-ups (`B-023`, `B-024`).
 
 Pages are the personal-web pillar (§175, pillar 3). They are not a profile decoration — the
 profile is what you see _next to a name_; a Page is what you _visit_. Inline identity
@@ -172,6 +174,60 @@ that is what makes the format portable rather than merely stored.
 
 The Ink renderer degrades by terminal capability the same way the rest of the TUI does
 (truecolor → 256 → 16 → none), and a page must remain readable at every level.
+
+### TUI implementation (P45-004..007)
+
+`apps/tui/src/screens/PageScreen.tsx` is the entry point: `v` on a `ProfileScreen` opens the
+viewed actor's page, `g v` opens the caller's own, and `patches visit @handle[/slug]`
+(`apps/tui/src/cli/args.ts`) launches the TUI straight onto a page, skipping `connect`. One
+`GetPage` call fetches the whole document (every sub-page); `[`/`]` switches sub-pages
+entirely client-side, no re-fetch.
+
+`apps/tui/src/pages/render/blocks.tsx`'s `PageBlocksView` renders every §171 block type
+(`Text`, `Markdown`, `Image`, `Links`, `Posts`, `Gallery`, `Friends`, `TopEight`, `Guestbook`,
+`NowPlaying`, `Badges`, `AsciiArt`, `Spacer`, `Hero`), plus `packages/domain`'s lenient-parse
+`Unknown` placeholder for a block type this client doesn't recognize — never a failed page. A
+few notes on specific blocks:
+
+- **`Image`/`Gallery`** render through the exact same `@patches/terminal-media` path a post
+  attachment uses (`components/MediaAttachments.tsx`) — Kitty inline when the terminal and a
+  media session support it, the spec §75 fallback box otherwise. P5-003 landed in the same
+  change as the renderer, so this is the real thing rather than the static placeholder P45-005
+  originally scoped.
+- **`Posts`** fetches the page owner's recent posts via `ListActorPosts` and renders them with
+  the same `PostRow` a timeline uses (no drill-into-thread yet from inside a page — a
+  documented follow-up, not this task's scope).
+- **`TopEight`** resolves each `@handle` via `GetActorByHandle` and renders with `Nameplate`;
+  a `@handle@remote-node` reference (federation is a seam, not implemented) renders as plain
+  sanitized text rather than attempting a lookup that would always fail.
+- **`Friends`** has no backing data source — `SocialGraphService` only exposes per-actor
+  `GetRelationship`, not a bulk "list mutual follows" RPC — so it renders a documented
+  `[friends list unavailable]` placeholder (`B-024`).
+- **`Guestbook`** fetches via `ListGuestbook`; `s` (only shown/available when a `Guestbook`
+  block is present and the viewer has a session) opens an inline compose line, `Enter` calls
+  `SignGuestbook`, and the block re-fetches.
+- **`Links`** entries across every `Links` block on the current sub-page are flattened into
+  one `j`/`k`-navigable list; `Enter` opens the selected one with the OS default handler
+  (`apps/tui/src/pages/open-link.ts`, the same argument-array-only spawn convention as `o` on
+  a media attachment — spec §76).
+
+Editing (`e`, shown only to the page's owner) is the `$VISUAL`/`$EDITOR` raw-JSON round trip
+from §172/P45-006's "or raw JSON in `$EDITOR`" option: `apps/tui/src/pages/editor.ts` writes
+the current document to a temp file, hands the terminal to the editor via a blocking,
+argument-array-only `spawnSync` (never through a shell), and re-reads the result. Ink keeps
+holding the alternate screen throughout — this only looks right on return because editors that
+matter here (vim, nano, emacs -nw) enter and restore their _own_ alternate screen; an `$EDITOR`
+that doesn't would leave visual debris until the next full Ink re-render. The result is
+validated with `packages/domain`'s `parsePageStrict`; a validation error (or invalid JSON)
+keeps the previous document on screen, shows the error, and persists the unsaved edit to a
+draft file (`apps/tui/src/pages/draft-store.ts`, same `XDG_DATA_HOME` pattern as a compose
+draft) so pressing `e` again resumes from exactly what was typed rather than losing it. The
+**structured** block-by-block editor P45-006 also scoped ("add/remove/reorder … OR as raw
+JSON") is deferred — `B-023`.
+
+Nameplates (P45-007): every place an actor's name renders in the Pages surface —
+`TopEight`, `Guestbook` entries — goes through the shared `Nameplate` component, same as
+`PostRow`/`SearchScreen`/`NotificationsScreen`/`ProfileScreen` elsewhere in the TUI.
 
 ## 7. Security
 

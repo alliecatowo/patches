@@ -64,6 +64,7 @@ async function runTui(args: {
   target: string;
   insecure: boolean;
   plain: boolean;
+  visitTarget?: { handle: string; slug: string };
 }): Promise<number> {
   if (!process.stdout.isTTY) {
     // Without a TTY there is no alternate screen and no way to press `q`, so the
@@ -96,7 +97,12 @@ async function runTui(args: {
   try {
     const instance = render(
       <MediaRendererProvider renderer={mediaRenderer}>
-        <App api={api} credentialStore={credentialStore} env={env} />
+        <App
+          api={api}
+          credentialStore={credentialStore}
+          env={env}
+          initialPageTarget={args.visitTarget}
+        />
       </MediaRendererProvider>,
       {
         // Ink 7 owns the alternate screen and restores the original buffer on exit;
