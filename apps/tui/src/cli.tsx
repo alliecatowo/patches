@@ -4,6 +4,7 @@ import { render } from 'ink';
 import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
 import { parseArgs, USAGE } from './cli/args.js';
+import { openCredentialStore } from './cli/auth-shared.js';
 import { createNodeIo } from './cli/io.js';
 import { runLogin } from './cli/login.js';
 import { runLogout } from './cli/logout.js';
@@ -63,9 +64,12 @@ async function runTui(args: { target: string; insecure: boolean }): Promise<numb
 
   const restoreTerminal = installTerminalCleanup();
   const api = new PatchesApi(args);
+  // Opened before `render()` — its one-time "no keyring available" warning (if any)
+  // goes to a normal stderr, not the alternate screen (spec §37).
+  const credentialStore = await openCredentialStore(createNodeIo(), process.env);
 
   try {
-    const instance = render(<App api={api} />, {
+    const instance = render(<App api={api} credentialStore={credentialStore} />, {
       // Ink 7 owns the alternate screen and restores the original buffer on exit;
       // hand-rolling \x1b[?1049h is unnecessary and racy.
       alternateScreen: true,

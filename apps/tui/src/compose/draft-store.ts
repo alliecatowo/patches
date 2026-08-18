@@ -1,0 +1,102 @@
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+
+/**
+ * An unsent compose draft (spec §80). Only non-sensitive text — an access/refresh
+ * token never belongs here, and there is nothing else to persist yet (no media
+ * attachment picker in this slice).
+ */
+export interface ComposeDraft {
+  body: string;
+  /**
+   * The idempotency key for this draft's eventual `CreatePost` (spec §45). Fixed
+   * for the lifetime of the draft so a retry after a failed send reuses the same
+   * key rather than risking a duplicate post; a fresh id is drawn only once the
+   * draft is discarded or successfully posted.
+   */
+  clientRequestId: string;
+}
+
+/**
+ * Where compose drafts survive a crash (spec §80: "MVP SHOULD persist unsent
+ * compose drafts locally"). Deliberately separate from `CredentialStore`'s
+ * `XDG_CONFIG_HOME` — a draft is disposable local state, not configuration.
+ */
+export interface DraftStore {
+  load(): Promise<ComposeDraft | undefined>;
+  save(draft: ComposeDraft): Promise<void>;
+  clear(): Promise<void>;
+}
+
+function dataDir(): string {
+  const xdg = process.env.XDG_DATA_HOME;
+  const base = xdg !== undefined && xdg.trim() !== '' ? xdg : join(homedir(), '.local', 'share');
+  return join(base, 'patches');
+}
+
+export function draftFilePath(): string {
+  return join(dataDir(), 'compose-draft.json');
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
+function isComposeDraft(value: unknown): value is ComposeDraft {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { body?: unknown }).body === 'string' &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId === 'string'
+  );
+}
+
+/** The real backend: one JSON file under the XDG data dir. */
+export class FileDraftStore implements DraftStore {
+  private readonly path: string;
+
+  constructor(path: string = draftFilePath()) {
+    this.path = path;
+  }
+
+  async load(): Promise<ComposeDraft | undefined> {
+    let raw: string;
+    try {
+      raw = await readFile(this.path, 'utf8');
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
+      throw error;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return isComposeDraft(parsed) ? parsed : undefined;
+  }
+
+  async save(draft: ComposeDraft): Promise<void> {
+    await mkdir(dirname(this.path), { recursive: true });
+    await writeFile(this.path, `${JSON.stringify(draft, null, 2)}\n`, 'utf8');
+  }
+
+  async clear(): Promise<void> {
+    await rm(this.path, { force: true });
+  }
+}
+
+/** Tests, and anywhere a draft should live only for the process lifetime. */
+export class MemoryDraftStore implements DraftStore {
+  private draft: ComposeDraft | undefined;
+
+  load(): Promise<ComposeDraft | undefined> {
+    return Promise.resolve(this.draft);
+  }
+
+  save(draft: ComposeDraft): Promise<void> {
+    this.draft = draft;
+    return Promise.resolve();
+  }
+
+  clear(): Promise<void> {
+    this.draft = undefined;
+    return Promise.resolve();
+  }
+}

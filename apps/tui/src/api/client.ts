@@ -2,24 +2,40 @@ import { randomUUID } from 'node:crypto';
 
 import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import {
+  createActorClient,
   createAuthClient,
+  createFeedClient,
+  createPostClient,
   createSystemClient,
   DEADLINES_MS,
   METADATA_KEYS,
+  type ActorGrpcClient,
   type AuthGrpcClient,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
+  type CreatePostRequest,
+  type CreatePostResponse,
+  type FeedGrpcClient,
+  type GetActorByHandleRequest,
+  type GetActorByHandleResponse,
+  type GetActorRequest,
+  type GetActorResponse,
   type GetCurrentSessionResponse,
   type GetServerInfoResponse,
+  type ListActorPostsRequest,
+  type ListActorPostsResponse,
   type ListCredentialsResponse,
+  type ListLocalFeedRequest,
+  type ListLocalFeedResponse,
   type LoginRequest,
   type LoginResponse,
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
   type PingResponse,
+  type PostGrpcClient,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
@@ -48,6 +64,9 @@ export class PatchesApi {
 
   private readonly system: SystemGrpcClient;
   private readonly auth: AuthGrpcClient;
+  private readonly actor: ActorGrpcClient;
+  private readonly post: PostGrpcClient;
+  private readonly feed: FeedGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -56,6 +75,9 @@ export class PatchesApi {
       : credentials.createSsl();
     this.system = createSystemClient(options.target, channelCredentials);
     this.auth = createAuthClient(options.target, channelCredentials);
+    this.actor = createActorClient(options.target, channelCredentials);
+    this.post = createPostClient(options.target, channelCredentials);
+    this.feed = createFeedClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -110,9 +132,36 @@ export class PatchesApi {
     return unary(this.auth.listCredentials.bind(this.auth), {}, DEADLINES_MS.auth, accessToken);
   }
 
+  // ---- ActorService / FeedService — public reads, no access token required ----
+
+  async getActor(request: GetActorRequest): Promise<GetActorResponse> {
+    return unary(this.actor.getActor.bind(this.actor), request, DEADLINES_MS.unary);
+  }
+
+  async getActorByHandle(request: GetActorByHandleRequest): Promise<GetActorByHandleResponse> {
+    return unary(this.actor.getActorByHandle.bind(this.actor), request, DEADLINES_MS.unary);
+  }
+
+  async listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
+    return unary(this.feed.listActorPosts.bind(this.feed), request, DEADLINES_MS.unary);
+  }
+
+  async listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
+    return unary(this.feed.listLocalFeed.bind(this.feed), request, DEADLINES_MS.unary);
+  }
+
+  // ---- PostService — requires an authenticated session ----
+
+  async createPost(request: CreatePostRequest, accessToken: string): Promise<CreatePostResponse> {
+    return unary(this.post.createPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
+    this.actor.close();
+    this.post.close();
+    this.feed.close();
   }
 }
 

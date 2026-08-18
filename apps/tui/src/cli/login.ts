@@ -144,7 +144,7 @@ export async function runLogin(rest: readonly string[], deps: LoginDeps): Promis
     io.stdout(`Signed in as @${session.actor?.handle ?? emailOrHandle} on ${target}.\n`);
     return 0;
   } catch (error) {
-    reportAuthError(io, error, target);
+    reportAuthError(io, error, target, 'credentials');
     return 1;
   } finally {
     api.close();
