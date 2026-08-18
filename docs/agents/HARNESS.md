@@ -61,6 +61,16 @@ Path-scoped, loaded automatically when matching files are touched: `server.md`
 (`packages/proto`), `tui.md` (`apps/tui`, `packages/terminal-media`), `docs.md`
 (`docs/**`, `README.md`).
 
+## Token discipline (cache reads are the big cost)
+
+Every agent turn re-reads its whole context from cache, so cost ≈ context size × turns. Rules:
+
+- Briefs list the exact files/sections to read; agents read **only those** (`sed -n` ranges, `grep -n`), never whole research docs or spec sweeps. Research docs and the spec are reference, not required reading.
+- No exploratory repo tours: `Glob`/`Grep` for a symbol, read one file, act. Reviewers review a **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
+- Each agent has a `maxTurns` in its frontmatter; finish inside it — verify with one combined command per package (`pnpm --filter X build && … typecheck && … test`) rather than one command per check.
+- Prefer one well-briefed sonnet agent over three narrow ones (each agent pays the CLAUDE.md + rules + system prompt load). Use haiku for mechanical checks. Opus/fable only where judgment matters.
+- Don't paste large file contents into reports; report paths + one-line facts.
+
 ## The self-improvement loop
 
 Do the task → `/verify` → commit → `/retro` (record what was learned; fix the rule/prompt/
