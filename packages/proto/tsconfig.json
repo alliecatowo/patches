@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // tsup's `dts` build reuses this tsconfig and emits declarations without a
+    // `--tsBuildInfoFile`, which TS rejects when `incremental` is on (TS5074).
+    "incremental": false
+  },
+  "include": ["src"]
+}

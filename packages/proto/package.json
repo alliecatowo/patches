@@ -1,9 +1,39 @@
 {
   "name": "@patches/proto",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./nest": {
+      "types": "./dist/nest.d.ts",
+      "import": "./dist/nest.js",
+      "require": "./dist/nest.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "proto"
+  ],
+  "scripts": {
+    "gen": "buf generate && prettier --write src/generated",
+    "lint:buf": "buf lint",
+    "format:buf": "buf format -d --exit-code",
+    "breaking": "./scripts/breaking.sh",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo"
+  },
   "devDependencies": {
     "ts-proto": "catalog:",
     "tsup": "catalog:"
