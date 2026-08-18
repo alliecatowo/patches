@@ -51,7 +51,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] P1-011 — SSH challenge auth: `BeginSshLogin`/`CompleteSshLogin`, `ssh_login_challenges`, blob binding (purpose + node domain + challenge id + nonce ≥32B + fingerprint + expiry), single-use TTL ≤120s, ed25519 first, SHA-1 `ssh-rsa` rejected (§166)
 - [x] P1-012 — Credential management RPCs: `ListCredentials` (never returns `secret_hash`), `AddCredential` (requires authenticated session), `RevokeCredential` (fails on last active credential)
 - [x] P1-013 — TUI SSH enrollment: enumerate ssh-agent identities + `~/.ssh/*.pub`, explicit confirm, sign via `SSH_AGENTC_SIGN_REQUEST`; **never read/transmit a private key**
-- [ ] P1-014 — `NodeService.GetNodeInfo` (unauthenticated): node domain, version, registration mode, limits, capabilities (§174) — no `tier` field, ever
+- [x] P1-014 — `NodeService.GetNodeInfo` (unauthenticated): node domain, version, registration mode, limits, capabilities (§174) — no `tier` field, ever
 - [x] P1-015 — Security tests: challenge replay + cross-node replay + expiry, algorithm downgrade, credential enumeration (uniform failures), last-credential revocation
 - [x] P1-016 — AuthService.register: bootstrap registration on an invite-only node with an empty `users` table (first account registers without an invite code, logged as a WARN); subsequent registrations still require one
 
@@ -63,9 +63,9 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 3 — social graph & feeds (§137)
 
-- [ ] P3-001 — follows entity, Follow/Unfollow, ListFollowers/Following, SearchActors
-- [ ] P3-002 — FeedService: ListHomeFeed / ListLocalFeed with keyset pagination, block/mute-aware SQL, indexes verified with EXPLAIN
-- [ ] P3-003 — TUI: Home, Local, search, follow controls, `g h`/`g l` navigation, load-more
+- [x] P3-001 — follows entity, Follow/Unfollow, ListFollowers/Following, SearchActors
+- [x] P3-002 — FeedService: ListHomeFeed / ListLocalFeed with keyset pagination, block/mute-aware SQL, indexes verified with EXPLAIN
+- [x] P3-003 — TUI: Home, Local, search, follow controls, `g h`/`g l` navigation, load-more
 
 ## Phase 4 — replies, reactions, notifications (§138)
 
@@ -162,7 +162,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] B-015 — TUI: Ink `App`/`ConnectScreen` auth integration (status bar `@handle`, inline `L` login, `g p` placeholder) + `apps/tui/test/harness.tsx` ink-testing-library frame-snapshot harness (deferred from P1-007)
 - [x] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
 - [ ] B-017 — TUI: remaining harness snapshot tests (login flow, compose→profile timeline, profile, local-feed pagination) + open an author profile from a selected post (PostList selection → ProfileScreen actorId)
-- [ ] B-018 — proto: `Actor.nameplate` (§173, ≤2 KiB validated doc; the DB column exists) and a post content-warning field are missing from `patches.v1` — add via /proto-change, then surface in server mappers and TUI PostRow/ProfileScreen
+- [x] B-018 — proto: `Actor.nameplate` (§173, ≤2 KiB validated doc; the DB column exists) and a post content-warning field are missing from `patches.v1` — add via /proto-change, then surface in server mappers (done: `Nameplate` message + `Actor.nameplate`/`UpdateProfileRequest.nameplate`, `Post.content_warning`/`CreatePostRequest.content_warning`, server mappers/validation). TUI PostRow/ProfileScreen surfacing tracked separately — see B-019.
+- [ ] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol

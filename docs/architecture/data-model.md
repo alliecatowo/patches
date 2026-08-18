@@ -11,16 +11,16 @@ PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` �
 > [0012](../decisions/0012-patches-pages-portable-declarative.md).
 
 > **Status markers.** Each table section below is marked `Status: implemented` (there is a
-> reviewed TypeORM migration for it — currently
-> `packages/database/src/migrations/1787036506325-Phase1Schema.ts`) or `Status: planned`
-> (described here ahead of the migration that creates it). As of this migration, the
-> **implemented** tables are: `app_meta`, `users`, `actors`, `credentials`,
-> `ssh_login_challenges`, `auth_codes`, `refresh_tokens`, `invites`, `outbox_jobs`, `media`,
-> `posts`, `post_media` — see `packages/database/src/entities/index.ts`'s `ALL_ENTITIES`.
-> Everything else in this document (`follows`, `blocks`, `mutes`, `likes`, `bookmarks`,
-> `reports`, `notifications`, `admin_audit_log`, and the `pages`/`page_revisions`/
-> `page_assets`/`guestbook_entries` group) is **planned** — Phase 3 for the social-graph
-> tables, Phase 4.5 for Pages.
+> reviewed TypeORM migration for it) or `Status: planned` (described here ahead of the
+> migration that creates it). As of `packages/database/src/migrations/1787055340075-Phase3SocialGraph.ts`
+> (which follows `1787036506325-Phase1Schema.ts`), the **implemented** tables are: `app_meta`,
+> `users`, `actors`, `credentials`, `ssh_login_challenges`, `auth_codes`, `refresh_tokens`,
+> `invites`, `outbox_jobs`, `media`, `posts`, `post_media`, `follows`, `blocks`, `mutes` — see
+> `packages/database/src/entities/index.ts`'s `ALL_ENTITIES`. Everything else in this document
+> (`likes`, `bookmarks`, `reports`, `notifications`, `admin_audit_log`, and the
+> `pages`/`page_revisions`/`page_assets`/`guestbook_entries` group) is **planned** — Phase 4
+> for `likes`/`bookmarks`/`notifications`, Phase 4.5 for Pages, Phase 6 for `reports`/
+> `admin_audit_log`.
 
 ## Conventions
 
@@ -481,6 +481,7 @@ Root posts and replies share one table — there is no separate comment entity (
 | `post_type`         | `text` (enum) | no       | `NOTE` \| `LINK`                                                                  |
 | `link_url`          | `text`        | yes      | present when `post_type = LINK`                                                   |
 | `visibility`        | `text` (enum) | no       | `PUBLIC` \| `UNLISTED` \| `FOLLOWERS`                                             |
+| `content_warning`   | `text`        | yes      | optional click-to-reveal label (B-018); same length budget as `body`              |
 | `in_reply_to_id`    | `uuid`        | yes      | FK → `posts.id`; null for root posts                                              |
 | `root_post_id`      | `uuid`        | no       | FK → `posts.id`; self for root posts (§24)                                        |
 | `canonical_uri`     | `text`        | yes      | unique; federation                                                                |
@@ -561,35 +562,37 @@ Join table between posts and media (§27).
 
 ## `follows`
 
-**Status: planned**
+**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001)
 
-| Column              | Type          | Nullable | Notes                                                                                           |
-| ------------------- | ------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `id`                | `uuid`        | no       | PK                                                                                              |
-| `follower_actor_id` | `uuid`        | no       | FK → `actors.id`                                                                                |
-| `followee_actor_id` | `uuid`        | no       | FK → `actors.id`                                                                                |
-| `status`            | `text` (enum) | no       | `NONE` \| `PENDING` \| `FOLLOWING` (§50) — v0 local accounts transition straight to `FOLLOWING` |
-| `created_at`        | `timestamptz` | no       |                                                                                                 |
-| `accepted_at`       | `timestamptz` | yes      | set when status becomes `FOLLOWING`                                                             |
+| Column              | Type          | Nullable | Notes                                                                                                                                                   |
+| ------------------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                | `uuid`        | no       | PK                                                                                                                                                      |
+| `follower_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                                                                                                                   |
+| `followee_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                                                                                                                   |
+| `status`            | `text` (enum) | no       | `PENDING` \| `FOLLOWING` (§50) — v0 local accounts transition straight to `FOLLOWING`; `NONE` is represented by the row's _absence_, not a stored value |
+| `created_at`        | `timestamptz` | no       |                                                                                                                                                         |
+| `accepted_at`       | `timestamptz` | yes      | set when status becomes `FOLLOWING`; null while `PENDING` (unreachable in v0)                                                                           |
 
-**Constraints**: `UNIQUE (follower_actor_id, followee_actor_id)`.
+**Constraints**: `UNIQUE (follower_actor_id, followee_actor_id)`; `CHECK (follower_actor_id <> followee_actor_id)` (no self-follow).
 
 **Indexes** (§60): `follows(follower_actor_id, followee_actor_id)` UNIQUE;
-`follows(follower_actor_id, created_at)`.
+`follows(follower_actor_id, created_at, id)` (`ListFollowing`'s keyset); `follows(followee_actor_id, created_at, id)` (`ListFollowers`'s keyset, the reverse direction).
+
+**RPCs**: `SocialGraphService.FollowActor`/`UnfollowActor`/`GetRelationship` (implemented, P3-001); `ActorService.ListFollowers`/`ListFollowing` (implemented, P3-001).
 
 ---
 
 ## `blocks`
 
-**Status: planned**
+**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001) — no RPC writes to this table yet
 
-| Column             | Type          | Nullable | Notes            |
-| ------------------ | ------------- | -------- | ---------------- |
-| `blocker_actor_id` | `uuid`        | no       | FK → `actors.id` |
-| `blocked_actor_id` | `uuid`        | no       | FK → `actors.id` |
-| `created_at`       | `timestamptz` | no       |                  |
+| Column             | Type          | Nullable | Notes                                 |
+| ------------------ | ------------- | -------- | ------------------------------------- |
+| `blocker_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `blocked_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `created_at`       | `timestamptz` | no       |                                       |
 
-**Constraints**: `UNIQUE (blocker_actor_id, blocked_actor_id)` (§60), composite PK.
+**Constraints**: composite PK `(blocker_actor_id, blocked_actor_id)` (also serves as the §60 unique constraint); `CHECK (blocker_actor_id <> blocked_actor_id)` (no self-block).
 
 **Block semantics** (§62): if A blocks B — B cannot follow A (existing follow is
 removed/ignored); A does not see B in normal feeds; B cannot see A through
@@ -597,23 +600,32 @@ authenticated normal API surfaces; B cannot interact with A's posts; notificatio
 respect the block. Public-data limitations under federation are documented
 separately once public web endpoints exist.
 
+**Implementation note**: the table and its read paths (`FeedService`'s block-aware SQL,
+`SocialGraphService.FollowActor`'s block check, `GetRelationship.blocking`) landed in P3-001/
+P3-002 ahead of the table's own write RPCs — `BlockActor`/`UnblockActor` are Phase 6 (spec
+§140). Nothing populates this table yet outside of test fixtures.
+
 ---
 
 ## `mutes`
 
-**Status: planned**
+**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001) — no RPC writes to this table yet
 
-| Column           | Type          | Nullable | Notes            |
-| ---------------- | ------------- | -------- | ---------------- |
-| `muter_actor_id` | `uuid`        | no       | FK → `actors.id` |
-| `muted_actor_id` | `uuid`        | no       | FK → `actors.id` |
-| `created_at`     | `timestamptz` | no       |                  |
+| Column           | Type          | Nullable | Notes                                 |
+| ---------------- | ------------- | -------- | ------------------------------------- |
+| `muter_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `muted_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `created_at`     | `timestamptz` | no       |                                       |
 
-**Constraints**: `UNIQUE (muter_actor_id, muted_actor_id)` (§60), composite PK.
+**Constraints**: composite PK `(muter_actor_id, muted_actor_id)` (also serves as the §60 unique constraint); `CHECK (muter_actor_id <> muted_actor_id)` (no self-mute).
 
 **Mute semantics** (§63): does not notify the muted user; does not remove the follow
 relationship automatically; hides the muted actor's posts from the muter's home feed;
 suppresses notifications from the muted actor per product policy.
+
+**Implementation note**: same status as `blocks` above — the table and `FeedService`'s
+mute-aware SQL / `GetRelationship.muting` landed in P3-001/P3-002; `MuteActor`/`UnmuteActor`
+are Phase 6.
 
 ---
 
