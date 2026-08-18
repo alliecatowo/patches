@@ -127,7 +127,40 @@ Ghostty sets `TERM=xterm-ghostty`, `TERM_PROGRAM=ghostty`, `TERM_PROGRAM_VERSION
 **tmux:** APC codes are not forwarded unless `set -g allow-passthrough on`, and then each sequence must be
 wrapped as `\x1bPtmux;<seq with every \x1b doubled>\x1b\\`. Unicode placeholders are exactly the technique
 tmux-compatible clients use (tmux moves the placeholder _text_ around for free). Treat tmux as
-"transmit through passthrough, place via placeholders", and gate it on `$TMUX` being set. Not tested here.
+"transmit through passthrough, place via placeholders", and gate it on `$TMUX` being set.
+
+**Status: implemented (unverified in a live tmux+Ghostty)** — B-007. `detectTerminalGraphics`
+(`packages/terminal-media/src/detect.ts`) already refused to probe tmux at all unless
+`tmux show-option -gqv allow-passthrough` (`tmuxAllowsPassthrough`) said `on`; that part shipped with the
+original spike (`8d70a62`). What B-007 adds: when the probe _does_ confirm kitty support while `$TMUX` is
+set, `GraphicsCapabilities.tmux` is now set to `true`, and `KittyGraphicsRenderer` wraps every APC write
+(transmit, `release`, `releaseAll`) in `wrapTmuxPassthrough` before it reaches `process.stdout` — previously
+`wrapTmuxPassthrough` existed as a pure, unused helper with no caller. The probe's own three queries
+(`CSI 16 t`, the `a=q` graphics query, DA1) are deliberately left **unwrapped** — DA1 and `CSI 16 t` are
+ordinary CSI sequences tmux already answers itself as the pane's virtual terminal, which is what lets the
+probe terminate promptly even without touching passthrough; only the actual kitty APC payload needs the
+envelope, both during the probe's `a=q` query and for every real image transmission afterward. Covered by
+unit tests (`renderer.test.ts`'s `tmux passthrough (B-007)` block, `detect.test.ts`'s `tmux:true` cases) that
+assert on the exact wrapped byte stream, but there is no CI runner with a real tmux+Kitty-capable outer
+terminal, so the actual terminal-side round trip has not been observed.
+
+**Manual verification a human should run** (Ghostty, or another Kitty-capable terminal, as the _outer_
+terminal — this cannot be done from a non-interactive agent shell):
+
+```sh
+tmux -f /dev/null new -d -s patches-media-check
+tmux send-keys -t patches-media-check 'tmux set -g allow-passthrough on' Enter
+tmux send-keys -t patches-media-check 'pnpm --filter @patches/terminal-media spike -- --report' Enter
+tmux attach -t patches-media-check
+```
+
+Expect the spike's `--report` JSON to show `kitty: true` and (once a build picks up this change) `tmux: true`
+while attached inside that session; then run the interactive spike (`pnpm --filter @patches/terminal-media
+spike`, no `--report`) inside the same tmux pane and confirm an image actually renders, survives a resize,
+and clears on exit — the §74 checklist, but through tmux passthrough instead of directly. If the image never
+appears, check `allow-passthrough` is `on` for the _session_ the pane is actually in (`tmux show-options -g
+allow-passthrough`) and that the outer terminal is Kitty-capable on its own (run the spike outside tmux
+first to confirm that part in isolation).
 
 ---
 

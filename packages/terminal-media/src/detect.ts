@@ -21,6 +21,17 @@ export interface GraphicsCapabilities {
   rows: number;
   /** Human-readable summary of what we detected, for logs and the `--report` flag. */
   termHint: string;
+  /**
+   * True only when `kitty` support was confirmed while running inside tmux with
+   * `allow-passthrough` on (B-007). The renderer must then wrap every APC
+   * transmission in tmux's DCS passthrough envelope (`wrapTmuxPassthrough`) — tmux
+   * does not forward APC graphics codes to the outer terminal otherwise, even with
+   * passthrough enabled, because they are not wrapped in the DCS envelope it looks
+   * for. Absent (not `false`) outside tmux, so a plain object spread/`toMatchObject`
+   * comparison against a non-tmux terminal's capabilities doesn't need to know this
+   * field exists at all.
+   */
+  tmux?: boolean;
 }
 
 /** Minimal structural shape of the input stream the probe needs. */
@@ -241,6 +252,9 @@ export async function detectTerminalGraphics(
   };
   if (probe.cellWidthPx !== undefined) capabilities.cellWidthPx = probe.cellWidthPx;
   if (probe.cellHeightPx !== undefined) capabilities.cellHeightPx = probe.cellHeightPx;
+  // Reaching here while `env['TMUX']` is set means the earlier gate already confirmed
+  // `tmuxPassthrough(env)` — see the `return unsupported(...)` above.
+  if (env['TMUX'] !== undefined && probe.graphicsOk) capabilities.tmux = true;
   return capabilities;
 }
 

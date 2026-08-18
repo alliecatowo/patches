@@ -152,7 +152,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
 - [x] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits _(scoped to apps/server, apps/worker, packages/config, packages/database, packages/testkit, packages/terminal-media — apps/tui/packages/proto/packages/media keep their tsconfig-include split, owned elsewhere)_
 - [x] B-006 — Add `@grpc/reflection` to the server (grpcurl debugging), dev-only _(behind `GRPC_REFLECTION`, default off, on in `.env.example`'s dev block; grpcurl not installed in this environment, untested-live)_
-- [ ] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported)
+- [x] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported) _(`GraphicsCapabilities.tmux` + `KittyGraphicsRenderer` wraps every APC write in `wrapTmuxPassthrough`; unit-tested, unverified against a live tmux+Ghostty — see `docs/research/ink-kitty-graphics.md`)_
 - [x] B-008 — lefthook pre-commit (prettier/eslint on staged) via mise
 - [x] B-009 — `pnpm dev` (turbo) runs the interactive TUI inside turbo output — exclude tui from the root `dev` task or make it server-only
 - [x] B-010 — TUI screenshot tool (`tools/screenshot`): tmux -> ANSI -> SVG -> PNG, `mise run screenshot`, real PNGs in `docs/media/`, one embedded in README

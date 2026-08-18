@@ -12,7 +12,13 @@ import sharp from 'sharp';
 
 import type { GraphicsCapabilities } from './detect.js';
 import { MAX_PLACEHOLDER_INDEX } from './protocol/diacritics.js';
-import { buildPlaceholderGrid, chunkTransmit, deleteImage, nextImageId } from './protocol/kitty.js';
+import {
+  buildPlaceholderGrid,
+  chunkTransmit,
+  deleteImage,
+  nextImageId,
+  wrapTmuxPassthrough,
+} from './protocol/kitty.js';
 
 /** A transmitted image, sized to a cell grid. */
 export interface PreparedImage {
@@ -119,6 +125,9 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
   readonly #stdout: MediaStdout;
   readonly #cellWidthPx: number;
   readonly #cellHeightPx: number;
+  /** B-007: wrap every transmission in tmux's DCS passthrough envelope. Set only when
+   * `detectTerminalGraphics` confirmed kitty support *through* tmux passthrough. */
+  readonly #tmux: boolean;
   /** cache key (`hash:maxColsxmaxRows`) -> transmitted image. */
   readonly #cache = new Map<string, PreparedImage>();
   /** content hash -> the cache key currently holding it, so a resize can evict the old one. */
@@ -131,11 +140,18 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
    */
   constructor(
     stdout: MediaStdout,
-    caps: Pick<GraphicsCapabilities, 'cellWidthPx' | 'cellHeightPx'>,
+    caps: Pick<GraphicsCapabilities, 'cellWidthPx' | 'cellHeightPx' | 'tmux'>,
   ) {
     this.#stdout = stdout;
     this.#cellWidthPx = caps.cellWidthPx ?? DEFAULT_CELL_WIDTH_PX;
     this.#cellHeightPx = caps.cellHeightPx ?? DEFAULT_CELL_HEIGHT_PX;
+    this.#tmux = caps.tmux ?? false;
+  }
+
+  /** Every APC write goes through here so tmux passthrough wrapping is applied exactly
+   * once, in exactly one place (spec: "the fix is one call"). */
+  #write(sequence: string): void {
+    this.#stdout.write(this.#tmux ? wrapTmuxPassthrough(sequence) : sequence);
   }
 
   async prepare(source: MediaSource, opts: PrepareOptions): Promise<PreparedImage> {
@@ -173,7 +189,7 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     const id = nextImageId(this.#live);
 
     // One write: the protocol forbids interleaving other graphics codes between chunks.
-    this.#stdout.write(chunkTransmit(data, { id, cols, rows }).join(''));
+    this.#write(chunkTransmit(data, { id, cols, rows }).join(''));
 
     const prepared: PreparedImage = {
       id,
@@ -194,7 +210,7 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
 
   release(img: PreparedImage): void {
     if (!this.#live.delete(img.id)) return;
-    this.#stdout.write(deleteImage(img.id));
+    this.#write(deleteImage(img.id));
     for (const [key, cached] of this.#cache) {
       if (cached.id !== img.id) continue;
       this.#cache.delete(key);
@@ -208,7 +224,7 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     // Per-id `d=I`, not `d=A`: kitty only deletes *virtual* placements via i/I/r/R/n/N.
     const ids = [...this.#live];
     this.#live.clear();
-    if (ids.length > 0) this.#stdout.write(ids.map((id) => deleteImage(id)).join(''));
+    if (ids.length > 0) this.#write(ids.map((id) => deleteImage(id)).join(''));
     this.#cache.clear();
     this.#keyByHash.clear();
   }
