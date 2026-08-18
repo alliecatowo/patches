@@ -19,7 +19,7 @@ import {
   type UpdateProfileRequest,
   type UpdateProfileResponse,
 } from '@patches/proto';
-import { createTestFollow, createTestUser } from '@patches/testkit';
+import { createTestFollow, createTestPost, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -240,6 +240,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           handle: `${prefix}two`,
           displayName: 'Search Target Two',
         });
+        await createTestPost(dataSource.manager, { authorActorId: first.actorId });
 
         const page = await callUnary<SearchActorsRequest, SearchActorsResponse>(
           actors.searchActors.bind(actors),
@@ -247,6 +248,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         );
         expect(page.actors.map((actor) => actor.id)).toEqual([second.actorId, first.actorId]);
         expect(page.page?.hasMore).toBe(false);
+        // B-020: SearchActors returns real counts (one grouped query per page), not
+        // zeroed placeholders.
+        expect(page.actors[1]?.counts?.posts).toBe(1);
+        expect(page.actors[0]?.counts?.posts).toBe(0);
       });
 
       it('rejects an empty query', async () => {
@@ -273,12 +278,19 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { actorId: followee.actorId, cursor: '', limit: 10 },
         );
         expect(followers.actors.map((actor) => actor.id)).toEqual([follower.actorId]);
+        // B-020: ListFollowers/ListFollowing return real counts, not zeroed placeholders —
+        // `follower` follows one actor (`followee`) and is followed by none.
+        expect(followers.actors[0]?.counts?.following).toBe(1);
+        expect(followers.actors[0]?.counts?.followers).toBe(0);
 
         const following = await callUnary<ListFollowingRequest, ListFollowingResponse>(
           actors.listFollowing.bind(actors),
           { actorId: follower.actorId, cursor: '', limit: 10 },
         );
         expect(following.actors.map((actor) => actor.id)).toEqual([followee.actorId]);
+        // `followee` is followed by one actor (`follower`) and follows none.
+        expect(following.actors[0]?.counts?.followers).toBe(1);
+        expect(following.actors[0]?.counts?.following).toBe(0);
 
         const followeeProfile = await callUnary<GetActorRequest, GetActorResponse>(
           actors.getActor.bind(actors),
