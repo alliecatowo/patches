@@ -125,7 +125,22 @@ export class Post {
   @Column({ type: 'timestamptz', nullable: true })
   declare editedAt: Date | null;
 
-  /** Tombstone — see the note on {@link Actor.deletedAt}. Renders as `[deleted]` (§25). */
+  /** Tombstone — see the note on {@link Actor.deletedAt}. Renders as `[deleted]` (§25). Set by
+   * either the author (`PostService`) or an operator (`patches-admin post remove`, spec §65) —
+   * {@link removedByUserId} is what tells the two apart. */
   @Column({ type: 'timestamptz', nullable: true })
   declare deletedAt: Date | null;
+
+  /** The admin user who removed this post via `patches-admin post remove`, or null when the
+   * post was never operator-removed (including a plain author self-delete). `SET NULL` rather
+   * than `RESTRICT`: deleting the operator's own account must never resurrect the post or
+   * block the account deletion. */
+  @Column({ type: 'uuid', nullable: true })
+  declare removedByUserId: string | null;
+
+  /** Operator-supplied reason for an operator removal (`patches-admin post remove --reason`).
+   * Null for an author self-delete. Never shown to the public — moderation detail, not a
+   * user-facing label. */
+  @Column({ type: 'text', nullable: true })
+  declare removalReason: string | null;
 }

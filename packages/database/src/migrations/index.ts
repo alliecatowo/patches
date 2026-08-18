@@ -3,6 +3,7 @@ import { Phase1Schema1787036506325 } from './1787036506325-Phase1Schema.js';
 import { Phase3SocialGraph1787055340075 } from './1787055340075-Phase3SocialGraph.js';
 import { Phase4Interactions1787058326261 } from './1787058326261-Phase4Interactions.js';
 import { ActorRegistrationIdempotency1787059787165 } from './1787059787165-ActorRegistrationIdempotency.js';
+import { Phase6Admin1787062075716 } from './1787062075716-Phase6Admin.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -22,4 +23,5 @@ export const ALL_MIGRATIONS = [
   Phase3SocialGraph1787055340075,
   Phase4Interactions1787058326261,
   ActorRegistrationIdempotency1787059787165,
+  Phase6Admin1787062075716,
 ];
