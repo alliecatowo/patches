@@ -16,17 +16,17 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 ## Phase 0 — repository and risk spikes (spec §134, §157)
 
 - [x] P0-001 — Pin toolchain in `mise.toml` (node 24, pnpm 11, buf, docker-compose provider, actionlint)
-- [ ] P0-002 — Repo hygiene: LICENSE, CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, issue/PR templates, CODEOWNERS, .editorconfig, .gitignore
-- [ ] P0-003 — Product/architecture/ops docs + ADRs 0001–0010 (`docs/`)
-- [ ] P0-004 — Research notes for every risky tech (`docs/research/`)
-- [ ] P0-005 — Monorepo scaffold: pnpm workspace + catalog, turbo.json, tsconfig.base, eslint flat config, prettier, vitest projects, root scripts
-- [ ] P0-006 — `infra/compose`: postgres 17 + mailpit (+ optional minio); `mise run compose` wrapper; `.env.example`
+- [x] P0-002 — Repo hygiene: LICENSE, CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, issue/PR templates, CODEOWNERS, .editorconfig, .gitignore
+- [x] P0-003 — Product/architecture/ops docs + ADRs 0001–0010 (`docs/`)
+- [x] P0-004 — Research notes for every risky tech (`docs/research/`)
+- [x] P0-005 — Monorepo scaffold: pnpm workspace + catalog, turbo.json, tsconfig.base, eslint flat config, prettier, vitest projects, root scripts
+- [x] P0-006 — `infra/compose`: postgres 17 + mailpit (+ optional minio); `mise run compose` wrapper; `.env.example`
 - [ ] P0-007 — `packages/proto`: buf v2 config, `patches/v1/common.proto` + `health`/hello slice, ts-proto generation committed, lint/format/breaking scripts
 - [ ] P0-008 — `apps/server`: Nest 11 gRPC microservice hello-world (`patches.v1.PingService`?) with config validation, JSON logger, graceful shutdown, health
 - [ ] P0-009 — `apps/tui`: Ink 7 hello-world that performs a real gRPC call to the server with deadline + metadata; renders errors cleanly; fullscreen + clean exit
 - [ ] P0-010 — Kitty graphics spike: detect capability, render test image via unicode placeholders inside Ink list, survive rerender/scroll/resize, clear on exit; fallback box
 - [ ] P0-011 — `packages/database`: TypeORM 1.x DataSource, snake naming strategy, migration scripts wired (`pnpm db:*`), smoke migration + test against real Postgres
-- [ ] P0-012 — GitHub Actions CI: format, lint, typecheck, buf lint/format/breaking, build, unit, integration (postgres service), migration check; dependabot
+- [x] P0-012 — GitHub Actions CI: format, lint, typecheck, buf lint/format/breaking, build, unit, integration (postgres service), migration check; dependabot
 - [ ] P0-013 — README with real, verified first-run commands
 - [ ] P0-014 — Phase 0 acceptance checklist (§157) verified end-to-end and recorded in `docs/product/roadmap.md`
 
