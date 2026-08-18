@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package patches.v1;
+
+// Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
+// exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
+// but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
+// Phase 6 (spec §140) — not part of this service yet.
+service SocialGraphService {
+  // v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50). Rejects a
+  // follow in either direction of an existing block.
+  rpc FollowActor(FollowActorRequest) returns (FollowActorResponse);
+
+  // Idempotent: unfollowing an actor the caller does not follow is not an error.
+  rpc UnfollowActor(UnfollowActorRequest) returns (UnfollowActorResponse);
+
+  // The caller's relationship with `actor_id` — requires an authenticated session, since there
+  // is no relationship to report for an anonymous caller.
+  rpc GetRelationship(GetRelationshipRequest) returns (GetRelationshipResponse);
+}
+
+// Mirrors spec §50's future follow states even though v0 only ever produces `NONE`/
+// `FOLLOWING` — `PENDING` is reserved for a later approval-gated follow flow.
+enum FollowState {
+  FOLLOW_STATE_UNSPECIFIED = 0;
+  FOLLOW_STATE_NONE = 1;
+  FOLLOW_STATE_PENDING = 2;
+  FOLLOW_STATE_FOLLOWING = 3;
+}
+
+message Relationship {
+  // The caller's follow state toward the target actor.
+  FollowState state = 1;
+
+  // True when the target actor follows the caller back.
+  bool followed_by = 2;
+
+  // True when the caller blocks the target actor.
+  bool blocking = 3;
+
+  // True when the caller mutes the target actor.
+  bool muting = 4;
+}
+
+message FollowActorRequest {
+  string actor_id = 1;
+}
+
+message FollowActorResponse {
+  Relationship relationship = 1;
+}
+
+message UnfollowActorRequest {
+  string actor_id = 1;
+}
+
+message UnfollowActorResponse {
+  Relationship relationship = 1;
+}
+
+message GetRelationshipRequest {
+  string actor_id = 1;
+}
+
+message GetRelationshipResponse {
+  Relationship relationship = 1;
+}

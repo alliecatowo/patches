@@ -20,10 +20,12 @@ import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
 } from './generated/patches/v1/auth.js';
+import type { RegistrationMode as RegistrationModeT } from './generated/patches/v1/node.js';
 import type {
   PostType as PostTypeT,
   PostVisibility as PostVisibilityT,
 } from './generated/patches/v1/posts.js';
+import type { FollowState as FollowStateT } from './generated/patches/v1/social_graph.js';
 
 export const POST_TYPE = {
   UNSPECIFIED: 'POST_TYPE_UNSPECIFIED' as PostTypeT,
@@ -52,4 +54,17 @@ export const GITHUB_LOGIN_STATUS = {
   EXPIRED: 'GIT_HUB_LOGIN_STATUS_EXPIRED' as GitHubLoginStatusT,
   DENIED: 'GIT_HUB_LOGIN_STATUS_DENIED' as GitHubLoginStatusT,
   COMPLETE: 'GIT_HUB_LOGIN_STATUS_COMPLETE' as GitHubLoginStatusT,
+} as const;
+
+export const FOLLOW_STATE = {
+  UNSPECIFIED: 'FOLLOW_STATE_UNSPECIFIED' as FollowStateT,
+  NONE: 'FOLLOW_STATE_NONE' as FollowStateT,
+  PENDING: 'FOLLOW_STATE_PENDING' as FollowStateT,
+  FOLLOWING: 'FOLLOW_STATE_FOLLOWING' as FollowStateT,
+} as const;
+
+export const REGISTRATION_MODE = {
+  UNSPECIFIED: 'REGISTRATION_MODE_UNSPECIFIED' as RegistrationModeT,
+  OPEN: 'REGISTRATION_MODE_OPEN' as RegistrationModeT,
+  INVITE_ONLY: 'REGISTRATION_MODE_INVITE_ONLY' as RegistrationModeT,
 } as const;

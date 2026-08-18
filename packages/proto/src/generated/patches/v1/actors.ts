@@ -40,6 +40,34 @@ export interface ActorCounts {
 }
 
 /**
+ * Bounded (<= 2 KiB serialized) inline identity presentation (spec §173). Rendering degrades
+ * by terminal capability (truecolor -> 256 -> 16 -> none) and a nameplate is never required to
+ * read a post. `badges` is server-attested only: `UpdateProfile` silently discards any badges
+ * a client sends (see the server mapper) — a user cannot self-assign badge text (spec §173).
+ */
+export interface Nameplate {
+  /**
+   * Hex color (e.g. "#7C3AED") or a "start,end" gradient pair. Empty means the terminal
+   * default.
+   */
+  nameColor: string;
+  /** A single narrow-width glyph rendered beside the handle. Empty means none. */
+  glyph: string;
+  /**
+   * Server-attested only (e.g. "moderator", "verified-domain") — never free text a user can
+   * set themselves (spec §173).
+   */
+  badges: string[];
+  avatarFrame: string;
+  /**
+   * Max 100 characters — reuses the `location_text` limit (spec §58); no separate limit is
+   * specified for this field.
+   */
+  statusLine: string;
+  profileBorder: string;
+}
+
+/**
  * A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
  * summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
  * `ActorCounts` comment for what's guaranteed in each case.
@@ -65,6 +93,8 @@ export interface Actor {
   isLocal: boolean;
   joinedAt: Timestamp | undefined;
   counts: ActorCounts | undefined;
+  /** Unset when the actor has never customized their presentation (spec §173). */
+  nameplate: Nameplate | undefined;
 }
 
 export interface GetActorRequest {
@@ -96,6 +126,11 @@ export interface UpdateProfileRequest {
   locationText: string;
   websiteUrl: string;
   updateMask: string[] | undefined;
+  /**
+   * `badges` is ignored server-side even when `"nameplate"` is in `update_mask` — badges are
+   * server-attested only (spec §173).
+   */
+  nameplate: Nameplate | undefined;
 }
 
 export interface UpdateProfileResponse {

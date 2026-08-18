@@ -11,7 +11,9 @@ import type {
   ActorGrpcClient,
   AuthGrpcClient,
   FeedGrpcClient,
+  NodeGrpcClient,
   PostGrpcClient,
+  SocialGraphGrpcClient,
   SystemGrpcClient,
 } from './constants.js';
 import { getProtoFiles } from './proto-path.js';
@@ -97,4 +99,28 @@ export function createFeedClient(
   options?: ChannelOptions,
 ): FeedGrpcClient {
   return buildClient<FeedGrpcClient>(SERVICE_NAMES.feed, target, credentials, options);
+}
+
+/** Build a `patches.v1.SocialGraphService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createSocialGraphClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): SocialGraphGrpcClient {
+  return buildClient<SocialGraphGrpcClient>(
+    SERVICE_NAMES.socialGraph,
+    target,
+    credentials,
+    options,
+  );
+}
+
+/** Build a `patches.v1.NodeService` client. See {@link createSystemClient} for the pattern. */
+export function createNodeClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): NodeGrpcClient {
+  return buildClient<NodeGrpcClient>(SERVICE_NAMES.node, target, credentials, options);
 }

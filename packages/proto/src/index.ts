@@ -34,6 +34,7 @@ export type {
   ListFollowingRequest,
   ListFollowingResponse,
   MediaRef,
+  Nameplate,
   SearchActorsRequest,
   SearchActorsResponse,
   UpdateProfileRequest,
@@ -109,13 +110,42 @@ export type {
   PostViewerState,
 } from './generated/patches/v1/posts.js';
 export type { PostType, PostVisibility } from './generated/patches/v1/posts.js';
+export type {
+  FollowActorRequest,
+  FollowActorResponse,
+  GetRelationshipRequest,
+  GetRelationshipResponse,
+  Relationship,
+  SocialGraphServiceClient,
+  SocialGraphServiceController,
+  UnfollowActorRequest,
+  UnfollowActorResponse,
+} from './generated/patches/v1/social_graph.js';
+export type { FollowState } from './generated/patches/v1/social_graph.js';
+export type {
+  GetNodeInfoRequest,
+  GetNodeInfoResponse,
+  NodeLimits,
+  NodeServiceClient,
+  NodeServiceController,
+} from './generated/patches/v1/node.js';
+export type { RegistrationMode } from './generated/patches/v1/node.js';
 
-export { CREDENTIAL_TYPE, GITHUB_LOGIN_STATUS, POST_TYPE, POST_VISIBILITY } from './enums.js';
+export {
+  CREDENTIAL_TYPE,
+  FOLLOW_STATE,
+  GITHUB_LOGIN_STATUS,
+  POST_TYPE,
+  POST_VISIBILITY,
+  REGISTRATION_MODE,
+} from './enums.js';
 export {
   createActorClient,
   createAuthClient,
   createFeedClient,
+  createNodeClient,
   createPostClient,
+  createSocialGraphClient,
   createSystemClient,
 } from './client.js';
 export {
@@ -134,7 +164,9 @@ export type {
   AuthGrpcClient,
   FeedGrpcClient,
   GrpcUnaryCall,
+  NodeGrpcClient,
   PostGrpcClient,
+  SocialGraphGrpcClient,
   SystemGrpcClient,
 } from './constants.js';
 export { getProtoDir, getProtoFiles, protoFile } from './proto-path.js';

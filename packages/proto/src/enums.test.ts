@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+import { RegistrationMode } from './generated/patches/v1/node.js';
 import { PostType, PostVisibility } from './generated/patches/v1/posts.js';
-import { CREDENTIAL_TYPE, GITHUB_LOGIN_STATUS, POST_TYPE, POST_VISIBILITY } from './enums.js';
+import { FollowState } from './generated/patches/v1/social_graph.js';
+import {
+  CREDENTIAL_TYPE,
+  FOLLOW_STATE,
+  GITHUB_LOGIN_STATUS,
+  POST_TYPE,
+  POST_VISIBILITY,
+  REGISTRATION_MODE,
+} from './enums.js';
 
 /**
  * `enums.ts` hand-mirrors these enum values so `index.ts` can export them as plain runtime
@@ -31,5 +40,13 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('GITHUB_LOGIN_STATUS matches GitHubLoginStatus', () => {
     expect(Object.values(GITHUB_LOGIN_STATUS).sort()).toEqual(generatedValues(GitHubLoginStatus));
+  });
+
+  it('FOLLOW_STATE matches FollowState', () => {
+    expect(Object.values(FOLLOW_STATE).sort()).toEqual(generatedValues(FollowState));
+  });
+
+  it('REGISTRATION_MODE matches RegistrationMode', () => {
+    expect(Object.values(REGISTRATION_MODE).sort()).toEqual(generatedValues(RegistrationMode));
   });
 });

@@ -53,7 +53,7 @@ export function getProtoFiles(): readonly string[] {
   if (cachedProtoFiles === undefined) {
     const dir = getProtoDir();
     cachedProtoFiles = Object.freeze(
-      ['common', 'system', 'auth', 'actors', 'posts', 'feeds'].map((name) =>
+      ['common', 'system', 'auth', 'actors', 'posts', 'feeds', 'social_graph', 'node'].map((name) =>
         join(dir, 'patches', 'v1', `${name}.proto`),
       ),
     );

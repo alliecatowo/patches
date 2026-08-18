@@ -80,6 +80,11 @@ export interface Post {
   deleted: boolean;
   counts: PostCounts | undefined;
   viewerState: PostViewerState | undefined;
+  /**
+   * Optional click-to-reveal label (e.g. "spoilers"); empty means none. Same length budget as
+   * `body` (spec §58).
+   */
+  contentWarning: string;
 }
 
 export interface CreatePostRequest {
@@ -97,6 +102,11 @@ export interface CreatePostRequest {
   inReplyToId: string;
   /** Up to 4 (spec §28), already-uploaded and `READY` media ids, in display order. */
   mediaIds: string[];
+  /**
+   * Optional click-to-reveal label (e.g. "spoilers"); empty means none. Same length budget as
+   * `body` (spec §58).
+   */
+  contentWarning: string;
 }
 
 export interface CreatePostResponse {

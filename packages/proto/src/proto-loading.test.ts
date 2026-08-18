@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(6);
+    expect(files.length).toBe(8);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }
@@ -48,6 +48,8 @@ describe('proto files', () => {
         SERVICE_NAMES.actor,
         SERVICE_NAMES.post,
         SERVICE_NAMES.feed,
+        SERVICE_NAMES.socialGraph,
+        SERVICE_NAMES.node,
         'PageInfo',
       ]),
     );
@@ -96,6 +98,10 @@ describe('proto files', () => {
     expect(serviceMethodNames(pkg, SERVICE_NAMES.feed)).toEqual(
       ['ListActorPosts', 'ListHomeFeed', 'ListLocalFeed'].sort(),
     );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.socialGraph)).toEqual(
+      ['FollowActor', 'GetRelationship', 'UnfollowActor'].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(['GetNodeInfo']);
   });
 
   it('declares every RPC as unary and fully-qualified under patches.v1', () => {

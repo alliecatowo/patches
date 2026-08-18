@@ -59,6 +59,7 @@ import type {
   ListActorPostsRequest,
   ListActorPostsResponse,
 } from './generated/patches/v1/feeds.js';
+import type { GetNodeInfoRequest, GetNodeInfoResponse } from './generated/patches/v1/node.js';
 import type {
   CreatePostRequest,
   CreatePostResponse,
@@ -69,6 +70,14 @@ import type {
   ListRepliesRequest,
   ListRepliesResponse,
 } from './generated/patches/v1/posts.js';
+import type {
+  FollowActorRequest,
+  FollowActorResponse,
+  GetRelationshipRequest,
+  GetRelationshipResponse,
+  UnfollowActorRequest,
+  UnfollowActorResponse,
+} from './generated/patches/v1/social_graph.js';
 import type {
   GetServerInfoRequest,
   GetServerInfoResponse,
@@ -104,6 +113,8 @@ export const SERVICE_NAMES = Object.freeze({
   actor: 'ActorService',
   post: 'PostService',
   feed: 'FeedService',
+  socialGraph: 'SocialGraphService',
+  node: 'NodeService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -218,4 +229,16 @@ export interface FeedGrpcClient extends Client {
   listHomeFeed: GrpcUnaryCall<ListHomeFeedRequest, ListHomeFeedResponse>;
   listLocalFeed: GrpcUnaryCall<ListLocalFeedRequest, ListLocalFeedResponse>;
   listActorPosts: GrpcUnaryCall<ListActorPostsRequest, ListActorPostsResponse>;
+}
+
+/** `patches.v1.SocialGraphService` as seen by a raw grpc-js client. */
+export interface SocialGraphGrpcClient extends Client {
+  followActor: GrpcUnaryCall<FollowActorRequest, FollowActorResponse>;
+  unfollowActor: GrpcUnaryCall<UnfollowActorRequest, UnfollowActorResponse>;
+  getRelationship: GrpcUnaryCall<GetRelationshipRequest, GetRelationshipResponse>;
+}
+
+/** `patches.v1.NodeService` as seen by a raw grpc-js client. */
+export interface NodeGrpcClient extends Client {
+  getNodeInfo: GrpcUnaryCall<GetNodeInfoRequest, GetNodeInfoResponse>;
 }
