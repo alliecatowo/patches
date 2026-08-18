@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   authEnvShape,
   baseEnvSchema,
+  booleanish,
   databaseEnvSchema,
   loadEnv,
   serverEnvShape,
@@ -43,6 +44,14 @@ const envObjectSchema = z.object({
 
   /** Human-readable instance name reported by SystemService.GetServerInfo. */
   INSTANCE_NAME: z.string().min(1).max(80).default('patches-dev'),
+
+  /**
+   * Enables the standard `grpc.reflection.v1alpha.ServerReflection` service (B-006) so
+   * `grpcurl -plaintext <host> list`/`describe` work without shipping `.proto` files to
+   * whoever's debugging. Dev-only by default — a production server has no business
+   * exposing its full schema to anything that can reach the port.
+   */
+  GRPC_REFLECTION: booleanish().default(false),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

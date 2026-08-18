@@ -28,6 +28,29 @@ describe('createGrpcMicroservice', () => {
     expect(addService).toHaveBeenCalledTimes(1);
   });
 
+  it('does not attach reflection by default', () => {
+    const { options } = createGrpcMicroservice('127.0.0.1:50051');
+    const addService = vi.fn();
+    const fakeServer = { addService } as unknown as Server;
+
+    options.options?.onLoadPackageDefinition?.({}, fakeServer);
+
+    // Only the health service, no grpc.reflection.v1alpha.ServerReflection.
+    expect(addService).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches grpc.reflection.v1alpha.ServerReflection when reflection: true (B-006)', () => {
+    const { options } = createGrpcMicroservice('127.0.0.1:50051', { reflection: true });
+    const addService = vi.fn();
+    const fakeServer = { addService } as unknown as Server;
+
+    options.options?.onLoadPackageDefinition?.({}, fakeServer);
+
+    // Health + two reflection service versions (v1 and v1alpha) is what
+    // @grpc/reflection's ReflectionService.addToServer registers.
+    expect(addService).toHaveBeenCalledTimes(3);
+  });
+
   it('starts NOT_SERVING and flips to SERVING via the returned health control', () => {
     // NOT_SERVING at construction (spec §89): a load balancer must never route to an
     // instance that hasn't finished starting up.
