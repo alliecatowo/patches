@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 
 import { Controller, Post, Req, Res } from '@nestjs/common';
 
+import { FederationMetricsService } from '../federation-metrics.service.js';
 import { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
 import { InboxService, type InboxRejectionReason } from '../services/inbox.service.js';
 import type { RequestWithRawBody } from './raw-body.middleware.js';
@@ -23,6 +24,7 @@ export class InboxController {
   constructor(
     private readonly inbox: InboxService,
     private readonly rateLimiter: PeerRateLimiterService,
+    private readonly metrics: FederationMetricsService,
   ) {}
 
   @Post('users/:handle/inbox')
@@ -47,6 +49,7 @@ export class InboxController {
       // rather than guessed at.
     }
     if (peerHost !== undefined && !this.rateLimiter.consume(peerHost)) {
+      this.metrics.increment('inbox_rejected_ratelimit', { domain: peerHost });
       res.statusCode = 429;
       res.end('Too many requests.');
       return;

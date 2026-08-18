@@ -91,6 +91,43 @@ curl 'http://127.0.0.1:8080/.well-known/webfinger?resource=acct:<handle>@localho
 curl -H 'accept: application/activity+json' 'http://127.0.0.1:8080/users/<handle>'
 ```
 
+## Metrics (A-036)
+
+`FederationMetricsService` (`apps/server/src/modules/federation/federation-metrics.service.ts`)
+keeps a process-local, in-memory counter registry — no Redis/Prometheus client in v0 (spec
+§12). Counters: `inbox_received`, `inbox_rejected_signature`, `inbox_rejected_ratelimit`,
+`inbox_ignored`, `inbox_handled` (all labeled `{domain, type}` where applicable), and
+`deliveries_enqueued`. Read the current snapshot with (loopback-only — see below; run this
+from the same machine as the node, e.g. over `ssh` or a Fly.io private-network proxy):
+
+```bash
+curl http://127.0.0.1:$HTTP_PORT/federation/metrics
+```
+
+Returns `{}` until at least one federation event has happened on this process, then something
+like `{"inbox_received":1,"inbox_handled{domain=b.test,type=Follow}":1}` — verified locally
+against a `FEDERATION_ENABLED=true` node built from `apps/server/dist/main.js`.
+
+`GET /federation/metrics` is **loopback-only**, not token-gated — the simplest control that
+still lets an operator reach it without provisioning a new secret. It also 404s if
+`FEDERATION_ENABLED` is false on that process, mirroring the rest of the federation HTTP
+surface. Counters reset to zero on every process restart; they are a point-in-time snapshot
+for debugging/dashboards, not a durable audit log (`InboxActivity`/`outbox_jobs` are the
+durable record of what actually happened).
+
+Every 60 seconds, the same snapshot is also written as a structured log line
+(`{"event":"federation_metrics", ...}`) at `LOG` level, so Fly's log aggregation captures it
+even if nobody ever curls the endpoint — only while `FEDERATION_ENABLED=true` on that process.
+
+`apps/worker` mirrors the delivery-side counters (`deliveries_succeeded`, `deliveries_failed`,
+`deliveries_dead`) in its own process, in `apps/worker/src/federation/delivery-metrics.ts` —
+**deliberately a separate registry** (`apps/worker` and `apps/server` are separate OS
+processes with separate memory; see that file's doc comment). The worker has no HTTP surface
+to expose a snapshot from today, so those counters are currently only observable indirectly,
+through the existing per-job structured logs (`FederationDeliverHandler`'s `SIGNER_MISSING`/
+`REJECTED_TERMINAL` warnings) — a worker-side snapshot endpoint or periodic log is a reasonable
+follow-up, not built here.
+
 ## Known gaps (tracked in `docs/architecture/federation.md` §4)
 
 - No Compose-based "two containers talking to each other" manual lab yet — `infra/compose/`
@@ -107,6 +144,7 @@ fed:lab`-style) but was not built or run in this task and so is not documented a
 
 `FEDERATION_ENABLED` must stay `false` on any node whose operator has not read and accepted
 `docs/architecture/federation.md` §5's readiness checklist — most of that checklist (a stable
-canonical domain, moderator tooling, federation telemetry, interoperability with a mainstream
-Fediverse implementation) is explicitly **not** satisfied by the Phase 8 lab. Turning the flag
+canonical domain, moderator tooling, interoperability with a mainstream Fediverse
+implementation) is explicitly **not** satisfied by the Phase 8 lab, even though `Update`
+semantics (A-035) and basic telemetry (A-036, see "Metrics" above) now are. Turning the flag
 on for anything other than a local, non-public lab is a policy decision, not a flag flip.
