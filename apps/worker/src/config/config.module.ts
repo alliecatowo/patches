@@ -10,6 +10,9 @@ import { validateEnv } from './env.schema.js';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      // `main.ts` loads the repo-root `.env` itself (non-production only); see the same
+      // setting in apps/server — reading `<cwd>/.env` here made tests cwd-dependent.
+      ignoreEnvFile: true,
       // `validate` runs before any provider is instantiated, so a malformed
       // environment aborts the boot instead of failing later at claim time.
       validate: validateEnv,

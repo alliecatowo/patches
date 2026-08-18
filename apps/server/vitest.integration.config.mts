@@ -19,6 +19,12 @@ function serverTestDatabaseUrl(): string | undefined {
 }
 
 const testDatabaseUrl = serverTestDatabaseUrl();
+if (testDatabaseUrl === undefined) {
+  console.warn(
+    '[apps/server] TEST_DATABASE_URL is not set — skipping the server integration suite ' +
+      '(every RPC now boots against PostgreSQL). Start it with `mise run compose -- up -d`.',
+  );
+}
 
 // Integration tests boot a real Nest microservice on a real port and talk to it
 // through @grpc/grpc-js. Kept in a separate project so `pnpm test` stays fast and
@@ -29,7 +35,8 @@ export default defineProject({
     name: 'server-integration',
     environment: 'node',
     globals: false,
-    include: ['test/**/*.integration.test.ts'],
+    include: testDatabaseUrl === undefined ? [] : ['test/**/*.integration.test.ts'],
+    passWithNoTests: true,
     // Runs before any test file is imported, which is the only point at which the
     // environment can still be changed — see test/support/env.ts.
     setupFiles: ['./test/support/setup-env.mts'],
