@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Server identity, protocol version negotiation and liveness (spec §83).
+//
+// This is a permanent, unauthenticated service: a client calls GetServerInfo
+// before anything else to learn whether it can talk to this instance at all.
+service SystemService {
+  // Returns the server build, the wire protocol version it speaks and the
+  // oldest client build it still accepts. Never requires authentication.
+  rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
+
+  // Cheap liveness/latency probe. Echoes back the nonce it was given so a
+  // client can distinguish a fresh reply from a cached one.
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message GetServerInfoRequest {}
+
+message GetServerInfoResponse {
+  // Server build version, semver (e.g. "0.1.0").
+  string server_version = 1;
+
+  // Wire protocol version. Bumped only when the meaning of existing protobuf
+  // fields changes in a way `buf breaking` cannot catch.
+  uint32 protocol_version = 2;
+
+  // Oldest client build this server still serves, semver. Clients older than
+  // this are rejected with FAILED_PRECONDITION.
+  string min_client_version = 3;
+
+  // Server wall clock, used by clients to render sane relative timestamps even
+  // when the local clock is wrong.
+  google.protobuf.Timestamp server_time = 4;
+
+  // Human-readable name of this instance (e.g. "patches.social").
+  string instance_name = 5;
+
+  // Opt-in capability flags this instance advertises (e.g. "media.uploads").
+  // Clients must tolerate unknown entries.
+  repeated string features = 6;
+}
+
+message PingRequest {
+  // Arbitrary client-chosen value, echoed back verbatim. Max 64 bytes.
+  string nonce = 1;
+}
+
+message PingResponse {
+  // The `nonce` from the request.
+  string nonce = 1;
+
+  // Server wall clock at the moment the ping was handled.
+  google.protobuf.Timestamp server_time = 2;
+}

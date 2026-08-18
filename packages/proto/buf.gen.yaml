@@ -1,0 +1,28 @@
+version: v2
+clean: true
+plugins:
+  - local: node_modules/.bin/protoc-gen-ts_proto
+    out: src/generated
+    opt:
+      # `nestJs=true` forces outputEncodeMethods/outputJsonMethods/outputClientImpl
+      # to false: the output is types + Nest decorators only. Wire (de)serialization
+      # is done at runtime by @grpc/proto-loader on both server and client.
+      - nestJs=true
+      - addGrpcMetadata=true
+      # `useDate=false` + `forceLong=string` (NOT the `useDate=true` the research
+      # note suggests): proto-loader is the actual (de)serializer here and it does
+      # not convert google.protobuf.Timestamp to a JS Date — it yields
+      # `{seconds, nanos}` with `seconds` as a string under `longs: String`.
+      # Generating `Date` would be a lie about the runtime shape. See
+      # `timestampToDate`/`dateToTimestamp` in src/index.ts.
+      - useDate=false
+      - forceLong=string
+      - esModuleInterop=true
+      - importSuffix=.js
+      - snakeToCamel=keys_json
+      - env=node
+      - useOptionals=none
+      - stringEnums=false
+    strategy: all
+inputs:
+  - directory: proto

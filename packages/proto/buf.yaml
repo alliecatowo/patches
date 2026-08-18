@@ -1,0 +1,13 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  # No `except` entries on purpose: every message follows the
+  # `<Method>Request` / `<Method>Response` convention that STANDARD enforces,
+  # so relaxing RPC_REQUEST_STANDARD_NAME / RPC_RESPONSE_STANDARD_NAME is not
+  # needed. Keep it that way — add an except only with a written reason.
+breaking:
+  use:
+    - WIRE_JSON
