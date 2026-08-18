@@ -42,22 +42,43 @@ node apps/tui/dist/cli.js --help
 
 ## Connecting to a node
 
-Every subcommand and the interactive TUI itself take a `--server`/`--node <host:port>` flag
-(or the `PATCHES_SERVER` environment variable). Against a locally-run dev server (no TLS
-certificate), also pass `--insecure` (or set `PATCHES_INSECURE=1`) so the client connects
-over plaintext gRPC instead of expecting TLS:
+**The client's default is the flagship node, `patches-social.fly.dev:443`, over TLS.** Run
+`patches` (or `patches ping`) with no flags and you're talking to it — no `--server`, no
+`--insecure`. It's invite-only today (`INVITE_ONLY=true`); get a code from an existing
+member to register.
+
+Every subcommand and the interactive TUI itself also take a `--server`/`--node <host:port>`
+flag (or the `PATCHES_SERVER` environment variable) to point at a different node instead —
+most commonly a locally-run dev server. Local dev servers don't have a real TLS certificate,
+so also pass `--insecure` (or set `PATCHES_INSECURE=1`) to connect over plaintext gRPC:
 
 ```bash
-patches --server 127.0.0.1:50051 --insecure          # open the interactive TUI
-patches ping --server 127.0.0.1:50051 --insecure      # one-shot connectivity check, JSON out, exit 0/1
-```
+patches                                                # open the TUI against the flagship node
+patches ping                                           # one-shot connectivity check, JSON out, exit 0/1
 
-Against a real (production) node, omit `--insecure` — the client expects a TLS-terminated
-`host:port` such as `grpc.patches.social:443`.
+patches --server 127.0.0.1:50051 --insecure            # open the TUI against a local dev server
+patches ping --server 127.0.0.1:50051 --insecure       # same, for local dev
+```
 
 Sessions are stored **per node**: `patches accounts` lists every (node, account) pair with a
 stored session on this machine, and a token is never sent to a node other than the one that
 issued it.
+
+## What doesn't work yet on the live node
+
+Verified against `patches-social.fly.dev` on 2026-08-18: register, login, `whoami`, posting,
+search, follow, like, reply, thread view, notifications, and home feed all work end to end.
+Three things don't yet, because they depend on credentials that are dashboard-only to
+provision and haven't been fetched into this environment (tracked as `B-031`):
+
+- **Image uploads.** The R2 bucket (`patches-media`) exists, but the node has no R2 S3 access
+  keys configured, so `Ctrl+A`-attach in compose will fail server-side.
+- **Verification email.** The node runs with `EMAIL_PROVIDER=console` (no Resend sending
+  domain verified yet), so verification codes are written to the server's logs
+  (`flyctl logs`), not delivered to your inbox. If your account needs email verification,
+  ask a node administrator to read the code from the logs for you in the meantime.
+- **Federation.** Disabled by design for v0 (`FEDERATION_ENABLED=false`) — this node only
+  talks to itself.
 
 ## Creating an account and signing in
 

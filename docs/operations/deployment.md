@@ -1,11 +1,16 @@
 # Deployment
 
-**Status: infrastructure-as-code exists (P7-001/P7-002), never deployed to a real Fly org.**
-`infra/docker/Dockerfile`, `infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are
-written and locally verified where that's possible without a Fly account (see "What's been
-verified" below) — but as of 2026-08-18 nothing here has run against production. Sections
-describing not-yet-exercised steps say so explicitly (`Status: planned`); don't read this as
-a description of a live deployment.
+**Status: deployed 2026-08-18.** The flagship node, Fly app `patches-social` (org
+"personal", region `iad`), is live at `patches-social.fly.dev:443` and has been exercised
+end to end with two real accounts (register, login, post, follow, like, reply, thread,
+notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile`,
+`infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it; the deploy
+workflow itself is still gated behind `vars.FLY_DEPLOY_ENABLED` (unset) — the live deploy so
+far was done by hand with `flyctl`, not yet through CI. Media uploads and verification email
+are **not** working on this node yet (dashboard-only R2/Resend credentials — see "Secrets"
+below and `tasks.md` B-031); federation is off by design. Sections describing genuinely
+not-yet-exercised steps (custom domain, autoscaling, log drain, Neon) still say
+`Status: planned`.
 
 Per `INITIAL_VISION.md` §§84–91, §122, §141.
 
@@ -122,9 +127,102 @@ generate`), and the `tsup` builds for `@patches/config`/`@patches/media`/
   `processes = ["server"]`, `[deploy].release_command`) matches
   `docs/research/fly-io.md`'s verified Fly config syntax. **Never deployed** — no Fly
   account in this environment.
-- `.github/workflows/deploy.yml` — `actionlint` clean. **Never run** — gated behind
-  `vars.FLY_DEPLOY_ENABLED` (unset), so it's a no-op even once merged, until a human wires
-  up a real Fly app + `FLY_API_TOKEN`.
+- `.github/workflows/deploy.yml` — `actionlint` clean. **Never run through CI** — still gated
+  behind `vars.FLY_DEPLOY_ENABLED` (unset), so the workflow itself is a no-op even though the
+  node it would deploy is now live (deployed by hand with `flyctl` instead — see "First
+  deploy" below).
+
+## First deploy (2026-08-18)
+
+The blocking `apps/server`/`apps/worker` `tsc` failure noted above (a different agent's
+concurrent, since-landed change) cleared, and the image built and deployed successfully.
+Exact commands run, in order:
+
+```bash
+flyctl apps create patches-social --org personal
+flyctl postgres create ...                                       # cluster patches-social-db
+flyctl postgres attach -a patches-social patches-social-db        # sets DATABASE_URL secret
+
+flyctl secrets set --config infra/fly/fly.toml -a patches-social \
+  JWT_PRIVATE_KEY=... JWT_PUBLIC_KEY=... FEDERATION_KEY_ENCRYPTION_KEY=...
+  # (DATABASE_URL was already set by `postgres attach`, above)
+
+flyctl deploy --config infra/fly/fly.toml --remote-only
+  # builds registry.fly.io/patches-social:build-<sha>, runs the release_command
+  # (node server/migrate.mjs) before the new server/worker Machines take traffic
+
+flyctl proxy 15432:5432 -a patches-social-db
+  # separate terminal, used to run patches-admin invite create against prod Postgres:
+  # DATABASE_URL=postgres://...@127.0.0.1:15432/patches \
+  #   pnpm --filter @patches/admin start invite create --by allie --max-uses 5
+```
+
+Secrets set (names only — see `docs/operations/local-development.md` for what each is):
+`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `FEDERATION_KEY_ENCRYPTION_KEY`. Not
+set (media/email disabled until dashboard-only credentials are fetched — `tasks.md` B-031):
+`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`,
+`RESEND_API_KEY`.
+
+Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production LOG_LEVEL=log
+GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-social.fly.dev
+NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
+EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
+
+**Gotcha: `LOG_LEVEL` is `log`, not `info`.** The server's logger factory
+(`apps/server/src/common/logging/logger.factory.ts`) uses Nest's own `LogLevel` union, whose
+"normal operation" level is literally named `log` — setting `LOG_LEVEL=info` (a very natural
+guess coming from most other Node logging libraries) is accepted by nothing here and either
+falls through to a default or produces confusing output; use `log`.
+
+**Production bug found and fixed during this deploy**: the Nest hybrid app (HTTP health
+listener + gRPC microservice in the same process) needed
+`connectMicroservice(options, { inheritAppConfig: true })` — without that second argument,
+every handled application error surfaced to gRPC clients as bare `INTERNAL` instead of the
+mapped `x-patches-error-code`/status. See `docs/agents/LEARNINGS.md` for the full entry.
+
+**Live smoke check**:
+
+```bash
+node apps/tui/dist/cli.js ping
+# {"ok":true,"target":"patches-social.fly.dev:443",...}
+```
+
+**Verified end to end** (tmux, two real accounts — first via `register` bootstrap since
+`users` was empty, second via an invite from `patches-admin invite create` run through the
+`flyctl proxy` above): register, login, `whoami`, compose + post, `/` search → profile,
+`f` follow, `l` like, `g n` notifications (LIKE + FOLLOW entries appear), `r` reply,
+`Enter` thread, `g h` home feed shows the followed account's post.
+
+**Not working in production yet** (see `tasks.md` B-031): image uploads (no R2 S3 access
+keys — the bucket `patches-media` exists via `wrangler r2 bucket create`, but generating S3
+credentials for it is dashboard-only), verification email (`EMAIL_PROVIDER=console` — codes
+land in `flyctl logs`, not an inbox; Resend needs a verified sending domain), federation
+(`FEDERATION_ENABLED=false` by design for v0.0).
+
+### "First deploy" checklist
+
+- [x] Fly app created (`patches-social`, org personal, region `iad`).
+- [x] Postgres provisioned and attached (Fly Postgres cluster `patches-social-db`; not yet
+      Fly Managed Postgres — see "Production database" above).
+- [x] Required secrets set (`JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`,
+      `FEDERATION_KEY_ENCRYPTION_KEY`; `DATABASE_URL` set automatically by `postgres attach`).
+- [x] Image built and deployed (`flyctl deploy --config infra/fly/fly.toml --remote-only`).
+- [x] `release_command` (`node server/migrate.mjs`) ran migrations successfully before traffic
+      cutover.
+- [x] `server` (gRPC 50051, Fly TLS on 443, `h2_backend`) and `worker` process groups both
+      running.
+- [x] Smoke ping passes (`patches ping` against the live host).
+- [x] End-to-end social loop verified with two real accounts.
+- [ ] R2 media credentials set (**planned** — dashboard-only, `tasks.md` B-031).
+- [ ] Resend sending domain verified (**planned** — dashboard-only, `tasks.md` B-031).
+- [ ] Deploy workflow exercised through CI (**planned** — `vars.FLY_DEPLOY_ENABLED` still
+      unset; this deploy was done by hand).
+- [ ] Custom domain `patches.social` (**planned** — node currently only reachable at
+      `patches-social.fly.dev`).
+- [ ] Fly Managed Postgres or Neon switch (**planned** — see "Production database" above).
+- [ ] Autoscaling / `[[vm]]` sizing tuned for real traffic (**planned** — default single
+      Machine per process group so far).
+- [ ] Log drain wired up (**planned** — `fly logs`/dashboard live-tail only today).
 
 ## Process groups (`infra/fly/fly.toml`)
 
@@ -166,15 +264,28 @@ additional thing from Fly's platform-level check and doesn't substitute for it.
 "hybrid app" pattern, `docs/research/nestjs-grpc-protobuf.md` §3) and point an `http_checks`
 entry at it instead, once that's in scope for an `apps/server`-owning task.
 
-## Production database: Fly Managed Postgres
+## Production database
 
 Per `docs/research/fly-io.md` §6 (verified 2026-08-18): Fly now steers new provisioning
 toward **Fly Managed Postgres** (`fly mpg create`/`fly mpg attach`) rather than the older
 self-managed "Fly Postgres" (`fly postgres create`), which Fly's own docs now describe as
-unsupported for new projects. `docs/decisions/0003-typeorm-postgres.md` already specifies
-Fly Managed Postgres — no correction needed there.
+unsupported for new projects. `docs/decisions/0003-typeorm-postgres.md` specifies Fly Managed
+Postgres as the intended target.
 
-**Status: planned.**
+**What actually happened on the first deploy (2026-08-18)**: the live node runs on a **Fly
+Postgres cluster** (`patches-social-db`), not Fly Managed Postgres — `flyctl postgres attach`
+was used and set the `DATABASE_URL` secret automatically. The original plan was to use Neon
+instead (or Fly Managed Postgres), but `neonctl` isn't authenticated in this environment, so
+Fly Postgres was the pragmatic choice to get a working node live. Switching to Fly Managed
+Postgres or Neon later is a planned follow-up, not required for the node to function today.
+
+```bash
+# what was actually run:
+flyctl postgres create ...            # cluster patches-social-db
+flyctl postgres attach -a patches-social patches-social-db   # sets DATABASE_URL secret
+```
+
+**Status: planned** (Fly Managed Postgres path below — not what the live node uses):
 
 ```bash
 fly mpg create --name patches-db --org <org> --region iad --plan Basic

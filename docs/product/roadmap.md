@@ -5,7 +5,7 @@ document restates the execution roadmap and acceptance checklists in one place s
 be tracked without re-reading the full spec. Update the status line at the top of each phase
 as work lands — don't let this drift into fiction.
 
-**As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 deploy artifacts exist but no public node has been deployed yet.**
+**As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 is implemented and deployed — the flagship node `patches-social.fly.dev` is live and verified end to end. Media/email credentials (R2, Resend) are still pending — see `tasks.md` B-031.**
 
 ## Release sequence (§176)
 
@@ -147,13 +147,23 @@ depends on it. Phase 1's browserless paths (password, SSH) remain the primary on
 
 ## Phase 7 — deploy public v0
 
-**Status: implemented, not yet deployed**
+**Status: implemented and deployed (patches-social.fly.dev); media/email credentials pending**
 
-Deploy: Fly server, Fly Managed Postgres, worker, R2, Resend, production domain, secrets,
-health checks. Add: structured logs, backup docs, smoke tests.
+Deployed: Fly server + worker (`patches-social`), Postgres (Fly Postgres cluster
+`patches-social-db`; Fly Managed Postgres/Neon switch still planned — see
+`docs/operations/deployment.md`), secrets, TLS via Fly, structured logs, migrations on
+release. Verified end to end with two real accounts (register, login, post, follow, like,
+reply, thread, notifications, home feed) and a passing smoke `patches ping`. Not yet live:
+R2 media credentials and a verified Resend sending domain (both dashboard-only to provision —
+`tasks.md` B-031), a production domain (`patches.social`, currently `patches-social.fly.dev`
+only), and running the deploy workflow through CI (still gated on
+`vars.FLY_DEPLOY_ENABLED`; this deploy was done by hand).
 
 **Success criteria:** a user on another computer can run `npm install -g patches`, `patches`,
-and use the real network.
+and use the real network. **Partially met**: a user on another computer can build from a
+source checkout and use the real, live network today (see README "Try the live node"); the
+published `npm install -g` path is still planned (package depends on two unpublished
+workspace packages).
 
 ---
 
@@ -351,29 +361,43 @@ And administrators can:
 
 ### MVP deployment checklist
 
-- [ ] production domain configured _(needs live environment)_,
-- [ ] TLS works _(needs live environment)_,
-- [ ] gRPC through Fly works _(needs live environment)_,
-- [ ] Managed Postgres configured _(needs live environment)_,
-- [ ] R2 configured _(needs live environment)_,
-- [ ] worker configured _(needs live environment)_,
-- [ ] email delivery configured _(needs live environment)_,
-- [x] migrations deploy automatically but explicitly _(release-command mechanism + migration
-      CLI verified locally; not yet exercised in a live Fly deploy)_,
+- [ ] production domain configured _(node is live at `patches-social.fly.dev`; the intended
+      custom domain `patches.social` is still planned — `docs/operations/deployment.md`)_,
+- [x] TLS works _(Fly-terminated TLS on 443, confirmed by `patches ping` over TLS against the
+      live node)_,
+- [x] gRPC through Fly works _(confirmed live — `h2_backend`, verified end to end with real
+      accounts, see `docs/operations/deployment.md#first-deploy-2026-08-18`)_,
+- [ ] Managed Postgres configured _(live node uses a Fly Postgres cluster, not Fly Managed
+      Postgres yet — planned switch, `docs/operations/deployment.md`)_,
+- [ ] R2 configured _(bucket exists; S3 access keys are dashboard-only and not yet fetched —
+      uploads disabled in prod, `tasks.md` B-031)_,
+- [x] worker configured _(`worker` process group live on `patches-social`)_,
+- [ ] email delivery configured _(`EMAIL_PROVIDER=console` — Resend sending domain not yet
+      verified, `tasks.md` B-031)_,
+- [x] migrations deploy automatically but explicitly _(confirmed live — `release_command`
+      (`node server/migrate.mjs`) ran migrations successfully before the 2026-08-18 deploy's
+      Machines took traffic)_,
 - [x] secrets are not in the repository,
-- [ ] production health checks work _(needs live environment)_,
+- [x] production health checks work _(Fly TCP check against the gRPC port passing on the live
+      node; a real HTTP health check remains a documented follow-up, see
+      `docs/operations/deployment.md#health-checks`)_,
 - [x] structured logs work,
 - [x] error monitoring works or a documented alternative exists _(structured-log-only
       alternative documented — `docs/operations/deployment.md#error-monitoring`; A-033)_,
 - [x] backup strategy exists _(documented — `docs/operations/backups.md`; not yet exercised
-      against a live Postgres instance)_,
+      against the live Postgres instance)_,
 - [x] restoration procedure is documented _(`docs/operations/backups.md`)_,
 - [x] rate limiting exists,
 - [x] integration suite passes,
-- [ ] smoke tests pass after deploy _(needs live environment)_,
-- [ ] README installation works from a clean environment _(needs live environment)_,
-- [ ] npm package install works _(needs live environment — packages not yet published)_,
-- [ ] TUI works against production _(needs live environment)_,
+- [x] smoke tests pass after deploy _(`patches ping` against `patches-social.fly.dev:443`
+      returns `{"ok":true,...}`)_,
+- [ ] README installation works from a clean environment _(README's "Try the live node" steps
+      have not been run from a genuinely clean checkout by a third party yet)_,
+- [ ] npm package install works _(needs a real registry publish — packages not yet
+      published)_,
+- [x] TUI works against production _(verified end to end with two real accounts on
+      `patches-social.fly.dev` — register, login, post, follow, like, reply, thread,
+      notifications, home feed)_,
 - [x] user documentation exists _(`docs/user-guide.md`; A-034)_,
 - [ ] moderation guidelines exist _(`docs/operations/moderation.md` covers admin workflow;
       public-facing community rules are a v0.0 MVP-polish item, not yet written)_.
