@@ -16,7 +16,9 @@ import { runKeys } from './cli/keys.js';
 import { runLogin } from './cli/login.js';
 import { runLogout } from './cli/logout.js';
 import { runPing } from './cli/ping.js';
+import { runProfile } from './cli/profile.js';
 import { runRegister } from './cli/register.js';
+import { runVerify } from './cli/verify.js';
 import { runWhoami } from './cli/whoami.js';
 import { App } from './app/App.js';
 import { installTerminalCleanup } from './terminal/cleanup.js';
@@ -56,6 +58,9 @@ async function main(): Promise<number> {
   if (args.command === 'accounts') return runAccounts(rest, { io, env: process.env });
   if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });
   if (args.command === 'keys') return runKeys(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'verify') return runVerify(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'profile')
+    return runProfile(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

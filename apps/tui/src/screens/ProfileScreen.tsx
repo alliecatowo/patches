@@ -53,6 +53,9 @@ export interface ProfileScreenProps {
   onReportActor?: ((actor: Actor) => void) | undefined;
   /** `v` — opens this actor's Patches Page (P45-006). */
   onVisitPage?: ((actor: Actor) => void) | undefined;
+  /** `e` — only offered on the viewer's own profile (`actorId === viewerActorId`):
+   * opens `EditProfileScreen` (A-027). */
+  onEditProfile?: ((actor: Actor) => void) | undefined;
 }
 
 type FollowUi =
@@ -80,6 +83,7 @@ export function ProfileScreen({
   ensureAccessToken,
   onReportActor,
   onVisitPage,
+  onEditProfile,
 }: ProfileScreenProps): ReactElement {
   const plain = usePlainMode();
   const actorState = useActor(api, actorId, knownActor);
@@ -192,6 +196,10 @@ export function ProfileScreen({
       }
       if (input === 'v' && actorState.status === 'ready') {
         onVisitPage?.(actorState.actor);
+        return;
+      }
+      if (input === 'e' && actorState.status === 'ready' && actorId === viewerActorId) {
+        onEditProfile?.(actorState.actor);
       }
     },
     { isActive: isActive && actorState.status === 'ready' },
@@ -289,6 +297,9 @@ export function ProfileScreen({
           <Text color={theme.muted}>
             {counts.posts} posts · {counts.followers} followers · {counts.following} following
           </Text>
+        ) : null}
+        {actorId === viewerActorId && onEditProfile !== undefined ? (
+          <Text color={theme.muted}>e edit profile</Text>
         ) : null}
         {followUi.status === 'ready' ? (
           <Text color={theme.muted}>

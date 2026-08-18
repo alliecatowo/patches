@@ -90,6 +90,7 @@ import {
   type ReportGuestbookEntryResponse,
   type ReportPostRequest,
   type ReportPostResponse,
+  type ResendVerificationResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type Session,
@@ -107,6 +108,10 @@ import {
   type UnmuteActorResponse,
   type UpdatePageRequest,
   type UpdatePageResponse,
+  type UpdateProfileRequest,
+  type UpdateProfileResponse,
+  type VerifyEmailRequest,
+  type VerifyEmailResponse,
 } from '@patches/proto';
 
 import type { PatchesApi } from '../src/api/client.js';
@@ -184,8 +189,17 @@ export interface FakeUser {
   password: string;
   displayName: string;
   bio: string;
+  locationText?: string;
+  websiteUrl?: string;
   /** Seeded directly — no `UpdateNameplate` RPC in this fake (B-022 nameplate tests). */
   nameplate?: Nameplate;
+  /** Defaults to `true` (most tests don't care) — set `false` to exercise the
+   * unverified-email banner/`verify`/`resendVerification` paths (A-028). Mutated
+   * in place by `verifyEmail` once the matching `verificationCode` is presented. */
+  emailVerified?: boolean;
+  /** The code `verifyEmail` accepts for this user — `undefined` means no code has
+   * been "sent" (every `verifyEmail` call for this user fails). */
+  verificationCode?: string;
 }
 
 interface FakeSession {
@@ -221,6 +235,9 @@ function grpcError(code: number, message: string): Error & { code: number } {
 export class FakeApiHandle {
   readonly api: PatchesApi;
   readonly target: string;
+  /** Every user id `resendVerification` was called for, in call order — tests assert
+   * against this rather than the fake tracking a resend "count" per user (A-028). */
+  readonly resendVerificationCalls: string[] = [];
 
   private readonly users = new Map<string, FakeUser>();
   private readonly posts: Post[] = []; // newest first
@@ -273,6 +290,8 @@ export class FakeApiHandle {
       login: (request: LoginRequest) => this.login(request),
       refreshSession: (request: RefreshSessionRequest) => this.refreshSession(request),
       logout: () => Promise.resolve({}),
+      verifyEmail: (request: VerifyEmailRequest) => this.verifyEmail(request),
+      resendVerification: (accessToken: string) => this.resendVerification(accessToken),
       beginSshLogin: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: no ssh agent')),
       completeSshLogin: () =>
@@ -284,6 +303,8 @@ export class FakeApiHandle {
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
       searchActors: (request: SearchActorsRequest) => this.searchActors(request),
+      updateProfile: (request: UpdateProfileRequest, accessToken: string) =>
+        this.updateProfile(request, accessToken),
       listActorPosts: (request: ListActorPostsRequest) => this.listActorPosts(request),
       listLocalFeed: (request: ListLocalFeedRequest) => this.listLocalFeed(request),
       listHomeFeed: (request: ListHomeFeedRequest, accessToken: string) =>
@@ -514,8 +535,8 @@ export class FakeApiHandle {
       handle: user.handle,
       displayName: user.displayName,
       bio: user.bio,
-      locationText: '',
-      websiteUrl: '',
+      locationText: user.locationText ?? '',
+      websiteUrl: user.websiteUrl ?? '',
       avatar: undefined,
       isLocal: true,
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
@@ -570,7 +591,7 @@ export class FakeApiHandle {
       accessExpiresAt: dateToTimestamp(new Date(now + 15 * 60 * 1000)),
       refreshToken,
       refreshExpiresAt: dateToTimestamp(new Date(now + 30 * 24 * 60 * 60 * 1000)),
-      emailVerified: true,
+      emailVerified: user.emailVerified ?? true,
       node: this.target,
     };
   }
@@ -613,6 +634,32 @@ export class FakeApiHandle {
     return this.sessions.get(accessToken);
   }
 
+  // ---- Email verification (A-028, spec §37/§165) ----
+
+  /** Unauthenticated — matches `code` against whichever user's `verificationCode`
+   * was seeded with it (`addUser({ ..., verificationCode: '123456' })`), same as the
+   * real server has no session to key off yet either. */
+  private verifyEmail(request: VerifyEmailRequest): Promise<VerifyEmailResponse> {
+    const user = [...this.users.values()].find(
+      (candidate) =>
+        candidate.verificationCode !== undefined && candidate.verificationCode === request.code,
+    );
+    if (user === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.INVALID_ARGUMENT, 'That code is invalid.'));
+    }
+    user.emailVerified = true;
+    return Promise.resolve({ emailVerified: true });
+  }
+
+  private resendVerification(accessToken: string): Promise<ResendVerificationResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    this.resendVerificationCalls.push(session.userId);
+    return Promise.resolve({});
+  }
+
   private getActor(request: GetActorRequest): Promise<GetActorResponse> {
     const user = this.users.get(request.id);
     if (user === undefined) {
@@ -626,6 +673,29 @@ export class FakeApiHandle {
     if (user === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That no longer exists.'));
     }
+    return Promise.resolve({ actor: this.toActor(user) });
+  }
+
+  /** Applies only the fields named in `updateMask` (spec: `actors.proto`'s
+   * `UpdateProfileRequest` — field names, snake_case, e.g. `'display_name'`), same
+   * contract as the real `ActorService.UpdateProfile` (`apps/server/.../actor.service.ts`). */
+  private updateProfile(
+    request: UpdateProfileRequest,
+    accessToken: string,
+  ): Promise<UpdateProfileResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const user = this.users.get(session.userId);
+    if (user === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const mask = new Set(request.updateMask ?? []);
+    if (mask.has('display_name')) user.displayName = request.displayName;
+    if (mask.has('bio')) user.bio = request.bio;
+    if (mask.has('location_text')) user.locationText = request.locationText;
+    if (mask.has('website_url')) user.websiteUrl = request.websiteUrl;
     return Promise.resolve({ actor: this.toActor(user) });
   }
 
