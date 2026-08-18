@@ -45,4 +45,56 @@ export class AppConfigService {
   get databaseUrl(): string | undefined {
     return this.get('DATABASE_URL');
   }
+
+  get databaseSsl(): boolean {
+    return this.get('DATABASE_SSL');
+  }
+
+  get databasePoolMax(): number {
+    return this.get('DATABASE_POOL_MAX');
+  }
+
+  get inviteOnly(): boolean {
+    return this.get('INVITE_ONLY');
+  }
+
+  /** Canonical domain of this node (spec §163, §169). */
+  get nodeDomain(): string {
+    return this.get('NODE_DOMAIN');
+  }
+
+  get accessTokenTtlSeconds(): number {
+    return this.get('ACCESS_TOKEN_TTL');
+  }
+
+  get refreshTokenTtlSeconds(): number {
+    return this.get('REFRESH_TOKEN_TTL');
+  }
+
+  /**
+   * PEM PKCS#8 Ed25519 signing key, decoded from its base64 env form. Undefined only in
+   * non-production environments that have not run `pnpm keys:generate` yet — `TokenService`
+   * turns that into a boot failure the first time a token is needed, not a silent unsigned
+   * token.
+   */
+  get jwtPrivateKeyPem(): string | undefined {
+    return decodePem(this.get('JWT_PRIVATE_KEY'));
+  }
+
+  /** PEM SPKI Ed25519 verification key, decoded from its base64 env form. */
+  get jwtPublicKeyPem(): string | undefined {
+    return decodePem(this.get('JWT_PUBLIC_KEY'));
+  }
+
+  get argon2Options(): { memoryCost: number; timeCost: number; parallelism: number } {
+    return {
+      memoryCost: this.get('ARGON2_MEMORY_KIB'),
+      timeCost: this.get('ARGON2_TIME_COST'),
+      parallelism: this.get('ARGON2_PARALLELISM'),
+    };
+  }
+}
+
+function decodePem(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : Buffer.from(value, 'base64').toString('utf8');
 }

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { baseEnvSchema, databaseEnvSchema, loadEnv, serverEnvShape } from '@patches/config';
+import {
+  authEnvShape,
+  baseEnvSchema,
+  databaseEnvSchema,
+  loadEnv,
+  serverEnvShape,
+} from '@patches/config';
 
 export { ConfigError } from '@patches/config';
 export type { ConfigIssue } from '@patches/config';
@@ -14,6 +20,8 @@ export type { ConfigIssue } from '@patches/config';
  *    `common/logging/logger.factory.ts`, which indexes into Nest's `LogLevel` list.
  *  - `DATABASE_URL` is optional here (persistence lands in Phase 1) but must be a
  *    valid Postgres URL once set, and production must always set it.
+ *  - auth variables (signing keys, token TTLs, Argon2id cost, `NODE_DOMAIN`) come from
+ *    `authEnvShape`; the signing keys are optional in dev but required in production.
  *  - `PUBLIC_ORIGIN` keeps a dev-friendly default; `@patches/config`'s shared shape
  *    leaves it required since not every consumer wants the same default.
  *
@@ -26,6 +34,9 @@ const envObjectSchema = z.object({
   ...baseEnvSchema.shape,
   ...databaseEnvSchema.shape,
   ...serverEnvShape,
+  // Spread after `serverEnvShape` on purpose: both declare JWT_PRIVATE_KEY/JWT_PUBLIC_KEY and
+  // the auth shape's versions are the strict ones (base64-encoded PEM, label-checked).
+  ...authEnvShape,
   LOG_LEVEL: nestLogLevelSchema,
   DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL.optional(),
   PUBLIC_ORIGIN: serverEnvShape.PUBLIC_ORIGIN.default('http://localhost:3000'),
@@ -35,12 +46,20 @@ const envObjectSchema = z.object({
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
-  if (value.NODE_ENV === 'production' && !value.DATABASE_URL) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['DATABASE_URL'],
-      message: 'DATABASE_URL is required when NODE_ENV=production',
-    });
+  if (value.NODE_ENV !== 'production') return;
+
+  // Production-only requirements live here rather than in the base types so that a
+  // misconfigured deploy fails with a listed configuration error naming the variable,
+  // not a type error somewhere downstream.
+  const requiredInProduction = ['DATABASE_URL', 'JWT_PRIVATE_KEY', 'JWT_PUBLIC_KEY'] as const;
+  for (const key of requiredInProduction) {
+    if (!value[key]) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `${key} is required when NODE_ENV=production`,
+      });
+    }
   }
 });
 
