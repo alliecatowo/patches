@@ -8,6 +8,8 @@ import {
   KittyGraphicsRenderer,
   buildFallbackBox,
   createRenderer,
+  MAX_INPUT_BYTES,
+  MediaTooLargeError,
   type MediaStdout,
 } from './renderer.js';
 
@@ -286,5 +288,32 @@ describe('createRenderer', () => {
     const stdout = new RecordingStdout();
     expect(createRenderer(KITTY_CAPS, stdout).kind).toBe('kitty');
     expect(createRenderer({ ...KITTY_CAPS, kitty: false }, stdout).kind).toBe('fallback');
+  });
+});
+
+describe('bounded input (spec §153)', () => {
+  const oversized: Uint8Array = new Uint8Array(MAX_INPUT_BYTES + 1);
+
+  it('KittyGraphicsRenderer rejects input over MAX_INPUT_BYTES before decoding it', async () => {
+    const renderer = new KittyGraphicsRenderer(new RecordingStdout(), KITTY_CAPS);
+    await expect(
+      renderer.prepare({ bytes: oversized, mime: 'image/png' }, { maxCols: 20, maxRows: 10 }),
+    ).rejects.toBeInstanceOf(MediaTooLargeError);
+  });
+
+  it('FallbackMediaRenderer rejects input over MAX_INPUT_BYTES before decoding it', async () => {
+    const renderer = new FallbackMediaRenderer();
+    await expect(
+      renderer.prepare({ bytes: oversized, mime: 'image/png' }, { maxCols: 20, maxRows: 3 }),
+    ).rejects.toBeInstanceOf(MediaTooLargeError);
+  });
+
+  it('accepts a normal image well under MAX_INPUT_BYTES', async () => {
+    const renderer = new FallbackMediaRenderer();
+    const bytes = await solidPng(10, 10);
+    expect(bytes.byteLength).toBeLessThan(MAX_INPUT_BYTES);
+    await expect(
+      renderer.prepare({ bytes, mime: 'image/png' }, { maxCols: 20, maxRows: 3 }),
+    ).resolves.toBeDefined();
   });
 });
