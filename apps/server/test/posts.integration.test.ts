@@ -82,6 +82,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         body: `hello from an integration test ${testSuffix()}`,
         linkUrl: '',
         visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+        contentWarning: '',
         inReplyToId: '',
         mediaIds: [],
         ...overrides,

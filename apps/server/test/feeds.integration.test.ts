@@ -18,7 +18,12 @@ import {
   type PostGrpcClient,
 } from '@patches/proto';
 import { PostVisibility } from '@patches/proto/nest';
-import { createTestUser } from '@patches/testkit';
+import {
+  createTestBlock,
+  createTestFollow,
+  createTestMute,
+  createTestUser,
+} from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -32,10 +37,10 @@ import {
 } from './support/test-server.js';
 
 /**
- * `FeedService` end-to-end over real gRPC against real PostgreSQL (spec §118–§119): chronological
- * keyset pagination (§46) with no duplicates/gaps across pages, the visibility filter seam
- * (`FOLLOWERS`-only posts never appear in a list view yet — spec §59), and `ListHomeFeed`'s
- * honest `NOT_IMPLEMENTED`.
+ * `FeedService` end-to-end over real gRPC against real PostgreSQL (spec §118–§119):
+ * chronological keyset pagination (§46) with no duplicates/gaps across pages, the visibility
+ * filter seam (`FOLLOWERS`-visibility posts, blocks, mutes — spec §59, §62–63), and
+ * `ListHomeFeed`'s fan-out-on-read scoping (own posts + followed actors only).
  */
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -88,6 +93,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           body: `feed test post ${testSuffix()}`,
           linkUrl: '',
           visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+          contentWarning: '',
           inReplyToId: '',
           mediaIds: [],
           ...overrides,
@@ -111,6 +117,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               body: `post ${String(index)}`,
               linkUrl: '',
               visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+              contentWarning: '',
               inReplyToId: '',
               mediaIds: [],
             },
@@ -146,6 +153,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             body: 'followers only',
             linkUrl: '',
             visibility: PostVisibility.POST_VISIBILITY_FOLLOWERS,
+            contentWarning: '',
             inReplyToId: '',
             mediaIds: [],
           },
@@ -158,6 +166,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             body: 'public',
             linkUrl: '',
             visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+            contentWarning: '',
             inReplyToId: '',
             mediaIds: [],
           },
@@ -182,16 +191,118 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         );
         expect(page.posts.some((post) => post.id === id)).toBe(true);
       });
+
+      it('hides a blocked-either-direction author from an authenticated viewer (§62)', async () => {
+        const viewer = await registerTestActor(auth, dataSource, inviterUserId);
+        const blocked = await registerTestActor(auth, dataSource, inviterUserId);
+        await createTestBlock(dataSource.manager, {
+          blockerActorId: viewer.actorId,
+          blockedActorId: blocked.actorId,
+        });
+
+        const response = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          {
+            clientRequestId: randomUUID(),
+            body: `blocked author post ${testSuffix()}`,
+            linkUrl: '',
+            visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+            contentWarning: '',
+            inReplyToId: '',
+            mediaIds: [],
+          },
+          { accessToken: blocked.accessToken },
+        );
+        const blockedPostId = response.post?.id;
+
+        const anonymousPage = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+          feeds.listLocalFeed.bind(feeds),
+          { cursor: '', limit: 50 },
+        );
+        expect(anonymousPage.posts.some((post) => post.id === blockedPostId)).toBe(true);
+
+        const viewerPage = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+          feeds.listLocalFeed.bind(feeds),
+          { cursor: '', limit: 50 },
+          { accessToken: viewer.accessToken },
+        );
+        expect(viewerPage.posts.some((post) => post.id === blockedPostId)).toBe(false);
+      });
     });
 
     describe('ListHomeFeed', () => {
-      it('returns UNIMPLEMENTED rather than an invented "own posts" feed (§59)', async () => {
+      it('includes own posts and followed actors, excludes everyone else (§59)', async () => {
+        const viewer = await registerTestActor(auth, dataSource, inviterUserId);
+        const followed = await registerTestActor(auth, dataSource, inviterUserId);
+        const stranger = await registerTestActor(auth, dataSource, inviterUserId);
+        await createTestFollow(dataSource.manager, {
+          followerActorId: viewer.actorId,
+          followeeActorId: followed.actorId,
+        });
+
+        const ownPostId = await createPostAs(viewer.accessToken, 'my own post');
+        const followedPostId = await createPostAs(followed.accessToken, 'a post I should see');
+        const strangerPostId = await createPostAs(stranger.accessToken, 'a post I should not see');
+
+        const page = await callUnary<ListHomeFeedRequest, ListHomeFeedResponse>(
+          feeds.listHomeFeed.bind(feeds),
+          { cursor: '', limit: 50 },
+          { accessToken: viewer.accessToken },
+        );
+        const ids = page.posts.map((post) => post.id);
+        expect(ids).toContain(ownPostId);
+        expect(ids).toContain(followedPostId);
+        expect(ids).not.toContain(strangerPostId);
+      });
+
+      it('excludes a muted followed actor (§63)', async () => {
+        const viewer = await registerTestActor(auth, dataSource, inviterUserId);
+        const muted = await registerTestActor(auth, dataSource, inviterUserId);
+        await createTestFollow(dataSource.manager, {
+          followerActorId: viewer.actorId,
+          followeeActorId: muted.actorId,
+        });
+        await createTestMute(dataSource.manager, {
+          muterActorId: viewer.actorId,
+          mutedActorId: muted.actorId,
+        });
+
+        const mutedPostId = await createPostAs(muted.accessToken, 'muted but still followed');
+
+        const page = await callUnary<ListHomeFeedRequest, ListHomeFeedResponse>(
+          feeds.listHomeFeed.bind(feeds),
+          { cursor: '', limit: 50 },
+          { accessToken: viewer.accessToken },
+        );
+        expect(page.posts.map((post) => post.id)).not.toContain(mutedPostId);
+      });
+
+      it('requires authentication', async () => {
         const error = await expectRejection<ListHomeFeedRequest, ListHomeFeedResponse>(
           feeds.listHomeFeed.bind(feeds),
           { cursor: '', limit: 20 },
         );
-        expect(error.code).toBe(GrpcStatus.UNIMPLEMENTED);
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
       });
     });
+
+    async function createPostAs(accessToken: string, body: string): Promise<string> {
+      const response = await callUnary<CreatePostRequest, CreatePostResponse>(
+        posts.createPost.bind(posts),
+        {
+          clientRequestId: randomUUID(),
+          body: `${body} ${testSuffix()}`,
+          linkUrl: '',
+          visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+          contentWarning: '',
+          inReplyToId: '',
+          mediaIds: [],
+        },
+        { accessToken },
+      );
+      const id = response.post?.id;
+      if (id === undefined) throw new Error('createPost did not return a post');
+      return id;
+    }
   },
 );
