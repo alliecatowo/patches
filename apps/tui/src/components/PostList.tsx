@@ -38,6 +38,9 @@ export function PostList({
   onOpenAuthor,
 }: PostListProps): ReactElement {
   const [selected, setSelected] = useState(0);
+  // Which `content_warning`-gated posts the viewer has revealed this session — never
+  // persisted, never shared across posts (spec: a CW is click-to-reveal per post).
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
   // Derived rather than clamped via an effect (react-hooks/set-state-in-effect,
   // and the same "no synchronous setState-in-effect" pattern as `useActor`):
   // in bounds even right after the list shrinks/grows, with nothing to write back.
@@ -53,6 +56,18 @@ export function PostList({
       }
       if (input === 'k' || key.upArrow) {
         setSelected(Math.max(effectiveSelected - 1, 0));
+        return;
+      }
+      if (input === 'v') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined && post.contentWarning !== '') {
+          setRevealed((current) => {
+            const next = new Set(current);
+            if (next.has(post.id)) next.delete(post.id);
+            else next.add(post.id);
+            return next;
+          });
+        }
         return;
       }
       if (key.return) {
@@ -74,7 +89,12 @@ export function PostList({
   return (
     <Box flexDirection="column">
       {posts.map((post, index) => (
-        <PostRow key={post.id} post={post} selected={isActive && index === effectiveSelected} />
+        <PostRow
+          key={post.id}
+          post={post}
+          selected={isActive && index === effectiveSelected}
+          revealed={revealed.has(post.id)}
+        />
       ))}
       <Text color={theme.muted}>
         {loading
