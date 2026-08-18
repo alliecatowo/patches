@@ -30,6 +30,7 @@
     "@grpc/proto-loader": "catalog:",
     "@inkjs/ui": "catalog:",
     "@napi-rs/keyring": "catalog:",
+    "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
     "@patches/terminal-media": "workspace:*",
     "ink": "catalog:",
