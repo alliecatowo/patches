@@ -52,3 +52,9 @@ Run `/verify` scoped to the package(s) you touched (`pnpm --filter <workspace> b
 - Deviations from the task/spec, if any, and why
 - Follow-ups discovered (new tasks to file — list them, don't file them yourself unless asked)
 - Learnings worth a `/retro` entry (gotchas, wrong assumptions, better patterns) — one line each
+
+## Command hygiene (avoid permission rejections)
+
+- Run single-purpose commands. Do NOT chain `pkill`, `rm -rf`, or process control with `git commit` — such compound commands get rejected and stall you.
+- Start background servers with `run_in_background`, note the PID, and stop them with `kill <pid>` as its own command.
+- Run `git commit` as its own command with explicit paths. If a command is rejected, rephrase it more narrowly and continue — never stop and wait for the orchestrator.

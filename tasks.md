@@ -21,14 +21,14 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] P0-004 — Research notes for every risky tech (`docs/research/`)
 - [x] P0-005 — Monorepo scaffold: pnpm workspace + catalog, turbo.json, tsconfig.base, eslint flat config, prettier, vitest projects, root scripts
 - [x] P0-006 — `infra/compose`: postgres 17 + mailpit (+ optional minio); `mise run compose` wrapper; `.env.example`
-- [ ] P0-007 — `packages/proto`: buf v2 config, `patches/v1/common.proto` + `health`/hello slice, ts-proto generation committed, lint/format/breaking scripts
-- [ ] P0-008 — `apps/server`: Nest 11 gRPC microservice hello-world (`patches.v1.PingService`?) with config validation, JSON logger, graceful shutdown, health
-- [ ] P0-009 — `apps/tui`: Ink 7 hello-world that performs a real gRPC call to the server with deadline + metadata; renders errors cleanly; fullscreen + clean exit
-- [ ] P0-010 — Kitty graphics spike: detect capability, render test image via unicode placeholders inside Ink list, survive rerender/scroll/resize, clear on exit; fallback box
-- [ ] P0-011 — `packages/database`: TypeORM 1.x DataSource, snake naming strategy, migration scripts wired (`pnpm db:*`), smoke migration + test against real Postgres
+- [x] P0-007 — `packages/proto`: buf v2 config, `patches/v1/common.proto` + `health`/hello slice, ts-proto generation committed, lint/format/breaking scripts
+- [x] P0-008 — `apps/server`: Nest 11 gRPC microservice hello-world (`patches.v1.PingService`?) with config validation, JSON logger, graceful shutdown, health
+- [x] P0-009 — `apps/tui`: Ink 7 hello-world that performs a real gRPC call to the server with deadline + metadata; renders errors cleanly; fullscreen + clean exit
+- [x] P0-010 — Kitty graphics spike: detect capability, render test image via unicode placeholders inside Ink list, survive rerender/scroll/resize, clear on exit; fallback box _(automated: 86 tests + detection verified in real Ghostty; manual §74 checklist → B-003)_
+- [x] P0-011 — `packages/database`: TypeORM 1.x DataSource, snake naming strategy, migration scripts wired (`pnpm db:*`), smoke migration + test against real Postgres
 - [x] P0-012 — GitHub Actions CI: format, lint, typecheck, buf lint/format/breaking, build, unit, integration (postgres service), migration check; dependabot
-- [ ] P0-013 — README with real, verified first-run commands
-- [ ] P0-014 — Phase 0 acceptance checklist (§157) verified end-to-end and recorded in `docs/product/roadmap.md`
+- [x] P0-013 — README with real, verified first-run commands
+- [x] P0-014 — Phase 0 acceptance checklist (§157) verified end-to-end and recorded in `docs/product/roadmap.md` _(2 image items await manual confirmation, tracked in B-003)_
 
 ## Phase 1 — persistence and auth (§135)
 
@@ -82,5 +82,13 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P7-004 — npm packaging of `patches` TUI
 
 ## Backlog / discovered
+
+- [ ] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
+- [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
+- [ ] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits
+- [ ] B-006 — Add `@grpc/reflection` to the server (grpcurl debugging), dev-only
+- [ ] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported)
+- [ ] B-008 — lefthook pre-commit (prettier/eslint on staged) via mise
+- [ ] B-009 — `pnpm dev` (turbo) runs the interactive TUI inside turbo output — exclude tui from the root `dev` task or make it server-only
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)

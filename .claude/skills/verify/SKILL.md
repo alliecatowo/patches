@@ -48,3 +48,7 @@ Full-repo `lint`/`format:check` are cheap enough to just run unscoped unless you
 - **db:show shows pending migrations** — you edited an entity without generating a migration; run `/migration <Name>`.
 
 Never skip a failing step to get to a commit — fix it or report it as a blocker.
+
+## TUI checks from a non-TTY shell
+
+Drive the full-screen app in tmux and capture frames (`tmux new-session -d -s v -x 100 -y 28 "node apps/tui/dist/cli.js …"`, `tmux send-keys -t v q`, `tmux capture-pane -t v -p`); use `node apps/tui/dist/cli.js ping …` for a scripted exit-code check. Details: `docs/agents/LEARNINGS.md` → "Verifying a TTY app from a non-TTY agent shell".

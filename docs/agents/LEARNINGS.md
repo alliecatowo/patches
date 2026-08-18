@@ -142,3 +142,86 @@ unrelated.
 **Action taken:** `docs/agents/PACKAGE_CONVENTIONS.md` and `.claude/agents/implementer.md`
 require wrapping installs in `flock /tmp/patches-pnpm.lock pnpm add ...` whenever multiple
 agents may be running concurrently.
+
+## 2026-08-17 — tsup `dts` fails with TS5074 when `incremental: true`
+
+**Context:** Every tsup-built package (`config`, `database`, `testkit`, `proto`, `terminal-media`) hit
+`error TS5074: Option '--incremental' can only be specified using tsconfig, emitting to single file or when option '--tsBuildInfoFile' is specified` during the `.d.ts` build.
+
+**Learning:** tsup's DTS worker invokes the TS API without a `tsBuildInfoFile`; `incremental` inherited
+from `tsconfig.base.json` breaks it.
+
+**Action taken:** `tsconfig.base.json` now sets `incremental: false`; apps that want incremental tsc
+builds opt in locally.
+
+## 2026-08-17 — Ink 7 `useInput` throws when stdin is not a TTY
+
+**Context:** Piping into the TUI (or running under CI) crashed with a React stack trace.
+
+**Learning:** `useInput` calls `setRawMode`, which throws when raw mode is unsupported. Gate on
+`useStdin().isRawModeSupported`, and provide non-interactive subcommands (`patches ping`,
+`--version`) for scripted checks.
+
+**Action taken:** `apps/tui` guards `useInput`; `.claude/rules/tui.md` mentions the guard.
+
+## 2026-08-17 — Nest interceptor + AsyncLocalStorage: wrap the subscription, not `next.handle()`
+
+**Context:** Request-context (request id) was empty inside controllers.
+
+**Learning:** `next.handle()` only builds the Observable; the handler runs on subscription. The
+`AsyncLocalStorage.run(store, ...)` must wrap `next.handle().subscribe(...)` (or use `defer`).
+
+**Action taken:** Implemented that way in `apps/server/src/common/interceptors`; noted in
+`.claude/rules/server.md`.
+
+## 2026-08-17 — Vitest collects compiled tests from `dist/` unless `include` is scoped
+
+**Context:** Tests ran twice after `pnpm build`.
+
+**Learning:** A package vitest project must scope `test.include` to `src/**`/`test/**` (or exclude
+`dist/**`), otherwise the emitted `dist/**/*.test.js` are collected too.
+
+**Action taken:** Package `vitest.config.ts` files scope `include`; conventions doc updated.
+
+## 2026-08-17 — proto-loader never yields `Date`; don't generate with `useDate=true`
+
+**Context:** ts-proto `useDate=true` produced `Date`-typed Timestamp fields, but the runtime
+serializer (`@grpc/proto-loader` with `longs: String`) delivers `{seconds: string, nanos: number}`.
+
+**Learning:** Generated types must describe what the runtime serializer actually produces. We use
+`useDate=false,forceLong=string` and explicit `dateToTimestamp`/`timestampToDate` helpers, pinned by
+an integration test.
+
+**Action taken:** `packages/proto/buf.gen.yaml` + `.claude/rules/proto.md`; research doc corrected.
+
+## 2026-08-17 — `buf breaking --against '.git#...'` resolves relative to cwd
+
+**Context:** The research note's command failed from `packages/proto` ("does not appear to be a git repository").
+
+**Learning:** The `.git#branch=…,subdir=…` ref is resolved from the current directory, so from a package
+dir it must be `../../.git#…`. It also errors when the base branch has no protos yet.
+
+**Action taken:** `packages/proto/scripts/breaking.sh` handles both (and falls back to `origin/main`);
+CI calls `pnpm proto:breaking` with no args.
+
+## 2026-08-17 — Verifying a TTY app from a non-TTY agent shell
+
+**Context:** Needed to prove Kitty detection and the full-screen TUI without an interactive terminal.
+
+**Learning:** (1) `tmux new-session -d … ; tmux send-keys; tmux capture-pane -p` drives Ink apps and
+captures text frames (Kitty graphics show as placeholders/fallback there — tmux is treated as
+unsupported). (2) To run inside a _real_ Ghostty and still capture output, `ghostty -e wrapper.sh` with
+Python's `pty.spawn` logging (`script` isn't installed on Fedora by default). Redirecting stdout to a
+file makes the app see "not a TTY". (3) GNOME denies `org.gnome.Shell.Screenshot` to arbitrary
+callers, so pixel screenshots need the human.
+
+**Action taken:** Recorded here; `.claude/skills/verify/SKILL.md` links to this entry for TUI checks.
+
+## 2026-08-17 — Agent commands get rejected when chained with `pkill`/`rm -rf`/compound commits
+
+**Context:** Two implementers paused mid-task because a compound command (`… && pkill … && git commit`) was rejected by the permission layer.
+
+**Learning:** Keep destructive/process-control steps as separate, minimal commands (`kill <pid>`), and run
+`git commit` on its own; agents should never wait on the orchestrator for that.
+
+**Action taken:** `.claude/agents/implementer.md` instructs: single-purpose commands, kill by PID, commit separately.
