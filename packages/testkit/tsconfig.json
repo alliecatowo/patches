@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "noEmit": true,
+    "incremental": false
+  },
+  // tsup.config.ts/vitest.config.ts/test included (alongside src) so ESLint's typed-linting
+  // project service can resolve them — see packages/terminal-media/tsconfig.json.
+  "include": ["src", "test", "tsup.config.ts", "vitest.config.ts"]
+}
