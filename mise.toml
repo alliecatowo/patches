@@ -1,3 +1,6 @@
 [tools]
-node = "latest"
-pnpm = "latest"
+buf = "1.72.0"
+node = "24.19.0"
+pnpm = "11.22.0"
+docker-compose = "5.4.0"
+actionlint = "1.7.12"

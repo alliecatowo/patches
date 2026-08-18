@@ -1,0 +1,88 @@
+name: Bug report
+description: Something in Patches isn't working the way it should.
+title: "[bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The more precise you can be, the faster it
+        gets fixed — vague reports tend to sit while specific ones get
+        picked up fast.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Patches does this affect?
+      options:
+        - server
+        - tui
+        - worker
+        - proto
+        - docs
+        - infra
+        - other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Release version, or the git commit hash you're running.
+      placeholder: e.g. v0.3.0 or a1b2c3d
+    validations:
+      required: true
+
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal emulator and OS
+      description: >
+        Required for TUI bugs — terminal rendering issues are often specific
+        to a particular terminal/OS combination. Leave blank for
+        server/worker/proto bugs.
+      placeholder: e.g. kitty 0.35 on Fedora 40, or WezTerm on macOS 14
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, in order?
+      placeholder: |
+        1. Run `patches login`
+        2. Open a thread with an image reply
+        3. Press ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Any relevant server/worker/TUI logs or error output. Please redact
+        tokens, passwords, or anything else sensitive before pasting.
+      render: shell
+    validations:
+      required: false

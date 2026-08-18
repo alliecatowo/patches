@@ -1,0 +1,46 @@
+# --- dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- build output ---
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# generated protobuf output is committed intentionally
+# (do not add packages/proto/src/generated/ or similar here)
+
+# --- coverage / test artifacts ---
+coverage/
+.nyc_output/
+
+# --- env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- logs ---
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- editors ---
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# --- agent / local overrides ---
+.claude/settings.local.json
+*.local.md
+.mise.local.toml
+
+# --- scratch ---
+tmp/
+.scratch/
