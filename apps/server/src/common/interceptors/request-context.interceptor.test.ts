@@ -2,7 +2,11 @@ import { MIN_CLIENT_VERSION } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 
 import { AppError } from '../errors/app-error.js';
-import { assertClientSupported, sanitizeRequestId } from './request-context.interceptor.js';
+import {
+  assertClientSupported,
+  sanitizeRequestId,
+  stripPeerPort,
+} from './request-context.interceptor.js';
 
 function codeOf(fn: () => void): string {
   try {
@@ -88,5 +92,24 @@ describe('sanitizeRequestId (spec §103)', () => {
 
   it('replaces an empty string', () => {
     expect(sanitizeRequestId('')).toMatch(UUID_RE);
+  });
+});
+
+describe('stripPeerPort (spec §102 — rate limiting needs a caller-independent key)', () => {
+  it('strips the ephemeral port from an IPv4 peer', () => {
+    expect(stripPeerPort('127.0.0.1:52341')).toBe('127.0.0.1');
+  });
+
+  it('strips the trailing port grpc-js appends to an unbracketed IPv6 address', () => {
+    expect(stripPeerPort('::1:52341')).toBe('::1');
+  });
+
+  it('leaves a value with no discernible port unchanged', () => {
+    expect(stripPeerPort('a-weird-peer-string')).toBe('a-weird-peer-string');
+  });
+
+  it('treats grpc-js’s own "unknown" and an empty string as no peer at all', () => {
+    expect(stripPeerPort('unknown')).toBeUndefined();
+    expect(stripPeerPort('')).toBeUndefined();
   });
 });

@@ -35,7 +35,13 @@ function catchException(exception: unknown): Promise<CaughtError> {
 
 function withRequestId<T>(requestId: string, fn: () => T): T {
   return runWithRequestContext(
-    { requestId, client: undefined, clientVersion: undefined, rpc: 'test.Service/Method' },
+    {
+      requestId,
+      client: undefined,
+      clientVersion: undefined,
+      rpc: 'test.Service/Method',
+      peer: undefined,
+    },
     fn,
   );
 }

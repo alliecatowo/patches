@@ -10,6 +10,14 @@ export interface RequestContext {
   readonly clientVersion: string | undefined;
   /** Fully-qualified RPC, e.g. `patches.v1.SystemService/GetServerInfo`. */
   readonly rpc: string;
+  /**
+   * The caller's network address, normalized to strip the ephemeral port (`ServerUnaryCall
+   * .getPeer()`, e.g. `127.0.0.1` from `127.0.0.1:52341`), or `undefined` if grpc-js could not
+   * resolve one. This is the only caller-identifying signal a v0 node has with no reverse
+   * proxy in front of it — it exists so rate limiting has *something* to key on besides values
+   * the caller chooses (spec §102).
+   */
+  readonly peer: string | undefined;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
