@@ -22,6 +22,12 @@ React Native client on the roadmap.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+## Using Patches
+
+For end users: installing the `patches` terminal client, connecting to a node,
+registering/signing in, and the in-app keybindings, see
+[`docs/user-guide.md`](docs/user-guide.md).
+
 ## Development
 
 Prerequisites: [mise](https://mise.jdx.dev/) and Docker (or Podman) for the local Postgres.

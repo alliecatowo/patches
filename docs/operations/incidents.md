@@ -22,8 +22,10 @@ service — not a 24/7 enterprise on-call rotation.
 
 **Status: PLANNED.** Detection is expected to come from:
 
-- structured logs and error monitoring (Sentry or a documented alternative — see
-  `docs/operations/deployment.md` and `INITIAL_VISION.md` §100),
+- structured logs and error monitoring (see
+  [`docs/operations/deployment.md#error-monitoring`](./deployment.md#error-monitoring) for
+  the recorded decision — structured logs + a Fly log drain, not Sentry — and
+  `INITIAL_VISION.md` §100),
 - Fly health checks failing,
 - direct user reports (given the current scale, this may be the most common path early on).
 
