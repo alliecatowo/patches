@@ -26,7 +26,7 @@ Use `$ARGUMENTS` as the learning to record if given; otherwise infer it from the
 
 Use today's actual date. Keep each field brief — this file is read at the start of every session (`session-start.sh` prints the entry count); it should stay skimmable, not become a diary.
 
-3. **If the learning implies a behavior change**, make that change in the *same* commit:
+3. **If the learning implies a behavior change**, make that change in the _same_ commit:
    - A wrong assumption about a library → fix the `docs/research/*.md` note.
    - A repeated mistake in a package → edit the matching `.claude/rules/*.md`.
    - An agent doing the wrong thing → edit that agent's `.claude/agents/*.md`.

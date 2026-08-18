@@ -11,7 +11,7 @@ inputs:
       Passed straight to actions/checkout. Use "0" for jobs that need full git history
       (e.g. the proto job's `buf breaking --against main` diff).
     required: false
-    default: "1"
+    default: '1'
 
 runs:
   using: composite

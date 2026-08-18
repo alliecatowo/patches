@@ -37,12 +37,12 @@ session/token family is revoked — treating reuse as a signal of token theft.
 
 - A stolen access token is only useful for at most ~15 minutes, sharply limiting the value
   of a leaked bearer token compared to a long-lived session token.
-- Refresh-token rotation plus reuse detection means a stolen *refresh* token gets one use
+- Refresh-token rotation plus reuse detection means a stolen _refresh_ token gets one use
   before it either advances the legitimate session (attacker and victim racing, detectable)
   or is caught outright as reuse — a real, cheap defense against token exfiltration, at the
   cost of needing careful concurrency handling around rotation (races between legitimate
   refreshes must not falsely trigger revocation).
-- Storing only refresh-token *hashes* means a database read alone doesn't hand out valid
+- Storing only refresh-token _hashes_ means a database read alone doesn't hand out valid
   sessions — a stolen DB dump doesn't equal stolen sessions.
 - Argon2id parameter tuning is an ongoing operational responsibility, not a "set once and
   forget" choice — hardware changes (e.g. moving Fly Machine sizes) may warrant

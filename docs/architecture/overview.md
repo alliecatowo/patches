@@ -111,22 +111,22 @@ App
 └── FederationModule        # interfaces/stubs only initially
 ```
 
-| Module | Responsibility |
-|---|---|
-| `AuthModule` | Registration, login, verification, sessions, token issuance/rotation |
-| `UsersModule` | Local authenticated account records (`users`) |
-| `ActorsModule` | Social identity records (`actors`), local and future remote |
-| `ProfilesModule` | Profile fields (display name, bio, avatar, links) on top of actors |
-| `PostsModule` | Post/thread/reply creation, retrieval, deletion, editing |
-| `FeedsModule` | Home/local/actor timelines, cursor pagination |
-| `SocialGraphModule` | Follows, blocks, mutes |
-| `MediaModule` | Upload initiation/finalization, download URLs |
-| `ReactionsModule` | Likes, bookmarks |
-| `NotificationsModule` | Notification rows, read state |
-| `ModerationModule` | Reports, moderator actions |
-| `AdminModule` | Admin CLI-facing operations, invites, audit log |
-| `JobsModule` | Postgres-backed outbox/job claiming and dispatch (shared with worker) |
-| `FederationModule` | `FederationGateway` interface + `NoopFederationGateway` (F0 only) |
+| Module                | Responsibility                                                        |
+| --------------------- | --------------------------------------------------------------------- |
+| `AuthModule`          | Registration, login, verification, sessions, token issuance/rotation  |
+| `UsersModule`         | Local authenticated account records (`users`)                         |
+| `ActorsModule`        | Social identity records (`actors`), local and future remote           |
+| `ProfilesModule`      | Profile fields (display name, bio, avatar, links) on top of actors    |
+| `PostsModule`         | Post/thread/reply creation, retrieval, deletion, editing              |
+| `FeedsModule`         | Home/local/actor timelines, cursor pagination                         |
+| `SocialGraphModule`   | Follows, blocks, mutes                                                |
+| `MediaModule`         | Upload initiation/finalization, download URLs                         |
+| `ReactionsModule`     | Likes, bookmarks                                                      |
+| `NotificationsModule` | Notification rows, read state                                         |
+| `ModerationModule`    | Reports, moderator actions                                            |
+| `AdminModule`         | Admin CLI-facing operations, invites, audit log                       |
+| `JobsModule`          | Postgres-backed outbox/job claiming and dispatch (shared with worker) |
+| `FederationModule`    | `FederationGateway` interface + `NoopFederationGateway` (F0 only)     |
 
 Why a monolith first (§10): simpler transactions, fewer network boundaries, less
 deployment overhead, easier local dev and end-to-end testing. Service extraction is
@@ -197,21 +197,21 @@ patches/
 │   docker-compose.yml, README.md
 ```
 
-| Path | Purpose |
-|---|---|
-| `apps/server` | NestJS gRPC backend — the modular monolith |
-| `apps/worker` | Nest standalone application context; outbox/job consumer |
-| `apps/tui` | Ink/React terminal client |
-| `apps/admin` | `patches-admin` CLI (Nest standalone or `nest-commander`) |
-| `packages/proto` | Canonical `.proto` schemas + generated ts-proto output |
-| `packages/config` | Shared `@nestjs/config` schemas/validation |
-| `packages/domain` | Framework-agnostic domain types/rules shared across apps |
-| `packages/database` | TypeORM entities, migrations, data-source config |
-| `packages/observability` | Logging/OpenTelemetry/Sentry wiring for server + worker |
-| `packages/media` | sharp processing helpers, S3/R2 client wrapper |
-| `packages/testkit` | Test factories, fixtures, integration test harness |
-| `infra/docker`, `infra/fly`, `infra/compose` | Dockerfiles, `fly.toml`(s)/process groups, local Compose services |
-| `docs/architecture`, `docs/decisions`, `docs/operations`, `docs/product` | This directory, ADRs, runbooks, principles/roadmap |
+| Path                                                                     | Purpose                                                           |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `apps/server`                                                            | NestJS gRPC backend — the modular monolith                        |
+| `apps/worker`                                                            | Nest standalone application context; outbox/job consumer          |
+| `apps/tui`                                                               | Ink/React terminal client                                         |
+| `apps/admin`                                                             | `patches-admin` CLI (Nest standalone or `nest-commander`)         |
+| `packages/proto`                                                         | Canonical `.proto` schemas + generated ts-proto output            |
+| `packages/config`                                                        | Shared `@nestjs/config` schemas/validation                        |
+| `packages/domain`                                                        | Framework-agnostic domain types/rules shared across apps          |
+| `packages/database`                                                      | TypeORM entities, migrations, data-source config                  |
+| `packages/observability`                                                 | Logging/OpenTelemetry/Sentry wiring for server + worker           |
+| `packages/media`                                                         | sharp processing helpers, S3/R2 client wrapper                    |
+| `packages/testkit`                                                       | Test factories, fixtures, integration test harness                |
+| `infra/docker`, `infra/fly`, `infra/compose`                             | Dockerfiles, `fly.toml`(s)/process groups, local Compose services |
+| `docs/architecture`, `docs/decisions`, `docs/operations`, `docs/product` | This directory, ADRs, runbooks, principles/roadmap                |
 
 Packages must represent legitimate shared boundaries — no package created merely to
 hold one helper function (§8).

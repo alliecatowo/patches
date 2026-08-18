@@ -1,8 +1,8 @@
 ---
 paths:
-  - "apps/server/**"
-  - "apps/worker/**"
-  - "apps/admin/**"
+  - 'apps/server/**'
+  - 'apps/worker/**'
+  - 'apps/admin/**'
 ---
 
 # Server/worker/admin rules

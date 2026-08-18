@@ -30,7 +30,7 @@ reviewed, versioned migrations only (see ADR migrations discussion in
   federation seam (remote actors/posts fit the same tables per `INITIAL_VISION.md` §110)
   without a parallel document store.
 - Migrations are explicit, reviewed, and run as a release step — no risk of `synchronize:
-  true` silently mutating a production schema.
+true` silently mutating a production schema.
 - Repository-style TypeORM keeps a clean separation between persistence and domain logic
   (see `INITIAL_VISION.md` §128 on DTO/domain/persistence separation), so TypeORM entities
   never leak directly across the gRPC boundary.
@@ -47,7 +47,7 @@ reviewed, versioned migrations only (see ADR migrations discussion in
   aligned with the plain repository-pattern approach this spec wants.
 - **Drizzle, Sequelize, MikroORM.** Rejected: explicitly prohibited as general persistence
   layers; no compelling advantage over TypeORM for this project's needs.
-- **Raw SQL / a query builder with no ORM.** Rejected as the *general* approach — too much
+- **Raw SQL / a query builder with no ORM.** Rejected as the _general_ approach — too much
   boilerplate and repetition for the CRUD-heavy majority of the schema — though raw
   SQL/manual migrations remain acceptable for PostgreSQL-specific indexes TypeORM can't
   express well.

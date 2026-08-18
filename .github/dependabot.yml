@@ -12,29 +12,29 @@ updates:
   # config as needing manual review — do not auto-merge, and if a PR looks like it
   # dropped/mangled catalog entries, close it and bump the dependency by hand
   # (`pnpm add <pkg> --filter <workspace>` / `pnpm add -w -D <pkg>`) instead.
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       dev-dependencies:
-        dependency-type: "development"
-        patterns: ["*"]
+        dependency-type: 'development'
+        patterns: ['*']
       production-dependencies:
-        dependency-type: "production"
-        patterns: ["*"]
+        dependency-type: 'production'
+        patterns: ['*']
     ignore:
       # ADR 0009: TypeScript stays pinned to the 5.9.x line (not 7.x) until
       # typescript-eslint and NestJS's decorator/emitDecoratorMetadata tooling are
       # validated against the TS7 native compiler. Don't let Dependabot open a major
       # bump PR for it.
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     groups:
       actions:
-        patterns: ["*"]
+        patterns: ['*']

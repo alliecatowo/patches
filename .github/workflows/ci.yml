@@ -29,7 +29,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           # buf breaking needs `main`'s history available to diff against.
-          fetch-depth: "0"
+          fetch-depth: '0'
 
       - name: Fetch main (buf breaking diff target)
         if: github.event_name == 'pull_request'
@@ -71,7 +71,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: "**/coverage/**"
+          path: '**/coverage/**'
           if-no-files-found: ignore
           retention-days: 14
 

@@ -1,6 +1,6 @@
 ---
 paths:
-  - "packages/database/**"
+  - 'packages/database/**'
 ---
 
 # Database rules (TypeORM 1.x)

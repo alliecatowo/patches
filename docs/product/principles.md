@@ -69,13 +69,13 @@ architecture.
 
 ### 5. Small social interactions over metrics
 
-Likes/favorites may exist. If they do: the current user needs to know whether *they* liked
+Likes/favorites may exist. If they do: the current user needs to know whether _they_ liked
 something; authors may see aggregate counts; aggregate counts do not get to dominate the
 timeline UI. No leaderboards, ever.
 
 ### 6. Open architecture
 
-The TUI is one client, not *the* architecture. The backend must never embed
+The TUI is one client, not _the_ architecture. The backend must never embed
 terminal-specific assumptions into its domain layer. React Native, a desktop GUI, a browser
 client, and third-party clients are all expected consumers of the same protocol eventually.
 If a domain service can only make sense to a terminal client, it's in the wrong layer.
@@ -125,7 +125,7 @@ staged roadmap, not a big-bang feature:
 
   ```ts
   feed({
-    sources: [following(), tag("techno")],
+    sources: [following(), tag('techno')],
     exclude: [muted(), reposts()],
     sort: newestFirst(),
   });

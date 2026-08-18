@@ -7,12 +7,12 @@ mid-incident. Update this document as real incidents happen and the process gets
 
 ## Severity levels
 
-| Severity | Definition | Example | Response expectation |
-| --- | --- | --- | --- |
-| **SEV1** | Service is down or data is being lost/corrupted for all or most users. | Database unreachable, mass data loss, auth completely broken. | Immediate response, all available hands, active mitigation until resolved. |
+| Severity | Definition                                                                                  | Example                                                                                         | Response expectation                                                         |
+| -------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **SEV1** | Service is down or data is being lost/corrupted for all or most users.                      | Database unreachable, mass data loss, auth completely broken.                                   | Immediate response, all available hands, active mitigation until resolved.   |
 | **SEV2** | A core feature is broken or badly degraded for many users, but the service is otherwise up. | Feed queries failing intermittently, media upload broken, login failures for a subset of users. | Prompt response during the day it's noticed; mitigate or roll back same-day. |
-| **SEV3** | A non-core feature is broken, or a core feature is degraded for a small subset of users. | Notifications delayed, one moderation tool misbehaving. | Fix in the normal course of work, no emergency response required. |
-| **SEV4** | Cosmetic or minor issue, no functional impact. | Copy error, minor rendering glitch in an edge-case terminal. | Backlog as a normal bug. |
+| **SEV3** | A non-core feature is broken, or a core feature is degraded for a small subset of users.    | Notifications delayed, one moderation tool misbehaving.                                         | Fix in the normal course of work, no emergency response required.            |
+| **SEV4** | Cosmetic or minor issue, no functional impact.                                              | Copy error, minor rendering glitch in an edge-case terminal.                                    | Backlog as a normal bug.                                                     |
 
 Given the project's current scale target (hundreds to low thousands of users,
 `INITIAL_VISION.md` §125), this is a lightweight process appropriate to a small alpha

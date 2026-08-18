@@ -1,6 +1,6 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # `pnpm add <pkg>` picks the catalog version automatically when the package is listed here.
 catalogMode: prefer
@@ -9,28 +9,28 @@ catalogMode: prefer
 catalog:
   # language & build
   typescript: ^5.9.3
-  "@types/node": ^24.13.3
+  '@types/node': ^24.13.3
   tsx: ^4.23.12
   tsup: ^8.5.1
   # test
   vitest: ^4.1.10
-  "@vitest/coverage-v8": ^4.1.10
-  "@swc/core": ^1.16.0
+  '@vitest/coverage-v8': ^4.1.10
+  '@swc/core': ^1.16.0
   unplugin-swc: ^1.5.11
   # nest
-  "@nestjs/common": ^11.2.1
-  "@nestjs/core": ^11.2.1
-  "@nestjs/microservices": ^11.2.1
-  "@nestjs/config": ^4.0.4
-  "@nestjs/typeorm": ^11.0.3
-  "@nestjs/throttler": ^6.5.0
-  "@nestjs/testing": ^11.2.1
-  "@nestjs/platform-express": ^11.2.1
+  '@nestjs/common': ^11.2.1
+  '@nestjs/core': ^11.2.1
+  '@nestjs/microservices': ^11.2.1
+  '@nestjs/config': ^4.0.4
+  '@nestjs/typeorm': ^11.0.3
+  '@nestjs/throttler': ^6.5.0
+  '@nestjs/testing': ^11.2.1
+  '@nestjs/platform-express': ^11.2.1
   reflect-metadata: ^0.2.2
   rxjs: ^7.8.2
   # grpc / proto
-  "@grpc/grpc-js": ^1.14.4
-  "@grpc/proto-loader": ^0.8.1
+  '@grpc/grpc-js': ^1.14.4
+  '@grpc/proto-loader': ^0.8.1
   ts-proto: ^2.12.0
   # data
   typeorm: ^1.1.0
@@ -38,10 +38,10 @@ catalog:
   zod: ^4.4.3
   # tui
   ink: ^7.1.1
-  "@inkjs/ui": ^2.0.0
+  '@inkjs/ui': ^2.0.0
   ink-testing-library: ^4.0.0
   react: ^19.2.8
-  "@types/react": ^19.2.18
+  '@types/react': ^19.2.18
   # media
   sharp: ^0.35.3
   turbo: ^2.10.10
@@ -59,9 +59,9 @@ catalog:
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:
   sharp: true
-  "@swc/core": true
+  '@swc/core': true
   esbuild: true
-  "@napi-rs/keyring": true
-  "@node-rs/argon2": true
+  '@napi-rs/keyring': true
+  '@node-rs/argon2': true
   protobufjs: true
   unrs-resolver: true

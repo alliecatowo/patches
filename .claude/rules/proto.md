@@ -1,6 +1,6 @@
 ---
 paths:
-  - "packages/proto/**"
+  - 'packages/proto/**'
 ---
 
 # Proto rules

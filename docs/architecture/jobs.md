@@ -12,20 +12,20 @@ test.
 
 ## 2. Table: `outbox_jobs`
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `bigint` | PK, sequence/identity |
-| `type` | `text` | job type (see §6 below) |
-| `payload` | `jsonb` | job-specific data |
-| `status` | `text` | `PENDING` \| `PROCESSING` \| `COMPLETED` \| `FAILED` \| `DEAD` |
-| `attempts` | `int` | incremented on each claim |
-| `max_attempts` | `int` | after which the job moves to `DEAD` |
+| Column         | Type          | Notes                                                                              |
+| -------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `id`           | `bigint`      | PK, sequence/identity                                                              |
+| `type`         | `text`        | job type (see §6 below)                                                            |
+| `payload`      | `jsonb`       | job-specific data                                                                  |
+| `status`       | `text`        | `PENDING` \| `PROCESSING` \| `COMPLETED` \| `FAILED` \| `DEAD`                     |
+| `attempts`     | `int`         | incremented on each claim                                                          |
+| `max_attempts` | `int`         | after which the job moves to `DEAD`                                                |
 | `available_at` | `timestamptz` | job is only claimable once `now() >= available_at`; also used to implement backoff |
-| `locked_at` | `timestamptz` | set when a worker claims the row |
-| `locked_by` | `text` | worker instance identifier |
-| `last_error` | `text` | most recent failure message |
-| `created_at` | `timestamptz` | |
-| `completed_at` | `timestamptz` | set on success |
+| `locked_at`    | `timestamptz` | set when a worker claims the row                                                   |
+| `locked_by`    | `text`        | worker instance identifier                                                         |
+| `last_error`   | `text`        | most recent failure message                                                        |
+| `created_at`   | `timestamptz` |                                                                                    |
+| `completed_at` | `timestamptz` | set on success                                                                     |
 
 Index: `outbox_events(status, available_at, id)` (§60) — supports the claim query's
 `WHERE status = 'PENDING' AND available_at <= now() ORDER BY id`.
