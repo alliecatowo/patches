@@ -8,6 +8,7 @@ describe('parseArgs', () => {
       command: 'tui',
       target: DEFAULT_TARGET,
       insecure: false,
+      plain: false,
       rest: [],
     });
   });
@@ -54,8 +55,16 @@ describe('parseArgs', () => {
       command: 'ping',
       target: '127.0.0.1:1234',
       insecure: true,
+      plain: false,
       rest: [],
     });
+  });
+
+  it('reads --plain and PATCHES_PLAIN', () => {
+    expect(parseArgs(['--plain']).plain).toBe(true);
+    expect(parseArgs([], { PATCHES_PLAIN: 'true' }).plain).toBe(true);
+    expect(parseArgs([], { PATCHES_PLAIN: 'false' }).plain).toBe(false);
+    expect(parseArgs([]).plain).toBe(false);
   });
 
   it('explains an unknown argument instead of failing silently', () => {

@@ -54,7 +54,11 @@ async function main(): Promise<number> {
   return runTui(args);
 }
 
-async function runTui(args: { target: string; insecure: boolean }): Promise<number> {
+async function runTui(args: {
+  target: string;
+  insecure: boolean;
+  plain: boolean;
+}): Promise<number> {
   if (!process.stdout.isTTY) {
     // Without a TTY there is no alternate screen and no way to press `q`, so the
     // app would render once and then hang. Say so, and point at the command that
@@ -69,9 +73,12 @@ async function runTui(args: { target: string; insecure: boolean }): Promise<numb
   // Opened before `render()` — its one-time "no keyring available" warning (if any)
   // goes to a normal stderr, not the alternate screen (spec §37).
   const credentialStore = await openCredentialStore(createNodeIo(), process.env);
+  // `--plain` normalized into the env `App` already reads (`PATCHES_PLAIN`) rather than
+  // a separate prop — one source of truth for "is plain mode on at startup" (spec §173).
+  const env = args.plain ? { ...process.env, PATCHES_PLAIN: '1' } : process.env;
 
   try {
-    const instance = render(<App api={api} credentialStore={credentialStore} />, {
+    const instance = render(<App api={api} credentialStore={credentialStore} env={env} />, {
       // Ink 7 owns the alternate screen and restores the original buffer on exit;
       // hand-rolling \x1b[?1049h is unnecessary and racy.
       alternateScreen: true,

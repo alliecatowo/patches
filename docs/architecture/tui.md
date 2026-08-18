@@ -62,32 +62,33 @@ Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverab
 via `?` help). **Status** marks what actually exists today (`apps/tui/src/app/App.tsx`)
 vs. spec-planned:
 
-| Key       | Action                                                        | Status                                                         |
-| --------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
-| `j` / `↓` | next item                                                     | implemented (`PostList`, `SearchScreen`)                       |
-| `k` / `↑` | previous item                                                 | implemented                                                    |
-| `Enter`   | open selected post's thread (or search result's profile)      | implemented (P4-004 — was "open author" before Phase 4)        |
-| `p`       | open selected post's author profile                           | implemented (P4-004; moved off `Enter`)                        |
-| `v`       | reveal/hide a content-warning-gated post                      | implemented                                                    |
-| `c`       | compose                                                       | implemented                                                    |
-| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`) | implemented (P4-004)                                           |
-| `l`       | like/unlike                                                   | implemented (P4-004, optimistic — spec §79)                    |
-| `b`       | bookmark/unbookmark                                           | implemented (P4-004, optimistic — spec §79)                    |
-| `!`       | report the selected post, or the profile being viewed         | implemented (P4-004)                                           |
-| `f`       | follow/unfollow the profile being viewed                      | implemented                                                    |
-| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)        | implemented (P4-004; spec's baseline table says lowercase `m`) |
-| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)      | implemented (P4-004)                                           |
-| `/`       | search                                                        | implemented                                                    |
-| `g h`     | go home                                                       | implemented (requires a session)                               |
-| `g l`     | go local                                                      | implemented                                                    |
-| `g s`     | go search (alternate to `/`)                                  | implemented                                                    |
-| `g n`     | go notifications                                              | implemented (P4-004)                                           |
-| `g b`     | go bookmarks                                                  | implemented (P4-004)                                           |
-| `g p`     | go own profile                                                | implemented                                                    |
-| `R`       | reconnect (connect screen only)                               | implemented                                                    |
-| `?`       | help                                                          | implemented                                                    |
-| `q`       | quit                                                          | implemented                                                    |
-| `Esc`     | cancel modal/action; on the thread screen, back one level     | implemented (login, compose, search, thread, report)           |
+| Key       | Action                                                         | Status                                                         |
+| --------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
+| `j` / `↓` | next item                                                      | implemented (`PostList`, `SearchScreen`)                       |
+| `k` / `↑` | previous item                                                  | implemented                                                    |
+| `Enter`   | open selected post's thread (or search result's profile)       | implemented (P4-004 — was "open author" before Phase 4)        |
+| `p`       | open selected post's author profile                            | implemented (P4-004; moved off `Enter`)                        |
+| `v`       | reveal/hide a content-warning-gated post                       | implemented                                                    |
+| `c`       | compose                                                        | implemented                                                    |
+| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`)  | implemented (P4-004)                                           |
+| `l`       | like/unlike                                                    | implemented (P4-004, optimistic — spec §79)                    |
+| `b`       | bookmark/unbookmark                                            | implemented (P4-004, optimistic — spec §79)                    |
+| `!`       | report the selected post, or the profile being viewed          | implemented (P4-004)                                           |
+| `f`       | follow/unfollow the profile being viewed                       | implemented                                                    |
+| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)         | implemented (P4-004; spec's baseline table says lowercase `m`) |
+| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)       | implemented (P4-004)                                           |
+| `/`       | search                                                         | implemented                                                    |
+| `g h`     | go home                                                        | implemented (requires a session)                               |
+| `g l`     | go local                                                       | implemented                                                    |
+| `g s`     | go search (alternate to `/`)                                   | implemented                                                    |
+| `g n`     | go notifications                                               | implemented (P4-004)                                           |
+| `g b`     | go bookmarks                                                   | implemented (P4-004)                                           |
+| `g p`     | go own profile                                                 | implemented                                                    |
+| `R`       | reconnect (connect screen only)                                | implemented                                                    |
+| `P`       | toggle plain mode (spec §173; not in the spec's baseline list) | implemented (B-022)                                            |
+| `?`       | help                                                           | implemented                                                    |
+| `q`       | quit                                                           | implemented                                                    |
+| `Esc`     | cancel modal/action; on the thread screen, back one level      | implemented (login, compose, search, thread, report)           |
 
 ## 4. Full-screen behavior (§70)
 
@@ -371,9 +372,12 @@ Refresh tokens are never silently stored world-readable.
   `identifier` (exact or suffix match, same UX as `--ssh-key`'s picker), then
   `AuthService.RevokeCredential`; the server refuses to revoke an account's last
   remaining credential.
-- No in-app (Ink screen) equivalent yet — CLI only. Adding an "account" screen
-  that wraps the same `ssh-enroll.ts` logic is a follow-up, not required for
-  P1-013's acceptance criteria.
+- **In-app equivalent (B-022)**: `L` when already signed in opens
+  `screens/AccountsScreen.tsx` — lists credentials (`AuthService.ListCredentials`),
+  `a` enrolls an SSH key already loaded in the agent (same `discoverEnrollmentCandidates`/
+  `enrollSshCredential` as `cli/keys.ts runKeysAdd` — never reads a private key), `x`
+  signs out (`SessionManager.logout()`). No in-app credential _removal_ yet (`patches
+keys remove` stays CLI-only) — tracked as a follow-up.
 
 ## 13. Screens landed so far (B-015, P2-003, B-016, B-017, P3-003)
 
@@ -424,19 +428,31 @@ fetch is keyed by `actorId` the same way `useActor`'s "loading" state is (derive
 written synchronously in the effect — see the code comment for why
 `react-hooks/set-state-in-effect` requires that shape).
 
-**Nameplates and content warnings (B-018/B-019)**: `components/Nameplate.tsx` renders
-`@handle` styled by `Actor.nameplate` (spec §173) — a colour (or the first stop of a
-`"start,end"` gradient; Ink's `<Text>` has no gradient primitive) plus a glyph.
-Truecolor→256→16→none degradation is left to Ink/chalk's own `getColorDepth()`/
-`NO_COLOR` detection rather than reimplemented client-side. `ProfileScreen` also shows
-`nameplate.statusLine` and `nameplate.badges` (`avatarFrame`/`profileBorder` are not
-rendered — no text-mode analogue yet). `Post.content_warning` collapses `PostRow`'s
-body behind a click-to-reveal banner; `v` on the selected `PostList` row toggles
-per-post reveal state (never persisted). `format/sanitize.ts` strips C0/C1 control
-characters from every rendered user string (handle, display name, bio, body, content
-warning, nameplate glyph) so a hostile value can't smuggle terminal escapes into the
-render tree (spec §153/§104) — a spec-required "plain mode that strips all
-decoration" toggle is not yet built; tracked as a follow-up.
+**Nameplates, plain mode, and content warnings (B-018/B-019/B-022)**:
+`components/Nameplate.tsx` renders `@handle` styled by `Actor.nameplate` (spec §173) —
+a colour (or the first stop of a `"start,end"` gradient; Ink's `<Text>` has no gradient
+primitive) plus a glyph. Truecolor→256→16→none degradation is left to Ink/chalk's own
+`getColorDepth()`/`NO_COLOR` detection rather than reimplemented client-side.
+`ProfileScreen` also shows `nameplate.statusLine` and `nameplate.badges`, and now
+(B-022) a text-mode analogue for the two remaining fields the proto leaves free-form
+(no defined vocabulary — write-time validation is against node capabilities, spec §174,
+not a fixed enum): `avatar_frame` brackets the display name (`‹ name ›`), and
+`profile_border` selects an Ink `Box` `borderStyle` around the whole header (falls back
+to `'round'` for a value that isn't one of `cli-boxes`' seven named styles).
+
+**Plain mode (B-022, spec §173's required "plain mode that strips all decoration")**:
+`theme/plain-mode.tsx`'s `PlainModeProvider`/`usePlainMode()` context (not a `plain`
+prop threaded through every `Nameplate` call site — `PostRow`, `SearchScreen`,
+`ProfileScreen`, `NotificationsScreen`, …) strips nameplate colour, glyph, badges,
+status line, avatar frame, and profile border everywhere at once. On at startup via
+`PATCHES_PLAIN=1` or `--plain` (`cli/args.ts`, normalized into the `env` `App` reads —
+one source of truth), or toggled at runtime with `P`.
+
+`Post.content_warning` collapses `PostRow`'s body behind a click-to-reveal banner; `v`
+on the selected `PostList` row toggles per-post reveal state (never persisted).
+`format/sanitize.ts` strips C0/C1 control characters from every rendered user string
+(handle, display name, bio, body, content warning, nameplate glyph) so a hostile value
+can't smuggle terminal escapes into the render tree (spec §153/§104).
 
 **Thread screen and reply (P4-004)**: `screens/ThreadScreen.tsx` is `Enter` on any
 `PostList` row (home, local, profile, and thread replies themselves — drilling in is
@@ -531,7 +547,9 @@ profile, local-feed pagination, home feed, search, and follow/unfollow; `thread.
 `reactions.test.tsx` covers like/unlike, bookmark/unbookmark, and the bookmarks screen;
 `notifications.test.tsx` covers the notification list, `m` mark-all-read, and the status
 bar's unread badge; `moderation.test.tsx` covers block/mute confirm prompts and the
-report screen.
+report screen; `b022.test.tsx` covers `avatarFrame`/`profileBorder` rendering, plain
+mode (both `PATCHES_PLAIN=1` at startup and the runtime `P` toggle), and the accounts
+screen (credential list, the no-SSH-agent error path, logout).
 
 `test/fake-api.ts`'s `addPost(authorId, body, createdAt?, inReplyToId?)` seeds a reply
 directly, and it implements `GetPost`/`ListReplies` (direct replies only, newest first —

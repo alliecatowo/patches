@@ -4,6 +4,7 @@ import { Text } from 'ink';
 import type { ReactElement } from 'react';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 
 export interface NameplateProps {
   handle: string;
@@ -23,7 +24,9 @@ export interface NameplateProps {
  * hex colour it's given accordingly, so passing the hex straight through already
  * degrades correctly everywhere from a real terminal to a piped/CI shell. A
  * nameplate is never required to read a post (§173) — `nameplate` is optional and
- * this renders a plain `@handle` without one.
+ * this renders a plain `@handle` without one. Plain mode (§173's required toggle —
+ * `usePlainMode()`, `PATCHES_PLAIN=1`/`--plain`/runtime `P`) strips the colour and
+ * glyph unconditionally, same as having no nameplate at all.
  */
 export function Nameplate({
   handle,
@@ -31,9 +34,11 @@ export function Nameplate({
   bold = false,
   fallbackColor,
 }: NameplateProps): ReactElement {
-  const color =
-    (present(nameplate) ? gradientFirstStop(nameplate.nameColor) : undefined) ?? fallbackColor;
-  const glyph = present(nameplate) ? sanitizeForTerminal(nameplate.glyph) : '';
+  const plain = usePlainMode();
+  const color = plain
+    ? fallbackColor
+    : ((present(nameplate) ? gradientFirstStop(nameplate.nameColor) : undefined) ?? fallbackColor);
+  const glyph = plain || !present(nameplate) ? '' : sanitizeForTerminal(nameplate.glyph);
   // `Text`'s `color` prop type has no `undefined` member (exactOptionalPropertyTypes
   // requires actually omitting the prop, not passing `color={undefined}`).
   return (

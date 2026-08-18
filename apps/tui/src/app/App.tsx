@@ -15,6 +15,7 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
 import { useUnreadCount } from '../hooks/useUnreadCount.js';
+import { AccountsScreen } from '../screens/AccountsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { ConnectScreen } from '../screens/ConnectScreen.js';
@@ -28,6 +29,8 @@ import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
+import { isTruthy } from '../env.js';
 
 export interface AppProps {
   api: PatchesApi;
@@ -48,7 +51,8 @@ type Screen =
   | 'thread'
   | 'bookmarks'
   | 'notifications'
-  | 'report';
+  | 'report'
+  | 'accounts';
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
@@ -94,6 +98,10 @@ export function App({
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [pendingGo, setPendingGo] = useState(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  // Spec §173's required "plain mode that strips all decoration" — starts from
+  // `PATCHES_PLAIN`/`--plain` (`env` is normalized by `cli.tsx`) and is toggleable at
+  // runtime with `P` (below).
+  const [plain, setPlain] = useState(() => isTruthy(env.PATCHES_PLAIN));
 
   const [sessionManager] = useState(
     () => new SessionManager({ api, store: credentialStore, nodeOrigin: api.target }),
@@ -342,6 +350,14 @@ export function App({
     openReport({ type: 'actor', id: actor.id, label: `@${actor.handle}` });
   }
 
+  /** `x` on the accounts screen (B-022) — signs out of the current session and
+   * returns to a logged-out screen. */
+  async function logout(): Promise<void> {
+    await sessionManager.logout();
+    setSession(undefined);
+    setScreen('connect');
+  }
+
   const rowActions: PostRowActions = {
     onOpenPost: (post) => openThread(post.id),
     onOpenAuthor: openAuthorProfile,
@@ -367,7 +383,11 @@ export function App({
         return;
       }
       if (input === 'L') {
-        if (session === undefined) go('login');
+        go(session === undefined ? 'login' : 'accounts');
+        return;
+      }
+      if (input === 'P') {
+        setPlain((current) => !current);
         return;
       }
       if (input === 'c') {
@@ -403,138 +423,155 @@ export function App({
   }
 
   return (
-    <Box flexDirection="column" justifyContent="space-between" height={rows}>
-      <Box flexDirection="column" paddingX={1} paddingY={1}>
-        {screen === 'help' && <HelpScreen target={api.target} />}
-        {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
-        {screen === 'local' && (
-          <LocalScreen api={api} isActive={screen === 'local' && !pendingGo} actions={rowActions} />
-        )}
-        {screen === 'home' && session !== undefined && (
-          <HomeScreen
-            api={api}
-            isActive={screen === 'home' && !pendingGo}
-            ensureAccessToken={ensureAccessToken}
-            actions={rowActions}
-          />
-        )}
-        {screen === 'search' && (
-          <SearchScreen
-            api={api}
-            isActive={screen === 'search'}
-            onOpenActor={(actor) => openProfile(actor.id, actor)}
-            onCancel={() => setScreen(priorScreen)}
-          />
-        )}
-        {screen === 'profile' && profileTarget !== undefined && (
-          <ProfileScreen
-            api={api}
-            actorId={profileTarget.actorId}
-            knownActor={profileTarget.knownActor}
-            isActive={screen === 'profile' && !pendingGo}
-            actions={rowActions}
-            viewerActorId={session?.userId}
-            ensureAccessToken={ensureAccessToken}
-            onReportActor={reportActor}
-          />
-        )}
-        {screen === 'thread' && threadStack.length > 0 && (
-          <ThreadScreen
-            api={api}
-            postId={threadStack[threadStack.length - 1] ?? ''}
-            isActive={screen === 'thread' && !pendingGo}
-            actions={rowActions}
-            onBack={threadBack}
-          />
-        )}
-        {screen === 'bookmarks' && session !== undefined && (
-          <BookmarksScreen
-            api={api}
-            isActive={screen === 'bookmarks' && !pendingGo}
-            ensureAccessToken={ensureAccessToken}
-            actions={rowActions}
-          />
-        )}
-        {screen === 'notifications' && session !== undefined && (
-          <NotificationsScreen
-            api={api}
-            isActive={screen === 'notifications' && !pendingGo}
-            ensureAccessToken={ensureAccessToken}
-            onOpenPost={openThread}
-            onOpenAuthor={(actor) => openProfile(actor.id, actor)}
-            onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
-          />
-        )}
-        {screen === 'report' && reportTarget !== undefined && session !== undefined && (
-          <ReportScreen
-            api={api}
-            target={reportTarget}
-            ensureAccessToken={ensureAccessToken}
-            isActive={screen === 'report'}
-            onCancel={() => setScreen(priorScreen)}
-            onSubmitted={() => {
-              setNotice('Report submitted — thank you.');
-              setScreen(priorScreen);
-            }}
-          />
-        )}
-        {screen === 'login' && (
-          <LoginScreen
-            api={api}
-            sessionManager={sessionManager}
-            env={env}
-            isActive={screen === 'login'}
-            onCancel={() => setScreen(priorScreen)}
-            onSuccess={(newSession) => {
-              setSession(newSession);
-              setScreen(priorScreen);
-            }}
-          />
-        )}
-        {screen === 'compose' && session !== undefined && (
-          <ComposeScreen
-            api={api}
-            draft={draft}
-            onChange={updateDraft}
-            onCancel={() => setScreen(priorScreen)}
-            isActive={screen === 'compose'}
-            ensureAccessToken={ensureAccessToken}
-            onSubmitted={(post) => {
-              const cleared = emptyDraft();
-              setDraft(cleared);
-              void store.clear();
-              if (post.inReplyToId !== '') {
-                // A reply just posted — show its own thread (parent for context,
-                // itself in focus) rather than the author's whole timeline. Set
-                // directly (not `openThread`) so `priorScreen` — already the screen
-                // `r` was pressed from — survives for `Esc` to return to.
-                setThreadStack([post.id]);
-                setScreen('thread');
-              } else if (present(post.author)) {
-                openProfile(post.author.id, post.author);
-              } else if (session !== undefined) {
-                openProfile(session.userId, session.actor);
-              } else {
-                setScreen('profile');
-              }
-            }}
-          />
-        )}
-      </Box>
+    <PlainModeProvider plain={plain}>
+      <Box flexDirection="column" justifyContent="space-between" height={rows}>
+        <Box flexDirection="column" paddingX={1} paddingY={1}>
+          {screen === 'help' && <HelpScreen target={api.target} />}
+          {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
+          {screen === 'local' && (
+            <LocalScreen
+              api={api}
+              isActive={screen === 'local' && !pendingGo}
+              actions={rowActions}
+            />
+          )}
+          {screen === 'home' && session !== undefined && (
+            <HomeScreen
+              api={api}
+              isActive={screen === 'home' && !pendingGo}
+              ensureAccessToken={ensureAccessToken}
+              actions={rowActions}
+            />
+          )}
+          {screen === 'search' && (
+            <SearchScreen
+              api={api}
+              isActive={screen === 'search'}
+              onOpenActor={(actor) => openProfile(actor.id, actor)}
+              onCancel={() => setScreen(priorScreen)}
+            />
+          )}
+          {screen === 'profile' && profileTarget !== undefined && (
+            <ProfileScreen
+              api={api}
+              actorId={profileTarget.actorId}
+              knownActor={profileTarget.knownActor}
+              isActive={screen === 'profile' && !pendingGo}
+              actions={rowActions}
+              viewerActorId={session?.userId}
+              ensureAccessToken={ensureAccessToken}
+              onReportActor={reportActor}
+            />
+          )}
+          {screen === 'thread' && threadStack.length > 0 && (
+            <ThreadScreen
+              api={api}
+              postId={threadStack[threadStack.length - 1] ?? ''}
+              isActive={screen === 'thread' && !pendingGo}
+              actions={rowActions}
+              onBack={threadBack}
+            />
+          )}
+          {screen === 'bookmarks' && session !== undefined && (
+            <BookmarksScreen
+              api={api}
+              isActive={screen === 'bookmarks' && !pendingGo}
+              ensureAccessToken={ensureAccessToken}
+              actions={rowActions}
+            />
+          )}
+          {screen === 'notifications' && session !== undefined && (
+            <NotificationsScreen
+              api={api}
+              isActive={screen === 'notifications' && !pendingGo}
+              ensureAccessToken={ensureAccessToken}
+              onOpenPost={openThread}
+              onOpenAuthor={(actor) => openProfile(actor.id, actor)}
+              onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
+            />
+          )}
+          {screen === 'report' && reportTarget !== undefined && session !== undefined && (
+            <ReportScreen
+              api={api}
+              target={reportTarget}
+              ensureAccessToken={ensureAccessToken}
+              isActive={screen === 'report'}
+              onCancel={() => setScreen(priorScreen)}
+              onSubmitted={() => {
+                setNotice('Report submitted — thank you.');
+                setScreen(priorScreen);
+              }}
+            />
+          )}
+          {screen === 'accounts' && session !== undefined && (
+            <AccountsScreen
+              api={api}
+              env={env}
+              session={session}
+              isActive={screen === 'accounts'}
+              ensureAccessToken={ensureAccessToken}
+              onLogout={() => void logout()}
+              onBack={() => setScreen(priorScreen)}
+            />
+          )}
+          {screen === 'login' && (
+            <LoginScreen
+              api={api}
+              sessionManager={sessionManager}
+              env={env}
+              isActive={screen === 'login'}
+              onCancel={() => setScreen(priorScreen)}
+              onSuccess={(newSession) => {
+                setSession(newSession);
+                setScreen(priorScreen);
+              }}
+            />
+          )}
+          {screen === 'compose' && session !== undefined && (
+            <ComposeScreen
+              api={api}
+              draft={draft}
+              onChange={updateDraft}
+              onCancel={() => setScreen(priorScreen)}
+              isActive={screen === 'compose'}
+              ensureAccessToken={ensureAccessToken}
+              onSubmitted={(post) => {
+                const cleared = emptyDraft();
+                setDraft(cleared);
+                void store.clear();
+                if (post.inReplyToId !== '') {
+                  // A reply just posted — show its own thread (parent for context,
+                  // itself in focus) rather than the author's whole timeline. Set
+                  // directly (not `openThread`) so `priorScreen` — already the screen
+                  // `r` was pressed from — survives for `Esc` to return to.
+                  setThreadStack([post.id]);
+                  setScreen('thread');
+                } else if (present(post.author)) {
+                  openProfile(post.author.id, post.author);
+                } else if (session !== undefined) {
+                  openProfile(session.userId, session.actor);
+                } else {
+                  setScreen('profile');
+                }
+              }}
+            />
+          )}
+        </Box>
 
-      <Box flexDirection="column" paddingX={1}>
-        <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
-        {notice === undefined ? null : <Text color={theme.warn}>{notice}</Text>}
-        <StatusBar
-          target={api.target}
-          status={statusLabel(serverInfoState.status)}
-          statusColor={statusColor(serverInfoState.status)}
-          handle={session?.actor?.handle}
-          keys={statusKeys(screen, session !== undefined)}
-          unreadCount={unreadCount}
-        />
+        <Box flexDirection="column" paddingX={1}>
+          <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
+          {notice === undefined ? null : <Text color={theme.warn}>{notice}</Text>}
+          <StatusBar
+            target={api.target}
+            status={statusLabel(serverInfoState.status)}
+            statusColor={statusColor(serverInfoState.status)}
+            handle={session?.actor?.handle}
+            keys={statusKeys(screen, session !== undefined)}
+            unreadCount={unreadCount}
+          />
+        </Box>
       </Box>
-    </Box>
+    </PlainModeProvider>
   );
 }
 
@@ -543,6 +580,7 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'compose') return ['Ctrl+S post', 'Esc keep draft'];
   if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
   if (screen === 'report') return ['j/k reason', 'Ctrl+S submit', 'Esc cancel'];
+  if (screen === 'accounts') return ['a add key', 'x log out', 'Esc back'];
   if (screen === 'notifications') return ['j/k move', 'Enter open', 'm mark all read'];
   if (screen === 'thread') {
     return ['Enter thread', 'p author', 'r reply', 'l like', 'b bookmark', '! report', 'Esc back'];
@@ -567,6 +605,7 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
     '/ search',
     'c compose',
     authenticated ? 'L account' : 'L login',
+    'P plain mode',
     '? help',
     'q quit',
   ];
