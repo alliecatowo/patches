@@ -17,12 +17,13 @@ GitHub device-flow login, and credential management) has server handlers, `Begin
 (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` is a cursor-paginated,
 bounded-depth breadth-first walk, not just direct replies; `CreatePost` also accepts
 `content_warning`, B-018) and `ActorService` (`GetActor`/`GetActorByHandle`/`UpdateProfile` —
-including a bounded `nameplate`, §173 — `SearchActors`, `ListFollowers`, `ListFollowing`) have
-server handlers, all implemented by P3-001. `SocialGraphService` (`social_graph.proto`) has
-server handlers for `FollowActor`/`UnfollowActor`/`GetRelationship`; `MuteActor`/`UnmuteActor`/
-`BlockActor`/`UnblockActor` are implemented, but on `ModerationService` rather than
-`SocialGraphService` (Phase 6, P6-001/P6-002) — the `blocks`/`mutes` tables (P3-001) are read
-by the feed/relationship queries and written by `ModerationService`. `FeedService`'s
+including a bounded `nameplate`, §173 — `SearchActors`, `ListFollowers`, `ListFollowing`,
+`ResolveActor` (B-028)) have server handlers, all implemented by P3-001 except `ResolveActor`
+(B-028). `SocialGraphService` (`social_graph.proto`) has server handlers for
+`FollowActor`/`UnfollowActor`/`GetRelationship`/`ListMutualFollows` (B-024); `MuteActor`/
+`UnmuteActor`/`BlockActor`/`UnblockActor` are implemented, but on `ModerationService` rather
+than `SocialGraphService` (Phase 6, P6-001/P6-002) — the `blocks`/`mutes` tables (P3-001) are
+read by the feed/relationship queries and written by `ModerationService`. `FeedService`'s
 `ListLocalFeed`/`ListActorPosts`/`ListHomeFeed` all have server handlers (P3-002) with
 keyset-paginated, visibility+block+mute-aware SQL (§59, §62–63) — see §3's `FeedService` table
 for the exact scoping. `NodeService.GetNodeInfo` (`node.proto`) has a server handler (P1-014).
@@ -55,7 +56,7 @@ packages/proto/proto/patches/v1/
 ├── pages.proto       # implemented (P45-003)
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
-├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship only)
+├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship/ListMutualFollows)
 ├── media.proto       # implemented (Phase 5)
 ├── moderation.proto  # implemented (P6-001/P6-002)
 ├── reactions.proto   # implemented (P4-002)
@@ -165,32 +166,33 @@ ignore unknown block types gracefully; the server rejects them on write.
 
 ### ActorService (§49) — implemented in `actors.proto`
 
-| RPC                | Notes                                                                                                                                                                                                                                                                            |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                                                                                                              |
-| `GetActorByHandle` |                                                                                                                                                                                                                                                                                  |
-| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); `avatar` is not yet on `UpdateProfileRequest`, though `Actor.avatar`/`MediaService` both exist — wiring it into profile updates is a follow-up |
-| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                                                                                                          |
-| `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                                                                                                      |
-| `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                      |
+| RPC                | Notes                                                                                                                                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                                                                                                                                                |
+| `GetActorByHandle` |                                                                                                                                                                                                                                                                                                                    |
+| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); `avatar` is not yet on `UpdateProfileRequest`, though `Actor.avatar`/`MediaService` both exist — wiring it into profile updates is a follow-up                                   |
+| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                                                                                                                                            |
+| `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                                                                                                                                        |
+| `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                                                        |
+| `ResolveActor`     | (B-028) discovers a remote actor by `acct:user@domain` via WebFinger (`RemoteActorService`) and upserts/returns it (`is_local = false`) so the caller can `SocialGraphService.FollowActor` it; requires an authenticated session and is rate-limited per caller; `NOT_IMPLEMENTED` when `FEDERATION_ENABLED=false` |
 
 `UpdateProfile`'s `nameplate.badges` is never accepted from the client (§173) — the server
 mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's existing
 badges forward regardless of what a request sends, and validates the serialized record stays
 ≤ 2 KiB.
 
-### SocialGraphService (§50) — implemented in `social_graph.proto` (P3-001), `FollowActor`/`UnfollowActor`/`GetRelationship` only
+### SocialGraphService (§50) — implemented in `social_graph.proto` (P3-001), `FollowActor`/`UnfollowActor`/`GetRelationship`/`ListMutualFollows`
 
-| RPC               | Notes                                                                                                                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FollowActor`     | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent |
-| `UnfollowActor`   | idempotent — unfollowing a non-followed actor is not an error                                                                                                                             |
-| `GetRelationship` | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting` — all require an authenticated session                                                                        |
+| RPC                 | Notes                                                                                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FollowActor`       | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent    |
+| `UnfollowActor`     | idempotent — unfollowing a non-followed actor is not an error                                                                                                                                |
+| `GetRelationship`   | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting` — all require an authenticated session                                                                           |
+| `ListMutualFollows` | (B-024) actors `actor_id` both follows and is followed by ("friends"); self-join on `follows`, keyset-paginated on the caller-facing edge's `(created_at DESC, id DESC)`; requires a session |
 
 `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are **not** on this service — they live on
-`ModerationService` below (P6-001). `FollowActor.followActor` does not yet call
-`NotificationsService.notifyFollow` on a new follow — flagged as a follow-up in P4-003's task
-report, since `GraphService`/`GraphModule` are outside that task's owned files.
+`ModerationService` below (P6-001). `FollowActor` calls `NotificationsService.notifyFollow` on a
+genuinely new follow (A-026), after the follow transaction commits.
 
 ### PostService (§51) — `CreatePost`/`GetPost`/`DeletePost`/`ListReplies` implemented in `posts.proto`
 

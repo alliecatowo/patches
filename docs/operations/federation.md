@@ -18,10 +18,31 @@ Setting `FEDERATION_ENABLED=true` on a node does two things, both gated by the s
    so following/being followed by, posting to, and liking posts by a remote actor start
    enqueuing real `FEDERATION_DELIVER` outbox jobs.
 
-`apps/worker` needs no federation-specific configuration beyond `PUBLIC_ORIGIN` (must match
-the same node's `apps/server` `PUBLIC_ORIGIN` exactly — it is embedded in every outgoing
-activity's `id` and in the HTTP Signature `keyId`) — its `JobDispatcher` already registers
-`FederationDeliverHandler` for the `FEDERATION_DELIVER` job type unconditionally.
+`apps/worker` needs `PUBLIC_ORIGIN` (must match the same node's `apps/server` `PUBLIC_ORIGIN`
+exactly — it is embedded in every outgoing activity's `id` and in the HTTP Signature `keyId`)
+and, as of B-026, the same node's `FEDERATION_KEY_ENCRYPTION_KEY` (below) — its `JobDispatcher`
+already registers `FederationDeliverHandler` for the `FEDERATION_DELIVER` job type
+unconditionally, and that handler decrypts `federation_keys.private_key_*` to sign every
+delivery, so a mismatched or missing key on the worker fails every delivery loudly rather than
+silently.
+
+### `FEDERATION_KEY_ENCRYPTION_KEY` (B-026)
+
+`federation_keys.private_key_*` (a local actor's own RSA-2048 signing key) is encrypted at
+rest with AES-256-GCM (`packages/database/src/crypto/federation-key-cipher.ts`) rather than
+stored plain. `FEDERATION_KEY_ENCRYPTION_KEY` is the base64-encoded 32-byte key:
+
+```bash
+openssl rand -base64 32
+```
+
+Set the **identical** value on both `apps/server` (required — the env schema refuses to boot
+with `FEDERATION_ENABLED=true` and this unset or the wrong length) and `apps/worker` (not
+schema-enforced, since the worker has no `FEDERATION_ENABLED` flag of its own — but a missing
+or mismatched key means every `FEDERATION_DELIVER` job errors as soon as it tries to sign a
+request). Losing this key makes every existing `federation_keys` row's private key
+unrecoverable — there is no key-rotation/re-encryption tooling yet (a v0.1 gap, same posture as
+every other single-operator-owned secret in this lab).
 
 ## Automated two-node test
 
@@ -122,11 +143,15 @@ even if nobody ever curls the endpoint — only while `FEDERATION_ENABLED=true` 
 `apps/worker` mirrors the delivery-side counters (`deliveries_succeeded`, `deliveries_failed`,
 `deliveries_dead`) in its own process, in `apps/worker/src/federation/delivery-metrics.ts` —
 **deliberately a separate registry** (`apps/worker` and `apps/server` are separate OS
-processes with separate memory; see that file's doc comment). The worker has no HTTP surface
-to expose a snapshot from today, so those counters are currently only observable indirectly,
-through the existing per-job structured logs (`FederationDeliverHandler`'s `SIGNER_MISSING`/
-`REJECTED_TERMINAL` warnings) — a worker-side snapshot endpoint or periodic log is a reasonable
-follow-up, not built here.
+processes with separate memory; see that file's doc comment). As of B-030, `JobRunner.run()`
+also logs that registry's snapshot every 60 seconds as a structured `{"event":
+"federation_metrics", ...}` line, `Logger`-tagged `[JobRunner]`, the same interval-gate pattern
+as its own `sweepStaleLeasesIfDue` — unconditional (not gated on any federation-enabled flag,
+since the worker has none: the snapshot is simply all-zero on a node that never runs
+`FEDERATION_DELIVER` jobs). There is still no worker-side HTTP endpoint to pull a snapshot
+on demand — the periodic log line is the only way to observe it, same as the per-job
+structured logs (`FederationDeliverHandler`'s `SIGNER_MISSING`/`REJECTED_TERMINAL`/
+`DOMAIN_BLOCKED` warnings).
 
 ## Known gaps (tracked in `docs/architecture/federation.md` §4)
 
@@ -135,10 +160,21 @@ follow-up, not built here.
   the only exercised two-node workflow; a Compose lab is a reasonable follow-up (`mise run
 fed:lab`-style) but was not built or run in this task and so is not documented as if it
   works.
-- `domain_blocks` has no write path (no RPC, no `patches-admin` command) — an operator wanting
-  to block a remote domain today has to `INSERT` the row by hand.
-- The outbox (`GET /users/:handle/outbox`) returns the newest 20 public posts only, not a
-  true keyset-paginated collection.
+
+## Blocking a remote domain (B-027)
+
+```bash
+patches-admin domain block <domain> [--reason <text>] --as <operator-handle>
+patches-admin domain unblock <domain> --as <operator-handle>
+patches-admin domain list
+```
+
+Writes/deletes a `domain_blocks` row and appends an `admin_audit_log` entry
+(`docs/operations/moderation.md`), same pattern as every other mutating `patches-admin`
+command. Enforced both directions: `InboxService` rejects inbound activities from a blocked
+domain's sender, and `DeliveryService.enqueue` never enqueues a delivery to a blocked domain's
+inbox — `apps/worker`'s `FederationDeliverHandler` re-checks at delivery time too, in case a
+domain was blocked after a job was already queued.
 
 ## Security posture
 
