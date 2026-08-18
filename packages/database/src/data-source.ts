@@ -7,7 +7,16 @@ import { SnakeNamingStrategy } from './naming/snake-naming.strategy.js';
 
 export interface CreateDataSourceOptionsInput {
   url: string;
+  /** Enable TLS. Certificate verification is always on — see `sslCa`. */
   ssl?: boolean;
+  /**
+   * PEM CA bundle used to verify the server certificate. Supply this when the database
+   * presents a private/self-signed CA (Fly.io Postgres, an internal cluster) instead of
+   * reaching for `rejectUnauthorized: false`, which disables verification entirely and turns
+   * TLS into encryption without authentication — i.e. no defense against an active MITM
+   * (§101). There is deliberately no option to skip verification.
+   */
+  sslCa?: string;
   poolMax?: number;
   logging?: boolean;
 }
@@ -16,17 +25,21 @@ export interface CreateDataSourceOptionsInput {
  * Builds `DataSourceOptions` for PostgreSQL, shared by the Nest apps, the TypeORM CLI
  * (`src/cli/data-source.ts`), and `packages/testkit`.
  *
+ * TLS verification is likewise not negotiable: when `ssl` is on, `rejectUnauthorized` is
+ * always `true` and a private CA is supplied via `sslCa` rather than by disabling
+ * verification (§101).
+ *
  * `synchronize` and `migrationsRun` are **hard-coded `false`** — not derived from any
  * input, not overridable — per `INITIAL_VISION.md` §16.1 / spec §153 ("No `synchronize:
  * true`"). Schema changes ship as reviewed migrations only; `migration:run` is an explicit
  * release step, never something that races at app startup.
  */
 export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
-  const { url, ssl = false, poolMax = 10, logging = false } = input;
+  const { url, ssl = false, sslCa, poolMax = 10, logging = false } = input;
   return {
     type: 'postgres',
     url,
-    ssl: ssl ? { rejectUnauthorized: false } : false,
+    ssl: ssl ? { rejectUnauthorized: true, ...(sslCa === undefined ? {} : { ca: sslCa }) } : false,
     synchronize: false,
     migrationsRun: false,
     logging,

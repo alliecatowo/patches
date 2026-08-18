@@ -11,5 +11,8 @@ export default defineProject({
     name: 'database',
     include: ['src/**/*.test.ts', 'test/**/*.integration.test.ts'],
     environment: 'node',
+    // Integration tests in this package share one real database (TEST_DATABASE_URL) and
+    // some of them drop/re-run the schema, so files must not run concurrently.
+    fileParallelism: false,
   },
 });

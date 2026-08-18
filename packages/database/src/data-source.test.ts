@@ -32,9 +32,24 @@ describe('createDataSourceOptions', () => {
 
   it('maps ssl/poolMax/logging inputs through', () => {
     const options = createDataSourceOptions({ url, ssl: true, poolMax: 25, logging: true });
-    expect(options.ssl).toEqual({ rejectUnauthorized: false });
+    expect(options.ssl).toEqual({ rejectUnauthorized: true });
     expect(options.extra).toEqual({ max: 25 });
     expect(options.logging).toBe(true);
+  });
+
+  it('never disables certificate verification, and takes a private CA instead', () => {
+    // A-002 / §101: `rejectUnauthorized: false` would make TLS encryption-without-
+    // authentication — no protection against an active MITM. A private/self-signed CA is
+    // supplied as a trust anchor instead, which is the actual fix rather than a bypass.
+    const options = createDataSourceOptions({
+      url,
+      ssl: true,
+      sslCa: '-----BEGIN CERTIFICATE-----',
+    });
+    expect(options.ssl).toEqual({
+      rejectUnauthorized: true,
+      ca: '-----BEGIN CERTIFICATE-----',
+    });
   });
 
   it('wires the snake_case naming strategy', () => {

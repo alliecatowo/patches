@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
+import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 import { AppMeta } from '../src/entities/app-meta.entity.js';
 
 // Never point tests at the dev DB (docs/agents/PACKAGE_CONVENTIONS.md, INITIAL_VISION.md
@@ -69,7 +70,11 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
   });
 
   it('reverts the migration and drops the table, then leaves the schema migrated again', async () => {
-    await dataSource.undoLastMigration();
+    // `undoLastMigration()` reverts exactly one migration, and this one is no longer the
+    // last: unwind the whole stack so `app_meta` (the first migration) is actually gone.
+    for (let remaining = ALL_MIGRATIONS.length; remaining > 0; remaining -= 1) {
+      await dataSource.undoLastMigration();
+    }
 
     const queryRunner = dataSource.createQueryRunner();
     try {

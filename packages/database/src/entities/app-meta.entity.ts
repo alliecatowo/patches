@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 /**
  * Schema-level key/value metadata (e.g. a generated `instance_id`).
@@ -22,6 +22,8 @@ export class AppMeta {
   @Column({ type: 'jsonb' })
   declare value: unknown;
 
-  @Column({ type: 'timestamptz', name: 'updated_at', default: () => 'now()' })
+  // `@UpdateDateColumn`, not a plain column: TypeORM stamps it on every save, so the value
+  // can't silently go stale when a caller forgets to set it by hand.
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   declare updatedAt: Date;
 }
