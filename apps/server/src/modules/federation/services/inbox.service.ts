@@ -17,6 +17,7 @@ import {
 import { verifyRequestSignature } from '../signatures/http-signature.js';
 import { DeliveryService } from './delivery.service.js';
 import { DomainBlockService } from './domain-block.service.js';
+import { KeyService } from './key.service.js';
 import { RemoteActorService } from './remote-actor.service.js';
 
 export type InboxRejectionReason =
@@ -50,6 +51,7 @@ export class InboxService {
     private readonly domainBlocks: DomainBlockService,
     private readonly delivery: DeliveryService,
     private readonly notifications: NotificationsService,
+    private readonly keys: KeyService,
   ) {}
 
   async handle(ctx: InboxRequestContext): Promise<InboxResult> {
@@ -222,6 +224,7 @@ export class InboxService {
 
     const inboxUrl = sender.sharedInboxUri ?? sender.inboxUri;
     if (inboxUrl !== null && inboxUrl !== undefined) {
+      await this.keys.getOrCreateKeyPair(manager, followee.id);
       const accept = buildActivity({
         id: `${origin}/activities/${randomUUID()}`,
         type: 'Accept',
