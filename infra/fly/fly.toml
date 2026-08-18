@@ -13,11 +13,27 @@
 #
 # `app` below is a placeholder — replace with the real registered Fly app name before the
 # first deploy (`fly apps create <name>`), then remove this comment.
-app = "patches-REPLACE-ME"
+app = "patches-social"
 primary_region = "iad"
 
 [build]
-  dockerfile = "infra/docker/Dockerfile"
+  dockerfile = "../docker/Dockerfile"
+
+# Non-secret runtime env (secrets — DATABASE_URL, JWT_*, FEDERATION_KEY_ENCRYPTION_KEY,
+# R2_*, RESEND_API_KEY — are set with `fly secrets set`). `GRPC_HOST=0.0.0.0` so the
+# Machine's proxy can reach the listener; `PUBLIC_ORIGIN`/`NODE_DOMAIN` name this node.
+[env]
+  NODE_ENV = "production"
+  LOG_LEVEL = "log"
+  GRPC_HOST = "0.0.0.0"
+  GRPC_PORT = "50051"
+  HTTP_PORT = "8080"
+  PUBLIC_ORIGIN = "https://patches-social.fly.dev"
+  NODE_DOMAIN = "patches-social.fly.dev"
+  INVITE_ONLY = "true"
+  FEDERATION_ENABLED = "false"
+  EMAIL_PROVIDER = "console"
+  EMAIL_FROM = "noreply@patches-social.fly.dev"
 
 # One image, two process groups (docs/research/fly-io.md §1, §5). Fly runs each group's
 # Machines with the corresponding command below, overriding the image's default CMD
