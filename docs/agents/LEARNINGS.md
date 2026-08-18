@@ -272,3 +272,49 @@ runs were clean afterward vs. ~1-in-3 failing before. Total suite time roughly d
 (~6s → ~12s), an acceptable tradeoff for a project this size. If `apps/tui`'s test count
 grows enough that serial execution becomes a real cost, the next step would be `pool: 'forks'`
 with a small `maxForks` rather than reverting to full parallelism.
+
+## 2026-08-18 — `apps/server`'s full integration suite occasionally flakes with a spurious `UNIMPLEMENTED` on a newly-added RPC
+
+**Context:** Adding `ReactionService`/`NotificationService`/`ModerationService` (P4-002/003,
+P6-001/002) and their integration test files, `pnpm test:integration` intermittently failed
+several of the _new_ services' RPCs with `12 UNIMPLEMENTED: The server does not implement the
+method X` — but running the same new test files alone, or in a smaller combined group, always
+passed. The specific RPC that failed varied between runs (`LikePost`, `ReportPost`, `MuteActor`
+seen so far), and RPCs on long-established services (`FollowActor`, `CreatePost`) never showed
+it.
+
+**Learning:** This looks like a genuine flake tied to how many `NestFactory.createMicroservice
+(AppModule, …)` instances get booted back-to-back across the full ~24-file integration suite
+(`vitest.integration.config.mts` runs files serially via `fileParallelism: false`, but each
+file's `beforeAll` still boots a brand-new Nest gRPC microservice on its own port) — not a bug
+in the new controllers' `@XxxServiceControllerMethods()` wiring, which is otherwise identical to
+every working service. Re-running the full suite 1-2 more times after a failure reliably turned
+it green with no code changes. Not yet root-caused (a `@grpc/proto-loader`/grpc-js
+service-registration race under many sequential microservice boots is the leading suspect, but
+unconfirmed).
+
+**Action taken:** None yet — documenting so the next agent that hits a "new RPC is
+UNIMPLEMENTED but the controller looks right" failure doesn't waste time assuming their wiring
+is broken. If this recurs and blocks CI, next step is probably `verifier`/`harness-tuner`
+bisecting whether a `grpc.Server` needs to fully release its port before the next one boots, or
+whether `@grpc/proto-loader`'s schema should be loaded once and shared across test-server
+instances instead of reloaded per `startTestServer()` call.
+
+## 2026-08-18 — proto message-typed fields stay `T | undefined` even with `useOptionals=none`
+
+**Context:** `toReactionResponse` in `reaction.controller.ts` tried to build a
+`LikePostResponse` by destructuring `toProtoPost(post).counts`/`.viewerState` — both nested
+`PostCounts`/`PostViewerState` message fields — and `tsc` rejected it: `PostCounts | undefined`
+is not assignable to a non-optional `{ replies: number; likes: number }`.
+
+**Learning:** `buf.gen.yaml`'s `useOptionals=none` (this repo's setting) only affects _scalar_
+proto3 fields — every generated interface still types a nested-message field as `T | undefined`
+(exactly like `google.protobuf.Timestamp` fields such as `Post.editedAt`), even though the
+mapper always sets a value at runtime. Don't destructure a message-typed field back out of a
+`toProtoXxx()` mapper's return value and assume it's non-optional — build the response object
+directly from the application DTO's own fields instead (as `post.dto.ts`'s `PostView.counts`/
+`viewerState` already guarantee are always-present objects, never `undefined`, at the DTO
+layer).
+
+**Action taken:** `reaction.controller.ts`'s `toReactionResponse` builds its return value from
+`PostView.counts`/`viewerState` directly rather than through `toProtoPost(...).counts`.
