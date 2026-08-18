@@ -32,7 +32,7 @@ never imports server code.
 
 ## Working agreement
 
-1. Work happens on feature branches; commit atomically with Conventional Commits (`feat(server): …`, `docs: …`).
+1. Work happens as **stacked PRs** managed with `gh stack` (skill: `/gh-stack`, always non-interactive: `gh stack view --json`, `gh stack add <branch>`, `gh stack submit --auto`, `gh stack sync`). One concern per layer; commit atomically with Conventional Commits (`feat(server): …`, `docs: …`). Parallel agents share one working tree, so they commit on the current top branch and the orchestrator splits commits into layers (`gh stack add` + cherry-pick) afterwards.
 2. `tasks.md` is the live task board. Pick tasks from it, check them off, file new ones you discover.
    Use `/task` to add/complete tasks consistently.
 3. Before touching a technology, read its note in `docs/research/` (verified against official docs). If the note
