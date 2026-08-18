@@ -1,9 +1,10 @@
 import type { CredentialType as DbCredentialType } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
 import type { Actor, Credential, Session } from '@patches/proto';
-import { CredentialType } from '@patches/proto/nest';
+import { CredentialType, GitHubLoginStatus } from '@patches/proto/nest';
 
 import type { ActorSummary, CredentialSummary, SessionEnvelope } from './auth.dto.js';
+import type { GitHubLoginPollResult } from './auth.service.js';
 
 /**
  * Application DTO → protobuf message (spec §128).
@@ -70,6 +71,22 @@ export function toProtoCredential(credential: CredentialSummary): Credential {
     createdAt: dateToTimestamp(credential.createdAt),
     lastUsedAt: credential.lastUsedAt === null ? undefined : dateToTimestamp(credential.lastUsedAt),
   };
+}
+
+const GITHUB_LOGIN_STATUS_TO_PROTO: Readonly<
+  Record<GitHubLoginPollResult['status'], GitHubLoginStatus>
+> = Object.freeze({
+  PENDING: GitHubLoginStatus.GIT_HUB_LOGIN_STATUS_PENDING,
+  SLOW_DOWN: GitHubLoginStatus.GIT_HUB_LOGIN_STATUS_SLOW_DOWN,
+  EXPIRED: GitHubLoginStatus.GIT_HUB_LOGIN_STATUS_EXPIRED,
+  DENIED: GitHubLoginStatus.GIT_HUB_LOGIN_STATUS_DENIED,
+  COMPLETE: GitHubLoginStatus.GIT_HUB_LOGIN_STATUS_COMPLETE,
+});
+
+export function toProtoGitHubLoginStatus(
+  status: GitHubLoginPollResult['status'],
+): GitHubLoginStatus {
+  return GITHUB_LOGIN_STATUS_TO_PROTO[status];
 }
 
 /** The single session envelope every login method returns (`docs/architecture/auth.md` §2). */

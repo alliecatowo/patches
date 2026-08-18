@@ -24,6 +24,8 @@ import {
   toActorSummary,
   toCredentialSummary,
 } from './auth.dto.js';
+import { GitHubDeviceFlowService } from './github-device-flow.service.js';
+import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
 import { RateLimitService } from './rate-limit.service.js';
 import {
@@ -44,6 +46,7 @@ import {
   loginInputSchema,
   normalizeEmail,
   normalizeHandle,
+  opaqueCodeSchema,
   parseInput,
   refreshTokenInputSchema,
   registerInputSchema,
@@ -93,6 +96,21 @@ export interface CompleteSshLoginInput {
   signatureFormat: string;
 }
 
+export interface BeginGitHubLoginResult {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+  expiresAt: Date;
+}
+
+export type GitHubLoginPollResult =
+  | { status: 'PENDING' }
+  | { status: 'SLOW_DOWN' }
+  | { status: 'EXPIRED' }
+  | { status: 'DENIED' }
+  | { status: 'COMPLETE'; session: SessionEnvelope };
+
 export interface AddCredentialInput {
   type: 'PASSWORD' | 'SSH_PUBLIC_KEY';
   secret: string;
@@ -110,6 +128,8 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly sshChallenges: SshChallengeService,
     private readonly rateLimit: RateLimitService,
+    private readonly githubFlow: GitHubDeviceFlowService,
+    private readonly githubAttempts: GitHubLoginAttemptsService,
   ) {}
 
   // ---------------------------------------------------------------- registration
@@ -595,6 +615,139 @@ export class AuthService {
     });
   }
 
+  // ---------------------------------------------------------------- GitHub device flow
+
+  /**
+   * Starts GitHub's OAuth device flow (spec §167, §176). `callerUserId` is set only when the
+   * request carried a valid access token — an authenticated caller is *linking* GitHub to
+   * their own account; an anonymous caller can only log in with an already-linked one (see
+   * {@link completeGitHubLogin}). Schema-only until a `GITHUB_CLIENT_ID` is configured.
+   */
+  async beginGitHubLogin(callerUserId: string | undefined): Promise<BeginGitHubLoginResult> {
+    this.rateLimit.consumePeer('github_begin_login', getRequestContext()?.peer);
+    const clientId = this.config.githubClientId;
+    if (clientId === undefined) throw gitHubNotConfigured();
+
+    const issued = await this.githubFlow.beginDeviceFlow(clientId);
+    this.githubAttempts.begin({
+      deviceCode: issued.deviceCode,
+      expiresAt: issued.expiresAt,
+      intervalMs: issued.intervalSeconds * 1000,
+      callerUserId: callerUserId ?? null,
+    });
+
+    return {
+      deviceCode: issued.deviceCode,
+      userCode: issued.userCode,
+      verificationUri: issued.verificationUri,
+      interval: issued.intervalSeconds,
+      expiresAt: issued.expiresAt,
+    };
+  }
+
+  /**
+   * Polls GitHub for a completed device-flow login. Honors both GitHub's own `interval`
+   * (tracked in {@link GitHubLoginAttemptsService}, extended further on a `slow_down`
+   * response) and this node's per-peer poll budget.
+   */
+  async pollGitHubLogin(rawDeviceCode: string): Promise<GitHubLoginPollResult> {
+    this.rateLimit.consumePeer('github_poll_login', getRequestContext()?.peer);
+    const clientId = this.config.githubClientId;
+    if (clientId === undefined) throw gitHubNotConfigured();
+
+    const deviceCode = parseInput(opaqueCodeSchema, rawDeviceCode);
+    const attempt = this.githubAttempts.get(deviceCode);
+    if (attempt === undefined) return { status: 'EXPIRED' };
+
+    if (!this.githubAttempts.tryConsumePoll(deviceCode)) return { status: 'SLOW_DOWN' };
+
+    const result = await this.githubFlow.pollAccessToken(clientId, deviceCode);
+    switch (result.kind) {
+      case 'PENDING':
+        return { status: 'PENDING' };
+      case 'SLOW_DOWN':
+        // GitHub's own convention: back off by another 5 seconds on every slow_down.
+        this.githubAttempts.extendInterval(deviceCode, 5_000);
+        return { status: 'SLOW_DOWN' };
+      case 'EXPIRED':
+        this.githubAttempts.consume(deviceCode);
+        return { status: 'EXPIRED' };
+      case 'DENIED':
+        this.githubAttempts.consume(deviceCode);
+        return { status: 'DENIED' };
+      case 'SUCCESS': {
+        this.githubAttempts.consume(deviceCode);
+        // The access token is read exactly once, right here, and never stored (§167).
+        const numericAccountId = await this.githubFlow.fetchNumericAccountId(result.accessToken);
+        const session = await this.completeGitHubLogin(numericAccountId, attempt.callerUserId);
+        return { status: 'COMPLETE', session };
+      }
+    }
+  }
+
+  /**
+   * Links or logs in a GITHUB credential by its numeric account id (spec §167 — never the
+   * login name, which GitHub lets an account holder change and someone else re-register).
+   */
+  private async completeGitHubLogin(
+    githubAccountId: string,
+    callerUserId: string | null,
+  ): Promise<SessionEnvelope> {
+    return this.dataSource.transaction(async (manager) => {
+      const credentials = manager.getRepository(Credential);
+      const existing = await credentials.findOne({
+        where: { type: 'GITHUB', identifier: githubAccountId, revokedAt: IsNull() },
+      });
+
+      let userId: string;
+      if (callerUserId !== null) {
+        // AddCredential semantics (spec §167's "linking ... MUST require an authenticated
+        // Patches session"): link to the caller's own account, unless this GitHub account is
+        // already linked to a *different* one.
+        if (existing !== null && existing.userId !== callerUserId) {
+          throw AppError.validation(
+            'This GitHub account is already linked to a different Patches account.',
+          );
+        }
+        if (existing === null) {
+          await credentials.save(
+            credentials.create({
+              userId: callerUserId,
+              type: 'GITHUB',
+              identifier: githubAccountId,
+            }),
+          );
+        } else {
+          await credentials.update({ id: existing.id }, { lastUsedAt: new Date() });
+        }
+        userId = callerUserId;
+      } else {
+        // Anonymous poll: log in with an already-linked GitHub credential. GitHub alone never
+        // creates a new Patches account (spec §167 — GitHub is a credential, not an identity).
+        if (existing === null) {
+          throw AppError.validation(
+            'No Patches account is linked to this GitHub account. Sign in and link GitHub ' +
+              'from your account settings first.',
+          );
+        }
+        await credentials.update({ id: existing.id }, { lastUsedAt: new Date() });
+        userId = existing.userId;
+      }
+
+      const user = await manager.getRepository(User).findOne({ where: { id: userId } });
+      if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+        throw invalidCredentials();
+      }
+
+      const actor = await requireActor(manager, user.actorId);
+      const tokens = await this.tokens.issueSession(manager, {
+        userId: user.id,
+        actorId: actor.id,
+      });
+      return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
+    });
+  }
+
   // ---------------------------------------------------------------- credentials
 
   async listCredentials(claims: AccessTokenClaims): Promise<CredentialSummary[]> {
@@ -915,6 +1068,12 @@ function requireUserId(actor: Actor): string {
 
 function invalidCredentials(): AppError {
   return new AppError('AUTH_INVALID_CREDENTIALS', 'Incorrect handle, email address or password.');
+}
+
+/** GitHub login RPCs answer this until `GITHUB_CLIENT_ID` is configured (spec §176) — never
+ * a fake pending status a client would poll forever. */
+function gitHubNotConfigured(): AppError {
+  return new AppError('NOT_IMPLEMENTED', 'GitHub login is not available on this node yet.');
 }
 
 function invalidCode(): AppError {
