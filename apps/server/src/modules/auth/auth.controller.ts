@@ -9,6 +9,8 @@ import {
   type AuthServiceController,
   type BeginGitHubLoginRequest,
   type BeginGitHubLoginResponse,
+  type BeginSshEnrollmentRequest,
+  type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
   type CompleteSshLoginRequest,
@@ -179,6 +181,23 @@ export class AuthController implements AuthServiceController {
     return { session: toProtoSession(session) };
   }
 
+  @UseGuards(AuthGuard)
+  async beginSshEnrollment(
+    @Payload() request: BeginSshEnrollmentRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<BeginSshEnrollmentResponse> {
+    const challenge = await this.auth.beginSshEnrollment(
+      requireSession(session),
+      request.publicKeyOpenssh,
+    );
+    return {
+      challengeId: challenge.challengeId,
+      nonce: challenge.nonce,
+      expiresAt: dateToTimestamp(challenge.expiresAt),
+    };
+  }
+
   /**
    * No `@UseGuards(AuthGuard)`: `BeginGitHubLogin` is valid both anonymously (login with an
    * already-linked GitHub credential) and authenticated (link GitHub to the caller's own
@@ -256,6 +275,17 @@ export class AuthController implements AuthServiceController {
       type,
       secret: request.secret,
       ...optional('label', request.label),
+      // proto-loader decodes an unset embedded message as `null`, not `undefined` — ts-proto's
+      // generated type only claims the latter, so both must be checked here.
+      ...(request.sshProof === undefined || request.sshProof === null
+        ? {}
+        : {
+            sshProof: {
+              challengeId: request.sshProof.challengeId,
+              signature: Buffer.from(request.sshProof.signature),
+              signatureFormat: request.sshProof.signatureFormat,
+            },
+          }),
     });
     return { credential: toProtoCredential(credential) };
   }

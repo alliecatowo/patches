@@ -391,17 +391,18 @@ Refresh tokens are never silently stored world-readable.
   (`SSH_AGENTC_REQUEST_IDENTITIES`), cross-referenced against `~/.ssh/*.pub` for a
   friendlier prompt (`ssh-enroll.ts`'s `discoverEnrollmentCandidates` — the `.pub`
   scan is display-only, never itself enrollable). Requires an explicit `y`
-  confirmation (or `--yes` when non-interactive), then asks the agent to sign a
-  local nonce (`SSH_AGENTC_SIGN_REQUEST`, never the server's login challenge) as a
-  client-side proof the identity is actually loaded, before calling
-  `AuthService.AddCredential`. **Never reads a private key file.**
-  - Deviation worth flagging: `AddCredentialRequest` (`packages/proto`
-    `auth.proto`) carries no signature/challenge field of its own — only the raw
-    OpenSSH public key text (`secret`) and a `label` — unlike
-    `BeginSshLogin`/`CompleteSshLogin`. The local signature above is therefore a
-    client-side guard only, not something the server verifies. A follow-up would
-    give `AddCredential` a `BeginSshLogin`-shaped challenge/signature pair so
-    possession is attested server-side too.
+  confirmation (or `--yes` when non-interactive), then runs a **server-verified**
+  possession proof (B-021): `AuthService.BeginSshEnrollment(public_key_openssh)`
+  issues a single-use, TTL ≤ 120 s challenge bound to the caller's own account and
+  that key's fingerprint; the agent signs the enroll-domain blob
+  (`SSH_AGENTC_SIGN_REQUEST`, never a private key); `AddCredential(SSH_PUBLIC_KEY)`
+  carries the resulting `ssh_proof: {challenge_id, signature, signature_format}`,
+  which the server verifies with the same signature verifier login uses (SHA-1
+  `ssh-rsa` and sub-2048-bit RSA rejected identically) before enrolling the key.
+  **Never reads a private key file.** See `docs/architecture/auth.md`'s
+  "Enrollment" subsection for the full protocol and its one documented storage
+  deviation (the binding is JSON-encoded into an existing text column rather than
+  a dedicated schema field, since a schema change was outside this change's scope).
 - `patches keys list` → `AuthService.ListCredentials` (type, label, identifier,
   since-timestamp; never a secret).
 - `patches keys remove <fingerprint>` → looks the credential up by

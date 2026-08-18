@@ -20,6 +20,8 @@ import type {
   AddCredentialResponse,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
+  BeginSshEnrollmentRequest,
+  BeginSshEnrollmentResponse,
   BeginSshLoginRequest,
   BeginSshLoginResponse,
   CompleteSshLoginRequest,
@@ -268,6 +270,7 @@ export interface AuthGrpcClient extends Client {
   getCurrentSession: GrpcUnaryCall<GetCurrentSessionRequest, GetCurrentSessionResponse>;
   beginSshLogin: GrpcUnaryCall<BeginSshLoginRequest, BeginSshLoginResponse>;
   completeSshLogin: GrpcUnaryCall<CompleteSshLoginRequest, CompleteSshLoginResponse>;
+  beginSshEnrollment: GrpcUnaryCall<BeginSshEnrollmentRequest, BeginSshEnrollmentResponse>;
   beginGitHubLogin: GrpcUnaryCall<BeginGitHubLoginRequest, BeginGitHubLoginResponse>;
   pollGitHubLogin: GrpcUnaryCall<PollGitHubLoginRequest, PollGitHubLoginResponse>;
   listCredentials: GrpcUnaryCall<ListCredentialsRequest, ListCredentialsResponse>;

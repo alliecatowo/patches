@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CREDENTIAL_TYPE } from '@patches/proto';
+import { SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
+import { CREDENTIAL_TYPE, dateToTimestamp, type BeginSshEnrollmentResponse } from '@patches/proto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -12,13 +13,13 @@ import {
   encodeUint32,
   SSH_AGENT_MESSAGE,
   SshFrameReader,
+  SshWireReader,
 } from './ssh-agent.js';
 import { describeIdentities } from './ssh-login.js';
 import {
   discoverEnrollmentCandidates,
   enrollSshCredential,
   listHomeSshPublicKeys,
-  provePossession,
 } from './ssh-enroll.js';
 
 /** Mirrors `ssh-agent.test.ts`'s fake agent — a real Unix socket speaking just
@@ -131,7 +132,7 @@ describe('discoverEnrollmentCandidates', () => {
   });
 });
 
-describe('provePossession', () => {
+describe('enrollSshCredential (B-021)', () => {
   let agent: ReturnType<typeof startFakeAgent> | undefined;
 
   afterEach(async () => {
@@ -139,46 +140,35 @@ describe('provePossession', () => {
     agent = undefined;
   });
 
-  it('signs a local nonce via SSH_AGENTC_SIGN_REQUEST, never a challenge from the server', async () => {
-    let seenMessageType: number | undefined;
-    agent = startFakeAgent((messageType) => {
-      seenMessageType = messageType;
+  it('runs BeginSshEnrollment -> agent sign -> AddCredential with the resulting proof', async () => {
+    let signedData: Buffer | undefined;
+    agent = startFakeAgent((messageType, payload) => {
+      expect(messageType).toBe(SSH_AGENT_MESSAGE.SIGN_REQUEST);
+      const reader = new SshWireReader(payload);
+      reader.readString(); // key blob
+      signedData = Buffer.from(reader.readString());
       return signResponse('ssh-ed25519', 'sig-bytes');
     });
     const [identity] = describeIdentities([{ keyBlob: KEY_BLOB, comment: 'alice@laptop' }]);
     if (identity === undefined) throw new Error('unreachable');
 
-    await expect(provePossession(agent.path, identity)).resolves.toBeUndefined();
-    expect(seenMessageType).toBe(SSH_AGENT_MESSAGE.SIGN_REQUEST);
-  });
+    const beginResponse: BeginSshEnrollmentResponse = {
+      challengeId: 'enroll-chal-1',
+      nonce: Buffer.from([9, 9, 9, 9]),
+      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+    };
 
-  it('rejects when the agent refuses to sign (key not actually loaded)', async () => {
-    agent = startFakeAgent(() => encodeFrame(SSH_AGENT_MESSAGE.FAILURE, Buffer.alloc(0)));
-    const [identity] = describeIdentities([{ keyBlob: KEY_BLOB, comment: 'alice@laptop' }]);
-    if (identity === undefined) throw new Error('unreachable');
-
-    await expect(provePossession(agent.path, identity)).rejects.toThrow(/refused to sign/);
-  });
-});
-
-describe('enrollSshCredential', () => {
-  let agent: ReturnType<typeof startFakeAgent> | undefined;
-
-  afterEach(async () => {
-    await agent?.stop();
-    agent = undefined;
-  });
-
-  it('proves possession, then calls AddCredential with the OpenSSH public key text', async () => {
-    agent = startFakeAgent(() => signResponse('ssh-ed25519', 'sig-bytes'));
-    const [identity] = describeIdentities([{ keyBlob: KEY_BLOB, comment: 'alice@laptop' }]);
-    if (identity === undefined) throw new Error('unreachable');
-
-    let seenRequest: unknown;
+    let seenBeginRequest: unknown;
+    let seenAddRequest: unknown;
     let seenAccessToken: unknown;
     const api = {
+      beginSshEnrollment: (request: unknown, accessToken: string) => {
+        seenBeginRequest = request;
+        seenAccessToken = accessToken;
+        return Promise.resolve(beginResponse);
+      },
       addCredential: (request: unknown, accessToken: string) => {
-        seenRequest = request;
+        seenAddRequest = request;
         seenAccessToken = accessToken;
         return Promise.resolve({
           credential: {
@@ -196,36 +186,67 @@ describe('enrollSshCredential', () => {
     const response = await enrollSshCredential({
       api,
       accessToken: 'access-1',
+      nodeDomain: 'patches.example',
       socketPath: agent.path,
       identity,
       label: 'laptop',
     });
 
     expect(seenAccessToken).toBe('access-1');
-    expect(seenRequest).toEqual({
+    expect(seenBeginRequest).toEqual({
+      publicKeyOpenssh: `ssh-ed25519 ${KEY_BLOB.toString('base64')} alice@laptop`,
+    });
+    expect(seenAddRequest).toEqual({
       type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
       secret: `ssh-ed25519 ${KEY_BLOB.toString('base64')} alice@laptop`,
       label: 'laptop',
+      sshProof: {
+        challengeId: 'enroll-chal-1',
+        signature: Buffer.from('sig-bytes'),
+        signatureFormat: 'ssh-ed25519',
+      },
     });
     expect(response.credential?.identifier).toBe(identity.fingerprint);
+
+    // What actually got signed must be the enroll-domain blob for this exact challenge —
+    // distinct from `SSH_LOGIN_DOMAIN_SEPARATOR` (A-020/B-021: shared encoding, different
+    // domain separator, so a login signature is never a valid enrollment proof).
+    const signedReader = new SshWireReader(signedData ?? Buffer.alloc(0));
+    expect(signedReader.readString().toString('utf8')).toBe(SSH_ENROLL_DOMAIN_SEPARATOR);
+    expect(signedReader.readString().toString('utf8')).toBe('patches.example');
+    expect(signedReader.readString().toString('utf8')).toBe('enroll-chal-1');
+    expect([...signedReader.readString()]).toEqual([9, 9, 9, 9]);
+    expect(signedReader.readString().toString('utf8')).toBe(identity.fingerprint);
   });
 
-  it('never calls AddCredential when the agent refuses to prove possession', async () => {
+  it('never calls AddCredential when the agent refuses to sign the enrollment challenge', async () => {
     agent = startFakeAgent(() => encodeFrame(SSH_AGENT_MESSAGE.FAILURE, Buffer.alloc(0)));
     const [identity] = describeIdentities([{ keyBlob: KEY_BLOB, comment: 'alice@laptop' }]);
     if (identity === undefined) throw new Error('unreachable');
 
-    let called = false;
+    let addCalled = false;
     const api = {
+      beginSshEnrollment: () =>
+        Promise.resolve<BeginSshEnrollmentResponse>({
+          challengeId: 'enroll-chal-2',
+          nonce: Buffer.from([1, 1, 1, 1]),
+          expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+        }),
       addCredential: () => {
-        called = true;
+        addCalled = true;
         return Promise.reject(new Error('should not be called'));
       },
     };
 
     await expect(
-      enrollSshCredential({ api, accessToken: 'access-1', socketPath: agent.path, identity }),
+      enrollSshCredential({
+        api,
+        accessToken: 'access-1',
+        nodeDomain: 'patches.example',
+        socketPath: agent.path,
+        identity,
+      }),
     ).rejects.toThrow(/refused to sign/);
-    expect(called).toBe(false);
+    expect(addCalled).toBe(false);
   });
 });

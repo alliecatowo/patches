@@ -201,6 +201,31 @@ export interface CompleteSshLoginResponse {
   session: Session | undefined;
 }
 
+/**
+ * Authenticated (spec §165's "adding a credential ... MUST require an authenticated
+ * session"): the caller's identity comes from the `authorization` metadata, not this message.
+ */
+export interface BeginSshEnrollmentRequest {
+  /**
+   * OpenSSH public key blob (e.g. "ssh-ed25519 AAAA... comment") of the key about to be
+   * enrolled. The challenge binds to this key's fingerprint (B-021) so the proof later
+   * submitted to `AddCredential` cannot be redeemed for a different key than the one that was
+   * actually challenged.
+   */
+  publicKeyOpenssh: string;
+}
+
+export interface BeginSshEnrollmentResponse {
+  challengeId: string;
+  /**
+   * >= 32 CSPRNG bytes, signed verbatim as part of the challenge blob. Never reused, never
+   * predictable.
+   */
+  nonce: Buffer;
+  /** TTL <= 120 seconds (spec §166, applied identically to enrollment). */
+  expiresAt: Timestamp | undefined;
+}
+
 export interface BeginGitHubLoginRequest {}
 
 export interface BeginGitHubLoginResponse {
@@ -253,6 +278,27 @@ export interface AddCredentialRequest {
   /** PASSWORD: the new password. SSH_PUBLIC_KEY: an OpenSSH public key blob. */
   secret: string;
   label: string;
+  /**
+   * Required when type == SSH_PUBLIC_KEY (B-021): a possession proof from a prior
+   * `BeginSshEnrollment` call for the same key in `secret`. Ignored for PASSWORD.
+   */
+  sshProof: SshEnrollmentProof | undefined;
+}
+
+/**
+ * Proves possession of the private key for the SSH public key being enrolled (B-021),
+ * the same way `CompleteSshLoginRequest` proves it for login.
+ */
+export interface SshEnrollmentProof {
+  challengeId: string;
+  /**
+   * Signature over the same fixed-order blob as `CompleteSshLoginRequest.signature`, but with
+   * domain separation string "patches-ssh-enroll-v1" in place of "patches-ssh-login-v1" (spec
+   * §166) — the two are never interchangeable, even for the same key and challenge id.
+   */
+  signature: Buffer;
+  /** OpenSSH signature algorithm name — see `CompleteSshLoginRequest.signature_format`. */
+  signatureFormat: string;
 }
 
 export interface AddCredentialResponse {
@@ -403,10 +449,25 @@ export interface AuthServiceClient {
   ): Observable<ListCredentialsResponse>;
 
   /**
+   * SSH credential enrollment challenge (spec §165-166, B-021). Authenticated: issues a
+   * single-use, short-TTL challenge bound to the caller's own account and the fingerprint of
+   * `public_key_openssh`, mirroring `BeginSshLogin`/`CompleteSshLogin`'s shape so
+   * `AddCredential(SSH_PUBLIC_KEY)` can require a real possession proof (`SshEnrollmentProof`)
+   * instead of trusting the client's own local check.
+   */
+
+  beginSshEnrollment(
+    request: BeginSshEnrollmentRequest,
+    metadata?: Metadata,
+  ): Observable<BeginSshEnrollmentResponse>;
+
+  /**
    * Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
    * GITHUB credentials are linked via `BeginGitHubLogin`/`PollGitHubLogin` called with an
    * authenticated session instead, not through this RPC (spec §167's "linking ... MUST
-   * require an authenticated Patches session").
+   * require an authenticated Patches session"). SSH_PUBLIC_KEY MUST carry `ssh_proof` from a
+   * prior `BeginSshEnrollment` call (B-021); a missing, expired, replayed, or key-mismatched
+   * proof is rejected.
    */
 
   addCredential(
@@ -597,10 +658,28 @@ export interface AuthServiceController {
     | ListCredentialsResponse;
 
   /**
+   * SSH credential enrollment challenge (spec §165-166, B-021). Authenticated: issues a
+   * single-use, short-TTL challenge bound to the caller's own account and the fingerprint of
+   * `public_key_openssh`, mirroring `BeginSshLogin`/`CompleteSshLogin`'s shape so
+   * `AddCredential(SSH_PUBLIC_KEY)` can require a real possession proof (`SshEnrollmentProof`)
+   * instead of trusting the client's own local check.
+   */
+
+  beginSshEnrollment(
+    request: BeginSshEnrollmentRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<BeginSshEnrollmentResponse>
+    | Observable<BeginSshEnrollmentResponse>
+    | BeginSshEnrollmentResponse;
+
+  /**
    * Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
    * GITHUB credentials are linked via `BeginGitHubLogin`/`PollGitHubLogin` called with an
    * authenticated session instead, not through this RPC (spec §167's "linking ... MUST
-   * require an authenticated Patches session").
+   * require an authenticated Patches session"). SSH_PUBLIC_KEY MUST carry `ssh_proof` from a
+   * prior `BeginSshEnrollment` call (B-021); a missing, expired, replayed, or key-mismatched
+   * proof is rejected.
    */
 
   addCredential(
@@ -640,6 +719,7 @@ export function AuthServiceControllerMethods() {
       'beginGitHubLogin',
       'pollGitHubLogin',
       'listCredentials',
+      'beginSshEnrollment',
       'addCredential',
       'revokeCredential',
     ];

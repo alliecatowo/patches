@@ -71,10 +71,19 @@ service AuthService {
   // other secret material — type, label, identifier, timestamps only.
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
 
+  // SSH credential enrollment challenge (spec §165-166, B-021). Authenticated: issues a
+  // single-use, short-TTL challenge bound to the caller's own account and the fingerprint of
+  // `public_key_openssh`, mirroring `BeginSshLogin`/`CompleteSshLogin`'s shape so
+  // `AddCredential(SSH_PUBLIC_KEY)` can require a real possession proof (`SshEnrollmentProof`)
+  // instead of trusting the client's own local check.
+  rpc BeginSshEnrollment(BeginSshEnrollmentRequest) returns (BeginSshEnrollmentResponse);
+
   // Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
   // GITHUB credentials are linked via `BeginGitHubLogin`/`PollGitHubLogin` called with an
   // authenticated session instead, not through this RPC (spec §167's "linking ... MUST
-  // require an authenticated Patches session").
+  // require an authenticated Patches session"). SSH_PUBLIC_KEY MUST carry `ssh_proof` from a
+  // prior `BeginSshEnrollment` call (B-021); a missing, expired, replayed, or key-mismatched
+  // proof is rejected.
   rpc AddCredential(AddCredentialRequest) returns (AddCredentialResponse);
 
   // Revoking a user's last active credential MUST fail server-side (spec §165) — an account
@@ -239,6 +248,27 @@ message CompleteSshLoginResponse {
   Session session = 1;
 }
 
+// Authenticated (spec §165's "adding a credential ... MUST require an authenticated
+// session"): the caller's identity comes from the `authorization` metadata, not this message.
+message BeginSshEnrollmentRequest {
+  // OpenSSH public key blob (e.g. "ssh-ed25519 AAAA... comment") of the key about to be
+  // enrolled. The challenge binds to this key's fingerprint (B-021) so the proof later
+  // submitted to `AddCredential` cannot be redeemed for a different key than the one that was
+  // actually challenged.
+  string public_key_openssh = 1;
+}
+
+message BeginSshEnrollmentResponse {
+  string challenge_id = 1;
+
+  // >= 32 CSPRNG bytes, signed verbatim as part of the challenge blob. Never reused, never
+  // predictable.
+  bytes nonce = 2;
+
+  // TTL <= 120 seconds (spec §166, applied identically to enrollment).
+  google.protobuf.Timestamp expires_at = 3;
+}
+
 message BeginGitHubLoginRequest {}
 
 message BeginGitHubLoginResponse {
@@ -313,6 +343,24 @@ message AddCredentialRequest {
   string secret = 2;
 
   string label = 3;
+
+  // Required when type == SSH_PUBLIC_KEY (B-021): a possession proof from a prior
+  // `BeginSshEnrollment` call for the same key in `secret`. Ignored for PASSWORD.
+  SshEnrollmentProof ssh_proof = 4;
+}
+
+// Proves possession of the private key for the SSH public key being enrolled (B-021),
+// the same way `CompleteSshLoginRequest` proves it for login.
+message SshEnrollmentProof {
+  string challenge_id = 1;
+
+  // Signature over the same fixed-order blob as `CompleteSshLoginRequest.signature`, but with
+  // domain separation string "patches-ssh-enroll-v1" in place of "patches-ssh-login-v1" (spec
+  // §166) — the two are never interchangeable, even for the same key and challenge id.
+  bytes signature = 2;
+
+  // OpenSSH signature algorithm name — see `CompleteSshLoginRequest.signature_format`.
+  string signature_format = 3;
 }
 
 message AddCredentialResponse {
