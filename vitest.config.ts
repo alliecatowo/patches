@@ -10,6 +10,7 @@ export default defineConfig({
     projects: [
       'packages/*',
       'apps/*',
+      'apps/admin/vitest.integration.config.mts',
       'apps/server/vitest.integration.config.mts',
       'apps/worker/vitest.integration.config.mts',
     ],

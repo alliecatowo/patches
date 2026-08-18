@@ -10,9 +10,9 @@ Patches' canonical client/server application protocol — the contract between a
 
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
-`social_graph.proto`, `node.proto` — the full `AuthService` (including SSH login, and
-credential management) has server handlers; `BeginGitHubLogin`/`PollGitHubLogin` are
-schema-defined but their server implementation is deferred to Phase 6 (§176). `PostService`
+`social_graph.proto`, `node.proto` — the full `AuthService` (including SSH login, GitHub
+device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
+`PollGitHubLogin` included as of P6-005 (§176, §167). `PostService`
 (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` returns direct replies
 only, not yet a depth-bounded tree walk; `CreatePost` also accepts `content_warning`, B-018)
 and `ActorService` (`GetActor`/`GetActorByHandle`/`UpdateProfile` — including a bounded
@@ -102,8 +102,9 @@ service ModerationService
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
 session envelope**, so client session handling is identical regardless of credential type.
-`BeginGitHubLogin`/`PollGitHubLogin` are schema-only until their Phase 6 server
-implementation (§176).
+`BeginGitHubLogin`/`PollGitHubLogin` have server handlers as of P6-005 (§176); both answer
+`UNIMPLEMENTED` when the node has no `GITHUB_CLIENT_ID` configured (`docs/architecture/
+auth.md` §5) rather than pretending the flow works.
 
 | RPC                | Notes                                                                           |
 | ------------------ | ------------------------------------------------------------------------------- |
@@ -251,14 +252,17 @@ that task's, not this one's.
 
 ### ModerationService (§55, §61–64) — implemented in `moderation.proto` (P6-001/P6-002)
 
-| RPC                           | Notes                                                                                                                                                                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `BlockActor` / `UnblockActor` | idempotent; blocking removes any existing follow in either direction (§62) and returns the updated `Relationship`                                                                                                        |
-| `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                   |
-| `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                  |
-| `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report is the admin CLI's job (§65), out of this task's scope |
+| RPC                           | Notes                                                                                                                                                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BlockActor` / `UnblockActor` | idempotent; blocking removes any existing follow in either direction (§62) and returns the updated `Relationship`                                                                                                                                                           |
+| `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                                                                      |
+| `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                                                                     |
+| `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report has no RPC of its own, it's `patches-admin report resolve` (§65, P6-003, `docs/operations/moderation.md`) |
 
-No user-facing RPC exposes internal moderator notes (`reports.moderator_note`).
+No user-facing RPC exposes internal moderator notes (`reports.moderator_note`), and there is
+no gRPC surface for the admin CLI at all — `apps/admin` reads/writes PostgreSQL directly
+through `@patches/database`, deliberately bypassing this API contract entirely (see
+`docs/operations/moderation.md`).
 
 Block/mute enforcement beyond `FeedService`'s visibility filter (already in place since P3-002):
 `PostService.getPost`/`listReplies` and `ReactionsService`'s every RPC (via `getPost`) return

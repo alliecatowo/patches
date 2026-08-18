@@ -40,6 +40,7 @@ export default defineConfig([
             '*.js',
             '*.mjs',
             '*.ts',
+            'apps/admin/*.config.{ts,mts,cts}',
             'apps/server/*.config.{ts,mts,cts}',
             'apps/worker/*.config.{ts,mts,cts}',
             'packages/config/*.config.{ts,mts,cts}',
@@ -47,9 +48,9 @@ export default defineConfig([
             'packages/testkit/*.config.{ts,mts,cts}',
             'packages/terminal-media/*.config.{ts,mts,cts}',
           ],
-          // Default cap is 8; the six packages above contribute 13 matching config files,
-          // all small and cheap to parse standalone (no type info needed) — raising this is
-          // the documented escape hatch, not a performance red flag at this file count.
+          // Default cap is 8; the packages above contribute 15 matching config files, all
+          // small and cheap to parse standalone (no type info needed) — raising this is the
+          // documented escape hatch, not a performance red flag at this file count.
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
         },
         tsconfigRootDir: import.meta.dirname,

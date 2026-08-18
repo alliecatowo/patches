@@ -49,9 +49,9 @@ does, in order:
 6. `pnpm db:migrate` — proves the up migration works again.
 
 Before any of that, a "Create per-project test databases" step provisions
-`patches_test_server`, `patches_test_worker`, and `patches_testkit_test` (the
-`services:` postgres container only creates `POSTGRES_DB`, i.e. `patches_test`, on
-boot) — see "Why one database" below.
+`patches_test_server`, `patches_test_worker`, `patches_test_admin`, and
+`patches_testkit_test` (the `services:` postgres container only creates
+`POSTGRES_DB`, i.e. `patches_test`, on boot) — see "Why one database" below.
 
 7. `pnpm test:integration`.
 
@@ -64,9 +64,10 @@ boot) — see "Why one database" below.
 migrated. Sharing a database between migration validation and the integration suite is
 fine — nothing requires them to be isolated from each other.
 
-The `database`, `server-integration`, `worker-integration`, and `testkit` vitest projects
-each get their **own** database now (B-012 closed out the last gap — `testkit` used to
-share `patches_test` with `database`, see "History" below):
+The `database`, `server-integration`, `worker-integration`, `admin-integration`, and
+`testkit` vitest projects each get their **own** database now (B-012 closed out the
+last gap — `testkit` used to share `patches_test` with `database`, see "History"
+below):
 
 - `database` uses `patches_test` (`TEST_DATABASE_URL`, the one the `services:` postgres
   container provisions on boot).
@@ -75,6 +76,9 @@ share `patches_test` with `database`, see "History" below):
   `apps/server/vitest.integration.config.mts`).
 - `worker-integration` uses `patches_test_worker` via `TEST_DATABASE_URL_WORKER`, same
   pattern (`apps/worker/vitest.integration.config.mts`).
+- `admin-integration` uses `patches_test_admin` via `TEST_DATABASE_URL_ADMIN`, same
+  pattern (`apps/admin/vitest.integration.config.mts`) — the admin CLI's own
+  integration suite exercises its command handlers against a real database.
 - `testkit` uses `patches_testkit_test` via `TEST_DATABASE_URL_TESTKIT`, same pattern
   again (`packages/testkit/vitest.config.ts`). Named with a `_test` **suffix**, not
   `patches_test_testkit`'s infix — `createTestDataSource()`'s own guard (the thing this
@@ -82,11 +86,11 @@ share `patches_test` with `database`, see "History" below):
   (`INITIAL_VISION.md` §119), and it would be circular for `testkit`'s tests to work
   around their own package's safety check instead of satisfying it.
 
-All four databases are provisioned by the "Create per-project test databases" step (CI)
+All five databases are provisioned by the "Create per-project test databases" step (CI)
 or `infra/compose/postgres/init/01-test-db.sql` (local `mise run compose -- up -d`).
 
 `test:integration` still runs with `--no-file-parallelism` even though no project shares
-a database with another anymore. This was tested and kept deliberately: running all four
+a database with another anymore. This was tested and kept deliberately: running all five
 projects' test files fully in parallel (no `--no-file-parallelism`) reproducibly fails
 several `server-integration` specs (`feeds.integration.test.ts`,
 `posts.integration.test.ts`) that pass reliably with it — most likely resource
@@ -166,12 +170,12 @@ pnpm proto:gen && git diff --exit-code -- packages/proto/src/generated
 
 # integration (needs Postgres)
 mise run compose -- up -d   # also creates patches_test_server/patches_test_worker/
-                             # patches_testkit_test, see
+                             # patches_test_admin/patches_testkit_test, see
                              # infra/compose/postgres/init/01-test-db.sql
 pnpm db:migrate
 pnpm test:integration       # runs database + testkit + server-integration +
-                             # worker-integration serially (--no-file-parallelism) —
-                             # see "Why one database" above
+                             # worker-integration + admin-integration serially
+                             # (--no-file-parallelism) — see "Why one database" above
 
 # actionlint
 mise exec -- actionlint .github/workflows/*.yml
