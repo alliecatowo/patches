@@ -13,6 +13,9 @@ import {
 
 import { AppModule } from '../../src/app.module.js';
 import { createGrpcMicroservice } from '../../src/grpc-options.js';
+import { prepareServerEnv } from './env.js';
+
+export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
 
 export interface TestServer {
   url: string;
@@ -43,6 +46,7 @@ async function freePort(): Promise<number> {
 
 /** Boot the real Nest microservice on a random port with a real grpc-js client. */
 export async function startTestServer(): Promise<TestServer> {
+  await prepareServerEnv();
   const port = await freePort();
   const url = `127.0.0.1:${String(port)}`;
   const { options, health } = createGrpcMicroservice(url);
@@ -75,6 +79,8 @@ export interface CallOverrides {
   client?: string;
   clientVersion?: string;
   deadlineMs?: number;
+  /** Sent as `authorization: Bearer <token>`, which is what `AuthGuard` reads (spec §35). */
+  accessToken?: string;
 }
 
 export function metadataFor(overrides: CallOverrides = {}): Metadata {
@@ -83,6 +89,9 @@ export function metadataFor(overrides: CallOverrides = {}): Metadata {
   metadata.set(METADATA_KEYS.client, overrides.client ?? 'tui');
   if (overrides.clientVersion !== undefined) {
     metadata.set(METADATA_KEYS.clientVersion, overrides.clientVersion);
+  }
+  if (overrides.accessToken !== undefined) {
+    metadata.set('authorization', `Bearer ${overrides.accessToken}`);
   }
   return metadata;
 }

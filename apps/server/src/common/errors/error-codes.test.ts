@@ -35,6 +35,10 @@ describe('error code → gRPC status mapping', () => {
       GrpcStatus.FAILED_PRECONDITION,
     );
   });
+
+  it('maps a schema-only RPC to UNIMPLEMENTED', () => {
+    expect(grpcStatusForErrorCode('NOT_IMPLEMENTED')).toBe(GrpcStatus.UNIMPLEMENTED);
+  });
 });
 
 describe('AppError', () => {

@@ -9,7 +9,7 @@
     "dev": "nest start --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:integration": "vitest run --project server-integration",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
@@ -19,15 +19,19 @@
     "@nestjs/config": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/microservices": "catalog:",
+    "@nestjs/typeorm": "catalog:",
     "@node-rs/argon2": "catalog:",
     "@patches/config": "workspace:*",
+    "@patches/database": "workspace:*",
     "@patches/proto": "workspace:*",
     "grpc-health-check": "^2.1.0",
     "jose": "catalog:",
     "nodemailer": "catalog:",
+    "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "resend": "catalog:",
     "rxjs": "catalog:",
+    "typeorm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

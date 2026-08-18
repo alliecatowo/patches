@@ -30,6 +30,9 @@ export default defineProject({
     environment: 'node',
     globals: false,
     include: ['test/**/*.integration.test.ts'],
+    // Runs before any test file is imported, which is the only point at which the
+    // environment can still be changed — see test/support/env.ts.
+    setupFiles: ['./test/support/setup-env.mts'],
     testTimeout: 20_000,
     hookTimeout: 20_000,
     env: testDatabaseUrl === undefined ? {} : { TEST_DATABASE_URL: testDatabaseUrl },
