@@ -1,7 +1,8 @@
 import { createHash, createPublicKey, type KeyObject, verify as cryptoVerify } from 'node:crypto';
 
+import { SshReader, SshWireError } from '@patches/domain';
+
 import { DER_OIDS, ED25519_SPKI_PREFIX, derBitString, derInteger, derSequence } from './der.js';
-import { SshReader, SshWireError } from './wire.js';
 
 /**
  * OpenSSH public keys and signatures (spec §166, `docs/architecture/auth.md` §4).

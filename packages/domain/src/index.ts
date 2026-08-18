@@ -24,6 +24,15 @@ export { BLOCK_SCHEMAS, BLOCK_TYPES, lenientPageBlockSchema, pageBlockSchema } f
 export type { PageBlock, RenderablePageBlock, UnknownPageBlock } from './blocks.js';
 
 export {
+  buildSshChallengeBlob,
+  SSH_ENROLL_DOMAIN_SEPARATOR,
+  SSH_LOGIN_DOMAIN_SEPARATOR,
+} from './ssh/challenge-blob.js';
+export type { SshChallengeBlobInput } from './ssh/challenge-blob.js';
+
+export { encodeSshString, encodeSshStrings, SshReader, SshWireError } from './ssh/wire.js';
+
+export {
   CURRENT_PAGE_SCHEMA_VERSION,
   PAGE_BORDER_STYLES,
   parsePageForRender,

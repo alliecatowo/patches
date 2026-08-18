@@ -1,3 +1,4 @@
+import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
 import {
   dateToTimestamp,
   type BeginSshLoginResponse,
@@ -18,7 +19,6 @@ import {
   SshWireReader,
 } from './ssh-agent.js';
 import {
-  buildSshLoginBlob,
   describeIdentities,
   formatOpenSshPublicKey,
   parseOpenSshPublicKey,
@@ -26,7 +26,6 @@ import {
   readPublicKeyFile,
   selectIdentity,
   signFlagsForAlgorithm,
-  SSH_LOGIN_DOMAIN_SEPARATOR,
   sshFingerprint,
 } from './ssh-login.js';
 
@@ -92,10 +91,11 @@ describe('signFlagsForAlgorithm', () => {
   });
 });
 
-describe('buildSshLoginBlob', () => {
+describe('buildSshChallengeBlob (A-020: shared with apps/server via @patches/domain)', () => {
   it('encodes fields in the fixed order, each length-prefixed', () => {
     const expiresAt = new Date('2026-08-18T00:00:00.000Z');
-    const blob = buildSshLoginBlob({
+    const blob = buildSshChallengeBlob({
+      domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
       nodeDomain: 'patches.example',
       challengeId: 'challenge-1',
       nonce: Buffer.from([1, 2, 3]),
@@ -113,6 +113,23 @@ describe('buildSshLoginBlob', () => {
       String(Math.floor(expiresAt.getTime() / 1000)),
     );
     expect(reader.remaining).toBe(0);
+  });
+
+  /** Parity fixture pinned in `@patches/domain`'s own test (A-020): both this client and
+   * `apps/server` import the same `buildSshChallengeBlob`, so this is really a "did the
+   * import wire up correctly" check rather than a from-scratch byte comparison. */
+  it('matches the pinned domain-package fixture byte-for-byte', () => {
+    const fixture = {
+      domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
+      nodeDomain: 'example.test',
+      challengeId: '11111111-1111-4111-8111-111111111111',
+      nonce: Buffer.from('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f', 'hex'),
+      fingerprint: 'SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCD',
+      expiresAt: new Date('2026-08-17T12:00:00Z'),
+    };
+    expect(buildSshChallengeBlob(fixture).toString('hex')).toBe(
+      '00000014706174636865732d7373682d6c6f67696e2d76310000000c6578616d706c652e746573740000002431313131313131312d313131312d343131312d383131312d3131313131313131313131310000001f0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0000002f5348413235363a6162636465666768696a6b6c6d6e6f707172737475767778797a30313233343536373839414243440000000a31373836393638303030',
+    );
   });
 });
 
