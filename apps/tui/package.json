@@ -21,6 +21,7 @@
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
     "@inkjs/ui": "catalog:",
+    "@napi-rs/keyring": "catalog:",
     "@patches/proto": "workspace:*",
     "@patches/terminal-media": "workspace:*",
     "ink": "catalog:",
