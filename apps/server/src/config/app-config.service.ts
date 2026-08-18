@@ -164,6 +164,15 @@ export class AppConfigService {
   get githubHttpTimeoutMs(): number {
     return this.get('GITHUB_HTTP_TIMEOUT_MS');
   }
+
+  /** Whether the Phase 8 federation HTTP surface is enabled on this node (default off). */
+  get federationEnabled(): boolean {
+    return this.get('FEDERATION_ENABLED');
+  }
+
+  get httpPort(): number {
+    return this.get('HTTP_PORT');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

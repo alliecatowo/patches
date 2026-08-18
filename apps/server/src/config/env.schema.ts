@@ -70,6 +70,20 @@ const envObjectSchema = z.object({
   /** Bounds every outbound call the device flow makes — an unbounded fetch to a third party
    * is exactly the kind of request spec §176's "timeout baseline" exists to require. */
   GITHUB_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+
+  /**
+   * Phase 8 two-node federation lab (P8-001..P8-008, `docs/architecture/federation.md`).
+   * **Default off** (spec §108 Stage F1, §176's "self-hosted node ships with federation
+   * disabled by default"): when false, `main.ts` never opens the HTTP listener at all — no
+   * WebFinger, no actor documents, no inbox/outbox, nothing Internet-facing, because there is
+   * nothing listening. This is a stricter reading than "WebFinger may always be on for
+   * discovery" — the whole point of Stage F1 being "local and non-public" (federation.md §3.5)
+   * is that a node with federation off has zero new network surface, not a smaller one.
+   */
+  FEDERATION_ENABLED: booleanish().default(false),
+  /** HTTP listener port for the federation surface (WebFinger/actor/inbox/outbox), only bound
+   * when `FEDERATION_ENABLED`. */
+  HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
