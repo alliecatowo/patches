@@ -112,6 +112,9 @@ jobs:
       TEST_DATABASE_URL_WORKER: postgres://patches:patches@localhost:5432/patches_test_worker
       TEST_DATABASE_URL_ADMIN: postgres://patches:patches@localhost:5432/patches_test_admin
       TEST_DATABASE_URL_TESTKIT: postgres://patches:patches@localhost:5432/patches_testkit_test
+      # Node B's database for the P8-008 two-node federation integration test — node A reuses
+      # TEST_DATABASE_URL_SERVER like every other server-integration test.
+      TEST_DATABASE_URL_FED_B: postgres://patches:patches@localhost:5432/patches_test_fed_b
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -132,6 +135,7 @@ jobs:
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_worker OWNER patches;"
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_admin OWNER patches;"
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_testkit_test OWNER patches;"
+          psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_fed_b OWNER patches;"
 
       - name: Run migrations
         run: pnpm db:migrate

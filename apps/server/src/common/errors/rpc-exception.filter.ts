@@ -1,7 +1,7 @@
 import { Metadata, status as GrpcStatus } from '@grpc/grpc-js';
 import { type ArgumentsHost, Catch, Logger, type RpcExceptionFilter } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
-import { type Observable, throwError } from 'rxjs';
+import { EMPTY, type Observable, throwError } from 'rxjs';
 
 import { getRequestContext } from '../context/request-context.js';
 import { AppError, isAppError } from './app-error.js';
@@ -49,7 +49,33 @@ interface GrpcServerError {
 export class RpcExceptionsFilter implements RpcExceptionFilter<unknown> {
   private readonly logger = new Logger(RpcExceptionsFilter.name);
 
-  catch(exception: unknown, _host: ArgumentsHost): Observable<never> {
+  catch(exception: unknown, host: ArgumentsHost): Observable<never> {
+    // P8-001..008: this filter is `APP_FILTER`-global, so it also catches whatever escapes
+    // the federation HTTP surface's controllers (which normally handle their own responses
+    // via `@Res()` and never throw — this is a last-resort backstop, not the common path).
+    // Returning an `Observable` the way the gRPC branch below does is meaningless for HTTP:
+    // Nest's HTTP exception handling expects the filter to write the response itself, not
+    // consume an RxJS value, so an uncaught throw here previously left the request hanging
+    // with no response at all — the same class of bug the interceptor fix next to this one
+    // addresses. Every internal detail is withheld here for the same reason the gRPC branch
+    // withholds it (spec §57's sanitized-errors rule applies identically to both transports).
+    if (host.getType() !== 'rpc') {
+      const requestId = getRequestContext()?.requestId;
+      this.logger.error({ msg: 'http.unhandled_exception', requestId }, toStack(exception));
+      const response = host.switchToHttp().getResponse<{
+        statusCode?: number;
+        setHeader: (name: string, value: string) => void;
+        end: (body?: string) => void;
+      }>();
+      response.statusCode = 500;
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ error: 'internal_error', requestId }));
+      // The HTTP response is already fully written above — an HTTP exception filter's
+      // return value (unlike an RPC one) is not what produces the client-visible response,
+      // so this is just satisfying `RpcExceptionFilter<unknown>`'s `Observable<never>`
+      // return type, never subscribed to for anything meaningful on this branch.
+      return EMPTY;
+    }
     return throwError(() => this.toGrpcError(exception));
   }
 
