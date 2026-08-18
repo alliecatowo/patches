@@ -134,7 +134,7 @@ export async function runRegister(rest: readonly string[], deps: RegisterDeps): 
     io.stdout(`Registered as @${session.actor?.handle ?? handle}. Logged in on ${target}.\n`);
     return 0;
   } catch (error) {
-    reportAuthError(io, error, target);
+    reportAuthError(io, error, target, 'credentials');
     return 1;
   } finally {
     api.close();

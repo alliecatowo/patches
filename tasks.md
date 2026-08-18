@@ -58,7 +58,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 - [ ] P2-001 — posts, post_media entities + migrations; idempotent CreatePost (client_request_id)
 - [ ] P2-002 — PostService/ActorService: CreatePost, GetPost, DeletePost (tombstone), UpdateProfile, GetActor(ByHandle), ListActorPosts
-- [ ] P2-003 — TUI: profile screen, compose screen (explicit submit, draft not lost), profile timeline
+- [x] P2-003 — TUI: profile screen, compose screen (explicit submit, draft not lost), profile timeline
 
 ## Phase 3 — social graph & feeds (§137)
 
@@ -158,8 +158,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-012 — full per-project test database isolation: `database` and `testkit` still share `patches_test` (safe today only via `--no-file-parallelism` on `test:integration`, see A-006/docs/operations/ci.md "Why one database") — give `testkit` its own `TEST_DATABASE_URL_TESTKIT`-style override (mirroring `apps/server/vitest.integration.config.mts`) once someone owns `packages/testkit`'s vitest config
 - [ ] B-013 — worker: stale-lease sweep for jobs stuck in `PROCESSING` after a worker crash (not SIGTERM) — reset to `PENDING` after `locked_at` exceeds a lease TTL
 - [ ] B-014 — admin CLI: inspect/replay `DEAD` outbox jobs (`patches-admin jobs list|replay <id>`)
-- [ ] B-015 — TUI: Ink `App`/`ConnectScreen` auth integration (status bar `@handle`, inline `L` login, `g p` placeholder) + `apps/tui/test/harness.tsx` ink-testing-library frame-snapshot harness (deferred from P1-007)
-- [ ] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
+- [x] B-015 — TUI: Ink `App`/`ConnectScreen` auth integration (status bar `@handle`, inline `L` login, `g p` placeholder) + `apps/tui/test/harness.tsx` ink-testing-library frame-snapshot harness (deferred from P1-007)
+- [x] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol

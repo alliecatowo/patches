@@ -67,4 +67,17 @@ describe('describeGrpcError (spec §81)', () => {
     expect(() => describeGrpcError('nope', TARGET)).not.toThrow();
     expect(describeGrpcError(undefined, TARGET).title).toContain(TARGET);
   });
+
+  it('maps UNAUTHENTICATED on a credentials-context call (login/register) to a wrong-password message (B-016)', () => {
+    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET, {
+      context: 'credentials',
+    });
+    expect(friendly.title).toBe('Wrong handle/email or password.');
+    expect(friendly.retryable).toBe(false);
+  });
+
+  it('keeps the session-expired message for UNAUTHENTICATED outside a credentials context', () => {
+    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET);
+    expect(friendly.title).toBe('Your session is no longer valid.');
+  });
 });

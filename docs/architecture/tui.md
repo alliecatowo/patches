@@ -337,3 +337,62 @@ Fallback behavior when secure storage is unavailable:
 - print a clear warning to the user.
 
 Refresh tokens are never silently stored world-readable.
+
+## 13. Screens landed so far (B-015, P2-003, B-016)
+
+Beyond the connect screen, `App.tsx` now switches between: `help`, `login` (inline,
+password or SSH-key via `ssh-login.ts`), `compose`, `profile` (own profile via `g p`;
+generic over any `actorId`), `local` (`g l`), and `home` (`g h` — placeholder until
+Phase 3's fan-out feed). The status bar shows `@handle` once signed in.
+
+- **Auth**: `L` opens `LoginScreen`; `Q`/`Esc` cancel (in the password field, only
+  `Esc` — a password may legitimately contain `Q`). Reuses `SessionManager` and
+  `CredentialStore` from `P1-007` — no parallel session/token logic. An unauthenticated
+  `c`/`g p` shows a "Log in first" notice instead of the screen.
+- **Compose**: `Ctrl+S` is the only submit; `Enter` always inserts a newline. The draft
+  (`compose/draft-store.ts`) is lifted into `App` state so it survives switching
+  screens, and mirrored to `$XDG_DATA_HOME/patches/compose-draft.json` (falling back to
+  `~/.local/share`) so a crash doesn't lose it (spec §80). `CreatePost` carries one
+  `client_request_id` for the draft's lifetime, reused on retry (spec §45).
+- **Profile / Local feed**: share `components/PostList.tsx` + `PostRow.tsx` and the
+  `hooks/usePaginatedPosts.ts` cursor-pagination hook (never offset — spec §46). `n` or
+  `space` loads the next page once `page.hasMore` is true.
+- **B-016**: `describeGrpcError(error, target, { context: 'credentials' })` maps
+  `UNAUTHENTICATED` from `Login`/`Register` to "Wrong handle/email or password.";
+  every other `UNAUTHENTICATED` (an expired session mid-use) keeps "Your session is no
+  longer valid." Both the CLI (`login`/`register` commands) and the inline `LoginScreen`
+  pass `context: 'credentials'`.
+
+Known gaps, tracked as follow-ups rather than blocking this slice:
+
+- `Post`/`Actor` have no `content_warning`/`nameplate` field yet in `packages/proto`
+  (nameplates are Amendment A, §173) — `PostRow`/`ProfileScreen` render everything else
+  and will pick these up once the schema has them.
+- Viewing another actor's profile "from a post" (vs. the caller's own via `g p`) isn't
+  wired yet — `ProfileScreen` already takes an arbitrary `actorId`, but no screen has a
+  selectable post list to launch it from.
+
+## 14. Testing (B-015)
+
+`apps/tui/test/harness.tsx` exports `renderApp(options)`, which renders the real `App`
+against `apps/tui/test/fake-api.ts` — an in-memory `PatchesApi` (users, sessions,
+posts) — instead of a live gRPC server:
+
+```ts
+const { press, lastFrame, unmount } = renderApp({ fakeOptions: { pageSize: 2 } });
+await flush();
+press('?');
+```
+
+`renderApp` returns ink-testing-library's normal `{ lastFrame, frames, stdin, unmount }`
+plus `fake` (the seeded `FakeApiHandle` — `addUser`/`addPost`) and `press` (an alias for
+`stdin.write`). `KEY` exports the raw byte sequences for non-printable keys (`enter`,
+`escape`, `backspace`, `ctrlS`).
+
+Test files matching `test/**/*.test.tsx` run alongside `src/**/*.test.{ts,tsx}` (see
+`vitest.config.ts`) — `pnpm --filter @patches/tui test` runs both, no separate command.
+`connect.test.tsx` and `help.test.tsx` cover the connect/offline/retry and help-toggle
+paths against the harness. Extending coverage to the login/compose/profile/local-feed
+flows (all wired and typechecked, but not yet snapshot-tested) is a follow-up — the
+harness and fake API already support it; see the implementer report on the change that
+added them.

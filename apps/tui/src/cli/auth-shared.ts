@@ -44,9 +44,19 @@ export function newSessionManager(
   return new SessionManager({ api, store, nodeOrigin });
 }
 
-/** Prints `describeGrpcError`'s title/hint the way every auth subcommand reports a failure. */
-export function reportAuthError(io: CliIo, error: unknown, target: string): void {
-  const friendly = describeGrpcError(error, target);
+/**
+ * Prints `describeGrpcError`'s title/hint the way every auth subcommand reports a
+ * failure. `context: 'credentials'` (B-016) is passed by `login`/`register`, whose
+ * failures are always "the credentials you gave were wrong", never "your session
+ * expired" — there is no existing session to expire during either command.
+ */
+export function reportAuthError(
+  io: CliIo,
+  error: unknown,
+  target: string,
+  context?: 'credentials',
+): void {
+  const friendly = describeGrpcError(error, target, { context });
   io.stderr(`${friendly.title}\n`);
   if (friendly.hint !== '') io.stderr(`${friendly.hint}\n`);
 }

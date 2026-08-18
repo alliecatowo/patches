@@ -46,13 +46,28 @@ function serverMessage(error: unknown): string | undefined {
   return trimmed;
 }
 
+export interface DescribeGrpcErrorOptions {
+  /**
+   * Set when the call being described is `Login`/`Register` (or the TUI's inline
+   * equivalent) — the server returns the same `UNAUTHENTICATED` for "wrong
+   * password" as it does for "your session expired" (spec §57 deliberately does
+   * not distinguish these to avoid leaking which handles exist), so only the
+   * *caller* knows which copy is right (B-016).
+   */
+  context?: 'credentials' | undefined;
+}
+
 /**
  * Turn any thrown value into a message worth showing to a human.
  *
  * `target` is the server address, so "can't reach the server" says *which*
  * server — the single most useful piece of information when this happens.
  */
-export function describeGrpcError(error: unknown, target: string): FriendlyError {
+export function describeGrpcError(
+  error: unknown,
+  target: string,
+  options?: DescribeGrpcErrorOptions,
+): FriendlyError {
   const code = statusOf(error);
   const fromServer = serverMessage(error);
 
@@ -72,6 +87,14 @@ export function describeGrpcError(error: unknown, target: string): FriendlyError
         code,
       };
     case GrpcStatus.UNAUTHENTICATED:
+      if (options?.context === 'credentials') {
+        return {
+          title: 'Wrong handle/email or password.',
+          hint: '',
+          retryable: false,
+          code,
+        };
+      }
       return {
         title: 'Your session is no longer valid.',
         hint: 'Sign in again to continue.',
