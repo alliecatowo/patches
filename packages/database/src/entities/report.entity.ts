@@ -18,6 +18,7 @@ import {
   type ReportStatus,
   type ReportSubjectType,
 } from './enums.js';
+import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { Post } from './post.entity.js';
 import { User } from './user.entity.js';
 
@@ -30,19 +31,25 @@ import { User } from './user.entity.js';
  * `moderator_note`/`resolved_at`/`resolved_by_user_id` are written by the admin CLI (spec §65),
  * not by anything in this task's scope — `ModerationService.ReportPost`/`ReportActor` only
  * ever insert an `OPEN` row. No user-facing RPC reads `moderator_note` back (§55).
+ *
+ * `subject_guestbook_entry_id` (P45-003) is the third subject column, added alongside
+ * `GUESTBOOK_ENTRY` in `REPORT_SUBJECT_TYPES` — `PageService.ReportGuestbookEntry` writes
+ * here rather than `ModerationService` growing a guestbook-entry RPC of its own.
  */
 @Entity({ name: 'reports' })
 @Index(['status', 'createdAt'])
 @Index(['subjectActorId'])
 @Index(['subjectPostId'])
+@Index(['subjectGuestbookEntryId'])
 @Check('chk_reports_subject_type', checkIn('subject_type', REPORT_SUBJECT_TYPES))
 @Check('chk_reports_reason', checkIn('reason', REPORT_REASONS))
 @Check('chk_reports_status', checkIn('status', REPORT_STATUSES))
-// Exactly one of the two subject columns is set, matching `subject_type`.
+// Exactly one of the three subject columns is set, matching `subject_type`.
 @Check(
   'chk_reports_subject_matches_type',
-  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL)
-   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL)`,
+  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)
+   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)
+   OR ("subject_type" = 'GUESTBOOK_ENTRY' AND "subject_guestbook_entry_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL)`,
 )
 export class Report {
   @PrimaryGeneratedColumn('uuid')
@@ -71,6 +78,13 @@ export class Report {
   @ManyToOne(() => Post, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'subject_post_id' })
   declare subjectPost: Post | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  declare subjectGuestbookEntryId: string | null;
+
+  @ManyToOne(() => GuestbookEntry, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'subject_guestbook_entry_id' })
+  declare subjectGuestbookEntry: GuestbookEntry | null;
 
   @Column({ type: 'text' })
   declare reason: ReportReason;

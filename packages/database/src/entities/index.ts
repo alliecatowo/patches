@@ -6,12 +6,16 @@ import { Block } from './block.entity.js';
 import { Bookmark } from './bookmark.entity.js';
 import { Credential } from './credential.entity.js';
 import { Follow } from './follow.entity.js';
+import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { Invite } from './invite.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
 import { Mute } from './mute.entity.js';
 import { Notification } from './notification.entity.js';
 import { OutboxJob } from './outbox-job.entity.js';
+import { Page } from './page.entity.js';
+import { PageAsset } from './page-asset.entity.js';
+import { PageRevision } from './page-revision.entity.js';
 import { Post } from './post.entity.js';
 import { PostMedia } from './post-media.entity.js';
 import { RateLimitBucket } from './rate-limit-bucket.entity.js';
@@ -25,7 +29,8 @@ import { User } from './user.entity.js';
  * identically from TS source (CLI, tests) and from the built dist (ESM + CJS). Phase 3 added
  * the social-graph tables (`follows`, `blocks`, `mutes`); Phase 4/6 add `likes`, `bookmarks`,
  * `notifications`, `reports` (see `docs/architecture/data-model.md`); Phase 6 also adds
- * `admin_audit_log` and `rate_limit_buckets` (§65–66, A-018).
+ * `admin_audit_log` and `rate_limit_buckets` (§65–66, A-018); Phase 4.5 adds the Patches
+ * Pages tables — `pages`, `page_revisions`, `page_assets`, `guestbook_entries` (§170-172).
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -49,4 +54,8 @@ export const ALL_ENTITIES = [
   Report,
   AdminAuditLog,
   RateLimitBucket,
+  Page,
+  PageRevision,
+  PageAsset,
+  GuestbookEntry,
 ] as const;

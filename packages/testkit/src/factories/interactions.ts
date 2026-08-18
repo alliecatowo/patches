@@ -79,6 +79,8 @@ export interface CreateTestReportOptions {
   subjectType: ReportSubjectType;
   subjectActorId?: string | null;
   subjectPostId?: string | null;
+  /** For `subjectType: 'GUESTBOOK_ENTRY'` (P45-003, `INITIAL_VISION.md` §64, §172). */
+  subjectGuestbookEntryId?: string | null;
   reason?: ReportReason;
   details?: string | null;
 }
@@ -94,6 +96,7 @@ export async function createTestReport(
       subjectType: options.subjectType,
       subjectActorId: options.subjectActorId ?? null,
       subjectPostId: options.subjectPostId ?? null,
+      subjectGuestbookEntryId: options.subjectGuestbookEntryId ?? null,
       reason: options.reason ?? 'SPAM',
       details: options.details ?? null,
     }),
