@@ -171,6 +171,10 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-023 — TUI Pages editor: structured block-by-block add/remove/reorder UI (P45-006 shipped the `$EDITOR` raw-JSON round trip only; the structured form editor was deferred)
 - [ ] B-024 — proto+server: a bulk "list mutual follows" RPC — `PageScreen`'s `Friends` block currently renders a documented `[friends list unavailable]` placeholder because `SocialGraphService` only has per-actor `GetRelationship`, no `ListFollowing`/`ListFollowers`
 - [ ] B-025 — database: migration giving `ssh_login_challenges` dedicated `purpose`/`bound_user_id`/`bound_fingerprint` columns (B-021 currently JSON-encodes the enrollment binding into `claimed_handle`)
+- [ ] B-026 — federation: encrypt `federation_keys` private keys at rest (server key from env), before any real federation is enabled
+- [ ] B-027 — federation: outbox true pagination (OrderedCollectionPage), `domain_blocks` write path (`patches-admin domain block|unblock`) and enforcement on outbound delivery
+- [ ] B-028 — proto+server+TUI: discover a remote actor by `acct:` (WebFinger) via gRPC (`SearchActors` for `user@domain` or a `ResolveActor` RPC) so users can follow remote accounts from the TUI
+- [ ] B-029 — federation: compose-based manual two-node lab (`mise run fed:lab`) mirroring the automated P8-008 test
 
 - [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
