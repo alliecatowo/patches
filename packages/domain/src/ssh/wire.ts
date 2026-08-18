@@ -6,6 +6,9 @@
  * *parsing* half of a security boundary, and every input reaching it is attacker-controlled —
  * a length prefix that claims more bytes than exist must be a rejection, never a truncated
  * read that silently succeeds.
+ *
+ * Lives in `@patches/domain` (spec §166, A-020) so `apps/server` and `apps/tui` share exactly
+ * one definition of the encoding instead of two that could quietly drift apart.
  */
 
 /** Length-prefixed `string` encoding of `value`. */
