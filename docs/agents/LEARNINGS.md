@@ -243,3 +243,11 @@ callers, so pixel screenshots need the human.
 **Context:** Three Wave-2 agents "finished" with results like "Now adding the integration test…" — nothing committed.
 
 **Learning:** A completion note that reads like a plan means `maxTurns` ran out. Resume with `SendMessage` and a tight, numbered wrap-up brief (verify → tick → `git add <explicit paths>` → commit → push → report) and a turn budget; work in the tree is preserved.
+
+## 2026-08-18 — Postgres: a no-match conditional UPDATE still holds the row lock; cross-connection revoke self-deadlocks
+
+**Context:** Refresh-token reuse detection ran the family revoke on a second connection from inside the still-open detecting transaction; the new concurrent-rotation test hung forever.
+
+**Learning:** A conditional `UPDATE … WHERE …` that ends up matching nothing has still locked the candidate row until end-of-transaction. Touching that row from another connection while the outer transaction is open blocks — and Postgres's deadlock detector can't see it (one side is idle-in-transaction). Do side-effect writes _after_ the detecting transaction settles (rollback first, then revoke). Also: peer-keyed rate limits need a much higher ceiling than subject-keyed ones, or one gRPC connection reused across a test file trips them.
+
+**Action taken:** `AuthService.refreshSession` defers the revoke; implementer memory `postgres-cross-connection-self-deadlock.md`.
