@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package patches.v1;
+
+// Node discovery (spec §163, §168, §174) — always unauthenticated. A client calls
+// `GetNodeInfo` before assuming any policy (registration mode, limits, capabilities) rather
+// than hardcoding the reference node's behavior.
+service NodeService {
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+}
+
+enum RegistrationMode {
+  REGISTRATION_MODE_UNSPECIFIED = 0;
+  REGISTRATION_MODE_OPEN = 1;
+  REGISTRATION_MODE_INVITE_ONLY = 2;
+}
+
+// Input limits this node enforces (spec §58) — clients validate/render against these rather
+// than hardcoding the reference node's numbers.
+message NodeLimits {
+  uint32 post_body_max_chars = 1;
+  uint32 bio_max_chars = 2;
+  uint32 display_name_max_chars = 3;
+  uint32 handle_max_chars = 4;
+  uint32 location_text_max_chars = 5;
+  uint32 website_url_max_chars = 6;
+  uint32 alt_text_max_chars = 7;
+  uint32 search_query_max_chars = 8;
+}
+
+message GetNodeInfoRequest {}
+
+message GetNodeInfoResponse {
+  // Canonical domain of this node (spec §91, §163). Empty until a domain is fixed.
+  string domain = 1;
+
+  // Node software version (semver) — distinct from `SystemService.GetServerInfo`'s
+  // `protocol_version`/`min_client_version`, which describe the wire protocol, not the
+  // software build.
+  string software_version = 2;
+
+  RegistrationMode registration_mode = 3;
+
+  NodeLimits limits = 4;
+
+  // Capabilities this node grants (spec §174). There is deliberately no `tier`/`plan`/
+  // `premium` field anywhere in this message, and there never will be — clients branch on
+  // capabilities only. Clients must tolerate unknown entries.
+  repeated string capabilities = 5;
+}

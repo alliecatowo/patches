@@ -28,6 +28,7 @@ export type {
   ListFollowingRequest,
   ListFollowingResponse,
   MediaRef,
+  Nameplate,
   SearchActorsRequest,
   SearchActorsResponse,
   UpdateProfileRequest,
@@ -119,3 +120,33 @@ export type {
   ListLocalFeedResponse,
 } from './generated/patches/v1/feeds.js';
 export { FEED_SERVICE_NAME, FeedServiceControllerMethods } from './generated/patches/v1/feeds.js';
+
+export type {
+  FollowActorRequest,
+  FollowActorResponse,
+  GetRelationshipRequest,
+  GetRelationshipResponse,
+  Relationship,
+  SocialGraphServiceClient,
+  SocialGraphServiceController,
+  UnfollowActorRequest,
+  UnfollowActorResponse,
+} from './generated/patches/v1/social_graph.js';
+export {
+  FollowState,
+  SOCIAL_GRAPH_SERVICE_NAME,
+  SocialGraphServiceControllerMethods,
+} from './generated/patches/v1/social_graph.js';
+
+export type {
+  GetNodeInfoRequest,
+  GetNodeInfoResponse,
+  NodeLimits,
+  NodeServiceClient,
+  NodeServiceController,
+} from './generated/patches/v1/node.js';
+export {
+  NODE_SERVICE_NAME,
+  NodeServiceControllerMethods,
+  RegistrationMode,
+} from './generated/patches/v1/node.js';
