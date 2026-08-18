@@ -42,5 +42,13 @@ export default defineProject({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     env: testDatabaseUrl === undefined ? {} : { TEST_DATABASE_URL: testDatabaseUrl },
+    // Every integration file's `beforeAll` calls `createServerTestDataSource()`, which
+    // `dropDatabase()`s and re-migrates `patches_test_server` from scratch (spec §119). With
+    // more than one integration file (added alongside posts/actors/feeds — previously only
+    // `auth.integration.test.ts` existed, so this never surfaced) running those concurrently
+    // races two files' migrations against the same database — TypeORM's migrations table and
+    // `CREATE TYPE` both fail non-idempotently under that race. Files must run one at a time;
+    // tests *within* a file still run concurrently as normal.
+    fileParallelism: false,
   },
 });
