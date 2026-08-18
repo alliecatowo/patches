@@ -54,23 +54,35 @@ async function bootstrap(): Promise<void> {
   const url = `${env.GRPC_HOST}:${String(env.GRPC_PORT)}`;
   const { options, health } = createGrpcMicroservice(url, { reflection: env.GRPC_REFLECTION });
 
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
-    ...options,
-    logger,
-    bufferLogs: true,
-  });
+  // A full Nest HTTP application (the NestJS "hybrid app" pattern, `docs/research/
+  // nestjs-grpc-protobuf.md` §"Hybrid app"), not `NestFactory.createMicroservice` — gRPC is
+  // attached via `connectMicroservice` below and stays the only *always-on* transport.
+  // `app.listen(HTTP_PORT)` is only called when `FEDERATION_ENABLED` (spec §176: a
+  // self-hosted node ships with federation off by default) — until then, Nest builds the
+  // Express app and registers `FederationModule`'s routes on it, but nothing ever binds a
+  // port for them, so there is no new network surface at all when federation is disabled.
+  const app = await NestFactory.create(AppModule, { logger, bufferLogs: true });
+  app.connectMicroservice<MicroserviceOptions>(options);
 
   // Registers SIGTERM/SIGINT/SIGHUP handlers that run `onModuleDestroy` /
-  // `onApplicationShutdown` and close the gRPC server (spec §124).
+  // `onApplicationShutdown` and close both the gRPC and (if opened) HTTP servers (spec §124).
   app.enableShutdownHooks();
 
-  await app.listen();
+  await app.startAllMicroservices();
   health.setStatus('SERVING');
 
   logger.log(
     `patches gRPC server listening on ${url} (env=${env.NODE_ENV}, instance=${env.INSTANCE_NAME})`,
     'Bootstrap',
   );
+
+  if (env.FEDERATION_ENABLED) {
+    await app.listen(env.HTTP_PORT);
+    logger.log(
+      `federation HTTP surface listening on :${String(env.HTTP_PORT)} (origin=${env.PUBLIC_ORIGIN})`,
+      'Bootstrap',
+    );
+  }
 
   const stopServing = (signal: string): void => {
     logger.log(`received ${signal}, draining`, 'Bootstrap');
