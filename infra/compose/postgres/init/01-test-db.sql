@@ -14,9 +14,17 @@
 -- integration test (`apps/server/test/federation-two-node.integration.test.ts`) — node A
 -- uses `patches_test_server` like every other server-integration test, node B needs its own
 -- so the two in-process nodes never share rows.
+-- `patches_lab_a`/`patches_lab_b` are the manual two-node federation lab's databases
+-- (B-029, `infra/lab/fed-lab.sh`, `mise run fed:lab`) — same "one database per node" reasoning
+-- as `patches_test_fed_b` above, just for the long-running manual lab instead of a vitest run.
+-- Only created here for a fresh compose volume; `fed-lab.sh` also creates them idempotently
+-- itself (`CREATE DATABASE ... OWNER patches` if missing) so the lab works against an
+-- already-initialized volume too.
 CREATE DATABASE patches_test OWNER patches;
 CREATE DATABASE patches_test_server OWNER patches;
 CREATE DATABASE patches_test_worker OWNER patches;
 CREATE DATABASE patches_test_admin OWNER patches;
 CREATE DATABASE patches_testkit_test OWNER patches;
 CREATE DATABASE patches_test_fed_b OWNER patches;
+CREATE DATABASE patches_lab_a OWNER patches;
+CREATE DATABASE patches_lab_b OWNER patches;
