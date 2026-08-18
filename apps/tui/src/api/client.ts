@@ -71,6 +71,8 @@ import {
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMutualFollowsRequest,
+  type ListMutualFollowsResponse,
   type ListMutesRequest,
   type ListMutesResponse,
   type ListNotificationsRequest,
@@ -113,6 +115,8 @@ import {
   type ReportPostRequest,
   type ReportPostResponse,
   type ResendVerificationResponse,
+  type ResolveActorRequest,
+  type ResolveActorResponse,
   type RevokeCredentialRequest,
   type RevokeCredentialResponse,
   type SearchActorsRequest,
@@ -300,6 +304,21 @@ export class PatchesApi {
     return unary(this.actor.searchActors.bind(this.actor), request, DEADLINES_MS.unary);
   }
 
+  /** Resolves a remote `user@domain` handle (no `acct:` prefix) via WebFinger, requires a
+   * session. Rejects local-domain accounts with a validation error; throws a gRPC
+   * `NOT_IMPLEMENTED` when the node has federation disabled (spec B-028). */
+  async resolveActor(
+    request: ResolveActorRequest,
+    accessToken: string,
+  ): Promise<ResolveActorResponse> {
+    return unary(
+      this.actor.resolveActor.bind(this.actor),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   /** Partial update of the caller's own profile, driven by `updateMask` — only the
    * fields listed there (snake_case proto field names, e.g. `'display_name'`) are
    * applied server-side (spec: `actors.proto`'s `UpdateProfileRequest`). */
@@ -362,6 +381,20 @@ export class PatchesApi {
   ): Promise<GetRelationshipResponse> {
     return unary(
       this.socialGraph.getRelationship.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Actors who follow the given actor back (mutual follows), i.e. "Friends". Public read —
+   * `accessToken` is forwarded when present but not required. */
+  async listMutualFollows(
+    request: ListMutualFollowsRequest,
+    accessToken?: string,
+  ): Promise<ListMutualFollowsResponse> {
+    return unary(
+      this.socialGraph.listMutualFollows.bind(this.socialGraph),
       request,
       DEADLINES_MS.unary,
       accessToken,

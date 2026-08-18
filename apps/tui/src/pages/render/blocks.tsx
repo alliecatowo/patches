@@ -146,15 +146,7 @@ function PageBlockView({
     case 'Guestbook':
       return <GuestbookBlockView context={context} limit={block.limit ?? 20} />;
     case 'Friends':
-      // No "mutual follows" list RPC exists yet (`SocialGraphService` has no
-      // `ListFollowing`/`ListFollowers` — only `GetRelationship`, one actor at a time) —
-      // a documented placeholder rather than guessing at a shape, same spirit as the
-      // `Unknown` case below.
-      return (
-        <Box marginBottom={1}>
-          <Text color={theme.muted}>[friends list unavailable]</Text>
-        </Box>
-      );
+      return <FriendsBlockView context={context} limit={block.limit ?? 8} />;
     case 'Badges':
       return (
         <Box marginBottom={1}>
@@ -348,6 +340,65 @@ function TopEightBlockView({
           <Nameplate key={index} handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
         );
       })}
+    </Box>
+  );
+}
+
+/** Actors who follow `context.ownerActorId` back — a mutual-follows list, populated via
+ * `SocialGraphService.ListMutualFollows` (B-024). A public read (no `accessToken` — the
+ * viewer may be signed out), same fetch-on-mount shape as `TopEightBlockView`. */
+function FriendsBlockView({
+  context,
+  limit,
+}: {
+  context: PageRenderContext;
+  limit: number;
+}): ReactElement {
+  const [state, setState] = useState<
+    { status: 'loading' } | { status: 'ready'; actors: readonly Actor[] } | { status: 'error' }
+  >({ status: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    context.api
+      .listMutualFollows({ actorId: context.ownerActorId, cursor: '', limit })
+      .then((response) => {
+        if (!cancelled) setState({ status: 'ready', actors: response.actors });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [context.api, context.ownerActorId, limit]);
+
+  if (state.status === 'loading') {
+    return (
+      <Box marginBottom={1}>
+        <Text color={theme.muted}>Loading friends…</Text>
+      </Box>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <Box marginBottom={1}>
+        <Text color={theme.error}>Couldn't load friends.</Text>
+      </Box>
+    );
+  }
+  if (state.actors.length === 0) {
+    return (
+      <Box marginBottom={1}>
+        <Text color={theme.muted}>No mutual follows yet.</Text>
+      </Box>
+    );
+  }
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {state.actors.map((actor) => (
+        <Nameplate key={actor.id} handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
+      ))}
     </Box>
   );
 }
