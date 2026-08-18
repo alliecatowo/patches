@@ -49,6 +49,7 @@ describe('S3StorageClient', () => {
 
     const result = await client().presignPut('media/abc/original', {
       contentType: 'image/png',
+      contentLength: 4096,
       expiresInSeconds: 300,
     });
 
@@ -56,15 +57,20 @@ describe('S3StorageClient', () => {
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
     const [, command, options] = getSignedUrlMock.mock.calls[0] as [
       unknown,
-      { input: { Bucket: string; Key: string; ContentType: string } },
-      { expiresIn: number },
+      { input: { Bucket: string; Key: string; ContentType: string; ContentLength: number } },
+      { expiresIn: number; signableHeaders: Set<string> },
     ];
     expect(command.input).toMatchObject({
       Bucket: 'patches-media',
       Key: 'media/abc/original',
       ContentType: 'image/png',
+      ContentLength: 4096,
     });
     expect(options.expiresIn).toBe(300);
+    // Content-Type is unsignable by default (docs/research/aws-sdk-s3-presigned-urls.md
+    // §2) — must be explicitly opted back in, or the signed URL wouldn't actually enforce
+    // it against a mismatched client PUT.
+    expect(options.signableHeaders?.has('content-type')).toBe(true);
   });
 
   it('presigns a GET scoped to the given key', async () => {
@@ -105,7 +111,7 @@ describe('S3StorageClient', () => {
   it('getObject() concatenates the streamed body and reports its length', async () => {
     sendMock.mockResolvedValue({
       ContentType: 'image/jpeg',
-      Body: (async function* () {
+      Body: (function* () {
         yield Buffer.from('hello ');
         yield Buffer.from('world');
       })(),
@@ -120,7 +126,7 @@ describe('S3StorageClient', () => {
 
   it('getObject() aborts once maxBytes is exceeded', async () => {
     sendMock.mockResolvedValue({
-      Body: (async function* () {
+      Body: (function* () {
         yield Buffer.alloc(10);
         yield Buffer.alloc(10);
       })(),

@@ -5,11 +5,17 @@
  * is talking to.
  */
 
-/** Presigned PUT: one URL, one key, a short expiry (`docs/architecture/media.md` §3). */
+/** Presigned PUT: one URL, one key, a short expiry (`docs/architecture/media.md` §3).
+ * Both `contentType` and `contentLength` are signed into the URL (SigV4 query signing —
+ * `docs/research/aws-sdk-s3-presigned-urls.md` §2–3), so the client's real PUT must match
+ * both exactly or R2/MinIO rejects it with `SignatureDoesNotMatch` before the bytes are
+ * stored — `Content-Type` needs an explicit opt-in (`signableHeaders`) since S3's presigner
+ * excludes it by default, `Content-Length` is signed automatically once set on the command. */
 export interface PresignPutOptions {
-  /** Enforced by SigV4 — the client's PUT must send this exact `Content-Type` header, or
-   * the signature is invalid and R2/MinIO rejects the request before it reaches this app. */
   contentType: string;
+  /** Exact byte count, not a ceiling — pins the upload to precisely this size (the caller
+   * already validated it against `MAX_MEDIA_BYTES` before requesting the presign). */
+  contentLength: number;
   expiresInSeconds: number;
 }
 
@@ -46,29 +52,37 @@ export interface DownloadedObject {
   contentLength: number;
 }
 
+/**
+ * Declared with property (arrow-function-typed) syntax rather than method-shorthand syntax
+ * on purpose: `@typescript-eslint/unbound-method` treats interface *methods* as
+ * potentially-`this`-dependent even when they aren't, which makes `expect(storage.head)`
+ * (a completely ordinary Vitest assertion) an error in every test that mocks this interface.
+ * A function-typed property doesn't trigger that check, and every implementation
+ * (`S3StorageClient`'s class methods) is still structurally assignable to it.
+ */
 export interface StorageClient {
   /** One presigned URL, scoped to exactly this key, for the client to `PUT` its upload to
    * directly — the bytes never transit this process (§153). */
-  presignPut(key: string, options: PresignPutOptions): Promise<PresignPutResult>;
+  presignPut: (key: string, options: PresignPutOptions) => Promise<PresignPutResult>;
 
   /** One presigned URL for the client to `GET` from directly. Issued only after this
    * process has authorized the caller for that object (§32). */
-  presignGet(key: string, options: PresignGetOptions): Promise<PresignGetResult>;
+  presignGet: (key: string, options: PresignGetOptions) => Promise<PresignGetResult>;
 
   /** `null` if the object does not exist — never throws for a plain not-found. */
-  head(key: string): Promise<ObjectMetadata | null>;
+  head: (key: string) => Promise<ObjectMetadata | null>;
 
   /** Downloads an object's full bytes, refusing anything over `maxBytes` by aborting the
    * read rather than buffering an unbounded response (defense in depth ahead of whatever
    * `head()`-based size check already ran). Used by the worker only — this process never
    * proxies a *client* upload/download, but it does have to read the original to process it
    * (`docs/architecture/media.md` §4). */
-  getObject(key: string, options?: { maxBytes?: number }): Promise<DownloadedObject>;
+  getObject: (key: string, options?: { maxBytes?: number }) => Promise<DownloadedObject>;
 
   /** Uploads worker-generated derivative bytes directly (not presigned — the worker holds
    * real credentials, unlike the client). */
-  putObject(key: string, body: Buffer, options: { contentType: string }): Promise<void>;
+  putObject: (key: string, body: Buffer, options: { contentType: string }) => Promise<void>;
 
   /** No-op if the object does not exist. */
-  deleteObject(key: string): Promise<void>;
+  deleteObject: (key: string) => Promise<void>;
 }

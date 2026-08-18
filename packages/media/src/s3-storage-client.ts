@@ -57,13 +57,16 @@ export class S3StorageClient implements StorageClient {
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
-      // Included in the signed request, so the client's real PUT must send a matching
-      // `Content-Type` header or the signature is rejected before the object is stored
-      // (docs/research/aws-sdk-s3-presigned-urls.md).
       ContentType: options.contentType,
+      ContentLength: options.contentLength,
     });
     const url = await getSignedUrl(this.client, command, {
       expiresIn: options.expiresInSeconds,
+      // `Content-Length` is signed automatically once set on the command; `Content-Type`
+      // is NOT — S3's presigner unconditionally treats it as unsignable unless explicitly
+      // opted back in here (`docs/research/aws-sdk-s3-presigned-urls.md` §2). Without this,
+      // a client could PUT any content type against a URL signed for `image/png`.
+      signableHeaders: new Set(['content-type']),
     });
     return { url, expiresAt: expiryFrom(options.expiresInSeconds) };
   }
@@ -162,8 +165,8 @@ function expiryFrom(expiresInSeconds: number): Date {
  * `name` the SDK surfaces. */
 function isNotFoundError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
-  const name = 'name' in error ? String((error as { name: unknown }).name) : '';
-  if (name === 'NotFound' || name === 'NoSuchKey') return true;
-  const metadata = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
+  if ('name' in error && (error.name === 'NotFound' || error.name === 'NoSuchKey')) return true;
+  if (!('$metadata' in error)) return false;
+  const metadata = error.$metadata as { httpStatusCode?: number } | undefined;
   return metadata?.httpStatusCode === 404;
 }
