@@ -44,3 +44,4 @@ Thumbs.db
 # --- scratch ---
 tmp/
 .scratch/
+.mise/

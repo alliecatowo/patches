@@ -1,0 +1,56 @@
+# Local development dependencies for Patches.
+# Usage (from repo root):  mise run compose -- up -d      (docker compose, or podman compose fallback)
+#                          mise run compose -- --profile media up -d   (also starts MinIO for local R2-compatible storage)
+name: patches
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: patches
+      POSTGRES_PASSWORD: patches
+      POSTGRES_DB: patches
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patches -d patches"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  minio:
+    profiles: ["media"]
+    image: docker.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: patches
+      MINIO_ROOT_PASSWORD: patchespatches
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  minio-data:

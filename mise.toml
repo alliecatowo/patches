@@ -4,3 +4,27 @@ node = "24.19.0"
 pnpm = "11.22.0"
 docker-compose = "5.4.0"
 actionlint = "1.7.12"
+
+[env]
+# Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
+PODMAN_COMPOSE_PROVIDER = "{{config_root}}/.mise/bin/docker-compose"
+PODMAN_COMPOSE_WARNING_LOGS = "false"
+
+[tasks.compose]
+description = "Run compose against infra/compose/docker-compose.yml (docker compose, falling back to podman compose)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  exec docker compose -f infra/compose/docker-compose.yml "$@"
+elif command -v podman >/dev/null 2>&1; then
+  systemctl --user is-active --quiet podman.socket 2>/dev/null || systemctl --user start podman.socket 2>/dev/null || true
+  mkdir -p .mise/bin
+  [ -e .mise/bin/docker-compose ] || ln -sf "$(mise where docker-compose)/docker-cli-plugin-docker-compose" .mise/bin/docker-compose
+  exec podman compose -f infra/compose/docker-compose.yml "$@"
+else
+  echo "Neither docker nor podman found. Install Docker (docker compose) or Podman." >&2
+  exit 1
+fi
+"""
