@@ -25,6 +25,10 @@ export { Like } from './entities/like.entity.js';
 export { Bookmark } from './entities/bookmark.entity.js';
 export { Notification } from './entities/notification.entity.js';
 export { Report } from './entities/report.entity.js';
+export { Page } from './entities/page.entity.js';
+export { PageRevision } from './entities/page-revision.entity.js';
+export { PageAsset } from './entities/page-asset.entity.js';
+export { GuestbookEntry } from './entities/guestbook-entry.entity.js';
 
 export {
   ADMIN_AUDIT_SUBJECT_TYPES,
@@ -34,6 +38,7 @@ export {
   MEDIA_STATES,
   NOTIFICATION_TYPES,
   OUTBOX_JOB_STATUSES,
+  PAGE_VISIBILITIES,
   POST_TYPES,
   POST_VISIBILITIES,
   REPORT_REASONS,
@@ -49,6 +54,7 @@ export type {
   MediaState,
   NotificationType,
   OutboxJobStatus,
+  PageVisibility,
   PostType,
   PostVisibility,
   ReportReason,
@@ -64,6 +70,7 @@ export { Phase3SocialGraph1787055340075 } from './migrations/1787055340075-Phase
 export { Phase4Interactions1787058326261 } from './migrations/1787058326261-Phase4Interactions.js';
 export { ActorRegistrationIdempotency1787059787165 } from './migrations/1787059787165-ActorRegistrationIdempotency.js';
 export { Phase6Admin1787062075716 } from './migrations/1787062075716-Phase6Admin.js';
+export { Phase45Pages1787062912872 } from './migrations/1787062912872-Phase45Pages.js';
 
 export {
   claimOutboxJobs,
