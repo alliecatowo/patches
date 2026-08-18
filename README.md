@@ -62,6 +62,7 @@ Everyday commands:
 | `pnpm db:migrate` / `db:revert` / `db:show` / `db:generate --name=X` | TypeORM migrations (`packages/database`)                           |
 | `pnpm --filter @patches/terminal-media spike`                        | Kitty graphics spike (run inside kitty/Ghostty)                    |
 | `mise run compose -- <args>`                                         | compose wrapper for `infra/compose/docker-compose.yml`             |
+| `mise run docker:build`                                              | Build the production image (`infra/docker/Dockerfile`)             |
 
 More: [`docs/operations/local-development.md`](docs/operations/local-development.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -76,7 +77,7 @@ packages/database      TypeORM 1.x DataSource, entities, migrations
 packages/config        Validated environment schemas (zod)
 packages/terminal-media  Terminal image rendering (Kitty graphics protocol + fallback)
 packages/testkit       Test database helpers and factories
-infra/                 compose stack (postgres, mailpit, optional minio), docker, fly (planned)
+infra/                 compose stack (postgres, mailpit, optional minio); infra/docker (Dockerfile); infra/fly (fly.toml, planned deploy)
 docs/                  product principles & roadmap, architecture, ADRs, operations, research
 ```
 
