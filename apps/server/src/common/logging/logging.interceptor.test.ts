@@ -65,7 +65,13 @@ describe('LoggingInterceptor (spec §98)', () => {
     const interceptor = new LoggingInterceptor();
 
     await runWithRequestContext(
-      { requestId: 'req-77', client: 'tui', clientVersion: '1.2.3', rpc: 'Svc/Method' },
+      {
+        requestId: 'req-77',
+        client: 'tui',
+        clientVersion: '1.2.3',
+        rpc: 'Svc/Method',
+        peer: undefined,
+      },
       () => lastValueFrom(interceptor.intercept(STUB_CONTEXT, handlerThatEmits({}))),
     );
 

@@ -41,6 +41,7 @@ export class RequestContextInterceptor implements NestInterceptor {
       client,
       clientVersion,
       rpc: rpcPath(context),
+      peer: peerAddress(context),
     };
 
     // The handler runs on *subscription*, not when `next.handle()` is called, so
@@ -70,6 +71,33 @@ function rpcPath(context: ExecutionContext): string {
     if (typeof getPath === 'function') return getPath.call(call).replace(/^\//, '');
   }
   return `${context.getClass().name}/${context.getHandler().name}`;
+}
+
+/**
+ * The caller's address, port stripped, from `ServerUnaryCall.getPeer()` (the gRPC handler's
+ * third argument, per ts-proto/`@nestjs/microservices`'s convention — same argument `rpcPath`
+ * reads `getPath` off of above).
+ */
+function peerAddress(context: ExecutionContext): string | undefined {
+  const call: unknown = context.getArgByIndex(2);
+  if (typeof call !== 'object' || call === null || !('getPeer' in call)) return undefined;
+  const getPeer = (call as { getPeer: () => string }).getPeer;
+  if (typeof getPeer !== 'function') return undefined;
+
+  const raw = getPeer.call(call);
+  return stripPeerPort(raw);
+}
+
+/**
+ * grpc-js formats a peer as `${remoteAddress}:${remotePort}` with no brackets around an IPv6
+ * address (`server-interceptors.js`'s `getPeer()`), so this is inherently ambiguous for IPv6 —
+ * acceptable here because the result is only ever a rate-limit bucket key, never parsed back
+ * into an address for any security decision.
+ */
+export function stripPeerPort(raw: string): string | undefined {
+  if (raw.length === 0 || raw === 'unknown') return undefined;
+  const match = /^(.*):(\d+)$/.exec(raw);
+  return match?.[1] ?? raw;
 }
 
 /**
