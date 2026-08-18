@@ -27,7 +27,6 @@ export function useMediaAttachment(
 
   useEffect(() => {
     let cancelled = false;
-    setState({ status: 'loading' });
 
     async function run(): Promise<void> {
       try {
