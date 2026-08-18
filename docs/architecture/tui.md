@@ -48,6 +48,7 @@ apps/tui/src/
 ├── api/
 ├── auth/
 ├── media/
+├── pages/
 ├── state/
 ├── theme/
 └── terminal/
@@ -84,6 +85,10 @@ vs. spec-planned:
 | `g n`     | go notifications                                               | implemented (P4-004)                                           |
 | `g b`     | go bookmarks                                                   | implemented (P4-004)                                           |
 | `g p`     | go own profile                                                 | implemented                                                    |
+| `g v`     | go to the caller's own Patches Page                            | implemented (P45-006)                                          |
+| `o`       | open the selected post's first attachment externally           | implemented (P5-003/B-004)                                     |
+| `Ctrl+A`  | compose: attach a local image by path                          | implemented (P5-003, compose screen only)                      |
+| `v`       | (profile screen) open that actor's Patches Page                | implemented (P45-006; distinct from the `PostList` `v` above)  |
 | `R`       | reconnect (connect screen only)                                | implemented                                                    |
 | `P`       | toggle plain mode (spec §173; not in the spec's baseline list) | implemented (B-022)                                            |
 | `?`       | help                                                           | implemented                                                    |
@@ -260,6 +265,30 @@ Key `o` opens the selected media via the OS default handler when inline display 
 unavailable or a full view is wanted. Uses platform-safe spawning — argument arrays,
 never shell string interpolation of untrusted paths.
 
+**Status: implemented (P5-003, B-004).** `apps/tui/src/media/`:
+
+- `validate.ts`'s `readLocalImage` sniffs the real format from magic bytes (never the
+  filename extension or a claimed MIME type — spec §31), enforces the spec §28 10 MB
+  ceiling (`@patches/terminal-media`'s `MAX_INPUT_BYTES`, shared so the two limits can't
+  drift), and computes the SHA-256 the worker verifies.
+- `upload.ts`'s `uploadMediaFile` does `BeginMediaUpload` → a chunked `PUT` straight to
+  the presigned URL (never proxied through Node — spec §30) → `FinalizeMediaUpload`, then
+  `pollUntilReady` polls `GetMediaDownload` until the worker (P5-002) reports `READY`/
+  `FAILED` or a timeout elapses.
+- `cache.ts`'s `MediaCache` is a bounded on-disk LRU (`$XDG_CACHE_HOME/patches/media`,
+  100 MB default, evicted by file mtime) — spec §32's "do not allow unlimited disk
+  growth," one shared instance for the whole app (`App.tsx`'s `MediaSessionProvider`).
+- `open-external.ts`'s `openMediaExternally` downloads the display derivative into that
+  cache and spawns the OS opener (`open`/`xdg-open`/`cmd /c start`) with the cached file's
+  real path — an image viewer opens it, not a browser guessing from a bare URL.
+  `PATCHES_NO_OPEN=1` is a no-op escape hatch for headless/CI shells and tests.
+- `components/MediaAttachments.tsx` renders every attachment on a `Post` (and, via the
+  same component, a Page `Image`/`Gallery` block — see `docs/architecture/pages.md` §6):
+  a Kitty `InlineImage` when the terminal, a `MediaSession`, and plain mode all agree it
+  can, otherwise the spec §75 fallback box (`buildFallbackBox` — mime/dimensions/`press o
+to open externally`). `PostRow` always renders it; there is no path where an attachment
+  is silently dropped.
+
 ## 8. Compose experience (§77)
 
 `c` opens compose mode:
@@ -270,15 +299,22 @@ never shell string interpolation of untrusted paths.
 │                                                  │
 │ █                                                │
 │                                                  │
-│                                                  │
+│ [1] photo.png                                    │
 ├──────────────────────────────────────────────────┤
-│ Attach: none                          143/5000    │
-│ ^S post       ^A attach       Esc cancel         │
+│                                        143/5000    │
+│ ^S post  ^A attach  ^X remove last  Esc keep draft │
 └──────────────────────────────────────────────────┘
 ```
 
-Supports: multiline text, image path attachment, optional link detection, alt-text
-prompt. An explicit submit key (e.g. `^S`) is required — Enter never silently posts.
+Supports: multiline text, up to 4 image attachments by local file path (spec §28), an
+inline upload-progress line while one is in flight. An explicit submit key (`Ctrl+S`) is
+required — Enter never silently posts. `Ctrl+A` prompts for a path; the attach flow does
+its own validate → upload → poll-until-`READY` round trip
+(`media/validate.ts`/`media/upload.ts`) before adding the id to the draft, so a post is
+never created referencing a still-processing or failed upload. Not implemented: link
+auto-detection from body text, and a per-attachment alt-text prompt — both are
+follow-ups, not a silent gap (alt text has no UI to set it yet on either `CreatePost` or
+`Post.media`).
 
 ## 9. State (§78–80)
 
@@ -521,6 +557,16 @@ only (same convention as `ComposeScreen` — `Enter` never silently submits), ca
 `ModerationService.ReportPost`/`ReportActor`. No admin/moderator UI (resolving a report,
 suspending an account) — spec §65 puts that in the admin CLI, not here.
 
+**Patches Pages (P45-004..007)**: `v` on `ProfileScreen` opens the viewed actor's page,
+`g v` the caller's own, and `patches visit @handle[/slug]` (`cli/args.ts`) launches the TUI
+straight onto `screens/PageScreen.tsx`, skipping `connect`. Full renderer/editor detail
+(block types, the `$EDITOR` round trip, `Friends`'s placeholder) lives in
+`docs/architecture/pages.md` §6, not duplicated here — the summary: `[`/`]` switches
+sub-pages (one `GetPage` fetches the whole document, so this is client-side, no re-fetch),
+`j`/`k`/`Enter` select and open a `Links` entry externally, `s` signs the guestbook when
+one is present and the viewer has a session, and `e` (owner only) opens `$VISUAL`/`$EDITOR`
+on the raw document JSON.
+
 ## 14. Testing (B-015)
 
 `apps/tui/test/harness.tsx` exports `renderApp(options)`, which renders the real `App`
@@ -549,7 +595,22 @@ profile, local-feed pagination, home feed, search, and follow/unfollow; `thread.
 bar's unread badge; `moderation.test.tsx` covers block/mute confirm prompts and the
 report screen; `b022.test.tsx` covers `avatarFrame`/`profileBorder` rendering, plain
 mode (both `PATCHES_PLAIN=1` at startup and the runtime `P` toggle), and the accounts
-screen (credential list, the no-SSH-agent error path, logout).
+screen (credential list, the no-SSH-agent error path, logout); `media-attach.test.tsx`
+covers the compose `Ctrl+A` attach flow end to end (upload, poll-until-`READY`,
+`media_ids` on submit, and the invalid-file error path) against `fake-api.ts`'s in-memory
+presigned-PUT/download `fetch` interceptor (see below); `pages.test.tsx` covers
+`PageScreen` navigation (sub-page switching, plain mode), guestbook signing, and the
+`$EDITOR` round trip (both the happy path and a validation-error path) via an injectable
+`runEditor` (mirrors `open-external.ts`'s `spawnFn` — never a real terminal hand-off in
+tests). Block-type rendering itself (every §171 block plus the `Unknown` placeholder) is
+tested directly against `PageBlocksView` in
+`apps/tui/src/pages/render/blocks.test.tsx`, not through the full `App` — a `PageScreen`
+with a dozen-plus blocks' worth of content routinely exceeds `ink-testing-library`'s
+default terminal size, and `App.tsx`'s `<Box height={rows}>` fixed-height viewport can
+then hand overlapping row coordinates to two different lines' content (both siblings'
+text landing on the same terminal row) — a real Ink layout hazard worth knowing about
+before writing a big `PageScreen` snapshot test, not a rendering bug in the Pages
+components themselves.
 
 `test/fake-api.ts`'s `addPost(authorId, body, createdAt?, inReplyToId?)` seeds a reply
 directly, and it implements `GetPost`/`ListReplies` (direct replies only, newest first —
@@ -562,3 +623,19 @@ are anonymous RPCs in the real API too (no access token), so — same as the rea
 the fake can't personalize their `viewerState` per caller; a like/bookmark's true state
 only ever comes from `ReactionService`'s own response, which is exactly what `App`'s
 `reactionOverrides` overlay is for.
+
+`fake-api.ts` also fakes `MediaService` and `PageService` (P5-003/P45-004..007):
+`addMedia(mediaId, bytes, mimeType?)` seeds an already-`READY` object directly;
+`beginMediaUpload`/`finalizeMediaUpload`/`getMediaDownload` drive the same state machine
+`media/upload.ts` expects (skipping the real worker's `PENDING`→`PROCESSING` step — the
+fake flips straight to `READY` on finalize, since `pollUntilReady`'s first poll already
+sees a terminal state). The interesting part: `installFakeMediaFetch()` monkey-patches
+`globalThis.fetch` once per process to intercept `https://fake-upload.patches.test/…` and
+`https://fake-download.patches.test/…` URLs — reading a `PUT`'s `ReadableStream` body into
+an in-memory byte store and serving it back on download — so the whole
+`BeginMediaUpload`→`PUT`→`FinalizeMediaUpload`→`GetMediaDownload` round trip runs for
+real, end to end, with no actual HTTP server. `addPage(handle, slug, document)` and
+`addGuestbookEntry(handle, slug, authorId, body, createdAt?)` seed `PageService` state
+directly; `getPage`/`updatePage` round-trip through `@patches/domain`'s own
+`parsePageStrict`, so a test document that wouldn't validate server-side won't silently
+"work" in the fake either.

@@ -79,17 +79,17 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] P45-001 — `PatchesPage` schema + validator in `packages/domain` (versioned, flat blocks, strict-on-write); limits: doc ≤64 KiB, ≤32 sub-pages, ≤128 blocks/page, ≤8 KiB/block
 - [x] P45-002 — Entities + migrations: pages, page_revisions (immutable), page_assets, guestbook_entries
 - [x] P45-003 — `PageService`: GetPage, UpdatePage (new revision per write), ListGuestbook, SignGuestbook (rate-limited, block-aware, reportable, owner/moderator removal)
-- [ ] P45-004 — Ink page renderer + basic theme; blocks Text/Markdown/Links/Posts/TopEight/Guestbook; unknown blocks render a placeholder, never fail the page
-- [ ] P45-005 — `Image`/`Gallery` defined in schema but render as placeholder until Phase 5 media exists (§176) _(schema half done — `Image`/`Gallery` block schemas + Patches-media-id-only enforcement exist in `packages/domain`; placeholder rendering is TUI work, P45-004/006)_
-- [ ] P45-006 — TUI `patches visit @handle[/slug]` + page editor
-- [ ] P45-007 — Nameplate rendering everywhere a name appears: capability degradation (truecolor→256→16→none), plain mode, server-attested badges only (§173)
+- [x] P45-004 — Ink page renderer + basic theme; blocks Text/Markdown/Links/Posts/TopEight/Guestbook; unknown blocks render a placeholder, never fail the page
+- [x] P45-005 — `Image`/`Gallery` defined in schema but render as placeholder until Phase 5 media exists (§176) _(P5-003 landed first, so `Image`/`Gallery` render through the same `MediaAttachments` component posts use: Kitty inline when capable, the spec §75 fallback box otherwise — a strict upgrade over a static placeholder, not a deviation)_
+- [x] P45-006 — TUI `patches visit @handle[/slug]` + page editor _(`$EDITOR` round-trip editor; structured block-by-block editor deferred, see follow-ups)_
+- [x] P45-007 — Nameplate rendering everywhere a name appears: capability degradation (truecolor→256→16→none), plain mode, server-attested badges only (§173) _(audited — PostRow/SearchScreen/NotificationsScreen/ProfileScreen already used `Nameplate`; TopEight/Guestbook in the new Pages renderer do too)_
 - [x] P45-008 — Security tests: no executable code path, control-character/escape-sequence stripping on every user string, remote-URL media rejected, `javascript:`/`data:`/`file:` links rejected _(domain + server half: `packages/domain` unit tests + `apps/server/test/pages.integration.test.ts`'s VALIDATION_ERROR/block-awareness coverage; TUI rendering-side checks land with P45-004/006)_
 
 ## Phase 5 — production media (§139)
 
 - [x] P5-001 — media entity, BeginMediaUpload (presigned PUT to R2), FinalizeMediaUpload, GetMediaDownload
 - [x] P5-002 — Worker PROCESS_MEDIA with sharp (validate, orient, strip, derivatives, hash)
-- [ ] P5-003 — TUI: attach image path, upload progress, bounded LRU media cache, Kitty inline + fallback + `o` open externally
+- [x] P5-003 — TUI: attach image path, upload progress, bounded LRU media cache, Kitty inline + fallback + `o` open externally
 
 ## Phase 6 — moderation & security (§140)
 
@@ -149,7 +149,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] A-026 — server: `GraphService.followActor` (`apps/server/src/modules/graph/**`) doesn't call `NotificationsService.notifyFollow` on a new follow — `NotificationsModule`/`NotificationsService.notifyFollow(recipientActorId, actorId)` exist and are exported (P4-003) specifically for this, but `graph/**` was out of that task's file scope. One-line fix: `GraphModule` imports `NotificationsModule`, `GraphService` injects `NotificationsService`, and `followActor` calls `notifyFollow(targetActorId, viewerActorId)` after a genuinely new follow row is inserted (mirror `ReactionsService.likePost`'s `wasNew` pattern so a no-op idempotent re-follow doesn't re-notify).
 
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
-- [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
+- [x] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
 - [x] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits _(scoped to apps/server, apps/worker, packages/config, packages/database, packages/testkit, packages/terminal-media — apps/tui/packages/proto/packages/media keep their tsconfig-include split, owned elsewhere)_
 - [x] B-006 — Add `@grpc/reflection` to the server (grpcurl debugging), dev-only _(behind `GRPC_REFLECTION`, default off, on in `.env.example`'s dev block; grpcurl not installed in this environment, untested-live)_
 - [x] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported) _(`GraphicsCapabilities.tmux` + `KittyGraphicsRenderer` wraps every APC write in `wrapTmuxPassthrough`; unit-tested, unverified against a live tmux+Ghostty — see `docs/research/ink-kitty-graphics.md`)_
@@ -168,6 +168,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-021 — server+proto: `AddCredential` for SSH keys has no server-verified possession proof — add a `BeginSshLogin`-shaped enrollment challenge (TUI `patches keys add` currently only self-checks via the agent)
 - [x] B-022 — TUI: nameplate `avatarFrame`/`profileBorder` rendering + a plain-mode toggle that strips all decoration (§173); in-app account screen wrapping `ssh-enroll.ts`
 - [x] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
+- [ ] B-023 — TUI Pages editor: structured block-by-block add/remove/reorder UI (P45-006 shipped the `$EDITOR` raw-JSON round trip only; the structured form editor was deferred)
+- [ ] B-024 — proto+server: a bulk "list mutual follows" RPC — `PageScreen`'s `Friends` block currently renders a documented `[friends list unavailable]` placeholder because `SocialGraphService` only has per-actor `GetRelationship`, no `ListFollowing`/`ListFollowers`
 
 - [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol

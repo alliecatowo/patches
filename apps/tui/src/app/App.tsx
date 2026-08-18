@@ -10,6 +10,7 @@ import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
+import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
@@ -27,6 +28,7 @@ import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { NotificationsScreen } from '../screens/NotificationsScreen.js';
+import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
@@ -45,6 +47,14 @@ export interface AppProps {
   /** Threaded into every `o` (open externally) call — tests inject `spawnFn` here to
    * record the call instead of actually launching an OS opener (spec §76). */
   openMediaOptions?: OpenMediaOptions;
+  /** Threaded into `PageScreen`'s `e` (edit) flow — tests inject `runEditor` here
+   * instead of actually spawning `$EDITOR` against a real TTY (P45-006). */
+  pageEditorOptions?: PageScreenProps['editorOptions'];
+  /** Overridden in tests — a real `FilePageDraftStore` writes to the user's XDG data dir. */
+  pageDraftStore?: PageDraftStore;
+  /** `patches visit @handle[/slug]` (P45-006) — opens straight to that actor's
+   * Patches Page instead of the usual `connect` screen. */
+  initialPageTarget?: { handle: string; slug: string } | undefined;
 }
 
 type Screen =
@@ -60,7 +70,8 @@ type Screen =
   | 'bookmarks'
   | 'notifications'
   | 'report'
-  | 'accounts';
+  | 'accounts'
+  | 'page';
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
@@ -95,15 +106,20 @@ export function App({
   credentialStore,
   draftStore,
   env = process.env,
+  initialPageTarget,
   mediaCache,
   openMediaOptions,
+  pageEditorOptions,
+  pageDraftStore,
 }: AppProps): ReactElement {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
   const { columns, rows } = useWindowSize();
   const { state: serverInfoState, retry: retryServerInfo } = useServerInfo(api);
 
-  const [screen, setScreen] = useState<Screen>('connect');
+  const [screen, setScreen] = useState<Screen>(
+    initialPageTarget === undefined ? 'connect' : 'page',
+  );
   const [priorScreen, setPriorScreen] = useState<Screen>('connect');
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [pendingGo, setPendingGo] = useState(false);
@@ -139,6 +155,12 @@ export function App({
   const [profileTarget, setProfileTarget] = useState<
     { actorId: string; knownActor: Actor | undefined } | undefined
   >(undefined);
+
+  // Which handle `page` currently shows (P45-006) — set by `v` (a profile's own page)
+  // or `g v` (the caller's own).
+  const [pageTarget, setPageTarget] = useState<{ handle: string; slug: string } | undefined>(
+    initialPageTarget,
+  );
 
   // Thread navigation (P4-004): a stack of post ids, top = the currently focused
   // thread. Drilling into a reply's own replies pushes; `Esc` pops one level and only
@@ -216,6 +238,24 @@ export function App({
       return;
     }
     openProfile(session.userId, session.actor);
+  }
+
+  /** `v` on a profile, or `g v` for the caller's own (P45-006) — opens that actor's
+   * Patches Page. `g v` needs a session (there is no "own page" without an own
+   * account); `v` on someone else's profile needs none — pages are anonymous-readable
+   * (spec §170), same as `GetPage`. */
+  function openPage(handle: string, slug = ''): void {
+    setPageTarget({ handle, slug });
+    go('page');
+  }
+
+  function openOwnPage(): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    if (session.actor === undefined) return;
+    openPage(session.actor.handle);
   }
 
   /** `p` on a selected post row (B-017; moved off `Enter` in P4-004) — profile
@@ -442,6 +482,7 @@ export function App({
         else if (input === 's') go('search');
         else if (input === 'b') requireSession('bookmarks');
         else if (input === 'n') requireSession('notifications');
+        else if (input === 'v') openOwnPage();
         return;
       }
       if (input === 'g') {
@@ -498,6 +539,21 @@ export function App({
                 viewerActorId={session?.userId}
                 ensureAccessToken={ensureAccessToken}
                 onReportActor={reportActor}
+                onVisitPage={(actor) => openPage(actor.handle)}
+              />
+            )}
+            {screen === 'page' && pageTarget !== undefined && (
+              <PageScreen
+                api={api}
+                handle={pageTarget.handle}
+                initialSlug={pageTarget.slug}
+                viewerActorId={session?.userId}
+                ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+                isActive={screen === 'page' && !pendingGo}
+                onBack={() => setScreen(priorScreen)}
+                env={env}
+                draftStore={pageDraftStore}
+                editorOptions={pageEditorOptions}
               />
             )}
             {screen === 'thread' && threadStack.length > 0 && (
@@ -632,7 +688,21 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
       'Esc back',
     ];
   }
-  if (screen === 'local' || screen === 'home' || screen === 'profile' || screen === 'bookmarks') {
+  if (screen === 'profile') {
+    return [
+      'j/k move',
+      'Enter thread',
+      'r reply',
+      'l like',
+      'b bookmark',
+      'o open media',
+      'v visit page',
+      '! report',
+      'g h/l/p go',
+      '? help',
+    ];
+  }
+  if (screen === 'local' || screen === 'home' || screen === 'bookmarks') {
     return [
       'j/k move',
       'Enter thread',
@@ -646,10 +716,21 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
       '? help',
     ];
   }
+  if (screen === 'page') {
+    return [
+      '[ / ] sub-page',
+      'j/k select link',
+      'Enter open link',
+      'e edit',
+      's sign guestbook',
+      'Esc back',
+    ];
+  }
   const keys = [
     'g h/l/p go',
     'g b bookmarks',
     'g n notifications',
+    'g v your page',
     '/ search',
     'c compose',
     authenticated ? 'L account' : 'L login',

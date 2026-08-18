@@ -36,6 +36,9 @@ export interface ParsedArgs {
    * subcommand's flags visible (and colliding) with every other's.
    */
   rest: string[];
+  /** Populated by `visit @handle[/slug]` (P45-006) — opens the TUI directly on that
+   * actor's Patches Page rather than the usual `connect` screen. */
+  visitTarget?: { handle: string; slug: string };
   /** Populated when the arguments could not be understood. */
   error?: string;
 }
@@ -87,6 +90,22 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case '--once':
         result.command = 'ping';
         break;
+      case 'visit': {
+        const target = argv[index + 1];
+        const handle = target?.startsWith('@') ? target.slice(1) : undefined;
+        if (handle === undefined || handle === '') {
+          return {
+            ...result,
+            command: 'help',
+            error:
+              'visit needs a target, e.g. patches visit @handle or patches visit @handle/about',
+          };
+        }
+        const [rawHandle, slug = ''] = handle.split('/');
+        result.visitTarget = { handle: rawHandle ?? '', slug };
+        index += 1;
+        break;
+      }
       case 'register':
       case 'login':
       case 'logout':
@@ -142,6 +161,7 @@ export const USAGE = `patches — a terminal-native social network
 Usage:
   patches [options]            open the Patches TUI
   patches ping [options]       contact the server once, print JSON, exit
+  patches visit @handle[/slug] open straight to that actor's Patches Page
   patches register [options]   create an account on a node
   patches login [options]      sign in with a password or an SSH key
   patches logout [options]     sign out (add --all for every stored account)

@@ -51,6 +51,8 @@ export interface ProfileScreenProps {
   ensureAccessToken?: (() => Promise<string>) | undefined;
   /** `!` — opens the report screen scoped to this actor (spec §55). */
   onReportActor?: ((actor: Actor) => void) | undefined;
+  /** `v` — opens this actor's Patches Page (P45-006). */
+  onVisitPage?: ((actor: Actor) => void) | undefined;
 }
 
 type FollowUi =
@@ -77,6 +79,7 @@ export function ProfileScreen({
   viewerActorId,
   ensureAccessToken,
   onReportActor,
+  onVisitPage,
 }: ProfileScreenProps): ReactElement {
   const plain = usePlainMode();
   const actorState = useActor(api, actorId, knownActor);
@@ -185,6 +188,10 @@ export function ProfileScreen({
       }
       if (input === '!' && actorState.status === 'ready') {
         onReportActor?.(actorState.actor);
+        return;
+      }
+      if (input === 'v' && actorState.status === 'ready') {
+        onVisitPage?.(actorState.actor);
       }
     },
     { isActive: isActive && actorState.status === 'ready' },
