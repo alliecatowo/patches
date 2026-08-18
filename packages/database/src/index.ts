@@ -3,6 +3,12 @@ export type { CreateDataSourceOptionsInput } from './data-source.js';
 
 export { SnakeNamingStrategy } from './naming/snake-naming.strategy.js';
 
+export {
+  decryptFederationPrivateKeyPem,
+  encryptFederationPrivateKeyPem,
+} from './crypto/federation-key-cipher.js';
+export type { EncryptedFederationPrivateKey } from './crypto/federation-key-cipher.js';
+
 export { ALL_ENTITIES } from './entities/index.js';
 export { AdminAuditLog } from './entities/admin-audit-log.entity.js';
 export { RateLimitBucket } from './entities/rate-limit-bucket.entity.js';
@@ -11,7 +17,11 @@ export { Actor } from './entities/actor.entity.js';
 export { User } from './entities/user.entity.js';
 export { RefreshToken } from './entities/refresh-token.entity.js';
 export { AuthCode } from './entities/auth-code.entity.js';
-export { SshLoginChallenge } from './entities/ssh-login-challenge.entity.js';
+export {
+  SshLoginChallenge,
+  SSH_LOGIN_CHALLENGE_PURPOSES,
+} from './entities/ssh-login-challenge.entity.js';
+export type { SshLoginChallengePurpose } from './entities/ssh-login-challenge.entity.js';
 export { Credential } from './entities/credential.entity.js';
 export { Invite } from './entities/invite.entity.js';
 export { OutboxJob } from './entities/outbox-job.entity.js';
@@ -75,6 +85,7 @@ export { ActorRegistrationIdempotency1787059787165 } from './migrations/17870597
 export { Phase6Admin1787062075716 } from './migrations/1787062075716-Phase6Admin.js';
 export { Phase45Pages1787062912872 } from './migrations/1787062912872-Phase45Pages.js';
 export { Phase8Federation1787076396680 } from './migrations/1787076396680-Phase8Federation.js';
+export { Phase9Hardening1787082699518 } from './migrations/1787082699518-Phase9Hardening.js';
 
 export {
   claimOutboxJobs,

@@ -6,6 +6,7 @@ import { ActorRegistrationIdempotency1787059787165 } from './1787059787165-Actor
 import { Phase6Admin1787062075716 } from './1787062075716-Phase6Admin.js';
 import { Phase45Pages1787062912872 } from './1787062912872-Phase45Pages.js';
 import { Phase8Federation1787076396680 } from './1787076396680-Phase8Federation.js';
+import { Phase9Hardening1787082699518 } from './1787082699518-Phase9Hardening.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -28,4 +29,5 @@ export const ALL_MIGRATIONS = [
   Phase6Admin1787062075716,
   Phase45Pages1787062912872,
   Phase8Federation1787076396680,
+  Phase9Hardening1787082699518,
 ];

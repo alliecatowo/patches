@@ -2,18 +2,16 @@ import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryColumn }
 import { Actor } from './actor.entity.js';
 
 /**
- * A local actor's own RSA-2048 keypair for HTTP Signatures (`INITIAL_VISION.md` §109,
+ * Local actors' own RSA-2048 keypair for HTTP Signatures (`INITIAL_VISION.md` §109,
  * `docs/research/activitypub.md`). One row per local actor, created lazily the first time
  * that actor needs to sign an outgoing request or publish an actor document with a
  * `publicKey` (`KeyService.getOrCreateKeyPair`).
  *
- * `privateKeyPem` is stored **plain**, not encrypted at rest. This is a deliberate, documented
- * v0.1/Stage-F1 gap, not an oversight: the spec's secrets-management guidance (§101) does not
- * specify a KMS/encryption-at-rest scheme, and the federation lab is explicitly local and
- * non-public (`docs/architecture/federation.md` §3.5 — Stage F1 is v0.1, run locally). Encrypt
- * this column (or move it to an operator-supplied server key, or an actual KMS) before Stage
- * F3 (public federation, §108, §160's readiness checklist) — filed as a follow-up in this
- * task's report.
+ * `privateKeyCiphertext`/`privateKeyIv`/`privateKeyTag` (B-026) hold the PKCS#8 PEM encrypted
+ * with AES-256-GCM under `FEDERATION_KEY_ENCRYPTION_KEY` — see
+ * `packages/database/src/crypto/federation-key-cipher.ts`. There was never a deployed row with
+ * the old plain `private_key_pem` column (Stage F1 is pre-launch), so the migration changes
+ * the column shape directly rather than running an expand/contract pair across two migrations.
  */
 @Entity({ name: 'federation_keys' })
 export class FederationKey {
@@ -28,9 +26,17 @@ export class FederationKey {
   @Column({ type: 'text' })
   declare publicKeyPem: string;
 
-  /** PKCS#8 PEM. See the class doc comment — plain at rest in v0.1. */
-  @Column({ type: 'text' })
-  declare privateKeyPem: string;
+  /** AES-256-GCM ciphertext of the PKCS#8 private key PEM. */
+  @Column({ type: 'bytea' })
+  declare privateKeyCiphertext: Buffer;
+
+  /** 96-bit GCM nonce used for `privateKeyCiphertext`, unique per row. */
+  @Column({ type: 'bytea' })
+  declare privateKeyIv: Buffer;
+
+  /** GCM authentication tag for `privateKeyCiphertext`. */
+  @Column({ type: 'bytea' })
+  declare privateKeyTag: Buffer;
 
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;
