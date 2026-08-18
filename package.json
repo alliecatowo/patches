@@ -1,0 +1,52 @@
+{
+  "name": "patches",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Terminal-native social media.",
+  "license": "MIT",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --project database --project server-integration",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "proto:gen": "pnpm --filter @patches/proto gen",
+    "proto:lint": "pnpm --filter @patches/proto lint:buf",
+    "proto:format": "pnpm --filter @patches/proto format:buf",
+    "proto:breaking": "pnpm --filter @patches/proto breaking",
+    "db:migrate": "pnpm --filter @patches/database migration:run",
+    "db:revert": "pnpm --filter @patches/database migration:revert",
+    "db:generate": "pnpm --filter @patches/database migration:generate",
+    "db:show": "pnpm --filter @patches/database migration:show",
+    "server": "pnpm --filter @patches/server start:dev",
+    "tui": "pnpm --filter @patches/tui start",
+    "clean": "turbo run clean && rm -rf node_modules/.cache"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "globals": "catalog:",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

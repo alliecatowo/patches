@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+.turbo
+pnpm-lock.yaml
+**/src/generated/**
+*.min.*
+CHANGELOG.md
+.mise
