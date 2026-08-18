@@ -3,6 +3,7 @@ import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
+import { PagesModule } from '../pages/pages.module.js';
 import { MAX_INBOUND_BODY_BYTES } from './federation.constants.js';
 import {
   FEDERATION_GATEWAY,
@@ -86,7 +87,7 @@ class LazyFederationGateway implements FederationGateway {
  * never need to know which underlying implementation is live.
  */
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, PagesModule],
   controllers: [WebfingerController, ActorController, OutboxController, InboxController],
   providers: [
     KeyService,
