@@ -1,2 +1,5 @@
 - [zod v4 URL validation](zod-v4-url-validation.md) — z.httpUrl() rejects localhost; use z.url({protocol: /^https?$/}) instead
 - [.env read permission block](env-file-read-permission.md) — .env/.env.example unreadable via any tool; pass env vars inline instead
+- [proto stringEnums must be true](proto-stringEnums-runtime-mismatch.md) — proto-loader always decodes enums to their string name; ts-proto's numeric default lies
+- [proto value-export Nest leak](proto-nestjs-value-export-leak.md) — value (not type) export of a generated enum pulls @nestjs/microservices into the ESM TUI bundle
+- [proto FieldMask wire shape](proto-fieldmask-wire-shape.md) — proto-loader decodes FieldMask as { paths: [...] }, not the flat string[] ts-proto's type claims
