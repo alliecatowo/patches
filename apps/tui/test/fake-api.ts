@@ -1,14 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
 import { status as GrpcStatus } from '@grpc/grpc-js';
+import { parsePageStrict, type PatchesPage } from '@patches/domain';
 import {
   dateToTimestamp,
   FOLLOW_STATE,
+  MEDIA_STATUS,
   POST_TYPE,
   POST_VISIBILITY,
   type Actor,
   type AddCredentialRequest,
   type AddCredentialResponse,
+  type BeginMediaUploadRequest,
+  type BeginMediaUploadResponse,
   type BlockActorRequest,
   type BlockActorResponse,
   type BookmarkPostRequest,
@@ -16,12 +20,18 @@ import {
   type CreatePostRequest,
   type CreatePostResponse,
   type Credential,
+  type FinalizeMediaUploadRequest,
+  type FinalizeMediaUploadResponse,
   type FollowActorRequest,
   type FollowActorResponse,
   type GetActorByHandleRequest,
   type GetActorByHandleResponse,
   type GetActorRequest,
   type GetActorResponse,
+  type GetMediaDownloadRequest,
+  type GetMediaDownloadResponse,
+  type GetPageRequest,
+  type GetPageResponse,
   type GetPostRequest,
   type GetPostResponse,
   type GetRelationshipRequest,
@@ -29,6 +39,7 @@ import {
   type GetServerInfoResponse,
   type GetUnreadCountRequest,
   type GetUnreadCountResponse,
+  type GuestbookEntry,
   type LikePostRequest,
   type LikePostResponse,
   type ListActorPostsRequest,
@@ -37,6 +48,8 @@ import {
   type ListBlocksResponse,
   type ListBookmarksRequest,
   type ListBookmarksResponse,
+  type ListGuestbookRequest,
+  type ListGuestbookResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
   type ListCredentialsResponse,
@@ -46,6 +59,8 @@ import {
   type ListMutesResponse,
   type ListNotificationsRequest,
   type ListNotificationsResponse,
+  type ListPageRevisionsRequest,
+  type ListPageRevisionsResponse,
   type ListPostLikersRequest,
   type ListPostLikersResponse,
   type ListRepliesRequest,
@@ -54,6 +69,7 @@ import {
   type LoginResponse,
   type MarkNotificationsReadRequest,
   type MarkNotificationsReadResponse,
+  type MediaAttachment,
   type MuteActorRequest,
   type MuteActorResponse,
   type Nameplate,
@@ -66,13 +82,19 @@ import {
   type RegisterRequest,
   type RegisterResponse,
   type Relationship,
+  type RemoveGuestbookEntryRequest,
+  type RemoveGuestbookEntryResponse,
   type ReportActorRequest,
   type ReportActorResponse,
+  type ReportGuestbookEntryRequest,
+  type ReportGuestbookEntryResponse,
   type ReportPostRequest,
   type ReportPostResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type Session,
+  type SignGuestbookRequest,
+  type SignGuestbookResponse,
   type UnblockActorRequest,
   type UnblockActorResponse,
   type UnbookmarkPostRequest,
@@ -83,9 +105,77 @@ import {
   type UnlikePostResponse,
   type UnmuteActorRequest,
   type UnmuteActorResponse,
+  type UpdatePageRequest,
+  type UpdatePageResponse,
 } from '@patches/proto';
 
 import type { PatchesApi } from '../src/api/client.js';
+
+/** URL prefixes the fake `fetch` override recognizes as its own "object storage" — anything
+ * else passes through to the real global `fetch` untouched (spec §30's direct-to-R2 upload
+ * flow, faked end to end for `apps/tui/test` without a real HTTP server). */
+const FAKE_UPLOAD_PREFIX = 'https://fake-upload.patches.test/';
+const FAKE_DOWNLOAD_PREFIX = 'https://fake-download.patches.test/';
+
+let realFetch: typeof fetch | undefined;
+let activeMediaTarget: FakeApiHandle | undefined;
+
+async function readRequestBody(body: unknown): Promise<Uint8Array> {
+  if (body === null || body === undefined) return new Uint8Array();
+  if (body instanceof Uint8Array) return body;
+  if (typeof body === 'string') return new TextEncoder().encode(body);
+  const stream = body as ReadableStream<Uint8Array>;
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value !== undefined) {
+      chunks.push(value);
+      total += value.length;
+    }
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
+/** Installed once per process — the wrapper itself is stateless and defers to whichever
+ * `FakeApiHandle` was constructed most recently (mirrors how every other fake RPC method is
+ * scoped to "the current test's handle", not a registry keyed by request). */
+function installFakeMediaFetch(): void {
+  if (realFetch !== undefined) return;
+  realFetch = globalThis.fetch.bind(globalThis);
+  const previousFetch = realFetch;
+  globalThis.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === 'string' || input instanceof URL ? input.toString() : input.url;
+    if (activeMediaTarget !== undefined && url.startsWith(FAKE_UPLOAD_PREFIX)) {
+      return activeMediaTarget.handleFakeUpload(url, init);
+    }
+    if (activeMediaTarget !== undefined && url.startsWith(FAKE_DOWNLOAD_PREFIX)) {
+      return activeMediaTarget.handleFakeDownload(url);
+    }
+    return previousFetch(input, init);
+  };
+}
+
+interface FakeMedia {
+  mimeType: string;
+  byteSize: number;
+  status: (typeof MEDIA_STATUS)[keyof typeof MEDIA_STATUS];
+  bytes?: Uint8Array;
+}
+
+interface FakePage {
+  document: PatchesPage;
+  revisionId: string;
+  updatedAt: Date;
+}
 
 /** A seeded local account the fake server knows about. */
 export interface FakeUser {
@@ -146,10 +236,20 @@ export class FakeApiHandle {
   // notification) pairing, keyed by recipient user id, newest first per recipient.
   private readonly notificationsByUser = new Map<string, Notification[]>();
   private readonly credentialsByUser = new Map<string, Credential[]>(); // AccountsScreen (B-022)
+  private readonly media = new Map<string, FakeMedia>(); // mediaId -> ... (P5-003/B-004)
+  // (handle, slug || 'index') -> page document, joined with '/' (P45-004..006)
+  private readonly pages = new Map<string, FakePage>();
+  private readonly guestbook = new Map<string, GuestbookEntry[]>(); // same key as `pages`
   private readonly pageSize: number;
   private readonly serverInfo: GetServerInfoResponse;
 
   constructor(options: FakeApiOptions = {}) {
+    installFakeMediaFetch();
+    // Not a closure alias — a module-level "which handle is current" pointer the fetch
+    // override reads later, so a test's second `createFakeApi()` correctly supersedes
+    // its first.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- see comment above
+    activeMediaTarget = this;
     this.target = options.target ?? 'patches.test:50051';
     this.pageSize = options.pageSize ?? 20;
     this.serverInfo = {
@@ -239,6 +339,30 @@ export class FakeApiHandle {
         this.reportPost(request, accessToken),
       reportActor: (request: ReportActorRequest, accessToken: string) =>
         this.reportActor(request, accessToken),
+      beginMediaUpload: (request: BeginMediaUploadRequest, accessToken: string) =>
+        this.beginMediaUpload(request, accessToken),
+      finalizeMediaUpload: (request: FinalizeMediaUploadRequest, accessToken: string) =>
+        this.finalizeMediaUpload(request, accessToken),
+      getMediaDownload: (request: GetMediaDownloadRequest, accessToken: string) =>
+        this.getMediaDownload(request, accessToken),
+      getPage: (request: GetPageRequest) => this.getPage(request),
+      updatePage: (request: UpdatePageRequest, accessToken: string) =>
+        this.updatePage(request, accessToken),
+      listPageRevisions: (_request: ListPageRevisionsRequest, _accessToken: string) =>
+        Promise.reject<ListPageRevisionsResponse>(
+          grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests'),
+        ),
+      listGuestbook: (request: ListGuestbookRequest) => this.listGuestbook(request),
+      signGuestbook: (request: SignGuestbookRequest, accessToken: string) =>
+        this.signGuestbook(request, accessToken),
+      removeGuestbookEntry: (_request: RemoveGuestbookEntryRequest, _accessToken: string) =>
+        Promise.reject<RemoveGuestbookEntryResponse>(
+          grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests'),
+        ),
+      reportGuestbookEntry: (_request: ReportGuestbookEntryRequest, _accessToken: string) =>
+        Promise.reject<ReportGuestbookEntryResponse>(
+          grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests'),
+        ),
       close: () => undefined,
     } as unknown as PatchesApi;
   }
@@ -251,11 +375,64 @@ export class FakeApiHandle {
   }
 
   /** Seeds a post directly (bypassing `CreatePost`), newest-first like the real feed.
-   * Pass `inReplyToId` to seed a reply (P4-004's thread-screen tests). */
-  addPost(authorId: string, body: string, createdAt: Date = new Date(), inReplyToId = ''): Post {
-    const post = this.buildPost(randomUUID(), authorId, body, createdAt, inReplyToId);
+   * Pass `inReplyToId` to seed a reply (P4-004's thread-screen tests), or `media` to
+   * seed attachments (P5-003/B-004's `PostRow`/`ThreadScreen` rendering tests). */
+  addPost(
+    authorId: string,
+    body: string,
+    createdAt: Date = new Date(),
+    inReplyToId = '',
+    media: readonly MediaAttachment[] = [],
+  ): Post {
+    const post = this.buildPost(randomUUID(), authorId, body, createdAt, inReplyToId, media);
     this.posts.unshift(post);
     return post;
+  }
+
+  /** Registers a fake "already uploaded, READY" media object directly (bypassing
+   * `BeginMediaUpload`/PUT/`FinalizeMediaUpload`) — for tests that only need an
+   * attachment to exist, not the full upload flow. Also seeds `handleFakeDownload`'s
+   * byte store so `o`/inline-image fetches resolve to real bytes. */
+  addMedia(mediaId: string, bytes: Uint8Array, mimeType = 'image/png'): void {
+    this.media.set(mediaId, {
+      mimeType,
+      byteSize: bytes.byteLength,
+      status: MEDIA_STATUS.READY,
+      bytes,
+    });
+  }
+
+  /** Seeds a page document directly (bypassing `UpdatePage`) — for `PageScreen`/render
+   * tests (P45-004..006). `slug` "" is the index page. */
+  addPage(handle: string, slug: string, document: PatchesPage): void {
+    this.pages.set(pageKey(handle, slug), {
+      document,
+      revisionId: randomUUID(),
+      updatedAt: new Date(),
+    });
+  }
+
+  /** Seeds a guestbook entry directly (bypassing `SignGuestbook`). */
+  addGuestbookEntry(
+    handle: string,
+    slug: string,
+    authorId: string,
+    body: string,
+    createdAt: Date = new Date(),
+  ): GuestbookEntry {
+    const user = this.users.get(authorId);
+    if (user === undefined) throw new Error(`fake api: no such user ${authorId}`);
+    const entry: GuestbookEntry = {
+      id: randomUUID(),
+      author: this.toActor(user),
+      body,
+      createdAt: dateToTimestamp(createdAt),
+    };
+    const key = pageKey(handle, slug);
+    const list = this.guestbook.get(key) ?? [];
+    list.unshift(entry);
+    this.guestbook.set(key, list);
+    return entry;
   }
 
   /** Seeds a follow relationship directly (bypassing `FollowActor`), for home-feed/relationship tests. */
@@ -353,6 +530,7 @@ export class FakeApiHandle {
     body: string,
     createdAt: Date,
     inReplyToId = '',
+    media: readonly MediaAttachment[] = [],
   ): Post {
     const user = this.users.get(authorId);
     if (user === undefined) throw new Error(`fake api: no such user ${authorId}`);
@@ -369,7 +547,7 @@ export class FakeApiHandle {
       visibility: POST_VISIBILITY.PUBLIC,
       inReplyToId,
       rootPostId: parent?.rootPostId ?? id,
-      media: [],
+      media: [...media],
       createdAt: dateToTimestamp(createdAt),
       editedAt: undefined,
       deleted: false,
@@ -596,19 +774,38 @@ export class FakeApiHandle {
     if (request.inReplyToId !== '' && !this.posts.some((p) => p.id === request.inReplyToId)) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
     }
+    const media = request.mediaIds
+      .map((mediaId, position) => this.toMediaAttachment(mediaId, position))
+      .filter((attachment): attachment is MediaAttachment => attachment !== undefined);
     const post = this.buildPost(
       randomUUID(),
       session.userId,
       request.body,
       new Date(),
       request.inReplyToId,
+      media,
     );
     this.posts.unshift(post);
     return Promise.resolve({ post: this.withFreshCounts(post) });
   }
 
+  /** Only `READY` media ids resolve to an attachment (mirrors the real server rejecting
+   * a `CreatePost` referencing a not-yet-`READY`/unknown media id — the fake just drops
+   * it here rather than erroring, since `ComposeScreen` already never submits one). */
+  private toMediaAttachment(mediaId: string, position: number): MediaAttachment | undefined {
+    const media = this.media.get(mediaId);
+    if (media === undefined || media.status !== MEDIA_STATUS.READY) return undefined;
+    return { mediaId, altText: '', width: 100, height: 100, mimeType: media.mimeType, position };
+  }
+
   private findPost(id: string): Post | undefined {
     return this.posts.find((candidate) => candidate.id === id);
+  }
+
+  /** Test-only lookup — asserts on what `CreatePost` actually stored (e.g. its
+   * `media`) without the caller needing the post id back from a screen. */
+  findPostByBody(body: string): Post | undefined {
+    return this.posts.find((candidate) => candidate.body === body);
   }
 
   // ---- ReactionService (spec §53) ----
@@ -914,6 +1111,190 @@ export class FakeApiHandle {
     });
     return Promise.resolve({ credential });
   }
+
+  // ---- MediaService (P5-003/B-004, spec §29–32) ----
+
+  private beginMediaUpload(
+    request: BeginMediaUploadRequest,
+    accessToken: string,
+  ): Promise<BeginMediaUploadResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const mediaId = randomUUID();
+    this.media.set(mediaId, {
+      mimeType: request.mimeType,
+      byteSize: Number(request.byteSize),
+      status: MEDIA_STATUS.PENDING,
+    });
+    return Promise.resolve({
+      mediaId,
+      uploadUrl: `${FAKE_UPLOAD_PREFIX}${mediaId}`,
+      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+    });
+  }
+
+  /** No real worker in the fake — flips straight to `READY` (skipping `PROCESSING`),
+   * since `pollUntilReady`'s first poll already sees the terminal state. */
+  private finalizeMediaUpload(
+    request: FinalizeMediaUploadRequest,
+    accessToken: string,
+  ): Promise<FinalizeMediaUploadResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const media = this.media.get(request.mediaId);
+    if (media === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That media no longer exists.'));
+    }
+    media.status = MEDIA_STATUS.READY;
+    return Promise.resolve({ mediaId: request.mediaId, status: media.status });
+  }
+
+  private getMediaDownload(
+    request: GetMediaDownloadRequest,
+    accessToken: string,
+  ): Promise<GetMediaDownloadResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const media = this.media.get(request.mediaId);
+    if (media === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That media no longer exists.'));
+    }
+    return Promise.resolve({
+      mediaId: request.mediaId,
+      status: media.status,
+      mimeType: media.mimeType,
+      width: 100,
+      height: 100,
+      downloadUrl: `${FAKE_DOWNLOAD_PREFIX}${request.mediaId}`,
+      thumbnailUrl: `${FAKE_DOWNLOAD_PREFIX}${request.mediaId}`,
+      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+    });
+  }
+
+  /** `globalThis.fetch` override target for a PUT to a `BeginMediaUpload` `uploadUrl`
+   * (`apps/tui/src/media/upload.ts`'s `putToPresignedUrl`) — stores the uploaded bytes
+   * so a later `GetMediaDownload`/`o` fetch has something real to read back. */
+  async handleFakeUpload(url: string, init: RequestInit | undefined): Promise<Response> {
+    const mediaId = url.slice(FAKE_UPLOAD_PREFIX.length);
+    const media = this.media.get(mediaId);
+    if (media === undefined) return new Response(null, { status: 404 });
+    const bytes = await readRequestBody(init?.body);
+    media.bytes = bytes;
+    media.byteSize = bytes.byteLength;
+    return new Response(null, { status: 200 });
+  }
+
+  /** `globalThis.fetch` override target for a `GetMediaDownload` `download_url`/
+   * `thumbnail_url` (both point here in the fake — see `getMediaDownload` above). */
+  handleFakeDownload(url: string): Response {
+    const mediaId = url.slice(FAKE_DOWNLOAD_PREFIX.length);
+    const media = this.media.get(mediaId);
+    if (media?.bytes === undefined) return new Response(null, { status: 404 });
+    return new Response(media.bytes, {
+      status: 200,
+      headers: { 'Content-Type': media.mimeType },
+    });
+  }
+
+  // ---- PageService (P45-004..007, spec §170–172) ----
+
+  private getPage(request: GetPageRequest): Promise<GetPageResponse> {
+    const user = [...this.users.values()].find((candidate) => candidate.handle === request.handle);
+    if (user === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That page no longer exists.'));
+    }
+    const activeSlug = request.slug === '' ? 'index' : request.slug;
+    const found = this.pages.get(pageKey(request.handle, activeSlug));
+    const document = found?.document ?? emptyPageDocument(activeSlug);
+    return Promise.resolve({
+      ownerActorId: user.id,
+      revisionId: found?.revisionId ?? '',
+      document: Buffer.from(JSON.stringify(document), 'utf8'),
+      activeSlug,
+      theme: {
+        accent: document.theme?.accent ?? '',
+        background: document.theme?.background ?? '',
+        foreground: document.theme?.foreground ?? '',
+        border: document.theme?.border ?? '',
+        avatarStyle: document.theme?.avatarStyle ?? '',
+      },
+      updatedAt: dateToTimestamp(found?.updatedAt ?? new Date()),
+    });
+  }
+
+  private updatePage(request: UpdatePageRequest, accessToken: string): Promise<UpdatePageResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const user = this.users.get(session.userId);
+    if (user === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    let parsed: PatchesPage;
+    try {
+      const raw: unknown = JSON.parse(new TextDecoder().decode(request.document));
+      parsed = parsePageStrict(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid page document.';
+      return Promise.reject(grpcError(GrpcStatus.INVALID_ARGUMENT, message));
+    }
+    const updatedAt = new Date();
+    const revisionId = randomUUID();
+    for (const subPage of parsed.pages) {
+      this.pages.set(pageKey(user.handle, subPage.slug), {
+        document: parsed,
+        revisionId,
+        updatedAt,
+      });
+    }
+    return Promise.resolve({
+      revisionId,
+      document: Buffer.from(JSON.stringify(parsed), 'utf8'),
+      updatedAt: dateToTimestamp(updatedAt),
+    });
+  }
+
+  private listGuestbook(request: ListGuestbookRequest): Promise<ListGuestbookResponse> {
+    const activeSlug = request.slug === '' ? 'index' : request.slug;
+    const entries = this.guestbook.get(pageKey(request.handle, activeSlug)) ?? [];
+    const { items, page } = this.paginate(entries, request.cursor, request.limit);
+    return Promise.resolve({ entries: items, page });
+  }
+
+  private signGuestbook(
+    request: SignGuestbookRequest,
+    accessToken: string,
+  ): Promise<SignGuestbookResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const entry = this.addGuestbookEntry(
+      request.handle,
+      request.slug,
+      session.userId,
+      request.body,
+    );
+    return Promise.resolve({ entry });
+  }
+}
+
+/** `(handle, slug)` -> the map key `pages`/`guestbook` share, "index" for an empty slug. */
+function pageKey(handle: string, slug: string): string {
+  return `${handle}/${slug === '' ? 'index' : slug}`;
+}
+
+/** What `GetPage` returns for a handle with no page ever written — a single empty
+ * index page, same as a freshly-registered actor's default document. */
+function emptyPageDocument(slug: string): PatchesPage {
+  return { version: 1, pages: [{ slug, title: '', blocks: [] }] };
 }
 
 export function createFakeApi(options: FakeApiOptions = {}): FakeApiHandle {

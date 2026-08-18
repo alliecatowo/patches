@@ -18,6 +18,7 @@ export const KEY = {
   tab: '\t',
   backspace: '',
   ctrlS: '',
+  ctrlA: '',
 } as const;
 
 export interface RenderAppOptions {

@@ -615,7 +615,7 @@ export function App({
 
 function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'login') return ['Esc cancel'];
-  if (screen === 'compose') return ['Ctrl+S post', 'Esc keep draft'];
+  if (screen === 'compose') return ['Ctrl+S post', 'Ctrl+A attach', 'Esc keep draft'];
   if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
   if (screen === 'report') return ['j/k reason', 'Ctrl+S submit', 'Esc cancel'];
   if (screen === 'accounts') return ['a add key', 'x log out', 'Esc back'];

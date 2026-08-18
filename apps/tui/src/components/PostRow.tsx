@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 import { formatRelativeTime } from '../format/relative-time.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
+import { MediaAttachments } from './MediaAttachments.js';
 import { Nameplate } from './Nameplate.js';
 
 export interface PostRowProps {
@@ -54,6 +55,7 @@ export function PostRow({ post, selected = false, revealed = false }: PostRowPro
             <Text color={theme.warn}>⚠ {sanitizeForTerminal(post.contentWarning)}</Text>
           ) : null}
           <Text wrap="wrap">{bodyText}</Text>
+          <MediaAttachments attachments={post.media} />
         </>
       )}
       {present(post.counts) ? (
