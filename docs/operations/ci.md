@@ -14,8 +14,10 @@ their own scripts.
 - **`.github/workflows/deploy.yml`** — `workflow_dispatch`-only placeholder for Phase 7.
   See `docs/operations/deployment.md`.
 - **`.github/actions/setup/action.yml`** — the composite action every CI job (except
-  `actionlint`) uses to check out the repo, install the toolchain, and install
-  dependencies.
+  `actionlint`) uses to install the toolchain and dependencies. It does **not** check
+  out the repo itself: a local composite action (`uses: ./...`) can only be resolved
+  once the repo is already on disk, so every job that uses it runs `actions/checkout@v4`
+  as its own first step, before `uses: ./.github/actions/setup`.
 
 ## What each `ci.yml` job does
 
@@ -26,7 +28,7 @@ their own scripts.
 | `build-test`  | `pnpm build`, `pnpm test`                                                                                                                           | Unit tests only (vitest, no external services). Uploads any `**/coverage/**` output as an artifact — best-effort, does not fail if a project has no coverage provider configured.                                                                                                                     |
 | `integration` | `pnpm build`, migration validation, `pnpm test:integration`                                                                                         | See "Migration validation" and "Why one database" below. Runs against a `postgres:17-alpine` service container.                                                                                                                                                                                       |
 | `actionlint`  | `actionlint .github/workflows/*.yml`                                                                                                                | Lightweight job — just checkout + mise (actionlint only), no workspace install.                                                                                                                                                                                                                       |
-| `ci-ok`       | Aggregates the result of every job above                                                                                                            | The single required status check for branch protection (see below). Uses `if: always()` so it still runs and reports failure even if an earlier job failed or was cancelled.                                                                                                                          |
+| `ci-ok`       | Aggregates the result of every job above                                                                                                            | The single required status check for branch protection (see below). Uses `if: always()` so it still runs and reports failure even if an earlier job failed, was cancelled, or was skipped.                                                                                                            |
 
 ### Migration validation
 
@@ -45,33 +47,57 @@ does, in order:
    output for a real "0 pending" marker if one turns out to be easy to match).
 5. `pnpm db:revert` — proves the down migration works.
 6. `pnpm db:migrate` — proves the up migration works again.
+
+Before any of that, a "Create per-project test databases" step provisions
+`patches_test_server` and `patches_test_testkit` (the `services:` postgres container
+only creates `POSTGRES_DB`, i.e. `patches_test`, on boot) — see "Why one database"
+below.
+
 7. `pnpm test:integration`.
 
 ### Why one database
 
-The integration job runs a single `postgres:17-alpine` service with one database,
-`patches_test`, and points **both** `DATABASE_URL` and `TEST_DATABASE_URL` at it. Migration
-validation (which reads `DATABASE_URL`) runs to completion before `test:integration`
-(which reads `TEST_DATABASE_URL`) starts, so by the time tests connect the schema is
-already migrated. This was chosen over provisioning a second `patches` database via an
-extra `psql` step because it's simpler and there's no requirement that migration
-validation and the integration suite be isolated from each other in CI — they're
-allowed to share a database, unlike local dev where `patches` and `patches_test` are
-kept separate on purpose (see `infra/compose/docker-compose.yml`, `.env.example`).
+`DATABASE_URL` and `TEST_DATABASE_URL` both point at the same `patches_test` database
+(created by the `services:` postgres container's `POSTGRES_DB`). Migration validation
+(which reads `DATABASE_URL`) runs to completion before `test:integration` (which reads
+`TEST_DATABASE_URL`) starts, so by the time tests connect the schema is already
+migrated. Sharing a database between migration validation and the integration suite is
+fine — nothing requires them to be isolated from each other.
+
+The `database` and `testkit` vitest projects, however, _do_ need to be isolated from
+each other: both call `dropDatabase()` against `TEST_DATABASE_URL` (`database` directly;
+`testkit` via `createTestDataSource()`), and running them concurrently against the same
+database races one project's drop against the other's in-progress test (tasks.md A-006).
+Two things fix this without touching `packages/database`/`packages/testkit` (owned by
+other in-flight work at the time this was written):
+
+- `test:integration` runs with `--no-file-parallelism`, so `database` and `testkit`
+  never execute test files at the same time regardless of which database they point at.
+- `server-integration` (`apps/server`) gets its own database, `patches_test_server`, via
+  `TEST_DATABASE_URL_SERVER` (falls back to `TEST_DATABASE_URL` with the database name
+  swapped — see `apps/server/vitest.integration.config.mts`). No test exercises this yet
+  (Phase 1 lands server-side persistence), but it means a future DB-backed server
+  integration test never has to share `patches_test` at all.
+
+`patches_test_testkit` is also provisioned (see the "Create per-project test databases"
+step and `infra/compose/postgres/init/01-test-db.sql`) for a future full per-project
+split, but isn't wired up yet — `packages/testkit`'s own vitest config would need to
+read a dedicated env var for that, which is out of scope for whoever doesn't own that
+package. Follow-up: B-012 in tasks.md.
 
 ### Toolchain setup (composite action)
 
-`.github/actions/setup/action.yml`:
+`.github/actions/setup/action.yml` (checkout happens in the calling job, not here —
+see "Workflows" above):
 
-1. `actions/checkout@v4` (fetch-depth configurable per job).
-2. `pnpm/setup@v2` installs Node 24.19.0 + pnpm (version read from this repo's
+1. `pnpm/setup@v2` installs Node 24.19.0 + pnpm (version read from this repo's
    `packageManager` field, `pnpm@11.22.0`, matching `mise.toml`).
-3. `jdx/mise-action@v4` installs `buf` and `actionlint` from `mise.toml`'s pins, with
+2. `jdx/mise-action@v4` installs `buf` and `actionlint` from `mise.toml`'s pins, with
    `MISE_DISABLE_TOOLS: node,pnpm,docker-compose` so mise doesn't also try to install
-   node/pnpm (redundant with step 2) or docker-compose (not needed in CI — Postgres
+   node/pnpm (redundant with step 1) or docker-compose (not needed in CI — Postgres
    runs as a native GitHub Actions `services:` container, not via compose).
-4. `pnpm install --frozen-lockfile`.
-5. Restores the Turborepo local cache (see "Caching" below).
+3. `pnpm install --frozen-lockfile`.
+4. Restores the Turborepo local cache (see "Caching" below).
 
 **Why not install everything through `mise-action` alone?** `jdx/mise-action` can install
 Node and pnpm from `mise.toml` directly, which would be one fewer action in the setup
@@ -100,16 +126,19 @@ mise-action's pnpm install working fine, this split can be collapsed back to a s
 
 Configure the repository's branch protection rule for `main` to require the single
 `ci-ok` status check (not each individual job) — that's the aggregator job, and it fails
-if any of `quality`, `proto`, `build-test`, `integration`, or `actionlint` failed or was
-cancelled. Requiring `ci-ok` alone (rather than listing every job) means adding a new job
-to `ci.yml` later doesn't require updating the branch protection rule too, as long as the
-new job is added to `ci-ok`'s `needs:` list.
+if any of `quality`, `proto`, `build-test`, `integration`, or `actionlint` failed, was
+cancelled, or was skipped. Requiring `ci-ok` alone (rather than listing every job) means
+adding a new job to `ci.yml` later doesn't require updating the branch protection rule
+too, as long as the new job is added to `ci-ok`'s `needs:` list.
 
 ## Reproducing CI locally
 
 ```bash
 # quality
 pnpm verify              # format:check + lint + typecheck + test, in one command
+                          # (`pnpm test` builds every workspace package first via
+                          # turbo, so this also works right after a fresh clone —
+                          # tests resolve @patches/* packages via their built dist/)
 
 # proto
 pnpm proto:format
@@ -118,9 +147,11 @@ pnpm proto:breaking -- --against '.git#branch=main,subdir=packages/proto'
 pnpm proto:gen && git diff --exit-code -- packages/proto/src/generated
 
 # integration (needs Postgres)
-mise run compose -- up -d
+mise run compose -- up -d   # also creates patches_test_server/patches_test_testkit,
+                             # see infra/compose/postgres/init/01-test-db.sql
 pnpm db:migrate
-pnpm test:integration
+pnpm test:integration       # runs database + testkit + server-integration serially
+                             # (--no-file-parallelism) — see "Why one database" above
 
 # actionlint
 mise exec -- actionlint .github/workflows/*.yml
@@ -146,3 +177,12 @@ pins the 5.9.x line).
 - Every root script referenced here (`format:check`, `lint`, `typecheck`, `build`, `test`,
   `test:integration`, `proto:*`, `db:*`) has been run locally against the wired repo
   (2026-08-17); the workflow itself is exercised on the first PR.
+- `pnpm test` runs `turbo run build && vitest run` rather than plain `vitest run`
+  (tasks.md A-015): without the build, `vitest` resolves `@patches/*` workspace imports
+  against packages that have never been compiled on a fresh clone, so the very first
+  `pnpm test` after `git clone` used to fail. Turbo caches the build, so repeat runs
+  stay cheap.
+- `ci.yml`'s `concurrency.cancel-in-progress` is scoped to `github.event_name ==
+'pull_request'` — a push to `main` always runs to completion rather than being
+  cancelled by whatever pushes next, since `main` needs a completed status check on
+  every commit.
