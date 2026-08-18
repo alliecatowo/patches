@@ -10,6 +10,7 @@ import {
 import { METADATA_KEYS, MIN_CLIENT_VERSION } from '@patches/proto';
 import { Observable } from 'rxjs';
 
+import { AppConfigService } from '../../config/app-config.service.js';
 import { runWithRequestContext } from '../context/request-context.js';
 import { AppError } from '../errors/app-error.js';
 import { compareSemver, parseSemver } from '../version.js';
@@ -29,6 +30,8 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
  */
 @Injectable()
 export class RequestContextInterceptor implements NestInterceptor {
+  constructor(private readonly config: AppConfigService) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     // P8-001..008: the federation HTTP surface shares this global interceptor with every
     // gRPC RPC (`APP_INTERCEPTOR` applies across every transport in a hybrid app). gRPC
@@ -56,7 +59,9 @@ export class RequestContextInterceptor implements NestInterceptor {
       client,
       clientVersion,
       rpc: rpcPath(context),
-      peer: peerAddress(context),
+      peer: this.config.trustProxyHeaders
+        ? (proxiedPeer(metadata) ?? peerAddress(context))
+        : peerAddress(context),
     };
 
     // The handler runs on *subscription*, not when `next.handle()` is called, so
@@ -86,6 +91,21 @@ function rpcPath(context: ExecutionContext): string {
     if (typeof getPath === 'function') return getPath.call(call).replace(/^\//, '');
   }
   return `${context.getClass().name}/${context.getHandler().name}`;
+}
+
+/**
+ * Behind a trusted proxy (Fly's edge terminates TLS/HTTP2 and re-originates the connection),
+ * `getPeer()` is the proxy's address for every caller — so peer-keyed rate limits would
+ * collapse into one shared bucket (A-039). Fly sets `fly-client-ip` on every proxied
+ * request; `x-forwarded-for`'s first hop is the generic fallback. Only consulted when
+ * `TRUST_PROXY_HEADERS` is on.
+ */
+export function proxiedPeer(metadata: Metadata): string | undefined {
+  const flyClientIp = readMetadata(metadata, 'fly-client-ip');
+  if (flyClientIp !== undefined && flyClientIp.length > 0) return flyClientIp.trim();
+  const forwarded = readMetadata(metadata, 'x-forwarded-for');
+  const first = forwarded?.split(',')[0]?.trim();
+  return first !== undefined && first.length > 0 ? first : undefined;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { Metadata } from '@grpc/grpc-js';
 import { MIN_CLIENT_VERSION } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 
@@ -6,6 +7,7 @@ import {
   assertClientSupported,
   sanitizeRequestId,
   stripPeerPort,
+  proxiedPeer,
 } from './request-context.interceptor.js';
 
 function codeOf(fn: () => void): string {
@@ -111,5 +113,22 @@ describe('stripPeerPort (spec §102 — rate limiting needs a caller-independent
   it('treats grpc-js’s own "unknown" and an empty string as no peer at all', () => {
     expect(stripPeerPort('unknown')).toBeUndefined();
     expect(stripPeerPort('')).toBeUndefined();
+  });
+});
+
+describe('proxiedPeer (A-039)', () => {
+  it('prefers fly-client-ip, then the first x-forwarded-for hop', () => {
+    const fly = new Metadata();
+    fly.set('fly-client-ip', '203.0.113.9');
+    fly.set('x-forwarded-for', '198.51.100.1, 10.0.0.1');
+    expect(proxiedPeer(fly)).toBe('203.0.113.9');
+
+    const xff = new Metadata();
+    xff.set('x-forwarded-for', ' 198.51.100.1 , 10.0.0.1');
+    expect(proxiedPeer(xff)).toBe('198.51.100.1');
+  });
+
+  it('returns undefined without proxy headers so the socket peer is used', () => {
+    expect(proxiedPeer(new Metadata())).toBeUndefined();
   });
 });

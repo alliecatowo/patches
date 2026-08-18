@@ -1,20 +1,18 @@
 # Fly.io app configuration for Patches (P7-001).
 #
-# Status: planned/untested — written against documented Fly.io behavior
-# (docs/research/fly-io.md, verified 2026-08-18) but never deployed to a real Fly org from
-# this environment (no Fly account available here). Treat every field as "should work per
-# current docs" until it's actually been run through `flyctl deploy` once — see
-# docs/operations/deployment.md's "First deploy" checklist for what to confirm.
+# Status: deployed 2026-08-18 as `patches-social` (patches-social.fly.dev). Deploy from the
+# repo root (the pnpm workspace needs the whole monorepo as build context):
 #
-# Build context is the repo root (the pnpm workspace needs the whole monorepo), so this
-# file is deployed with the CLI invoked FROM the repo root:
+#   flyctl deploy --config infra/fly/fly.toml --remote-only --ha=false
 #
-#   flyctl deploy --config infra/fly/fly.toml --dockerfile infra/docker/Dockerfile
-#
-# `app` below is a placeholder — replace with the real registered Fly app name before the
-# first deploy (`fly apps create <name>`), then remove this comment.
+# See docs/operations/deployment.md for the full runbook (secrets, Postgres, admin access).
 app = "patches-social"
 primary_region = "iad"
+
+# Longer than the worker's 10s graceful drain and the server's in-flight gRPC drain (A-044);
+# Fly's default is 5s, which would SIGKILL a worker mid-job.
+kill_signal = "SIGTERM"
+kill_timeout = "20s"
 
 [build]
   dockerfile = "../docker/Dockerfile"
@@ -24,7 +22,7 @@ primary_region = "iad"
 # Machine's proxy can reach the listener; `PUBLIC_ORIGIN`/`NODE_DOMAIN` name this node.
 [env]
   NODE_ENV = "production"
-  LOG_LEVEL = "log"
+  LOG_LEVEL = "info"
   GRPC_HOST = "0.0.0.0"
   GRPC_PORT = "50051"
   HTTP_PORT = "8080"
@@ -32,6 +30,7 @@ primary_region = "iad"
   NODE_DOMAIN = "patches-social.fly.dev"
   INVITE_ONLY = "true"
   FEDERATION_ENABLED = "false"
+  TRUST_PROXY_HEADERS = "true"
   EMAIL_PROVIDER = "console"
   EMAIL_FROM = "noreply@patches-social.fly.dev"
 
