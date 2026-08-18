@@ -83,6 +83,24 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Backlog / discovered
 
+- [ ] A-001 — CI: add `actions/checkout@v4` as the first step of every job (local `./.github/actions/setup` cannot resolve before checkout)
+- [ ] A-002 — database: stop disabling TLS verification — CA/sslmode-driven option defaulting to verify; update tests
+- [ ] A-003 — testkit: refuse any TEST_DATABASE_URL whose database name does not end in `_test` before dropDatabase() (§119)
+- [ ] A-004 — server: validate/cap inbound `x-request-id` (≤64 chars, [A-Za-z0-9._-]) before logging/echoing (§103)
+- [ ] A-005 — CI/tests: add `--project testkit` to `test:integration` and set TEST_DATABASE_URL so isolation helpers actually run
+- [ ] A-006 — CI/tests: one database per DB-touching vitest project (or no cross-project parallelism) — `database` and `server-integration` both dropDatabase() the same DB
+- [ ] A-007 — server: sanitize the RpcException branch of RpcExceptionsFilter (no caller-controlled status/message passthrough; correct x-patches-error-code); unit-test all branches
+- [ ] A-008 — server: drop unused deps (@nestjs/platform-express, @nestjs/typeorm, typeorm, pg, @patches/database) until needed
+- [ ] A-009 — server: replace cwd/`__dirname` probe in modules/system/server-build.ts with an injected SERVER_VERSION provider
+- [ ] A-010 — proto: make PROTO_DIR lazy (`getProtoDir()`) so packaging errors fail at call site
+- [ ] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
+- [ ] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
+- [ ] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
+- [ ] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)
+- [ ] A-015 — build: root `pnpm test` must work on a fresh clone (tests resolve @patches/* via dist) — build first via turbo or alias to src
+- [ ] A-016 — tests: unit coverage for RpcExceptionsFilter, LoggingInterceptor, logger.factory, grpc-options, SystemService, tui cli/ping.ts, cli.tsx
+- [ ] A-017 — terminal-media: bound untrusted image input (byte-length precheck + explicit sharp limitInputPixels) before Phase 5
+
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
 - [ ] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits
