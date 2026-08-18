@@ -46,6 +46,18 @@ export const ERROR_CODES = [
    * must be able to tell "this node cannot do that" apart from "that request was wrong".
    */
   'NOT_IMPLEMENTED',
+  /**
+   * Not in §57's starter list: `PageService` (Phase 4.5, P45-003) uniformly reports a missing
+   * actor, a page that was never written, *and* a blocked-either-direction viewer as this one
+   * code — same reasoning as `POST_NOT_FOUND` (§62 — never leak which of those is true).
+   */
+  'PAGE_NOT_FOUND',
+  /** `PageService.RemoveGuestbookEntry` by anyone other than the page's owner. */
+  'PAGE_FORBIDDEN',
+  /** `PageService.RemoveGuestbookEntry`/`ReportGuestbookEntry` on an entry id that doesn't
+   * exist — distinct from `PAGE_NOT_FOUND` because a guestbook entry id is looked up directly,
+   * not resolved through a handle/block check. */
+  'GUESTBOOK_ENTRY_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -77,6 +89,9 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   INTERNAL_ERROR: GrpcStatus.INTERNAL,
   CLIENT_VERSION_UNSUPPORTED: GrpcStatus.FAILED_PRECONDITION,
   NOT_IMPLEMENTED: GrpcStatus.UNIMPLEMENTED,
+  PAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  PAGE_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
+  GUESTBOOK_ENTRY_NOT_FOUND: GrpcStatus.NOT_FOUND,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {
