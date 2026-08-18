@@ -2,8 +2,9 @@
 
 **Status: F1 implemented (local lab only), off by default.** Phase 8 (P8-001..P8-008) built
 the two-node lab described in §4's Stage F1: WebFinger, actor documents, inbox/outbox, `Follow`
-/`Accept`/`Undo`/`Create`/`Delete`/`Like`, HTTP Signatures, SSRF/ingestion hardening, and a
-two-real-process integration test (`apps/server/test/federation-two-node.integration.test.ts`).
+/`Accept`/`Undo`/`Create`/`Update`/`Delete`/`Like`, HTTP Signatures, SSRF/ingestion hardening,
+in-process telemetry counters (A-036), and a two-real-process integration test
+(`apps/server/test/federation-two-node.integration.test.ts`).
 None of it is reachable unless an operator sets `FEDERATION_ENABLED=true` — every node still
 ships with federation off by default (§176), and Stage F2/F3 (Mastodon interoperability, public
 federation, §160's full readiness checklist) remain **not started**. This document describes the
@@ -151,6 +152,7 @@ pageManifest` extension — §170, see §7.5 below),
   policy extended to remote followers),
 - `Accept` (for our own outgoing follows — stays `PENDING` until received),
 - `Create` (Note),
+- `Update` (A-035 — see below),
 - `Delete` (tombstone),
 - `Like`/`Undo(Like)`.
 
@@ -158,6 +160,30 @@ Plus durable delivery: `FEDERATION_DELIVER` outbox jobs (`docs/architecture/jobs
 deliveries with bounded retries (12 attempts, exponential backoff, then `DEAD`), and duplicate
 delivery is safe both ways — `InboxActivity` dedupes by activity id on the receiving side, and
 the `(activityId, inboxUrl)` pair is the outbox job's own idempotency key on the sending side.
+And in-process telemetry (A-036, `apps/server/.../federation-metrics.service.ts` and its worker
+mirror `apps/worker/src/federation/delivery-metrics.ts`) — see §5's telemetry row below.
+
+#### `Update` semantics (A-035, §160)
+
+`InboxService.handleUpdate` dispatches on `activity.object.type`:
+
+- **`Note`** — edits the matching local `Post` row (looked up by `canonicalUri = object.id`,
+  the same row `handleCreate` inserted) only when the caller is that post's own author and it
+  is not already deleted; sets `body` (same 5,000-char cap as `Create`) and `editedAt`. An
+  `Update` from anyone but the author, or targeting a `canonicalUri` this node never ingested,
+  is a silent no-op — never an error, matching every other unrecognized-shape branch in this
+  file.
+- **`Person`/`Service`/`Group`/`Organization`/`Application`** (an actor profile update) —
+  refreshes this node's cached copy of the _sending_ actor only. `object.id` must equal the
+  activity's own signed `sender.canonicalUri` exactly; a remote peer's valid signature does
+  not entitle it to describe (or poison the cache of) any other actor. The refresh re-fetches
+  through `RemoteActorService.getOrFetchByUri(..., { forceRefetch: true })` — this node trusts
+  what the remote actor's _own_ document currently says, never the fields embedded in the
+  `Update` activity itself.
+- Anything else in `object.type` is ignored.
+
+No `Update` for a `Page` (P8-007's Page-manifest extension) exists yet — a Page edit is only
+ever visible to a remote peer via a fresh `GET /users/:handle/page` fetch, not pushed.
 
 Only reachable when `FEDERATION_ENABLED=true` (default off, §176) — that flag gates the entire
 HTTP listener in `main.ts`, not just individual routes, so a node with federation disabled has
@@ -227,7 +253,8 @@ posture):
 - [x] `Accept` works _(local lab, P8-002)_
 - [x] `Create` works _(local lab, P8-002)_
 - [x] `Delete` works _(local lab, P8-002)_
-- [ ] `Update` semantics decided _(no `Update` activity handling yet)_
+- [x] `Update` semantics decided _(A-035 — `Note` edits by author, actor-profile refresh
+      scoped to the activity's own signed sender; see §4's "`Update` semantics" above)_
 - [x] deliveries are durable _(P8-004, `FEDERATION_DELIVER` outbox jobs)_
 - [x] duplicate delivery is safe _(P8-004/P8-006 — inbox dedupe + delivery idempotency key)_
 - [x] retries are bounded _(P8-004 — 12 attempts, exponential backoff, then `DEAD`)_
@@ -239,7 +266,8 @@ posture):
       no write path (RPC/admin-CLI) yet, and outbound delivery doesn't consult it — see §4)_
 - [x] remote delete/tombstones work _(local lab, same as `Delete` above)_
 - [ ] moderator can block remote server _(no RPC/CLI to write `domain_blocks` yet)_
-- [ ] federation telemetry exists
+- [x] federation telemetry exists _(A-036 — in-memory counters, `GET /federation/metrics`
+      loopback-only, periodic structured log; `docs/operations/federation.md` "Metrics")_
 - [x] two Patches servers interoperate _(P8-008, `federation-two-node.integration.test.ts`)_
 - [ ] at least one mainstream Fediverse implementation interoperates _(F2 scope, not started)_
 

@@ -15,10 +15,16 @@ import {
   stripFragment,
 } from '../activitystreams/uris.js';
 import { verifyRequestSignature } from '../signatures/http-signature.js';
+import { FederationMetricsService } from '../federation-metrics.service.js';
 import { DeliveryService } from './delivery.service.js';
 import { DomainBlockService } from './domain-block.service.js';
 import { KeyService } from './key.service.js';
 import { RemoteActorService } from './remote-actor.service.js';
+
+/** AS2 actor object types an `Update` may target (`docs/research/activitypub.md`) — anything
+ * else in `object.type` is neither a `Note` nor an actor this node knows how to refresh, so
+ * it's ignored like any other unrecognized shape. */
+const AS2_ACTOR_TYPES = new Set(['Person', 'Service', 'Group', 'Organization', 'Application']);
 
 export type InboxRejectionReason =
   'INVALID_SIGNATURE' | 'DOMAIN_BLOCKED' | 'ACTOR_MISMATCH' | 'MALFORMED_ACTIVITY';
@@ -37,8 +43,8 @@ export interface InboxRequestContext {
 /**
  * Processes one inbox POST end to end (P8-002/003/004/006): verifies the HTTP signature
  * (refetching the sender's key once on failure — P8-005), enforces the domain block list,
- * dedupes by activity id (P8-006), and dispatches `Follow`/`Undo`/`Accept`/`Create`/`Delete`/
- * `Like` (`docs/research/activitypub.md`).
+ * dedupes by activity id (P8-006), and dispatches `Follow`/`Undo`/`Accept`/`Create`/`Update`/
+ * `Delete`/`Like` (`docs/research/activitypub.md`).
  */
 @Injectable()
 export class InboxService {
@@ -52,9 +58,11 @@ export class InboxService {
     private readonly delivery: DeliveryService,
     private readonly notifications: NotificationsService,
     private readonly keys: KeyService,
+    private readonly metrics: FederationMetricsService,
   ) {}
 
   async handle(ctx: InboxRequestContext): Promise<InboxResult> {
+    this.metrics.increment('inbox_received');
     let activity: Record<string, unknown>;
     try {
       activity = JSON.parse(ctx.rawBody.toString('utf8')) as Record<string, unknown>;
@@ -73,7 +81,10 @@ export class InboxService {
     }
 
     const sender = await this.verifySender(ctx, activityActor);
-    if (sender === undefined) return { accepted: false, reason: 'INVALID_SIGNATURE' };
+    if (sender === undefined) {
+      this.metrics.increment('inbox_rejected_signature');
+      return { accepted: false, reason: 'INVALID_SIGNATURE' };
+    }
     if (activityActor !== sender.canonicalUri) return { accepted: false, reason: 'ACTOR_MISMATCH' };
 
     const senderDomain = sender.homeServer ?? '';
@@ -169,20 +180,31 @@ export class InboxService {
     activity: Record<string, unknown>,
     sender: Actor,
   ): Promise<(() => Promise<void>) | undefined> {
+    const labels = { type, domain: sender.homeServer ?? undefined };
     switch (type) {
       case 'Follow':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleFollow(manager, activity, sender);
       case 'Undo':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleUndo(manager, activity, sender);
       case 'Accept':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleAccept(manager, activity, sender);
       case 'Create':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleCreate(manager, activity, sender);
+      case 'Update':
+        this.metrics.increment('inbox_handled', labels);
+        return this.handleUpdate(manager, activity, sender);
       case 'Delete':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleDelete(manager, activity, sender);
       case 'Like':
+        this.metrics.increment('inbox_handled', labels);
         return this.handleLike(manager, activity, sender);
       default:
+        this.metrics.increment('inbox_ignored', labels);
         this.logger.log(JSON.stringify({ event: 'inbox_activity_ignored', type }));
         return undefined;
     }
@@ -342,7 +364,7 @@ export class InboxService {
         posts.create({
           id,
           authorActorId: sender.id,
-          body: content.slice(0, 5000),
+          body: sanitizeNoteContent(content),
           postType: 'NOTE',
           visibility: 'PUBLIC',
           inReplyToId,
@@ -356,6 +378,75 @@ export class InboxService {
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
     }
+    return undefined;
+  }
+
+  /**
+   * `Update` (A-035, spec §160's "Update semantics decided"): dispatches on `object.type` — a
+   * `Note` update edits the matching local `Post` row created by `handleCreate`; an actor
+   * update (`Person`/`Service`/...) refreshes this node's cached copy of the sender's own
+   * profile. Anything else is silently ignored, same posture as every other unrecognized
+   * shape in this file.
+   */
+  private async handleUpdate(
+    manager: EntityManager,
+    activity: Record<string, unknown>,
+    sender: Actor,
+  ): Promise<undefined> {
+    const object = activity.object;
+    if (typeof object !== 'object' || object === null) return undefined;
+    const objectRecord = object as Record<string, unknown>;
+
+    if (objectRecord.type === 'Note') return this.handleUpdateNote(manager, objectRecord, sender);
+    if (typeof objectRecord.type === 'string' && AS2_ACTOR_TYPES.has(objectRecord.type)) {
+      return this.handleUpdateActor(manager, objectRecord, sender);
+    }
+    return undefined;
+  }
+
+  /** Only the note's own author may edit it (mirrors `handleDelete`'s ownership check) — an
+   * `Update(Note)` from anyone else, or for a note this node never ingested via `Create`, or
+   * for one already tombstoned, is a no-op rather than an error. */
+  private async handleUpdateNote(
+    manager: EntityManager,
+    note: Record<string, unknown>,
+    sender: Actor,
+  ): Promise<undefined> {
+    const noteId = note.id;
+    const content = note.content;
+    if (typeof noteId !== 'string' || typeof content !== 'string') return undefined;
+
+    const post = await manager.getRepository(Post).findOne({ where: { canonicalUri: noteId } });
+    if (post === null || post.authorActorId !== sender.id || post.deletedAt !== null) {
+      return undefined;
+    }
+    await manager
+      .getRepository(Post)
+      .update({ id: post.id }, { body: sanitizeNoteContent(content), editedAt: new Date() });
+    return undefined;
+  }
+
+  /**
+   * Refreshes this node's cached copy of the *sending* actor only — `object.id` must equal
+   * `sender.canonicalUri` exactly. A remote peer could otherwise use its own valid signature
+   * to push a poisoned `Update(Person)` claiming to describe some other actor entirely (e.g.
+   * to rewrite a third party's cached public key); this node never trusts an `Update`'s object
+   * for anyone but its own signer. Re-fetches through `RemoteActorService.getOrFetchByUri`
+   * (`forceRefetch: true`) rather than trusting the embedded object's fields directly, so the
+   * refreshed copy is what the remote actor's *own* document currently says, not whatever this
+   * `Update` activity happened to carry.
+   */
+  private async handleUpdateActor(
+    manager: EntityManager,
+    object: Record<string, unknown>,
+    sender: Actor,
+  ): Promise<undefined> {
+    const objectId = object.id;
+    const senderUri = sender.canonicalUri;
+    if (typeof objectId !== 'string' || senderUri === null || objectId !== senderUri) {
+      return undefined;
+    }
+    await this.remoteActors.getOrFetchByUri(manager, senderUri, { forceRefetch: true });
     return undefined;
   }
 
@@ -396,6 +487,12 @@ export class InboxService {
     }
     return () => this.notifications.notifyLike(post.authorActorId, sender.id, postId);
   }
+}
+
+/** Shared by `handleCreate` and `handleUpdateNote` (§58's 5,000-char post body cap) — a
+ * remote `Note`'s `content` is otherwise trusted verbatim, same as on create. */
+function sanitizeNoteContent(content: string): string {
+  return content.slice(0, 5000);
 }
 
 /** AS2 `object`/`actor` properties may be a bare URI string or an embedded object with an
