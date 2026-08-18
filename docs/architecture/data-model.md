@@ -12,15 +12,16 @@ PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` �
 
 > **Status markers.** Each table section below is marked `Status: implemented` (there is a
 > reviewed TypeORM migration for it) or `Status: planned` (described here ahead of the
-> migration that creates it). As of `packages/database/src/migrations/1787055340075-Phase3SocialGraph.ts`
-> (which follows `1787036506325-Phase1Schema.ts`), the **implemented** tables are: `app_meta`,
-> `users`, `actors`, `credentials`, `ssh_login_challenges`, `auth_codes`, `refresh_tokens`,
-> `invites`, `outbox_jobs`, `media`, `posts`, `post_media`, `follows`, `blocks`, `mutes` — see
-> `packages/database/src/entities/index.ts`'s `ALL_ENTITIES`. Everything else in this document
-> (`likes`, `bookmarks`, `reports`, `notifications`, `admin_audit_log`, and the
-> `pages`/`page_revisions`/`page_assets`/`guestbook_entries` group) is **planned** — Phase 4
-> for `likes`/`bookmarks`/`notifications`, Phase 4.5 for Pages, Phase 6 for `reports`/
-> `admin_audit_log`.
+> migration that creates it). As of
+> `packages/database/src/migrations/1787058326261-Phase4Interactions.ts` (which follows
+> `1787055340075-Phase3SocialGraph.ts` and `1787036506325-Phase1Schema.ts`), the
+> **implemented** tables are: `app_meta`, `users`, `actors`, `credentials`,
+> `ssh_login_challenges`, `auth_codes`, `refresh_tokens`, `invites`, `outbox_jobs`, `media`,
+> `posts`, `post_media`, `follows`, `blocks`, `mutes`, `likes`, `bookmarks`, `notifications`,
+> `reports` — see `packages/database/src/entities/index.ts`'s `ALL_ENTITIES`. Everything else in
+> this document (`admin_audit_log`, and the
+> `pages`/`page_revisions`/`page_assets`/`guestbook_entries` group) is **planned** — Phase 4.5
+> for Pages, Phase 6 for `admin_audit_log`.
 
 ## Conventions
 
@@ -56,12 +57,15 @@ erDiagram
     ACTORS ||--o{ MUTES : "muted"
     ACTORS ||--o{ LIKES : "likes"
     POSTS ||--o{ LIKES : "liked by"
-    USERS ||--o{ BOOKMARKS : "bookmarks"
+    ACTORS ||--o{ BOOKMARKS : "bookmarks"
     POSTS ||--o{ BOOKMARKS : "bookmarked"
     ACTORS ||--o{ REPORTS : "reports (as reporter)"
+    ACTORS ||--o{ REPORTS : "is subject of (actor)"
+    POSTS ||--o{ REPORTS : "is subject of (post)"
     USERS ||--o{ REFRESH_TOKENS : "sessions"
     USERS ||--o{ AUTH_CODES : "verification/reset"
-    USERS ||--o{ NOTIFICATIONS : "receives"
+    ACTORS ||--o{ NOTIFICATIONS : "receives"
+    ACTORS ||--o{ NOTIFICATIONS : "triggers (actor)"
     USERS ||--o{ ADMIN_AUDIT_LOG : "performs (as admin)"
     USERS ||--o{ INVITES : "creates"
     ACTORS ||--|| PAGES : "publishes"
@@ -631,56 +635,75 @@ are Phase 6.
 
 ## `likes`
 
-**Status: planned**
+**Status: implemented** (`Phase4Interactions1787058326261`, P4-002)
 
-| Column       | Type          | Nullable | Notes            |
-| ------------ | ------------- | -------- | ---------------- |
-| `actor_id`   | `uuid`        | no       | FK → `actors.id` |
-| `post_id`    | `uuid`        | no       | FK → `posts.id`  |
-| `created_at` | `timestamptz` | no       |                  |
+| Column       | Type          | Nullable | Notes                                 |
+| ------------ | ------------- | -------- | ------------------------------------- |
+| `actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `post_id`    | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE`  |
+| `created_at` | `timestamptz` | no       |                                       |
 
-**Constraints**: `UNIQUE (actor_id, post_id)` (§60), composite PK.
+**Constraints**: composite PK `(actor_id, post_id)` (also serves as the §60 unique
+constraint — this is what makes `LikePost`/`UnlikePost` idempotent).
+
+**Indexes** (§60): `likes(post_id, created_at, actor_id)` — backs
+`ReactionService.ListPostLikers`'s keyset pagination of a single post's likers, newest first.
 
 ---
 
 ## `bookmarks`
 
-**Status: planned**
+**Status: implemented** (`Phase4Interactions1787058326261`, P4-002)
 
-Private per-user saved posts (§53).
+Private saved posts (§53) — `ListBookmarks` only ever returns the caller's own.
 
-| Column       | Type          | Nullable | Notes           |
-| ------------ | ------------- | -------- | --------------- |
-| `user_id`    | `uuid`        | no       | FK → `users.id` |
-| `post_id`    | `uuid`        | no       | FK → `posts.id` |
-| `created_at` | `timestamptz` | no       |                 |
+| Column       | Type          | Nullable | Notes                                 |
+| ------------ | ------------- | -------- | ------------------------------------- |
+| `actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `post_id`    | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE`  |
+| `created_at` | `timestamptz` | no       |                                       |
 
-**Constraints**: `UNIQUE (user_id, post_id)` (§60), composite PK. Bookmarks are keyed
-by `user_id`, not `actor_id` — they are a private account feature, not a public
-social-graph action.
+**Constraints**: composite PK `(actor_id, post_id)` (also serves as the §60 unique
+constraint). Keyed by `actor_id`, not `user_id` as an earlier draft of this document
+sketched — every other social table in this schema (`likes`, `follows`, `blocks`, `mutes`) is
+actor-keyed, and there is no reason for bookmarks alone to break that pattern given every v0
+actor has exactly one user.
+
+**Indexes** (§60): `bookmarks(actor_id, created_at, post_id)` — backs `ListBookmarks`'s
+keyset pagination.
 
 ---
 
 ## `reports`
 
-**Status: planned**
+**Status: implemented** (`Phase4Interactions1787058326261`, P6-002)
 
-| Column                | Type          | Nullable | Notes                                              |
-| --------------------- | ------------- | -------- | -------------------------------------------------- |
-| `id`                  | `uuid`        | no       | PK                                                 |
-| `reporter_actor_id`   | `uuid`        | no       | FK → `actors.id`                                   |
-| `subject_type`        | `text` (enum) | no       | `ACTOR` \| `POST`                                  |
-| `subject_actor_id`    | `uuid`        | yes      | FK → `actors.id`; set when `subject_type = ACTOR`  |
-| `subject_post_id`     | `uuid`        | yes      | FK → `posts.id`; set when `subject_type = POST`    |
-| `reason`              | `text`        | no       |                                                    |
-| `details`             | `text`        | yes      |                                                    |
-| `status`              | `text` (enum) | no       | `OPEN` \| `REVIEWING` \| `RESOLVED` \| `DISMISSED` |
-| `moderator_note`      | `text`        | yes      | never exposed via user-facing API (§55)            |
-| `created_at`          | `timestamptz` | no       |                                                    |
-| `resolved_at`         | `timestamptz` | yes      |                                                    |
-| `resolved_by_user_id` | `uuid`        | yes      | FK → `users.id`                                    |
+| Column                | Type          | Nullable | Notes                                                                                      |
+| --------------------- | ------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `id`                  | `uuid`        | no       | PK                                                                                         |
+| `reporter_actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                                                      |
+| `subject_type`        | `text` (enum) | no       | `ACTOR` \| `POST`                                                                          |
+| `subject_actor_id`    | `uuid`        | yes      | FK → `actors.id`; set when `subject_type = ACTOR`                                          |
+| `subject_post_id`     | `uuid`        | yes      | FK → `posts.id`; set when `subject_type = POST`                                            |
+| `reason`              | `text` (enum) | no       | `SPAM` \| `HARASSMENT` \| `HATE_SPEECH` \| `ILLEGAL_CONTENT` \| `IMPERSONATION` \| `OTHER` |
+| `details`             | `text`        | yes      | free text, max 2,000 characters (service-enforced)                                         |
+| `status`              | `text` (enum) | no       | `OPEN` \| `REVIEWING` \| `RESOLVED` \| `DISMISSED`, default `OPEN`                         |
+| `moderator_note`      | `text`        | yes      | never exposed via user-facing API (§55); admin CLI only                                    |
+| `created_at`          | `timestamptz` | no       |                                                                                            |
+| `resolved_at`         | `timestamptz` | yes      | admin CLI only — no RPC in this task's scope sets it                                       |
+| `resolved_by_user_id` | `uuid`        | yes      | FK → `users.id`, `ON DELETE SET NULL`; admin CLI only                                      |
+
+**Constraints**: `CHECK` on `subject_type`/`reason`/`status` against the enums above, plus a
+`CHECK` that exactly one of `subject_actor_id`/`subject_post_id` is set, matching
+`subject_type`.
+
+**Indexes**: `reports(status, created_at)` (admin listing), `reports(subject_actor_id)`,
+`reports(subject_post_id)`.
 
 Reported content is never auto-deleted merely because it was reported (§64).
+`ModerationService.ReportPost`/`ReportActor` only ever insert an `OPEN` row —
+`moderator_note`/`resolved_at`/`resolved_by_user_id` are written by the admin CLI (§65, out of
+this task's scope).
 
 ---
 
@@ -739,22 +762,32 @@ by holding a second credential.
 
 ## `notifications`
 
-**Status: planned**
+**Status: implemented** (`Phase4Interactions1787058326261`, P4-003)
 
-| Column       | Type          | Nullable | Notes                                                                  |
-| ------------ | ------------- | -------- | ---------------------------------------------------------------------- |
-| `id`         | `uuid`        | no       | PK                                                                     |
-| `user_id`    | `uuid`        | no       | FK → `users.id` — recipient                                            |
-| `type`       | `text` (enum) | no       | `FOLLOW` \| `LIKE` \| `REPLY` \| `MENTION` \| `MODERATION` (§113, §56) |
-| `actor_id`   | `uuid`        | yes      | FK → `actors.id` — actor that triggered it                             |
-| `post_id`    | `uuid`        | yes      | FK → `posts.id` — related post, if any                                 |
-| `read_at`    | `timestamptz` | yes      |                                                                        |
-| `created_at` | `timestamptz` | no       |                                                                        |
+| Column               | Type          | Nullable | Notes                                                                  |
+| -------------------- | ------------- | -------- | ---------------------------------------------------------------------- |
+| `id`                 | `uuid`        | no       | PK                                                                     |
+| `recipient_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` — recipient                      |
+| `type`               | `text` (enum) | no       | `FOLLOW` \| `LIKE` \| `REPLY` \| `MENTION` \| `MODERATION` (§113, §56) |
+| `actor_id`           | `uuid`        | yes      | FK → `actors.id`, `ON DELETE CASCADE` — actor that triggered it        |
+| `post_id`            | `uuid`        | yes      | FK → `posts.id`, `ON DELETE CASCADE` — related post, if any            |
+| `read_at`            | `timestamptz` | yes      |                                                                        |
+| `created_at`         | `timestamptz` | no       |                                                                        |
 
-**Indexes** (§60): `notifications(user_id, created_at DESC, id DESC)`.
+Recipient is `recipient_actor_id`, not `user_id` as an earlier draft of this document
+sketched — same actor-keyed reasoning as `bookmarks` above.
 
-Notifications are deduplicated where appropriate (e.g., a worker retry must not
-produce 74 identical `LIKE` notifications) (§113).
+**Indexes** (§60): `notifications(recipient_actor_id, created_at, id)` (`ListNotifications`
+keyset), `notifications(recipient_actor_id, read_at)` (`GetUnreadCount`).
+
+**Deduplication** (§113 — "a user should not receive 74 identical notifications because a
+worker retried"): enforced at two layers. `NotificationsService` checks-then-inserts inside
+its transaction; two **partial** unique indexes are the database backstop —
+`(recipient_actor_id, type, actor_id, post_id) WHERE post_id IS NOT NULL` and
+`(recipient_actor_id, type, actor_id) WHERE post_id IS NULL`. Split in two because a plain
+unique index cannot dedupe rows where `post_id IS NULL` (every `FOLLOW` notification) —
+PostgreSQL treats `NULL <> NULL`, so a single index across all four columns would never catch
+two identical `FOLLOW` notifications.
 
 ---
 
@@ -970,11 +1003,20 @@ follows(follower_actor_id, created_at)
 blocks(blocker_actor_id, blocked_actor_id) UNIQUE
 mutes(muter_actor_id, muted_actor_id) UNIQUE
 
-likes(actor_id, post_id) UNIQUE
+likes(actor_id, post_id) UNIQUE (composite PK)
+likes(post_id, created_at, actor_id)
 
-bookmarks(user_id, post_id) UNIQUE
+bookmarks(actor_id, post_id) UNIQUE (composite PK)
+bookmarks(actor_id, created_at, post_id)
 
-notifications(user_id, created_at DESC, id DESC)
+notifications(recipient_actor_id, created_at, id)
+notifications(recipient_actor_id, read_at)
+notifications(recipient_actor_id, type, actor_id, post_id) UNIQUE WHERE post_id IS NOT NULL
+notifications(recipient_actor_id, type, actor_id) UNIQUE WHERE post_id IS NULL
+
+reports(status, created_at)
+reports(subject_actor_id)
+reports(subject_post_id)
 
 media(owner_actor_id, created_at)
 

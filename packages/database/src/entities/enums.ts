@@ -40,6 +40,29 @@ export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 export const AUTH_CODE_PURPOSES = ['VERIFY_EMAIL', 'RESET_PASSWORD'] as const;
 export type AuthCodePurpose = (typeof AUTH_CODE_PURPOSES)[number];
 
+/** Notification row types (`INITIAL_VISION.md` §56, §113). `MODERATION` is reserved — no RPC
+ * creates one yet (moderator-initiated notices land with the admin CLI, spec §65). */
+export const NOTIFICATION_TYPES = ['FOLLOW', 'LIKE', 'REPLY', 'MENTION', 'MODERATION'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** A report's target (`INITIAL_VISION.md` §64's `subject_type`). */
+export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST'] as const;
+export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number];
+
+export const REPORT_REASONS = [
+  'SPAM',
+  'HARASSMENT',
+  'HATE_SPEECH',
+  'ILLEGAL_CONTENT',
+  'IMPERSONATION',
+  'OTHER',
+] as const;
+export type ReportReason = (typeof REPORT_REASONS)[number];
+
+/** `INITIAL_VISION.md` §64. */
+export const REPORT_STATUSES = ['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'] as const;
+export type ReportStatus = (typeof REPORT_STATUSES)[number];
+
 /**
  * Job lifecycle (`docs/architecture/jobs.md` §2): claimable rows are `PENDING`, a worker
  * flips them to `PROCESSING` while it holds them, then `COMPLETED`, back to `PENDING` with
