@@ -163,6 +163,9 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
 - [x] B-017 — TUI: remaining harness snapshot tests (login flow, compose→profile timeline, profile, local-feed pagination) + open an author profile from a selected post (PostList selection → ProfileScreen actorId)
 - [x] B-018 — proto: `Actor.nameplate` (§173, ≤2 KiB validated doc; the DB column exists) and a post content-warning field are missing from `patches.v1` — add via /proto-change, then surface in server mappers (done: `Nameplate` message + `Actor.nameplate`/`UpdateProfileRequest.nameplate`, `Post.content_warning`/`CreatePostRequest.content_warning`, server mappers/validation). TUI PostRow/ProfileScreen surfacing tracked separately — see B-019.
+- [ ] B-020 — server: `SearchActors`/`ListFollowers`/`ListFollowing` return zeroed `counts` placeholders — batch real counts (one grouped query) or leave `counts` unset; TUI now refetches on profile open, so this is a data-honesty fix
+- [ ] B-021 — server+proto: `AddCredential` for SSH keys has no server-verified possession proof — add a `BeginSshLogin`-shaped enrollment challenge (TUI `patches keys add` currently only self-checks via the agent)
+- [ ] B-022 — TUI: nameplate `avatarFrame`/`profileBorder` rendering + a plain-mode toggle that strips all decoration (§173); in-app account screen wrapping `ssh-enroll.ts`
 - [x] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
