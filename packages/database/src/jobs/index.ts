@@ -10,4 +10,6 @@ export {
   type CleanExpiredTokensPayload,
   cleanExpiredUploadsPayloadSchema,
   type CleanExpiredUploadsPayload,
+  federationDeliverPayloadSchema,
+  type FederationDeliverPayload,
 } from './payloads.js';

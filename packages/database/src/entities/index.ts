@@ -5,8 +5,11 @@ import { AuthCode } from './auth-code.entity.js';
 import { Block } from './block.entity.js';
 import { Bookmark } from './bookmark.entity.js';
 import { Credential } from './credential.entity.js';
+import { DomainBlock } from './domain-block.entity.js';
+import { FederationKey } from './federation-key.entity.js';
 import { Follow } from './follow.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
+import { InboxActivity } from './inbox-activity.entity.js';
 import { Invite } from './invite.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
@@ -31,6 +34,8 @@ import { User } from './user.entity.js';
  * `notifications`, `reports` (see `docs/architecture/data-model.md`); Phase 6 also adds
  * `admin_audit_log` and `rate_limit_buckets` (§65–66, A-018); Phase 4.5 adds the Patches
  * Pages tables — `pages`, `page_revisions`, `page_assets`, `guestbook_entries` (§170-172).
+ * Phase 8 adds the federation lab tables — `federation_keys`, `inbox_activities`,
+ * `domain_blocks` (§105-110, `docs/architecture/federation.md`).
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -58,4 +63,7 @@ export const ALL_ENTITIES = [
   PageRevision,
   PageAsset,
   GuestbookEntry,
+  FederationKey,
+  InboxActivity,
+  DomainBlock,
 ] as const;

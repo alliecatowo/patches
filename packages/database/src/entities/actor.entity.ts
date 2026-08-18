@@ -110,6 +110,24 @@ export class Actor {
   @Column({ type: 'text', nullable: true })
   declare federationState: string | null;
 
+  /** SPKI PEM copied from `FederationKey`/the remote actor document's `publicKey.publicKeyPem`
+   * (P8-005). Local actors carry their own; remote actors carry whatever their instance
+   * published, refreshed on verification failure (`RemoteActorService`). */
+  @Column({ type: 'text', nullable: true })
+  declare publicKeyPem: string | null;
+
+  /** AS2 `endpoints.sharedInbox` (P8-002/P8-004): remote-actor delivery prefers this over
+   * `inboxUri` so one POST reaches every local follower on that instance instead of one per
+   * actor. Null for local actors and for remote actors whose instance has no shared inbox. */
+  @Column({ type: 'text', nullable: true })
+  declare sharedInboxUri: string | null;
+
+  /** Last time this remote actor's document was successfully (re)fetched (P8-002) — drives
+   * `RemoteActorService`'s refetch-on-verification-failure/staleness policy. Null for local
+   * actors and for a remote actor row created but not yet fetched. */
+  @Column({ type: 'timestamptz', nullable: true })
+  declare lastFetchedAt: Date | null;
+
   /**
    * Portability seam (§164), unused until v0.4: an actor with `movedToUri` set is read-only —
    * no new posts, no new follows accepted. A move is honored only when the destination actor
