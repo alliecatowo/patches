@@ -10,6 +10,18 @@ PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` �
 > [0011](../decisions/0011-credentials-separate-from-identity.md) and ADR
 > [0012](../decisions/0012-patches-pages-portable-declarative.md).
 
+> **Status markers.** Each table section below is marked `Status: implemented` (there is a
+> reviewed TypeORM migration for it — currently
+> `packages/database/src/migrations/1787036506325-Phase1Schema.ts`) or `Status: planned`
+> (described here ahead of the migration that creates it). As of this migration, the
+> **implemented** tables are: `app_meta`, `users`, `actors`, `credentials`,
+> `ssh_login_challenges`, `auth_codes`, `refresh_tokens`, `invites`, `outbox_jobs`, `media`,
+> `posts`, `post_media` — see `packages/database/src/entities/index.ts`'s `ALL_ENTITIES`.
+> Everything else in this document (`follows`, `blocks`, `mutes`, `likes`, `bookmarks`,
+> `reports`, `notifications`, `admin_audit_log`, and the `pages`/`page_revisions`/
+> `page_assets`/`guestbook_entries` group) is **planned** — Phase 3 for the social-graph
+> tables, Phase 4.5 for Pages.
+
 ## Conventions
 
 - Naming: `snake_case` for tables, columns, indexes, constraints (§17). TypeScript
@@ -48,8 +60,7 @@ erDiagram
     POSTS ||--o{ BOOKMARKS : "bookmarked"
     ACTORS ||--o{ REPORTS : "reports (as reporter)"
     USERS ||--o{ REFRESH_TOKENS : "sessions"
-    USERS ||--o{ EMAIL_VERIFICATION_CODES : "verification"
-    USERS ||--o{ PASSWORD_RESET_CODES : "reset"
+    USERS ||--o{ AUTH_CODES : "verification/reset"
     USERS ||--o{ NOTIFICATIONS : "receives"
     USERS ||--o{ ADMIN_AUDIT_LOG : "performs (as admin)"
     USERS ||--o{ INVITES : "creates"
@@ -233,21 +244,23 @@ erDiagram
         timestamptz created_at
         text user_agent
     }
-    EMAIL_VERIFICATION_CODES {
+    AUTH_CODES {
         uuid id PK
         uuid user_id FK
-        text code_hash
         text purpose
+        text code_hash
         timestamptz expires_at
         timestamptz consumed_at
+        int attempts
+        timestamptz created_at
     }
-    PASSWORD_RESET_CODES {
+    SSH_LOGIN_CHALLENGES {
         uuid id PK
-        uuid user_id FK
-        text code_hash
-        text purpose
+        bytea nonce
+        text claimed_handle
         timestamptz expires_at
         timestamptz consumed_at
+        timestamptz created_at
     }
     NOTIFICATIONS {
         uuid id PK
@@ -293,11 +306,22 @@ erDiagram
         timestamptz created_at
         timestamptz completed_at
     }
+    APP_META {
+        text key PK
+        jsonb value
+        timestamptz updated_at
+    }
 ```
+
+`app_meta` has no foreign keys — it is schema-level key/value bookkeeping (e.g. a generated
+`instance_id`), not part of the social graph, so it is omitted from the relationship lines
+above.
 
 ---
 
 ## `users`
+
+**Status: implemented**
 
 A local authenticated account (§20, as amended by §165). Distinct from `actors` — federation
 introduces remote actors with no local `User` (§19). **Credentials live in `credentials`, not
@@ -329,6 +353,8 @@ non-password credential; a node may require it by policy. See
 ---
 
 ## `credentials`
+
+**Status: implemented**
 
 A way to prove you are a user — **not** an identity (§165, ADR 0011). Adding, rotating, or
 revoking one never changes the actor, the handle, or any social relationship.
@@ -371,6 +397,8 @@ credential MUST fail; adding a credential MUST require an authenticated session;
 
 ## `ssh_login_challenges`
 
+**Status: implemented**
+
 Server-issued nonces for SSH challenge/response login (§166,
 [`auth.md`](./auth.md) §4).
 
@@ -389,6 +417,8 @@ supplied fingerprint is enrolled — see the no-enumeration rule in §166.
 ---
 
 ## `actors`
+
+**Status: implemented**
 
 A social identity — local or (later) remote (§21).
 
@@ -419,7 +449,7 @@ A social identity — local or (later) remote (§21).
 **Constraints**: `UNIQUE (handle_normalized)`. `UNIQUE (canonical_uri)` (nullable-safe
 unique). `UNIQUE (user_id)`.
 
-**Indexes**: `actors(handle_normalized)` UNIQUE (§60).
+**Indexes**: `actors(handle_normalized)` UNIQUE (§60); `actors(canonical_uri)` UNIQUE.
 
 **Handle rules** (§22): lowercase canonical form, ASCII, letters/digits/underscore,
 3–30 characters. No Unicode confusables in v0. Local handles render as `@alice`;
@@ -438,6 +468,8 @@ user (§174). Badges within it are server-attested only — a user cannot set ba
 ---
 
 ## `posts`
+
+**Status: implemented**
 
 Root posts and replies share one table — there is no separate comment entity (§23).
 
@@ -485,6 +517,8 @@ arbitrarily large thread in one request.
 
 ## `media`
 
+**Status: implemented**
+
 | Column                 | Type          | Nullable | Notes                                                                |
 | ---------------------- | ------------- | -------- | -------------------------------------------------------------------- |
 | `id`                   | `uuid`        | no       | PK                                                                   |
@@ -511,6 +545,8 @@ See `docs/architecture/media.md` for the full state machine and processing pipel
 
 ## `post_media`
 
+**Status: implemented**
+
 Join table between posts and media (§27).
 
 | Column     | Type   | Nullable | Notes                                         |
@@ -524,6 +560,8 @@ Join table between posts and media (§27).
 ---
 
 ## `follows`
+
+**Status: planned**
 
 | Column              | Type          | Nullable | Notes                                                                                           |
 | ------------------- | ------------- | -------- | ----------------------------------------------------------------------------------------------- |
@@ -543,6 +581,8 @@ Join table between posts and media (§27).
 
 ## `blocks`
 
+**Status: planned**
+
 | Column             | Type          | Nullable | Notes            |
 | ------------------ | ------------- | -------- | ---------------- |
 | `blocker_actor_id` | `uuid`        | no       | FK → `actors.id` |
@@ -561,6 +601,8 @@ separately once public web endpoints exist.
 
 ## `mutes`
 
+**Status: planned**
+
 | Column           | Type          | Nullable | Notes            |
 | ---------------- | ------------- | -------- | ---------------- |
 | `muter_actor_id` | `uuid`        | no       | FK → `actors.id` |
@@ -577,6 +619,8 @@ suppresses notifications from the muted actor per product policy.
 
 ## `likes`
 
+**Status: planned**
+
 | Column       | Type          | Nullable | Notes            |
 | ------------ | ------------- | -------- | ---------------- |
 | `actor_id`   | `uuid`        | no       | FK → `actors.id` |
@@ -588,6 +632,8 @@ suppresses notifications from the muted actor per product policy.
 ---
 
 ## `bookmarks`
+
+**Status: planned**
 
 Private per-user saved posts (§53).
 
@@ -604,6 +650,8 @@ social-graph action.
 ---
 
 ## `reports`
+
+**Status: planned**
 
 | Column                | Type          | Nullable | Notes                                              |
 | --------------------- | ------------- | -------- | -------------------------------------------------- |
@@ -626,6 +674,8 @@ Reported content is never auto-deleted merely because it was reported (§64).
 
 ## `refresh_tokens`
 
+**Status: implemented**
+
 | Column       | Type          | Nullable | Notes                                                                  |
 | ------------ | ------------- | -------- | ---------------------------------------------------------------------- |
 | `id`         | `uuid`        | no       | PK                                                                     |
@@ -638,29 +688,46 @@ Reported content is never auto-deleted merely because it was reported (§64).
 | `created_at` | `timestamptz` | no       |                                                                        |
 | `user_agent` | `text`        | yes      |                                                                        |
 
+**Indexes**: `refresh_tokens(token_hash)` UNIQUE; `refresh_tokens(user_id, created_at)`;
+`refresh_tokens(session_id)`.
+
 **Behavior**: refresh tokens rotate on every refresh. If an already-rotated token is
 presented again (reuse), the entire session/token family is revoked (§36).
 
 ---
 
-## `email_verification_codes` / `password_reset_codes`
+## `auth_codes`
 
-Two tables with the same shape, one per purpose (§38–39). Both apply only to users with a
-verified `recovery_email` (§165) — an account without one has no reset channel by design and
-recovers by holding a second credential.
+**Status: implemented**
 
-| Column        | Type          | Nullable | Notes                                                                                                |
-| ------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `id`          | `uuid`        | no       | PK                                                                                                   |
-| `user_id`     | `uuid`        | no       | FK → `users.id`                                                                                      |
-| `code_hash`   | `text`        | no       | hashed, never plaintext, never logged                                                                |
-| `purpose`     | `text`        | no       | e.g. `EMAIL_VERIFICATION` / `PASSWORD_RESET` (redundant with table split; kept for defense-in-depth) |
-| `expires_at`  | `timestamptz` | no       | short-lived                                                                                          |
-| `consumed_at` | `timestamptz` | yes      | single-use                                                                                           |
+A short-lived, single-use code emailed to a user. Email verification (§38) and password
+reset (§39) share this one table, discriminated by `purpose` — the two have identical shape
+and identical lifecycle rules, so splitting them into `email_verification_codes` and
+`password_reset_codes` (an earlier version of this document) would only duplicate every
+expiry, consumption, and throttling query. Applies only to users with a verified
+`recovery_email` (§165) — an account without one has no reset channel by design and recovers
+by holding a second credential.
+
+| Column        | Type          | Nullable | Notes                                                                     |
+| ------------- | ------------- | -------- | ------------------------------------------------------------------------- |
+| `id`          | `uuid`        | no       | PK                                                                        |
+| `user_id`     | `uuid`        | no       | FK → `users.id`, `ON DELETE CASCADE`                                      |
+| `purpose`     | `text` (enum) | no       | `VERIFY_EMAIL` \| `RESET_PASSWORD`                                        |
+| `code_hash`   | `text`        | no       | hashed, never plaintext, never logged                                     |
+| `expires_at`  | `timestamptz` | no       | short-lived                                                               |
+| `consumed_at` | `timestamptz` | yes      | single-use                                                                |
+| `attempts`    | `int`         | no       | default `0`; failed-verification counter backs per-code throttling (§102) |
+| `created_at`  | `timestamptz` | no       |                                                                           |
+
+**Indexes**: `auth_codes(user_id, purpose, created_at)`; `auth_codes(code_hash)`.
+
+**Constraints**: `CHECK (purpose IN ('VERIFY_EMAIL', 'RESET_PASSWORD'))`.
 
 ---
 
 ## `notifications`
+
+**Status: planned**
 
 | Column       | Type          | Nullable | Notes                                                                  |
 | ------------ | ------------- | -------- | ---------------------------------------------------------------------- |
@@ -681,6 +748,8 @@ produce 74 identical `LIKE` notifications) (§113).
 
 ## `admin_audit_log`
 
+**Status: planned**
+
 | Column          | Type          | Nullable | Notes                                                               |
 | --------------- | ------------- | -------- | ------------------------------------------------------------------- |
 | `id`            | `uuid`        | no       | PK                                                                  |
@@ -697,6 +766,8 @@ Every `patches-admin` mutating command writes an audit record (§65–66).
 
 ## `invites`
 
+**Status: implemented**
+
 Referenced by §38 (invite-only registration) and §65 (`invite create` / `invite
 list` admin commands); shape inferred from those requirements.
 
@@ -711,44 +782,71 @@ list` admin commands); shape inferred from those requirements.
 | `revoked_at`         | `timestamptz` | yes      |                                                   |
 | `created_at`         | `timestamptz` | no       |                                                   |
 
-**Constraints**: `CHECK (uses <= max_uses)`.
+**Constraints**: `CHECK (uses >= 0 AND max_uses >= 1 AND uses <= max_uses)`.
+
+**Indexes**: `invites(code_hash)` UNIQUE; `invites(created_by_user_id, created_at)`.
 
 ---
 
 ## `outbox_jobs`
+
+**Status: implemented**
 
 Durable job/outbox table backing background work and the transactional outbox
 pattern (§12–13). Application mutations that require durable async follow-up (e.g.
 sending a verification email) write the mutation and the outbox row in the **same
 transaction**.
 
-| Column         | Type          | Nullable | Notes                                                          |
-| -------------- | ------------- | -------- | -------------------------------------------------------------- |
-| `id`           | `bigint`      | no       | PK, identity/sequence                                          |
-| `type`         | `text`        | no       | job type, see `jobs.md`                                        |
-| `payload`      | `jsonb`       | no       | job-specific data                                              |
-| `status`       | `text` (enum) | no       | `PENDING` \| `PROCESSING` \| `COMPLETED` \| `FAILED` \| `DEAD` |
-| `attempts`     | `int`         | no       | default `0`                                                    |
-| `max_attempts` | `int`         | no       |                                                                |
-| `available_at` | `timestamptz` | no       | when the job becomes claimable (used for backoff)              |
-| `locked_at`    | `timestamptz` | yes      |                                                                |
-| `locked_by`    | `text`        | yes      | worker instance identifier                                     |
-| `last_error`   | `text`        | yes      |                                                                |
-| `created_at`   | `timestamptz` | no       |                                                                |
-| `completed_at` | `timestamptz` | yes      |                                                                |
+| Column            | Type          | Nullable | Notes                                                          |
+| ----------------- | ------------- | -------- | -------------------------------------------------------------- |
+| `id`              | `bigint`      | no       | PK, identity/sequence                                          |
+| `type`            | `text`        | no       | job type, see `jobs.md`                                        |
+| `payload`         | `jsonb`       | no       | job-specific data                                              |
+| `status`          | `text` (enum) | no       | `PENDING` \| `PROCESSING` \| `COMPLETED` \| `FAILED` \| `DEAD` |
+| `attempts`        | `int`         | no       | default `0`                                                    |
+| `max_attempts`    | `int`         | no       | default `10`                                                   |
+| `available_at`    | `timestamptz` | no       | when the job becomes claimable (used for backoff)              |
+| `locked_at`       | `timestamptz` | yes      |                                                                |
+| `locked_by`       | `text`        | yes      | worker instance identifier                                     |
+| `last_error`      | `text`        | yes      |                                                                |
+| `idempotency_key` | `text`        | yes      | optional producer-side dedup key; unique where present         |
+| `created_at`      | `timestamptz` | no       |                                                                |
+| `completed_at`    | `timestamptz` | yes      |                                                                |
 
-**Indexes** (§60): `outbox_events(status, available_at, id)`.
+**Constraints**: `CHECK (attempts >= 0 AND max_attempts >= 1)`. `UNIQUE (idempotency_key)`
+(nullable-safe unique).
+
+**Indexes** (§60): `outbox_jobs(status, available_at, id)`.
 
 See `docs/architecture/jobs.md` for the claim query, backoff formula, and dead-letter
 handling.
 
 ---
 
+## `app_meta`
+
+**Status: implemented**
+
+Schema-level key/value metadata (e.g. a generated `instance_id`) — not part of the social
+graph. Deliberately the only entity wired up in Phase 0, to prove the `DataSource` /
+migration / `snake_case`-naming-strategy plumbing end to end before Phase 1 added the real
+entities.
+
+| Column       | Type          | Nullable | Notes                 |
+| ------------ | ------------- | -------- | --------------------- |
+| `key`        | `text`        | no       | PK                    |
+| `value`      | `jsonb`       | no       |                       |
+| `updated_at` | `timestamptz` | no       | stamped on every save |
+
+---
+
 ## Page tables (§170–§172)
+
+**Status: planned** (Phase 4.5)
 
 Patches Pages are a portable declarative document stored server-side and rendered by clients.
 The server never renders. Block vocabulary, limits, and security rules are in
-[`pages.md`](./pages.md). **Phase 4.5.**
+[`pages.md`](./pages.md).
 
 ### `pages`
 
@@ -819,12 +917,26 @@ Blocked actors cannot sign (§62). Creation is rate-limited (§102) and entries 
 
 ```text
 actors(handle_normalized) UNIQUE
+actors(canonical_uri) UNIQUE
+
+users(recovery_email_normalized) UNIQUE
+users(actor_id) UNIQUE
 
 credentials(user_id) UNIQUE WHERE type = 'PASSWORD' AND revoked_at IS NULL
 credentials(type, identifier) UNIQUE WHERE revoked_at IS NULL AND identifier IS NOT NULL
-credentials(user_id)
+credentials(user_id, type)
 
 ssh_login_challenges(expires_at)
+
+auth_codes(user_id, purpose, created_at)
+auth_codes(code_hash)
+
+refresh_tokens(token_hash) UNIQUE
+refresh_tokens(user_id, created_at)
+refresh_tokens(session_id)
+
+invites(code_hash) UNIQUE
+invites(created_by_user_id, created_at)
 
 pages(actor_id) UNIQUE
 page_revisions(page_id, revision_number) UNIQUE
@@ -835,6 +947,10 @@ posts(author_actor_id, created_at DESC, id DESC)
 posts(created_at DESC, id DESC)
 posts(root_post_id, created_at, id)
 posts(in_reply_to_id, created_at, id)
+posts(canonical_uri) UNIQUE
+posts(author_actor_id, client_request_id) UNIQUE
+
+post_media(post_id, position) UNIQUE
 
 follows(follower_actor_id, followee_actor_id) UNIQUE
 follows(follower_actor_id, created_at)
@@ -850,7 +966,8 @@ notifications(user_id, created_at DESC, id DESC)
 
 media(owner_actor_id, created_at)
 
-outbox_events(status, available_at, id)
+outbox_jobs(status, available_at, id)
+outbox_jobs(idempotency_key) UNIQUE
 ```
 
 Validate with `EXPLAIN ANALYZE` once representative fixture data exists (§60, §126).
