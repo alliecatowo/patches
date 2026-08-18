@@ -36,7 +36,6 @@ export default defineProject({
     environment: 'node',
     globals: false,
     include: testDatabaseUrl === undefined ? [] : ['test/**/*.integration.test.ts'],
-    passWithNoTests: true,
     // Runs before any test file is imported, which is the only point at which the
     // environment can still be changed — see test/support/env.ts.
     setupFiles: ['./test/support/setup-env.mts'],
