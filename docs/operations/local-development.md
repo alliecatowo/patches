@@ -13,6 +13,7 @@ pnpm db:migrate && pnpm dev` should just work.
   - `buf` 1.72.0
   - `docker-compose` 5.4.0
   - `actionlint` 1.7.12
+  - `lefthook` 2.1.10 (git hooks — see "Git hooks" below)
 - **podman** or **docker**, with compose support, for local Postgres/Mailpit/MinIO.
 
 ## Quickstart
@@ -95,6 +96,25 @@ Notes:
 - The TUI (`apps/tui`) is run separately (`pnpm --filter tui dev` or equivalent) against the
   local gRPC server — see `apps/tui`'s own instructions once Phase 0 lands the hello-world
   client.
+
+## Git hooks
+
+`mise run setup` installs a [lefthook](https://github.com/evilmartians/lefthook)
+pre-commit hook (`lefthook.yml`, B-008) that runs Prettier and ESLint against **staged
+files only** — it is deliberately narrower than `pnpm verify` (no build/typecheck/test),
+so it stays fast enough that nobody reaches for `git commit --no-verify` out of
+impatience. `pnpm verify` (`/verify`) remains the actual required gate before pushing —
+CI runs it regardless of what the local hook catches.
+
+Already ran `mise run setup` and skipped installing the hook, or cloned before B-008
+landed? Install it separately:
+
+```bash
+mise run hooks:install
+```
+
+To remove it again (e.g. this is a shared/scripted checkout where an unexpected
+pre-commit hook would be surprising): `lefthook uninstall`.
 
 ## Troubleshooting
 
