@@ -186,12 +186,12 @@ export class ActorService {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
 
-    // Zeroed counts, same reasoning as `Post.author` (auth.mapper.ts) — a follower/following
-    // list is a summary, not `GetActor`'s guaranteed-populated `ActorCounts` (see
-    // `ActorCounts`'s doc comment in actors.proto). Computing real counts per row here would
-    // be an N+1 for what is deliberately a lightweight list.
-    const actors = page.map((row) =>
-      toActorProfile(row[joinRelation], { followers: 0, following: 0, posts: 0 }),
+    // Real counts (B-020), batched with one grouped query per count kind for the whole
+    // page rather than the N+1 a per-row `countsFor()` call would be.
+    const relatedActors = page.map((row) => row[joinRelation]);
+    const countsByActorId = await this.countsForMany(relatedActors.map((actor) => actor.id));
+    const actors = page.map((row, index) =>
+      toActorProfile(relatedActors[index]!, countsByActorId.get(relatedActors[index]!.id)!),
     );
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
@@ -200,10 +200,11 @@ export class ActorService {
     return { actors, nextCursor, hasMore };
   }
 
-  private actorPageOf(rows: Actor[], take: number): ActorListPage {
+  private async actorPageOf(rows: Actor[], take: number): Promise<ActorListPage> {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
-    const actors = page.map((row) => toActorProfile(row, { followers: 0, following: 0, posts: 0 }));
+    const countsByActorId = await this.countsForMany(page.map((row) => row.id));
+    const actors = page.map((row) => toActorProfile(row, countsByActorId.get(row.id)!));
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,
@@ -221,6 +222,69 @@ export class ActorService {
       manager.getRepository(Follow).countBy({ followerActorId: actorId }),
     ]);
     return { followers: followerCount, following: followingCount, posts: postCount };
+  }
+
+  /**
+   * Batched real counts for a page of actors (B-020: `SearchActors`/`ListFollowers`/
+   * `ListFollowing` used to return zeroed `counts` placeholders). One grouped query per
+   * count kind — `GROUP BY` the actor id column, filtered to just this page's ids — rather
+   * than `countsFor()` per row, which would be an N+1. An actor id with no matching rows in
+   * a given `GROUP BY` result (e.g. an actor with zero posts) simply never appears in that
+   * query's output, so every id is pre-seeded at `{ followers: 0, following: 0, posts: 0 }`
+   * before the real counts are layered on.
+   */
+  private async countsForMany(
+    actorIds: readonly string[],
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<Map<string, ActorCountsSummary>> {
+    const counts = new Map<string, ActorCountsSummary>(
+      actorIds.map((id) => [id, { followers: 0, following: 0, posts: 0 }]),
+    );
+    if (actorIds.length === 0) return counts;
+
+    const [postRows, followerRows, followingRows] = await Promise.all([
+      manager
+        .getRepository(Post)
+        .createQueryBuilder('post')
+        .select('post.authorActorId', 'actorId')
+        .addSelect('COUNT(*)', 'count')
+        .where('post.authorActorId IN (:...actorIds)', { actorIds })
+        .andWhere('post.deletedAt IS NULL')
+        .groupBy('post.authorActorId')
+        .getRawMany<{ actorId: string; count: string }>(),
+      manager
+        .getRepository(Follow)
+        .createQueryBuilder('follow')
+        .select('follow.followeeActorId', 'actorId')
+        .addSelect('COUNT(*)', 'count')
+        .where('follow.followeeActorId IN (:...actorIds)', { actorIds })
+        .groupBy('follow.followeeActorId')
+        .getRawMany<{ actorId: string; count: string }>(),
+      manager
+        .getRepository(Follow)
+        .createQueryBuilder('follow')
+        .select('follow.followerActorId', 'actorId')
+        .addSelect('COUNT(*)', 'count')
+        .where('follow.followerActorId IN (:...actorIds)', { actorIds })
+        .groupBy('follow.followerActorId')
+        .getRawMany<{ actorId: string; count: string }>(),
+    ]);
+
+    // `COUNT(*)` comes back as a string (the `pg` driver never assumes bigint fits a JS
+    // number) — same reasoning as `outbox_jobs.id`, see docs/research/typeorm-postgres.md §7.
+    for (const row of postRows) {
+      const existing = counts.get(row.actorId);
+      if (existing !== undefined) existing.posts = Number(row.count);
+    }
+    for (const row of followerRows) {
+      const existing = counts.get(row.actorId);
+      if (existing !== undefined) existing.followers = Number(row.count);
+    }
+    for (const row of followingRows) {
+      const existing = counts.get(row.actorId);
+      if (existing !== undefined) existing.following = Number(row.count);
+    }
+    return counts;
   }
 }
 
