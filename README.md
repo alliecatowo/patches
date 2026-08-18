@@ -27,23 +27,30 @@ React Native client on the roadmap.
 Prerequisites: [mise](https://mise.jdx.dev/) and Docker (or Podman) for the local Postgres.
 
 ```bash
-mise install                      # Node 24, pnpm 11, buf, actionlint (from mise.toml)
-pnpm install
-cp .env.example .env
-mise run compose -- up -d         # postgres:17 + mailpit (docker compose, or podman compose fallback)
-pnpm db:migrate                   # TypeORM migrations
-pnpm build
+mise install        # Node 24, pnpm 11, buf, actionlint (from mise.toml)
+mise run setup      # pnpm install · .env · compose up (postgres+mailpit) · migrations · build
 ```
 
-Run it:
+Run it (two terminals):
 
 ```bash
-pnpm --filter @patches/server start          # gRPC server on 127.0.0.1:50051
-pnpm --filter @patches/tui start --server 127.0.0.1:50051 --insecure   # full-screen TUI
-node apps/tui/dist/cli.js ping --server 127.0.0.1:50051 --insecure        # non-interactive check (JSON, exit 0/1)
+mise run server     # gRPC server on 127.0.0.1:50051
+mise run tui        # full-screen TUI  (q quit · R reconnect · ? help)
+mise run ping       # non-interactive check (JSON, exit 0/1)
 ```
 
-Watch mode: `pnpm --filter @patches/server dev` and `pnpm --filter @patches/tui dev`.
+The same without mise tasks:
+
+```bash
+pnpm install && cp .env.example .env
+mise run compose -- up -d           # docker compose, or podman compose fallback
+pnpm db:migrate && pnpm build
+pnpm --filter @patches/server start
+pnpm --filter @patches/tui start --server 127.0.0.1:50051 --insecure
+```
+
+Watch mode: `mise run server:dev` (or `pnpm --filter @patches/server dev`) and `pnpm --filter @patches/tui dev`.
+Kitty/Ghostty image spike: `mise run spike`. All tasks: `mise tasks ls`.
 
 Everyday commands:
 
