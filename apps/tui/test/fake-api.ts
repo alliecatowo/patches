@@ -55,6 +55,8 @@ import {
   type ListCredentialsResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMutualFollowsRequest,
+  type ListMutualFollowsResponse,
   type ListMutesRequest,
   type ListMutesResponse,
   type ListNotificationsRequest,
@@ -91,6 +93,8 @@ import {
   type ReportPostRequest,
   type ReportPostResponse,
   type ResendVerificationResponse,
+  type ResolveActorRequest,
+  type ResolveActorResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type Session,
@@ -191,7 +195,8 @@ export interface FakeUser {
   bio: string;
   locationText?: string;
   websiteUrl?: string;
-  /** Seeded directly — no `UpdateNameplate` RPC in this fake (B-022 nameplate tests). */
+  /** Seeded directly, or set via `UpdateProfile`'s `nameplate` field + `"nameplate"` in
+   * `update_mask` (A-037 nameplate-editing tests). */
   nameplate?: Nameplate;
   /** Defaults to `true` (most tests don't care) — set `false` to exercise the
    * unverified-email banner/`verify`/`resendVerification` paths (A-028). Mutated
@@ -220,6 +225,12 @@ export interface FakeApiOptions {
   getServerInfoImpl?: () => Promise<GetServerInfoResponse>;
   /** How many posts a `ListLocalFeed`/`ListActorPosts` page returns — small by default so tests can exercise "load more" without seeding hundreds of posts. */
   pageSize?: number;
+  /** `ResolveActor` rejects an `acct` on this domain as local (B-028) — defaults to the
+   * `target` option's host portion when omitted. */
+  localDomain?: string;
+  /** `ResolveActor` throws `UNIMPLEMENTED` when `false` (B-028's "federation disabled"
+   * case) — defaults to `true`. */
+  federationEnabled?: boolean;
 }
 
 function grpcError(code: number, message: string): Error & { code: number } {
@@ -259,6 +270,9 @@ export class FakeApiHandle {
   private readonly guestbook = new Map<string, GuestbookEntry[]>(); // same key as `pages`
   private readonly pageSize: number;
   private readonly serverInfo: GetServerInfoResponse;
+  private readonly localDomain: string;
+  private readonly federationEnabled: boolean;
+  private readonly remoteActors = new Map<string, Actor>(); // acct ("user@domain") -> Actor (B-028)
 
   constructor(options: FakeApiOptions = {}) {
     installFakeMediaFetch();
@@ -269,6 +283,8 @@ export class FakeApiHandle {
     activeMediaTarget = this;
     this.target = options.target ?? 'patches.test:50051';
     this.pageSize = options.pageSize ?? 20;
+    this.localDomain = options.localDomain ?? this.target.split(':')[0] ?? 'patches.test';
+    this.federationEnabled = options.federationEnabled ?? true;
     this.serverInfo = {
       serverVersion: '0.1.0',
       protocolVersion: 1,
@@ -303,6 +319,8 @@ export class FakeApiHandle {
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
       searchActors: (request: SearchActorsRequest) => this.searchActors(request),
+      resolveActor: (request: ResolveActorRequest, accessToken: string) =>
+        this.resolveActor(request, accessToken),
       updateProfile: (request: UpdateProfileRequest, accessToken: string) =>
         this.updateProfile(request, accessToken),
       listActorPosts: (request: ListActorPostsRequest) => this.listActorPosts(request),
@@ -315,6 +333,8 @@ export class FakeApiHandle {
         this.unfollowActor(request, accessToken),
       getRelationship: (request: GetRelationshipRequest, accessToken: string) =>
         this.getRelationship(request, accessToken),
+      listMutualFollows: (request: ListMutualFollowsRequest, accessToken?: string) =>
+        this.listMutualFollows(request, accessToken),
       addCredential: (request: AddCredentialRequest, accessToken: string) =>
         this.addCredential(request, accessToken),
       revokeCredential: () =>
@@ -393,6 +413,12 @@ export class FakeApiHandle {
     const full: FakeUser = { id: user.id ?? randomUUID(), ...user };
     this.users.set(full.id, full);
     return full;
+  }
+
+  /** Seeds a remote actor `ResolveActor` can find by `acct` ("user@domain", no `acct:`
+   * prefix, must not be `localDomain`) — B-028's TUI-side federation-discovery tests. */
+  addRemoteActor(acct: string, actor: Actor): void {
+    this.remoteActors.set(acct, actor);
   }
 
   /** Seeds a post directly (bypassing `CreatePost`), newest-first like the real feed.
@@ -696,7 +722,41 @@ export class FakeApiHandle {
     if (mask.has('bio')) user.bio = request.bio;
     if (mask.has('location_text')) user.locationText = request.locationText;
     if (mask.has('website_url')) user.websiteUrl = request.websiteUrl;
+    if (mask.has('nameplate') && request.nameplate !== undefined) {
+      user.nameplate = request.nameplate;
+    }
     return Promise.resolve({ actor: this.toActor(user) });
+  }
+
+  /** `acct` must not be `localDomain` — mirrors the real `ActorService.resolveActor`'s
+   * "local domain → validation error" rule (B-028). */
+  private resolveActor(
+    request: ResolveActorRequest,
+    accessToken: string,
+  ): Promise<ResolveActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    if (!this.federationEnabled) {
+      return Promise.reject(
+        grpcError(GrpcStatus.UNIMPLEMENTED, 'federation is disabled on this node'),
+      );
+    }
+    const domain = request.acct.split('@')[1];
+    if (domain === undefined || domain === '') {
+      return Promise.reject(grpcError(GrpcStatus.INVALID_ARGUMENT, 'acct must be user@domain'));
+    }
+    if (domain === this.localDomain) {
+      return Promise.reject(
+        grpcError(GrpcStatus.INVALID_ARGUMENT, 'acct must be on a remote domain'),
+      );
+    }
+    const actor = this.remoteActors.get(request.acct);
+    if (actor === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That account could not be resolved.'));
+    }
+    return Promise.resolve({ actor });
   }
 
   /** Cursor pagination shared by every `ListXxx`/`SearchActors` RPC below. */
@@ -834,6 +894,23 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  /** Actors `actorId` follows who follow back — a public read, `accessToken` unused
+   * (B-024's `Friends` page block). */
+  private listMutualFollows(
+    request: ListMutualFollowsRequest,
+    _accessToken?: string,
+  ): Promise<ListMutualFollowsResponse> {
+    const following = this.follows.get(request.actorId) ?? new Set<string>();
+    const mutualIds = [...following].filter(
+      (id) => this.follows.get(id)?.has(request.actorId) ?? false,
+    );
+    const mutualUsers = mutualIds
+      .map((id) => this.users.get(id))
+      .filter((user): user is FakeUser => user !== undefined);
+    const { items, page } = this.paginate(mutualUsers, request.cursor, request.limit);
+    return Promise.resolve({ actors: items.map((user) => this.toActor(user)), page });
   }
 
   private createPost(request: CreatePostRequest, accessToken: string): Promise<CreatePostResponse> {
