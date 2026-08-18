@@ -61,27 +61,27 @@ Network calls never live directly inside render components — they go through
 Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverable
 via `?` help):
 
-| Key | Action |
-|---|---|
-| `j` / `↓` | next item |
-| `k` / `↑` | previous item |
-| `Enter` | open selected post/thread |
-| `c` | compose |
-| `r` | reply |
-| `l` | like/unlike |
-| `b` | bookmark/unbookmark |
-| `f` | follow/unfollow selected actor |
-| `m` | mute |
-| `B` | block |
-| `/` | search |
-| `g h` | go home |
-| `g l` | go local |
-| `g n` | go notifications |
-| `g p` | go own profile |
-| `R` | refresh |
-| `?` | help |
-| `q` | back / quit (context-dependent) |
-| `Esc` | cancel modal/action |
+| Key       | Action                          |
+| --------- | ------------------------------- |
+| `j` / `↓` | next item                       |
+| `k` / `↑` | previous item                   |
+| `Enter`   | open selected post/thread       |
+| `c`       | compose                         |
+| `r`       | reply                           |
+| `l`       | like/unlike                     |
+| `b`       | bookmark/unbookmark             |
+| `f`       | follow/unfollow selected actor  |
+| `m`       | mute                            |
+| `B`       | block                           |
+| `/`       | search                          |
+| `g h`     | go home                         |
+| `g l`     | go local                        |
+| `g n`     | go notifications                |
+| `g p`     | go own profile                  |
+| `R`       | refresh                         |
+| `?`       | help                            |
+| `q`       | back / quit (context-dependent) |
+| `Esc`     | cancel modal/action             |
 
 ## 4. Full-screen behavior (§70)
 
@@ -139,20 +139,39 @@ minimum height: 20 rows
 Below that, the TUI shows a friendly "terminal too small" message instead of
 rendering a broken layout.
 
-## 7. Terminal image rendering (§73–76)
+## 7. Terminal image rendering (§73–76) {#inline-media}
 
 A key differentiator. v0 must support inline images via the **Kitty Graphics
 Protocol** where available, without assuming every terminal supports it.
 
-Reference: https://sw.kovidgoyal.net/kitty/graphics-protocol/
+Reference: https://sw.kovidgoyal.net/kitty/graphics-protocol/ ·
+Verified research: `docs/research/ink-kitty-graphics.md` ·
+Implementation: `packages/terminal-media` (see its `README.md`).
+
+### The seam
+
+Everything media-related lives in `@patches/terminal-media`; the TUI depends on the
+interface, never on escape sequences.
 
 ```ts
 interface TerminalMediaRenderer {
-  detect(): Promise<boolean>;
-  render(...): Promise<...>;
-  clear(...): Promise<void>;
+  readonly kind: 'kitty' | 'fallback';
+  prepare(
+    source: { bytes: Uint8Array; mime: string },
+    opts: { maxCols: number; maxRows: number },
+  ): Promise<PreparedImage>;
+  placeholderRows(img: PreparedImage): string[];
+  release(img: PreparedImage): void;
+  releaseAll(): void;
 }
+type PreparedImage = { id: number; cols: number; rows: number; widthPx: number; heightPx: number };
 ```
+
+Capability detection is a separate, one-shot step (`detectTerminalGraphics()`) rather
+than a method on the renderer: it has to run **before** Ink's `render()`, because Ink
+takes ownership of stdin and would race the probe's reply. `createRenderer(caps, stdout)`
+then picks the implementation once, and nothing downstream branches on terminal
+capability again.
 
 Implementations:
 
@@ -162,6 +181,30 @@ FallbackMediaRenderer   (v0)
 SixelRenderer           (later)
 ITermRenderer           (later)
 ```
+
+### How the kitty renderer works
+
+Images are **not** drawn as real graphics placements — those are anchored to screen
+coordinates and would ghost on every Ink rerender. Instead:
+
+1. `sharp` decodes, auto-orients and downscales the image to fit
+   `maxCols × cellWidthPx` by `maxRows × cellHeightPx`, preserving aspect, and
+   re-encodes PNG. Cell size comes from `CSI 16 t` during the probe (10×20px assumed
+   if unanswered).
+2. The PNG is transmitted straight to `process.stdout` as APC escape codes
+   (`\x1b_Ga=T,U=1,i=…,f=100,c=…,r=…,q=2,m=…;<base64>\x1b\`), chunked at 4096 base64
+   characters, creating an invisible **virtual placement**. This never goes through JSX:
+   Ink strips APC sequences inside `<Text>`, and `useStdout().write` repaints the frame.
+3. Ink renders the image as _ordinary text_ — a grid of `U+10EEEE` cells whose raw
+   24-bit foreground SGR encodes the image id and whose combining diacritics encode each
+   cell's row and column. Because they are text, Yoga lays them out, the line differ
+   diffs them, scrolling moves them, and clearing the line clears the image.
+4. Teardown (`a=d,d=I,i=<id>`) runs from `process.on('exit')` and signal handlers, after
+   `unmount()` — Ink 7 discards writes made during alternate-screen teardown, so a React
+   effect cleanup would never reach the terminal.
+
+Images are cached by content hash, so re-rendering the same post does not re-transmit;
+a resize re-prepares at the new cell budget and releases the previous placement.
 
 ### Image-rendering spike (§74)
 
@@ -174,6 +217,12 @@ Before building the full timeline UI, an early spike must prove:
 5. Scrolling/selecting posts leaves no ghost images.
 6. Terminal resize recovers cleanly.
 7. Application exit clears image state.
+
+The spike lives at `packages/terminal-media/spike/`. Run it with
+`pnpm --filter @patches/terminal-media spike` (needs a real TTY) or
+`… spike -- --report` for a non-interactive capability dump. The manual checklist
+mapping each of the seven points to an observation is in
+`packages/terminal-media/spike/README.md`.
 
 If raw Kitty protocol integration conflicts with Ink's render model, the
 abstraction is solved cleanly — Ink is not replaced merely because the graphics
@@ -189,9 +238,14 @@ When no graphics protocol is available:
 └─────────────────────────────────────┘
 ```
 
-Unicode/chafa-style approximations may be added later. Sixel is not required for
-MVP. Terminal fallback behavior when Kitty is unavailable must never be abandoned
-(§153).
+`FallbackMediaRenderer` produces exactly this box, sized to the available column
+budget, from `sharp` metadata alone (no pixel decode). Unicode/chafa-style
+approximations may be added later. Sixel is not required for MVP. Terminal fallback
+behavior when Kitty is unavailable must never be abandoned (§153).
+
+tmux is treated as **unsupported** unless `allow-passthrough` is actually enabled
+(checked by asking tmux, not by guessing), so the fallback box is what tmux users see
+by default rather than escape codes leaking into the pane.
 
 ### External media opening (§76)
 
