@@ -131,4 +131,10 @@ export class AppConfigService {
   get publicOrigin(): string {
     return this.get('PUBLIC_ORIGIN');
   }
+
+  /** Undefined unless the operator set it — see `env.schema.ts`'s doc comment on why this is
+   * unconditionally optional here, unlike `apps/server`'s copy. */
+  get federationKeyEncryptionKey(): string | undefined {
+    return this.get('FEDERATION_KEY_ENCRYPTION_KEY');
+  }
 }

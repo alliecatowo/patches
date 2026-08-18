@@ -173,6 +173,12 @@ export class AppConfigService {
   get httpPort(): number {
     return this.get('HTTP_PORT');
   }
+
+  /** Undefined only when federation is disabled — `envSchema`'s `superRefine` requires this
+   * when `FEDERATION_ENABLED=true`, so `KeyService` can assume it's set whenever it runs. */
+  get federationKeyEncryptionKey(): string | undefined {
+    return this.get('FEDERATION_KEY_ENCRYPTION_KEY');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

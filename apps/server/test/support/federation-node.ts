@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 
@@ -49,6 +50,9 @@ export interface FederationTestNode {
    * never shared with the running node process itself (see the module doc comment on why
    * this file spawns a real child process instead of booting `AppModule` in-process). */
   dataSource: DataSource;
+  /** B-026: this node's own `FEDERATION_KEY_ENCRYPTION_KEY` — `drainFederationDeliveries`
+   * needs it to decrypt the `federation_keys` rows this node's own `KeyService` encrypted. */
+  federationKeyEncryptionKey: string;
   auth: AuthGrpcClient;
   graph: SocialGraphGrpcClient;
   posts: PostGrpcClient;
@@ -105,6 +109,9 @@ export async function startFederationNode(
   await runMigrationsForTests(dataSource);
 
   const grpcUrl = `127.0.0.1:${String(grpcPort)}`;
+  // B-026: FEDERATION_ENABLED=true now requires this — a fresh key per node/run, exactly like
+  // the JWT keypair generated just above.
+  const federationKeyEncryptionKey = randomBytes(32).toString('base64');
 
   const child = spawn(process.execPath, [MAIN_JS], {
     cwd: SERVER_ROOT,
@@ -115,6 +122,7 @@ export async function startFederationNode(
       NODE_DOMAIN: options.nodeDomain,
       PUBLIC_ORIGIN: publicOrigin,
       FEDERATION_ENABLED: 'true',
+      FEDERATION_KEY_ENCRYPTION_KEY: federationKeyEncryptionKey,
       HTTP_PORT: String(httpPort),
       GRPC_HOST: '127.0.0.1',
       GRPC_PORT: String(grpcPort),
@@ -141,6 +149,7 @@ export async function startFederationNode(
   return {
     publicOrigin,
     dataSource,
+    federationKeyEncryptionKey,
     auth: createAuthClient(grpcUrl, credentials.createInsecure()),
     graph: createSocialGraphClient(grpcUrl, credentials.createInsecure()),
     posts: createPostClient(grpcUrl, credentials.createInsecure()),

@@ -2,6 +2,7 @@ import {
   Actor,
   FederationKey,
   claimOutboxJobs,
+  decryptFederationPrivateKeyPem,
   federationDeliverPayloadSchema,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
@@ -27,6 +28,10 @@ import { signRequest } from '../../src/modules/federation/signatures/http-signat
 export async function drainFederationDeliveries(
   dataSource: DataSource,
   workerId = 'test-relay',
+  /** B-026: the same `FEDERATION_KEY_ENCRYPTION_KEY` the node owning `dataSource` was
+   * started with (`FederationTestNode.federationKeyEncryptionKey`) — required to decrypt that
+   * node's own `federation_keys` rows. */
+  federationKeyEncryptionKey?: string,
 ): Promise<number> {
   let delivered = 0;
   for (;;) {
@@ -43,7 +48,7 @@ export async function drainFederationDeliveries(
         continue;
       }
       try {
-        await deliverOne(dataSource, job.payload);
+        await deliverOne(dataSource, job.payload, requireEncryptionKey(federationKeyEncryptionKey));
         await markOutboxJobSucceeded(dataSource.manager, job.id);
         delivered += 1;
       } catch (error) {
@@ -55,12 +60,29 @@ export async function drainFederationDeliveries(
   }
 }
 
-async function deliverOne(dataSource: DataSource, rawPayload: unknown): Promise<void> {
+function requireEncryptionKey(value: string | undefined): string {
+  if (value === undefined) {
+    throw new Error(
+      'drainFederationDeliveries: federationKeyEncryptionKey is required to decrypt federation_keys rows.',
+    );
+  }
+  return value;
+}
+
+async function deliverOne(
+  dataSource: DataSource,
+  rawPayload: unknown,
+  federationKeyEncryptionKey: string,
+): Promise<void> {
   const { actorId, inboxUrl, activity } = federationDeliverPayloadSchema.parse(rawPayload);
   const [actor, key] = await Promise.all([
     dataSource.getRepository(Actor).findOneOrFail({ where: { id: actorId } }),
     dataSource.getRepository(FederationKey).findOneOrFail({ where: { actorId } }),
   ]);
+  const privateKeyPem = decryptFederationPrivateKeyPem(
+    { ciphertext: key.privateKeyCiphertext, iv: key.privateKeyIv, tag: key.privateKeyTag },
+    federationKeyEncryptionKey,
+  );
 
   const body = JSON.stringify(activity);
   const target = new URL(inboxUrl);
@@ -75,7 +97,7 @@ async function deliverOne(dataSource: DataSource, rawPayload: unknown): Promise<
     date,
     digest,
     keyId,
-    privateKeyPem: key.privateKeyPem,
+    privateKeyPem,
   });
 
   const response = await fetch(inboxUrl, {
