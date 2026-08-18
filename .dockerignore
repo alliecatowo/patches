@@ -1,0 +1,39 @@
+# Read by Docker/Podman from the build context root (repo root) regardless of where the
+# Dockerfile itself lives (`infra/docker/Dockerfile`) — see that file's header comment.
+# Keep this in sync with `.gitignore`'s intent: exclude anything not needed to build
+# `@patches/server`/`@patches/worker` inside the image, and never ship host artifacts that
+# get rebuilt in-container anyway (`dist/`, `.turbo/`, `node_modules/`).
+
+# --- dependencies / build output (rebuilt inside the image) ---
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+.turbo/
+**/*.tsbuildinfo
+
+# --- vcs / editor / agent ---
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+
+# --- env / secrets (never bake into an image layer) ---
+.env
+.env.*
+!.env.example
+
+# --- test / coverage artifacts ---
+coverage/
+**/coverage/
+.nyc_output/
+
+# --- docs (not needed at build time; keeps the context smaller) ---
+docs/
+*.md
+!README.md
+
+# --- local infra not needed inside the image itself ---
+infra/compose/
