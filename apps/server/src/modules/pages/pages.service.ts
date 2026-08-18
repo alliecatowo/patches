@@ -87,6 +87,28 @@ export class PageService {
     };
   }
 
+  /** Federation's `GET /users/:handle/page` target (`ActorController`, P8-007, A-032) —
+   * `PUBLIC`-visibility only, verbatim `document` (or `null` for missing/unpublished/non-local),
+   * moved here from the controller per spec §128–129: a controller is a transport adapter, not
+   * a place to run a `QueryBuilder`. `handleNormalized` is already-lowercased by the caller,
+   * same convention as every other federation lookup keyed off `handleNormalized`. */
+  async getPublicPageDocument(handleNormalized: string): Promise<unknown> {
+    const page = await this.dataSource
+      .getRepository(Page)
+      .createQueryBuilder('page')
+      .innerJoin('page.actor', 'actor')
+      .where('actor.handleNormalized = :handle', { handle: handleNormalized })
+      .andWhere('actor.isLocal = true')
+      .andWhere('page.visibility = :visibility', { visibility: 'PUBLIC' })
+      .getOne();
+    if (page === null || page.currentRevisionId === null) return null;
+
+    const revision = await this.dataSource
+      .getRepository(PageRevision)
+      .findOne({ where: { id: page.currentRevisionId } });
+    return revision === null ? null : revision.document;
+  }
+
   /**
    * Whole-document replace, always on the caller's own page — `UpdatePageRequest` carries no
    * target, only `document` (spec: `pages.proto`'s doc comment). Creates the `pages` row

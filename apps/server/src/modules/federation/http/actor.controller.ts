@@ -1,10 +1,8 @@
 import type { ServerResponse } from 'node:http';
 
 import { Controller, Get, Headers, Param, Res } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { Page, PageRevision } from '@patches/database';
-import { DataSource } from 'typeorm';
 
+import { PageService } from '../../pages/pages.service.js';
 import { ACTIVITY_JSON_CONTENT_TYPE } from '../federation.constants.js';
 import { acceptsActivityJson } from './content-negotiation.js';
 import { ActorDocumentService } from '../services/actor-document.service.js';
@@ -14,7 +12,7 @@ import { ActorDocumentService } from '../services/actor-document.service.js';
 export class ActorController {
   constructor(
     private readonly actorDocuments: ActorDocumentService,
-    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly pages: PageService,
   ) {}
 
   @Get(':handle')
@@ -43,32 +41,18 @@ export class ActorController {
    * extension property advertises. Returns the actor's Page document verbatim (the bounded
    * `PatchesPage` JSON already validated strict-on-write, `packages/domain`) — never
    * re-wrapped in AS2, since a Page is inert data, not an ActivityStreams object. `PUBLIC`
-   * only; `UNLISTED`/missing both render as a plain `404`. */
+   * only; `UNLISTED`/missing both render as a plain `404`. Transport-only (spec §128) — the
+   * query itself lives in `PageService.getPublicPageDocument` (A-032). */
   @Get(':handle/page')
   async getPage(@Param('handle') handle: string, @Res() res: ServerResponse): Promise<void> {
-    const page = await this.dataSource
-      .getRepository(Page)
-      .createQueryBuilder('page')
-      .innerJoin('page.actor', 'actor')
-      .where('actor.handleNormalized = :handle', { handle: handle.toLowerCase() })
-      .andWhere('actor.isLocal = true')
-      .andWhere('page.visibility = :visibility', { visibility: 'PUBLIC' })
-      .getOne();
-    if (page === null || page.currentRevisionId === null) {
-      res.statusCode = 404;
-      res.end();
-      return;
-    }
-    const revision = await this.dataSource
-      .getRepository(PageRevision)
-      .findOne({ where: { id: page.currentRevisionId } });
-    if (revision === null) {
+    const document = await this.pages.getPublicPageDocument(handle.toLowerCase());
+    if (document === null) {
       res.statusCode = 404;
       res.end();
       return;
     }
     res.statusCode = 200;
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify(revision.document));
+    res.end(JSON.stringify(document));
   }
 }

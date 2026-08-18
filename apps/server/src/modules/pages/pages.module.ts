@@ -11,5 +11,6 @@ import { PageService } from './pages.service.js';
   imports: [AuthModule],
   controllers: [PagesController],
   providers: [PageService, GuestbookRateLimitService],
+  exports: [PageService],
 })
 export class PagesModule {}
