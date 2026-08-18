@@ -17,7 +17,7 @@ import {
   readSshSignatureAlgorithm,
   verifySshSignature,
 } from './ssh/openssh.js';
-import { sshEnrollmentBindingSchema, uuidInputSchema } from './validation.js';
+import { uuidInputSchema } from './validation.js';
 
 /** Spec §166 caps this at 120 seconds; there is no reason for an agent signature to take longer. */
 export const SSH_CHALLENGE_TTL_MS = 120_000;
@@ -45,9 +45,10 @@ export interface IssuedSshChallenge {
  *  2. **The server chooses the bytes.** The signed blob is reconstructed here from the stored
  *     challenge row; a blob supplied by the client is never signed or accepted.
  *
- * Enrollment reuses the same `ssh_login_challenges` table (there is no separate table or
- * `purpose` column — see `sshEnrollmentBindingSchema`'s doc comment in `validation.ts`) and
- * the same signature verifier as login (§166's algorithm/key-strength rules apply equally),
+ * Enrollment reuses the same `ssh_login_challenges` table, distinguished by `purpose` and
+ * bound to the caller via `boundUserId`/`boundFingerprint` (B-025 — a dedicated column pair
+ * replacing an earlier JSON-in-`claimedHandle` hack) and the same signature verifier as login
+ * (§166's algorithm/key-strength rules apply equally),
  * but is authenticated rather than anonymous, so enumeration is not a concern: a distinct
  * domain separator ({@link SSH_ENROLL_DOMAIN_SEPARATOR}) still keeps a login signature from
  * ever being replayable as an enrollment proof or vice versa.
@@ -64,6 +65,9 @@ export class SshChallengeService {
         nonce: randomBytes(NONCE_BYTES),
         expiresAt: new Date(Date.now() + SSH_CHALLENGE_TTL_MS),
         claimedHandle: null,
+        purpose: 'LOGIN',
+        boundUserId: null,
+        boundFingerprint: null,
       }),
     );
     return { challengeId: row.id, nonce: row.nonce, expiresAt: row.expiresAt };
@@ -84,11 +88,10 @@ export class SshChallengeService {
       challenges.create({
         nonce: randomBytes(NONCE_BYTES),
         expiresAt: new Date(Date.now() + SSH_CHALLENGE_TTL_MS),
-        claimedHandle: JSON.stringify({
-          purpose: 'ENROLL',
-          userId: input.userId,
-          fingerprint: input.fingerprint,
-        }),
+        claimedHandle: null,
+        purpose: 'ENROLL',
+        boundUserId: input.userId,
+        boundFingerprint: input.fingerprint,
       }),
     );
     return { challengeId: row.id, nonce: row.nonce, expiresAt: row.expiresAt };
@@ -189,9 +192,11 @@ export class SshChallengeService {
     const row = await challenges.findOne({ where: { id: input.challengeId } });
     if (row === null) throw sshEnrollmentProofInvalid();
 
-    const binding = decodeClaimedHandleJson(row.claimedHandle);
-    const parsedBinding = sshEnrollmentBindingSchema.safeParse(binding);
-    if (!parsedBinding.success || parsedBinding.data.userId !== input.userId) {
+    if (
+      row.purpose !== 'ENROLL' ||
+      row.boundUserId !== input.userId ||
+      row.boundFingerprint === null
+    ) {
       throw sshEnrollmentProofInvalid();
     }
 
@@ -201,7 +206,7 @@ export class SshChallengeService {
     } catch {
       throw sshEnrollmentProofInvalid();
     }
-    if (key.fingerprint !== parsedBinding.data.fingerprint) throw sshEnrollmentProofInvalid();
+    if (key.fingerprint !== row.boundFingerprint) throw sshEnrollmentProofInvalid();
 
     if (input.signatureFormat.length > 0) {
       const declared = readSshSignatureAlgorithm(input.signature);
@@ -219,22 +224,6 @@ export class SshChallengeService {
 
     if (!verifySshSignature(key, blob, input.signature)) throw sshEnrollmentProofInvalid();
     return key;
-  }
-}
-
-/**
- * `claimed_handle` is a plain nullable text column repurposed to carry the JSON-encoded
- * enrollment binding (see `sshEnrollmentBindingSchema`'s doc comment); it is never
- * client-writable, but a malformed value is treated as "no binding" rather than thrown, so a
- * parsing edge case fails closed as `sshEnrollmentProofInvalid()` instead of surfacing as an
- * unhandled exception.
- */
-function decodeClaimedHandleJson(value: string | null): unknown {
-  if (value === null) return null;
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
   }
 }
 
