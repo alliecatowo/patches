@@ -28,3 +28,50 @@ else
   exit 1
 fi
 """
+
+[tasks.setup]
+description = "First-run setup: install deps, start compose stack, run migrations, build everything"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+pnpm install
+[ -f .env ] || cp .env.example .env
+mise run compose -- up -d
+for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break; sleep 1; done
+pnpm db:migrate
+pnpm build
+echo "Ready. Next: 'mise run server' in one terminal, 'mise run tui' in another."
+"""
+
+[tasks.server]
+description = "Run the gRPC server (built) on 127.0.0.1:50051"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server build && pnpm --filter @patches/server start"
+
+[tasks."server:dev"]
+description = "Run the gRPC server in watch mode"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server dev"
+
+[tasks.tui]
+description = "Run the full-screen TUI against the local server (extra args pass through, e.g. -- --server host:port)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure \"$@\""
+
+[tasks.ping]
+description = "Non-interactive connectivity check against the local server (JSON, exit 0/1)"
+run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure"
+
+[tasks.spike]
+description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R rerender, d delete, q quit)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
+
+[tasks.verify]
+description = "format + lint + typecheck + unit tests (the pre-commit gate)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
+
+[tasks.test]
+description = "All tests including integration (needs the compose stack)"
+run = "cd \"$MISE_PROJECT_ROOT\" && TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" pnpm test"
+
+[tasks.down]
+description = "Stop the compose stack"
+run = "cd \"$MISE_PROJECT_ROOT\" && mise run compose -- down"
