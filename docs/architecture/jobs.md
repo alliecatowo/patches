@@ -140,6 +140,19 @@ On `SIGTERM`/`SIGINT`:
 The server process follows the analogous pattern: stop accepting new RPCs, drain
 active RPCs within a bounded timeout, close DB connections (§124).
 
+### 8.1 Stale-lease recovery (crash, not shutdown)
+
+The graceful-shutdown lease return above only covers `SIGTERM`/`SIGINT`. A worker that
+crashes outright (`kill -9`, OOM, host failure) leaves its claimed jobs `PROCESSING`
+forever with no signal to react to — `locked_at` simply stops advancing. The claim loop
+(`apps/worker/src/jobs/job-runner.ts`) periodically sweeps for exactly this
+(`apps/worker/src/jobs/stale-lease-sweep.ts`, B-013 in tasks.md): any job still
+`PROCESSING` after `WORKER_LEASE_TTL_MS` (default 10 minutes) is reset to `PENDING` for
+another worker to reclaim, checked at most every `WORKER_LEASE_SWEEP_INTERVAL_MS`
+(default 60s, not every claim pass — it's a table scan over `PROCESSING` rows). This is
+a reclaim, not a failure: `attempts` isn't touched by the sweep itself (it's incremented
+again, as normal, whenever the job is next claimed).
+
 ## 9. Job types
 
 v0/MVP:

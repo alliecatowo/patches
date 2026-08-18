@@ -44,6 +44,23 @@ const envObjectSchema = z.object({
   WORKER_POLL_MS: z.coerce.number().int().positive().default(1000),
   /** Ceiling for idle-poll backoff (`docs/architecture/jobs.md` §8: never a tight poll). */
   WORKER_IDLE_BACKOFF_MAX_MS: z.coerce.number().int().positive().default(10_000),
+
+  /**
+   * B-013: how long a job may sit `PROCESSING` (via `locked_at`) before the stale-lease
+   * sweep assumes the worker that claimed it crashed (not a graceful SIGTERM, which
+   * releases nothing mid-handler by design — see `main.ts`) and resets it to `PENDING` for
+   * reclaim. Must comfortably exceed the slowest legitimate handler's runtime; 10 minutes
+   * is generous relative to the handlers registered so far (email sends, token cleanup,
+   * media processing).
+   */
+  WORKER_LEASE_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 60_000),
+  /** How often the claim loop checks for stale leases — a fraction of `WORKER_LEASE_TTL_MS`,
+   * not every pass, since it's a table scan over `PROCESSING` rows. */
+  WORKER_LEASE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
