@@ -9,9 +9,16 @@ import type { DataSource } from 'typeorm';
 
 import { AppConfigService } from '../config/app-config.service.js';
 import { DATA_SOURCE } from '../database/database.module.js';
+import { deliveryMetrics } from '../federation/delivery-metrics.js';
 import { JobDispatcher } from './job-dispatcher.js';
 import { releaseUnhandledJob } from './release-claim.js';
 import { sweepStaleLeases } from './stale-lease-sweep.js';
+
+/** B-030: how often `run()` logs a `federation_metrics` snapshot — same interval as the
+ * server's own periodic log (`apps/server/src/modules/federation/federation-metrics.service
+ * .ts`'s `LOG_INTERVAL_MS`), **deliberately duplicated** rather than shared (no cross-app-`src`
+ * import convention in this repo, same reasoning as this file's other federation primitives). */
+const FEDERATION_METRICS_LOG_INTERVAL_MS = 60_000;
 
 /**
  * `min(currentMs * 2, maxMs)` — the idle-poll backoff step (`docs/architecture/jobs.md` §8).
@@ -45,6 +52,8 @@ export class JobRunner {
    * leases a previous, crashed instance of this same process left behind as soon as
    * possible, rather than waiting a full `leaseSweepIntervalMs` after boot. */
   private lastSweepAtMs = 0;
+  /** Same "`0` so the first pass always fires" reasoning as `lastSweepAtMs` (B-030). */
+  private lastMetricsLogAtMs = 0;
 
   constructor(
     @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
@@ -63,6 +72,7 @@ export class JobRunner {
 
     while (!this.stopping) {
       await this.sweepStaleLeasesIfDue();
+      this.logFederationMetricsIfDue();
 
       const claimed = await this.dataSource.transaction((manager) =>
         claimOutboxJobs(manager, { workerId, limit: concurrency }),
@@ -92,6 +102,20 @@ export class JobRunner {
     if (reclaimed > 0) {
       this.logger.warn(JSON.stringify({ outcome: 'STALE_LEASES_RECLAIMED', count: reclaimed }));
     }
+  }
+
+  /** B-030: periodic `federation_metrics` structured log line, mirroring the server's own
+   * (`FederationMetricsService`) so an operator watching Fly logs sees both processes'
+   * `deliveries_*` counters without needing to scrape a separate endpoint — this worker has no
+   * HTTP surface of its own to expose a snapshot on. Unlike the server's version, this is not
+   * gated on a `FEDERATION_ENABLED` flag (the worker has none — it just processes whatever
+   * `OutboxJob` rows exist); the snapshot is simply all-zero on a node that never runs
+   * `FEDERATION_DELIVER` jobs. */
+  private logFederationMetricsIfDue(): void {
+    const now = Date.now();
+    if (now - this.lastMetricsLogAtMs < FEDERATION_METRICS_LOG_INTERVAL_MS) return;
+    this.lastMetricsLogAtMs = now;
+    this.logger.log(JSON.stringify({ event: 'federation_metrics', ...deliveryMetrics.snapshot() }));
   }
 
   /** Interruptible sleep: `requestStop()` wakes it immediately instead of waiting it out. */
