@@ -61,6 +61,8 @@ Run `/verify` scoped to the package(s) you touched (`pnpm --filter <workspace> b
 
 ## Efficiency (every tool call re-reads your whole context)
 
+- Your brief is meant to be self-contained: start implementing from it. Open a file only when the brief's snippet is insufficient, and read the smallest range (`sed -n`).
+
 - **Commit early, commit often.** As soon as one coherent slice is green (`typecheck` + the tests you added), commit it with explicit paths and keep going. Never sit on 60 uncommitted files.
 - Combine checks into one command per package (`mise exec -- pnpm --filter X typecheck && … && …`) and read files with `sed -n` ranges — each tool call is a turn.
 - Finish the whole brief, then verify, tick, commit, push, report. If something is genuinely blocked, commit what is green and say exactly what remains.
