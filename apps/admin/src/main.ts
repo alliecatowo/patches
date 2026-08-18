@@ -3,6 +3,7 @@ import 'reflect-metadata';
 
 import { optionalStringOption, parseArgs, type ParsedArgs } from './cli/arg-parser.js';
 import { createAdminContext, type AdminContext } from './context.js';
+import { runDomainCommand } from './commands/domain.js';
 import { runInviteCommand } from './commands/invite.js';
 import { runJobsCommand } from './commands/jobs.js';
 import { runPostCommand } from './commands/post.js';
@@ -56,6 +57,8 @@ async function dispatch(
       return runPostCommand(action, args, context);
     case 'jobs':
       return runJobsCommand(action, args, context);
+    case 'domain':
+      return runDomainCommand(action, args, context);
     default:
       printUsage();
       process.exitCode = 1;
@@ -86,6 +89,10 @@ Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--j
   jobs list [--status DEAD]
   jobs show <id>
   jobs replay <id>
+
+  domain block <domain> [--reason <text>]
+  domain unblock <domain>
+  domain list
 
 Every mutating command needs an operator: --as <handle>, or set PATCHES_ADMIN_OPERATOR.
 `);

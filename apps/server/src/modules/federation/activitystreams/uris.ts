@@ -22,6 +22,17 @@ export function localActorOutboxUri(origin: string, handleNormalized: string): s
   return `${localActorUri(origin, handleNormalized)}/outbox`;
 }
 
+/** One keyset page of an actor's outbox (B-027). `cursor` is the same opaque, server-minted
+ * string `first`/`next` always carry — literal `'true'` (the Mastodon/AP convention for "the
+ * first page, no cursor yet") when there is nothing to encode. */
+export function localActorOutboxPageUri(
+  origin: string,
+  handleNormalized: string,
+  cursor: string,
+): string {
+  return `${localActorOutboxUri(origin, handleNormalized)}?page=${encodeURIComponent(cursor)}`;
+}
+
 export function localActorFollowersUri(origin: string, handleNormalized: string): string {
   return `${localActorUri(origin, handleNormalized)}/followers`;
 }

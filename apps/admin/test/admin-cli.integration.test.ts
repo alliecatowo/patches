@@ -1,10 +1,19 @@
-import { AdminAuditLog, Invite, OutboxJob, Post, Report, User } from '@patches/database';
+import {
+  AdminAuditLog,
+  DomainBlock,
+  Invite,
+  OutboxJob,
+  Post,
+  Report,
+  User,
+} from '@patches/database';
 import { createTestPost, createTestReport, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { requirePositional } from '../src/cli/arg-parser.js';
 import { hashInviteCode } from '../src/cli/crypto.js';
+import { runDomainCommand } from '../src/commands/domain.js';
 import { runInviteCommand } from '../src/commands/invite.js';
 import { runJobsCommand } from '../src/commands/jobs.js';
 import { runPostCommand } from '../src/commands/post.js';
@@ -331,6 +340,75 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const s2 = silence();
         await runJobsCommand('show', { positionals: ['jobs', 'show', job.id], options: {} }, ctx);
         s2.restore();
+      });
+    });
+
+    describe('domain block/unblock/list (B-027)', () => {
+      it('blocks, re-blocks (updating the reason), lists, and unblocks a domain, auditing each mutation', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}g`,
+        });
+        const ctx = await context(operatorActor.handle);
+        const domain = `Blocked-${Date.now()}.Example`;
+        const normalized = domain.toLowerCase();
+
+        const s1 = silence();
+        await runDomainCommand(
+          'block',
+          { positionals: ['domain', 'block', domain], options: { reason: 'spam' } },
+          ctx,
+        );
+        s1.restore();
+
+        const blocked = await dataSource
+          .getRepository(DomainBlock)
+          .findOneByOrFail({ domain: normalized });
+        expect(blocked.reason).toBe('spam');
+
+        const audit = await latestAuditLog('DOMAIN', normalized);
+        expect(audit.action).toBe('domain.block');
+        expect(audit.adminUserId).toBe(operatorActor.userId);
+
+        // Idempotent re-block updates the reason rather than erroring or duplicating the row.
+        const s2 = silence();
+        await runDomainCommand(
+          'block',
+          { positionals: ['domain', 'block', domain], options: { reason: 'worse spam' } },
+          ctx,
+        );
+        s2.restore();
+        const reblocked = await dataSource
+          .getRepository(DomainBlock)
+          .findOneByOrFail({ domain: normalized });
+        expect(reblocked.reason).toBe('worse spam');
+
+        const listCapture = captureStdout();
+        await runDomainCommand('list', { positionals: ['domain', 'list'], options: {} }, ctx);
+        listCapture.restore();
+        expect(listCapture.text()).toContain(normalized);
+
+        const s3 = silence();
+        await runDomainCommand(
+          'unblock',
+          { positionals: ['domain', 'unblock', domain], options: {} },
+          ctx,
+        );
+        s3.restore();
+        expect(
+          await dataSource.getRepository(DomainBlock).findOneBy({ domain: normalized }),
+        ).toBeNull();
+
+        const unblockAudit = await latestAuditLog('DOMAIN', normalized);
+        expect(unblockAudit.action).toBe('domain.unblock');
+
+        // Unblocking again is refused, not silently re-accepted.
+        await expect(
+          runDomainCommand(
+            'unblock',
+            { positionals: ['domain', 'unblock', domain], options: {} },
+            ctx,
+          ),
+        ).rejects.toThrow(/not blocked/);
       });
     });
 
