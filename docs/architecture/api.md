@@ -172,21 +172,24 @@ badges forward regardless of what a request sends, and validates the serialized 
 | `FollowActor`     | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent |
 | `UnfollowActor`   | idempotent — unfollowing a non-followed actor is not an error                                                                                                                             |
 | `GetRelationship` | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting` — all require an authenticated session                                                                        |
-| `MuteActor`       | **planned** — Phase 6 (spec §140); the `mutes` table exists (P3-001) and is already read by `FeedService`/`GetRelationship`                                                               |
-| `UnmuteActor`     | **planned** — Phase 6                                                                                                                                                                     |
-| `BlockActor`      | **planned** — Phase 6; will also clear any existing follow in either direction                                                                                                            |
-| `UnblockActor`    | **planned** — Phase 6                                                                                                                                                                     |
+
+`BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are **not** on this service — they live on
+`ModerationService` below (P6-001). `FollowActor.followActor` does not yet call
+`NotificationsService.notifyFollow` on a new follow — flagged as a follow-up in P4-003's task
+report, since `GraphService`/`GraphModule` are outside that task's owned files.
 
 ### PostService (§51) — `CreatePost`/`GetPost`/`DeletePost`/`ListReplies` implemented in `posts.proto`
 
-| RPC           | Notes                                                                       |
-| ------------- | --------------------------------------------------------------------------- |
-| `CreatePost`  | requires `client_request_id`; idempotent; accepts `content_warning` (B-018) |
-| `GetPost`     |                                                                             |
-| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                        |
-| `ListReplies` | cursor-paginated, bounded depth (`max_depth`)                               |
-| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                                 |
-| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned**    |
+| RPC           | Notes                                                                                                                                                                                                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreatePost`  | requires `client_request_id`; idempotent; accepts `content_warning` (B-018); replying to a post by an actor blocked either-direction from the caller is `POST_NOT_FOUND` (§62), not `PERMISSION_DENIED`; triggers a `REPLY` notification to the parent's author and a `MENTION` notification per `@handle` found in the body (P4-003) |
+| `GetPost`     | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                |
+| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                  |
+| `ListReplies` | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                   |
+| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                                                                                                                                                                                                                                                                                           |
+| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned**                                                                                                                                                                                                                                                              |
+
+`Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
 
 ### FeedService (§52) — implemented (P3-002)
 
@@ -195,7 +198,9 @@ badges forward regardless of what a request sends, and validates the serialized 
 | `ListHomeFeed`   | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                          |
 | `ListLocalFeed`  | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering |
 | `ListActorPosts` | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                               |
-| `ListBookmarks`  | MVP                                                                                                                                   |
+
+`ListBookmarks` is on `ReactionService` (P4-002), not `FeedService` — bookmarks are a private,
+actor-scoped list, not a feed with visibility rules.
 
 Explicitly never added: `GetRecommendedFeed`, `GetForYouFeed` (§52, §153).
 
@@ -218,37 +223,58 @@ small, not a missing index. `blocks`/`mutes` are seq-scanned inside the anti-joi
 fine at their current size (a handful of rows per actor); revisit if either table grows large
 enough for the per-row `NOT EXISTS` check to matter.
 
-### MediaService (§54) — planned, not yet in `packages/proto`
+### MediaService (§54) — schema only in `media.proto`; no server implementation in this task
 
-| RPC                   | Returns                                                              |
-| --------------------- | -------------------------------------------------------------------- |
-| `BeginMediaUpload`    | media ID, presigned PUT URL, expiration                              |
-| `FinalizeMediaUpload` | queues processing (transitions `PENDING_UPLOAD` → `PROCESSING`)      |
-| `GetMediaDownload`    | authorized short-lived download URL, dimensions, MIME, thumbnail URL |
+| RPC                   | Returns                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| `BeginMediaUpload`    | media ID, presigned PUT URL, expiration                                |
+| `FinalizeMediaUpload` | media ID, `MediaStatus` (transitions `PENDING` → `PROCESSING`)         |
+| `GetMediaDownload`    | media ID, `MediaStatus`, MIME, dimensions, download URL, thumbnail URL |
 
-### ReactionService (§53) — planned, not yet in `packages/proto`
+Contract landed by P4/P6's proto task ahead of the media-server/worker task so both could start
+concurrently; the controller/service implementing this against R2/Sharp (Phase 5, spec §139) is
+that task's, not this one's.
 
-| RPC                               | Notes                  |
-| --------------------------------- | ---------------------- |
-| `LikePost` / `UnlikePost`         | required if likes ship |
-| `BookmarkPost` / `UnbookmarkPost` | bookmarks are private  |
+### ReactionService (§53) — implemented in `reactions.proto` (P4-002)
 
-### ModerationService (§55) — planned, not yet in `packages/proto`
+| RPC                               | Notes                                                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LikePost` / `UnlikePost`         | idempotent; reuses `PostService.getPost`'s existence/block check (§62) and returns updated `PostCounts`/`PostViewerState`; a genuinely new like notifies the post's author |
+| `BookmarkPost` / `UnbookmarkPost` | idempotent; bookmarks are private                                                                                                                                          |
+| `ListBookmarks`                   | the caller's own bookmarks only, keyset-paginated `(created_at DESC, post_id DESC)`                                                                                        |
+| `ListPostLikers`                  | anonymous-callable; keyset-paginated `(created_at DESC, actor_id DESC)`                                                                                                    |
 
-| RPC           | Notes |
-| ------------- | ----- |
-| `ReportPost`  |       |
-| `ReportActor` |       |
+### ModerationService (§55, §61–64) — implemented in `moderation.proto` (P6-001/P6-002)
 
-No user-facing RPC exposes internal moderator notes.
+| RPC                           | Notes                                                                                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BlockActor` / `UnblockActor` | idempotent; blocking removes any existing follow in either direction (§62) and returns the updated `Relationship`                                                                                                        |
+| `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                   |
+| `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                  |
+| `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report is the admin CLI's job (§65), out of this task's scope |
 
-### NotificationService (§56) — planned, not yet in `packages/proto`
+No user-facing RPC exposes internal moderator notes (`reports.moderator_note`).
 
-| RPC                        | Notes            |
-| -------------------------- | ---------------- |
-| `ListNotifications`        | cursor-paginated |
-| `MarkNotificationRead`     |                  |
-| `MarkAllNotificationsRead` |                  |
+Block/mute enforcement beyond `FeedService`'s visibility filter (already in place since P3-002):
+`PostService.getPost`/`listReplies` and `ReactionsService`'s every RPC (via `getPost`) return
+`POST_NOT_FOUND` uniformly for a blocked-either-direction post/actor, never `PERMISSION_DENIED`
+— see `PostService`'s doc comment for why.
+
+### NotificationService (§56, §113) — implemented in `notifications.proto` (P4-003)
+
+| RPC                     | Notes                                                                                                                       |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `ListNotifications`     | cursor-paginated `(created_at DESC, id DESC)`                                                                               |
+| `MarkNotificationsRead` | collapses spec §56's `MarkNotificationRead`/`MarkAllNotificationsRead` into one idempotent RPC (`through_id` or `mark_all`) |
+| `GetUnreadCount`        |                                                                                                                             |
+
+`NotificationsService.notifyFollow`/`notifyLike`/`notifyReply`/`notifyMention` are the write
+side, called from `PostService` (REPLY/MENTION) and `ReactionsService` (LIKE) as a side effect
+of their own writes — spec §113 has no separate event service. Every notify path skips
+self-notification and respects blocks (§62) and mutes (§63) before ever writing a row, and
+dedupes via two partial unique indexes on `notifications` (§113). `notifyFollow` exists and is
+exported but nothing calls it yet — `GraphService.followActor` is outside this task's file
+scope; wiring that one-line call is a follow-up (see this task's report).
 
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.

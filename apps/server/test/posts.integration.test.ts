@@ -305,6 +305,43 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(new Set(seen).size).toBe(3);
         expect(seen.sort()).toEqual([...replyIds].sort());
       });
+
+      it('walks nested replies up to max_depth and no further (§24)', async () => {
+        const root = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: 'a deep thread' }),
+          { accessToken: alice.accessToken },
+        );
+        const rootId = root.post?.id ?? '';
+
+        const level1 = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: 'level 1', inReplyToId: rootId }),
+          { accessToken: bob.accessToken },
+        );
+        const level1Id = level1.post?.id ?? '';
+
+        const level2 = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: 'level 2', inReplyToId: level1Id }),
+          { accessToken: alice.accessToken },
+        );
+        const level2Id = level2.post?.id ?? '';
+
+        expect(level2.post?.rootPostId).toBe(rootId);
+
+        const shallow = await callUnary<ListRepliesRequest, ListRepliesResponse>(
+          posts.listReplies.bind(posts),
+          { postId: rootId, cursor: '', limit: 10, maxDepth: 1 },
+        );
+        expect(shallow.posts.map((post) => post.id)).toEqual([level1Id]);
+
+        const deep = await callUnary<ListRepliesRequest, ListRepliesResponse>(
+          posts.listReplies.bind(posts),
+          { postId: rootId, cursor: '', limit: 10, maxDepth: 2 },
+        );
+        expect(new Set(deep.posts.map((post) => post.id))).toEqual(new Set([level1Id, level2Id]));
+      });
     });
   },
 );

@@ -44,7 +44,7 @@ export class FeedService {
         ))`,
       { homeViewerActorId: viewerActorId },
     );
-    return this.page(qb, cursorRaw, limit);
+    return this.page(qb, cursorRaw, limit, viewerActorId);
   }
 
   /** All local public/unlisted posts, chronological (spec §52). `viewerActorId` is optional —
@@ -52,7 +52,7 @@ export class FeedService {
    * filtering (there is no viewer to filter for). */
   async listLocalFeed(cursorRaw: string, limit: number, viewerActorId?: string): Promise<FeedPage> {
     const qb = this.baseQuery(viewerActorId).andWhere('post.isLocal = true');
-    return this.page(qb, cursorRaw, limit);
+    return this.page(qb, cursorRaw, limit, viewerActorId);
   }
 
   /** A given actor's posts, chronological (spec §52). See {@link listLocalFeed} on
@@ -69,7 +69,7 @@ export class FeedService {
     const qb = this.baseQuery(viewerActorId).andWhere('post.authorActorId = :actorId', {
       actorId,
     });
-    return this.page(qb, cursorRaw, limit);
+    return this.page(qb, cursorRaw, limit, viewerActorId);
   }
 
   // ---------------------------------------------------------------- internals
@@ -89,6 +89,7 @@ export class FeedService {
     qb: SelectQueryBuilder<Post>,
     cursorRaw: string,
     limit: number,
+    viewerActorId?: string,
   ): Promise<FeedPage> {
     const cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
@@ -105,7 +106,7 @@ export class FeedService {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
 
-    const posts = await toPostViews(this.dataSource.manager, page);
+    const posts = await toPostViews(this.dataSource.manager, page, viewerActorId);
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,

@@ -17,20 +17,28 @@ import {
 import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
-import { type AccessTokenClaims } from '../auth/token.service.js';
+import { type AccessTokenClaims, TokenService } from '../auth/token.service.js';
 import { postVisibilityFromProto, toProtoPost } from './post.mapper.js';
 import { PostService } from './post.service.js';
+
+const AUTHORIZATION_METADATA_KEY = 'authorization';
+const BEARER_PREFIX = 'bearer ';
 
 /**
  * Transport adapter for `patches.v1.PostService` — protobuf in, protobuf out, no business
  * logic (spec §128). `CreatePost`/`DeletePost` require an authenticated session (`AuthGuard`,
  * reused from `AuthModule` exactly as every other feature module does); `GetPost`/
- * `ListReplies` are readable anonymously.
+ * `ListReplies` stay anonymous-readable but honor a *present* bearer token too, same pattern
+ * as `FeedController.optionalViewerActorId` — an authenticated caller gets block-aware
+ * filtering (spec §62) and their own `viewer_state` even on an RPC that doesn't require login.
  */
 @Controller()
 @PostServiceControllerMethods()
 export class PostController implements PostServiceController {
-  constructor(private readonly posts: PostService) {}
+  constructor(
+    private readonly posts: PostService,
+    private readonly tokens: TokenService,
+  ) {}
 
   @UseGuards(AuthGuard)
   async createPost(
@@ -51,8 +59,12 @@ export class PostController implements PostServiceController {
     return { post: toProtoPost(post) };
   }
 
-  async getPost(@Payload() request: GetPostRequest): Promise<GetPostResponse> {
-    const post = await this.posts.getPost(request.id);
+  async getPost(
+    @Payload() request: GetPostRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<GetPostResponse> {
+    const viewerActorId = await this.optionalViewerActorId(metadata);
+    const post = await this.posts.getPost(request.id, viewerActorId);
     return { post: toProtoPost(post) };
   }
 
@@ -66,14 +78,47 @@ export class PostController implements PostServiceController {
     return { post: toProtoPost(post) };
   }
 
-  async listReplies(@Payload() request: ListRepliesRequest): Promise<ListRepliesResponse> {
-    // `max_depth` is accepted but not yet used — `ListReplies` currently returns only direct
-    // replies to `post_id`, not a depth-bounded tree walk. See `PostService.listReplies`.
-    const result = await this.posts.listReplies(request.postId, request.cursor, request.limit);
+  async listReplies(
+    @Payload() request: ListRepliesRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<ListRepliesResponse> {
+    const viewerActorId = await this.optionalViewerActorId(metadata);
+    const result = await this.posts.listReplies(
+      request.postId,
+      request.cursor,
+      request.limit,
+      request.maxDepth,
+      viewerActorId,
+    );
     return {
       posts: result.posts.map(toProtoPost),
       page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
     };
+  }
+
+  /**
+   * Best-effort session lookup for an RPC that must stay callable anonymously — same
+   * implementation as `FeedController.optionalViewerActorId`, not shared across modules for
+   * the same reason `post.controller.ts`'s other small helpers aren't (see `blank`/`optional`
+   * below): pulling in a cross-module import for three lines costs more than it saves.
+   */
+  private async optionalViewerActorId(metadata: Metadata | undefined): Promise<string | undefined> {
+    const values = metadata?.get(AUTHORIZATION_METADATA_KEY) ?? [];
+    const header = values[0];
+    const raw = typeof header === 'string' ? header : header?.toString('utf8');
+    if (raw === undefined || !raw.toLowerCase().startsWith(BEARER_PREFIX)) return undefined;
+
+    const token = raw.slice(BEARER_PREFIX.length).trim();
+    if (token.length === 0) return undefined;
+
+    try {
+      const claims = await this.tokens.verifyAccessToken(token);
+      return claims.actorId;
+    } catch {
+      // Malformed/expired/wrong-node token on an anonymous-readable RPC: degrade to anonymous
+      // rather than fail the read (see `FeedController`'s copy of this method).
+      return undefined;
+    }
   }
 }
 

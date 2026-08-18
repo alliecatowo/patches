@@ -23,6 +23,18 @@ export interface PostMediaSummary {
   position: number;
 }
 
+export interface PostCountsView {
+  replyCount: number;
+  likeCount: number;
+}
+
+/** Only meaningful for an authenticated viewer — both `false` for an anonymous read, same as
+ * `PostViewerState` on the wire (spec §53). */
+export interface PostViewerStateView {
+  liked: boolean;
+  bookmarked: boolean;
+}
+
 export interface PostView {
   id: string;
   author: ActorSummary;
@@ -40,7 +52,8 @@ export interface PostView {
   createdAt: Date;
   editedAt: Date | null;
   deleted: boolean;
-  replyCount: number;
+  counts: PostCountsView;
+  viewerState: PostViewerStateView;
 }
 
 /**
@@ -50,7 +63,8 @@ export interface PostView {
 export function toPostView(
   post: PostEntity & { authorActor: ActorEntity },
   media: readonly PostMediaSummary[],
-  replyCount: number,
+  counts: PostCountsView,
+  viewerState: PostViewerStateView,
 ): PostView {
   const deleted = post.deletedAt !== null;
   return {
@@ -67,6 +81,9 @@ export function toPostView(
     createdAt: post.createdAt,
     editedAt: post.editedAt,
     deleted,
-    replyCount,
+    counts,
+    // A deleted post's like/bookmark state is meaningless to show — zeroed like every other
+    // deleted-post field above, not left to whatever the last real value happened to be.
+    viewerState: deleted ? { liked: false, bookmarked: false } : viewerState,
   };
 }

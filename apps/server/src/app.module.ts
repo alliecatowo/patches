@@ -11,7 +11,10 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { FeedModule } from './modules/feeds/feed.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
 import { MediaModule } from './modules/media/media.module.js';
+import { ModerationModule } from './modules/moderation/moderation.module.js';
+import { NotificationsModule } from './modules/notifications/notification.module.js';
 import { PostModule } from './modules/posts/post.module.js';
+import { ReactionModule } from './modules/reactions/reaction.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 
 @Module({
@@ -24,6 +27,9 @@ import { SystemModule } from './modules/system/system.module.js';
     ActorModule,
     FeedModule,
     GraphModule,
+    NotificationsModule,
+    ReactionModule,
+    ModerationModule,
     MediaModule,
   ],
   providers: [
