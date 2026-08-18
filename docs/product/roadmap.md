@@ -5,8 +5,7 @@ document restates the execution roadmap and acceptance checklists in one place s
 be tracked without re-reading the full spec. Update the status line at the top of each phase
 as work lands — don't let this drift into fiction.
 
-**As of 2026-08-17: Phase 0 (repository and risk spikes) is complete; Phase 1 (persistence and auth) is in progress.** No later phase
-has started.
+**As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 deploy artifacts exist but no public node has been deployed yet.**
 
 ## Release sequence (§176)
 
@@ -43,7 +42,7 @@ they work.
 
 ## Phase 1 — persistence and auth
 
-**Status: planned**
+**Status: implemented**
 
 Implement: TypeORM configuration, initial migrations, `Actor`, `User`, **`credentials`**,
 `ssh_login_challenges`, refresh tokens, invites, email verification, `AuthService`,
@@ -71,7 +70,7 @@ revoked; revoking the last one fails.
 
 ## Phase 2 — posting
 
-**Status: planned**
+**Status: implemented**
 
 Implement: posts, create post, get post, delete post, actor profile, actor post list. TUI:
 own profile, compose, profile timeline.
@@ -80,7 +79,7 @@ own profile, compose, profile timeline.
 
 ## Phase 3 — social graph / feed
 
-**Status: planned**
+**Status: implemented**
 
 Implement: follow, unfollow, home feed, local feed, keyset pagination. TUI: Home, Local,
 actor search, follow controls.
@@ -90,7 +89,7 @@ post.
 
 ## Phase 4 — replies / reactions
 
-**Status: planned**
+**Status: implemented**
 
 Implement: threaded replies, likes, bookmarks, notifications. TUI: thread screen, reply
 action, like, bookmark, notification screen.
@@ -99,7 +98,7 @@ action, like, bookmark, notification screen.
 
 ## Phase 4.5 — Pages v1
 
-**Status: planned**
+**Status: implemented**
 
 Implement: the `PatchesPage` document schema and validator (in `packages/domain`), `pages` /
 `page_revisions` / `page_assets` / `guestbook_entries` tables, `PageService`
@@ -122,7 +121,7 @@ in his terminal, and signs her guestbook.
 
 ## Phase 5 — production media
 
-**Status: planned**
+**Status: implemented**
 
 Replace the Phase 0 image POC with the real pipeline: R2, upload initialization, direct
 client upload, worker processing, Sharp derivatives, terminal media cache, Kitty rendering,
@@ -132,7 +131,7 @@ fallback for unsupported terminals.
 
 ## Phase 6 — moderation / security
 
-**Status: planned**
+**Status: implemented**
 
 Implement: block, mute, report, admin commands, audit log, rate limits, account suspension,
 password reset, robust input validation, **GitHub OAuth device flow** as a credential type.
@@ -148,7 +147,7 @@ depends on it. Phase 1's browserless paths (password, SSH) remain the primary on
 
 ## Phase 7 — deploy public v0
 
-**Status: planned**
+**Status: implemented, not yet deployed**
 
 Deploy: Fly server, Fly Managed Postgres, worker, R2, Resend, production domain, secrets,
 health checks. Add: structured logs, backup docs, smoke tests.
@@ -191,7 +190,7 @@ experiment. Federation moved earlier too, with every security gate unchanged.
 
 ### Phase 8 — two-node federation lab (v0.1)
 
-**Status: planned.** Federation Stage F1, **local and non-public**. Two Patches nodes on one
+**Status: implemented (lab).** Federation Stage F1, **local and non-public**. Two Patches nodes on one
 machine: WebFinger, actor documents, inbox/outbox, `Follow`, `Accept`, `Create` (Note),
 `Delete`, basic `Like`, and durable delivery through the existing outbox/jobs machinery with
 bounded retries and safe duplicate delivery.
@@ -314,66 +313,70 @@ These are the literal go/no-go gates from the spec (§§157–160). A phase or m
 
 v0 is complete only when two real users can:
 
-- [ ] register (with an SSH key or a password),
-- [ ] verify email _(where the node requires it — §165)_,
-- [ ] login by password,
-- [ ] login by SSH key,
-- [ ] add and revoke a second credential,
-- [ ] edit and visit a Page,
-- [ ] persist session securely,
-- [ ] edit profile,
-- [ ] search local actors,
-- [ ] follow,
-- [ ] unfollow,
-- [ ] post text,
-- [ ] upload static image,
-- [ ] view inline image in Kitty,
-- [ ] use media fallback elsewhere,
-- [ ] see chronological home feed,
-- [ ] see chronological local feed,
-- [ ] open thread,
-- [ ] reply,
-- [ ] like,
-- [ ] unlike,
-- [ ] bookmark,
-- [ ] block,
-- [ ] mute,
-- [ ] report,
-- [ ] receive basic notifications,
-- [ ] logout.
+- [x] register (with an SSH key or a password),
+- [ ] verify email _(where the node requires it — §165)_ — **in progress — A-028**,
+- [x] login by password,
+- [x] login by SSH key,
+- [x] add and revoke a second credential,
+- [x] edit and visit a Page,
+- [x] persist session securely,
+- [ ] edit profile — **in progress — A-027**,
+- [x] search local actors,
+- [x] follow,
+- [x] unfollow,
+- [x] post text,
+- [x] upload static image,
+- [x] view inline image in Kitty,
+- [x] use media fallback elsewhere,
+- [x] see chronological home feed,
+- [x] see chronological local feed,
+- [x] open thread,
+- [x] reply,
+- [x] like,
+- [x] unlike,
+- [x] bookmark,
+- [x] block,
+- [x] mute,
+- [x] report,
+- [x] receive basic notifications,
+- [x] logout.
 
 And administrators can:
 
-- [ ] create invites,
-- [ ] inspect reports,
-- [ ] suspend a user,
-- [ ] remove content,
-- [ ] inspect an audit record.
+- [x] create invites,
+- [x] inspect reports,
+- [x] suspend a user,
+- [x] remove content,
+- [x] inspect an audit record.
 
 ### MVP deployment checklist
 
-- [ ] production domain configured,
-- [ ] TLS works,
-- [ ] gRPC through Fly works,
-- [ ] Managed Postgres configured,
-- [ ] R2 configured,
-- [ ] worker configured,
-- [ ] email delivery configured,
-- [ ] migrations deploy automatically but explicitly,
-- [ ] secrets are not in the repository,
-- [ ] production health checks work,
-- [ ] structured logs work,
-- [ ] error monitoring works or a documented alternative exists,
-- [ ] backup strategy exists,
-- [ ] restoration procedure is documented,
-- [ ] rate limiting exists,
-- [ ] integration suite passes,
-- [ ] smoke tests pass after deploy,
-- [ ] README installation works from a clean environment,
-- [ ] npm package install works,
-- [ ] TUI works against production,
-- [ ] user documentation exists,
-- [ ] moderation guidelines exist.
+- [ ] production domain configured _(needs live environment)_,
+- [ ] TLS works _(needs live environment)_,
+- [ ] gRPC through Fly works _(needs live environment)_,
+- [ ] Managed Postgres configured _(needs live environment)_,
+- [ ] R2 configured _(needs live environment)_,
+- [ ] worker configured _(needs live environment)_,
+- [ ] email delivery configured _(needs live environment)_,
+- [x] migrations deploy automatically but explicitly _(release-command mechanism + migration
+      CLI verified locally; not yet exercised in a live Fly deploy)_,
+- [x] secrets are not in the repository,
+- [ ] production health checks work _(needs live environment)_,
+- [x] structured logs work,
+- [x] error monitoring works or a documented alternative exists _(structured-log-only
+      alternative documented — `docs/operations/deployment.md#error-monitoring`; A-033)_,
+- [x] backup strategy exists _(documented — `docs/operations/backups.md`; not yet exercised
+      against a live Postgres instance)_,
+- [x] restoration procedure is documented _(`docs/operations/backups.md`)_,
+- [x] rate limiting exists,
+- [x] integration suite passes,
+- [ ] smoke tests pass after deploy _(needs live environment)_,
+- [ ] README installation works from a clean environment _(needs live environment)_,
+- [ ] npm package install works _(needs live environment — packages not yet published)_,
+- [ ] TUI works against production _(needs live environment)_,
+- [x] user documentation exists _(`docs/user-guide.md`; A-034)_,
+- [ ] moderation guidelines exist _(`docs/operations/moderation.md` covers admin workflow;
+      public-facing community rules are a v0.0 MVP-polish item, not yet written)_.
 
 ### Federation readiness checklist
 

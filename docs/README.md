@@ -7,6 +7,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
 
 ## Tree
 
+- [`user-guide.md`](./user-guide.md) — end-user documentation: installing and running the
+  `patches` client, connecting to a node, and the in-app keybindings.
 - **`architecture/`** — system design docs.
   - [`architecture/overview.md`](./architecture/overview.md)
   - [`architecture/data-model.md`](./architecture/data-model.md)

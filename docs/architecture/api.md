@@ -10,26 +10,34 @@ Patches' canonical client/server application protocol — the contract between a
 
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
-`social_graph.proto`, `node.proto` — the full `AuthService` (including SSH login, GitHub
-device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
+`social_graph.proto`, `node.proto`, `pages.proto`, `media.proto`, `reactions.proto`,
+`moderation.proto`, `notifications.proto` — the full `AuthService` (including SSH login,
+GitHub device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
 `PollGitHubLogin` included as of P6-005 (§176, §167). `PostService`
-(`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` returns direct replies
-only, not yet a depth-bounded tree walk; `CreatePost` also accepts `content_warning`, B-018)
-and `ActorService` (`GetActor`/`GetActorByHandle`/`UpdateProfile` — including a bounded
-`nameplate`, §173 — `SearchActors`, `ListFollowers`, `ListFollowing`) have server handlers,
-all implemented by P3-001. `SocialGraphService` (`social_graph.proto`) has server handlers for
-`FollowActor`/`UnfollowActor`/`GetRelationship`; `MuteActor`/`UnmuteActor`/`BlockActor`/
-`UnblockActor` remain planned (Phase 6, spec §140) — the `blocks`/`mutes` tables exist (P3-001)
-so the feed/relationship reads below already honor them, but nothing writes to them yet.
-`FeedService`'s `ListLocalFeed`/`ListActorPosts`/`ListHomeFeed` all have server handlers
-(P3-002) with keyset-paginated, visibility+block+mute-aware SQL (§59, §62–63) — see §3's
-`FeedService` table for the exact scoping. `NodeService.GetNodeInfo` (`node.proto`) has a
-server handler (P1-014). `PageService` (`pages.proto`, Phase 4.5) has server handlers for
-every RPC — `GetPage`/`UpdatePage`/`ListPageRevisions`/`ListGuestbook`/`SignGuestbook`/
-`RemoveGuestbookEntry`/`ReportGuestbookEntry` — as of P45-003. `MediaService`,
-`ReactionService`, `ModerationService`, and `NotificationService` — and the MVP-marked RPCs
-(`EditPost`, `Repost`, `ListBookmarks`) — are **planned**, not yet present in
-`packages/proto`. Per-RPC status is called out inline below.
+(`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` is a cursor-paginated,
+bounded-depth breadth-first walk, not just direct replies; `CreatePost` also accepts
+`content_warning`, B-018) and `ActorService` (`GetActor`/`GetActorByHandle`/`UpdateProfile` —
+including a bounded `nameplate`, §173 — `SearchActors`, `ListFollowers`, `ListFollowing`) have
+server handlers, all implemented by P3-001. `SocialGraphService` (`social_graph.proto`) has
+server handlers for `FollowActor`/`UnfollowActor`/`GetRelationship`; `MuteActor`/`UnmuteActor`/
+`BlockActor`/`UnblockActor` are implemented, but on `ModerationService` rather than
+`SocialGraphService` (Phase 6, P6-001/P6-002) — the `blocks`/`mutes` tables (P3-001) are read
+by the feed/relationship queries and written by `ModerationService`. `FeedService`'s
+`ListLocalFeed`/`ListActorPosts`/`ListHomeFeed` all have server handlers (P3-002) with
+keyset-paginated, visibility+block+mute-aware SQL (§59, §62–63) — see §3's `FeedService` table
+for the exact scoping. `NodeService.GetNodeInfo` (`node.proto`) has a server handler (P1-014).
+`PageService` (`pages.proto`, Phase 4.5) has server handlers for every RPC —
+`GetPage`/`UpdatePage`/`ListPageRevisions`/`ListGuestbook`/`SignGuestbook`/
+`RemoveGuestbookEntry`/`ReportGuestbookEntry` — as of P45-003. `MediaService`
+(`BeginMediaUpload`/`FinalizeMediaUpload`/`GetMediaDownload`, backed by a presigned R2/MinIO
+PUT plus a worker `PROCESS_MEDIA` job producing Sharp derivatives, ADR 0015), `ReactionService`
+(`LikePost`/`UnlikePost`/`BookmarkPost`/`UnbookmarkPost`/`ListBookmarks`/`ListPostLikers`,
+P4-002), `ModerationService`
+(`BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor`/`ListBlocks`/`ListMutes`/`ReportPost`/
+`ReportActor`, P6-001/P6-002), and `NotificationService`
+(`ListNotifications`/`MarkNotificationsRead`/`GetUnreadCount`, P4-003) are all implemented,
+with server handlers in `packages/proto` and `apps/server`. `EditPost` and `Repost` remain
+**planned**, not yet in `posts.proto`. Per-RPC status is called out inline below.
 
 ## 1. Schema layout
 
@@ -48,7 +56,7 @@ packages/proto/proto/patches/v1/
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
 ├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship only)
-├── media.proto       # schema only — no server implementation yet (Phase 5, P5-xxx)
+├── media.proto       # implemented (Phase 5)
 ├── moderation.proto  # implemented (P6-001/P6-002)
 ├── reactions.proto   # implemented (P4-002)
 └── notifications.proto  # implemented (P4-003)
@@ -157,14 +165,14 @@ ignore unknown block types gracefully; the server rejects them on write.
 
 ### ActorService (§49) — implemented in `actors.proto`
 
-| RPC                | Notes                                                                                                                                                                                         |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                           |
-| `GetActorByHandle` |                                                                                                                                                                                               |
-| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); avatar is not yet a field — added once `MediaService` ships |
-| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                       |
-| `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                   |
-| `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                   |
+| RPC                | Notes                                                                                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                                                                                                              |
+| `GetActorByHandle` |                                                                                                                                                                                                                                                                                  |
+| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); `avatar` is not yet on `UpdateProfileRequest`, though `Actor.avatar`/`MediaService` both exist — wiring it into profile updates is a follow-up |
+| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                                                                                                          |
+| `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                                                                                                      |
+| `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                      |
 
 `UpdateProfile`'s `nameplate.badges` is never accepted from the client (§173) — the server
 mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's existing
@@ -229,7 +237,7 @@ small, not a missing index. `blocks`/`mutes` are seq-scanned inside the anti-joi
 fine at their current size (a handful of rows per actor); revisit if either table grows large
 enough for the per-row `NOT EXISTS` check to matter.
 
-### MediaService (§54) — schema only in `media.proto`; no server implementation in this task
+### MediaService (§54) — implemented in `media.proto` (Phase 5)
 
 | RPC                   | Returns                                                                |
 | --------------------- | ---------------------------------------------------------------------- |
@@ -237,9 +245,10 @@ enough for the per-row `NOT EXISTS` check to matter.
 | `FinalizeMediaUpload` | media ID, `MediaStatus` (transitions `PENDING` → `PROCESSING`)         |
 | `GetMediaDownload`    | media ID, `MediaStatus`, MIME, dimensions, download URL, thumbnail URL |
 
-Contract landed by P4/P6's proto task ahead of the media-server/worker task so both could start
-concurrently; the controller/service implementing this against R2/Sharp (Phase 5, spec §139) is
-that task's, not this one's.
+`BeginMediaUpload` issues a presigned PUT (MinIO in dev, Cloudflare R2 in prod, ADR 0015);
+`FinalizeMediaUpload` enqueues a worker `PROCESS_MEDIA` job that produces Sharp derivatives
+before the media transitions to `READY`; `GetMediaDownload` serves the processed asset. No
+image bytes are proxied through Node (§153).
 
 ### ReactionService (§53) — implemented in `reactions.proto` (P4-002)
 
