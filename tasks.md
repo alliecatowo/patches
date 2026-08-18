@@ -148,6 +148,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] B-010 — TUI screenshot tool (`tools/screenshot`): tmux -> ANSI -> SVG -> PNG, `mise run screenshot`, real PNGs in `docs/media/`, one embedded in README
 - [ ] B-011 — root `vitest.config.ts` `projects` doesn't include `tools/*`, so `pnpm test`/`pnpm verify` skip `tools/screenshot`'s tests (they still run standalone via `pnpm --filter @patches/tools-screenshot test`)
 - [ ] B-012 — full per-project test database isolation: `database` and `testkit` still share `patches_test` (safe today only via `--no-file-parallelism` on `test:integration`, see A-006/docs/operations/ci.md "Why one database") — give `testkit` its own `TEST_DATABASE_URL_TESTKIT`-style override (mirroring `apps/server/vitest.integration.config.mts`) once someone owns `packages/testkit`'s vitest config
+- [ ] B-013 — worker: stale-lease sweep for jobs stuck in `PROCESSING` after a worker crash (not SIGTERM) — reset to `PENDING` after `locked_at` exceeds a lease TTL
+- [ ] B-014 — admin CLI: inspect/replay `DEAD` outbox jobs (`patches-admin jobs list|replay <id>`)
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
