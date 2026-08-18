@@ -116,10 +116,13 @@ uint32  len(expires_at)                 expires_at (ASCII decimal Unix seconds)
 `expires_at` is truncated to whole seconds before framing: the client only ever sees it as a
 `google.protobuf.Timestamp`, and truncating on both sides is what makes the server's and any
 independent verifier's encoding agree byte-for-byte without the client reproducing a
-sub-second value it was never given. Implemented in
-`apps/server/src/modules/auth/ssh/challenge-blob.ts` (`buildSshChallengeBlob`) and
-`ssh/wire.ts` (`encodeSshString`/`SshReader`) — length-prefixed framing throughout is what
-stops one field's bytes from being able to bleed into its neighbour's, the usual way a
+sub-second value it was never given. Implemented once, in `@patches/domain`
+(`packages/domain/src/ssh/challenge-blob.ts`'s `buildSshChallengeBlob` and `ssh/wire.ts`'s
+`encodeSshString`/`SshReader`) — A-020: both `apps/server` (`ssh-challenge.service.ts`) and
+`apps/tui` (`auth/ssh-login.ts`, `auth/ssh-enroll.ts`) import this same package rather than
+each keeping their own copy of the layout, and a parity test in the package (plus one on each
+importing side) pins a fixture to byte-identical output. Length-prefixed framing throughout is
+what stops one field's bytes from being able to bleed into its neighbour's, the usual way a
 "concatenate everything into one blob" scheme breaks.
 
 ### Requirements
@@ -129,9 +132,9 @@ stops one field's bytes from being able to bleed into its neighbour's, the usual
 - Challenges: single-use, TTL ≤ 120 s, consumed atomically, rate-limited per peer address
   (§102). Not keyed on anything the request itself supplies (a candidate fingerprint,
   `CompleteSshLogin`'s challenge id) — those are caller-chosen, so a limiter keyed on them
-  would never see the same bucket twice. **Status: planned** — narrowing by a claimed handle
-  (`ssh_login_challenges.claimed_handle`) is reserved in the schema but not implemented; there
-  is currently no way for a request to supply one.
+  would never see the same bucket twice. **Status: planned** — narrowing _login_ by a claimed
+  handle is reserved in the RPC (`BeginSshLoginRequest`) but not implemented; there is
+  currently no way for a request to supply one.
 - **No enumeration.** SSH public keys are public — GitHub serves them at `/<user>.keys` — so
   confirming "this key is enrolled here" links an external identity to a Patches account.
   `BeginSshLogin` returns a challenge regardless of enrollment, and every `CompleteSshLogin`
@@ -150,6 +153,45 @@ At registration the TUI may enumerate agent identities and `~/.ssh/*.pub` and of
 "found 3 SSH identities, use `id_ed25519` as your Patches identity key?" Enrollment is always
 explicit confirmation, never automatic. Multiple keys per user is the normal case; each gets a
 `label` ("work laptop").
+
+`AddCredential(SSH_PUBLIC_KEY)` requires a **server-verified possession proof** (B-021), not
+just the client's own local check the agent will vouch for the key:
+
+```text
+(authenticated)  BeginSshEnrollment(public_key_openssh)
+                 |----------------------------------------------------------->|  issue a
+                 |<-----------------------------------------------------------|  challenge
+
+                 sign the enroll-domain blob via the agent, never a private key
+
+(authenticated)  AddCredential(SSH_PUBLIC_KEY, secret, ssh_proof: {challenge_id, signature})
+                 |----------------------------------------------------------->|  verify sig
+                 |<-----------------------------------------------------------|  credential
+```
+
+`BeginSshEnrollment` is authenticated (`AuthGuard`) and issues a single-use, TTL ≤ 120 s
+challenge from the same `ssh_login_challenges` table as login, bound at issuance to the
+caller's own `user_id` and to the fingerprint of `public_key_openssh` — unlike login, there is
+no enumeration concern here (the caller already proved who they are), so the binding happens
+up front rather than being re-derived at completion. The signed blob is the same fixed-order
+encoding as login's, but with domain separator `"patches-ssh-enroll-v1"`
+(`SSH_ENROLL_DOMAIN_SEPARATOR` in `@patches/domain`) in place of `"patches-ssh-login-v1"`, so a
+login signature can never be replayed as an enrollment proof or vice versa. Verification reuses
+the exact same signature verifier as login (`verifySshSignature`), so SHA-1 `ssh-rsa` and
+sub-2048-bit RSA are rejected identically. Every failure — missing proof, wrong user, wrong
+key, expired or replayed challenge, bad signature — is either `VALIDATION_ERROR` (proof
+missing entirely — a client bug, not an auth failure) or one uniform `AUTH_INVALID_CREDENTIALS`
+(→ `UNAUTHENTICATED`) for everything else, mirroring login's no-distinguishing-failure-modes
+reasoning even though enumeration itself isn't the threat model here.
+
+**Storage deviation, tracked as a follow-up.** `ssh_login_challenges` has no dedicated
+`purpose`/bound-user/bound-fingerprint columns — adding them would touch `packages/database`,
+outside this change's owned files. The enrollment binding is instead JSON-encoded into the
+existing nullable `claimed_handle` text column (`sshEnrollmentBindingSchema` in
+`apps/server/src/modules/auth/validation.ts`), which login challenges always leave `null`. A
+future migration should give enrollment its own `purpose` discriminator and typed binding
+columns instead of overloading a column named for a different, still-unimplemented feature
+(the claimed-handle narrowing noted above).
 
 > Open implementation question for Phase 1: which Node library verifies OpenSSH-format public
 > key signatures. This needs a `docs/research/` note verified against the library's own docs

@@ -47,6 +47,8 @@ export type {
   AuthServiceController,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
+  BeginSshEnrollmentRequest,
+  BeginSshEnrollmentResponse,
   BeginSshLoginRequest,
   BeginSshLoginResponse,
   CompleteSshLoginRequest,
@@ -77,6 +79,7 @@ export type {
   RevokeCredentialRequest,
   RevokeCredentialResponse,
   Session,
+  SshEnrollmentProof,
   VerifyEmailRequest,
   VerifyEmailResponse,
 } from './generated/patches/v1/auth.js';

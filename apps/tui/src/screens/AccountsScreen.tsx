@@ -122,6 +122,7 @@ export function AccountsScreen({
       const { credential } = await enrollSshCredential({
         api,
         accessToken,
+        nodeDomain: api.target,
         socketPath,
         identity: candidate,
       });

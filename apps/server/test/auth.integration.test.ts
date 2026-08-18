@@ -7,9 +7,17 @@ import {
 } from '@grpc/grpc-js';
 import { Credential, OutboxJob, RefreshToken, SshLoginChallenge, User } from '@patches/database';
 import {
+  buildSshChallengeBlob,
+  encodeSshStrings,
+  SSH_ENROLL_DOMAIN_SEPARATOR,
+  SSH_LOGIN_DOMAIN_SEPARATOR,
+} from '@patches/domain';
+import {
   type AddCredentialRequest,
   type AddCredentialResponse,
   type AuthGrpcClient,
+  type BeginSshEnrollmentRequest,
+  type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
   type CompleteSshLoginRequest,
@@ -44,8 +52,6 @@ import { createTestUser } from '@patches/testkit';
 import { Not, type DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { buildSshChallengeBlob } from '../src/modules/auth/ssh/challenge-blob.js';
-import { encodeSshStrings } from '../src/modules/auth/ssh/wire.js';
 import { createServerTestDataSource } from './support/database.js';
 import {
   callUnary,
@@ -172,6 +178,19 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         publicKeyLine: `ssh-ed25519 ${blob.toString('base64')} integration@patches`,
         sign: (data) => encodeSshStrings(['ssh-ed25519', cryptoSign(null, data, privateKey)]),
       };
+    }
+
+    /** Runs `BeginSshEnrollment` for `identity`, returning the raw challenge so a test can
+     * either sign it correctly (B-021 happy path) or tamper with it. */
+    async function beginSshEnrollment(
+      identity: { publicKeyLine: string },
+      accessToken: string,
+    ): Promise<BeginSshEnrollmentResponse> {
+      return callUnary<BeginSshEnrollmentRequest, BeginSshEnrollmentResponse>(
+        auth.beginSshEnrollment.bind(auth),
+        { publicKeyOpenssh: identity.publicKeyLine },
+        { accessToken },
+      );
     }
 
     // ------------------------------------------------------------------ tests
@@ -599,6 +618,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .findOneByOrFail({ userId: await userIdForHandle(handle), type: 'SSH_PUBLIC_KEY' });
 
         const blob = buildSshChallengeBlob({
+          domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
           nodeDomain: TEST_NODE_DOMAIN,
           challengeId: challenge.challengeId,
           nonce: Buffer.from(challenge.nonce),
@@ -640,6 +660,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(challenge.challengeId).toMatch(/^[0-9a-f-]{36}$/);
 
         const blob = buildSshChallengeBlob({
+          domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
           nodeDomain: TEST_NODE_DOMAIN,
           challengeId: challenge.challengeId,
           nonce: Buffer.from(challenge.nonce),
@@ -681,6 +702,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         // The exact blob this node would build, except for the node domain — as if the
         // signature had been captured for `other.example` and replayed here.
         const foreignBlob = buildSshChallengeBlob({
+          domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
           nodeDomain: 'other.example',
           challengeId: challenge.challengeId,
           nonce: Buffer.from(challenge.nonce),
@@ -718,6 +740,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .update({ id: challenge.challengeId }, { expiresAt: new Date(Date.now() - 1000) });
 
         const blob = buildSshChallengeBlob({
+          domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
           nodeDomain: TEST_NODE_DOMAIN,
           challengeId: challenge.challengeId,
           nonce: Buffer.from(challenge.nonce),
@@ -761,12 +784,30 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const accessToken = session?.accessToken ?? '';
         const identity = sshIdentity();
 
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        const blob = buildSshChallengeBlob({
+          domainSeparator: SSH_ENROLL_DOMAIN_SEPARATOR,
+          nodeDomain: TEST_NODE_DOMAIN,
+          challengeId: challenge.challengeId,
+          nonce: Buffer.from(challenge.nonce),
+          fingerprint: `SHA256:${createHash('sha256')
+            .update(Buffer.from(identity.publicKeyLine.split(' ')[1] ?? '', 'base64'))
+            .digest('base64')
+            .replace(/=+$/, '')}`,
+          expiresAt: timestampToDate(challenge.expiresAt) ?? new Date(0),
+        });
+
         const added = await callUnary<AddCredentialRequest, AddCredentialResponse>(
           auth.addCredential.bind(auth),
           {
             type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
             secret: identity.publicKeyLine,
             label: 'laptop',
+            sshProof: {
+              challengeId: challenge.challengeId,
+              signature: identity.sign(blob),
+              signatureFormat: 'ssh-ed25519',
+            },
           },
           { accessToken },
         );
@@ -799,6 +840,206 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { accessToken },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+    });
+
+    describe('SSH credential enrollment (B-021)', () => {
+      /** The exact enroll-domain blob this node would build for `challenge`/`identity`. */
+      function enrollBlobFor(
+        challenge: BeginSshEnrollmentResponse,
+        identity: { publicKeyLine: string },
+      ): Buffer {
+        return buildSshChallengeBlob({
+          domainSeparator: SSH_ENROLL_DOMAIN_SEPARATOR,
+          nodeDomain: TEST_NODE_DOMAIN,
+          challengeId: challenge.challengeId,
+          nonce: Buffer.from(challenge.nonce),
+          fingerprint: `SHA256:${createHash('sha256')
+            .update(Buffer.from(identity.publicKeyLine.split(' ')[1] ?? '', 'base64'))
+            .digest('base64')
+            .replace(/=+$/, '')}`,
+          expiresAt: timestampToDate(challenge.expiresAt) ?? new Date(0),
+        });
+      }
+
+      it('enrolls with a valid proof, and the key is then listed', async () => {
+        const handle = `sshenroll${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        const added = await callUnary<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: identity.publicKeyLine,
+            label: '',
+            sshProof: {
+              challengeId: challenge.challengeId,
+              signature: identity.sign(enrollBlobFor(challenge, identity)),
+              signatureFormat: 'ssh-ed25519',
+            },
+          },
+          { accessToken },
+        );
+        expect(added.credential?.identifier).toBe(
+          `SHA256:${createHash('sha256')
+            .update(Buffer.from(identity.publicKeyLine.split(' ')[1] ?? '', 'base64'))
+            .digest('base64')
+            .replace(/=+$/, '')}`,
+        );
+
+        const listed = await callUnary<ListCredentialsRequest, ListCredentialsResponse>(
+          auth.listCredentials.bind(auth),
+          {},
+          { accessToken },
+        );
+        expect(listed.credentials.map((credential) => credential.identifier)).toContain(
+          added.credential?.identifier,
+        );
+      });
+
+      it('rejects AddCredential(SSH_PUBLIC_KEY) with no proof at all', async () => {
+        const handle = `sshnoproof${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+
+        const error = await expectRejection<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: identity.publicKeyLine,
+            label: '',
+            sshProof: undefined,
+          },
+          { accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+
+      it('rejects a proof signed by a key other than the one being enrolled', async () => {
+        const handle = `sshwrongkey${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+        const otherIdentity = sshIdentity();
+
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        const error = await expectRejection<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: identity.publicKeyLine,
+            label: '',
+            sshProof: {
+              challengeId: challenge.challengeId,
+              // Signed by a different identity than the one named in `secret`.
+              signature: otherIdentity.sign(enrollBlobFor(challenge, identity)),
+              signatureFormat: 'ssh-ed25519',
+            },
+          },
+          { accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('rejects a proof for a key different from the one the challenge was bound to', async () => {
+        const handle = `sshboundkey${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+        const otherIdentity = sshIdentity();
+
+        // The challenge is bound to `identity`'s fingerprint at BeginSshEnrollment time; trying
+        // to redeem it for `otherIdentity` instead must fail even with a self-consistent
+        // signature over `otherIdentity`'s own blob.
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        const error = await expectRejection<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: otherIdentity.publicKeyLine,
+            label: '',
+            sshProof: {
+              challengeId: challenge.challengeId,
+              signature: otherIdentity.sign(enrollBlobFor(challenge, otherIdentity)),
+              signatureFormat: 'ssh-ed25519',
+            },
+          },
+          { accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('rejects a proof for an expired challenge', async () => {
+        const handle = `sshexpiredenroll${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        await dataSource
+          .getRepository(SshLoginChallenge)
+          .update({ id: challenge.challengeId }, { expiresAt: new Date(Date.now() - 1000) });
+
+        const error = await expectRejection<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: identity.publicKeyLine,
+            label: '',
+            sshProof: {
+              challengeId: challenge.challengeId,
+              signature: identity.sign(enrollBlobFor(challenge, identity)),
+              signatureFormat: 'ssh-ed25519',
+            },
+          },
+          { accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('rejects a replayed proof — the challenge is single-use', async () => {
+        const handle = `sshreplayenroll${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+        const identity = sshIdentity();
+
+        const challenge = await beginSshEnrollment(identity, accessToken);
+        const proof = {
+          challengeId: challenge.challengeId,
+          signature: identity.sign(enrollBlobFor(challenge, identity)),
+          signatureFormat: 'ssh-ed25519',
+        };
+
+        await callUnary<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: identity.publicKeyLine,
+            label: '',
+            sshProof: proof,
+          },
+          { accessToken },
+        );
+
+        // A second AddCredential with the same challenge id/signature — for a different
+        // identity this time, since the first one is already enrolled — finds the challenge
+        // already consumed.
+        const secondIdentity = sshIdentity();
+        const error = await expectRejection<AddCredentialRequest, AddCredentialResponse>(
+          auth.addCredential.bind(auth),
+          {
+            type: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
+            secret: secondIdentity.publicKeyLine,
+            label: '',
+            sshProof: proof,
+          },
+          { accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
       });
     });
 

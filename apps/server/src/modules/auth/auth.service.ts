@@ -32,6 +32,7 @@ import {
   type IssuedSshChallenge,
   SshChallengeService,
   sshAuthenticationFailed,
+  sshEnrollmentProofRequired,
 } from './ssh-challenge.service.js';
 import { parseOpenSshPublicKey } from './ssh/openssh.js';
 import {
@@ -111,10 +112,19 @@ export type GitHubLoginPollResult =
   | { status: 'DENIED' }
   | { status: 'COMPLETE'; session: SessionEnvelope };
 
+/** Possession proof from a prior `beginSshEnrollment` call (B-021). Required when `type ===
+ * 'SSH_PUBLIC_KEY'`; ignored for `PASSWORD`. */
+export interface SshEnrollmentProofInput {
+  challengeId: string;
+  signature: Buffer;
+  signatureFormat: string;
+}
+
 export interface AddCredentialInput {
   type: 'PASSWORD' | 'SSH_PUBLIC_KEY';
   secret: string;
   label?: string;
+  sshProof?: SshEnrollmentProofInput;
 }
 
 @Injectable()
@@ -625,6 +635,31 @@ export class AuthService {
     });
   }
 
+  /**
+   * Issues an SSH credential-enrollment challenge (B-021), bound to the *authenticated*
+   * caller and the fingerprint of the key they intend to enroll — unlike `beginSshLogin`,
+   * enumeration is not a concern here (the caller already proved who they are), so the
+   * challenge is bound up front rather than re-derived at completion.
+   *
+   * Rate-limited on both peer and subject (the caller's own `userId`) — this endpoint carries
+   * a trustworthy subject, unlike anonymous `beginSshLogin` (see its own doc comment).
+   */
+  async beginSshEnrollment(
+    claims: AccessTokenClaims,
+    publicKeyOpenssh: string,
+  ): Promise<IssuedSshChallenge> {
+    this.rateLimit.consumePeer('ssh_challenge', getRequestContext()?.peer);
+    await this.rateLimit.consumeDistributedPeer('ssh_challenge', getRequestContext()?.peer);
+    this.rateLimit.consume('ssh_challenge', `enroll:${claims.userId}`);
+    await this.rateLimit.consumeDistributed('ssh_challenge', `enroll:${claims.userId}`);
+
+    const key = parseSshPublicKeyForEnrollment(publicKeyOpenssh);
+    return this.sshChallenges.beginEnrollment(this.dataSource.manager, {
+      userId: claims.userId,
+      fingerprint: key.fingerprint,
+    });
+  }
+
   // ---------------------------------------------------------------- GitHub device flow
 
   /**
@@ -807,7 +842,29 @@ export class AuthService {
       });
     }
 
-    const key = parseSshPublicKeyForEnrollment(parsed.secret);
+    // A friendly `VALIDATION_ERROR` for a malformed key line before anything security-critical
+    // runs — `consumeEnrollmentProof` below re-parses the same text and is the source of truth
+    // for the fingerprint actually enrolled, but its own failures are all the uniform
+    // `sshEnrollmentProofInvalid()` (B-021), which is the wrong message for "not an OpenSSH key
+    // at all".
+    parseSshPublicKeyForEnrollment(parsed.secret);
+
+    this.rateLimit.consumePeer('ssh_complete', getRequestContext()?.peer);
+
+    if (input.sshProof === undefined) throw sshEnrollmentProofRequired();
+
+    // B-021: proves the caller actually holds the private key for `parsed.secret`, against
+    // the challenge issued by `beginSshEnrollment` for this same user and fingerprint. Every
+    // failure mode (missing/expired/replayed/wrong-user/wrong-key/bad signature) is the
+    // uniform `sshEnrollmentProofInvalid()`.
+    const key = await this.sshChallenges.consumeEnrollmentProof(this.dataSource.manager, {
+      userId: claims.userId,
+      challengeId: input.sshProof.challengeId,
+      publicKeyOpenssh: parsed.secret,
+      signature: input.sshProof.signature,
+      signatureFormat: input.sshProof.signatureFormat,
+    });
+
     const credentials = this.dataSource.getRepository(Credential);
     const alreadyEnrolled = await credentials.existsBy({
       type: 'SSH_PUBLIC_KEY',
@@ -816,8 +873,9 @@ export class AuthService {
     });
     if (alreadyEnrolled) {
       // §166's no-enumeration rule governs *unauthenticated* endpoints; here the caller is
-      // authenticated and needs to be told why their key was refused. One key still
-      // authenticates at most one account per node (§165).
+      // authenticated (and has just proven possession of the key) and needs to be told why
+      // their key was refused. One key still authenticates at most one account per node
+      // (§165).
       throw AppError.validation('That SSH key is already enrolled on this node.');
     }
 
@@ -826,7 +884,9 @@ export class AuthService {
         userId: claims.userId,
         type: 'SSH_PUBLIC_KEY',
         identifier: key.fingerprint,
-        publicMaterial: key.line,
+        // Stored without the comment so the same key enrolled from two machines is
+        // byte-identical (mirrors `parseSshPublicKeyForEnrollment`'s `line`).
+        publicMaterial: `${key.algorithm} ${key.blob.toString('base64')}`,
         label: parsed.label ?? key.comment ?? null,
         metadata: { algorithm: key.algorithm },
       }),
