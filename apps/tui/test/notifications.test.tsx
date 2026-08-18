@@ -1,7 +1,7 @@
 import { NOTIFICATION_TYPE } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
  * P4-004: notifications screen (`g n`) and the unread-count badge in the status
@@ -10,6 +10,7 @@ import { createFakeApi, flush, KEY, renderApp } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -22,7 +23,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 async function pressGo(press: (input: string) => void, letter: string): Promise<void> {
@@ -41,15 +47,13 @@ describe('Notifications (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
-    await flush(60); // useUnreadCount's first poll
+    await loginAs(press, lastFrame, 'alice', 'x');
 
-    expect(lastFrame() ?? '').toContain('1 unread');
+    await expectFrame(lastFrame, '1 unread');
 
     await pressGo(press, 'n');
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Notifications');
+    const frame = await expectFrame(lastFrame, 'Notifications');
     expect(frame).toContain('@bob');
     expect(frame).toContain('followed you');
     unmount();
@@ -63,15 +67,13 @@ describe('Notifications (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await flush(60);
     await pressGo(press, 'n');
 
     press('m');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('unread');
+    await waitForFrame(lastFrame, (f) => !f.includes('unread'));
     unmount();
   });
 
@@ -84,14 +86,12 @@ describe('Notifications (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'n');
 
     press(KEY.enter);
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Thread');
+    const frame = await expectFrame(lastFrame, 'Thread');
     expect(frame).toContain('Alice liked-by-bob post');
     unmount();
   });

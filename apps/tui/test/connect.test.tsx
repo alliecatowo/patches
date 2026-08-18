@@ -1,15 +1,13 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { flush, renderApp } from './harness.js';
+import { expectFrame, renderApp } from './harness.js';
 
 describe('connect screen (B-015)', () => {
   it('shows the server identity once GetServerInfo answers, then the status bar', async () => {
     const { lastFrame, unmount } = renderApp();
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Connected to patches-test.');
+    const frame = await expectFrame(lastFrame, 'Connected to patches-test.');
     expect(frame).toContain('0.1.0 (protocol v1)');
     expect(frame).toContain('connected');
     // Not signed in yet — the status bar shows no `@handle`.
@@ -33,14 +31,12 @@ describe('connect screen (B-015)', () => {
       fakeOptions: { getServerInfoImpl },
     });
 
-    await flush();
-    expect(lastFrame() ?? '').toContain("Can't reach the Patches server");
-    expect(lastFrame() ?? '').toContain('offline');
+    const frame = await expectFrame(lastFrame, "Can't reach the Patches server");
+    expect(frame).toContain('offline');
 
     press('R');
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('Connected to patches-test.');
+    await expectFrame(lastFrame, 'Connected to patches-test.');
     unmount();
   });
 });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 // Same minimal, structurally-valid PNG `src/media/validate.test.ts` uses.
 const MINIMAL_PNG = Buffer.from(
@@ -14,6 +14,7 @@ const MINIMAL_PNG = Buffer.from(
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -26,7 +27,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
@@ -49,29 +55,34 @@ describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
     const { press, lastFrame, unmount } = renderApp({ fake });
 
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     press('c');
     await flush();
     press(KEY.ctrlA);
+    await expectFrame(lastFrame, 'Attach path:');
     await flush();
-    expect(lastFrame() ?? '').toContain('Attach path:');
     press(photoPath);
     await flush();
     press(KEY.enter);
     // Upload + finalize + poll all resolve against the fake in-process, but each is a
-    // real microtask hop — give them room to settle.
-    await flush(300);
-
-    const attached = lastFrame() ?? '';
-    expect(attached).toContain('photo.png');
+    // real microtask hop — poll for the attached filename rather than sleeping past them.
+    // Wait on the attachment badge specifically, not bare 'photo.png' — the raw path
+    // being typed above already contains that substring before Enter is even processed.
+    const attached = await expectFrame(lastFrame, '[1] photo.png');
     expect(attached).not.toContain('Uploading');
+
+    await flush();
 
     // Ctrl+S submits the post with the uploaded media id attached.
     press('hello with a photo');
     await flush();
     press(KEY.ctrlS);
-    await flush(100);
+
+    // Submitting navigates away from compose to the new post's author profile
+    // (mirrors `screens.test.tsx`'s compose test) — wait for the post body to
+    // land there instead of sleeping a fixed duration past the submit RPC.
+    await expectFrame(lastFrame, 'hello with a photo');
     unmount();
 
     const posted = fake.findPostByBody('hello with a photo');
@@ -88,7 +99,7 @@ describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     press('c');
     await flush();
@@ -97,9 +108,8 @@ describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
     press(badPath);
     await flush();
     press(KEY.enter);
-    await flush(100);
 
-    const frame = lastFrame() ?? '';
+    const frame = await waitForFrame(lastFrame, (f) => /JPEG|PNG|WebP/.test(f));
     expect(frame).toMatch(/JPEG|PNG|WebP/);
     unmount();
   });

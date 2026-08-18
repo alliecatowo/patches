@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
  * P3-003: snapshot coverage for the Home feed (`ListHomeFeed`), Search
@@ -11,6 +11,7 @@ import { createFakeApi, flush, KEY, renderApp } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -23,12 +24,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  // A slightly more generous flush: this resolves a real Promise chain
-  // (loginWithPassword → applySession → setSession/setScreen) before the next
-  // press. `vitest.config.ts`'s `fileParallelism: false` is what actually fixed
-  // this project's flakiness under load (see its comment); this is just cheap
-  // extra headroom for a chain with more hops than most.
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 /** Same margin as `loginAs` for a `g <letter>` sequence — see its comment. */
@@ -52,12 +53,11 @@ describe('Home feed (P3-003)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     await pressGo(press, 'h');
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Alice own post');
+    const frame = await expectFrame(lastFrame, 'Alice own post');
     expect(frame).toContain('Bob post (followed)');
     expect(frame).not.toContain('Carol post (not followed)');
     unmount();
@@ -70,7 +70,7 @@ describe('Home feed (P3-003)', () => {
 
     await pressGo(press, 'h');
 
-    expect(lastFrame() ?? '').toContain('Log in first');
+    await expectFrame(lastFrame, 'Log in first');
     unmount();
   });
 });
@@ -89,15 +89,14 @@ describe('Search (P3-003)', () => {
     press('bob');
     await flush();
     press(KEY.enter);
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('@bob');
+    await expectFrame(lastFrame, '@bob');
+
+    await flush();
 
     press(KEY.enter);
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Bob the builder');
+    await expectFrame(lastFrame, 'Bob the builder');
     unmount();
   });
 
@@ -113,9 +112,8 @@ describe('Search (P3-003)', () => {
     press('nobody-with-this-handle');
     await flush();
     press(KEY.enter);
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('No matches.');
+    await expectFrame(lastFrame, 'No matches.');
     unmount();
   });
 });
@@ -129,28 +127,27 @@ describe('Follow control (P3-003)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     // Open bob's profile from the local feed (`p` — `Enter` opens the thread since P4-004).
     await pressGo(press, 'l');
     press('p');
-    await flush();
-    await flush(); // relationship fetch is a second async round trip
 
-    expect(lastFrame() ?? '').toContain('not following');
+    await expectFrame(lastFrame, 'not following');
+
+    await flush();
 
     press('f');
-    await flush();
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('following');
-    expect(lastFrame() ?? '').not.toContain('not following');
+    // 'not following' contains 'following' as a substring, so wait for the
+    // negative case explicitly rather than a plain `includes('following')`.
+    await waitForFrame(lastFrame, (f) => f.includes('following') && !f.includes('not following'));
+
+    await flush();
 
     press('f');
-    await flush();
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('not following');
+    await expectFrame(lastFrame, 'not following');
     unmount();
   });
 
@@ -160,13 +157,15 @@ describe('Follow control (P3-003)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
 
     await pressGo(press, 'p');
 
+    // Wait on the counts line settling (own-profile fetch) — follow-control phrases
+    // never appear for the caller's own profile, so there's nothing to poll for there.
     // Not `.not.toContain('following')` — the counts line ("0 following") always has
     // that substring; assert the follow-control phrases specifically instead.
-    const frame = lastFrame() ?? '';
+    const frame = await expectFrame(lastFrame, '0 following');
     expect(frame).not.toContain('not following');
     expect(frame).not.toContain('f to follow');
     expect(frame).not.toContain('f to unfollow');

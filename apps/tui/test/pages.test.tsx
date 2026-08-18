@@ -3,10 +3,11 @@ import { writeFileSync } from 'node:fs';
 import type { PatchesPage } from '@patches/domain';
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -19,7 +20,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 /** Opens the caller's own page (`g v`) — the shortest path to `PageScreen` in a test,
@@ -56,24 +62,21 @@ describe('PageScreen navigation (P45-006/007)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await openOwnPage(press);
 
-    let frame = lastFrame() ?? '';
-    expect(frame).toContain('Welcome');
+    const frame = await expectFrame(lastFrame, 'Welcome');
     expect(frame).toContain('to my page');
     expect(frame).toContain('e edit');
     expect(frame).not.toContain('the about sub-page');
 
     press(']');
+    await expectFrame(lastFrame, 'the about sub-page');
+
     await flush();
-    frame = lastFrame() ?? '';
-    expect(frame).toContain('the about sub-page');
 
     press('[');
-    await flush();
-    frame = lastFrame() ?? '';
-    expect(frame).toContain('Welcome');
+    await expectFrame(lastFrame, 'Welcome');
     unmount();
   });
 
@@ -88,11 +91,10 @@ describe('PageScreen navigation (P45-006/007)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake, env: { PATCHES_PLAIN: '1' } });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await openOwnPage(press);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('hello');
+    const frame = await expectFrame(lastFrame, 'hello');
     // No 256/truecolor magenta escape and no box-drawing border characters.
     expect(frame).not.toMatch(/\[38/);
     expect(frame).not.toContain('╭');
@@ -111,19 +113,17 @@ describe('PageScreen guestbook (P45-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await openOwnPage(press);
 
-    expect(lastFrame() ?? '').toContain('No guestbook entries yet.');
+    await expectFrame(lastFrame, 'No guestbook entries yet.');
     press('s');
     await flush();
     press('nice page!');
     await flush();
     press(KEY.enter);
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('nice page!');
+    const frame = await expectFrame(lastFrame, 'nice page!');
     expect(frame).toContain('@alice');
     unmount();
   });
@@ -148,15 +148,13 @@ describe('PageScreen editor round trip (P45-006)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake, pageEditorOptions: { runEditor } });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await openOwnPage(press);
 
-    expect(lastFrame() ?? '').toContain('original');
+    await expectFrame(lastFrame, 'original');
     press('e');
-    await flush(100);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('edited by hand');
+    const frame = await expectFrame(lastFrame, 'edited by hand');
     expect(frame).toContain('Saved.');
     unmount();
   });
@@ -175,15 +173,15 @@ describe('PageScreen editor round trip (P45-006)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake, pageEditorOptions: { runEditor } });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await openOwnPage(press);
 
     press('e');
-    await flush(100);
 
-    const frame = lastFrame() ?? '';
+    // 'original' (the untouched document) is already on screen before this edit
+    // attempt, so wait on the validation error actually appearing instead.
+    const frame = await waitForFrame(lastFrame, (f) => /not valid JSON/i.test(f));
     expect(frame).toContain('original');
-    expect(frame).toMatch(/not valid JSON/i);
     unmount();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp } from './harness.js';
 
 /**
  * B-017: snapshot tests for the flows `connect.test.tsx`/`help.test.tsx` don't
@@ -28,9 +28,8 @@ describe('login flow (B-017)', () => {
     press('hunter2');
     await flush();
     press(KEY.enter);
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('· @alice');
+    await expectFrame(lastFrame, '· @alice');
     unmount();
   });
 });
@@ -51,6 +50,12 @@ describe('compose (B-017)', () => {
     press('hunter2');
     await flush();
     press(KEY.enter);
+
+    // Wait for the status bar to actually show the signed-in handle before pressing
+    // 'c' — a fixed flush() here was occasionally too short for the app-level input
+    // handler to resubscribe with the just-committed session, silently dropping 'c'.
+    await expectFrame(lastFrame, '· @alice');
+
     await flush();
 
     press('c');
@@ -58,13 +63,8 @@ describe('compose (B-017)', () => {
     press('Hello world');
     await flush();
     press(KEY.ctrlS);
-    await flush();
-    // Navigation to the profile screen happens immediately on submit; its post
-    // timeline (`listActorPosts`) is a separate async fetch that needs another tick.
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Hello world');
+    const frame = await expectFrame(lastFrame, 'Hello world');
     expect(frame).toContain('@alice');
     unmount();
   });
@@ -93,15 +93,18 @@ describe('profile screen (B-017)', () => {
     press('x');
     await flush();
     press(KEY.enter);
+
+    // See the compose test's comment above — wait for the settled session
+    // before firing 'g', or the app-level input handler can drop it.
+    await expectFrame(lastFrame, '· @alice');
+
     await flush();
 
     press('g');
     await flush();
     press('p');
-    await flush();
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Alice A');
+    const frame = await expectFrame(lastFrame, 'Alice A');
     expect(frame).toContain('Bio text here');
     expect(frame).toContain('2 posts · 0 followers · 0 following');
     unmount();
@@ -121,14 +124,14 @@ describe('local feed pagination (B-017)', () => {
     press('g');
     await flush();
     press('l');
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('n / space for more');
+    await expectFrame(lastFrame, 'n / space for more');
+
+    await flush();
 
     press('n');
-    await flush();
 
-    expect(lastFrame() ?? '').toContain('— end of the timeline —');
+    await expectFrame(lastFrame, '— end of the timeline —');
     unmount();
   });
 });
@@ -157,11 +160,11 @@ describe('PostList selection (B-017, P4-004)', () => {
     press('j');
     await flush(60);
     press('p');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
+    // '@alice' is already visible as a post author in the local feed row, so wait
+    // on the bio line, which only appears once the profile screen has loaded.
+    const frame = await expectFrame(lastFrame, 'Alice bio');
     expect(frame).toContain('@alice');
-    expect(frame).toContain('Alice bio');
     unmount();
   });
 
@@ -186,11 +189,11 @@ describe('PostList selection (B-017, P4-004)', () => {
     await flush(60);
 
     press('p');
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
+    // '@bob' is already visible as a post author in the local feed row, so wait
+    // on the bio line, which only appears once the profile screen has loaded.
+    const frame = await expectFrame(lastFrame, 'Bob bio');
     expect(frame).toContain('@bob');
-    expect(frame).toContain('Bob bio');
     unmount();
   });
 
@@ -208,11 +211,8 @@ describe('PostList selection (B-017, P4-004)', () => {
     await flush(60);
 
     press(KEY.enter);
-    await flush(60);
-    await flush(60);
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Thread');
+    const frame = await expectFrame(lastFrame, 'Thread');
     expect(frame).toContain('Bob root post');
     unmount();
   });
