@@ -16,11 +16,14 @@ export interface OpenMediaOptions {
   platform?: NodeJS.Platform;
 }
 
-function isTruthyEnv(value: string | undefined): boolean {
+/** Exported for `pages/open-link.ts` — the same `PATCHES_NO_OPEN` test/CI escape
+ * hatch applies to opening a page `Link` externally. */
+export function isTruthyEnv(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== '0' && value.toLowerCase() !== 'false';
 }
 
-function realSpawn(command: string, args: readonly string[]): void {
+/** Exported for `pages/open-link.ts` — the real (non-test) `SpawnFn` implementation. */
+export function realSpawn(command: string, args: readonly string[]): void {
   const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
   // No OS opener configured (common in headless/CI shells) is not this code's problem
   // to report — the fallback box already told the user "press o to open externally".
@@ -28,7 +31,10 @@ function realSpawn(command: string, args: readonly string[]): void {
   child.unref();
 }
 
-function openerCommand(platform: NodeJS.Platform, path: string): [string, string[]] {
+/** Exported for `pages/open-link.ts` (P45-004/006's "Enter opens a page Link
+ * externally") — the OS-opener command mapping is the same regardless of whether the
+ * target is a cached local file or a `http(s)` URL. */
+export function openerCommand(platform: NodeJS.Platform, path: string): [string, string[]] {
   if (platform === 'darwin') return ['open', [path]];
   if (platform === 'win32') return ['cmd', ['/c', 'start', '', path]];
   return ['xdg-open', [path]];
