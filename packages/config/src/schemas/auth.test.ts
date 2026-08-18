@@ -65,6 +65,9 @@ describe('authEnvSchema', () => {
 
   it('refuses Argon2id parameters below the OWASP baseline (§34)', () => {
     expect(() => authEnvSchema.parse({ ARGON2_MEMORY_KIB: '1024' })).toThrow(z.ZodError);
+    // The floor is the documented default (19,456 KiB) itself — an operator can raise it for
+    // their hardware but never configure something weaker than the baseline (spec §102 review).
+    expect(() => authEnvSchema.parse({ ARGON2_MEMORY_KIB: '8192' })).toThrow(z.ZodError);
     expect(() => authEnvSchema.parse({ ARGON2_TIME_COST: '1' })).toThrow(z.ZodError);
   });
 

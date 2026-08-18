@@ -73,7 +73,7 @@ export const authEnvShape = {
    * §34 requires them to be benchmarked on deployment hardware — the defaults are the floor,
    * not a target.
    */
-  ARGON2_MEMORY_KIB: z.coerce.number().int().min(8192).default(19_456),
+  ARGON2_MEMORY_KIB: z.coerce.number().int().min(19_456).default(19_456),
   ARGON2_TIME_COST: z.coerce.number().int().min(2).default(2),
   ARGON2_PARALLELISM: z.coerce.number().int().min(1).max(16).default(1),
 };
