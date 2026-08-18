@@ -57,12 +57,16 @@ export class RpcExceptionsFilter implements RpcExceptionFilter<unknown> {
     const requestId = getRequestContext()?.requestId;
 
     if (isAppError(exception)) {
-      // Expected, handled failures: log at warn without a stack.
+      // Expected, handled failures: log at warn without a stack. `exception.context` is nested
+      // under its own key rather than spread into the line — spreading it would let an
+      // `AppError`'s caller-chosen context keys silently overwrite `msg`/`errorCode`/
+      // `requestId` above (spec §57's structured-log fields must stay well-formed regardless
+      // of what a given throw site put in `context`).
       this.logger.warn({
         msg: 'rpc.error',
         errorCode: exception.code,
         requestId,
-        ...exception.context,
+        context: exception.context,
       });
       return this.build(
         grpcStatusForErrorCode(exception.code),
