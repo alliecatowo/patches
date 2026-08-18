@@ -5,7 +5,7 @@ roadmap and acceptance checklists in one place so status can be tracked without 
 the full spec. Update the status line at the top of each phase as work lands — don't let
 this drift into fiction.
 
-**As of 2026-08-17: Phase 0 (repository and risk spikes) is functionally complete pending manual Kitty image confirmation; Phase 1 starts next.** No later phase
+**As of 2026-08-17: Phase 0 (repository and risk spikes) is complete; Phase 1 (persistence and auth) is in progress.** No later phase
 has started.
 
 ---
@@ -213,8 +213,8 @@ These are the literal go/no-go gates from the spec (§§157–160). A phase or m
 - [x] TUI performs a real gRPC request.
 - [x] request failures render cleanly.
 - [x] Kitty capability can be detected.
-- [ ] a test image renders in Kitty. _(spike implemented — `pnpm --filter @patches/terminal-media spike`; awaiting manual confirmation in Ghostty/kitty)_
-- [ ] the image can be cleared. _(same spike; manual confirmation pending)_
+- [x] a test image renders in Kitty. _(confirmed manually in Ghostty 1.3, 2026-08-17)_
+- [x] the image can be cleared. _(confirmed manually in Ghostty 1.3, 2026-08-17)_
 - [x] terminal state restores after exit.
 - [x] CI executes build/typecheck/test skeleton. _(workflow written + actionlint-clean; first real run happens on the PR)_
 
