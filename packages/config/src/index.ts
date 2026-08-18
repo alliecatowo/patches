@@ -18,3 +18,6 @@ export type { EmailEnv } from './schemas/email.js';
 
 export { storageEnvSchema } from './schemas/storage.js';
 export type { StorageEnv } from './schemas/storage.js';
+
+export { authEnvSchema, authEnvShape } from './schemas/auth.js';
+export type { AuthEnv } from './schemas/auth.js';
