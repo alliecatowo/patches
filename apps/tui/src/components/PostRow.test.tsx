@@ -64,3 +64,47 @@ describe('PostRow content warnings (P3-003)', () => {
     expect(lastFrame()).toContain('hi[2Jthere');
   });
 });
+
+describe('PostRow media attachments (P5-003/B-004)', () => {
+  it('renders nothing extra for a post with no media', () => {
+    const { lastFrame } = render(<PostRow post={post()} />);
+    expect(lastFrame()).not.toContain('image ·');
+  });
+
+  it('renders the spec §75 fallback box outside a Kitty terminal/renderer context', () => {
+    const withMedia = post({
+      media: [
+        {
+          mediaId: 'media-1',
+          altText: '',
+          width: 800,
+          height: 600,
+          mimeType: 'image/jpeg',
+          position: 0,
+        },
+      ],
+    });
+    const { lastFrame } = render(<PostRow post={withMedia} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('image · 800×600 · jpeg');
+    expect(frame).toContain('press o to open externally');
+  });
+
+  it('does not render attachments behind an un-revealed content warning', () => {
+    const withMedia = post({
+      contentWarning: 'spoilers',
+      media: [
+        {
+          mediaId: 'media-1',
+          altText: '',
+          width: 10,
+          height: 10,
+          mimeType: 'image/png',
+          position: 0,
+        },
+      ],
+    });
+    const { lastFrame } = render(<PostRow post={withMedia} />);
+    expect(lastFrame() ?? '').not.toContain('image ·');
+  });
+});

@@ -22,6 +22,11 @@ export interface ComposeDraft {
   /** The reply target's `@handle`, purely for the "replying to @handle" header —
    * never sent to the server. */
   replyingToHandle?: string;
+  /** Already-uploaded, `READY` attachments in display order (spec §27–28: up to 4 per
+   * post) — `fileName` is display-only (never sent), `mediaId` is what `CreatePost`'s
+   * `media_ids` carries. Surviving a crash here means a completed upload is never
+   * silently lost even if the post itself never got sent (spec §80). */
+  attachments?: { mediaId: string; fileName: string }[];
 }
 
 /**
@@ -53,6 +58,22 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
+function isAttachmentList(
+  value: unknown,
+): value is { mediaId: string; fileName: string }[] | undefined {
+  if (value === undefined) return true;
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry: unknown) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as { mediaId?: unknown }).mediaId === 'string' &&
+        typeof (entry as { fileName?: unknown }).fileName === 'string',
+    )
+  );
+}
+
 function isComposeDraft(value: unknown): value is ComposeDraft {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<ComposeDraft>;
@@ -60,7 +81,8 @@ function isComposeDraft(value: unknown): value is ComposeDraft {
     typeof candidate.body === 'string' &&
     typeof candidate.clientRequestId === 'string' &&
     isOptionalString(candidate.inReplyToId) &&
-    isOptionalString(candidate.replyingToHandle)
+    isOptionalString(candidate.replyingToHandle) &&
+    isAttachmentList(candidate.attachments)
   );
 }
 

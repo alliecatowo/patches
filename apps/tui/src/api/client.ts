@@ -9,6 +9,7 @@ import {
   createModerationClient,
   createNodeClient,
   createNotificationClient,
+  createPageClient,
   createPostClient,
   createReactionClient,
   createSocialGraphClient,
@@ -46,6 +47,8 @@ import {
   type GetMediaDownloadRequest,
   type GetMediaDownloadResponse,
   type GetNodeInfoResponse,
+  type GetPageRequest,
+  type GetPageResponse,
   type GetPostRequest,
   type GetPostResponse,
   type GetRelationshipRequest,
@@ -70,8 +73,12 @@ import {
   type ListMutesResponse,
   type ListNotificationsRequest,
   type ListNotificationsResponse,
+  type ListPageRevisionsRequest,
+  type ListPageRevisionsResponse,
   type ListPostLikersRequest,
   type ListPostLikersResponse,
+  type ListGuestbookRequest,
+  type ListGuestbookResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
   type LoginRequest,
@@ -87,6 +94,7 @@ import {
   type MuteActorResponse,
   type NodeGrpcClient,
   type NotificationGrpcClient,
+  type PageGrpcClient,
   type PingResponse,
   type PostGrpcClient,
   type ReactionGrpcClient,
@@ -94,14 +102,20 @@ import {
   type RefreshSessionResponse,
   type RegisterRequest,
   type RegisterResponse,
+  type RemoveGuestbookEntryRequest,
+  type RemoveGuestbookEntryResponse,
   type ReportActorRequest,
   type ReportActorResponse,
+  type ReportGuestbookEntryRequest,
+  type ReportGuestbookEntryResponse,
   type ReportPostRequest,
   type ReportPostResponse,
   type RevokeCredentialRequest,
   type RevokeCredentialResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
+  type SignGuestbookRequest,
+  type SignGuestbookResponse,
   type SocialGraphGrpcClient,
   type SystemGrpcClient,
   type UnblockActorRequest,
@@ -114,6 +128,8 @@ import {
   type UnlikePostResponse,
   type UnmuteActorRequest,
   type UnmuteActorResponse,
+  type UpdatePageRequest,
+  type UpdatePageResponse,
 } from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
@@ -146,6 +162,7 @@ export class PatchesApi {
   private readonly notification: NotificationGrpcClient;
   private readonly moderation: ModerationGrpcClient;
   private readonly media: MediaGrpcClient;
+  private readonly page: PageGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -163,6 +180,7 @@ export class PatchesApi {
     this.notification = createNotificationClient(options.target, channelCredentials);
     this.moderation = createModerationClient(options.target, channelCredentials);
     this.media = createMediaClient(options.target, channelCredentials);
+    this.page = createPageClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -553,6 +571,67 @@ export class PatchesApi {
     );
   }
 
+  // ---- PageService — Patches Pages (spec §170–172), block-aware like GetPost/GetActor ----
+
+  /** Anonymous-callable (spec §170) — resolves `handle`/`slug` ("" = index). */
+  async getPage(request: GetPageRequest): Promise<GetPageResponse> {
+    return unary(this.page.getPage.bind(this.page), request, DEADLINES_MS.unary);
+  }
+
+  /** Owner-only whole-document replace, validated strictly server-side (spec §171). */
+  async updatePage(request: UpdatePageRequest, accessToken: string): Promise<UpdatePageResponse> {
+    return unary(this.page.updatePage.bind(this.page), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  /** The caller's own page's revision history — owner only. */
+  async listPageRevisions(
+    request: ListPageRevisionsRequest,
+    accessToken: string,
+  ): Promise<ListPageRevisionsResponse> {
+    return unary(
+      this.page.listPageRevisions.bind(this.page),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listGuestbook(request: ListGuestbookRequest): Promise<ListGuestbookResponse> {
+    return unary(this.page.listGuestbook.bind(this.page), request, DEADLINES_MS.unary);
+  }
+
+  /** Requires a session — there is no anonymous guestbook signature (spec §172). */
+  async signGuestbook(
+    request: SignGuestbookRequest,
+    accessToken: string,
+  ): Promise<SignGuestbookResponse> {
+    return unary(this.page.signGuestbook.bind(this.page), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async removeGuestbookEntry(
+    request: RemoveGuestbookEntryRequest,
+    accessToken: string,
+  ): Promise<RemoveGuestbookEntryResponse> {
+    return unary(
+      this.page.removeGuestbookEntry.bind(this.page),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async reportGuestbookEntry(
+    request: ReportGuestbookEntryRequest,
+    accessToken: string,
+  ): Promise<ReportGuestbookEntryResponse> {
+    return unary(
+      this.page.reportGuestbookEntry.bind(this.page),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
@@ -565,6 +644,7 @@ export class PatchesApi {
     this.notification.close();
     this.moderation.close();
     this.media.close();
+    this.page.close();
   }
 }
 
