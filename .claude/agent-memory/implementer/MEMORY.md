@@ -9,3 +9,7 @@
 - [Concurrent shared checkout hazard](concurrent-shared-checkout-hazard.md) — multiple agents can share one literal working directory on this project; commit+push in small frequent slices, re-verify after every pull --rebase
 - [Postgres TRUNCATE CASCADE unrelated FK](postgres-truncate-cascade-unrelated-fk.md) — TRUNCATE...CASCADE empties every table with an FK pointing at the truncated table, ignoring onDelete: SET NULL
 - [vitest CJS no top-level await](vitest-cjs-no-top-level-await-use-testcontext-skip.md) — apps/server and apps/worker are CJS; use beforeAll + ctx.skip() per-test, not top-level await, for async reachability probes
+- [admin CLI: no Nest pattern](admin-cli-no-nest-pattern.md) — apps/admin is a plain TS CLI (no @nestjs/*), talks to Postgres directly via @patches/database's createDataSource
+- [Ink testing-library row overflow](ink-testing-library-row-overflow.md) — App's fixed-height Box can overlap/garble lines when content exceeds terminal rows in tests; test content-heavy subtrees directly, not through full App
+- [Shared checkout branch switches](shared-checkout-branch-switches.md) — other agents can checkout a different branch entirely mid-task; re-check git branch/status and re-add paths right before every commit
+- [proto index.ts/nest.ts hand-maintained](proto-nest-index-hand-maintained-reexports.md) — new proto message/RPC must be added by hand to index.ts/nest.ts/constants.ts re-export lists; proto:gen alone doesn't expose it
