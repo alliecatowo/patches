@@ -29,6 +29,9 @@ export { Page } from './entities/page.entity.js';
 export { PageRevision } from './entities/page-revision.entity.js';
 export { PageAsset } from './entities/page-asset.entity.js';
 export { GuestbookEntry } from './entities/guestbook-entry.entity.js';
+export { FederationKey } from './entities/federation-key.entity.js';
+export { InboxActivity } from './entities/inbox-activity.entity.js';
+export { DomainBlock } from './entities/domain-block.entity.js';
 
 export {
   ADMIN_AUDIT_SUBJECT_TYPES,
@@ -77,9 +80,13 @@ export {
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   outboxBackoffDelayMs,
+  replayOutboxJob,
   DEFAULT_OUTBOX_BACKOFF,
 } from './repositories/outbox.js';
 export type { ClaimOutboxJobsOptions, OutboxBackoffOptions } from './repositories/outbox.js';
+
+export { appendAdminAuditLog } from './repositories/admin-audit.js';
+export type { AppendAdminAuditLogInput } from './repositories/admin-audit.js';
 
 export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
 
@@ -95,4 +102,6 @@ export {
   type CleanExpiredTokensPayload,
   cleanExpiredUploadsPayloadSchema,
   type CleanExpiredUploadsPayload,
+  federationDeliverPayloadSchema,
+  type FederationDeliverPayload,
 } from './jobs/payloads.js';

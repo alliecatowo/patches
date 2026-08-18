@@ -1,14 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { type DbRateLimitStore } from './db-rate-limit-store.service.js';
 import { RateLimitService } from './rate-limit.service.js';
 
 /** Time is injected rather than faked globally, so these tests never sleep. */
 const T0 = 1_800_000_000_000;
 
+/**
+ * A-018: these tests exercise the pre-existing in-memory `consume`/`consumePeer` behavior
+ * only, never `consumeDistributed`/`consumeDistributedPeer` — `DbRateLimitStore` needs a real
+ * Postgres connection, so it is never constructed for real here. A fake that would throw if
+ * ever called is enough to prove nothing in this file's assertions reaches it.
+ */
+function unusedDbRateLimitStore(): DbRateLimitStore {
+  return {
+    increment: () => {
+      throw new Error('DbRateLimitStore.increment should not be called by these unit tests');
+    },
+  } as unknown as DbRateLimitStore;
+}
+
 describe('RateLimitService', () => {
   it('allows attempts up to the window budget and then refuses', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 10; i += 1) {
       expect(() => {
         limiter.consume('login', 'alice', T0);
@@ -26,7 +41,7 @@ describe('RateLimitService', () => {
   });
 
   it('limits each subject independently', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 10; i += 1) limiter.consume('login', 'alice', T0);
     expect(() => {
       limiter.consume('login', 'bob', T0);
@@ -34,7 +49,7 @@ describe('RateLimitService', () => {
   });
 
   it('limits each action independently', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 5; i += 1) limiter.consume('register', 'alice', T0);
     expect(() => {
       limiter.consume('register', 'alice', T0);
@@ -45,7 +60,7 @@ describe('RateLimitService', () => {
   });
 
   it('starts a fresh window once the old one elapses', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 10; i += 1) limiter.consume('login', 'alice', T0);
     expect(() => {
       limiter.consume('login', 'alice', T0 + 5 * 60_000);
@@ -53,7 +68,7 @@ describe('RateLimitService', () => {
   });
 
   it('forgets a subject after a successful attempt', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 10; i += 1) limiter.consume('login', 'alice', T0);
     limiter.reset('login', 'alice');
     expect(() => {
@@ -62,7 +77,7 @@ describe('RateLimitService', () => {
   });
 
   it('keeps password reset on a much tighter budget than login', () => {
-    const limiter = new RateLimitService();
+    const limiter = new RateLimitService(unusedDbRateLimitStore());
     for (let i = 0; i < 5; i += 1) limiter.consume('password_reset', 'alice@example.com', T0);
     expect(() => {
       limiter.consume('password_reset', 'alice@example.com', T0);
@@ -71,7 +86,7 @@ describe('RateLimitService', () => {
 
   describe('consumePeer', () => {
     it('throttles a single peer across any number of distinct subjects', () => {
-      const limiter = new RateLimitService();
+      const limiter = new RateLimitService(unusedDbRateLimitStore());
       // `register`'s subject is caller-chosen (a fresh handle every attempt), so the subject
       // budget alone never re-hits the same bucket; the peer budget is what actually bounds
       // this caller.
@@ -86,7 +101,7 @@ describe('RateLimitService', () => {
     });
 
     it('limits each peer independently', () => {
-      const limiter = new RateLimitService();
+      const limiter = new RateLimitService(unusedDbRateLimitStore());
       for (let i = 0; i < 60; i += 1) limiter.consumePeer('login', '203.0.113.7', T0);
       expect(() => {
         limiter.consumePeer('login', '203.0.113.8', T0);
@@ -94,7 +109,7 @@ describe('RateLimitService', () => {
     });
 
     it('is a no-op for actions with no configured peer window', () => {
-      const limiter = new RateLimitService();
+      const limiter = new RateLimitService(unusedDbRateLimitStore());
       for (let i = 0; i < 1000; i += 1) {
         expect(() => {
           limiter.consumePeer('verify_email', '203.0.113.7', T0);
@@ -103,7 +118,7 @@ describe('RateLimitService', () => {
     });
 
     it('shares one bucket for an unresolved peer rather than bypassing the check', () => {
-      const limiter = new RateLimitService();
+      const limiter = new RateLimitService(unusedDbRateLimitStore());
       for (let i = 0; i < 60; i += 1) limiter.consumePeer('login', undefined, T0);
       expect(() => {
         limiter.consumePeer('login', undefined, T0);
@@ -113,7 +128,7 @@ describe('RateLimitService', () => {
 
   describe('capacity', () => {
     it('refuses a brand-new key once full, without evicting a live victim bucket', () => {
-      const limiter = new RateLimitService();
+      const limiter = new RateLimitService(unusedDbRateLimitStore());
 
       // A real subject, throttled up to (but not past) its own limit.
       for (let i = 0; i < 10; i += 1) limiter.consume('verify_email', 'victim', T0);

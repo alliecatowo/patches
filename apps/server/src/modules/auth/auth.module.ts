@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
+import { DbRateLimitStore } from './db-rate-limit-store.service.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
@@ -26,6 +27,7 @@ import { TokenService } from './token.service.js';
     AuthGuard,
     PasswordHasher,
     RateLimitService,
+    DbRateLimitStore,
     SshChallengeService,
     TokenService,
     GitHubDeviceFlowService,

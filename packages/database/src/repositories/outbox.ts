@@ -167,6 +167,35 @@ export async function markOutboxJobFailed(
 }
 
 /**
+ * B-014: resets a `DEAD` job back to `PENDING` so the worker reclaims it on its next pass,
+ * keeping `attempts` as-is — a replay is not a fresh job, so the existing `max_attempts`
+ * ceiling still applies and a job that fails again after replay dead-letters again rather
+ * than retrying forever. `available_at` is reset to `now` so the job is immediately
+ * claimable instead of waiting out whatever backoff put it here.
+ *
+ * The `WHERE status = 'DEAD'` guard makes this a conditional update, not a
+ * read-modify-write: two operators (or one fat-fingered double `replay`) racing the same job
+ * id can only have one of them actually flip it, mirroring `consumeInvite`'s conditional
+ * increment. Returns `false` (not an error) when the job was not `DEAD` — the caller decides
+ * whether that's worth surfacing.
+ */
+export async function replayOutboxJob(
+  manager: EntityManager,
+  jobId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const result = await manager
+    .getRepository(OutboxJob)
+    .createQueryBuilder()
+    .update(OutboxJob)
+    .set({ status: 'PENDING', availableAt: now, lockedAt: null, lockedBy: null })
+    .where('id = :id', { id: jobId })
+    .andWhere('status = :status', { status: 'DEAD' })
+    .execute();
+  return (result.affected ?? 0) === 1;
+}
+
+/**
  * `min(baseDelay * 2^attempts, maxDelay) + random(0, jitter)` (`jobs.md` §5). Exported
  * separately so it can be unit-tested without a database.
  */
