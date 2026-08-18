@@ -8,6 +8,7 @@ import {
   parseInput,
   registerInputSchema,
   resetPasswordInputSchema,
+  sshEnrollmentBindingSchema,
 } from './validation.js';
 
 describe('handle validation (§22)', () => {
@@ -104,5 +105,33 @@ describe('parseInput', () => {
     } catch (error) {
       expect((error as AppError).message).not.toContain('hunter2');
     }
+  });
+});
+
+describe('sshEnrollmentBindingSchema (B-021)', () => {
+  const valid = {
+    purpose: 'ENROLL',
+    userId: '11111111-1111-4111-8111-111111111111',
+    fingerprint: 'SHA256:abc',
+  };
+
+  it('accepts a well-formed enrollment binding', () => {
+    expect(sshEnrollmentBindingSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects a login challenge (no purpose) so a null claimedHandle never parses', () => {
+    expect(sshEnrollmentBindingSchema.safeParse(null).success).toBe(false);
+  });
+
+  it('rejects a non-ENROLL purpose', () => {
+    expect(sshEnrollmentBindingSchema.safeParse({ ...valid, purpose: 'LOGIN' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects a non-uuid userId', () => {
+    expect(sshEnrollmentBindingSchema.safeParse({ ...valid, userId: 'not-a-uuid' }).success).toBe(
+      false,
+    );
   });
 });

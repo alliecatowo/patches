@@ -1,15 +1,18 @@
-import { randomBytes } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildSshChallengeBlob, SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
 import {
   CREDENTIAL_TYPE,
+  timestampToDate,
   type AddCredentialRequest,
   type AddCredentialResponse,
+  type BeginSshEnrollmentRequest,
+  type BeginSshEnrollmentResponse,
 } from '@patches/proto';
 
-import { encodeString, listIdentities, signWithAgent } from './ssh-agent.js';
+import { listIdentities, signWithAgent } from './ssh-agent.js';
 import {
   describeIdentities,
   formatOpenSshPublicKey,
@@ -20,14 +23,18 @@ import {
 } from './ssh-login.js';
 
 /**
- * SSH credential enrollment (P1-013, spec §165–166): discover candidate keys, get an
- * explicit confirmation, prove the caller actually holds the private key (never by
- * reading it — only ever by asking the agent to sign something), then call
- * `AuthService.AddCredential`.
+ * SSH credential enrollment (P1-013, B-021, spec §165–166): discover candidate keys, get an
+ * explicit confirmation, then prove the caller actually holds the private key with a
+ * **server-verified** challenge — never by reading the key, only ever by asking the agent to
+ * sign the blob `BeginSshEnrollment` issued — before calling `AuthService.AddCredential`.
+ *
+ * This mirrors `ssh-login.ts`'s `BeginSshLogin`/`CompleteSshLogin` handshake exactly, except
+ * authenticated and with a distinct domain separator ({@link SSH_ENROLL_DOMAIN_SEPARATOR},
+ * from `@patches/domain`, A-020) so a login signature can never be replayed as an enrollment
+ * proof or vice versa.
  */
 
-/** Domain separation string for the local possession proof — see `provePossession`. */
-export const SSH_ENROLL_DOMAIN_SEPARATOR = 'patches-ssh-enroll-v1';
+export { SSH_ENROLL_DOMAIN_SEPARATOR };
 
 export interface EnrollmentCandidate extends SelectableIdentity {
   /** Local `.pub` file path(s) this fingerprint also matches, for display only. */
@@ -89,57 +96,69 @@ export async function discoverEnrollmentCandidates(
   }));
 }
 
-/**
- * Asks the agent to sign a random local nonce, purely as a client-side guard against
- * enrolling a key the agent will not actually vouch for (it refuses
- * `SSH_AGENTC_SIGN_REQUEST` for anything not loaded). This signature is **not**
- * transmitted anywhere: `AddCredentialRequest` (`packages/proto` `auth.proto`) has no
- * challenge/signature field of its own, unlike `BeginSshLogin`/`CompleteSshLogin` —
- * only the raw OpenSSH public key text (`secret`) and a `label`. Tracked as a
- * follow-up: a server-verified enrollment challenge shaped like the login one, so
- * possession is actually attested server-side too.
- */
-export async function provePossession(
-  socketPath: string,
-  identity: SelectableIdentity,
-): Promise<void> {
-  const nonce = randomBytes(32);
-  const blob = Buffer.concat([encodeString(SSH_ENROLL_DOMAIN_SEPARATOR), encodeString(nonce)]);
-  await signWithAgent(
-    socketPath,
-    identity.keyBlob,
-    blob,
-    signFlagsForAlgorithm(identity.algorithm),
-  );
-}
-
 export interface SshEnrollApi {
+  beginSshEnrollment(
+    request: BeginSshEnrollmentRequest,
+    accessToken: string,
+  ): Promise<BeginSshEnrollmentResponse>;
   addCredential(request: AddCredentialRequest, accessToken: string): Promise<AddCredentialResponse>;
 }
 
 export interface EnrollSshCredentialOptions {
   api: SshEnrollApi;
   accessToken: string;
+  /** Canonical domain of the node being enrolled on — must match the value the server binds
+   * into the challenge blob (`AppConfigService.nodeDomain`), the same convention
+   * `performSshLogin`'s `nodeDomain` option uses. */
+  nodeDomain: string;
   socketPath: string;
   identity: SelectableIdentity;
   label?: string;
 }
 
-/** Runs the possession proof, then `AddCredential(SSH_PUBLIC_KEY)`. */
+/**
+ * Runs `BeginSshEnrollment` → agent sign → `AddCredential(SSH_PUBLIC_KEY)` with the resulting
+ * possession proof (B-021). Never reads, requests, or transmits a private key — signing
+ * happens entirely in the agent, exactly as in `performSshLogin`.
+ */
 export async function enrollSshCredential(
   options: EnrollSshCredentialOptions,
 ): Promise<AddCredentialResponse> {
-  await provePossession(options.socketPath, options.identity);
   const publicKeyOpenssh = formatOpenSshPublicKey(
     options.identity.algorithm,
     options.identity.keyBlob,
     options.identity.comment,
   );
+
+  const begin = await options.api.beginSshEnrollment({ publicKeyOpenssh }, options.accessToken);
+  const expiresAt = timestampToDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
+
+  const blob = buildSshChallengeBlob({
+    domainSeparator: SSH_ENROLL_DOMAIN_SEPARATOR,
+    nodeDomain: options.nodeDomain,
+    challengeId: begin.challengeId,
+    nonce: Buffer.from(begin.nonce),
+    fingerprint: options.identity.fingerprint,
+    expiresAt,
+  });
+
+  const signature = await signWithAgent(
+    options.socketPath,
+    options.identity.keyBlob,
+    blob,
+    signFlagsForAlgorithm(options.identity.algorithm),
+  );
+
   return options.api.addCredential(
     {
       type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
       secret: publicKeyOpenssh,
       label: options.label ?? '',
+      sshProof: {
+        challengeId: begin.challengeId,
+        signature: signature.blob,
+        signatureFormat: signature.format,
+      },
     },
     options.accessToken,
   );

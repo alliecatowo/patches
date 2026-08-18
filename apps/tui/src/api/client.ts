@@ -22,6 +22,8 @@ import {
   type AuthGrpcClient,
   type BeginMediaUploadRequest,
   type BeginMediaUploadResponse,
+  type BeginSshEnrollmentRequest,
+  type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
   type BlockActorRequest,
@@ -241,6 +243,19 @@ export class PatchesApi {
     accessToken: string,
   ): Promise<AddCredentialResponse> {
     return unary(this.auth.addCredential.bind(this.auth), request, DEADLINES_MS.auth, accessToken);
+  }
+
+  /** Issues a possession-proof challenge for an SSH key about to be enrolled (B-021). */
+  async beginSshEnrollment(
+    request: BeginSshEnrollmentRequest,
+    accessToken: string,
+  ): Promise<BeginSshEnrollmentResponse> {
+    return unary(
+      this.auth.beginSshEnrollment.bind(this.auth),
+      request,
+      DEADLINES_MS.auth,
+      accessToken,
+    );
   }
 
   /** Server-side fails this on the account's last remaining credential (spec §165). */

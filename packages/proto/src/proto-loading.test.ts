@@ -61,6 +61,7 @@ describe('proto files', () => {
       [
         'AddCredential',
         'BeginGitHubLogin',
+        'BeginSshEnrollment',
         'BeginSshLogin',
         'CompleteSshLogin',
         'GetCurrentSession',

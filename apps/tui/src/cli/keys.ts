@@ -185,9 +185,12 @@ async function runKeysAdd(rest: readonly string[], deps: KeysDeps): Promise<numb
 
     const { credential } = await enrollSshCredential({
       api: {
+        beginSshEnrollment: (request, accessToken) =>
+          session.api.beginSshEnrollment(request, accessToken),
         addCredential: (request, accessToken) => session.api.addCredential(request, accessToken),
       },
       accessToken: session.accessToken,
+      nodeDomain: deps.target,
       socketPath,
       identity: candidate,
       label: parsed.label,
