@@ -54,6 +54,7 @@ catalog:
   prettier: ^3.9.6
   '@types/pg': ^8.21.0
   '@nestjs/cli': ^11.0.24
+  grpc-health-check: ^2.1.0
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:
