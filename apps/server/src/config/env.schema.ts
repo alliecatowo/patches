@@ -30,7 +30,16 @@ export type { ConfigIssue } from '@patches/config';
  * The app must refuse to boot on malformed configuration — never "fall back to a
  * default and hope".
  */
-const nestLogLevelSchema = z.enum(['error', 'warn', 'log', 'debug', 'verbose']).default('log');
+// Accepts both Nest's vocabulary (`log`/`verbose`) and the shared `@patches/config` one used
+// by the worker (`info`), so one `LOG_LEVEL` value can be set app-wide (fly.toml `[env]`).
+// `info` is normalised to Nest's `log` (found the hard way: `LOG_LEVEL=info` booted the
+// worker and crashed the server, `LOG_LEVEL=log` did the reverse — A-038).
+const nestLogLevelSchema = z
+  .enum(['error', 'warn', 'info', 'log', 'debug', 'verbose'])
+  .default('log')
+  .transform((level): 'error' | 'warn' | 'log' | 'debug' | 'verbose' =>
+    level === 'info' ? 'log' : level,
+  );
 
 const envObjectSchema = z.object({
   ...baseEnvSchema.shape,
@@ -54,6 +63,13 @@ const envObjectSchema = z.object({
    * exposing its full schema to anything that can reach the port.
    */
   GRPC_REFLECTION: booleanish().default(false),
+  /**
+   * Trust the proxy-supplied client address (`fly-client-ip`, then the first
+   * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
+   * proxy that always sets/overwrites those headers (Fly's edge does); off by default so a
+   * direct caller can never spoof its own bucket (A-039).
+   */
+  TRUST_PROXY_HEADERS: booleanish().default(false),
 
   /**
    * GitHub OAuth device flow (P6-005, spec §167). Unset in dev/test by default — `AuthService`

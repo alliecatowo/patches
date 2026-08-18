@@ -69,8 +69,22 @@ async function bootstrap(): Promise<void> {
   // in-process test server uses `createMicroservice` and never hit it).
   app.connectMicroservice<MicroserviceOptions>(options, { inheritAppConfig: true });
 
-  // Registers SIGTERM/SIGINT/SIGHUP handlers that run `onModuleDestroy` /
-  // `onApplicationShutdown` and close both the gRPC and (if opened) HTTP servers (spec §124).
+  // Drain order matters (A-044): Node runs signal listeners in registration order, so the
+  // health flip to NOT_SERVING is registered *before* Nest's shutdown hooks — otherwise the
+  // gRPC server is already closing by the time the check reports unhealthy. Nest's hooks then
+  // run `onModuleDestroy`/`onApplicationShutdown` and close gRPC (grpc-js `tryShutdown`
+  // waits for in-flight calls) and, if opened, the HTTP server (spec §124). fly.toml's
+  // `kill_timeout` must exceed this drain (see infra/fly/fly.toml).
+  const stopServing = (signal: string): void => {
+    logger.log(`received ${signal}, draining`, 'Bootstrap');
+    health.setStatus('NOT_SERVING');
+  };
+  process.once('SIGTERM', () => {
+    stopServing('SIGTERM');
+  });
+  process.once('SIGINT', () => {
+    stopServing('SIGINT');
+  });
   app.enableShutdownHooks();
 
   await app.startAllMicroservices();
@@ -88,17 +102,6 @@ async function bootstrap(): Promise<void> {
       'Bootstrap',
     );
   }
-
-  const stopServing = (signal: string): void => {
-    logger.log(`received ${signal}, draining`, 'Bootstrap');
-    health.setStatus('NOT_SERVING');
-  };
-  process.once('SIGTERM', () => {
-    stopServing('SIGTERM');
-  });
-  process.once('SIGINT', () => {
-    stopServing('SIGINT');
-  });
 }
 
 bootstrap().catch((error: unknown) => {

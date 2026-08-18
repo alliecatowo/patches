@@ -47,6 +47,11 @@ export class AppConfigService {
     return this.get('GRPC_REFLECTION');
   }
 
+  /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
+  get trustProxyHeaders(): boolean {
+    return this.get('TRUST_PROXY_HEADERS');
+  }
+
   get databaseUrl(): string | undefined {
     return this.get('DATABASE_URL');
   }
