@@ -4,8 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isAppError } from '../../common/errors/app-error.js';
 import { type AppConfigService } from '../../config/app-config.service.js';
+import { type DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { RateLimitService } from '../auth/rate-limit.service.js';
 import { MediaService } from './media.service.js';
+
+// A-018: `media_begin_upload` is not in `DB_BACKED_RATE_LIMIT_ACTIONS`, so `RateLimitService`
+// never calls into `DbRateLimitStore` for it — this fake exists only to satisfy the
+// constructor, the same way `fakeConfig()`/`fakeDataSource()` below satisfy theirs.
+function fakeDbRateLimitStore(): DbRateLimitStore {
+  return {
+    increment: () => {
+      throw new Error('DbRateLimitStore.increment should not be called for media uploads');
+    },
+  } as unknown as DbRateLimitStore;
+}
 
 const ACTOR_ID = 'actor-1';
 const MEDIA_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
@@ -82,7 +94,7 @@ describe('MediaService.beginMediaUpload', () => {
     mediaRepo = newMediaRepo();
     jobsRepo = newJobsRepo();
     storage = fakeStorage();
-    rateLimit = new RateLimitService();
+    rateLimit = new RateLimitService(fakeDbRateLimitStore());
   });
 
   function service(): MediaService {
@@ -174,7 +186,7 @@ describe('MediaService.finalizeMediaUpload', () => {
       fakeDataSource(mediaRepo, jobsRepo) as never,
       storage,
       fakeConfig(),
-      new RateLimitService(),
+      new RateLimitService(fakeDbRateLimitStore()),
     );
   }
 
@@ -258,7 +270,7 @@ describe('MediaService.getMediaDownload', () => {
       fakeDataSource(mediaRepo, jobsRepo) as never,
       storage,
       fakeConfig(),
-      new RateLimitService(),
+      new RateLimitService(fakeDbRateLimitStore()),
     );
   }
 
