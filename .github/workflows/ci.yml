@@ -40,14 +40,11 @@ jobs:
 
       # Skipped on push to main: there is no meaningful "main vs main" diff, and this
       # is also the point at which a deliberate breaking change (reviewed on its PR)
-      # is expected to land. `-- --against ...` forwards the arg through pnpm to
-      # whatever `buf breaking` invocation packages/proto's own `breaking` script
-      # wraps (see docs/research/nestjs-grpc-protobuf.md §2 for the `.git#branch=...`
-      # ref form). ASSUMPTION: that script does not already hardcode its own
-      # `--against` — reconcile if it does.
+      # is expected to land. packages/proto/scripts/breaking.sh resolves the ref
+      # (`../../.git#branch=main,subdir=packages/proto`) itself.
       - name: buf breaking (against main)
         if: github.event_name == 'pull_request'
-        run: pnpm proto:breaking -- --against '.git#branch=main,subdir=packages/proto'
+        run: pnpm proto:breaking
 
       - name: Generate protobuf TypeScript
         run: pnpm proto:gen

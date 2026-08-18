@@ -135,22 +135,14 @@ Dependabot's parser upstream — review pnpm lockfile PRs from Dependabot by han
 than auto-merging them. Major-version updates to `typescript` are excluded (ADR 0009
 pins the 5.9.x line).
 
-## Assumptions to reconcile
+## Notes on script wiring
 
-These were made because the packages that own the underlying scripts are being built
-concurrently by other agents and hadn't landed yet when this workflow was written:
-
-- `pnpm proto:breaking` (root script: `pnpm --filter @patches/proto breaking`) is
-  invoked here as `pnpm proto:breaking -- --against '.git#branch=main,subdir=packages/proto'`,
-  relying on pnpm forwarding trailing args to the underlying `breaking` script in
-  `packages/proto/package.json`. If that script hardcodes its own `--against` instead of
-  accepting one, this needs reconciling.
-- `pnpm db:show`'s exact output format (TypeORM 1.x `migration:show`) is unverified —
-  the migration-validation assertion uses a "run `db:migrate` twice, second run must
-  succeed" check instead of parsing `db:show`'s output (see "Migration validation"
-  above).
-- All root scripts referenced (`format:check`, `lint`, `typecheck`, `build`, `test`,
-  `test:integration`, `proto:*`, `db:*`) are assumed to work once `apps/server`,
-  `apps/tui`, `packages/database`, and `packages/terminal-media` land their own
-  package-level scripts and Turbo/vitest project entries — none of this workflow was run
-  end-to-end against a fully wired repo yet.
+- `pnpm proto:breaking` runs `packages/proto/scripts/breaking.sh`, which resolves the diff
+  target itself (`main`, falling back to `origin/main`) and skips with a message when the
+  base branch has no protobuf module yet (the first proto commit) or the ref isn't fetched.
+- Migration validation asserts "0 pending" by running `pnpm db:migrate` twice (the second
+  run must succeed with nothing to apply); `pnpm db:show` prints `[X]`/`[ ]` per migration
+  and is shown for human readability.
+- Every root script referenced here (`format:check`, `lint`, `typecheck`, `build`, `test`,
+  `test:integration`, `proto:*`, `db:*`) has been run locally against the wired repo
+  (2026-08-17); the workflow itself is exercised on the first PR.

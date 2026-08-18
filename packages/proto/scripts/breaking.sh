@@ -12,6 +12,9 @@
 set -euo pipefail
 
 BASE_REF="${PROTO_BREAKING_BASE:-main}"
+if ! git rev-parse --verify --quiet "${BASE_REF}" >/dev/null && git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
+  BASE_REF="origin/${BASE_REF}"
+fi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
 if ! git rev-parse --verify --quiet "${BASE_REF}" >/dev/null; then
