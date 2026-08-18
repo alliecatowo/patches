@@ -78,6 +78,11 @@ export const OUTBOX_JOB_STATUSES = [
 ] as const;
 export type OutboxJobStatus = (typeof OUTBOX_JOB_STATUSES)[number];
 
+/** `admin_audit_log.subject_type` (`INITIAL_VISION.md` §66) — what kind of row a `patches-admin`
+ * command acted on. */
+export const ADMIN_AUDIT_SUBJECT_TYPES = ['USER', 'INVITE', 'REPORT', 'POST', 'JOB'] as const;
+export type AdminAuditSubjectType = (typeof ADMIN_AUDIT_SUBJECT_TYPES)[number];
+
 /**
  * Builds `"column" IN ('A', 'B')` for a `@Check(...)` expression from a value list, so the
  * TS union and the database constraint are generated from the same array. Values are

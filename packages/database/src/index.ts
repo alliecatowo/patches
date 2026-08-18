@@ -4,6 +4,8 @@ export type { CreateDataSourceOptionsInput } from './data-source.js';
 export { SnakeNamingStrategy } from './naming/snake-naming.strategy.js';
 
 export { ALL_ENTITIES } from './entities/index.js';
+export { AdminAuditLog } from './entities/admin-audit-log.entity.js';
+export { RateLimitBucket } from './entities/rate-limit-bucket.entity.js';
 export { AppMeta } from './entities/app-meta.entity.js';
 export { Actor } from './entities/actor.entity.js';
 export { User } from './entities/user.entity.js';
@@ -25,6 +27,7 @@ export { Notification } from './entities/notification.entity.js';
 export { Report } from './entities/report.entity.js';
 
 export {
+  ADMIN_AUDIT_SUBJECT_TYPES,
   AUTH_CODE_PURPOSES,
   CREDENTIAL_TYPES,
   FOLLOW_STATUSES,
@@ -39,6 +42,7 @@ export {
   USER_STATUSES,
 } from './entities/enums.js';
 export type {
+  AdminAuditSubjectType,
   AuthCodePurpose,
   CredentialType,
   FollowStatus,
@@ -59,6 +63,7 @@ export { Phase1Schema1787036506325 } from './migrations/1787036506325-Phase1Sche
 export { Phase3SocialGraph1787055340075 } from './migrations/1787055340075-Phase3SocialGraph.js';
 export { Phase4Interactions1787058326261 } from './migrations/1787058326261-Phase4Interactions.js';
 export { ActorRegistrationIdempotency1787059787165 } from './migrations/1787059787165-ActorRegistrationIdempotency.js';
+export { Phase6Admin1787062075716 } from './migrations/1787062075716-Phase6Admin.js';
 
 export {
   claimOutboxJobs,
