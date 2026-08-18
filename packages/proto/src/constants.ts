@@ -95,6 +95,22 @@ import type {
   MarkNotificationsReadResponse,
 } from './generated/patches/v1/notifications.js';
 import type {
+  GetPageRequest,
+  GetPageResponse,
+  ListGuestbookRequest,
+  ListGuestbookResponse,
+  ListPageRevisionsRequest,
+  ListPageRevisionsResponse,
+  RemoveGuestbookEntryRequest,
+  RemoveGuestbookEntryResponse,
+  ReportGuestbookEntryRequest,
+  ReportGuestbookEntryResponse,
+  SignGuestbookRequest,
+  SignGuestbookResponse,
+  UpdatePageRequest,
+  UpdatePageResponse,
+} from './generated/patches/v1/pages.js';
+import type {
   CreatePostRequest,
   CreatePostResponse,
   DeletePostRequest,
@@ -167,6 +183,7 @@ export const SERVICE_NAMES = Object.freeze({
   notification: 'NotificationService',
   moderation: 'ModerationService',
   media: 'MediaService',
+  page: 'PageService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -329,4 +346,15 @@ export interface MediaGrpcClient extends Client {
   beginMediaUpload: GrpcUnaryCall<BeginMediaUploadRequest, BeginMediaUploadResponse>;
   finalizeMediaUpload: GrpcUnaryCall<FinalizeMediaUploadRequest, FinalizeMediaUploadResponse>;
   getMediaDownload: GrpcUnaryCall<GetMediaDownloadRequest, GetMediaDownloadResponse>;
+}
+
+/** `patches.v1.PageService` as seen by a raw grpc-js client. */
+export interface PageGrpcClient extends Client {
+  getPage: GrpcUnaryCall<GetPageRequest, GetPageResponse>;
+  updatePage: GrpcUnaryCall<UpdatePageRequest, UpdatePageResponse>;
+  listPageRevisions: GrpcUnaryCall<ListPageRevisionsRequest, ListPageRevisionsResponse>;
+  listGuestbook: GrpcUnaryCall<ListGuestbookRequest, ListGuestbookResponse>;
+  signGuestbook: GrpcUnaryCall<SignGuestbookRequest, SignGuestbookResponse>;
+  removeGuestbookEntry: GrpcUnaryCall<RemoveGuestbookEntryRequest, RemoveGuestbookEntryResponse>;
+  reportGuestbookEntry: GrpcUnaryCall<ReportGuestbookEntryRequest, ReportGuestbookEntryResponse>;
 }

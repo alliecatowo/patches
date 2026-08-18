@@ -230,3 +230,26 @@ export {
   MediaServiceControllerMethods,
   MediaStatus,
 } from './generated/patches/v1/media.js';
+
+export type {
+  GetPageRequest,
+  GetPageResponse,
+  GuestbookEntry,
+  ListGuestbookRequest,
+  ListGuestbookResponse,
+  ListPageRevisionsRequest,
+  ListPageRevisionsResponse,
+  PageRevisionSummary,
+  PageServiceClient,
+  PageServiceController,
+  PageTheme,
+  RemoveGuestbookEntryRequest,
+  RemoveGuestbookEntryResponse,
+  ReportGuestbookEntryRequest,
+  ReportGuestbookEntryResponse,
+  SignGuestbookRequest,
+  SignGuestbookResponse,
+  UpdatePageRequest,
+  UpdatePageResponse,
+} from './generated/patches/v1/pages.js';
+export { PAGE_SERVICE_NAME, PageServiceControllerMethods } from './generated/patches/v1/pages.js';
