@@ -6,7 +6,6 @@ effort: high
 memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent
 color: green
-maxTurns: 90
 ---
 
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the authoritative spec (§0, §154). `CLAUDE.md` and `docs/agents/HARNESS.md` govern the harness you operate in.
@@ -60,8 +59,8 @@ Run `/verify` scoped to the package(s) you touched (`pnpm --filter <workspace> b
 - Start background servers with `run_in_background`, note the PID, and stop them with `kill <pid>` as its own command.
 - Run `git commit` as its own command with explicit paths. If a command is rejected, rephrase it more narrowly and continue — never stop and wait for the orchestrator.
 
-## Turn budget (you have `maxTurns`; running out mid-edit loses nothing but wastes a resume)
+## Efficiency (every tool call re-reads your whole context)
 
 - **Commit early, commit often.** As soon as one coherent slice is green (`typecheck` + the tests you added), commit it with explicit paths and keep going. Never sit on 60 uncommitted files.
 - Combine checks into one command per package (`mise exec -- pnpm --filter X typecheck && … && …`) and read files with `sed -n` ranges — each tool call is a turn.
-- When roughly two-thirds of your turns are spent, stop adding scope: verify what exists, tick only the finished parts, commit, push, and report exactly what remains. A precise "left undone" list is a successful outcome; a half-written file at the turn cap is not.
+- Finish the whole brief, then verify, tick, commit, push, report. If something is genuinely blocked, commit what is green and say exactly what remains.

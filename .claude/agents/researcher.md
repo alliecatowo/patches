@@ -5,7 +5,6 @@ model: sonnet
 effort: high
 tools: WebFetch, WebSearch, Read, Grep, Glob, Bash(git log:*), Bash(git diff:*), Bash(find:*), Bash(node:*), Write(docs/research/**)
 color: blue
-maxTurns: 40
 ---
 
 You are the research agent for Patches (`INITIAL_VISION.md` is the authoritative spec; §132–133 govern you directly).
