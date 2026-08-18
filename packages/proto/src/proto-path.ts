@@ -66,6 +66,7 @@ export function getProtoFiles(): readonly string[] {
         'notifications',
         'moderation',
         'media',
+        'pages',
       ].map((name) => join(dir, 'patches', 'v1', `${name}.proto`)),
     );
   }

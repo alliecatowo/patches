@@ -15,6 +15,7 @@ import type {
   ModerationGrpcClient,
   NodeGrpcClient,
   NotificationGrpcClient,
+  PageGrpcClient,
   PostGrpcClient,
   ReactionGrpcClient,
   SocialGraphGrpcClient,
@@ -171,4 +172,13 @@ export function createMediaClient(
   options?: ChannelOptions,
 ): MediaGrpcClient {
   return buildClient<MediaGrpcClient>(SERVICE_NAMES.media, target, credentials, options);
+}
+
+/** Build a `patches.v1.PageService` client. See {@link createSystemClient} for the pattern. */
+export function createPageClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): PageGrpcClient {
+  return buildClient<PageGrpcClient>(SERVICE_NAMES.page, target, credentials, options);
 }

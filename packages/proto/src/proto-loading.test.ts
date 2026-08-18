@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(12);
+    expect(files.length).toBe(13);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }

@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+import "patches/v1/moderation.proto";
+
+// Patches Pages (spec §170-172, §176 Phase 4.5). The server stores, validates, versions and
+// serves a portable declarative document; it never renders (`docs/architecture/pages.md`).
+// `document` bytes on the wire are the canonical JSON serialization of a `packages/domain`
+// `PatchesPage` (`packages/domain`'s `serializePage`) — strictly validated on write
+// (`UpdatePage`), leniently re-read on the way back out (`GetPage`) so a page written by a
+// newer schema version never fails to load on an older server.
+service PageService {
+  // By owner handle + optional sub-page slug (empty = "index"). Anonymous-callable, and
+  // block-aware like `PostService.GetPost` — a blocked-either-direction viewer gets a
+  // uniform NOT_FOUND (spec §62), never PERMISSION_DENIED.
+  rpc GetPage(GetPageRequest) returns (GetPageResponse);
+
+  // Whole-document replace by the page's owner. Validated strictly against the document's
+  // declared `version` (spec §171); writes a new immutable `page_revisions` row rather than
+  // mutating one in place — "a bad edit is recoverable and moderation has an audit trail."
+  rpc UpdatePage(UpdatePageRequest) returns (UpdatePageResponse);
+
+  // The caller's own page's revision history, most-recent first. Owner only.
+  rpc ListPageRevisions(ListPageRevisionsRequest) returns (ListPageRevisionsResponse);
+
+  // Guestbook entries for a page, most-recent first. Anonymous-callable, block-aware like
+  // `GetPage`.
+  rpc ListGuestbook(ListGuestbookRequest) returns (ListGuestbookResponse);
+
+  // Rate-limited (spec §102) and block-aware: a blocked-either-direction caller cannot sign
+  // (spec §62, §172). Requires an authenticated session — there is no anonymous guestbook
+  // signature.
+  rpc SignGuestbook(SignGuestbookRequest) returns (SignGuestbookResponse);
+
+  // Removable by the page's owner (moderator removal is a documented follow-up — see
+  // `docs/architecture/pages.md`). Idempotent: removing an already-removed entry is not an
+  // error.
+  rpc RemoveGuestbookEntry(RemoveGuestbookEntryRequest) returns (RemoveGuestbookEntryResponse);
+
+  // Bounded report of a guestbook entry (spec §64, §172). `ModerationService` (moderation
+  // .proto) has no guestbook-entry subject type — its `ReportReason`/subject-type surface
+  // covers only ACTOR and POST — so this lives on `PageService` rather than growing
+  // `ModerationService`'s scope outside this task's owned files; it reuses
+  // `ModerationService`'s `ReportReason` enum rather than defining a second one.
+  rpc ReportGuestbookEntry(ReportGuestbookEntryRequest) returns (ReportGuestbookEntryResponse);
+}
+
+// Mirrors `packages/domain`'s `PageTheme` — a convenience extract of `document`'s embedded
+// `theme` object, so a client can apply background/foreground/border before parsing the full
+// document. `border`/color fields are plain strings here; `packages/domain` is the strict
+// validator (accepted border values, hex/named color shape).
+message PageTheme {
+  string accent = 1;
+  string background = 2;
+  string foreground = 3;
+  string border = 4;
+  string avatar_style = 5;
+}
+
+message GetPageRequest {
+  // Local handle, no leading "@" (matches `ActorService.GetActorByHandle`'s convention).
+  string handle = 1;
+
+  // Empty means "index".
+  string slug = 2;
+}
+
+message GetPageResponse {
+  string owner_actor_id = 1;
+  string revision_id = 2;
+
+  // The full document — canonical JSON UTF-8 bytes (`packages/domain`'s `serializePage`).
+  // Always the whole document, not just `slug`'s sub-page: a renderer needs every sub-page's
+  // slug/title to navigate, and `theme` applies document-wide.
+  bytes document = 3;
+
+  // The sub-page slug this request resolved to (the request's `slug`, or "index" if it was
+  // empty).
+  string active_slug = 4;
+
+  PageTheme theme = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message UpdatePageRequest {
+  // Canonical JSON UTF-8 bytes, validated strictly server-side against `packages/domain`'s
+  // `parsePageStrict` before anything is written (spec §171).
+  bytes document = 1;
+}
+
+message UpdatePageResponse {
+  string revision_id = 1;
+
+  // Re-serialized canonical form of what was stored — never byte-identical-by-assumption to
+  // the request (whitespace/key-order are not preserved), so a client should treat this as
+  // the source of truth going forward rather than diffing against what it sent.
+  bytes document = 2;
+
+  google.protobuf.Timestamp updated_at = 3;
+}
+
+message PageRevisionSummary {
+  string id = 1;
+  uint32 byte_size = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message ListPageRevisionsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListPageRevisionsResponse {
+  repeated PageRevisionSummary revisions = 1;
+  PageInfo page = 2;
+}
+
+message GuestbookEntry {
+  string id = 1;
+
+  // Absent for a future non-local/remote signer (`guestbook_entries.author_actor_id` is
+  // nullable) — never absent for anything `SignGuestbook` itself creates in v0, since that
+  // RPC requires an authenticated session.
+  Actor author = 2;
+
+  // Plain text, sanitized, at most 500 characters (spec §171).
+  string body = 3;
+
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ListGuestbookRequest {
+  string handle = 1;
+  string slug = 2;
+  string cursor = 3;
+  uint32 limit = 4;
+}
+
+message ListGuestbookResponse {
+  repeated GuestbookEntry entries = 1;
+  PageInfo page = 2;
+}
+
+message SignGuestbookRequest {
+  string handle = 1;
+  string slug = 2;
+  string body = 3;
+}
+
+message SignGuestbookResponse {
+  GuestbookEntry entry = 1;
+}
+
+message RemoveGuestbookEntryRequest {
+  string entry_id = 1;
+}
+
+message RemoveGuestbookEntryResponse {
+  GuestbookEntry entry = 1;
+}
+
+message ReportGuestbookEntryRequest {
+  string entry_id = 1;
+  ReportReason reason = 2;
+
+  // Optional free text. Max 2,000 characters (same bound as `ModerationService.ReportPost`
+  // /`ReportActor`, spec §58-style bound).
+  string details = 3;
+}
+
+message ReportGuestbookEntryResponse {
+  string report_id = 1;
+}
