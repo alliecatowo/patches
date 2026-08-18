@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // CommonJS output — see docs/agents/PACKAGE_CONVENTIONS.md ("apps/admin" row): no
+    // "type":"module" in package.json, so this stays consistent with apps/server/apps/worker
+    // even though the CLI itself has no Nest DI/decorators of its own.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true
+  },
+  // vitest.config.mts/vitest.integration.config.mts are linted via eslint.config.js's
+  // `allowDefaultProject: ['**/*.config.{ts,mts,cts}']` (B-005) rather than being `include`d
+  // here — they aren't part of this package's actual TS program.
+  "include": ["src", "test"]
+}

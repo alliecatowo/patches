@@ -35,14 +35,14 @@ export class DbRateLimitStore {
     const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
     const expiresAt = new Date(windowStart.getTime() + windowMs);
 
-    const rows = (await this.dataSource.query(
+    const rows = await this.dataSource.query<Array<{ count: number }>>(
       `INSERT INTO rate_limit_buckets (key, window_start, count, expires_at)
        VALUES ($1, $2, 1, $3)
        ON CONFLICT (key, window_start)
        DO UPDATE SET count = rate_limit_buckets.count + 1
        RETURNING count`,
       [key, windowStart, expiresAt],
-    )) as Array<{ count: number }>;
+    );
 
     // 1-in-50 chance per call: expected to fire often enough in production traffic that
     // expired rows never accumulate unboundedly, rare enough that almost no caller pays for

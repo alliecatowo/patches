@@ -62,6 +62,10 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server dev"
 description = "Run the full-screen TUI against the local server (extra args pass through, e.g. -- --server host:port)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure \"$@\""
 
+[tasks.admin]
+description = "Run the patches-admin moderation CLI (built) against the local Postgres database — extra args pass through, e.g. `mise run admin -- user list`"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/admin build >/dev/null && node apps/admin/dist/main.js \"$@\""
+
 [tasks.worker]
 description = "Run the job worker (built) against the local Postgres outbox"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker build && pnpm --filter @patches/worker start"

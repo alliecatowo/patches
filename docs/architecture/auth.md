@@ -239,7 +239,41 @@ credential or a recovery address. This is a real trade: an SSH-only user who los
 with no second credential loses the account. That is stated at enrollment rather than
 papered over by quietly requiring email.
 
-## 9. Security checklist for Phase 1 review
+## 9. Rate limiting (A-018)
+
+Spec §102 requires login, registration, password reset, and verification resend to be
+rate-limited **consistently across every server process**, since v0 has no Redis. `apps/
+server/src/modules/auth/rate-limit.service.ts` implements this as two layers, both always
+checked (never one instead of the other):
+
+1. **Process-local, in-memory** (`RateLimitService.consume`/`consumePeer`) — a fixed-window
+   counter map, keyed per subject and, for actions whose subject is otherwise caller-chosen
+   (`register`, `ssh_challenge`, `ssh_complete`), also per network peer. Cheap, but a
+   restart forgets it and N server processes multiply the effective limit by N.
+2. **Database-backed** (`DbRateLimitStore` + `RateLimitService.consumeDistributed`/
+   `consumeDistributedPeer`) — the same fixed-window budget, enforced through one row per
+   `(key, window_start)` in `rate_limit_buckets` (`packages/database`). `windowStart` is
+   `floor(now / windowMs) * windowMs`, not caller-supplied, so every process racing the same
+   bucket in the same instant computes the identical primary key. The increment is an
+   `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING count`, never a read-then-write, so
+   two processes can never both believe they were first.
+
+Applied to the flows spec §102 names by name, plus SSH challenge issuance (carried over
+from the original P1-008 scope): `register`, `login`, `password_reset`, `verify_email`,
+`resend_verification`, `ssh_challenge`. Everything else (`media_begin_upload`,
+`github_begin_login`, `github_poll_login`, `ssh_complete`) stays process-local only — §102
+explicitly allows coarse throttles to stay process-local, and these are not the
+credential-guessing/email-sending surfaces the spec calls out.
+
+**Sweep.** `rate_limit_buckets` has no TTL of its own; `DbRateLimitStore.increment` lazily
+deletes rows past their `expires_at` with low probability (1-in-50) on every call, rather
+than a dedicated worker job. Chosen over a scheduled `apps/worker` job because nothing in
+this codebase currently schedules a _recurring_ job on a timer at all (`CLEAN_EXPIRED_TOKENS`
+has the same gap — its handler exists but nothing enqueues it periodically yet); adding that
+scheduling primitive is out of scope for this task and the lazy sweep needs none of it. Revisit
+if/when a real cron-style scheduler lands in `apps/worker`.
+
+## 10. Security checklist for Phase 1 review
 
 - [ ] No plaintext secret of any type is stored; `secret_hash` never leaves the server.
 - [ ] Argon2id parameters benchmarked on deployment hardware (§34).
@@ -248,12 +282,13 @@ papered over by quietly requiring email.
 - [ ] Credential enumeration is impossible via `BeginSshLogin`, `CompleteSshLogin`,
       `Register`, or password reset (uniform responses and timing).
 - [ ] SHA-1 `ssh-rsa` rejected; algorithm downgrade tested.
-- [ ] Rate limits on login, register, reset, verify, and challenge issuance (§102).
+- [ ] Rate limits on login, register, reset, verify, and challenge issuance (§102), enforced
+      both process-locally and database-backed across every server process (§9, A-018).
 - [ ] Revoking the last active credential fails.
 - [ ] Adding a credential requires an authenticated session.
 - [ ] No third-party OAuth token persisted anywhere.
 
-## 10. Related documents
+## 11. Related documents
 
 - [`data-model.md`](./data-model.md) — `users`, `credentials`, `ssh_login_challenges` schema
 - [`api.md`](./api.md) — `AuthService` / `NodeService` RPC list

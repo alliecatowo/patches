@@ -1,0 +1,33 @@
+{
+  "name": "@patches/admin",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "patches-admin": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --project admin-integration",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@patches/config": "workspace:*",
+    "@patches/database": "workspace:*",
+    "pg": "catalog:",
+    "reflect-metadata": "catalog:",
+    "typeorm": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@patches/testkit": "workspace:*",
+    "@swc/core": "catalog:",
+    "@types/pg": "catalog:",
+    "tsx": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  }
+}
