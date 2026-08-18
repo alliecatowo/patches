@@ -46,9 +46,8 @@ every other single-operator-owned secret in this lab).
 
 ## Automated two-node test
 
-The two-node lab is exercised end to end by an integration test — this is the only "two-node
-lab" workflow actually verified in this repo; there is no separate Compose-based manual lab
-yet (see "Known gaps" below).
+The two-node lab is exercised end to end by an integration test. There is also a manual,
+long-running two-node lab a human can drive by hand — "Manual two-node lab" below.
 
 ```bash
 mise exec -- pnpm --filter @patches/server build
@@ -86,6 +85,115 @@ two differently-configured `AppModule` instances in one process hits a real `@ne
 behavior (`ConfigModule.forRoot({validate})` evaluates exactly once per process) that silently
 freezes every environment variable with a zod default to whatever it resolved to the first time
 `config.module.ts` was ever imported, regardless of later `process.env` writes.
+
+## Manual two-node lab (B-029)
+
+`mise run fed:lab` (`infra/lab/fed-lab.sh`) is a scripted version of the automated two-node
+test above, except it starts two **long-running** processes (`apps/server` + `apps/worker`
+per node) instead of a vitest run, so a human can drive them with the TUI or `grpcurl`.
+`mise run fed:lab:down` stops it (kills the PIDs `fed-lab.sh` recorded in
+`infra/lab/.run/*.pid`; never `pkill -f`).
+
+It builds `@patches/server`/`@patches/worker`/`@patches/tui` once, brings up the compose
+Postgres stack (`mise run compose -- up -d postgres`), creates+migrates two dedicated
+databases (`patches_lab_a`, `patches_lab_b` — same "one database per node" reasoning as the
+automated test's `patches_test_fed_b`, seeded by `infra/compose/postgres/init/
+01-test-db.sql` on a fresh volume, created idempotently by the script itself otherwise),
+generates one JWT signing keypair per node (`pnpm keys:generate`) and one shared
+`FEDERATION_KEY_ENCRYPTION_KEY` (`openssl rand -base64 32`), then starts:
+
+- Node A: `apps/server/dist/main.js`, `NODE_DOMAIN=a.localhost`, `PUBLIC_ORIGIN=http://127.0.0.1:8081`, gRPC on `127.0.0.1:50061`.
+- Node B: `apps/server/dist/main.js`, `NODE_DOMAIN=b.localhost`, `PUBLIC_ORIGIN=http://127.0.0.1:8082`, gRPC on `127.0.0.1:50062`.
+- `apps/worker/dist/main.js` once per node, same `DATABASE_URL`/`PUBLIC_ORIGIN`/
+  `FEDERATION_KEY_ENCRYPTION_KEY` as its node's server, `EMAIL_PROVIDER=console`.
+
+Both run with `NODE_ENV=development`, so `safeFetch`'s `defaultSafeFetchPolicy` allows plain
+`http://` and private/loopback targets (`apps/server/src/modules/federation/security/
+safe-fetch.ts`) — the same trust model the automated test relies on, never used in production.
+
+**Why the WebFinger/follow acct is `handle@127.0.0.1:<http-port>`, not `handle@a.localhost`/
+`handle@b.localhost`:** `NODE_DOMAIN` only feeds JWT issuer/audience and the SSH-challenge
+binding (`apps/server/src/config/app-config.service.ts` call sites) — actor identity is
+entirely driven by `PUBLIC_ORIGIN`. `WebfingerService.resolve` (`apps/server/src/modules/
+federation/services/webfinger.service.ts`) rejects any WebFinger `resource` whose domain
+isn't `new URL(this.config.publicOrigin).host`, and `RemoteActorService.resolveByAcct`
+(`apps/server/src/modules/federation/services/remote-actor.service.ts`) builds the outbound
+WebFinger URL as `http://<domain>/.well-known/webfinger` from the acct's domain verbatim — so
+resolving/following a remote actor means typing `bob@127.0.0.1:8082`, not `bob@b.localhost`.
+No `/etc/hosts` edits are needed (`getent hosts a.localhost`/`b.localhost` would resolve to
+loopback on glibc/systemd-resolved anyway, but the lab never depends on it).
+
+**Registering via the TUI CLI needs `PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1`** in most dev
+sandboxes: `register`/`login` have no `--allow-insecure-credential-file` flag of their own
+(only `openCredentialStore`'s callers check for it via `rest`, but `register`'s/`login`'s own
+flag parser rejects the flag before that check runs) — `createDefaultCredentialStore` falls
+back to a warned plaintext file only when the env var (or a keyring) is available.
+
+### Verified run (2026-08-18)
+
+Actually run end to end in this environment (no OS keyring, so credentials went to the
+insecure-file fallback) — `mise run fed:lab` up, then `register` for both accounts via the
+built TUI CLI, then a small ad hoc Node script driving the same gRPC calls the TUI's `/`
+search + `f` follow + compose would (`ResolveActor`/`FollowActor`/`CreatePost`/
+`ListHomeFeed` over `@patches/proto`'s generated clients — the interactive Ink keystrokes
+themselves weren't scripted, but every RPC they'd trigger was driven directly and confirmed
+against real node processes and real async worker delivery), then `fed:lab:down`:
+
+```bash
+mise run fed:lab
+#   ... builds server/worker/tui, migrates patches_lab_a/patches_lab_b, starts node A
+#   (grpc 127.0.0.1:50061, http 127.0.0.1:8081) + node B (grpc 127.0.0.1:50062, http
+#   127.0.0.1:8082) + worker-a + worker-b, prints next steps
+#   => four PIDs alive in infra/lab/.run/*.pid; server-a.log / server-b.log both log
+#      "[Bootstrap] federation HTTP surface listening on :808{1,2}"
+
+PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1 printf '%s' 'alice-pass-1234' | \
+  PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1 node apps/tui/dist/cli.js \
+  --insecure --server 127.0.0.1:50061 register --handle alice --password-stdin
+#   => "Registered as @alice. Logged in on 127.0.0.1:50061."
+
+PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1 printf '%s' 'bob-pass-1234' | \
+  PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1 node apps/tui/dist/cli.js \
+  --insecure --server 127.0.0.1:50062 register --handle bob --password-stdin
+#   => "Registered as @bob. Logged in on 127.0.0.1:50062."
+
+# Ad hoc driver (Login as alice/bob, ActorService.ResolveActor('bob@127.0.0.1:8082') from
+# node A, SocialGraphService.FollowActor, poll GetRelationship, PostService.CreatePost on
+# node B, poll FeedService.ListHomeFeed on node A), run via
+# `pnpm --filter @patches/server exec node <script>.mjs` so `@patches/proto`/`@grpc/grpc-js`
+# resolve from apps/server's own node_modules:
+#   ==> Logging in alice@nodeA, bob@nodeB
+#       alice actor id: 8cb1e2ad-638a-49bb-83d0-eefdcc10089a
+#       bob actor id:   5ce3a10a-8936-4a94-ad3a-dcf23dbcf882
+#   ==> ResolveActor: alice@nodeA resolves bob@127.0.0.1:8082...
+#       resolved remote actor id on node A: 35f3910e-1910-4f5e-862b-b8039c31da47
+#   ==> FollowActor: alice follows bob (remote)
+#   ==> Waiting for async delivery (Follow -> Accept) via worker-a/worker-b...
+#       following state reached: true
+#   ==> bob creates a post on node B
+#       created post id: dba0044e-ea1e-4884-9a3a-250d49a6d1c2
+#   ==> Waiting for the post to propagate into alice's home feed on node A...
+#       federated post visible on alice's home feed: true
+#   ==> SUCCESS: two-node manual federation lab verified end to end.
+
+curl -s http://127.0.0.1:8081/federation/metrics
+#   => {"deliveries_enqueued{domain=127.0.0.1:8082}":1,"inbox_received":2,
+#       "inbox_handled{domain=127.0.0.1:8082,type=Accept}":1,
+#       "inbox_handled{domain=127.0.0.1:8082,type=Create}":1}
+curl -s http://127.0.0.1:8082/federation/metrics
+#   => {"inbox_received":1,"inbox_handled{domain=127.0.0.1:8081,type=Follow}":1,
+#       "deliveries_enqueued{domain=127.0.0.1:8081}":2}
+
+mise run fed:lab:down
+#   => "Stopping server-a (pid ...)" / "server-b" / "worker-a" / "worker-b"; "fed:lab stopped."
+```
+
+Confirms, against real separate OS processes over real HTTP-Signature-signed loopback
+requests: `ResolveActor` WebFinger discovery, `FollowActor` → async `Accept` delivery,
+`CreatePost` on the remote node → async delivery → visible in the local node's
+`ListHomeFeed`, matching every step the automated `federation-two-node.integration.test.ts`
+exercises (minus its `Delete` → tombstone step, not driven manually here but unchanged code
+path — already covered by that test).
 
 ## Running one node by hand
 
@@ -155,11 +263,12 @@ structured logs (`FederationDeliverHandler`'s `SIGNER_MISSING`/`REJECTED_TERMINA
 
 ## Known gaps (tracked in `docs/architecture/federation.md` §4)
 
-- No Compose-based "two containers talking to each other" manual lab yet — `infra/compose/`
-  has no federation-specific compose file. The automated two-node integration test above is
-  the only exercised two-node workflow; a Compose lab is a reasonable follow-up (`mise run
-fed:lab`-style) but was not built or run in this task and so is not documented as if it
-  works.
+- The manual two-node lab (B-029, "Manual two-node lab" above) runs both nodes as native
+  processes against the existing compose Postgres service, not as two separate containers —
+  `infra/compose/` still has no federation-specific compose file (a container-per-node lab
+  would need distinct hostnames/networking `docker compose`-side, which `PUBLIC_ORIGIN`-driven
+  identity — see above — makes unnecessary for this lab's purposes). No key rotation, no
+  moderator UI, same posture as every other Stage F1 gap.
 
 ## Blocking a remote domain (B-027)
 
