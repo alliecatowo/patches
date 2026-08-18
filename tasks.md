@@ -30,17 +30,28 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] P0-013 — README with real, verified first-run commands
 - [x] P0-014 — Phase 0 acceptance checklist (§157) verified end-to-end and recorded in `docs/product/roadmap.md` _(2 image items await manual confirmation, tracked in B-003)_
 
-## Phase 1 — persistence and auth (§135)
+## Phase 1 — persistence and auth (§135, amended by §165–§169)
 
-- [ ] P1-001 — Entities + migrations: users, actors, refresh_tokens, invites, verification codes, jobs/outbox
+> **Amendment A applies here.** No `users.password_hash` — credentials live in `credentials`
+> (§165, ADR 0011). Email is nullable recovery data. Auth methods this phase: **password +
+> SSH challenge** (GitHub device flow is Phase 6). Sessions are per node.
+> Read [`docs/architecture/auth.md`](docs/architecture/auth.md) before starting.
+
+- [ ] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, verification codes, jobs/outbox
 - [ ] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
-- [ ] P1-003 — AuthService: register (invite-only), verify email, login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
-- [ ] P1-004 — Argon2id hashing, jose EdDSA JWT access tokens, opaque hashed refresh tokens
+- [ ] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
+- [ ] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
 - [ ] P1-005 — Auth gRPC controller + auth guard/interceptor reading `authorization` metadata; error code mapping
 - [ ] P1-006 — Outbox/jobs table + worker claim loop (SKIP LOCKED, backoff, dead-letter) + email jobs; EmailProvider (console/mailpit/resend)
-- [ ] P1-007 — TUI: `patches register|login|logout`, CredentialStore (@napi-rs/keyring + guarded file fallback), auto-refresh
-- [ ] P1-008 — Rate limiting for login/register/reset/verify (db-backed for sensitive flows)
+- [ ] P1-007 — TUI: `patches register|login|logout|accounts`, CredentialStore keyed by **node origin + user id** (@napi-rs/keyring + guarded file fallback), auto-refresh
+- [ ] P1-008 — Rate limiting for login/register/reset/verify/challenge-issuance (db-backed for sensitive flows)
 - [ ] P1-009 — Tests: unit (token rotation, hashing, validation) + gRPC integration (register→verify→login→refresh)
+- [ ] P1-010 — Research note `docs/research/ssh-signature-verification.md`: which Node library verifies OpenSSH-format public-key signatures, verified against official docs (blocks P1-011)
+- [ ] P1-011 — SSH challenge auth: `BeginSshLogin`/`CompleteSshLogin`, `ssh_login_challenges`, blob binding (purpose + node domain + challenge id + nonce ≥32B + fingerprint + expiry), single-use TTL ≤120s, ed25519 first, SHA-1 `ssh-rsa` rejected (§166)
+- [ ] P1-012 — Credential management RPCs: `ListCredentials` (never returns `secret_hash`), `AddCredential` (requires authenticated session), `RevokeCredential` (fails on last active credential)
+- [ ] P1-013 — TUI SSH enrollment: enumerate ssh-agent identities + `~/.ssh/*.pub`, explicit confirm, sign via `SSH_AGENTC_SIGN_REQUEST`; **never read/transmit a private key**
+- [ ] P1-014 — `NodeService.GetNodeInfo` (unauthenticated): node domain, version, registration mode, limits, capabilities (§174) — no `tier` field, ever
+- [ ] P1-015 — Security tests: challenge replay + cross-node replay + expiry, algorithm downgrade, credential enumeration (uniform failures), last-credential revocation
 
 ## Phase 2 — posting (§136)
 
@@ -61,6 +72,17 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P4-003 — notifications rows (FOLLOW/LIKE/REPLY/MENTION/MODERATION), dedupe, ListNotifications/MarkRead
 - [ ] P4-004 — TUI: thread screen, reply, like, bookmark, notifications screen
 
+## Phase 4.5 — Pages v1 (§170–§172)
+
+- [ ] P45-001 — `PatchesPage` schema + validator in `packages/domain` (versioned, flat blocks, strict-on-write); limits: doc ≤64 KiB, ≤32 sub-pages, ≤128 blocks/page, ≤8 KiB/block
+- [ ] P45-002 — Entities + migrations: pages, page_revisions (immutable), page_assets, guestbook_entries
+- [ ] P45-003 — `PageService`: GetPage, UpdatePage (new revision per write), ListGuestbook, SignGuestbook (rate-limited, block-aware, reportable, owner/moderator removal)
+- [ ] P45-004 — Ink page renderer + basic theme; blocks Text/Markdown/Links/Posts/TopEight/Guestbook; unknown blocks render a placeholder, never fail the page
+- [ ] P45-005 — `Image`/`Gallery` defined in schema but render as placeholder until Phase 5 media exists (§176)
+- [ ] P45-006 — TUI `patches visit @handle[/slug]` + page editor
+- [ ] P45-007 — Nameplate rendering everywhere a name appears: capability degradation (truecolor→256→16→none), plain mode, server-attested badges only (§173)
+- [ ] P45-008 — Security tests: no executable code path, control-character/escape-sequence stripping on every user string, remote-URL media rejected, `javascript:`/`data:`/`file:` links rejected
+
 ## Phase 5 — production media (§139)
 
 - [ ] P5-001 — media entity, BeginMediaUpload (presigned PUT to R2), FinalizeMediaUpload, GetMediaDownload
@@ -73,6 +95,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P6-002 — reports + ReportPost/ReportActor
 - [ ] P6-003 — `apps/admin` CLI (invite/user/report/post commands) with admin_audit_log
 - [ ] P6-004 — suspension enforcement, password reset end-to-end, validation sweep, URL scheme allowlist
+- [ ] P6-005 — GitHub credential via OAuth **device flow** (§167): `BeginGitHubLogin`/`PollGitHubLogin`, identifier = numeric account id (never login name), token discarded after reading the id, linking requires an authenticated session, honor `interval`/`slow_down`
 
 ## Phase 7 — deploy public v0 (§141)
 
@@ -80,6 +103,19 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P7-002 — Deploy workflow (main → build → migrate → deploy → smoke)
 - [ ] P7-003 — Managed Postgres, R2, Resend, secrets, domain, TLS — documented in docs/operations
 - [ ] P7-004 — npm packaging of `patches` TUI
+
+## Phase 8 — two-node federation lab (v0.1) (§108 F1, §176)
+
+> Local and non-public. Every §109 control still gates anything Internet-facing.
+
+- [ ] P8-001 — WebFinger (RFC 7033) + actor document serialization from `actors`
+- [ ] P8-002 — Inbox/outbox endpoints; `Follow`, `Accept`, `Create` (Note), `Delete`, basic `Like`
+- [ ] P8-003 — Real `FederationGateway` implementation replacing `NoopFederationGateway`, behind `FEDERATION_ENABLED` (default **off**)
+- [ ] P8-004 — Durable delivery on the outbox/jobs machinery: bounded retries, idempotent/safe duplicate delivery, dead-letter
+- [ ] P8-005 — HTTP signature signing + verification
+- [ ] P8-006 — §109 ingestion hardening: URL validation, private/reserved IP rejection, redirect/size/timeout limits, JSON depth caps, activity dedupe, inbox rate limits, domain blocks
+- [ ] P8-007 — Page manifest advertised as a Patches extension property on the actor doc (§170); plain Fediverse servers degrade to a normal actor
+- [ ] P8-008 — Two-node integration harness: node A follows node B, post propagates, delete tombstones
 
 ## Backlog / discovered
 

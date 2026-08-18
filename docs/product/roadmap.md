@@ -1,18 +1,34 @@
 # Roadmap
 
-Source of truth: `INITIAL_VISION.md` §§134–160. This document restates the execution
-roadmap and acceptance checklists in one place so status can be tracked without re-reading
-the full spec. Update the status line at the top of each phase as work lands — don't let
-this drift into fiction.
+Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amendment A)**. This
+document restates the execution roadmap and acceptance checklists in one place so status can
+be tracked without re-reading the full spec. Update the status line at the top of each phase
+as work lands — don't let this drift into fiction.
 
 **As of 2026-08-17: Phase 0 (repository and risk spikes) is complete; Phase 1 (persistence and auth) is in progress.** No later phase
 has started.
+
+## Release sequence (§176)
+
+Federation moves earlier than originally scheduled; **every security gate stays where it
+was**, and "finish the centralized vertical slice first" (§0) is unchanged.
+
+| Release | Contents                                      | Federation stage |
+| ------- | --------------------------------------------- | ---------------- |
+| v0.0    | Single-node social loop — Phases 0–7 + 4.5    | F0               |
+| v0.1    | Two-node federation lab — Phase 8             | F1               |
+| v0.2    | Self-hostable node release — Phase 9          | F1               |
+| v0.3    | Mastodon/Pixelfed interoperability — Phase 10 | F2               |
+| v0.4    | Identity portability / migration — Phase 11   | F2               |
+| v1.0    | Public federation — Phase 12                  | F3               |
+
+See ADR [0013](../decisions/0013-node-model-and-earlier-federation.md).
 
 ---
 
 ## Phase 0 — repository and risk spikes
 
-**Status: in progress (started 2026-08-17)**
+**Status: complete (2026-08-17)**
 
 Deliver: monorepo skeleton, mise, Node/pnpm pinning, TypeScript base config, Turborepo,
 lint/format, GitHub Actions skeleton, Docker Compose PostgreSQL, a Nest hello-world gRPC
@@ -29,12 +45,29 @@ they work.
 
 **Status: planned**
 
-Implement: TypeORM configuration, initial migrations, `User`, `Actor`, refresh tokens,
-invites, email verification, `AuthService`, registration/login. TUI: `patches register`,
-`patches login`, `patches logout`.
+Implement: TypeORM configuration, initial migrations, `Actor`, `User`, **`credentials`**,
+`ssh_login_challenges`, refresh tokens, invites, email verification, `AuthService`,
+registration/login. TUI: `patches register`, `patches login`, `patches logout`,
+`patches accounts`.
 
-**Success criteria:** a fresh user can register, verify, log in, restart their terminal, and
-remain authenticated.
+**Amended by Amendment A (§165–§169):**
+
+- `users.password_hash` does **not** exist — credentials live in the `credentials` table, and
+  the Argon2id hash is `credentials.secret_hash` (ADR 0011).
+- Email is nullable recovery/verification data, not the account identifier. Required only for
+  password-only accounts (and where node policy requires it).
+- Auth methods in Phase 1: **password + SSH-key challenge/response**. GitHub device flow is
+  Phase 6 (justification below).
+- Sessions are stored **per node** in the TUI (`CredentialStore` keyed by node origin + user
+  id); a token is never sent to an origin other than its issuer.
+- `actors` carries the portability seam (`moved_to_uri`, `also_known_as`) and `nameplate`
+  from the first migration — columns exist, unused until later phases.
+
+Flows and the security checklist: [`../architecture/auth.md`](../architecture/auth.md).
+
+**Success criteria:** a fresh user can register (with an SSH key or a password), log in,
+restart their terminal, and remain authenticated; a second credential can be added and
+revoked; revoking the last one fails.
 
 ## Phase 2 — posting
 
@@ -64,6 +97,29 @@ action, like, bookmark, notification screen.
 
 **Success criteria:** the core social loop exists end to end.
 
+## Phase 4.5 — Pages v1
+
+**Status: planned**
+
+Implement: the `PatchesPage` document schema and validator (in `packages/domain`), `pages` /
+`page_revisions` / `page_assets` / `guestbook_entries` tables, `PageService`
+(`GetPage`/`UpdatePage`/`ListGuestbook`/`SignGuestbook`), the **Ink renderer**, basic theme,
+and the blocks `Text`, `Markdown`, `Links`, `Posts`, `TopEight`, `Guestbook`. TUI:
+`patches visit @handle[/slug]` and a page editor.
+
+`Image` and `Gallery` are defined in the schema at 4.5 but render as a **placeholder** until
+the Phase 5 media pipeline exists — the schema may lead the pipeline; the renderer may not
+fake it (§176).
+
+Non-negotiable: the document is inert data — no executable user code, in any client, ever;
+the server never renders; guestbooks ship with block-awareness, rate limiting,
+reportability, and owner/moderator removal. See
+[`../architecture/pages.md`](../architecture/pages.md) and ADR
+[0012](../decisions/0012-patches-pages-portable-declarative.md).
+
+**Success criteria:** Alice edits her Page; Bob runs `patches visit @alice`, sees it rendered
+in his terminal, and signs her guestbook.
+
 ## Phase 5 — production media
 
 **Status: planned**
@@ -79,7 +135,14 @@ fallback for unsupported terminals.
 **Status: planned**
 
 Implement: block, mute, report, admin commands, audit log, rate limits, account suspension,
-password reset, robust input validation.
+password reset, robust input validation, **GitHub OAuth device flow** as a credential type.
+
+GitHub device flow lands here rather than in Phase 1 because: it is the first outbound HTTP
+call to a third party, so it wants this phase's URL/timeout/SSRF validation baseline; linking
+a provider credential to an existing account is an account-takeover surface best built
+alongside suspension and audit logging; and no item in the v0 acceptance checklist (§158)
+depends on it. Phase 1's browserless paths (password, SSH) remain the primary ones — §153's
+"never require a browser for normal TUI usage" is unaffected.
 
 **Success criteria:** the service can safely support invited outside users.
 
@@ -120,33 +183,62 @@ Before calling the project MVP, all of the following must be true:
 
 ---
 
-## Post-MVP roadmap
+## Post-v0.0 roadmap (§176)
 
-### 0.3 — feed customization
+Amendment A replaced the old 0.3–1.0 sequence. Identity personality (profile theme, Top 8,
+guestbook) moved **earlier**, into Phase 4.5 — it's the personal-web pillar, not a post-MVP
+experiment. Federation moved earlier too, with every security gate unchanged.
 
-Photo-only feed, custom actor lists, client filters, declarative local feed definitions
-(the A2 stage of the feed-rule DSL — see `docs/product/principles.md`).
+### Phase 8 — two-node federation lab (v0.1)
 
-### 0.4 — identity personality
+**Status: planned.** Federation Stage F1, **local and non-public**. Two Patches nodes on one
+machine: WebFinger, actor documents, inbox/outbox, `Follow`, `Accept`, `Create` (Note),
+`Delete`, basic `Like`, and durable delivery through the existing outbox/jobs machinery with
+bounded retries and safe duplicate delivery.
 
-Experiment with pinned post, profile theme, Top 8, guestbook, richer profile links. Keep
-customization safe — no arbitrary HTML/CSS/JS.
+No Mastodon-compatibility goal yet. The objective is proving Patches-to-Patches federation
+end to end, four releases earlier than originally scheduled, while a wrong actor/URI/delivery
+assumption is still cheap to fix.
 
-### 0.5 — federation lab
+**Success criteria:** Alice on node A follows Bob on node B; Bob posts; the post appears in
+Alice's home feed; Bob deletes it; it tombstones on node A.
 
-Two Patches instances talking to each other. ActivityPub fundamentals. No default public
-federation yet. Corresponds to federation Stage F1.
+### Phase 9 — self-hostable node release (v0.2)
 
-### 0.6 — Fediverse compatibility
+**Status: planned.** A published node image plus a Compose template, documented environment
+variables, an upgrade/migration path, and a security contact. **Federation is disabled by
+default** in a fresh node, and no proprietary dependency is required — any S3-compatible
+object store, any SMTP endpoint.
 
-Mastodon-compatible discovery and basic interactions. Add domain moderation. Corresponds to
-federation Stage F2.
+**Success criteria:** an operator who has not read the source can stand up a working node
+from the published image and documentation, and federate it with a second node only by
+explicit choice.
 
-### 1.0 — federated Patches
+### Phase 10 — Fediverse interoperability (v0.3)
 
-Public federation becomes supported. The centralized product still works without
-federation — federation is additive, never a hard dependency. Corresponds to federation
-Stage F3.
+**Status: planned.** Federation Stage F2. Interop with Mastodon and Pixelfed: discovery
+robustness, HTTP signing compatible with ecosystem expectations, remote actor caching,
+remote object ingestion, retry, deduplication, blocklists, domain moderation.
+
+### Phase 11 — identity portability (v0.4)
+
+**Status: planned.** Account migration between nodes using the seam built in Phase 1
+(`actors.moved_to_uri`, `also_known_as`), with bidirectional verification required before a
+move is honored, plus the full data export (profile, posts, media manifest, page document,
+social graph). Export is never gated behind a capability or payment.
+
+### Phase 12 — public federation (v1.0)
+
+**Status: planned.** Federation Stage F3. Enabled only after the full §160 readiness
+checklist passes. The single-node product still works without federation — federation is
+additive, never a hard dependency.
+
+### Feed customization (unscheduled)
+
+Photo-only feed, custom actor lists, client filters, declarative local feed definitions (the
+A2 stage of the feed-rule DSL — see [`principles.md`](./principles.md)). Sequenced against
+the releases above when there is demand; feed definitions remain **data, not executable
+code**.
 
 ---
 
@@ -177,19 +269,19 @@ the centralized product (through MVP) works.
 Centralized system. The data model already understands local/remote actor possibility,
 canonical URIs, origin, tombstones, and visibility. No remote network requests are made.
 
-### Stage F1 — two-instance lab
+### Stage F1 — two-node lab (v0.1, Phase 8)
 
-Run two Patches servers locally. Implement WebFinger, actor documents, inbox/outbox,
+Run two Patches nodes locally. Implement WebFinger, actor documents, inbox/outbox,
 Follow, Accept, Create Note, Delete, and optionally basic Like. No Mastodon compatibility
 goal yet — the target is proving Patches-to-Patches federation works.
 
-### Stage F2 — interoperability
+### Stage F2 — interoperability (v0.3–v0.4, Phases 10–11)
 
 Test against mainstream ActivityPub implementations. Implement discovery, HTTP signing
 compatible with ecosystem expectations, remote actor caching, remote object ingestion,
 retry, deduplication, a blocklist, and domain moderation.
 
-### Stage F3 — public federation
+### Stage F3 — public federation (v1.0, Phase 12)
 
 Only enabled after abuse controls, SSRF protection, signature verification, job retries,
 tombstones, remote deletion handling, monitoring, and domain controls all exist.
@@ -222,9 +314,12 @@ These are the literal go/no-go gates from the spec (§§157–160). A phase or m
 
 v0 is complete only when two real users can:
 
-- [ ] register,
-- [ ] verify email,
-- [ ] login,
+- [ ] register (with an SSH key or a password),
+- [ ] verify email _(where the node requires it — §165)_,
+- [ ] login by password,
+- [ ] login by SSH key,
+- [ ] add and revoke a second credential,
+- [ ] edit and visit a Page,
 - [ ] persist session securely,
 - [ ] edit profile,
 - [ ] search local actors,

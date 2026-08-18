@@ -1,7 +1,12 @@
 # API contract: Protobuf / gRPC
 
-Patches' canonical client/server application protocol. Source of truth:
-`INITIAL_VISION.md` §40–58, §83.
+Patches' canonical client/server application protocol — the contract between a client and a
+**node**. Source of truth: `INITIAL_VISION.md` §40–58, §83, and **Amendment A §168, §170,
+§174**.
+
+> **Amendment A changed this document.** `AuthService` gains SSH, GitHub-device-flow, and
+> credential-management RPCs (§168); a `NodeService` and a `PageService` are added. See
+> [`auth.md`](./auth.md) and [`pages.md`](./pages.md).
 
 ## 1. Schema layout
 
@@ -11,8 +16,10 @@ Protocol Buffers, proto3, package `patches.v1`:
 packages/proto/proto/patches/v1/
 ├── common.proto
 ├── auth.proto
+├── node.proto
 ├── users.proto
 ├── actors.proto
+├── pages.proto
 ├── posts.proto
 ├── feeds.proto
 ├── media.proto
@@ -38,6 +45,8 @@ One service per domain boundary — never one giant `PatchesService` (§47):
 
 ```proto
 service AuthService
+service NodeService
+service PageService
 service ActorService
 service PostService
 service FeedService
@@ -64,16 +73,65 @@ service ModerationService
 | `ResetPassword`        | consumes the reset code                                 |
 | `GetCurrentSession`    | returns session/actor info for the current access token |
 
+Added by Amendment A (§168). Every login RPC returns the **same session envelope**, so client
+session handling is identical regardless of credential type.
+
+| RPC                | Notes                                                                           |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `BeginSshLogin`    | issues a single-use, TTL-bounded challenge; returned regardless of enrollment   |
+| `CompleteSshLogin` | verifies the agent signature over the reconstructed blob; generic failure only  |
+| `BeginGitHubLogin` | device flow: returns user code, verification URI, polling interval              |
+| `PollGitHubLogin`  | polls GitHub; returns pending or a session envelope                             |
+| `ListCredentials`  | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`** |
+| `AddCredential`    | requires an authenticated session                                               |
+| `RevokeCredential` | fails if it would revoke the last active credential                             |
+
+Notes:
+
+- `Login` is the **password** login. It must not become a polymorphic grab-bag of credential
+  types.
+- `Register` accepts an optional initial credential, so SSH-first registration never has to
+  pass through a password.
+- `VerifyEmail`, `RequestPasswordReset`, `ResetPassword` apply only to accounts with a
+  verified recovery email (§165).
+- Flows, the signed-blob composition, and the no-enumeration rule are in
+  [`auth.md`](./auth.md).
+
+### NodeService (§163, §168)
+
+| RPC           | Notes                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), capabilities (§174) |
+
+Clients discover node policy here rather than assuming the reference node's behavior. There
+is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
+on capabilities only.
+
+### PageService (§170–§172)
+
+**Phase 4.5.** The server stores, validates, versions and serves the page document; it never
+renders it.
+
+| RPC             | Notes                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `GetPage`       | by actor (+ optional slug); returns the current revision document                           |
+| `UpdatePage`    | validated **strictly** against the declared schema version; writes a new immutable revision |
+| `ListGuestbook` | cursor-paginated                                                                            |
+| `SignGuestbook` | rate-limited (§102); blocked actors rejected; plain text ≤ 500 chars                        |
+
+The document is inert data — no executable user code, in any client, ever (§172). Renderers
+ignore unknown block types gracefully; the server rejects them on write.
+
 ### ActorService (§49)
 
-| RPC                | Notes                                        |
-| ------------------ | -------------------------------------------- |
-| `GetActor`         | by ID                                        |
-| `GetActorByHandle` |                                              |
-| `UpdateProfile`    | display name, bio, location, website, avatar |
-| `SearchActors`     | handle prefix + display-name match (§112)    |
-| `ListFollowers`    | cursor-paginated                             |
-| `ListFollowing`    | cursor-paginated                             |
+| RPC                | Notes                                                          |
+| ------------------ | -------------------------------------------------------------- |
+| `GetActor`         | by ID                                                          |
+| `GetActorByHandle` |                                                                |
+| `UpdateProfile`    | display name, bio, location, website, avatar, nameplate (§173) |
+| `SearchActors`     | handle prefix + display-name match (§112)                      |
+| `ListFollowers`    | cursor-paginated                                               |
+| `ListFollowing`    | cursor-paginated                                               |
 
 ### SocialGraphService (§50)
 

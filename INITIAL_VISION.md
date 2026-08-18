@@ -17,6 +17,20 @@
 
 ---
 
+## Amendments
+
+This specification is amended by appending new top-level parts, never by rewriting earlier
+sections in place. **Read §162 onward before acting on §0–§161** — where an amendment and an
+earlier section disagree, the amendment wins, and the earlier section is annotated in the
+amendment's scope table.
+
+- **§162–§177 — Amendment A (2026-08-17):** node model (`patches.social` is the reference
+  node, not "the backend"), credentials separated from identity (SSH / password / GitHub),
+  Patches Pages, nameplates, capabilities-not-tiers, and a revised release sequence that
+  moves federation earlier without moving its security gates.
+
+---
+
 # 0. Instructions to the implementation agent
 
 You are the lead engineer responsible for taking Patches from an empty repository to a functioning, deployed application.
@@ -4963,3 +4977,578 @@ Then make it excellent.
 Then make it federate.
 
 Then give it more clients.
+
+---
+
+# 162. Amendment A — 2026-08-17: nodes, credentials, Pages, nameplates
+
+This part is an **amendment**, not a rewrite. Sections §0–§161 remain as written; where this
+amendment and an earlier section disagree, **this amendment wins**, and the earlier section
+is annotated below as amended or superseded.
+
+Do not edit §0–§161 in place to match this part — the history is the point. Do not
+re-litigate a decision recorded here; if it must change, write a further amendment and an ADR.
+
+Scope of Amendment A:
+
+| Section       | Effect                                                                    |
+| ------------- | ------------------------------------------------------------------------- |
+| §163          | Node model. Amends §1, §3, §84, §91.                                      |
+| §164          | Identity portability seam. Amends §21, §110.                              |
+| §165          | Credentials separate from identity. **Supersedes §20 `password_hash`.** Amends §33, §38, §39. |
+| §166          | SSH-key authentication. Amends §33, §37, §48.                             |
+| §167          | GitHub credential via device flow. Amends §33, §48.                       |
+| §168          | Auth/node RPC additions. Amends §47, §48.                                 |
+| §169          | Per-node sessions in the TUI. Amends §37, §78, §82.                       |
+| §170–§172     | Patches Pages. Adds after §4.4; amends §4.4, §143 (0.4).                   |
+| §173          | Nameplates. Amends §4.4.                                                  |
+| §174          | Capabilities, not tiers. New.                                             |
+| §175          | Five product pillars and vocabulary. Amends §3, §4.                       |
+| §176          | Release sequence v0.0–v1.0. Amends §108, §134, §143.                       |
+| §177          | Additional hard prohibitions. Amends §153 (adds; removes nothing).         |
+
+Everything not listed above is unchanged. In particular, Amendment A does **not** relax any
+prohibition in §153, does not change the chronological-feed rule (§4.1), and does not move
+public federation earlier than its security gates (§109, §160).
+
+---
+
+# 163. Node model
+
+**Amends §1, §3, §84, §91.**
+
+Patches is **social-server software**. A deployment of that software is a **node**.
+
+`patches.social` is the flagship hosted node — the **reference node**. It is the first node,
+the deployment this repository ships, and the conformance reference for client behavior. It
+is **not** "the backend", and no document, identifier, or code comment may describe it as
+such.
+
+Rules:
+
+- Identity is `@handle@domain`. A handle is only unique **within a node**.
+- Each node is authoritative for its own local actors and for nothing else.
+- There MUST NOT be a global user database, a central account service, a central directory,
+  or any registry that a node requires in order to function.
+- A node MUST be fully operable standalone, with no other node reachable.
+- A node's identity is its canonical domain (§91). One node has exactly one canonical
+  domain, fixed before federation is enabled.
+- Nodes MUST expose their own policy to clients rather than hardcoding it client-side; see
+  `GetNodeInfo` (§168) and capabilities (§174).
+
+Self-hosting is a product goal, not a side effect. A node release MUST be runnable by a
+competent operator with `docker run`/Compose plus documented environment variables, and MUST
+NOT require a proprietary dependency: object storage is any S3-compatible endpoint (R2 is the
+reference choice, §29), email is any SMTP endpoint or provider adapter (§39).
+
+Federation MUST default to **disabled** on a fresh node, and MUST NOT be enabled on any node
+until the §109 controls exist in that build. Shipping self-hostable software does not lower
+the federation security bar; it raises it, because the operator inherits it.
+
+---
+
+# 164. Identity portability seam
+
+**Amends §21, §110.**
+
+Account portability between nodes is a stated goal (§176, v0.4). The **seam** is built now;
+the feature is not.
+
+`actors` gains:
+
+```text
+moved_to_uri     text nullable   -- this actor has moved to another actor URI
+also_known_as    text[] / jsonb  -- prior/alternate actor URIs this actor claims
+```
+
+Rules:
+
+- Both columns exist from the Phase 1 schema and are unused until v0.4. They are federation
+  bookkeeping, never product surface.
+- A local actor with `moved_to_uri` set MUST be treated as read-only: no new posts, no new
+  follows accepted.
+- Migration MUST be bidirectionally verified — the destination actor must claim the origin
+  actor in `also_known_as` before a move is honored. A one-sided claim MUST NOT be trusted.
+
+Protocol accuracy (verified 2026-08-17): `Move` **is** a standard ActivityStreams 2.0
+activity type (https://www.w3.org/TR/activitystreams-vocabulary/); `movedTo` and
+`alsoKnownAs` are **not** — they are Mastodon-originated properties documented
+non-normatively by the W3C SocialCG (https://swicg.github.io/miscellany/), with FEP-7628 in
+progress. Name our columns in our own terms, map to the community property names only at the
+federation boundary, and never describe them in code or docs as standard ActivityStreams.
+
+**Export** is independent of federation and is not gated behind any capability, tier, or
+payment: an actor MUST be able to export profile, posts, media manifest, page document
+(§170), and social graph as a documented archive.
+
+---
+
+# 165. Credentials are separate from identity
+
+**Supersedes §20's `password_hash` field. Amends §33, §38, §39.**
+
+A credential is a way to prove you are a user. It is not who you are. Changing, adding, or
+revoking a credential MUST NOT change the actor, the handle, or any social relationship.
+
+`users` (superseding §20):
+
+```text
+users
+-----
+id uuid primary key
+actor_id uuid unique
+
+recovery_email             nullable
+recovery_email_normalized  nullable
+email_verified_at          nullable
+
+status  ACTIVE | SUSPENDED | DELETED
+
+created_at
+updated_at
+deleted_at
+```
+
+`password_hash` is removed from `users`. Email is now **recovery/verification only** — it is
+not the account identifier, and it is not the login key.
+
+`credentials` (new):
+
+```text
+credentials
+-----------
+id uuid primary key
+user_id uuid
+
+type  PASSWORD | SSH_PUBLIC_KEY | GITHUB        -- PASSKEY reserved, not v0
+
+identifier       text nullable   -- lookup key, scoped to type
+secret_hash      text nullable   -- Argon2id hash; PASSWORD only
+public_material  text nullable   -- OpenSSH public key blob; SSH_PUBLIC_KEY only
+metadata         jsonb nullable  -- non-secret provider bookkeeping
+
+label            text nullable   -- human label, user-supplied ("work laptop")
+created_at
+last_used_at     nullable
+revoked_at       nullable
+```
+
+`identifier` semantics per type:
+
+- `SSH_PUBLIC_KEY` — the key fingerprint in OpenSSH `SHA256:<base64>` form.
+- `GITHUB` — the GitHub **numeric account id** (§167). Never the login name.
+- `PASSWORD` — NULL. Password login resolves the user by handle or verified recovery email
+  first, then loads that user's password credential. Copying a normalized email into
+  `credentials.identifier` would create a second source of truth for the same value and a
+  guaranteed drift bug the first time a recovery address changes.
+
+Rules:
+
+- A user MAY hold several credentials, including several of the same type (several SSH keys
+  is the normal case).
+- At most one active `PASSWORD` credential per user:
+  `UNIQUE (user_id) WHERE type = 'PASSWORD' AND revoked_at IS NULL`.
+- `UNIQUE (type, identifier) WHERE revoked_at IS NULL AND identifier IS NOT NULL` — one SSH
+  key or GitHub account cannot authenticate two users on the same node.
+- Revoking the last active credential MUST fail. An account MUST always retain a way in.
+- Adding a credential to an existing account MUST require an authenticated session.
+- `secret_hash` MUST NOT be logged, MUST NOT be returned over gRPC, and MUST NOT appear in
+  any DTO. `ListCredentials` returns type, label, identifier, `created_at`, `last_used_at`
+  only.
+- Password hashing remains Argon2id per §34, unchanged.
+
+Email policy (SHOULD-level, node-configurable):
+
+- An account whose only credential is `PASSWORD` MUST have a verified recovery email —
+  otherwise password reset has no channel and the account is unrecoverable.
+- An account with a non-password credential MAY omit email entirely.
+- A node MAY require email by policy; the invite-only alpha on the reference node does.
+- Registration SHOULD prompt any account holding exactly one credential and no verified
+  email to add a second credential or a recovery address.
+
+---
+
+# 166. SSH-key authentication
+
+**Amends §33, §37, §48.** This is the terminal-native login path, and the one that best fits
+the product: the key is already there, the agent is already running, no browser exists.
+
+Verified references (2026-08-17): RFC 9987, *Secure Shell (SSH) Agent Protocol* (Standards
+Track, May 2026) — https://www.rfc-editor.org/rfc/rfc9987.html — whose §5.6
+`SSH_AGENTC_SIGN_REQUEST` has the agent sign **client-supplied arbitrary data** with a loaded
+identity; and RFC 4252 §7 *publickey* authentication —
+https://www.rfc-editor.org/rfc/rfc4252.html — whose signed blob prepends the session
+identifier to the request fields. Patches imitates that binding discipline; it does not
+implement SSH. Mechanics are in `docs/architecture/auth.md`.
+
+`BeginSshLogin` issues a challenge; the client has the agent sign it; `CompleteSshLogin`
+verifies and returns the standard session envelope (§35, §36). The signed blob MUST bind, in
+a documented fixed order:
+
+```text
+"patches-ssh-login-v1"     -- domain separation string; version it, never reuse it
+node canonical domain      -- prevents replaying a signature against another node
+challenge id
+nonce                      -- >= 32 bytes from a CSPRNG
+credential fingerprint
+expires_at
+```
+
+Requirements:
+
+- Challenges are single-use, TTL ≤ 120 seconds, consumed atomically, and rate-limited per IP
+  and per claimed handle (§102).
+- Signature verification MUST be over the exact reconstructed blob. The server MUST NOT sign
+  or accept any blob whose contents were chosen by the client.
+- **No enumeration.** SSH public keys are public — GitHub publishes them. A failed
+  `CompleteSshLogin` MUST be indistinguishable whether the key is unknown, revoked, or the
+  signature was wrong: one generic `UNAUTHENTICATED`. `BeginSshLogin` MUST return a
+  challenge regardless of whether any supplied fingerprint is enrolled. Only when the client
+  supplies a claimed handle MAY the server narrow the accepted-fingerprint set, and that
+  path MUST be rate-limited.
+- Accepted algorithms: `ssh-ed25519` SHOULD be preferred and offered first. `rsa-sha2-256` /
+  `rsa-sha2-512` MAY be accepted. SHA-1 `ssh-rsa` signatures MUST be rejected.
+- Enrollment: the TUI MAY enumerate agent identities and `~/.ssh/*.pub` and offer them
+  ("found 3 SSH identities — use `id_ed25519` as your Patches identity key?"). Enrollment
+  MUST be explicit user confirmation, never automatic.
+- Patches MUST NOT read, request, transmit, or store an SSH **private** key, ever, under any
+  flag. Signing happens in the agent. If no agent is available, the client MAY read a public
+  key for enrollment only, and MUST fall back to another credential type for login.
+
+---
+
+# 167. GitHub credential via OAuth device flow
+
+**Amends §33, §48.**
+
+GitHub is a **credential**, never an identity. A GitHub account does not become an actor, and
+GitHub profile data MUST NOT populate handle, display name, avatar, or bio without an
+explicit, separate user action. Patches issues its own sessions (§35, §36) in every case; no
+part of primary authentication is outsourced, so §33's intent is preserved.
+
+Device flow is used because it is the only OAuth flow that needs no browser *on this
+machine*: the user is shown a code, enters it on any device, and the CLI polls. Endpoints,
+parameters, polling rules and error codes are recorded in `docs/architecture/auth.md`,
+verified against
+https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+(2026-08-17). Device flow MUST be explicitly enabled in the OAuth app's settings, and the
+stable account id comes from `GET https://api.github.com/user` → `id`.
+
+Requirements:
+
+- The credential identifier is the numeric `id`. The login name MUST NOT be used as the
+  identifier — it is mutable and reusable, which makes it an account-takeover vector.
+- The GitHub access token is used once, to read the account id, and then discarded. Patches
+  MUST NOT persist third-party access or refresh tokens in v0. Requested scope MUST be the
+  minimum that returns the account id.
+- Linking GitHub to an existing account MUST require an authenticated Patches session.
+- GitHub login is **additive and optional**. §153's "never require a browser for normal TUI
+  usage" is unaffected: Patches MUST always offer at least one fully browserless
+  authentication path, and the reference node MUST always offer both password and SSH.
+
+---
+
+# 168. Auth and node RPC additions
+
+**Amends §47, §48.** Added to the §48 list:
+
+```text
+BeginSshLogin
+CompleteSshLogin
+BeginGitHubLogin
+PollGitHubLogin
+ListCredentials
+AddCredential
+RevokeCredential
+```
+
+Plus a new service (§47):
+
+```text
+service NodeService
+  GetNodeInfo
+```
+
+Notes:
+
+- `Login` (§48) is the **password** login. The name is kept for continuity; it MUST NOT
+  become a polymorphic grab-bag of credential types.
+- Every login RPC returns the same session envelope, so the client's session handling is
+  identical regardless of credential type.
+- `Register` accepts an optional initial credential, so SSH-first registration never has to
+  pass through a password.
+- `GetNodeInfo` is unauthenticated and returns node domain, software version, registration
+  mode, input limits (§58), and capabilities (§174). Clients MUST discover node policy here
+  rather than assuming the reference node's policy.
+- `VerifyEmail`, `RequestPasswordReset`, `ResetPassword` remain, and apply only to accounts
+  with a verified recovery email (§165).
+
+---
+
+# 169. Per-node sessions in the TUI
+
+**Amends §37, §78, §82.** The client talks to nodes, plural.
+
+```bash
+patches login <node>        # e.g. patches login patches.social
+patches accounts            # list stored accounts, mark the active one
+patches use @alice@node     # switch active account
+patches logout [node]
+```
+
+Requirements:
+
+- `CredentialStore` (§37) is keyed by **node origin + user id**. Sessions from different
+  nodes MUST NOT be interchangeable, and a token MUST NOT be sent to any origin other than
+  the one that issued it.
+- The default node is the reference node, overridable by config and environment.
+- The config file lists known nodes and the active account. It MUST NOT contain tokens;
+  tokens live in the keyring, with §37's guarded file fallback and its warning behavior
+  unchanged.
+- The TUI MUST refuse to silently downgrade transport security: connecting to a node over
+  plaintext, or with an untrusted certificate, MUST require an explicit, visible opt-in.
+
+---
+
+# 170. Patches Pages
+
+**Adds after §4.4; amends §4.4 and §143's 0.4 milestone.** This is a product pillar (§175),
+not a profile decoration.
+
+Every actor has a **Page**: a personal site, expressed as a **portable declarative
+document**, stored on the actor's node and rendered by **clients**.
+
+- The document is **data**, never code (§172).
+- The server stores, validates, versions, and serves the document. The server MUST NOT
+  render it — there is no server-side HTML, no server-side template, no server-side theme
+  engine.
+- The TUI renders it with Ink. A web renderer (React DOM) comes later. Both consume the same
+  document; neither is privileged.
+- Addressing: `patches visit @allison[@node][/slug]` in the TUI; `allison.patches.page` on
+  the web later.
+- Federation: the page manifest is advertised as a Patches extension property on the actor
+  document. A plain Fediverse server that does not understand it gets an ordinary actor and
+  loses nothing.
+
+This supersedes the framing in §4.4 where profile theme/Top 8/guestbook were "future
+concepts": they are Page blocks, and Pages v1 is scheduled (§176).
+
+---
+
+# 171. Page document schema
+
+Versioned, validated, bounded:
+
+```text
+PatchesPage {
+  version: int                       -- schema version, required
+  theme: {
+    accent, background, foreground   -- named or hex; renderers degrade
+    border: single | double | round | ascii | none
+    avatarStyle
+  }
+  pages: [
+    {
+      slug, title,
+      blocks: [ Text | Markdown | Image | Links | Posts | Gallery
+              | Friends | TopEight | Guestbook | NowPlaying
+              | Badges | AsciiArt | Spacer | Hero ]
+    }
+  ]
+}
+```
+
+Rules:
+
+- Blocks are a **flat list**. Blocks MUST NOT nest recursively in v1 — recursion is a
+  renderer-complexity and denial-of-service surface with no v1 payoff.
+- Limits (enforced server-side, published via `GetNodeInfo`): document ≤ 64 KiB serialized,
+  ≤ 32 sub-pages, ≤ 128 blocks per sub-page, ≤ 8 KiB text per block, guestbook entry
+  ≤ 500 characters. Per-block detail lives in `docs/architecture/pages.md`.
+- Storage (§176 Phase 4.5): `pages`, `page_revisions` (immutable snapshots — a bad edit is
+  recoverable and moderation has an audit trail), `page_assets` (counted against the node's
+  storage capability), `guestbook_entries`.
+- **Strict on write, lenient on render.** The server MUST validate a submitted document
+  strictly against its declared `version` and reject unknown block types and unknown fields.
+  A renderer MUST ignore block types it does not support, rendering a visible placeholder
+  rather than failing the page. This is what makes the format portable across clients that
+  ship on different schedules.
+
+---
+
+# 172. Page rendering and security
+
+**No user-authored executable code, in any client, ever, in the portable format.** No React,
+no MDX, no JS, no template language, no expression evaluator. A Page is inert data. This is
+the same rule as §111's "feed definitions are data, not code" and §153's prohibition on
+remote JavaScript plugins, applied to the personal-web pillar.
+
+Further requirements:
+
+- Images in a Page MUST be Patches media (§27–§32). Arbitrary remote image URLs MUST NOT be
+  fetched or embedded: that is an SSRF vector, a tracking vector, and an IP-address leak for
+  every visitor.
+- Link URLs are validated per §104 (`http`/`https` only; `javascript:`, `data:`, `file:`
+  rejected).
+- Markdown blocks are rendered by the client from a **safe subset**. Raw HTML passthrough
+  MUST be disabled.
+- Guestbook entries are plain text, subject to blocks/mutes (a blocked actor MUST NOT be
+  able to sign), rate-limited (§102), reportable (§64), and removable by the page owner and
+  by moderators. Guestbooks are spam magnets; treat entry creation as hostile input.
+- Nameplates and page themes MUST NOT be able to break the TUI's layout or overwrite the
+  screen outside the block being rendered. Renderers MUST strip control characters and
+  escape sequences from all user-supplied strings.
+
+**Advanced web mode (later, web-only).** A future capability MAY allow user-authored
+HTML/CSS/assets. If built, it MUST be served from an isolated origin (`*.patches.page` or a
+dedicated usercontent domain), never same-origin with the application, with a strict
+`Content-Security-Policy` including `script-src 'none'`, and it MUST NOT have access to any
+Patches session, token, or cookie. The TUI is unaffected — it renders the portable document
+only.
+
+---
+
+# 173. Nameplates
+
+**Amends §4.4.** A **nameplate** is how an actor appears *everywhere their name appears* —
+timeline, thread, mention, follower list — as distinct from a Page, which you visit.
+
+Fields (bounded, stored as a validated `nameplate` document on the actor, ≤ 2 KiB): name
+color or gradient, glyph, badges, avatar frame, status line, profile border.
+
+Requirements:
+
+- Rendering MUST degrade by terminal capability: truecolor → 256 → 16 → none. A nameplate
+  MUST never be required to read a post.
+- Readability wins. Renderers MUST enforce legibility (contrast floor, no zero-width or
+  bidirectional trickery, no control characters, bounded width) and MUST provide a plain
+  mode that strips all decoration.
+- **Badges are server-attested only** (e.g. node admin, moderator, supporter, verified
+  domain). A user MUST NOT be able to set badge text. Free-text badges are handle spoofing
+  with extra steps.
+- A nameplate MUST NOT be able to impersonate another actor's handle or a system message.
+- Write-time validation is against the capabilities granted to that user by that node
+  (§174). On import from another node, unsupported decoration is preserved but not rendered,
+  so migration never silently destroys someone's identity.
+
+---
+
+# 174. Capabilities, not tiers
+
+The protocol expresses **capabilities**, decided per node by policy:
+
+```text
+capabilities {
+  animatedNameplate
+  customDomain
+  maxSiteStorageBytes
+  customFonts
+  ...
+}
+```
+
+Rules:
+
+- There MUST NOT be a `tier`, `plan`, `subscription`, `premium`, or `is_supporter` field in
+  the protocol, and no client may branch on one. Clients branch on capabilities only.
+- A node decides how capabilities are granted. A self-hoster MAY grant everything to
+  everyone; that MUST remain a supported configuration, not a degraded one.
+- The reference node MAY fund storage, custom domains, and expensive extravagance through a
+  supporter tier. That is a **node billing concern**, invisible to the protocol.
+- Basic personal expression — having a Page, having a nameplate, having a handle, exporting
+  your data — MUST NOT be paywalled on any node claiming to run Patches.
+- Capabilities MUST NOT be used to gate safety, moderation, or portability features.
+
+There is no premium caste in the protocol. Money may buy storage and bandwidth; it does not
+buy social standing.
+
+---
+
+# 175. Product pillars and vocabulary
+
+**Amends §3 and §4.** The product rests on five pillars:
+
+1. **Social without engagement optimization.** Chronological, no ranking, no metrics
+   theater (§4.1, §4.2 unchanged).
+2. **Terminal-native multimedia social computing.** The terminal is the primary surface, not
+   a novelty port.
+3. **Personal web revival.** Every actor has a Page (§170).
+4. **Local ownership, federated network.** Every deployment is a node; `patches.social` is
+   the reference node, not the center (§163).
+5. **Clients are powerful.** Portable data — feeds, pages, nameplates — rendered by Ink, the
+   web, mobile, or third-party clients. The server does not decide presentation.
+
+Vocabulary added to §3:
+
+- **Node** — a Patches deployment, authoritative for its local actors. Prefer "node" over
+  "instance" or "server" in product language.
+- **Page** — an actor's portable declarative personal site (§170).
+- **Nameplate** — an actor's inline identity presentation (§173).
+- **Credential** — a way to prove you are a user; not an identity (§165).
+
+**Local** (§3) now means: public posts originating on *this node*.
+
+Wording correction: Ink does **not** render HTML — it renders a React component tree to a
+terminal via Yoga flexbox layout. Any doc, comment, or ADR implying otherwise is wrong and
+must be fixed. This is exactly why Pages are a shared declarative model rather than markup:
+the Ink renderer and a future DOM renderer consume the same data, and neither is a
+translation of the other.
+
+---
+
+# 176. Release sequence
+
+**Amends §108, §134, §143.** Federation moves earlier than §143 scheduled it, but the rule
+in §0 stands unchanged: **finish the centralized vertical slice first.**
+
+| Release | Contents                                                                       | Federation stage |
+| ------- | ------------------------------------------------------------------------------ | ---------------- |
+| v0.0    | Single-node social loop. Phases 0–7 as specified (§134–§141), plus Phase 4.5.   | F0               |
+| v0.1    | Two-node Patches-to-Patches federation lab (Phase 8).                          | F1               |
+| v0.2    | Self-hostable node release (Phase 9).                                          | F1               |
+| v0.3    | Mastodon/Pixelfed interoperability (Phase 10).                                 | F2               |
+| v0.4    | Identity portability and migration between nodes (Phase 11).                   | F2               |
+| v1.0    | Public federation (Phase 12).                                                  | F3               |
+
+**Phase 4.5 — Pages v1** sits between the core social loop and production media: page
+document schema, storage and revisions, `PageService`, the Ink renderer, basic theme, and
+the blocks `Text`, `Markdown`, `Links`, `Posts`, `TopEight`, `Guestbook`. `Image` and
+`Gallery` are defined in the schema at 4.5 but MUST render as placeholders until the Phase 5
+media pipeline (§139) exists — the schema is allowed to lead the pipeline; the renderer is
+not allowed to fake it.
+
+Constraints that do not move:
+
+- Phase 8's lab is **local and non-public**. It is §108's Stage F1, unchanged.
+- Every §109 control is a hard gate before any node exposes federation to the Internet, and
+  the §160 checklist still gates v1.0 in full.
+- v0.2 ships with federation disabled by default (§163).
+- Credentials, SSH login, and per-node sessions land in **Phase 1**; the GitHub device flow
+  lands in **Phase 6**, because it is the first outbound HTTP call to a third party (and so
+  wants Phase 6's URL/timeout/SSRF validation baseline), it is an account-linking
+  takeover surface best built alongside suspension and audit logging, and nothing in the v0
+  acceptance checklist (§158) depends on it.
+
+---
+
+# 177. Additional hard prohibitions
+
+**Amends §153 by addition. Nothing in §153 is relaxed.** The implementation agent MUST NOT:
+
+- describe or design `patches.social` as "the backend" rather than a node,
+- introduce a global user database, central account service, or cross-node registry that
+  nodes depend on,
+- allow user-authored executable code in the Page format, in any client,
+- serve user-authored HTML/CSS same-origin with the application, or with scripting enabled,
+- embed arbitrary remote URLs as page/profile media,
+- store a plaintext credential secret of any type, or return `secret_hash` over gRPC,
+- persist third-party OAuth access or refresh tokens in v0,
+- read, transmit, or store an SSH private key,
+- use a mutable provider login name as a credential identifier,
+- confirm whether an SSH public key or email is enrolled before authentication succeeds,
+- allow a user to set their own badge text,
+- introduce a `tier`/`plan`/`premium` field into the protocol, or paywall a Page, a
+  nameplate, or data export,
+- make email mandatory for accounts holding a non-password credential, unless the node has
+  explicitly configured that policy,
+- enable federation by default in a self-hosted node build.

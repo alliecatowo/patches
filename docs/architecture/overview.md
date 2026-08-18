@@ -1,14 +1,16 @@
 # Architecture overview
 
-Patches is a terminal-native, chronological social network. The backend is a NestJS
-modular monolith speaking gRPC/Protobuf to clients; the primary client is an Ink/React
-terminal UI. This document summarizes the system shape, module boundaries, layering
+Patches is terminal-native, chronological social-network software. A deployment is a
+**node**; `patches.social` is the flagship hosted node — the reference node, not "the
+backend" (§163). A node is a NestJS modular monolith speaking gRPC/Protobuf to clients; the
+primary client is an Ink/React terminal UI. This document summarizes the system shape, module boundaries, layering
 rules, monorepo layout, worker model, configuration, observability, security, and
 performance targets. See the other files in `docs/architecture/` for the data model,
 API contract, media pipeline, jobs/outbox design, federation seam, and TUI
 architecture in detail.
 
-Source of truth: `INITIAL_VISION.md` (§1, §7–13, §125–129, §161).
+Source of truth: `INITIAL_VISION.md` (§1, §7–13, §125–129, §161) and **Amendment A
+(§162–§177)** — the node model, credentials, Pages, nameplates, and capabilities.
 
 ## 1. System diagram
 
@@ -19,7 +21,7 @@ Patches TUI
     |
     | gRPC / protobuf
     v
-Patches backend
+Patches node            (patches.social is one; self-hosters run others)
     |
     +---- PostgreSQL
     |
@@ -27,10 +29,14 @@ Patches backend
     |
     +---- background worker
     |
-    +---- ActivityPub federation later
+    +---- ActivityPub federation to other nodes (v0.1+)
     |
     +---- React Native mobile app later
 ```
+
+Each node is authoritative for its own local actors and nothing else. There is no global user
+database and no central service a node depends on to function (§163). Identity is
+`@handle@domain`; a handle is unique within a node only.
 
 The server decides what content a user is **authorized** to access. It does not decide
 what content is psychologically optimized to capture attention. Feed algorithm logic
@@ -108,12 +114,14 @@ App
 ├── ModerationModule
 ├── AdminModule
 ├── JobsModule
-└── FederationModule        # interfaces/stubs only initially
+├── PagesModule             # Phase 4.5
+├── NodeModule              # node info + capabilities
+└── FederationModule        # interfaces/stubs until v0.1
 ```
 
 | Module                | Responsibility                                                        |
 | --------------------- | --------------------------------------------------------------------- |
-| `AuthModule`          | Registration, login, verification, sessions, token issuance/rotation  |
+| `AuthModule`          | Registration, credentials (password/SSH/GitHub), sessions, tokens     |
 | `UsersModule`         | Local authenticated account records (`users`)                         |
 | `ActorsModule`        | Social identity records (`actors`), local and future remote           |
 | `ProfilesModule`      | Profile fields (display name, bio, avatar, links) on top of actors    |
@@ -126,6 +134,8 @@ App
 | `ModerationModule`    | Reports, moderator actions                                            |
 | `AdminModule`         | Admin CLI-facing operations, invites, audit log                       |
 | `JobsModule`          | Postgres-backed outbox/job claiming and dispatch (shared with worker) |
+| `PagesModule`         | Page documents, revisions, assets, guestbook (Phase 4.5)              |
+| `NodeModule`          | `GetNodeInfo`: node identity, policy, limits, capabilities (§174)     |
 | `FederationModule`    | `FederationGateway` interface + `NoopFederationGateway` (F0 only)     |
 
 Why a monolith first (§10): simpler transactions, fewer network boundaries, less
@@ -303,7 +313,14 @@ to it must be sanitized.
 
 Security is part of MVP, not a later polish pass. Required baseline:
 
-- Argon2id password hashing (see `data-model.md` §users)
+- Argon2id password hashing on `credentials.secret_hash` — never on `users` (§165, ADR 0011)
+- credential secrets never logged, never returned over gRPC, never present in a DTO
+- SSH login challenges single-use, TTL-bounded, and bound to node domain + purpose + nonce,
+  with credential enumeration impossible (§166, see `auth.md`)
+- no third-party OAuth access/refresh token is ever persisted (§167)
+- no user-authored executable code in Page documents, in any client (§172, see `pages.md`)
+- control characters and escape sequences stripped from every user-supplied string before
+  rendering — the terminal-native equivalent of XSS
 - refresh token rotation + reuse detection (see `data-model.md` §refresh_tokens)
 - rate limiting on sensitive flows (login, registration, password reset,
   verification resend) — `@nestjs/throttler`, DB-backed for flows needing
@@ -351,6 +368,8 @@ added speculatively for a hypothetically slow future query (§126, §153).
 
 - `docs/architecture/data-model.md` — entities, ER diagram, indexes, constraints
 - `docs/architecture/api.md` — protobuf/gRPC contract, error model, limits
+- `docs/architecture/auth.md` — credentials, password/SSH/GitHub flows, per-node sessions
+- `docs/architecture/pages.md` — Patches Pages document, renderers, nameplates, security
 - `docs/architecture/media.md` — upload/processing pipeline
 - `docs/architecture/jobs.md` — outbox/job table, claim query, backoff
 - `docs/architecture/federation.md` — federation seam and staged rollout

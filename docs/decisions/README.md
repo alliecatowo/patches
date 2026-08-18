@@ -8,20 +8,27 @@ written record of why it was made. Routine implementation choices don't need one
 Keep ADRs short: context, decision, consequences, alternatives considered. See
 `INITIAL_VISION.md` §131 for the source requirement.
 
+ADRs 0011–0014 record Amendment A to the spec (`INITIAL_VISION.md` §162–§177). Read the
+amendment first — the ADRs explain _why_; the amendment is what implementers must follow.
+
 ## Index
 
-| ADR                                       | Title                                                                                           | Status   |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
-| [0001](./0001-modular-monolith.md)        | Modular monolith backend architecture                                                           | Accepted |
-| [0002](./0002-grpc-protobuf.md)           | gRPC + Protobuf as the client/server protocol                                                   | Accepted |
-| [0003](./0003-typeorm-postgres.md)        | TypeORM on PostgreSQL as the persistence layer                                                  | Accepted |
-| [0004](./0004-postgres-outbox.md)         | PostgreSQL-backed job queue and transactional outbox instead of Redis/Kafka                     | Accepted |
-| [0005](./0005-r2-media-storage.md)        | Cloudflare R2 for media storage with direct client upload                                       | Accepted |
-| [0006](./0006-activitypub-later.md)       | ActivityPub federation deferred behind a gateway seam                                           | Accepted |
-| [0007](./0007-ink-terminal-client.md)     | Ink (React for terminals) as the primary client framework                                       | Accepted |
-| [0008](./0008-pnpm-turborepo-monorepo.md) | pnpm workspaces + Turborepo monorepo                                                            | Accepted |
-| [0009](./0009-typescript-5-not-7.md)      | Pin TypeScript 5.9.x instead of TypeScript 7                                                    | Accepted |
-| [0010](./0010-argon2id-jose-jwt.md)       | Argon2id password hashing with short-lived JWT access tokens and opaque rotating refresh tokens | Accepted |
+| ADR                                                  | Title                                                                                           | Status   |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------- |
+| [0001](./0001-modular-monolith.md)                   | Modular monolith backend architecture                                                           | Accepted |
+| [0002](./0002-grpc-protobuf.md)                      | gRPC + Protobuf as the client/server protocol                                                   | Accepted |
+| [0003](./0003-typeorm-postgres.md)                   | TypeORM on PostgreSQL as the persistence layer                                                  | Accepted |
+| [0004](./0004-postgres-outbox.md)                    | PostgreSQL-backed job queue and transactional outbox instead of Redis/Kafka                     | Accepted |
+| [0005](./0005-r2-media-storage.md)                   | Cloudflare R2 for media storage with direct client upload                                       | Accepted |
+| [0006](./0006-activitypub-later.md)                  | ActivityPub federation deferred behind a gateway seam                                           | Accepted |
+| [0007](./0007-ink-terminal-client.md)                | Ink (React for terminals) as the primary client framework                                       | Accepted |
+| [0008](./0008-pnpm-turborepo-monorepo.md)            | pnpm workspaces + Turborepo monorepo                                                            | Accepted |
+| [0009](./0009-typescript-5-not-7.md)                 | Pin TypeScript 5.9.x instead of TypeScript 7                                                    | Accepted |
+| [0010](./0010-argon2id-jose-jwt.md)                  | Argon2id password hashing with short-lived JWT access tokens and opaque rotating refresh tokens | Accepted |
+| [0011](./0011-credentials-separate-from-identity.md) | Credentials are separate from identity (password / SSH key / GitHub device flow)                | Accepted |
+| [0012](./0012-patches-pages-portable-declarative.md) | Patches Pages are a portable declarative document, rendered by clients                          | Accepted |
+| [0013](./0013-node-model-and-earlier-federation.md)  | Patches is node software; `patches.social` is the reference node; federation moves earlier      | Accepted |
+| [0014](./0014-capabilities-not-tiers.md)             | Capabilities, not tiers, in the protocol                                                        | Accepted |
 
 ## Template
 
