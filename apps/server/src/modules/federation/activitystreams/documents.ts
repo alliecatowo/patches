@@ -120,21 +120,41 @@ export function buildTombstone(id: string, formerType = 'Note'): ActivityStreams
   return { id, type: 'Tombstone', formerType };
 }
 
-/** A single outbox page — F1 keeps this to one page (spec §46-style keyset elsewhere; the
- * outbox itself just returns the newest N public posts, capped, no true pagination yet — a
- * documented v0.1 simplification, see this task's report). */
+/** The outbox's top-level `OrderedCollection` (B-027: real pagination) — `totalItems` plus a
+ * `first` link into `buildOutboxPage`'s keyset-paginated pages. AS2/AP convention (matching
+ * Mastodon and other implementations) is that the collection itself never carries
+ * `orderedItems` once paging is in play; a client always follows `first`/`next`. */
 export function buildOutboxCollection(
   id: string,
   totalItems: number,
-  items: ActivityStreamsDocument[],
+  firstPageUri: string,
 ): ActivityStreamsDocument {
   return {
     '@context': ACTIVITYSTREAMS_CONTEXT,
     id,
     type: 'OrderedCollection',
     totalItems,
-    orderedItems: items,
+    first: firstPageUri,
   };
+}
+
+/** One keyset page of the outbox (B-027) — `partOf` points back at the collection, `next` is
+ * present only when another page exists (same "omit rather than null" convention as `prune`
+ * gives every other AS2 document here). */
+export function buildOutboxPage(input: {
+  id: string;
+  partOf: string;
+  items: ActivityStreamsDocument[];
+  next?: string | undefined;
+}): ActivityStreamsDocument {
+  return prune({
+    '@context': ACTIVITYSTREAMS_CONTEXT,
+    id: input.id,
+    type: 'OrderedCollectionPage',
+    partOf: input.partOf,
+    orderedItems: input.items,
+    next: input.next,
+  });
 }
 
 /** RFC 7033 JRD for `GET /.well-known/webfinger` (P8-001). */
