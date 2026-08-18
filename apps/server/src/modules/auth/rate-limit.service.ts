@@ -16,7 +16,13 @@ export type RateLimitAction =
   /** `BeginMediaUpload` (spec §102): each call gets a presigned PUT and a `media` row,
    * so an unbounded caller could mint unlimited pending uploads/rows without ever
    * finishing one. */
-  | 'media_begin_upload';
+  | 'media_begin_upload'
+  /** `BeginGitHubLogin` (P6-005, spec §176): each call is an outbound HTTP request to GitHub
+   * and a new device-flow attempt held in memory — both worth bounding per caller. */
+  | 'github_begin_login'
+  /** `PollGitHubLogin`: `AuthService` also honors GitHub's own `interval`/`slow_down` per
+   * device code, but this bounds the *number of distinct device codes* one peer can poll. */
+  | 'github_poll_login';
 
 interface Window {
   limit: number;
@@ -41,6 +47,8 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
   ssh_challenge: { limit: 30, windowMs: 5 * 60_000 },
   ssh_complete: { limit: 20, windowMs: 5 * 60_000 },
   media_begin_upload: { limit: 30, windowMs: 5 * 60_000 },
+  github_begin_login: { limit: 20, windowMs: 5 * 60_000 },
+  github_poll_login: { limit: 120, windowMs: 5 * 60_000 },
 });
 
 /**
@@ -59,6 +67,8 @@ const PEER_WINDOWS: Readonly<Partial<Record<RateLimitAction, Window>>> = Object.
   password_reset: { limit: 30, windowMs: 60 * 60_000 },
   ssh_challenge: { limit: 60, windowMs: 5 * 60_000 },
   ssh_complete: { limit: 60, windowMs: 5 * 60_000 },
+  github_begin_login: { limit: 40, windowMs: 5 * 60_000 },
+  github_poll_login: { limit: 240, windowMs: 5 * 60_000 },
 });
 
 /** Above this many live buckets, a brand-new key is refused rather than admitted. */

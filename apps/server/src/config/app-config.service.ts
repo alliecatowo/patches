@@ -142,6 +142,28 @@ export class AppConfigService {
   get mediaPresignGetTtlSeconds(): number {
     return this.get('MEDIA_PRESIGN_GET_TTL_SECONDS');
   }
+
+  /** Undefined means GitHub login is not configured on this node (§176) — `AuthService`
+   * answers `NOT_IMPLEMENTED` rather than calling GitHub with no client id. */
+  get githubClientId(): string | undefined {
+    return this.get('GITHUB_CLIENT_ID');
+  }
+
+  get githubDeviceCodeUrl(): string {
+    return this.get('GITHUB_DEVICE_CODE_URL');
+  }
+
+  get githubTokenUrl(): string {
+    return this.get('GITHUB_TOKEN_URL');
+  }
+
+  get githubUserApiUrl(): string {
+    return this.get('GITHUB_USER_API_URL');
+  }
+
+  get githubHttpTimeoutMs(): number {
+    return this.get('GITHUB_HTTP_TIMEOUT_MS');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {
