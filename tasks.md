@@ -149,21 +149,21 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
-- [ ] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits
-- [ ] B-006 — Add `@grpc/reflection` to the server (grpcurl debugging), dev-only
+- [x] B-005 — Root `eslint.config.js` `allowDefaultProject` should cover per-package `*.config.{ts,mts}` so packages don't each need tsconfig splits _(scoped to apps/server, apps/worker, packages/config, packages/database, packages/testkit, packages/terminal-media — apps/tui/packages/proto/packages/media keep their tsconfig-include split, owned elsewhere)_
+- [x] B-006 — Add `@grpc/reflection` to the server (grpcurl debugging), dev-only _(behind `GRPC_REFLECTION`, default off, on in `.env.example`'s dev block; grpcurl not installed in this environment, untested-live)_
 - [ ] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported)
-- [ ] B-008 — lefthook pre-commit (prettier/eslint on staged) via mise
-- [ ] B-009 — `pnpm dev` (turbo) runs the interactive TUI inside turbo output — exclude tui from the root `dev` task or make it server-only
+- [x] B-008 — lefthook pre-commit (prettier/eslint on staged) via mise
+- [x] B-009 — `pnpm dev` (turbo) runs the interactive TUI inside turbo output — exclude tui from the root `dev` task or make it server-only
 - [x] B-010 — TUI screenshot tool (`tools/screenshot`): tmux -> ANSI -> SVG -> PNG, `mise run screenshot`, real PNGs in `docs/media/`, one embedded in README
 - [x] B-011 — ~~root vitest projects skip `tools/*`~~ _(obsolete: `tools/screenshot` was removed)_
-- [ ] B-012 — full per-project test database isolation: `database` and `testkit` still share `patches_test` (safe today only via `--no-file-parallelism` on `test:integration`, see A-006/docs/operations/ci.md "Why one database") — give `testkit` its own `TEST_DATABASE_URL_TESTKIT`-style override (mirroring `apps/server/vitest.integration.config.mts`) once someone owns `packages/testkit`'s vitest config
-- [ ] B-013 — worker: stale-lease sweep for jobs stuck in `PROCESSING` after a worker crash (not SIGTERM) — reset to `PENDING` after `locked_at` exceeds a lease TTL
+- [x] B-012 — full per-project test database isolation: `database` and `testkit` still share `patches_test` (safe today only via `--no-file-parallelism` on `test:integration`, see A-006/docs/operations/ci.md "Why one database") — give `testkit` its own `TEST_DATABASE_URL_TESTKIT`-style override (mirroring `apps/server/vitest.integration.config.mts`) once someone owns `packages/testkit`'s vitest config _(database named `patches_testkit_test`, not `patches_test_testkit` — see doc comment in `packages/testkit/vitest.config.ts`; `--no-file-parallelism` kept on `test:integration` — tested removing it, causes unrelated server-integration failures under full parallel load, see docs/operations/ci.md)_
+- [x] B-013 — worker: stale-lease sweep for jobs stuck in `PROCESSING` after a worker crash (not SIGTERM) — reset to `PENDING` after `locked_at` exceeds a lease TTL
 - [ ] B-014 — admin CLI: inspect/replay `DEAD` outbox jobs (`patches-admin jobs list|replay <id>`)
 - [x] B-015 — TUI: Ink `App`/`ConnectScreen` auth integration (status bar `@handle`, inline `L` login, `g p` placeholder) + `apps/tui/test/harness.tsx` ink-testing-library frame-snapshot harness (deferred from P1-007)
 - [x] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
 - [x] B-017 — TUI: remaining harness snapshot tests (login flow, compose→profile timeline, profile, local-feed pagination) + open an author profile from a selected post (PostList selection → ProfileScreen actorId)
 - [x] B-018 — proto: `Actor.nameplate` (§173, ≤2 KiB validated doc; the DB column exists) and a post content-warning field are missing from `patches.v1` — add via /proto-change, then surface in server mappers (done: `Nameplate` message + `Actor.nameplate`/`UpdateProfileRequest.nameplate`, `Post.content_warning`/`CreatePostRequest.content_warning`, server mappers/validation). TUI PostRow/ProfileScreen surfacing tracked separately — see B-019.
-- [ ] B-020 — server: `SearchActors`/`ListFollowers`/`ListFollowing` return zeroed `counts` placeholders — batch real counts (one grouped query) or leave `counts` unset; TUI now refetches on profile open, so this is a data-honesty fix
+- [x] B-020 — server: `SearchActors`/`ListFollowers`/`ListFollowing` return zeroed `counts` placeholders — batch real counts (one grouped query) or leave `counts` unset; TUI now refetches on profile open, so this is a data-honesty fix
 - [ ] B-021 — server+proto: `AddCredential` for SSH keys has no server-verified possession proof — add a `BeginSshLogin`-shaped enrollment challenge (TUI `patches keys add` currently only self-checks via the agent)
 - [ ] B-022 — TUI: nameplate `avatarFrame`/`profileBorder` rendering + a plain-mode toggle that strips all decoration (§173); in-app account screen wrapping `ssh-enroll.ts`
 - [x] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
