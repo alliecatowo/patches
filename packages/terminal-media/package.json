@@ -3,15 +3,39 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "spike": "tsx spike/spike.tsx",
+    "clean": "rm -rf dist .turbo"
+  },
   "dependencies": {
     "ink": "catalog:",
     "react": "catalog:",
     "sharp": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "ink-testing-library": "catalog:",
-    "tsup": "catalog:"
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

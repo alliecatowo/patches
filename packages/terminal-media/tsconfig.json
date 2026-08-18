@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    // tsup's .d.ts worker invokes tsc without --tsBuildInfoFile, and `incremental`
+    // (inherited from tsconfig.base.json) makes that fatal with TS5074.
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": ["src", "spike", "tsup.config.ts", "vitest.config.ts"]
+}

@@ -1,0 +1,62 @@
+export {
+  APC_END,
+  APC_START,
+  MAX_24BIT_IMAGE_ID,
+  MAX_CHUNK_BASE64,
+  MAX_IMAGE_ID,
+  PLACEHOLDER,
+  buildGraphicsCommand,
+  buildGraphicsCommandBase64,
+  buildPlaceholderGrid,
+  chunkTransmit,
+  deleteAll,
+  deleteImage,
+  deleteRange,
+  nextImageId,
+  wrapTmuxPassthrough,
+  type ChunkTransmitOptions,
+  type GraphicsControl,
+} from './protocol/kitty.js';
+
+export { MAX_PLACEHOLDER_INDEX, ROW_COLUMN_DIACRITICS, diacritic } from './protocol/diacritics.js';
+
+export {
+  CELL_SIZE_QUERY,
+  DA1_QUERY,
+  GRAPHICS_QUERY,
+  detectTerminalGraphics,
+  looksGraphicsCapable,
+  parseProbeResponse,
+  terminalHint,
+  tmuxAllowsPassthrough,
+  type DetectOptions,
+  type GraphicsCapabilities,
+  type ProbeParseResult,
+  type ProbeStdin,
+  type ProbeStdout,
+} from './detect.js';
+
+export {
+  DEFAULT_CELL_HEIGHT_PX,
+  DEFAULT_CELL_WIDTH_PX,
+  FallbackMediaRenderer,
+  KittyGraphicsRenderer,
+  buildFallbackBox,
+  createRenderer,
+  type MediaSource,
+  type MediaStdout,
+  type PrepareOptions,
+  type PreparedImage,
+  type TerminalMediaRenderer,
+} from './renderer.js';
+
+export { installMediaCleanup, type MediaCleanupOptions } from './cleanup.js';
+
+export {
+  InlineImage,
+  MediaRendererProvider,
+  useMediaRenderer,
+  useOptionalMediaRenderer,
+  type InlineImageProps,
+  type MediaRendererProviderProps,
+} from './react/index.js';
