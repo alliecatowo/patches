@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+import "patches/v1/posts.proto";
+
+// Likes and bookmarks (spec §53). Bookmarks are private — never exposed on another actor's
+// view; `ListBookmarks` only ever returns the caller's own.
+service ReactionService {
+  rpc LikePost(LikePostRequest) returns (LikePostResponse);
+
+  // Idempotent: unliking a post the caller has not liked is not an error.
+  rpc UnlikePost(UnlikePostRequest) returns (UnlikePostResponse);
+
+  rpc BookmarkPost(BookmarkPostRequest) returns (BookmarkPostResponse);
+
+  // Idempotent: unbookmarking a post the caller has not bookmarked is not an error.
+  rpc UnbookmarkPost(UnbookmarkPostRequest) returns (UnbookmarkPostResponse);
+
+  // The caller's own bookmarks, most-recent first (spec §52 MVP note, §53). Requires an
+  // authenticated session — there is no such thing as an anonymous bookmark list.
+  rpc ListBookmarks(ListBookmarksRequest) returns (ListBookmarksResponse);
+
+  // Actors who liked a post, most-recent first.
+  rpc ListPostLikers(ListPostLikersRequest) returns (ListPostLikersResponse);
+}
+
+message LikePostRequest {
+  string post_id = 1;
+}
+
+message LikePostResponse {
+  PostCounts counts = 1;
+  PostViewerState viewer_state = 2;
+}
+
+message UnlikePostRequest {
+  string post_id = 1;
+}
+
+message UnlikePostResponse {
+  PostCounts counts = 1;
+  PostViewerState viewer_state = 2;
+}
+
+message BookmarkPostRequest {
+  string post_id = 1;
+}
+
+message BookmarkPostResponse {
+  PostViewerState viewer_state = 1;
+}
+
+message UnbookmarkPostRequest {
+  string post_id = 1;
+}
+
+message UnbookmarkPostResponse {
+  PostViewerState viewer_state = 1;
+}
+
+message ListBookmarksRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListBookmarksResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
+
+message ListPostLikersRequest {
+  string post_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListPostLikersResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}

@@ -130,21 +130,88 @@ export type {
   NodeServiceController,
 } from './generated/patches/v1/node.js';
 export type { RegistrationMode } from './generated/patches/v1/node.js';
+export type {
+  BookmarkPostRequest,
+  BookmarkPostResponse,
+  ListBookmarksRequest,
+  ListBookmarksResponse,
+  ListPostLikersRequest,
+  ListPostLikersResponse,
+  LikePostRequest,
+  LikePostResponse,
+  ReactionServiceClient,
+  ReactionServiceController,
+  UnbookmarkPostRequest,
+  UnbookmarkPostResponse,
+  UnlikePostRequest,
+  UnlikePostResponse,
+} from './generated/patches/v1/reactions.js';
+export type {
+  GetUnreadCountRequest,
+  GetUnreadCountResponse,
+  ListNotificationsRequest,
+  ListNotificationsResponse,
+  MarkNotificationsReadRequest,
+  MarkNotificationsReadResponse,
+  Notification,
+  NotificationServiceClient,
+  NotificationServiceController,
+} from './generated/patches/v1/notifications.js';
+export type { NotificationType } from './generated/patches/v1/notifications.js';
+export type {
+  BlockActorRequest,
+  BlockActorResponse,
+  ListBlocksRequest,
+  ListBlocksResponse,
+  ListMutesRequest,
+  ListMutesResponse,
+  ModerationServiceClient,
+  ModerationServiceController,
+  MuteActorRequest,
+  MuteActorResponse,
+  ReportActorRequest,
+  ReportActorResponse,
+  ReportPostRequest,
+  ReportPostResponse,
+  UnblockActorRequest,
+  UnblockActorResponse,
+  UnmuteActorRequest,
+  UnmuteActorResponse,
+} from './generated/patches/v1/moderation.js';
+export type { ReportReason } from './generated/patches/v1/moderation.js';
+export type {
+  BeginMediaUploadRequest,
+  BeginMediaUploadResponse,
+  FinalizeMediaUploadRequest,
+  FinalizeMediaUploadResponse,
+  GetMediaDownloadRequest,
+  GetMediaDownloadResponse,
+  MediaServiceClient,
+  MediaServiceController,
+} from './generated/patches/v1/media.js';
+export type { MediaStatus } from './generated/patches/v1/media.js';
 
 export {
   CREDENTIAL_TYPE,
   FOLLOW_STATE,
   GITHUB_LOGIN_STATUS,
+  MEDIA_STATUS,
+  NOTIFICATION_TYPE,
   POST_TYPE,
   POST_VISIBILITY,
   REGISTRATION_MODE,
+  REPORT_REASON,
 } from './enums.js';
 export {
   createActorClient,
   createAuthClient,
   createFeedClient,
+  createMediaClient,
+  createModerationClient,
   createNodeClient,
+  createNotificationClient,
   createPostClient,
+  createReactionClient,
   createSocialGraphClient,
   createSystemClient,
 } from './client.js';
@@ -164,8 +231,12 @@ export type {
   AuthGrpcClient,
   FeedGrpcClient,
   GrpcUnaryCall,
+  MediaGrpcClient,
+  ModerationGrpcClient,
   NodeGrpcClient,
+  NotificationGrpcClient,
   PostGrpcClient,
+  ReactionGrpcClient,
   SocialGraphGrpcClient,
   SystemGrpcClient,
 } from './constants.js';

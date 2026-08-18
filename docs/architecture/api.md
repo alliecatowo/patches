@@ -46,9 +46,10 @@ packages/proto/proto/patches/v1/
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
 ├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship only)
-├── media.proto       # planned
-├── moderation.proto  # planned
-└── notifications.proto  # planned
+├── media.proto       # schema only — no server implementation yet (Phase 5, P5-xxx)
+├── moderation.proto  # implemented (P6-001/P6-002)
+├── reactions.proto   # implemented (P4-002)
+└── notifications.proto  # implemented (P4-003)
 ```
 
 ```proto

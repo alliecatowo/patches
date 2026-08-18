@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+
+// Notification rows (spec §56, §113) — no separate event service. The TUI polls
+// `GetUnreadCount`/`ListNotifications` when active; there is no push infrastructure in v0.
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+
+  // Collapses spec §56's `MarkNotificationRead`/`MarkAllNotificationsRead` into one idempotent
+  // RPC: marks every notification at or before `through_id` as read, or every notification
+  // when `mark_all` is true. Marking an already-read notification again is not an error.
+  rpc MarkNotificationsRead(MarkNotificationsReadRequest) returns (MarkNotificationsReadResponse);
+
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
+}
+
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_FOLLOW = 1;
+  NOTIFICATION_TYPE_LIKE = 2;
+  NOTIFICATION_TYPE_REPLY = 3;
+  NOTIFICATION_TYPE_MENTION = 4;
+  // Reserved for moderator-initiated notices (e.g. "your post was removed"); no RPC creates
+  // these yet — `ModerationService`'s admin-facing actions land with the admin CLI, spec §65.
+  NOTIFICATION_TYPE_MODERATION = 5;
+}
+
+message Notification {
+  string id = 1;
+  NotificationType type = 2;
+
+  // The actor who triggered this notification (who liked/followed/replied/mentioned). Unset
+  // for a MODERATION notification with no attributable actor.
+  Actor actor = 3;
+
+  // Set for LIKE/REPLY/MENTION; empty for FOLLOW/MODERATION.
+  string post_id = 4;
+
+  google.protobuf.Timestamp created_at = 5;
+
+  // Unset (zero value) while unread.
+  google.protobuf.Timestamp read_at = 6;
+}
+
+message ListNotificationsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  PageInfo page = 2;
+}
+
+message MarkNotificationsReadRequest {
+  // Marks every notification with this id or older (by the canonical created_at DESC, id DESC
+  // ordering) as read. Ignored when `mark_all` is true.
+  string through_id = 1;
+  bool mark_all = 2;
+}
+
+message MarkNotificationsReadResponse {
+  uint32 marked_count = 1;
+}
+
+message GetUnreadCountRequest {}
+
+message GetUnreadCountResponse {
+  uint32 count = 1;
+}

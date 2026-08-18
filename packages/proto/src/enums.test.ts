@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+import { MediaStatus } from './generated/patches/v1/media.js';
+import { ReportReason } from './generated/patches/v1/moderation.js';
 import { RegistrationMode } from './generated/patches/v1/node.js';
+import { NotificationType } from './generated/patches/v1/notifications.js';
 import { PostType, PostVisibility } from './generated/patches/v1/posts.js';
 import { FollowState } from './generated/patches/v1/social_graph.js';
 import {
   CREDENTIAL_TYPE,
   FOLLOW_STATE,
   GITHUB_LOGIN_STATUS,
+  MEDIA_STATUS,
+  NOTIFICATION_TYPE,
   POST_TYPE,
   POST_VISIBILITY,
   REGISTRATION_MODE,
+  REPORT_REASON,
 } from './enums.js';
 
 /**
@@ -48,5 +54,17 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('REGISTRATION_MODE matches RegistrationMode', () => {
     expect(Object.values(REGISTRATION_MODE).sort()).toEqual(generatedValues(RegistrationMode));
+  });
+
+  it('NOTIFICATION_TYPE matches NotificationType', () => {
+    expect(Object.values(NOTIFICATION_TYPE).sort()).toEqual(generatedValues(NotificationType));
+  });
+
+  it('REPORT_REASON matches ReportReason', () => {
+    expect(Object.values(REPORT_REASON).sort()).toEqual(generatedValues(ReportReason));
+  });
+
+  it('MEDIA_STATUS matches MediaStatus', () => {
+    expect(Object.values(MEDIA_STATUS).sort()).toEqual(generatedValues(MediaStatus));
   });
 });

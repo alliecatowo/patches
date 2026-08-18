@@ -11,8 +11,12 @@ import type {
   ActorGrpcClient,
   AuthGrpcClient,
   FeedGrpcClient,
+  MediaGrpcClient,
+  ModerationGrpcClient,
   NodeGrpcClient,
+  NotificationGrpcClient,
   PostGrpcClient,
+  ReactionGrpcClient,
   SocialGraphGrpcClient,
   SystemGrpcClient,
 } from './constants.js';
@@ -123,4 +127,48 @@ export function createNodeClient(
   options?: ChannelOptions,
 ): NodeGrpcClient {
   return buildClient<NodeGrpcClient>(SERVICE_NAMES.node, target, credentials, options);
+}
+
+/** Build a `patches.v1.ReactionService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createReactionClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): ReactionGrpcClient {
+  return buildClient<ReactionGrpcClient>(SERVICE_NAMES.reaction, target, credentials, options);
+}
+
+/** Build a `patches.v1.NotificationService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createNotificationClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): NotificationGrpcClient {
+  return buildClient<NotificationGrpcClient>(
+    SERVICE_NAMES.notification,
+    target,
+    credentials,
+    options,
+  );
+}
+
+/** Build a `patches.v1.ModerationService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createModerationClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): ModerationGrpcClient {
+  return buildClient<ModerationGrpcClient>(SERVICE_NAMES.moderation, target, credentials, options);
+}
+
+/** Build a `patches.v1.MediaService` client. See {@link createSystemClient} for the pattern. */
+export function createMediaClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): MediaGrpcClient {
+  return buildClient<MediaGrpcClient>(SERVICE_NAMES.media, target, credentials, options);
 }
