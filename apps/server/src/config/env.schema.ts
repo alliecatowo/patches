@@ -54,6 +54,22 @@ const envObjectSchema = z.object({
    * exposing its full schema to anything that can reach the port.
    */
   GRPC_REFLECTION: booleanish().default(false),
+
+  /**
+   * GitHub OAuth device flow (P6-005, spec §167). Unset in dev/test by default — `AuthService`
+   * answers `BeginGitHubLogin`/`PollGitHubLogin` with `NOT_IMPLEMENTED` rather than pretending
+   * the flow works with no client id to authenticate as (§176's honest-UNIMPLEMENTED rule,
+   * extended past Phase 1's schema-only stub to the real implementation).
+   */
+  GITHUB_CLIENT_ID: z.string().trim().min(1).optional(),
+  /** Overridable so integration tests can point the device flow at a local fake GitHub
+   * instead of the real github.com/api.github.com. */
+  GITHUB_DEVICE_CODE_URL: z.url().default('https://github.com/login/device/code'),
+  GITHUB_TOKEN_URL: z.url().default('https://github.com/login/oauth/access_token'),
+  GITHUB_USER_API_URL: z.url().default('https://api.github.com/user'),
+  /** Bounds every outbound call the device flow makes — an unbounded fetch to a third party
+   * is exactly the kind of request spec §176's "timeout baseline" exists to require. */
+  GITHUB_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
