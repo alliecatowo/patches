@@ -1,0 +1,50 @@
+name: Engineering task
+description: A concrete, scoped piece of implementation work (roadmap phase work, chores, refactors).
+title: "[task]: "
+labels:
+  - task
+body:
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: Which roadmap phase does this belong to? See INITIAL_VISION.md §134+.
+      options:
+        - "Phase 0 — repository and risk spikes"
+        - "Phase 1 — persistence and auth"
+        - "Phase 2 — posting"
+        - "Phase 3 — social graph/feed"
+        - "Phase 4 — replies/reactions"
+        - "Phase 5 — production media"
+        - "Phase 6 — moderation/security"
+        - "Phase 7 — deploy public v0"
+        - "MVP polish"
+        - "Post-MVP"
+        - not phase-scoped / maintenance
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done, and why?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of what "done" means for this task. Be specific enough that someone else could verify it.
+      placeholder: |
+        - [ ] Migration adds `reports.moderator_note` column
+        - [ ] `patches-admin report resolve <id>` writes an audit log entry
+        - [ ] Unit tests cover the resolve/dismiss transitions
+        - [ ] docs/product/moderation.md updated
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
