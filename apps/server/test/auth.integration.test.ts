@@ -244,6 +244,32 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(error.code).toBe(GrpcStatus.ALREADY_EXISTS);
       });
 
+      it('treats a retry with the same client_request_id and password as idempotent (§45)', async () => {
+        const handle = `retry${suffix()}`;
+        const clientRequestId = randomUUID();
+        const first = await register({ handle, clientRequestId });
+
+        const again = await register({ handle, clientRequestId, inviteCode: '' });
+        expect(again.session?.actor?.id).toBe(first.session?.actor?.id);
+        expect(again.session?.accessToken).not.toBe('');
+
+        // Same request id but the wrong secret is just a taken handle — the id alone must
+        // never unlock an account.
+        const error = await expectRejection<RegisterRequest, RegisterResponse>(
+          auth.register.bind(auth),
+          {
+            handle,
+            displayName: '',
+            email: '',
+            password: 'not-the-password-used-before',
+            inviteCode: '',
+            clientRequestId,
+            sshPublicKey: '',
+          },
+        );
+        expect(error.code).toBe(GrpcStatus.ALREADY_EXISTS);
+      });
+
       it('stores an Argon2id hash and never the password', async () => {
         const handle = `hashed${suffix()}`;
         await register({ handle, password: 'a-very-memorable-password' });
