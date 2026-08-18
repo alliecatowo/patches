@@ -15,3 +15,8 @@ Full change procedure: `/proto-change`. This file is the standing conventions; t
 - **Error model**: gRPC status codes per the documented mapping (spec §57) — don't invent new status semantics per-service; point to `docs/architecture/api.md`'s error model section.
 - **Generated code is committed** — `pnpm proto:gen` output under `packages/proto` is checked in, not gitignored. Regenerate and commit in the same change as the `.proto` edit.
 - **`packages/proto` never imports server implementation code** (spec §129) — it's a pure schema+generated-client package, consumable by both `apps/server` and `apps/tui`.
+
+## Generation contract
+
+- ts-proto is generated with `useDate=false,forceLong=string` because `@grpc/proto-loader` (the runtime serializer, `longs: String`) never produces `Date`; convert with the `dateToTimestamp`/`timestampToDate` helpers in `@patches/proto`. Don't flip `useDate` without changing the loader.
+- `pnpm proto:breaking` wraps `scripts/breaking.sh` (handles cwd-relative `.git#` refs and empty base branches). Don't call `buf breaking` by hand from the package dir.

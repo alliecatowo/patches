@@ -18,3 +18,7 @@ paths:
 - **Module format**: CJS, `module: NodeNext`, no `"type": "module"` — NestJS 11 has no native ESM support (`docs/research/nestjs-grpc-protobuf.md`). Decorators need `experimentalDecorators`/`emitDecoratorMetadata` — run Nest via its compiled/ts-node CJS path, not `tsx` (its transform doesn't reliably emit decorator metadata for Nest's DI).
 - **Worker jobs**: claim via `SKIP LOCKED`, implement backoff and a dead-letter path — no bare retry loops (spec §11, §13).
 - **Rate limit** sensitive flows (login, register, password reset, verification resend) — db-backed since there's no Redis in v0 (spec §102).
+
+## Request context
+
+- `AsyncLocalStorage` request context must be established around the _subscription_ (`next.handle().subscribe(...)` or `defer`), not around `next.handle()` — the handler runs lazily on subscribe.

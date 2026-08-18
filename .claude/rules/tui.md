@@ -20,3 +20,8 @@ paths:
 - **Clean exit**: always restore terminal state (cursor visibility, alternate screen, Kitty image clear) on every exit path, including signals and uncaught errors — not just the happy path.
 - **Never lose a compose draft** — persist to local state/disk before any risky operation (submit, navigate away); spec §80 requires drafts to survive.
 - **Errors render as human-readable messages**, never a raw stack trace or gRPC status string, in the TUI itself.
+
+## Non-TTY safety and verification
+
+- `useInput` throws when stdin isn't a TTY: gate interactive hooks on `useStdin().isRawModeSupported` and keep the non-interactive subcommands (`patches ping`, `--version`) working — CI and agents use them.
+- To verify the full-screen app from a non-TTY shell, drive it in tmux (`tmux new-session -d -x 100 -y 28 "<cmd>"`, `tmux send-keys`, `tmux capture-pane -p`). See LEARNINGS "Verifying a TTY app from a non-TTY agent shell".

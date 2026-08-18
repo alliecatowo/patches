@@ -5,7 +5,7 @@ roadmap and acceptance checklists in one place so status can be tracked without 
 the full spec. Update the status line at the top of each phase as work lands — don't let
 this drift into fiction.
 
-**As of 2026-08-17: Phase 0 (repository and risk spikes) is in progress.** No later phase
+**As of 2026-08-17: Phase 0 (repository and risk spikes) is functionally complete pending manual Kitty image confirmation; Phase 1 starts next.** No later phase
 has started.
 
 ---
@@ -203,20 +203,20 @@ These are the literal go/no-go gates from the spec (§§157–160). A phase or m
 
 ### Phase 0 acceptance checklist
 
-- [ ] `mise install` produces the required toolchain.
-- [ ] `pnpm install` succeeds.
-- [ ] PostgreSQL starts locally.
-- [ ] protobuf schemas compile.
-- [ ] Buf lint succeeds.
-- [ ] Nest server starts.
-- [ ] Ink TUI starts.
-- [ ] TUI performs a real gRPC request.
-- [ ] request failures render cleanly.
-- [ ] Kitty capability can be detected.
-- [ ] a test image renders in Kitty.
-- [ ] the image can be cleared.
-- [ ] terminal state restores after exit.
-- [ ] CI executes build/typecheck/test skeleton.
+- [x] `mise install` produces the required toolchain.
+- [x] `pnpm install` succeeds.
+- [x] PostgreSQL starts locally.
+- [x] protobuf schemas compile.
+- [x] Buf lint succeeds.
+- [x] Nest server starts.
+- [x] Ink TUI starts.
+- [x] TUI performs a real gRPC request.
+- [x] request failures render cleanly.
+- [x] Kitty capability can be detected.
+- [ ] a test image renders in Kitty. _(spike implemented — `pnpm --filter @patches/terminal-media spike`; awaiting manual confirmation in Ghostty/kitty)_
+- [ ] the image can be cleared. _(same spike; manual confirmation pending)_
+- [x] terminal state restores after exit.
+- [x] CI executes build/typecheck/test skeleton. _(workflow written + actionlint-clean; first real run happens on the PR)_
 
 ### v0 acceptance checklist
 
