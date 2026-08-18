@@ -242,6 +242,42 @@ describe('detectTerminalGraphics', () => {
     expect(caps.kitty).toBe(true);
   });
 
+  it('flags tmux:true (B-007) once kitty is confirmed through tmux passthrough', async () => {
+    const stdin = new FakeStdin();
+    const caps = await detectTerminalGraphics({
+      stdin,
+      stdout: fakeStdout(stdin, GRAPHICS_OK_REPLY + DA1_REPLY),
+      env: { TERM: 'xterm-ghostty', TMUX: '/tmp/tmux-1000/default,1,0' },
+      tmuxPassthrough: () => true,
+      timeoutMs: 1000,
+    });
+    expect(caps.tmux).toBe(true);
+  });
+
+  it('leaves tmux unset outside tmux', async () => {
+    const stdin = new FakeStdin();
+    const caps = await detectTerminalGraphics({
+      stdin,
+      stdout: fakeStdout(stdin, GRAPHICS_OK_REPLY + DA1_REPLY),
+      env: { TERM: 'xterm-ghostty' },
+      timeoutMs: 1000,
+    });
+    expect(caps.tmux).toBeUndefined();
+  });
+
+  it('leaves tmux unset when the probe never confirmed kitty, even inside tmux with passthrough on', async () => {
+    const stdin = new FakeStdin();
+    const caps = await detectTerminalGraphics({
+      stdin,
+      stdout: fakeStdout(stdin, GRAPHICS_ERROR_REPLY + DA1_REPLY),
+      env: { TERM: 'xterm-ghostty', TMUX: '/tmp/tmux-1000/default,1,0' },
+      tmuxPassthrough: () => true,
+      timeoutMs: 1000,
+    });
+    expect(caps.kitty).toBe(false);
+    expect(caps.tmux).toBeUndefined();
+  });
+
   it('returns kitty:false when the stream refuses raw mode', async () => {
     const stdin = new FakeStdin();
     stdin.setRawMode = () => {

@@ -41,6 +41,8 @@ export {
   DEFAULT_CELL_WIDTH_PX,
   FallbackMediaRenderer,
   KittyGraphicsRenderer,
+  MAX_INPUT_BYTES,
+  MediaTooLargeError,
   buildFallbackBox,
   createRenderer,
   type MediaSource,

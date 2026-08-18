@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { GraphicsCapabilities } from './detect.js';
-import { PLACEHOLDER } from './protocol/kitty.js';
+import { PLACEHOLDER, wrapTmuxPassthrough } from './protocol/kitty.js';
 import {
   FallbackMediaRenderer,
   KittyGraphicsRenderer,
@@ -34,6 +34,16 @@ class RecordingStdout implements MediaStdout {
   get all(): string {
     return this.writes.join('');
   }
+}
+
+/** Inverse of `wrapTmuxPassthrough` — the mirror image a real outer terminal performs. */
+function unwrapTmuxPassthrough(wrapped: string): string {
+  const prefix = `${ESC}Ptmux;`;
+  const suffix = `${ESC}\\`;
+  if (!wrapped.startsWith(prefix) || !wrapped.endsWith(suffix)) {
+    throw new Error(`not a tmux passthrough envelope: ${wrapped}`);
+  }
+  return wrapped.slice(prefix.length, -suffix.length).replaceAll(`${ESC}${ESC}`, ESC);
 }
 
 async function solidPng(width: number, height: number, red = 200): Promise<Uint8Array> {
@@ -213,6 +223,52 @@ describe('KittyGraphicsRenderer', () => {
       { maxCols: 20, maxRows: 10 },
     );
     expect(second.id).not.toBe(first.id);
+  });
+
+  describe('tmux passthrough (B-007)', () => {
+    const TMUX_CAPS: GraphicsCapabilities = { ...KITTY_CAPS, tmux: true };
+
+    it('wraps the transmission in a tmux DCS passthrough envelope when caps.tmux is true', async () => {
+      const stdout = new RecordingStdout();
+      const renderer = new KittyGraphicsRenderer(stdout, TMUX_CAPS);
+      const image = await renderer.prepare(
+        { bytes: landscape, mime: 'image/png' },
+        { maxCols: 20, maxRows: 10 },
+      );
+
+      expect(stdout.writes).toHaveLength(1);
+      const unwrapped = unwrapTmuxPassthrough(stdout.all);
+      expect(
+        unwrapped.startsWith(
+          `${ESC}_Ga=T,U=1,i=${image.id},f=100,c=${image.cols},r=${image.rows},q=2,m=`,
+        ),
+      ).toBe(true);
+      expect(unwrapped.endsWith(`${ESC}\\`)).toBe(true);
+      // Exactly `wrapTmuxPassthrough` applied to the same command a non-tmux renderer
+      // would have sent for this image — not some other, differently-shaped wrapping.
+      expect(stdout.all).toBe(wrapTmuxPassthrough(unwrapped));
+    });
+
+    it('wraps release()/releaseAll() deletes the same way', async () => {
+      const stdout = new RecordingStdout();
+      const renderer = new KittyGraphicsRenderer(stdout, TMUX_CAPS);
+      const image = await renderer.prepare(
+        { bytes: landscape, mime: 'image/png' },
+        { maxCols: 20, maxRows: 10 },
+      );
+      stdout.writes.length = 0;
+      renderer.release(image);
+
+      expect(stdout.writes).toHaveLength(1);
+      expect(unwrapTmuxPassthrough(stdout.all)).toBe(`${ESC}_Ga=d,d=I,i=${image.id},q=2${ESC}\\`);
+    });
+
+    it('does not wrap anything when caps.tmux is absent, even inside a real tmux session', async () => {
+      const stdout = new RecordingStdout();
+      const renderer = new KittyGraphicsRenderer(stdout, KITTY_CAPS);
+      await renderer.prepare({ bytes: landscape, mime: 'image/png' }, { maxCols: 20, maxRows: 10 });
+      expect(stdout.all).not.toContain('Ptmux;');
+    });
   });
 });
 
