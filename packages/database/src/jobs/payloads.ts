@@ -21,9 +21,21 @@ export const sendPasswordResetEmailPayloadSchema = z.object({
 });
 export type SendPasswordResetEmailPayload = z.infer<typeof sendPasswordResetEmailPayloadSchema>;
 
-/** `docs/architecture/jobs.md` §7: derives deterministic output keys from `mediaId`. */
+/**
+ * `docs/architecture/jobs.md` §7: derives deterministic output keys from `mediaId`.
+ * `expectedSha256` is the client-computed hash from `BeginMediaUploadRequest` — the worker
+ * compares it against the SHA-256 it actually computes from the downloaded original and
+ * fails validation (not the job) on a mismatch, per `media.proto`'s documented contract
+ * ("verified against the uploaded object by the worker before the media is marked READY").
+ * Optional: older enqueuers or a future proto revision might not send it, and its absence
+ * just skips that particular check rather than blocking processing.
+ */
 export const processMediaPayloadSchema = z.object({
   mediaId: z.string().min(1),
+  expectedSha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/, 'expectedSha256 must be 64 lowercase hex characters')
+    .optional(),
 });
 export type ProcessMediaPayload = z.infer<typeof processMediaPayloadSchema>;
 

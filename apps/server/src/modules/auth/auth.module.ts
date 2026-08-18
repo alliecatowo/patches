@@ -12,7 +12,10 @@ import { TokenService } from './token.service.js';
  * Authentication and credential management (spec §33–§39, §165–§168).
  *
  * `TokenService` and `AuthGuard` are exported because every other feature module will need to
- * authenticate a call; nothing else here is anyone else's business.
+ * authenticate a call; `RateLimitService` is exported too — it's a single process-local
+ * limiter shared by every sensitive flow (spec §102), not an auth-only concern (`MediaModule`
+ * throttles `BeginMediaUpload` through the same instance rather than a second one with its
+ * own, disjoint bucket map).
  */
 @Module({
   controllers: [AuthController],
@@ -24,6 +27,6 @@ import { TokenService } from './token.service.js';
     SshChallengeService,
     TokenService,
   ],
-  exports: [AuthGuard, TokenService],
+  exports: [AuthGuard, TokenService, RateLimitService],
 })
 export class AuthModule {}

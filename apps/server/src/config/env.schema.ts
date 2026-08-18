@@ -7,6 +7,7 @@ import {
   databaseEnvSchema,
   loadEnv,
   serverEnvShape,
+  storageEnvSchema,
 } from '@patches/config';
 
 export { ConfigError } from '@patches/config';
@@ -38,6 +39,7 @@ const envObjectSchema = z.object({
   // Spread after `serverEnvShape` on purpose: both declare JWT_PRIVATE_KEY/JWT_PUBLIC_KEY and
   // the auth shape's versions are the strict ones (base64-encoded PEM, label-checked).
   ...authEnvShape,
+  ...storageEnvSchema.shape,
   LOG_LEVEL: nestLogLevelSchema,
   DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL.optional(),
   PUBLIC_ORIGIN: serverEnvShape.PUBLIC_ORIGIN.default('http://localhost:3000'),

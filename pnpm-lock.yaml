@@ -227,6 +227,9 @@ importers:
       '@patches/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@patches/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@patches/proto':
         specifier: workspace:*
         version: link:../../packages/proto

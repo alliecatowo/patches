@@ -12,7 +12,11 @@ export type RateLimitAction =
   | 'verify_email'
   | 'resend_verification'
   | 'ssh_challenge'
-  | 'ssh_complete';
+  | 'ssh_complete'
+  /** `BeginMediaUpload` (spec §102): each call gets a presigned PUT and a `media` row,
+   * so an unbounded caller could mint unlimited pending uploads/rows without ever
+   * finishing one. */
+  | 'media_begin_upload';
 
 interface Window {
   limit: number;
@@ -36,6 +40,7 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
   resend_verification: { limit: 3, windowMs: 60 * 60_000 },
   ssh_challenge: { limit: 30, windowMs: 5 * 60_000 },
   ssh_complete: { limit: 20, windowMs: 5 * 60_000 },
+  media_begin_upload: { limit: 30, windowMs: 5 * 60_000 },
 });
 
 /**
