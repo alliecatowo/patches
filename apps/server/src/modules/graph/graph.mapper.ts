@@ -1,0 +1,20 @@
+import type { Relationship as ProtoRelationship } from '@patches/proto';
+import { FollowState } from '@patches/proto/nest';
+
+import type { RelationshipView } from './graph.dto.js';
+
+const STATE_TO_PROTO: Readonly<Record<RelationshipView['state'], FollowState>> = Object.freeze({
+  NONE: FollowState.FOLLOW_STATE_NONE,
+  PENDING: FollowState.FOLLOW_STATE_PENDING,
+  FOLLOWING: FollowState.FOLLOW_STATE_FOLLOWING,
+});
+
+/** Application DTO → protobuf message (spec §128), field-by-field. */
+export function toProtoRelationship(view: RelationshipView): ProtoRelationship {
+  return {
+    state: STATE_TO_PROTO[view.state],
+    followedBy: view.followedBy,
+    blocking: view.blocking,
+    muting: view.muting,
+  };
+}

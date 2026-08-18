@@ -12,6 +12,21 @@ export interface ActorCountsSummary {
   posts: number;
 }
 
+/**
+ * Server-side view of `actors.nameplate` (spec §173). `badges` is present here (it is real
+ * data an actor has) but is never *writable* through `UpdateProfileInput` — see
+ * `ActorService.updateProfile`'s nameplate handling, which always keeps the actor's existing
+ * badges regardless of what the caller sent.
+ */
+export interface NameplateSummary {
+  nameColor: string;
+  glyph: string;
+  badges: string[];
+  avatarFrame: string;
+  statusLine: string;
+  profileBorder: string;
+}
+
 export interface ActorProfile {
   id: string;
   handle: string;
@@ -22,6 +37,8 @@ export interface ActorProfile {
   isLocal: boolean;
   joinedAt: Date;
   counts: ActorCountsSummary;
+  /** `null` when the actor has never customized their presentation (spec §173). */
+  nameplate: NameplateSummary | null;
 }
 
 export function toActorProfile(actor: ActorEntity, counts: ActorCountsSummary): ActorProfile {
@@ -35,5 +52,28 @@ export function toActorProfile(actor: ActorEntity, counts: ActorCountsSummary): 
     isLocal: actor.isLocal,
     joinedAt: actor.createdAt,
     counts,
+    nameplate: toNameplateSummary(actor.nameplate),
+  };
+}
+
+/**
+ * The `nameplate` column is untyped `jsonb` at the database layer (`Record<string, unknown> |
+ * null`) — this is the one place that trusts its shape, defaulting any field that isn't the
+ * type it should be rather than throwing, so a hand-edited or future-schema row degrades to
+ * "field absent" instead of a 500.
+ */
+function toNameplateSummary(raw: Record<string, unknown> | null): NameplateSummary | null {
+  if (raw === null) return null;
+  const string = (value: unknown): string => (typeof value === 'string' ? value : '');
+  const stringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
+  return {
+    nameColor: string(raw.nameColor),
+    glyph: string(raw.glyph),
+    badges: stringArray(raw.badges),
+    avatarFrame: string(raw.avatarFrame),
+    statusLine: string(raw.statusLine),
+    profileBorder: string(raw.profileBorder),
   };
 }

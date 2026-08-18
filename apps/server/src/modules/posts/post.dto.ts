@@ -32,6 +32,8 @@ export interface PostView {
   postType: DbPostType;
   linkUrl: string | null;
   visibility: DbPostVisibility;
+  /** `null` once `deleted` is true — same tombstone rule as `body` (B-018). */
+  contentWarning: string | null;
   inReplyToId: string | null;
   rootPostId: string;
   media: PostMediaSummary[];
@@ -58,6 +60,7 @@ export function toPostView(
     postType: post.postType,
     linkUrl: deleted ? null : post.linkUrl,
     visibility: post.visibility,
+    contentWarning: deleted ? null : post.contentWarning,
     inReplyToId: post.inReplyToId,
     rootPostId: post.rootPostId,
     media: deleted ? [] : [...media],

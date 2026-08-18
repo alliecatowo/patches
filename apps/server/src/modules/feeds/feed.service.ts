@@ -23,31 +23,65 @@ export interface FeedPage {
 export class FeedService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  /** All local public/unlisted posts, chronological (spec §52). */
-  async listLocalFeed(cursorRaw: string, limit: number): Promise<FeedPage> {
-    const qb = this.baseQuery().andWhere('post.isLocal = true');
+  /**
+   * The caller's home timeline: own posts + posts by followed actors, fan-out-on-read,
+   * chronological (spec §52, §59). Always requires a viewer — `FeedController` gates this
+   * behind `AuthGuard`.
+   */
+  async listHomeFeed(viewerActorId: string, cursorRaw: string, limit: number): Promise<FeedPage> {
+    const qb = this.baseQuery(viewerActorId).andWhere(
+      // Fully-qualified, quoted column reference (`"post"."author_actor_id"`), not
+      // `post.authorActorId` — TypeORM's alias.property -> column substitution is unreliable
+      // once the same property is referenced more than once inside a multi-line raw
+      // condition (verified empirically: it silently left the second occurrence
+      // un-substituted, which Postgres then read as the unquoted, lowercased identifier
+      // `authoractorid` and rejected as "column does not exist").
+      `("post"."author_actor_id" = :homeViewerActorId
+        OR EXISTS (
+          SELECT 1 FROM follows home_follow
+          WHERE home_follow.follower_actor_id = :homeViewerActorId
+            AND home_follow.followee_actor_id = "post"."author_actor_id"
+        ))`,
+      { homeViewerActorId: viewerActorId },
+    );
     return this.page(qb, cursorRaw, limit);
   }
 
-  /** A given actor's posts, chronological (spec §52). */
-  async listActorPosts(actorId: string, cursorRaw: string, limit: number): Promise<FeedPage> {
+  /** All local public/unlisted posts, chronological (spec §52). `viewerActorId` is optional —
+   * an anonymous caller still sees the public feed, just without block/mute/FOLLOWERS-visible
+   * filtering (there is no viewer to filter for). */
+  async listLocalFeed(cursorRaw: string, limit: number, viewerActorId?: string): Promise<FeedPage> {
+    const qb = this.baseQuery(viewerActorId).andWhere('post.isLocal = true');
+    return this.page(qb, cursorRaw, limit);
+  }
+
+  /** A given actor's posts, chronological (spec §52). See {@link listLocalFeed} on
+   * `viewerActorId` being optional. */
+  async listActorPosts(
+    actorId: string,
+    cursorRaw: string,
+    limit: number,
+    viewerActorId?: string,
+  ): Promise<FeedPage> {
     if (actorId.length === 0) {
       throw AppError.validation('actor_id is required.');
     }
-    const qb = this.baseQuery().andWhere('post.authorActorId = :actorId', { actorId });
+    const qb = this.baseQuery(viewerActorId).andWhere('post.authorActorId = :actorId', {
+      actorId,
+    });
     return this.page(qb, cursorRaw, limit);
   }
 
   // ---------------------------------------------------------------- internals
 
-  private baseQuery(): SelectQueryBuilder<Post> {
+  private baseQuery(viewerActorId?: string): SelectQueryBuilder<Post> {
     const qb = this.dataSource
       .getRepository(Post)
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.authorActor', 'author')
       .orderBy('post.createdAt', 'DESC')
       .addOrderBy('post.id', 'DESC');
-    applyVisibilityFilter(qb);
+    applyVisibilityFilter(qb, viewerActorId);
     return qb;
   }
 
@@ -81,16 +115,59 @@ export class FeedService {
 }
 
 /**
- * Visibility (and, later, block/mute) filtering seam (spec §59, §62–63).
+ * Visibility + block/mute filtering seam (spec §59, §62–63), shared by every list here so
+ * `ListLocalFeed`/`ListActorPosts` get the same rules `ListHomeFeed` needs, not a narrower
+ * copy.
  *
- * Block/mute filtering is not implemented yet — `SocialGraphService` (P3-002) will extend
- * this function to also exclude posts by actors the viewer has blocked, or who have blocked
- * the viewer, and posts by actors the viewer has muted. For now it only expresses what v0 can
- * actually check: `FOLLOWERS`-visibility posts are hidden from every list, because there is no
- * follow model yet to test the viewer against (never invented — spec §59's "visibility permits
- * current_actor" degrades to "is this publicly listable" until follows exist).
+ * With no `viewerActorId` (anonymous caller): only `PUBLIC`/`UNLISTED` posts, exactly as
+ * before P3-002 — there is no viewer to test a `FOLLOWERS` post or a block/mute against.
+ *
+ * With a `viewerActorId`: `PUBLIC`/`UNLISTED` posts, plus the viewer's own posts of any
+ * visibility, plus `FOLLOWERS`-visibility posts by actors the viewer follows (spec §59's
+ * "visibility permits current_actor" — now that a follow model exists, this is no longer
+ * degraded to "public only"). Then, symmetrically, posts by an actor the viewer blocks or who
+ * blocks the viewer are excluded in either direction (§62: "A should not see B... B should not
+ * see A"), and posts by an actor the viewer mutes are excluded (§63).
  */
-function applyVisibilityFilter(qb: SelectQueryBuilder<Post>): void {
-  qb.andWhere('post.visibility IN (:...visibilities)', { visibilities: ['PUBLIC', 'UNLISTED'] });
+function applyVisibilityFilter(qb: SelectQueryBuilder<Post>, viewerActorId?: string): void {
   qb.andWhere('post.deletedAt IS NULL');
+
+  if (viewerActorId === undefined) {
+    qb.andWhere('post.visibility IN (:...anonymousVisibilities)', {
+      anonymousVisibilities: ['PUBLIC', 'UNLISTED'],
+    });
+    return;
+  }
+
+  // Fully-qualified, quoted column references (`"post"."author_actor_id"`), not
+  // `post.authorActorId` — see the comment in `listHomeFeed` on why the camelCase alias form
+  // is unsafe once a property is referenced more than once inside one raw condition.
+  qb.andWhere(
+    `(post.visibility IN (:...publicVisibilities)
+      OR "post"."author_actor_id" = :viewerActorId
+      OR EXISTS (
+        SELECT 1 FROM follows visibility_follow
+        WHERE visibility_follow.follower_actor_id = :viewerActorId
+          AND visibility_follow.followee_actor_id = "post"."author_actor_id"
+      ))`,
+    { publicVisibilities: ['PUBLIC', 'UNLISTED'], viewerActorId },
+  );
+  qb.andWhere(
+    `NOT EXISTS (
+      SELECT 1 FROM blocks visibility_block
+      WHERE (visibility_block.blocker_actor_id = :viewerActorId
+             AND visibility_block.blocked_actor_id = "post"."author_actor_id")
+         OR (visibility_block.blocker_actor_id = "post"."author_actor_id"
+             AND visibility_block.blocked_actor_id = :viewerActorId)
+    )`,
+    { viewerActorId },
+  );
+  qb.andWhere(
+    `NOT EXISTS (
+      SELECT 1 FROM mutes visibility_mute
+      WHERE visibility_mute.muter_actor_id = :viewerActorId
+        AND visibility_mute.muted_actor_id = "post"."author_actor_id"
+    )`,
+    { viewerActorId },
+  );
 }

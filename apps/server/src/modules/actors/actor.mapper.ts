@@ -1,10 +1,10 @@
 import { dateToTimestamp } from '@patches/proto';
-import type { Actor as ProtoActor } from '@patches/proto';
+import type { Actor as ProtoActor, Nameplate as ProtoNameplate } from '@patches/proto';
 
-import type { ActorProfile } from './actor.dto.js';
+import type { ActorProfile, NameplateSummary } from './actor.dto.js';
 
 /** Application DTO → protobuf message (spec §128), field-by-field — see `auth.mapper.ts`'s
- * comment on why never a spread. `avatar`/nameplate are unset: no `MediaService` yet (§173). */
+ * comment on why never a spread. `avatar` is unset: no `MediaService` yet. */
 export function toProtoActor(profile: ActorProfile): ProtoActor {
   return {
     id: profile.id,
@@ -21,5 +21,17 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
       following: profile.counts.following,
       posts: profile.counts.posts,
     },
+    nameplate: profile.nameplate === null ? undefined : toProtoNameplate(profile.nameplate),
+  };
+}
+
+function toProtoNameplate(nameplate: NameplateSummary): ProtoNameplate {
+  return {
+    nameColor: nameplate.nameColor,
+    glyph: nameplate.glyph,
+    badges: [...nameplate.badges],
+    avatarFrame: nameplate.avatarFrame,
+    statusLine: nameplate.statusLine,
+    profileBorder: nameplate.profileBorder,
   };
 }
