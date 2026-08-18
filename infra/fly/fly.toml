@@ -1,0 +1,76 @@
+# Fly.io app configuration for Patches (P7-001).
+#
+# Status: planned/untested — written against documented Fly.io behavior
+# (docs/research/fly-io.md, verified 2026-08-18) but never deployed to a real Fly org from
+# this environment (no Fly account available here). Treat every field as "should work per
+# current docs" until it's actually been run through `flyctl deploy` once — see
+# docs/operations/deployment.md's "First deploy" checklist for what to confirm.
+#
+# Build context is the repo root (the pnpm workspace needs the whole monorepo), so this
+# file is deployed with the CLI invoked FROM the repo root:
+#
+#   flyctl deploy --config infra/fly/fly.toml --dockerfile infra/docker/Dockerfile
+#
+# `app` below is a placeholder — replace with the real registered Fly app name before the
+# first deploy (`fly apps create <name>`), then remove this comment.
+app = "patches-REPLACE-ME"
+primary_region = "iad"
+
+[build]
+  dockerfile = "infra/docker/Dockerfile"
+
+# One image, two process groups (docs/research/fly-io.md §1, §5). Fly runs each group's
+# Machines with the corresponding command below, overriding the image's default CMD
+# (`infra/docker/Dockerfile`'s CMD is only what runs under a plain `podman run`/`docker
+# run`). Paths are relative to the runtime image's WORKDIR (/app), matching where
+# `pnpm deploy` placed each app (see Dockerfile) — NOT `apps/server/dist/main.js`, since
+# `pnpm deploy` flattens each app into its own top-level directory (`server/`, `worker/`).
+[processes]
+  server = "node server/dist/main.js"
+  worker = "node worker/dist/main.js"
+
+# Runs once per deploy, before new Machines take traffic (docs/research/fly-io.md §4).
+# Gets the same secrets/env vars as the app (DATABASE_URL, etc.) but no volumes — fine,
+# migrations don't need one. This is the ONLY place migrations run in production; the app
+# itself hard-codes `migrationsRun: false` (packages/database's `createDataSourceOptions`)
+# per spec §153.
+[deploy]
+  release_command = "node server/migrate.mjs"
+
+# Public gRPC ingress — server group only. TLS terminates at Fly's edge; the app itself
+# listens plain h2c on `internal_port` (docs/research/fly-io.md §2). `worker` intentionally
+# has NO [[services]] block: it's a background job runner, not a request target, and gets
+# no public (or even private) network service.
+[[services]]
+  internal_port = 50051
+  protocol = "tcp"
+  processes = ["server"]
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.ports.http_options]
+    h2_backend = true
+
+  # Fly has no native gRPC check type (http/tcp only — docs/research/fly-io.md §3). A TCP
+  # check against the gRPC port only confirms the socket accepts connections, not that
+  # gRPC/the app is actually healthy; a real application-level check would need a separate
+  # plain HTTP listener (the Nest "hybrid app" pattern), which apps/server does not
+  # currently expose. Documented here as the deliberate fallback per P7-001's brief, not
+  # a full solution — file a follow-up task if/when a real HTTP health endpoint lands.
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "15s"
+    timeout = "2s"
+
+[deploy.release_command_vm]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# VM sizing per process group (`[[vm]]` blocks, or `fly scale vm --process-group=...`) is
+# intentionally NOT set here — docs/research/fly-io.md didn't verify the current `[[vm]]`
+# table syntax against official docs, and this file should only assert config that's
+# actually been checked. Fly defaults new apps to a small shared-cpu Machine; set explicit
+# sizing at first-deploy time once `[[vm]]`'s current syntax is confirmed against
+# fly.io/docs/reference/configuration/.

@@ -89,3 +89,31 @@ run = "cd \"$MISE_PROJECT_ROOT\" && TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-pos
 [tasks.down]
 description = "Stop the compose stack"
 run = "cd \"$MISE_PROJECT_ROOT\" && mise run compose -- down"
+
+[tasks."docker:build"]
+description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+if command -v podman >/dev/null 2>&1; then
+  exec podman build -t patches:local -f infra/docker/Dockerfile .
+elif command -v docker >/dev/null 2>&1; then
+  exec docker build -t patches:local -f infra/docker/Dockerfile .
+else
+  echo "Neither podman nor docker found." >&2
+  exit 1
+fi
+"""
+
+[tasks."fly:deploy"]
+description = "Deploy to Fly.io (needs `flyctl` authenticated + infra/fly/fly.toml's app name set — see docs/operations/deployment.md). Status: planned, never run from this environment (no Fly account)."
+run = "cd \"$MISE_PROJECT_ROOT\" && flyctl deploy --config infra/fly/fly.toml --remote-only"
+
+[tasks."fly:migrate"]
+description = "Run the release-command migration step manually against whatever DATABASE_URL/secrets flyctl currently resolves (infra/fly/fly.toml's release_command does this automatically on every deploy; this task is for a manual out-of-band run). Status: planned, never run from this environment."
+run = "cd \"$MISE_PROJECT_ROOT\" && flyctl ssh console --config infra/fly/fly.toml --command 'node server/migrate.mjs'"
+
+[tasks."fly:logs"]
+description = "Tail production logs. Status: planned, never run from this environment."
+run = "cd \"$MISE_PROJECT_ROOT\" && flyctl logs --config infra/fly/fly.toml"
