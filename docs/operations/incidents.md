@@ -52,7 +52,13 @@ service — not a 24/7 enterprise on-call rotation.
 Rolling back a bad deploy:
 
 1. Redeploy the last known-good image/commit through the normal deploy path (see
-   `docs/operations/deployment.md`) — do not hand-patch a running Fly Machine.
+   `docs/operations/deployment.md`) — do not hand-patch a running Fly Machine. Concretely:
+   `git revert`/checkout the last-good commit and re-run the `Deploy` workflow (or
+   `flyctl deploy --config infra/fly/fly.toml --remote-only` manually), or use
+   `fly releases` to list previous releases and `fly deploy --image <previous-image-ref>`
+   to redeploy a known-good image directly without rebuilding — confirm the exact current
+   `fly releases`/`fly deploy --image` flag names against `flyctl --help` at the time, since
+   this hasn't been exercised against a real deploy yet.
 2. If the bad deploy included a migration, consult the expand/contract and rollback
    guidance in `docs/operations/database.md` before assuming a blind schema rollback is
    safe — it frequently is not once real data has moved through the new shape.

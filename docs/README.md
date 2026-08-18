@@ -33,7 +33,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`product/roadmap.md`](./product/roadmap.md)
   - `product/moderation.md` _(planned)_
 - **`research/`** — exploratory notes, technical spikes, and background research that
-  informed decisions but isn't itself a decision record. _(Currently empty.)_
+  informed decisions but isn't itself a decision record (verified against official docs,
+  cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
 - **`agents/`** — guidance for AI implementation agents working in this repository, if/when
   that becomes its own documented surface distinct from `INITIAL_VISION.md` itself.
   _(Currently empty.)_
