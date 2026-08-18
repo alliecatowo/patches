@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 
 import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import { type INestMicroservice } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { type MicroserviceOptions } from '@nestjs/microservices';
 import {
@@ -51,15 +51,20 @@ export async function startTestServer(): Promise<TestServer> {
   const url = `127.0.0.1:${String(port)}`;
   const { options, health } = createGrpcMicroservice(url);
 
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
-    ...options,
+  // Mirrors `src/main.ts` exactly — a hybrid app with gRPC attached via `connectMicroservice`
+  // and `inheritAppConfig: true`. Booting with `NestFactory.createMicroservice` here once let
+  // a production-only bug through: without `inheritAppConfig`, the connected microservice
+  // silently drops the global APP_FILTER/APP_INTERCEPTOR providers, so every AppError reached
+  // clients as INTERNAL. The HTTP listener is never started in tests.
+  const app = await NestFactory.create(AppModule, {
     logger: false,
     // Surface a failed boot (e.g. missing DATABASE_URL) as a rejected promise with a
     // readable message instead of Nest's default `process.abort()`, which Vitest can only
     // report as "Worker exited unexpectedly".
     abortOnError: false,
   });
-  await app.listen();
+  app.connectMicroservice<MicroserviceOptions>(options, { inheritAppConfig: true });
+  await app.startAllMicroservices();
   health.setStatus('SERVING');
 
   const client = createSystemClient(url, credentials.createInsecure());
@@ -74,7 +79,7 @@ export async function startTestServer(): Promise<TestServer> {
   };
 }
 
-async function closeQuietly(app: INestMicroservice): Promise<void> {
+async function closeQuietly(app: INestApplication): Promise<void> {
   await app.close();
 }
 

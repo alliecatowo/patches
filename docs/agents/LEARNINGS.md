@@ -420,3 +420,11 @@ gated by local state rather than `App`'s `screen`) needed the same one `await fl
 `waitForFrame` that first observes the new screen's header text, before the first `press()` that
 depends on the new screen's `useInput` hook actually being subscribed. The general rule is "any
 screen transition, not just the ones App.tsx's `screen` state drives."
+
+## 2026-08-18 — Nest hybrid apps drop global APP_FILTER/APP_INTERCEPTOR from connected microservices
+
+**Context:** First Fly deploy: every handled `AppError` reached gRPC clients as `INTERNAL "Internal server error"`, though the integration suite was green.
+
+**Learning:** `app.connectMicroservice(options)` does **not** apply the app's global filters/interceptors/guards/pipes unless `{ inheritAppConfig: true }` is passed. The test bootstrap used `NestFactory.createMicroservice` (where globals apply) and so never exercised the real `main.ts` wiring. Test bootstraps must mirror `main.ts` transport setup exactly.
+
+**Action taken:** `main.ts` passes `inheritAppConfig: true`; `apps/server/test/support/test-server.ts` boots the same hybrid way (25 auth tests fail without the flag — proven).

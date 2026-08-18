@@ -62,7 +62,12 @@ async function bootstrap(): Promise<void> {
   // Express app and registers `FederationModule`'s routes on it, but nothing ever binds a
   // port for them, so there is no new network surface at all when federation is disabled.
   const app = await NestFactory.create(AppModule, { logger, bufferLogs: true });
-  app.connectMicroservice<MicroserviceOptions>(options);
+  // `inheritAppConfig: true` is load-bearing: a hybrid app's connected microservices do NOT
+  // get the `APP_FILTER`/`APP_INTERCEPTOR` providers (RpcExceptionsFilter, request-context
+  // + logging interceptors) unless told to inherit them — without it every AppError surfaced
+  // to gRPC clients as INTERNAL "Internal server error" (found on the first Fly deploy; the
+  // in-process test server uses `createMicroservice` and never hit it).
+  app.connectMicroservice<MicroserviceOptions>(options, { inheritAppConfig: true });
 
   // Registers SIGTERM/SIGINT/SIGHUP handlers that run `onModuleDestroy` /
   // `onApplicationShutdown` and close both the gRPC and (if opened) HTTP servers (spec §124).
