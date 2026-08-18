@@ -101,10 +101,10 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 7 — deploy public v0 (§141)
 
-- [ ] P7-001 — Multi-stage Dockerfile (server+worker, non-root), fly.toml (h2 gRPC, process groups, release_command migrations, checks)
-- [ ] P7-002 — Deploy workflow (main → build → migrate → deploy → smoke)
-- [ ] P7-003 — Managed Postgres, R2, Resend, secrets, domain, TLS — documented in docs/operations
-- [ ] P7-004 — npm packaging of `patches` TUI
+- [x] P7-001 — Multi-stage Dockerfile (server+worker, non-root), fly.toml (h2 gRPC, process groups, release_command migrations, checks) _(infra/docker/Dockerfile, infra/fly/fly.toml — never deployed, no Fly account in this environment; podman build verified through all dependency packages, blocked at apps/server's tsc step by an unrelated concurrent in-progress change — see docs/operations/deployment.md)_
+- [x] P7-002 — Deploy workflow (main → build → migrate → deploy → smoke) _(.github/workflows/deploy.yml, actionlint-clean, gated behind `vars.FLY_DEPLOY_ENABLED`; Status: planned, never run)_
+- [x] P7-003 — Managed Postgres, R2, Resend, secrets, domain, TLS — documented in docs/operations _(deployment.md/backups.md/incidents.md updated; Status: planned for anything needing a live Fly/R2/Resend account)_
+- [x] P7-004 — npm packaging of `patches` TUI _(apps/tui/package.json + README; `@patches/tui` chosen — bare `patches` name taken; local tarball install verified end-to-end; real registry publish blocked on @patches/proto/@patches/terminal-media being private — documented as follow-up)_
 
 ## Phase 8 — two-node federation lab (v0.1) (§108 F1, §176)
 
