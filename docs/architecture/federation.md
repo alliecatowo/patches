@@ -1,8 +1,14 @@
 # Federation
 
-**Status: F0 only.** Patches runs as a single node today. This document describes the node
-model, the architectural seam that keeps federation possible without coupling domain code to
-ActivityPub, and the staged rollout that must be followed before any real network federation
+**Status: F1 implemented (local lab only), off by default.** Phase 8 (P8-001..P8-008) built
+the two-node lab described in §4's Stage F1: WebFinger, actor documents, inbox/outbox, `Follow`
+/`Accept`/`Undo`/`Create`/`Delete`/`Like`, HTTP Signatures, SSRF/ingestion hardening, and a
+two-real-process integration test (`apps/server/test/federation-two-node.integration.test.ts`).
+None of it is reachable unless an operator sets `FEDERATION_ENABLED=true` — every node still
+ships with federation off by default (§176), and Stage F2/F3 (Mastodon interoperability, public
+federation, §160's full readiness checklist) remain **not started**. This document describes the
+node model, the architectural seam that keeps federation possible without coupling domain code
+to ActivityPub, and the staged rollout that must be followed before any real network federation
 is enabled. Source of truth: `INITIAL_VISION.md` §19, §21, §91, §105–110, §160, and
 **Amendment A §163–§164, §176**.
 
@@ -59,24 +65,31 @@ payment: profile, posts, media manifest, page document, and social graph.
 ## 1. The seam: `FederationGateway`
 
 A module/interface boundary exists from the beginning so domain services never
-depend directly on ActivityPub structures (§105):
+depend directly on ActivityPub structures (§105). Implemented in `apps/server/src/modules/
+federation/federation-gateway.ts`, extended past the spec's original three-method sketch to
+cover Follow/Like (Stage F1 needs those delivered too, spec §108):
 
 ```ts
 interface FederationGateway {
-  publishActor(...): Promise<void>;
-  publishPost(...): Promise<void>;
-  publishDelete(...): Promise<void>;
+  publishPost(manager, postId): Promise<void>;
+  publishDelete(manager, postId): Promise<void>;
+  followRemoteActor(manager, followerActorId, targetActorId): Promise<void>;
+  unfollowRemoteActor(manager, followerActorId, targetActorId): Promise<void>;
+  likeRemotePost(manager, actorId, postId): Promise<void>;
+  unlikeRemotePost(manager, actorId, postId): Promise<void>;
 }
 ```
 
-v0/current implementation:
-
-```text
-NoopFederationGateway
-```
-
-`FederationModule` exists in the module list (`overview.md` §3) purely as this
-interface + stub today. No real network federation code runs yet.
+Bound to `LazyFederationGateway` (`federation.module.ts`), which dispatches to
+`ActivityPubFederationGateway` or `NoopFederationGateway` **per call**, reading
+`AppConfigService.federationEnabled` fresh every time rather than once at DI-construction time
+— load-bearing for running more than one differently-configured node in one process (see the
+doc comment on `LazyFederationGateway` and on `apps/server/test/support/federation-node.ts` for
+why). `GraphService.followActor`/`unfollowActor`, `PostService.createPost`/`deletePost`, and
+`ReactionsService.likePost`/`unlikePost` call the gateway inside the same transaction as their
+local write, so a federation delivery is enqueued (as a durable `FEDERATION_DELIVER` outbox
+job, `apps/worker/src/jobs/handlers/federation-deliver.handler.ts`) atomically with the local
+write that caused it.
 
 ## 2. Federation target
 
@@ -124,27 +137,50 @@ Centralized system. The data model already understands:
 No remote HTTP requests are made. `NoopFederationGateway` is the only
 implementation.
 
-### Stage F1 — two-node lab (**v0.1**, Phase 8)
+### Stage F1 — two-node lab (**v0.1**, Phase 8) — implemented
 
 Run two Patches nodes locally. **Local and non-public** — this is §108's Stage F1 verbatim,
-moved earlier in the release sequence, not loosened. Implement:
+moved earlier in the release sequence, not loosened. Implemented (P8-001..P8-008):
 
-- WebFinger,
-- actor document serialization,
-- inbox/outbox endpoints,
-- `Follow`,
-- `Accept`,
+- WebFinger (`GET /.well-known/webfinger`, RFC 7033),
+- actor document serialization (`GET /users/:handle`, `Person`, `publicKey`, `patches:
+pageManifest` extension — §170, see §7.5 below),
+- inbox/outbox endpoints (`POST /users/:handle/inbox`, `POST /inbox` shared, `GET /users/
+:handle/outbox`),
+- `Follow` (auto-accept, matching v0's "local accounts transition straight to FOLLOWING"
+  policy extended to remote followers),
+- `Accept` (for our own outgoing follows — stays `PENDING` until received),
 - `Create` (Note),
-- `Delete`,
-- basic `Like` if desired.
+- `Delete` (tombstone),
+- `Like`/`Undo(Like)`.
 
-Plus durable delivery: the outbox/job machinery (`jobs.md`) carries deliveries with bounded
-retries, and duplicate delivery must be safe.
+Plus durable delivery: `FEDERATION_DELIVER` outbox jobs (`docs/architecture/jobs.md`) carry
+deliveries with bounded retries (12 attempts, exponential backoff, then `DEAD`), and duplicate
+delivery is safe both ways — `InboxActivity` dedupes by activity id on the receiving side, and
+the `(activityId, inboxUrl)` pair is the outbox job's own idempotency key on the sending side.
+
+Only reachable when `FEDERATION_ENABLED=true` (default off, §176) — that flag gates the entire
+HTTP listener in `main.ts`, not just individual routes, so a node with federation disabled has
+_zero_ new network surface, not a smaller one.
 
 No Mastodon-compatibility goal yet — the objective is proving Patches-to-Patches federation
-works end to end. Testing federation assumptions here, four releases earlier than originally
-scheduled, is the entire point: a wrong actor/URI/delivery assumption is cheap to fix now and
-expensive later.
+works end to end, verified by `apps/server/test/federation-two-node.integration.test.ts`
+(two real child processes, real HTTP-Signature-signed loopback HTTP). Testing federation
+assumptions here, four releases earlier than originally scheduled, is the entire point: a
+wrong actor/URI/delivery assumption is cheap to fix now and expensive later.
+
+Known F1-scope gaps, left for a follow-up rather than blocking the lab:
+
+- the outbox (`GET /users/:handle/outbox`) returns the newest 20 public posts, not a true
+  keyset-paginated `OrderedCollection` with paging;
+- outbound delivery does not consult `domain_blocks` before enqueueing (inbound activities
+  from a blocked domain _are_ rejected, both directions is the P8-006 target);
+- `domain_blocks` has no write path yet (no RPC, no admin-CLI command) — rows must be
+  inserted by hand today;
+- `followers`/`following` AS2 collection endpoints are advertised on the actor document but
+  not yet served (a remote peer fetching them gets a 404);
+- avatar `icon` is never populated on the actor document (no public media URL resolver
+  wired in yet).
 
 ### Stage F2 — interoperability (**v0.3–v0.4**, Phases 10–11)
 
@@ -176,32 +212,36 @@ See the full readiness checklist in §5 below (mirrors spec §160).
 
 ## 5. Federation readiness checklist (§160)
 
-Federation is **not** publicly enabled until:
+Federation is **not** publicly enabled until (updated after Phase 8 — F1 items are proven in
+the local lab; F2/F3-only items below remain open, and none of this changes the default-off
+posture):
 
 - [ ] stable canonical domain selected
-- [ ] WebFinger works
-- [ ] actors serialize correctly
-- [ ] ActivityStreams objects validate
-- [ ] inbox works
-- [ ] outbox works
-- [ ] `Follow` works
-- [ ] `Accept` works
-- [ ] `Create` works
-- [ ] `Delete` works
-- [ ] `Update` semantics decided
-- [ ] deliveries are durable
-- [ ] duplicate delivery is safe
-- [ ] retries are bounded
-- [ ] signatures verified
-- [ ] SSRF defenses exist
-- [ ] remote response sizes bounded
-- [ ] remote request timeouts exist
-- [ ] domain blocking exists
-- [ ] remote delete/tombstones work
-- [ ] moderator can block remote server
+- [x] WebFinger works _(local lab, P8-001)_
+- [x] actors serialize correctly _(local lab, P8-001)_
+- [ ] ActivityStreams objects validate _(no formal AS2/JSON-LD schema validation — shape-
+      checked only, e.g. `id`/`type`/`actor` presence)_
+- [x] inbox works _(local lab, P8-002)_
+- [x] outbox works _(local lab, P8-002 — newest-20 only, not true paging; see §4 Stage F1)_
+- [x] `Follow` works _(local lab, P8-002)_
+- [x] `Accept` works _(local lab, P8-002)_
+- [x] `Create` works _(local lab, P8-002)_
+- [x] `Delete` works _(local lab, P8-002)_
+- [ ] `Update` semantics decided _(no `Update` activity handling yet)_
+- [x] deliveries are durable _(P8-004, `FEDERATION_DELIVER` outbox jobs)_
+- [x] duplicate delivery is safe _(P8-004/P8-006 — inbox dedupe + delivery idempotency key)_
+- [x] retries are bounded _(P8-004 — 12 attempts, exponential backoff, then `DEAD`)_
+- [x] signatures verified _(P8-005, draft-cavage-http-signatures-12)_
+- [x] SSRF defenses exist _(P8-006, `safeFetch`/`isDisallowedIp`)_
+- [x] remote response sizes bounded _(P8-006, `safeFetch` byte cap)_
+- [x] remote request timeouts exist _(P8-006, `safeFetch` 10s timeout)_
+- [ ] domain blocking exists _(partial: `domain_blocks` enforced on inbound in `InboxService`;
+      no write path (RPC/admin-CLI) yet, and outbound delivery doesn't consult it — see §4)_
+- [x] remote delete/tombstones work _(local lab, same as `Delete` above)_
+- [ ] moderator can block remote server _(no RPC/CLI to write `domain_blocks` yet)_
 - [ ] federation telemetry exists
-- [ ] two Patches servers interoperate
-- [ ] at least one mainstream Fediverse implementation interoperates
+- [x] two Patches servers interoperate _(P8-008, `federation-two-node.integration.test.ts`)_
+- [ ] at least one mainstream Fediverse implementation interoperates _(F2 scope, not started)_
 
 ## 6. Federation security (§109)
 
@@ -223,10 +263,11 @@ to production, the system must:
 
 A remote actor is never trusted merely because it speaks ActivityPub.
 
-## 7. Persistence mapping (§110)
+## 7. Persistence mapping (§110) — implemented (Phase 8)
 
-Future remote entities are designed to fit the **existing** tables — federation does
-not require a parallel schema.
+Remote entities fit the **existing** tables, as designed — federation did not require a
+parallel schema. `RemoteActorService` (`apps/server/src/modules/federation/services/
+remote-actor.service.ts`) upserts:
 
 Remote actor:
 
@@ -237,7 +278,10 @@ canonical_uri = remote actor URI
 home_server = remote hostname
 ```
 
-Remote post:
+plus the Phase 8 columns that round this out: `actors.public_key_pem` (cached, refetched on
+signature-verification failure), `actors.shared_inbox_uri`, `actors.last_fetched_at`.
+
+Remote post (`InboxService.handleCreate`):
 
 ```text
 posts.is_local = false
@@ -245,9 +289,21 @@ canonical_uri = remote object URI
 origin_server = remote hostname
 ```
 
-The original ActivityStreams JSON payload may later be stored in a bounded JSONB
-column for interoperability/debugging, but raw ActivityStreams JSON is never the
-application's primary domain model (§110).
+A **local** actor/post's own federation URI is the opposite of persisted: it is computed on
+demand from `PUBLIC_ORIGIN` (`activitystreams/uris.ts`'s `localActorUri`/`localPostUri`), never
+written to `canonical_uri` — that column stays reserved for exactly what its doc comment
+already said (null until a stable production domain exists). Only a genuinely **remote**
+object's own URI is ever written there.
+
+Two new tables round out the schema (`Phase8Federation` migration): `federation_keys` (one
+RSA-2048 keypair per local actor that has ever signed something, created lazily) and
+`inbox_activities` (activity-id dedupe, P8-006) — plus `domain_blocks` (§109's blocklist,
+read-only from the application today; see §4's Stage F1 gaps).
+
+The original ActivityStreams JSON payload is **not** stored anywhere (not even for remote
+posts) — a deliberate v0.1 simplification consistent with §110's "raw ActivityStreams JSON is
+never the application's primary domain model"; a bounded JSONB debugging column remains a
+plausible future addition, not a current gap that blocks anything.
 
 ## 7.5 Pages over federation (§170)
 
