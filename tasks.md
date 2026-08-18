@@ -189,6 +189,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-027 — federation: outbox true pagination (OrderedCollectionPage), `domain_blocks` write path (`patches-admin domain block|unblock`) and enforcement on outbound delivery
 - [ ] B-028 — proto+server+TUI: discover a remote actor by `acct:` (WebFinger) via gRPC (`SearchActors` for `user@domain` or a `ResolveActor` RPC) so users can follow remote accounts from the TUI
 - [ ] B-029 — federation: compose-based manual two-node lab (`mise run fed:lab`) mirroring the automated P8-008 test
+- [ ] B-030 — worker: expose `deliveries_succeeded/failed/dead` federation counters (periodic `federation_metrics` log line like the server, or a loopback HTTP snapshot) — today only per-job structured logs
 
 - [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
