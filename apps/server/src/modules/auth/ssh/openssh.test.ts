@@ -5,11 +5,15 @@ import {
   sign as cryptoSign,
   createHash,
 } from 'node:crypto';
+import {
+  buildSshChallengeBlob,
+  encodeSshStrings,
+  SSH_LOGIN_DOMAIN_SEPARATOR,
+  SshReader,
+} from '@patches/domain';
 import { describe, expect, it } from 'vitest';
 
-import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from './challenge-blob.js';
 import { parseOpenSshPublicKey, sshFingerprint, verifySshSignature } from './openssh.js';
-import { encodeSshStrings, SshReader } from './wire.js';
 
 /**
  * Keys and signatures are produced here with `node:crypto` alone — no `ssh-keygen`, no
@@ -192,6 +196,7 @@ describe('verifySshSignature', () => {
 
 describe('buildSshChallengeBlob', () => {
   const input = {
+    domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
     nodeDomain: 'patches.social',
     challengeId: '3f0c2b3a-0000-4000-8000-000000000000',
     nonce: randomBytes(32),

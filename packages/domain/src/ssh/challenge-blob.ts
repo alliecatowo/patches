@@ -1,7 +1,7 @@
 import { encodeSshStrings } from './wire.js';
 
 /**
- * The exact bytes an SSH agent is asked to sign for a Patches login (spec §166,
+ * The exact bytes an SSH agent is asked to sign for a Patches SSH flow (spec §166,
  * `docs/architecture/auth.md` §4).
  *
  * The server always reconstructs this blob from its own challenge row and never accepts one
@@ -15,11 +15,28 @@ import { encodeSshStrings } from './wire.js';
  * concatenation or JSON, so no field's contents can be shifted into its neighbour's — the
  * classic way a "bind everything into one blob" scheme is broken.
  *
- * The version suffix on the separator is never reused for a different layout (§166).
+ * Lives in `@patches/domain` (spec §166, A-020) so `apps/server` and `apps/tui` share exactly
+ * one definition — a client-side reimplementation of the signed-blob layout is precisely the
+ * kind of drift this construction exists to prevent.
+ */
+
+/**
+ * Login domain separator. Versioned; never reused for a different layout (§166).
  */
 export const SSH_LOGIN_DOMAIN_SEPARATOR = 'patches-ssh-login-v1';
 
+/**
+ * Credential-enrollment domain separator (B-021): a distinct string from
+ * {@link SSH_LOGIN_DOMAIN_SEPARATOR} so a login signature can never be replayed as an
+ * enrollment proof, or vice versa, even if every other field happened to collide.
+ */
+export const SSH_ENROLL_DOMAIN_SEPARATOR = 'patches-ssh-enroll-v1';
+
 export interface SshChallengeBlobInput {
+  /** Domain separation string — {@link SSH_LOGIN_DOMAIN_SEPARATOR} or
+   * {@link SSH_ENROLL_DOMAIN_SEPARATOR}, never reused for a third purpose without a new
+   * version suffix (§166). */
+  domainSeparator: string;
   /** Canonical domain of this node (`NODE_DOMAIN`). */
   nodeDomain: string;
   challengeId: string;
@@ -38,7 +55,7 @@ export interface SshChallengeBlobInput {
  */
 export function buildSshChallengeBlob(input: SshChallengeBlobInput): Buffer {
   return encodeSshStrings([
-    SSH_LOGIN_DOMAIN_SEPARATOR,
+    input.domainSeparator,
     input.nodeDomain,
     input.challengeId,
     input.nonce,

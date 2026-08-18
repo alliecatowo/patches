@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
 import {
   timestampToDate,
   type BeginSshLoginRequest,
@@ -10,7 +11,6 @@ import {
 } from '@patches/proto';
 
 import {
-  encodeString,
   listIdentities,
   sshAlgorithmFromBlob,
   signWithAgent,
@@ -21,12 +21,12 @@ import {
 /**
  * SSH public-key login (spec §166, `docs/architecture/auth.md` §4): the agent
  * signs a blob the server reconstructs itself; Patches never touches a private
- * key. This module builds that blob, drives the two-RPC handshake, and picks
- * which agent identity to use.
+ * key. This module drives the two-RPC handshake and picks which agent identity
+ * to use; the signed blob's own encoding lives in `@patches/domain` (A-020) so
+ * this client and `apps/server` share exactly one definition of it.
  */
 
-/** Domain separation string, versioned, never reused for another purpose. */
-export const SSH_LOGIN_DOMAIN_SEPARATOR = 'patches-ssh-login-v1';
+export { SSH_LOGIN_DOMAIN_SEPARATOR };
 
 export interface SshLoginApi {
   beginSshLogin(request: BeginSshLoginRequest): Promise<BeginSshLoginResponse>;
@@ -67,33 +67,6 @@ export function formatOpenSshPublicKey(algorithm: string, blob: Buffer, comment 
 export async function readPublicKeyFile(path: string): Promise<ParsedOpenSshPublicKey> {
   const contents = await readFile(path, 'utf8');
   return parseOpenSshPublicKey(contents);
-}
-
-/**
- * Fixed-order signed blob (`docs/architecture/auth.md` §4): domain separator,
- * node canonical domain, challenge id, nonce, credential fingerprint,
- * expires_at — every variable-length field is SSH-string-encoded (uint32
- * length + bytes) so field boundaries can never shift into one another.
- */
-export function buildSshLoginBlob(params: {
-  nodeDomain: string;
-  challengeId: string;
-  nonce: Buffer;
-  fingerprint: string;
-  expiresAt: Date;
-}): Buffer {
-  return Buffer.concat([
-    encodeString(SSH_LOGIN_DOMAIN_SEPARATOR),
-    encodeString(params.nodeDomain),
-    encodeString(params.challengeId),
-    encodeString(params.nonce),
-    encodeString(params.fingerprint),
-    // Whole Unix seconds, decimal ASCII — must match the server's own
-    // `buildSshChallengeBlob` (apps/server/src/modules/auth/ssh/challenge-blob.ts)
-    // byte for byte. The client only ever sees this as a `Timestamp`, whose
-    // sub-second part it has no reason to reproduce, so both sides truncate.
-    encodeString(String(Math.floor(params.expiresAt.getTime() / 1000))),
-  ]);
 }
 
 /** `ssh-rsa` keys must sign as `rsa-sha2-512` (spec: SHA-1 `ssh-rsa` signatures are rejected). */
@@ -159,7 +132,8 @@ export async function performSshLogin(
   });
   const expiresAt = timestampToDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
 
-  const blob = buildSshLoginBlob({
+  const blob = buildSshChallengeBlob({
+    domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,
     nodeDomain: options.nodeDomain,
     challengeId: begin.challengeId,
     nonce: Buffer.from(begin.nonce),
