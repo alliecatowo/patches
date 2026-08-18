@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package patches.v1;
 
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+
 // Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
 // exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
 // but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
@@ -17,6 +20,13 @@ service SocialGraphService {
   // The caller's relationship with `actor_id` — requires an authenticated session, since there
   // is no relationship to report for an anonymous caller.
   rpc GetRelationship(GetRelationshipRequest) returns (GetRelationshipResponse);
+
+  // B-024: actors `actor_id` both follows and is followed by ("mutuals"/"friends") — the RPC
+  // the TUI's `PageScreen` Friends block needs (previously a documented "[friends list
+  // unavailable]" placeholder). Anonymous-readable, unlike this service's other RPCs: mutuality
+  // is always computed relative to `actor_id`, never the caller's own identity, and a public
+  // Page's Friends block must be visible to a signed-out visitor.
+  rpc ListMutualFollows(ListMutualFollowsRequest) returns (ListMutualFollowsResponse);
 }
 
 // Mirrors spec §50's future follow states even though v0 only ever produces `NONE`/
@@ -64,4 +74,16 @@ message GetRelationshipRequest {
 
 message GetRelationshipResponse {
   Relationship relationship = 1;
+}
+
+message ListMutualFollowsRequest {
+  // Whose mutual-follow ("friends") list to return — not necessarily the caller's own.
+  string actor_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListMutualFollowsResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
 }

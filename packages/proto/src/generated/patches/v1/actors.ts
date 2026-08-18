@@ -171,6 +171,18 @@ export interface ListFollowingResponse {
   page: PageInfo | undefined;
 }
 
+export interface ResolveActorRequest {
+  /**
+   * `user@domain` (no leading `acct:`) — this node's own domain is a validation error, not a
+   * self-lookup shortcut: use `GetActorByHandle` for local actors.
+   */
+  acct: string;
+}
+
+export interface ResolveActorResponse {
+  actor: Actor | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -223,6 +235,16 @@ export interface ActorServiceClient {
     request: ListFollowingRequest,
     metadata?: Metadata,
   ): Observable<ListFollowingResponse>;
+
+  /**
+   * B-028: discovers a remote actor by `acct:user@domain` via WebFinger and returns it (as a
+   * remote `Actor`, `is_local = false`) so the caller can `SocialGraphService.FollowActor` it —
+   * the "add a friend on another node" entry point for the two-node federation lab. `NOT_
+   * IMPLEMENTED` when this node has `FEDERATION_ENABLED=false` (spec §176's honest-UNIMPLEMENTED
+   * rule): there is nothing to resolve against with no federation HTTP surface running.
+   */
+
+  resolveActor(request: ResolveActorRequest, metadata?: Metadata): Observable<ResolveActorResponse>;
 }
 
 /**
@@ -284,6 +306,19 @@ export interface ActorServiceController {
     request: ListFollowingRequest,
     metadata?: Metadata,
   ): Promise<ListFollowingResponse> | Observable<ListFollowingResponse> | ListFollowingResponse;
+
+  /**
+   * B-028: discovers a remote actor by `acct:user@domain` via WebFinger and returns it (as a
+   * remote `Actor`, `is_local = false`) so the caller can `SocialGraphService.FollowActor` it —
+   * the "add a friend on another node" entry point for the two-node federation lab. `NOT_
+   * IMPLEMENTED` when this node has `FEDERATION_ENABLED=false` (spec §176's honest-UNIMPLEMENTED
+   * rule): there is nothing to resolve against with no federation HTTP surface running.
+   */
+
+  resolveActor(
+    request: ResolveActorRequest,
+    metadata?: Metadata,
+  ): Promise<ResolveActorResponse> | Observable<ResolveActorResponse> | ResolveActorResponse;
 }
 
 export function ActorServiceControllerMethods() {
@@ -295,6 +330,7 @@ export function ActorServiceControllerMethods() {
       'searchActors',
       'listFollowers',
       'listFollowing',
+      'resolveActor',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
