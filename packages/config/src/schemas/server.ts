@@ -7,8 +7,11 @@ import { booleanish } from '../boolean.js';
  */
 export const serverEnvShape = {
   GRPC_HOST: z.string().default('127.0.0.1'),
-  GRPC_PORT: z.coerce.number().int().positive().default(50051),
-  PUBLIC_ORIGIN: z.url(),
+  GRPC_PORT: z.coerce.number().int().min(1).max(65_535).default(50051),
+  // The protocol is constrained explicitly: bare `z.url()` accepts `localhost:3000`,
+  // reading `localhost:` as the scheme. `z.httpUrl()` is not used here because it also
+  // constrains `hostname` to a dotted domain, which rejects `http://localhost:3000`.
+  PUBLIC_ORIGIN: z.url({ protocol: /^https?$/ }),
   INVITE_ONLY: booleanish().default(true),
   // Optional here: local/dev environments may run without JWT signing configured yet
   // (Phase 0). Production must have both — enforced below, not by the base type, so the
