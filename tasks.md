@@ -87,8 +87,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 5 — production media (§139)
 
-- [ ] P5-001 — media entity, BeginMediaUpload (presigned PUT to R2), FinalizeMediaUpload, GetMediaDownload
-- [ ] P5-002 — Worker PROCESS_MEDIA with sharp (validate, orient, strip, derivatives, hash)
+- [x] P5-001 — media entity, BeginMediaUpload (presigned PUT to R2), FinalizeMediaUpload, GetMediaDownload
+- [x] P5-002 — Worker PROCESS_MEDIA with sharp (validate, orient, strip, derivatives, hash)
 - [ ] P5-003 — TUI: attach image path, upload progress, bounded LRU media cache, Kitty inline + fallback + `o` open externally
 
 ## Phase 6 — moderation & security (§140)
@@ -169,5 +169,5 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-022 — TUI: nameplate `avatarFrame`/`profileBorder` rendering + a plain-mode toggle that strips all decoration (§173); in-app account screen wrapping `ssh-enroll.ts`
 - [x] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
 
-- [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
+- [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol

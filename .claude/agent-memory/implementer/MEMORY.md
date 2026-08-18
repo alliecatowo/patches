@@ -7,3 +7,5 @@
 - [proto-loader null message fields](proto-loader-null-message-fields.md) — unset nested-message fields decode as null, not undefined; check both
 - [TypeORM QueryBuilder alias substitution](typeorm-querybuilder-alias-substitution.md) — repeated alias.camelCaseProp in one raw condition string doesn't reliably substitute; use "table"."snake_case" instead
 - [Concurrent shared checkout hazard](concurrent-shared-checkout-hazard.md) — multiple agents can share one literal working directory on this project; commit+push in small frequent slices, re-verify after every pull --rebase
+- [Postgres TRUNCATE CASCADE unrelated FK](postgres-truncate-cascade-unrelated-fk.md) — TRUNCATE...CASCADE empties every table with an FK pointing at the truncated table, ignoring onDelete: SET NULL
+- [vitest CJS no top-level await](vitest-cjs-no-top-level-await-use-testcontext-skip.md) — apps/server and apps/worker are CJS; use beforeAll + ctx.skip() per-test, not top-level await, for async reachability probes

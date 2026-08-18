@@ -318,3 +318,29 @@ layer).
 
 **Action taken:** `reaction.controller.ts`'s `toReactionResponse` builds its return value from
 `PostView.counts`/`viewerState` directly rather than through `toProtoPost(...).counts`.
+
+## 2026-08-18 — `TRUNCATE ... CASCADE` on a table also empties tables that merely *reference* it (not just dependents you'd expect)
+
+**Context:** `apps/worker/test/media-processing.integration.test.ts`'s `beforeEach` ran
+`TRUNCATE TABLE "media" RESTART IDENTITY CASCADE` to reset fixture state between tests. A
+fixture `actors` row created once in `beforeAll` (needed because `media.owner_actor_id` is
+`RESTRICT`) kept disappearing before the first test even ran, causing every `media` insert to
+fail with `fk_media_owner_actor_id` — even though a `SELECT` for that exact id immediately
+after creation, in the same `beforeAll`, found it fine.
+
+**Learning:** `actors.avatar_media_id` is a nullable FK to `media` (`ManyToOne(() => Media, {
+onDelete: 'SET NULL' })`). `TRUNCATE ... CASCADE` doesn't respect a column's `onDelete` action
+(that's a `DELETE`-only concept) — it just truncates *every* table that has any FK pointing at
+the truncated table, full stop, regardless of whether any row actually references a to-be-deleted
+row. So `TRUNCATE media CASCADE` unconditionally truncates `actors` too (and `post_media`),
+wiping fixtures that have nothing to do with the media rows the test actually wanted to clear.
+`console.log` ordering across `beforeAll`/`it()` in vitest's default reporter is also not
+trustworthy for diagnosing this kind of race — hook-level logs can print *after* a same-run
+`it()`'s logs even though the hook genuinely ran first; verify actual execution order some
+other way (e.g. print a value captured in a closure, not just wall-clock proximity of the
+printed lines) before concluding hooks ran out of order.
+
+**Action taken:** Changed the `beforeEach` to a plain `DELETE FROM "media"` (no `CASCADE`
+needed — nothing referenced the media rows being deleted in that suite). General rule for any
+future integration test: before reaching for `TRUNCATE ... CASCADE` on a table with incoming
+FKs, check every table that has a FK *pointing at* it (`grep -rn "() => <Entity>" packages/database/src/entities`), not just the tables you intend to also clear.
