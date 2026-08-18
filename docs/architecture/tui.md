@@ -63,39 +63,41 @@ Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverab
 via `?` help). **Status** marks what actually exists today (`apps/tui/src/app/App.tsx`)
 vs. spec-planned:
 
-| Key       | Action                                                             | Status                                                                   |
-| --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `j` / `↓` | next item                                                          | implemented (`PostList`, `SearchScreen`)                                 |
-| `k` / `↑` | previous item                                                      | implemented                                                              |
-| `Enter`   | open selected post's thread (or search result's profile)           | implemented (P4-004 — was "open author" before Phase 4)                  |
-| `p`       | open selected post's author profile                                | implemented (P4-004; moved off `Enter`)                                  |
-| `v`       | reveal/hide a content-warning-gated post                           | implemented                                                              |
-| `c`       | compose                                                            | implemented                                                              |
-| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`)      | implemented (P4-004)                                                     |
-| `l`       | like/unlike                                                        | implemented (P4-004, optimistic — spec §79)                              |
-| `b`       | bookmark/unbookmark                                                | implemented (P4-004, optimistic — spec §79)                              |
-| `!`       | report the selected post, or the profile being viewed              | implemented (P4-004)                                                     |
-| `f`       | follow/unfollow the profile being viewed                           | implemented                                                              |
-| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)             | implemented (P4-004; spec's baseline table says lowercase `m`)           |
-| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)           | implemented (P4-004)                                                     |
-| `/`       | search                                                             | implemented                                                              |
-| `g h`     | go home                                                            | implemented (requires a session)                                         |
-| `g l`     | go local                                                           | implemented                                                              |
-| `g s`     | go search (alternate to `/`)                                       | implemented                                                              |
-| `g n`     | go notifications                                                   | implemented (P4-004)                                                     |
-| `g b`     | go bookmarks                                                       | implemented (P4-004)                                                     |
-| `g p`     | go own profile                                                     | implemented                                                              |
-| `g v`     | go to the caller's own Patches Page                                | implemented (P45-006)                                                    |
-| `o`       | open the selected post's first attachment externally               | implemented (P5-003/B-004)                                               |
-| `Ctrl+A`  | compose: attach a local image by path                              | implemented (P5-003, compose screen only)                                |
-| `v`       | (profile screen) open that actor's Patches Page                    | implemented (P45-006; distinct from the `PostList` `v` above)            |
-| `e`       | (own profile only) edit display name/bio/location/website          | implemented (A-027)                                                      |
-| `r`       | (accounts screen, only while unverified) resend verification email | implemented (A-028; distinct from the `PostList`/thread `r` reply above) |
-| `R`       | reconnect (connect screen only)                                    | implemented                                                              |
-| `P`       | toggle plain mode (spec §173; not in the spec's baseline list)     | implemented (B-022)                                                      |
-| `?`       | help                                                               | implemented                                                              |
-| `q`       | quit                                                               | implemented                                                              |
-| `Esc`     | cancel modal/action; on the thread screen, back one level          | implemented (login, compose, search, thread, report)                     |
+| Key       | Action                                                              | Status                                                                   |
+| --------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `j` / `↓` | next item                                                           | implemented (`PostList`, `SearchScreen`)                                 |
+| `k` / `↑` | previous item                                                       | implemented                                                              |
+| `Enter`   | open selected post's thread (or search result's profile)            | implemented (P4-004 — was "open author" before Phase 4)                  |
+| `p`       | open selected post's author profile                                 | implemented (P4-004; moved off `Enter`)                                  |
+| `v`       | reveal/hide a content-warning-gated post                            | implemented                                                              |
+| `c`       | compose                                                             | implemented                                                              |
+| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`)       | implemented (P4-004)                                                     |
+| `l`       | like/unlike                                                         | implemented (P4-004, optimistic — spec §79)                              |
+| `b`       | bookmark/unbookmark                                                 | implemented (P4-004, optimistic — spec §79)                              |
+| `!`       | report the selected post, or the profile being viewed               | implemented (P4-004)                                                     |
+| `f`       | follow/unfollow the profile being viewed                            | implemented                                                              |
+| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)              | implemented (P4-004; spec's baseline table says lowercase `m`)           |
+| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)            | implemented (P4-004)                                                     |
+| `/`       | search                                                              | implemented                                                              |
+| `g h`     | go home                                                             | implemented (requires a session)                                         |
+| `g l`     | go local                                                            | implemented                                                              |
+| `g s`     | go search (alternate to `/`)                                        | implemented                                                              |
+| `g n`     | go notifications                                                    | implemented (P4-004)                                                     |
+| `g b`     | go bookmarks                                                        | implemented (P4-004)                                                     |
+| `g p`     | go own profile                                                      | implemented                                                              |
+| `g v`     | go to the caller's own Patches Page                                 | implemented (P45-006)                                                    |
+| `o`       | open the selected post's first attachment externally                | implemented (P5-003/B-004)                                               |
+| `Ctrl+A`  | compose: attach a local image by path                               | implemented (P5-003, compose screen only)                                |
+| `v`       | (profile screen) open that actor's Patches Page                     | implemented (P45-006; distinct from the `PostList` `v` above)            |
+| `e`       | (own profile only) edit display name/bio/location/website/nameplate | implemented (A-027, A-037)                                               |
+| `e`       | (own Patches Page) edit the raw document in `$VISUAL`/`$EDITOR`     | implemented (P45-006)                                                    |
+| `E`       | (own Patches Page) structured block-by-block editor                 | implemented (B-023)                                                      |
+| `r`       | (accounts screen, only while unverified) resend verification email  | implemented (A-028; distinct from the `PostList`/thread `r` reply above) |
+| `R`       | reconnect (connect screen only)                                     | implemented                                                              |
+| `P`       | toggle plain mode (spec §173; not in the spec's baseline list)      | implemented (B-022)                                                      |
+| `?`       | help                                                                | implemented                                                              |
+| `q`       | quit                                                                | implemented                                                              |
+| `Esc`     | cancel modal/action; on the thread screen, back one level           | implemented (login, compose, search, thread, report)                     |
 
 ## 4. Full-screen behavior (§70)
 
@@ -576,29 +578,56 @@ only (same convention as `ComposeScreen` — `Enter` never silently submits), ca
 `ModerationService.ReportPost`/`ReportActor`. No admin/moderator UI (resolving a report,
 suspending an account) — spec §65 puts that in the admin CLI, not here.
 
-**Editing your own profile (A-027)**: `e` on `ProfileScreen`, only when
+**Editing your own profile (A-027, A-037)**: `e` on `ProfileScreen`, only when
 `actorId === viewerActorId`, opens `screens/EditProfileScreen.tsx` — display name, bio
 (the only multi-line field; `Enter` inserts a newline there and is a no-op in the
-single-line fields), location, and website, `Tab`/`↓` and `Shift+Tab`/`↑` moving focus
-between them. `Ctrl+S` sends `ActorService.UpdateProfile` with an `update_mask`
-containing only the fields that actually changed (never the whole profile — a field
-left untouched can't regress from a value the server validated differently), `Esc`
-discards every edit. On save, `App` folds the server's returned `Actor` into
+single-line fields), location, and website, plus a "Nameplate" section (spec §173): name
+colour, glyph, status line, avatar frame, and profile border, each edited the same way,
+with a live `components/Nameplate.tsx` preview above them. `Tab`/`↓` and `Shift+Tab`/`↑`
+move focus across all nine fields. `Ctrl+S` sends `ActorService.UpdateProfile` with an
+`update_mask` containing only the top-level fields that actually changed (never the
+whole profile) plus, if any nameplate field changed, a single `"nameplate"` path
+carrying _all five_ nameplate fields' current values — `Nameplate` is one submessage on
+the wire, so a mask that only names it re-sends the whole thing, not per-field deltas.
+`Esc` discards every edit. On save, `App` folds the server's returned `Actor` into
 `session.actor` and returns to `profile`, which remounts and re-fetches via
 `useActor`'s normal `GetActor` effect — no separate "refresh" plumbing needed. The same
 edit is available headless: `patches profile edit [--display-name] [--bio] [--location]
-[--website]` (`apps/tui/src/cli/profile.ts`) sends the identical `update_mask`-scoped
-request and prints `@handle · display name`.
+[--website] [--name-color] [--glyph] [--status-line] [--avatar-frame] [--profile-border]`
+(`apps/tui/src/cli/profile.ts`) sends the identical `update_mask`-scoped request,
+merging any nameplate field left unspecified from the current session actor (same "never
+blank a field the caller didn't ask to change" rule), and prints `@handle · display name`.
 
-**Patches Pages (P45-004..007)**: `v` on `ProfileScreen` opens the viewed actor's page,
-`g v` the caller's own, and `patches visit @handle[/slug]` (`cli/args.ts`) launches the TUI
-straight onto `screens/PageScreen.tsx`, skipping `connect`. Full renderer/editor detail
-(block types, the `$EDITOR` round trip, `Friends`'s placeholder) lives in
+**Patches Pages (P45-004..007, B-023, B-024)**: `v` on `ProfileScreen` opens the viewed
+actor's page, `g v` the caller's own, and `patches visit @handle[/slug]` (`cli/args.ts`)
+launches the TUI straight onto `screens/PageScreen.tsx`, skipping `connect`. Full
+renderer/editor detail (block types, the `$EDITOR` round trip) lives in
 `docs/architecture/pages.md` §6, not duplicated here — the summary: `[`/`]` switches
 sub-pages (one `GetPage` fetches the whole document, so this is client-side, no re-fetch),
 `j`/`k`/`Enter` select and open a `Links` entry externally, `s` signs the guestbook when
-one is present and the viewer has a session, and `e` (owner only) opens `$VISUAL`/`$EDITOR`
-on the raw document JSON.
+one is present and the viewer has a session, `e` (owner only) opens `$VISUAL`/`$EDITOR`
+on the raw document JSON, and `E` (owner only, B-023) opens
+`screens/PageBlocksEditorScreen.tsx` instead — a structured, block-by-block form editor
+(`j`/`k` select, `J`/`K` reorder, `a` add via a type picker, `d` delete with a `y`/`n`
+confirm, `Enter` edit the selected block's own scalar fields, `Ctrl+S` validates the
+whole document with `parsePageStrict` and saves) that shares `PageScreen`'s
+`draftStore`/`$EDITOR` draft, so `Esc`ing out of either editor never loses the other's
+in-progress edit. `apps/tui/src/pages/block-editor-schema.ts` hand-mirrors each
+`@patches/domain` block schema's _shape_ (which fields exist, what kind each is) — same
+"kept in sync by hand, not derived by introspecting another package's zod internals"
+convention `EditProfileScreen`'s length limits already use — while importing the actual
+character/item limits (`PAGE_SHORT_TEXT_MAX_CHARS`, `PAGE_MAX_TOP_EIGHT`, …) from
+`@patches/domain` directly, since that package (unlike `apps/server`) has no server
+dependency and is meant to be shared. `Links` blocks list/reorder/delete like any other
+but aren't reachable from the structured form's `Enter` yet (its per-link array-of-objects
+shape doesn't fit the "scalar or comma-separated string list" fields the form supports) —
+the hint there points back at `e`'s raw-JSON editor. The `Friends` block (B-024) is no
+longer a placeholder: it calls `SocialGraphService.ListMutualFollows` and renders
+nameplated handles the same way `TopEight` does. `SearchScreen` (B-028) also recognizes a
+`user@domain`-shaped query (no `acct:` prefix) and resolves it via
+`ActorService.ResolveActor` instead of the usual local `SearchActors` call — needs a
+session (shows a sign-in prompt otherwise), and shows "This node has federation
+disabled" for a gRPC `UNIMPLEMENTED` rather than the generic network-error copy.
 
 ## 14. Testing (B-015)
 
@@ -635,15 +664,27 @@ presigned-PUT/download `fetch` interceptor (see below); `pages.test.tsx` covers
 `PageScreen` navigation (sub-page switching, plain mode), guestbook signing, and the
 `$EDITOR` round trip (both the happy path and a validation-error path) via an injectable
 `runEditor` (mirrors `open-external.ts`'s `spawnFn` — never a real terminal hand-off in
-tests). Block-type rendering itself (every §171 block plus the `Unknown` placeholder) is
-tested directly against `PageBlocksView` in
-`apps/tui/src/pages/render/blocks.test.tsx`, not through the full `App` — a `PageScreen`
-with a dozen-plus blocks' worth of content routinely exceeds `ink-testing-library`'s
-default terminal size, and `App.tsx`'s `<Box height={rows}>` fixed-height viewport can
-then hand overlapping row coordinates to two different lines' content (both siblings'
-text landing on the same terminal row) — a real Ink layout hazard worth knowing about
-before writing a big `PageScreen` snapshot test, not a rendering bug in the Pages
-components themselves.
+tests). Block-type rendering itself (every §171 block plus the `Unknown` placeholder,
+and B-024's `Friends` block resolving `ListMutualFollows`) is tested directly against
+`PageBlocksView` in `apps/tui/src/pages/render/blocks.test.tsx`, not through the full
+`App` — a `PageScreen` with a dozen-plus blocks' worth of content routinely exceeds
+`ink-testing-library`'s default terminal size, and `App.tsx`'s `<Box height={rows}>`
+fixed-height viewport can then hand overlapping row coordinates to two different lines'
+content (both siblings' text landing on the same terminal row) — a real Ink layout
+hazard worth knowing about before writing a big `PageScreen` snapshot test, not a
+rendering bug in the Pages components themselves. `page-blocks-editor.test.tsx` (B-023)
+covers `PageBlocksEditorScreen` through the full `App` (field editing + save, `a`'s type
+picker, `J`/`K` reorder, `d`'s confirm/delete, the `Esc`-keeps-the-draft round trip
+through `E` twice, and an inline validation error blocking the save) — note that its
+`a`/`j`/`k` (and `EditProfileScreen`'s `Tab`) navigation handlers use the _functional_
+`setState` form (`setMode((current) => …)`), not the outer render's closured `mode`;
+several key presses fired in the same test tick without an intervening `await` otherwise
+all read the same stale value and only the last one's effect sticks (`docs/agents/
+LEARNINGS.md`'s 2026-08-18 "Ink `useInput`: index/mode state must use the functional
+`setState` form" entry). `nameplate-edit.test.tsx`
+(A-037) and `friends-resolve.test.tsx` (B-024's `Friends` block through `PageScreen`,
+B-028's `user@domain` search) round out the same-shape coverage for this task's other
+three pieces.
 
 `test/fake-api.ts`'s `addPost(authorId, body, createdAt?, inReplyToId?)` seeds a reply
 directly, and it implements `GetPost`/`ListReplies` (direct replies only, newest first —

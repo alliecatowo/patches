@@ -19,6 +19,7 @@ import { collectLinks, PageBlocksView } from '../pages/render/blocks.js';
 import { resolvePageTheme } from '../pages/render/theme.js';
 import { theme } from '../theme/index.js';
 import { usePlainMode } from '../theme/plain-mode.js';
+import { PageBlocksEditorScreen } from './PageBlocksEditorScreen.js';
 
 export interface PageScreenProps {
   api: PatchesApi;
@@ -84,6 +85,10 @@ export function PageScreen({
   const [signing, setSigning] = useState<string | undefined>(undefined);
   const [signError, setSignError] = useState<string | undefined>(undefined);
   const [editorNotice, setEditorNotice] = useState<string | undefined>(undefined);
+  // Defined while `PageBlocksEditorScreen` (B-023) is showing — the raw document text
+  // it should start from (an unsaved draft if there is one, else the server's last
+  // known copy), same "prefer the draft" rule `openEditor` follows for `e`.
+  const [blocksEditorText, setBlocksEditorText] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,23 +178,42 @@ export function PageScreen({
         accessToken,
       );
       await store.clear();
-      const rawText = Buffer.from(response.document).toString('utf8');
-      const view = parsePageLenient(JSON.parse(rawText) as unknown);
-      setStored({
-        handle,
-        state: {
-          status: 'ready',
-          ownerActorId: fetchState.ownerActorId,
-          view,
-          rawText,
-          activeIndex: Math.min(fetchState.activeIndex, Math.max(0, view.pages.length - 1)),
-        },
-      });
+      applyUpdatedDocument(response.document);
       setEditorNotice('Saved.');
     } catch (error) {
       await store.save({ handle, rawJson: result.text });
       setEditorNotice(describeGrpcError(error, api.target).title);
     }
+  }
+
+  /** `E` (B-023) — same "prefer an unsaved draft over the server's last-known copy"
+   * rule `openEditor`'s `e` follows, but hands the resolved text to the structured
+   * `PageBlocksEditorScreen` instead of `$EDITOR`. */
+  async function openBlocksEditor(): Promise<void> {
+    if (fetchState.status !== 'ready' || !isOwner || ensureAccessToken === undefined) return;
+    const saved = await store.load();
+    const initialText =
+      saved !== undefined && saved.handle === handle ? saved.rawJson : fetchState.rawText;
+    setBlocksEditorText(initialText);
+  }
+
+  /** Shared by `openEditor`'s and `PageBlocksEditorScreen`'s successful `UpdatePage` —
+   * both hand back the same `document` bytes and both need this screen's `fetchState`
+   * re-derived from them the same way. */
+  function applyUpdatedDocument(document: Uint8Array): void {
+    if (fetchState.status !== 'ready') return;
+    const rawText = Buffer.from(document).toString('utf8');
+    const view = parsePageLenient(JSON.parse(rawText) as unknown);
+    setStored({
+      handle,
+      state: {
+        status: 'ready',
+        ownerActorId: fetchState.ownerActorId,
+        view,
+        rawText,
+        activeIndex: Math.min(fetchState.activeIndex, Math.max(0, view.pages.length - 1)),
+      },
+    });
   }
 
   async function submitSignature(): Promise<void> {
@@ -262,12 +286,16 @@ export function PageScreen({
         void openEditor();
         return;
       }
+      if (input === 'E') {
+        void openBlocksEditor();
+        return;
+      }
       if (input === 's' && hasGuestbook && canSign) {
         setSigning('');
         setEditorNotice(undefined);
       }
     },
-    { isActive },
+    { isActive: isActive && blocksEditorText === undefined },
   );
 
   if (fetchState.status === 'loading') {
@@ -286,11 +314,31 @@ export function PageScreen({
     );
   }
 
+  if (blocksEditorText !== undefined && ensureAccessToken !== undefined) {
+    return (
+      <PageBlocksEditorScreen
+        api={api}
+        handle={handle}
+        slug={activeSubPage?.slug ?? initialSlug}
+        rawText={blocksEditorText}
+        isActive={isActive}
+        ensureAccessToken={ensureAccessToken}
+        draftStore={store}
+        onCancel={() => setBlocksEditorText(undefined)}
+        onSaved={(response) => {
+          applyUpdatedDocument(response.document);
+          setBlocksEditorText(undefined);
+          setEditorNotice('Saved.');
+        }}
+      />
+    );
+  }
+
   const resolved = resolvePageTheme(fetchState.view.theme, plain);
   const hints = [
     fetchState.view.pages.length > 1 ? '[ / ] sub-page' : undefined,
     links.length > 0 ? 'j/k select link · Enter open' : undefined,
-    isOwner ? 'e edit' : undefined,
+    isOwner ? 'e edit · E structured edit' : undefined,
     hasGuestbook && canSign ? 's sign guestbook' : undefined,
     'Esc back',
   ].filter((hint): hint is string => hint !== undefined);
