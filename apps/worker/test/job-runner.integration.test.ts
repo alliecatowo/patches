@@ -7,6 +7,7 @@ import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
 import { CleanExpiredTokensHandler } from '../src/jobs/handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from '../src/jobs/handlers/clean-expired-uploads.handler.js';
+import { FederationDeliverHandler } from '../src/jobs/handlers/federation-deliver.handler.js';
 import { ProcessMediaHandler } from '../src/jobs/handlers/process-media.handler.js';
 import { SendPasswordResetEmailHandler } from '../src/jobs/handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from '../src/jobs/handlers/send-verification-email.handler.js';
@@ -63,6 +64,8 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       mediaMaxBytes: 10 * 1024 * 1024,
       mediaMaxPixels: 20_000_000,
       mediaPendingUploadExpiryMinutes: 60,
+      publicOrigin: 'http://localhost:3000',
+      isProduction: false,
       // Long enough that the stale-lease sweep (B-013) never fires spuriously mid-test
       // against jobs these tests themselves just claimed; the sweep's own behavior is
       // exercised separately below with a short-lived override.
@@ -84,6 +87,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       new CleanExpiredTokensHandler(dataSource),
       new ProcessMediaHandler(dataSource, storage, config),
       new CleanExpiredUploadsHandler(dataSource, storage, config),
+      new FederationDeliverHandler(dataSource, config),
     );
     const runner = new JobRunner(dataSource, dispatcher, config);
     return { runner, emailProvider };

@@ -5,6 +5,7 @@ import { type JobContext, type JobHandler } from './job-handler.js';
 import { JobDispatcher } from './job-dispatcher.js';
 import type { CleanExpiredTokensHandler } from './handlers/clean-expired-tokens.handler.js';
 import type { CleanExpiredUploadsHandler } from './handlers/clean-expired-uploads.handler.js';
+import type { FederationDeliverHandler } from './handlers/federation-deliver.handler.js';
 import type { ProcessMediaHandler } from './handlers/process-media.handler.js';
 import type { SendPasswordResetEmailHandler } from './handlers/send-password-reset-email.handler.js';
 import type { SendVerificationEmailHandler } from './handlers/send-verification-email.handler.js';
@@ -23,6 +24,7 @@ describe('JobDispatcher', () => {
     const cleanExpiredTokens = fakeHandler('CLEAN_EXPIRED_TOKENS');
     const processMedia = fakeHandler('PROCESS_MEDIA');
     const cleanExpiredUploads = fakeHandler('CLEAN_EXPIRED_UPLOADS');
+    const federationDeliver = fakeHandler('FEDERATION_DELIVER');
 
     const dispatcher = new JobDispatcher(
       sendVerificationEmail as SendVerificationEmailHandler,
@@ -30,6 +32,7 @@ describe('JobDispatcher', () => {
       cleanExpiredTokens as CleanExpiredTokensHandler,
       processMedia as ProcessMediaHandler,
       cleanExpiredUploads as CleanExpiredUploadsHandler,
+      federationDeliver as FederationDeliverHandler,
     );
 
     expect(dispatcher.find('SEND_VERIFICATION_EMAIL')).toBe(sendVerificationEmail);
@@ -37,6 +40,7 @@ describe('JobDispatcher', () => {
     expect(dispatcher.find('CLEAN_EXPIRED_TOKENS')).toBe(cleanExpiredTokens);
     expect(dispatcher.find('PROCESS_MEDIA')).toBe(processMedia);
     expect(dispatcher.find('CLEAN_EXPIRED_UPLOADS')).toBe(cleanExpiredUploads);
+    expect(dispatcher.find('FEDERATION_DELIVER')).toBe(federationDeliver);
   });
 
   it('returns undefined for a type unknown to the dispatcher', () => {
@@ -46,6 +50,7 @@ describe('JobDispatcher', () => {
       fakeHandler('CLEAN_EXPIRED_TOKENS') as CleanExpiredTokensHandler,
       fakeHandler('PROCESS_MEDIA') as ProcessMediaHandler,
       fakeHandler('CLEAN_EXPIRED_UPLOADS') as CleanExpiredUploadsHandler,
+      fakeHandler('FEDERATION_DELIVER') as FederationDeliverHandler,
     );
 
     expect(dispatcher.find('SOMETHING_UNKNOWN')).toBeUndefined();
