@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFakeApi, flush, KEY, renderApp } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp } from './harness.js';
 
 /**
  * P4-004: like/unlike (`l`), bookmark/unbookmark (`b`), and the bookmarks screen
@@ -9,6 +9,7 @@ import { createFakeApi, flush, KEY, renderApp } from './harness.js';
 
 async function loginAs(
   press: (input: string) => void,
+  lastFrame: () => string | undefined,
   handle: string,
   password: string,
 ): Promise<void> {
@@ -21,7 +22,12 @@ async function loginAs(
   press(password);
   await flush();
   press(KEY.enter);
-  await flush(60);
+  // A fixed flush here isn't reliable: login resolves a real Promise chain
+  // (loginWithPassword → applySession → setSession/setScreen) whose length can
+  // occasionally outrun even a generous sleep — wait for the status bar's
+  // '@handle' badge, which only renders once the session has actually committed.
+  await expectFrame(lastFrame, `· @${handle}`);
+  await flush();
 }
 
 async function pressGo(press: (input: string) => void, letter: string): Promise<void> {
@@ -40,20 +46,22 @@ describe('Reactions (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'l');
 
-    expect(lastFrame() ?? '').toContain('♡ 0');
+    await expectFrame(lastFrame, '♡ 0');
+
+    await flush();
 
     press('l');
-    await flush(60);
 
-    expect(lastFrame() ?? '').toContain('♥ 1');
+    await expectFrame(lastFrame, '♥ 1');
+
+    await flush();
 
     press('l');
-    await flush(60);
 
-    expect(lastFrame() ?? '').toContain('♡ 0');
+    await expectFrame(lastFrame, '♡ 0');
     unmount();
   });
 
@@ -65,18 +73,16 @@ describe('Reactions (P4-004)', () => {
 
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
-    await loginAs(press, 'alice', 'x');
+    await loginAs(press, lastFrame, 'alice', 'x');
     await pressGo(press, 'l');
 
     press('b');
-    await flush(60);
 
-    expect(lastFrame() ?? '').toContain('bookmarked');
+    await expectFrame(lastFrame, 'bookmarked');
 
     await pressGo(press, 'b');
 
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Bookmarks');
+    const frame = await expectFrame(lastFrame, 'Bookmarks');
     expect(frame).toContain('Bob post to bookmark');
     unmount();
   });
@@ -88,7 +94,7 @@ describe('Reactions (P4-004)', () => {
 
     await pressGo(press, 'b');
 
-    expect(lastFrame() ?? '').toContain('Log in first');
+    await expectFrame(lastFrame, 'Log in first');
     unmount();
   });
 });

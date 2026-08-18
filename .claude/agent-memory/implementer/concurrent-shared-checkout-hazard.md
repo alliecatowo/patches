@@ -44,3 +44,15 @@ index exactly, including other agents' staged-but-uncommitted files) followed by
 the index is exactly your files) before every `git commit`, with zero exceptions, even for a
 "just this once" quick commit** — and always run `git show --stat HEAD` right after committing
 to confirm the file count/list matches what you intended, before pushing.
+
+**Diagnostic technique — isolate "is this bug mine" from "another agent's concurrent WIP is the
+cause" (TUI de-flake task, 2026-08-18):** a test started failing reliably mid-session while other
+agents had large uncommitted diffs to files outside this task's scope (`apps/app/App.tsx`,
+`ProfileScreen.tsx`, `fake-api.ts`). Rather than debugging blind against a constantly-mutating
+shared tree, ran `git worktree add /tmp/<name> HEAD` (clean, committed state only — none of the
+other agents' uncommitted WIP), copied over _only_ this task's own changed files, built the
+workspace packages it needed (`pnpm --filter @patches/<pkg> build` for each `dist`-less
+dependency), and reran the failing test there. It failed identically with zero other agents'
+files present — proving the bug was this task's own, not caused by the concurrent WIP. Cheap,
+conclusive, and avoids fruitlessly diffing/reverting files you don't own in the live shared tree.
+Clean up with `git worktree remove <path> --force`.
