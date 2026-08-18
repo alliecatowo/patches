@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest';
 
 import { validateEnv } from './env.schema.js';
 
+/**
+ * Minimal valid keys for the production checks below. Real values come from
+ * `pnpm keys:generate`; these are only ever parsed for their PEM label, never used to sign.
+ */
+const JWT_KEYS = {
+  JWT_PRIVATE_KEY: Buffer.from(
+    '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA==\n-----END PRIVATE KEY-----\n',
+  ).toString('base64'),
+  JWT_PUBLIC_KEY: Buffer.from(
+    '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA\n-----END PUBLIC KEY-----\n',
+  ).toString('base64'),
+};
+
 describe('validateEnv', () => {
   it('applies development defaults when nothing is set', () => {
     const env = validateEnv({});
@@ -62,8 +75,42 @@ describe('validateEnv', () => {
     const env = validateEnv({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://patches:patches@127.0.0.1:5432/patches',
+      ...JWT_KEYS,
     });
     expect(env.DATABASE_URL).toBe('postgres://patches:patches@127.0.0.1:5432/patches');
+  });
+
+  it('requires the JWT signing keys in production', () => {
+    try {
+      validateEnv({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://patches:patches@127.0.0.1:5432/patches',
+      });
+      expect.unreachable('expected validateEnv to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      const paths = (error as ConfigError).issues.map((issue) => issue.path);
+      expect(paths).toContain('JWT_PRIVATE_KEY');
+      expect(paths).toContain('JWT_PUBLIC_KEY');
+    }
+  });
+
+  it('rejects a JWT key that is not base64-encoded PEM', () => {
+    expect(() => validateEnv({ JWT_PRIVATE_KEY: 'not base64 pem' })).toThrow(ConfigError);
+    // Right shape, wrong PEM label: a public key pasted into the private key variable.
+    expect(() => validateEnv({ JWT_PRIVATE_KEY: JWT_KEYS.JWT_PUBLIC_KEY })).toThrow(ConfigError);
+  });
+
+  it('defaults the auth knobs to their documented values', () => {
+    const env = validateEnv({});
+    expect(env).toMatchObject({
+      ACCESS_TOKEN_TTL: 900,
+      REFRESH_TOKEN_TTL: 2_592_000,
+      NODE_DOMAIN: 'localhost',
+      ARGON2_MEMORY_KIB: 19_456,
+      ARGON2_TIME_COST: 2,
+      ARGON2_PARALLELISM: 1,
+    });
   });
 
   it('rejects a malformed DATABASE_URL even when optional', () => {
