@@ -1,0 +1,27 @@
+{
+  "name": "@patches/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {},
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/config": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@patches/config": "workspace:*",
+    "@patches/database": "workspace:*",
+    "nodemailer": "catalog:",
+    "pg": "catalog:",
+    "reflect-metadata": "catalog:",
+    "resend": "catalog:",
+    "rxjs": "catalog:",
+    "typeorm": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "catalog:",
+    "@patches/testkit": "workspace:*",
+    "@swc/core": "catalog:",
+    "@types/nodemailer": "catalog:",
+    "unplugin-swc": "catalog:"
+  }
+}
