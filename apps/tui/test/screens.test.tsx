@@ -133,8 +133,8 @@ describe('local feed pagination (B-017)', () => {
   });
 });
 
-describe('PostList selection (B-017)', () => {
-  it("j/k moves the highlighted row and Enter opens that post's author profile", async () => {
+describe('PostList selection (B-017, P4-004)', () => {
+  it("j/k moves the highlighted row and p opens that post's author profile", async () => {
     const fake = createFakeApi();
     const alice = fake.addUser({
       handle: 'alice',
@@ -156,7 +156,7 @@ describe('PostList selection (B-017)', () => {
 
     press('j');
     await flush();
-    press(KEY.enter);
+    press('p');
     await flush();
 
     const frame = lastFrame() ?? '';
@@ -165,7 +165,7 @@ describe('PostList selection (B-017)', () => {
     unmount();
   });
 
-  it("Enter with no movement opens the first (newest) post's author profile", async () => {
+  it("p with no movement opens the first (newest) post's author profile", async () => {
     const fake = createFakeApi();
     const alice = fake.addUser({
       handle: 'alice',
@@ -185,12 +185,35 @@ describe('PostList selection (B-017)', () => {
     press('l');
     await flush();
 
-    press(KEY.enter);
+    press('p');
     await flush();
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('@bob');
     expect(frame).toContain('Bob bio');
+    unmount();
+  });
+
+  it("Enter opens the selected post's thread (P4-004)", async () => {
+    const fake = createFakeApi();
+    const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
+    fake.addPost(bob.id, 'Bob root post');
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+
+    press('g');
+    await flush();
+    press('l');
+    await flush();
+
+    press(KEY.enter);
+    await flush();
+    await flush();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Thread');
+    expect(frame).toContain('Bob root post');
     unmount();
   });
 });

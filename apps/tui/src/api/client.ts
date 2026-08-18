@@ -21,6 +21,8 @@ import {
   type CompleteSshLoginResponse,
   type CreatePostRequest,
   type CreatePostResponse,
+  type DeletePostRequest,
+  type DeletePostResponse,
   type FeedGrpcClient,
   type FollowActorRequest,
   type FollowActorResponse,
@@ -30,6 +32,8 @@ import {
   type GetActorResponse,
   type GetCurrentSessionResponse,
   type GetNodeInfoResponse,
+  type GetPostRequest,
+  type GetPostResponse,
   type GetRelationshipRequest,
   type GetRelationshipResponse,
   type GetServerInfoResponse,
@@ -40,6 +44,8 @@ import {
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListRepliesRequest,
+  type ListRepliesResponse,
   type LoginRequest,
   type LoginResponse,
   type LogoutAllSessionsResponse,
@@ -253,6 +259,22 @@ export class PatchesApi {
 
   async createPost(request: CreatePostRequest, accessToken: string): Promise<CreatePostResponse> {
     return unary(this.post.createPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  /** Readable anonymously (spec §51) — the thread screen works whether or not the viewer is signed in. */
+  async getPost(request: GetPostRequest): Promise<GetPostResponse> {
+    return unary(this.post.getPost.bind(this.post), request, DEADLINES_MS.unary);
+  }
+
+  /** Cursor-paginated, one level deep only — `max_depth` is accepted but not yet honoured
+   * server-side (see `apps/server/src/modules/posts/post.controller.ts`). The thread screen
+   * gets depth by recursing `ListReplies` per drill-down rather than one deep fetch. */
+  async listReplies(request: ListRepliesRequest): Promise<ListRepliesResponse> {
+    return unary(this.post.listReplies.bind(this.post), request, DEADLINES_MS.unary);
+  }
+
+  async deletePost(request: DeletePostRequest, accessToken: string): Promise<DeletePostResponse> {
+    return unary(this.post.deletePost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
   close(): void {

@@ -1,10 +1,9 @@
 import { useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
-import type { Post } from '@patches/proto';
 
 import type { PatchesApi } from '../api/client.js';
-import { PostList } from '../components/PostList.js';
+import { PostList, type PostRowActions } from '../components/PostList.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
 import { theme } from '../theme/index.js';
 
@@ -15,8 +14,7 @@ export interface HomeScreenProps {
   /** Resolves a fresh access token, refreshing first if needed — `App` requires a
    * session before navigating here (`ListHomeFeed` needs one). */
   ensureAccessToken: () => Promise<string>;
-  /** `Enter` on a selected post — opens the author's profile (B-017). */
-  onOpenAuthor?: ((post: Post) => void) | undefined;
+  actions: PostRowActions;
 }
 
 /**
@@ -28,7 +26,7 @@ export function HomeScreen({
   api,
   isActive,
   ensureAccessToken,
-  onOpenAuthor,
+  actions,
 }: HomeScreenProps): ReactElement {
   const fetchPage = useCallback(
     (cursor: string): Promise<PostPage> =>
@@ -61,7 +59,7 @@ export function HomeScreen({
           emptyMessage="Nobody you follow has posted yet — try Local (g l) or search (/)."
           loadMoreKeyHint="n / space"
           isActive={isActive}
-          onOpenAuthor={onOpenAuthor}
+          {...actions}
         />
       </Box>
     </Box>

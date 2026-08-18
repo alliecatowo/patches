@@ -57,9 +57,12 @@ export function PostRow({ post, selected = false, revealed = false }: PostRowPro
         </>
       )}
       {present(post.counts) ? (
-        <Text color={theme.muted}>
-          ♥ {post.counts.likes} · {post.counts.replies}{' '}
-          {post.counts.replies === 1 ? 'reply' : 'replies'}
+        <Text
+          color={present(post.viewerState) && post.viewerState.liked ? theme.accent : theme.muted}
+        >
+          {present(post.viewerState) && post.viewerState.liked ? '♥' : '♡'} {post.counts.likes} ·{' '}
+          {post.counts.replies} {post.counts.replies === 1 ? 'reply' : 'replies'}
+          {present(post.viewerState) && post.viewerState.bookmarked ? ' · ★ bookmarked' : ''}
         </Text>
       ) : null}
     </Box>

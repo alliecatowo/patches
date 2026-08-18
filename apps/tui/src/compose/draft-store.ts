@@ -16,6 +16,12 @@ export interface ComposeDraft {
    * draft is discarded or successfully posted.
    */
   clientRequestId: string;
+  /** Set only for a reply draft (`r` from a post row/thread screen) — `Post.id` of
+   * the post being replied to (spec §51's `in_reply_to_id`). Absent for a root post. */
+  inReplyToId?: string;
+  /** The reply target's `@handle`, purely for the "replying to @handle" header —
+   * never sent to the server. */
+  replyingToHandle?: string;
 }
 
 /**
@@ -43,12 +49,18 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
 function isComposeDraft(value: unknown): value is ComposeDraft {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ComposeDraft>;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { body?: unknown }).body === 'string' &&
-    typeof (value as { clientRequestId?: unknown }).clientRequestId === 'string'
+    typeof candidate.body === 'string' &&
+    typeof candidate.clientRequestId === 'string' &&
+    isOptionalString(candidate.inReplyToId) &&
+    isOptionalString(candidate.replyingToHandle)
   );
 }
 
