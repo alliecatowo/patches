@@ -76,14 +76,14 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 4.5 — Pages v1 (§170–§172)
 
-- [ ] P45-001 — `PatchesPage` schema + validator in `packages/domain` (versioned, flat blocks, strict-on-write); limits: doc ≤64 KiB, ≤32 sub-pages, ≤128 blocks/page, ≤8 KiB/block
-- [ ] P45-002 — Entities + migrations: pages, page_revisions (immutable), page_assets, guestbook_entries
-- [ ] P45-003 — `PageService`: GetPage, UpdatePage (new revision per write), ListGuestbook, SignGuestbook (rate-limited, block-aware, reportable, owner/moderator removal)
+- [x] P45-001 — `PatchesPage` schema + validator in `packages/domain` (versioned, flat blocks, strict-on-write); limits: doc ≤64 KiB, ≤32 sub-pages, ≤128 blocks/page, ≤8 KiB/block
+- [x] P45-002 — Entities + migrations: pages, page_revisions (immutable), page_assets, guestbook_entries
+- [x] P45-003 — `PageService`: GetPage, UpdatePage (new revision per write), ListGuestbook, SignGuestbook (rate-limited, block-aware, reportable, owner/moderator removal)
 - [ ] P45-004 — Ink page renderer + basic theme; blocks Text/Markdown/Links/Posts/TopEight/Guestbook; unknown blocks render a placeholder, never fail the page
-- [ ] P45-005 — `Image`/`Gallery` defined in schema but render as placeholder until Phase 5 media exists (§176)
+- [ ] P45-005 — `Image`/`Gallery` defined in schema but render as placeholder until Phase 5 media exists (§176) _(schema half done — `Image`/`Gallery` block schemas + Patches-media-id-only enforcement exist in `packages/domain`; placeholder rendering is TUI work, P45-004/006)_
 - [ ] P45-006 — TUI `patches visit @handle[/slug]` + page editor
 - [ ] P45-007 — Nameplate rendering everywhere a name appears: capability degradation (truecolor→256→16→none), plain mode, server-attested badges only (§173)
-- [ ] P45-008 — Security tests: no executable code path, control-character/escape-sequence stripping on every user string, remote-URL media rejected, `javascript:`/`data:`/`file:` links rejected
+- [x] P45-008 — Security tests: no executable code path, control-character/escape-sequence stripping on every user string, remote-URL media rejected, `javascript:`/`data:`/`file:` links rejected _(domain + server half: `packages/domain` unit tests + `apps/server/test/pages.integration.test.ts`'s VALIDATION_ERROR/block-awareness coverage; TUI rendering-side checks land with P45-004/006)_
 
 ## Phase 5 — production media (§139)
 

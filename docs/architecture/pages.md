@@ -5,11 +5,14 @@ stored on the actor's node and rendered by clients. Source of truth: `INITIAL_VI
 §170–§172 (Amendment A), ADR
 [0012](../decisions/0012-patches-pages-portable-declarative.md).
 
-**Status: planned (Phase 4.5).** Nothing here is implemented.
+**Status: partially implemented (Phase 4.5).** The document schema/validator
+(`packages/domain`), storage (§3), and `PageService` (§4) are implemented and tested — see
+`apps/server/src/modules/pages/`. The Ink renderer, `patches visit`, and nameplate rendering
+(P45-004, P45-006, P45-007) are still planned.
 
 Pages are the personal-web pillar (§175, pillar 3). They are not a profile decoration — the
 profile is what you see _next to a name_; a Page is what you _visit_. Inline identity
-presentation is the nameplate, documented in §173 and summarized in §7 below.
+presentation is the nameplate, documented in §173 and summarized in §8 below.
 
 ## 1. The shape of the decision
 
@@ -110,7 +113,39 @@ renderer may not fake it.
 
 Columns are in [`data-model.md`](./data-model.md).
 
-## 4. Addressing
+## 4. PageService (server implementation)
+
+**Status: implemented** (P45-003) — `apps/server/src/modules/pages/`. Full RPC contract in
+[`api.md`](./api.md). Notable behavior beyond the wire contract:
+
+- **Block-aware, uniformly** (spec §62). `GetPage`, `ListGuestbook`, and `SignGuestbook` each
+  report the same `PAGE_NOT_FOUND` for a nonexistent actor, an actor with no page yet, _and_
+  a blocked-either-direction caller — never a `PERMISSION_DENIED` that would leak which case
+  applies to a blocked caller.
+- **`GetPage`'s `document` bytes are the raw stored revision**, re-serialized as-is rather
+  than round-tripped back through `packages/domain`'s types. A revision was already validated
+  strictly at write time; re-parsing on read would risk silently dropping fields written by a
+  _newer_ schema version this server doesn't recognize (spec §171's forward-compatibility
+  requirement). Only the convenience `theme` extract on the response is derived through
+  `packages/domain`'s lenient parser, and degrades to empty rather than failing the read.
+- **`SignGuestbook` is rate-limited on two independent buckets** — the caller's network peer
+  and their actor id (`GuestbookRateLimitService`) — because unlike `ModerationService`'s
+  report rate limit, `SignGuestbook` always has an authenticated actor behind it, so both
+  signals are meaningful.
+- **One guestbook per page, not per sub-page.** `ListGuestbookRequest`/`SignGuestbookRequest`
+  carry a `slug`, but `guestbook_entries` is keyed on `page_id` only (`page.entity.ts`) — there
+  is no per-sub-page guestbook yet, even though a `Guestbook` block could in principle appear
+  on more than one sub-page. `slug` is validated on every call so a future multi-guestbook
+  schema change doesn't also need a wire change, but today it only affects
+  `GetPageResponse.active_slug`.
+- **`RemoveGuestbookEntry` is owner-only today** — moderator removal is a documented follow-up
+  (`B` backlog), not yet implemented.
+- **`ReportGuestbookEntry` reuses `reports.subject_type = 'GUESTBOOK_ENTRY'`** (P45-003) rather
+  than a second reports table, and is not itself rate-limited (only `SignGuestbook` is) — the
+  proto's own doc comment on `ReportGuestbookEntry` doesn't call for one, unlike
+  `SignGuestbook`'s.
+
+## 5. Addressing
 
 ```bash
 patches visit @allison             # their page, index slug
@@ -120,7 +155,7 @@ patches visit @carol@other.node    # a page on another node (federation)
 
 Web, later: `allison.patches.page`.
 
-## 5. Rendering
+## 6. Rendering
 
 ```text
                  PatchesPage document (data)
@@ -138,7 +173,7 @@ that is what makes the format portable rather than merely stored.
 The Ink renderer degrades by terminal capability the same way the rest of the TUI does
 (truecolor → 256 → 16 → none), and a page must remain readable at every level.
 
-## 6. Security
+## 7. Security
 
 **No user-authored executable code in the portable format, in any client, ever.** No React,
 MDX, JS, template language, or expression evaluator. This is §111's "feed definitions are
@@ -172,7 +207,7 @@ The TUI is unaffected — it renders the portable document only. Writing these c
 now is deliberate: it prevents the mode from being retrofitted onto the app origin later by
 someone in a hurry.
 
-## 7. Nameplates (adjacent, not the same thing)
+## 8. Nameplates (adjacent, not the same thing)
 
 A **nameplate** (§173) is how an actor appears everywhere their name appears — timeline,
 thread, mention, follower list: name color/gradient, glyph, badges, avatar frame, status line,
@@ -188,13 +223,13 @@ profile border. Stored as a bounded (≤ 2 KiB) validated document on the actor.
   import from another node, unsupported decoration is preserved but not rendered, so
   migration never silently destroys someone's identity.
 
-## 8. Federation
+## 9. Federation
 
 The page manifest is advertised as a **Patches extension property** on the actor document. A
 plain Fediverse server that doesn't understand it receives an ordinary actor and loses
 nothing. Pages are part of the export archive (§164), so moving nodes moves your page.
 
-## 9. Related documents
+## 10. Related documents
 
 - [`data-model.md`](./data-model.md) — page tables
 - [`api.md`](./api.md) — `PageService` RPCs
