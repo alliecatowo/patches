@@ -1,15 +1,35 @@
 import { createDataSource, OutboxJob } from '@patches/database';
+import type { StorageClient } from '@patches/media';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
 import { CleanExpiredTokensHandler } from '../src/jobs/handlers/clean-expired-tokens.handler.js';
+import { CleanExpiredUploadsHandler } from '../src/jobs/handlers/clean-expired-uploads.handler.js';
+import { ProcessMediaHandler } from '../src/jobs/handlers/process-media.handler.js';
 import { SendPasswordResetEmailHandler } from '../src/jobs/handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from '../src/jobs/handlers/send-verification-email.handler.js';
 import { JobDispatcher } from '../src/jobs/job-dispatcher.js';
 import { JobRunner } from '../src/jobs/job-runner.js';
 import { waitFor } from './support/wait-for.js';
+
+/** Neither `PROCESS_MEDIA` nor `CLEAN_EXPIRED_UPLOADS` is enqueued by this file's tests
+ * (see `media-processing.integration.test.ts` for those) — this stub only exists so
+ * `JobDispatcher`'s now-five-handler constructor is satisfiable without a real MinIO. */
+function unusedStorage(): StorageClient {
+  const fail = (): never => {
+    throw new Error('unusedStorage: not expected to be called by this test file');
+  };
+  return {
+    presignPut: fail,
+    presignGet: fail,
+    head: fail,
+    getObject: fail,
+    putObject: fail,
+    deleteObject: fail,
+  };
+}
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -40,6 +60,9 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       concurrency: 5,
       pollMs: 20,
       idleBackoffMaxMs: 40,
+      mediaMaxBytes: 10 * 1024 * 1024,
+      mediaMaxPixels: 20_000_000,
+      mediaPendingUploadExpiryMinutes: 60,
       ...overrides,
     } as AppConfigService;
   }
@@ -48,12 +71,16 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     overrides: Partial<AppConfigService> = {},
     emailProvider: ConsoleEmailProvider = new ConsoleEmailProvider(),
   ): { runner: JobRunner; emailProvider: ConsoleEmailProvider } {
+    const config = fakeConfig(overrides);
+    const storage = unusedStorage();
     const dispatcher = new JobDispatcher(
       new SendVerificationEmailHandler(emailProvider),
       new SendPasswordResetEmailHandler(emailProvider),
       new CleanExpiredTokensHandler(dataSource),
+      new ProcessMediaHandler(dataSource, storage, config),
+      new CleanExpiredUploadsHandler(dataSource, storage, config),
     );
-    const runner = new JobRunner(dataSource, dispatcher, fakeConfig(overrides));
+    const runner = new JobRunner(dataSource, dispatcher, config);
     return { runner, emailProvider };
   }
 
