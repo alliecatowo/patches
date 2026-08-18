@@ -78,6 +78,16 @@ export class AppConfigService {
     return this.get('WORKER_IDLE_BACKOFF_MAX_MS');
   }
 
+  /** B-013: lease TTL before a `PROCESSING` job is assumed abandoned by a crashed worker. */
+  get leaseTtlMs(): number {
+    return this.get('WORKER_LEASE_TTL_MS');
+  }
+
+  /** B-013: how often the claim loop checks for stale leases. */
+  get leaseSweepIntervalMs(): number {
+    return this.get('WORKER_LEASE_SWEEP_INTERVAL_MS');
+  }
+
   get storageAccountId(): string | undefined {
     return this.get('R2_ACCOUNT_ID');
   }

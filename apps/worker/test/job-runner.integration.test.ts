@@ -63,6 +63,11 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       mediaMaxBytes: 10 * 1024 * 1024,
       mediaMaxPixels: 20_000_000,
       mediaPendingUploadExpiryMinutes: 60,
+      // Long enough that the stale-lease sweep (B-013) never fires spuriously mid-test
+      // against jobs these tests themselves just claimed; the sweep's own behavior is
+      // exercised separately below with a short-lived override.
+      leaseTtlMs: 10 * 60_000,
+      leaseSweepIntervalMs: 60_000,
       ...overrides,
     } as AppConfigService;
   }
@@ -189,5 +194,60 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
 
     const rows = await dataSource.getRepository(OutboxJob).find();
     expect(rows.every((row) => row.status === 'COMPLETED')).toBe(true);
+  });
+
+  it('reclaims a job abandoned PROCESSING by a crashed worker (B-013)', async () => {
+    // Simulates a worker that claimed the job, then died mid-handler (killed -9, OOM, host
+    // failure) without ever reaching markOutboxJobSucceeded/Failed: `locked_at` stops
+    // advancing and the row is left `PROCESSING` forever unless something notices.
+    const stale = await enqueue(
+      'SEND_VERIFICATION_EMAIL',
+      { userId: 'u1', email: 'user@example.com', code: '123456' },
+      {
+        status: 'PROCESSING',
+        lockedAt: new Date(Date.now() - 60_000),
+        lockedBy: 'dead-worker',
+        attempts: 1,
+      },
+    );
+
+    // A short TTL/interval so the sweep fires well within the test's timeout without
+    // waiting on the real WORKER_LEASE_TTL_MS default (10 minutes).
+    const { runner, emailProvider } = buildRunner({ leaseTtlMs: 100, leaseSweepIntervalMs: 0 });
+
+    const runPromise = runner.run();
+    await waitFor(async () => {
+      const row = await dataSource.getRepository(OutboxJob).findOneBy({ id: stale.id });
+      return row?.status === 'COMPLETED';
+    });
+    runner.requestStop();
+    await runPromise;
+
+    expect(emailProvider.sent).toHaveLength(1);
+    const row = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: stale.id });
+    expect(row.status).toBe('COMPLETED');
+    // Reclaim isn't a failed attempt: claimOutboxJobs increments attempts again on reclaim
+    // (1 -> 2), same as any other claim, but the sweep itself never touches it.
+    expect(row.attempts).toBe(2);
+  });
+
+  it('leaves a PROCESSING job alone while its lease is still fresh', async () => {
+    const fresh = await enqueue(
+      'SEND_VERIFICATION_EMAIL',
+      { userId: 'u1', email: 'user@example.com', code: '123456' },
+      { status: 'PROCESSING', lockedAt: new Date(), lockedBy: 'still-alive-worker' },
+    );
+
+    const { runner } = buildRunner({ leaseTtlMs: 10 * 60_000, leaseSweepIntervalMs: 0 });
+
+    const runPromise = runner.run();
+    // Give the sweep a few loop passes to (not) act, then stop and assert nothing changed.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    runner.requestStop();
+    await runPromise;
+
+    const row = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: fresh.id });
+    expect(row.status).toBe('PROCESSING');
+    expect(row.lockedBy).toBe('still-alive-worker');
   });
 });

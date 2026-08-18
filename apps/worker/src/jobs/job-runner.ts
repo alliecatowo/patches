@@ -11,6 +11,7 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { DATA_SOURCE } from '../database/database.module.js';
 import { JobDispatcher } from './job-dispatcher.js';
 import { releaseUnhandledJob } from './release-claim.js';
+import { sweepStaleLeases } from './stale-lease-sweep.js';
 
 /**
  * `min(currentMs * 2, maxMs)` — the idle-poll backoff step (`docs/architecture/jobs.md` §8).
@@ -40,6 +41,10 @@ export class JobRunner {
   private readonly logger = new Logger(JobRunner.name);
   private stopping = false;
   private wake: (() => void) | undefined;
+  /** `0`, not `Date.now()`, so the very first loop iteration always sweeps once — surfaces
+   * leases a previous, crashed instance of this same process left behind as soon as
+   * possible, rather than waiting a full `leaseSweepIntervalMs` after boot. */
+  private lastSweepAtMs = 0;
 
   constructor(
     @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
@@ -57,6 +62,8 @@ export class JobRunner {
     let idleDelayMs = pollMs;
 
     while (!this.stopping) {
+      await this.sweepStaleLeasesIfDue();
+
       const claimed = await this.dataSource.transaction((manager) =>
         claimOutboxJobs(manager, { workerId, limit: concurrency }),
       );
@@ -69,6 +76,21 @@ export class JobRunner {
 
       idleDelayMs = pollMs;
       await Promise.all(claimed.map((job) => this.processJob(job)));
+    }
+  }
+
+  /** B-013: resets jobs abandoned `PROCESSING` by a crashed worker back to `PENDING`, at
+   * most once per `leaseSweepIntervalMs` — this is a table scan over `PROCESSING` rows, not
+   * something to run every claim pass. */
+  private async sweepStaleLeasesIfDue(): Promise<void> {
+    const { leaseTtlMs, leaseSweepIntervalMs } = this.config;
+    const now = Date.now();
+    if (now - this.lastSweepAtMs < leaseSweepIntervalMs) return;
+    this.lastSweepAtMs = now;
+
+    const reclaimed = await sweepStaleLeases(this.dataSource.manager, { leaseTtlMs });
+    if (reclaimed > 0) {
+      this.logger.warn(JSON.stringify({ outcome: 'STALE_LEASES_RECLAIMED', count: reclaimed }));
     }
   }
 
