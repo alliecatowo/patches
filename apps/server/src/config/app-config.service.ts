@@ -98,6 +98,50 @@ export class AppConfigService {
       parallelism: this.get('ARGON2_PARALLELISM'),
     };
   }
+
+  get storageAccountId(): string | undefined {
+    return this.get('R2_ACCOUNT_ID');
+  }
+
+  get storageAccessKeyId(): string | undefined {
+    return this.get('R2_ACCESS_KEY_ID');
+  }
+
+  get storageSecretAccessKey(): string | undefined {
+    return this.get('R2_SECRET_ACCESS_KEY');
+  }
+
+  get storageBucket(): string | undefined {
+    return this.get('R2_BUCKET');
+  }
+
+  get storageEndpoint(): string | undefined {
+    return this.get('R2_ENDPOINT');
+  }
+
+  get storageRegion(): string {
+    return this.get('R2_REGION');
+  }
+
+  get storageForcePathStyle(): boolean {
+    return this.get('R2_FORCE_PATH_STYLE');
+  }
+
+  get mediaMaxBytes(): number {
+    return this.get('MEDIA_MAX_BYTES');
+  }
+
+  get mediaMaxPixels(): number {
+    return this.get('MEDIA_MAX_PIXELS');
+  }
+
+  get mediaPresignPutTtlSeconds(): number {
+    return this.get('MEDIA_PRESIGN_PUT_TTL_SECONDS');
+  }
+
+  get mediaPresignGetTtlSeconds(): number {
+    return this.get('MEDIA_PRESIGN_GET_TTL_SECONDS');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

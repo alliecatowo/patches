@@ -125,6 +125,40 @@ describe('ProcessMediaHandler', () => {
     );
   });
 
+  it('accepts a matching expectedSha256 and processes normally', async () => {
+    const bytes = await pngFixture();
+    const { createHash } = await import('node:crypto');
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    repo.findOne.mockResolvedValue(pendingMedia());
+    const storage = storageWith(bytes);
+    const handler = new ProcessMediaHandler(fakeDataSource(repo) as never, storage, fakeConfig());
+
+    await handler.handle({ mediaId: MEDIA_ID, expectedSha256: sha256 }, { jobId: '1', attempt: 1 });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      { id: MEDIA_ID },
+      expect.objectContaining({ state: 'READY' }),
+    );
+  });
+
+  it('marks the row FAILED when the downloaded bytes do not match expectedSha256', async () => {
+    const bytes = await pngFixture();
+    repo.findOne.mockResolvedValue(pendingMedia());
+    const storage = storageWith(bytes);
+    const handler = new ProcessMediaHandler(fakeDataSource(repo) as never, storage, fakeConfig());
+
+    await handler.handle(
+      { mediaId: MEDIA_ID, expectedSha256: '0'.repeat(64) },
+      { jobId: '1', attempt: 1 },
+    );
+
+    expect(repo.update).toHaveBeenCalledWith(
+      { id: MEDIA_ID },
+      expect.objectContaining({ state: 'FAILED' }),
+    );
+    expect(storage.putObject).not.toHaveBeenCalled();
+  });
+
   it('marks the row FAILED (not a thrown job error) for an unsupported format', async () => {
     // A GIF signature — real format detection, not client-declared type (spec §31).
     const gifBytes = await sharp({

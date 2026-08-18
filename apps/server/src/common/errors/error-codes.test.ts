@@ -17,6 +17,7 @@ describe('error code → gRPC status mapping', () => {
     expect(grpcStatusForErrorCode('AUTH_SESSION_EXPIRED')).toBe(GrpcStatus.UNAUTHENTICATED);
     expect(grpcStatusForErrorCode('ACTOR_NOT_FOUND')).toBe(GrpcStatus.NOT_FOUND);
     expect(grpcStatusForErrorCode('POST_NOT_FOUND')).toBe(GrpcStatus.NOT_FOUND);
+    expect(grpcStatusForErrorCode('MEDIA_NOT_FOUND')).toBe(GrpcStatus.NOT_FOUND);
     expect(grpcStatusForErrorCode('HANDLE_TAKEN')).toBe(GrpcStatus.ALREADY_EXISTS);
     expect(grpcStatusForErrorCode('ACTOR_BLOCKED')).toBe(GrpcStatus.PERMISSION_DENIED);
     expect(grpcStatusForErrorCode('POST_FORBIDDEN')).toBe(GrpcStatus.PERMISSION_DENIED);

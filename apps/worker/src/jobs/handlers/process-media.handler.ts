@@ -64,7 +64,7 @@ export class ProcessMediaHandler implements JobHandler {
   ) {}
 
   async handle(payload: unknown, _ctx: JobContext): Promise<void> {
-    const { mediaId } = processMediaPayloadSchema.parse(payload);
+    const { mediaId, expectedSha256 } = processMediaPayloadSchema.parse(payload);
     const repository = this.dataSource.getRepository(Media);
 
     const media = await repository.findOne({ where: { id: mediaId } });
@@ -79,7 +79,7 @@ export class ProcessMediaHandler implements JobHandler {
     }
 
     try {
-      await this.process(media);
+      await this.process(media, expectedSha256);
     } catch (error) {
       if (error instanceof MediaValidationError) {
         await repository.update({ id: mediaId }, { state: 'FAILED', processedAt: new Date() });
@@ -92,13 +92,24 @@ export class ProcessMediaHandler implements JobHandler {
     }
   }
 
-  private async process(media: Media): Promise<void> {
+  private async process(media: Media, expectedSha256: string | undefined): Promise<void> {
     const originalKey = mediaOriginalKey(media.id);
     const maxBytes = this.config.mediaMaxBytes;
 
     const downloaded = await this.storage.getObject(originalKey, { maxBytes });
     if (downloaded.contentLength === 0) {
       throw new MediaValidationError('Uploaded object is empty.');
+    }
+
+    // `media.proto`'s documented contract: the client's declared hash (from
+    // `BeginMediaUploadRequest.sha256`) is verified here, against the real downloaded bytes
+    // — never trusted on its own (§31's "never trust client-supplied values" applies to more
+    // than just the MIME type).
+    const contentHash = createHash('sha256').update(downloaded.body).digest('hex');
+    if (expectedSha256 !== undefined && expectedSha256 !== contentHash) {
+      throw new MediaValidationError(
+        `Uploaded content does not match the declared sha256 (expected ${expectedSha256}, got ${contentHash}).`,
+      );
     }
 
     // §31: never trust the filename/client-declared MIME type or dimensions — only what
@@ -152,7 +163,6 @@ export class ProcessMediaHandler implements JobHandler {
         .toBuffer(),
     ]);
 
-    const contentHash = createHash('sha256').update(downloaded.body).digest('hex');
     const displayKey = mediaVariantKey(media.id, 'display');
     const thumbnailKey = mediaVariantKey(media.id, 'thumb');
 

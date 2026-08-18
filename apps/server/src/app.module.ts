@@ -10,6 +10,7 @@ import { ActorModule } from './modules/actors/actor.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { FeedModule } from './modules/feeds/feed.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
+import { MediaModule } from './modules/media/media.module.js';
 import { PostModule } from './modules/posts/post.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 
@@ -23,6 +24,7 @@ import { SystemModule } from './modules/system/system.module.js';
     ActorModule,
     FeedModule,
     GraphModule,
+    MediaModule,
   ],
   providers: [
     // Order matters: RequestContextInterceptor establishes the request id that

@@ -20,6 +20,9 @@ export const ERROR_CODES = [
   'MEDIA_TOO_LARGE',
   'MEDIA_UNSUPPORTED_TYPE',
   'MEDIA_NOT_READY',
+  /** `FinalizeMediaUpload`/`GetMediaDownload` on an id that doesn't exist or isn't the
+   * caller's own media (§54) — not in §57's starter list alongside its siblings above. */
+  'MEDIA_NOT_FOUND',
   'RATE_LIMITED',
   'VALIDATION_ERROR',
   'INTERNAL_ERROR',
@@ -58,6 +61,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   MEDIA_TOO_LARGE: GrpcStatus.INVALID_ARGUMENT,
   MEDIA_UNSUPPORTED_TYPE: GrpcStatus.INVALID_ARGUMENT,
   MEDIA_NOT_READY: GrpcStatus.FAILED_PRECONDITION,
+  MEDIA_NOT_FOUND: GrpcStatus.NOT_FOUND,
   RATE_LIMITED: GrpcStatus.RESOURCE_EXHAUSTED,
   VALIDATION_ERROR: GrpcStatus.INVALID_ARGUMENT,
   INTERNAL_ERROR: GrpcStatus.INTERNAL,

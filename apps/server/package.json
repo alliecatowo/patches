@@ -24,6 +24,7 @@
     "@node-rs/argon2": "catalog:",
     "@patches/config": "workspace:*",
     "@patches/database": "workspace:*",
+    "@patches/media": "workspace:*",
     "@patches/proto": "workspace:*",
     "grpc-health-check": "^2.1.0",
     "jose": "catalog:",
