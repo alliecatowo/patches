@@ -23,6 +23,7 @@ import { AccountsScreen } from '../screens/AccountsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { ConnectScreen } from '../screens/ConnectScreen.js';
+import { EditProfileScreen } from '../screens/EditProfileScreen.js';
 import { HelpScreen } from '../screens/HelpScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
@@ -63,6 +64,7 @@ type Screen =
   | 'login'
   | 'compose'
   | 'profile'
+  | 'editProfile'
   | 'local'
   | 'home'
   | 'search'
@@ -75,7 +77,13 @@ type Screen =
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
-  return screen === 'login' || screen === 'compose' || screen === 'search' || screen === 'report';
+  return (
+    screen === 'login' ||
+    screen === 'compose' ||
+    screen === 'search' ||
+    screen === 'report' ||
+    screen === 'editProfile'
+  );
 }
 
 /** Optimistic overlay for one post's reaction state (P4-004, spec §79) — only the
@@ -433,6 +441,19 @@ export function App({
     setScreen('connect');
   }
 
+  /** `r` on the accounts screen, only offered while `emailVerified` is false (A-028) —
+   * the code itself still only arrives by email and is entered via `patches verify
+   * <code>`, not in-app (there is no code-entry flow here). */
+  async function resendVerificationEmail(): Promise<void> {
+    try {
+      const accessToken = await ensureAccessToken();
+      await api.resendVerification(accessToken);
+      setNotice('Verification email sent.');
+    } catch (error) {
+      setNotice(describeGrpcError(error, api.target).title);
+    }
+  }
+
   const rowActions: PostRowActions = {
     onOpenPost: (post) => openThread(post.id),
     onOpenAuthor: openAuthorProfile,
@@ -540,6 +561,22 @@ export function App({
                 ensureAccessToken={ensureAccessToken}
                 onReportActor={reportActor}
                 onVisitPage={(actor) => openPage(actor.handle)}
+                onEditProfile={session === undefined ? undefined : () => go('editProfile')}
+              />
+            )}
+            {screen === 'editProfile' && session !== undefined && session.actor !== undefined && (
+              <EditProfileScreen
+                api={api}
+                actor={session.actor}
+                ensureAccessToken={ensureAccessToken}
+                isActive={screen === 'editProfile'}
+                onCancel={() => setScreen(priorScreen)}
+                onSaved={(actor) => {
+                  setSession((current) =>
+                    current === undefined ? current : { ...current, actor },
+                  );
+                  setScreen(priorScreen);
+                }}
               />
             )}
             {screen === 'page' && pageTarget !== undefined && (
@@ -604,6 +641,7 @@ export function App({
                 isActive={screen === 'accounts'}
                 ensureAccessToken={ensureAccessToken}
                 onLogout={() => void logout()}
+                onResendVerification={() => void resendVerificationEmail()}
                 onBack={() => setScreen(priorScreen)}
               />
             )}
@@ -675,6 +713,7 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
   if (screen === 'report') return ['j/k reason', 'Ctrl+S submit', 'Esc cancel'];
   if (screen === 'accounts') return ['a add key', 'x log out', 'Esc back'];
+  if (screen === 'editProfile') return ['Tab/↑↓ move', 'Ctrl+S save', 'Esc cancel'];
   if (screen === 'notifications') return ['j/k move', 'Enter open', 'm mark all read'];
   if (screen === 'thread') {
     return [

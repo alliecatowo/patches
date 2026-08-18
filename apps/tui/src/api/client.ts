@@ -112,6 +112,7 @@ import {
   type ReportGuestbookEntryResponse,
   type ReportPostRequest,
   type ReportPostResponse,
+  type ResendVerificationResponse,
   type RevokeCredentialRequest,
   type RevokeCredentialResponse,
   type SearchActorsRequest,
@@ -132,6 +133,10 @@ import {
   type UnmuteActorResponse,
   type UpdatePageRequest,
   type UpdatePageResponse,
+  type UpdateProfileRequest,
+  type UpdateProfileResponse,
+  type VerifyEmailRequest,
+  type VerifyEmailResponse,
 } from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
@@ -223,6 +228,12 @@ export class PatchesApi {
     return unary(this.auth.completeSshLogin.bind(this.auth), request, DEADLINES_MS.auth);
   }
 
+  /** The code comes from the verification email — unauthenticated (spec: a fresh
+   * account has no session yet when it verifies). */
+  async verifyEmail(request: VerifyEmailRequest): Promise<VerifyEmailResponse> {
+    return unary(this.auth.verifyEmail.bind(this.auth), request, DEADLINES_MS.auth);
+  }
+
   // ---- AuthService — calls that require an authenticated session ----
 
   async getCurrentSession(accessToken: string): Promise<GetCurrentSessionResponse> {
@@ -258,6 +269,10 @@ export class PatchesApi {
     );
   }
 
+  async resendVerification(accessToken: string): Promise<ResendVerificationResponse> {
+    return unary(this.auth.resendVerification.bind(this.auth), {}, DEADLINES_MS.auth, accessToken);
+  }
+
   /** Server-side fails this on the account's last remaining credential (spec §165). */
   async revokeCredential(
     request: RevokeCredentialRequest,
@@ -283,6 +298,21 @@ export class PatchesApi {
 
   async searchActors(request: SearchActorsRequest): Promise<SearchActorsResponse> {
     return unary(this.actor.searchActors.bind(this.actor), request, DEADLINES_MS.unary);
+  }
+
+  /** Partial update of the caller's own profile, driven by `updateMask` — only the
+   * fields listed there (snake_case proto field names, e.g. `'display_name'`) are
+   * applied server-side (spec: `actors.proto`'s `UpdateProfileRequest`). */
+  async updateProfile(
+    request: UpdateProfileRequest,
+    accessToken: string,
+  ): Promise<UpdateProfileResponse> {
+    return unary(
+      this.actor.updateProfile.bind(this.actor),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
   }
 
   async listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {

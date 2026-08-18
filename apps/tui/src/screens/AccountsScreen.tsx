@@ -23,6 +23,9 @@ export interface AccountsScreenProps {
   ensureAccessToken: () => Promise<string>;
   /** `x` — signs out and returns to a logged-out screen. */
   onLogout: () => void;
+  /** `r` — only offered while `session.emailVerified` is false (A-028); the code
+   * itself still only arrives by email, entered via `patches verify <code>`. */
+  onResendVerification: () => void;
   /** `Esc` — back to whichever screen `L` was pressed from. */
   onBack: () => void;
 }
@@ -65,6 +68,7 @@ export function AccountsScreen({
   isActive,
   ensureAccessToken,
   onLogout,
+  onResendVerification,
   onBack,
 }: AccountsScreenProps): ReactElement {
   const [state, setState] = useState<CredentialsState>({ status: 'loading' });
@@ -171,6 +175,10 @@ export function AccountsScreen({
         void beginAdd();
         return;
       }
+      if (input === 'r' && !session.emailVerified) {
+        onResendVerification();
+        return;
+      }
       if (input === 'x') onLogout();
     },
     { isActive },
@@ -182,6 +190,11 @@ export function AccountsScreen({
       <Text color={theme.muted}>
         @{session.actor?.handle ?? session.userId} · {session.nodeOrigin}
       </Text>
+      {session.emailVerified ? null : (
+        <Text color={theme.warn}>
+          email unverified — r resend, or run `patches verify &lt;code&gt;`
+        </Text>
+      )}
       <Box marginTop={1} flexDirection="column">
         {state.status === 'loading' ? <Text color={theme.muted}>Loading credentials…</Text> : null}
         {state.status === 'error' ? <Text color={theme.error}>{state.error.title}</Text> : null}
