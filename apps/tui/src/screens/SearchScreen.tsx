@@ -1,10 +1,12 @@
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import type { Actor } from '@patches/proto';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
+import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
-import { describeGrpcError, type FriendlyError } from '../api/errors.js';
+import { describeGrpcError, grpcStatusCode, type FriendlyError } from '../api/errors.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
@@ -12,6 +14,10 @@ import { theme } from '../theme/index.js';
 export interface SearchScreenProps {
   api: PatchesApi;
   isActive: boolean;
+  /** Enables looking up a remote `user@domain` handle via `ResolveActor` (B-028) —
+   * omitted (signed out) falls back to always treating the query as a local search,
+   * since `ResolveActor` requires a session. */
+  ensureAccessToken?: (() => Promise<string>) | undefined;
   /** `Enter` on a result — opens that actor's profile. */
   onOpenActor: (actor: Actor) => void;
   /** `Esc` — leaves the screen without picking anyone. */
@@ -24,14 +30,20 @@ type Status =
   | { status: 'ready'; actors: Actor[] }
   | { status: 'error'; error: FriendlyError };
 
+/** A remote `user@domain` handle, `@`-prefix optional (B-028) — anything else is a
+ * local handle-prefix/display-name query. */
+const REMOTE_ACCT_PATTERN = /^@?[\w.-]+@[\w.-]+\.[a-z]+$/;
+
 /**
- * `/` or `g s` — handle-prefix + display-name search (spec §112). Typing edits the
- * query; `Enter` runs the search the first time, then moves selection into the
- * results and opens the selected actor's profile.
+ * `/` or `g s` — handle-prefix + display-name search (spec §112), or a remote-actor
+ * lookup by `user@domain` (spec §174/B-028) when the query matches that shape.
+ * Typing edits the query; `Enter` runs the search the first time, then moves
+ * selection into the results and opens the selected actor's profile.
  */
 export function SearchScreen({
   api,
   isActive,
+  ensureAccessToken,
   onOpenActor,
   onCancel,
 }: SearchScreenProps): ReactElement {
@@ -39,9 +51,50 @@ export function SearchScreen({
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<Status>({ status: 'idle' });
 
+  async function resolveRemoteActor(rawAcct: string): Promise<void> {
+    if (ensureAccessToken === undefined) {
+      setStatus({
+        status: 'error',
+        error: {
+          title: 'Sign in to look up a remote account.',
+          hint: '',
+          retryable: false,
+          code: GrpcStatus.UNAUTHENTICATED,
+        },
+      });
+      return;
+    }
+    const acct = rawAcct.startsWith('@') ? rawAcct.slice(1) : rawAcct;
+    setStatus({ status: 'loading' });
+    try {
+      const accessToken = await ensureAccessToken();
+      const response = await api.resolveActor({ acct }, accessToken);
+      setStatus({ status: 'ready', actors: present(response.actor) ? [response.actor] : [] });
+      setSelected(0);
+    } catch (error) {
+      if (grpcStatusCode(error) === GrpcStatus.UNIMPLEMENTED) {
+        setStatus({
+          status: 'error',
+          error: {
+            title: 'This node has federation disabled.',
+            hint: '',
+            retryable: false,
+            code: GrpcStatus.UNIMPLEMENTED,
+          },
+        });
+        return;
+      }
+      setStatus({ status: 'error', error: describeGrpcError(error, api.target) });
+    }
+  }
+
   async function runSearch(): Promise<void> {
     const trimmed = query.trim();
     if (trimmed === '') return;
+    if (REMOTE_ACCT_PATTERN.test(trimmed)) {
+      await resolveRemoteActor(trimmed);
+      return;
+    }
     setStatus({ status: 'loading' });
     try {
       const response = await api.searchActors({ query: trimmed, cursor: '', limit: 20 });

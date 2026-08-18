@@ -7,13 +7,22 @@ const USAGE = `Usage: patches profile edit [options]
 
 Edits the signed-in account's profile (spec §50). Only the fields given are
 changed — anything left out keeps its current value (sent via update_mask,
-never a blind whole-profile overwrite).
+never a blind whole-profile overwrite). The five --name-color/--glyph/
+--status-line/--avatar-frame/--profile-border flags edit the account's
+nameplate (spec §173) — passing any one of them re-sends the whole nameplate
+(unspecified nameplate fields keep their current value, read from the signed-
+in session, same "merge before write" behavior as the in-app editor).
 
 Options:
   --display-name <text>          display name shown on posts
   --bio <text>                   short bio
   --location <text>              free-form location text
   --website <url>                http(s) URL shown on the profile
+  --name-color <hex[,hex]>       nameplate colour, e.g. "#7C3AED" or a "#a,#b" gradient
+  --glyph <glyph>                a single narrow-width glyph beside the handle
+  --status-line <text>           short status line shown on the profile
+  --avatar-frame <name>          nameplate avatar frame
+  --profile-border <name>        nameplate profile border style
   --node, --server <host:port>   node to act against
   -h, --help                     show this message
 `;
@@ -30,6 +39,11 @@ interface EditFlags {
   bio?: string;
   location?: string;
   website?: string;
+  nameColor?: string;
+  glyph?: string;
+  statusLine?: string;
+  avatarFrame?: string;
+  profileBorder?: string;
   help: boolean;
 }
 
@@ -45,14 +59,24 @@ function parseEditFlags(rest: readonly string[]): EditFlags | { error: string } 
       case '--display-name':
       case '--bio':
       case '--location':
-      case '--website': {
+      case '--website':
+      case '--name-color':
+      case '--glyph':
+      case '--status-line':
+      case '--avatar-frame':
+      case '--profile-border': {
         const value = rest[index + 1];
         if (value === undefined) return { error: `${argument} needs a value.` };
         index += 1;
         if (argument === '--display-name') flags.displayName = value;
         else if (argument === '--bio') flags.bio = value;
         else if (argument === '--location') flags.location = value;
-        else flags.website = value;
+        else if (argument === '--website') flags.website = value;
+        else if (argument === '--name-color') flags.nameColor = value;
+        else if (argument === '--glyph') flags.glyph = value;
+        else if (argument === '--status-line') flags.statusLine = value;
+        else if (argument === '--avatar-frame') flags.avatarFrame = value;
+        else flags.profileBorder = value;
         break;
       }
       default:
@@ -97,9 +121,17 @@ async function runProfileEdit(rest: readonly string[], deps: ProfileDeps): Promi
   if (parsed.bio !== undefined) updateMask.push('bio');
   if (parsed.location !== undefined) updateMask.push('location_text');
   if (parsed.website !== undefined) updateMask.push('website_url');
+  const nameplateProvided =
+    parsed.nameColor !== undefined ||
+    parsed.glyph !== undefined ||
+    parsed.statusLine !== undefined ||
+    parsed.avatarFrame !== undefined ||
+    parsed.profileBorder !== undefined;
+  if (nameplateProvided) updateMask.push('nameplate');
   if (updateMask.length === 0) {
     io.stderr(
-      `Nothing to change — pass at least one of --display-name/--bio/--location/--website.\n\n${USAGE}`,
+      `Nothing to change — pass at least one of --display-name/--bio/--location/--website/` +
+        `--name-color/--glyph/--status-line/--avatar-frame/--profile-border.\n\n${USAGE}`,
     );
     return 1;
   }
@@ -113,6 +145,12 @@ async function runProfileEdit(rest: readonly string[], deps: ProfileDeps): Promi
       io.stderr(`Not signed in on ${target}. Run \`patches login\`.\n`);
       return 1;
     }
+    // The nameplate is a single submessage on the wire (spec §173) — unspecified
+    // nameplate fields must carry their *current* value, read from the signed-in
+    // session's actor, or an update to just `--glyph` would silently wipe out an
+    // already-set `--name-color` (same "merge, never blind-overwrite" rule
+    // `EditProfileScreen` follows).
+    const currentNameplate = present(session.actor) ? session.actor.nameplate : undefined;
     const accessToken = await manager.ensureAccessToken();
     const response = await api.updateProfile(
       {
@@ -121,7 +159,16 @@ async function runProfileEdit(rest: readonly string[], deps: ProfileDeps): Promi
         locationText: parsed.location ?? '',
         websiteUrl: parsed.website ?? '',
         updateMask,
-        nameplate: undefined,
+        nameplate: nameplateProvided
+          ? {
+              nameColor: parsed.nameColor ?? currentNameplate?.nameColor ?? '',
+              glyph: parsed.glyph ?? currentNameplate?.glyph ?? '',
+              badges: [], // server-attested only — ignored on write regardless of what's sent
+              avatarFrame: parsed.avatarFrame ?? currentNameplate?.avatarFrame ?? '',
+              statusLine: parsed.statusLine ?? currentNameplate?.statusLine ?? '',
+              profileBorder: parsed.profileBorder ?? currentNameplate?.profileBorder ?? '',
+            }
+          : undefined,
       },
       accessToken,
     );
