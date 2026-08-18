@@ -60,10 +60,13 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
       'actors',
       'app_meta',
       'auth_codes',
+      'blocks',
       'credentials',
+      'follows',
       'invites',
       'media',
       'migrations',
+      'mutes',
       'outbox_jobs',
       'post_media',
       'posts',
@@ -210,7 +213,11 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     const executor = new MigrationExecutor(dataSource);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
 
-    await dataSource.undoLastMigration();
+    // Revert everything down to the Phase 0 migration (CreateAppMeta), whatever has been
+    // stacked on top since — this test must not break every time a phase adds a migration.
+    while ((await executor.getExecutedMigrations()).length > 1) {
+      await dataSource.undoLastMigration();
+    }
     const queryRunner = dataSource.createQueryRunner();
     try {
       expect(await queryRunner.getTable('posts')).toBeUndefined();
