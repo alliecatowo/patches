@@ -12,7 +12,8 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=@patches/server --filter=@patches/worker",
+    "dev:tui": "pnpm --filter @patches/tui dev",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
