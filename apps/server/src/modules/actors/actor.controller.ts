@@ -13,6 +13,8 @@ import {
   type ListFollowersResponse,
   type ListFollowingRequest,
   type ListFollowingResponse,
+  type ResolveActorRequest,
+  type ResolveActorResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type UpdateProfileRequest,
@@ -30,7 +32,9 @@ import { toProtoActor } from './actor.mapper.js';
  * Transport adapter for `patches.v1.ActorService` — protobuf in, protobuf out, no business
  * logic (spec §128). `GetActor`/`GetActorByHandle`/`SearchActors`/`ListFollowers`/
  * `ListFollowing` are readable anonymously; `UpdateProfile` requires an authenticated session
- * and always targets the caller's own actor.
+ * and always targets the caller's own actor. `ResolveActor` (B-028) also requires a session —
+ * unlike its anonymous-readable siblings, it triggers a real outbound fetch to a caller-named
+ * remote host and is rate-limited per caller (`ActorResolveRateLimitService`).
  */
 @Controller()
 @ActorServiceControllerMethods()
@@ -92,6 +96,16 @@ export class ActorController implements ActorServiceController {
     return toResponse(
       await this.actors.listFollowing(request.actorId, request.cursor, request.limit),
     );
+  }
+
+  @UseGuards(AuthGuard)
+  async resolveActor(
+    @Payload() request: ResolveActorRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ResolveActorResponse> {
+    const profile = await this.actors.resolveActor(requireSession(session).actorId, request.acct);
+    return { actor: toProtoActor(profile) };
   }
 }
 

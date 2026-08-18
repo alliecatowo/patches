@@ -61,6 +61,17 @@ export const searchQuerySchema = z
     `search query must be at most ${String(SEARCH_QUERY_MAX_LENGTH)} characters`,
   );
 
+/** `ResolveActor` (B-028): `user@domain`, no leading `acct:` (the proto field doc explains
+ * why). Matches WebFinger's `acct` grammar loosely — a bare "no `@`, or more than one `@`"
+ * shape check, not a full RFC 7565 validator; `RemoteActorService`/the remote WebFinger
+ * responder are what actually reject a nonexistent handle. */
+export const acctSchema = z
+  .string()
+  .trim()
+  .min(3, 'acct must be in the form user@domain')
+  .max(320, 'acct is too long')
+  .regex(/^[^@\s]+@[^@\s]+$/, 'acct must be in the form user@domain');
+
 /**
  * Client-writable nameplate fields (spec §173). `badges` is deliberately absent from this
  * schema — it is server-attested only, and `ActorService.updateProfile` never reads a client-

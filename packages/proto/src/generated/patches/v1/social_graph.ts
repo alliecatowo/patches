@@ -8,6 +8,8 @@
 import type { Metadata } from '@grpc/grpc-js';
 import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
 import { Observable } from 'rxjs';
+import { Actor } from './actors.js';
+import { PageInfo } from './common.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -58,6 +60,18 @@ export interface GetRelationshipResponse {
   relationship: Relationship | undefined;
 }
 
+export interface ListMutualFollowsRequest {
+  /** Whose mutual-follow ("friends") list to return — not necessarily the caller's own. */
+  actorId: string;
+  cursor: string;
+  limit: number;
+}
+
+export interface ListMutualFollowsResponse {
+  actors: Actor[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -91,6 +105,19 @@ export interface SocialGraphServiceClient {
     request: GetRelationshipRequest,
     metadata?: Metadata,
   ): Observable<GetRelationshipResponse>;
+
+  /**
+   * B-024: actors `actor_id` both follows and is followed by ("mutuals"/"friends") — the RPC
+   * the TUI's `PageScreen` Friends block needs (previously a documented "[friends list
+   * unavailable]" placeholder). Anonymous-readable, unlike this service's other RPCs: mutuality
+   * is always computed relative to `actor_id`, never the caller's own identity, and a public
+   * Page's Friends block must be visible to a signed-out visitor.
+   */
+
+  listMutualFollows(
+    request: ListMutualFollowsRequest,
+    metadata?: Metadata,
+  ): Observable<ListMutualFollowsResponse>;
 }
 
 /**
@@ -130,11 +157,32 @@ export interface SocialGraphServiceController {
     | Promise<GetRelationshipResponse>
     | Observable<GetRelationshipResponse>
     | GetRelationshipResponse;
+
+  /**
+   * B-024: actors `actor_id` both follows and is followed by ("mutuals"/"friends") — the RPC
+   * the TUI's `PageScreen` Friends block needs (previously a documented "[friends list
+   * unavailable]" placeholder). Anonymous-readable, unlike this service's other RPCs: mutuality
+   * is always computed relative to `actor_id`, never the caller's own identity, and a public
+   * Page's Friends block must be visible to a signed-out visitor.
+   */
+
+  listMutualFollows(
+    request: ListMutualFollowsRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListMutualFollowsResponse>
+    | Observable<ListMutualFollowsResponse>
+    | ListMutualFollowsResponse;
 }
 
 export function SocialGraphServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['followActor', 'unfollowActor', 'getRelationship'];
+    const grpcMethods: string[] = [
+      'followActor',
+      'unfollowActor',
+      'getRelationship',
+      'listMutualFollows',
+    ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod('SocialGraphService', method)(constructor.prototype[method], method, descriptor);

@@ -89,6 +89,7 @@ describe('proto files', () => {
         'GetActorByHandle',
         'ListFollowers',
         'ListFollowing',
+        'ResolveActor',
         'SearchActors',
         'UpdateProfile',
       ].sort(),
@@ -100,7 +101,7 @@ describe('proto files', () => {
       ['ListActorPosts', 'ListHomeFeed', 'ListLocalFeed'].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.socialGraph)).toEqual(
-      ['FollowActor', 'GetRelationship', 'UnfollowActor'].sort(),
+      ['FollowActor', 'GetRelationship', 'ListMutualFollows', 'UnfollowActor'].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(['GetNodeInfo']);
   });

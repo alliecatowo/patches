@@ -10,6 +10,8 @@ import type {
   ListFollowersResponse,
   ListFollowingRequest,
   ListFollowingResponse,
+  ResolveActorRequest,
+  ResolveActorResponse,
   SearchActorsRequest,
   SearchActorsResponse,
   UpdateProfileRequest,
@@ -141,6 +143,8 @@ import type {
   FollowActorResponse,
   GetRelationshipRequest,
   GetRelationshipResponse,
+  ListMutualFollowsRequest,
+  ListMutualFollowsResponse,
   UnfollowActorRequest,
   UnfollowActorResponse,
 } from './generated/patches/v1/social_graph.js';
@@ -286,6 +290,7 @@ export interface ActorGrpcClient extends Client {
   searchActors: GrpcUnaryCall<SearchActorsRequest, SearchActorsResponse>;
   listFollowers: GrpcUnaryCall<ListFollowersRequest, ListFollowersResponse>;
   listFollowing: GrpcUnaryCall<ListFollowingRequest, ListFollowingResponse>;
+  resolveActor: GrpcUnaryCall<ResolveActorRequest, ResolveActorResponse>;
 }
 
 /** `patches.v1.PostService` as seen by a raw grpc-js client. */
@@ -308,6 +313,7 @@ export interface SocialGraphGrpcClient extends Client {
   followActor: GrpcUnaryCall<FollowActorRequest, FollowActorResponse>;
   unfollowActor: GrpcUnaryCall<UnfollowActorRequest, UnfollowActorResponse>;
   getRelationship: GrpcUnaryCall<GetRelationshipRequest, GetRelationshipResponse>;
+  listMutualFollows: GrpcUnaryCall<ListMutualFollowsRequest, ListMutualFollowsResponse>;
 }
 
 /** `patches.v1.NodeService` as seen by a raw grpc-js client. */

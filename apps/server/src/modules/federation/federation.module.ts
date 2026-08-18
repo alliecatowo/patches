@@ -111,7 +111,10 @@ class LazyFederationGateway implements FederationGateway {
     ActivityPubFederationGateway,
     { provide: FEDERATION_GATEWAY, useClass: LazyFederationGateway },
   ],
-  exports: [FEDERATION_GATEWAY],
+  // `RemoteActorService` is also exported (in addition to `FEDERATION_GATEWAY`) so
+  // `ActorModule`'s `ResolveActor` (B-028) can discover-and-upsert a remote actor by
+  // `acct:user@domain` without duplicating WebFinger/actor-document fetch logic.
+  exports: [FEDERATION_GATEWAY, RemoteActorService],
 })
 export class FederationModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
