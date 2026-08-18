@@ -56,6 +56,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server dev"
 description = "Run the full-screen TUI against the local server (extra args pass through, e.g. -- --server host:port)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure \"$@\""
 
+[tasks.worker]
+description = "Run the job worker (built) against the local Postgres outbox"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker build && pnpm --filter @patches/worker start"
+
+[tasks."worker:dev"]
+description = "Run the job worker in watch mode"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker dev"
+
 [tasks.ping]
 description = "Non-interactive connectivity check against the local server (JSON, exit 0/1)"
 run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure"

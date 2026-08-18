@@ -160,3 +160,17 @@ FEDERATION_DELIVER
 
 with related future types such as federation retry and remote actor refresh
 following the same table/mechanism (§11, §108).
+
+## 10. Implementation status
+
+`Status: implemented` — `apps/worker` (P1-006): `JobRunner` claim loop (`src/jobs/job-runner.ts`),
+`EmailProvider` adapters for `console`/`smtp` (Mailpit)/`resend` (`src/email/`), and handlers for
+`SEND_VERIFICATION_EMAIL`, `SEND_PASSWORD_RESET_EMAIL`, `CLEAN_EXPIRED_TOKENS`. Job type
+constants and payload zod schemas live in `packages/database/src/jobs/`.
+
+`Status: planned` — `PROCESS_MEDIA` and `CLEAN_EXPIRED_UPLOADS` have no registered handler yet
+(media isn't implemented); a claimed job of either type is released back to `PENDING` without
+penalizing `attempts` (see `apps/worker/src/jobs/release-claim.ts`) rather than being
+dead-lettered. Producers that enqueue jobs (e.g. `AuthService` writing a
+`SEND_VERIFICATION_EMAIL` row in the same transaction as `register()`) are tracked separately
+under the Phase 1 auth tasks, not part of this worker build.

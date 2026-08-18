@@ -2,7 +2,16 @@
   "name": "@patches/worker",
   "version": "0.1.0",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "dev": "nest start --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --project worker-integration",
+    "clean": "rm -rf dist .turbo"
+  },
   "dependencies": {
     "@nestjs/common": "catalog:",
     "@nestjs/config": "catalog:",
@@ -18,10 +27,12 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@nestjs/cli": "catalog:",
     "@nestjs/testing": "catalog:",
     "@patches/testkit": "workspace:*",
     "@swc/core": "catalog:",
     "@types/nodemailer": "catalog:",
+    "@types/pg": "catalog:",
     "unplugin-swc": "catalog:"
   }
 }

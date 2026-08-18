@@ -20,7 +20,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run build && vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --project database --project testkit --project server-integration --no-file-parallelism",
+    "test:integration": "vitest run --project database --project testkit --project server-integration --project worker-integration --no-file-parallelism",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "proto:gen": "pnpm --filter @patches/proto gen",
     "proto:lint": "pnpm --filter @patches/proto lint:buf",
@@ -30,6 +30,7 @@
     "db:revert": "pnpm --filter @patches/database migration:revert",
     "db:generate": "pnpm --filter @patches/database migration:generate",
     "db:show": "pnpm --filter @patches/database migration:show",
+    "keys:generate": "node apps/server/scripts/generate-keys.mjs",
     "server": "pnpm --filter @patches/server start:dev",
     "tui": "pnpm --filter @patches/tui start",
     "clean": "turbo run clean && rm -rf node_modules/.cache"

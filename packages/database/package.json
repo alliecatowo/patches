@@ -33,7 +33,8 @@
     "@patches/config": "workspace:*",
     "pg": "catalog:",
     "reflect-metadata": "catalog:",
-    "typeorm": "catalog:"
+    "typeorm": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/pg": "catalog:",

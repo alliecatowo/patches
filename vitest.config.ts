@@ -7,7 +7,12 @@ export default defineConfig({
     // A glob that resolves to a directory picks up that directory's single
     // `vitest.config.ts`, so extra projects in the same workspace (integration
     // suites) have to be listed by path.
-    projects: ['packages/*', 'apps/*', 'apps/server/vitest.integration.config.mts'],
+    projects: [
+      'packages/*',
+      'apps/*',
+      'apps/server/vitest.integration.config.mts',
+      'apps/worker/vitest.integration.config.mts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

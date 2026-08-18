@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // CommonJS output: NestJS 11 has no native ESM support
+    // (docs/research/nestjs-grpc-protobuf.md §4). No "type":"module" in package.json.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "noEmit": true
+  },
+  // The vitest configs are included so typescript-eslint's project service can
+  // type-check them; without a tsconfig that owns them, ESLint reports a parsing
+  // error. Emitting is done from tsconfig.build.json, which excludes them.
+  "include": ["src", "test", "vitest.config.mts", "vitest.integration.config.mts"]
+}

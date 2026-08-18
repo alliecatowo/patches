@@ -50,3 +50,17 @@ export {
 export type { ClaimOutboxJobsOptions, OutboxBackoffOptions } from './repositories/outbox.js';
 
 export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
+
+export { JOB_TYPES, type JobType } from './jobs/job-types.js';
+export {
+  sendVerificationEmailPayloadSchema,
+  type SendVerificationEmailPayload,
+  sendPasswordResetEmailPayloadSchema,
+  type SendPasswordResetEmailPayload,
+  processMediaPayloadSchema,
+  type ProcessMediaPayload,
+  cleanExpiredTokensPayloadSchema,
+  type CleanExpiredTokensPayload,
+  cleanExpiredUploadsPayloadSchema,
+  type CleanExpiredUploadsPayload,
+} from './jobs/payloads.js';

@@ -109,6 +109,7 @@ jobs:
       DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
       TEST_DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
       TEST_DATABASE_URL_SERVER: postgres://patches:patches@localhost:5432/patches_test_server
+      TEST_DATABASE_URL_WORKER: postgres://patches:patches@localhost:5432/patches_test_worker
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -123,6 +124,7 @@ jobs:
         # test file in another. See docs/operations/ci.md ("Why one database").
         run: |
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_server OWNER patches;"
+          psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_worker OWNER patches;"
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_testkit OWNER patches;"
 
       - name: Run migrations
