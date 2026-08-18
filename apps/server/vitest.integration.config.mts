@@ -1,6 +1,25 @@
 import swc from 'unplugin-swc';
 import { defineProject } from 'vitest/config';
 
+/**
+ * `TEST_DATABASE_URL_SERVER`, falling back to `TEST_DATABASE_URL` with the database
+ * name swapped to `patches_test_server` — its own database, never `patches_test`
+ * (which `database`/`testkit` drop and recreate; see docs/operations/ci.md "Why one
+ * database" and tasks.md A-006). No DB-backed integration test exists yet (Phase 1
+ * lands persistence), so this is currently inert, but wiring it now means a future
+ * server integration test that needs Postgres doesn't have to touch CI or this file.
+ */
+function serverTestDatabaseUrl(): string | undefined {
+  const explicit = process.env.TEST_DATABASE_URL_SERVER;
+  if (explicit !== undefined && explicit.length > 0) return explicit;
+
+  const base = process.env.TEST_DATABASE_URL;
+  if (base === undefined || base.length === 0) return undefined;
+  return base.replace(/\/[^/?]+(\?.*)?$/, '/patches_test_server$1');
+}
+
+const testDatabaseUrl = serverTestDatabaseUrl();
+
 // Integration tests boot a real Nest microservice on a real port and talk to it
 // through @grpc/grpc-js. Kept in a separate project so `pnpm test` stays fast and
 // CI can run them on their own (`pnpm test:integration`).
@@ -13,5 +32,6 @@ export default defineProject({
     include: ['test/**/*.integration.test.ts'],
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    env: testDatabaseUrl === undefined ? {} : { TEST_DATABASE_URL: testDatabaseUrl },
   },
 });
