@@ -18,11 +18,13 @@
     "@nestjs/core": "catalog:",
     "@patches/config": "workspace:*",
     "@patches/database": "workspace:*",
+    "@patches/media": "workspace:*",
     "nodemailer": "catalog:",
     "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "resend": "catalog:",
     "rxjs": "catalog:",
+    "sharp": "catalog:",
     "typeorm": "catalog:",
     "zod": "catalog:"
   },
