@@ -98,18 +98,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Migration validation and the `database`/`testkit` vitest projects deliberately
-      # share the single `patches_test` database here — see docs/operations/ci.md ("Why
-      # one database") for why that's the simplest robust option. `server-integration`
-      # gets its own `patches_test_server` database (below) since it's the one project
-      # whose config we can freely wire up; `database` and `testkit` avoid racing each
-      # other's dropDatabase() calls via `--no-file-parallelism` on `test:integration`
-      # instead (see A-006 in tasks.md). Migration validation runs first (before
+      # Migration validation reads `DATABASE_URL`/`TEST_DATABASE_URL`, both pointed at the
+      # single `patches_test` database the `services:` postgres container provisions on
+      # boot — see docs/operations/ci.md ("Why one database"). Every DB-backed vitest
+      # project now has its own database (`server-integration`, `worker-integration`,
+      # `testkit` as of B-012), so `test:integration` no longer needs `--no-file-parallelism`
+      # purely for cross-project database isolation — it's kept anyway; see
+      # docs/operations/ci.md for why. Migration validation runs first (before
       # `test:integration`) so the schema is in place by the time tests connect.
       DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
       TEST_DATABASE_URL: postgres://patches:patches@localhost:5432/patches_test
       TEST_DATABASE_URL_SERVER: postgres://patches:patches@localhost:5432/patches_test_server
       TEST_DATABASE_URL_WORKER: postgres://patches:patches@localhost:5432/patches_test_worker
+      TEST_DATABASE_URL_TESTKIT: postgres://patches:patches@localhost:5432/patches_testkit_test
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -119,13 +120,15 @@ jobs:
         env:
           PGPASSWORD: patches
         # The `services:` postgres container only provisions POSTGRES_DB (patches_test)
-        # on boot. `server-integration` and (future) `testkit` isolation each get their
+        # on boot. `server-integration`, `worker-integration`, and `testkit` each get their
         # own database so a dropDatabase() in one project can never race a concurrent
-        # test file in another. See docs/operations/ci.md ("Why one database").
+        # test file in another. See docs/operations/ci.md ("Why one database"). Named
+        # `patches_testkit_test` (suffix, not `patches_test_testkit` infix) — see the doc
+        # comment in packages/testkit/vitest.config.ts for why the suffix is required.
         run: |
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_server OWNER patches;"
           psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_worker OWNER patches;"
-          psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_test_testkit OWNER patches;"
+          psql -h localhost -U patches -d patches_test -c "CREATE DATABASE patches_testkit_test OWNER patches;"
 
       - name: Run migrations
         run: pnpm db:migrate
