@@ -1,6 +1,7 @@
 # Local development dependencies for Patches.
-# Usage (from repo root):  mise run compose -- up -d      (docker compose, or podman compose fallback)
-#                          mise run compose -- --profile media up -d   (also starts MinIO for local R2-compatible storage)
+# Usage (from repo root):  mise run compose -- up -d   (docker compose, or podman compose fallback)
+# `minio` + `minio-init` are default-on (no profile needed) — a plain `up -d` gives you
+# Postgres, mail, and R2-compatible object storage together (ADR 0015).
 name: patches
 
 services:
@@ -33,7 +34,6 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: '1'
 
   minio:
-    profiles: ['media']
     image: docker.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -44,12 +44,32 @@ services:
       - '127.0.0.1:9000:9000'
       - '127.0.0.1:9001:9001'
     volumes:
-      - minio-data:/data
+      - minio-data:/data:z
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # One-shot: creates the dev media bucket, then exits. `docker compose up -d` starts it
+  # alongside everything else; it depends on minio's healthcheck so it never races the
+  # server not being ready yet. The bucket stays private (anonymous access off) — the API
+  # always issues short-lived presigned GET URLs (`docs/architecture/media.md` §6), matching
+  # R2's own private-by-default posture in production.
+  minio-init:
+    image: docker.io/minio/mc:latest
+    restart: 'no'
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 patches patchespatches &&
+        mc mb --ignore-existing local/patches-media &&
+        mc anonymous set none local/patches-media &&
+        echo 'minio-init: patches-media bucket ready'
 
 volumes:
   postgres-data:

@@ -8,6 +8,7 @@ import {
   emailEnvSchema,
   emailEnvShape,
   loadEnv,
+  storageEnvSchema,
 } from '@patches/config';
 
 export { ConfigError } from '@patches/config';
@@ -33,6 +34,7 @@ const envObjectSchema = z.object({
   ...baseEnvSchema.shape,
   ...databaseEnvSchema.shape,
   ...emailEnvShape,
+  ...storageEnvSchema.shape,
 
   /** Worker instance identifier, recorded in `outbox_jobs.locked_by`. */
   WORKER_ID: z.string().min(1).default(DEFAULT_WORKER_ID),
