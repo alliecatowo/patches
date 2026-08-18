@@ -53,11 +53,12 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] P1-013 — TUI SSH enrollment: enumerate ssh-agent identities + `~/.ssh/*.pub`, explicit confirm, sign via `SSH_AGENTC_SIGN_REQUEST`; **never read/transmit a private key**
 - [ ] P1-014 — `NodeService.GetNodeInfo` (unauthenticated): node domain, version, registration mode, limits, capabilities (§174) — no `tier` field, ever
 - [ ] P1-015 — Security tests: challenge replay + cross-node replay + expiry, algorithm downgrade, credential enumeration (uniform failures), last-credential revocation
+- [x] P1-016 — AuthService.register: bootstrap registration on an invite-only node with an empty `users` table (first account registers without an invite code, logged as a WARN); subsequent registrations still require one
 
 ## Phase 2 — posting (§136)
 
-- [ ] P2-001 — posts, post_media entities + migrations; idempotent CreatePost (client_request_id)
-- [ ] P2-002 — PostService/ActorService: CreatePost, GetPost, DeletePost (tombstone), UpdateProfile, GetActor(ByHandle), ListActorPosts
+- [x] P2-001 — posts, post_media entities + migrations; idempotent CreatePost (client_request_id)
+- [x] P2-002 — PostService/ActorService: CreatePost, GetPost, DeletePost (tombstone), UpdateProfile, GetActor(ByHandle), ListActorPosts
 - [x] P2-003 — TUI: profile screen, compose screen (explicit submit, draft not lost), profile timeline
 
 ## Phase 3 — social graph & feeds (§137)

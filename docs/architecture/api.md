@@ -10,10 +10,17 @@ Patches' canonical client/server application protocol — the contract between a
 
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto` —
-the full `AuthService` (including SSH login, the GitHub device-flow RPC pair, and credential
-management), `ActorService`, `PostService`, and `FeedService` surfaces below, schema-only
-(no server-side handlers yet). `BeginGitHubLogin`/`PollGitHubLogin` are schema-defined now but
-their server implementation is deferred to Phase 6 (§176). `NodeService`, `PageService`,
+the full `AuthService` (including SSH login, and credential management) has server handlers;
+`BeginGitHubLogin`/`PollGitHubLogin` are schema-defined but their server implementation is
+deferred to Phase 6 (§176). `PostService` (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` —
+`ListReplies` returns direct replies only, not yet a depth-bounded tree walk) and `ActorService`
+(`GetActor`/`GetActorByHandle`/`UpdateProfile`) have server handlers; `SearchActors`/
+`ListFollowers`/`ListFollowing` return `NOT_IMPLEMENTED` pending `SocialGraphService`/search
+(Phase 3). `FeedService`'s `ListLocalFeed`/`ListActorPosts` have server handlers with
+keyset-paginated, `PUBLIC`/`UNLISTED`-only visibility (a `FOLLOWERS`-visibility/block/mute
+filter seam is left for `SocialGraphService`, P3-002); `ListHomeFeed` returns
+`NOT_IMPLEMENTED` — it needs the same follow graph and is deliberately not approximated as
+"your own posts". `NodeService`, `PageService`,
 `SocialGraphService`, `MediaService`, `ReactionService`, `ModerationService`, and
 `NotificationService` — and the MVP-marked RPCs (`EditPost`, `Repost`, `ListBookmarks`) — are
 **planned**, not yet present in `packages/proto`. Per-RPC status is called out inline below.

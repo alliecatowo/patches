@@ -6,11 +6,22 @@ import { RequestContextInterceptor } from './common/interceptors/request-context
 import { LoggingInterceptor } from './common/logging/logging.interceptor.js';
 import { AppConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { ActorModule } from './modules/actors/actor.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { FeedModule } from './modules/feeds/feed.module.js';
+import { PostModule } from './modules/posts/post.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 
 @Module({
-  imports: [AppConfigModule, DatabaseModule, SystemModule, AuthModule],
+  imports: [
+    AppConfigModule,
+    DatabaseModule,
+    SystemModule,
+    AuthModule,
+    PostModule,
+    ActorModule,
+    FeedModule,
+  ],
   providers: [
     // Order matters: RequestContextInterceptor establishes the request id that
     // LoggingInterceptor and RpcExceptionsFilter both read.

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
@@ -95,6 +95,8 @@ export interface AddCredentialInput {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: AppConfigService,
@@ -124,9 +126,9 @@ export class AuthService {
       );
     }
 
-    if (this.config.inviteOnly && parsed.inviteCode === undefined) {
-      throw AppError.validation('This node is invite-only: an invite code is required.');
-    }
+    // The invite-only/no-code combination is either an error or bootstrap registration
+    // (P1-013, below) — which one it is depends on whether any account exists yet, so it
+    // can't be decided until inside the transaction.
 
     // Parsed before the transaction opens: rejecting malformed key material is not worth a
     // database round trip, and Argon2id (below) is far too slow to hold a transaction across.
@@ -140,8 +142,24 @@ export class AuthService {
     const emailNormalized = parsed.email === undefined ? null : normalizeEmail(parsed.email);
 
     return this.dataSource.transaction(async (manager) => {
-      if (this.config.inviteOnly && parsed.inviteCode !== undefined) {
-        await consumeInvite(manager, parsed.inviteCode);
+      if (this.config.inviteOnly) {
+        if (parsed.inviteCode !== undefined) {
+          await consumeInvite(manager, parsed.inviteCode);
+        } else {
+          // Bootstrap (P1-013): an invite-only node has no invite-minting admin until its
+          // first account exists, so the very first registration is let through without one.
+          // The `users` count is read and the account inserted in the same transaction, so a
+          // second bootstrap attempt racing this one blocks on the same row locks as any other
+          // concurrent registration rather than both slipping through.
+          const hasAnyAccount = (await manager.getRepository(User).count()) > 0;
+          if (hasAnyAccount) {
+            throw AppError.validation('This node is invite-only: an invite code is required.');
+          }
+          this.logger.warn(
+            `bootstrap registration: allowing handle "${handleNormalized}" to register without ` +
+              'an invite because this node has no accounts yet.',
+          );
+        }
       }
 
       if (await manager.getRepository(Actor).existsBy({ handleNormalized })) {
