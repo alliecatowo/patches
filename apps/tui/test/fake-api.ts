@@ -148,6 +148,7 @@ export class FakeApiHandle {
       isLocal: true,
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
       counts: { followers: 0, following: 0, posts: postCount },
+      nameplate: undefined,
     };
   }
 
@@ -169,6 +170,7 @@ export class FakeApiHandle {
       deleted: false,
       counts: { replies: 0, likes: 0 },
       viewerState: { liked: false, bookmarked: false },
+      contentWarning: '',
     };
   }
 
@@ -246,7 +248,12 @@ export class FakeApiHandle {
 
   private paginate(all: readonly Post[], cursor: string, limit: number) {
     const start = cursor === '' ? 0 : Number(cursor);
-    const effectiveLimit = limit > 0 ? limit : this.pageSize;
+    // `pageSize` is a hard cap, not just a fallback for `limit <= 0` — real screens
+    // always pass a concrete `limit` (e.g. 20), so a small `fakeOptions.pageSize`
+    // must still win to let pagination tests exercise "load more" without seeding
+    // hundreds of posts (see the `FakeApiOptions.pageSize` doc comment above).
+    const requested = limit > 0 ? limit : this.pageSize;
+    const effectiveLimit = Math.min(requested, this.pageSize);
     const page = all.slice(start, start + effectiveLimit);
     const next = start + page.length;
     return {

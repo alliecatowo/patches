@@ -59,6 +59,8 @@ export function ComposeScreen({
           visibility: POST_VISIBILITY.PUBLIC,
           inReplyToId: '',
           mediaIds: [],
+          // No content-warning UI yet (follow-up) — every post is created without one.
+          contentWarning: '',
         },
         accessToken,
       );

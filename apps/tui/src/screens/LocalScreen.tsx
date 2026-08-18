@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
+import type { Post } from '@patches/proto';
 
 import type { PatchesApi } from '../api/client.js';
 import { PostList } from '../components/PostList.js';
@@ -11,10 +12,12 @@ export interface LocalScreenProps {
   api: PatchesApi;
   /** Whether this screen currently owns keyboard input (spec §69: `g l`). */
   isActive: boolean;
+  /** `Enter` on a selected post — opens the author's profile (B-017). */
+  onOpenAuthor?: ((post: Post) => void) | undefined;
 }
 
 /** All local public posts, newest first — `g l` (spec §52, §69). */
-export function LocalScreen({ api, isActive }: LocalScreenProps): ReactElement {
+export function LocalScreen({ api, isActive, onOpenAuthor }: LocalScreenProps): ReactElement {
   const fetchPage = useCallback(
     (cursor: string): Promise<PostPage> =>
       api.listLocalFeed({ cursor, limit: 20 }).then((response) => ({
@@ -46,6 +49,8 @@ export function LocalScreen({ api, isActive }: LocalScreenProps): ReactElement {
           hasMore={hasMore}
           emptyMessage="No local posts yet."
           loadMoreKeyHint="n / space"
+          isActive={isActive}
+          onOpenAuthor={onOpenAuthor}
         />
       </Box>
     </Box>

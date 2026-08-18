@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import { Box, Text, useApp, useInput, useStdin, useWindowSize } from 'ink';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
+import type { Actor, Post } from '@patches/proto';
 
+import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
@@ -62,6 +64,12 @@ export function App({
   const [store] = useState<DraftStore>(() => draftStore ?? new FileDraftStore());
   const [draft, setDraft] = useState<ComposeDraft>(emptyDraft);
 
+  // Which actor `profile` currently shows — set by `g p` (the caller's own),
+  // or by selecting a post's author (B-017). `undefined` until one of those fires.
+  const [profileTarget, setProfileTarget] = useState<
+    { actorId: string; knownActor: Actor | undefined } | undefined
+  >(undefined);
+
   // Auto sign-in from a stored refresh token, and resume an unsent draft — both
   // best-effort: nothing here should block first render (spec §80/§37). `sessionManager`
   // and `store` are stable for the component's lifetime (created once via `useState`
@@ -99,6 +107,26 @@ export function App({
     go(next);
   }
 
+  /** Opens `profile` on a given actor — the caller's own, or a post's author. */
+  function openProfile(actorId: string, knownActor: Actor | undefined): void {
+    setProfileTarget({ actorId, knownActor });
+    go('profile');
+  }
+
+  function openOwnProfile(): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    openProfile(session.userId, session.actor);
+  }
+
+  /** `Enter` on a selected post (B-017) — profile viewing needs no session of its own. */
+  function openAuthorProfile(post: Post): void {
+    if (!present(post.author)) return;
+    openProfile(post.author.id, post.author);
+  }
+
   function updateDraft(next: ComposeDraft): void {
     setDraft(next);
     void store.save(next);
@@ -128,7 +156,7 @@ export function App({
       }
       if (pendingGo) {
         setPendingGo(false);
-        if (input === 'p') requireSession('profile');
+        if (input === 'p') openOwnProfile();
         else if (input === 'l') go('local');
         else if (input === 'h') go('home');
         return;
@@ -152,14 +180,17 @@ export function App({
       <Box flexDirection="column" paddingX={1} paddingY={1}>
         {screen === 'help' && <HelpScreen target={api.target} />}
         {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
-        {screen === 'local' && <LocalScreen api={api} isActive={screen === 'local'} />}
+        {screen === 'local' && (
+          <LocalScreen api={api} isActive={screen === 'local'} onOpenAuthor={openAuthorProfile} />
+        )}
         {screen === 'home' && <HomeScreen />}
-        {screen === 'profile' && session !== undefined && (
+        {screen === 'profile' && profileTarget !== undefined && (
           <ProfileScreen
             api={api}
-            actorId={session.userId}
-            knownActor={session.actor}
+            actorId={profileTarget.actorId}
+            knownActor={profileTarget.knownActor}
             isActive={screen === 'profile'}
+            onOpenAuthor={openAuthorProfile}
           />
         )}
         {screen === 'login' && (
@@ -183,11 +214,13 @@ export function App({
             onCancel={() => setScreen(priorScreen)}
             isActive={screen === 'compose'}
             ensureAccessToken={() => sessionManager.ensureAccessToken()}
-            onSubmitted={() => {
+            onSubmitted={(post) => {
               const cleared = emptyDraft();
               setDraft(cleared);
               void store.clear();
-              setScreen('profile');
+              if (present(post.author)) openProfile(post.author.id, post.author);
+              else if (session !== undefined) openProfile(session.userId, session.actor);
+              else setScreen('profile');
             }}
           />
         )}

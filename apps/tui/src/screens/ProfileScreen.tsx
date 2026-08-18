@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import type { Actor } from '@patches/proto';
+import type { Actor, Post } from '@patches/proto';
 import { useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
@@ -16,6 +16,8 @@ export interface ProfileScreenProps {
   /** Already-known full profile (e.g. the caller's own, from `ActiveSession.actor`) — skips a `GetActor` round trip. */
   knownActor?: Actor | undefined;
   isActive: boolean;
+  /** `Enter` on a selected post — opens its author's profile (B-017). */
+  onOpenAuthor?: ((post: Post) => void) | undefined;
 }
 
 /**
@@ -31,6 +33,7 @@ export function ProfileScreen({
   actorId,
   knownActor,
   isActive,
+  onOpenAuthor,
 }: ProfileScreenProps): ReactElement {
   const actorState = useActor(api, actorId, knownActor);
 
@@ -98,6 +101,8 @@ export function ProfileScreen({
           hasMore={hasMore}
           emptyMessage="No posts yet."
           loadMoreKeyHint="n / space"
+          isActive={isActive}
+          onOpenAuthor={onOpenAuthor}
         />
       </Box>
     </Box>
