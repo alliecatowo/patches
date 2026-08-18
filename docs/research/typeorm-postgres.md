@@ -1,72 +1,30 @@
 # TypeORM 1.x + PostgreSQL + NestJS 11 — Reference
 
-Stack: NestJS 11 (CJS build), TS 5.9, TypeORM 1.1.0, pg 8.x, PostgreSQL 17,
-`@nestjs/typeorm` 11.0.3, Data Mapper/repository pattern, `synchronize: false`,
-snake_case DB / camelCase TS, UUID PKs, monorepo (`packages/database` →
-`apps/server`, `apps/worker`).
+Stack: NestJS 11 (CJS build), TS 5.9, TypeORM 1.1.0, pg 8.x, PostgreSQL 17, `@nestjs/typeorm` 11.0.3, Data Mapper/repository pattern, `synchronize: false`, snake_case DB / camelCase TS, UUID PKs, monorepo (`packages/database` → `apps/server`, `apps/worker`).
 
-Verified 2026-08-17 against typeorm.io docs, typeorm/typeorm GitHub source, npm
-registry metadata, and nestjs/typeorm source. TypeORM 1.0 shipped 2026-05-19,
-1.1.0 on 2026-07-13. This is a real major version — 0.3.x knowledge does not
-transfer directly.
+Verified 2026-08-17 against typeorm.io docs, typeorm/typeorm GitHub source, npm registry metadata, and nestjs/typeorm source. TypeORM 1.0 shipped 2026-05-19, 1.1.0 on 2026-07-13 — this is a real major version, 0.3.x knowledge does not transfer directly. Full source list at the bottom.
 
 ## 1. Breaking changes vs 0.3.x that matter here
 
-- **Node 20+ / ES2023 required** (16/18 dropped). Matches Nest 11's own floor.
-- **`Connection`/`ConnectionOptions` removed** → `DataSource`/`DataSourceOptions`.
-  All globals gone (`createConnection`, `getConnection`, `getManager`,
-  `getRepository`, `getCustomRepository`, `getMongoRepository`). Everything goes
-  through a `DataSource` instance (`new DataSource(opts)`, `.initialize()`,
-  `.destroy()`). `.connection` on Driver/QueryRunner/EntityManager/QueryBuilder
-  renamed to `.dataSource`. Named connections / `DataSource.name` removed.
-- **`TYPEORM_*` env vars, `ormconfig.env`, auto-dotenv: removed.** Config must
-  be a plain TS/JS module exporting `DataSourceOptions`.
-- **Repository/find API**: `findOneById()` → `findOneBy({id})`; `findByIds()` →
-  `findBy({id: In([...])})`; `.exist()` → `.exists()`. `@EntityRepository` /
-  `AbstractRepository` / `getCustomRepository()` removed — extend
-  `Repository<Entity>` or use `Repository.extend()`. **String-array
-  `select`/`relations` removed** — object syntax only:
-  `repo.find({ select: { id: true }, relations: { profile: true } })`. `join`
-  find-option removed (use `relations` for LEFT JOIN, QueryBuilder for INNER).
-- **`where: { x: null }` now throws** by default (`invalidWhereValuesBehavior`).
-  Use `IsNull()`. QueryBuilder's own `.where()/.andWhere()` are unaffected.
-- **Non-nullable relations now generate INNER JOIN, not LEFT JOIN.** Any
-  `@ManyToOne(() => X, { nullable: false })` used via `relations: {}` may now
-  drop rows previously kept by LEFT JOIN — audit joins/reports.
-- **QueryBuilder**: `onConflict()` → `orIgnore()`/`orUpdate()`; `printSql()`
-  removed (use `.getSql()`); `setNativeParameters()` → `setParameters()`. Lock
-  modes consolidated (§5).
+- **Node 20+ / ES2023 required** (16/18 dropped) — matches Nest 11's own floor.
+- **`Connection`/`ConnectionOptions` removed** → `DataSource`/`DataSourceOptions`. All globals gone (`createConnection`, `getConnection`, `getManager`, `getRepository`, `getCustomRepository`, `getMongoRepository`). Everything goes through a `DataSource` instance: `new DataSource(opts)`, `.initialize()`, `.destroy()`. `.connection` on Driver/QueryRunner/EntityManager/QueryBuilder is renamed to `.dataSource`. Named connections and `DataSource.name` are removed.
+- **`TYPEORM_*` env vars, `ormconfig.env`, auto-dotenv: removed.** Config must be a plain TS/JS module exporting `DataSourceOptions`.
+- **Repository/find API**: `findOneById()` → `findOneBy({id})`; `findByIds()` → `findBy({id: In([...])})`; `.exist()` → `.exists()`. `@EntityRepository`/`AbstractRepository`/`getCustomRepository()` removed — extend `Repository<Entity>` or use `Repository.extend()`. **String-array `select`/`relations` removed** — object syntax only: `repo.find({ select: { id: true }, relations: { profile: true } })`. `join` find-option removed (use `relations` for LEFT JOIN, QueryBuilder for INNER).
+- **`where: { x: null }` now throws** by default (`invalidWhereValuesBehavior`) — use `IsNull()`. QueryBuilder's own `.where()/.andWhere()` are unaffected by this flag.
+- **Non-nullable relations now generate INNER JOIN, not LEFT JOIN.** Any `@ManyToOne(() => X, { nullable: false })` used via `relations: {}` may now drop rows previously kept by LEFT JOIN — audit joins/reports.
+- **QueryBuilder**: `onConflict()` → `orIgnore()`/`orUpdate()`; `printSql()` removed (use `.getSql()`); `setNativeParameters()` → `setParameters()`. Lock modes consolidated (§5).
 - **`@PrimaryGeneratedColumn('uuid')`**: unchanged signature/behavior.
-- **Migrations**: `MigrationExecutor.getAllMigrations()` removed →
-  `getPendingMigrations()`/`getExecutedMigrations()`/`dataSource.migrations`.
-  `QueryRunner.loadedTables`/`loadedViews` → async `getTables()`/`getViews()`.
+- **Migrations**: `MigrationExecutor.getAllMigrations()` removed → `getPendingMigrations()`/`getExecutedMigrations()`/`dataSource.migrations`. `QueryRunner.loadedTables`/`loadedViews` → async `getTables()`/`getViews()`.
 - **`@Column({ readonly: true })` removed** → `{ update: false }`.
-- **ESM/CJS**: both supported; CLI ships `typeorm-ts-node-commonjs` and
-  `typeorm-ts-node-esm` launchers (§3). A CJS Nest build is fully supported.
-- **Migration tool**: `npx @typeorm/codemod v1 src/` (real npm package,
-  confirmed latest 1.0.3) automates most renames above — run once over
-  `packages/database` before hand-fixing.
-- **Postgres driver**: no Postgres-only breaking option changes found (unlike
-  MySQL/SQLite/Mongo/MSSQL, which lost drivers/options). Standard
-  `DataSourceOptions` fields (`host`, `port`, `ssl`, `extra`, `poolSize`,
-  `namingStrategy`, `entities`, `migrations`) are unchanged for `type: "postgres"`.
-
-Sources: [Release Notes 1.0](https://typeorm.io/docs/releases/1.0/release-notes/) ·
-[Upgrading from 0.3 to 1.0](https://typeorm.io/docs/releases/1.0/upgrading-from-0.3/) ·
-[TypeORM 1.0 blog](https://typeorm.io/blog/typeorm-1-0/) ·
-[Data Source Options](https://typeorm.io/docs/data-source/data-source-options/)
+- **ESM/CJS**: both supported; CLI ships `typeorm-ts-node-commonjs` and `typeorm-ts-node-esm` launchers (§3). A CJS Nest build is fully supported.
+- **Migration tool**: `npx @typeorm/codemod v1 src/` (real npm package, confirmed latest 1.0.3) automates most renames above — run once over `packages/database` before hand-fixing.
+- **Postgres driver**: no Postgres-only breaking option changes found (unlike MySQL/SQLite/Mongo/MSSQL, which lost drivers/options). Standard `DataSourceOptions` fields (`host`, `port`, `ssl`, `extra`, `poolSize`, `namingStrategy`, `entities`, `migrations`) are unchanged for `type: "postgres"`.
 
 ## 2. snake_case naming strategy
 
-**No built-in snake_case strategy in 1.x.** `namingStrategy` still defaults to
-`DefaultNamingStrategy`, which snake_cases only the **table** name from the
-class name and leaves columns camelCase, with hashed constraint names
-(`PK_<hash>` etc). Confirmed from `typeorm/src/naming-strategy/DefaultNamingStrategy.ts`.
+**No built-in snake_case strategy in 1.x.** `namingStrategy` still defaults to `DefaultNamingStrategy`, which snake_cases only the **table** name from the class name and leaves columns camelCase, with hashed constraint names (`PK_<hash>` etc). Confirmed by reading `typeorm/src/naming-strategy/DefaultNamingStrategy.ts` directly.
 
-**`typeorm-naming-strategies` is NOT 1.x-compatible** — its latest published
-version (4.1.0, checked via npm registry) declares
-`peerDependencies: { typeorm: "^0.2.0 || ^0.3.0" }`, no `1.x` range. Write a
-custom strategy instead — the interface is small and stable:
+**`typeorm-naming-strategies` is NOT 1.x-compatible** — its latest published version (4.1.0, checked via npm registry) declares `peerDependencies: { typeorm: "^0.2.0 || ^0.3.0" }`, no `1.x` range. Write a custom strategy instead — the interface is small and stable:
 
 ```ts
 // packages/database/src/naming-strategy.ts
@@ -124,14 +82,8 @@ export class SnakeNamingStrategy extends DefaultNamingStrategy implements Naming
   }
 }
 ```
-Inherit `checkConstraintName`, `defaultConstraintName`, `exclusionConstraintName`,
-`relationConstraintName`, `closureJunctionTableName`,
-`joinTableColumnDuplicationPrefix`, `prefixTableName` from `DefaultNamingStrategy`
-unmodified — fine as hashed names. Wire via `namingStrategy: new SnakeNamingStrategy()`.
 
-Sources: [NamingStrategyInterface.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/NamingStrategyInterface.ts) ·
-[DefaultNamingStrategy.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/DefaultNamingStrategy.ts) ·
-[typeorm-naming-strategies npm](https://www.npmjs.com/package/typeorm-naming-strategies) (peerDeps checked via registry)
+Inherit `checkConstraintName`, `defaultConstraintName`, `exclusionConstraintName`, `relationConstraintName`, `closureJunctionTableName`, `joinTableColumnDuplicationPrefix`, `prefixTableName` from `DefaultNamingStrategy` unmodified — hashed names are fine for those. Wire via `namingStrategy: new SnakeNamingStrategy()` in `DataSourceOptions`.
 
 ## 3. Migrations & CLI
 
@@ -156,12 +108,7 @@ export const dataSourceOptions: DataSourceOptions = {
 export const dataSource = new DataSource(dataSourceOptions)
 ```
 
-**CLI in a pnpm monorepo TS package**: 1.x still ships `typeorm-ts-node-commonjs`
-(CJS) / `typeorm-ts-node-esm` wrapper bins — use the CJS one to match this
-build. `ts-node` is in maintenance mode; `tsx` also works
-(`tsx node_modules/.bin/typeorm ...`) but the documented/supported path is the
-bundled wrapper, which handles `emitDecoratorMetadata` + `reflect-metadata`
-load order correctly:
+**CLI in a pnpm monorepo TS package**: 1.x still ships `typeorm-ts-node-commonjs` (CJS) / `typeorm-ts-node-esm` wrapper bins — use the CJS one to match this build. `ts-node` itself is in maintenance mode; `tsx` also works (`tsx node_modules/.bin/typeorm ...`), but the documented/supported path is the bundled wrapper, which handles `emitDecoratorMetadata` + `reflect-metadata` load order correctly:
 
 ```json
 // packages/database/package.json
@@ -176,10 +123,8 @@ load order correctly:
   }
 }
 ```
-`-d`/`--dataSource` is mandatory, same as 0.3.x. `migration:generate`/`create`
-always emit `.ts`. `migration:run`/`revert` work against compiled `.js` too —
-for CI, build `packages/database` first and point `-d` at
-`dist/data-source.js` to skip the TS loader at deploy time.
+
+`-d`/`--dataSource` is mandatory, same as 0.3.x. `migration:generate`/`create` always emit `.ts`. `migration:run`/`revert` work against compiled `.js` too — for CI, build `packages/database` first and point `-d` at `dist/data-source.js` to skip the TS loader at deploy time.
 
 **Migration file shape**:
 ```ts
@@ -200,8 +145,7 @@ export class AddUsersTable1755400000000 implements MigrationInterface {
 }
 ```
 
-**Partial/expression indexes** — `@Index` can't express `WHERE`, so hand-write
-raw SQL (generate won't produce these from entity metadata):
+**Partial/expression indexes** — `@Index` can't express `WHERE`, so hand-write raw SQL (generate won't produce these from entity metadata):
 ```ts
 public async up(queryRunner: QueryRunner): Promise<void> {
   await queryRunner.query(`
@@ -216,17 +160,9 @@ public async down(queryRunner: QueryRunner): Promise<void> {
 }
 ```
 
-Sources: [Using CLI](https://typeorm.io/docs/using-cli/) ·
-[Creating migrations manually](https://typeorm.io/docs/migrations/creating/) ·
-[Executing and reverting](https://typeorm.io/docs/migrations/executing/) ·
-[Upgrading from 0.3 to 1.0](https://typeorm.io/docs/releases/1.0/upgrading-from-0.3/)
-
 ## 4. NestJS integration
 
-`@nestjs/typeorm` 11.0.3's `peerDependencies` are
-`typeorm: "^0.3.0 || ^1.0.0-dev"` (checked directly via npm registry API);
-11.0.1 was the first version with 1.x support. `1.1.0`, a stable non-prerelease
-version, satisfies that range under standard semver resolution.
+`@nestjs/typeorm` 11.0.3's `peerDependencies` are `typeorm: "^0.3.0 || ^1.0.0-dev"` (checked directly via the npm registry API); 11.0.1 was the first version with 1.x support. `1.1.0`, a stable non-prerelease version, satisfies that range under standard semver resolution.
 
 ```ts
 // apps/server/src/database/database.module.ts
@@ -256,8 +192,7 @@ constructor(
 ) {}
 ```
 
-**Transactions — always use the callback-scoped `manager`, never the injected
-repository, inside the transaction:**
+**Transactions — always use the callback-scoped `manager`, never the injected repository, inside the transaction:**
 ```ts
 async transferCredits(fromId: string, toId: string, amount: number) {
   return this.dataSource.transaction(async (manager) => {
@@ -269,9 +204,7 @@ async transferCredits(fromId: string, toId: string, amount: number) {
   })
 }
 ```
-Calling `this.users.save(...)` (injected repo) inside the callback silently
-escapes the transaction — runs against the pool, not the tx connection.
-Unchanged 0.3.x/1.x footgun, still the #1 one.
+Calling `this.users.save(...)` (the injected repo) inside the callback silently escapes the transaction — it runs against the pool, not the tx connection. Unchanged 0.3.x/1.x footgun, still the #1 one.
 
 **Worker as a Nest standalone context**, reusing the same `DatabaseModule`:
 ```ts
@@ -289,19 +222,11 @@ bootstrap()
 @Module({ imports: [DatabaseModule], providers: [JobRunnerService] })
 export class WorkerModule {}
 ```
-`app.close()` cleanly tears down the DataSource (Nest's TypeORM module calls
-`dataSource.destroy()` on `onModuleDestroy`) — important for workers under a
-process manager.
-
-Sources: [nestjs/typeorm README](https://github.com/nestjs/typeorm) ·
-[nestjs/typeorm decorators source](https://github.com/nestjs/typeorm/blob/master/lib/common/typeorm.decorators.ts) ·
-npm registry `@nestjs/typeorm` peerDependencies history (11.0.1–11.0.3 confirmed)
+`app.close()` cleanly tears down the DataSource (Nest's TypeORM module calls `dataSource.destroy()` on `onModuleDestroy`) — important for workers under a process manager.
 
 ## 5. Keyset pagination & `FOR UPDATE SKIP LOCKED`
 
-**Row-value keyset pagination** is plain parameterized SQL via QueryBuilder's
-documented raw-fragment `where()` — no dedicated tuple-comparison API, not a
-1.x feature, just standard practice:
+**Row-value keyset pagination** is plain parameterized SQL via QueryBuilder's documented raw-fragment `where()` — there is no dedicated tuple-comparison API; this is standard practice, not a 1.x feature:
 ```ts
 async listPage(after?: { createdAt: Date; id: string }, limit = 20) {
   const qb = this.orders.createQueryBuilder("order")
@@ -317,14 +242,9 @@ async listPage(after?: { createdAt: Date; id: string }, limit = 20) {
   return qb.getMany()
 }
 ```
-Use the actual DB column names (`created_at`/`id`) inside the raw fragment —
-QueryBuilder rewrites `entity.property` tokens through the naming strategy but
-not arbitrary raw-string SQL, so writing DB-side names directly is safer.
+Use the actual DB column names (`created_at`/`id`) inside the raw fragment — QueryBuilder rewrites `entity.property` tokens through the naming strategy but not arbitrary raw-string SQL, so writing DB-side names directly is safer.
 
-**`FOR UPDATE SKIP LOCKED`** — verified against
-`typeorm.io/docs/query-builder/select-query-builder/`. In 1.x,
-`pessimistic_partial_write` and `pessimistic_write_or_fail` were removed in
-favor of `setLock` + `setOnLocked`:
+**`FOR UPDATE SKIP LOCKED`** — verified against `typeorm.io/docs/query-builder/select-query-builder/`. In 1.x, `pessimistic_partial_write` and `pessimistic_write_or_fail` were removed in favor of `setLock` + `setOnLocked`:
 ```ts
 async claimNextJob() {
   return this.dataSource.transaction(async (manager) => {
@@ -341,18 +261,11 @@ async claimNextJob() {
   })
 }
 ```
-`setOnLocked("nowait")` → `FOR UPDATE NOWAIT` (replaces
-`pessimistic_write_or_fail`). Postgres also accepts `pessimistic_read`,
-`for_no_key_update`, `for_key_share` as `setLock` modes.
-
-Sources: [Select using Query Builder](https://typeorm.io/docs/query-builder/select-query-builder/) ·
-[Upgrading from 0.3 to 1.0](https://typeorm.io/docs/releases/1.0/upgrading-from-0.3/)
+`setOnLocked("nowait")` → `FOR UPDATE NOWAIT` (replaces `pessimistic_write_or_fail`). Postgres also accepts `pessimistic_read`, `for_no_key_update`, `for_key_share` as `setLock` modes.
 
 ## 6. Testing with real Postgres
 
-No 1.x-specific testing API changes found — `dataSource.runMigrations()`,
-`dataSource.dropDatabase()`, `DataSourceOptions.dropSchema` all unchanged from
-0.3.x.
+No 1.x-specific testing API changes found — `dataSource.runMigrations()`, `dataSource.dropDatabase()`, `DataSourceOptions.dropSchema` are all unchanged from 0.3.x.
 
 ```ts
 // packages/database/src/testing/test-data-source.ts
@@ -369,9 +282,7 @@ export async function createTestDataSource(): Promise<DataSource> {
 }
 ```
 
-**Per-test isolation — prefer transaction-wrap-and-rollback over truncate** for
-speed (no re-run of migrations/seed); fall back to truncate only when the test
-itself needs a commit (e.g. testing `dataSource.transaction` boundaries):
+**Per-test isolation — prefer transaction-wrap-and-rollback over truncate** for speed (no re-run of migrations/seed); fall back to truncate only when the test itself needs a commit (e.g. testing `dataSource.transaction` boundaries):
 ```ts
 let dataSource: DataSource
 let queryRunner: QueryRunner
@@ -391,15 +302,7 @@ afterEach(async () => {
 
 afterAll(async () => { await dataSource.destroy() })
 ```
-Use `queryRunner.manager.getRepository(User)` in tests, not
-`dataSource.manager`/`dataSource.getRepository()` directly — otherwise queries
-run outside the per-test transaction and rollback won't undo them. For code
-under test that opens its own nested transaction/savepoint, truncate-between-
-tests is simpler than fighting savepoint semantics — choose per-suite.
-
-Sources: [Data Source Options](https://typeorm.io/docs/data-source/data-source-options/) (`dropSchema`) ·
-`dataSource.runMigrations()`/`QueryRunner` transaction APIs — stable since
-0.3.x, no changes listed in 1.0 release notes.
+Use `queryRunner.manager.getRepository(User)` in tests, not `dataSource.manager`/`dataSource.getRepository()` directly — otherwise queries run outside the per-test transaction and rollback won't undo them. For code under test that opens its own nested transaction/savepoint, truncate-between-tests is simpler than fighting savepoint semantics — choose per-suite based on which the code owns.
 
 ## 7. Entity conventions
 
@@ -441,31 +344,24 @@ export class User {
   organization: Organization
 }
 ```
-- `@Entity({ name: 'users' })` is redundant once `SnakeNamingStrategy` is wired
-  (it'd derive `users` from `User` anyway) — keep explicit for intentionally
-  irregular table names.
-- `@CreateDateColumn`/`@UpdateDateColumn`/`@DeleteDateColumn` take the same
-  options as `@Column`; use `timestamptz` over the default `timestamp` to
-  avoid implicit-UTC ambiguity on PG.
-- Soft delete: `@DeleteDateColumn` + `.softRemove()`/`.restore()`; `find()`
-  excludes soft-deleted rows by default — pass `withDeleted: true` to include.
-- `@Unique(['organizationId', 'email'])` for semantic composite uniqueness vs
-  a bare `@Index` for lookup speed only.
-- pg `bigint`/`int8` → JS `string`: unchanged default behavior in the pg driver
-  (avoids silent precision loss); no 1.x change found.
+- `@Entity({ name: 'users' })` is redundant once `SnakeNamingStrategy` is wired (it'd derive `users` from `User` anyway) — keep it explicit for intentionally irregular table names.
+- `@CreateDateColumn`/`@UpdateDateColumn`/`@DeleteDateColumn` take the same options as `@Column`; use `timestamptz` over the default `timestamp` to avoid implicit-UTC ambiguity on PG.
+- Soft delete: `@DeleteDateColumn` + `.softRemove()`/`.restore()`; `find()` excludes soft-deleted rows by default — pass `withDeleted: true` to include them.
+- `@Unique(['organizationId', 'email'])` for semantic composite uniqueness vs a bare `@Index` for lookup speed only.
+- pg `bigint`/`int8` → JS `string`: unchanged default driver behavior (avoids silent precision loss); no 1.x change found.
 
-## Sources index
+## Sources
 
-- [TypeORM 1.0 Release Notes](https://typeorm.io/docs/releases/1.0/release-notes/)
-- [Upgrading from 0.3 to 1.0](https://typeorm.io/docs/releases/1.0/upgrading-from-0.3/)
-- [TypeORM 1.0 is here (blog)](https://typeorm.io/blog/typeorm-1-0/)
-- [Using CLI](https://typeorm.io/docs/using-cli/)
-- [Creating migrations manually](https://typeorm.io/docs/migrations/creating/)
-- [Executing and reverting migrations](https://typeorm.io/docs/migrations/executing/)
-- [Data Source Options](https://typeorm.io/docs/data-source/data-source-options/)
-- [Select using Query Builder](https://typeorm.io/docs/query-builder/select-query-builder/)
-- [NamingStrategyInterface.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/NamingStrategyInterface.ts)
-- [DefaultNamingStrategy.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/DefaultNamingStrategy.ts)
-- [nestjs/typeorm README](https://github.com/nestjs/typeorm)
-- [nestjs/typeorm decorators source](https://github.com/nestjs/typeorm/blob/master/lib/common/typeorm.decorators.ts)
-- npm registry metadata: `typeorm@1.1.0`, `@nestjs/typeorm@11.0.3`, `typeorm-naming-strategies@4.1.0`, `@typeorm/codemod@1.0.3` (peerDependencies checked via `registry.npmjs.org`)
+- [TypeORM 1.0 Release Notes](https://typeorm.io/docs/releases/1.0/release-notes/) — §1
+- [Upgrading from 0.3 to 1.0](https://typeorm.io/docs/releases/1.0/upgrading-from-0.3/) — §1, §3, §5
+- [TypeORM 1.0 is here (blog)](https://typeorm.io/blog/typeorm-1-0/) — §1
+- [Using CLI](https://typeorm.io/docs/using-cli/) — §3
+- [Creating migrations manually](https://typeorm.io/docs/migrations/creating/) — §3
+- [Executing and reverting migrations](https://typeorm.io/docs/migrations/executing/) — §3
+- [Data Source Options](https://typeorm.io/docs/data-source/data-source-options/) — §1, §6
+- [Select using Query Builder](https://typeorm.io/docs/query-builder/select-query-builder/) — §5
+- [NamingStrategyInterface.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/NamingStrategyInterface.ts) — §2
+- [DefaultNamingStrategy.ts](https://github.com/typeorm/typeorm/blob/master/src/naming-strategy/DefaultNamingStrategy.ts) — §2
+- [nestjs/typeorm README](https://github.com/nestjs/typeorm) — §4
+- [nestjs/typeorm decorators source](https://github.com/nestjs/typeorm/blob/master/lib/common/typeorm.decorators.ts) — §4
+- npm registry metadata (`registry.npmjs.org`): `typeorm@1.1.0`, `@nestjs/typeorm@11.0.3` peerDeps history, `typeorm-naming-strategies@4.1.0` peerDeps, `@typeorm/codemod@1.0.3` existence — §1, §2, §4

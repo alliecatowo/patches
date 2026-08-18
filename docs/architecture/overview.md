@@ -128,10 +128,10 @@ App
 | `JobsModule` | Postgres-backed outbox/job claiming and dispatch (shared with worker) |
 | `FederationModule` | `FederationGateway` interface + `NoopFederationGateway` (F0 only) |
 
-Why a monolith first (§10): simpler transactions, simpler debugging, fewer network
-boundaries, less deployment overhead, easier local dev and end-to-end testing. Service
-extraction is deferred until real load or ownership boundaries justify it — not done
-for architectural appearance (§0).
+Why a monolith first (§10): simpler transactions, fewer network boundaries, less
+deployment overhead, easier local dev and end-to-end testing. Service extraction is
+deferred until real load or ownership boundaries justify it — never done for
+architectural appearance (§0).
 
 ## 4. Layering rules (§128–129)
 
@@ -187,43 +187,31 @@ blocker emerges.
 
 ```text
 patches/
-├── apps/
-│   ├── server/       # NestJS gRPC backend (the modular monolith)
-│   ├── worker/        # Nest standalone application context; outbox/job consumer
-│   ├── tui/            # Ink/React terminal client
-│   └── admin/          # patches-admin CLI (Nest standalone or nest-commander)
-│
-├── packages/
-│   ├── proto/          # canonical .proto schemas + generated ts-proto output
-│   ├── config/         # shared @nestjs/config schemas/validation
-│   ├── domain/          # framework-agnostic domain types/rules shared across apps
-│   ├── database/        # TypeORM entities, migrations, data-source config
-│   ├── observability/   # logging/OpenTelemetry/Sentry wiring shared by server+worker
-│   ├── media/            # sharp processing helpers, S3/R2 client wrapper
-│   └── testkit/          # test factories, fixtures, integration test harness
-│
-├── infra/
-│   ├── docker/          # Dockerfiles
-│   ├── fly/              # fly.toml(s), process group config
-│   └── compose/          # docker-compose services for local dev
-│
-├── docs/
-│   ├── architecture/     # this directory
-│   ├── decisions/        # ADRs
-│   ├── operations/       # runbooks, backup/restore, deployment
-│   └── product/          # principles, roadmap
-│
+├── apps/         server, worker, tui, admin
+├── packages/     proto, config, domain, database, observability, media, testkit
+├── infra/        docker, fly, compose
+├── docs/         architecture, decisions, operations, product
 ├── .github/workflows/
-├── mise.toml
-├── pnpm-workspace.yaml
-├── turbo.json
-├── package.json
-├── tsconfig.base.json
-├── eslint.config.*
-├── prettier.config.*
-├── docker-compose.yml
-└── README.md
+├── mise.toml, pnpm-workspace.yaml, turbo.json, package.json,
+│   tsconfig.base.json, eslint.config.*, prettier.config.*,
+│   docker-compose.yml, README.md
 ```
+
+| Path | Purpose |
+|---|---|
+| `apps/server` | NestJS gRPC backend — the modular monolith |
+| `apps/worker` | Nest standalone application context; outbox/job consumer |
+| `apps/tui` | Ink/React terminal client |
+| `apps/admin` | `patches-admin` CLI (Nest standalone or `nest-commander`) |
+| `packages/proto` | Canonical `.proto` schemas + generated ts-proto output |
+| `packages/config` | Shared `@nestjs/config` schemas/validation |
+| `packages/domain` | Framework-agnostic domain types/rules shared across apps |
+| `packages/database` | TypeORM entities, migrations, data-source config |
+| `packages/observability` | Logging/OpenTelemetry/Sentry wiring for server + worker |
+| `packages/media` | sharp processing helpers, S3/R2 client wrapper |
+| `packages/testkit` | Test factories, fixtures, integration test harness |
+| `infra/docker`, `infra/fly`, `infra/compose` | Dockerfiles, `fly.toml`(s)/process groups, local Compose services |
+| `docs/architecture`, `docs/decisions`, `docs/operations`, `docs/product` | This directory, ADRs, runbooks, principles/roadmap |
 
 Packages must represent legitimate shared boundaries — no package created merely to
 hold one helper function (§8).
@@ -298,28 +286,18 @@ Secrets are never committed to the repository.
 ## 8. Logging and observability (§98–100)
 
 **Structured logging.** Nest's JSON `ConsoleLogger` is the default. Every log line
-should carry: timestamp, level, service, request ID, RPC method, actor/user IDs
-where appropriate, latency, and outcome.
-
-Never log: passwords, access tokens, refresh tokens, verification/reset codes, raw
-`authorization` headers.
+carries: timestamp, level, service, request ID, RPC method, actor/user IDs where
+appropriate, latency, and outcome. Never logged: passwords, access tokens, refresh
+tokens, verification/reset codes, raw `authorization` headers.
 
 **Tracing/metrics.** OpenTelemetry is adopted as the project matures. By MVP, track
-at minimum:
-
-- request/RPC latency
-- error rate
-- DB query latency where practical
-- worker queue depth
-- failed job count
-- media processing latency
-
-Export to a simple compatible provider at deploy time; do not build an elaborate
-observability stack for local development.
+at minimum: request/RPC latency, error rate, DB query latency where practical,
+worker queue depth, failed job count, media processing latency. Export to a simple
+compatible provider at deploy time; no elaborate observability stack locally.
 
 **Error monitoring.** Sentry may be used in production for exception monitoring
-(direct NestJS integration available). It is not required for local development, and
-user data sent to it must be sanitized.
+(direct NestJS integration available), is not required locally, and user data sent
+to it must be sanitized.
 
 ## 9. Security summary (§101–104)
 

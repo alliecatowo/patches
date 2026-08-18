@@ -43,14 +43,12 @@ plugins:
     out: src/generated
     opt:
       - nestJs=true
-      - outputServices=grpc-js       # see trade-off discussion below
       - addGrpcMetadata=true
       - useDate=true
       - esModuleInterop=true
       - importSuffix=.js
       - snakeToCamel=keys_json
       - env=node
-      - outputEncodeMethods=true      # only meaningful if you keep grpc-js output; see below
       - useOptionals=none
       - stringEnums=false
     strategy: all
@@ -58,15 +56,9 @@ inputs:
   - directory: proto
 ```
 
-Run via pnpm (from `packages/proto`, or with `pnpm --filter @patches/proto`):
+Run via pnpm (from `packages/proto`): `pnpm buf generate`. In a pnpm workspace `node_modules/.bin/protoc-gen-ts_proto` is a symlink created the same way npm/yarn do it — no special pnpm handling needed, `local:` just resolves on disk relative to where `buf generate` runs. (buf.build/docs/configuration/v2/buf-gen-yaml)
 
-```bash
-pnpm buf generate
-```
-
-Since it's a pnpm workspace, `node_modules/.bin/protoc-gen-ts_proto` is a symlink pnpm creates the same way npm/yarn do — no special pnpm handling is needed, `local:` just needs to resolve on disk relative to where `buf generate` runs. (buf.build/docs/configuration/v2/buf-gen-yaml)
-
-**Important interaction**: `nestJs=true` **unconditionally forces** `outputEncodeMethods=false`, `outputJsonMethods=false`, `outputClientImpl=false`, `lowerCaseServiceMethods=true`, and **ignores** `outputServices` entirely — ts-proto's own docs state this explicitly. So the `outputServices=grpc-js` / `outputEncodeMethods=true` lines above are only meaningful if you *don't* set `nestJs=true`. You cannot get both "NestJS controller/client interfaces" and "grpc-js encode/decode stubs" from one generation pass. (github.com/stephenh/ts-proto README, "NestJS Support" section)
+**Important interaction**: `nestJs=true` **unconditionally forces** `outputEncodeMethods=false`, `outputJsonMethods=false`, `outputClientImpl=false`, `lowerCaseServiceMethods=true`, and **ignores** `outputServices` entirely — ts-proto's own docs state this explicitly. That's why `outputServices`/`outputEncodeMethods` aren't in the opt list above; they only matter for the alternate grpc-js-stub generation discussed next. You cannot get both "NestJS controller/client interfaces" and "grpc-js encode/decode stubs" from one generation pass. (github.com/stephenh/ts-proto README, "NestJS Support" section)
 
 ### The real trade-off: one generation, two consumers
 
@@ -314,16 +306,16 @@ Install: `npm i @grpc/reflection grpc-health-check`. This is the pattern documen
 
 ## 4. Does NestJS 11 support ESM?
 
-**No official/native ESM support.** Confirmed directly from the NestJS core team on the open GitHub issue tracking this (github.com/nestjs/nest issue #15919, comment from maintainer `micalevisk`, Nov 2025):
+**No official/native ESM support.** Confirmed directly from the NestJS core team on the open GitHub issue tracking this (github.com/nestjs/nest issue #15919, maintainer `micalevisk`, Nov 2025):
 
-> "the support of importing a ESM-only module is about typescript, not nestjs. Anyone that fully understand typescript+CJS nodejs should know how to make it work. Which is why we don't have a dedicated page about it at nestjs docs"
+> "the support of importing a ESM-only module is about typescript, not nestjs... Which is why we don't have a dedicated page about it at nestjs docs"
 
-I.e., there is no dedicated NestJS ESM guide because the team's position is: keep the Nest app compiling to CommonJS, and solve "consuming an ESM-only package" as a TypeScript module-resolution problem, not a framework problem.
+I.e. there's no dedicated ESM guide because the team's position is: keep the Nest app compiling to CommonJS, and treat "consuming an ESM-only package" as a TypeScript module-resolution problem, not a framework one.
 
 **Recommended approach for this monorepo:**
-- **Server package**: compile as CommonJS. Set `"module": "nodenext"` (or `"commonjs"`) and `"moduleResolution": "nodenext"` in the server's `tsconfig.json` — this is also what current NestJS CLI scaffolds default to per the same issue thread, and it's what makes TypeScript correctly resolve `.d.ts` types for ESM-only dependencies even though the emitted output stays CJS. Do **not** put `"type": "module"` in the server package's `package.json`.
-- **Consuming an ESM-only shared package from the CJS server**: use a dynamic `import()` (which works from CJS at runtime) rather than a static `import`/`require`, since a static import of an ESM-only package from CJS fails at compile/require time.
-- **Recommendation for `packages/proto`**: since it's consumed by *both* the CJS Nest server and the ESM-only Ink TUI, build it dual (CJS + ESM) with a `package.json` `"exports"` map (`require`/`import` conditions), or — simpler, given ts-proto output is just plain TS interfaces/decorators with no runtime code — compile it to CJS only and let the TUI's bundler/`tsx`/Node ESM interop `require()` it (Node 22+ supports `require()` of CJS from ESM natively without flags, and also has `--experimental-require-module` for edge cases). A dual-published package is the more future-proof option if you don't want to depend on Node's CJS/ESM interop.
+- **Server package**: compile as CommonJS. Set `"module": "nodenext"` (or `"commonjs"`) and `"moduleResolution": "nodenext"` in the server's `tsconfig.json` — also what current NestJS CLI scaffolds default to per the same issue thread; it makes TypeScript correctly resolve `.d.ts` types for ESM-only deps while emitted output stays CJS. Do **not** set `"type": "module"` in the server's `package.json`.
+- **Consuming an ESM-only shared package from the CJS server**: use dynamic `import()` (works from CJS at runtime) rather than a static `import`/`require`, which fails at compile/require time for ESM-only packages.
+- **`packages/proto` recommendation**: since it's consumed by both the CJS Nest server and the ESM-only Ink TUI, build it dual (CJS + ESM) via a `package.json` `"exports"` map (`require`/`import` conditions) — or, since ts-proto's `nestJs=true` output is just plain TS interfaces/decorators with no runtime code, compile CJS-only and let the TUI `require()` it (Node 22+ natively supports `require()` of CJS from ESM). Dual-publish is more future-proof if you don't want to depend on Node's CJS/ESM interop.
 
 (github.com/nestjs/nest/issues/15919, github.com/nestjs/nest/issues/15375)
 
@@ -381,14 +373,14 @@ This keeps a single codegen pass (`nestJs=true`) shared by both server and TUI, 
 
 ## 6. Version pitfalls
 
-- **`@grpc/proto-loader` 0.8.1's own dependencies**: `long@^5.0.0` and `protobufjs@^7.5.3` (verified via npm registry). This is a *separate* runtime stack from anything ts-proto generates — proto-loader always uses its own bundled protobufjs/long for wire (de)serialization regardless of what ts-proto option you pick, because proto-loader parses the `.proto` file directly at runtime.
-- **ts-proto 2.x runtime dependency**: as of ts-proto 2.x, generated `encode`/`decode` methods (only emitted when `outputEncodeMethods=true`, which `nestJs=true` disables by default) use `@bufbuild/protobuf` instead of the old `protobufjs`-based writer/reader (ts-proto migrated this in its 2.0 release; verified in ts-proto's own `CHANGELOG.md` migration note: *"The 2.x release of ts-proto migrated the low-level Protobuf serializing that its `encode` and `decode` method use from... `protobufjs`... to `@bufbuild/protobuf`"*). Since our recommended config (`nestJs=true`) never emits `encode`/`decode`, **this dependency is not needed at all** in `packages/proto`'s runtime deps for the recommended setup. Only add `@bufbuild/protobuf` if you separately generate `outputServices=grpc-js` output.
-- **`long` package still shows up even without `forceLong`**: ts-proto's *default* (`forceLong=number`) still internally imports the `long` library to safely decode 64-bit wire values before converting to `number` (and throws at runtime if a value exceeds `Number.MAX_SAFE_INTEGER`). Only `onlyTypes=true` fully excludes `long`/`protobufjs/minimal` imports from generated code — not relevant here since we need runtime interfaces, not `onlyTypes`.
-- **`esModuleInterop=true`** changes ts-proto's `Long` import style from `import * as Long from 'long'` to `import Long from 'long'` — must match your `tsconfig.json`'s own `esModuleInterop` setting or you'll get default-import errors.
-- **`--ts_proto_opt=importSuffix=.js`** is required for any ESM consumer (the TUI) since Node's ESM resolver needs explicit extensions on relative imports; ts-proto's README notes this needs TypeScript ≥4.7 (we're on 5.9, fine). This has no effect on/is unnecessary for the CJS Nest server build, but is harmless to leave on since `moduleResolution: nodenext`/`bundler` in the server also tolerates explicit `.js` specifiers.
-- **`addGrpcMetadata=true` and `addNestjsRestParameter=true` both require `nestJs=true`** and are mutually exclusive framing choices for how the trailing argument is typed (`Metadata` vs `...rest: any[]`) — don't combine looking for both behaviors, pick one.
-- **proto-loader's `longs`/`enums` client options must match what your handler code expects** — e.g. if the server's `loader.longs` differs from the client's `protoLoader.loadSync(..., { longs })`, int64 fields will arrive as different JS types (`Long` object vs `string`) on each side, causing silent type mismatches since both sides parse the same `.proto` independently at runtime (there's no shared schema object crossing the wire, only bytes).
-- **`buf.gen.yaml` `strategy: all` vs `directory` for ts-proto**: ts-proto's own README recommends `strategy: all` (all proto files in one invocation) rather than the default `directory`, because ts-proto needs the full set of files to correctly resolve cross-file imports/types in one pass.
+- **`@grpc/proto-loader` 0.8.1's own dependencies**: `long@^5.0.0` and `protobufjs@^7.5.3` (verified via npm registry). This is a *separate* runtime stack from anything ts-proto generates — proto-loader always uses its own bundled protobufjs/long for wire (de)serialization regardless of ts-proto options, because it parses the `.proto` file directly at runtime.
+- **ts-proto 2.x runtime dependency**: generated `encode`/`decode` methods (only emitted when `outputEncodeMethods=true`, which `nestJs=true` disables by default) use `@bufbuild/protobuf` instead of the old `protobufjs`-based writer/reader as of ts-proto's 2.0 migration (verified in ts-proto's `CHANGELOG.md`: *"The 2.x release of ts-proto migrated the low-level Protobuf serializing... from... `protobufjs`... to `@bufbuild/protobuf`"*). Since our recommended config (`nestJs=true`) never emits `encode`/`decode`, **this dependency is not needed** in `packages/proto` for the recommended setup — only add `@bufbuild/protobuf` if you separately generate `outputServices=grpc-js` output.
+- **`long` still shows up even without `forceLong`**: ts-proto's default (`forceLong=number`) still internally imports `long` to safely decode 64-bit wire values before converting to `number` (throws at runtime past `Number.MAX_SAFE_INTEGER`). Only `onlyTypes=true` fully excludes `long`/`protobufjs/minimal` imports — not applicable here since we need runtime interfaces.
+- **`esModuleInterop=true`** changes ts-proto's `Long` import from `import * as Long from 'long'` to `import Long from 'long'` — must match your `tsconfig.json`'s own `esModuleInterop` setting or you get default-import errors.
+- **`importSuffix=.js`** is required for any ESM consumer (the TUI) since Node's ESM resolver needs explicit extensions on relative imports; needs TypeScript ≥4.7 per ts-proto's README (we're on 5.9, fine). Harmless for the CJS server too, since `moduleResolution: nodenext`/`bundler` tolerates explicit `.js` specifiers.
+- **`addGrpcMetadata=true` and `addNestjsRestParameter=true`** both require `nestJs=true` and are mutually exclusive framing choices for the trailing argument (`Metadata` vs `...rest: any[]`) — pick one.
+- **proto-loader's `longs`/`enums` options must match on both ends** — if the server's `loader.longs` differs from the client's `protoLoader.loadSync(..., { longs })`, int64 fields arrive as different JS types (`Long` object vs `string`) on each side, since both sides parse the `.proto` independently at runtime with no shared schema crossing the wire.
+- **`buf.gen.yaml` `strategy: all` vs `directory`**: ts-proto's README recommends `strategy: all` (all proto files in one invocation) over the default `directory`, since it needs the full file set to resolve cross-file imports/types correctly.
 
 ---
 
