@@ -9,8 +9,8 @@
     // (not touching tsconfig.base.json, which apps/other packages may still rely on).
     "incremental": false
   },
-  // tsup.config.ts/vitest.config.ts included (alongside src) so ESLint's typed-linting
-  // project service can resolve them — see packages/terminal-media/tsconfig.json for the
-  // same pattern.
-  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
+  // tsup.config.ts/vitest.config.ts are linted via eslint.config.js's
+  // `allowDefaultProject: ['**/*.config.{ts,mts,cts}']` (B-005) rather than being
+  // `include`d here — they aren't part of this package's actual TS program.
+  "include": ["src"]
 }

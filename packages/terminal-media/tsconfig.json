@@ -9,5 +9,8 @@
     "incremental": false,
     "types": ["node"]
   },
-  "include": ["src", "spike", "tsup.config.ts", "vitest.config.ts"]
+  // tsup.config.ts/vitest.config.ts are linted via eslint.config.js's
+  // `allowDefaultProject: ['**/*.config.{ts,mts,cts}']` (B-005) rather than being
+  // `include`d here — they aren't part of this package's actual TS program.
+  "include": ["src", "spike"]
 }
