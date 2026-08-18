@@ -1,25 +1,16 @@
 name: Setup toolchain
 description: >
-  Checkout, install Node + pnpm (pnpm/setup@v2), install buf + actionlint via mise
-  (mise's own node/pnpm/docker-compose installs are disabled here — see
-  docs/operations/ci.md for why), then `pnpm install --frozen-lockfile`. Also restores
-  the Turborepo local cache. Used by every CI job that needs the workspace installed.
-
-inputs:
-  fetch-depth:
-    description: >
-      Passed straight to actions/checkout. Use "0" for jobs that need full git history
-      (e.g. the proto job's `buf breaking --against main` diff).
-    required: false
-    default: '1'
+  Install Node + pnpm (pnpm/setup@v2), install buf + actionlint via mise (mise's own
+  node/pnpm/docker-compose installs are disabled here — see docs/operations/ci.md for
+  why), then `pnpm install --frozen-lockfile`. Also restores the Turborepo local cache.
+  Used by every CI job that needs the workspace installed. Does NOT check out the repo —
+  a local composite action (`uses: ./...`) can only be resolved once the repo is already
+  on disk, so every job must run `actions/checkout@v4` itself as its first step, before
+  this action.
 
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
-
     # pnpm 11 + Node in one step. Chosen over jdx/mise-action for node/pnpm specifically
     # because mise-action installing pnpm from mise.toml was unreliable in trial runs
     # (see docs/operations/ci.md "Toolchain setup" for the exact failure mode observed
