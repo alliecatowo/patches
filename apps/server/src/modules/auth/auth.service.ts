@@ -149,6 +149,7 @@ export class AuthService {
     // (spec §102 review finding).
     this.rateLimit.consumePeer('register', getRequestContext()?.peer);
     this.rateLimit.consume('register', handleNormalized);
+    await this.rateLimit.consumeDistributed('register', handleNormalized);
 
     if (parsed.password === undefined && parsed.sshPublicKey === undefined) {
       throw AppError.validation(
@@ -320,6 +321,7 @@ export class AuthService {
   async verifyEmail(rawCode: string): Promise<boolean> {
     const { code } = parseInput(codeInputSchema, { code: rawCode });
     this.rateLimit.consume('verify_email', hashCode(code).slice(0, 16));
+    await this.rateLimit.consumeDistributed('verify_email', hashCode(code).slice(0, 16));
 
     return this.dataSource.transaction(async (manager) => {
       const authCode = await this.consumeAuthCode(manager, code, 'VERIFY_EMAIL');
@@ -337,6 +339,7 @@ export class AuthService {
    */
   async resendVerification(claims: AccessTokenClaims): Promise<void> {
     this.rateLimit.consume('resend_verification', claims.userId);
+    await this.rateLimit.consumeDistributed('resend_verification', claims.userId);
 
     await this.dataSource.transaction(async (manager) => {
       const user = await manager.getRepository(User).findOne({ where: { id: claims.userId } });
@@ -363,6 +366,7 @@ export class AuthService {
     const subject = normalizeEmail(parsed.emailOrHandle);
     this.rateLimit.consumePeer('login', getRequestContext()?.peer);
     this.rateLimit.consume('login', subject);
+    await this.rateLimit.consumeDistributed('login', subject);
 
     return this.dataSource.transaction(async (manager) => {
       const user = await findUserByHandleOrEmail(manager, subject);
@@ -488,6 +492,7 @@ export class AuthService {
     const emailNormalized = normalizeEmail(parsed.data.email);
     this.rateLimit.consumePeer('password_reset', getRequestContext()?.peer);
     this.rateLimit.consume('password_reset', emailNormalized);
+    await this.rateLimit.consumeDistributed('password_reset', emailNormalized);
 
     await this.dataSource.transaction(async (manager) => {
       const user = await manager.getRepository(User).findOne({
@@ -518,6 +523,10 @@ export class AuthService {
     // guessing it — it bounds how many times one peer can make this endpoint touch the
     // database at all before Argon2id ever runs.
     this.rateLimit.consume('password_reset', `code:${hashCode(parsed.code).slice(0, 16)}`);
+    await this.rateLimit.consumeDistributed(
+      'password_reset',
+      `code:${hashCode(parsed.code).slice(0, 16)}`,
+    );
 
     const userId = await this.dataSource.transaction(async (manager) => {
       const authCode = await this.consumeAuthCode(manager, parsed.code, 'RESET_PASSWORD');
@@ -568,6 +577,7 @@ export class AuthService {
    */
   async beginSshLogin(): Promise<IssuedSshChallenge> {
     this.rateLimit.consumePeer('ssh_challenge', getRequestContext()?.peer);
+    await this.rateLimit.consumeDistributedPeer('ssh_challenge', getRequestContext()?.peer);
     return this.sshChallenges.begin(this.dataSource.manager);
   }
 

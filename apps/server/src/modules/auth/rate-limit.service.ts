@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { DbRateLimitStore } from './db-rate-limit-store.service.js';
 
 /**
  * Sensitive flows that must be throttled (spec §102, `docs/architecture/auth.md` §9).
@@ -80,18 +81,40 @@ interface Bucket {
 }
 
 /**
+ * The subset of {@link RateLimitAction}s spec §102 names explicitly ("login, password reset,
+ * registration, verification resend") plus challenge issuance (tasks.md P1-008/A-018) —
+ * these get a *second*, database-backed check via {@link RateLimitService.consumeDistributed}
+ * on top of the in-memory one below, so their budget is enforced across every server process
+ * and survives a restart. Every other action (media upload, GitHub polling) stays
+ * process-local only: coarse throttles §102 explicitly allows to stay that way.
+ */
+export const DB_BACKED_RATE_LIMIT_ACTIONS: ReadonlySet<RateLimitAction> = new Set([
+  'register',
+  'login',
+  'password_reset',
+  'verify_email',
+  'resend_verification',
+  'ssh_challenge',
+]);
+
+/**
  * Fixed-window rate limiting, **process-local** (spec §102 explicitly allows coarse
  * process-local throttles; there is no Redis in v0, §153).
  *
- * This is a v0 stopgap, not the end state: with more than one server process the effective
- * limit is multiplied by the process count, and a restart forgets every counter. §102 wants
- * the sensitive flows backed by the database before MVP — tracked as a follow-up task rather
- * than shipped half-done here, because a DB-backed limiter needs its own table, migration and
- * sweep job, all of which belong to `packages/database`.
+ * This is a v0 stopgap for most actions, not the end state: with more than one server
+ * process the effective limit is multiplied by the process count, and a restart forgets
+ * every counter. §102 wants the sensitive flows backed by the database before MVP — done via
+ * {@link consumeDistributed}/{@link DbRateLimitStore} (A-018), called *in addition to* the
+ * in-memory `consume()` below at each of `DB_BACKED_RATE_LIMIT_ACTIONS`' call sites in
+ * `auth.service.ts`, never instead of it: the in-memory check is what stops a single runaway
+ * process from ever reaching the database, the database check is what stops the limit being
+ * divided by the process count.
  */
 @Injectable()
 export class RateLimitService {
   private readonly buckets = new Map<string, Bucket>();
+
+  constructor(private readonly dbStore: DbRateLimitStore) {}
 
   /**
    * Records one attempt against a subject and throws `RATE_LIMITED` (→ `RESOURCE_EXHAUSTED`)
@@ -117,6 +140,53 @@ export class RateLimitService {
   /** Forgets the counter for a subject — called after an attempt succeeds legitimately. */
   reset(action: RateLimitAction, key: string): void {
     this.buckets.delete(`${action}:subject:${key}`);
+  }
+
+  /**
+   * A-018: the cross-process, restart-surviving companion to {@link consume} — call it with
+   * the *same* `action`/`key` right alongside `consume()`, never instead of it, for every
+   * action in {@link DB_BACKED_RATE_LIMIT_ACTIONS}. Uses the same `WINDOWS` budget as the
+   * in-memory check, so the two never disagree about what "too many" means, only about
+   * whether "too many" is scoped to this process or to the whole fleet.
+   */
+  async consumeDistributed(action: RateLimitAction, key: string, now = new Date()): Promise<void> {
+    const window = WINDOWS[action];
+    const count = await this.dbStore.increment(`${action}:subject:${key}`, window.windowMs, now);
+    if (count > window.limit) {
+      const retryInSeconds = Math.ceil(window.windowMs / 1000);
+      throw new AppError(
+        'RATE_LIMITED',
+        `Too many attempts. Try again in ${String(retryInSeconds)} seconds.`,
+        { context: { action } },
+      );
+    }
+  }
+
+  /**
+   * The peer-keyed sibling of {@link consumeDistributed}, for actions (`ssh_challenge`) that
+   * only ever get a peer-scoped in-memory budget via {@link consumePeer} — there is no
+   * meaningful "subject" to key on before a credential exists to challenge.
+   */
+  async consumeDistributedPeer(
+    action: RateLimitAction,
+    peer: string | undefined,
+    now = new Date(),
+  ): Promise<void> {
+    const window = PEER_WINDOWS[action];
+    if (window === undefined) return;
+    const count = await this.dbStore.increment(
+      `${action}:peer:${peer ?? 'unknown'}`,
+      window.windowMs,
+      now,
+    );
+    if (count > window.limit) {
+      const retryInSeconds = Math.ceil(window.windowMs / 1000);
+      throw new AppError(
+        'RATE_LIMITED',
+        `Too many attempts. Try again in ${String(retryInSeconds)} seconds.`,
+        { context: { action } },
+      );
+    }
   }
 
   private consumeBucket(
