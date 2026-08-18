@@ -1,8 +1,14 @@
 # Data model
 
-PostgreSQL schema for Patches. Source of truth: `INITIAL_VISION.md` §14–27, §36,
-§61–66, §113, §12–13, and the invite/credential/reaction tables implied throughout
-§34–39 and §53.
+PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` §14–27, §36,
+§61–66, §113, §12–13, the invite/credential/reaction tables implied throughout §34–39 and
+§53, and **Amendment A §163–§173** (credentials, portability seam, pages, nameplates).
+
+> **Amendment A changed this document.** `users.password_hash` is gone (superseded by
+> `credentials`, §165), email is now nullable recovery-only, and `actors` gains portability
+> and nameplate columns. See ADR
+> [0011](../decisions/0011-credentials-separate-from-identity.md) and ADR
+> [0012](../decisions/0012-patches-pages-portable-declarative.md).
 
 ## Conventions
 
@@ -23,6 +29,7 @@ PostgreSQL schema for Patches. Source of truth: `INITIAL_VISION.md` §14–27, �
 
 ```mermaid
 erDiagram
+    USERS ||--o{ CREDENTIALS : "authenticates with"
     USERS ||--|| ACTORS : "has"
     ACTORS ||--o{ POSTS : "authors"
     ACTORS ||--o{ MEDIA : "owns"
@@ -46,18 +53,34 @@ erDiagram
     USERS ||--o{ NOTIFICATIONS : "receives"
     USERS ||--o{ ADMIN_AUDIT_LOG : "performs (as admin)"
     USERS ||--o{ INVITES : "creates"
+    ACTORS ||--|| PAGES : "publishes"
+    PAGES ||--o{ PAGE_REVISIONS : "versions"
+    PAGES ||--o{ PAGE_ASSETS : "attaches"
+    PAGES ||--o{ GUESTBOOK_ENTRIES : "collects"
 
     USERS {
         uuid id PK
-        text email
-        text email_normalized
-        timestamptz email_verified_at
-        text password_hash
-        text status
         uuid actor_id FK
+        text recovery_email
+        text recovery_email_normalized
+        timestamptz email_verified_at
+        text status
         timestamptz created_at
         timestamptz updated_at
         timestamptz deleted_at
+    }
+    CREDENTIALS {
+        uuid id PK
+        uuid user_id FK
+        text type
+        text identifier
+        text secret_hash
+        text public_material
+        jsonb metadata
+        text label
+        timestamptz created_at
+        timestamptz last_used_at
+        timestamptz revoked_at
     }
     ACTORS {
         uuid id PK
@@ -75,8 +98,46 @@ erDiagram
         text inbox_uri
         text outbox_uri
         text federation_state
+        text moved_to_uri
+        jsonb also_known_as
+        jsonb nameplate
         timestamptz created_at
         timestamptz updated_at
+        timestamptz deleted_at
+    }
+    PAGES {
+        uuid id PK
+        uuid actor_id FK
+        uuid current_revision_id FK
+        int schema_version
+        timestamptz published_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    PAGE_REVISIONS {
+        uuid id PK
+        uuid page_id FK
+        int revision_number
+        jsonb document
+        int schema_version
+        int byte_size
+        uuid created_by_user_id FK
+        timestamptz created_at
+    }
+    PAGE_ASSETS {
+        uuid id PK
+        uuid page_id FK
+        uuid media_id FK
+        bigint byte_size
+        timestamptz created_at
+    }
+    GUESTBOOK_ENTRIES {
+        uuid id PK
+        uuid page_id FK
+        uuid author_actor_id FK
+        text body
+        text status
+        timestamptz created_at
         timestamptz deleted_at
     }
     POSTS {
@@ -209,6 +270,7 @@ erDiagram
     INVITES {
         uuid id PK
         text code_hash
+        text note
         uuid created_by_user_id FK
         int max_uses
         int uses
@@ -218,6 +280,7 @@ erDiagram
     }
     OUTBOX_JOBS {
         bigint id PK
+        text idempotency_key
         text type
         jsonb payload
         text status
@@ -236,25 +299,92 @@ erDiagram
 
 ## `users`
 
-A local authenticated account (§20). Distinct from `actors` — federation will
-introduce remote actors with no local `User` (§19).
+A local authenticated account (§20, as amended by §165). Distinct from `actors` — federation
+introduces remote actors with no local `User` (§19). **Credentials live in `credentials`, not
+here**: `password_hash` was removed by Amendment A, and email is now optional recovery data
+rather than the account identifier.
 
-| Column              | Type          | Nullable | Notes                                                        |
-| ------------------- | ------------- | -------- | ------------------------------------------------------------ |
-| `id`                | `uuid`        | no       | PK                                                           |
-| `email`             | `text`        | no       | as entered                                                   |
-| `email_normalized`  | `text`        | no       | lowercased/normalized for uniqueness                         |
-| `email_verified_at` | `timestamptz` | yes      | null until verified                                          |
-| `password_hash`     | `text`        | no       | Argon2id (§34); never plaintext, never reversible encryption |
-| `status`            | `text` (enum) | no       | `ACTIVE` \| `SUSPENDED` \| `DELETED`                         |
-| `actor_id`          | `uuid`        | no       | FK → `actors.id`, unique                                     |
-| `created_at`        | `timestamptz` | no       |                                                              |
-| `updated_at`        | `timestamptz` | no       |                                                              |
-| `deleted_at`        | `timestamptz` | yes      | soft delete                                                  |
+| Column                      | Type          | Nullable | Notes                                  |
+| --------------------------- | ------------- | -------- | -------------------------------------- |
+| `id`                        | `uuid`        | no       | PK                                     |
+| `actor_id`                  | `uuid`        | no       | FK → `actors.id`, unique               |
+| `recovery_email`            | `text`        | yes      | as entered; recovery/verification only |
+| `recovery_email_normalized` | `text`        | yes      | lowercased/normalized for uniqueness   |
+| `email_verified_at`         | `timestamptz` | yes      | null until verified                    |
+| `status`                    | `text` (enum) | no       | `ACTIVE` \| `SUSPENDED` \| `DELETED`   |
+| `created_at`                | `timestamptz` | no       |                                        |
+| `updated_at`                | `timestamptz` | no       |                                        |
+| `deleted_at`                | `timestamptz` | yes      | soft delete                            |
 
-**Constraints**: `UNIQUE (email_normalized)`. `actor_id` unique (1:1 with `actors`).
+**Constraints**: `UNIQUE (recovery_email_normalized) WHERE recovery_email_normalized IS NOT
+NULL`. `actor_id` unique (1:1 with `actors`).
 
-**Indexes**: unique index on `email_normalized`; index on `actor_id`.
+**Indexes**: partial unique index on `recovery_email_normalized`; index on `actor_id`.
+
+**Email policy** (§165): required and verified when the user's only credential is
+`PASSWORD` (otherwise password reset has no channel); optional when the user holds a
+non-password credential; a node may require it by policy. See
+[`auth.md`](./auth.md) §8.
+
+---
+
+## `credentials`
+
+A way to prove you are a user — **not** an identity (§165, ADR 0011). Adding, rotating, or
+revoking one never changes the actor, the handle, or any social relationship.
+
+| Column            | Type          | Nullable | Notes                                                                   |
+| ----------------- | ------------- | -------- | ----------------------------------------------------------------------- |
+| `id`              | `uuid`        | no       | PK                                                                      |
+| `user_id`         | `uuid`        | no       | FK → `users.id`                                                         |
+| `type`            | `text` (enum) | no       | `PASSWORD` \| `SSH_PUBLIC_KEY` \| `GITHUB` (`PASSKEY` reserved, not v0) |
+| `identifier`      | `text`        | yes      | type-scoped lookup key; see below                                       |
+| `secret_hash`     | `text`        | yes      | Argon2id hash, `PASSWORD` only (§34). **Never logged, never in a DTO.** |
+| `public_material` | `text`        | yes      | OpenSSH public key blob, `SSH_PUBLIC_KEY` only. Public, safe to return. |
+| `metadata`        | `jsonb`       | yes      | non-secret provider bookkeeping (key type, GitHub login for display)    |
+| `label`           | `text`        | yes      | user-supplied ("work laptop")                                           |
+| `created_at`      | `timestamptz` | no       |                                                                         |
+| `last_used_at`    | `timestamptz` | yes      |                                                                         |
+| `revoked_at`      | `timestamptz` | yes      | revocation is soft; rows are retained for audit                         |
+
+`identifier` by type:
+
+| Type             | `identifier`                                                                   |
+| ---------------- | ------------------------------------------------------------------------------ |
+| `SSH_PUBLIC_KEY` | key fingerprint, OpenSSH `SHA256:<base64>` form                                |
+| `GITHUB`         | GitHub **numeric account id** — never the login name (mutable, reusable, §167) |
+| `PASSWORD`       | `NULL` — login resolves the user by handle or verified recovery email first    |
+
+**Constraints**:
+
+```sql
+UNIQUE (user_id)         WHERE type = 'PASSWORD' AND revoked_at IS NULL
+UNIQUE (type, identifier) WHERE revoked_at IS NULL AND identifier IS NOT NULL
+```
+
+**Service-layer invariants** (not expressible as constraints): revoking the last active
+credential MUST fail; adding a credential MUST require an authenticated session;
+`ListCredentials` returns type, label, identifier, `created_at`, `last_used_at` and **never**
+`secret_hash`.
+
+---
+
+## `ssh_login_challenges`
+
+Server-issued nonces for SSH challenge/response login (§166,
+[`auth.md`](./auth.md) §4).
+
+| Column           | Type          | Nullable | Notes                                           |
+| ---------------- | ------------- | -------- | ----------------------------------------------- |
+| `id`             | `uuid`        | no       | PK; the challenge id bound into the signed blob |
+| `nonce`          | `bytea`       | no       | ≥ 32 bytes from a CSPRNG                        |
+| `claimed_handle` | `text`        | yes      | set only when the client claims a handle        |
+| `expires_at`     | `timestamptz` | no       | TTL ≤ 120 seconds                               |
+| `consumed_at`    | `timestamptz` | yes      | single-use; consumed atomically                 |
+| `created_at`     | `timestamptz` | no       |                                                 |
+
+Expired rows are swept by a periodic job. Challenges are issued regardless of whether any
+supplied fingerprint is enrolled — see the no-enumeration rule in §166.
 
 ---
 
@@ -279,6 +409,9 @@ A social identity — local or (later) remote (§21).
 | `inbox_uri`         | `text`        | yes      | federation (F1+)                                                              |
 | `outbox_uri`        | `text`        | yes      | federation (F1+)                                                              |
 | `federation_state`  | `text`        | yes      | federation bookkeeping                                                        |
+| `moved_to_uri`      | `text`        | yes      | portability seam (§164); unused until v0.4                                    |
+| `also_known_as`     | `jsonb`       | yes      | prior/alternate actor URIs this actor claims (§164); unused until v0.4        |
+| `nameplate`         | `jsonb`       | yes      | bounded (≤ 2 KiB) inline identity presentation (§173)                         |
 | `created_at`        | `timestamptz` | no       |                                                                               |
 | `updated_at`        | `timestamptz` | no       |                                                                               |
 | `deleted_at`        | `timestamptz` | yes      | tombstone                                                                     |
@@ -290,7 +423,17 @@ unique). `UNIQUE (user_id)`.
 
 **Handle rules** (§22): lowercase canonical form, ASCII, letters/digits/underscore,
 3–30 characters. No Unicode confusables in v0. Local handles render as `@alice`;
-future federated handles render as `@alice@example.social`.
+federated handles render as `@alice@example.social`. A handle is unique **within a node**
+only — there is no global handle namespace (§163).
+
+**Portability** (§164): an actor with `moved_to_uri` set is read-only — no new posts, no new
+follows accepted. A move is honored only when the destination actor claims the origin actor
+in `also_known_as`; a one-sided claim is never trusted. Naming note: `movedTo`/`alsoKnownAs`
+are Mastodon-originated, non-normative community properties, not standard ActivityStreams —
+these columns are ours and are mapped only at the federation boundary.
+
+**Nameplate** (§173): validated at write time against the capabilities the node grants that
+user (§174). Badges within it are server-attested only — a user cannot set badge text.
 
 ---
 
@@ -502,7 +645,9 @@ presented again (reuse), the entire session/token family is revoked (§36).
 
 ## `email_verification_codes` / `password_reset_codes`
 
-Two tables with the same shape, one per purpose (§38–39).
+Two tables with the same shape, one per purpose (§38–39). Both apply only to users with a
+verified `recovery_email` (§165) — an account without one has no reset channel by design and
+recovers by holding a second credential.
 
 | Column        | Type          | Nullable | Notes                                                                                                |
 | ------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------------- |
@@ -599,10 +744,92 @@ handling.
 
 ---
 
+## Page tables (§170–§172)
+
+Patches Pages are a portable declarative document stored server-side and rendered by clients.
+The server never renders. Block vocabulary, limits, and security rules are in
+[`pages.md`](./pages.md). **Phase 4.5.**
+
+### `pages`
+
+One row per actor — the actor's site, pointing at its current revision.
+
+| Column                | Type          | Nullable | Notes                        |
+| --------------------- | ------------- | -------- | ---------------------------- |
+| `id`                  | `uuid`        | no       | PK                           |
+| `actor_id`            | `uuid`        | no       | FK → `actors.id`, **unique** |
+| `current_revision_id` | `uuid`        | yes      | FK → `page_revisions.id`     |
+| `schema_version`      | `int`         | no       | document schema version      |
+| `published_at`        | `timestamptz` | yes      | null while unpublished       |
+| `created_at`          | `timestamptz` | no       |                              |
+| `updated_at`          | `timestamptz` | no       |                              |
+
+### `page_revisions`
+
+Immutable snapshots — a bad edit is recoverable and moderation has an audit trail.
+
+| Column               | Type          | Nullable | Notes                                            |
+| -------------------- | ------------- | -------- | ------------------------------------------------ |
+| `id`                 | `uuid`        | no       | PK                                               |
+| `page_id`            | `uuid`        | no       | FK → `pages.id`                                  |
+| `revision_number`    | `int`         | no       | monotonic per page                               |
+| `document`           | `jsonb`       | no       | the `PatchesPage` document; ≤ 64 KiB serialized  |
+| `schema_version`     | `int`         | no       | validated strictly against this version on write |
+| `byte_size`          | `int`         | no       | enforced against the document limit              |
+| `created_by_user_id` | `uuid`        | no       | FK → `users.id`                                  |
+| `created_at`         | `timestamptz` | no       |                                                  |
+
+**Constraints**: `UNIQUE (page_id, revision_number)`. Rows are never updated.
+
+### `page_assets`
+
+Media attached to a page, counted against `capabilities.maxSiteStorageBytes` (§174).
+
+| Column       | Type          | Nullable | Notes                                         |
+| ------------ | ------------- | -------- | --------------------------------------------- |
+| `id`         | `uuid`        | no       | PK                                            |
+| `page_id`    | `uuid`        | no       | FK → `pages.id`                               |
+| `media_id`   | `uuid`        | no       | FK → `media.id` — always Patches media (§172) |
+| `byte_size`  | `bigint`      | no       | denormalized for cheap storage accounting     |
+| `created_at` | `timestamptz` | no       |                                               |
+
+**Constraints**: `UNIQUE (page_id, media_id)`. Remote URLs are never referenced — arbitrary
+remote media is an SSRF, tracking, and visitor-IP-leak vector (§172).
+
+### `guestbook_entries`
+
+Visitor entries. Treated as hostile input (§172).
+
+| Column            | Type          | Nullable | Notes                                                     |
+| ----------------- | ------------- | -------- | --------------------------------------------------------- |
+| `id`              | `uuid`        | no       | PK                                                        |
+| `page_id`         | `uuid`        | no       | FK → `pages.id`                                           |
+| `author_actor_id` | `uuid`        | yes      | FK → `actors.id`; nullable for future remote signers      |
+| `body`            | `text`        | no       | plain text, ≤ 500 characters, control characters stripped |
+| `status`          | `text` (enum) | no       | `VISIBLE` \| `HIDDEN` \| `PENDING` \| `SPAM`              |
+| `created_at`      | `timestamptz` | no       |                                                           |
+| `deleted_at`      | `timestamptz` | yes      | removable by page owner and by moderators                 |
+
+Blocked actors cannot sign (§62). Creation is rate-limited (§102) and entries are reportable
+(§64).
+
+---
+
 ## Required index summary (§60)
 
 ```text
 actors(handle_normalized) UNIQUE
+
+credentials(user_id) UNIQUE WHERE type = 'PASSWORD' AND revoked_at IS NULL
+credentials(type, identifier) UNIQUE WHERE revoked_at IS NULL AND identifier IS NOT NULL
+credentials(user_id)
+
+ssh_login_challenges(expires_at)
+
+pages(actor_id) UNIQUE
+page_revisions(page_id, revision_number) UNIQUE
+page_assets(page_id, media_id) UNIQUE
+guestbook_entries(page_id, created_at DESC, id DESC)
 
 posts(author_actor_id, created_at DESC, id DESC)
 posts(created_at DESC, id DESC)

@@ -7,9 +7,16 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
 
 ## Tree
 
-- **`architecture/`** — system design docs: overview, data model, API surface, media
-  pipeline, background jobs, federation seam. _(Status: not yet written — planned per
-  `INITIAL_VISION.md` §130.)_
+- **`architecture/`** — system design docs.
+  - [`architecture/overview.md`](./architecture/overview.md)
+  - [`architecture/data-model.md`](./architecture/data-model.md)
+  - [`architecture/api.md`](./architecture/api.md)
+  - [`architecture/auth.md`](./architecture/auth.md)
+  - [`architecture/pages.md`](./architecture/pages.md)
+  - [`architecture/media.md`](./architecture/media.md)
+  - [`architecture/jobs.md`](./architecture/jobs.md)
+  - [`architecture/federation.md`](./architecture/federation.md)
+  - [`architecture/tui.md`](./architecture/tui.md)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
   [`decisions/README.md`](./decisions/README.md) for the index and template.
