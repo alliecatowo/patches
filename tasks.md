@@ -83,23 +83,23 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Backlog / discovered
 
-- [ ] A-001 — CI: add `actions/checkout@v4` as the first step of every job (local `./.github/actions/setup` cannot resolve before checkout)
+- [x] A-001 — CI: add `actions/checkout@v4` as the first step of every job (local `./.github/actions/setup` cannot resolve before checkout)
 - [ ] A-002 — database: stop disabling TLS verification — CA/sslmode-driven option defaulting to verify; update tests
 - [ ] A-003 — testkit: refuse any TEST_DATABASE_URL whose database name does not end in `_test` before dropDatabase() (§119)
-- [ ] A-004 — server: validate/cap inbound `x-request-id` (≤64 chars, [A-Za-z0-9._-]) before logging/echoing (§103)
-- [ ] A-005 — CI/tests: add `--project testkit` to `test:integration` and set TEST_DATABASE_URL so isolation helpers actually run
-- [ ] A-006 — CI/tests: one database per DB-touching vitest project (or no cross-project parallelism) — `database` and `server-integration` both dropDatabase() the same DB
-- [ ] A-007 — server: sanitize the RpcException branch of RpcExceptionsFilter (no caller-controlled status/message passthrough; correct x-patches-error-code); unit-test all branches
-- [ ] A-008 — server: drop unused deps (@nestjs/platform-express, @nestjs/typeorm, typeorm, pg, @patches/database) until needed
-- [ ] A-009 — server: replace cwd/`__dirname` probe in modules/system/server-build.ts with an injected SERVER_VERSION provider
+- [x] A-004 — server: validate/cap inbound `x-request-id` (≤64 chars, [A-Za-z0-9._-]) before logging/echoing (§103)
+- [x] A-005 — CI/tests: add `--project testkit` to `test:integration` and set TEST_DATABASE_URL so isolation helpers actually run
+- [x] A-006 — CI/tests: one database per DB-touching vitest project (or no cross-project parallelism) — `database` and `server-integration` both dropDatabase() the same DB _(mitigated via `--no-file-parallelism` on `test:integration` + `server-integration`'s own `patches_test_server` database; `database`/`testkit` still share `patches_test` by design — full per-project split tracked as B-012)_
+- [x] A-007 — server: sanitize the RpcException branch of RpcExceptionsFilter (no caller-controlled status/message passthrough; correct x-patches-error-code); unit-test all branches
+- [x] A-008 — server: drop unused deps (@nestjs/platform-express, @nestjs/typeorm, typeorm, pg, @patches/database) until needed
+- [x] A-009 — server: replace cwd/`__dirname` probe in modules/system/server-build.ts with an injected SERVER_VERSION provider
 - [ ] A-010 — proto: make PROTO_DIR lazy (`getProtoDir()`) so packaging errors fail at call site
 - [ ] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
 - [ ] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
-- [ ] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
+- [x] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
 - [ ] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)
-- [ ] A-015 — build: root `pnpm test` must work on a fresh clone (tests resolve @patches/* via dist) — build first via turbo or alias to src
-- [ ] A-016 — tests: unit coverage for RpcExceptionsFilter, LoggingInterceptor, logger.factory, grpc-options, SystemService, tui cli/ping.ts, cli.tsx
-- [ ] A-017 — terminal-media: bound untrusted image input (byte-length precheck + explicit sharp limitInputPixels) before Phase 5
+- [x] A-015 — build: root `pnpm test` must work on a fresh clone (tests resolve @patches/* via dist) — build first via turbo or alias to src
+- [x] A-016 — tests: unit coverage for RpcExceptionsFilter, LoggingInterceptor, logger.factory, grpc-options, SystemService, tui cli/ping.ts, cli.tsx
+- [x] A-017 — terminal-media: bound untrusted image input (byte-length precheck + explicit sharp limitInputPixels) before Phase 5
 
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier
@@ -108,6 +108,9 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-007 — Validate/implement tmux passthrough for Kitty graphics (currently treated as unsupported)
 - [ ] B-008 — lefthook pre-commit (prettier/eslint on staged) via mise
 - [ ] B-009 — `pnpm dev` (turbo) runs the interactive TUI inside turbo output — exclude tui from the root `dev` task or make it server-only
+- [x] B-010 — TUI screenshot tool (`tools/screenshot`): tmux -> ANSI -> SVG -> PNG, `mise run screenshot`, real PNGs in `docs/media/`, one embedded in README
+- [ ] B-011 — root `vitest.config.ts` `projects` doesn't include `tools/*`, so `pnpm test`/`pnpm verify` skip `tools/screenshot`'s tests (they still run standalone via `pnpm --filter @patches/tools-screenshot test`)
+- [ ] B-012 — full per-project test database isolation: `database` and `testkit` still share `patches_test` (safe today only via `--no-file-parallelism` on `test:integration`, see A-006/docs/operations/ci.md "Why one database") — give `testkit` its own `TEST_DATABASE_URL_TESTKIT`-style override (mirroring `apps/server/vitest.integration.config.mts`) once someone owns `packages/testkit`'s vitest config
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
