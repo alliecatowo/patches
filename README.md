@@ -8,19 +8,44 @@ replies, and a feed sorted by time. Built as a TypeScript monorepo: a NestJS gRP
 an Ink (React) TUI, TypeORM + PostgreSQL, Protobuf/Buf, with ActivityPub federation and a
 React Native client on the roadmap.
 
-> **Status:** Phase 0 (foundation + risk spikes) — see [`docs/product/roadmap.md`](docs/product/roadmap.md).
-> The TUI can connect to a local server and talk gRPC; posting/auth arrive in Phases 1–4.
+> **Status:** Phases 0–8 implemented; the flagship node **patches-social.fly.dev** is live —
+> see [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
 ```
 ┌ patches ─────────────────────────────────────────────────────────┐
-│ Connected to patches-dev.                                        │
+│ Connected to patches-social.                                     │
 │                                                                  │
 │ server        0.1.0 (protocol v1)                                │
 │ features      system.ping                                        │
 ├──────────────────────────────────────────────────────────────────┤
-│ connected · 127.0.0.1:50051        R reconnect  ? help  q quit   │
+│ connected · patches-social.fly.dev:443   R reconnect ? help q quit│
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+## Try the live node
+
+The flagship node, `patches-social.fly.dev`, is running the real network — the client
+connects there by default. It's invite-only right now; ask Allie for an invite code.
+
+```bash
+git clone <repo-url> patches && cd patches
+mise install                              # Node 24, pnpm 11, buf (from mise.toml)
+pnpm install
+pnpm --filter @patches/tui build
+
+node apps/tui/dist/cli.js register \
+  --handle you --display-name "You" --email you@example.com --invite <code>
+
+node apps/tui/dist/cli.js            # opens the full-screen TUI, connected by default
+node apps/tui/dist/cli.js --help     # every subcommand (login, whoami, keys, verify, ...)
+```
+
+No `--server`/`--insecure` needed — the client's default target is
+`patches-social.fly.dev:443` over TLS. A published `npm install -g @patches/tui` is planned
+but not live yet (the package still depends on two unpublished workspace packages); building
+from a source checkout, as above, is the supported path today. Two things don't work in
+production yet: image uploads and verification email (see
+[`docs/user-guide.md`](docs/user-guide.md#what-doesnt-work-yet-on-the-live-node)).
 
 ## Using Patches
 

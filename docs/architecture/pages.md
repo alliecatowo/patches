@@ -8,9 +8,9 @@ stored on the actor's node and rendered by clients. Source of truth: `INITIAL_VI
 **Status: implemented (Phase 4.5).** The document schema/validator (`packages/domain`),
 storage (§3), `PageService` (§4, `apps/server/src/modules/pages/`), the Ink renderer
 (`apps/tui/src/pages/render/`), `patches visit`, and nameplate rendering (P45-004..007) are
-all implemented and tested. Deferred: a structured block-by-block page editor (the TUI editor
-is `$EDITOR`-on-raw-JSON only, see §6) and a `Friends` block data source (see §6 — no
-"list mutual follows" RPC exists yet); both are tracked as follow-ups (`B-023`, `B-024`).
+all implemented and tested. `B-023`'s structured block-by-block page editor (the TUI editor
+was originally `$EDITOR`-on-raw-JSON only) and `B-024`'s `Friends` block data source (a bulk
+"list mutual follows" RPC) have since landed too — see §6.
 
 Pages are the personal-web pillar (§175, pillar 3). They are not a profile decoration — the
 profile is what you see _next to a name_; a Page is what you _visit_. Inline identity
@@ -200,9 +200,9 @@ few notes on specific blocks:
 - **`TopEight`** resolves each `@handle` via `GetActorByHandle` and renders with `Nameplate`;
   a `@handle@remote-node` reference (federation is a seam, not implemented) renders as plain
   sanitized text rather than attempting a lookup that would always fail.
-- **`Friends`** has no backing data source — `SocialGraphService` only exposes per-actor
-  `GetRelationship`, not a bulk "list mutual follows" RPC — so it renders a documented
-  `[friends list unavailable]` placeholder (`B-024`).
+- **`Friends`** renders mutual follows via `SocialGraphService.ListMutualFollows` (`B-024`) —
+  a self-join on `follows`, keyset-paginated, called through `PatchesApi.listMutualFollows`
+  (a public read, no session required) from `apps/tui/src/pages/render/blocks.tsx`.
 - **`Guestbook`** fetches via `ListGuestbook`; `s` (only shown/available when a `Guestbook`
   block is present and the viewer has a session) opens an inline compose line, `Enter` calls
   `SignGuestbook`, and the block re-fetches.
