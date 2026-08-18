@@ -12,6 +12,30 @@ import { sanitizeForTerminal } from '../format/sanitize.js';
 import { useActor } from '../hooks/useActor.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
 import { theme } from '../theme/index.js';
+import { usePlainMode } from '../theme/plain-mode.js';
+
+/** Ink's own `Box` `borderStyle` values (`cli-boxes`' `Boxes` keys, minus `arrow`) a
+ * `Nameplate.profile_border` can select — no defined vocabulary in the proto (spec §173
+ * leaves the string free-form, validated against node capabilities at write time), so
+ * an unrecognized value still gets a border (falls back to `'round'`) rather than
+ * silently rendering none. */
+type BorderStyle =
+  'single' | 'double' | 'round' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic';
+const BORDER_STYLES: readonly BorderStyle[] = [
+  'single',
+  'double',
+  'round',
+  'bold',
+  'singleDouble',
+  'doubleSingle',
+  'classic',
+];
+
+function borderStyleFor(profileBorder: string): BorderStyle {
+  return (BORDER_STYLES as readonly string[]).includes(profileBorder)
+    ? (profileBorder as BorderStyle)
+    : 'round';
+}
 
 export interface ProfileScreenProps {
   api: PatchesApi;
@@ -54,6 +78,7 @@ export function ProfileScreen({
   ensureAccessToken,
   onReportActor,
 }: ProfileScreenProps): ReactElement {
+  const plain = usePlainMode();
   const actorState = useActor(api, actorId, knownActor);
   const canFollow =
     viewerActorId !== undefined && viewerActorId !== actorId && ensureAccessToken !== undefined;
@@ -216,54 +241,76 @@ export function ProfileScreen({
 
   const { actor } = actorState;
   const counts = actor.counts;
+  // Text-mode analogues for §173's `avatar_frame`/`profile_border` — the proto leaves
+  // both free-form strings (no defined vocabulary), so there is no "correct" art to
+  // reproduce; a bracket marker and an Ink `Box` border are a legible stand-in, gated
+  // on plain mode exactly like every other nameplate decoration.
+  const hasAvatarFrame = !plain && present(actor.nameplate) && actor.nameplate.avatarFrame !== '';
+  const hasProfileBorder =
+    !plain && present(actor.nameplate) && actor.nameplate.profileBorder !== '';
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.accent} bold>
-        {actor.displayName === '' ? `@${actor.handle}` : sanitizeForTerminal(actor.displayName)}
-      </Text>
-      <Nameplate handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
-      {present(actor.nameplate) && actor.nameplate.statusLine !== '' ? (
-        <Text color={theme.muted} wrap="wrap">
-          {sanitizeForTerminal(actor.nameplate.statusLine)}
+      <Box
+        flexDirection="column"
+        {...(hasProfileBorder && present(actor.nameplate)
+          ? {
+              borderStyle: borderStyleFor(actor.nameplate.profileBorder),
+              borderColor: theme.accent,
+              paddingX: 1,
+            }
+          : {})}
+      >
+        <Text color={theme.accent} bold>
+          {hasAvatarFrame ? '‹ ' : ''}
+          {actor.displayName === '' ? `@${actor.handle}` : sanitizeForTerminal(actor.displayName)}
+          {hasAvatarFrame ? ' ›' : ''}
         </Text>
-      ) : null}
-      {present(actor.nameplate) && actor.nameplate.badges.length > 0 ? (
-        <Text color={theme.accent}>
-          {actor.nameplate.badges.map((badge) => `[${sanitizeForTerminal(badge)}]`).join(' ')}
-        </Text>
-      ) : null}
-      {actor.bio === '' ? null : <Text wrap="wrap">{sanitizeForTerminal(actor.bio)}</Text>}
-      {present(counts) ? (
-        <Text color={theme.muted}>
-          {counts.posts} posts · {counts.followers} followers · {counts.following} following
-        </Text>
-      ) : null}
-      {followUi.status === 'ready' ? (
-        <Text color={theme.muted}>
-          {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'following' : 'not following'}
-          {followUi.relationship.followedBy ? ' · follows you' : ''}
-          {'  ·  f to '}
-          {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'unfollow' : 'follow'}
-          {'  ·  B to '}
-          {followUi.relationship.blocking ? 'unblock' : 'block'}
-          {'  ·  M to '}
-          {followUi.relationship.muting ? 'unmute' : 'mute'}
-        </Text>
-      ) : null}
-      {followUi.status === 'error' ? <Text color={theme.error}>{followUi.error.title}</Text> : null}
-      {confirmAction !== undefined && followUi.status === 'ready' ? (
-        <Text color={theme.warn}>
-          {confirmAction === 'block'
-            ? followUi.relationship.blocking
-              ? 'Unblock'
-              : 'Block'
-            : followUi.relationship.muting
-              ? 'Unmute'
-              : 'Mute'}{' '}
-          @{sanitizeForTerminal(actor.handle)}? y/n
-        </Text>
-      ) : null}
+        <Nameplate handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
+        {!plain && present(actor.nameplate) && actor.nameplate.statusLine !== '' ? (
+          <Text color={theme.muted} wrap="wrap">
+            {sanitizeForTerminal(actor.nameplate.statusLine)}
+          </Text>
+        ) : null}
+        {!plain && present(actor.nameplate) && actor.nameplate.badges.length > 0 ? (
+          <Text color={theme.accent}>
+            {actor.nameplate.badges.map((badge) => `[${sanitizeForTerminal(badge)}]`).join(' ')}
+          </Text>
+        ) : null}
+        {actor.bio === '' ? null : <Text wrap="wrap">{sanitizeForTerminal(actor.bio)}</Text>}
+        {present(counts) ? (
+          <Text color={theme.muted}>
+            {counts.posts} posts · {counts.followers} followers · {counts.following} following
+          </Text>
+        ) : null}
+        {followUi.status === 'ready' ? (
+          <Text color={theme.muted}>
+            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'following' : 'not following'}
+            {followUi.relationship.followedBy ? ' · follows you' : ''}
+            {'  ·  f to '}
+            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'unfollow' : 'follow'}
+            {'  ·  B to '}
+            {followUi.relationship.blocking ? 'unblock' : 'block'}
+            {'  ·  M to '}
+            {followUi.relationship.muting ? 'unmute' : 'mute'}
+          </Text>
+        ) : null}
+        {followUi.status === 'error' ? (
+          <Text color={theme.error}>{followUi.error.title}</Text>
+        ) : null}
+        {confirmAction !== undefined && followUi.status === 'ready' ? (
+          <Text color={theme.warn}>
+            {confirmAction === 'block'
+              ? followUi.relationship.blocking
+                ? 'Unblock'
+                : 'Block'
+              : followUi.relationship.muting
+                ? 'Unmute'
+                : 'Mute'}{' '}
+            @{sanitizeForTerminal(actor.handle)}? y/n
+          </Text>
+        ) : null}
+      </Box>
 
       {error === undefined ? null : (
         <Box marginTop={1}>

@@ -7,12 +7,15 @@ import {
   POST_TYPE,
   POST_VISIBILITY,
   type Actor,
+  type AddCredentialRequest,
+  type AddCredentialResponse,
   type BlockActorRequest,
   type BlockActorResponse,
   type BookmarkPostRequest,
   type BookmarkPostResponse,
   type CreatePostRequest,
   type CreatePostResponse,
+  type Credential,
   type FollowActorRequest,
   type FollowActorResponse,
   type GetActorByHandleRequest,
@@ -36,6 +39,7 @@ import {
   type ListBookmarksResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
+  type ListCredentialsResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
   type ListMutesRequest,
@@ -52,6 +56,7 @@ import {
   type MarkNotificationsReadResponse,
   type MuteActorRequest,
   type MuteActorResponse,
+  type Nameplate,
   type Notification,
   type NotificationType,
   type PageInfo,
@@ -89,6 +94,8 @@ export interface FakeUser {
   password: string;
   displayName: string;
   bio: string;
+  /** Seeded directly — no `UpdateNameplate` RPC in this fake (B-022 nameplate tests). */
+  nameplate?: Nameplate;
 }
 
 interface FakeSession {
@@ -138,6 +145,7 @@ export class FakeApiHandle {
   // `ListNotifications` returned it" — so this map's key encodes the (recipient,
   // notification) pairing, keyed by recipient user id, newest first per recipient.
   private readonly notificationsByUser = new Map<string, Notification[]>();
+  private readonly credentialsByUser = new Map<string, Credential[]>(); // AccountsScreen (B-022)
   private readonly pageSize: number;
   private readonly serverInfo: GetServerInfoResponse;
 
@@ -172,7 +180,7 @@ export class FakeApiHandle {
       getCurrentSession: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       logoutAllSessions: () => Promise.resolve({}),
-      listCredentials: () => Promise.resolve({ credentials: [] }),
+      listCredentials: (accessToken: string) => this.listCredentials(accessToken),
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
       searchActors: (request: SearchActorsRequest) => this.searchActors(request),
@@ -186,8 +194,8 @@ export class FakeApiHandle {
         this.unfollowActor(request, accessToken),
       getRelationship: (request: GetRelationshipRequest, accessToken: string) =>
         this.getRelationship(request, accessToken),
-      addCredential: () =>
-        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      addCredential: (request: AddCredentialRequest, accessToken: string) =>
+        this.addCredential(request, accessToken),
       revokeCredential: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       getNodeInfo: () =>
@@ -288,6 +296,36 @@ export class FakeApiHandle {
     return list;
   }
 
+  /** Seeds a credential row directly (bypassing `AddCredential`), for `AccountsScreen`
+   * list-rendering tests (B-022). */
+  addCredentialFor(
+    userId: string,
+    credential: Omit<Credential, 'id' | 'createdAt' | 'lastUsedAt'> & {
+      id?: string;
+      createdAt?: Date;
+    },
+  ): Credential {
+    const full: Credential = {
+      id: credential.id ?? randomUUID(),
+      type: credential.type,
+      label: credential.label,
+      identifier: credential.identifier,
+      createdAt: dateToTimestamp(credential.createdAt ?? new Date()),
+      lastUsedAt: undefined,
+    };
+    this.credentialsFor(userId).push(full);
+    return full;
+  }
+
+  private credentialsFor(userId: string): Credential[] {
+    let list = this.credentialsByUser.get(userId);
+    if (list === undefined) {
+      list = [];
+      this.credentialsByUser.set(userId, list);
+    }
+    return list;
+  }
+
   private toActor(user: FakeUser): Actor {
     const postCount = this.posts.filter((post) => post.author?.id === user.id).length;
     const followingCount = this.follows.get(user.id)?.size ?? 0;
@@ -305,7 +343,7 @@ export class FakeApiHandle {
       isLocal: true,
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
       counts: { followers: followerCount, following: followingCount, posts: postCount },
-      nameplate: undefined,
+      nameplate: user.nameplate,
     };
   }
 
@@ -847,6 +885,34 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That actor no longer exists.'));
     }
     return Promise.resolve({ reportId: randomUUID() });
+  }
+
+  // ---- AccountsScreen (B-022): AuthService.ListCredentials/AddCredential ----
+
+  private listCredentials(accessToken: string): Promise<ListCredentialsResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    return Promise.resolve({ credentials: [...this.credentialsFor(session.userId)] });
+  }
+
+  private addCredential(
+    request: AddCredentialRequest,
+    accessToken: string,
+  ): Promise<AddCredentialResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const credential = this.addCredentialFor(session.userId, {
+      type: request.type,
+      label: request.label,
+      // The fake never actually parses `secret` — the real server does (spec §165) —
+      // it just needs something identifier-shaped for the accounts list to show.
+      identifier: request.secret.slice(0, 32),
+    });
+    return Promise.resolve({ credential });
   }
 }
 

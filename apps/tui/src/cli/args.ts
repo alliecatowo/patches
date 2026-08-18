@@ -1,3 +1,5 @@
+import { isTruthy } from '../env.js';
+
 export type Command =
   | 'tui'
   | 'ping'
@@ -23,6 +25,9 @@ export interface ParsedArgs {
   command: Command;
   target: string;
   insecure: boolean;
+  /** Strips all nameplate decoration app-wide (spec §173's required "plain mode") —
+   * `--plain` or `PATCHES_PLAIN=1`. Also toggleable at runtime (`P`, see `App.tsx`). */
+  plain: boolean;
   /**
    * Everything after the command word that isn't a shared connection flag
    * (`--server`/`--node`/`--insecure`) — the auth subcommands (`register`,
@@ -40,11 +45,7 @@ export const DEFAULT_TARGET = '127.0.0.1:50051';
 export interface ParseEnvironment {
   PATCHES_SERVER?: string | undefined;
   PATCHES_INSECURE?: string | undefined;
-}
-
-function isTruthy(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  PATCHES_PLAIN?: string | undefined;
 }
 
 /**
@@ -61,6 +62,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         ? DEFAULT_TARGET
         : env.PATCHES_SERVER.trim(),
     insecure: isTruthy(env.PATCHES_INSECURE),
+    plain: isTruthy(env.PATCHES_PLAIN),
     rest: [],
   };
 
@@ -95,6 +97,9 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         break;
       case '--insecure':
         result.insecure = true;
+        break;
+      case '--plain':
+        result.plain = true;
         break;
       case '--server':
       case '--node': {
@@ -148,6 +153,8 @@ Usage:
 Options:
   --server, --node <host:port>   Patches server to talk to (env: PATCHES_SERVER)
   --insecure                     connect without TLS (env: PATCHES_INSECURE)
+  --plain                        strip nameplate decoration (env: PATCHES_PLAIN;
+                                  also toggleable at runtime with P)
   -h, --help                     show this message
   -v, --version                  show the client version
 
