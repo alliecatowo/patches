@@ -54,6 +54,10 @@ export async function startTestServer(): Promise<TestServer> {
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
     ...options,
     logger: false,
+    // Surface a failed boot (e.g. missing DATABASE_URL) as a rejected promise with a
+    // readable message instead of Nest's default `process.abort()`, which Vitest can only
+    // report as "Worker exited unexpectedly".
+    abortOnError: false,
   });
   await app.listen();
   health.setStatus('SERVING');
