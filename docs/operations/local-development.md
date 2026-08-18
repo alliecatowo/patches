@@ -91,11 +91,14 @@ Notes:
 
 ## Running the apps
 
-- `pnpm dev` — runs the server (and, once it exists, the worker) via Turborepo's task
-  graph.
-- The TUI (`apps/tui`) is run separately (`pnpm --filter tui dev` or equivalent) against the
-  local gRPC server — see `apps/tui`'s own instructions once Phase 0 lands the hello-world
-  client.
+- `pnpm dev` — runs the server and worker (watch mode) via Turborepo's task graph,
+  filtered to just those two packages (`--filter=@patches/server --filter=@patches/worker`
+  on the root `dev` script).
+- `pnpm dev:tui` — runs the TUI (`apps/tui`) separately, **outside** Turbo (B-009).
+  Turbo interleaves every task's stdout with a `packageName:` prefix and buffers/reorders
+  output across parallel tasks; Ink's full-screen, raw-mode rendering can't survive that,
+  so `apps/tui`'s `dev` script is deliberately excluded from the root `turbo run dev` task
+  and run directly (`pnpm --filter @patches/tui dev`) in its own terminal instead.
 
 ## Git hooks
 
