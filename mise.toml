@@ -4,6 +4,7 @@ node = "24.19.0"
 pnpm = "11.22.0"
 docker-compose = "5.4.0"
 actionlint = "1.7.12"
+lefthook = "2.1.10"
 
 [env]
 # Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
@@ -30,12 +31,13 @@ fi
 """
 
 [tasks.setup]
-description = "First-run setup: install deps, start compose stack, run migrations, build everything"
+description = "First-run setup: install deps, git hooks, compose stack, migrations, build everything"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
 pnpm install
+mise run hooks:install
 [ -f .env ] || cp .env.example .env
 mise run compose -- up -d
 for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break; sleep 1; done
@@ -43,6 +45,10 @@ pnpm db:migrate
 pnpm build
 echo "Ready. Next: 'mise run server' in one terminal, 'mise run tui' in another."
 """
+
+[tasks."hooks:install"]
+description = "Install lefthook's git hooks (B-008: prettier/eslint on staged files, pre-commit only — pnpm verify remains the real gate). Run once per clone; mise run setup already does this."
+run = "cd \"$MISE_PROJECT_ROOT\" && lefthook install"
 
 [tasks.server]
 description = "Run the gRPC server (built) on 127.0.0.1:50051"
