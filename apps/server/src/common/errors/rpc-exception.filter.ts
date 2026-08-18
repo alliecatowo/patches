@@ -43,14 +43,19 @@ export class RpcExceptionsFilter implements RpcExceptionFilter<unknown> {
         requestId,
         ...exception.context,
       });
-      return this.build(grpcStatusForErrorCode(exception.code), exception.message, exception.code, requestId);
+      return this.build(
+        grpcStatusForErrorCode(exception.code),
+        exception.message,
+        exception.code,
+        requestId,
+      );
     }
 
     if (exception instanceof RpcException) {
       const error = exception.getError();
       if (typeof error === 'object' && error !== null && 'code' in error) {
         const { code, message } = error as { code: number; message?: string };
-        return this.build(code as GrpcStatus, message ?? exception.message, 'INTERNAL_ERROR', requestId);
+        return this.build(code, message ?? exception.message, 'INTERNAL_ERROR', requestId);
       }
       return this.build(GrpcStatus.UNKNOWN, exception.message, 'INTERNAL_ERROR', requestId);
     }
@@ -81,6 +86,7 @@ export class RpcExceptionsFilter implements RpcExceptionFilter<unknown> {
 }
 
 function toStack(exception: unknown): string {
-  if (exception instanceof Error) return exception.stack ?? `${exception.name}: ${exception.message}`;
+  if (exception instanceof Error)
+    return exception.stack ?? `${exception.name}: ${exception.message}`;
   return `Non-Error thrown: ${JSON.stringify(exception)}`;
 }

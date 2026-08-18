@@ -27,9 +27,11 @@ describe('assertClientSupported (spec §83)', () => {
   });
 
   it('rejects an impossibly old client', () => {
-    expect(codeOf(() => {
-      assertClientSupported('0.0.1');
-    })).toBe('CLIENT_VERSION_UNSUPPORTED');
+    expect(
+      codeOf(() => {
+        assertClientSupported('0.0.1');
+      }),
+    ).toBe('CLIENT_VERSION_UNSUPPORTED');
   });
 
   it('tells the user how to fix it instead of failing generically', () => {
@@ -44,9 +46,11 @@ describe('assertClientSupported (spec §83)', () => {
   });
 
   it('rejects a version string it cannot parse', () => {
-    expect(codeOf(() => {
-      assertClientSupported('banana');
-    })).toBe('CLIENT_VERSION_UNSUPPORTED');
+    expect(
+      codeOf(() => {
+        assertClientSupported('banana');
+      }),
+    ).toBe('CLIENT_VERSION_UNSUPPORTED');
   });
 
   it('allows callers that send no version at all (grpcurl, health probes)', () => {

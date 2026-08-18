@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { type Metadata } from '@grpc/grpc-js';
-import { type CallHandler, type ExecutionContext, Injectable, type NestInterceptor } from '@nestjs/common';
+import {
+  type CallHandler,
+  type ExecutionContext,
+  Injectable,
+  type NestInterceptor,
+} from '@nestjs/common';
 import { METADATA_KEYS, MIN_CLIENT_VERSION } from '@patches/proto';
 import { Observable } from 'rxjs';
 

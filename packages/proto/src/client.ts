@@ -43,7 +43,9 @@ export function createSystemClient(
 ): SystemGrpcClient {
   const Service = services()[SERVICE_NAMES.system];
   if (Service === undefined) {
-    throw new Error(`${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system} is missing from the loaded schema`);
+    throw new Error(
+      `${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system} is missing from the loaded schema`,
+    );
   }
   return new Service(target, credentials, options) as unknown as SystemGrpcClient;
 }

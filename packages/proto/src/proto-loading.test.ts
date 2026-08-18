@@ -47,7 +47,9 @@ describe('proto files', () => {
     for (const method of Object.values(systemService.service)) {
       expect(method.requestStream).toBe(false);
       expect(method.responseStream).toBe(false);
-      expect(method.path.startsWith(`/${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system}/`)).toBe(true);
+      expect(method.path.startsWith(`/${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system}/`)).toBe(
+        true,
+      );
     }
   });
 

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": ["node"],
+    "noEmit": true
+  },
+  // `vitest.config.ts` is included so typescript-eslint's project service can
+  // type-check it; without a tsconfig that owns it, ESLint reports a parsing
+  // error. Emitting is done from tsconfig.build.json, which excludes it.
+  "include": ["src", "vitest.config.ts"]
+}

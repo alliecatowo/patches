@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    // tsup's `dts` build emits declarations without a `--tsBuildInfoFile`, which
+    // TypeScript rejects when `incremental` is on (TS5074).
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}
