@@ -6,6 +6,7 @@ import type { Actor, Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
+import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
@@ -13,13 +14,17 @@ import type { PostRowActions } from '../components/PostList.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
+import { useUnreadCount } from '../hooks/useUnreadCount.js';
+import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { ConnectScreen } from '../screens/ConnectScreen.js';
 import { HelpScreen } from '../screens/HelpScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
+import { NotificationsScreen } from '../screens/NotificationsScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
+import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
@@ -32,11 +37,30 @@ export interface AppProps {
 }
 
 type Screen =
-  'connect' | 'help' | 'login' | 'compose' | 'profile' | 'local' | 'home' | 'search' | 'thread';
+  | 'connect'
+  | 'help'
+  | 'login'
+  | 'compose'
+  | 'profile'
+  | 'local'
+  | 'home'
+  | 'search'
+  | 'thread'
+  | 'bookmarks'
+  | 'notifications'
+  | 'report';
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
-  return screen === 'login' || screen === 'compose' || screen === 'search';
+  return screen === 'login' || screen === 'compose' || screen === 'search' || screen === 'report';
+}
+
+/** Optimistic overlay for one post's reaction state (P4-004, spec §79) — only the
+ * fields a toggle actually changes; everything else keeps the server's last value. */
+interface ReactionOverride {
+  liked?: boolean;
+  bookmarked?: boolean;
+  likes?: number;
 }
 
 function emptyDraft(): ComposeDraft {
@@ -94,6 +118,28 @@ export function App({
   // thread. Drilling into a reply's own replies pushes; `Esc` pops one level and only
   // leaves `screen === 'thread'` once the stack empties (see `openThread`/`threadBack`).
   const [threadStack, setThreadStack] = useState<readonly string[]>([]);
+
+  // Optimistic like/bookmark overlay (P4-004, spec §79), keyed by post id — applied at
+  // render time (`decoratePost`) over whatever `viewerState`/`counts` a given screen's
+  // own paginated list last fetched, so a like registers immediately no matter which
+  // list (home/local/profile/thread/bookmarks) is currently showing that post.
+  const [reactionOverrides, setReactionOverrides] = useState<ReadonlyMap<string, ReactionOverride>>(
+    new Map(),
+  );
+
+  // What `report` currently targets — a post (`!` on a row) or an actor (`!` on a
+  // profile). `undefined` until `openReport` fires.
+  const [reportTarget, setReportTarget] = useState<ReportTarget | undefined>(undefined);
+
+  // Bumped by `NotificationsScreen`'s `m` so the status-bar badge doesn't wait for
+  // `useUnreadCount`'s next screen-change/60s refresh (`screenKey` below).
+  const [unreadNonce, setUnreadNonce] = useState(0);
+  const unreadCount = useUnreadCount(
+    api,
+    session !== undefined,
+    ensureAccessToken,
+    `${screen}:${unreadNonce}`,
+  );
 
   // Auto sign-in from a stored refresh token, and resume an unsent draft — both
   // best-effort: nothing here should block first render (spec §80/§37). `sessionManager`
@@ -195,32 +241,115 @@ export function App({
     go('compose');
   }
 
-  // `l`/`b` on a post row (P4-004). `ReactionService` (Like/Unlike/Bookmark/Unbookmark)
-  // has not landed in `@patches/proto` yet — see the implementer report for this task.
-  // These are placeholders so the keys are discoverable now; swap for real optimistic
-  // calls once the service exists, same pattern as `toggleFollow` in `ProfileScreen`.
-  function toggleLike(_post: Post): void {
-    if (session === undefined) {
-      setNotice('Log in first — press L.');
-      return;
-    }
-    setNotice('Likes are coming soon.');
+  /** Merges this post's `ReactionOverride` (if any) over its last-fetched
+   * `viewerState`/`counts` — the single place every screen's rendering goes
+   * through so a like/bookmark registers no matter which list is showing the
+   * post (spec §79: optimistic UI). */
+  function decoratePost(post: Post): Post {
+    const override = reactionOverrides.get(post.id);
+    if (override === undefined) return post;
+    const viewerState = post.viewerState ?? { liked: false, bookmarked: false };
+    const counts = post.counts ?? { replies: 0, likes: 0 };
+    return {
+      ...post,
+      viewerState: {
+        liked: override.liked ?? viewerState.liked,
+        bookmarked: override.bookmarked ?? viewerState.bookmarked,
+      },
+      counts: { ...counts, likes: override.likes ?? counts.likes },
+    };
   }
 
-  function toggleBookmark(_post: Post): void {
+  function setReactionOverride(postId: string, patch: ReactionOverride): void {
+    setReactionOverrides((previous) => {
+      const next = new Map(previous);
+      next.set(postId, { ...next.get(postId), ...patch });
+      return next;
+    });
+  }
+
+  /** `l` on a post row (P4-004, spec §53/§79) — optimistic, reverted on failure. */
+  async function toggleLike(post: Post): Promise<void> {
     if (session === undefined) {
       setNotice('Log in first — press L.');
       return;
     }
-    setNotice('Bookmarks are coming soon.');
+    const current = decoratePost(post);
+    const wasLiked = current.viewerState?.liked ?? false;
+    const priorLikes = current.counts?.likes ?? 0;
+    setReactionOverride(post.id, {
+      liked: !wasLiked,
+      likes: Math.max(0, priorLikes + (wasLiked ? -1 : 1)),
+    });
+    try {
+      const accessToken = await ensureAccessToken();
+      const response = wasLiked
+        ? await api.unlikePost({ postId: post.id }, accessToken)
+        : await api.likePost({ postId: post.id }, accessToken);
+      setReactionOverride(post.id, {
+        liked: response.viewerState?.liked ?? !wasLiked,
+        likes: response.counts?.likes ?? priorLikes,
+      });
+    } catch (error) {
+      setReactionOverride(post.id, { liked: wasLiked, likes: priorLikes });
+      setNotice(describeGrpcError(error, api.target).title);
+    }
+  }
+
+  /** `b` on a post row (P4-004, spec §53/§79) — optimistic, reverted on failure. */
+  async function toggleBookmark(post: Post): Promise<void> {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    const current = decoratePost(post);
+    const wasBookmarked = current.viewerState?.bookmarked ?? false;
+    setReactionOverride(post.id, { bookmarked: !wasBookmarked });
+    try {
+      const accessToken = await ensureAccessToken();
+      const response = wasBookmarked
+        ? await api.unbookmarkPost({ postId: post.id }, accessToken)
+        : await api.bookmarkPost({ postId: post.id }, accessToken);
+      setReactionOverride(post.id, {
+        bookmarked: response.viewerState?.bookmarked ?? !wasBookmarked,
+      });
+    } catch (error) {
+      setReactionOverride(post.id, { bookmarked: wasBookmarked });
+      setNotice(describeGrpcError(error, api.target).title);
+    }
+  }
+
+  /** `!` — opens the report screen scoped to a post or an actor (spec §55). */
+  function openReport(target: ReportTarget): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    setReportTarget(target);
+    go('report');
+  }
+
+  function reportPost(post: Post): void {
+    const handle = post.author?.handle;
+    openReport({
+      type: 'post',
+      id: post.id,
+      label: handle !== undefined && handle !== '' ? `@${handle}'s post` : 'this post',
+    });
+  }
+
+  function reportActor(actor: Actor): void {
+    openReport({ type: 'actor', id: actor.id, label: `@${actor.handle}` });
   }
 
   const rowActions: PostRowActions = {
     onOpenPost: (post) => openThread(post.id),
     onOpenAuthor: openAuthorProfile,
     onReply: openReply,
-    onToggleLike: toggleLike,
-    onToggleBookmark: toggleBookmark,
+    onToggleLike: (post) => void toggleLike(post),
+    onToggleBookmark: (post) => void toggleBookmark(post),
+    onReport: reportPost,
+    decorate: decoratePost,
   };
 
   useInput(
@@ -255,6 +384,8 @@ export function App({
         else if (input === 'l') go('local');
         else if (input === 'h') requireSession('home');
         else if (input === 's') go('search');
+        else if (input === 'b') requireSession('bookmarks');
+        else if (input === 'n') requireSession('notifications');
         return;
       }
       if (input === 'g') {
@@ -304,6 +435,7 @@ export function App({
             actions={rowActions}
             viewerActorId={session?.userId}
             ensureAccessToken={ensureAccessToken}
+            onReportActor={reportActor}
           />
         )}
         {screen === 'thread' && threadStack.length > 0 && (
@@ -313,6 +445,37 @@ export function App({
             isActive={screen === 'thread' && !pendingGo}
             actions={rowActions}
             onBack={threadBack}
+          />
+        )}
+        {screen === 'bookmarks' && session !== undefined && (
+          <BookmarksScreen
+            api={api}
+            isActive={screen === 'bookmarks' && !pendingGo}
+            ensureAccessToken={ensureAccessToken}
+            actions={rowActions}
+          />
+        )}
+        {screen === 'notifications' && session !== undefined && (
+          <NotificationsScreen
+            api={api}
+            isActive={screen === 'notifications' && !pendingGo}
+            ensureAccessToken={ensureAccessToken}
+            onOpenPost={openThread}
+            onOpenAuthor={(actor) => openProfile(actor.id, actor)}
+            onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
+          />
+        )}
+        {screen === 'report' && reportTarget !== undefined && session !== undefined && (
+          <ReportScreen
+            api={api}
+            target={reportTarget}
+            ensureAccessToken={ensureAccessToken}
+            isActive={screen === 'report'}
+            onCancel={() => setScreen(priorScreen)}
+            onSubmitted={() => {
+              setNotice('Report submitted — thank you.');
+              setScreen(priorScreen);
+            }}
           />
         )}
         {screen === 'login' && (
@@ -368,6 +531,7 @@ export function App({
           statusColor={statusColor(serverInfoState.status)}
           handle={session?.actor?.handle}
           keys={statusKeys(screen, session !== undefined)}
+          unreadCount={unreadCount}
         />
       </Box>
     </Box>
@@ -378,10 +542,12 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'login') return ['Esc cancel'];
   if (screen === 'compose') return ['Ctrl+S post', 'Esc keep draft'];
   if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
+  if (screen === 'report') return ['j/k reason', 'Ctrl+S submit', 'Esc cancel'];
+  if (screen === 'notifications') return ['j/k move', 'Enter open', 'm mark all read'];
   if (screen === 'thread') {
-    return ['Enter thread', 'p author', 'r reply', 'l like', 'b bookmark', 'Esc back'];
+    return ['Enter thread', 'p author', 'r reply', 'l like', 'b bookmark', '! report', 'Esc back'];
   }
-  if (screen === 'local' || screen === 'home' || screen === 'profile') {
+  if (screen === 'local' || screen === 'home' || screen === 'profile' || screen === 'bookmarks') {
     return [
       'j/k move',
       'Enter thread',
@@ -389,12 +555,15 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
       'r reply',
       'l like',
       'b bookmark',
+      '! report',
       'g h/l/p go',
       '? help',
     ];
   }
   const keys = [
     'g h/l/p go',
+    'g b bookmarks',
+    'g n notifications',
     '/ search',
     'c compose',
     authenticated ? 'L account' : 'L login',

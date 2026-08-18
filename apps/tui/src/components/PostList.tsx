@@ -23,6 +23,13 @@ export interface PostRowActions {
   onToggleLike?: ((post: Post) => void) | undefined;
   /** `b` on the selected row — bookmark/unbookmark (P4-004, optimistic — spec §79). */
   onToggleBookmark?: ((post: Post) => void) | undefined;
+  /** `!` on the selected row — opens the report screen scoped to that post (spec §55). */
+  onReport?: ((post: Post) => void) | undefined;
+  /** Applied to each post before it's rendered (not before it's passed to a row
+   * action) — lets a caller overlay optimistic reaction state (P4-004's
+   * `App.decoratePost`) without every screen's own paginated list needing to
+   * know about it. */
+  decorate?: ((post: Post) => Post) | undefined;
 }
 
 export interface PostListProps extends PostRowActions {
@@ -48,7 +55,8 @@ export interface PostListProps extends PostRowActions {
  * one screen per list). Cursor-based "load more" is driven by the owning
  * screen's `useInput` — this component owns only row selection and the
  * per-row actions: `j`/`k`/arrows to move, `Enter` opens the thread, `p` the
- * author's profile, `r` replies, `l`/`b` like/bookmark (spec §69, P4-004).
+ * author's profile, `r` replies, `l`/`b` like/bookmark, `!` report (spec §69,
+ * P4-004).
  */
 export function PostList({
   posts,
@@ -62,7 +70,9 @@ export function PostList({
   onReply,
   onToggleLike,
   onToggleBookmark,
+  onReport,
   rowIndent,
+  decorate,
 }: PostListProps): ReactElement {
   const [selected, setSelected] = useState(0);
   // Which `content_warning`-gated posts the viewer has revealed this session — never
@@ -120,6 +130,11 @@ export function PostList({
       if (input === 'b') {
         const post = posts[effectiveSelected];
         if (post !== undefined) onToggleBookmark?.(post);
+        return;
+      }
+      if (input === '!') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onReport?.(post);
       }
     },
     { isActive: isActive && posts.length > 0 },
@@ -138,7 +153,7 @@ export function PostList({
       {posts.map((post, index) => (
         <Box key={post.id} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
           <PostRow
-            post={post}
+            post={decorate?.(post) ?? post}
             selected={isActive && index === effectiveSelected}
             revealed={revealed.has(post.id)}
           />

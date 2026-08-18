@@ -3,17 +3,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 
-export interface PostPage {
-  posts: readonly Post[];
+export interface Page<T> {
+  items: readonly T[];
   page: PageInfo | undefined;
 }
 
 /** One cursor-paginated `ListXxx` RPC (spec §46), e.g. `api.listLocalFeed`. */
-export type FetchPostPage = (cursor: string) => Promise<PostPage>;
+export type FetchPage<T> = (cursor: string) => Promise<Page<T>>;
 
-export interface UsePaginatedPostsResult {
-  posts: readonly Post[];
-  /** True only for the very first page of this feed. */
+export interface UsePaginatedListResult<T> {
+  items: readonly T[];
+  /** True only for the very first page of this list. */
   loading: boolean;
   /** True while a `loadMore()` call is in flight. */
   loadingMore: boolean;
@@ -24,13 +24,17 @@ export interface UsePaginatedPostsResult {
 }
 
 /**
- * Drives one cursor-paginated post list — the profile timeline and the local
- * feed both use this (spec §68: shared behaviour, not duplicated per screen).
- * Never offset-based (spec §46, §153): every page request carries the opaque
- * `next_cursor` from the previous response, never a page number.
+ * Drives one cursor-paginated list — posts (profile timeline, local/home feed,
+ * thread replies, bookmarks) and notifications all use this (spec §68: shared
+ * behaviour, not duplicated per screen). Never offset-based (spec §46, §153):
+ * every page request carries the opaque `next_cursor` from the previous
+ * response, never a page number.
  */
-export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePaginatedPostsResult {
-  const [posts, setPosts] = useState<readonly Post[]>([]);
+export function usePaginatedList<T>(
+  target: string,
+  fetch: FetchPage<T>,
+): UsePaginatedListResult<T> {
+  const [items, setItems] = useState<readonly T[]>([]);
   const [cursor, setCursor] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -46,7 +50,7 @@ export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePagi
     fetch('')
       .then((result) => {
         if (cancelled) return;
-        setPosts(result.posts);
+        setItems(result.items);
         setCursor(result.page?.nextCursor ?? '');
         setHasMore(result.page?.hasMore ?? false);
       })
@@ -70,7 +74,7 @@ export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePagi
     setLoadingMore(true);
     fetch(cursor)
       .then((result) => {
-        setPosts((previous) => [...previous, ...result.posts]);
+        setItems((previous) => [...previous, ...result.items]);
         setCursor(result.page?.nextCursor ?? '');
         setHasMore(result.page?.hasMore ?? false);
       })
@@ -83,5 +87,40 @@ export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePagi
       });
   }, [cursor, fetch, hasMore, target]);
 
-  return { posts, loading, loadingMore, hasMore, error, loadMore };
+  return { items, loading, loadingMore, hasMore, error, loadMore };
+}
+
+// ---------------------------------------------------------------------------
+// Post-specific wrapper — kept so existing `posts`/`PostPage` call sites
+// (profile timeline, local/home feed, thread replies) don't need to change.
+// ---------------------------------------------------------------------------
+
+export interface PostPage {
+  posts: readonly Post[];
+  page: PageInfo | undefined;
+}
+
+/** One cursor-paginated `ListXxx` RPC (spec §46), e.g. `api.listLocalFeed`. */
+export type FetchPostPage = (cursor: string) => Promise<PostPage>;
+
+export interface UsePaginatedPostsResult {
+  posts: readonly Post[];
+  loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: FriendlyError | undefined;
+  loadMore: () => void;
+}
+
+export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePaginatedPostsResult {
+  const fetchItems = useCallback(
+    (cursor: string): Promise<Page<Post>> =>
+      fetch(cursor).then((result) => ({ items: result.posts, page: result.page })),
+    [fetch],
+  );
+  const { items, loading, loadingMore, hasMore, error, loadMore } = usePaginatedList<Post>(
+    target,
+    fetchItems,
+  );
+  return { posts: items, loading, loadingMore, hasMore, error, loadMore };
 }
