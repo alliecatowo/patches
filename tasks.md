@@ -110,14 +110,14 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 > Local and non-public. Every §109 control still gates anything Internet-facing.
 
-- [ ] P8-001 — WebFinger (RFC 7033) + actor document serialization from `actors`
-- [ ] P8-002 — Inbox/outbox endpoints; `Follow`, `Accept`, `Create` (Note), `Delete`, basic `Like`
-- [ ] P8-003 — Real `FederationGateway` implementation replacing `NoopFederationGateway`, behind `FEDERATION_ENABLED` (default **off**)
-- [ ] P8-004 — Durable delivery on the outbox/jobs machinery: bounded retries, idempotent/safe duplicate delivery, dead-letter
-- [ ] P8-005 — HTTP signature signing + verification
-- [ ] P8-006 — §109 ingestion hardening: URL validation, private/reserved IP rejection, redirect/size/timeout limits, JSON depth caps, activity dedupe, inbox rate limits, domain blocks
-- [ ] P8-007 — Page manifest advertised as a Patches extension property on the actor doc (§170); plain Fediverse servers degrade to a normal actor
-- [ ] P8-008 — Two-node integration harness: node A follows node B, post propagates, delete tombstones
+- [x] P8-001 — WebFinger (RFC 7033) + actor document serialization from `actors` _(apps/server/src/modules/federation/http/{webfinger,actor}.controller.ts; outbox collection GET too, ahead of P8-002)_
+- [x] P8-002 — Inbox/outbox endpoints; `Follow`, `Accept`, `Create` (Note), `Delete`, basic `Like` _(inbox.service.ts handles Follow/Undo/Accept/Create/Delete/Like; outbox is newest-20 only, not true keyset-paginated — follow-up)_
+- [x] P8-003 — Real `FederationGateway` implementation replacing `NoopFederationGateway`, behind `FEDERATION_ENABLED` (default **off**) _(LazyFederationGateway dispatches to ActivityPubFederationGateway/NoopFederationGateway per call, reading the flag fresh each time)_
+- [x] P8-004 — Durable delivery on the outbox/jobs machinery: bounded retries, idempotent/safe duplicate delivery, dead-letter _(FEDERATION_DELIVER job type, max 12 attempts then DEAD; idempotency key is (activityId, inboxUrl); apps/worker/src/jobs/handlers/federation-deliver.handler.ts)_
+- [x] P8-005 — HTTP signature signing + verification _(draft-cavage-http-signatures-12, RSA-2048/SHA-256, Digest header; unit-tested self-interop; refetch-on-verify-failure)_
+- [x] P8-006 — §109 ingestion hardening: URL validation, private/reserved IP rejection, redirect/size/timeout limits, JSON depth caps, activity dedupe, inbox rate limits, domain blocks _(safeFetch + isDisallowedIp, InboxActivity dedupe, PeerRateLimiterService, DomainBlockService enforced inbound both directions; outbound delivery does not yet consult domain_blocks before enqueueing — follow-up; domain_blocks has no write RPC/CLI yet)_
+- [x] P8-007 — Page manifest advertised as a Patches extension property on the actor doc (§170); plain Fediverse servers degrade to a normal actor _(ActorDocumentService; GET /users/:handle/page serves the PUBLIC Page's current revision JSON)_
+- [x] P8-008 — Two-node integration harness: node A follows node B, post propagates, delete tombstones _(apps/server/test/federation-two-node.integration.test.ts — two real child processes, FEDERATION_DELIVER drained inline; passing)_
 
 ## Backlog / discovered
 
@@ -170,6 +170,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] B-019 — TUI: surface `Actor.nameplate` (name color/glyph/badges/status line) in `ProfileScreen` and `Post.content_warning` (click-to-reveal) in `PostRow`, now that both are on the wire (B-018)
 - [ ] B-023 — TUI Pages editor: structured block-by-block add/remove/reorder UI (P45-006 shipped the `$EDITOR` raw-JSON round trip only; the structured form editor was deferred)
 - [ ] B-024 — proto+server: a bulk "list mutual follows" RPC — `PageScreen`'s `Friends` block currently renders a documented `[friends list unavailable]` placeholder because `SocialGraphService` only has per-actor `GetRelationship`, no `ListFollowing`/`ListFollowers`
+- [ ] B-025 — database: migration giving `ssh_login_challenges` dedicated `purpose`/`bound_user_id`/`bound_fingerprint` columns (B-021 currently JSON-encodes the enrollment binding into `claimed_handle`)
 
 - [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
