@@ -226,6 +226,48 @@ flow this backs). No specific CORS JSON is prescribed here yet — write it once
 (`patches.social` or the actual chosen domain) via its DNS records (SPF/DKIM/DMARC), and
 generate an API key scoped to sending only.
 
+## Error monitoring
+
+**Status: decided; log drain setup planned (needs live environment).**
+
+Decision (per `INITIAL_VISION.md` §100/§159 "error monitoring works or a documented
+alternative exists"): Patches v0 does **not** wire in Sentry (or any third-party error
+tracker). The documented alternative is structured JSON logs plus Fly's own log
+infrastructure:
+
+- `apps/server` and `apps/worker` already emit structured JSON logs in production
+  (`NODE_ENV=production`) through the shared logger factory
+  (`apps/server/src/common/logging/logger.factory.ts`) — every request/RPC is logged with a
+  request-context (actor/session where available), and unhandled errors are surfaced as
+  structured `rpc.error` events by `apps/server/src/common/errors/rpc-exception.filter.ts`
+  rather than bare stack traces. `apps/worker`'s job runner (`apps/worker/src/jobs/`) uses
+  the same logger factory for its own job lifecycle/error logging; dedicated federation
+  delivery/inbox counters are tracked as a separate follow-up (see `tasks.md` A-036) and are
+  not yet emitted.
+- Once deployed, `fly logs`/the Fly dashboard give a live tail of this structured output for
+  free. For retention/search beyond Fly's short live-tail window, Fly supports shipping logs
+  to an external log drain (destination — Loki, Datadog, or similar — is an operator choice,
+  not prescribed here); the exact `flyctl`/`fly.toml` incantation for wiring up a drain is
+  **not verified in this environment** (no live Fly app to test it against) — confirm against
+  `fly logs --help`/current Fly docs at setup time rather than assuming a specific flag or
+  config block from this note.
+- Alerting is **log-based**, not APM-based: a rule watching for `level: "error"` /
+  `rpc.error` events (or a spike in their rate) in whatever the log drain's destination
+  supports (most log-drain backends — Grafana Loki, Datadog, etc. — support alert rules on
+  log content), routed to whatever the team's current communication channel is at the time
+  (see `docs/operations/incidents.md`'s detection step).
+- Why not Sentry: it would be the first third-party SaaS dependency purely for
+  observability, with its own DSN-as-secret to manage and a stack-trace-shipping surface
+  that needs privacy review before it ships to a hosted service; structured logs already
+  carry the same "what broke and where" information without that added dependency, which
+  fits the project's minimal-infrastructure bias (spec §153's no-unnecessary-managed-service
+  posture, applied here by extension). Revisit if log-based alerting proves insufficient
+  once there's real production traffic.
+- Nothing here has been exercised against a live Fly log drain — there is no deployed node
+  in this environment to point a drain at. The application-side structured logging itself
+  is implemented and covered by existing server/worker tests; only the drain/alerting setup
+  remains **planned**.
+
 ## Domains
 
 Per `INITIAL_VISION.md` §91:

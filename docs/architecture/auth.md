@@ -5,9 +5,14 @@ several nodes at once. Source of truth: `INITIAL_VISION.md` §33–§39 as amend
 **§165–§169**, plus ADR [0011](../decisions/0011-credentials-separate-from-identity.md) and
 ADR [0010](../decisions/0010-argon2id-jose-jwt.md).
 
-**Status: planned.** Nothing in this document is implemented yet — it is the design Phase 1
-implements. Where a flow depends on an external protocol, the citation and verification date
-are given inline.
+**Status: implemented.** All flows described below are implemented in
+`apps/server/src/modules/auth/` and covered by integration tests: registration, email
+verification, password login, refresh-token rotation with reuse detection, logout and
+logout-all, password reset, SSH-key challenge/response login, GitHub OAuth device-flow
+login, and credential list/add/revoke (including server-verified SSH enrollment proof), plus
+DB-backed and peer rate limiting on the auth surface and bootstrap (first-user) registration.
+Where a flow depends on an external protocol, the citation and verification date are given
+inline.
 
 ## 1. The core split
 
