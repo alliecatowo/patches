@@ -102,21 +102,6 @@ export const refreshTokenInputSchema = z.object({
 
 export const uuidInputSchema = z.uuid('must be a valid id');
 
-/**
- * SSH enrollment challenges (B-021) are stored on the same `ssh_login_challenges` row as SSH
- * login challenges — there is no separate table or `purpose` column — so the binding to "who
- * this challenge was issued to, and for which key" is JSON-encoded into the existing nullable
- * `claimed_handle` text column, which login challenges always leave `null`. `parseInput`
- * against this schema is how a malformed or foreign-purpose value in that column is turned
- * into "no binding found" rather than a thrown parse error.
- */
-export const sshEnrollmentBindingSchema = z.object({
-  purpose: z.literal('ENROLL'),
-  userId: z.uuid(),
-  fingerprint: z.string().min(1),
-});
-export type SshEnrollmentBinding = z.infer<typeof sshEnrollmentBindingSchema>;
-
 /** `null`/empty proto scalars mean "absent"; protobuf has no way to distinguish the two. */
 export function optionalText(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
