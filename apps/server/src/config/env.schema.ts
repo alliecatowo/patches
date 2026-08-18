@@ -84,9 +84,34 @@ const envObjectSchema = z.object({
   /** HTTP listener port for the federation surface (WebFinger/actor/inbox/outbox), only bound
    * when `FEDERATION_ENABLED`. */
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+
+  /**
+   * B-026: AES-256-GCM key `KeyService` encrypts `federation_keys.private_key_*` under —
+   * base64-encoded, must decode to exactly 32 bytes (`openssl rand -base64 32`). Optional
+   * when federation is off (nothing ever calls `KeyService`); required below when
+   * `FEDERATION_ENABLED=true`, since a federating node with no way to decrypt its own signing
+   * keys can't federate at all.
+   */
+  FEDERATION_KEY_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
+  if (value.FEDERATION_ENABLED) {
+    if (value.FEDERATION_KEY_ENCRYPTION_KEY === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
+        message: 'FEDERATION_KEY_ENCRYPTION_KEY is required when FEDERATION_ENABLED=true',
+      });
+    } else if (Buffer.from(value.FEDERATION_KEY_ENCRYPTION_KEY, 'base64').length !== 32) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
+        message: 'FEDERATION_KEY_ENCRYPTION_KEY must decode (base64) to exactly 32 bytes',
+      });
+    }
+  }
+
   if (value.NODE_ENV !== 'production') return;
 
   // Production-only requirements live here rather than in the base types so that a
