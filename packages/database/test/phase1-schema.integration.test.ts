@@ -56,28 +56,32 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     const rows = await dataSource.query<{ table_name: string }[]>(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`,
     );
-    expect(rows.map((row) => row.table_name)).toEqual([
-      'actors',
-      'app_meta',
-      'auth_codes',
-      'blocks',
-      'bookmarks',
-      'credentials',
-      'follows',
-      'invites',
-      'likes',
-      'media',
-      'migrations',
-      'mutes',
-      'notifications',
-      'outbox_jobs',
-      'post_media',
-      'posts',
-      'refresh_tokens',
-      'reports',
-      'ssh_login_challenges',
-      'users',
-    ]);
+    // Later phases add tables (social graph, interactions, admin, pages, federation…) — this
+    // test guards the Phase 1/2 set, so assert containment rather than an exact list.
+    expect(rows.map((row) => row.table_name)).toEqual(
+      expect.arrayContaining([
+        'actors',
+        'app_meta',
+        'auth_codes',
+        'blocks',
+        'bookmarks',
+        'credentials',
+        'follows',
+        'invites',
+        'likes',
+        'media',
+        'migrations',
+        'mutes',
+        'notifications',
+        'outbox_jobs',
+        'post_media',
+        'posts',
+        'refresh_tokens',
+        'reports',
+        'ssh_login_challenges',
+        'users',
+      ]),
+    );
   });
 
   it('has every index required by INITIAL_VISION.md §60 that applies to these tables', async () => {
