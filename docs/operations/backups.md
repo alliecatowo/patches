@@ -19,8 +19,12 @@ database, which holds identity, the social graph, and moderation state.
 **Status: PLANNED.** Fly Managed Postgres provides managed backup capability; the specific
 mechanism (automatic snapshot schedule, retention window, point-in-time recovery
 availability) must be confirmed against current Fly documentation at the time backups are
-configured (Phase 7), not assumed from this document. Record the actual configuration here
-once set up:
+configured (Phase 7), not assumed from this document. `docs/research/fly-io.md` §6
+(verified 2026-08-18) confirms Fly's overview docs list "automatic backups and recovery" as
+an included MPG feature but do **not** state a specific retention window or PITR
+granularity anywhere fetched for that research pass — get the exact numbers from the Fly
+dashboard or support at provisioning time, not from marketing copy. Record the actual
+configuration here once set up:
 
 - backup frequency: _TBD_
 - retention window: _TBD_
@@ -53,8 +57,12 @@ once the service has real usage and stakes.
    implementation time).
 3. Validate the restored database against a checklist (row counts on key tables, schema
    version/migration state matches expectations, spot-check recent known data).
-4. Cut the application over to the restored database (update `DATABASE_URL` secret,
-   redeploy).
+4. Cut the application over to the restored database (`fly secrets set DATABASE_URL=...`,
+   then `flyctl deploy --config infra/fly/fly.toml --remote-only` — see
+   `docs/operations/deployment.md`). The deploy's `release_command`
+   (`node server/migrate.mjs`, `infra/fly/fly.toml`) will run against the restored database
+   automatically as part of that redeploy; confirm it reports the expected migration state
+   (no unexpected pending migrations) before considering the cutover complete.
 5. Confirm application health checks pass and smoke tests succeed against the restored
    database before considering the incident resolved.
 
