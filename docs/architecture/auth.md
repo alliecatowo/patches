@@ -175,10 +175,11 @@ just the client's own local check the agent will vouch for the key:
 ```
 
 `BeginSshEnrollment` is authenticated (`AuthGuard`) and issues a single-use, TTL ≤ 120 s
-challenge from the same `ssh_login_challenges` table as login, bound at issuance to the
-caller's own `user_id` and to the fingerprint of `public_key_openssh` — unlike login, there is
-no enumeration concern here (the caller already proved who they are), so the binding happens
-up front rather than being re-derived at completion. The signed blob is the same fixed-order
+challenge from the same `ssh_login_challenges` table as login, distinguished by a `purpose`
+column (`LOGIN`/`ENROLL`, B-025) and bound at issuance to the caller's own `user_id`
+(`bound_user_id`) and to the fingerprint of `public_key_openssh` (`bound_fingerprint`) — unlike
+login, there is no enumeration concern here (the caller already proved who they are), so the
+binding happens up front rather than being re-derived at completion. The signed blob is the same fixed-order
 encoding as login's, but with domain separator `"patches-ssh-enroll-v1"`
 (`SSH_ENROLL_DOMAIN_SEPARATOR` in `@patches/domain`) in place of `"patches-ssh-login-v1"`, so a
 login signature can never be replayed as an enrollment proof or vice versa. Verification reuses
@@ -189,14 +190,11 @@ missing entirely — a client bug, not an auth failure) or one uniform `AUTH_INV
 (→ `UNAUTHENTICATED`) for everything else, mirroring login's no-distinguishing-failure-modes
 reasoning even though enumeration itself isn't the threat model here.
 
-**Storage deviation, tracked as a follow-up.** `ssh_login_challenges` has no dedicated
-`purpose`/bound-user/bound-fingerprint columns — adding them would touch `packages/database`,
-outside this change's owned files. The enrollment binding is instead JSON-encoded into the
-existing nullable `claimed_handle` text column (`sshEnrollmentBindingSchema` in
-`apps/server/src/modules/auth/validation.ts`), which login challenges always leave `null`. A
-future migration should give enrollment its own `purpose` discriminator and typed binding
-columns instead of overloading a column named for a different, still-unimplemented feature
-(the claimed-handle narrowing noted above).
+`ssh_login_challenges.purpose`/`bound_user_id`/`bound_fingerprint` (B-025) replaced an earlier
+storage deviation: enrollment used to JSON-encode its binding into the `claimed_handle` text
+column (login's own field, always left `null` by `BeginSshEnrollment`) rather than having
+dedicated columns. `SshChallengeService.consumeEnrollmentProof` now reads `bound_user_id`/
+`bound_fingerprint` directly instead of parsing JSON out of `claimed_handle`.
 
 > Open implementation question for Phase 1: which Node library verifies OpenSSH-format public
 > key signatures. This needs a `docs/research/` note verified against the library's own docs

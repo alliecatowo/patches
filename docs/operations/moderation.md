@@ -56,6 +56,10 @@ post remove <id> --reason <text>
 jobs list [--status DEAD]
 jobs show <id>
 jobs replay <id>
+
+domain block <domain> [--reason <text>]
+domain unblock <domain>
+domain list
 ```
 
 - **`invite create`** prints the raw invite code **once** — only its SHA-256 hash is ever
@@ -77,6 +81,10 @@ jobs replay <id>
   reclaim on its next pass, preserving `attempts` — a replay is not a fresh job, so the
   job's existing `max_attempts` ceiling still applies. Refuses (rather than silently
   no-opping) if the job isn't currently `DEAD`.
+- **`domain block`/`domain unblock`** (B-027, `docs/operations/federation.md` "Blocking a
+  remote domain") write/delete a `domain_blocks` row, lowercased. `block` is idempotent —
+  re-blocking an already-blocked domain updates `reason` rather than erroring; `unblock`
+  refuses if the domain isn't currently blocked.
 
 ## Audit log
 
