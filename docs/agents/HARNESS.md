@@ -67,7 +67,7 @@ Every agent turn re-reads its whole context from cache, so cost ≈ context size
 
 - Briefs list the exact files/sections to read; agents read **only those** (`sed -n` ranges, `grep -n`), never whole research docs or spec sweeps. Research docs and the spec are reference, not required reading.
 - No exploratory repo tours: `Glob`/`Grep` for a symbol, read one file, act. Reviewers review a **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
-- Each agent has a `maxTurns` in its frontmatter; finish inside it — verify with one combined command per package (`pnpm --filter X build && … typecheck && … test`) rather than one command per check.
+- No turn caps — but every tool call re-reads the whole context, so batch: one combined verify command per package (`pnpm --filter X build && … typecheck && … test`), `sed -n` ranges instead of whole files, commit slices early.
 - Prefer one well-briefed sonnet agent over three narrow ones (each agent pays the CLAUDE.md + rules + system prompt load). Use haiku for mechanical checks. Opus/fable only where judgment matters.
 - Don't paste large file contents into reports; report paths + one-line facts.
 

@@ -5,7 +5,6 @@ model: haiku
 effort: low
 tools: Bash, Read, Grep, Glob
 color: yellow
-maxTurns: 25
 ---
 
 You run checks. You do not write or edit any file — if a check fails, your job is to report exactly what failed and why, not to fix it.
