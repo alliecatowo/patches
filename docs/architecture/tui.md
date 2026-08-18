@@ -338,6 +338,37 @@ Fallback behavior when secure storage is unavailable:
 
 Refresh tokens are never silently stored world-readable.
 
+### SSH credential management (P1-013)
+
+`patches keys add|list|remove` (`apps/tui/src/cli/keys.ts`, logic in
+`apps/tui/src/auth/ssh-enroll.ts`) — **Status: implemented**.
+
+- `patches keys add [--ssh-key <path|fingerprint>] [--label <text>] [--yes]`:
+  discovers candidates from the agent's loaded identities
+  (`SSH_AGENTC_REQUEST_IDENTITIES`), cross-referenced against `~/.ssh/*.pub` for a
+  friendlier prompt (`ssh-enroll.ts`'s `discoverEnrollmentCandidates` — the `.pub`
+  scan is display-only, never itself enrollable). Requires an explicit `y`
+  confirmation (or `--yes` when non-interactive), then asks the agent to sign a
+  local nonce (`SSH_AGENTC_SIGN_REQUEST`, never the server's login challenge) as a
+  client-side proof the identity is actually loaded, before calling
+  `AuthService.AddCredential`. **Never reads a private key file.**
+  - Deviation worth flagging: `AddCredentialRequest` (`packages/proto`
+    `auth.proto`) carries no signature/challenge field of its own — only the raw
+    OpenSSH public key text (`secret`) and a `label` — unlike
+    `BeginSshLogin`/`CompleteSshLogin`. The local signature above is therefore a
+    client-side guard only, not something the server verifies. A follow-up would
+    give `AddCredential` a `BeginSshLogin`-shaped challenge/signature pair so
+    possession is attested server-side too.
+- `patches keys list` → `AuthService.ListCredentials` (type, label, identifier,
+  since-timestamp; never a secret).
+- `patches keys remove <fingerprint>` → looks the credential up by
+  `identifier` (exact or suffix match, same UX as `--ssh-key`'s picker), then
+  `AuthService.RevokeCredential`; the server refuses to revoke an account's last
+  remaining credential.
+- No in-app (Ink screen) equivalent yet — CLI only. Adding an "account" screen
+  that wraps the same `ssh-enroll.ts` logic is a follow-up, not required for
+  P1-013's acceptance criteria.
+
 ## 13. Screens landed so far (B-015, P2-003, B-016)
 
 Beyond the connect screen, `App.tsx` now switches between: `help`, `login` (inline,
@@ -363,14 +394,18 @@ Phase 3's fan-out feed). The status bar shows `@handle` once signed in.
   longer valid." Both the CLI (`login`/`register` commands) and the inline `LoginScreen`
   pass `context: 'credentials'`.
 
+**PostList selection (B-017)**: `j`/`k`/arrow keys move a highlighted row in
+`components/PostList.tsx`; `Enter` opens that post's author profile — `App` tracks an
+arbitrary `profileTarget` (not just the caller's own via `g p`), so this works whether
+or not the viewer is signed in, and the post's already-embedded `author` (an `Actor`
+summary) is reused directly rather than triggering a `GetActor` round trip.
+
 Known gaps, tracked as follow-ups rather than blocking this slice:
 
-- `Post`/`Actor` have no `content_warning`/`nameplate` field yet in `packages/proto`
-  (nameplates are Amendment A, §173) — `PostRow`/`ProfileScreen` render everything else
-  and will pick these up once the schema has them.
-- Viewing another actor's profile "from a post" (vs. the caller's own via `g p`) isn't
-  wired yet — `ProfileScreen` already takes an arbitrary `actorId`, but no screen has a
-  selectable post list to launch it from.
+- `Actor.nameplate`/`Post.content_warning` now exist in `packages/proto` (Amendment A
+  §173, landed after this slice started) but `PostRow`/`ProfileScreen` don't render
+  them yet — nameplate colour-degradation and content-warning collapsing are P3-003
+  follow-up work.
 
 ## 14. Testing (B-015)
 
