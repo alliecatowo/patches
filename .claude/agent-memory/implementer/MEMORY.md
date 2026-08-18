@@ -3,3 +3,7 @@
 - [proto stringEnums must be true](proto-stringEnums-runtime-mismatch.md) — proto-loader always decodes enums to their string name; ts-proto's numeric default lies
 - [proto value-export Nest leak](proto-nestjs-value-export-leak.md) — value (not type) export of a generated enum pulls @nestjs/microservices into the ESM TUI bundle
 - [proto FieldMask wire shape](proto-fieldmask-wire-shape.md) — proto-loader decodes FieldMask as { paths: [...] }, not the flat string[] ts-proto's type claims
+- [Postgres cross-connection self-deadlock](postgres-cross-connection-self-deadlock.md) — a failed conditional UPDATE still holds a row lock; a nested separate transaction touching that row hangs forever, undetected by Postgres's deadlock checker
+- [proto-loader null message fields](proto-loader-null-message-fields.md) — unset nested-message fields decode as null, not undefined; check both
+- [TypeORM QueryBuilder alias substitution](typeorm-querybuilder-alias-substitution.md) — repeated alias.camelCaseProp in one raw condition string doesn't reliably substitute; use "table"."snake_case" instead
+- [Concurrent shared checkout hazard](concurrent-shared-checkout-hazard.md) — multiple agents can share one literal working directory on this project; commit+push in small frequent slices, re-verify after every pull --rebase
