@@ -25,3 +25,16 @@ export type {
   CreateTestFollowOptions,
   CreateTestMuteOptions,
 } from './social-graph.js';
+
+export {
+  createTestBookmark,
+  createTestLike,
+  createTestNotification,
+  createTestReport,
+} from './interactions.js';
+export type {
+  CreateTestBookmarkOptions,
+  CreateTestLikeOptions,
+  CreateTestNotificationOptions,
+  CreateTestReportOptions,
+} from './interactions.js';

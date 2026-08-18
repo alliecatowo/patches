@@ -19,15 +19,23 @@ export { PostMedia, MAX_POST_MEDIA } from './entities/post-media.entity.js';
 export { Follow } from './entities/follow.entity.js';
 export { Block } from './entities/block.entity.js';
 export { Mute } from './entities/mute.entity.js';
+export { Like } from './entities/like.entity.js';
+export { Bookmark } from './entities/bookmark.entity.js';
+export { Notification } from './entities/notification.entity.js';
+export { Report } from './entities/report.entity.js';
 
 export {
   AUTH_CODE_PURPOSES,
   CREDENTIAL_TYPES,
   FOLLOW_STATUSES,
   MEDIA_STATES,
+  NOTIFICATION_TYPES,
   OUTBOX_JOB_STATUSES,
   POST_TYPES,
   POST_VISIBILITIES,
+  REPORT_REASONS,
+  REPORT_STATUSES,
+  REPORT_SUBJECT_TYPES,
   USER_STATUSES,
 } from './entities/enums.js';
 export type {
@@ -35,9 +43,13 @@ export type {
   CredentialType,
   FollowStatus,
   MediaState,
+  NotificationType,
   OutboxJobStatus,
   PostType,
   PostVisibility,
+  ReportReason,
+  ReportStatus,
+  ReportSubjectType,
   UserStatus,
 } from './entities/enums.js';
 
@@ -45,6 +57,7 @@ export { ALL_MIGRATIONS } from './migrations/index.js';
 export { CreateAppMeta1755400000000 } from './migrations/1755400000000-CreateAppMeta.js';
 export { Phase1Schema1787036506325 } from './migrations/1787036506325-Phase1Schema.js';
 export { Phase3SocialGraph1787055340075 } from './migrations/1787055340075-Phase3SocialGraph.js';
+export { Phase4Interactions1787058326261 } from './migrations/1787058326261-Phase4Interactions.js';
 
 export {
   claimOutboxJobs,
