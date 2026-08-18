@@ -1,7 +1,20 @@
 /**
- * Fixture factories (`createTestUser`, `createTestActor`, `createTestPost`,
- * `createTestFollow`, ...) per `INITIAL_VISION.md` §118. Empty placeholder: `packages/database`
- * only has the `app_meta` entity so far (Phase 0) — Phase 1 adds `users`/`actors` and the
- * factories that build them.
+ * Fixture factories (`INITIAL_VISION.md` §118). All of them take the caller's
+ * `EntityManager` so fixtures participate in the test's transaction — see
+ * `withTransactionRollback`.
  */
-export {};
+export {
+  createTestActor,
+  createTestCredential,
+  createTestInvite,
+  createTestUser,
+} from './identity.js';
+export type {
+  CreateTestActorOptions,
+  CreateTestCredentialOptions,
+  CreateTestInviteOptions,
+  CreateTestUserOptions,
+} from './identity.js';
+
+export { createTestPost } from './content.js';
+export type { CreateTestPostOptions } from './content.js';
