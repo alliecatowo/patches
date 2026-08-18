@@ -33,7 +33,9 @@ describe('validateEnv', () => {
   });
 
   it('refuses to boot on a malformed PUBLIC_ORIGIN', () => {
-    expect(() => validateEnv({ PUBLIC_ORIGIN: 'localhost:3000' })).toThrow(InvalidConfigurationError);
+    expect(() => validateEnv({ PUBLIC_ORIGIN: 'localhost:3000' })).toThrow(
+      InvalidConfigurationError,
+    );
   });
 
   it('names every offending variable in the failure message', () => {

@@ -31,7 +31,9 @@ describe('error code → gRPC status mapping', () => {
   it('uses FAILED_PRECONDITION for well-formed requests blocked by state', () => {
     expect(grpcStatusForErrorCode('AUTH_EMAIL_UNVERIFIED')).toBe(GrpcStatus.FAILED_PRECONDITION);
     expect(grpcStatusForErrorCode('MEDIA_NOT_READY')).toBe(GrpcStatus.FAILED_PRECONDITION);
-    expect(grpcStatusForErrorCode('CLIENT_VERSION_UNSUPPORTED')).toBe(GrpcStatus.FAILED_PRECONDITION);
+    expect(grpcStatusForErrorCode('CLIENT_VERSION_UNSUPPORTED')).toBe(
+      GrpcStatus.FAILED_PRECONDITION,
+    );
   });
 });
 

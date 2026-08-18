@@ -11,7 +11,12 @@ import {
 } from '@patches/proto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { callUnary, expectRejection, startTestServer, type TestServer } from './support/test-server.js';
+import {
+  callUnary,
+  expectRejection,
+  startTestServer,
+  type TestServer,
+} from './support/test-server.js';
 
 const CURRENT_CLIENT_VERSION = MIN_CLIENT_VERSION;
 

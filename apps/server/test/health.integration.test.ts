@@ -25,7 +25,10 @@ let health: HealthClient;
 beforeAll(async () => {
   server = await startTestServer();
   const HealthClientCtor = makeClientConstructor(healthServiceDefinition, 'Health');
-  health = new HealthClientCtor(server.url, credentials.createInsecure()) as unknown as HealthClient;
+  health = new HealthClientCtor(
+    server.url,
+    credentials.createInsecure(),
+  ) as unknown as HealthClient;
 });
 
 afterAll(async () => {

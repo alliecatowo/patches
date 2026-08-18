@@ -31,7 +31,10 @@ export class AppError extends Error {
     return new AppError('VALIDATION_ERROR', message, options);
   }
 
-  static internal(message = 'Something went wrong on our side.', options?: AppErrorOptions): AppError {
+  static internal(
+    message = 'Something went wrong on our side.',
+    options?: AppErrorOptions,
+  ): AppError {
     return new AppError('INTERNAL_ERROR', message, options);
   }
 }

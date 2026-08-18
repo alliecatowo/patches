@@ -1,9 +1,22 @@
 {
   "name": "@patches/tui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "bin": {
+    "patches": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo"
+  },
   "dependencies": {
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",

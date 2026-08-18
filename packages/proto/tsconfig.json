@@ -1,11 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    // tsup's `dts` build reuses this tsconfig and emits declarations without a
-    // `--tsBuildInfoFile`, which TS rejects when `incremental` is on (TS5074).
-    "incremental": false
+    "noEmit": true
   },
-  "include": ["src"]
+  // The build configs are included so typescript-eslint's project service can
+  // type-check them; without a tsconfig that owns them, ESLint reports a parsing
+  // error. tsup builds from tsconfig.build.json, which excludes them.
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
 }

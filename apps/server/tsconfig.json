@@ -9,5 +9,8 @@
     "emitDecoratorMetadata": true,
     "noEmit": true
   },
-  "include": ["src", "test"]
+  // The vitest configs are included so typescript-eslint's project service can
+  // type-check them; without a tsconfig that owns them, ESLint reports a parsing
+  // error. Emitting is done from tsconfig.build.json, which excludes them.
+  "include": ["src", "test", "vitest.config.mts", "vitest.integration.config.mts"]
 }
