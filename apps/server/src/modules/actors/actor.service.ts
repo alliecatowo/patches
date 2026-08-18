@@ -4,10 +4,17 @@ import { Actor, Follow, Post } from '@patches/database';
 import { IsNull, type DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { AppConfigService } from '../../config/app-config.service.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { normalizeHandle } from '../auth/validation.js';
+import {
+  RemoteActorService,
+  RemoteFetchError,
+} from '../federation/services/remote-actor.service.js';
+import { ActorResolveRateLimitService } from './actor-resolve-rate-limit.service.js';
 import { toActorProfile, type ActorCountsSummary, type ActorProfile } from './actor.dto.js';
 import {
+  acctSchema,
   bioSchema,
   displayNameSchema,
   locationTextSchema,
@@ -43,7 +50,12 @@ export interface ActorListPage {
 
 @Injectable()
 export class ActorService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly config: AppConfigService,
+    private readonly remoteActors: RemoteActorService,
+    private readonly resolveRateLimit: ActorResolveRateLimitService,
+  ) {}
 
   async getActor(id: string): Promise<ActorProfile> {
     const parsed = parseInput(uuidInputSchema, id);
@@ -58,6 +70,49 @@ export class ActorService {
       .getRepository(Actor)
       .findOne({ where: { handleNormalized } });
     if (actor === null || actor.deletedAt !== null) throw actorNotFound();
+    return toActorProfile(actor, await this.countsFor(actor.id));
+  }
+
+  /**
+   * B-028: discovers a remote actor by `acct:user@domain` (WebFinger, `RemoteActorService`)
+   * and returns it as a remote `Actor` (`is_local = false`) the caller can then pass to
+   * `SocialGraphService.FollowActor`. `NOT_IMPLEMENTED` when this node has `FEDERATION_
+   * ENABLED=false` — there is no federation HTTP surface to resolve against (§176's honest-
+   * UNIMPLEMENTED rule), same reasoning as `AuthService`'s GitHub-login stub.
+   *
+   * `callerActorId` rate-limits per caller (`ActorResolveRateLimitService`) — each call is a
+   * real outbound HTTP fetch to whatever domain the caller names.
+   */
+  async resolveActor(callerActorId: string, acctRaw: string): Promise<ActorProfile> {
+    if (!this.config.federationEnabled) {
+      throw new AppError(
+        'NOT_IMPLEMENTED',
+        'Resolving a remote actor requires federation to be enabled on this node.',
+      );
+    }
+    this.resolveRateLimit.consume(callerActorId);
+
+    const acct = parseInput(acctSchema, acctRaw);
+    const atIndex = acct.lastIndexOf('@');
+    const handle = acct.slice(0, atIndex);
+    const domain = acct.slice(atIndex + 1);
+    if (domain.toLowerCase() === this.config.nodeDomain.toLowerCase()) {
+      throw AppError.validation('Use GetActorByHandle to look up a local actor.');
+    }
+
+    let actor: Actor;
+    try {
+      actor = await this.dataSource.transaction((manager) =>
+        this.remoteActors.resolveByAcct(manager, handle, domain),
+      );
+    } catch (error) {
+      if (error instanceof RemoteFetchError) {
+        throw new AppError('ACTOR_NOT_FOUND', 'That actor could not be resolved.', {
+          cause: error,
+        });
+      }
+      throw error;
+    }
     return toActorProfile(actor, await this.countsFor(actor.id));
   }
 
@@ -151,6 +206,64 @@ export class ActorService {
   /** Cursor-paginated list of actors `actorId` follows (spec §49). */
   async listFollowing(actorId: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
     return this.listRelatedActors('followerActorId', 'followeeActor', actorId, cursorRaw, limit);
+  }
+
+  /**
+   * B-024: actors `actorId` both follows and is followed by ("mutuals"/"friends") — a
+   * self-join on `follows` (the reciprocal row must exist in the opposite direction), keyset
+   * on the `actorId -> other` edge's own `(created_at DESC, id DESC)` so the ordering matches
+   * `listFollowing`'s.
+   *
+   * The join condition uses fully-qualified quoted columns rather than
+   * `alias.followerActorId`-style TypeORM shorthand (LEARNINGS: typeorm-querybuilder-alias-
+   * substitution — this condition string references the same alias.property more than once,
+   * which is exactly the case that substitution doesn't reliably handle).
+   */
+  async listMutualFollows(
+    actorIdRaw: string,
+    cursorRaw: string,
+    limit: number,
+  ): Promise<ActorListPage> {
+    const actorId = parseInput(uuidInputSchema, actorIdRaw);
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+
+    const qb = this.dataSource
+      .getRepository(Follow)
+      .createQueryBuilder('outbound')
+      .innerJoin(
+        Follow,
+        'inbound',
+        '"inbound"."follower_actor_id" = "outbound"."followee_actor_id" ' +
+          'AND "inbound"."followee_actor_id" = "outbound"."follower_actor_id"',
+      )
+      .leftJoinAndSelect('outbound.followeeActor', 'relatedActor')
+      .where('outbound.followerActorId = :actorId', { actorId })
+      .orderBy('outbound.createdAt', 'DESC')
+      .addOrderBy('outbound.id', 'DESC')
+      .take(take + 1);
+
+    if (cursor !== undefined) {
+      qb.andWhere('(outbound.createdAt, outbound.id) < (:cursorCreatedAt, :cursorId)', {
+        cursorCreatedAt: cursor.createdAt,
+        cursorId: cursor.id,
+      });
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+
+    const relatedActors = page.map((row) => row.followeeActor);
+    const countsByActorId = await this.countsForMany(relatedActors.map((actor) => actor.id));
+    const actors = page.map((row, index) =>
+      toActorProfile(relatedActors[index]!, countsByActorId.get(relatedActors[index]!.id)!),
+    );
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+    return { actors, nextCursor, hasMore };
   }
 
   // ---------------------------------------------------------------- internals

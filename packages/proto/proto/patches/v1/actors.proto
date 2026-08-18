@@ -29,6 +29,13 @@ service ActorService {
 
   // Cursor-paginated list of actors `actor_id` follows.
   rpc ListFollowing(ListFollowingRequest) returns (ListFollowingResponse);
+
+  // B-028: discovers a remote actor by `acct:user@domain` via WebFinger and returns it (as a
+  // remote `Actor`, `is_local = false`) so the caller can `SocialGraphService.FollowActor` it —
+  // the "add a friend on another node" entry point for the two-node federation lab. `NOT_
+  // IMPLEMENTED` when this node has `FEDERATION_ENABLED=false` (spec §176's honest-UNIMPLEMENTED
+  // rule): there is nothing to resolve against with no federation HTTP surface running.
+  rpc ResolveActor(ResolveActorRequest) returns (ResolveActorResponse);
 }
 
 // A lightweight reference to a `Media` row. Full `Media`/`MediaService` land with the media
@@ -182,4 +189,14 @@ message ListFollowingRequest {
 message ListFollowingResponse {
   repeated Actor actors = 1;
   PageInfo page = 2;
+}
+
+message ResolveActorRequest {
+  // `user@domain` (no leading `acct:`) — this node's own domain is a validation error, not a
+  // self-lookup shortcut: use `GetActorByHandle` for local actors.
+  string acct = 1;
+}
+
+message ResolveActorResponse {
+  Actor actor = 1;
 }
