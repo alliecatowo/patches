@@ -150,14 +150,14 @@ describe('PostList selection (B-017, P4-004)', () => {
     await flush();
 
     press('g');
-    await flush();
+    await flush(60);
     press('l');
-    await flush();
+    await flush(60);
 
     press('j');
-    await flush();
+    await flush(60);
     press('p');
-    await flush();
+    await flush(60);
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('@alice');
@@ -181,12 +181,12 @@ describe('PostList selection (B-017, P4-004)', () => {
     await flush();
 
     press('g');
-    await flush();
+    await flush(60);
     press('l');
-    await flush();
+    await flush(60);
 
     press('p');
-    await flush();
+    await flush(60);
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('@bob');
@@ -203,13 +203,13 @@ describe('PostList selection (B-017, P4-004)', () => {
     await flush();
 
     press('g');
-    await flush();
+    await flush(60);
     press('l');
-    await flush();
+    await flush(60);
 
     press(KEY.enter);
-    await flush();
-    await flush();
+    await flush(60);
+    await flush(60);
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Thread');

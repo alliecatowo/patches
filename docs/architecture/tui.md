@@ -62,31 +62,32 @@ Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverab
 via `?` help). **Status** marks what actually exists today (`apps/tui/src/app/App.tsx`)
 vs. spec-planned:
 
-| Key       | Action                                                        | Status                                                                         |
-| --------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `j` / `↓` | next item                                                     | implemented (`PostList`, `SearchScreen`)                                       |
-| `k` / `↑` | previous item                                                 | implemented                                                                    |
-| `Enter`   | open selected post's thread (or search result's profile)      | implemented (P4-004 — was "open author" before Phase 4)                        |
-| `p`       | open selected post's author profile                           | implemented (P4-004; moved off `Enter`)                                        |
-| `v`       | reveal/hide a content-warning-gated post                      | implemented                                                                    |
-| `c`       | compose                                                       | implemented                                                                    |
-| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`) | implemented (P4-004)                                                           |
-| `l`       | like/unlike                                                   | key wired, shows "coming soon" — `ReactionService` not yet in `@patches/proto` |
-| `b`       | bookmark/unbookmark                                           | key wired, shows "coming soon" — `ReactionService` not yet in `@patches/proto` |
-| `f`       | follow/unfollow the profile being viewed                      | implemented                                                                    |
-| `m`       | mute                                                          | planned (Phase 6)                                                              |
-| `B`       | block                                                         | planned (Phase 6)                                                              |
-| `/`       | search                                                        | implemented                                                                    |
-| `g h`     | go home                                                       | implemented (requires a session)                                               |
-| `g l`     | go local                                                      | implemented                                                                    |
-| `g s`     | go search (alternate to `/`)                                  | implemented                                                                    |
-| `g n`     | go notifications                                              | planned (Phase 4) — `NotificationService` not yet in `@patches/proto`          |
-| `g b`     | go bookmarks                                                  | planned (Phase 4) — depends on `ReactionService`                               |
-| `g p`     | go own profile                                                | implemented                                                                    |
-| `R`       | reconnect (connect screen only)                               | implemented                                                                    |
-| `?`       | help                                                          | implemented                                                                    |
-| `q`       | quit                                                          | implemented                                                                    |
-| `Esc`     | cancel modal/action; on the thread screen, back one level     | implemented (login, compose, search, thread)                                   |
+| Key       | Action                                                        | Status                                                         |
+| --------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `j` / `↓` | next item                                                     | implemented (`PostList`, `SearchScreen`)                       |
+| `k` / `↑` | previous item                                                 | implemented                                                    |
+| `Enter`   | open selected post's thread (or search result's profile)      | implemented (P4-004 — was "open author" before Phase 4)        |
+| `p`       | open selected post's author profile                           | implemented (P4-004; moved off `Enter`)                        |
+| `v`       | reveal/hide a content-warning-gated post                      | implemented                                                    |
+| `c`       | compose                                                       | implemented                                                    |
+| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`) | implemented (P4-004)                                           |
+| `l`       | like/unlike                                                   | implemented (P4-004, optimistic — spec §79)                    |
+| `b`       | bookmark/unbookmark                                           | implemented (P4-004, optimistic — spec §79)                    |
+| `!`       | report the selected post, or the profile being viewed         | implemented (P4-004)                                           |
+| `f`       | follow/unfollow the profile being viewed                      | implemented                                                    |
+| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)        | implemented (P4-004; spec's baseline table says lowercase `m`) |
+| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)      | implemented (P4-004)                                           |
+| `/`       | search                                                        | implemented                                                    |
+| `g h`     | go home                                                       | implemented (requires a session)                               |
+| `g l`     | go local                                                      | implemented                                                    |
+| `g s`     | go search (alternate to `/`)                                  | implemented                                                    |
+| `g n`     | go notifications                                              | implemented (P4-004)                                           |
+| `g b`     | go bookmarks                                                  | implemented (P4-004)                                           |
+| `g p`     | go own profile                                                | implemented                                                    |
+| `R`       | reconnect (connect screen only)                               | implemented                                                    |
+| `?`       | help                                                          | implemented                                                    |
+| `q`       | quit                                                          | implemented                                                    |
+| `Esc`     | cancel modal/action; on the thread screen, back one level     | implemented (login, compose, search, thread, report)           |
 
 ## 4. Full-screen behavior (§70)
 
@@ -469,12 +470,40 @@ exists in the spec's own baseline keymap), every list-rendering screen's `isActi
 ANDed with `!pendingGo` so a row action never double-fires during the ~600ms window after
 pressing `g`.
 
-`l`/`b` (`onToggleLike`/`onToggleBookmark` in `App.tsx`) are wired to the key but currently
-show a "coming soon" notice — `ReactionService` (`LikePost`/`UnlikePost`/`BookmarkPost`/
-`UnbookmarkPost`) had not landed in `@patches/proto` as of this change (spec §53). Swapping
-the placeholder for real optimistic calls (same pattern as `ProfileScreen`'s
-`toggleFollow`) is a follow-up once the service exists, along with the bookmarks list
-(`g b`) and the notifications screen (`g n`, spec §56) — see the implementer report.
+**Reactions and bookmarks (P4-004, spec §53/§79)**: `l`/`b` on a post row call `App`'s
+`toggleLike`/`toggleBookmark` — optimistic (flip `viewerState`/`counts` immediately,
+call `ReactionService.LikePost`/`UnlikePost`/`BookmarkPost`/`UnbookmarkPost`, revert and
+show a notice on failure), same shape as `ProfileScreen`'s `toggleFollow`. The optimistic
+state lives in one `Map<postId, ReactionOverride>` at the `App` level
+(`reactionOverrides`/`decoratePost`), not inside any single screen's own paginated list —
+`PostList`'s new `decorate` prop (part of the shared `PostRowActions` bundle) applies it
+at render time, so a like registers immediately no matter which list (home/local/
+profile/thread/bookmarks) is currently showing that post. `g b` opens
+`screens/BookmarksScreen.tsx` (`ReactionService.ListBookmarks` — private, never another
+actor's), reusing `PostList` exactly like every other feed.
+
+**Notifications (P4-004, spec §56/§113)**: `g n` opens `screens/NotificationsScreen.tsx`
+— `NotificationService.ListNotifications`, keyset-paginated (`hooks/usePaginatedPosts.ts`'s
+`usePaginatedList<T>`, generalized from the Post-specific hook so both share one
+implementation). Each row shows a type icon/label (FOLLOW/LIKE/REPLY/MENTION/MODERATION),
+the triggering actor's nameplate, and relative time; `Enter` opens the related post's
+thread or the actor's profile; `m` calls `MarkNotificationsRead({ markAll: true })` and
+marks every currently-loaded row read locally (no refetch just to reflect that — spec:
+manual refresh is fine, no push infra in v0). The status bar's unread badge
+(`hooks/useUnreadCount.ts`) polls `GetUnreadCount` every 60s and on every screen change;
+`m` also bumps a small `unreadNonce` in `App` so the badge updates immediately rather
+than waiting for the next poll.
+
+**Moderation (P4-004, spec §55, §61–64)**: on `ProfileScreen`, `B` block/unblock and `M`
+mute/unmute (spec's own baseline table uses lowercase `m`; this deviates deliberately —
+see `.claude/rules` "exact keybindings may evolve") each go behind a `y`/`n` confirm,
+reusing the same `GetRelationship`-backed state `f`/`toggleFollow` already fetches
+(`Relationship.blocking`/`muting`) rather than a second round trip. `!` — on a post row,
+or on a profile — opens `screens/ReportScreen.tsx`: a `j`/`k` reason picker (the six
+non-`UNSPECIFIED` `ReportReason` values) plus optional free text, explicit `Ctrl+S` submit
+only (same convention as `ComposeScreen` — `Enter` never silently submits), calling
+`ModerationService.ReportPost`/`ReportActor`. No admin/moderator UI (resolving a report,
+suspending an account) — spec §65 puts that in the admin CLI, not here.
 
 ## 14. Testing (B-015)
 
@@ -498,8 +527,20 @@ Test files matching `test/**/*.test.tsx` run alongside `src/**/*.test.{ts,tsx}` 
 `connect.test.tsx` and `help.test.tsx` cover the connect/offline/retry and help-toggle
 paths against the harness; `screens.test.tsx`/`social.test.tsx` cover login, compose,
 profile, local-feed pagination, home feed, search, and follow/unfollow; `thread.test.tsx`
-(P4-004) covers opening a thread, the reply flow, and drill-down/`Esc`-back navigation.
+(P4-004) covers opening a thread, the reply flow, and drill-down/`Esc`-back navigation;
+`reactions.test.tsx` covers like/unlike, bookmark/unbookmark, and the bookmarks screen;
+`notifications.test.tsx` covers the notification list, `m` mark-all-read, and the status
+bar's unread badge; `moderation.test.tsx` covers block/mute confirm prompts and the
+report screen.
+
 `test/fake-api.ts`'s `addPost(authorId, body, createdAt?, inReplyToId?)` seeds a reply
-directly, and it now implements `GetPost`/`ListReplies` (direct replies only, newest
-first — same shape as the real `PostService.listReplies`) alongside the feed RPCs it
-already faked.
+directly, and it implements `GetPost`/`ListReplies` (direct replies only, newest first —
+same shape as the real `PostService.listReplies`), the full `ReactionService`/
+`NotificationService`/`ModerationService` surface (likes/bookmarks tracked per user,
+`addNotification(forUserId, type, options?)` seeds a notification directly, block/mute
+sets feed `Relationship.blocking`/`muting`), alongside the feed RPCs it already faked.
+One deliberate simplification: `GetPost`/`ListReplies`/`ListLocalFeed`/`ListActorPosts`
+are anonymous RPCs in the real API too (no access token), so — same as the real server —
+the fake can't personalize their `viewerState` per caller; a like/bookmark's true state
+only ever comes from `ReactionService`'s own response, which is exactly what `App`'s
+`reactionOverrides` overlay is for.

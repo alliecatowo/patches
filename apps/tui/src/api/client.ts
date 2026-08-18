@@ -5,8 +5,11 @@ import {
   createActorClient,
   createAuthClient,
   createFeedClient,
+  createModerationClient,
   createNodeClient,
+  createNotificationClient,
   createPostClient,
+  createReactionClient,
   createSocialGraphClient,
   createSystemClient,
   DEADLINES_MS,
@@ -17,6 +20,10 @@ import {
   type AuthGrpcClient,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
+  type BlockActorRequest,
+  type BlockActorResponse,
+  type BookmarkPostRequest,
+  type BookmarkPostResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
   type CreatePostRequest,
@@ -37,13 +44,27 @@ import {
   type GetRelationshipRequest,
   type GetRelationshipResponse,
   type GetServerInfoResponse,
+  type GetUnreadCountRequest,
+  type GetUnreadCountResponse,
+  type LikePostRequest,
+  type LikePostResponse,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
+  type ListBlocksRequest,
+  type ListBlocksResponse,
+  type ListBookmarksRequest,
+  type ListBookmarksResponse,
   type ListCredentialsResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMutesRequest,
+  type ListMutesResponse,
+  type ListNotificationsRequest,
+  type ListNotificationsResponse,
+  type ListPostLikersRequest,
+  type ListPostLikersResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
   type LoginRequest,
@@ -51,21 +72,40 @@ import {
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type MarkNotificationsReadRequest,
+  type MarkNotificationsReadResponse,
+  type ModerationGrpcClient,
+  type MuteActorRequest,
+  type MuteActorResponse,
   type NodeGrpcClient,
+  type NotificationGrpcClient,
   type PingResponse,
   type PostGrpcClient,
+  type ReactionGrpcClient,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
   type RegisterResponse,
+  type ReportActorRequest,
+  type ReportActorResponse,
+  type ReportPostRequest,
+  type ReportPostResponse,
   type RevokeCredentialRequest,
   type RevokeCredentialResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type SocialGraphGrpcClient,
   type SystemGrpcClient,
+  type UnblockActorRequest,
+  type UnblockActorResponse,
+  type UnbookmarkPostRequest,
+  type UnbookmarkPostResponse,
   type UnfollowActorRequest,
   type UnfollowActorResponse,
+  type UnlikePostRequest,
+  type UnlikePostResponse,
+  type UnmuteActorRequest,
+  type UnmuteActorResponse,
 } from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
@@ -94,6 +134,9 @@ export class PatchesApi {
   private readonly feed: FeedGrpcClient;
   private readonly socialGraph: SocialGraphGrpcClient;
   private readonly node: NodeGrpcClient;
+  private readonly reaction: ReactionGrpcClient;
+  private readonly notification: NotificationGrpcClient;
+  private readonly moderation: ModerationGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -107,6 +150,9 @@ export class PatchesApi {
     this.feed = createFeedClient(options.target, channelCredentials);
     this.socialGraph = createSocialGraphClient(options.target, channelCredentials);
     this.node = createNodeClient(options.target, channelCredentials);
+    this.reaction = createReactionClient(options.target, channelCredentials);
+    this.notification = createNotificationClient(options.target, channelCredentials);
+    this.moderation = createModerationClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -277,6 +323,188 @@ export class PatchesApi {
     return unary(this.post.deletePost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
+  // ---- ReactionService — likes/bookmarks, all require a session (spec §53) ----
+
+  async likePost(request: LikePostRequest, accessToken: string): Promise<LikePostResponse> {
+    return unary(
+      this.reaction.likePost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unlikePost(request: UnlikePostRequest, accessToken: string): Promise<UnlikePostResponse> {
+    return unary(
+      this.reaction.unlikePost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async bookmarkPost(
+    request: BookmarkPostRequest,
+    accessToken: string,
+  ): Promise<BookmarkPostResponse> {
+    return unary(
+      this.reaction.bookmarkPost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unbookmarkPost(
+    request: UnbookmarkPostRequest,
+    accessToken: string,
+  ): Promise<UnbookmarkPostResponse> {
+    return unary(
+      this.reaction.unbookmarkPost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** The caller's own bookmarks — private, never another actor's (spec §53). */
+  async listBookmarks(
+    request: ListBookmarksRequest,
+    accessToken: string,
+  ): Promise<ListBookmarksResponse> {
+    return unary(
+      this.reaction.listBookmarks.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listPostLikers(request: ListPostLikersRequest): Promise<ListPostLikersResponse> {
+    return unary(this.reaction.listPostLikers.bind(this.reaction), request, DEADLINES_MS.unary);
+  }
+
+  // ---- NotificationService — requires a session; the TUI polls, no push (spec §56, §113) ----
+
+  async listNotifications(
+    request: ListNotificationsRequest,
+    accessToken: string,
+  ): Promise<ListNotificationsResponse> {
+    return unary(
+      this.notification.listNotifications.bind(this.notification),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async markNotificationsRead(
+    request: MarkNotificationsReadRequest,
+    accessToken: string,
+  ): Promise<MarkNotificationsReadResponse> {
+    return unary(
+      this.notification.markNotificationsRead.bind(this.notification),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getUnreadCount(
+    request: GetUnreadCountRequest,
+    accessToken: string,
+  ): Promise<GetUnreadCountResponse> {
+    return unary(
+      this.notification.getUnreadCount.bind(this.notification),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- ModerationService — block/mute/report, all require a session (spec §55, §61–64) ----
+
+  async blockActor(request: BlockActorRequest, accessToken: string): Promise<BlockActorResponse> {
+    return unary(
+      this.moderation.blockActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unblockActor(
+    request: UnblockActorRequest,
+    accessToken: string,
+  ): Promise<UnblockActorResponse> {
+    return unary(
+      this.moderation.unblockActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async muteActor(request: MuteActorRequest, accessToken: string): Promise<MuteActorResponse> {
+    return unary(
+      this.moderation.muteActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unmuteActor(
+    request: UnmuteActorRequest,
+    accessToken: string,
+  ): Promise<UnmuteActorResponse> {
+    return unary(
+      this.moderation.unmuteActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listBlocks(request: ListBlocksRequest, accessToken: string): Promise<ListBlocksResponse> {
+    return unary(
+      this.moderation.listBlocks.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listMutes(request: ListMutesRequest, accessToken: string): Promise<ListMutesResponse> {
+    return unary(
+      this.moderation.listMutes.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async reportPost(request: ReportPostRequest, accessToken: string): Promise<ReportPostResponse> {
+    return unary(
+      this.moderation.reportPost.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async reportActor(
+    request: ReportActorRequest,
+    accessToken: string,
+  ): Promise<ReportActorResponse> {
+    return unary(
+      this.moderation.reportActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
@@ -285,6 +513,9 @@ export class PatchesApi {
     this.feed.close();
     this.socialGraph.close();
     this.node.close();
+    this.reaction.close();
+    this.notification.close();
+    this.moderation.close();
   }
 }
 

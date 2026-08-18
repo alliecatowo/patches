@@ -7,6 +7,10 @@ import {
   POST_TYPE,
   POST_VISIBILITY,
   type Actor,
+  type BlockActorRequest,
+  type BlockActorResponse,
+  type BookmarkPostRequest,
+  type BookmarkPostResponse,
   type CreatePostRequest,
   type CreatePostResponse,
   type FollowActorRequest,
@@ -20,16 +24,36 @@ import {
   type GetRelationshipRequest,
   type GetRelationshipResponse,
   type GetServerInfoResponse,
+  type GetUnreadCountRequest,
+  type GetUnreadCountResponse,
+  type LikePostRequest,
+  type LikePostResponse,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
+  type ListBlocksRequest,
+  type ListBlocksResponse,
+  type ListBookmarksRequest,
+  type ListBookmarksResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMutesRequest,
+  type ListMutesResponse,
+  type ListNotificationsRequest,
+  type ListNotificationsResponse,
+  type ListPostLikersRequest,
+  type ListPostLikersResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
   type LoginRequest,
   type LoginResponse,
+  type MarkNotificationsReadRequest,
+  type MarkNotificationsReadResponse,
+  type MuteActorRequest,
+  type MuteActorResponse,
+  type Notification,
+  type NotificationType,
   type PageInfo,
   type Post,
   type RefreshSessionRequest,
@@ -37,11 +61,23 @@ import {
   type RegisterRequest,
   type RegisterResponse,
   type Relationship,
+  type ReportActorRequest,
+  type ReportActorResponse,
+  type ReportPostRequest,
+  type ReportPostResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type Session,
+  type UnblockActorRequest,
+  type UnblockActorResponse,
+  type UnbookmarkPostRequest,
+  type UnbookmarkPostResponse,
   type UnfollowActorRequest,
   type UnfollowActorResponse,
+  type UnlikePostRequest,
+  type UnlikePostResponse,
+  type UnmuteActorRequest,
+  type UnmuteActorResponse,
 } from '@patches/proto';
 
 import type { PatchesApi } from '../src/api/client.js';
@@ -94,6 +130,14 @@ export class FakeApiHandle {
   private readonly sessions = new Map<string, FakeSession>(); // keyed by accessToken
   private readonly refreshTokens = new Map<string, FakeSession>(); // keyed by refreshToken
   private readonly follows = new Map<string, Set<string>>(); // followerId -> Set<followingId>
+  private readonly likes = new Map<string, Set<string>>(); // postId -> Set<userId>
+  private readonly bookmarks = new Map<string, string[]>(); // userId -> postIds, most-recent-first
+  private readonly blocks = new Map<string, Set<string>>(); // userId -> Set<blockedActorId>
+  private readonly mutes = new Map<string, Set<string>>(); // userId -> Set<mutedActorId>
+  // `Notification` carries no recipient field of its own — that's implicit in "whose
+  // `ListNotifications` returned it" — so this map's key encodes the (recipient,
+  // notification) pairing, keyed by recipient user id, newest first per recipient.
+  private readonly notificationsByUser = new Map<string, Notification[]>();
   private readonly pageSize: number;
   private readonly serverInfo: GetServerInfoResponse;
 
@@ -154,6 +198,39 @@ export class FakeApiHandle {
       listReplies: (request: ListRepliesRequest) => this.listReplies(request),
       deletePost: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      likePost: (request: LikePostRequest, accessToken: string) =>
+        this.likePost(request, accessToken),
+      unlikePost: (request: UnlikePostRequest, accessToken: string) =>
+        this.unlikePost(request, accessToken),
+      bookmarkPost: (request: BookmarkPostRequest, accessToken: string) =>
+        this.bookmarkPost(request, accessToken),
+      unbookmarkPost: (request: UnbookmarkPostRequest, accessToken: string) =>
+        this.unbookmarkPost(request, accessToken),
+      listBookmarks: (request: ListBookmarksRequest, accessToken: string) =>
+        this.listBookmarks(request, accessToken),
+      listPostLikers: (request: ListPostLikersRequest) => this.listPostLikers(request),
+      listNotifications: (request: ListNotificationsRequest, accessToken: string) =>
+        this.listNotifications(request, accessToken),
+      markNotificationsRead: (request: MarkNotificationsReadRequest, accessToken: string) =>
+        this.markNotificationsRead(request, accessToken),
+      getUnreadCount: (request: GetUnreadCountRequest, accessToken: string) =>
+        this.getUnreadCount(request, accessToken),
+      blockActor: (request: BlockActorRequest, accessToken: string) =>
+        this.blockActor(request, accessToken),
+      unblockActor: (request: UnblockActorRequest, accessToken: string) =>
+        this.unblockActor(request, accessToken),
+      muteActor: (request: MuteActorRequest, accessToken: string) =>
+        this.muteActor(request, accessToken),
+      unmuteActor: (request: UnmuteActorRequest, accessToken: string) =>
+        this.unmuteActor(request, accessToken),
+      listBlocks: (request: ListBlocksRequest, accessToken: string) =>
+        this.listBlocks(request, accessToken),
+      listMutes: (request: ListMutesRequest, accessToken: string) =>
+        this.listMutes(request, accessToken),
+      reportPost: (request: ReportPostRequest, accessToken: string) =>
+        this.reportPost(request, accessToken),
+      reportActor: (request: ReportActorRequest, accessToken: string) =>
+        this.reportActor(request, accessToken),
       close: () => undefined,
     } as unknown as PatchesApi;
   }
@@ -178,6 +255,37 @@ export class FakeApiHandle {
     const following = this.follows.get(followerId) ?? new Set<string>();
     following.add(followingId);
     this.follows.set(followerId, following);
+  }
+
+  /** Seeds a notification directly (bypassing whatever real action would create one),
+   * for `NotificationsScreen`/unread-count tests (spec §56, §113). `forUserId` is whose
+   * notification list this appears on, never the actor `readAt` if `read` is true. */
+  addNotification(
+    forUserId: string,
+    type: NotificationType,
+    options: { actorId?: string; postId?: string; createdAt?: Date; read?: boolean } = {},
+  ): Notification {
+    const actorUser = options.actorId === undefined ? undefined : this.users.get(options.actorId);
+    const createdAt = options.createdAt ?? new Date();
+    const notification: Notification = {
+      id: randomUUID(),
+      type,
+      actor: actorUser === undefined ? undefined : this.toActor(actorUser),
+      postId: options.postId ?? '',
+      createdAt: dateToTimestamp(createdAt),
+      readAt: options.read === true ? dateToTimestamp(createdAt) : undefined,
+    };
+    this.notificationsFor(forUserId).unshift(notification);
+    return notification;
+  }
+
+  private notificationsFor(userId: string): Notification[] {
+    let list = this.notificationsByUser.get(userId);
+    if (list === undefined) {
+      list = [];
+      this.notificationsByUser.set(userId, list);
+    }
+    return list;
   }
 
   private toActor(user: FakeUser): Actor {
@@ -400,8 +508,8 @@ export class FakeApiHandle {
           ? FOLLOW_STATE.FOLLOWING
           : FOLLOW_STATE.NONE,
       followedBy: this.follows.get(targetId)?.has(callerId) ?? false,
-      blocking: false,
-      muting: false,
+      blocking: this.blocks.get(callerId)?.has(targetId) ?? false,
+      muting: this.mutes.get(callerId)?.has(targetId) ?? false,
     };
   }
 
@@ -459,6 +567,286 @@ export class FakeApiHandle {
     );
     this.posts.unshift(post);
     return Promise.resolve({ post: this.withFreshCounts(post) });
+  }
+
+  private findPost(id: string): Post | undefined {
+    return this.posts.find((candidate) => candidate.id === id);
+  }
+
+  // ---- ReactionService (spec §53) ----
+
+  private likePost(request: LikePostRequest, accessToken: string): Promise<LikePostResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    if (this.findPost(request.postId) === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
+    }
+    const likers = this.likes.get(request.postId) ?? new Set<string>();
+    likers.add(session.userId);
+    this.likes.set(request.postId, likers);
+    return Promise.resolve({
+      counts: { replies: 0, likes: likers.size },
+      viewerState: { liked: true, bookmarked: this.isBookmarked(session.userId, request.postId) },
+    });
+  }
+
+  private unlikePost(request: UnlikePostRequest, accessToken: string): Promise<UnlikePostResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    this.likes.get(request.postId)?.delete(session.userId);
+    return Promise.resolve({
+      counts: { replies: 0, likes: this.likes.get(request.postId)?.size ?? 0 },
+      viewerState: { liked: false, bookmarked: this.isBookmarked(session.userId, request.postId) },
+    });
+  }
+
+  private isBookmarked(userId: string, postId: string): boolean {
+    return this.bookmarks.get(userId)?.includes(postId) ?? false;
+  }
+
+  private bookmarkPost(
+    request: BookmarkPostRequest,
+    accessToken: string,
+  ): Promise<BookmarkPostResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    if (this.findPost(request.postId) === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
+    }
+    const mine = this.bookmarks.get(session.userId) ?? [];
+    if (!mine.includes(request.postId)) mine.unshift(request.postId);
+    this.bookmarks.set(session.userId, mine);
+    return Promise.resolve({
+      viewerState: {
+        liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
+        bookmarked: true,
+      },
+    });
+  }
+
+  private unbookmarkPost(
+    request: UnbookmarkPostRequest,
+    accessToken: string,
+  ): Promise<UnbookmarkPostResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const mine = this.bookmarks.get(session.userId) ?? [];
+    this.bookmarks.set(
+      session.userId,
+      mine.filter((id) => id !== request.postId),
+    );
+    return Promise.resolve({
+      viewerState: {
+        liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
+        bookmarked: false,
+      },
+    });
+  }
+
+  /** Private — never another actor's (spec §53). */
+  private listBookmarks(
+    request: ListBookmarksRequest,
+    accessToken: string,
+  ): Promise<ListBookmarksResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const ids = this.bookmarks.get(session.userId) ?? [];
+    const bookmarked = ids
+      .map((id) => this.findPost(id))
+      .filter((post): post is Post => post !== undefined)
+      .map((post) => ({
+        ...this.withFreshCounts(post),
+        viewerState: {
+          liked: this.likes.get(post.id)?.has(session.userId) ?? false,
+          bookmarked: true,
+        },
+      }));
+    const { items, page } = this.paginate(bookmarked, request.cursor, request.limit);
+    return Promise.resolve({ posts: items, page });
+  }
+
+  private listPostLikers(request: ListPostLikersRequest): Promise<ListPostLikersResponse> {
+    const likerIds = [...(this.likes.get(request.postId) ?? new Set<string>())];
+    const actors = likerIds
+      .map((id) => this.users.get(id))
+      .filter((user): user is FakeUser => user !== undefined)
+      .map((user) => this.toActor(user));
+    const { items, page } = this.paginate(actors, request.cursor, request.limit);
+    return Promise.resolve({ actors: items, page });
+  }
+
+  // ---- NotificationService (spec §56, §113) ----
+
+  private listNotifications(
+    request: ListNotificationsRequest,
+    accessToken: string,
+  ): Promise<ListNotificationsResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const { items, page } = this.paginate(
+      this.notificationsFor(session.userId),
+      request.cursor,
+      request.limit,
+    );
+    return Promise.resolve({ notifications: items, page });
+  }
+
+  private markNotificationsRead(
+    request: MarkNotificationsReadRequest,
+    accessToken: string,
+  ): Promise<MarkNotificationsReadResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const mine = this.notificationsFor(session.userId);
+    const now = dateToTimestamp(new Date());
+    let markedCount = 0;
+    for (const notification of mine) {
+      if (notification.readAt !== undefined) continue;
+      if (!request.markAll && notification.id !== request.throughId) continue;
+      notification.readAt = now;
+      markedCount += 1;
+      if (!request.markAll && notification.id === request.throughId) break;
+    }
+    // `markAll` marks every unread notification, not just those up to a cursor.
+    if (request.markAll) {
+      for (const notification of mine) {
+        if (notification.readAt === undefined) {
+          notification.readAt = now;
+          markedCount += 1;
+        }
+      }
+    }
+    return Promise.resolve({ markedCount });
+  }
+
+  private getUnreadCount(
+    _request: GetUnreadCountRequest,
+    accessToken: string,
+  ): Promise<GetUnreadCountResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const count = this.notificationsFor(session.userId).filter(
+      (notification) => notification.readAt === undefined,
+    ).length;
+    return Promise.resolve({ count });
+  }
+
+  // ---- ModerationService (spec §55, §61–64) ----
+
+  private blockActor(request: BlockActorRequest, accessToken: string): Promise<BlockActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const blocked = this.blocks.get(session.userId) ?? new Set<string>();
+    blocked.add(request.actorId);
+    this.blocks.set(session.userId, blocked);
+    // Blocking removes any follow in either direction (spec §62).
+    this.follows.get(session.userId)?.delete(request.actorId);
+    this.follows.get(request.actorId)?.delete(session.userId);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private unblockActor(
+    request: UnblockActorRequest,
+    accessToken: string,
+  ): Promise<UnblockActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    this.blocks.get(session.userId)?.delete(request.actorId);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private muteActor(request: MuteActorRequest, accessToken: string): Promise<MuteActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const muted = this.mutes.get(session.userId) ?? new Set<string>();
+    muted.add(request.actorId);
+    this.mutes.set(session.userId, muted);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private unmuteActor(
+    request: UnmuteActorRequest,
+    accessToken: string,
+  ): Promise<UnmuteActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    this.mutes.get(session.userId)?.delete(request.actorId);
+    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+  }
+
+  private listBlocks(request: ListBlocksRequest, accessToken: string): Promise<ListBlocksResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const actors = [...(this.blocks.get(session.userId) ?? new Set<string>())]
+      .map((id) => this.users.get(id))
+      .filter((user): user is FakeUser => user !== undefined)
+      .map((user) => this.toActor(user));
+    const { items, page } = this.paginate(actors, request.cursor, request.limit);
+    return Promise.resolve({ actors: items, page });
+  }
+
+  private listMutes(request: ListMutesRequest, accessToken: string): Promise<ListMutesResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const actors = [...(this.mutes.get(session.userId) ?? new Set<string>())]
+      .map((id) => this.users.get(id))
+      .filter((user): user is FakeUser => user !== undefined)
+      .map((user) => this.toActor(user));
+    const { items, page } = this.paginate(actors, request.cursor, request.limit);
+    return Promise.resolve({ actors: items, page });
+  }
+
+  private reportPost(request: ReportPostRequest, accessToken: string): Promise<ReportPostResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    if (this.findPost(request.postId) === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
+    }
+    return Promise.resolve({ reportId: randomUUID() });
+  }
+
+  private reportActor(
+    request: ReportActorRequest,
+    accessToken: string,
+  ): Promise<ReportActorResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    if (this.users.get(request.actorId) === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That actor no longer exists.'));
+    }
+    return Promise.resolve({ reportId: randomUUID() });
   }
 }
 

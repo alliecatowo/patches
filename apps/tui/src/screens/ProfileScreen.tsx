@@ -25,6 +25,8 @@ export interface ProfileScreenProps {
   viewerActorId?: string | undefined;
   /** Resolves a fresh access token — only needed when `viewerActorId` is set. */
   ensureAccessToken?: (() => Promise<string>) | undefined;
+  /** `!` — opens the report screen scoped to this actor (spec §55). */
+  onReportActor?: ((actor: Actor) => void) | undefined;
 }
 
 type FollowUi =
@@ -33,10 +35,14 @@ type FollowUi =
   | { status: 'ready'; relationship: Relationship }
   | { status: 'error'; error: FriendlyError };
 
+type ModerationAction = 'block' | 'mute';
+
 /**
  * An actor's profile header plus their post timeline (spec §68–69: `g p` for
  * the caller's own profile; also reachable from a post's author), and — when
- * viewing someone else while signed in — a follow/unfollow control (`f`).
+ * viewing someone else while signed in — a follow/unfollow control (`f`) plus
+ * moderation (`B` block/unblock, `M` mute/unmute, each behind a `y`/`n`
+ * confirm — spec §55, §61–64, P4-004).
  */
 export function ProfileScreen({
   api,
@@ -46,6 +52,7 @@ export function ProfileScreen({
   actions,
   viewerActorId,
   ensureAccessToken,
+  onReportActor,
 }: ProfileScreenProps): ReactElement {
   const actorState = useActor(api, actorId, knownActor);
   const canFollow =
@@ -107,11 +114,68 @@ export function ProfileScreen({
     }
   }
 
+  // `undefined` when no `B`/`M` confirmation is pending.
+  const [confirmAction, setConfirmAction] = useState<ModerationAction | undefined>(undefined);
+
+  // Not an effect either, same reasoning as `toggleFollow` — a direct response to `y`.
+  async function performModeration(action: ModerationAction): Promise<void> {
+    if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
+    const { blocking, muting } = followUi.relationship;
+    setOutcome({ actorId, state: { status: 'loading' } });
+    try {
+      const accessToken = await ensureAccessToken();
+      const response =
+        action === 'block'
+          ? blocking
+            ? await api.unblockActor({ actorId }, accessToken)
+            : await api.blockActor({ actorId }, accessToken)
+          : muting
+            ? await api.unmuteActor({ actorId }, accessToken)
+            : await api.muteActor({ actorId }, accessToken);
+      if (present(response.relationship)) {
+        setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+      }
+    } catch (error) {
+      setOutcome({
+        actorId,
+        state: { status: 'error', error: describeGrpcError(error, api.target) },
+      });
+    }
+  }
+
   useInput(
     (input) => {
-      if (input === 'f') void toggleFollow();
+      if (confirmAction !== undefined) return;
+      if (input === 'f') {
+        void toggleFollow();
+        return;
+      }
+      if (input === 'B' && followUi.status === 'ready') {
+        setConfirmAction('block');
+        return;
+      }
+      if (input === 'M' && followUi.status === 'ready') {
+        setConfirmAction('mute');
+        return;
+      }
+      if (input === '!' && actorState.status === 'ready') {
+        onReportActor?.(actorState.actor);
+      }
     },
-    { isActive: isActive && followUi.status === 'ready' },
+    { isActive: isActive && actorState.status === 'ready' },
+  );
+
+  useInput(
+    (input, key) => {
+      if (confirmAction === undefined) return;
+      if (input === 'y') {
+        void performModeration(confirmAction);
+        setConfirmAction(undefined);
+        return;
+      }
+      if (input === 'n' || key.escape) setConfirmAction(undefined);
+    },
+    { isActive: isActive && confirmAction !== undefined },
   );
 
   const fetchPage = useCallback(
@@ -181,9 +245,25 @@ export function ProfileScreen({
           {followUi.relationship.followedBy ? ' · follows you' : ''}
           {'  ·  f to '}
           {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'unfollow' : 'follow'}
+          {'  ·  B to '}
+          {followUi.relationship.blocking ? 'unblock' : 'block'}
+          {'  ·  M to '}
+          {followUi.relationship.muting ? 'unmute' : 'mute'}
         </Text>
       ) : null}
       {followUi.status === 'error' ? <Text color={theme.error}>{followUi.error.title}</Text> : null}
+      {confirmAction !== undefined && followUi.status === 'ready' ? (
+        <Text color={theme.warn}>
+          {confirmAction === 'block'
+            ? followUi.relationship.blocking
+              ? 'Unblock'
+              : 'Block'
+            : followUi.relationship.muting
+              ? 'Unmute'
+              : 'Mute'}{' '}
+          @{sanitizeForTerminal(actor.handle)}? y/n
+        </Text>
+      ) : null}
 
       {error === undefined ? null : (
         <Box marginTop={1}>
