@@ -1,3 +1,4 @@
+import { present } from '../api/present.js';
 import type { Actor } from '@patches/proto';
 import { useEffect, useState } from 'react';
 
@@ -33,7 +34,7 @@ export function useActor(api: PatchesApi, actorId: string, known?: Actor): Actor
       .getActor({ id: actorId })
       .then((response) => {
         if (cancelled) return;
-        if (response.actor === undefined) {
+        if (!present(response.actor)) {
           setOutcome({
             actorId,
             state: {

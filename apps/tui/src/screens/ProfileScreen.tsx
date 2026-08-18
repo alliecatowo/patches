@@ -1,3 +1,4 @@
+import { present } from '../api/present.js';
 import type { Actor } from '@patches/proto';
 import { useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -79,11 +80,11 @@ export function ProfileScreen({
       </Text>
       <Text color={theme.muted}>@{actor.handle}</Text>
       {actor.bio === '' ? null : <Text wrap="wrap">{actor.bio}</Text>}
-      {counts === undefined ? null : (
+      {present(counts) ? (
         <Text color={theme.muted}>
           {counts.posts} posts · {counts.followers} followers · {counts.following} following
         </Text>
-      )}
+      ) : null}
 
       {error === undefined ? null : (
         <Box marginTop={1}>

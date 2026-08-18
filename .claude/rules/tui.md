@@ -25,3 +25,10 @@ paths:
 
 - `useInput` throws when stdin isn't a TTY: gate interactive hooks on `useStdin().isRawModeSupported` and keep the non-interactive subcommands (`patches ping`, `--version`) working — CI and agents use them.
 - To verify the full-screen app from a non-TTY shell, drive it in tmux (`tmux new-session -d -x 100 -y 28 "<cmd>"`, `tmux send-keys`, `tmux capture-pane -p`). See LEARNINGS "Verifying a TTY app from a non-TTY agent shell".
+
+## Proto message fields arrive as `null`
+
+`@grpc/proto-loader` with `defaults: true` (our `PROTO_LOADER_OPTIONS`) decodes an unset
+message-typed field (`counts`, `avatar`, `editedAt`, `post`, …) as **`null`**, while ts-proto's
+types say `undefined`. Never test `=== undefined` on such fields — use `present()` from
+`apps/tui/src/api/present.ts`. (Found the hard way: the app crashed on `author.counts.posts`.)
