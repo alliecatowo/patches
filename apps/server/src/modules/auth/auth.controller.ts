@@ -153,8 +153,8 @@ export class AuthController implements AuthServiceController {
     };
   }
 
-  async beginSshLogin(@Payload() request: BeginSshLoginRequest): Promise<BeginSshLoginResponse> {
-    const challenge = await this.auth.beginSshLogin(blank(request.fingerprint));
+  async beginSshLogin(@Payload() _request: BeginSshLoginRequest): Promise<BeginSshLoginResponse> {
+    const challenge = await this.auth.beginSshLogin();
     return {
       challengeId: challenge.challengeId,
       nonce: challenge.nonce,

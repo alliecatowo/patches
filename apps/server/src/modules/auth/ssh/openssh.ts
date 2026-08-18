@@ -27,6 +27,13 @@ const SIGNATURE_ALGORITHMS = {
   'ecdsa-sha2-nistp521': { keyAlgorithms: ['ecdsa-sha2-nistp521'], digest: 'sha512' },
 } as const satisfies Record<string, { keyAlgorithms: readonly string[]; digest: string | null }>;
 
+/**
+ * Below this, `ssh-rsa` is rejected outright regardless of signature scheme — RFC 8332's
+ * SHA-2 signature schemes fix the SHA-1 downgrade but say nothing about key size, and a 1024-
+ * or 1536-bit RSA key is within reach of realistic factoring effort today.
+ */
+const MIN_RSA_MODULUS_BITS = 2048;
+
 export type SshSignatureAlgorithm = keyof typeof SIGNATURE_ALGORITHMS;
 
 export const ACCEPTED_SIGNATURE_ALGORITHMS = Object.freeze(
@@ -135,6 +142,21 @@ export function isAcceptedAlgorithm(name: string): name is SshSignatureAlgorithm
   return Object.hasOwn(SIGNATURE_ALGORITHMS, name);
 }
 
+/**
+ * Bit length of an SSH `mpint` (RFC 4251 §5: two's-complement big-endian, with a leading
+ * `0x00` byte when the value would otherwise read as negative). `modulus` is always positive
+ * here, so this is just "how many significant bits after the sign-padding is stripped".
+ */
+function mpintBitLength(value: Buffer): number {
+  let index = 0;
+  while (index < value.length && value[index] === 0) index += 1;
+  if (index === value.length) return 0;
+
+  const firstByte = value[index] as number;
+  const significantBitsInFirstByte = 32 - Math.clz32(firstByte);
+  return (value.length - index - 1) * 8 + significantBitsInFirstByte;
+}
+
 /** Re-frames an OpenSSH key blob as DER so `node:crypto` will load it. */
 function toKeyObject(key: OpenSshPublicKey): KeyObject {
   const reader = new SshReader(key.blob);
@@ -156,6 +178,12 @@ function toKeyObject(key: OpenSshPublicKey): KeyObject {
     const exponent = reader.readString();
     const modulus = reader.readString();
     reader.expectEnd();
+    if (mpintBitLength(modulus) < MIN_RSA_MODULUS_BITS) {
+      // An `ssh-rsa` *key* below the modern floor: reject it the same as any other malformed
+      // key material (RFC 8332's SHA-2 signature schemes say nothing about key size, so this
+      // is Patches' own baseline, not something the wire format enforces for us).
+      throw new SshWireError(`ssh-rsa modulus is weaker than ${String(MIN_RSA_MODULUS_BITS)} bits`);
+    }
     return createPublicKey({
       key: derSequence([derInteger(modulus), derInteger(exponent)]),
       format: 'der',

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -14,6 +14,7 @@ import {
 } from '@patches/database';
 import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
 
+import { getRequestContext } from '../../common/context/request-context.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import {
@@ -31,7 +32,12 @@ import {
   sshAuthenticationFailed,
 } from './ssh-challenge.service.js';
 import { parseOpenSshPublicKey } from './ssh/openssh.js';
-import { type AccessTokenClaims, TokenService } from './token.service.js';
+import {
+  type AccessTokenClaims,
+  hashRefreshToken,
+  reuseSessionIdFrom,
+  TokenService,
+} from './token.service.js';
 import {
   addCredentialInputSchema,
   codeInputSchema,
@@ -118,6 +124,10 @@ export class AuthService {
   async register(input: RegisterInput): Promise<SessionEnvelope> {
     const parsed = parseInput(registerInputSchema, input);
     const handleNormalized = normalizeHandle(parsed.handle);
+    // `handleNormalized` is chosen by the caller — a fresh one every attempt never re-hits the
+    // same bucket — so the peer budget is what actually bounds unthrottled Argon2id CPU below
+    // (spec §102 review finding).
+    this.rateLimit.consumePeer('register', getRequestContext()?.peer);
     this.rateLimit.consume('register', handleNormalized);
 
     if (parsed.password === undefined && parsed.sshPublicKey === undefined) {
@@ -173,12 +183,16 @@ export class AuthService {
         email: parsed.email ?? null,
         emailNormalized,
       });
+      // `createActorAndUser` always back-fills `actor.userId` before returning — `?? ''` here
+      // would silently write an empty-string `userId` instead of failing loudly if that ever
+      // stopped being true.
+      const userId = requireUserId(actor);
 
       const credentials = manager.getRepository(Credential);
       if (passwordHash !== null) {
         await credentials.save(
           credentials.create({
-            userId: actor.userId ?? '',
+            userId,
             type: 'PASSWORD',
             identifier: null,
             secretHash: passwordHash,
@@ -188,7 +202,7 @@ export class AuthService {
       if (sshKey !== undefined) {
         await credentials.save(
           credentials.create({
-            userId: actor.userId ?? '',
+            userId,
             type: 'SSH_PUBLIC_KEY',
             identifier: sshKey.fingerprint,
             publicMaterial: sshKey.line,
@@ -200,14 +214,14 @@ export class AuthService {
 
       if (parsed.email !== undefined) {
         await this.issueEmailCode(manager, {
-          userId: actor.userId ?? '',
+          userId,
           email: parsed.email,
           purpose: 'VERIFY_EMAIL',
         });
       }
 
       const tokens = await this.tokens.issueSession(manager, {
-        userId: actor.userId ?? '',
+        userId,
         actorId: actor.id,
       });
 
@@ -262,6 +276,7 @@ export class AuthService {
     const parsed = parseInput(loginInputSchema, input);
     // Both a handle and an email address normalize by lowercasing, so one key covers both.
     const subject = normalizeEmail(parsed.emailOrHandle);
+    this.rateLimit.consumePeer('login', getRequestContext()?.peer);
     this.rateLimit.consume('login', subject);
 
     return this.dataSource.transaction(async (manager) => {
@@ -290,7 +305,6 @@ export class AuthService {
         userId: user.id,
         actorId: actor.id,
       });
-      this.rateLimit.reset('login', subject);
       return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
     });
   }
@@ -301,25 +315,38 @@ export class AuthService {
   async refreshSession(rawToken: string): Promise<SessionEnvelope> {
     const { refreshToken } = parseInput(refreshTokenInputSchema, { refreshToken: rawToken });
 
-    return this.dataSource.transaction(async (manager) => {
-      const { userId, sessionId } = await this.tokens.consumeRefreshToken(manager, refreshToken);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const { userId, sessionId } = await this.tokens.consumeRefreshToken(manager, refreshToken);
 
-      const user = await manager.getRepository(User).findOne({ where: { id: userId } });
-      if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
-        // The account went away or was suspended while the session was alive: end the family
-        // rather than handing out a fresh token for it.
-        await this.tokens.revokeSession(manager, sessionId);
-        throw sessionGone();
-      }
+        const user = await manager.getRepository(User).findOne({ where: { id: userId } });
+        if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+          // The account went away or was suspended while the session was alive: end the
+          // family rather than handing out a fresh token for it.
+          await this.tokens.revokeSession(manager, sessionId);
+          throw sessionGone();
+        }
 
-      const actor = await requireActor(manager, user.actorId);
-      const tokens = await this.tokens.issueSession(manager, {
-        userId: user.id,
-        actorId: actor.id,
-        sessionId,
+        const actor = await requireActor(manager, user.actorId);
+        const tokens = await this.tokens.issueSession(manager, {
+          userId: user.id,
+          actorId: actor.id,
+          sessionId,
+        });
+        return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
       });
-      return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
-    });
+    } catch (error) {
+      const reuseSessionId = reuseSessionIdFrom(error);
+      if (reuseSessionId !== undefined) {
+        // Only safe to run now that the transaction above has actually rolled back: see the
+        // comment on `TokenService.consumeRefreshToken`'s reuse branch for why running this
+        // *inside* that transaction would self-deadlock across two connections.
+        await this.dataSource.transaction((manager) =>
+          this.tokens.revokeSession(manager, reuseSessionId),
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -374,6 +401,7 @@ export class AuthService {
     if (!parsed.success) return;
 
     const emailNormalized = normalizeEmail(parsed.data.email);
+    this.rateLimit.consumePeer('password_reset', getRequestContext()?.peer);
     this.rateLimit.consume('password_reset', emailNormalized);
 
     await this.dataSource.transaction(async (manager) => {
@@ -390,27 +418,47 @@ export class AuthService {
     });
   }
 
-  /** Consumes a reset code, replaces the password credential, and ends every live session. */
+  /**
+   * Consumes a reset code, replaces the password credential, and ends every live session.
+   *
+   * The code is validated **before** anything is hashed (spec §102 review finding): an
+   * unauthenticated caller who could make this method spend ~100ms of Argon2id CPU on a
+   * garbage code, with no throttle ahead of it, would have a cheap CPU-exhaustion lever. Now
+   * it is both throttled and ordered so a bad code never reaches the hasher at all.
+   */
   async resetPassword(rawCode: string, newPassword: string): Promise<void> {
     const parsed = parseInput(resetPasswordInputSchema, { code: rawCode, newPassword });
-    // Hashed outside the transaction: Argon2id takes ~100ms by design and a transaction held
-    // open across it would hold its row locks for the same duration.
+    this.rateLimit.consumePeer('password_reset', getRequestContext()?.peer);
+    // The code itself is high-entropy and single-use, so this budget is not really about
+    // guessing it — it bounds how many times one peer can make this endpoint touch the
+    // database at all before Argon2id ever runs.
+    this.rateLimit.consume('password_reset', `code:${hashCode(parsed.code).slice(0, 16)}`);
+
+    const userId = await this.dataSource.transaction(async (manager) => {
+      const authCode = await this.consumeAuthCode(manager, parsed.code, 'RESET_PASSWORD');
+      return authCode.userId;
+    });
+
+    // Hashed only once the code is confirmed valid, and outside any transaction: Argon2id
+    // takes ~100ms by design and a transaction held open across it would hold its row locks
+    // for the same duration. The trade-off is that a crash between here and the write below
+    // leaves the code consumed with no password change applied — recoverable by requesting a
+    // fresh code, and strictly better than spending Argon2id time on an unvalidated request.
     const secretHash = await this.hasher.hash(parsed.newPassword);
 
     await this.dataSource.transaction(async (manager) => {
-      const authCode = await this.consumeAuthCode(manager, parsed.code, 'RESET_PASSWORD');
       const credentials = manager.getRepository(Credential);
 
       // Revoke-then-insert rather than update-in-place: the old hash stays as an audit record,
       // and the partial unique index on (user_id) where type='PASSWORD' and revoked_at is null
       // is what guarantees only one of them is live.
       await credentials.update(
-        { userId: authCode.userId, type: 'PASSWORD', revokedAt: IsNull() },
+        { userId, type: 'PASSWORD', revokedAt: IsNull() },
         { revokedAt: new Date() },
       );
       await credentials.save(
         credentials.create({
-          userId: authCode.userId,
+          userId,
           type: 'PASSWORD',
           identifier: null,
           secretHash,
@@ -419,20 +467,32 @@ export class AuthService {
 
       // A password reset is the standard response to "my account was compromised", so every
       // existing session dies with it (§36).
-      await this.tokens.revokeAllForUser(manager, authCode.userId);
+      await this.tokens.revokeAllForUser(manager, userId);
     });
   }
 
   // ---------------------------------------------------------------- ssh login
 
-  /** Always issues a challenge, enrolled key or not (§166's no-enumeration rule). */
-  async beginSshLogin(fingerprintHint: string | undefined): Promise<IssuedSshChallenge> {
-    this.rateLimit.consume('ssh_challenge', fingerprintHint ?? 'anonymous');
+  /**
+   * Always issues a challenge, enrolled key or not (§166's no-enumeration rule).
+   *
+   * Rate-limited on peer only: the request carries nothing else trustworthy to key on — a
+   * caller-supplied fingerprint is exactly the kind of attacker-chosen value spec §102's
+   * review flagged as a limiter that would never actually fire (a fresh fingerprint every
+   * attempt never re-hits the same bucket).
+   */
+  async beginSshLogin(): Promise<IssuedSshChallenge> {
+    this.rateLimit.consumePeer('ssh_challenge', getRequestContext()?.peer);
     return this.sshChallenges.begin(this.dataSource.manager);
   }
 
+  /**
+   * Rate-limited on peer only, not `challengeId` — a challenge is single-use by construction,
+   * so a per-challenge-id bucket can never see a second attempt and never fires (spec §102
+   * review finding).
+   */
   async completeSshLogin(input: CompleteSshLoginInput): Promise<SessionEnvelope> {
-    this.rateLimit.consume('ssh_complete', input.challengeId);
+    this.rateLimit.consumePeer('ssh_complete', getRequestContext()?.peer);
 
     // Consumed outside the transaction below, on purpose: if it were inside, a challenge whose
     // signature then failed to verify would have its `consumed_at` rolled back with the rest of
@@ -643,11 +703,13 @@ export class AuthService {
 
 // -------------------------------------------------------------------- helpers
 
-/** SHA-256 hex. Used for refresh tokens, auth codes and invite codes — all high-entropy
- * strings, for which a slow KDF adds latency and no security (unlike a user's password). */
-function hashCode(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
+/**
+ * SHA-256 hex, for auth codes and invite codes — all high-entropy strings, for which a slow
+ * KDF adds latency and no security (unlike a user's password). This is the exact algorithm
+ * `TokenService.hashRefreshToken` already implements for refresh tokens; reused by name here
+ * rather than a second copy of the same three lines.
+ */
+const hashCode = hashRefreshToken;
 
 interface EnrollableSshKey {
   fingerprint: string;
@@ -771,6 +833,17 @@ async function requireActor(manager: EntityManager, actorId: string): Promise<Ac
     throw AppError.internal();
   }
   return actor;
+}
+
+/**
+ * `Actor.userId` is nullable in the schema because the row briefly exists without one during
+ * `createActorAndUser`'s insert-then-back-fill dance — never after it returns. Asserting here
+ * rather than defaulting to `''` is what makes a future regression in that dance a loud
+ * `INTERNAL_ERROR` instead of a credential silently written against an empty `userId`.
+ */
+function requireUserId(actor: Actor): string {
+  if (actor.userId === null) throw AppError.internal();
+  return actor.userId;
 }
 
 function invalidCredentials(): AppError {

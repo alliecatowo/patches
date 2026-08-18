@@ -34,11 +34,11 @@ function ed25519Key(): { publicKeyLine: string; sign: (data: Buffer) => Buffer }
   };
 }
 
-function rsaKey(): {
+function rsaKey(modulusLength = 2048): {
   publicKeyLine: string;
   sign: (data: Buffer, algorithm: 'rsa-sha2-256' | 'rsa-sha2-512' | 'ssh-rsa') => Buffer;
 } {
-  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength });
   const pkcs1 = publicKey.export({ format: 'der', type: 'pkcs1' });
   const reader = new DerReader(pkcs1);
   const { modulus, exponent } = reader.readRsaPublicKey();
@@ -167,6 +167,12 @@ describe('verifySshSignature', () => {
     const { publicKeyLine, sign } = rsaKey();
     const key = parseOpenSshPublicKey(publicKeyLine);
     expect(verifySshSignature(key, DATA, sign(DATA, 'ssh-rsa'))).toBe(false);
+  });
+
+  it('rejects an ssh-rsa key below the 2048-bit floor, even with a valid signature', () => {
+    const { publicKeyLine, sign } = rsaKey(1024);
+    const key = parseOpenSshPublicKey(publicKeyLine);
+    expect(verifySshSignature(key, DATA, sign(DATA, 'rsa-sha2-256'))).toBe(false);
   });
 
   it('accepts ecdsa-sha2-nistp256', () => {
