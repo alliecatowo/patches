@@ -5,6 +5,7 @@ import {
   createActorClient,
   createAuthClient,
   createFeedClient,
+  createMediaClient,
   createModerationClient,
   createNodeClient,
   createNotificationClient,
@@ -18,6 +19,8 @@ import {
   type AddCredentialRequest,
   type AddCredentialResponse,
   type AuthGrpcClient,
+  type BeginMediaUploadRequest,
+  type BeginMediaUploadResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
   type BlockActorRequest,
@@ -31,6 +34,8 @@ import {
   type DeletePostRequest,
   type DeletePostResponse,
   type FeedGrpcClient,
+  type FinalizeMediaUploadRequest,
+  type FinalizeMediaUploadResponse,
   type FollowActorRequest,
   type FollowActorResponse,
   type GetActorByHandleRequest,
@@ -38,6 +43,8 @@ import {
   type GetActorRequest,
   type GetActorResponse,
   type GetCurrentSessionResponse,
+  type GetMediaDownloadRequest,
+  type GetMediaDownloadResponse,
   type GetNodeInfoResponse,
   type GetPostRequest,
   type GetPostResponse,
@@ -74,6 +81,7 @@ import {
   type LogoutResponse,
   type MarkNotificationsReadRequest,
   type MarkNotificationsReadResponse,
+  type MediaGrpcClient,
   type ModerationGrpcClient,
   type MuteActorRequest,
   type MuteActorResponse,
@@ -137,6 +145,7 @@ export class PatchesApi {
   private readonly reaction: ReactionGrpcClient;
   private readonly notification: NotificationGrpcClient;
   private readonly moderation: ModerationGrpcClient;
+  private readonly media: MediaGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -153,6 +162,7 @@ export class PatchesApi {
     this.reaction = createReactionClient(options.target, channelCredentials);
     this.notification = createNotificationClient(options.target, channelCredentials);
     this.moderation = createModerationClient(options.target, channelCredentials);
+    this.media = createMediaClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -505,6 +515,44 @@ export class PatchesApi {
     );
   }
 
+  // ---- MediaService — direct-to-R2 upload (spec §29–32, §54), all require a session ----
+
+  async beginMediaUpload(
+    request: BeginMediaUploadRequest,
+    accessToken: string,
+  ): Promise<BeginMediaUploadResponse> {
+    return unary(
+      this.media.beginMediaUpload.bind(this.media),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async finalizeMediaUpload(
+    request: FinalizeMediaUploadRequest,
+    accessToken: string,
+  ): Promise<FinalizeMediaUploadResponse> {
+    return unary(
+      this.media.finalizeMediaUpload.bind(this.media),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getMediaDownload(
+    request: GetMediaDownloadRequest,
+    accessToken: string,
+  ): Promise<GetMediaDownloadResponse> {
+    return unary(
+      this.media.getMediaDownload.bind(this.media),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
@@ -516,6 +564,7 @@ export class PatchesApi {
     this.reaction.close();
     this.notification.close();
     this.moderation.close();
+    this.media.close();
   }
 }
 

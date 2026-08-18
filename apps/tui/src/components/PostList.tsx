@@ -25,6 +25,9 @@ export interface PostRowActions {
   onToggleBookmark?: ((post: Post) => void) | undefined;
   /** `!` on the selected row — opens the report screen scoped to that post (spec §55). */
   onReport?: ((post: Post) => void) | undefined;
+  /** `o` on the selected row — opens its first attachment externally (spec §76). A
+   * no-op when the row has no attachments. */
+  onOpenMedia?: ((post: Post) => void) | undefined;
   /** Applied to each post before it's rendered (not before it's passed to a row
    * action) — lets a caller overlay optimistic reaction state (P4-004's
    * `App.decoratePost`) without every screen's own paginated list needing to
@@ -71,6 +74,7 @@ export function PostList({
   onToggleLike,
   onToggleBookmark,
   onReport,
+  onOpenMedia,
   rowIndent,
   decorate,
 }: PostListProps): ReactElement {
@@ -135,6 +139,11 @@ export function PostList({
       if (input === '!') {
         const post = posts[effectiveSelected];
         if (post !== undefined) onReport?.(post);
+        return;
+      }
+      if (input === 'o') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onOpenMedia?.(post);
       }
     },
     { isActive: isActive && posts.length > 0 },

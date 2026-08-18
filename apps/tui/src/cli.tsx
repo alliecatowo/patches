@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 import { render } from 'ink';
+import {
+  createRenderer,
+  detectTerminalGraphics,
+  installMediaCleanup,
+  MediaRendererProvider,
+} from '@patches/terminal-media';
 
 import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
@@ -77,17 +83,34 @@ async function runTui(args: {
   // a separate prop — one source of truth for "is plain mode on at startup" (spec §173).
   const env = args.plain ? { ...process.env, PATCHES_PLAIN: '1' } : process.env;
 
+  // MUST run before `render()` — Ink puts stdin in raw mode and consumes `data`, and a
+  // probe started afterwards races Ink's key parser (@patches/terminal-media's README,
+  // spec §74's "probe before render").
+  const graphicsCapabilities = await detectTerminalGraphics();
+  const mediaRenderer = createRenderer(graphicsCapabilities);
+  // Freed on exit/signal even though Ink's own alternate-screen teardown runs first —
+  // Ink treats teardown-time writes as disposable, so the actual `d=I` deletes have to
+  // reach stdout from an `exit`/signal handler, not a React effect (spec §70).
+  const uninstallMediaCleanup = installMediaCleanup(mediaRenderer);
+
   try {
-    const instance = render(<App api={api} credentialStore={credentialStore} env={env} />, {
-      // Ink 7 owns the alternate screen and restores the original buffer on exit;
-      // hand-rolling \x1b[?1049h is unnecessary and racy.
-      alternateScreen: true,
-      exitOnCtrlC: true,
-    });
+    const instance = render(
+      <MediaRendererProvider renderer={mediaRenderer}>
+        <App api={api} credentialStore={credentialStore} env={env} />
+      </MediaRendererProvider>,
+      {
+        // Ink 7 owns the alternate screen and restores the original buffer on exit;
+        // hand-rolling \x1b[?1049h is unnecessary and racy.
+        alternateScreen: true,
+        exitOnCtrlC: true,
+      },
+    );
     await instance.waitUntilExit();
     return 0;
   } finally {
     api.close();
+    uninstallMediaCleanup();
+    mediaRenderer.releaseAll();
     restoreTerminal();
   }
 }
