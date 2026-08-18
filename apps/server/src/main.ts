@@ -52,7 +52,7 @@ async function bootstrap(): Promise<void> {
   const logger = createLogger(env);
 
   const url = `${env.GRPC_HOST}:${String(env.GRPC_PORT)}`;
-  const { options, health } = createGrpcMicroservice(url);
+  const { options, health } = createGrpcMicroservice(url, { reflection: env.GRPC_REFLECTION });
 
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
     ...options,
