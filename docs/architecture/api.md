@@ -9,21 +9,25 @@ Patches' canonical client/server application protocol — the contract between a
 > [`auth.md`](./auth.md) and [`pages.md`](./pages.md).
 
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
-`common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto` —
-the full `AuthService` (including SSH login, and credential management) has server handlers;
-`BeginGitHubLogin`/`PollGitHubLogin` are schema-defined but their server implementation is
-deferred to Phase 6 (§176). `PostService` (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` —
-`ListReplies` returns direct replies only, not yet a depth-bounded tree walk) and `ActorService`
-(`GetActor`/`GetActorByHandle`/`UpdateProfile`) have server handlers; `SearchActors`/
-`ListFollowers`/`ListFollowing` return `NOT_IMPLEMENTED` pending `SocialGraphService`/search
-(Phase 3). `FeedService`'s `ListLocalFeed`/`ListActorPosts` have server handlers with
-keyset-paginated, `PUBLIC`/`UNLISTED`-only visibility (a `FOLLOWERS`-visibility/block/mute
-filter seam is left for `SocialGraphService`, P3-002); `ListHomeFeed` returns
-`NOT_IMPLEMENTED` — it needs the same follow graph and is deliberately not approximated as
-"your own posts". `NodeService`, `PageService`,
-`SocialGraphService`, `MediaService`, `ReactionService`, `ModerationService`, and
-`NotificationService` — and the MVP-marked RPCs (`EditPost`, `Repost`, `ListBookmarks`) — are
-**planned**, not yet present in `packages/proto`. Per-RPC status is called out inline below.
+`common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
+`social_graph.proto`, `node.proto` — the full `AuthService` (including SSH login, and
+credential management) has server handlers; `BeginGitHubLogin`/`PollGitHubLogin` are
+schema-defined but their server implementation is deferred to Phase 6 (§176). `PostService`
+(`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` returns direct replies
+only, not yet a depth-bounded tree walk; `CreatePost` also accepts `content_warning`, B-018)
+and `ActorService` (`GetActor`/`GetActorByHandle`/`UpdateProfile` — including a bounded
+`nameplate`, §173 — `SearchActors`, `ListFollowers`, `ListFollowing`) have server handlers,
+all implemented by P3-001. `SocialGraphService` (`social_graph.proto`) has server handlers for
+`FollowActor`/`UnfollowActor`/`GetRelationship`; `MuteActor`/`UnmuteActor`/`BlockActor`/
+`UnblockActor` remain planned (Phase 6, spec §140) — the `blocks`/`mutes` tables exist (P3-001)
+so the feed/relationship reads below already honor them, but nothing writes to them yet.
+`FeedService`'s `ListLocalFeed`/`ListActorPosts`/`ListHomeFeed` all have server handlers
+(P3-002) with keyset-paginated, visibility+block+mute-aware SQL (§59, §62–63) — see §3's
+`FeedService` table for the exact scoping. `NodeService.GetNodeInfo` (`node.proto`) has a
+server handler (P1-014). `PageService`, `MediaService`, `ReactionService`,
+`ModerationService`, and `NotificationService` — and the MVP-marked RPCs (`EditPost`,
+`Repost`, `ListBookmarks`) — are **planned**, not yet present in `packages/proto`. Per-RPC
+status is called out inline below.
 
 ## 1. Schema layout
 
@@ -34,13 +38,14 @@ packages/proto/proto/patches/v1/
 ├── common.proto     # implemented
 ├── system.proto     # implemented
 ├── auth.proto       # implemented
-├── node.proto       # planned
+├── node.proto       # implemented (GetNodeInfo only)
 ├── users.proto       # planned — no separate `users.proto` is currently expected;
 │                       # actor-facing user data flows through auth.proto's Session/GetCurrentSession
 ├── actors.proto      # implemented
 ├── pages.proto       # planned
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
+├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship only)
 ├── media.proto       # planned
 ├── moderation.proto  # planned
 └── notifications.proto  # planned
@@ -118,11 +123,11 @@ Notes:
 - Flows, the signed-blob composition, and the no-enumeration rule are in
   [`auth.md`](./auth.md).
 
-### NodeService (§163, §168) — planned, not yet in `packages/proto`
+### NodeService (§163, §168) — implemented in `node.proto` (P1-014)
 
-| RPC           | Notes                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), capabilities (§174) |
+| RPC           | Notes                                                                                                                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), capabilities (§174) — `capabilities` is currently an empty list (v0 grants nothing capability-gated yet) |
 
 Clients discover node policy here rather than assuming the reference node's behavior. There
 is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
@@ -145,47 +150,72 @@ ignore unknown block types gracefully; the server rejects them on write.
 
 ### ActorService (§49) — implemented in `actors.proto`
 
-| RPC                | Notes                                                                                                                                                                                                     |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GetActor`         | by ID                                                                                                                                                                                                     |
-| `GetActorByHandle` |                                                                                                                                                                                                           |
-| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`, selected by a `google.protobuf.FieldMask` (`update_mask`); avatar and nameplate (§173) are not yet fields — added once `MediaService`/nameplates ship |
-| `SearchActors`     | handle prefix + display-name match (§112)                                                                                                                                                                 |
-| `ListFollowers`    | cursor-paginated                                                                                                                                                                                          |
-| `ListFollowing`    | cursor-paginated                                                                                                                                                                                          |
+| RPC                | Notes                                                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                           |
+| `GetActorByHandle` |                                                                                                                                                                                               |
+| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); avatar is not yet a field — added once `MediaService` ships |
+| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                       |
+| `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                   |
+| `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                   |
 
-### SocialGraphService (§50) — planned, not yet in `packages/proto`
+`UpdateProfile`'s `nameplate.badges` is never accepted from the client (§173) — the server
+mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's existing
+badges forward regardless of what a request sends, and validates the serialized record stays
+≤ 2 KiB.
 
-| RPC             | Notes                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| `FollowActor`   | v0 local accounts transition straight to `FOLLOWING`; `PENDING`/`NONE` states reserved for future use |
-| `UnfollowActor` |                                                                                                       |
-| `MuteActor`     |                                                                                                       |
-| `UnmuteActor`   |                                                                                                       |
-| `BlockActor`    | also clears any existing follow in either direction                                                   |
-| `UnblockActor`  |                                                                                                       |
+### SocialGraphService (§50) — implemented in `social_graph.proto` (P3-001), `FollowActor`/`UnfollowActor`/`GetRelationship` only
+
+| RPC               | Notes                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FollowActor`     | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent |
+| `UnfollowActor`   | idempotent — unfollowing a non-followed actor is not an error                                                                                                                             |
+| `GetRelationship` | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting` — all require an authenticated session                                                                        |
+| `MuteActor`       | **planned** — Phase 6 (spec §140); the `mutes` table exists (P3-001) and is already read by `FeedService`/`GetRelationship`                                                               |
+| `UnmuteActor`     | **planned** — Phase 6                                                                                                                                                                     |
+| `BlockActor`      | **planned** — Phase 6; will also clear any existing follow in either direction                                                                                                            |
+| `UnblockActor`    | **planned** — Phase 6                                                                                                                                                                     |
 
 ### PostService (§51) — `CreatePost`/`GetPost`/`DeletePost`/`ListReplies` implemented in `posts.proto`
 
-| RPC           | Notes                                                                    |
-| ------------- | ------------------------------------------------------------------------ |
-| `CreatePost`  | requires `client_request_id`; idempotent                                 |
-| `GetPost`     |                                                                          |
-| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                     |
-| `ListReplies` | cursor-paginated, bounded depth (`max_depth`)                            |
-| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                              |
-| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned** |
+| RPC           | Notes                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| `CreatePost`  | requires `client_request_id`; idempotent; accepts `content_warning` (B-018) |
+| `GetPost`     |                                                                             |
+| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                        |
+| `ListReplies` | cursor-paginated, bounded depth (`max_depth`)                               |
+| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                                 |
+| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned**    |
 
-### FeedService (§52)
+### FeedService (§52) — implemented (P3-002)
 
-| RPC              | Notes                             |
-| ---------------- | --------------------------------- |
-| `ListHomeFeed`   | fan-out-on-read, chronological    |
-| `ListLocalFeed`  | chronological, local public posts |
-| `ListActorPosts` | a given actor's posts             |
-| `ListBookmarks`  | MVP                               |
+| RPC              | Notes                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `ListHomeFeed`   | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                          |
+| `ListLocalFeed`  | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering |
+| `ListActorPosts` | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                               |
+| `ListBookmarks`  | MVP                                                                                                                                   |
 
 Explicitly never added: `GetRecommendedFeed`, `GetForYouFeed` (§52, §153).
+
+**Visibility/block/mute filtering (§59, §62–63), shared by all three RPCs above** (see
+`FeedService.applyVisibilityFilter`, `apps/server/src/modules/feeds/feed.service.ts`):
+`PUBLIC`/`UNLISTED` posts are always eligible; a `FOLLOWERS`-visibility post is eligible only
+to its own author or an actor who follows them; a post is excluded if the viewer blocks its
+author or is blocked by them (either direction), and excluded if the viewer mutes its author.
+With no viewer (anonymous `ListLocalFeed`/`ListActorPosts`), only `PUBLIC`/`UNLISTED` posts are
+eligible — there is no viewer to test a `FOLLOWERS` post or a block/mute against.
+`ListHomeFeed` additionally restricts the candidate set to the viewer's own posts plus posts
+by actors the viewer follows.
+
+**Query plan verified** (`EXPLAIN (ANALYZE, BUFFERS)`, ~60,000 seeded posts, one actor
+following 20 of 50 seeded authors): both `ListLocalFeed`'s and `ListHomeFeed`'s queries plan
+as an `Index Scan using idx_posts_created_at_id on posts` with no sequential scan on `posts`
+(sub-millisecond execution: 0.089ms / 0.247ms). At a much smaller table size (~4,000 rows) the
+planner correctly prefers a `Seq Scan` instead — expected cost-based behavior for a table that
+small, not a missing index. `blocks`/`mutes` are seq-scanned inside the anti-join, which is
+fine at their current size (a handful of rows per actor); revisit if either table grows large
+enough for the per-row `NOT EXISTS` check to matter.
 
 ### MediaService (§54) — planned, not yet in `packages/proto`
 
@@ -275,27 +305,33 @@ Application error codes are transport-independent, then mapped consistently onto
 gRPC status codes. Stack traces are never exposed to clients; request IDs are
 included in error metadata/messages where useful.
 
-| Application error code     | gRPC status           |
-| -------------------------- | --------------------- |
-| `AUTH_INVALID_CREDENTIALS` | `UNAUTHENTICATED`     |
-| `AUTH_EMAIL_UNVERIFIED`    | `FAILED_PRECONDITION` |
-| `AUTH_SESSION_EXPIRED`     | `UNAUTHENTICATED`     |
-| `ACTOR_NOT_FOUND`          | `NOT_FOUND`           |
-| `HANDLE_TAKEN`             | `ALREADY_EXISTS`      |
-| `ACTOR_BLOCKED`            | `PERMISSION_DENIED`   |
-| `POST_NOT_FOUND`           | `NOT_FOUND`           |
-| `POST_FORBIDDEN`           | `PERMISSION_DENIED`   |
-| `POST_TOO_LONG`            | `INVALID_ARGUMENT`    |
-| `MEDIA_TOO_LARGE`          | `INVALID_ARGUMENT`    |
-| `MEDIA_UNSUPPORTED_TYPE`   | `INVALID_ARGUMENT`    |
-| `MEDIA_NOT_READY`          | `FAILED_PRECONDITION` |
-| `RATE_LIMITED`             | `RESOURCE_EXHAUSTED`  |
-| `VALIDATION_ERROR`         | `INVALID_ARGUMENT`    |
-| `INTERNAL_ERROR`           | `INTERNAL`            |
+| Application error code       | gRPC status           |
+| ---------------------------- | --------------------- |
+| `AUTH_INVALID_CREDENTIALS`   | `UNAUTHENTICATED`     |
+| `AUTH_EMAIL_UNVERIFIED`      | `FAILED_PRECONDITION` |
+| `AUTH_SESSION_EXPIRED`       | `UNAUTHENTICATED`     |
+| `ACTOR_NOT_FOUND`            | `NOT_FOUND`           |
+| `HANDLE_TAKEN`               | `ALREADY_EXISTS`      |
+| `ACTOR_BLOCKED`              | `PERMISSION_DENIED`   |
+| `POST_NOT_FOUND`             | `NOT_FOUND`           |
+| `POST_FORBIDDEN`             | `PERMISSION_DENIED`   |
+| `POST_TOO_LONG`              | `INVALID_ARGUMENT`    |
+| `MEDIA_TOO_LARGE`            | `INVALID_ARGUMENT`    |
+| `MEDIA_UNSUPPORTED_TYPE`     | `INVALID_ARGUMENT`    |
+| `MEDIA_NOT_READY`            | `FAILED_PRECONDITION` |
+| `RATE_LIMITED`               | `RESOURCE_EXHAUSTED`  |
+| `VALIDATION_ERROR`           | `INVALID_ARGUMENT`    |
+| `INTERNAL_ERROR`             | `INTERNAL`            |
+| `CLIENT_VERSION_UNSUPPORTED` | `FAILED_PRECONDITION` |
+| `NOT_IMPLEMENTED`            | `UNIMPLEMENTED`       |
 
 `AUTH_EMAIL_UNVERIFIED` and `MEDIA_NOT_READY` are mapped to `FAILED_PRECONDITION`
 because the request is well-formed but the resource/account is not yet in a state
 that permits the action — the canonical gRPC semantics for that status.
+
+`NOT_IMPLEMENTED` is for an RPC that exists in the schema but nothing on this node answers
+yet (`BeginGitHubLogin`/`PollGitHubLogin` until Phase 6, §176) — distinct from a client asking
+for something malformed, which is `VALIDATION_ERROR`/`INVALID_ARGUMENT`.
 
 ## 8. Input limits (§58)
 

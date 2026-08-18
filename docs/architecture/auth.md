@@ -99,18 +99,44 @@ credential fingerprint     SHA256:<base64>, OpenSSH form
 expires_at
 ```
 
+**Wire encoding.** Each field above is framed exactly as an SSH `string` (RFC 4251 §5: a
+big-endian `uint32` byte count followed by that many bytes — the same primitive OpenSSH uses
+for every field of a public key or signature blob), concatenated in the order shown, with no
+separators or padding between fields:
+
+```text
+uint32  len("patches-ssh-login-v1")     "patches-ssh-login-v1"
+uint32  len(node domain)                node domain (UTF-8)
+uint32  len(challenge id)               challenge id (UTF-8, the row's UUID)
+uint32  len(nonce)                      nonce (raw bytes, no encoding)
+uint32  len(fingerprint)                fingerprint (UTF-8, "SHA256:<base64>")
+uint32  len(expires_at)                 expires_at (ASCII decimal Unix seconds)
+```
+
+`expires_at` is truncated to whole seconds before framing: the client only ever sees it as a
+`google.protobuf.Timestamp`, and truncating on both sides is what makes the server's and any
+independent verifier's encoding agree byte-for-byte without the client reproducing a
+sub-second value it was never given. Implemented in
+`apps/server/src/modules/auth/ssh/challenge-blob.ts` (`buildSshChallengeBlob`) and
+`ssh/wire.ts` (`encodeSshString`/`SshReader`) — length-prefixed framing throughout is what
+stops one field's bytes from being able to bleed into its neighbour's, the usual way a
+"concatenate everything into one blob" scheme breaks.
+
 ### Requirements
 
 - The server verifies the signature over a blob **it reconstructs itself**. It never signs or
   accepts a blob whose contents the client chose.
-- Challenges: single-use, TTL ≤ 120 s, consumed atomically, rate-limited per IP and per
-  claimed handle (§102).
+- Challenges: single-use, TTL ≤ 120 s, consumed atomically, rate-limited per peer address
+  (§102). Not keyed on anything the request itself supplies (a candidate fingerprint,
+  `CompleteSshLogin`'s challenge id) — those are caller-chosen, so a limiter keyed on them
+  would never see the same bucket twice. **Status: planned** — narrowing by a claimed handle
+  (`ssh_login_challenges.claimed_handle`) is reserved in the schema but not implemented; there
+  is currently no way for a request to supply one.
 - **No enumeration.** SSH public keys are public — GitHub serves them at `/<user>.keys` — so
   confirming "this key is enrolled here" links an external identity to a Patches account.
   `BeginSshLogin` returns a challenge regardless of enrollment, and every `CompleteSshLogin`
   failure is one generic `UNAUTHENTICATED`, whether the key is unknown, revoked, or the
-  signature is bad. Only a request supplying a claimed handle may narrow the accepted
-  fingerprint set, and that path is rate-limited.
+  signature is bad.
 - Algorithms: prefer `ssh-ed25519`; `rsa-sha2-256`/`rsa-sha2-512` may be accepted; SHA-1
   `ssh-rsa` is rejected.
 - **Private keys never touch Patches.** Signing happens in the agent. Patches never reads,
