@@ -65,7 +65,7 @@ Path-scoped, loaded automatically when matching files are touched: `server.md`
 
 Every agent turn re-reads its whole context from cache, so cost ≈ context size × turns. Rules:
 
-- Briefs list the exact files/sections to read; agents read **only those** (`sed -n` ranges, `grep -n`), never whole research docs or spec sweeps. Research docs and the spec are reference, not required reading.
+- **Briefs are self-contained.** The orchestrator pastes the exact snippets the agent needs (signatures, entity fields, proto shapes, paths, the verify command) into the brief; agents should be able to start implementing on turn 1. No "read first: A, B, C" lists — those re-read the same files across every agent and are the dominant cached-read cost. Research docs and the spec are reference, not required reading.
 - No exploratory repo tours: `Glob`/`Grep` for a symbol, read one file, act. Reviewers review a **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
 - No turn caps — but every tool call re-reads the whole context, so batch: one combined verify command per package (`pnpm --filter X build && … typecheck && … test`), `sed -n` ranges instead of whole files, commit slices early.
 - Prefer one well-briefed sonnet agent over three narrow ones (each agent pays the CLAUDE.md + rules + system prompt load). Use haiku for mechanical checks. Opus/fable only where judgment matters.
