@@ -94,6 +94,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-pos
 description = "Stop the compose stack"
 run = "cd \"$MISE_PROJECT_ROOT\" && mise run compose -- down"
 
+[tasks."fed:lab"]
+description = "Manual two-node federation lab (B-029): builds server/worker/tui, starts node A (grpc 50061/http 8081) and node B (grpc 50062/http 8082) plus a worker each against dedicated patches_lab_a/patches_lab_b databases, prints next steps, tails logs — see docs/operations/federation.md 'Manual two-node lab'"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/lab/fed-lab.sh up"
+
+[tasks."fed:lab:down"]
+description = "Stop the federation lab started by `mise run fed:lab` (kills the PIDs recorded in infra/lab/.run/)"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/lab/fed-lab.sh down"
+
 [tasks."docker:build"]
 description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"
 run = """
