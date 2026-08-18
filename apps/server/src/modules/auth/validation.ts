@@ -69,6 +69,7 @@ export const registerInputSchema = z.object({
   password: passwordSchema.optional(),
   inviteCode: opaqueCodeSchema.optional(),
   sshPublicKey: z.string().trim().min(1).max(4096).optional(),
+  clientRequestId: z.uuid().optional(),
 });
 
 export const loginInputSchema = z.object({

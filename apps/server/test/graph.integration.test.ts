@@ -15,6 +15,7 @@ import {
   type UnfollowActorResponse,
 } from '@patches/proto';
 import { createTestBlock, createTestUser } from '@patches/testkit';
+import { Notification } from '@patches/database';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -96,6 +97,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { accessToken: bob.accessToken },
         );
         expect(relationship.relationship?.followedBy).toBe(true);
+      });
+
+      it('writes exactly one FOLLOW notification for the followed actor (A-026)', async () => {
+        const rows = await dataSource.getRepository(Notification).find({
+          where: { recipientActorId: bob.actorId, actorId: alice.actorId, type: 'FOLLOW' },
+        });
+        expect(rows).toHaveLength(1);
       });
 
       it('unfollow is idempotent — unfollowing a non-followed actor is not an error', async () => {

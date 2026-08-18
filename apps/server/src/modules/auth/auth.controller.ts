@@ -78,6 +78,7 @@ export class AuthController implements AuthServiceController {
       ...optional('password', request.password),
       ...optional('inviteCode', request.inviteCode),
       ...optional('sshPublicKey', request.sshPublicKey),
+      ...optional('clientRequestId', request.clientRequestId),
     });
     return { session: toProtoSession(session) };
   }

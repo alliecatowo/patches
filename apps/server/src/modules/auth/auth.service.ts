@@ -152,6 +152,29 @@ export class AuthService {
     const emailNormalized = parsed.email === undefined ? null : normalizeEmail(parsed.email);
 
     return this.dataSource.transaction(async (manager) => {
+      const existingActor = await manager
+        .getRepository(Actor)
+        .findOne({ where: { handleNormalized } });
+      if (existingActor !== null) {
+        // §45 idempotency: a retry of the *same* registration (same handle, same
+        // client_request_id) that also proves it holds the credential it enrolled gets a
+        // fresh session instead of HANDLE_TAKEN. Anything else is just a taken handle —
+        // the request id alone must never unlock an account (unauthenticated caller).
+        const replay = await this.matchesCompletedRegistration(manager, existingActor, {
+          clientRequestId: parsed.clientRequestId,
+          password: parsed.password,
+          sshFingerprint: sshKey?.fingerprint,
+        });
+        if (replay === null) throw new AppError('HANDLE_TAKEN', 'That handle is already taken.');
+        const tokens = await this.tokens.issueSession(manager, {
+          userId: replay.userId,
+          actorId: existingActor.id,
+        });
+        return this.envelope(tokens, existingActor, false);
+      }
+
+      // Invite handling comes after the §45 replay check above: a retried registration
+      // re-sends an invite that was consumed by the first attempt.
       if (this.config.inviteOnly) {
         if (parsed.inviteCode !== undefined) {
           await consumeInvite(manager, parsed.inviteCode);
@@ -172,16 +195,13 @@ export class AuthService {
         }
       }
 
-      if (await manager.getRepository(Actor).existsBy({ handleNormalized })) {
-        throw new AppError('HANDLE_TAKEN', 'That handle is already taken.');
-      }
-
       const actor = await createActorAndUser(manager, {
         handle: parsed.handle,
         handleNormalized,
         displayName: parsed.displayName.length === 0 ? null : parsed.displayName,
         email: parsed.email ?? null,
         emailNormalized,
+        clientRequestId: parsed.clientRequestId ?? null,
       });
       // `createActorAndUser` always back-fills `actor.userId` before returning — `?? ''` here
       // would silently write an empty-string `userId` instead of failing loudly if that ever
@@ -227,6 +247,51 @@ export class AuthService {
 
       return this.envelope(tokens, actor, false);
     });
+  }
+
+  /**
+   * Returns the user id when `actor` is the result of this very registration being retried
+   * (matching `client_request_id`) AND the caller can present the credential enrolled by it;
+   * `null` otherwise. Argon2id runs at most once here (same cost as a login attempt).
+   */
+  private async matchesCompletedRegistration(
+    manager: EntityManager,
+    actor: Actor,
+    proof: {
+      clientRequestId: string | undefined;
+      password: string | undefined;
+      sshFingerprint: string | undefined;
+    },
+  ): Promise<{ userId: string } | null> {
+    if (
+      proof.clientRequestId === undefined ||
+      actor.clientRequestId === null ||
+      actor.clientRequestId !== proof.clientRequestId ||
+      actor.userId === null ||
+      actor.deletedAt !== null
+    ) {
+      return null;
+    }
+    const credentials = manager.getRepository(Credential);
+    if (proof.password !== undefined) {
+      const credential = await credentials.findOne({
+        where: { userId: actor.userId, type: 'PASSWORD', revokedAt: IsNull() },
+      });
+      if (await this.hasher.verify(credential?.secretHash, proof.password)) {
+        return { userId: actor.userId };
+      }
+      return null;
+    }
+    if (proof.sshFingerprint !== undefined) {
+      const enrolled = await credentials.existsBy({
+        userId: actor.userId,
+        type: 'SSH_PUBLIC_KEY',
+        identifier: proof.sshFingerprint,
+        revokedAt: IsNull(),
+      });
+      return enrolled ? { userId: actor.userId } : null;
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- email codes
@@ -751,6 +816,7 @@ async function createActorAndUser(
     displayName: string | null;
     email: string | null;
     emailNormalized: string | null;
+    clientRequestId: string | null;
   },
 ): Promise<Actor> {
   const actors = manager.getRepository(Actor);
@@ -761,6 +827,7 @@ async function createActorAndUser(
       displayName: input.displayName,
       isLocal: true,
       userId: null,
+      clientRequestId: input.clientRequestId,
     }),
   );
 

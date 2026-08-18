@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { NotificationsService } from '../notifications/notification.service.js';
 import type { RelationshipView } from './graph.dto.js';
 
 const uuidInputSchema = z.uuid('must be a valid id');
@@ -24,7 +25,10 @@ function parseActorId(value: string): string {
  */
 @Injectable()
 export class GraphService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /**
    * v0 local accounts transition straight to `FOLLOWING` (spec §50) — idempotent (following an
@@ -37,7 +41,7 @@ export class GraphService {
       throw AppError.validation('You cannot follow yourself.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const { relationship, created } = await this.dataSource.transaction(async (manager) => {
       const target = await manager.getRepository(Actor).findOne({ where: { id: targetActorId } });
       if (target === null || target.deletedAt !== null) throw actorNotFound();
 
@@ -49,6 +53,7 @@ export class GraphService {
       const existing = await follows.findOne({
         where: { followerActorId: viewerActorId, followeeActorId: targetActorId },
       });
+      let created = false;
       if (existing === null) {
         try {
           await follows.save(
@@ -59,6 +64,7 @@ export class GraphService {
               acceptedAt: new Date(),
             }),
           );
+          created = true;
         } catch (error) {
           // Two concurrent FollowActor calls race the (follower_actor_id, followee_actor_id)
           // unique index — the loser just means the row already exists, which is exactly what
@@ -68,8 +74,15 @@ export class GraphService {
         }
       }
 
-      return this.relationshipFor(manager, viewerActorId, targetActorId);
+      return {
+        relationship: await this.relationshipFor(manager, viewerActorId, targetActorId),
+        created,
+      };
     });
+    // FOLLOW notification only on a genuinely new follow (A-026), written after the follow
+    // transaction has committed (its own connection — see LEARNINGS on cross-connection locks).
+    if (created) await this.notifications.notifyFollow(targetActorId, viewerActorId);
+    return relationship;
   }
 
   /** Idempotent: unfollowing an actor the caller does not follow is not an error. */
