@@ -127,4 +127,8 @@ export class AppConfigService {
   get mediaPendingUploadExpiryMinutes(): number {
     return this.get('MEDIA_PENDING_UPLOAD_EXPIRY_MINUTES');
   }
+
+  get publicOrigin(): string {
+    return this.get('PUBLIC_ORIGIN');
+  }
 }

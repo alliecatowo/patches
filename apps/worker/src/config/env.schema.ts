@@ -61,6 +61,15 @@ const envObjectSchema = z.object({
   /** How often the claim loop checks for stale leases — a fraction of `WORKER_LEASE_TTL_MS`,
    * not every pass, since it's a table scan over `PROCESSING` rows. */
   WORKER_LEASE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
+   * P8-004/P8-005: this node's own origin, needed by `FederationDeliverHandler` to build the
+   * `keyId` (`${PUBLIC_ORIGIN}/users/{handle}#main-key`) it signs outgoing deliveries with —
+   * must match the same node's `apps/server` `PUBLIC_ORIGIN` exactly, since that is the URI
+   * the receiving peer dereferences to fetch the matching `publicKeyPem`. Same dev-friendly
+   * default as the server's copy of this variable.
+   */
+  PUBLIC_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
