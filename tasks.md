@@ -37,7 +37,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 > SSH challenge** (GitHub device flow is Phase 6). Sessions are per node.
 > Read [`docs/architecture/auth.md`](docs/architecture/auth.md) before starting.
 
-- [ ] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, verification codes, jobs/outbox
+- [x] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, `auth_codes`, `outbox_jobs` (+ Phase 2 `posts`/`media`/`post_media`); outbox claim helpers; testkit factories
 - [ ] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
 - [ ] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
 - [ ] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
@@ -120,8 +120,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 ## Backlog / discovered
 
 - [x] A-001 — CI: add `actions/checkout@v4` as the first step of every job (local `./.github/actions/setup` cannot resolve before checkout)
-- [ ] A-002 — database: stop disabling TLS verification — CA/sslmode-driven option defaulting to verify; update tests
-- [ ] A-003 — testkit: refuse any TEST_DATABASE_URL whose database name does not end in `_test` before dropDatabase() (§119)
+- [x] A-002 — database: stop disabling TLS verification — CA/sslmode-driven option defaulting to verify; update tests
+- [x] A-003 — testkit: refuse any TEST_DATABASE_URL whose database name does not end in `_test` before dropDatabase() (§119)
 - [x] A-004 — server: validate/cap inbound `x-request-id` (≤64 chars, [A-Za-z0-9._-]) before logging/echoing (§103)
 - [x] A-005 — CI/tests: add `--project testkit` to `test:integration` and set TEST_DATABASE_URL so isolation helpers actually run
 - [x] A-006 — CI/tests: one database per DB-touching vitest project (or no cross-project parallelism) — `database` and `server-integration` both dropDatabase() the same DB _(mitigated via `--no-file-parallelism` on `test:integration` + `server-integration`'s own `patches_test_server` database; `database`/`testkit` still share `patches_test` by design — full per-project split tracked as B-012)_
@@ -132,7 +132,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
 - [ ] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
 - [x] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
-- [ ] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)
+- [x] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)
 - [x] A-015 — build: root `pnpm test` must work on a fresh clone (tests resolve @patches/* via dist) — build first via turbo or alias to src
 - [x] A-016 — tests: unit coverage for RpcExceptionsFilter, LoggingInterceptor, logger.factory, grpc-options, SystemService, tui cli/ping.ts, cli.tsx
 - [x] A-017 — terminal-media: bound untrusted image input (byte-length precheck + explicit sharp limitInputPixels) before Phase 5

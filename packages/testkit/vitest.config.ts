@@ -5,5 +5,7 @@ export default defineProject({
     name: 'testkit',
     include: ['src/**/*.test.ts', 'test/**/*.integration.test.ts'],
     environment: 'node',
+    // Shared real database, same reasoning as packages/database/vitest.config.ts.
+    fileParallelism: false,
   },
 });
