@@ -45,3 +45,23 @@ export type CleanExpiredTokensPayload = z.infer<typeof cleanExpiredTokensPayload
 
 export const cleanExpiredUploadsPayloadSchema = z.object({}).strict();
 export type CleanExpiredUploadsPayload = z.infer<typeof cleanExpiredUploadsPayloadSchema>;
+
+/**
+ * `FEDERATION_DELIVER` (P8-004, `docs/architecture/federation.md`): deliver `activity` (an
+ * already-built AS2 JSON document) to `inboxUrl`, signed as `actorId` (whichever local actor
+ * owns this delivery — the follower for a `Follow`, the post's author for a `Create`/`Delete`,
+ * the liker for a `Like`). `activityId` duplicates `activity.id` as a plain string so the
+ * worker/dedupe logic never has to reach into the untyped `activity` blob to log or key on it.
+ *
+ * The enqueuer sets `OutboxJob.idempotencyKey` to `federation-deliver:${activityId}:
+ * ${inboxUrl}` — the pair, not the activity alone, because one `Create` fans out to many
+ * followers' inboxes and each `(activity, inbox)` delivery is its own durable unit of work
+ * with its own retry/backoff state.
+ */
+export const federationDeliverPayloadSchema = z.object({
+  activityId: z.string().min(1).max(2048),
+  inboxUrl: z.string().min(1).max(2048),
+  actorId: z.uuid(),
+  activity: z.record(z.string(), z.unknown()),
+});
+export type FederationDeliverPayload = z.infer<typeof federationDeliverPayloadSchema>;
