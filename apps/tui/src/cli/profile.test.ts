@@ -1,4 +1,4 @@
-import { dateToTimestamp, type Session } from '@patches/proto';
+import { dateToTimestamp, type Nameplate, type Session } from '@patches/proto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
@@ -38,7 +38,7 @@ vi.mock('./auth-shared.js', () => ({
 
 const { runProfile } = await import('./profile.js');
 
-function makeSession(): Session {
+function makeSession(nameplate?: Nameplate): Session {
   const now = Date.now();
   return {
     actor: {
@@ -52,7 +52,7 @@ function makeSession(): Session {
       isLocal: true,
       joinedAt: dateToTimestamp(new Date()),
       counts: { followers: 0, following: 0, posts: 0 },
-      nameplate: undefined,
+      nameplate,
     },
     accessToken: 'access-token',
     accessExpiresAt: dateToTimestamp(new Date(now + 3_600_000)),
@@ -150,6 +150,70 @@ describe('runProfile edit', () => {
         locationText: 'Earth',
         websiteUrl: 'https://a.example',
         updateMask: ['display_name', 'location_text', 'website_url'],
+      }),
+      'access-token',
+    );
+  });
+
+  it('sends the whole nameplate submessage under a single "nameplate" mask path (A-037)', async () => {
+    stored = { userId: 'u1', refreshToken: 'refresh-token' };
+    refreshSession.mockResolvedValue({ session: makeSession() });
+    updateProfile.mockResolvedValue({ actor: makeSession().actor });
+    const io = makeIo();
+
+    await runProfile(['edit', '--name-color', '#7C3AED', '--glyph', '*', '--status-line', 'brb'], {
+      io,
+      ...DEPS,
+    });
+
+    expect(updateProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        updateMask: ['nameplate'],
+        nameplate: {
+          nameColor: '#7C3AED',
+          glyph: '*',
+          badges: [],
+          avatarFrame: '',
+          statusLine: 'brb',
+          profileBorder: '',
+        },
+      }),
+      'access-token',
+    );
+  });
+
+  it('merges an unspecified nameplate field from the current session actor rather than blanking it', async () => {
+    stored = { userId: 'u1', refreshToken: 'refresh-token' };
+    refreshSession.mockResolvedValue({
+      session: makeSession({
+        nameColor: '#111111',
+        glyph: '',
+        badges: ['moderator'],
+        avatarFrame: '',
+        statusLine: 'existing status',
+        profileBorder: 'round',
+      }),
+    });
+    updateProfile.mockResolvedValue({ actor: makeSession().actor });
+    const io = makeIo();
+
+    // Only --glyph is given — name_color, status_line, and profile_border must keep
+    // their current values in the outgoing nameplate, not go blank. `badges` is
+    // never read from the current actor — it is server-attested only and always
+    // sent empty (spec §173), regardless of what the current actor carries.
+    await runProfile(['edit', '--glyph', '★'], { io, ...DEPS });
+
+    expect(updateProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        updateMask: ['nameplate'],
+        nameplate: {
+          nameColor: '#111111',
+          glyph: '★',
+          badges: [],
+          avatarFrame: '',
+          statusLine: 'existing status',
+          profileBorder: 'round',
+        },
       }),
       'access-token',
     );

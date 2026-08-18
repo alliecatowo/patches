@@ -546,6 +546,7 @@ export function App({
               <SearchScreen
                 api={api}
                 isActive={screen === 'search'}
+                ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
                 onOpenActor={(actor) => openProfile(actor.id, actor)}
                 onCancel={() => setScreen(priorScreen)}
               />
