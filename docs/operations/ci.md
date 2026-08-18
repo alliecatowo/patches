@@ -49,9 +49,9 @@ does, in order:
 6. `pnpm db:migrate` — proves the up migration works again.
 
 Before any of that, a "Create per-project test databases" step provisions
-`patches_test_server` and `patches_test_testkit` (the `services:` postgres container
-only creates `POSTGRES_DB`, i.e. `patches_test`, on boot) — see "Why one database"
-below.
+`patches_test_server`, `patches_test_worker`, and `patches_testkit_test` (the
+`services:` postgres container only creates `POSTGRES_DB`, i.e. `patches_test`, on
+boot) — see "Why one database" below.
 
 7. `pnpm test:integration`.
 
@@ -64,26 +64,44 @@ below.
 migrated. Sharing a database between migration validation and the integration suite is
 fine — nothing requires them to be isolated from each other.
 
-The `database` and `testkit` vitest projects, however, _do_ need to be isolated from
-each other: both call `dropDatabase()` against `TEST_DATABASE_URL` (`database` directly;
-`testkit` via `createTestDataSource()`), and running them concurrently against the same
-database races one project's drop against the other's in-progress test (tasks.md A-006).
-Two things fix this without touching `packages/database`/`packages/testkit` (owned by
-other in-flight work at the time this was written):
+The `database`, `server-integration`, `worker-integration`, and `testkit` vitest projects
+each get their **own** database now (B-012 closed out the last gap — `testkit` used to
+share `patches_test` with `database`, see "History" below):
 
-- `test:integration` runs with `--no-file-parallelism`, so `database` and `testkit`
-  never execute test files at the same time regardless of which database they point at.
-- `server-integration` (`apps/server`) gets its own database, `patches_test_server`, via
-  `TEST_DATABASE_URL_SERVER` (falls back to `TEST_DATABASE_URL` with the database name
-  swapped — see `apps/server/vitest.integration.config.mts`). No test exercises this yet
-  (Phase 1 lands server-side persistence), but it means a future DB-backed server
-  integration test never has to share `patches_test` at all.
+- `database` uses `patches_test` (`TEST_DATABASE_URL`, the one the `services:` postgres
+  container provisions on boot).
+- `server-integration` uses `patches_test_server` via `TEST_DATABASE_URL_SERVER` (falls
+  back to `TEST_DATABASE_URL` with the database name swapped — see
+  `apps/server/vitest.integration.config.mts`).
+- `worker-integration` uses `patches_test_worker` via `TEST_DATABASE_URL_WORKER`, same
+  pattern (`apps/worker/vitest.integration.config.mts`).
+- `testkit` uses `patches_testkit_test` via `TEST_DATABASE_URL_TESTKIT`, same pattern
+  again (`packages/testkit/vitest.config.ts`). Named with a `_test` **suffix**, not
+  `patches_test_testkit`'s infix — `createTestDataSource()`'s own guard (the thing this
+  project's suite is actually testing) requires the database name to _end_ in `_test`
+  (`INITIAL_VISION.md` §119), and it would be circular for `testkit`'s tests to work
+  around their own package's safety check instead of satisfying it.
 
-`patches_test_testkit` is also provisioned (see the "Create per-project test databases"
-step and `infra/compose/postgres/init/01-test-db.sql`) for a future full per-project
-split, but isn't wired up yet — `packages/testkit`'s own vitest config would need to
-read a dedicated env var for that, which is out of scope for whoever doesn't own that
-package. Follow-up: B-012 in tasks.md.
+All four databases are provisioned by the "Create per-project test databases" step (CI)
+or `infra/compose/postgres/init/01-test-db.sql` (local `mise run compose -- up -d`).
+
+`test:integration` still runs with `--no-file-parallelism` even though no project shares
+a database with another anymore. This was tested and kept deliberately: running all four
+projects' test files fully in parallel (no `--no-file-parallelism`) reproducibly fails
+several `server-integration` specs (`feeds.integration.test.ts`,
+`posts.integration.test.ts`) that pass reliably with it — most likely resource
+contention (concurrent real Nest microservice boots + Postgres connections under full
+parallel load) rather than a database-sharing race, but the fix for a flaky-under-load
+suite is the same either way: don't run it under full load. Revisit if `test:integration`
+becomes a bottleneck worth the investigation.
+
+### History
+
+`testkit` used to share `patches_test` with `database` (both call `dropDatabase()`,
+`database` directly and `testkit` via `createTestDataSource()`), which is exactly the
+class of race `--no-file-parallelism` existed to prevent (tasks.md A-006). Fixed by
+B-012 giving `testkit` its own database once someone owned `packages/testkit`'s vitest
+config — see the git history of this file for the pre-B-012 version of this section.
 
 ### Toolchain setup (composite action)
 
@@ -147,11 +165,13 @@ pnpm proto:breaking -- --against '.git#branch=main,subdir=packages/proto'
 pnpm proto:gen && git diff --exit-code -- packages/proto/src/generated
 
 # integration (needs Postgres)
-mise run compose -- up -d   # also creates patches_test_server/patches_test_testkit,
-                             # see infra/compose/postgres/init/01-test-db.sql
+mise run compose -- up -d   # also creates patches_test_server/patches_test_worker/
+                             # patches_testkit_test, see
+                             # infra/compose/postgres/init/01-test-db.sql
 pnpm db:migrate
-pnpm test:integration       # runs database + testkit + server-integration serially
-                             # (--no-file-parallelism) — see "Why one database" above
+pnpm test:integration       # runs database + testkit + server-integration +
+                             # worker-integration serially (--no-file-parallelism) —
+                             # see "Why one database" above
 
 # actionlint
 mise exec -- actionlint .github/workflows/*.yml

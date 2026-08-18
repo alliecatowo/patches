@@ -1,14 +1,15 @@
 -- Creates the isolated database(s) used by integration tests (never point tests at the
--- dev DB). `patches_test` is shared by the `database` and `testkit` vitest projects
--- (see docs/operations/ci.md "Why one database" / tasks.md A-006 for why that's safe
--- only with `--no-file-parallelism`). `patches_test_server` is `server-integration`'s
--- own database (apps/server/vitest.integration.config.mts), unused until Phase 1 lands
--- DB-backed server tests. `patches_test_worker` is `worker-integration`'s own database
--- (apps/worker/vitest.integration.config.mts), same reasoning. `patches_test_testkit` is
--- provisioned for a future per-project split but not yet wired up — packages/testkit's own
--- vitest config would need to read a dedicated env var, which is out of scope here (see
--- tasks.md A-006 follow-up).
+-- dev DB). `patches_test` is used by the `database` vitest project (see
+-- docs/operations/ci.md "Why one database" / tasks.md A-006). `patches_test_server` is
+-- `server-integration`'s own database (apps/server/vitest.integration.config.mts).
+-- `patches_test_worker` is `worker-integration`'s own database
+-- (apps/worker/vitest.integration.config.mts), same reasoning. `patches_testkit_test` is
+-- `testkit`'s own database (packages/testkit/vitest.config.ts, B-012) — named with the
+-- `_test` *suffix* rather than `patches_test_testkit`'s infix because
+-- `createTestDataSource()`'s own guard (what this project's suite actually tests) requires
+-- the database name to end in `_test` (INITIAL_VISION.md §119); see the doc comment in
+-- packages/testkit/vitest.config.ts.
 CREATE DATABASE patches_test OWNER patches;
 CREATE DATABASE patches_test_server OWNER patches;
 CREATE DATABASE patches_test_worker OWNER patches;
-CREATE DATABASE patches_test_testkit OWNER patches;
+CREATE DATABASE patches_testkit_test OWNER patches;
