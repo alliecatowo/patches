@@ -9,6 +9,7 @@ import { buildActivity, buildNoteObject, buildTombstone } from '../activitystrea
 import type { FederationGateway } from '../federation-gateway.js';
 import { localActorFollowersUri, localActorUri, localPostUri } from '../activitystreams/uris.js';
 import { DeliveryService } from './delivery.service.js';
+import { KeyService } from './key.service.js';
 
 /**
  * `FederationGateway` real implementation (P8-003), selected instead of `NoopFederationGateway`
@@ -22,6 +23,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
   constructor(
     private readonly config: AppConfigService,
     private readonly delivery: DeliveryService,
+    private readonly keys: KeyService,
   ) {}
 
   async publishPost(manager: EntityManager, postId: string): Promise<void> {
@@ -32,10 +34,11 @@ export class ActivityPubFederationGateway implements FederationGateway {
 
     const origin = this.config.publicOrigin;
     const author = post.authorActor;
-    const actorUri = localActorUri(origin, author.handleNormalized);
     const inboxUrls = await this.remoteFollowerInboxes(manager, author.id);
     if (inboxUrls.length === 0) return;
+    await this.keys.getOrCreateKeyPair(manager, author.id);
 
+    const actorUri = localActorUri(origin, author.handleNormalized);
     const inReplyTo = await this.federatedUriForPost(manager, post.inReplyToId);
     const note = buildNoteObject({
       id: localPostUri(origin, post.id),
@@ -65,6 +68,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
     const author = post.authorActor;
     const inboxUrls = await this.remoteFollowerInboxes(manager, author.id);
     if (inboxUrls.length === 0) return;
+    await this.keys.getOrCreateKeyPair(manager, author.id);
 
     const activity = buildActivity({
       id: `${origin}/activities/${randomUUID()}`,
@@ -86,6 +90,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
       targetActorId,
     );
     if (inboxUrl === undefined) return;
+    await this.keys.getOrCreateKeyPair(manager, follower.id);
 
     const origin = this.config.publicOrigin;
     const activity = buildActivity({
@@ -112,6 +117,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
       targetActorId,
     );
     if (inboxUrl === undefined) return;
+    await this.keys.getOrCreateKeyPair(manager, follower.id);
 
     const origin = this.config.publicOrigin;
     const followActorUri = localActorUri(origin, follower.handleNormalized);
@@ -173,6 +179,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
     if (liker === null || post === null || post.isLocal) return undefined;
     const targetInbox = post.authorActor.sharedInboxUri ?? post.authorActor.inboxUri;
     if (targetInbox === null || post.canonicalUri === null) return undefined;
+    await this.keys.getOrCreateKeyPair(manager, liker.id);
 
     const origin = this.config.publicOrigin;
     const activity = buildActivity({

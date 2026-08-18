@@ -14,7 +14,7 @@ interface CaughtError {
   metadata: { get: (key: string) => unknown[] };
 }
 
-const STUB_HOST = {} as ArgumentsHost;
+const STUB_HOST = { getType: () => 'rpc' } as unknown as ArgumentsHost;
 
 function catchException(exception: unknown): Promise<CaughtError> {
   const filter = new RpcExceptionsFilter();

@@ -30,6 +30,21 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 @Injectable()
 export class RequestContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // P8-001..008: the federation HTTP surface shares this global interceptor with every
+    // gRPC RPC (`APP_INTERCEPTOR` applies across every transport in a hybrid app). gRPC
+    // metadata reading below assumes a gRPC `ServerUnaryCall` argument shape that does not
+    // exist for an HTTP request — `context.switchToRpc().getContext()` on an HTTP request
+    // actually returns the Express `Response` object reinterpreted as "RPC context" (Nest
+    // just re-indexes the same underlying handler arguments), and calling `.get(key)[0]` on
+    // it throws (`Response#get` returns a string or `undefined`, not an array) before the
+    // request ever reaches a controller — every federation HTTP route hung with no response
+    // at all until this guard was added. HTTP requests skip request-id/client-version gating
+    // entirely: those are gRPC-client concepts, and every federation controller handles its
+    // own success/error responses directly via `@Res()`.
+    if (context.getType() !== 'rpc') {
+      return next.handle();
+    }
+
     const metadata = context.switchToRpc().getContext<Metadata>();
 
     const requestId = sanitizeRequestId(readMetadata(metadata, METADATA_KEYS.requestId));

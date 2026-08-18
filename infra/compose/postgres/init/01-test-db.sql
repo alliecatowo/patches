@@ -10,8 +10,13 @@
 -- `patches_test_testkit`'s infix because `createTestDataSource()`'s own guard (what this
 -- project's suite actually tests) requires the database name to end in `_test`
 -- (INITIAL_VISION.md §119); see the doc comment in packages/testkit/vitest.config.ts.
+-- `patches_test_fed_b` is the second node's database for the P8-008 two-node federation
+-- integration test (`apps/server/test/federation-two-node.integration.test.ts`) — node A
+-- uses `patches_test_server` like every other server-integration test, node B needs its own
+-- so the two in-process nodes never share rows.
 CREATE DATABASE patches_test OWNER patches;
 CREATE DATABASE patches_test_server OWNER patches;
 CREATE DATABASE patches_test_worker OWNER patches;
 CREATE DATABASE patches_test_admin OWNER patches;
 CREATE DATABASE patches_testkit_test OWNER patches;
+CREATE DATABASE patches_test_fed_b OWNER patches;
