@@ -47,7 +47,12 @@ export interface ParsedArgs {
   error?: string;
 }
 
-export const DEFAULT_TARGET = '127.0.0.1:50051';
+/**
+ * The flagship node (spec §162: Patches is node software; patches.social is the reference
+ * node). TLS on 443 — no `--insecure` needed. Local development passes
+ * `--server 127.0.0.1:50051 --insecure` (see `mise run tui`).
+ */
+export const DEFAULT_TARGET = 'patches-social.fly.dev:443';
 
 export interface ParseEnvironment {
   PATCHES_SERVER?: string | undefined;
