@@ -1,0 +1,326 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+
+// Local account authentication and credential management (spec §33–39, §48, and Amendment A
+// §162, §165–168). Session issuance/rotation only — `ActorService` owns profile data,
+// `SocialGraphService` owns follow/mute/block state.
+//
+// A credential proves you are a user; it is not who you are (§165). One user account may
+// hold several credentials (password, SSH keys, GitHub) side by side, and every login RPC
+// below returns the same `Session` envelope regardless of which credential was used.
+service AuthService {
+  // Invite-gated in v0 (spec §33). Accepts an optional initial credential beyond the
+  // password (`ssh_public_key`) so SSH-first registration never has to pass through a
+  // password. Returns an active session even though the account's recovery email (if any)
+  // is not yet verified — see `Session.email_verified`.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Consumes a single-use verification code for the account's recovery email (spec §38,
+  // §165 — applies only to accounts with a verified/verifiable recovery email).
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+
+  // Re-issues a verification code for the *authenticated caller's* account (the
+  // `authorization` metadata identifies the account — there is no unauthenticated resend so
+  // as to avoid leaking whether an email is registered, spec §177).
+  rpc ResendVerification(ResendVerificationRequest) returns (ResendVerificationResponse);
+
+  // The **password** login (spec §168). Kept as a dedicated RPC, not a polymorphic
+  // grab-bag of credential types — SSH and GitHub each get their own RPC pair below.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // Rotates the refresh token (spec §36). Reuse of an already-rotated token revokes the
+  // whole session family.
+  rpc RefreshSession(RefreshSessionRequest) returns (RefreshSessionResponse);
+
+  // Revokes the session tied to the given refresh token.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // Revokes every session for the authenticated caller's account.
+  rpc LogoutAllSessions(LogoutAllSessionsRequest) returns (LogoutAllSessionsResponse);
+
+  // Applies only to accounts with a verified recovery email (spec §165). Always returns
+  // success regardless of whether `email` is registered, to avoid account enumeration.
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+
+  // Consumes a single-use `password_reset_codes` row.
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+
+  // Returns session/actor info for the caller's current access token.
+  rpc GetCurrentSession(GetCurrentSessionRequest) returns (GetCurrentSessionResponse);
+
+  // SSH public-key login (spec §166). `BeginSshLogin` issues a single-use, short-TTL
+  // challenge; the client has its SSH agent sign it; `CompleteSshLogin` verifies the
+  // signature over the exact reconstructed blob and returns a session. Never reads,
+  // requests, or transmits a private key — signing happens in the agent.
+  rpc BeginSshLogin(BeginSshLoginRequest) returns (BeginSshLoginResponse);
+  rpc CompleteSshLogin(CompleteSshLoginRequest) returns (CompleteSshLoginResponse);
+
+  // GitHub credential via OAuth device flow (spec §167) — GitHub is a credential, never an
+  // identity; no profile field is ever populated from it automatically. `BeginGitHubLogin`
+  // starts the device flow, `PollGitHubLogin` is polled at the returned `interval` until a
+  // terminal status. Schema-only in Phase 1 — the implementation lands in Phase 6 (spec
+  // §176), once the URL/timeout/SSRF validation baseline for outbound HTTP calls exists.
+  rpc BeginGitHubLogin(BeginGitHubLoginRequest) returns (BeginGitHubLoginResponse);
+  rpc PollGitHubLogin(PollGitHubLoginRequest) returns (PollGitHubLoginResponse);
+
+  // Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
+  // other secret material — type, label, identifier, timestamps only.
+  rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
+
+  // Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
+  // GITHUB credentials are linked via `BeginGitHubLogin`/`PollGitHubLogin` called with an
+  // authenticated session instead, not through this RPC (spec §167's "linking ... MUST
+  // require an authenticated Patches session").
+  rpc AddCredential(AddCredentialRequest) returns (AddCredentialResponse);
+
+  // Revoking a user's last active credential MUST fail server-side (spec §165) — an account
+  // must always retain a way in.
+  rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+}
+
+// Issued by every login/registration RPC. `access_token` is a short-lived bearer JWT (spec
+// §35, suggested 15 minute lifetime); `refresh_token` is a high-entropy opaque string, never
+// itself a JWT (spec §36).
+message Session {
+  string access_token = 1;
+  google.protobuf.Timestamp access_expires_at = 2;
+  string refresh_token = 3;
+  google.protobuf.Timestamp refresh_expires_at = 4;
+  Actor actor = 5;
+  bool email_verified = 6;
+
+  // Canonical domain of the node that issued this session (spec §163, §169). The TUI's
+  // `CredentialStore` is keyed by (node origin, user id); a token must never be sent to any
+  // origin other than the one that issued it.
+  string node = 7;
+}
+
+message RegisterRequest {
+  // Recovery/verification only (spec §165) — not the account identifier or the login key.
+  // Optional: a node MAY require it per its own policy (see the future `GetNodeInfo`), but
+  // the protocol itself allows SSH-first registration with no email at all.
+  string email = 1;
+
+  // Unique within this node only (spec §163), 3-30 chars, lowercase ASCII
+  // letters/digits/underscore once normalized (spec §22).
+  string handle = 2;
+
+  // Max 80 characters (spec §58).
+  string display_name = 3;
+
+  // Optional: a node MAY allow SSH-first registration (`ssh_public_key` set, `password`
+  // empty) as long as at least one initial credential is supplied.
+  string password = 4;
+
+  string invite_code = 5;
+
+  // Idempotency key (spec §45); the backend enforces uniqueness conceptually on
+  // (handle_normalized, client_request_id) so a client-side retry cannot double-register.
+  string client_request_id = 6;
+
+  // OpenSSH public key blob (e.g. "ssh-ed25519 AAAA... comment"), enrolled as an initial
+  // SSH_PUBLIC_KEY credential (spec §166, §168). Optional; enrollment is always an explicit
+  // user action, never automatic, even when the TUI found this key on disk/in an agent.
+  string ssh_public_key = 7;
+}
+
+message RegisterResponse {
+  Session session = 1;
+}
+
+message VerifyEmailRequest {
+  string code = 1;
+}
+
+message VerifyEmailResponse {
+  bool email_verified = 1;
+}
+
+message ResendVerificationRequest {}
+
+message ResendVerificationResponse {}
+
+message LoginRequest {
+  // Either a recovery email address or a handle.
+  string email_or_handle = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  Session session = 1;
+}
+
+message RefreshSessionRequest {
+  string refresh_token = 1;
+}
+
+message RefreshSessionResponse {
+  Session session = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}
+
+message LogoutAllSessionsRequest {}
+
+message LogoutAllSessionsResponse {}
+
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {}
+
+message ResetPasswordRequest {
+  string code = 1;
+  string new_password = 2;
+}
+
+message ResetPasswordResponse {}
+
+message GetCurrentSessionRequest {}
+
+message GetCurrentSessionResponse {
+  string user_id = 1;
+  Actor actor = 2;
+  string session_id = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bool email_verified = 5;
+  string node = 6;
+}
+
+// SSH public key blob, or `fingerprint` alone — at least one must be set. Supplying the raw
+// key lets the server compute the fingerprint itself; supplying only the fingerprint avoids
+// sending key material before a challenge is even issued.
+message BeginSshLoginRequest {
+  string public_key_openssh = 1;
+
+  // OpenSSH fingerprint form `SHA256:<base64>` (spec §165 `credentials.identifier`).
+  string fingerprint = 2;
+}
+
+// Always returns a challenge, regardless of whether any supplied fingerprint is enrolled
+// (spec §166's no-enumeration requirement) — a `BeginSshLogin` response alone must never
+// reveal whether an account exists.
+message BeginSshLoginResponse {
+  string challenge_id = 1;
+
+  // >= 32 CSPRNG bytes, signed verbatim as part of the challenge blob. Never reused, never
+  // predictable.
+  bytes nonce = 2;
+
+  // TTL <= 120 seconds (spec §166).
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CompleteSshLoginRequest {
+  string challenge_id = 1;
+  string public_key_openssh = 2;
+
+  // Signature over the fixed-order challenge blob (spec §166): domain separation string
+  // "patches-ssh-login-v1", node canonical domain, challenge id, nonce, credential
+  // fingerprint, expires_at. The server MUST NOT sign or accept any blob whose contents were
+  // chosen by the client.
+  bytes signature = 3;
+
+  // OpenSSH signature algorithm name: "ssh-ed25519" (preferred), "rsa-sha2-256" or
+  // "rsa-sha2-512" (accepted). "ssh-rsa" (SHA-1) MUST be rejected server-side (spec §166).
+  string signature_format = 4;
+}
+
+message CompleteSshLoginResponse {
+  Session session = 1;
+}
+
+message BeginGitHubLoginRequest {}
+
+message BeginGitHubLoginResponse {
+  string device_code = 1;
+  string user_code = 2;
+  string verification_uri = 3;
+
+  // Minimum seconds between poll attempts (GitHub device flow's own `interval`, spec §167).
+  uint32 interval = 4;
+
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message PollGitHubLoginRequest {
+  string device_code = 1;
+}
+
+enum GitHubLoginStatus {
+  GIT_HUB_LOGIN_STATUS_UNSPECIFIED = 0;
+  GIT_HUB_LOGIN_STATUS_PENDING = 1;
+  GIT_HUB_LOGIN_STATUS_SLOW_DOWN = 2;
+  GIT_HUB_LOGIN_STATUS_EXPIRED = 3;
+  GIT_HUB_LOGIN_STATUS_DENIED = 4;
+  GIT_HUB_LOGIN_STATUS_COMPLETE = 5;
+}
+
+message PollGitHubLoginResponse {
+  GitHubLoginStatus status = 1;
+
+  // Set only when status == GIT_HUB_LOGIN_STATUS_COMPLETE.
+  Session session = 2;
+}
+
+// PASSKEY is spec-reserved (§165) but not a v0 value — do not add it until it ships.
+enum CredentialType {
+  CREDENTIAL_TYPE_UNSPECIFIED = 0;
+  CREDENTIAL_TYPE_PASSWORD = 1;
+  CREDENTIAL_TYPE_SSH_PUBLIC_KEY = 2;
+  CREDENTIAL_TYPE_GITHUB = 3;
+}
+
+// Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —
+// only what a user needs to recognize and manage their own credentials.
+message Credential {
+  string id = 1;
+  CredentialType type = 2;
+
+  // User-supplied human label (e.g. "work laptop"). Empty if never set.
+  string label = 3;
+
+  // Lookup key scoped to type (spec §165): SSH fingerprint or GitHub numeric account id as a
+  // string. Empty for PASSWORD, which has no `identifier`.
+  string identifier = 4;
+
+  google.protobuf.Timestamp created_at = 5;
+
+  // Unset (zero value) if never used.
+  google.protobuf.Timestamp last_used_at = 6;
+}
+
+message ListCredentialsRequest {}
+
+message ListCredentialsResponse {
+  repeated Credential credentials = 1;
+}
+
+message AddCredentialRequest {
+  // PASSWORD or SSH_PUBLIC_KEY only — see the RPC comment on `AddCredential`.
+  CredentialType type = 1;
+
+  // PASSWORD: the new password. SSH_PUBLIC_KEY: an OpenSSH public key blob.
+  string secret = 2;
+
+  string label = 3;
+}
+
+message AddCredentialResponse {
+  Credential credential = 1;
+}
+
+message RevokeCredentialRequest {
+  string id = 1;
+}
+
+message RevokeCredentialResponse {}

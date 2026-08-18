@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+
+// Posts and replies — there is no separate comment entity (spec §23–26, §51).
+service PostService {
+  // Requires `client_request_id` (spec §45); the backend enforces idempotency conceptually
+  // on (author_actor_id, client_request_id) so a client-side retry cannot create a
+  // duplicate post.
+  rpc CreatePost(CreatePostRequest) returns (CreatePostResponse);
+
+  rpc GetPost(GetPostRequest) returns (GetPostResponse);
+
+  // Soft delete/tombstone (spec §25) — never a hard delete over this API.
+  rpc DeletePost(DeletePostRequest) returns (DeletePostResponse);
+
+  // Cursor-paginated, depth-bounded thread read (spec §24). Never loads an arbitrarily large
+  // thread in one call.
+  rpc ListReplies(ListRepliesRequest) returns (ListRepliesResponse);
+}
+
+enum PostType {
+  POST_TYPE_UNSPECIFIED = 0;
+  POST_TYPE_NOTE = 1;
+  POST_TYPE_LINK = 2;
+}
+
+enum PostVisibility {
+  POST_VISIBILITY_UNSPECIFIED = 0;
+  POST_VISIBILITY_PUBLIC = 1;
+  POST_VISIBILITY_UNLISTED = 2;
+  POST_VISIBILITY_FOLLOWERS = 3;
+}
+
+// One attached image (spec §27–28). `thumbnail_url`/`download_url` are intentionally absent
+// — they arrive as new fields once `MediaService.GetMediaDownload` exists; adding fields
+// later is additive and non-breaking, so there is nothing to reserve now.
+message MediaAttachment {
+  string media_id = 1;
+
+  // Max 1,000 characters (spec §58).
+  string alt_text = 2;
+
+  uint32 width = 3;
+  uint32 height = 4;
+  string mime_type = 5;
+
+  // 0-based display order within the post (spec §27's `post_media.position`).
+  uint32 position = 6;
+}
+
+message PostCounts {
+  uint32 replies = 1;
+  uint32 likes = 2;
+}
+
+// Only meaningful for an authenticated viewer; both fields are false for an anonymous read.
+message PostViewerState {
+  bool liked = 1;
+  bool bookmarked = 2;
+}
+
+message Post {
+  string id = 1;
+  Actor author = 2;
+
+  // Empty when `deleted` is true, or when the post is media/link-only.
+  string body = 3;
+
+  PostType post_type = 4;
+
+  // Set only when `post_type == POST_TYPE_LINK`.
+  string link_url = 5;
+
+  PostVisibility visibility = 6;
+
+  // Empty for a root post.
+  string in_reply_to_id = 7;
+
+  // A root post's `root_post_id` equals its own `id` (spec §24).
+  string root_post_id = 8;
+
+  repeated MediaAttachment media = 9;
+
+  google.protobuf.Timestamp created_at = 10;
+
+  // Unset (zero value) if the post has never been edited (spec §26).
+  google.protobuf.Timestamp edited_at = 11;
+
+  // Tombstone flag (spec §25). `body`/`media` are empty and the client should render
+  // `[deleted]` when true.
+  bool deleted = 12;
+
+  PostCounts counts = 13;
+  PostViewerState viewer_state = 14;
+}
+
+message CreatePostRequest {
+  // Idempotency key (spec §45).
+  string client_request_id = 1;
+
+  // Max 5,000 Unicode characters (spec §58). May be empty for a link/media-only post, but a
+  // post must contain at least one of text, an image, or a link (spec §23) — enforced
+  // service-side.
+  string body = 2;
+
+  string link_url = 3;
+  PostVisibility visibility = 4;
+
+  // Empty for a root post.
+  string in_reply_to_id = 5;
+
+  // Up to 4 (spec §28), already-uploaded and `READY` media ids, in display order.
+  repeated string media_ids = 6;
+}
+
+message CreatePostResponse {
+  Post post = 1;
+}
+
+message GetPostRequest {
+  string id = 1;
+}
+
+message GetPostResponse {
+  Post post = 1;
+}
+
+message DeletePostRequest {
+  string id = 1;
+}
+
+message DeletePostResponse {
+  // The now-tombstoned post, so the caller can render `[deleted]` without a refetch.
+  Post post = 1;
+}
+
+message ListRepliesRequest {
+  string post_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+
+  // Server clamps this to a sane maximum; bounds how deep into the reply tree to descend
+  // (spec §24).
+  uint32 max_depth = 4;
+}
+
+message ListRepliesResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}

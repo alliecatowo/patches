@@ -1,6 +1,6 @@
 import { type Server } from '@grpc/grpc-js';
 import { Transport } from '@nestjs/microservices';
-import { GRPC_PACKAGES, PROTO_LOADER_OPTIONS, protoFiles } from '@patches/proto';
+import { getProtoFiles, GRPC_PACKAGES, PROTO_LOADER_OPTIONS } from '@patches/proto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createGrpcMicroservice } from './grpc-options.js';
@@ -13,7 +13,7 @@ describe('createGrpcMicroservice', () => {
     expect(options.options).toMatchObject({
       url: '127.0.0.1:50051',
       package: [...GRPC_PACKAGES],
-      protoPath: [...protoFiles],
+      protoPath: [...getProtoFiles()],
       loader: PROTO_LOADER_OPTIONS,
     });
   });

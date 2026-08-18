@@ -37,6 +37,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 > SSH challenge** (GitHub device flow is Phase 6). Sessions are per node.
 > Read [`docs/architecture/auth.md`](docs/architecture/auth.md) before starting.
 
+- [x] P1-000 — Protobuf contract for auth/actors/posts/feeds: `auth.proto` (Register/VerifyEmail/ResendVerification/Login/RefreshSession/Logout/LogoutAllSessions/RequestPasswordReset/ResetPassword/GetCurrentSession + BeginSshLogin/CompleteSshLogin/BeginGitHubLogin/PollGitHubLogin/ListCredentials/AddCredential/RevokeCredential per Amendment A §165–§168), `actors.proto` (ActorService + FieldMask-based UpdateProfile), `posts.proto`, `feeds.proto`; typed grpc-js client factories; A-010/A-011 fixes. Schema only — no server handlers yet (tracked by P1-003/P1-011/P1-012/P1-014/P2-002)
 - [x] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, `auth_codes`, `outbox_jobs` (+ Phase 2 `posts`/`media`/`post_media`); outbox claim helpers; testkit factories
 - [ ] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
 - [ ] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
@@ -128,8 +129,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [x] A-007 — server: sanitize the RpcException branch of RpcExceptionsFilter (no caller-controlled status/message passthrough; correct x-patches-error-code); unit-test all branches
 - [x] A-008 — server: drop unused deps (@nestjs/platform-express, @nestjs/typeorm, typeorm, pg, @patches/database) until needed
 - [x] A-009 — server: replace cwd/`__dirname` probe in modules/system/server-build.ts with an injected SERVER_VERSION provider
-- [ ] A-010 — proto: make PROTO_DIR lazy (`getProtoDir()`) so packaging errors fail at call site
-- [ ] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
+- [x] A-010 — proto: make PROTO_DIR lazy (`getProtoDir()`) so packaging errors fail at call site
+- [x] A-011 — proto: breaking.sh must use `ref=` when base resolves to `origin/<branch>`
 - [ ] A-012 — repo: implement `pnpm keys:generate` referenced in .env.example (JWT keypair) or remove the reference
 - [x] A-013 — CI: treat `skipped` as failure in ci-ok; scope `cancel-in-progress` to pull_request only
 - [x] A-014 — database: `app_meta.updated_at` needs @UpdateDateColumn (or drop it)

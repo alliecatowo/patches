@@ -1,6 +1,6 @@
 import { type Server } from '@grpc/grpc-js';
 import { type GrpcOptions, Transport } from '@nestjs/microservices';
-import { GRPC_PACKAGES, PROTO_LOADER_OPTIONS, protoFiles } from '@patches/proto';
+import { getProtoFiles, GRPC_PACKAGES, PROTO_LOADER_OPTIONS } from '@patches/proto';
 import { HealthImplementation, type ServingStatus } from 'grpc-health-check';
 
 /** Handle for flipping the standard `grpc.health.v1.Health` status (spec §89). */
@@ -34,7 +34,7 @@ export function createGrpcMicroservice(url: string): GrpcMicroserviceSetup {
       options: {
         url,
         package: [...GRPC_PACKAGES],
-        protoPath: [...protoFiles],
+        protoPath: [...getProtoFiles()],
         loader: PROTO_LOADER_OPTIONS,
         onLoadPackageDefinition: (_pkg: unknown, server: Server) => {
           health.addToServer(server);

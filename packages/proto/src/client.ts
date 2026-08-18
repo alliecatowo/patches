@@ -7,8 +7,14 @@ import {
 import { loadSync } from '@grpc/proto-loader';
 
 import { PATCHES_PACKAGE_NAME, PROTO_LOADER_OPTIONS, SERVICE_NAMES } from './constants.js';
-import type { SystemGrpcClient } from './constants.js';
-import { protoFiles } from './proto-path.js';
+import type {
+  ActorGrpcClient,
+  AuthGrpcClient,
+  FeedGrpcClient,
+  PostGrpcClient,
+  SystemGrpcClient,
+} from './constants.js';
+import { getProtoFiles } from './proto-path.js';
 
 /**
  * Service constructors for `patches.v1`, built once per process.
@@ -20,13 +26,26 @@ let cachedServices: Record<string, ServiceClientConstructor> | undefined;
 
 function services(): Record<string, ServiceClientConstructor> {
   if (cachedServices === undefined) {
-    const definition = loadSync([...protoFiles], PROTO_LOADER_OPTIONS);
+    const definition = loadSync([...getProtoFiles()], PROTO_LOADER_OPTIONS);
     const root = loadPackageDefinition(definition) as unknown as {
       patches: { v1: Record<string, ServiceClientConstructor> };
     };
     cachedServices = root.patches.v1;
   }
   return cachedServices;
+}
+
+function buildClient<T>(
+  serviceName: string,
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): T {
+  const Service = services()[serviceName];
+  if (Service === undefined) {
+    throw new Error(`${PATCHES_PACKAGE_NAME}.${serviceName} is missing from the loaded schema`);
+  }
+  return new Service(target, credentials, options) as unknown as T;
 }
 
 /**
@@ -41,11 +60,41 @@ export function createSystemClient(
   credentials: ChannelCredentials,
   options?: ChannelOptions,
 ): SystemGrpcClient {
-  const Service = services()[SERVICE_NAMES.system];
-  if (Service === undefined) {
-    throw new Error(
-      `${PATCHES_PACKAGE_NAME}.${SERVICE_NAMES.system} is missing from the loaded schema`,
-    );
-  }
-  return new Service(target, credentials, options) as unknown as SystemGrpcClient;
+  return buildClient<SystemGrpcClient>(SERVICE_NAMES.system, target, credentials, options);
+}
+
+/** Build a `patches.v1.AuthService` client. See {@link createSystemClient} for the pattern. */
+export function createAuthClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): AuthGrpcClient {
+  return buildClient<AuthGrpcClient>(SERVICE_NAMES.auth, target, credentials, options);
+}
+
+/** Build a `patches.v1.ActorService` client. See {@link createSystemClient} for the pattern. */
+export function createActorClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): ActorGrpcClient {
+  return buildClient<ActorGrpcClient>(SERVICE_NAMES.actor, target, credentials, options);
+}
+
+/** Build a `patches.v1.PostService` client. See {@link createSystemClient} for the pattern. */
+export function createPostClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): PostGrpcClient {
+  return buildClient<PostGrpcClient>(SERVICE_NAMES.post, target, credentials, options);
+}
+
+/** Build a `patches.v1.FeedService` client. See {@link createSystemClient} for the pattern. */
+export function createFeedClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): FeedGrpcClient {
+  return buildClient<FeedGrpcClient>(SERVICE_NAMES.feed, target, credentials, options);
 }

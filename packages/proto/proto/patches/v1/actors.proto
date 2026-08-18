@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "patches/v1/common.proto";
+
+// Social identities: local accounts today, remote (federated) actors later (spec §19, §21,
+// §49). `ActorService` never exposes credentials — that is `AuthService`'s job (spec §165).
+service ActorService {
+  // Fetch by internal id.
+  rpc GetActor(GetActorRequest) returns (GetActorResponse);
+
+  // Fetch by handle (case-insensitive; matched against the normalized handle). Handles are
+  // unique per node, not globally (spec §163) — this never crosses node boundaries.
+  rpc GetActorByHandle(GetActorByHandleRequest) returns (GetActorByHandleResponse);
+
+  // Partial update of the caller's own profile, driven by `update_mask` (see the message
+  // comment below). Requires an authenticated session; the target actor is the caller's.
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+
+  // Handle-prefix + display-name search (spec §112). Elasticsearch is explicitly out of
+  // scope for v0 — this is backed by Postgres trigram/full-text search server-side.
+  rpc SearchActors(SearchActorsRequest) returns (SearchActorsResponse);
+
+  // Cursor-paginated list of actors following `actor_id`.
+  rpc ListFollowers(ListFollowersRequest) returns (ListFollowersResponse);
+
+  // Cursor-paginated list of actors `actor_id` follows.
+  rpc ListFollowing(ListFollowingRequest) returns (ListFollowingResponse);
+}
+
+// A lightweight reference to a `Media` row. Full `Media`/`MediaService` land with the media
+// upload slice (spec §27–32); `media_id` empty means "no media" — e.g. `Actor.avatar` when
+// unset.
+message MediaRef {
+  // Empty if absent.
+  string media_id = 1;
+
+  // Short-lived authorized download URL. Empty until `MediaService.GetMediaDownload` exists
+  // — do not assume non-empty in v0.
+  string url = 2;
+}
+
+// Aggregate counters for an actor. Only guaranteed populated by `GetActor`/
+// `GetActorByHandle`; actor summaries embedded elsewhere (e.g. `Post.author`) may leave this
+// at its zero value to keep the response light.
+message ActorCounts {
+  uint32 followers = 1;
+  uint32 following = 2;
+  uint32 posts = 3;
+}
+
+// A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
+// summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
+// `ActorCounts` comment for what's guaranteed in each case.
+message Actor {
+  string id = 1;
+
+  // Display form as the user typed it (spec §22); the canonical lowercase form is used for
+  // routing/uniqueness only and is never exposed here. Unique within this actor's node, not
+  // globally (spec §163) — render as `@handle` locally, `@handle@node` cross-node.
+  string handle = 2;
+
+  // Max 80 characters (spec §58).
+  string display_name = 3;
+
+  // Max 500 characters (spec §58).
+  string bio = 4;
+
+  // Max 100 characters (spec §58).
+  string location_text = 5;
+
+  // Max 2,048 characters (spec §58); validated http/https-only server-side (spec §104).
+  string website_url = 6;
+
+  MediaRef avatar = 7;
+
+  // False once federation introduces remote actors (spec §19).
+  bool is_local = 8;
+
+  google.protobuf.Timestamp joined_at = 9;
+
+  ActorCounts counts = 10;
+}
+
+message GetActorRequest {
+  string id = 1;
+}
+
+message GetActorResponse {
+  Actor actor = 1;
+}
+
+message GetActorByHandleRequest {
+  string handle = 1;
+}
+
+message GetActorByHandleResponse {
+  Actor actor = 1;
+}
+
+// Partial update of the caller's profile. `update_mask` selects which of the fields below to
+// apply — paths are this message's own proto field names in snake_case (e.g. "display_name",
+// "bio"). Fields not named in `update_mask` are ignored even if set on the request. An
+// empty/absent `update_mask` updates nothing. FieldMask (rather than per-field presence
+// wrappers) was chosen so adding more updatable fields later never needs new wrapper types.
+message UpdateProfileRequest {
+  string display_name = 1;
+  string bio = 2;
+  string location_text = 3;
+  string website_url = 4;
+  google.protobuf.FieldMask update_mask = 5;
+}
+
+message UpdateProfileResponse {
+  Actor actor = 1;
+}
+
+message SearchActorsRequest {
+  // Max 100 characters (spec §58). Matched against handle prefix and display name.
+  string query = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message SearchActorsResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
+
+message ListFollowersRequest {
+  string actor_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListFollowersResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
+
+message ListFollowingRequest {
+  string actor_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListFollowingResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
