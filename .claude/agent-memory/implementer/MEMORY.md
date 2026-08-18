@@ -13,3 +13,5 @@
 - [Ink testing-library row overflow](ink-testing-library-row-overflow.md) — App's fixed-height Box can overlap/garble lines when content exceeds terminal rows in tests; test content-heavy subtrees directly, not through full App
 - [Shared checkout branch switches](shared-checkout-branch-switches.md) — other agents can checkout a different branch entirely mid-task; re-check git branch/status and re-add paths right before every commit
 - [proto index.ts/nest.ts hand-maintained](proto-nest-index-hand-maintained-reexports.md) — new proto message/RPC must be added by hand to index.ts/nest.ts/constants.ts re-export lists; proto:gen alone doesn't expose it
+- [@nestjs/config forRoot frozen once per process](nestjs-config-forroot-frozen-once-per-process.md) — validate(process.env) runs once per process at decorator-eval time; two AppModule instances in one process silently share the first's defaulted env values
+- [Hybrid app gRPC interceptors break HTTP](nestjs-hybrid-app-grpc-interceptors-break-http.md) — a gRPC-only APP_INTERCEPTOR/APP_FILTER throws on context.switchToRpc() for an HTTP request in a hybrid app, hanging every request with no response
