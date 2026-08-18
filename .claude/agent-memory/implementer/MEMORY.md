@@ -1,0 +1,2 @@
+- [zod v4 URL validation](zod-v4-url-validation.md) — z.httpUrl() rejects localhost; use z.url({protocol: /^https?$/}) instead
+- [.env read permission block](env-file-read-permission.md) — .env/.env.example unreadable via any tool; pass env vars inline instead
