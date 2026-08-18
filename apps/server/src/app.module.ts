@@ -13,6 +13,7 @@ import { GraphModule } from './modules/graph/graph.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
+import { PagesModule } from './modules/pages/pages.module.js';
 import { PostModule } from './modules/posts/post.module.js';
 import { ReactionModule } from './modules/reactions/reaction.module.js';
 import { SystemModule } from './modules/system/system.module.js';
@@ -31,6 +32,7 @@ import { SystemModule } from './modules/system/system.module.js';
     ReactionModule,
     ModerationModule,
     MediaModule,
+    PagesModule,
   ],
   providers: [
     // Order matters: RequestContextInterceptor establishes the request id that
