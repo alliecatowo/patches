@@ -1,15 +1,23 @@
-# Status: planned (Phase 7) — see docs/operations/deployment.md
+# Status: planned (Phase 7) — see docs/operations/deployment.md.
 #
-# This workflow is a placeholder. It is `workflow_dispatch`-only — no `push` or
-# `pull_request` triggers — so it never runs automatically today and never exposes
-# `secrets.FLY_API_TOKEN` to a pull request built from a fork. Each deploy step is also
-# guarded by `vars.FLY_DEPLOY_ENABLED == 'true'`, a repo/environment variable that stays
-# unset until Phase 7 actually wires up Fly.io deployment, so a stray manual dispatch
-# before then is a safe no-op rather than a broken deploy attempt.
+# Wired up for real (P7-002): triggers via `workflow_run` after the `CI` workflow
+# completes successfully on `main` (the standard way to gate on another workflow's result,
+# since a separate workflow file can't use `needs:` across workflows), plus a manual
+# `workflow_dispatch` escape hatch. Every actual deploy/smoke step stays guarded behind
+# `vars.FLY_DEPLOY_ENABLED == 'true'`, a repo/environment variable that stays unset until a
+# real Fly app + `FLY_API_TOKEN` exist — so this workflow runs (and reports green) on every
+# `main` build starting now, but is a safe no-op until someone flips that variable on. This
+# has never been exercised against a real Fly org from this environment (no Fly account
+# available here) — do not treat a green run of this workflow as proof the deploy path
+# works until FLY_DEPLOY_ENABLED is on and a real deploy has happened at least once.
 
 name: Deploy
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
@@ -22,19 +30,45 @@ concurrency:
 jobs:
   deploy:
     name: deploy (Fly.io)
+    # workflow_dispatch always runs; workflow_run only proceeds if CI actually succeeded
+    # (a failed/cancelled CI run on main must never trigger a deploy).
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: production
     steps:
+      # Deploy the exact commit CI just validated, not whatever `main` has drifted to by
+      # the time this job starts.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
       - uses: ./.github/actions/setup
-      - run: pnpm build
 
       - name: Set up flyctl
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      # `--remote-only` builds on Fly's remote builder (infra/docker/Dockerfile via
+      # infra/fly/fly.toml's [build] block) — no local Docker/Podman daemon needed on the
+      # runner. `release_command` (packages/database migrations, see fly.toml) runs as
+      # part of this same `flyctl deploy` before new Machines take traffic.
       - name: Deploy to Fly.io
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --config infra/fly/fly.toml --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # Smoke test: one real gRPC round trip (SystemService.GetServerInfo) against the
+      # just-deployed server, reusing the TUI's existing non-interactive `ping` subcommand
+      # (apps/tui/src/cli/ping.ts) rather than a second, parallel gRPC client — see
+      # docs/operations/deployment.md for why. `vars.FLY_GRPC_HOST` is the production gRPC
+      # hostname (e.g. `grpc.patches.social`), set once DNS/TLS are configured (P7-003).
+      - name: Build TUI (for the smoke-test ping subcommand)
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        run: pnpm --filter @patches/tui build
+
+      - name: Smoke test (ping the deployed server over TLS)
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        run: node apps/tui/dist/cli.js ping --server "${{ vars.FLY_GRPC_HOST }}:443"
