@@ -9,6 +9,7 @@ import type { PatchesApi } from '../api/client.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
+import type { PostRowActions } from '../components/PostList.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
@@ -20,6 +21,7 @@ import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
+import { ThreadScreen } from '../screens/ThreadScreen.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 
 export interface AppProps {
@@ -29,7 +31,8 @@ export interface AppProps {
   env?: NodeJS.ProcessEnv;
 }
 
-type Screen = 'connect' | 'help' | 'login' | 'compose' | 'profile' | 'local' | 'home' | 'search';
+type Screen =
+  'connect' | 'help' | 'login' | 'compose' | 'profile' | 'local' | 'home' | 'search' | 'thread';
 
 /** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
 function capturesInput(screen: Screen): boolean {
@@ -38,6 +41,17 @@ function capturesInput(screen: Screen): boolean {
 
 function emptyDraft(): ComposeDraft {
   return { body: '', clientRequestId: randomUUID() };
+}
+
+/** A fresh reply draft for `target` — never continues a different draft's text into a
+ * new reply target (P4-004: "draft per reply target"). */
+function replyDraft(target: Post): ComposeDraft {
+  return {
+    body: '',
+    clientRequestId: randomUUID(),
+    inReplyToId: target.id,
+    replyingToHandle: target.author?.handle ?? target.author?.id ?? '',
+  };
 }
 
 export function App({
@@ -75,6 +89,11 @@ export function App({
   const [profileTarget, setProfileTarget] = useState<
     { actorId: string; knownActor: Actor | undefined } | undefined
   >(undefined);
+
+  // Thread navigation (P4-004): a stack of post ids, top = the currently focused
+  // thread. Drilling into a reply's own replies pushes; `Esc` pops one level and only
+  // leaves `screen === 'thread'` once the stack empties (see `openThread`/`threadBack`).
+  const [threadStack, setThreadStack] = useState<readonly string[]>([]);
 
   // Auto sign-in from a stored refresh token, and resume an unsent draft — both
   // best-effort: nothing here should block first render (spec §80/§37). `sessionManager`
@@ -127,16 +146,82 @@ export function App({
     openProfile(session.userId, session.actor);
   }
 
-  /** `Enter` on a selected post (B-017) — profile viewing needs no session of its own. */
+  /** `p` on a selected post row (B-017; moved off `Enter` in P4-004) — profile
+   * viewing needs no session of its own. */
   function openAuthorProfile(post: Post): void {
     if (!present(post.author)) return;
     openProfile(post.author.id, post.author);
+  }
+
+  /** `Enter` on a post row (P4-004) — opens/drills into its thread. Pushes onto
+   * `threadStack` when already on the thread screen (viewing a reply's own replies);
+   * otherwise this is a fresh entry, so it also remembers `priorScreen` via `go()`. */
+  function openThread(postId: string): void {
+    if (screen !== 'thread') {
+      go('thread');
+      setThreadStack([postId]);
+      return;
+    }
+    setThreadStack([...threadStack, postId]);
+  }
+
+  /** `Esc` on the thread screen — pops one level, or leaves the thread screen
+   * entirely (back to `priorScreen`) once the stack empties. */
+  function threadBack(): void {
+    if (threadStack.length > 1) {
+      setThreadStack(threadStack.slice(0, -1));
+      return;
+    }
+    setThreadStack([]);
+    setScreen(priorScreen);
   }
 
   function updateDraft(next: ComposeDraft): void {
     setDraft(next);
     void store.save(next);
   }
+
+  /** `r` on a post row (P4-004) — opens compose scoped to that reply target. A
+   * different target than the current draft's starts a fresh draft rather than
+   * continuing someone else's reply text into it. */
+  function openReply(post: Post): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    if (draft.inReplyToId !== post.id) {
+      updateDraft(replyDraft(post));
+    }
+    go('compose');
+  }
+
+  // `l`/`b` on a post row (P4-004). `ReactionService` (Like/Unlike/Bookmark/Unbookmark)
+  // has not landed in `@patches/proto` yet — see the implementer report for this task.
+  // These are placeholders so the keys are discoverable now; swap for real optimistic
+  // calls once the service exists, same pattern as `toggleFollow` in `ProfileScreen`.
+  function toggleLike(_post: Post): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    setNotice('Likes are coming soon.');
+  }
+
+  function toggleBookmark(_post: Post): void {
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    setNotice('Bookmarks are coming soon.');
+  }
+
+  const rowActions: PostRowActions = {
+    onOpenPost: (post) => openThread(post.id),
+    onOpenAuthor: openAuthorProfile,
+    onReply: openReply,
+    onToggleLike: toggleLike,
+    onToggleBookmark: toggleBookmark,
+  };
 
   useInput(
     (input) => {
@@ -192,14 +277,14 @@ export function App({
         {screen === 'help' && <HelpScreen target={api.target} />}
         {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
         {screen === 'local' && (
-          <LocalScreen api={api} isActive={screen === 'local'} onOpenAuthor={openAuthorProfile} />
+          <LocalScreen api={api} isActive={screen === 'local' && !pendingGo} actions={rowActions} />
         )}
         {screen === 'home' && session !== undefined && (
           <HomeScreen
             api={api}
-            isActive={screen === 'home'}
+            isActive={screen === 'home' && !pendingGo}
             ensureAccessToken={ensureAccessToken}
-            onOpenAuthor={openAuthorProfile}
+            actions={rowActions}
           />
         )}
         {screen === 'search' && (
@@ -215,10 +300,19 @@ export function App({
             api={api}
             actorId={profileTarget.actorId}
             knownActor={profileTarget.knownActor}
-            isActive={screen === 'profile'}
-            onOpenAuthor={openAuthorProfile}
+            isActive={screen === 'profile' && !pendingGo}
+            actions={rowActions}
             viewerActorId={session?.userId}
             ensureAccessToken={ensureAccessToken}
+          />
+        )}
+        {screen === 'thread' && threadStack.length > 0 && (
+          <ThreadScreen
+            api={api}
+            postId={threadStack[threadStack.length - 1] ?? ''}
+            isActive={screen === 'thread' && !pendingGo}
+            actions={rowActions}
+            onBack={threadBack}
           />
         )}
         {screen === 'login' && (
@@ -246,9 +340,20 @@ export function App({
               const cleared = emptyDraft();
               setDraft(cleared);
               void store.clear();
-              if (present(post.author)) openProfile(post.author.id, post.author);
-              else if (session !== undefined) openProfile(session.userId, session.actor);
-              else setScreen('profile');
+              if (post.inReplyToId !== '') {
+                // A reply just posted — show its own thread (parent for context,
+                // itself in focus) rather than the author's whole timeline. Set
+                // directly (not `openThread`) so `priorScreen` — already the screen
+                // `r` was pressed from — survives for `Esc` to return to.
+                setThreadStack([post.id]);
+                setScreen('thread');
+              } else if (present(post.author)) {
+                openProfile(post.author.id, post.author);
+              } else if (session !== undefined) {
+                openProfile(session.userId, session.actor);
+              } else {
+                setScreen('profile');
+              }
             }}
           />
         )}
@@ -273,6 +378,21 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'login') return ['Esc cancel'];
   if (screen === 'compose') return ['Ctrl+S post', 'Esc keep draft'];
   if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
+  if (screen === 'thread') {
+    return ['Enter thread', 'p author', 'r reply', 'l like', 'b bookmark', 'Esc back'];
+  }
+  if (screen === 'local' || screen === 'home' || screen === 'profile') {
+    return [
+      'j/k move',
+      'Enter thread',
+      'p author',
+      'r reply',
+      'l like',
+      'b bookmark',
+      'g h/l/p go',
+      '? help',
+    ];
+  }
   const keys = [
     'g h/l/p go',
     '/ search',

@@ -7,6 +7,7 @@ import type { ReactElement } from 'react';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 import type { ComposeDraft } from '../compose/draft-store.js';
+import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
 
 /** Post body limit (spec §58). */
@@ -57,7 +58,7 @@ export function ComposeScreen({
           body: draft.body,
           linkUrl: '',
           visibility: POST_VISIBILITY.PUBLIC,
-          inReplyToId: '',
+          inReplyToId: draft.inReplyToId ?? '',
           mediaIds: [],
           // No content-warning UI yet (follow-up) — every post is created without one.
           contentWarning: '',
@@ -102,10 +103,16 @@ export function ComposeScreen({
   );
 
   const remaining = POST_BODY_LIMIT - draft.body.length;
+  const isReply = draft.inReplyToId !== undefined && draft.inReplyToId !== '';
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.accent}>New Post</Text>
+      <Text color={theme.accent}>{isReply ? 'Reply' : 'New Post'}</Text>
+      {isReply ? (
+        <Text color={theme.muted}>
+          replying to @{sanitizeForTerminal(draft.replyingToHandle ?? '')}
+        </Text>
+      ) : null}
       <Box marginTop={1} marginBottom={1} flexDirection="column">
         <Text wrap="wrap">
           {draft.body}

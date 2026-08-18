@@ -6,7 +6,26 @@ import type { ReactElement } from 'react';
 import { theme } from '../theme/index.js';
 import { PostRow } from './PostRow.js';
 
-export interface PostListProps {
+/**
+ * The row-level actions `PostList` fires on the selected row — one shared shape so
+ * every screen that renders a `PostList` (home, local, profile, thread, bookmarks)
+ * declares one `actions: PostRowActions` prop instead of five individually-optional
+ * callbacks each.
+ */
+export interface PostRowActions {
+  /** `Enter` on the selected row — opens its thread (P4-004). */
+  onOpenPost?: ((post: Post) => void) | undefined;
+  /** `p` on the selected row — opens the author's profile (B-017, moved off `Enter` in P4-004). */
+  onOpenAuthor?: ((post: Post) => void) | undefined;
+  /** `r` on the selected row — opens compose pre-filled as a reply (P4-004). */
+  onReply?: ((post: Post) => void) | undefined;
+  /** `l` on the selected row — like/unlike (P4-004, optimistic — spec §79). */
+  onToggleLike?: ((post: Post) => void) | undefined;
+  /** `b` on the selected row — bookmark/unbookmark (P4-004, optimistic — spec §79). */
+  onToggleBookmark?: ((post: Post) => void) | undefined;
+}
+
+export interface PostListProps extends PostRowActions {
   posts: readonly Post[];
   /** Shown while the initial page or a `loadMore` call is in flight. */
   loading: boolean;
@@ -18,15 +37,18 @@ export interface PostListProps {
   loadMoreKeyHint?: string;
   /** Whether this list currently owns keyboard input (spec §69: `j`/`k`/`Enter` selection). */
   isActive?: boolean;
-  /** `Enter` on the selected row — typically opens the author's profile. */
-  onOpenAuthor?: ((post: Post) => void) | undefined;
+  /** Per-row indent level (0 = flush left), e.g. the thread screen indenting
+   * replies one step deeper than the focused post it lists alongside them. */
+  rowIndent?: ((post: Post) => number) | undefined;
 }
 
 /**
- * The chronological post list shared by the profile timeline, local feed, and
- * home feed (spec §68: shared components, not one screen per list). Cursor-
- * based "load more" is driven by the owning screen's `useInput` — this
- * component owns only row selection (`j`/`k`/arrows, `Enter` — spec §69/B-017).
+ * The chronological post list shared by the profile timeline, local feed,
+ * home feed, thread replies, and bookmarks (spec §68: shared components, not
+ * one screen per list). Cursor-based "load more" is driven by the owning
+ * screen's `useInput` — this component owns only row selection and the
+ * per-row actions: `j`/`k`/arrows to move, `Enter` opens the thread, `p` the
+ * author's profile, `r` replies, `l`/`b` like/bookmark (spec §69, P4-004).
  */
 export function PostList({
   posts,
@@ -35,7 +57,12 @@ export function PostList({
   emptyMessage,
   loadMoreKeyHint = 'n',
   isActive = false,
+  onOpenPost,
   onOpenAuthor,
+  onReply,
+  onToggleLike,
+  onToggleBookmark,
+  rowIndent,
 }: PostListProps): ReactElement {
   const [selected, setSelected] = useState(0);
   // Which `content_warning`-gated posts the viewer has revealed this session — never
@@ -72,7 +99,27 @@ export function PostList({
       }
       if (key.return) {
         const post = posts[effectiveSelected];
+        if (post !== undefined) onOpenPost?.(post);
+        return;
+      }
+      if (input === 'p') {
+        const post = posts[effectiveSelected];
         if (post !== undefined) onOpenAuthor?.(post);
+        return;
+      }
+      if (input === 'r') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onReply?.(post);
+        return;
+      }
+      if (input === 'l') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onToggleLike?.(post);
+        return;
+      }
+      if (input === 'b') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onToggleBookmark?.(post);
       }
     },
     { isActive: isActive && posts.length > 0 },
@@ -89,12 +136,13 @@ export function PostList({
   return (
     <Box flexDirection="column">
       {posts.map((post, index) => (
-        <PostRow
-          key={post.id}
-          post={post}
-          selected={isActive && index === effectiveSelected}
-          revealed={revealed.has(post.id)}
-        />
+        <Box key={post.id} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
+          <PostRow
+            post={post}
+            selected={isActive && index === effectiveSelected}
+            revealed={revealed.has(post.id)}
+          />
+        </Box>
       ))}
       <Text color={theme.muted}>
         {loading

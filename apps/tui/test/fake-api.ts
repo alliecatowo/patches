@@ -15,6 +15,8 @@ import {
   type GetActorByHandleResponse,
   type GetActorRequest,
   type GetActorResponse,
+  type GetPostRequest,
+  type GetPostResponse,
   type GetRelationshipRequest,
   type GetRelationshipResponse,
   type GetServerInfoResponse,
@@ -24,6 +26,8 @@ import {
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListRepliesRequest,
+  type ListRepliesResponse,
   type LoginRequest,
   type LoginResponse,
   type PageInfo,
@@ -146,6 +150,10 @@ export class FakeApiHandle {
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       createPost: (request: CreatePostRequest, accessToken: string) =>
         this.createPost(request, accessToken),
+      getPost: (request: GetPostRequest) => this.getPost(request),
+      listReplies: (request: ListRepliesRequest) => this.listReplies(request),
+      deletePost: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       close: () => undefined,
     } as unknown as PatchesApi;
   }
@@ -157,9 +165,10 @@ export class FakeApiHandle {
     return full;
   }
 
-  /** Seeds a post directly (bypassing `CreatePost`), newest-first like the real feed. */
-  addPost(authorId: string, body: string, createdAt: Date = new Date()): Post {
-    const post = this.buildPost(randomUUID(), authorId, body, createdAt);
+  /** Seeds a post directly (bypassing `CreatePost`), newest-first like the real feed.
+   * Pass `inReplyToId` to seed a reply (P4-004's thread-screen tests). */
+  addPost(authorId: string, body: string, createdAt: Date = new Date(), inReplyToId = ''): Post {
+    const post = this.buildPost(randomUUID(), authorId, body, createdAt, inReplyToId);
     this.posts.unshift(post);
     return post;
   }
@@ -192,9 +201,19 @@ export class FakeApiHandle {
     };
   }
 
-  private buildPost(id: string, authorId: string, body: string, createdAt: Date): Post {
+  private buildPost(
+    id: string,
+    authorId: string,
+    body: string,
+    createdAt: Date,
+    inReplyToId = '',
+  ): Post {
     const user = this.users.get(authorId);
     if (user === undefined) throw new Error(`fake api: no such user ${authorId}`);
+    const parent = inReplyToId === '' ? undefined : this.posts.find((p) => p.id === inReplyToId);
+    if (inReplyToId !== '' && parent === undefined) {
+      throw new Error(`fake api: no such post ${inReplyToId}`);
+    }
     return {
       id,
       author: this.toActor(user),
@@ -202,8 +221,8 @@ export class FakeApiHandle {
       postType: POST_TYPE.NOTE,
       linkUrl: '',
       visibility: POST_VISIBILITY.PUBLIC,
-      inReplyToId: '',
-      rootPostId: id,
+      inReplyToId,
+      rootPostId: parent?.rootPostId ?? id,
       media: [],
       createdAt: dateToTimestamp(createdAt),
       editedAt: undefined,
@@ -307,15 +326,22 @@ export class FakeApiHandle {
     };
   }
 
+  /** Live `counts.replies` at read time — mirrors the real server (spec §51's `PostCounts`
+   * reflects current direct replies, not a value frozen at creation). */
+  private withFreshCounts(post: Post): Post {
+    const replies = this.posts.filter((p) => p.inReplyToId === post.id && !p.deleted).length;
+    return { ...post, counts: { likes: post.counts?.likes ?? 0, replies } };
+  }
+
   private listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
     const forActor = this.posts.filter((post) => post.author?.id === request.actorId);
     const { items, page } = this.paginate(forActor, request.cursor, request.limit);
-    return Promise.resolve({ posts: items, page });
+    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
   }
 
   private listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
     const { items, page } = this.paginate(this.posts, request.cursor, request.limit);
-    return Promise.resolve({ posts: items, page });
+    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
   }
 
   /** The caller's own posts plus posts from actors they follow (spec §52, §137). */
@@ -332,7 +358,24 @@ export class FakeApiHandle {
       (post) => post.author?.id === session.userId || following.has(post.author?.id ?? ''),
     );
     const { items, page } = this.paginate(relevant, request.cursor, request.limit);
-    return Promise.resolve({ posts: items, page });
+    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
+  }
+
+  private getPost(request: GetPostRequest): Promise<GetPostResponse> {
+    const post = this.posts.find((candidate) => candidate.id === request.id);
+    if (post === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
+    }
+    return Promise.resolve({ post: this.withFreshCounts(post) });
+  }
+
+  /** Direct replies only, newest first — mirrors `PostService.listReplies` (see
+   * `apps/server/src/modules/posts/post.service.ts`): one level deep, `max_depth`
+   * accepted but not honoured. */
+  private listReplies(request: ListRepliesRequest): Promise<ListRepliesResponse> {
+    const direct = this.posts.filter((post) => post.inReplyToId === request.postId);
+    const { items, page } = this.paginate(direct, request.cursor, request.limit);
+    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
   }
 
   /** Handle-prefix + display-name substring match (spec §112) — no ranking, insertion order. */
@@ -404,9 +447,18 @@ export class FakeApiHandle {
     if (session === undefined) {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
-    const post = this.buildPost(randomUUID(), session.userId, request.body, new Date());
+    if (request.inReplyToId !== '' && !this.posts.some((p) => p.id === request.inReplyToId)) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
+    }
+    const post = this.buildPost(
+      randomUUID(),
+      session.userId,
+      request.body,
+      new Date(),
+      request.inReplyToId,
+    );
     this.posts.unshift(post);
-    return Promise.resolve({ post });
+    return Promise.resolve({ post: this.withFreshCounts(post) });
   }
 }
 

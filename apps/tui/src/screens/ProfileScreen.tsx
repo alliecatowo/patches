@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import { FOLLOW_STATE, type Actor, type Post, type Relationship } from '@patches/proto';
+import { FOLLOW_STATE, type Actor, type Relationship } from '@patches/proto';
 import { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
@@ -7,7 +7,7 @@ import type { ReactElement } from 'react';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 import { Nameplate } from '../components/Nameplate.js';
-import { PostList } from '../components/PostList.js';
+import { PostList, type PostRowActions } from '../components/PostList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { useActor } from '../hooks/useActor.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
@@ -19,8 +19,7 @@ export interface ProfileScreenProps {
   /** Already-known full profile (e.g. the caller's own, from `ActiveSession.actor`) — skips a `GetActor` round trip. */
   knownActor?: Actor | undefined;
   isActive: boolean;
-  /** `Enter` on a selected post — opens its author's profile (B-017). */
-  onOpenAuthor?: ((post: Post) => void) | undefined;
+  actions: PostRowActions;
   /** The signed-in viewer's own actor id — omitted (or equal to `actorId`) hides the
    * follow control (spec §50: there is nothing to follow on your own profile). */
   viewerActorId?: string | undefined;
@@ -44,7 +43,7 @@ export function ProfileScreen({
   actorId,
   knownActor,
   isActive,
-  onOpenAuthor,
+  actions,
   viewerActorId,
   ensureAccessToken,
 }: ProfileScreenProps): ReactElement {
@@ -199,7 +198,7 @@ export function ProfileScreen({
           emptyMessage="No posts yet."
           loadMoreKeyHint="n / space"
           isActive={isActive}
-          onOpenAuthor={onOpenAuthor}
+          {...actions}
         />
       </Box>
     </Box>

@@ -131,9 +131,9 @@ describe('Follow control (P3-003)', () => {
     await flush();
     await loginAs(press, 'alice', 'x');
 
-    // Open bob's profile from the local feed.
+    // Open bob's profile from the local feed (`p` — `Enter` opens the thread since P4-004).
     await pressGo(press, 'l');
-    press(KEY.enter);
+    press('p');
     await flush();
     await flush(); // relationship fetch is a second async round trip
 
