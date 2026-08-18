@@ -28,31 +28,31 @@ docs/agents/       this file, LEARNINGS.md, MODEL_ROUTING.md, PACKAGE_CONVENTION
 
 ## Agent roster
 
-| Agent | Model | Purpose | Delegate when |
-|---|---|---|---|
-| `researcher` | sonnet, high | Verified `docs/research/*.md` notes, official docs only | before implementing/updating risky tech |
-| `implementer` | sonnet, high, memory | Ships one scoped task, verified + committed | any concrete `P<n>-nnn`/`H-nnn` task |
-| `reviewer` | opus, high, read-only | Findings against §153/§128–129/§101–104/tests | after implementer finishes, before merge |
-| `architect` | opus, xhigh | ADRs, cross-cutting design, deviations | expensive-to-reverse or cross-package decisions |
-| `verifier` | haiku, low | Runs the check sequence, reports pass/fail | before commits, between phase waves |
-| `docs-writer` | sonnet, medium | Syncs docs to actual code/commands | after a feature lands, phase close-out |
-| `spec-auditor` | opus, xhigh, read+tasks.md | Gaps/violations vs spec, files `A-nnn` tasks | phase boundary, `/audit` |
-| `harness-tuner` | sonnet, medium | Improves this harness itself | learnings pile up, repeated friction |
+| Agent           | Model                      | Purpose                                                 | Delegate when                                   |
+| --------------- | -------------------------- | ------------------------------------------------------- | ----------------------------------------------- |
+| `researcher`    | sonnet, high               | Verified `docs/research/*.md` notes, official docs only | before implementing/updating risky tech         |
+| `implementer`   | sonnet, high, memory       | Ships one scoped task, verified + committed             | any concrete `P<n>-nnn`/`H-nnn` task            |
+| `reviewer`      | opus, high, read-only      | Findings against §153/§128–129/§101–104/tests           | after implementer finishes, before merge        |
+| `architect`     | opus, xhigh                | ADRs, cross-cutting design, deviations                  | expensive-to-reverse or cross-package decisions |
+| `verifier`      | haiku, low                 | Runs the check sequence, reports pass/fail              | before commits, between phase waves             |
+| `docs-writer`   | sonnet, medium             | Syncs docs to actual code/commands                      | after a feature lands, phase close-out          |
+| `spec-auditor`  | opus, xhigh, read+tasks.md | Gaps/violations vs spec, files `A-nnn` tasks            | phase boundary, `/audit`                        |
+| `harness-tuner` | sonnet, medium             | Improves this harness itself                            | learnings pile up, repeated friction            |
 
 Full prompts live in `.claude/agents/<name>.md`. Nested delegation is allowed to depth 3
 (e.g. `implementer` → `researcher`).
 
 ## Skills
 
-| Skill | Does |
-|---|---|
-| `/task add\|done\|list\|next` | Manage `tasks.md` consistently |
-| `/verify [package]` | Canonical check sequence, scoped or full |
-| `/retro` | Append a `LEARNINGS.md` entry, update the harness if it implies one |
-| `/audit [phase]` | Spawn `spec-auditor`, merge findings, summarize |
-| `/proto-change` | Safe `.proto` edit workflow |
-| `/migration <Name>` | Safe TypeORM migration workflow |
-| `/phase <n>` | Orchestrate a whole roadmap phase |
+| Skill                         | Does                                                                |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `/task add\|done\|list\|next` | Manage `tasks.md` consistently                                      |
+| `/verify [package]`           | Canonical check sequence, scoped or full                            |
+| `/retro`                      | Append a `LEARNINGS.md` entry, update the harness if it implies one |
+| `/audit [phase]`              | Spawn `spec-auditor`, merge findings, summarize                     |
+| `/proto-change`               | Safe `.proto` edit workflow                                         |
+| `/migration <Name>`           | Safe TypeORM migration workflow                                     |
+| `/phase <n>`                  | Orchestrate a whole roadmap phase                                   |
 
 ## Rules
 

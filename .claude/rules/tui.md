@@ -1,7 +1,7 @@
 ---
 paths:
-  - "apps/tui/**"
-  - "packages/terminal-media/**"
+  - 'apps/tui/**'
+  - 'packages/terminal-media/**'
 ---
 
 # TUI rules (Ink 7)

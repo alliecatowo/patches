@@ -8,3 +8,5 @@ pnpm-lock.yaml
 *.min.*
 CHANGELOG.md
 .mise
+INITIAL_VISION.md
+LICENSE

@@ -29,9 +29,10 @@ breaking:
 ```
 
 Notes:
+
 - `STANDARD` = `BASIC` + naming/versioning/RPC rules; it's buf's recommended baseline. `except` removes individual rules from the category. Only add the `RPC_REQUEST_STANDARD_NAME`/`RPC_RESPONSE_STANDARD_NAME` excepts if you actually plan to violate `MethodNameRequest`/`MethodNameResponse` naming — otherwise keep them on, they're good hygiene. (buf.build/docs/configuration/v2/buf-yaml)
 - `rpc_allow_same_request_response`, `rpc_allow_google_protobuf_empty_requests`, `rpc_allow_google_protobuf_empty_responses` are lint config keys (siblings of `use`/`except`) that loosen the RPC-naming rules for cases like empty requests/responses — common with simple CRUD RPCs. (buf.build/docs/configuration/v2/buf-yaml)
-- `breaking.use: [WIRE_JSON]` is buf's own recommended minimum (checks wire *and* JSON compatibility); `FILE` is the default if unset but only checks that generated code doesn't move between files, not actual compatibility. Use `WIRE_JSON` deliberately for an API-stability guarantee.
+- `breaking.use: [WIRE_JSON]` is buf's own recommended minimum (checks wire _and_ JSON compatibility); `FILE` is the default if unset but only checks that generated code doesn't move between files, not actual compatibility. Use `WIRE_JSON` deliberately for an API-stability guarantee.
 
 ### `packages/proto/buf.gen.yaml` (v2) — local ts-proto plugin
 
@@ -64,12 +65,13 @@ Run via pnpm (from `packages/proto`): `pnpm buf generate`. In a pnpm workspace `
 
 You have a Nest **server** using `@grpc/proto-loader` at runtime (dynamic reflection off the `.proto` file, no compiled schema needed) and a TUI **client** using `@grpc/grpc-js` directly. Two ts-proto output shapes are available and they are mutually exclusive per `buf generate` invocation unless you run ts-proto twice with different `out` dirs:
 
-| Option | Generates | Runtime cost |
-|---|---|---|
-| `nestJs=true` | Plain TS interfaces (`Hero`, `HeroById`) + `HeroServiceController`/`HeroServiceClient` interfaces + `@HeroServiceControllerMethods()` decorator + `HERO_PACKAGE_NAME`/`HERO_SERVICE_NAME` consts. **No** `encode`/`decode`, **no** wire serialization, **no** client stub implementation. | Zero — it's types + decorators only. Actual (de)serialization still happens via `@grpc/proto-loader` reading the `.proto` at process start. |
-| `outputServices=grpc-js` (no `nestJs`) | Full grpc-js `ServiceDefinition`s plus generated client/server stub classes, with `encode`/`decode` methods using `@bufbuild/protobuf` (ts-proto ≥2.x) for the wire format. | Adds a runtime dep on `@bufbuild/protobuf` (and `protobufjs/minimal` + `long` for varint handling) in whatever package imports the generated code. |
+| Option                                 | Generates                                                                                                                                                                                                                                                                                 | Runtime cost                                                                                                                                       |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nestJs=true`                          | Plain TS interfaces (`Hero`, `HeroById`) + `HeroServiceController`/`HeroServiceClient` interfaces + `@HeroServiceControllerMethods()` decorator + `HERO_PACKAGE_NAME`/`HERO_SERVICE_NAME` consts. **No** `encode`/`decode`, **no** wire serialization, **no** client stub implementation. | Zero — it's types + decorators only. Actual (de)serialization still happens via `@grpc/proto-loader` reading the `.proto` at process start.        |
+| `outputServices=grpc-js` (no `nestJs`) | Full grpc-js `ServiceDefinition`s plus generated client/server stub classes, with `encode`/`decode` methods using `@bufbuild/protobuf` (ts-proto ≥2.x) for the wire format.                                                                                                               | Adds a runtime dep on `@bufbuild/protobuf` (and `protobufjs/minimal` + `long` for varint handling) in whatever package imports the generated code. |
 
-**Recommendation for this setup**: run ts-proto **once**, with `nestJs=true`, into `packages/proto/src/generated`, and let both the Nest server *and* the TUI client import the same generated interfaces:
+**Recommendation for this setup**: run ts-proto **once**, with `nestJs=true`, into `packages/proto/src/generated`, and let both the Nest server _and_ the TUI client import the same generated interfaces:
+
 - **Nest server**: keep `@grpc/proto-loader` doing the actual serialization at runtime (required anyway — `Transport.GRPC` loads the `.proto` dynamically via `protoPath`); use `nestJs=true` interfaces purely for compile-time safety on controller signatures (`implements HeroServiceController`). No `encode`/`decode` needed.
 - **TUI client (grpc-js)**: also use `@grpc/proto-loader` (`loadSync` + `loadPackageDefinition`) to build the callable client at runtime, but **type** the resulting object with the generated `HeroServiceClient` interface (a cast) for autocomplete/type-checking. No second codegen pass needed.
 
@@ -95,8 +97,12 @@ import { Controller } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import { Metadata } from '@grpc/grpc-js';
 import {
-  Hero, HeroById, Villain, VillainById,
-  HeroServiceController, HeroServiceControllerMethods,
+  Hero,
+  HeroById,
+  Villain,
+  VillainById,
+  HeroServiceController,
+  HeroServiceControllerMethods,
 } from '../generated/hero';
 
 @Controller()
@@ -106,10 +112,7 @@ export class HeroController implements HeroServiceController {
     return { id: data.id, name: 'Stephenh' };
   }
 
-  async findOneVillain(
-    @Payload() data: VillainById,
-    @Ctx() metadata: Metadata,
-  ): Promise<Villain> {
+  async findOneVillain(@Payload() data: VillainById, @Ctx() metadata: Metadata): Promise<Villain> {
     return { id: data.id, name: 'John' };
   }
 
@@ -186,8 +189,8 @@ async function bootstrap() {
       protoPath: [join(__dirname, '../../proto/proto/patches/v1/hero.proto')],
       url: '0.0.0.0:50051',
       loader: {
-        keepCase: false,     // camelCase field names (proto-loader default is false = camelCase)
-        longs: String,       // avoid unsafe Number coercion of int64
+        keepCase: false, // camelCase field names (proto-loader default is false = camelCase)
+        longs: String, // avoid unsafe Number coercion of int64
         enums: String,
         defaults: true,
         oneofs: true,
@@ -230,6 +233,7 @@ export class HeroesController {
   }
 }
 ```
+
 The method name/service name args can be omitted when they match the handler name (UpperCamelCase) / class name respectively. `@GrpcStreamMethod()` gives an RxJS `Observable` in/out; `@GrpcStreamCall()` gives raw Node stream semantics. (docs.nestjs.com/microservices/grpc)
 
 ### `RpcException` with gRPC status codes
@@ -261,6 +265,7 @@ findOne(data: HeroById, metadata: Metadata, call: ServerUnaryCall<any, any>): He
   return hero;
 }
 ```
+
 `Metadata` is the second positional handler argument for `@GrpcMethod`; with ts-proto's `nestJs=true` + `addGrpcMetadata=true` interfaces, use `@Ctx() metadata: Metadata` (or a typed trailing param) instead. (docs.nestjs.com/microservices/grpc; ts-proto NESTJS.markdown)
 
 ### gRPC guard/interceptor reading metadata
@@ -276,6 +281,7 @@ export class AuthGuard implements CanActivate {
   }
 }
 ```
+
 `ExecutionContext.switchToRpc().getContext()` is the standard cross-transport way to reach the raw gRPC `Metadata`/call object inside guards and interceptors (same underlying object the handler receives as its 2nd argument).
 
 ### Reflection and health checks
@@ -300,6 +306,7 @@ const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule,
   },
 });
 ```
+
 Install: `npm i @grpc/reflection grpc-health-check`. This is the pattern documented directly on docs.nestjs.com/microservices/grpc under "Reflection" / health-check guidance — Nest doesn't wrap these itself, you attach them to the raw `grpc.Server` instance Nest creates.
 
 ---
@@ -313,6 +320,7 @@ Install: `npm i @grpc/reflection grpc-health-check`. This is the pattern documen
 I.e. there's no dedicated ESM guide because the team's position is: keep the Nest app compiling to CommonJS, and treat "consuming an ESM-only package" as a TypeScript module-resolution problem, not a framework one.
 
 **Recommended approach for this monorepo:**
+
 - **Server package**: compile as CommonJS. Set `"module": "nodenext"` (or `"commonjs"`) and `"moduleResolution": "nodenext"` in the server's `tsconfig.json` — also what current NestJS CLI scaffolds default to per the same issue thread; it makes TypeScript correctly resolve `.d.ts` types for ESM-only deps while emitted output stays CJS. Do **not** set `"type": "module"` in the server's `package.json`.
 - **Consuming an ESM-only shared package from the CJS server**: use dynamic `import()` (works from CJS at runtime) rather than a static `import`/`require`, which fails at compile/require time for ESM-only packages.
 - **`packages/proto` recommendation**: since it's consumed by both the CJS Nest server and the ESM-only Ink TUI, build it dual (CJS + ESM) via a `package.json` `"exports"` map (`require`/`import` conditions) — or, since ts-proto's `nestJs=true` output is just plain TS interfaces/decorators with no runtime code, compile CJS-only and let the TUI `require()` it (Node 22+ natively supports `require()` of CJS from ESM). Dual-publish is more future-proof if you don't want to depend on Node's CJS/ESM interop.
@@ -339,9 +347,7 @@ const packageDefinition = protoLoader.loadSync(protoPath, {
 });
 const proto = grpc.loadPackageDefinition(packageDefinition) as any;
 
-const credentials = useTls
-  ? grpc.credentials.createSsl()
-  : grpc.credentials.createInsecure();
+const credentials = useTls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
 
 const client = new proto.patches.v1.HeroService(target, credentials);
 
@@ -354,6 +360,7 @@ client.findOneHero({ id: 1 }, metadata, { deadline }, (err, response) => {
   console.log(response);
 });
 ```
+
 This mirrors grpc-node's own example (`examples/helloworld/dynamic_codegen/greeter_client.js`) plus `deadline`/`metadata`/TLS additions. `CallOptions.deadline` is a documented field on grpc-js's `CallOptions` type (`packages/grpc-js/src/client.ts`). proto-loader's load options (`keepCase`, `longs`, `enums`, `bytes`, `defaults`, `arrays`, `objects`, `oneofs`, `json`, `includeDirs`) are documented in `packages/proto-loader/README.md`. (github.com/grpc/grpc-node)
 
 ### Generated-types alternative (`outputServices=grpc-js`)
@@ -364,7 +371,10 @@ If you generate a **second** ts-proto output (no `nestJs=true`) with `outputServ
 
 ```typescript
 import type { HeroServiceClient } from '@patches/proto/generated/hero';
-const client = new proto.patches.v1.HeroService(target, credentials) as unknown as HeroServiceClient;
+const client = new proto.patches.v1.HeroService(
+  target,
+  credentials,
+) as unknown as HeroServiceClient;
 ```
 
 This keeps a single codegen pass (`nestJs=true`) shared by both server and TUI, avoids adding `@bufbuild/protobuf` as a dependency anywhere, and still gives you compile-time method/field checking on the client. Only switch to full `outputServices=grpc-js` codegen if the `as unknown as` cast becomes a real pain point (e.g., you need real class instances, not just interface shapes).
@@ -373,8 +383,8 @@ This keeps a single codegen pass (`nestJs=true`) shared by both server and TUI, 
 
 ## 6. Version pitfalls
 
-- **`@grpc/proto-loader` 0.8.1's own dependencies**: `long@^5.0.0` and `protobufjs@^7.5.3` (verified via npm registry). This is a *separate* runtime stack from anything ts-proto generates — proto-loader always uses its own bundled protobufjs/long for wire (de)serialization regardless of ts-proto options, because it parses the `.proto` file directly at runtime.
-- **ts-proto 2.x runtime dependency**: generated `encode`/`decode` methods (only emitted when `outputEncodeMethods=true`, which `nestJs=true` disables by default) use `@bufbuild/protobuf` instead of the old `protobufjs`-based writer/reader as of ts-proto's 2.0 migration (verified in ts-proto's `CHANGELOG.md`: *"The 2.x release of ts-proto migrated the low-level Protobuf serializing... from... `protobufjs`... to `@bufbuild/protobuf`"*). Since our recommended config (`nestJs=true`) never emits `encode`/`decode`, **this dependency is not needed** in `packages/proto` for the recommended setup — only add `@bufbuild/protobuf` if you separately generate `outputServices=grpc-js` output.
+- **`@grpc/proto-loader` 0.8.1's own dependencies**: `long@^5.0.0` and `protobufjs@^7.5.3` (verified via npm registry). This is a _separate_ runtime stack from anything ts-proto generates — proto-loader always uses its own bundled protobufjs/long for wire (de)serialization regardless of ts-proto options, because it parses the `.proto` file directly at runtime.
+- **ts-proto 2.x runtime dependency**: generated `encode`/`decode` methods (only emitted when `outputEncodeMethods=true`, which `nestJs=true` disables by default) use `@bufbuild/protobuf` instead of the old `protobufjs`-based writer/reader as of ts-proto's 2.0 migration (verified in ts-proto's `CHANGELOG.md`: _"The 2.x release of ts-proto migrated the low-level Protobuf serializing... from... `protobufjs`... to `@bufbuild/protobuf`"_). Since our recommended config (`nestJs=true`) never emits `encode`/`decode`, **this dependency is not needed** in `packages/proto` for the recommended setup — only add `@bufbuild/protobuf` if you separately generate `outputServices=grpc-js` output.
 - **`long` still shows up even without `forceLong`**: ts-proto's default (`forceLong=number`) still internally imports `long` to safely decode 64-bit wire values before converting to `number` (throws at runtime past `Number.MAX_SAFE_INTEGER`). Only `onlyTypes=true` fully excludes `long`/`protobufjs/minimal` imports — not applicable here since we need runtime interfaces.
 - **`esModuleInterop=true`** changes ts-proto's `Long` import from `import * as Long from 'long'` to `import Long from 'long'` — must match your `tsconfig.json`'s own `esModuleInterop` setting or you get default-import errors.
 - **`importSuffix=.js`** is required for any ESM consumer (the TUI) since Node's ESM resolver needs explicit extensions on relative imports; needs TypeScript ≥4.7 per ts-proto's README (we're on 5.9, fine). Harmless for the CJS server too, since `moduleResolution: nodenext`/`bundler` tolerates explicit `.js` specifiers.
@@ -385,6 +395,7 @@ This keeps a single codegen pass (`nestJs=true`) shared by both server and TUI, 
 ---
 
 ## Sources
+
 - docs.nestjs.com/microservices/grpc (via github.com/nestjs/docs.nestjs.com content source)
 - docs.nestjs.com/faq/hybrid-application
 - github.com/nestjs/nest — `packages/microservices/{exceptions,enums}/*`, published `@nestjs/microservices@11.2.1` on npm

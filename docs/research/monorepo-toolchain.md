@@ -8,13 +8,15 @@ Facts below verified against official docs, not memory. Fedora Linux, podman
 Docs: pnpm.io/workspaces, /catalogs, /settings/build, /blog/releases/11.0, /continuous-integration
 
 **`pnpm-workspace.yaml`:**
+
 ```yaml
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 ```
 
 **Catalogs** (shared versions, defined once, referenced everywhere):
+
 ```yaml
 catalog:
   react: ^18.2.0
@@ -22,6 +24,7 @@ catalogs:
   react17:
     react: ^17.0.2
 ```
+
 ```json
 { "dependencies": { "react": "catalog:", "react-dom": "catalog:react17" } }
 ```
@@ -31,13 +34,15 @@ scripts by default. In **pnpm 11** the old `onlyBuiltDependencies` /
 `neverBuiltDependencies` / `ignoredBuiltDependencies` / `ignoreDepScripts`
 settings were **removed**, replaced by a single `allowBuilds` map — and it
 lives in `pnpm-workspace.yaml`, not `package.json`:
+
 ```yaml
 allowBuilds:
   sharp: true
-  "@napi-rs/keyring": true
+  '@napi-rs/keyring': true
   argon2: true
   esbuild: true
 ```
+
 `strictDepBuilds` (default `true`) fails install on any unreviewed build
 script. `dangerouslyAllowAllBuilds` (default `false`) is the unsafe bypass.
 
@@ -48,6 +53,7 @@ the default and correct choice — `shamefully-hoist` is a legacy escape hatch,
 not needed with isolated linker + correct `peerDependencies`.
 
 **Commands:**
+
 ```bash
 pnpm add -w typescript
 pnpm add zod --filter @patches/server
@@ -55,6 +61,7 @@ pnpm --filter @patches/server run test
 pnpm -r run build
 pnpm dlx <pkg>
 ```
+
 `workspace:*` / `workspace:^` / `workspace:~` link local packages.
 
 **Other v11 changes:** Node 22+ required (18–21 dropped); pure ESM
@@ -67,6 +74,7 @@ SQLite db, not many JSON files; audit moved from CVE- to **GHSA**-based
 Corepack. It remains bundled (as an opt-in shim) through Node **24**, and is
 **gone starting Node 25**. Don't depend on it long-term — use mise or
 `pnpm/setup` (§6) to install pnpm instead.
+
 ```json
 { "packageManager": "pnpm@11.22.0" }
 ```
@@ -76,6 +84,7 @@ Corepack. It remains bundled (as an opt-in shim) through Node **24**, and is
 Docs: turborepo.dev/docs/reference/configuration, /crafting-your-repository/using-environment-variables, /reference/run
 
 **Confirmed: `pipeline` → `tasks` rename is complete**; only `tasks` exists now.
+
 ```jsonc
 // turbo.json
 {
@@ -87,10 +96,11 @@ Docs: turborepo.dev/docs/reference/configuration, /crafting-your-repository/usin
     "lint": { "outputs": [] },
     "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] },
     "test": { "dependsOn": ["^build"], "outputs": ["coverage/**"] },
-    "dev": { "cache": false, "persistent": true }
-  }
+    "dev": { "cache": false, "persistent": true },
+  },
 }
 ```
+
 `dependsOn: ["^build"]` = run in workspace deps first. `cache:false,
 persistent:true` is the standard `dev`/watch-task pattern.
 
@@ -124,10 +134,12 @@ run = "pnpm turbo run dev"
 [env]
 NODE_ENV = "development"
 ```
+
 `aqua:<owner>/<repo>@<version>` is the backend for tools without a dedicated
 mise plugin (buf, actionlint) — pin an exact version, not `@latest`.
 
 **Pinning:**
+
 ```bash
 mise use --pin node@24        # resolves to exact concrete version, writes it
 mise use --pin pnpm@11.22.0
@@ -136,14 +148,16 @@ mise use -g --pin node@24     # global config instead of project
 
 **Trust:** `mise trust` approves a project's config once; or pre-approve a
 directory tree globally via `~/.config/mise/config.toml`:
+
 ```toml
 [settings]
 trusted_config_paths = ["~/develop"]
 ```
 
 **CI:**
+
 ```yaml
-- uses: jdx/mise-action@v4   # v4: runtime moved to Node 24 ahead of GH's Node20 EOL
+- uses: jdx/mise-action@v4 # v4: runtime moved to Node 24 ahead of GH's Node20 EOL
   with:
     version: 2026.8.1
     install: true
@@ -154,16 +168,18 @@ trusted_config_paths = ["~/develop"]
 
 Docs: docs.podman.io/en/latest/markdown/podman-compose.1.html, github.com/containers/podman-compose
 
-`podman compose` is a thin dispatcher to an external *provider*. Default
+`podman compose` is a thin dispatcher to an external _provider_. Default
 providers: `docker-compose` (takes precedence if present on `PATH`) and
 `podman-compose`. Override via `containers.conf` `[engine] compose_providers =
 [...]` or `PODMAN_COMPOSE_PROVIDER` env var. `podman-compose` itself is pure
 Python, talks to Podman directly — no Docker socket needed.
 
 **Recommended (simplest, Fedora):**
+
 ```bash
 sudo dnf install -y podman-docker podman-compose
 ```
+
 - `podman-docker` installs a `docker` shim forwarding Docker-CLI calls to
   `podman`, so a literal `docker compose up -d` in the README resolves to
   `podman compose`.
@@ -175,7 +191,7 @@ sudo dnf install -y podman-docker podman-compose
   `podman compose up -d` (not `docker compose`) directly. Avoid mise's
   `aqua:docker/compose` (standalone `docker-compose` v2 binary) here — it
   needs a Docker-API-compatible socket (`systemctl --user enable --now
-  podman.socket` + `DOCKER_HOST=...`), more moving parts for no benefit over
+podman.socket` + `DOCKER_HOST=...`), more moving parts for no benefit over
   `podman-compose`.
 
 ## 5. ESLint 10 flat config (TS monorepo)
@@ -192,17 +208,17 @@ formatter uses Node's `styleText`, not `chalk`. Min Node: 20.19+ / 22.13+ / 24+.
 
 ```js
 // eslint.config.js
-import js from "@eslint/js";
-import { defineConfig, globalIgnores } from "eslint/config";
-import tseslint from "typescript-eslint";
-import reactHooks from "eslint-plugin-react-hooks";
-import eslintConfigPrettier from "eslint-config-prettier";
-import globals from "globals";
+import js from '@eslint/js';
+import { defineConfig, globalIgnores } from 'eslint/config';
+import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
+import eslintConfigPrettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default defineConfig([
-  globalIgnores(["**/dist/**", "**/.turbo/**", "**/coverage/**"]),
+  globalIgnores(['**/dist/**', '**/.turbo/**', '**/coverage/**']),
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommendedTypeChecked,
@@ -216,6 +232,7 @@ export default defineConfig([
   eslintConfigPrettier, // last: disables stylistic rules Prettier owns
 ]);
 ```
+
 `defineConfig()` from `"eslint/config"` is now the recommended composition
 helper (both ESLint and typescript-eslint docs lead with it); the older
 `tseslint.config()` wrapper still works but is no longer the headline example.
@@ -239,20 +256,23 @@ Docs: vitest.dev/guide/projects, /guide/coverage.html, /config/
 **Confirmed: `projects` replaces `workspace`.** `workspace` was deprecated in
 3.2; v4's API is `projects`, set directly in the root config (no separate
 `vitest.workspace.ts` file needed):
+
 ```ts
 // vitest.config.ts (root)
-import { defineConfig } from "vitest/config";
-export default defineConfig({ test: { projects: ["packages/*", "apps/*"] } });
+import { defineConfig } from 'vitest/config';
+export default defineConfig({ test: { projects: ['packages/*', 'apps/*'] } });
 ```
+
 ```ts
 // packages/server/vitest.config.ts
-import { defineProject } from "vitest/config";
-import swc from "unplugin-swc";
+import { defineProject } from 'vitest/config';
+import swc from 'unplugin-swc';
 export default defineProject({
-  plugins: [swc.vite({ module: { type: "es6" } })],
-  test: { name: "server", environment: "node", globals: false, testTimeout: 20_000 },
+  plugins: [swc.vite({ module: { type: 'es6' } })],
+  test: { name: 'server', environment: 'node', globals: false, testTimeout: 20_000 },
 });
 ```
+
 Run: `pnpm vitest run --project server` (repeat `--project` for multiple).
 
 **Defaults (confirmed):** `testTimeout` 5000ms, `hookTimeout` 10000ms (`0`
@@ -279,29 +299,35 @@ Docs: github.com/actions/setup-node, github.com/pnpm/setup, github.com/jdx/mise-
 
 **Node + pnpm — two paths.** Classic: `actions/setup-node@v7` (current major)
 with pnpm already on `PATH`:
+
 ```yaml
 - uses: actions/setup-node@v7
   with: { node-version: 24, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
 ```
+
 New, simpler for pnpm 11+: **`pnpm/setup@v2`** is the successor to
 `pnpm/action-setup` — installs pnpm's self-contained binary (no Node needed to
-bootstrap) *and* a JS runtime in one step, replacing `actions/setup-node`
+bootstrap) _and_ a JS runtime in one step, replacing `actions/setup-node`
 entirely:
+
 ```yaml
 - uses: actions/checkout@v4
 - uses: pnpm/setup@v2
   with: { runtime: node@24, cache: true, install: true }
 ```
+
 `pnpm/action-setup` is still correct only for pnpm ≤10; use `pnpm/setup@v2`
 for this repo's pnpm 11 pin.
 
 **mise:**
+
 ```yaml
 - uses: jdx/mise-action@v4
   with: { version: 2026.8.1, install: true, cache: true }
 ```
 
 **Postgres 17 service:**
+
 ```yaml
 services:
   postgres:
@@ -310,44 +336,46 @@ services:
     options: >-
       --health-cmd pg_isready --health-interval 10s
       --health-timeout 5s --health-retries 5
-    ports: ["5432:5432"]
+    ports: ['5432:5432']
 ```
 
 **Buf:** legacy `buf-setup-action`/`buf-lint-action`/`buf-breaking-action`/
 `buf-push-action` are superseded by unified **`bufbuild/buf-action@v1`**:
+
 ```yaml
 - uses: actions/checkout@v4
-  with: { fetch-depth: 0 }   # needed for --against main diff
+  with: { fetch-depth: 0 } # needed for --against main diff
 - uses: bufbuild/buf-action@v1
-  with: { token: "${{ secrets.BUF_TOKEN }}", args: "lint format breaking --against main" }
+  with: { token: '${{ secrets.BUF_TOKEN }}', args: 'lint format breaking --against main' }
 ```
 
 **Dependabot:** pnpm supported under `package-ecosystem: "npm"`
-(auto-detects `pnpm-lock.yaml`), including GA `catalog:` support since Feb
-2025. **Caveat found in research:** open upstream issues as of mid-2026 —
+(auto-detects `pnpm-lock.yaml`), including GA `catalog:` support since Feb 2025. **Caveat found in research:** open upstream issues as of mid-2026 —
 Dependabot can drop catalog entries when regenerating `pnpm-lock.yaml`, and
 pnpm 11's new multi-document lockfile format has been reported as unparseable
 (`dependency_file_not_parseable`) by dependabot-core in some repos. Treat
 Dependabot pnpm-lockfile PRs as needing manual review, not auto-merge, until
 this is confirmed fixed upstream.
+
 ```yaml
 # .github/dependabot.yml
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule: { interval: "weekly" }
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule: { interval: 'weekly' }
     groups:
-      dev-dependencies: { dependency-type: "development", patterns: ["*"] }
-      production-dependencies: { dependency-type: "production", patterns: ["*"] }
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule: { interval: "weekly" }
+      dev-dependencies: { dependency-type: 'development', patterns: ['*'] }
+      production-dependencies: { dependency-type: 'production', patterns: ['*'] }
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule: { interval: 'weekly' }
     groups:
-      actions: { patterns: ["*"] }
+      actions: { patterns: ['*'] }
 ```
 
 **Permissions:** default to least privilege at the workflow top, elevate per-job:
+
 ```yaml
 permissions:
   contents: read
@@ -360,8 +388,9 @@ Docs: prettier.io/docs/configuration
 ```js
 // prettier.config.js
 /** @type {import("prettier").Config} */
-export default { semi: true, singleQuote: true, trailingComma: "all", printWidth: 100 };
+export default { semi: true, singleQuote: true, trailingComma: 'all', printWidth: 100 };
 ```
+
 ```ini
 # .editorconfig
 root = true
@@ -372,16 +401,19 @@ insert_final_newline = true
 indent_style = space
 indent_size = 2
 ```
+
 **Git hooks — recommend lefthook**, installed via mise (`[tools] lefthook =
 "1.x"`) or as a devDependency with a `prepare` script (`npx lefthook install`)
 so hooks self-install on `pnpm install`:
+
 ```yaml
 # lefthook.yml
 pre-commit:
   parallel: true
   commands:
-    lint-staged: { run: "pnpm exec lint-staged" }
+    lint-staged: { run: 'pnpm exec lint-staged' }
 ```
+
 Lefthook's `root`/`glob`/`files` scoping suits monorepos; `simple-git-hooks` is
 lighter if only one or two hooks are needed, but lefthook's parallelism and
 path filtering earn the extra dependency here.

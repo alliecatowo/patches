@@ -8,8 +8,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
 ## Tree
 
 - **`architecture/`** — system design docs: overview, data model, API surface, media
-  pipeline, background jobs, federation seam. *(Status: not yet written — planned per
-  `INITIAL_VISION.md` §130.)*
+  pipeline, background jobs, federation seam. _(Status: not yet written — planned per
+  `INITIAL_VISION.md` §130.)_
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
   [`decisions/README.md`](./decisions/README.md) for the index and template.
@@ -24,12 +24,12 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   moderation policy.
   - [`product/principles.md`](./product/principles.md)
   - [`product/roadmap.md`](./product/roadmap.md)
-  - `product/moderation.md` *(planned)*
+  - `product/moderation.md` _(planned)_
 - **`research/`** — exploratory notes, technical spikes, and background research that
-  informed decisions but isn't itself a decision record. *(Currently empty.)*
+  informed decisions but isn't itself a decision record. _(Currently empty.)_
 - **`agents/`** — guidance for AI implementation agents working in this repository, if/when
   that becomes its own documented surface distinct from `INITIAL_VISION.md` itself.
-  *(Currently empty.)*
+  _(Currently empty.)_
 
 ## Where to start
 

@@ -1,6 +1,6 @@
 name: Feature request
 description: Propose something new for Patches.
-title: "[feature]: "
+title: '[feature]: '
 labels:
   - enhancement
 body:

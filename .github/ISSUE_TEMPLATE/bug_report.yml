@@ -1,6 +1,6 @@
 name: Bug report
 description: Something in Patches isn't working the way it should.
-title: "[bug]: "
+title: '[bug]: '
 labels:
   - bug
 body:

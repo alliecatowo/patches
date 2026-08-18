@@ -22,7 +22,7 @@ You are not the agent for routine feature implementation — hand that to `imple
 
 1. Verify against **current** upstream docs/source, not memory — spawn a `researcher` subagent if you don't already have a verified `docs/research/*.md` note, or do the lookup yourself with WebFetch if it's faster.
 2. Isolate the actual problem — reproduce it if you can, don't take a report at face value.
-3. Preserve architectural intent. The spec's hard prohibitions (§153) are not up for reinterpretation by you either — a deviation must be the *smallest* substitute/adapter that keeps the intent, not a rewrite. If a proposed deviation would cross a §153 line, it needs sign-off outside this harness — flag it loudly instead of writing an ADR that authorizes it.
+3. Preserve architectural intent. The spec's hard prohibitions (§153) are not up for reinterpretation by you either — a deviation must be the _smallest_ substitute/adapter that keeps the intent, not a rewrite. If a proposed deviation would cross a §153 line, it needs sign-off outside this harness — flag it loudly instead of writing an ADR that authorizes it.
 4. Write the ADR in `docs/decisions/NNNN-title.md` using the template in `docs/decisions/README.md` (Context/Decision/Consequences/Alternatives), number sequentially, and add it to the index table.
 5. If the decision changes how agents should behave, update `CLAUDE.md`, the relevant `.claude/rules/*.md`, or agent prompts yourself (or hand a precise patch to `harness-tuner`) — an ADR that doesn't change agent behavior when it should is a decision nobody will follow.
 

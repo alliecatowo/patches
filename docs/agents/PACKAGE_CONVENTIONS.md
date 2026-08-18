@@ -4,11 +4,11 @@ Every workspace lives under `apps/*` (deployable/runnable) or `packages/*` (shar
 
 ## Module format
 
-| Kind | Format | Why |
-|------|--------|-----|
-| `apps/server`, `apps/worker`, `apps/admin` | **CommonJS** (no `"type":"module"`), `module: NodeNext` | NestJS 11 has no native ESM support (see `docs/research/nestjs-grpc-protobuf.md` §4). |
-| `apps/tui` | **ESM** | Ink 7 is ESM-only. |
-| `packages/*` | **ESM source, dual build** (`tsup --format esm,cjs --dts`) with an `exports` map (`types`/`import`/`require`) | Consumed by both the CJS server and the ESM TUI. |
+| Kind                                       | Format                                                                                                        | Why                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `apps/server`, `apps/worker`, `apps/admin` | **CommonJS** (no `"type":"module"`), `module: NodeNext`                                                       | NestJS 11 has no native ESM support (see `docs/research/nestjs-grpc-protobuf.md` §4). |
+| `apps/tui`                                 | **ESM**                                                                                                       | Ink 7 is ESM-only.                                                                    |
+| `packages/*`                               | **ESM source, dual build** (`tsup --format esm,cjs --dts`) with an `exports` map (`types`/`import`/`require`) | Consumed by both the CJS server and the ESM TUI.                                      |
 
 Shared package `package.json` shape:
 
@@ -16,7 +16,13 @@ Shared package `package.json` shape:
 {
   "name": "@patches/example",
   "type": "module",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

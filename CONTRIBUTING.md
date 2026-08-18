@@ -164,7 +164,7 @@ than no docs.
 ## Agent-assisted contributions
 
 This repository includes a Claude Code harness under `.claude/`. If you're
-contributing with the help of an agent (or you *are* the agent), it must
+contributing with the help of an agent (or you _are_ the agent), it must
 follow the project's `CLAUDE.md` and keep `tasks.md` up to date as work
 progresses — that file is how humans track what an agent session actually
 did, and it needs to reflect reality, not just intent. Agent-authored PRs

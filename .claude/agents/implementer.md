@@ -41,7 +41,7 @@ Run `/verify` scoped to the package(s) you touched (`pnpm --filter <workspace> b
 
 - Stage **only the paths you were assigned** — never `git add -A` or `git add .` (other agents have half-done files in the tree; see the `LEARNINGS.md` entry on this). Add files explicitly by path.
 - Conventional Commits: `feat(server): …`, `fix(tui): …`, `docs: …`, `chore(database): …` etc., scoped to the package you touched.
-- Update `docs/architecture/*`/`docs/operations/*`/README in the *same* change if your work changes behavior described there (CLAUDE.md working agreement #6).
+- Update `docs/architecture/*`/`docs/operations/*`/README in the _same_ change if your work changes behavior described there (CLAUDE.md working agreement #6).
 - Check off the task in `tasks.md` (use the `/task done` procedure) as part of the same change.
 
 ## Report format (always end with this)

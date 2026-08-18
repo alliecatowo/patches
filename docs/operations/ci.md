@@ -19,14 +19,14 @@ their own scripts.
 
 ## What each `ci.yml` job does
 
-| Job | What it runs | Notes |
-| --- | --- | --- |
-| `quality` | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` | `typecheck` is a Turbo task that depends on `^build` + `gen`, so it pulls in generated protobuf code automatically. |
-| `proto` | `pnpm proto:format`, `pnpm proto:lint`, `pnpm proto:breaking` (PRs only), `pnpm proto:gen` + `git diff --exit-code -- packages/proto/src/generated` | Proves buf-generated TypeScript is committed and up to date. Checks out full history (`fetch-depth: 0`) and fetches `main` explicitly so `buf breaking --against '.git#branch=main,subdir=packages/proto'` has something to diff against. Skipped on push to `main` itself (no meaningful self-diff). |
-| `build-test` | `pnpm build`, `pnpm test` | Unit tests only (vitest, no external services). Uploads any `**/coverage/**` output as an artifact — best-effort, does not fail if a project has no coverage provider configured. |
-| `integration` | `pnpm build`, migration validation, `pnpm test:integration` | See "Migration validation" and "Why one database" below. Runs against a `postgres:17-alpine` service container. |
-| `actionlint` | `actionlint .github/workflows/*.yml` | Lightweight job — just checkout + mise (actionlint only), no workspace install. |
-| `ci-ok` | Aggregates the result of every job above | The single required status check for branch protection (see below). Uses `if: always()` so it still runs and reports failure even if an earlier job failed or was cancelled. |
+| Job           | What it runs                                                                                                                                        | Notes                                                                                                                                                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`     | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`                                                                                                  | `typecheck` is a Turbo task that depends on `^build` + `gen`, so it pulls in generated protobuf code automatically.                                                                                                                                                                                   |
+| `proto`       | `pnpm proto:format`, `pnpm proto:lint`, `pnpm proto:breaking` (PRs only), `pnpm proto:gen` + `git diff --exit-code -- packages/proto/src/generated` | Proves buf-generated TypeScript is committed and up to date. Checks out full history (`fetch-depth: 0`) and fetches `main` explicitly so `buf breaking --against '.git#branch=main,subdir=packages/proto'` has something to diff against. Skipped on push to `main` itself (no meaningful self-diff). |
+| `build-test`  | `pnpm build`, `pnpm test`                                                                                                                           | Unit tests only (vitest, no external services). Uploads any `**/coverage/**` output as an artifact — best-effort, does not fail if a project has no coverage provider configured.                                                                                                                     |
+| `integration` | `pnpm build`, migration validation, `pnpm test:integration`                                                                                         | See "Migration validation" and "Why one database" below. Runs against a `postgres:17-alpine` service container.                                                                                                                                                                                       |
+| `actionlint`  | `actionlint .github/workflows/*.yml`                                                                                                                | Lightweight job — just checkout + mise (actionlint only), no workspace install.                                                                                                                                                                                                                       |
+| `ci-ok`       | Aggregates the result of every job above                                                                                                            | The single required status check for branch protection (see below). Uses `if: always()` so it still runs and reports failure even if an earlier job failed or was cancelled.                                                                                                                          |
 
 ### Migration validation
 
@@ -79,7 +79,7 @@ path. This workflow uses `pnpm/setup@v2` for Node + pnpm instead, per
 `docs/research/monorepo-toolchain.md` §7's guidance that `pnpm/setup@v2` is the simpler,
 more current path for pnpm 11+, and because installing pnpm through mise in CI has a
 reputation for flakiness in some setups. Nobody has yet observed a concrete mise-action
-pnpm failure *in this repo's own CI* (no run has happened yet) — if a future run shows
+pnpm failure _in this repo's own CI_ (no run has happened yet) — if a future run shows
 mise-action's pnpm install working fine, this split can be collapsed back to a single
 `mise-action` step. Until then, treat the split as the safer default.
 

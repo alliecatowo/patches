@@ -27,6 +27,7 @@ primary_region = "iad"
   [http_service.tls_options]
     alpn = ["h2"]
 ```
+
 Source: [grpc-and-grpc-web-services](https://fly.io/docs/app-guides/grpc-and-grpc-web-services/), [reference/configuration](https://fly.io/docs/reference/configuration/)
 
 Mechanics (combining gRPC guide + networking doc): the `tls` handler "terminates TLS using
@@ -36,6 +37,7 @@ application process"; `h2_backend = true` makes that forwarded connection HTTP/2
 `[[services.ports]] handlers = ["tls","http"]`. Source: [networking/services](https://fly.io/docs/networking/services/)
 
 **Health checks: no native `type = "grpc"` check exists** — only `http`/`tcp` are documented.
+
 ```toml
 [checks.server_tcp]
   type = "tcp"
@@ -44,6 +46,7 @@ application process"; `h2_backend = true` makes that forwarded connection HTTP/2
   timeout = "2s"
   processes = ["server"]
 ```
+
 Source: [reference/health-checks](https://fly.io/docs/reference/health-checks/). **Unconfirmed inference:** for a gRPC-only service, use a tcp check on the gRPC port or add a
 separate HTTP health endpoint — no official recipe found.
 
@@ -60,6 +63,7 @@ separate HTTP health endpoint — no official recipe found.
 kill_signal = "SIGTERM"
 kill_timeout = 120   # 0-300s, default 5
 ```
+
 Attach services/checks to a group via `processes = ["server"]`. Source: [launch/processes](https://fly.io/docs/launch/processes/)
 
 ### Fly Managed Postgres (MPG)
@@ -68,11 +72,14 @@ Attach services/checks to a group via `processes = ["server"]`. Source: [launch/
 fly mpg create --name mydb --org myorg --region iad --plan Launch --volume-size 10
 fly mpg attach <CLUSTER_ID> -a myapp   # writes DATABASE_URL secret; --variable-name to rename
 ```
+
 Connects over 6PN via `.flympg.net` hostnames:
+
 ```
 postgresql://fly-user:PASSWORD@pgbouncer.CLUSTER.flympg.net/fly-db   # pooled, for app traffic
 postgresql://fly-user:PASSWORD@direct.CLUSTER.flympg.net/fly-db      # direct, for migrations
 ```
+
 "SSL is enabled by default on all MPG connections. You do not need to set `sslmode`."
 Source: [flyctl/mpg-attach](https://fly.io/docs/flyctl/mpg-attach/), [mpg/client-configuration](https://fly.io/docs/mpg/client-configuration/)
 
@@ -85,6 +92,7 @@ MPG is the managed successor to the older unmanaged `fly postgres` (`/docs/postg
 fly secrets set DATABASE_URL="postgres://..." -a myapp
 fly secrets set JWT_PRIVATE_KEY="$(base64 -w0 key.pem)" --stage   # "skip deployment for machine apps"
 ```
+
 Source: [flyctl/secrets-set](https://fly.io/docs/flyctl/secrets-set/)
 
 ```yaml
@@ -100,6 +108,7 @@ jobs:
       - run: flyctl deploy --remote-only
         env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
 ```
+
 `FLY_API_TOKEN` is still current; generate a scoped token with `fly tokens create deploy -x 999999h` (copy incl. the `FlyV1` prefix). Source: [continuous-deployment-with-github-actions](https://fly.io/docs/launch/continuous-deployment-with-github-actions/)
 
 ### Dockerfile
@@ -132,25 +141,29 @@ CMD ["node", "/app/server/dist/main.js"]
 
 ```ts
 const s3 = new S3Client({
-  region: "auto",   // "" and "us-east-1" also alias to auto
+  region: 'auto', // "" and "us-east-1" also alias to auto
   endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: { accessKeyId, secretAccessKey },
-  requestChecksumCalculation: "WHEN_REQUIRED",    // see checksum note below
-  responseChecksumValidation: "WHEN_REQUIRED",
+  requestChecksumCalculation: 'WHEN_REQUIRED', // see checksum note below
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 ```
+
 No `forcePathStyle` in Cloudflare's own example (virtual-hosted-style by default). API
 tokens: dashboard → R2 → API Tokens → scope **Object Read & Write** to a bucket (S3 API
 only, not the REST API). Source: [r2/api/s3/api](https://developers.cloudflare.com/r2/api/s3/api/), [r2/api/tokens](https://developers.cloudflare.com/r2/api/tokens/)
 
 ```ts
-const putUrl = await getSignedUrl(s3, new PutObjectCommand({ Bucket, Key, ContentType }), { expiresIn: 3600 });
+const putUrl = await getSignedUrl(s3, new PutObjectCommand({ Bucket, Key, ContentType }), {
+  expiresIn: 3600,
+});
 const getUrl = await getSignedUrl(s3, new GetObjectCommand({ Bucket, Key }), { expiresIn: 3600 });
 ```
+
 If `ContentType` is signed, the client's request header must match it. Docs do **not**
 mention signing/matching `Content-Length`. **Max `expiresIn`: 7 days (604800s)**. Source: [r2/api/s3/presigned-urls](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
 
-**CORS** only matters when the *consumer* is a browser: "you still need to configure CORS
+**CORS** only matters when the _consumer_ is a browser: "you still need to configure CORS
 when making requests from a browser." A TUI/backend consumer of a presigned URL triggers no
 CORS enforcement — **no bucket CORS needed** for non-browser clients. Source: [r2/buckets/cors](https://developers.cloudflare.com/r2/buckets/cors/)
 
@@ -169,34 +182,53 @@ Local dev: no official R2 emulator; common practice is a `minio/minio` container
 ## 3. Resend & Mailpit
 
 ```ts
-import { Resend } from "resend";
+import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { data, error } = await resend.emails.send({
-  from: "Acme <notifications@yourdomain.com>", to: [user.email],
-  subject: "Welcome", html: "<strong>It works!</strong>", text: "It works!",
+  from: 'Acme <notifications@yourdomain.com>',
+  to: [user.email],
+  subject: 'Welcome',
+  html: '<strong>It works!</strong>',
+  text: 'It works!',
 });
 ```
+
 Source: [resend.com/docs/send-with-nodejs](https://resend.com/docs/send-with-nodejs). The
 `from` domain must be verified: "You must add and verify at least one domain to send emails
 with Resend." Source: [resend.com/docs/dashboard/domains/introduction](https://resend.com/docs/dashboard/domains/introduction)
 
 Mailpit: SMTP `1025`, Web UI `8025`. Source: [github.com/axllent/mailpit](https://github.com/axllent/mailpit)
+
 ```yaml
 services:
   mailpit:
     image: axllent/mailpit
-    ports: ["8025:8025", "1025:1025"]
+    ports: ['8025:8025', '1025:1025']
 ```
+
 Nodemailer→Mailpit (generic SMTP usage, not Mailpit-documented):
+
 ```ts
-const transporter = nodemailer.createTransport({ host: "localhost", port: 1025, secure: false, ignoreTLS: true });
+const transporter = nodemailer.createTransport({
+  host: 'localhost',
+  port: 1025,
+  secure: false,
+  ignoreTLS: true,
+});
 ```
 
 **EmailProvider adapter:**
+
 ```ts
-interface EmailProvider { send(msg: { to: string; subject: string; html: string; text?: string }): Promise<void>; }
-class ResendEmailProvider implements EmailProvider { /* wraps resend.emails.send */ }
-class SmtpEmailProvider implements EmailProvider { /* wraps nodemailer transport → Mailpit */ }
+interface EmailProvider {
+  send(msg: { to: string; subject: string; html: string; text?: string }): Promise<void>;
+}
+class ResendEmailProvider implements EmailProvider {
+  /* wraps resend.emails.send */
+}
+class SmtpEmailProvider implements EmailProvider {
+  /* wraps nodemailer transport → Mailpit */
+}
 // bind ResendEmailProvider in prod, SmtpEmailProvider in dev via config
 ```
 
@@ -205,24 +237,27 @@ class SmtpEmailProvider implements EmailProvider { /* wraps nodemailer transport
 ## 4. `@napi-rs/keyring`
 
 ```ts
-import { Entry } from "@napi-rs/keyring";
-const entry = new Entry("myapp", "refresh_token"); // (service, username)
+import { Entry } from '@napi-rs/keyring';
+const entry = new Entry('myapp', 'refresh_token'); // (service, username)
 entry.setPassword(refreshToken);
-const stored = entry.getPassword();   // string | null
-entry.deletePassword();               // alias: deleteCredential()
+const stored = entry.getPassword(); // string | null
+entry.deletePassword(); // alias: deleteCredential()
 ```
+
 Source: [github.com/Brooooooklyn/keyring-node](https://github.com/Brooooooklyn/keyring-node) (`index.d.ts`, README). An `AsyncEntry` variant also exists.
 
 **Platform/headless behavior — the README documents almost nothing here**; this required
 reading the source (`Cargo.toml`, `src/linux_credential_builder.rs`) in the same repo. macOS
 → Keychain, Windows → Credential Manager. Linux compiles in **both** D-Bus secret-service
 (libsecret/gnome-keyring) and kernel `keyutils`, with an undocumented fallback:
+
 ```rust
 match SecretServiceStore::new_with_configuration(&HashMap::new()) {
     Ok(store) => store,
     Err(_) => KeyutilsStore::new_with_configuration(&HashMap::new())?,  // fallback
 }
 ```
+
 For a TUI over SSH: `new Entry(...)` tries D-Bus first; if no session bus/provider, it
 silently falls back to `keyutils` (no daemon needed) — more headless-resilient than the
 README suggests. Throws only if both fail. **Unconfirmed inference:** keyutils
@@ -230,10 +265,14 @@ session-keyring persistence across separate SSH logins may differ from desktop-k
 persistence — not documented, worth testing directly.
 
 **Defensive import + fallback (your own design — not documented by the library):**
+
 ```ts
 async function loadNativeKeyring() {
-  try { return await import("@napi-rs/keyring"); }
-  catch { return null; } // unsupported platform, missing prebuild, sandboxed env
+  try {
+    return await import('@napi-rs/keyring');
+  } catch {
+    return null;
+  } // unsupported platform, missing prebuild, sandboxed env
 }
 // Fallback: file store, mode 0600
 await fs.writeFile(path, value, { mode: 0o600 });
@@ -253,14 +292,25 @@ global `node-gyp` + GCC≥5/Clang≥3.3/MSVC, and Node ≥22. Source: [ranisalt/
 
 ```ts
 // @node-rs/argon2
-import { hash, verify, Algorithm } from "@node-rs/argon2";
-await hash(password, { algorithm: Algorithm.Argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+import { hash, verify, Algorithm } from '@node-rs/argon2';
+await hash(password, {
+  algorithm: Algorithm.Argon2id,
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+});
 await verify(hashed, password);
 ```
+
 ```ts
 // argon2 (ranisalt) — default is already argon2id, but library default is m=65536,t=3,p=4
-import * as argon2 from "argon2";
-await argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+import * as argon2 from 'argon2';
+await argon2.hash(password, {
+  type: argon2.argon2id,
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+});
 await argon2.verify(hashed, password);
 ```
 
@@ -277,29 +327,37 @@ Use `m=19456, t=2, p=1` (matches OWASP's baseline).
 ## 6. `jose` 6 — JWT (EdDSA/ES256)
 
 ```ts
-import { generateKeyPair, exportPKCS8, exportSPKI, SignJWT, jwtVerify } from "jose";
+import { generateKeyPair, exportPKCS8, exportSPKI, SignJWT, jwtVerify } from 'jose';
 
 // extractable: true REQUIRED to export the private key later (default false)
-const { publicKey, privateKey } = await generateKeyPair("EdDSA", { crv: "Ed25519", extractable: true });
+const { publicKey, privateKey } = await generateKeyPair('EdDSA', {
+  crv: 'Ed25519',
+  extractable: true,
+});
 // ES256 alt: await generateKeyPair("ES256", { extractable: true })
 
-const privatePem = await exportPKCS8(privateKey);  // PEM PKCS8
-const publicPem = await exportSPKI(publicKey);      // PEM SPKI
+const privatePem = await exportPKCS8(privateKey); // PEM PKCS8
+const publicPem = await exportSPKI(publicKey); // PEM SPKI
 // env var: base64(privatePem) — decode + importPKCS8/importSPKI at boot
 ```
+
 Source: [github.com/panva/jose](https://github.com/panva/jose) — `docs/key/generate_key_pair`, `docs/key/export`.
 
 ```ts
 const jwt = await new SignJWT({ sub: userId })
-  .setProtectedHeader({ alg: "EdDSA" })
+  .setProtectedHeader({ alg: 'EdDSA' })
   .setIssuedAt()
-  .setIssuer("https://myapp")
-  .setAudience("myapp-api")
-  .setExpirationTime("15m")
+  .setIssuer('https://myapp')
+  .setAudience('myapp-api')
+  .setExpirationTime('15m')
   .sign(privateKey);
 
-const { payload } = await jwtVerify(jwt, publicKey, { issuer: "https://myapp", audience: "myapp-api" });
+const { payload } = await jwtVerify(jwt, publicKey, {
+  issuer: 'https://myapp',
+  audience: 'myapp-api',
+});
 ```
+
 Matches jose's own documented `SignJWT`/`jwtVerify` examples exactly.
 
 **Recommended: EdDSA (Ed25519).** jose's own docs give **no comparative recommendation**
@@ -315,11 +373,12 @@ more than key size.
 
 **`@nestjs/config` validate (zod)** — Nest's docs show Joi (`validationSchema`) and a custom
 `validate()` function (with class-validator); **zod is not mentioned in Nest's docs at all**.
-Below adapts the documented `validate` *contract* (sync, throws to abort boot):
+Below adapts the documented `validate` _contract_ (sync, throws to abort boot):
+
 ```ts
-import { z } from "zod";
+import { z } from 'zod';
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().min(0).max(65535),
   DATABASE_URL: z.string().url(),
 });
@@ -330,45 +389,56 @@ export function validate(config: Record<string, unknown>) {
 }
 // ConfigModule.forRoot({ validate, isGlobal: true });
 ```
+
 Source: [docs.nestjs.com/techniques/configuration](https://docs.nestjs.com/techniques/configuration)
 
 **Logger:** confirmed option name is `json` (boolean, default `false`) on
 `ConsoleLoggerOptions`; `colors` auto-disables when `json` is on.
+
 ```ts
 NestFactory.create(AppModule, { logger: new ConsoleLogger({ json: true }) });
 ```
+
 Source: [docs.nestjs.com/techniques/logger](https://docs.nestjs.com/techniques/logger)
 
 **Throttler v6 — HTTP-only, confirmed no gRPC support in docs:**
+
 ```ts
 ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]);
 { provide: APP_GUARD, useClass: ThrottlerGuard }
 ```
+
 Docs contain zero mentions of gRPC/microservices/`switchToRpc`; only WS and GraphQL
 extension patterns are documented (both via overriding `getRequestResponse()`/
 `getTracker()`), and for WS the guard explicitly **cannot** use `APP_GUARD` — must be
 per-controller. Source: [docs.nestjs.com/security/rate-limiting](https://docs.nestjs.com/security/rate-limiting)
 
 **Unconfirmed inference** (by analogy, not documented) for gRPC:
+
 ```ts
 @Injectable()
 class RpcThrottlerGuard extends ThrottlerGuard {
-  protected getTracker(req: Record<string, any>) { return req.peerAddress ?? "unknown"; }
+  protected getTracker(req: Record<string, any>) {
+    return req.peerAddress ?? 'unknown';
+  }
   protected getRequestResponse(context: ExecutionContext) {
     const data = context.switchToRpc().getData();
     return { req: data, res: data }; // gRPC has no res object
   }
 }
 ```
+
 May need per-handler registration rather than `APP_GUARD`, mirroring the WS restriction —
 unconfirmed for RPC specifically.
 
 **Graceful shutdown:**
+
 ```ts
 const app = await NestFactory.create(AppModule);
 app.enableShutdownHooks();
 // class X implements OnApplicationShutdown { onApplicationShutdown(signal) {} }
 ```
+
 "Shutdown hook listeners consume system resources, so they are disabled by default." Windows
 has limited signal support (no `SIGTERM`). No gRPC/microservice-specific guidance found —
 mechanism is generic/app-level. Source: [docs.nestjs.com/fundamentals/lifecycle-events](https://docs.nestjs.com/fundamentals/lifecycle-events)
@@ -379,14 +449,15 @@ mechanism is generic/app-level. Source: [docs.nestjs.com/fundamentals/lifecycle-
 
 ```ts
 const meta = await sharp(buffer, { limitInputPixels: 20e6 }).metadata();
-const isAnimated = (meta.pages ?? 1) > 1;   // confirmed field: `pages`
+const isAnimated = (meta.pages ?? 1) > 1; // confirmed field: `pages`
 
 const out = await sharp(buffer, { limitInputPixels: 20e6 })
-  .rotate()                                          // no-arg = auto-orient via EXIF
+  .rotate() // no-arg = auto-orient via EXIF
   .resize({ width: 1600, withoutEnlargement: true })
-  .jpeg({ quality: 80, mozjpeg: true })               // or .webp({ quality: 80 })
+  .jpeg({ quality: 80, mozjpeg: true }) // or .webp({ quality: 80 })
   .toBuffer();
 ```
+
 Source: [api-constructor](https://sharp.pixelplumbing.com/api-constructor), [api-operation](https://sharp.pixelplumbing.com/api-operation), [api-resize](https://sharp.pixelplumbing.com/api-resize), [api-input](https://sharp.pixelplumbing.com/api-input)
 
 `limitInputPixels` default `268402689` (~16383×16383). `meta.pages`: "Number of pages/frames
@@ -400,9 +471,11 @@ Install: prebuilt binaries for macOS/Linux(glibc+musl)/Windows/FreeBSD. Docs sho
 sharp` + point to pnpm's `supportedArchitectures`, but **do not mention pnpm's
 `onlyBuiltDependencies` gate** (pnpm ≥9/10 blocks native postinstall scripts unless
 allow-listed) — general pnpm knowledge, apply yourself:
+
 ```json
 { "pnpm": { "onlyBuiltDependencies": ["sharp"] } }
 ```
+
 Source: [sharp.pixelplumbing.com/install](https://sharp.pixelplumbing.com/install). Confirms
 using `node:24-bookworm-slim` (glibc) rather than Alpine in the Dockerfile above.
 
@@ -411,16 +484,17 @@ using `node:24-bookworm-slim` (glibc) rather than Alpine in the Dockerfile above
 ## 9. OpenTelemetry Node SDK (MVP-later)
 
 ```ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 
 const sdk = new NodeSDK({
-  traceExporter: new OTLPTraceExporter(),   // reads OTEL_EXPORTER_OTLP_ENDPOINT
+  traceExporter: new OTLPTraceExporter(), // reads OTEL_EXPORTER_OTLP_ENDPOINT
   instrumentations: [getNodeAutoInstrumentations()],
 });
 sdk.start();
 ```
+
 Run: `node --import ./instrumentation.js dist/main.js`. Source: [getting-started/nodejs](https://opentelemetry.io/docs/languages/js/getting-started/nodejs/) (quick-start defaults to
 `ConsoleSpanExporter`; swap in OTLP as above).
 

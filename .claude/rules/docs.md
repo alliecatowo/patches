@@ -1,7 +1,7 @@
 ---
 paths:
-  - "docs/**"
-  - "README.md"
+  - 'docs/**'
+  - 'README.md'
 ---
 
 # Docs rules

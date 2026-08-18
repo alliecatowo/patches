@@ -5,12 +5,12 @@ See `.claude/agents/*.md` for the per-agent assignment; this doc is the reasonin
 
 ## Table
 
-| Model | Use for | Examples in this repo |
-|---|---|---|
-| **haiku** | Mechanical, deterministic checks; no judgment calls | `verifier` running `pnpm verify`; formatting cleanup; simple lookups ("what's the current handle regex") |
-| **sonnet** | Default implementation, research, docs — the workhorse | `implementer` shipping a task; `researcher` writing a verified doc note; `docs-writer` syncing docs; `harness-tuner` |
-| **opus** | Review, architecture, hard debugging, risky spikes — anywhere a wrong call is expensive | `reviewer` against hard rules; `architect` writing ADRs; `spec-auditor` sweeping the codebase |
-| **fable** | Only the toughest problems — deep architectural audits, genuinely ambiguous designs with no precedent | pre-federation security audit (§160), pre-MVP-deploy audit (§159), a design question `architect` explicitly flags as warranting it |
+| Model      | Use for                                                                                               | Examples in this repo                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **haiku**  | Mechanical, deterministic checks; no judgment calls                                                   | `verifier` running `pnpm verify`; formatting cleanup; simple lookups ("what's the current handle regex")                           |
+| **sonnet** | Default implementation, research, docs — the workhorse                                                | `implementer` shipping a task; `researcher` writing a verified doc note; `docs-writer` syncing docs; `harness-tuner`               |
+| **opus**   | Review, architecture, hard debugging, risky spikes — anywhere a wrong call is expensive               | `reviewer` against hard rules; `architect` writing ADRs; `spec-auditor` sweeping the codebase                                      |
+| **fable**  | Only the toughest problems — deep architectural audits, genuinely ambiguous designs with no precedent | pre-federation security audit (§160), pre-MVP-deploy audit (§159), a design question `architect` explicitly flags as warranting it |
 
 ## Rationale
 
