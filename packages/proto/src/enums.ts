@@ -20,7 +20,10 @@ import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
 } from './generated/patches/v1/auth.js';
+import type { MediaStatus as MediaStatusT } from './generated/patches/v1/media.js';
+import type { ReportReason as ReportReasonT } from './generated/patches/v1/moderation.js';
 import type { RegistrationMode as RegistrationModeT } from './generated/patches/v1/node.js';
+import type { NotificationType as NotificationTypeT } from './generated/patches/v1/notifications.js';
 import type {
   PostType as PostTypeT,
   PostVisibility as PostVisibilityT,
@@ -67,4 +70,31 @@ export const REGISTRATION_MODE = {
   UNSPECIFIED: 'REGISTRATION_MODE_UNSPECIFIED' as RegistrationModeT,
   OPEN: 'REGISTRATION_MODE_OPEN' as RegistrationModeT,
   INVITE_ONLY: 'REGISTRATION_MODE_INVITE_ONLY' as RegistrationModeT,
+} as const;
+
+export const NOTIFICATION_TYPE = {
+  UNSPECIFIED: 'NOTIFICATION_TYPE_UNSPECIFIED' as NotificationTypeT,
+  FOLLOW: 'NOTIFICATION_TYPE_FOLLOW' as NotificationTypeT,
+  LIKE: 'NOTIFICATION_TYPE_LIKE' as NotificationTypeT,
+  REPLY: 'NOTIFICATION_TYPE_REPLY' as NotificationTypeT,
+  MENTION: 'NOTIFICATION_TYPE_MENTION' as NotificationTypeT,
+  MODERATION: 'NOTIFICATION_TYPE_MODERATION' as NotificationTypeT,
+} as const;
+
+export const REPORT_REASON = {
+  UNSPECIFIED: 'REPORT_REASON_UNSPECIFIED' as ReportReasonT,
+  SPAM: 'REPORT_REASON_SPAM' as ReportReasonT,
+  HARASSMENT: 'REPORT_REASON_HARASSMENT' as ReportReasonT,
+  HATE_SPEECH: 'REPORT_REASON_HATE_SPEECH' as ReportReasonT,
+  ILLEGAL_CONTENT: 'REPORT_REASON_ILLEGAL_CONTENT' as ReportReasonT,
+  IMPERSONATION: 'REPORT_REASON_IMPERSONATION' as ReportReasonT,
+  OTHER: 'REPORT_REASON_OTHER' as ReportReasonT,
+} as const;
+
+export const MEDIA_STATUS = {
+  UNSPECIFIED: 'MEDIA_STATUS_UNSPECIFIED' as MediaStatusT,
+  PENDING: 'MEDIA_STATUS_PENDING' as MediaStatusT,
+  PROCESSING: 'MEDIA_STATUS_PROCESSING' as MediaStatusT,
+  READY: 'MEDIA_STATUS_READY' as MediaStatusT,
+  FAILED: 'MEDIA_STATUS_FAILED' as MediaStatusT,
 } as const;

@@ -59,7 +59,41 @@ import type {
   ListActorPostsRequest,
   ListActorPostsResponse,
 } from './generated/patches/v1/feeds.js';
+import type {
+  BeginMediaUploadRequest,
+  BeginMediaUploadResponse,
+  FinalizeMediaUploadRequest,
+  FinalizeMediaUploadResponse,
+  GetMediaDownloadRequest,
+  GetMediaDownloadResponse,
+} from './generated/patches/v1/media.js';
+import type {
+  BlockActorRequest,
+  BlockActorResponse,
+  ListBlocksRequest,
+  ListBlocksResponse,
+  ListMutesRequest,
+  ListMutesResponse,
+  MuteActorRequest,
+  MuteActorResponse,
+  ReportActorRequest,
+  ReportActorResponse,
+  ReportPostRequest,
+  ReportPostResponse,
+  UnblockActorRequest,
+  UnblockActorResponse,
+  UnmuteActorRequest,
+  UnmuteActorResponse,
+} from './generated/patches/v1/moderation.js';
 import type { GetNodeInfoRequest, GetNodeInfoResponse } from './generated/patches/v1/node.js';
+import type {
+  GetUnreadCountRequest,
+  GetUnreadCountResponse,
+  ListNotificationsRequest,
+  ListNotificationsResponse,
+  MarkNotificationsReadRequest,
+  MarkNotificationsReadResponse,
+} from './generated/patches/v1/notifications.js';
 import type {
   CreatePostRequest,
   CreatePostResponse,
@@ -70,6 +104,20 @@ import type {
   ListRepliesRequest,
   ListRepliesResponse,
 } from './generated/patches/v1/posts.js';
+import type {
+  BookmarkPostRequest,
+  BookmarkPostResponse,
+  ListBookmarksRequest,
+  ListBookmarksResponse,
+  ListPostLikersRequest,
+  ListPostLikersResponse,
+  LikePostRequest,
+  LikePostResponse,
+  UnbookmarkPostRequest,
+  UnbookmarkPostResponse,
+  UnlikePostRequest,
+  UnlikePostResponse,
+} from './generated/patches/v1/reactions.js';
 import type {
   FollowActorRequest,
   FollowActorResponse,
@@ -115,6 +163,10 @@ export const SERVICE_NAMES = Object.freeze({
   feed: 'FeedService',
   socialGraph: 'SocialGraphService',
   node: 'NodeService',
+  reaction: 'ReactionService',
+  notification: 'NotificationService',
+  moderation: 'ModerationService',
+  media: 'MediaService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -241,4 +293,40 @@ export interface SocialGraphGrpcClient extends Client {
 /** `patches.v1.NodeService` as seen by a raw grpc-js client. */
 export interface NodeGrpcClient extends Client {
   getNodeInfo: GrpcUnaryCall<GetNodeInfoRequest, GetNodeInfoResponse>;
+}
+
+/** `patches.v1.ReactionService` as seen by a raw grpc-js client. */
+export interface ReactionGrpcClient extends Client {
+  likePost: GrpcUnaryCall<LikePostRequest, LikePostResponse>;
+  unlikePost: GrpcUnaryCall<UnlikePostRequest, UnlikePostResponse>;
+  bookmarkPost: GrpcUnaryCall<BookmarkPostRequest, BookmarkPostResponse>;
+  unbookmarkPost: GrpcUnaryCall<UnbookmarkPostRequest, UnbookmarkPostResponse>;
+  listBookmarks: GrpcUnaryCall<ListBookmarksRequest, ListBookmarksResponse>;
+  listPostLikers: GrpcUnaryCall<ListPostLikersRequest, ListPostLikersResponse>;
+}
+
+/** `patches.v1.NotificationService` as seen by a raw grpc-js client. */
+export interface NotificationGrpcClient extends Client {
+  listNotifications: GrpcUnaryCall<ListNotificationsRequest, ListNotificationsResponse>;
+  markNotificationsRead: GrpcUnaryCall<MarkNotificationsReadRequest, MarkNotificationsReadResponse>;
+  getUnreadCount: GrpcUnaryCall<GetUnreadCountRequest, GetUnreadCountResponse>;
+}
+
+/** `patches.v1.ModerationService` as seen by a raw grpc-js client. */
+export interface ModerationGrpcClient extends Client {
+  blockActor: GrpcUnaryCall<BlockActorRequest, BlockActorResponse>;
+  unblockActor: GrpcUnaryCall<UnblockActorRequest, UnblockActorResponse>;
+  muteActor: GrpcUnaryCall<MuteActorRequest, MuteActorResponse>;
+  unmuteActor: GrpcUnaryCall<UnmuteActorRequest, UnmuteActorResponse>;
+  listBlocks: GrpcUnaryCall<ListBlocksRequest, ListBlocksResponse>;
+  listMutes: GrpcUnaryCall<ListMutesRequest, ListMutesResponse>;
+  reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
+  reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
+}
+
+/** `patches.v1.MediaService` as seen by a raw grpc-js client. */
+export interface MediaGrpcClient extends Client {
+  beginMediaUpload: GrpcUnaryCall<BeginMediaUploadRequest, BeginMediaUploadResponse>;
+  finalizeMediaUpload: GrpcUnaryCall<FinalizeMediaUploadRequest, FinalizeMediaUploadResponse>;
+  getMediaDownload: GrpcUnaryCall<GetMediaDownloadRequest, GetMediaDownloadResponse>;
 }

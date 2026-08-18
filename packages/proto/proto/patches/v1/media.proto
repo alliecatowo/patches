@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Direct-to-object-storage media upload (spec §29–32, §54). Image bytes are never proxied
+// through Node (§30, §153): `BeginMediaUpload` returns a presigned PUT URL the client uploads
+// to directly, and the media worker (Phase 5, spec §139) processes the object server-side
+// after upload, flipping `MediaStatus` from PENDING to READY (or FAILED). This file defines
+// the contract only — see the media-server/worker task for the `MediaService`
+// controller/service implementation and for `posts.proto`'s eventual `MediaAttachment.
+// thumbnail_url`/`download_url` fields (already anticipated by that message's comment).
+service MediaService {
+  rpc BeginMediaUpload(BeginMediaUploadRequest) returns (BeginMediaUploadResponse);
+
+  rpc FinalizeMediaUpload(FinalizeMediaUploadRequest) returns (FinalizeMediaUploadResponse);
+
+  rpc GetMediaDownload(GetMediaDownloadRequest) returns (GetMediaDownloadResponse);
+}
+
+enum MediaStatus {
+  MEDIA_STATUS_UNSPECIFIED = 0;
+  MEDIA_STATUS_PENDING = 1;
+  MEDIA_STATUS_PROCESSING = 2;
+  MEDIA_STATUS_READY = 3;
+  MEDIA_STATUS_FAILED = 4;
+}
+
+message BeginMediaUploadRequest {
+  string mime_type = 1;
+  uint64 byte_size = 2;
+
+  // Client-computed SHA-256 (hex), verified against the uploaded object by the worker before
+  // the media is marked READY (spec §31).
+  string sha256 = 3;
+}
+
+message BeginMediaUploadResponse {
+  string media_id = 1;
+  string upload_url = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message FinalizeMediaUploadRequest {
+  string media_id = 1;
+}
+
+message FinalizeMediaUploadResponse {
+  string media_id = 1;
+  MediaStatus status = 2;
+}
+
+message GetMediaDownloadRequest {
+  string media_id = 1;
+}
+
+message GetMediaDownloadResponse {
+  string media_id = 1;
+  MediaStatus status = 2;
+  string mime_type = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+
+  // Short-lived authorized download URL for the full/display-size derivative.
+  string download_url = 6;
+
+  // Short-lived authorized download URL for the thumbnail derivative; empty if not useful for
+  // this media type.
+  string thumbnail_url = 7;
+
+  google.protobuf.Timestamp expires_at = 8;
+}

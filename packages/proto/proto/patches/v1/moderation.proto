@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+import "patches/v1/social_graph.proto";
+
+// User-facing block/mute/report surface (spec §55, §61–64, Phase 6 spec §140). Moderator/admin
+// actions (resolving a report, suspending an account) are deliberately not here — spec §65
+// puts that in the admin CLI, not a user-facing gRPC service, and "no user-facing API should
+// expose internal moderator notes" (§55).
+service ModerationService {
+  // Rejects a block in either direction of an existing follow by removing it (spec §62); the
+  // relationship returned reflects that removal. Idempotent — blocking an already-blocked
+  // actor is not an error.
+  rpc BlockActor(BlockActorRequest) returns (BlockActorResponse);
+
+  // Idempotent: unblocking an actor the caller has not blocked is not an error.
+  rpc UnblockActor(UnblockActorRequest) returns (UnblockActorResponse);
+
+  rpc MuteActor(MuteActorRequest) returns (MuteActorResponse);
+
+  // Idempotent: unmuting an actor the caller has not muted is not an error.
+  rpc UnmuteActor(UnmuteActorRequest) returns (UnmuteActorResponse);
+
+  // The caller's own block list, most-recent first.
+  rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
+
+  // The caller's own mute list, most-recent first.
+  rpc ListMutes(ListMutesRequest) returns (ListMutesResponse);
+
+  rpc ReportPost(ReportPostRequest) returns (ReportPostResponse);
+
+  rpc ReportActor(ReportActorRequest) returns (ReportActorResponse);
+}
+
+enum ReportReason {
+  REPORT_REASON_UNSPECIFIED = 0;
+  REPORT_REASON_SPAM = 1;
+  REPORT_REASON_HARASSMENT = 2;
+  REPORT_REASON_HATE_SPEECH = 3;
+  REPORT_REASON_ILLEGAL_CONTENT = 4;
+  REPORT_REASON_IMPERSONATION = 5;
+  REPORT_REASON_OTHER = 6;
+}
+
+message BlockActorRequest {
+  string actor_id = 1;
+}
+
+message BlockActorResponse {
+  Relationship relationship = 1;
+}
+
+message UnblockActorRequest {
+  string actor_id = 1;
+}
+
+message UnblockActorResponse {
+  Relationship relationship = 1;
+}
+
+message MuteActorRequest {
+  string actor_id = 1;
+}
+
+message MuteActorResponse {
+  Relationship relationship = 1;
+}
+
+message UnmuteActorRequest {
+  string actor_id = 1;
+}
+
+message UnmuteActorResponse {
+  Relationship relationship = 1;
+}
+
+message ListBlocksRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListBlocksResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
+
+message ListMutesRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListMutesResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
+
+message ReportPostRequest {
+  string post_id = 1;
+  ReportReason reason = 2;
+
+  // Optional free text. Max 2,000 characters (spec §58-style bound).
+  string details = 3;
+}
+
+message ReportPostResponse {
+  string report_id = 1;
+}
+
+message ReportActorRequest {
+  string actor_id = 1;
+  ReportReason reason = 2;
+
+  // Optional free text. Max 2,000 characters (spec §58-style bound).
+  string details = 3;
+}
+
+message ReportActorResponse {
+  string report_id = 1;
+}

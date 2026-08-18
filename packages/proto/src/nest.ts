@@ -150,3 +150,83 @@ export {
   NodeServiceControllerMethods,
   RegistrationMode,
 } from './generated/patches/v1/node.js';
+
+export type {
+  BookmarkPostRequest,
+  BookmarkPostResponse,
+  ListBookmarksRequest,
+  ListBookmarksResponse,
+  ListPostLikersRequest,
+  ListPostLikersResponse,
+  LikePostRequest,
+  LikePostResponse,
+  ReactionServiceClient,
+  ReactionServiceController,
+  UnbookmarkPostRequest,
+  UnbookmarkPostResponse,
+  UnlikePostRequest,
+  UnlikePostResponse,
+} from './generated/patches/v1/reactions.js';
+export {
+  REACTION_SERVICE_NAME,
+  ReactionServiceControllerMethods,
+} from './generated/patches/v1/reactions.js';
+
+export type {
+  GetUnreadCountRequest,
+  GetUnreadCountResponse,
+  ListNotificationsRequest,
+  ListNotificationsResponse,
+  MarkNotificationsReadRequest,
+  MarkNotificationsReadResponse,
+  Notification,
+  NotificationServiceClient,
+  NotificationServiceController,
+} from './generated/patches/v1/notifications.js';
+export {
+  NOTIFICATION_SERVICE_NAME,
+  NotificationServiceControllerMethods,
+  NotificationType,
+} from './generated/patches/v1/notifications.js';
+
+export type {
+  BlockActorRequest,
+  BlockActorResponse,
+  ListBlocksRequest,
+  ListBlocksResponse,
+  ListMutesRequest,
+  ListMutesResponse,
+  ModerationServiceClient,
+  ModerationServiceController,
+  MuteActorRequest,
+  MuteActorResponse,
+  ReportActorRequest,
+  ReportActorResponse,
+  ReportPostRequest,
+  ReportPostResponse,
+  UnblockActorRequest,
+  UnblockActorResponse,
+  UnmuteActorRequest,
+  UnmuteActorResponse,
+} from './generated/patches/v1/moderation.js';
+export {
+  MODERATION_SERVICE_NAME,
+  ModerationServiceControllerMethods,
+  ReportReason,
+} from './generated/patches/v1/moderation.js';
+
+export type {
+  BeginMediaUploadRequest,
+  BeginMediaUploadResponse,
+  FinalizeMediaUploadRequest,
+  FinalizeMediaUploadResponse,
+  GetMediaDownloadRequest,
+  GetMediaDownloadResponse,
+  MediaServiceClient,
+  MediaServiceController,
+} from './generated/patches/v1/media.js';
+export {
+  MEDIA_SERVICE_NAME,
+  MediaServiceControllerMethods,
+  MediaStatus,
+} from './generated/patches/v1/media.js';
