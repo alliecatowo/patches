@@ -58,6 +58,7 @@ export { CreateAppMeta1755400000000 } from './migrations/1755400000000-CreateApp
 export { Phase1Schema1787036506325 } from './migrations/1787036506325-Phase1Schema.js';
 export { Phase3SocialGraph1787055340075 } from './migrations/1787055340075-Phase3SocialGraph.js';
 export { Phase4Interactions1787058326261 } from './migrations/1787058326261-Phase4Interactions.js';
+export { ActorRegistrationIdempotency1787059787165 } from './migrations/1787059787165-ActorRegistrationIdempotency.js';
 
 export {
   claimOutboxJobs,

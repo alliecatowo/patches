@@ -69,9 +69,9 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 4 — replies, reactions, notifications (§138)
 
-- [ ] P4-001 — Threads: ListReplies (bounded depth + pagination), reply creation, root_post_id semantics
-- [ ] P4-002 — likes, bookmarks entities + Reaction RPCs
-- [ ] P4-003 — notifications rows (FOLLOW/LIKE/REPLY/MENTION/MODERATION), dedupe, ListNotifications/MarkRead
+- [x] P4-001 — Threads: ListReplies (bounded depth + pagination), reply creation, root_post_id semantics
+- [x] P4-002 — likes, bookmarks entities + Reaction RPCs
+- [x] P4-003 — notifications rows (FOLLOW/LIKE/REPLY/MENTION/MODERATION), dedupe, ListNotifications/MarkRead
 - [ ] P4-004 — TUI: thread screen, reply, like, bookmark, notifications screen
 
 ## Phase 4.5 — Pages v1 (§170–§172)
@@ -93,8 +93,8 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 6 — moderation & security (§140)
 
-- [ ] P6-001 — blocks/mutes entities + RPCs + feed/API enforcement
-- [ ] P6-002 — reports + ReportPost/ReportActor
+- [x] P6-001 — blocks/mutes entities + RPCs + feed/API enforcement
+- [x] P6-002 — reports + ReportPost/ReportActor
 - [ ] P6-003 — `apps/admin` CLI (invite/user/report/post commands) with admin_audit_log
 - [ ] P6-004 — suspension enforcement, password reset end-to-end, validation sweep, URL scheme allowlist
 - [ ] P6-005 — GitHub credential via OAuth **device flow** (§167): `BeginGitHubLogin`/`PollGitHubLogin`, identifier = numeric account id (never login name), token discarded after reading the id, linking requires an authenticated session, honor `interval`/`slow_down`
@@ -141,11 +141,12 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] A-018 — server: replace the process-local fixed-window `RateLimitService` with a db-backed store (§102 wants the sensitive flows db-backed by MVP); needs a `rate_limit_buckets` table + migration in `packages/database` and a sweep job
 - [x] A-019 — server: key rate limits on the caller's peer address as well as the subject — needs the gRPC `ServerUnaryCall` (arg index 2), which a ts-proto controller signature does not expose; likely an interceptor that stashes the peer in the request context. Done as part of A-023: `RequestContextInterceptor` now reads `ServerUnaryCall.getPeer()` off `getArgByIndex(2)` and stashes it (port stripped) on `RequestContext`; `RateLimitService.consumePeer()` checks it alongside the existing subject budget for register/login/password_reset/ssh_challenge/ssh_complete.
 - [ ] A-020 — proto/domain: move `buildSshChallengeBlob` (and the SSH wire helpers) into a package both `apps/server` and `apps/tui` import, so the signed-blob layout has exactly one definition (§166); today the server owns it and a client must reimplement it
-- [ ] A-021 — server: `RegisterRequest.client_request_id` is accepted but not enforced — §45 asks for idempotency on (handle_normalized, client_request_id); today only the handle unique index prevents a double-register. Left open (2026-08-18): enforcing this needs a unique index on (handle_normalized, client_request_id) in `packages/database`, out of this task's file scope (`apps/server/src/modules/auth/**`, `packages/config`) — needs a `packages/database` migration + entity change by whoever owns that package next.
+- [ ] A-021 — server: `RegisterRequest.client_request_id` is accepted but not enforced — §45 asks for idempotency on (handle_normalized, client_request_id); today only the handle unique index prevents a double-register. Schema half landed (2026-08-18) by the Phase 4/6 server task: `Actor.clientRequestId` + `UNIQUE (handle_normalized, client_request_id)` via `packages/database/src/migrations/1787059787165-ActorRegistrationIdempotency.ts`. Still open: `AuthService.register` (`apps/server/src/modules/auth/**`, out of that task's file scope) does not check this column before insert yet — needs a check-then-insert/catch-unique-violation idempotency path there, same pattern as `PostService.createPost`/`GraphService.followActor`.
 - [x] A-022 — docs: add `NOT_IMPLEMENTED → UNIMPLEMENTED` to the error table in `docs/architecture/api.md` §7, and document the SSH challenge blob's wire encoding in `docs/architecture/auth.md` §4
 - [x] A-023 — server auth (review blockers): (a) `beginSshLogin` limiter keyed on client-supplied fingerprint / shared `anonymous` bucket, `completeSshLogin` keyed on single-use challengeId → limits never fire; (b) no peer IP plumbed into `RateLimitService` (register/login/reset all keyed on attacker-chosen subject → unbounded Argon2id CPU); (c) `resetPassword` unthrottled and hashes before validating the code. Fix with per-peer keys (`ServerUnaryCall.getPeer()` via the 3rd handler arg) + subject keys, throttle reset, validate-then-hash
 - [x] A-024 — server auth (review majors): reuse detection can miss a concurrently rotated token (`revokeFamilyOutOfBand` UPDATE snapshot) → revoke at session level; add tests for refresh reuse/family revocation and SSH challenge single-use/replay; `ARGON2_MEMORY_KIB` floor 19456; dedupe `hashCode`/`hashRefreshToken`; RSA modulus ≥2048; `prune` must not evict live victim buckets; drop `rateLimit.reset` on login success
 - [x] A-025 — server auth (minors): `actor.userId ?? ""` masks null (assert instead); `claimedHandle` path unimplemented in `ssh-challenge.service.ts`; drop dead `refreshTokenHashesMatch`; do not spread `exception.context` into warn logs
+- [ ] A-026 — server: `GraphService.followActor` (`apps/server/src/modules/graph/**`) doesn't call `NotificationsService.notifyFollow` on a new follow — `NotificationsModule`/`NotificationsService.notifyFollow(recipientActorId, actorId)` exist and are exported (P4-003) specifically for this, but `graph/**` was out of that task's file scope. One-line fix: `GraphModule` imports `NotificationsModule`, `GraphService` injects `NotificationsService`, and `followActor` calls `notifyFollow(targetActorId, viewerActorId)` after a genuinely new follow row is inserted (mirror `ReactionsService.likePost`'s `wasNew` pattern so a no-op idempotent re-follow doesn't re-notify).
 
 - [x] B-003 — Manually run the §74 Kitty spike checklist in Ghostty + a non-graphics terminal (`pnpm --filter @patches/terminal-media spike`), record results in `packages/terminal-media/spike/README.md`, tick the two roadmap items
 - [ ] B-004 — Wire `@patches/terminal-media` into `apps/tui` (PostCard inline image + fallback + `o` open externally) — Phase 5 unless earlier

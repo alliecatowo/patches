@@ -62,9 +62,7 @@ export function toProtoPost(view: PostView): ProtoPost {
     createdAt: dateToTimestamp(view.createdAt),
     editedAt: view.editedAt === null ? undefined : dateToTimestamp(view.editedAt),
     deleted: view.deleted,
-    // Likes/bookmarks land with `ReactionService` (Phase 3, spec §53) — zeroed rather than
-    // omitted, since `PostCounts`/`PostViewerState` are always-present proto messages.
-    counts: { replies: view.replyCount, likes: 0 },
-    viewerState: { liked: false, bookmarked: false },
+    counts: { replies: view.counts.replyCount, likes: view.counts.likeCount },
+    viewerState: { liked: view.viewerState.liked, bookmarked: view.viewerState.bookmarked },
   };
 }

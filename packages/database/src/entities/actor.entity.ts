@@ -22,6 +22,20 @@ import { User } from './user.entity.js';
 @Entity({ name: 'actors' })
 @Index(['handleNormalized'], { unique: true })
 @Index(['canonicalUri'], { unique: true })
+// A-021: idempotency for `AuthService.Register` (spec §45) — a retried registration with the
+// same `(handle_normalized, client_request_id)` should hit this constraint instead of
+// colliding on the plain `handleNormalized` unique index above and erroring `HANDLE_TAKEN`.
+// Same NULL-is-distinct reasoning as `Post.clientRequestId` (`post.entity.ts`): an actor
+// created outside `Register` (a remote/federated actor, or a future non-register creation
+// path) simply never sets this column, and any number of such actors coexist under one
+// `handleNormalized` value without colliding — not that duplicate handles are otherwise
+// allowed, the plain unique index above still forbids that.
+//
+// This is the schema half of A-021 only: `AuthService.register` actually checking this
+// column before insert is a follow-up for whoever next touches `apps/server/src/modules/
+// auth/**`, which is out of this task's file scope (see docs/agents/LEARNINGS.md / this
+// task's report).
+@Index(['handleNormalized', 'clientRequestId'], { unique: true })
 export class Actor {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
@@ -47,6 +61,11 @@ export class Actor {
   /** Lowercase ASCII canonical form; uniqueness is enforced on this, never on `handle`. */
   @Column({ type: 'text' })
   declare handleNormalized: string;
+
+  /** `AuthService.Register`'s idempotency key (spec §45, A-021). Null for an actor created
+   * outside `Register` (e.g. a future remote/federated actor). */
+  @Column({ type: 'uuid', nullable: true })
+  declare clientRequestId: string | null;
 
   @Column({ type: 'text', nullable: true })
   declare displayName: string | null;

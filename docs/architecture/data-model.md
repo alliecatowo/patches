@@ -13,8 +13,9 @@ PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` �
 > **Status markers.** Each table section below is marked `Status: implemented` (there is a
 > reviewed TypeORM migration for it) or `Status: planned` (described here ahead of the
 > migration that creates it). As of
-> `packages/database/src/migrations/1787058326261-Phase4Interactions.ts` (which follows
-> `1787055340075-Phase3SocialGraph.ts` and `1787036506325-Phase1Schema.ts`), the
+> `packages/database/src/migrations/1787059787165-ActorRegistrationIdempotency.ts` (which
+> follows `1787058326261-Phase4Interactions.ts`, `1787055340075-Phase3SocialGraph.ts`, and
+> `1787036506325-Phase1Schema.ts`), the
 > **implemented** tables are: `app_meta`, `users`, `actors`, `credentials`,
 > `ssh_login_challenges`, `auth_codes`, `refresh_tokens`, `invites`, `outbox_jobs`, `media`,
 > `posts`, `post_media`, `follows`, `blocks`, `mutes`, `likes`, `bookmarks`, `notifications`,
@@ -426,34 +427,38 @@ supplied fingerprint is enrolled — see the no-enumeration rule in §166.
 
 A social identity — local or (later) remote (§21).
 
-| Column              | Type          | Nullable | Notes                                                                         |
-| ------------------- | ------------- | -------- | ----------------------------------------------------------------------------- |
-| `id`                | `uuid`        | no       | PK                                                                            |
-| `user_id`           | `uuid`        | yes      | FK → `users.id`, unique; null for remote actors                               |
-| `handle`            | `text`        | no       | display-case-preserving                                                       |
-| `handle_normalized` | `text`        | no       | lowercase canonical form                                                      |
-| `display_name`      | `text`        | yes      |                                                                               |
-| `bio`               | `text`        | yes      | max 500 chars (§58)                                                           |
-| `location_text`     | `text`        | yes      | max 100 chars                                                                 |
-| `website_url`       | `text`        | yes      | max 2,048 chars; scheme-validated (§104)                                      |
-| `avatar_media_id`   | `uuid`        | yes      | FK → `media.id`                                                               |
-| `is_local`          | `boolean`     | no       |                                                                               |
-| `home_server`       | `text`        | yes      | remote actors only                                                            |
-| `canonical_uri`     | `text`        | yes      | unique; stable production domain required before public federation (§21, §91) |
-| `inbox_uri`         | `text`        | yes      | federation (F1+)                                                              |
-| `outbox_uri`        | `text`        | yes      | federation (F1+)                                                              |
-| `federation_state`  | `text`        | yes      | federation bookkeeping                                                        |
-| `moved_to_uri`      | `text`        | yes      | portability seam (§164); unused until v0.4                                    |
-| `also_known_as`     | `jsonb`       | yes      | prior/alternate actor URIs this actor claims (§164); unused until v0.4        |
-| `nameplate`         | `jsonb`       | yes      | bounded (≤ 2 KiB) inline identity presentation (§173)                         |
-| `created_at`        | `timestamptz` | no       |                                                                               |
-| `updated_at`        | `timestamptz` | no       |                                                                               |
-| `deleted_at`        | `timestamptz` | yes      | tombstone                                                                     |
+| Column              | Type          | Nullable | Notes                                                                          |
+| ------------------- | ------------- | -------- | ------------------------------------------------------------------------------ |
+| `id`                | `uuid`        | no       | PK                                                                             |
+| `user_id`           | `uuid`        | yes      | FK → `users.id`, unique; null for remote actors                                |
+| `handle`            | `text`        | no       | display-case-preserving                                                        |
+| `handle_normalized` | `text`        | no       | lowercase canonical form                                                       |
+| `client_request_id` | `uuid`        | yes      | `AuthService.Register`'s idempotency key (§45, A-021); null outside `Register` |
+| `display_name`      | `text`        | yes      |                                                                                |
+| `bio`               | `text`        | yes      | max 500 chars (§58)                                                            |
+| `location_text`     | `text`        | yes      | max 100 chars                                                                  |
+| `website_url`       | `text`        | yes      | max 2,048 chars; scheme-validated (§104)                                       |
+| `avatar_media_id`   | `uuid`        | yes      | FK → `media.id`                                                                |
+| `is_local`          | `boolean`     | no       |                                                                                |
+| `home_server`       | `text`        | yes      | remote actors only                                                             |
+| `canonical_uri`     | `text`        | yes      | unique; stable production domain required before public federation (§21, §91)  |
+| `inbox_uri`         | `text`        | yes      | federation (F1+)                                                               |
+| `outbox_uri`        | `text`        | yes      | federation (F1+)                                                               |
+| `federation_state`  | `text`        | yes      | federation bookkeeping                                                         |
+| `moved_to_uri`      | `text`        | yes      | portability seam (§164); unused until v0.4                                     |
+| `also_known_as`     | `jsonb`       | yes      | prior/alternate actor URIs this actor claims (§164); unused until v0.4         |
+| `nameplate`         | `jsonb`       | yes      | bounded (≤ 2 KiB) inline identity presentation (§173)                          |
+| `created_at`        | `timestamptz` | no       |                                                                                |
+| `updated_at`        | `timestamptz` | no       |                                                                                |
+| `deleted_at`        | `timestamptz` | yes      | tombstone                                                                      |
 
 **Constraints**: `UNIQUE (handle_normalized)`. `UNIQUE (canonical_uri)` (nullable-safe
-unique). `UNIQUE (user_id)`.
+unique). `UNIQUE (user_id)`. `UNIQUE (handle_normalized, client_request_id)` (A-021,
+nullable-safe — see the column note above; this is a schema-only fix, `AuthService.register`
+does not check it yet, see `tasks.md` A-021).
 
-**Indexes**: `actors(handle_normalized)` UNIQUE (§60); `actors(canonical_uri)` UNIQUE.
+**Indexes**: `actors(handle_normalized)` UNIQUE (§60); `actors(canonical_uri)` UNIQUE;
+`actors(handle_normalized, client_request_id)` UNIQUE (A-021).
 
 **Handle rules** (§22): lowercase canonical form, ASCII, letters/digits/underscore,
 3–30 characters. No Unicode confusables in v0. Local handles render as `@alice`;
