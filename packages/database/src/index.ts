@@ -74,6 +74,7 @@ export { Phase4Interactions1787058326261 } from './migrations/1787058326261-Phas
 export { ActorRegistrationIdempotency1787059787165 } from './migrations/1787059787165-ActorRegistrationIdempotency.js';
 export { Phase6Admin1787062075716 } from './migrations/1787062075716-Phase6Admin.js';
 export { Phase45Pages1787062912872 } from './migrations/1787062912872-Phase45Pages.js';
+export { Phase8Federation1787076396680 } from './migrations/1787076396680-Phase8Federation.js';
 
 export {
   claimOutboxJobs,

@@ -11,6 +11,10 @@ export const JOB_TYPES = [
   'PROCESS_MEDIA',
   'CLEAN_EXPIRED_TOKENS',
   'CLEAN_EXPIRED_UPLOADS',
+  /** Phase 8 (`docs/architecture/federation.md`): sign-and-POST one ActivityPub activity to
+   * one inbox URL. One job per `(activity, inbox)` pair — see `federationDeliverPayloadSchema`
+   * for why that pair, not just the activity, is the idempotency unit. */
+  'FEDERATION_DELIVER',
 ] as const;
 
 export type JobType = (typeof JOB_TYPES)[number];
