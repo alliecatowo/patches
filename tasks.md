@@ -39,7 +39,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 - [x] P1-000 — Protobuf contract for auth/actors/posts/feeds: `auth.proto` (Register/VerifyEmail/ResendVerification/Login/RefreshSession/Logout/LogoutAllSessions/RequestPasswordReset/ResetPassword/GetCurrentSession + BeginSshLogin/CompleteSshLogin/BeginGitHubLogin/PollGitHubLogin/ListCredentials/AddCredential/RevokeCredential per Amendment A §165–§168), `actors.proto` (ActorService + FieldMask-based UpdateProfile), `posts.proto`, `feeds.proto`; typed grpc-js client factories; A-010/A-011 fixes. Schema only — no server handlers yet (tracked by P1-003/P1-011/P1-012/P1-014/P2-002)
 - [x] P1-001 — Entities + migrations: actors (incl. `moved_to_uri`, `also_known_as`, `nameplate`), users (no password_hash; nullable recovery_email), **credentials**, **ssh_login_challenges**, refresh_tokens, invites, `auth_codes`, `outbox_jobs` (+ Phase 2 `posts`/`media`/`post_media`); outbox claim helpers; testkit factories
-- [ ] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
+- [x] P1-002 — `packages/config` env schema (zod) shared by server/worker/admin
 - [x] P1-003 — AuthService: register (invite-only, optional initial credential), verify email, password login, refresh (rotation + reuse detection), logout, logout-all, password reset request/reset
 - [x] P1-004 — Argon2id hashing on `credentials.secret_hash`, jose EdDSA JWT access tokens, opaque hashed refresh tokens
 - [x] P1-005 — Auth gRPC controller + auth guard/interceptor reading `authorization` metadata; error code mapping
@@ -156,6 +156,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 - [ ] B-013 — worker: stale-lease sweep for jobs stuck in `PROCESSING` after a worker crash (not SIGTERM) — reset to `PENDING` after `locked_at` exceeds a lease TTL
 - [ ] B-014 — admin CLI: inspect/replay `DEAD` outbox jobs (`patches-admin jobs list|replay <id>`)
 - [ ] B-015 — TUI: Ink `App`/`ConnectScreen` auth integration (status bar `@handle`, inline `L` login, `g p` placeholder) + `apps/tui/test/harness.tsx` ink-testing-library frame-snapshot harness (deferred from P1-007)
+- [ ] B-016 — TUI: wrong password on `patches login` prints "Your session is no longer valid" — map UNAUTHENTICATED from Login/Register to "Wrong handle/email or password" (keep the uniform server response, fix the client copy)
 
 - [ ] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol

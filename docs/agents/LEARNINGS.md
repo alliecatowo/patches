@@ -225,3 +225,21 @@ callers, so pixel screenshots need the human.
 `git commit` on its own; agents should never wait on the orchestrator for that.
 
 **Action taken:** `.claude/agents/implementer.md` instructs: single-purpose commands, kill by PID, commit separately.
+
+## 2026-08-18 — `@nestjs/config` reads `<cwd>/.env` by default; tests became cwd-dependent
+
+**Context:** Server auth integration tests passed from `apps/server` but failed from the repo root with "invite code is not valid": the server had booted against the dev `DATABASE_URL`.
+
+**Learning:** `ConfigModule.forRoot()` loads `.env` from `process.cwd()` unless `ignoreEnvFile: true`, and it validates `process.env` at _module evaluation_ time (a schema default beats a later `process.env` write). Any env an integration suite needs must be set in a Vitest `setupFiles` entry, not `beforeAll`. Nest's default `abortOnError` turns a failed boot into `process.abort()`, which Vitest reports only as "Worker exited unexpectedly" — pass `abortOnError: false` in test bootstraps.
+
+**Action taken:** `ignoreEnvFile: true` in server + worker config modules (`main.ts` loads `.env` deliberately); `abortOnError: false` in `apps/server/test/support/test-server.ts`; the `server-integration` project skips itself when `TEST_DATABASE_URL` is unset.
+
+## 2026-08-18 — Auth implementation gotchas (from the P1-003..009 agent)
+
+**Learning:** Refresh-token reuse detection must revoke the token family in its _own_ transaction or the caller's rollback undoes it. `@node-rs/argon2`'s `Algorithm` is an ambient `const enum` (unusable under `isolatedModules` — pass the numeric value / a local const). `CryptoKey` is a global value but not a global type under `types: ["node"]` — type off jose's return types. Two access tokens minted in the same second are byte-identical without a `jti`. SSH signature verification is pure `node:crypto` (OpenSSH wire parsing + DER re-framing), no library needed.
+
+## 2026-08-18 — Subagents that stop with a mid-sentence "result" have hit their turn cap
+
+**Context:** Three Wave-2 agents "finished" with results like "Now adding the integration test…" — nothing committed.
+
+**Learning:** A completion note that reads like a plan means `maxTurns` ran out. Resume with `SendMessage` and a tight, numbered wrap-up brief (verify → tick → `git add <explicit paths>` → commit → push → report) and a turn budget; work in the tree is preserved.
