@@ -31,3 +31,16 @@ prior commit's content survived intact — if a file you already committed shows
 again with your own content on the "working tree" side, that's this hazard, not your error;
 recommit from the current working tree state and say so in the commit message. Never assume a
 file is unchanged just because you haven't touched it this turn.
+
+**Near-miss (backlog sweep session, 2026-08-18):** ran `git commit -m "..."` for a B-012
+change with no trailing `-- <paths>` (every other commit that session used explicit paths).
+Because other agents had files staged in the same shared index at that moment, the commit
+swept in ~15 unrelated files (`apps/tui/**`, etc.) that weren't even `git add`ed by this
+task — `git commit` with no pathspec commits the whole index, not "whatever I `git add`ed
+this turn." Caught immediately via `git show --stat HEAD` (expected 5 files, saw 20) while
+the bad commit was still local/unpushed, fixed with `git reset --soft HEAD~1` (restores the
+index exactly, including other agents' staged-but-uncommitted files) followed by
+`git commit -- <exact paths>`. **Always pass an explicit `-- <paths>` (or `git status`-verify
+the index is exactly your files) before every `git commit`, with zero exceptions, even for a
+"just this once" quick commit** — and always run `git show --stat HEAD` right after committing
+to confirm the file count/list matches what you intended, before pushing.
