@@ -1,9 +1,9 @@
 import { exportPKCS8, exportSPKI, generateKeyPair } from 'jose';
-import type { DataSource, EntityManager } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { AppConfigService } from '../../config/app-config.service.js';
-import { hashRefreshToken, refreshTokenHashesMatch, TokenService } from './token.service.js';
+import { hashRefreshToken, TokenService } from './token.service.js';
 
 /**
  * Covers the stateless half of `TokenService` — signing, verification and refresh-token
@@ -46,10 +46,7 @@ function tokenService(overrides: Partial<StubConfig> = {}): TokenService {
     jwtPublicKeyPem: publicPem,
     ...overrides,
   };
-  // The DataSource is only touched by reuse detection, which is covered end-to-end in the
-  // integration suite; issuance never reaches it.
-  const dataSource = {} as unknown as DataSource;
-  return new TokenService(dataSource, config as unknown as AppConfigService);
+  return new TokenService(config as unknown as AppConfigService);
 }
 
 /** Records what would have been persisted, so issuance can be tested without a database. */
@@ -169,12 +166,5 @@ describe('refresh tokens', () => {
       tokens.add(issued.refreshToken);
     }
     expect(tokens.size).toBe(20);
-  });
-
-  it('compares hashes in constant time', () => {
-    const hash = hashRefreshToken('a-token');
-    expect(refreshTokenHashesMatch(hash, hashRefreshToken('a-token'))).toBe(true);
-    expect(refreshTokenHashesMatch(hash, hashRefreshToken('another-token'))).toBe(false);
-    expect(refreshTokenHashesMatch(hash, 'ab')).toBe(false);
   });
 });

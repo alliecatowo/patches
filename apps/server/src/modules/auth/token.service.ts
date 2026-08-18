@@ -1,7 +1,6 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
 import { RefreshToken } from '@patches/database';
 import {
   errors as joseErrors,
@@ -11,9 +10,9 @@ import {
   jwtVerify,
   SignJWT,
 } from 'jose';
-import { DataSource, IsNull, type EntityManager } from 'typeorm';
+import { IsNull, MoreThan, type EntityManager } from 'typeorm';
 
-import { AppError } from '../../common/errors/app-error.js';
+import { AppError, isAppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 
 /**
@@ -74,13 +73,6 @@ export function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
-/** Constant-time comparison of two hex digests of equal length. */
-export function refreshTokenHashesMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a, 'hex');
-  const right = Buffer.from(b, 'hex');
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 @Injectable()
 export class TokenService {
   // Typed off jose's own return types: `CryptoKey` is a global *value* under
@@ -88,10 +80,7 @@ export class TokenService {
   private signingKey: ReturnType<typeof importPKCS8> | undefined;
   private verificationKey: ReturnType<typeof importSPKI> | undefined;
 
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly config: AppConfigService,
-  ) {}
+  constructor(private readonly config: AppConfigService) {}
 
   /**
    * Issues an access token and a fresh refresh token, writing the refresh token's hash on
@@ -143,54 +132,59 @@ export class TokenService {
    * to mark itself used, means the plaintext exists in more than one place. The only safe
    * response is to assume the copy is the attacker's and revoke every token in the family —
    * including whichever one the legitimate client is holding, which is why this ends a
-   * session rather than merely failing a request.
+   * session rather than merely failing a request. The revoke itself does **not** happen here —
+   * see {@link REUSE_SESSION_ID_CONTEXT_KEY} below for why.
+   *
+   * The conditional `UPDATE` runs **first**, before any `SELECT`, and is the sole source of
+   * truth for whether this presentation is the legitimate one (spec §102 review finding): an
+   * unlocked read-then-branch-then-write ahead of it would decide "is this a replay?" from a
+   * snapshot that a concurrent presentation of the very same token could make stale under
+   * READ COMMITTED before the write actually lands. Postgres's own row lock is what serializes
+   * two concurrent `UPDATE`s against the same row — this is just the pattern that lets that
+   * lock be the only thing reuse detection depends on.
    */
   async consumeRefreshToken(
     manager: EntityManager,
     presented: string,
   ): Promise<{ userId: string; sessionId: string }> {
     const tokens = manager.getRepository(RefreshToken);
-    const row = await tokens.findOne({ where: { tokenHash: hashRefreshToken(presented) } });
+    const tokenHash = hashRefreshToken(presented);
+    const now = new Date();
 
-    // An unknown token gets the same answer as an expired one: whether a given string was
-    // ever a valid refresh token is not something a caller is entitled to learn.
-    if (row === null) throw sessionExpired();
-
-    if (row.usedAt !== null || row.revokedAt !== null) {
-      await this.revokeFamilyOutOfBand(row.sessionId);
-      throw sessionExpired();
-    }
-
-    if (row.expiresAt.getTime() <= Date.now()) throw sessionExpired();
-
-    // Conditional update rather than a read-then-write: two concurrent refreshes with the
-    // same token must not both succeed, and exactly one of them can set `used_at` here.
-    const result = await tokens.update(
-      { id: row.id, usedAt: IsNull(), revokedAt: IsNull() },
-      { usedAt: new Date() },
+    const claimed = await tokens.update(
+      { tokenHash, usedAt: IsNull(), revokedAt: IsNull(), expiresAt: MoreThan(now) },
+      { usedAt: now },
     );
-    if (result.affected !== 1) {
-      await this.revokeFamilyOutOfBand(row.sessionId);
-      throw sessionExpired();
+
+    if (claimed.affected === 1) {
+      // Read back only to report which family this was — the write above already happened,
+      // so this read cannot be raced into a wrong answer.
+      const row = await tokens.findOneOrFail({ where: { tokenHash } });
+      return { userId: row.userId, sessionId: row.sessionId };
     }
 
-    return { userId: row.userId, sessionId: row.sessionId };
-  }
-
-  /**
-   * Revokes a family in its **own** transaction.
-   *
-   * Reuse detection happens inside the caller's transaction, and that transaction is about to
-   * be rolled back by the error thrown immediately after — which would take the revocation
-   * with it and leave the leaked family alive. The separate transaction is what makes the
-   * revocation survive the failure it is a response to. It touches only rows the caller holds
-   * no locks on (the conditional `UPDATE` above matched nothing), so it cannot deadlock
-   * against its own caller.
-   */
-  private async revokeFamilyOutOfBand(sessionId: string): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      await this.revokeSession(manager, sessionId);
-    });
+    // The update matched nothing: find out why, solely to decide whether a family needs
+    // revoking. An unknown token and one that is merely expired both just fail; one that was
+    // already used or already revoked is reuse and ends the session it belongs to.
+    const row = await tokens.findOne({ where: { tokenHash } });
+    if (row === null) throw sessionExpired();
+    if (row.usedAt !== null || row.revokedAt !== null) {
+      // A *live* replay of this same token (two presentations of a token that was still valid
+      // a moment ago, racing each other) means the conditional `UPDATE` above examined this
+      // row as a candidate and, in doing so, took Postgres's row lock on it for the rest of
+      // *this* transaction — even though the update ultimately did not apply. Revoking the
+      // family right now, on a separate connection, would make that connection block on the
+      // very lock this transaction holds, while this transaction sits `await`ing it: a
+      // self-deadlock across two connections that Postgres's own deadlock detector cannot see
+      // (from its point of view, this connection is idle, not waiting on anything). So the
+      // revoke does not happen here — it is signalled through this error's `context` and
+      // performed by the caller only *after* this transaction has actually ended and released
+      // whatever lock it holds (`AuthService.refreshSession`).
+      throw new AppError('AUTH_SESSION_EXPIRED', SESSION_EXPIRED_MESSAGE, {
+        context: { [REUSE_SESSION_ID_CONTEXT_KEY]: row.sessionId },
+      });
+    }
+    throw sessionExpired();
   }
 
   /** Revokes every token in one family — logout, or reuse detection. */
@@ -268,6 +262,23 @@ function requireKey(pem: string | undefined, name: string): string {
   return pem;
 }
 
+const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Please sign in again.';
+
 function sessionExpired(): AppError {
-  return new AppError('AUTH_SESSION_EXPIRED', 'Your session has expired. Please sign in again.');
+  return new AppError('AUTH_SESSION_EXPIRED', SESSION_EXPIRED_MESSAGE);
+}
+
+/**
+ * The `AppError.context` key `consumeRefreshToken` attaches when it detects a live-token
+ * replay, carrying the session id that needs revoking. Not revoked inline — see the comment
+ * where this is thrown. `AuthService.refreshSession` reads it back with
+ * {@link reuseSessionIdFrom} once its transaction has actually ended.
+ */
+const REUSE_SESSION_ID_CONTEXT_KEY = 'reuseSessionId';
+
+/** Extracts the session id from a reuse-signalling error, or `undefined` for any other error. */
+export function reuseSessionIdFrom(error: unknown): string | undefined {
+  if (!isAppError(error)) return undefined;
+  const sessionId = error.context?.[REUSE_SESSION_ID_CONTEXT_KEY];
+  return typeof sessionId === 'string' ? sessionId : undefined;
 }
