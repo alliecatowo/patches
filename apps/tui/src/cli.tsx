@@ -6,6 +6,7 @@ import { runAccounts } from './cli/accounts.js';
 import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
 import { createNodeIo } from './cli/io.js';
+import { runKeys } from './cli/keys.js';
 import { runLogin } from './cli/login.js';
 import { runLogout } from './cli/logout.js';
 import { runPing } from './cli/ping.js';
@@ -48,6 +49,7 @@ async function main(): Promise<number> {
   if (args.command === 'logout') return runLogout(rest, { io, env: process.env, target, insecure });
   if (args.command === 'accounts') return runAccounts(rest, { io, env: process.env });
   if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'keys') return runKeys(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

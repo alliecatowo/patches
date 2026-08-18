@@ -1,7 +1,23 @@
 export type Command =
-  'tui' | 'ping' | 'version' | 'help' | 'register' | 'login' | 'logout' | 'accounts' | 'whoami';
+  | 'tui'
+  | 'ping'
+  | 'version'
+  | 'help'
+  | 'register'
+  | 'login'
+  | 'logout'
+  | 'accounts'
+  | 'whoami'
+  | 'keys';
 
-const AUTH_COMMANDS: readonly Command[] = ['register', 'login', 'logout', 'accounts', 'whoami'];
+const AUTH_COMMANDS: readonly Command[] = [
+  'register',
+  'login',
+  'logout',
+  'accounts',
+  'whoami',
+  'keys',
+];
 
 export interface ParsedArgs {
   command: Command;
@@ -74,6 +90,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'logout':
       case 'accounts':
       case 'whoami':
+      case 'keys':
         result.command = argument;
         break;
       case '--insecure':
@@ -125,6 +142,7 @@ Usage:
   patches logout [options]     sign out (add --all for every stored account)
   patches accounts             list accounts stored on this machine
   patches whoami                show who you are signed in as
+  patches keys <add|list|remove> manage SSH-key credentials on your account
   patches --version            print the client version
 
 Options:
@@ -133,5 +151,6 @@ Options:
   -h, --help                     show this message
   -v, --version                  show the client version
 
-Run \`patches register --help\` / \`patches login --help\` for subcommand-specific options.
+Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` for
+subcommand-specific options.
 `;

@@ -81,6 +81,13 @@ describe('parseArgs', () => {
     expect(parseArgs(['logout']).command).toBe('logout');
     expect(parseArgs(['accounts']).command).toBe('accounts');
     expect(parseArgs(['whoami']).command).toBe('whoami');
+    expect(parseArgs(['keys']).command).toBe('keys');
+  });
+
+  it('forwards the keys subcommand and its own arguments into rest', () => {
+    const args = parseArgs(['keys', 'add', '--ssh-key', 'SHA256:abc', '--yes']);
+    expect(args.command).toBe('keys');
+    expect(args.rest).toEqual(['add', '--ssh-key', 'SHA256:abc', '--yes']);
   });
 
   it('collects unrecognised flags after an auth subcommand into rest, instead of erroring', () => {

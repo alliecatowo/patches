@@ -83,4 +83,26 @@ describe('patches CLI entrypoint (cli.tsx)', () => {
     },
     SPAWN_TIMEOUT,
   );
+
+  it(
+    '`keys --help` prints usage for the SSH-credential subcommands (P1-013)',
+    () => {
+      const result = runCli(['keys', '--help']);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('patches keys add');
+      expect(result.stdout).toContain('patches keys list');
+      expect(result.stdout).toContain('patches keys remove');
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  it(
+    '`keys` with no subcommand explains itself and exits 1',
+    () => {
+      const result = runCli(['keys']);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('subcommand is required');
+    },
+    SPAWN_TIMEOUT,
+  );
 });

@@ -121,10 +121,10 @@ export function describeIdentities(identities: readonly SshIdentity[]): Selectab
  * only resolves when exactly one identity is loaded (spec §166 enrollment is
  * always explicit; login with an ambiguous agent must not guess silently).
  */
-export function selectIdentity(
-  identities: readonly SelectableIdentity[],
+export function selectIdentity<T extends SelectableIdentity>(
+  identities: readonly T[],
   selector?: string,
-): SelectableIdentity | undefined {
+): T | undefined {
   if (selector === undefined) {
     return identities.length === 1 ? identities[0] : undefined;
   }
