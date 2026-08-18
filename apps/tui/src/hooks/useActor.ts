@@ -27,8 +27,10 @@ export function useActor(api: PatchesApi, actorId: string, known?: Actor): Actor
   const [outcome, setOutcome] = useState<{ actorId: string; state: ActorState } | undefined>();
   const fetched = outcome !== undefined && outcome.actorId === actorId ? outcome.state : LOADING;
 
+  // `known` (an actor carried over from a search result or a post's author) is only the
+  // first paint: list responses carry stale or placeholder counts, so the profile always
+  // refetches and replaces it with the authoritative `GetActor` view.
   useEffect(() => {
-    if (known !== undefined) return;
     let cancelled = false;
     api
       .getActor({ id: actorId })
@@ -57,7 +59,8 @@ export function useActor(api: PatchesApi, actorId: string, known?: Actor): Actor
     return () => {
       cancelled = true;
     };
-  }, [actorId, api, known]);
+  }, [actorId, api]);
 
+  if (fetched.status !== 'loading') return fetched;
   return known !== undefined ? { status: 'ready', actor: known } : fetched;
 }
