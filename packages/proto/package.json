@@ -1,0 +1,17 @@
+{
+  "name": "@patches/proto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "devDependencies": {
+    "ts-proto": "catalog:",
+    "tsup": "catalog:"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "catalog:",
+    "@grpc/proto-loader": "catalog:",
+    "@nestjs/microservices": "catalog:",
+    "rxjs": "catalog:"
+  }
+}

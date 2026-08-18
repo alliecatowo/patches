@@ -1,0 +1,20 @@
+{
+  "name": "@patches/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "dependencies": {
+    "@grpc/grpc-js": "catalog:",
+    "@grpc/proto-loader": "catalog:",
+    "@inkjs/ui": "catalog:",
+    "@patches/proto": "workspace:*",
+    "@patches/terminal-media": "workspace:*",
+    "ink": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "ink-testing-library": "catalog:"
+  }
+}
