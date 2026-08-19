@@ -57,7 +57,11 @@ import { Overlay } from '../components/Overlay.js';
 import { SplitPane } from '../components/SplitPane.js';
 import { MediaViewerScreen } from '../screens/MediaViewerScreen.js';
 import { PreferencesScreen } from '../screens/PreferencesScreen.js';
-import { FilePreferenceStore, type PreferenceStore } from '../preferences/store.js';
+import {
+  FilePreferenceStore,
+  type ImagePolicy,
+  type PreferenceStore,
+} from '../preferences/store.js';
 import { BUILT_IN_THEMES, getBuiltInTheme } from '../theme/themes/registry.js';
 import { resolveTheme } from '../theme/themes/resolution.js';
 import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js';
@@ -239,6 +243,12 @@ export function App({
   // runtime with `P` (below).
   const [plain, setPlain] = useState(() => isTruthy(env.PATCHES_PLAIN));
   const [quiet, setQuiet] = useState(false);
+  // The saved preference this session's renderer was actually built from (P12-113,
+  // `cli.tsx`'s own env > saved > auto read, before this component ever mounts) — not
+  // reapplied live here, since swapping the terminal-media renderer's kind mid-session
+  // means safely tearing down any in-flight Kitty placements first. The Preferences row
+  // edits this as a plain preference: it is what the *next* launch picks up.
+  const [imagePolicy, setImagePolicy] = useState<ImagePolicy>('auto');
 
   // --- theme engine (P12-101/P12-127) --------------------------------------
   // Precedence is resolved once, purely, in `theme/themes/resolution.ts`:
@@ -261,7 +271,8 @@ export function App({
   );
   /** What `Esc` on the preferences screen restores (P12-112). */
   const revertPreferences = useRef<
-    { theme: BuiltInThemeName; plain: boolean; quiet: boolean } | undefined
+    | { theme: BuiltInThemeName; plain: boolean; quiet: boolean; imagePolicy: ImagePolicy }
+    | undefined
   >(undefined);
 
   // The notifications drawer (`N`, P12-024). Presentation state, deliberately not
@@ -352,6 +363,7 @@ export function App({
         if (saved.plainMode !== undefined && !isTruthy(env.PATCHES_PLAIN))
           setPlain(saved.plainMode);
         if (saved.quietFeed !== undefined) setQuiet(saved.quietFeed);
+        if (saved.imagePolicy !== undefined) setImagePolicy(saved.imagePolicy);
       },
       // Unreadable preferences are not an error worth a toast — the defaults are fine.
       () => undefined,
@@ -811,11 +823,16 @@ export function App({
 
   /** `,` — records what `Esc` restores, then opens the settings screen (P12-112). */
   function openPreferences(): void {
-    revertPreferences.current = { theme: themeName, plain, quiet };
+    revertPreferences.current = { theme: themeName, plain, quiet, imagePolicy };
     goTo({ screen: 'preferences' });
   }
 
   function savePreferences(): void {
+    // Whether this save actually changes `imagePolicy` — unlike theme/plain/quiet
+    // it never takes effect on the renderer already built for this session
+    // (`cli.tsx` decides that once, before `App` mounts), so only tell the viewer
+    // it needs a restart when it would otherwise be silent about that.
+    const imagePolicyChanged = revertPreferences.current?.imagePolicy !== imagePolicy;
     revertPreferences.current = undefined;
     back();
     if (session === undefined) {
@@ -825,10 +842,16 @@ export function App({
     void preferences
       .set(
         { nodeOrigin: api.target, actorId: session.userId },
-        { theme: themeName, plainMode: plain, quietFeed: quiet },
+        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy },
       )
       .then(
-        () => notify('Preferences saved.', 'success'),
+        () =>
+          notify(
+            imagePolicyChanged
+              ? 'Preferences saved. Images: restart patches to apply.'
+              : 'Preferences saved.',
+            'success',
+          ),
         // A preferences file that cannot be written must never take the app down —
         // the settings still apply for the rest of this session.
         () => notify('Preferences apply for this session — saving them failed.', 'error'),
@@ -842,6 +865,7 @@ export function App({
       setThemeName(previous.theme);
       setPlain(previous.plain);
       setQuiet(previous.quiet);
+      setImagePolicy(previous.imagePolicy);
     }
     back();
   }
@@ -1401,6 +1425,8 @@ export function App({
             onPlainChange={setPlain}
             quiet={quiet}
             onQuietChange={setQuiet}
+            imagePolicy={imagePolicy}
+            onImagePolicyChange={setImagePolicy}
             onSave={savePreferences}
             onCancel={cancelPreferences}
             canPersist={session !== undefined}

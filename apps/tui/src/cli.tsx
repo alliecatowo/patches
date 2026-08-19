@@ -31,7 +31,8 @@ import { runVerify } from './cli/verify.js';
 import { runWhoami } from './cli/whoami.js';
 import { isTruthy } from './env.js';
 import { App } from './app/App.js';
-import { resolveImageRenderMode } from './media/image-mode.js';
+import { resolveEffectiveImageRenderMode } from './media/image-mode.js';
+import { FilePreferenceStore } from './preferences/store.js';
 import { installTerminalCleanup } from './terminal/cleanup.js';
 import { checkForUpgrade, createFileUpgradeCache, isUpgradeCheckEnabled } from './upgrade/check.js';
 import { installUpgrade } from './upgrade/install.js';
@@ -169,8 +170,26 @@ async function runTui(args: {
     await promptForUpgrade({ currentVersion: TUI_VERSION, upgrade, plain: args.plain });
   }
 
+  // Local-only (no network): resolves the stored refresh token's actor id, if any, so
+  // the saved `imagePolicy` preference can be read before the renderer is built.
+  // `sessionManager.restore()` (which `App` still owns) is the one that actually
+  // exchanges it for a session — duplicating that network round trip here just to
+  // learn the actor id would add launch latency for no reason.
+  const storedCredential = await credentialStore.get(api.target).catch(() => undefined);
+  const savedImagePolicy =
+    storedCredential === undefined
+      ? undefined
+      : await new FilePreferenceStore()
+          .get({ nodeOrigin: api.target, actorId: storedCredential.userId })
+          .then(
+            (saved) => saved?.imagePolicy,
+            // An unreadable preferences file is not worth failing startup over —
+            // same "defaults are fine" reasoning `App`'s own preference load uses.
+            () => undefined,
+          );
+
   const mediaRenderer = createRenderer(graphicsCapabilities, process.stdout, {
-    mode: resolveImageRenderMode(process.env),
+    mode: resolveEffectiveImageRenderMode(process.env, savedImagePolicy),
   });
   // Freed on exit/signal even though Ink's own alternate-screen teardown runs first —
   // Ink treats teardown-time writes as disposable, so the actual `d=I` deletes have to
