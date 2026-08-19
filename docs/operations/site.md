@@ -1,8 +1,22 @@
 # Site (docs/marketing)
 
-**Status: deployed 2026-08-18.** `site/` is a VitePress site providing the Patches landing
-page and a mirror of a curated set of `docs/**` pages. It's deployed to Cloudflare Pages
-(project `patches-site`) and live at **https://patches-site.pages.dev**.
+**Status: deployed 2026-08-18, mirrored 2026-08-19.** `site/` is a VitePress site providing
+the Patches landing page and a mirror of a curated set of `docs/**` pages. It ships to two
+independent hosts so losing either one doesn't take the whole site down:
+
+| Host                                               | URL                                        | Deploy path                                                                                   |
+| -------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Cloudflare Pages (primary, project `patches-site`) | **https://patches-site.pages.dev**         | `pnpm site:deploy` (manual today — see [CI](#ci))                                             |
+| GitHub Pages (mirror)                              | **https://alliecatowo.github.io/patches/** | `.github/workflows/site-gh-pages.yml`, auto on every `main` push touching `site/**`/`docs/**` |
+
+Both build from the same `site/` source; the only difference is the base path
+(`VITEPRESS_BASE=/patches/` for GitHub Pages, since it serves from a repo-name subpath —
+Cloudflare Pages serves from its domain root). **Check which version is live** by scrolling to
+either site's footer: `themeConfig.footer.message` (`site/.vitepress/config.mts`) is computed
+at build time from `git rev-parse --short HEAD` and links to that commit on GitHub — if the two
+footers show different short SHAs, one host is lagging (Cloudflare is manual-deploy today, so
+this is expected to happen; GitHub Pages redeploys automatically on every qualifying `main`
+push and should usually be current).
 
 ## What it is
 
@@ -69,24 +83,51 @@ pnpm exec wrangler pages deploy site/.vitepress/dist --project-name patches-site
 URL; any other `--branch` value gets its own preview URL
 (`<hash>.patches-site.pages.dev`) without touching production.
 
-**Live URL: https://patches-site.pages.dev** (first deploy 2026-08-18, build ~3s, 61
-files).
+**Live URL: https://patches-site.pages.dev** (first deploy 2026-08-18, redeployed 2026-08-19
+with the current docs, build ~3s, 71 files).
+
+## GitHub Pages mirror
+
+**Live URL: https://alliecatowo.github.io/patches/** (first deploy 2026-08-19).
+`.github/workflows/site-gh-pages.yml` builds and deploys on every push to `main` that touches
+`site/**` or `docs/**`, plus `workflow_dispatch`, via `actions/configure-pages` +
+`actions/upload-pages-artifact` + `actions/deploy-pages` (`pages: write`/`id-token: write`).
+It sets `VITEPRESS_BASE=/patches/` so every asset href resolves under the repo-name subpath
+GitHub Pages serves a project site from — verified locally with
+`VITEPRESS_BASE=/patches/ pnpm --filter @patches/site build` and inspecting
+`site/.vitepress/dist/index.html`'s asset hrefs (`/patches/assets/...`, `/patches/vp-icons.css`,
+etc., vs. root-relative `/assets/...` for the default Cloudflare build). Unlike the Cloudflare
+mirror, this one needs no secrets — `actions/deploy-pages` authenticates via the workflow's own
+OIDC token.
+
+Repo setting required before this workflow's `deploy` job can publish anything: **Settings →
+Pages → Source: GitHub Actions**. Done for this repo via
+`gh api -X POST repos/alliecatowo/patches/pages -f build_type=workflow` (succeeded — no manual
+click was needed here); if that API call ever fails with a permissions error on a fork/new
+repo, the equivalent one-time manual step is: open the repo's Settings → Pages tab and choose
+"GitHub Actions" under **Build and deployment → Source**.
 
 ## CI
 
-`.github/workflows/site.yml` builds the site on every successful `CI` run on `main` (via
-`workflow_run`, same pattern as `deploy.yml`), plus `workflow_dispatch` for manual runs. The
-actual `wrangler pages deploy` step is gated behind `vars.SITE_DEPLOY_ENABLED` — unset today,
-so the workflow builds (and reports green) on every `main` push but does not deploy from CI
-yet. To turn it on: set the `SITE_DEPLOY_ENABLED` repository/environment variable to `true`
-and add `CLOUDFLARE_API_TOKEN` (Pages:Edit permission) + `CLOUDFLARE_ACCOUNT_ID` as repo
-secrets. Until then, deploys are manual (`pnpm site:deploy`) as done for the first deploy
-above.
+`.github/workflows/site.yml` (Cloudflare Pages) builds the site on every successful `CI` run
+on `main` (via `workflow_run`, same pattern as `deploy.yml`), plus `workflow_dispatch` for
+manual runs. The actual `wrangler pages deploy` step is gated behind `vars.SITE_DEPLOY_ENABLED`
+— unset today, so the workflow builds (and reports green) on every `main` push but does not
+deploy from CI yet. To turn it on: set the `SITE_DEPLOY_ENABLED` repository/environment
+variable to `true` and add `CLOUDFLARE_API_TOKEN` (Pages:Edit permission) +
+`CLOUDFLARE_ACCOUNT_ID` as repo secrets. Until then, Cloudflare deploys are manual
+(`pnpm site:deploy`). `.github/workflows/site-gh-pages.yml` (GitHub Pages) has no such gate —
+it deploys unconditionally on every qualifying `main` push, since `actions/deploy-pages` needs
+no external secrets.
 
 ## Known gaps
 
-- No custom domain configured yet (`patches-site.pages.dev` only).
-- CI deploy path (`vars.SITE_DEPLOY_ENABLED`) has never been exercised — the live deploy
-  above was done by hand with `wrangler`, same caveat as `docs/operations/deployment.md`'s
-  Fly deploy workflow.
+- No custom domain configured on either host (`patches-site.pages.dev` /
+  `alliecatowo.github.io/patches/` only).
+- Cloudflare's CI deploy path (`vars.SITE_DEPLOY_ENABLED`) has never been exercised — every
+  Cloudflare deploy so far was done by hand with `wrangler`, same caveat as
+  `docs/operations/deployment.md`'s Fly deploy workflow. GitHub Pages' deploy path _is_
+  CI-driven from day one (there is no manual `wrangler`-equivalent for it), but has only been
+  exercised via `workflow_dispatch`/the one-time `gh api pages` enable call in this session, not
+  yet a real `main` push.
 - `site/public/media/*` are placeholders/absent until P9-002 lands real recordings.

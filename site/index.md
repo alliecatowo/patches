@@ -10,7 +10,10 @@ hero:
     alt: Patches TUI in action
   actions:
     - theme: brand
-      text: Try the live node
+      text: Try it in the browser
+      link: https://patches-web.pages.dev
+    - theme: alt
+      text: Read the guide
       link: /docs/guide/
     - theme: alt
       text: GitHub
