@@ -8,8 +8,9 @@ describe('shell startup (B-015; owner feedback 2026-08-18)', () => {
     const { lastFrame, unmount } = renderApp();
 
     // No connect splash in the way of the content any more — the timeline is up
-    // immediately and the connection resolves into the status bar behind it.
-    const frame = await expectFrame(lastFrame, 'connected');
+    // immediately and the connection resolves into the status bar behind it. `●` is
+    // the `ready` connection dot (P12-102) — plain words only replace it in plain mode.
+    const frame = await expectFrame(lastFrame, '●');
     expect(frame).toContain('Local');
     expect(frame).toContain('Reading as a guest — press L to log in');
     expect(frame).toContain('patches.test:50051');
@@ -32,12 +33,13 @@ describe('shell startup (B-015; owner feedback 2026-08-18)', () => {
       });
     const { press, lastFrame, unmount } = renderApp({ fakeOptions: { getServerInfoImpl } });
 
-    await expectFrame(lastFrame, 'offline');
+    // `○` is the `error` connection dot, `●` is `ready` (P12-102).
+    await expectFrame(lastFrame, '○');
     await flush();
 
     press('\u0012');
 
-    await expectFrame(lastFrame, 'connected');
+    await expectFrame(lastFrame, '●');
     unmount();
   });
 

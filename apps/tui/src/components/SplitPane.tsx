@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 
 import { planResponsiveLayout } from '../app/responsive-layout.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { theme } from '../theme/index.js';
 
 export type FocusedPane = 'primary' | 'secondary';
 
@@ -78,12 +79,18 @@ function Pane({
 }): ReactElement {
   const safeTitle = sanitizeForTerminal(title).replaceAll('\n', ' ');
   const bodyRows = Math.max(0, height - 1);
+  // The `>`/` ` marker already carries focus without colour — readable in plain mode
+  // the same as `StatusBar`'s breadcrumb/`Toast`'s kind colouring, both of which stay
+  // coloured under plain mode too (only glyphs/spinners/nameplate identity are what
+  // spec §173's "strips all decoration" actually gates, not every ANSI colour in the
+  // shell). Colour here is an additional cue, not the only one (P12-108).
+  const titleColor = focused ? theme.accent : theme.muted;
 
   return (
     <Box width={width} height={height} flexDirection="column" flexShrink={0} overflow="hidden">
       {height > 0 ? (
         <Box width={width} height={1} flexShrink={0} overflow="hidden">
-          <Text wrap="truncate-end">
+          <Text color={titleColor} bold={focused} wrap="truncate-end">
             {focused ? '>' : ' '} {safeTitle}
           </Text>
         </Box>

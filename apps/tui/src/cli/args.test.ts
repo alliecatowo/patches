@@ -9,6 +9,7 @@ describe('parseArgs', () => {
       target: DEFAULT_TARGET,
       insecure: false,
       plain: false,
+      linear: false,
       noUpgradeCheck: false,
       rest: [],
     });
@@ -69,6 +70,7 @@ describe('parseArgs', () => {
       target: '127.0.0.1:1234',
       insecure: true,
       plain: false,
+      linear: false,
       noUpgradeCheck: false,
       rest: [],
     });
@@ -79,6 +81,13 @@ describe('parseArgs', () => {
     expect(parseArgs([], { PATCHES_PLAIN: 'true' }).plain).toBe(true);
     expect(parseArgs([], { PATCHES_PLAIN: 'false' }).plain).toBe(false);
     expect(parseArgs([]).plain).toBe(false);
+  });
+
+  it('reads --linear and PATCHES_LINEAR', () => {
+    expect(parseArgs(['--linear']).linear).toBe(true);
+    expect(parseArgs([], { PATCHES_LINEAR: 'true' }).linear).toBe(true);
+    expect(parseArgs([], { PATCHES_LINEAR: 'false' }).linear).toBe(false);
+    expect(parseArgs([]).linear).toBe(false);
   });
 
   it('reads --no-upgrade-check', () => {

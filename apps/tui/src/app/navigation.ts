@@ -1,4 +1,4 @@
-import type { Actor, MediaAttachment } from '@patches/proto';
+import type { Actor, MediaAttachment, Tag } from '@patches/proto';
 
 import type { ReportTarget } from '../screens/ReportScreen.js';
 import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
@@ -21,7 +21,7 @@ export type NavEntry =
   | {
       screen: Exclude<
         Screen,
-        'profile' | 'thread' | 'page' | 'report' | 'postHistory' | 'media' | 'postEdit'
+        'profile' | 'thread' | 'page' | 'report' | 'postHistory' | 'media' | 'postEdit' | 'tagFeed'
       >;
     }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
@@ -29,6 +29,9 @@ export type NavEntry =
   | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }
   | { screen: 'report'; target: ReportTarget }
+  /** `#`/search's tags tab/`:tag` (P12-115) — the tag travels on the stack entry, same
+   * "no second fetch, `Esc` is still a `pop`" reasoning as `profile`/`page` above. */
+  | { screen: 'tagFeed'; tag: Tag }
   /** `o` on a post that carries media (P12-018/P12-127) — the attachments travel on
    * the stack entry so the viewer needs no second fetch and `Esc` is still a `pop`. */
   | {
@@ -70,6 +73,7 @@ function sameEntry(a: NavEntry, b: NavEntry): boolean {
   if (a.screen === 'report' && b.screen === 'report') return a.target.id === b.target.id;
   if (a.screen === 'media' && b.screen === 'media') return a.postId === b.postId;
   if (a.screen === 'postEdit' && b.screen === 'postEdit') return a.postId === b.postId;
+  if (a.screen === 'tagFeed' && b.screen === 'tagFeed') return a.tag.id === b.tag.id;
   return true;
 }
 

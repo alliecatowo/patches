@@ -49,7 +49,8 @@ describe('Notifications (P4-004)', () => {
     await flush();
     await loginAs(press, lastFrame, 'alice', 'x');
 
-    await expectFrame(lastFrame, '1 unread');
+    // `✉ N` is the ribbon's unread pill (P12-102) — no separate "N unread" wording.
+    await expectFrame(lastFrame, '✉ 1');
 
     await pressGo(press, 'n');
 
@@ -73,7 +74,8 @@ describe('Notifications (P4-004)', () => {
 
     press('m');
 
-    await waitForFrame(lastFrame, (f) => !f.includes('unread'));
+    // The ribbon's `✉ N` pill (P12-102) renders nothing once the count is 0.
+    await waitForFrame(lastFrame, (f) => !f.includes('✉'));
     unmount();
   });
 
@@ -108,13 +110,15 @@ describe('Notifications mark themselves read as they are read (owner feedback 20
     const { press, lastFrame, unmount } = renderApp({ fake });
     await flush();
     await loginAs(press, lastFrame, 'alice', 'x');
-    await expectFrame(lastFrame, '2 unread');
+    // `✉ N` is the ribbon's unread pill (P12-102) — no separate "N unread" wording.
+    await expectFrame(lastFrame, '✉ 2');
 
     await pressGo(press, 'n');
     await expectFrame(lastFrame, 'Notifications');
 
-    // No `m`: just being on screen for the debounce is enough.
-    await waitForFrame(lastFrame, (f) => !f.includes('unread'), 4000);
+    // No `m`: just being on screen for the debounce is enough. The pill renders
+    // nothing once the count is 0.
+    await waitForFrame(lastFrame, (f) => !f.includes('✉'), 4000);
     unmount();
   });
 

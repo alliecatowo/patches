@@ -20,7 +20,9 @@ import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
-import { StatusBar } from '../components/StatusBar.js';
+import { HintLine, StatusBar } from '../components/StatusBar.js';
+import { LinearModeProvider } from '../hooks/useLinearMode.js';
+import { NowProvider } from '../hooks/useNow.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { ToastLine, type Toast, type ToastKind } from '../components/Toast.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
@@ -42,6 +44,7 @@ import { PostHistoryScreen } from '../screens/PostHistoryScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
+import { MessagesScreen, type MessagesScreenApi } from '../screens/MessagesScreen.js';
 import { ModerationLogScreen } from '../screens/ModerationLogScreen.js';
 import { NotificationsScreen } from '../screens/NotificationsScreen.js';
 import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
@@ -49,6 +52,7 @@ import { PrivacyScreen } from '../screens/PrivacyScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
+import { TagFeedScreen } from '../screens/TagFeedScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
 import { CommandPalette, type PaletteInvocation } from '../components/CommandPalette.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -79,8 +83,13 @@ import {
   legacyInputConsumes,
 } from './input.js';
 import { hintsFor, SCREEN_TITLES, type Binding, type Screen } from './keymap.js';
-import { ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
-import { DRAWER_COLUMNS, drawerAvailable, planResponsiveLayout } from './responsive-layout.js';
+import { chromeSplit, ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
+import {
+  breadcrumbSegmentLimit,
+  DRAWER_COLUMNS,
+  drawerAvailable,
+  planResponsiveLayout,
+} from './responsive-layout.js';
 import { presentationFor, wantsSplit } from './routes.js';
 import { ModalStackProvider, useModalStackController } from './modal.js';
 import type { ListJump } from './list-movement.js';
@@ -136,6 +145,10 @@ const QUICK_POST_ROWS = 10;
 /** The command palette's box — wider than a confirm, shorter than a screen. */
 const PALETTE_COLUMNS = 72;
 const PALETTE_ROWS = 12;
+/** How long a manual refresh (`Ctrl+R`, `:reload`) shows a spinner in the ribbon's
+ * connection slot (P12-117's "finite refresh spinner") — long enough to read, and
+ * always cleared by its own timer regardless of how the refresh itself resolves. */
+const REFRESH_PULSE_MS = 900;
 
 function emptyDraft(): ComposeDraft {
   return { body: '', clientRequestId: randomUUID() };
@@ -234,6 +247,7 @@ export function App({
   const [pendingGo, setPendingGoState] = useState(false);
   const pendingGoRef = useRef(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
     setPendingGoState(next);
@@ -243,6 +257,13 @@ export function App({
   // runtime with `P` (below).
   const [plain, setPlain] = useState(() => isTruthy(env.PATCHES_PLAIN));
   const [quiet, setQuiet] = useState(false);
+  // P12-118's linear/screen-reader mode — `PATCHES_LINEAR`/`--linear` (normalized into
+  // env the same way `--plain` is) or `:linear`. One column, no overlays/drawers (they
+  // fall back to full-screen takeovers), indexed list rows, and plain mode implied
+  // (`plainEffective` below) — never a *second*, independent "is decoration off"
+  // switch a screen would have to check in addition to `plain`.
+  const [linearMode, setLinearMode] = useState(() => isTruthy(env.PATCHES_LINEAR));
+  const plainEffective = plain || linearMode;
   // The saved preference this session's renderer was actually built from (P12-113,
   // `cli.tsx`'s own env > saved > auto read, before this component ever mounts) — not
   // reapplied live here, since swapping the terminal-media renderer's kind mid-session
@@ -278,9 +299,17 @@ export function App({
   // The notifications drawer (`N`, P12-024). Presentation state, deliberately not
   // navigation state: it never enters the stack, so `Esc` semantics are untouched.
   const [drawerRequested, setDrawerRequested] = useState(false);
+  // The direct-message drawer (`Ctrl+D`, P12-122) — same shape as the notifications
+  // drawer, mutually exclusive with it (both share the one `DRAWER_COLUMNS` slice the
+  // shell subtracts from the content region; two drawers open at once was never a
+  // presentation this layout budgeted for).
+  const [dmDrawerRequested, setDmDrawerRequested] = useState(false);
   // `Tab` in a split moves focus between the list pane and the detail pane. Purely
   // presentational — it never touches the navigation stack.
   const [paneFocusSecondary, setPaneFocusSecondary] = useState(false);
+  // A manual refresh's bounded ribbon spinner (P12-117) — always cleared by its own
+  // timer, never left spinning by whatever the refresh itself resolves to.
+  const [refreshing, setRefreshing] = useState(false);
 
   const [sessionManager] = useState(
     () => new SessionManager({ api, store: credentialStore, nodeOrigin: api.target }),
@@ -302,6 +331,54 @@ export function App({
     () => ({ api, cache, ensureAccessToken }),
     [api, cache, ensureAccessToken],
   );
+
+  // `MessagesScreenApi` is promise-based with no `accessToken` parameter — the screen
+  // is meant to be reusable against an already-authenticated transport (its own doc
+  // comment). `PatchesApi`'s DM methods, like every other authenticated call on it,
+  // take the token explicitly, so this binds `ensureAccessToken()` in front of each one
+  // rather than widening the screen's own contract (P12-122).
+  const messagesApi: MessagesScreenApi = useMemo(
+    () => ({
+      listConversations: (request) =>
+        ensureAccessToken().then((accessToken) => api.listConversations(request, accessToken)),
+      getConversation: (request) =>
+        ensureAccessToken().then((accessToken) => api.getConversation(request, accessToken)),
+      listMessages: (request) =>
+        ensureAccessToken().then((accessToken) => api.listMessages(request, accessToken)),
+      sendMessage: (request) =>
+        ensureAccessToken().then((accessToken) => api.sendMessage(request, accessToken)),
+      markConversationRead: (request) =>
+        ensureAccessToken().then((accessToken) => api.markConversationRead(request, accessToken)),
+      listMessageRequests: (request) =>
+        ensureAccessToken().then((accessToken) => api.listMessageRequests(request, accessToken)),
+      respondToMessageRequest: (request) =>
+        ensureAccessToken().then((accessToken) =>
+          api.respondToMessageRequest(request, accessToken),
+        ),
+    }),
+    [api, ensureAccessToken],
+  );
+
+  // This node's DM retention window, for `MessagesScreen`'s retention copy (P12-114,
+  // spec §197.6) — best-effort, public (no session/`accessToken`), fetched once. Stays
+  // `undefined` (never fabricated) until it resolves, and forever if the node publishes
+  // no policy or the request fails — the screen already renders nothing about
+  // retention rather than guess when this is absent.
+  const [dmRetentionDays, setDmRetentionDays] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void api.getNodePolicy().then(
+      (response) => {
+        if (cancelled) return;
+        const days = response.policy?.retention?.dmRetentionDays;
+        if (days !== undefined) setDmRetentionDays(days);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   // Optimistic like/bookmark overlay (P4-004, spec §79), keyed by post id — applied at
   // render time (`decoratePost`) over whatever `viewerState`/`counts` a given screen's
@@ -364,6 +441,8 @@ export function App({
           setPlain(saved.plainMode);
         if (saved.quietFeed !== undefined) setQuiet(saved.quietFeed);
         if (saved.imagePolicy !== undefined) setImagePolicy(saved.imagePolicy);
+        if (saved.linearMode !== undefined && !isTruthy(env.PATCHES_LINEAR))
+          setLinearMode(saved.linearMode);
       },
       // Unreadable preferences are not an error worth a toast — the defaults are fine.
       () => undefined,
@@ -371,7 +450,14 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [api.target, env.PATCHES_PLAIN, env.PATCHES_THEME, preferences, sessionActorId]);
+  }, [
+    api.target,
+    env.PATCHES_LINEAR,
+    env.PATCHES_PLAIN,
+    env.PATCHES_THEME,
+    preferences,
+    sessionActorId,
+  ]);
 
   useEffect(() => {
     if (toast === undefined) return;
@@ -389,7 +475,13 @@ export function App({
   // there is one, and "push a screen" when there is not.
   const overlayEntry = modals.top;
   const screenIsActive = overlayEntry === undefined || overlayEntry.id === 'help';
-  const drawerOpen = drawerRequested && drawerAvailable(Math.max(20, columns - 2));
+  // P12-118: linear mode never grants a drawer — both fall back to their full-screen
+  // route (`toggleNotificationsDrawer`/`toggleMessagesDrawer` below), same as narrow.
+  const drawersAvailableNow = !linearMode && drawerAvailable(Math.max(20, columns - 2));
+  const drawerOpen = drawerRequested && drawersAvailableNow;
+  // Mutually exclusive with the notifications drawer — both share the one
+  // `DRAWER_COLUMNS` slice the shell subtracts from the content region below.
+  const dmDrawerOpen = dmDrawerRequested && !drawerRequested && drawersAvailableNow;
   const contentRows = Math.max(3, rows - FOOTER_ROWS);
   const signedOutOnRoot = session === undefined && (screen === 'home' || screen === 'local');
   const bannerRows = signedOutOnRoot ? 1 : 0;
@@ -397,14 +489,27 @@ export function App({
   const regionColumns = Math.max(20, columns - 2);
   // The drawer takes its columns off the region *before* split-pane arithmetic, so
   // opening one can never overflow the frame (tui-interaction-model.md §3.1).
-  const contentColumns = Math.max(20, drawerOpen ? regionColumns - DRAWER_COLUMNS : regionColumns);
-  const layoutPlan = planResponsiveLayout(contentColumns, regionRows, wantsSplit(stack));
+  const anyDrawerOpen = drawerOpen || dmDrawerOpen;
+  const contentColumns = Math.max(
+    20,
+    anyDrawerOpen ? regionColumns - DRAWER_COLUMNS : regionColumns,
+  );
+  // P12-118: linear mode is always a single column — never request a split.
+  const layoutPlan = planResponsiveLayout(
+    contentColumns,
+    regionRows,
+    wantsSplit(stack) && !linearMode,
+  );
   const presentation = presentationFor(stack, layoutPlan.mode === 'split');
   const splitActive = presentation.mode === 'split';
   const focusedPane: 'primary' | 'secondary' =
     splitActive && paneFocusSecondary ? 'secondary' : 'primary';
   const listIsActive =
-    !pendingGo && screenIsActive && !drawerOpen && (!splitActive || focusedPane === 'primary');
+    !pendingGo && screenIsActive && !anyDrawerOpen && (!splitActive || focusedPane === 'primary');
+  // The ribbon replaces the bottom status line at row 0 in the `full` height tier
+  // (design vision §2.1, P12-102) — budget-neutral, `layout.ts#chromeSplit`.
+  const showRibbon = layoutPlan.heightDensity === 'full';
+  const { ribbonRows, footerRows: footerChromeRows } = chromeSplit(showRibbon);
 
   // --- navigation -----------------------------------------------------------
 
@@ -842,7 +947,7 @@ export function App({
     void preferences
       .set(
         { nodeOrigin: api.target, actorId: session.userId },
-        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy },
+        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy, linearMode },
       )
       .then(
         () =>
@@ -888,11 +993,44 @@ export function App({
       notify('Log in first — press L.');
       return;
     }
-    if (!drawerAvailable(Math.max(20, columns - 2))) {
+    if (linearMode || !drawerAvailable(Math.max(20, columns - 2))) {
       goTo({ screen: 'notifications' });
       return;
     }
+    setDmDrawerRequested(false);
     setDrawerRequested((current) => !current);
+  }
+
+  /** `Ctrl+D` — the direct-message drawer (P12-122), the same shape and narrow/linear
+   * fallback as {@link toggleNotificationsDrawer}. Its content is `MessagesScreen`
+   * itself (the same full-screen `g d` would eventually mount), reused verbatim so the
+   * permanent "not end-to-end encrypted" disclosure and folder/read state are never a
+   * second, drifting implementation. */
+  function toggleMessagesDrawer(): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    if (linearMode || !drawerAvailable(Math.max(20, columns - 2))) {
+      goTo({ screen: 'messages' });
+      return;
+    }
+    setDrawerRequested(false);
+    setDmDrawerRequested((current) => !current);
+  }
+
+  /** `Ctrl+R` / `:reload` — retries the connection and drops both the optimistic
+   * reaction overlay and the feed so every list refetches. Pulses the ribbon's
+   * connection slot with a bounded spinner (P12-117's "finite refresh spinner") for
+   * exactly {@link REFRESH_PULSE_MS}, cleared by its own timer regardless of how the
+   * refresh itself resolves — never a second, unbounded loading indicator. */
+  function manualRefresh(): void {
+    retryServerInfo();
+    setReactionOverrides(new Map());
+    setFeedNonce((current) => current + 1);
+    setRefreshing(true);
+    clearTimeout(refreshPulseTimer.current);
+    refreshPulseTimer.current = setTimeout(() => setRefreshing(false), REFRESH_PULSE_MS);
   }
 
   /** One measured `ConfirmDialog` for every destructive action (P12-008/P12-126). */
@@ -1109,9 +1247,7 @@ export function App({
         toggleHelp();
         return;
       case 'reload':
-        retryServerInfo();
-        setReactionOverrides(new Map());
-        setFeedNonce((current) => current + 1);
+        manualRefresh();
         notify('Reloaded (Ctrl+R).', 'success');
         return;
       case 'plain':
@@ -1119,6 +1255,9 @@ export function App({
         return;
       case 'quiet':
         setToggle(args[0], quiet, setQuiet, 'Quiet feed');
+        return;
+      case 'linear':
+        setToggle(args[0], linearMode, setLinearMode, 'Linear mode');
         return;
       case 'w':
       case 'post':
@@ -1158,9 +1297,27 @@ export function App({
       case 'modlog':
         goTo({ screen: 'moderationLog' });
         return;
+      case 'tag': {
+        const query = args[0];
+        if (query === undefined) {
+          notify('tag expects a name, e.g. :tag synths.', 'error');
+          return;
+        }
+        const normalized = query.replace(/^#/u, '').toLowerCase();
+        void api.searchTags({ query: normalized, cursor: '', limit: 20 }).then(
+          (response) => {
+            const tag = response.tags.find((candidate) => candidate.name === normalized);
+            if (tag === undefined) notify(`No tag found for #${normalized}.`, 'error');
+            else navigate({ screen: 'tagFeed', tag });
+          },
+          (error: unknown) => notify(describeGrpcError(error, api.target).title, 'error'),
+        );
+        return;
+      }
       case 'messages':
+        requireSession({ screen: 'messages' });
+        return;
       case 'communities':
-      case 'tag':
         notify(
           `:${name} is registered but its screen is not connected to this shell yet.`,
           'error',
@@ -1218,9 +1375,10 @@ export function App({
         safeQuit();
         return;
       case 'Ctrl+R':
-        retryServerInfo();
-        setReactionOverrides(new Map());
-        setFeedNonce((current) => current + 1);
+        manualRefresh();
+        return;
+      case 'Ctrl+D':
+        toggleMessagesDrawer();
         return;
       default:
         notify(`${binding.keys} — ${binding.description ?? binding.hint}`);
@@ -1299,7 +1457,8 @@ export function App({
       else if (input === 'n') requireSession({ screen: 'notifications' });
       else if (input === 'v') openOwnPage();
       else if (input === 'e') requireSession({ screen: 'editProfile' });
-      else if (input === 'd' || input === 'c') {
+      else if (input === 'd') requireSession({ screen: 'messages' });
+      else if (input === 'c') {
         notify(`g ${input} is registered but its screen is not connected yet.`, 'error');
       } else if (input === 'g') {
         setListJump((current) => ({ edge: 'top', nonce: (current?.nonce ?? 0) + 1 }));
@@ -1311,10 +1470,18 @@ export function App({
       return;
     }
     if (key.escape) {
-      // The drawer is presentation, not history: `Esc` closes it before it starts
-      // popping the navigation stack.
+      // A drawer is presentation, not history: `Esc` closes it before it starts
+      // popping the navigation stack. The DM drawer is the one drawer whose content
+      // owns internal sub-views (a thread inside the conversation list) — while it is
+      // signed in and mounted, it consumes its own `Esc` and closes itself via
+      // `onBack` only once it has nothing left to back out of, so this blanket
+      // handler stands down rather than racing it closed mid-thread. Signed out, the
+      // drawer renders nothing to consume the key, so this is the only path left.
       if (drawerRequested) setDrawerRequested(false);
-      else back();
+      else if (dmDrawerRequested && session === undefined) setDmDrawerRequested(false);
+      else if (dmDrawerRequested) {
+        /* MessagesScreen's own `onBack` closes it (see the drawer's JSX above). */
+      } else back();
       return;
     }
     if (input === 'q') {
@@ -1326,9 +1493,11 @@ export function App({
       return;
     }
     if (isCtrlKey(input, key, 'r')) {
-      retryServerInfo();
-      setReactionOverrides(new Map());
-      setFeedNonce((current) => current + 1);
+      manualRefresh();
+      return;
+    }
+    if (isCtrlKey(input, key, 'd')) {
+      toggleMessagesDrawer();
       return;
     }
     if (input === 'L') {
@@ -1520,6 +1689,7 @@ export function App({
             isActive={active}
             ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
             onOpenActor={(actor) => openProfile(actor.id, actor)}
+            onOpenTag={(tag) => navigate({ screen: 'tagFeed', tag })}
             actions={rowActions}
             onCancel={back}
           />
@@ -1584,6 +1754,27 @@ export function App({
             actions={rowActions}
             ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
             refreshKey={feedNonce}
+          />
+        );
+      case 'tagFeed':
+        return (
+          <TagFeedScreen
+            api={api}
+            initialTag={target.tag}
+            isActive={active}
+            actions={rowActions}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            onCancel={back}
+          />
+        );
+      case 'messages':
+        return session === undefined ? null : (
+          <MessagesScreen
+            api={messagesApi}
+            isActive={active}
+            viewerActorId={session.userId}
+            dmRetentionDays={dmRetentionDays}
+            onBack={back}
           />
         );
       case 'bookmarks':
@@ -1771,173 +1962,224 @@ export function App({
     overlayEntry?.id === 'command-palette' ? PALETTE_ROWS : (overlayEntry?.rows ?? QUICK_POST_ROWS);
   // Under 80 columns or under 28 rows a centred box has nowhere to sit, so the overlay
   // takes the region over instead (§3.1). Help is a reference screen: always a takeover.
+  // P12-118: linear mode never centres a floating overlay — always the full-screen
+  // takeover, same fallback narrow/compact already use.
   const overlayTakeover =
+    linearMode ||
     layoutPlan.widthTier === 'narrow' ||
     layoutPlan.heightDensity === 'compact' ||
     overlayEntry?.id === 'help' ||
     overlayEntry?.presentation === 'takeover';
 
+  // The ribbon/status-bar breadcrumb (P12-102, design vision §2.1/§2.3: "focus is
+  // visible in the ribbon"). A split pane already names both sides — `patches › Home ›
+  // Thread` — so this is P12-108's split-pane breadcrumb too, not a second mechanism.
+  // Narrowest tier keeps only the last segment; `breadcrumbSegmentLimit` grows from there.
+  const breadcrumbSegments = [
+    'patches',
+    ...(splitActive
+      ? [SCREEN_TITLES[presentation.primary.screen], SCREEN_TITLES[presentation.secondary.screen]]
+      : [SCREEN_TITLES[screen]]),
+    ...(drawerOpen ? ['Notifications'] : []),
+    ...(dmDrawerOpen ? ['Messages'] : []),
+  ];
+  const breadcrumb = breadcrumbSegments.slice(-breadcrumbSegmentLimit(layoutPlan.widthTier));
+
   return (
     <MediaSessionProvider session={mediaSession}>
-      <PlainModeProvider plain={plain}>
-        <ActiveThemeProvider theme={activeTheme}>
-          <ModalStackProvider controller={modals}>
-            <KeyLayerProvider stack={inputLayers}>
-              {/* An open overlay releases every live Kitty placement first: slicing a
+      {/* The one `Date.now()` interval for every relative timestamp in the app
+          (P12-025/P12-117) — mounted once, here, so every consumer reads `useNow()`
+          instead of starting its own per-row timer. */}
+      <NowProvider>
+        <LinearModeProvider linear={linearMode}>
+          <PlainModeProvider plain={plainEffective}>
+            <ActiveThemeProvider theme={activeTheme}>
+              <ModalStackProvider controller={modals}>
+                <KeyLayerProvider stack={inputLayers}>
+                  {/* An open overlay releases every live Kitty placement first: slicing a
                   unicode-placeholder row would corrupt the grid (§3.3). The §75
                   fallback box is the same height, so nothing reflows. */}
-              <InlineImagesProvider allowed={overlayEntry === undefined}>
-                {/* `flexShrink={0}` on every direct child of a height-constrained Box is
+                  <InlineImagesProvider allowed={overlayEntry === undefined}>
+                    {/* `flexShrink={0}` on every direct child of a height-constrained Box is
                     load-bearing, not decoration: Yoga's default lets children shrink to fit,
                     and Ink renders a shrunk child by *dropping rows out of the middle of it*,
                     which is precisely the corrupted timeline the owner reported — counts lines
                     painted over the previous post's header, bodies cut mid-word (verified
                     against Ink 7.1.1; see docs/agents/LEARNINGS.md). With `flexShrink={0}` the
                     overflow is clipped cleanly at the bottom instead. */}
-                <Box flexDirection="column" height={rows} width={columns} overflow="hidden">
-                  <Box
-                    flexDirection="column"
-                    flexShrink={0}
-                    height={contentRows}
-                    paddingX={1}
-                    paddingY={1}
-                    overflow="hidden"
-                  >
-                    {signedOutOnRoot ? (
-                      <Text color={theme.muted} wrap="truncate-end">
-                        Reading as a guest — press L to log in or create an account.
-                      </Text>
-                    ) : null}
-                    <Box
-                      flexDirection="row"
-                      flexShrink={0}
-                      width={regionColumns}
-                      height={regionRows}
-                      overflow="hidden"
-                    >
-                      <Box
-                        flexDirection="column"
-                        flexShrink={0}
-                        width={contentColumns}
-                        height={regionRows}
-                        overflow="hidden"
-                      >
-                        {/* The screen stays mounted behind an overlay — hidden with
-                            `display="none"`, never a zero height — so a sub-mode's
-                            in-progress state and a list's scroll position survive
-                            opening the palette. */}
+                    <Box flexDirection="column" height={rows} width={columns} overflow="hidden">
+                      {showRibbon ? (
                         <Box
                           flexDirection="column"
                           flexShrink={0}
-                          display={overlayEntry === undefined ? 'flex' : 'none'}
+                          height={ribbonRows}
+                          paddingX={1}
                           overflow="hidden"
                         >
-                          {screenRegion}
+                          <StatusBar
+                            width={Math.max(10, columns - 2)}
+                            target={api.target}
+                            breadcrumb={breadcrumb}
+                            connection={serverInfoState.status}
+                            refreshing={refreshing}
+                            handle={session?.actor?.handle}
+                            unreadCount={unreadCount}
+                          />
                         </Box>
-                        {overlayEntry === undefined ? null : (
-                          <Overlay
-                            columns={contentColumns}
-                            rows={regionRows}
-                            overlayColumns={Math.min(
-                              overlayColumns,
-                              Math.max(20, contentColumns - 8),
-                            )}
-                            overlayRows={Math.min(overlayRows, regionRows)}
-                            snapshotKey={`${overlayEntry.id}:${String(contentColumns)}x${String(regionRows)}`}
-                            takeover={overlayTakeover}
-                            background={
-                              <PlainModeProvider plain={plain}>
-                                <ActiveThemeProvider theme={activeTheme}>
-                                  {screenRegion}
-                                </ActiveThemeProvider>
-                              </PlainModeProvider>
-                            }
-                          >
-                            {overlayNode}
-                          </Overlay>
-                        )}
-                      </Box>
-                      {drawerOpen ? (
-                        <Drawer
-                          width={DRAWER_COLUMNS}
-                          height={regionRows}
-                          title="Notifications"
-                          focused
-                        >
-                          {session === undefined ? null : (
-                            <NotificationsScreen
-                              api={api}
-                              isActive={screenIsActive && !pendingGo}
-                              ensureAccessToken={ensureAccessToken}
-                              onOpenPost={(postId) => {
-                                setDrawerRequested(false);
-                                openThread(postId);
-                              }}
-                              onOpenAuthor={(actor) => {
-                                setDrawerRequested(false);
-                                openProfile(actor.id, actor);
-                              }}
-                              onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
-                            />
-                          )}
-                        </Drawer>
                       ) : null}
-                    </Box>
-                  </Box>
+                      <Box
+                        flexDirection="column"
+                        flexShrink={0}
+                        height={contentRows}
+                        paddingX={1}
+                        paddingY={1}
+                        overflow="hidden"
+                      >
+                        {signedOutOnRoot ? (
+                          <Text color={theme.muted} wrap="truncate-end">
+                            Reading as a guest — press L to log in or create an account.
+                          </Text>
+                        ) : null}
+                        <Box
+                          flexDirection="row"
+                          flexShrink={0}
+                          width={regionColumns}
+                          height={regionRows}
+                          overflow="hidden"
+                        >
+                          <Box
+                            flexDirection="column"
+                            flexShrink={0}
+                            width={contentColumns}
+                            height={regionRows}
+                            overflow="hidden"
+                          >
+                            {/* The screen stays mounted behind an overlay — hidden with
+                            `display="none"`, never a zero height — so a sub-mode's
+                            in-progress state and a list's scroll position survive
+                            opening the palette. */}
+                            <Box
+                              flexDirection="column"
+                              flexShrink={0}
+                              display={overlayEntry === undefined ? 'flex' : 'none'}
+                              overflow="hidden"
+                            >
+                              {screenRegion}
+                            </Box>
+                            {overlayEntry === undefined ? null : (
+                              <Overlay
+                                columns={contentColumns}
+                                rows={regionRows}
+                                overlayColumns={Math.min(
+                                  overlayColumns,
+                                  Math.max(20, contentColumns - 8),
+                                )}
+                                overlayRows={Math.min(overlayRows, regionRows)}
+                                snapshotKey={`${overlayEntry.id}:${String(contentColumns)}x${String(regionRows)}`}
+                                takeover={overlayTakeover}
+                                background={
+                                  <PlainModeProvider plain={plainEffective}>
+                                    <ActiveThemeProvider theme={activeTheme}>
+                                      {screenRegion}
+                                    </ActiveThemeProvider>
+                                  </PlainModeProvider>
+                                }
+                              >
+                                {overlayNode}
+                              </Overlay>
+                            )}
+                          </Box>
+                          {drawerOpen ? (
+                            <Drawer
+                              width={DRAWER_COLUMNS}
+                              height={regionRows}
+                              title="Notifications"
+                              focused
+                            >
+                              {session === undefined ? null : (
+                                <NotificationsScreen
+                                  api={api}
+                                  isActive={screenIsActive && !pendingGo}
+                                  ensureAccessToken={ensureAccessToken}
+                                  onOpenPost={(postId) => {
+                                    setDrawerRequested(false);
+                                    openThread(postId);
+                                  }}
+                                  onOpenAuthor={(actor) => {
+                                    setDrawerRequested(false);
+                                    openProfile(actor.id, actor);
+                                  }}
+                                  onReadStateChanged={() =>
+                                    setUnreadNonce((current) => current + 1)
+                                  }
+                                />
+                              )}
+                            </Drawer>
+                          ) : null}
+                          {dmDrawerOpen ? (
+                            <Drawer
+                              width={DRAWER_COLUMNS}
+                              height={regionRows}
+                              title="Messages"
+                              focused
+                            >
+                              {session === undefined ? null : (
+                                <MessagesScreen
+                                  api={messagesApi}
+                                  isActive={screenIsActive && !pendingGo}
+                                  viewerActorId={session.userId}
+                                  dmRetentionDays={dmRetentionDays}
+                                  // The screen owns backing out of its own thread/requests
+                                  // sub-views on `Esc` (`backToList`) — this only fires once
+                                  // it has nothing left to back out of, so the shell's own
+                                  // blanket `Esc` handler below defers to it entirely rather
+                                  // than racing it closed mid-thread.
+                                  onBack={() => setDmDrawerRequested(false)}
+                                />
+                              )}
+                            </Drawer>
+                          ) : null}
+                        </Box>
+                      </Box>
 
-                  <Box
-                    flexDirection="column"
-                    flexShrink={0}
-                    height={FOOTER_ROWS}
-                    paddingX={1}
-                    overflow="hidden"
-                  >
-                    <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
-                    <Box height={1} flexShrink={0} overflow="hidden">
-                      {toast === undefined ? <Text> </Text> : <ToastLine toast={toast} />}
+                      <Box
+                        flexDirection="column"
+                        flexShrink={0}
+                        height={footerChromeRows}
+                        paddingX={1}
+                        overflow="hidden"
+                      >
+                        <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
+                        <Box height={1} flexShrink={0} overflow="hidden">
+                          {toast === undefined ? <Text> </Text> : <ToastLine toast={toast} />}
+                        </Box>
+                        {showRibbon ? null : (
+                          <StatusBar
+                            width={Math.max(10, columns - 2)}
+                            target={api.target}
+                            breadcrumb={breadcrumb}
+                            connection={serverInfoState.status}
+                            refreshing={refreshing}
+                            handle={session?.actor?.handle}
+                            unreadCount={unreadCount}
+                          />
+                        )}
+                        <HintLine
+                          width={Math.max(10, columns - 2)}
+                          keys={hintsFor(screen, {
+                            authenticated: session !== undefined,
+                            canGoBack: canGoBack(stack),
+                          })}
+                        />
+                      </Box>
                     </Box>
-                    <StatusBar
-                      width={Math.max(10, columns - 2)}
-                      target={api.target}
-                      screenTitle={SCREEN_TITLES[screen]}
-                      status={statusLabel(serverInfoState.status)}
-                      statusColor={statusColor(serverInfoState.status)}
-                      handle={session?.actor?.handle}
-                      keys={hintsFor(screen, {
-                        authenticated: session !== undefined,
-                        canGoBack: canGoBack(stack),
-                      })}
-                      unreadCount={unreadCount}
-                    />
-                  </Box>
-                </Box>
-              </InlineImagesProvider>
-            </KeyLayerProvider>
-          </ModalStackProvider>
-        </ActiveThemeProvider>
-      </PlainModeProvider>
+                  </InlineImagesProvider>
+                </KeyLayerProvider>
+              </ModalStackProvider>
+            </ActiveThemeProvider>
+          </PlainModeProvider>
+        </LinearModeProvider>
+      </NowProvider>
     </MediaSessionProvider>
   );
-}
-
-function statusLabel(status: 'connecting' | 'ready' | 'error'): string {
-  switch (status) {
-    case 'connecting':
-      return 'connecting';
-    case 'ready':
-      return 'connected';
-    case 'error':
-      return 'offline';
-  }
-}
-
-function statusColor(status: 'connecting' | 'ready' | 'error'): string {
-  switch (status) {
-    case 'connecting':
-      return theme.warn;
-    case 'ready':
-      return theme.ok;
-    case 'error':
-      return theme.error;
-  }
 }

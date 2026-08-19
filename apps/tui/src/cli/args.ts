@@ -53,6 +53,10 @@ export interface ParsedArgs {
   /** Strips all nameplate decoration app-wide (spec §173's required "plain mode") —
    * `--plain` or `PATCHES_PLAIN=1`. Also toggleable at runtime (`P`, see `App.tsx`). */
   plain: boolean;
+  /** P12-118's linear/screen-reader mode — one column, no overlays/drawers, indexed
+   * rows, plain mode implied. `--linear` or `PATCHES_LINEAR=1`. Also toggleable at
+   * runtime (`:linear`, see `App.tsx`). */
+  linear: boolean;
   /** Highest-precedence theme selection (design vision §4.2: `--theme` > `PATCHES_THEME` >
    * profile preference > `patches`). Resolved against the built-in/user-theme registry by
    * `theme/themes/resolution.ts`, not here — this parser only recognizes the flag so it
@@ -87,6 +91,7 @@ export interface ParseEnvironment {
   PATCHES_SERVER?: string | undefined;
   PATCHES_INSECURE?: string | undefined;
   PATCHES_PLAIN?: string | undefined;
+  PATCHES_LINEAR?: string | undefined;
 }
 
 /**
@@ -104,6 +109,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         : env.PATCHES_SERVER.trim(),
     insecure: isTruthy(env.PATCHES_INSECURE),
     plain: isTruthy(env.PATCHES_PLAIN),
+    linear: isTruthy(env.PATCHES_LINEAR),
     noUpgradeCheck: false,
     rest: [],
   };
@@ -171,6 +177,9 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         break;
       case '--plain':
         result.plain = true;
+        break;
+      case '--linear':
+        result.linear = true;
         break;
       case '--no-upgrade-check':
         result.noUpgradeCheck = true;
@@ -256,6 +265,9 @@ Options:
   --insecure                     connect without TLS (env: PATCHES_INSECURE)
   --plain                        strip nameplate decoration (env: PATCHES_PLAIN;
                                   also toggleable at runtime with P)
+  --linear                       linear/screen-reader mode: one column, no overlays or
+                                  drawers, indexed rows, plain implied (env: PATCHES_LINEAR;
+                                  also toggleable at runtime with :linear)
   --theme <name>                 select a theme (env: PATCHES_THEME; patches, paper, mono,
                                   hacker, pastel, terminal, or a name from
                                   $XDG_CONFIG_HOME/patches/themes/)

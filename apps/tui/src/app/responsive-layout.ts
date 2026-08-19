@@ -91,3 +91,22 @@ function classifyWidth(columns: number): WidthTier {
   if (columns < ULTRA_MIN_COLUMNS) return 'wide';
   return 'ultra';
 }
+
+/**
+ * How many `patches › screen › region` segments the ribbon/status breadcrumb keeps at
+ * each width tier (P12-102) — the caller (`App.tsx`) always builds the *full* path and
+ * slices from the end using this limit, so a narrow terminal drops the least useful
+ * (leftmost/oldest) segments rather than truncating mid-word.
+ */
+export function breadcrumbSegmentLimit(tier: WidthTier): number {
+  switch (tier) {
+    case 'narrow':
+      return 1;
+    case 'standard':
+      return 2;
+    case 'wide':
+      return 3;
+    case 'ultra':
+      return 4;
+  }
+}

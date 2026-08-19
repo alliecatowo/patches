@@ -183,6 +183,7 @@ full-screen client. Screens and global keys (see
 | `e`               | edit your own Patches Page (opens `$EDITOR`)                           |
 | `o`               | open the selected post's first attachment externally                   |
 | `L`               | login / switch accounts                                                |
+| `Ctrl+D`          | toggle the direct-message drawer (falls back to `g d`)                 |
 | `P`               | toggle plain mode (strip nameplate decoration)                         |
 | `?`               | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages |
 | `q`               | quit                                                                   |
@@ -348,6 +349,12 @@ Pass `--plain` (or set `PATCHES_PLAIN=1`), or press `P` at runtime, to strip nam
 decoration (colored badges/frames) from the UI — useful for screen readers, low-color
 terminals, or just personal preference. Plain mode always shows the plain placeholder box for
 images (see below) rather than any form of art.
+
+Pass `--linear` (or set `PATCHES_LINEAR=1`), or run `:linear` at runtime, for linear/
+screen-reader mode: one column regardless of terminal width (no split panes), no overlays or
+drawers (they open as a full-screen takeover instead), every list row prefixed with its
+1-based position (`[1]`, `[2]`, …) so you can refer to "item 3" without a persistent cursor,
+and plain mode is always implied.
 
 ### Image rendering: Kitty graphics, terminal art, or a plain box
 
