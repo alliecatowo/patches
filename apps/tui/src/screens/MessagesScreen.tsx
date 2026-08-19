@@ -19,10 +19,11 @@ import type {
   SendMessageRequest,
   SendMessageResponse,
 } from '@patches/proto';
-import { Box, Text, useInput, useStdin, useWindowSize } from 'ink';
+import { Box, Text, useInput, useStdin } from 'ink';
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useContentSize } from '../app/layout.js';
 import { movementTarget } from '../app/list-movement.js';
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
@@ -226,7 +227,7 @@ export function MessagesScreen({
   onBack,
   createRequestId = randomUUID,
 }: MessagesScreenProps): ReactElement {
-  const { rows } = useWindowSize();
+  const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
   const [view, setView] = useState<View>(initialConversationId === undefined ? 'list' : 'thread');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
@@ -322,7 +323,7 @@ export function MessagesScreen({
     };
   }, [api, conversationId, view]);
 
-  const visibleCount = Math.max(3, rows - 10);
+  const visibleCount = Math.max(3, rows - 4);
   const effectiveListRow = Math.min(selectedListRow, Math.max(conversations.items.length - 1, 0));
   const effectiveRequestRow = Math.min(selectedRequestRow, Math.max(visibleRequests.length - 1, 0));
 

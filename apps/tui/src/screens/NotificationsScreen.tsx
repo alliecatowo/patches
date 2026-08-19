@@ -1,7 +1,8 @@
+import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
 import { NOTIFICATION_TYPE, timestampToDate, type Actor, type Notification } from '@patches/proto';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput, useWindowSize } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { movementTarget } from '../app/list-movement.js';
@@ -80,7 +81,7 @@ export function NotificationsScreen({
   onOpenAuthor,
   onReadStateChanged,
 }: NotificationsScreenProps): ReactElement {
-  const { rows } = useWindowSize();
+  const { rows } = useContentSize();
   const fetchPage = useCallback(
     (cursor: string): Promise<Page<Notification>> =>
       ensureAccessToken()
@@ -151,7 +152,7 @@ export function NotificationsScreen({
     [api, ensureAccessToken, notifications, onReadStateChanged],
   );
 
-  const visibleCount = Math.max(3, rows - 12);
+  const visibleCount = Math.max(3, rows - 6);
   const windowStart = Math.min(
     Math.max(0, effectiveSelected - Math.floor(visibleCount / 2)),
     Math.max(0, notifications.length - visibleCount),

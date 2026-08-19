@@ -59,45 +59,58 @@ Network calls never live directly inside render components — they go through
 
 ## 3. Navigation model (§69)
 
-Keyboard-first. Baseline keymap (exact bindings may evolve; keep them discoverable
-via `?` help). **Status** marks what actually exists today (`apps/tui/src/app/App.tsx`)
-vs. spec-planned:
+Keyboard-first. **`apps/tui/src/app/keymap.ts` is the single source of truth** — one
+`KEYMAP` table that generates the status-bar hints, the `?` help screen, and the
+command palette, so those three can never disagree about what a key does. Do not
+copy the bindings into a third place; a duplicated table is a table that drifts (this
+section used to hold one, and it went stale the moment keymap v2 landed).
 
-| Key       | Action                                                              | Status                                                                   |
-| --------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `j` / `↓` | next item                                                           | implemented (`PostList`, `SearchScreen`)                                 |
-| `k` / `↑` | previous item                                                       | implemented                                                              |
-| `Enter`   | open selected post's thread (or search result's profile)            | implemented (P4-004 — was "open author" before Phase 4)                  |
-| `p`       | open selected post's author profile                                 | implemented (P4-004; moved off `Enter`)                                  |
-| `v`       | reveal/hide a content-warning-gated post                            | implemented                                                              |
-| `c`       | compose                                                             | implemented                                                              |
-| `r`       | reply to selected post (compose, pre-filled `in_reply_to_id`)       | implemented (P4-004)                                                     |
-| `l`       | like/unlike                                                         | implemented (P4-004, optimistic — spec §79)                              |
-| `b`       | bookmark/unbookmark                                                 | implemented (P4-004, optimistic — spec §79)                              |
-| `!`       | report the selected post, or the profile being viewed               | implemented (P4-004)                                                     |
-| `f`       | follow/unfollow the profile being viewed                            | implemented                                                              |
-| `M`       | mute/unmute the profile being viewed (confirm `y`/`n`)              | implemented (P4-004; spec's baseline table says lowercase `m`)           |
-| `B`       | block/unblock the profile being viewed (confirm `y`/`n`)            | implemented (P4-004)                                                     |
-| `/`       | search                                                              | implemented                                                              |
-| `g h`     | go home                                                             | implemented (requires a session)                                         |
-| `g l`     | go local                                                            | implemented                                                              |
-| `g s`     | go search (alternate to `/`)                                        | implemented                                                              |
-| `g n`     | go notifications                                                    | implemented (P4-004)                                                     |
-| `g b`     | go bookmarks                                                        | implemented (P4-004)                                                     |
-| `g p`     | go own profile                                                      | implemented                                                              |
-| `g v`     | go to the caller's own Patches Page                                 | implemented (P45-006)                                                    |
-| `o`       | open the selected post's first attachment externally                | implemented (P5-003/B-004)                                               |
-| `Ctrl+A`  | compose: attach a local image by path                               | implemented (P5-003, compose screen only)                                |
-| `v`       | (profile screen) open that actor's Patches Page                     | implemented (P45-006; distinct from the `PostList` `v` above)            |
-| `e`       | (own profile only) edit display name/bio/location/website/nameplate | implemented (A-027, A-037)                                               |
-| `e`       | (own Patches Page) edit the raw document in `$VISUAL`/`$EDITOR`     | implemented (P45-006)                                                    |
-| `E`       | (own Patches Page) structured block-by-block editor                 | implemented (B-023)                                                      |
-| `r`       | (accounts screen, only while unverified) resend verification email  | implemented (A-028; distinct from the `PostList`/thread `r` reply above) |
-| `R`       | reconnect (connect screen only)                                     | implemented                                                              |
-| `P`       | toggle plain mode (spec §173; not in the spec's baseline list)      | implemented (B-022)                                                      |
-| `?`       | help                                                                | implemented                                                              |
-| `q`       | quit                                                                | implemented                                                              |
-| `Esc`     | cancel modal/action; on the thread screen, back one level           | implemented (login, compose, search, thread, report)                     |
+- Reader-facing table: [`docs/user-guide.md`](../user-guide.md), checked against
+  `KEYMAP` by `apps/tui/test/docs-keymap.test.ts`.
+- In-app: press `?` for the complete list, grouped, with the current screen's keys
+  first. `j`/`k` scrolls it a line at a time and `Space`/`PgDn` a page at a time.
+- By name: `:` or `Ctrl+P` opens the command palette, whose commands are generated
+  from the same table.
+
+### Keymap v2 (P12-007) — what changed
+
+| Key          | Now                                 | Previously                              |
+| ------------ | ----------------------------------- | --------------------------------------- |
+| `R`          | repost / unrepost the selected post | reconnect (the connect screen is gone)  |
+| `Ctrl+R`     | refresh the current screen          | —                                       |
+| `Q`          | quote the selected post             | —                                       |
+| `J`          | join / leave the community          | —                                       |
+| `E`          | edit your own selected post         | (still edits a Page on the Page screen) |
+| `d`          | delete your own post (confirm)      | —                                       |
+| `H`          | the selected post's edit history    | —                                       |
+| `: / Ctrl+P` | command palette                     | —                                       |
+
+### Input dispatch
+
+Every key goes through one dispatcher (`app/input.tsx`). Screens and overlays push a
+_layer_; the shell dispatches top-down and a layer returns `true` only for keys it
+actually consumed, so `Ctrl+C`, `Ctrl+P` and the navigation prefix stay reachable from
+inside a text sub-mode. Two hazards this design has already hit, both worth knowing
+before touching it:
+
+- **Ink parses one stdin chunk into one keypress.** Two keys typed fast enough to
+  arrive in the same read reach the app as a single multi-character `input`, so a
+  two-key sequence like `g h` is never seen. The shell splits such runs back into
+  individual keys (`isCoalescedKeyRun`); without it, the faster you type the less
+  works.
+- **Prefix state is held in a ref, not `useState`.** Ink invokes the same handler
+  closure for every key in a chunk, so a state value written by one key is still stale
+  when the next is handled in the same tick.
+
+### Overlays
+
+An open overlay (help, palette, confirm) hides the screen beneath it with
+`display="none"`, never with `height={0}`: a zero-height box is removed from layout
+but Ink still paints its text into the same rows, which showed the timeline bleeding
+through the help screen mid-line. `display="none"` makes Yoga skip the subtree and Ink
+skip painting it, while React keeps the screen mounted so an in-progress sub-mode (a
+half-typed guestbook entry) survives opening the palette. True frozen-background
+compositing is still open as P12-022.
 
 ## 4. Full-screen behavior (§70)
 
@@ -292,6 +305,50 @@ never shell string interpolation of untrusted paths.
   can, otherwise the spec §75 fallback box (`buildFallbackBox` — mime/dimensions/`press o
 to open externally`). `PostRow` always renders it; there is no path where an attachment
   is silently dropped.
+
+## 7b. Post body markup (P12-017) {#markup}
+
+A post body is displayed as rich text. Two input dialects are accepted and both are
+funnelled through **one** pipeline in `apps/tui/src/format/markup.ts`:
+
+```
+raw body -> sanitizeForTerminal -> parse (markdown | HTML subset) -> AST -> layout -> Ink
+```
+
+- **Markdown-lite**: `**bold**`, `*italic*`, `` `code` ``, fenced code, `[text](url)`,
+  bare URLs, `- `/`1. ` lists, `> ` blockquote, `#` headings (rendered as bold — a
+  terminal has no larger type to grow into), plus `@mentions` and `#tags`.
+- **HTML subset**: `<b> <strong> <i> <em> <code> <a href> <br> <p> <ul> <ol> <li>
+  <blockquote>`. Every other tag is stripped to its text; `<script>`/`<style>` lose
+  their contents entirely.
+
+### Invariants
+
+1. **Sanitisation happens once, first.** Control characters and escape sequences never
+   reach the AST, and a numeric entity (`&#27;`) cannot smuggle one back in.
+2. **Only http/https/mailto are links.** `javascript:` and `data:` render as inert
+   text, never as something activatable.
+3. **Layout is measurement.** `layoutMarkup` wraps to exact terminal cells and
+   `measureMarkupHeight` counts the lines it produced, so the viewport's height and the
+   drawn output are the same computation rather than two that must be kept in step.
+   `measurePostBody` measures in _plain_ mode, which reproduces the source markers and
+   is therefore an upper bound on the decorated form.
+4. **A newline is a line break.** A paragraph holds hard-broken lines; markdown's
+   "soft break becomes a space" rule would reflow every multi-line post into a wall of
+   text.
+5. **Plain mode shows the source markers** (`**bold**`, `[text](href)`, `- item`,
+   `> quote`) with no colour, so emphasis stays visible with all decoration off
+   (§173/§185).
+
+### The web client must reuse this grammar
+
+`markup.ts` contains no Ink, React or terminal escapes — it takes a string and returns
+data. When the web client renders post bodies it **ports or imports this module**
+rather than growing a second grammar. Two grammars means the same post renders
+differently in two clients, and a sanitiser bug fixed in one survives in the other;
+the safe-scheme allow-list and the escape stripping in particular are security
+behaviour, not formatting. If the module needs to move, promote it to a shared package
+(`packages/domain` or a new `packages/markup`) — do not fork it.
 
 ## 8. Compose experience (§77)
 
