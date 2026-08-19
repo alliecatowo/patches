@@ -606,6 +606,7 @@ included in error metadata/messages where useful.
 | `CLIENT_VERSION_UNSUPPORTED`      | `FAILED_PRECONDITION` |
 | `NOT_IMPLEMENTED`                 | `UNIMPLEMENTED`       |
 | `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
+| `FOLLOW_REQUEST_NOT_FOUND`        | `NOT_FOUND`           |
 
 `AUTH_EMAIL_UNVERIFIED` and `MEDIA_NOT_READY` are mapped to `FAILED_PRECONDITION`
 because the request is well-formed but the resource/account is not yet in a state
