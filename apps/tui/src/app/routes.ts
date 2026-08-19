@@ -23,6 +23,7 @@ export const ROUTE_KINDS: Readonly<Record<Screen, RouteKind>> = {
   tagFeed: 'list',
   communities: 'list',
   messages: 'list',
+  followRequests: 'list',
   // Details — one thing, opened from a list; the right pane in a split.
   thread: 'detail',
   page: 'detail',
@@ -38,6 +39,12 @@ export const ROUTE_KINDS: Readonly<Record<Screen, RouteKind>> = {
   preferences: 'full',
   help: 'full',
   report: 'full',
+  privacy: 'full',
+  filters: 'full',
+  filterLists: 'full',
+  labelers: 'full',
+  appeals: 'full',
+  moderationLog: 'full',
 };
 
 export function routeKind(screen: Screen): RouteKind {
