@@ -30,7 +30,8 @@ export interface FilePickerProps {
   allowedExtensions?: readonly string[];
   allowedMimeTypes?: readonly string[];
   /** Optional caller-owned MIME detector; useful when extension inference is insufficient. */
-  resolveMimeType?: ((path: string) => string | undefined | Promise<string | undefined>) | undefined;
+  resolveMimeType?:
+    ((path: string) => string | undefined | Promise<string | undefined>) | undefined;
   /** Extra extension-to-MIME mappings, used only when `resolveMimeType` is absent. */
   mimeTypesByExtension?: Readonly<Record<string, string>>;
   maxBytes: number;
@@ -375,7 +376,8 @@ interface ValidationOptions {
   allowedMimeTypes: readonly string[];
   maxBytes: number;
   mimeTypesByExtension: Readonly<Record<string, string>>;
-  resolveMimeType?: ((path: string) => string | undefined | Promise<string | undefined>) | undefined;
+  resolveMimeType?:
+    ((path: string) => string | undefined | Promise<string | undefined>) | undefined;
 }
 
 async function validateSelectedFile(

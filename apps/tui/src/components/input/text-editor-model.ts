@@ -152,9 +152,7 @@ export function normalizeEditorInsertion(value: string): string {
   return value
     .replace(/\r\n?/g, '\n')
     .replace(/\t/g, ' ')
-    .replace(CONTROL_CHARACTER, (character) =>
-      character === '\n' ? character : '',
-    );
+    .replace(CONTROL_CHARACTER, (character) => (character === '\n' ? character : ''));
 }
 
 /** Truncate inserted content without splitting a Unicode code point. */
