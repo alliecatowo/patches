@@ -91,6 +91,13 @@ describe('parseArgs', () => {
     expect(parseArgs(['accounts']).command).toBe('accounts');
     expect(parseArgs(['whoami']).command).toBe('whoami');
     expect(parseArgs(['keys']).command).toBe('keys');
+    expect(parseArgs(['dm']).command).toBe('dm');
+  });
+
+  it('forwards dm subcommands and flags into rest', () => {
+    const args = parseArgs(['dm', 'read', 'conversation-1', '--limit', '10']);
+    expect(args.command).toBe('dm');
+    expect(args.rest).toEqual(['read', 'conversation-1', '--limit', '10']);
   });
 
   it('forwards the keys subcommand and its own arguments into rest', () => {

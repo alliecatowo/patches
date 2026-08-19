@@ -11,6 +11,7 @@ import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
 import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
+import { runDm } from './cli/dm.js';
 import { createNodeIo } from './cli/io.js';
 import { runKeys } from './cli/keys.js';
 import { runLogin } from './cli/login.js';
@@ -61,6 +62,7 @@ async function main(): Promise<number> {
   if (args.command === 'verify') return runVerify(rest, { io, env: process.env, target, insecure });
   if (args.command === 'profile')
     return runProfile(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'dm') return runDm(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

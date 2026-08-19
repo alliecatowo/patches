@@ -12,9 +12,10 @@ export type Command =
   | 'whoami'
   | 'keys'
   | 'verify'
-  | 'profile';
+  | 'profile'
+  | 'dm';
 
-const AUTH_COMMANDS: readonly Command[] = [
+const SUBCOMMANDS: readonly Command[] = [
   'register',
   'login',
   'logout',
@@ -23,6 +24,7 @@ const AUTH_COMMANDS: readonly Command[] = [
   'keys',
   'verify',
   'profile',
+  'dm',
 ];
 
 export interface ParsedArgs {
@@ -87,9 +89,9 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         break;
       case '--help':
       case '-h':
-        // An auth subcommand's own --help (e.g. `patches register --help`) is its
+        // A subcommand's own --help (e.g. `patches register --help`) is its
         // business, not this parser's — forward it instead of overriding the command.
-        if (AUTH_COMMANDS.includes(result.command)) {
+        if (SUBCOMMANDS.includes(result.command)) {
           result.rest.push(argument);
         } else {
           result.command = 'help';
@@ -123,6 +125,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'keys':
       case 'verify':
       case 'profile':
+      case 'dm':
         result.command = argument;
         break;
       case '--insecure':
@@ -155,7 +158,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
           result.target = argument.slice('--node='.length);
           break;
         }
-        if (AUTH_COMMANDS.includes(result.command)) {
+        if (SUBCOMMANDS.includes(result.command)) {
           result.rest.push(argument);
           break;
         }
@@ -182,6 +185,7 @@ Usage:
   patches verify <code>        confirm your email with the code it was sent
   patches verify --resend      ask the server to resend the verification email
   patches profile edit [opts]  edit your display name/bio/location/website
+  patches dm <command>         list, read, send, or manage message requests
   patches --version            print the client version
 
 Options:
@@ -193,5 +197,5 @@ Options:
   -v, --version                  show the client version
 
 Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` /
-\`patches profile edit --help\` for subcommand-specific options.
+\`patches profile edit --help\` / \`patches dm --help\` for subcommand-specific options.
 `;
