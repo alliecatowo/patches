@@ -87,12 +87,67 @@ export const router = createBrowserRouter([
           })),
       },
       {
-        path: 'settings/profile',
+        path: 'settings',
         lazy: () =>
-          import('./routes/SettingsProfileRoute.js').then((m) => ({
+          import('./routes/settings/SettingsLayout.js').then((m) => ({
             Component: () => (
               <ProtectedRoute>
-                <m.SettingsProfileRoute />
+                <m.SettingsLayout />
+              </ProtectedRoute>
+            ),
+          })),
+        children: [
+          {
+            path: 'profile',
+            lazy: () =>
+              import('./routes/SettingsProfileRoute.js').then((m) => ({
+                Component: m.SettingsProfileRoute,
+              })),
+          },
+          {
+            path: 'privacy',
+            lazy: () =>
+              import('./routes/settings/PrivacySettingsRoute.js').then((m) => ({
+                Component: m.PrivacySettingsRoute,
+              })),
+          },
+          {
+            path: 'filters',
+            lazy: () =>
+              import('./routes/settings/FiltersSettingsRoute.js').then((m) => ({
+                Component: m.FiltersSettingsRoute,
+              })),
+          },
+          {
+            path: 'lists',
+            lazy: () =>
+              import('./routes/settings/FilterListsSettingsRoute.js').then((m) => ({
+                Component: m.FilterListsSettingsRoute,
+              })),
+          },
+          {
+            path: 'labelers',
+            lazy: () =>
+              import('./routes/settings/LabelersSettingsRoute.js').then((m) => ({
+                Component: m.LabelersSettingsRoute,
+              })),
+          },
+        ],
+      },
+      {
+        path: 'moderation/log',
+        lazy: () =>
+          import('./routes/moderation/ModerationLogRoute.js').then((m) => ({
+            Component: m.ModerationLogRoute,
+          })),
+      },
+      {
+        path: 'appeals',
+        lazy: () =>
+          import('./routes/AppealsRoute.js').then((m) => ({
+            Component: () => (
+              <ProtectedRoute>
+                <m.AppealsRoute />
               </ProtectedRoute>
             ),
           })),

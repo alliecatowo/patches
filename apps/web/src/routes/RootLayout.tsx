@@ -38,8 +38,14 @@ export function RootLayout(): JSX.Element {
         <NavLink to="/search" className={NAV_LINK_CLASS}>
           <span className={styles['navLabel']}>Search</span>
         </NavLink>
+        <NavLink to="/moderation/log" className={NAV_LINK_CLASS}>
+          <span className={styles['navLabel']}>Mod log</span>
+        </NavLink>
         {session ? (
           <>
+            <NavLink to="/appeals" className={NAV_LINK_CLASS}>
+              <span className={styles['navLabel']}>Appeals</span>
+            </NavLink>
             <NavLink to="/notifications" className={NAV_LINK_CLASS}>
               <span className={styles['navLabel']}>
                 Notifications
