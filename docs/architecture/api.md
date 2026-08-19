@@ -58,7 +58,7 @@ packages/proto/proto/patches/v1/
 ├── pages.proto       # implemented (P45-003)
 ├── posts.proto       # implemented
 ├── feeds.proto       # implemented
-├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship/ListMutualFollows)
+├── social_graph.proto # implemented (FollowActor/UnfollowActor/GetRelationship/ListMutualFollows/ListFollowRequests/AcceptFollowRequest/RejectFollowRequest)
 ├── media.proto       # implemented (Phase 5)
 ├── moderation.proto  # implemented (P6-001/P6-002)
 ├── reactions.proto   # implemented (P4-002)
@@ -199,39 +199,62 @@ mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's 
 badges forward regardless of what a request sends, and validates the serialized record stays
 ≤ 2 KiB.
 
-### SocialGraphService (§50) — implemented in `social_graph.proto` (P3-001), `FollowActor`/`UnfollowActor`/`GetRelationship`/`ListMutualFollows`
+### SocialGraphService (§50, §197.5) — implemented in `social_graph.proto` (P3-001, P14-010 follow-up), `FollowActor`/`UnfollowActor`/`GetRelationship`/`ListMutualFollows`/`ListFollowRequests`/`AcceptFollowRequest`/`RejectFollowRequest`
 
-| RPC                 | Notes                                                                                                                                                                                        |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FollowActor`       | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent    |
-| `UnfollowActor`     | idempotent — unfollowing a non-followed actor is not an error                                                                                                                                |
-| `GetRelationship`   | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting` — all require an authenticated session                                                                           |
-| `ListMutualFollows` | (B-024) actors `actor_id` both follows and is followed by ("friends"); self-join on `follows`, keyset-paginated on the caller-facing edge's `(created_at DESC, id DESC)`; requires a session |
+| RPC                   | Notes                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FollowActor`         | v0 local accounts transition straight to `FOLLOWING`; self-follow rejected (`VALIDATION_ERROR`); a block in either direction rejected (`ACTOR_BLOCKED` → `PERMISSION_DENIED`); idempotent. Against a **locked** local actor (§197.5), creates a pending `follow_requests` row instead (`FollowActorResponse.requested = true`), rate-limited per actor/peer |
+| `UnfollowActor`       | idempotent — unfollowing a non-followed actor is not an error; also cancels a pending outgoing follow request toward the target, if any (§197.5's "cancel my request")                                                                                                                                                                                      |
+| `GetRelationship`     | `state` (`NONE`/`PENDING`/`FOLLOWING`), `followed_by`, `blocking`, `muting`, `requested` (outgoing pending request), `requested_by` (incoming pending request) — all require an authenticated session                                                                                                                                                       |
+| `ListMutualFollows`   | (B-024) actors `actor_id` both follows and is followed by ("friends"); self-join on `follows`, keyset-paginated on the caller-facing edge's `(created_at DESC, id DESC)`; requires a session                                                                                                                                                                |
+| `ListFollowRequests`  | (§197.5) the caller's own inbound pending-request queue, keyset-paginated on `(created_at DESC, id DESC)`; requires a session — there is no one else's queue to list                                                                                                                                                                                        |
+| `AcceptFollowRequest` | (§197.5) creates the `FOLLOWING` `follows` row and removes the request; `FOLLOW_REQUEST_NOT_FOUND` if none is pending; notifies the requester (`NotificationType.FOLLOW`)                                                                                                                                                                                   |
+| `RejectFollowRequest` | (§197.5) discards the request, no `follows` row ever created; `FOLLOW_REQUEST_NOT_FOUND` if none is pending; does not notify the requester (same non-disclosure reasoning as blocks, §62)                                                                                                                                                                   |
 
 `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are **not** on this service — they live on
 `ModerationService` below (P6-001). `FollowActor` calls `NotificationsService.notifyFollow` on a
-genuinely new follow (A-026), after the follow transaction commits.
+genuinely new follow (A-026), or `notifyFollowRequest` on a genuinely new request (§197.5),
+after the follow transaction commits.
+
+Locked-account follow requests (§197.5) live in their own `follow_requests` table
+(`packages/database/src/entities/follow-request.entity.ts`), never a third `follows.status`
+value — see that entity's doc comment for why conflating "awaiting a locked local actor's
+approval" with the pre-existing remote-federation `PENDING` status (awaiting that actor's
+node sending back `Accept`, P8-002/P8-003) would be wrong. `Relationship.state` still reports
+`PENDING` for both cases; `requested`/`requested_by` disambiguate the locked-account case.
+Unlocking an account never auto-accepts a request already pending against it (§197.5's
+explicit rule) — see `docs/architecture/social.md`.
 
 ### PostService (§51) — implemented in `posts.proto` (P3-001, P11-006)
 
-| RPC                          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreatePost`                 | idempotent; supports replies, community posts, quotes with server-enforced quote policy, and write-time tag extraction; triggers reply, mention, and quote notifications as applicable                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `GetPost`                    | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `DeletePost`                 | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ListReplies`                | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                                                                                                                                                                                                                                                                                                       |
-| `EditPost` / `ListPostEdits` | body/media edits preserve immutable snapshots and never re-notify or re-order the post; structural fields remain immutable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `PinPost` / `UnpinPost`      | idempotently manages an actor's ordered pinned-post set, capped at three                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `SearchPosts`                | Status: implemented (P12) — Postgres full-text (`websearch_to_tsquery('simple', …)` against a GIN expression index on `to_tsvector('simple', body)`, `Phase12PostSearch` migration); strictly newest-first, keyset-paged like every other list RPC — no relevance score, never a `sort`/`order` param (§194); optional bearer token, same block/mute/`FOLLOWERS`-visibility/tag-mute/community rules as `ListLocalFeed` (reuses its exported filter helpers); optional `author_handle` filter; replies excluded unless `include_replies` is set; rejects an empty/whitespace or >200-char `query` with `INVALID_ARGUMENT` |
+| RPC                          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreatePost`                 | idempotent; supports replies, community posts, quotes with server-enforced quote policy, and write-time tag extraction; triggers reply, mention, and quote notifications as applicable; gated by `RequirePrivacyAckGuard` when `REQUIRE_PRIVACY_ACK=true` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GetPost`                    | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `DeletePost`                 | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `ListReplies`                | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `EditPost` / `ListPostEdits` | body/media edits preserve immutable snapshots and never re-notify or re-order the post; structural fields remain immutable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `PinPost` / `UnpinPost`      | idempotently manages an actor's ordered pinned-post set, capped at three                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `SearchPosts`                | Status: implemented (P12; SEARCH-scope filters P14 follow-up) — Postgres full-text (`websearch_to_tsquery('simple', …)` against a GIN expression index on `to_tsvector('simple', body)`, `Phase12PostSearch` migration); strictly newest-first, keyset-paged like every other list RPC — no relevance score, never a `sort`/`order` param (§194); optional bearer token, same block/mute/`FOLLOWERS`-visibility/tag-mute/community rules as `ListLocalFeed` (reuses its exported filter helpers); optional `author_handle` filter; replies excluded unless `include_replies` is set; rejects an empty/whitespace or >200-char `query` with `INVALID_ARGUMENT`; a viewer's `SEARCH`-scope filters (§198) are applied with the same bounded-over-fetch/`MAX_FILTER_ROUNDS` pattern `FeedService#page()` uses — a `hide` match is omitted (pagination stays correct across rounds), `collapse`/`warn` populate `filtered_by` |
 
 `Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
 
 `Post.filtered_by` (§198.3, P14-007/P14-008) and `Post.labels` (§200.3, P14-009) are both wired:
-`feeds/post-batch.ts` populates each per post before mapping to the wire. `Post.labels` is
-subscriber-scoped — populated only for labelers the viewer subscribes to (plus the node's own
-labeler, subscribed by default, `modules/labels/label-lookup.ts`) — and only for feed reads so
-far; single-post read paths in `modules/posts/post.service.ts` (`GetPost` and friends) still
-leave it empty rather than guessing, a follow-up task.
+`feeds/post-batch.ts` populates each per post before mapping to the wire, and (P14 follow-up)
+`PostService`'s single-post `viewOf` now populates `Post.labels` too — so `GetPost`, `ListReplies`,
+and every other read that funnels through `viewOf` (edit/pin/quote-nesting) carry the same
+subscriber-scoped labels a feed read does, not just feeds.
+
+`RequirePrivacyAckGuard` (`apps/server/src/common/guards/require-privacy-ack.guard.ts`, P14
+follow-up, spec §197.5, §197.6): an `AuthGuard` companion, attached per-method after `AuthGuard`
+on a handful of write RPCs. A no-op unless the operator sets `REQUIRE_PRIVACY_ACK=true`
+(default false — most nodes publish no privacy notice, `NODE_POLICY_URL` unset); once enabled,
+a caller who hasn't called `PrivacyService.AcknowledgePrivacyNotice` for the node's current
+`PRIVACY_NOTICE_VERSION` gets `FAILED_PRECONDITION`/`PRIVACY_NOTICE_NOT_ACKNOWLEDGED` instead of
+the RPC running. Reads are never gated. Wired today on `PostService.CreatePost`; `send DM`
+(`MessagesController.sendMessage`/`createConversation`) and `follow` (`SocialGraphService.
+FollowActor`) are the same shape of gate but live outside this task's owned file set — a
+follow-up for whoever next touches `apps/server/src/modules/messages/**`/`graph/**`.
 
 ### FeedService (§52) — implemented (P3-002)
 
@@ -295,15 +318,15 @@ image bytes are proxied through Node (§153).
 
 ### ModerationService (§55, §61–64) — implemented in `moderation.proto` (P6-001/P6-002)
 
-| RPC                           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BlockActor` / `UnblockActor` | idempotent; blocking removes any existing follow in either direction (§62) and returns the updated `Relationship`                                                                                                                                                                                                                                                                                                                                    |
-| `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                                                                                                                                                                                                                                               |
-| `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report has no RPC of its own, it's `patches-admin report resolve` (§65, P6-003, `docs/operations/moderation.md`)                                                                                                                                                                          |
-| `ReportMessage`               | applies the same bounds/rate limit and stores a stable snapshot of the reported message plus up to ten surrounding messages                                                                                                                                                                                                                                                                                                                          |
-| `ListModerationLog`           | Status: implemented (P14-012) — **unauthenticated**, keyset-paginated over `moderation_log_entries`; domain-kind entries are fully identified, account/post/media entries are anonymized by construction (no actor-id/post-id column to leak). Today only `patches-admin domain block` writes rows; `user`/`report`-driven account/post entries are a follow-up for `apps/admin/src/commands/{user,report}.ts` (see `docs/operations/moderation.md`) |
-| `ListMyModerationNotices`     | Status: implemented (P14-011) — authenticated (reachable even from a **suspended** account, `SuspensionTolerantAuthGuard` — see below); a live read projection of `admin_audit_log` rows that acted on the caller, never a second source of truth; explanation is synthesized (never `reports.moderator_note`) for a `report.resolve`-derived notice                                                                                                 |
+| RPC                           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BlockActor` / `UnblockActor` | idempotent; blocking removes any existing follow in either direction (§62) and returns the updated `Relationship`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report has no RPC of its own, it's `patches-admin report resolve` (§65, P6-003, `docs/operations/moderation.md`)                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ReportMessage`               | applies the same bounds/rate limit and stores a stable snapshot of the reported message plus up to ten surrounding messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ListModerationLog`           | Status: implemented (P14-012, account/post entries P14 follow-up) — **unauthenticated**, keyset-paginated over `moderation_log_entries`; domain-kind entries are fully identified, account/post/media entries are anonymized by construction (no actor-id/post-id column to leak). `patches-admin domain block` writes a `DOMAIN_BLOCK` row; `user suspend`/`user delete` write `SUSPEND`/`BAN` account-kind rows; `report resolve --action remove-post`/`--action suspend` write `POST_REMOVAL`/`SUSPEND` rows (reason category mapped from the report's own `reason`) — `--action none` writes none (`apps/admin/src/commands/{user,report}.ts`, see `docs/operations/moderation.md`) |
+| `ListMyModerationNotices`     | Status: implemented (P14-011) — authenticated (reachable even from a **suspended** account, `SuspensionTolerantAuthGuard` — see below); a live read projection of `admin_audit_log` rows that acted on the caller, never a second source of truth; explanation is synthesized (never `reports.moderator_note`) for a `report.resolve`-derived notice                                                                                                                                                                                                                                                                                                                                    |
 
 No user-facing RPC exposes internal moderator notes (`reports.moderator_note`), and there is
 no gRPC surface for the admin CLI at all — `apps/admin` reads/writes PostgreSQL directly
@@ -316,10 +339,13 @@ guard.ts`) rather than the ordinary `AuthGuard` — every other authenticated RP
 document still rejects a suspended account outright (`ACCOUNT_SUSPENDED`). A suspension is
 precisely the enforcement action being appealed, so the ordinary guard's blanket rejection
 would make the appeal mechanism unreachable for its single most common case. A **deleted**
-account has no equivalent carve-out: `patches-admin user delete` already invalidates the
-account's session everywhere else in this codebase, so there is currently no live session
-left to view a ban notice through — a real gap, filed as a follow-up rather than silently
-left undocumented.
+account gets the same carve-out (P14 follow-up) while its `account_deletion_requests` row is
+still inside its grace period (not cancelled, not yet purged, `purge_after` not yet passed) —
+`patches-admin user delete`'s grace-period-then-purge deletion is itself an appealable
+enforcement action, so an already-issued access token stays usable for exactly the
+`SuspensionTolerantAuthGuard`-gated RPCs until the account is actually purged. Past the grace
+period (or once cancelled/purged) the guard rejects the same way it always did — there is
+nothing left to appeal a ban notice through once the account is truly gone.
 
 Block/mute enforcement beyond `FeedService`'s visibility filter (already in place since P3-002):
 `PostService.getPost`/`listReplies` and `ReactionsService`'s every RPC (via `getPost`) return
@@ -491,11 +517,12 @@ filters/lists/labeler subscriptions, which this node doesn't implement yet). `pa
 user delete` now routes through this same request-then-purge path in addition to its existing
 immediate status flip, rather than being a second, weaker deletion.
 
-`locked` (follow requests, a correctness fix for the currently-unenforced `FOLLOWERS`
-visibility promise) is accepted and stored by `UpdatePrivacyPrefs`, but has **no follow-request
-enforcement yet** — that requires `modules/graph` (`FollowActor` gaining a pending/approve
-flow), which is a follow-up task. Until it ships, `FOLLOWERS`-visibility posts must be
-described honestly as "not shown publicly", never "private" (§197.5).
+`locked` (follow requests, a correctness fix for the previously-unenforced `FOLLOWERS`
+visibility promise) is accepted and stored by `UpdatePrivacyPrefs`, and is now **enforced**:
+`modules/graph`'s `FollowActor` creates a pending `follow_requests` row instead of an immediate
+follow against a locked local actor (§197.5, see `SocialGraphService` above and
+`docs/architecture/social.md`). `FOLLOWERS`-visibility posts are private to accepted followers
+for real as of this change — clients may now describe them as such.
 
 ## 4. Metadata conventions (§44)
 
@@ -550,34 +577,35 @@ Application error codes are transport-independent, then mapped consistently onto
 gRPC status codes. Stack traces are never exposed to clients; request IDs are
 included in error metadata/messages where useful.
 
-| Application error code       | gRPC status           |
-| ---------------------------- | --------------------- |
-| `AUTH_INVALID_CREDENTIALS`   | `UNAUTHENTICATED`     |
-| `AUTH_EMAIL_UNVERIFIED`      | `FAILED_PRECONDITION` |
-| `AUTH_SESSION_EXPIRED`       | `UNAUTHENTICATED`     |
-| `ACTOR_NOT_FOUND`            | `NOT_FOUND`           |
-| `HANDLE_TAKEN`               | `ALREADY_EXISTS`      |
-| `ACTOR_BLOCKED`              | `PERMISSION_DENIED`   |
-| `POST_NOT_FOUND`             | `NOT_FOUND`           |
-| `POST_FORBIDDEN`             | `PERMISSION_DENIED`   |
-| `POST_TOO_LONG`              | `INVALID_ARGUMENT`    |
-| `COMMUNITY_NOT_FOUND`        | `NOT_FOUND`           |
-| `COMMUNITY_FORBIDDEN`        | `PERMISSION_DENIED`   |
-| `TAG_INVALID`                | `INVALID_ARGUMENT`    |
-| `CONVERSATION_NOT_FOUND`     | `NOT_FOUND`           |
-| `MESSAGE_NOT_FOUND`          | `NOT_FOUND`           |
-| `DM_UNAVAILABLE`             | `NOT_FOUND`           |
-| `PAGE_NOT_FOUND`             | `NOT_FOUND`           |
-| `PAGE_FORBIDDEN`             | `PERMISSION_DENIED`   |
-| `GUESTBOOK_ENTRY_NOT_FOUND`  | `NOT_FOUND`           |
-| `MEDIA_TOO_LARGE`            | `INVALID_ARGUMENT`    |
-| `MEDIA_UNSUPPORTED_TYPE`     | `INVALID_ARGUMENT`    |
-| `MEDIA_NOT_READY`            | `FAILED_PRECONDITION` |
-| `RATE_LIMITED`               | `RESOURCE_EXHAUSTED`  |
-| `VALIDATION_ERROR`           | `INVALID_ARGUMENT`    |
-| `INTERNAL_ERROR`             | `INTERNAL`            |
-| `CLIENT_VERSION_UNSUPPORTED` | `FAILED_PRECONDITION` |
-| `NOT_IMPLEMENTED`            | `UNIMPLEMENTED`       |
+| Application error code            | gRPC status           |
+| --------------------------------- | --------------------- |
+| `AUTH_INVALID_CREDENTIALS`        | `UNAUTHENTICATED`     |
+| `AUTH_EMAIL_UNVERIFIED`           | `FAILED_PRECONDITION` |
+| `AUTH_SESSION_EXPIRED`            | `UNAUTHENTICATED`     |
+| `ACTOR_NOT_FOUND`                 | `NOT_FOUND`           |
+| `HANDLE_TAKEN`                    | `ALREADY_EXISTS`      |
+| `ACTOR_BLOCKED`                   | `PERMISSION_DENIED`   |
+| `POST_NOT_FOUND`                  | `NOT_FOUND`           |
+| `POST_FORBIDDEN`                  | `PERMISSION_DENIED`   |
+| `POST_TOO_LONG`                   | `INVALID_ARGUMENT`    |
+| `COMMUNITY_NOT_FOUND`             | `NOT_FOUND`           |
+| `COMMUNITY_FORBIDDEN`             | `PERMISSION_DENIED`   |
+| `TAG_INVALID`                     | `INVALID_ARGUMENT`    |
+| `CONVERSATION_NOT_FOUND`          | `NOT_FOUND`           |
+| `MESSAGE_NOT_FOUND`               | `NOT_FOUND`           |
+| `DM_UNAVAILABLE`                  | `NOT_FOUND`           |
+| `PAGE_NOT_FOUND`                  | `NOT_FOUND`           |
+| `PAGE_FORBIDDEN`                  | `PERMISSION_DENIED`   |
+| `GUESTBOOK_ENTRY_NOT_FOUND`       | `NOT_FOUND`           |
+| `MEDIA_TOO_LARGE`                 | `INVALID_ARGUMENT`    |
+| `MEDIA_UNSUPPORTED_TYPE`          | `INVALID_ARGUMENT`    |
+| `MEDIA_NOT_READY`                 | `FAILED_PRECONDITION` |
+| `RATE_LIMITED`                    | `RESOURCE_EXHAUSTED`  |
+| `VALIDATION_ERROR`                | `INVALID_ARGUMENT`    |
+| `INTERNAL_ERROR`                  | `INTERNAL`            |
+| `CLIENT_VERSION_UNSUPPORTED`      | `FAILED_PRECONDITION` |
+| `NOT_IMPLEMENTED`                 | `UNIMPLEMENTED`       |
+| `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
 
 `AUTH_EMAIL_UNVERIFIED` and `MEDIA_NOT_READY` are mapped to `FAILED_PRECONDITION`
 because the request is well-formed but the resource/account is not yet in a state

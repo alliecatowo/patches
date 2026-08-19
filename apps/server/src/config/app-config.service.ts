@@ -259,6 +259,12 @@ export class AppConfigService {
   get accountDeletionGracePeriodDays(): number {
     return this.get('ACCOUNT_DELETION_GRACE_PERIOD_DAYS');
   }
+
+  /** Whether `RequirePrivacyAckGuard`-attached write RPCs require a current-version privacy
+   * notice acknowledgement first (spec §197.5, §197.6). Default false. */
+  get requirePrivacyAck(): boolean {
+    return this.get('REQUIRE_PRIVACY_ACK');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

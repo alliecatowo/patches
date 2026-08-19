@@ -241,6 +241,18 @@ const envObjectSchema = z.object({
     .int()
     .positive()
     .default(ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT),
+
+  /**
+   * Amendment C operator opt-in (P14 follow-up, spec §197.5, §197.6): when true,
+   * `RequirePrivacyAckGuard` (`common/guards/require-privacy-ack.guard.ts`) rejects a mutating
+   * RPC it is attached to (create post, send DM, follow) with `FAILED_PRECONDITION`/
+   * `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` until the caller has called `PrivacyService.
+   * AcknowledgePrivacyNotice` for this node's current `PRIVACY_NOTICE_VERSION`. **Default
+   * false**: most self-hosted nodes publish no privacy notice at all (`NODE_POLICY_URL`
+   * defaults to `''`), and gating writes on acknowledging a notice that doesn't exist would
+   * make the node unusable out of the box. Reads are never gated regardless of this flag.
+   */
+  REQUIRE_PRIVACY_ACK: booleanish().default(false),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
