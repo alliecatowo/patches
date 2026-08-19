@@ -46,3 +46,4 @@
 - [Ink fresh-mount useInput subscription race](ink-fresh-mount-useinput-subscription-race.md) — a component's useInput subscribes on a later effect tick, not the mount commit; a keypress in that gap is dropped forever, not delayed
 - [Nest @UseGuards metadata reflection test](nest-guards-metadata-reflection-test.md) — assert a guard is wired to a specific controller method via Reflect.getMetadata(GUARDS_METADATA, Controller.prototype.method), no app boot needed
 - [Ink rapid stdin.write needs flush](ink-rapid-stdin-write-needs-flush.md) — several sequential stdin.write() calls with no await between them can act on stale state in a direct-render component test
+- [Edit tool strips literal control bytes](edit-tool-strips-literal-control-bytes.md) — hand-typing a real ESC byte through old_string/new_string silently drops it; use \x1b in the source instead
