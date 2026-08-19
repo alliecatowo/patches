@@ -880,6 +880,10 @@ export class FakeApiHandle {
       followedBy: this.follows.get(targetId)?.has(callerId) ?? false,
       blocking: this.blocks.get(callerId)?.has(targetId) ?? false,
       muting: this.mutes.get(callerId)?.has(targetId) ?? false,
+      // §197.5 locked-account follow requests: this fixture has no locked-account
+      // simulation, so every follow is immediate and neither field is ever true.
+      requested: false,
+      requestedBy: false,
     };
   }
 
@@ -894,7 +898,10 @@ export class FakeApiHandle {
     const following = this.follows.get(session.userId) ?? new Set<string>();
     following.add(request.actorId);
     this.follows.set(session.userId, following);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      relationship: this.relationship(session.userId, request.actorId),
+      requested: false,
+    });
   }
 
   private unfollowActor(
