@@ -25,6 +25,23 @@ describe('Banner', () => {
     expect(lastFrame()).toContain('Ctrl+R');
   });
 
+  it("renders FriendlyError's hint alongside the title", () => {
+    const { lastFrame } = render(
+      <Banner
+        title="Can't reach the server."
+        hint="Check that it is running."
+        retryAt={undefined}
+      />,
+    );
+    expect(lastFrame()).toContain("Can't reach the server.");
+    expect(lastFrame()).toContain('Check that it is running.');
+  });
+
+  it('omits the hint segment entirely when none is given', () => {
+    const { lastFrame } = render(<Banner title="offline" retryAt={undefined} />);
+    expect(lastFrame()).toContain('offline · Ctrl+R retry');
+  });
+
   it('counts down live to the scheduled retry', async () => {
     const { lastFrame } = render(<Banner title="offline" retryAt={4000} />);
     expect(lastFrame()).toContain('retrying in 4s');
