@@ -1,0 +1,4 @@
+# Synced from ../docs/** at build/dev time by scripts/sync-docs.mjs — not source of truth.
+docs/
+.vitepress/dist/
+.vitepress/cache/

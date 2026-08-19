@@ -34,7 +34,10 @@
     "keys:generate": "node apps/server/scripts/generate-keys.mjs",
     "server": "pnpm --filter @patches/server start:dev",
     "tui": "pnpm --filter @patches/tui start",
-    "clean": "turbo run clean && rm -rf node_modules/.cache"
+    "clean": "turbo run clean && rm -rf node_modules/.cache",
+    "site:dev": "pnpm --filter @patches/site dev",
+    "site:build": "pnpm --filter @patches/site build",
+    "site:deploy": "pnpm --filter @patches/site build && pnpm exec wrangler pages deploy site/.vitepress/dist --project-name patches-site --branch main --commit-dirty=true"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
