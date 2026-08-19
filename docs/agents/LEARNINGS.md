@@ -542,3 +542,33 @@ shared Postgres integration DB (`patches_test_server`) racing another agent's co
 rule out lifecycle-hook timing first (isolate with a throwaway private test database via
 `TEST_DATABASE_URL_SERVER`), then rule out concurrent-agent DB contention, before suspecting
 application logic.
+
+## 2026-08-19 — Edit tool text matching can silently drop a literal ESC byte from a test fixture
+
+`ComposeScreen.test.tsx` already had a working bracketed-paste test using
+`stdin.write('\x1b[200~/tmp/dropped.png\x1b[201~')` — but the _source file_ stores that as a
+literal ESC (0x1B) control byte inside the single-quoted string, not the four visible
+characters `\`, `x`, `1`, `b`. Copying that literal string as an `old_string`/`new_string`
+argument through the Edit tool (typed by hand, not `sed`-copied from a `Read`) silently
+dropped the invisible byte, producing `'[200~/tmp/dropped.png[201~'` — a string `TextEditor`'s
+paste detector doesn't recognize, so it inserted literally as text instead of triggering the
+attach flow. The test still "ran" (no syntax error) and failed with a confusing diff (the
+literal escape markers visible in `lastFrame()`) rather than an obvious ESC-byte complaint.
+
+**How to apply:** when a new test needs to send a bracketed-paste (or any control-byte-bearing)
+stdin sequence, write it as an explicit JS escape (`'\x1b[200~...\x1b[201~'`) in the string
+literal rather than copying an existing literal-byte string via a text-editing tool — the two
+are visually identical in a terminal/log but not byte-identical, and only the escape form
+survives being retyped.
+
+## 2026-08-19 — Testing a `renderArtPreview` consumer: compare against its own output, not a regex
+
+`AsciiRenderer`'s output uses `LUMINANCE_RAMP = ' .:-=+*#%@'`, not Unicode half-block
+characters (`▀▄█░▒▓` are `HalfBlockRenderer`'s glyphs, picked only when color support is
+detected) — a test asserting "some row contains an art-looking character" via a block-char
+regex silently passes or fails depending on which renderer kind was constructed, not on
+whether the feature actually drew anything. Calling `renderArtPreview(bytes, sameOptions)`
+directly in the test and asserting the component's frame contains that exact first row (both
+driven by a real `sharp`-generated PNG, e.g. `sharp({ create: {...} }).png()`) is deterministic
+and renderer-kind-agnostic. `@patches/tui` already depends on `sharp` directly (same as
+`@patches/terminal-media`), so no new dependency is needed for this pattern.
