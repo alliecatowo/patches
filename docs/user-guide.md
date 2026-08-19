@@ -188,11 +188,29 @@ actually ships. Press `?` in the app for the complete, contextual list.
 ### Composing and attaching images
 
 Press `c` to compose. `Ctrl+S` is the only way to submit — `Enter` always inserts a newline,
-so you can't accidentally post mid-thought. `Ctrl+A` prompts for a local image path and
-attaches it (uploaded, validated, and processed before the post goes out — see
-[`docs/architecture/media.md`](./architecture/media.md)). `Esc` closes the compose screen
-without discarding your draft; drafts persist locally so a stray `Esc` or terminal resize
-won't lose your text.
+so you can't accidentally post mid-thought. The body is a measured multiline editor: arrow
+keys and `Home`/`End` move the cursor, `Alt+Left`/`Alt+Right` jump a word, `Ctrl+E` jumps to
+end of line, `Ctrl+K` deletes to end of line, `Ctrl+W` deletes the previous word, and
+`Ctrl+Z`/`Ctrl+Y` undo/redo. The character counter and limit come from the node's own
+`GetNodeInfo` limits, not a hardcoded number, so it tracks whatever the server you're posting
+to allows.
+
+Typing `@` or `#` opens an autocomplete popover that looks up actors or tags as you type
+(debounced, so a fast typist never sees a stale result); `Tab` accepts the highlighted match,
+`Esc` dismisses the popover without closing compose.
+
+`Ctrl+A` opens a terminal file picker to browse to a local image and attach it (uploaded,
+validated, and processed before the post goes out — see
+[`docs/architecture/media.md`](./architecture/media.md)) instead of typing a raw path.
+Pasting a file path or `file://` URI attaches it directly rather than inserting it as text.
+`Ctrl+X` removes the most recently attached image. `Ctrl+T` toggles a single-line content
+warning field. `Ctrl+O` swaps the editor for a live preview of the rendered post. `Esc` closes
+the compose screen without discarding your draft; drafts persist locally so a stray `Esc` or
+terminal resize won't lose your text. `c` opens a compact quick-post overlay sharing the same
+draft and editor as full compose (never a second copy of the editing logic); `Ctrl+F` expands
+it into the full compose screen (`C` also opens full compose directly) without losing what
+you've typed. Pressing `E` on your own post reopens compose in edit mode, prefilled with the
+existing body.
 
 ### Following and search
 

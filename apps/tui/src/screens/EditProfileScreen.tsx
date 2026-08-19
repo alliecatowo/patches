@@ -7,8 +7,31 @@ import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 import { Nameplate } from '../components/Nameplate.js';
+import { ColorPicker } from '../components/pickers/ColorPicker.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { normalizeHexColor, resolveTerminalColor, type TerminalColorTier } from '../theme/color.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 import { theme } from '../theme/index.js';
+
+/** Best-effort truecolor → 256 → 16 → text detection from the environment
+ * `ColorPicker` itself never probes (its own docstring: "the caller detects
+ * capabilities"). A real per-terminal probe (P12-101/P12-127, owned elsewhere) will
+ * eventually replace this; until then this mirrors the common Node convention
+ * (`COLORTERM=truecolor`, `TERM=*-256color`) that most terminal emulators set. */
+function detectColorTier(): TerminalColorTier {
+  const colorterm = process.env.COLORTERM?.toLowerCase();
+  if (colorterm === 'truecolor' || colorterm === '24bit') return 'truecolor';
+  const term = process.env.TERM ?? '';
+  if (/-256color$/.test(term)) return 'ansi256';
+  if (term !== '' && term !== 'dumb') return 'ansi16';
+  return 'text';
+}
+
+/** The nameplate colour is rendered as foreground text over whatever background the
+ * viewer's terminal has — unknown to this process, so the contrast floor is checked
+ * against a fixed dark reference rather than the (unavailable) real background. A
+ * pick that's readable against black is readable against most terminal themes. */
+const NAME_COLOR_CONTRAST_REFERENCE = '#000000';
 
 /** Mirrors `apps/server/src/modules/actors/validation.ts` — a client-side limit only
  * needs to match, never enforce independently of, the server's actual validation, so
@@ -138,6 +161,9 @@ export function EditProfileScreen({
   const [fields, setFields] = useState(initial);
   const [focus, setFocus] = useState(0);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const plain = usePlainMode();
+  const colorTier: TerminalColorTier = plain ? 'text' : detectColorTier();
 
   const focusedKey = FIELD_ORDER[focus] ?? 'displayName';
 
@@ -220,11 +246,15 @@ export function EditProfileScreen({
         return;
       }
       if (key.return) {
-        // Only the bio field is multi-line — elsewhere Enter is a no-op rather than
-        // inserting a newline a single-line field would never display sensibly.
-        if (focusedKey === 'bio') updateField('bio', (value) => `${value}\n`);
+        // The name colour field is picker-only (below) — Enter opens the picker
+        // rather than inserting anything. Only the bio field is multi-line — every
+        // other field is a no-op rather than inserting a newline it would never
+        // display sensibly.
+        if (focusedKey === 'nameColor') setColorPickerOpen(true);
+        else if (focusedKey === 'bio') updateField('bio', (value) => `${value}\n`);
         return;
       }
+      if (focusedKey === 'nameColor') return; // edited only through the picker
       if (key.backspace || key.delete) {
         updateField(focusedKey, (value) => value.slice(0, -1));
         return;
@@ -235,10 +265,35 @@ export function EditProfileScreen({
         updateField(focusedKey, (value) => (value.length < limit ? value + input : value));
       }
     },
-    { isActive },
+    // The picker owns every key while it is open — the field-editing handler above
+    // must not also react to the same keystroke (e.g. its own Escape would cancel
+    // the whole screen instead of just closing the picker).
+    { isActive: isActive && !colorPickerOpen },
   );
 
-  function fieldRow(key: FieldKey): ReactElement {
+  function nameColorRow(): ReactElement {
+    const focused = focusedKey === 'nameColor';
+    const resolved = resolveTerminalColor(
+      normalizeHexColor(fields.nameColor) ?? NAME_COLOR_CONTRAST_REFERENCE,
+      colorTier,
+    );
+    return (
+      <Box key="nameColor" flexDirection="column" marginBottom={1}>
+        <Text color={focused ? theme.accent : theme.muted} bold={focused}>
+          {FIELD_LABELS.nameColor}
+        </Text>
+        <Text>
+          {plain ? null : (
+            <Text {...(resolved.inkColor === null ? {} : { color: resolved.inkColor })}>██ </Text>
+          )}
+          {fields.nameColor === '' ? '(none)' : sanitizeForTerminal(fields.nameColor)}
+          {focused ? <Text color={theme.muted}> — Enter to change</Text> : null}
+        </Text>
+      </Box>
+    );
+  }
+
+  function fieldRow(key: ProfileFieldKey | Exclude<NameplateFieldKey, 'nameColor'>): ReactElement {
     return (
       <Box key={key} flexDirection="column" marginBottom={1}>
         <Text color={focusedKey === key ? theme.accent : theme.muted} bold={focusedKey === key}>
@@ -248,6 +303,34 @@ export function EditProfileScreen({
           {sanitizeForTerminal(fields[key])}
           {focusedKey === key ? <Text color={theme.accent}>█</Text> : null}
         </Text>
+      </Box>
+    );
+  }
+
+  if (colorPickerOpen) {
+    // The picker (12 fixed rows, `COLOR_PICKER_ROWS`) replaces the whole field list
+    // rather than appending below it — this screen has no internal scrolling of its
+    // own (that's P12-004's `VirtualList`, not this task), so stacking a 12-row
+    // picker under nine already-rendered fields can push it past the shell's
+    // fixed-height clipped content frame on an ordinary terminal (§2.2).
+    return (
+      <Box flexDirection="column">
+        <Text color={theme.accent}>Edit profile — name colour</Text>
+        <Box marginTop={1} flexDirection="column" flexShrink={0}>
+          <ColorPicker
+            initialColor={normalizeHexColor(fields.nameColor) ?? NAME_COLOR_CONTRAST_REFERENCE}
+            comparisonColor={NAME_COLOR_CONTRAST_REFERENCE}
+            role="foreground"
+            capabilityTier={colorTier}
+            isActive={isActive}
+            onChange={(color) => updateField('nameColor', () => color)}
+            onCommit={(color) => {
+              updateField('nameColor', () => color);
+              setColorPickerOpen(false);
+            }}
+            onCancel={() => setColorPickerOpen(false)}
+          />
+        </Box>
       </Box>
     );
   }
@@ -274,7 +357,9 @@ export function EditProfileScreen({
           }}
         />
       </Box>
-      <Box flexDirection="column">{NAMEPLATE_FIELD_ORDER.map((key) => fieldRow(key))}</Box>
+      <Box flexDirection="column">
+        {NAMEPLATE_FIELD_ORDER.map((key) => (key === 'nameColor' ? nameColorRow() : fieldRow(key)))}
+      </Box>
 
       {save.status === 'error' ? <Text color={theme.error}>{save.error.title}</Text> : null}
       <Text color={theme.muted}>
