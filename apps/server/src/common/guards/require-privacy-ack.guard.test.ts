@@ -110,31 +110,34 @@ describe('RequirePrivacyAckGuard (P14 follow-up, spec §197.5, §197.6)', () => 
      * `@nestjs/core`'s `GuardsContextCreator` reads it off `instance[methodName]` at request
      * time (LEARNINGS: proto-nest-index-hand-maintained-reexports's neighbor gotchas about
      * checking framework internals rather than assuming). */
-    function guardsOn(method: (...args: never[]) => unknown): unknown[] {
-      return (Reflect.getMetadata(GUARDS_METADATA, method) as unknown[] | undefined) ?? [];
+    function guardsOn(prototype: object, methodName: string): unknown[] {
+      const method: unknown = Reflect.get(prototype, methodName);
+      return (
+        (Reflect.getMetadata(GUARDS_METADATA, method as object) as unknown[] | undefined) ?? []
+      );
     }
 
     it('GraphController.followActor requires an acknowledged privacy notice', () => {
-      expect(guardsOn(GraphController.prototype.followActor)).toContain(RequirePrivacyAckGuard);
+      expect(guardsOn(GraphController.prototype, 'followActor')).toContain(RequirePrivacyAckGuard);
     });
 
     it('GraphController.listMutualFollows (an anonymous read) is left ungated', () => {
-      expect(guardsOn(GraphController.prototype.listMutualFollows)).not.toContain(
+      expect(guardsOn(GraphController.prototype, 'listMutualFollows')).not.toContain(
         RequirePrivacyAckGuard,
       );
     });
 
     it('CommunityController.createCommunity and joinCommunity require an acknowledged notice', () => {
-      expect(guardsOn(CommunityController.prototype.createCommunity)).toContain(
+      expect(guardsOn(CommunityController.prototype, 'createCommunity')).toContain(
         RequirePrivacyAckGuard,
       );
-      expect(guardsOn(CommunityController.prototype.joinCommunity)).toContain(
+      expect(guardsOn(CommunityController.prototype, 'joinCommunity')).toContain(
         RequirePrivacyAckGuard,
       );
     });
 
     it('CommunityController.getCommunity (a public read) is left ungated', () => {
-      expect(guardsOn(CommunityController.prototype.getCommunity)).not.toContain(
+      expect(guardsOn(CommunityController.prototype, 'getCommunity')).not.toContain(
         RequirePrivacyAckGuard,
       );
     });

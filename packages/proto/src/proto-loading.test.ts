@@ -125,7 +125,15 @@ describe('proto files', () => {
       ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.socialGraph)).toEqual(
-      ['FollowActor', 'GetRelationship', 'ListMutualFollows', 'UnfollowActor'].sort(),
+      [
+        'AcceptFollowRequest',
+        'FollowActor',
+        'GetRelationship',
+        'ListFollowRequests',
+        'ListMutualFollows',
+        'RejectFollowRequest',
+        'UnfollowActor',
+      ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(
       ['GetNodeInfo', 'GetNodePolicy'].sort(),
