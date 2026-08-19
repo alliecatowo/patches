@@ -1,5 +1,7 @@
 import {
   dateToTimestamp,
+  FILTER_ACTION,
+  FILTERED_BY_PROVENANCE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
@@ -74,5 +76,71 @@ describe('measurePostBody mode parity (P12-128)', () => {
     const body = 'x'.repeat(width - BODY_INDENT_COLS + 1);
     const indented = measurePostBody(post({ body }), width, false, false);
     expect(indented.rows).toBe(2);
+  });
+});
+
+describe('measurePostRowHeight filtered_by provenance (§198.3/§199.3)', () => {
+  it('folds a collapse-action match to exactly one row in place of the body', () => {
+    const filtered = post({
+      body: 'a long body that would otherwise measure several rows across three lines',
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER,
+        name: 'Spoilers',
+        listOwner: undefined,
+        action: FILTER_ACTION.COLLAPSE,
+      },
+    });
+    const width = 30;
+    const collapsedHeight = measurePostRowHeight(filtered, width, false, false, false);
+    const plainBody = { ...filtered, filteredBy: undefined };
+    const unfilteredHeight = measurePostRowHeight(plainBody, width, false, false, false);
+    // Header + one folded provenance line + marginBottom, versus header + wrapped body
+    // rows + marginBottom — collapsed is strictly shorter for a multi-row body.
+    expect(collapsedHeight).toBeLessThan(unfilteredHeight);
+    expect(collapsedHeight).toBe(3); // header + folded line + marginBottom
+  });
+
+  it('adds exactly one row back once a collapse-action match is expanded', () => {
+    const filtered = post({
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER,
+        name: 'Spoilers',
+        listOwner: undefined,
+        action: FILTER_ACTION.COLLAPSE,
+      },
+    });
+    const width = 30;
+    const collapsed = measurePostRowHeight(filtered, width, false, false, false);
+    const expanded = measurePostRowHeight(filtered, width, false, true, false);
+    const unfiltered = measurePostRowHeight(
+      { ...filtered, filteredBy: undefined },
+      width,
+      false,
+      false,
+      false,
+    );
+    expect(collapsed).toBe(3); // header + folded line + marginBottom
+    expect(expanded).toBe(unfiltered + 1); // + provenance line above the body
+  });
+
+  it('adds exactly one row for a warn-action match, on top of the untouched body', () => {
+    const filtered = post({
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER,
+        name: 'Politics',
+        listOwner: undefined,
+        action: FILTER_ACTION.WARN,
+      },
+    });
+    const width = 30;
+    const warned = measurePostRowHeight(filtered, width, false, false, false);
+    const unfiltered = measurePostRowHeight(
+      { ...filtered, filteredBy: undefined },
+      width,
+      false,
+      false,
+      false,
+    );
+    expect(warned).toBe(unfiltered + 1);
   });
 });

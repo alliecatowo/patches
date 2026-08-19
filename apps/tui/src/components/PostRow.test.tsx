@@ -1,6 +1,8 @@
 import {
   COMMUNITY_ROLE,
   dateToTimestamp,
+  FILTER_ACTION,
+  FILTERED_BY_PROVENANCE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
@@ -242,5 +244,133 @@ describe('PostRow row rhythm (P12-104)', () => {
     );
     const plainLines = (plain.lastFrame() ?? '').split('\n').length;
     expect(plainLines).toBe(measurePostRowHeight(target, width, false, false, true));
+  });
+});
+
+describe('PostRow filtered_by provenance (§198.3/§199.3)', () => {
+  it('renders nothing extra when filtered_by is unset', () => {
+    const { lastFrame } = render(<PostRow post={post()} />);
+    expect(lastFrame() ?? '').not.toContain('filtered:');
+  });
+
+  it('folds a collapse-action match behind one muted line and hides the body', () => {
+    const filtered = post({
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER,
+        name: 'Spoilers',
+        listOwner: undefined,
+        action: FILTER_ACTION.COLLAPSE,
+      },
+    });
+    const { lastFrame } = render(<PostRow post={filtered} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('filtered: Spoilers — press v to expand');
+    expect(frame).not.toContain('hello world');
+  });
+
+  it('expands a collapse-action match to show the provenance line and the body', () => {
+    const filtered = post({
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER_LIST,
+        name: 'Curated blocklist',
+        listOwner: {
+          id: 'actor-2',
+          handle: 'moderator',
+          displayName: '',
+          bio: '',
+          locationText: '',
+          websiteUrl: '',
+          avatar: undefined,
+          isLocal: true,
+          joinedAt: undefined,
+          counts: undefined,
+          nameplate: undefined,
+          flair: undefined,
+          pinnedPostIds: [],
+        },
+        action: FILTER_ACTION.COLLAPSE,
+      },
+    });
+    const { lastFrame } = render(<PostRow post={filtered} expanded />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('filtered: Curated blocklist (via @moderator)');
+    expect(frame).toContain('hello world');
+    expect(frame).not.toContain('press v to expand');
+  });
+
+  it('renders a warn-action match as a line above the untouched body', () => {
+    const filtered = post({
+      filteredBy: {
+        provenance: FILTERED_BY_PROVENANCE.FILTER,
+        name: 'Politics',
+        listOwner: undefined,
+        action: FILTER_ACTION.WARN,
+      },
+    });
+    const { lastFrame } = render(<PostRow post={filtered} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('filtered: Politics');
+    expect(frame).toContain('hello world');
+  });
+});
+
+describe('PostRow labels (spec §200.3/§203)', () => {
+  it('renders nothing extra when a post has no labels', () => {
+    const { lastFrame } = render(<PostRow post={post()} />);
+    expect(stripSgr(lastFrame() ?? '')).not.toContain('[');
+  });
+
+  it('renders each label as a compact bracketed chip after attribution', () => {
+    const labeled = post({
+      labels: [
+        {
+          id: 'label-1',
+          labelerId: 'labeler-1',
+          subjectActorId: '',
+          subjectPostId: 'post-1',
+          value: 'satire',
+          createdAt: undefined,
+          expiresAt: undefined,
+          retractedAt: undefined,
+        },
+        {
+          id: 'label-2',
+          labelerId: 'labeler-1',
+          subjectActorId: '',
+          subjectPostId: 'post-1',
+          value: 'spoiler',
+          createdAt: undefined,
+          expiresAt: undefined,
+          retractedAt: undefined,
+        },
+      ],
+    });
+    const { lastFrame } = render(<PostRow post={labeled} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('[satire]');
+    expect(frame).toContain('[spoiler]');
+  });
+
+  it('renders label chips in plain mode too', () => {
+    const labeled = post({
+      labels: [
+        {
+          id: 'label-1',
+          labelerId: 'labeler-1',
+          subjectActorId: '',
+          subjectPostId: 'post-1',
+          value: 'satire',
+          createdAt: undefined,
+          expiresAt: undefined,
+          retractedAt: undefined,
+        },
+      ],
+    });
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <PostRow post={labeled} />
+      </PlainModeProvider>,
+    );
+    expect(stripSgr(lastFrame() ?? '')).toContain('[satire]');
   });
 });

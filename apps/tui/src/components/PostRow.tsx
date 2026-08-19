@@ -1,8 +1,9 @@
 import { present } from '../api/present.js';
-import { timestampToDate, type Post } from '@patches/proto';
+import { FILTER_ACTION, timestampToDate, type Post } from '@patches/proto';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 
+import { describeFilteredBy } from '../format/filtered-by.js';
 import { formatRelativeTime } from '../format/relative-time.js';
 import { RichBody } from '../format/rich-text.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
@@ -63,6 +64,15 @@ export function PostRow({
   // reflows the source markers, so measuring anything but the mode about to draw is
   // what reserves rows a decorated body never fills, or under-counts a plain one.
   const bodyMeasurement = measurePostBody(post, width ?? 40, expanded, plain);
+  // §198.3/§199.3: `hide` never reaches the client, so only `collapse`/`warn` are ever
+  // seen here. `collapse` folds the body behind one muted line until `v` expands it
+  // (the same per-row `expanded` toggle a long body already folds behind); `warn`
+  // always renders the provenance line above the untouched body.
+  const filteredByLine = describeFilteredBy(post.filteredBy);
+  const filterAction = present(post.filteredBy) ? post.filteredBy.action : undefined;
+  const isFilterCollapsed = filteredByLine !== undefined && filterAction === FILTER_ACTION.COLLAPSE;
+  const isFilterWarned = filteredByLine !== undefined && filterAction === FILTER_ACTION.WARN;
+  const showProvenanceLine = filteredByLine !== undefined && (isFilterWarned || isFilterCollapsed);
 
   return (
     <Box flexDirection="column" flexShrink={0} marginBottom={1} width={width} overflow="hidden">
@@ -87,15 +97,33 @@ export function PostRow({
         ) : null}
         {when === '' ? null : <Text color={theme.muted}> · {when}</Text>}
         {present(post.editedAt) ? <Text color={theme.muted}> · edited</Text> : null}
+        {/* Labels from labelers the viewer subscribes to (spec §200.3/§203) — compact
+            bracketed chips after attribution, same header row so no extra height
+            budget is needed and they draw identically in plain mode. */}
+        {post.labels.length === 0 ? null : (
+          <Text color={theme.muted}>
+            {' '}
+            {post.labels.map((label) => `[${sanitizeForTerminal(label.value)}]`).join(' ')}
+          </Text>
+        )}
       </Box>
       {post.deleted ? (
         <Text color={theme.muted}>[deleted]</Text>
+      ) : isFilterCollapsed && !expanded ? (
+        <Text color={theme.muted} wrap="truncate-end">
+          {filteredByLine} — press v to expand
+        </Text>
       ) : hasWarning && !revealed ? (
         <Text color={theme.warn} wrap="truncate-end">
           ⚠ {sanitizeForTerminal(post.contentWarning)} — press v to reveal
         </Text>
       ) : (
         <>
+          {showProvenanceLine ? (
+            <Text color={theme.muted} wrap="truncate-end">
+              {filteredByLine}
+            </Text>
+          ) : null}
           {hasWarning ? (
             <Text color={theme.warn} wrap="truncate-end">
               ⚠ {sanitizeForTerminal(post.contentWarning)}

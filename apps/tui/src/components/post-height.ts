@@ -1,6 +1,7 @@
-import type { Post } from '@patches/proto';
+import { FILTER_ACTION, type Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
+import { describeFilteredBy } from '../format/filtered-by.js';
 import { measureMarkupHeight } from '../format/markup.js';
 
 /** Rows the spec §75 fallback box occupies (`buildFallbackBox` returns three lines),
@@ -53,7 +54,8 @@ export function measurePostBody(
  * the terminal and smear Ink's line diff (see `format/measure.ts`).
  *
  * Layout being measured:
- *   1  author · relative time      (hard-clipped, never wraps)
+ *   1  author · relative time      (hard-clipped, never wraps — label chips share this row)
+ *   1  filtered-by provenance     (collapsed-and-folded, or warn — see below)
  *   n  body                        (wraps)
  *   1  content warning             (when present)
  *   1+ media fallback box          (marginTop + three box rows per attachment)
@@ -68,15 +70,26 @@ export function measurePostRowHeight(
   plain = false,
 ): number {
   const usable = Math.max(1, width);
-  let height = 1; // header
+  let height = 1; // header (label chips draw inline here, no extra row)
   if (post.repostedBy.length > 0) height += 1;
   const hasWarning = !post.deleted && post.contentWarning !== '';
+  // §198.3/§199.3: `hide` never reaches the client. `collapse` folds the body behind
+  // one muted line until `v` expands it (the row's existing fold-toggle); `warn`
+  // always shows the provenance line above the untouched body — mirrors `PostRow`.
+  const filteredByLine = describeFilteredBy(post.filteredBy);
+  const filterAction = present(post.filteredBy) ? post.filteredBy.action : undefined;
+  const isFilterCollapsed = filteredByLine !== undefined && filterAction === FILTER_ACTION.COLLAPSE;
+  const isFilterWarned = filteredByLine !== undefined && filterAction === FILTER_ACTION.WARN;
+  const showProvenanceLine = filteredByLine !== undefined && (isFilterWarned || isFilterCollapsed);
 
   if (post.deleted) {
     height += 1;
+  } else if (isFilterCollapsed && !expanded) {
+    height += 1; // "filtered: <name> … — press v to expand"
   } else if (hasWarning && !revealed) {
     height += 1; // "⚠ … — press v to reveal"
   } else {
+    if (showProvenanceLine) height += 1;
     if (hasWarning) height += 1;
     const body = measurePostBody(post, usable, expanded, plain);
     height += body.rows + (body.folded ? 1 : 0);
