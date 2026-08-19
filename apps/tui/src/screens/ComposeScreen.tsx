@@ -2,7 +2,13 @@ import { homedir } from 'node:os';
 import { basename, sep } from 'node:path';
 
 import { present } from '../api/present.js';
-import { MAX_INPUT_BYTES } from '@patches/terminal-media';
+import {
+  MAX_INPUT_BYTES,
+  renderArtPreview,
+  useOptionalMediaRenderer,
+  type ImageRenderMode,
+  type TerminalMediaRenderer,
+} from '@patches/terminal-media';
 import { MEDIA_STATUS, POST_VISIBILITY, QUOTE_POLICY, type Post } from '@patches/proto';
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -27,6 +33,7 @@ import { sanitizeForTerminal } from '../format/sanitize.js';
 import { InvalidAttachmentError, readLocalImage } from '../media/validate.js';
 import { pollUntilReady, uploadMediaFile, type UploadProgress } from '../media/upload.js';
 import { theme } from '../theme/index.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 import { useContentSize } from '../app/layout.js';
 
 /** Post body limit (spec §58) — the fallback used until `GetNodeInfo.limits` arrives. */
@@ -41,6 +48,27 @@ const COUNTER_WARN_RATIO = 0.9;
 export type ComposeMode = 'compose' | 'edit';
 
 type DraftAttachment = NonNullable<ComposeDraft['attachments']>[number];
+
+/** Attach-list thumbnail budget: small enough to read as "a preview", not compete
+ * with the body editor for vertical space (task brief: "≤ 6 rows"). */
+const THUMBNAIL_MAX_ROWS = 6;
+const THUMBNAIL_MAX_COLS = 24;
+
+/** `renderArtPreview`'s `mode` (no real Kitty transmission — see its own doc comment)
+ * mirrors whichever kind the session's actual `TerminalMediaRenderer` picked, so an
+ * attach-list thumbnail degrades exactly the way the rest of the app already did. */
+function artPreviewModeFor(kind: TerminalMediaRenderer['kind']): ImageRenderMode {
+  switch (kind) {
+    case 'kitty':
+      return 'kitty';
+    case 'halfblock':
+      return 'pixel';
+    case 'ascii':
+      return 'ascii';
+    case 'box':
+      return 'box';
+  }
+}
 
 export interface ComposeScreenProps {
   api: PatchesApi;
@@ -154,6 +182,13 @@ export function ComposeScreen({
   const [cwOpen, setCwOpen] = useState(() => (draft.contentWarning ?? '').trim() !== '');
   const [focus, setFocus] = useState<FocusField>('body');
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Attach-list thumbnails (task brief), keyed by `mediaId` — a session-local render
+  // cache, not part of the persisted draft (spec §80's "never lose a draft" is about
+  // the body/attachments themselves; re-deriving a thumbnail after a restart is cheap
+  // and not worth bloating `ComposeDraft`'s on-disk shape for).
+  const [previews, setPreviews] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
+  const mediaRenderer = useOptionalMediaRenderer();
+  const plain = usePlainMode();
   const attachments = draft.attachments ?? [];
 
   useEffect(() => {
@@ -261,6 +296,21 @@ export function ComposeScreen({
       onChange({ ...draft, attachments: next });
       setAttach({ status: 'idle' });
       onNotify?.(`Attached ${basename(path)}.`, 'success');
+      // Fire-and-forget: a thumbnail is a nicety, never something the attach flow
+      // (already succeeded above) waits on or fails over. Skipped entirely in plain
+      // mode and when the session has no renderer or picked the `box` fallback —
+      // there is nothing useful to draw in either case.
+      if (mediaRenderer !== undefined && !plain && mediaRenderer.kind !== 'box') {
+        const kind = mediaRenderer.kind;
+        const mediaId = result.mediaId;
+        void renderArtPreview(local.bytes, {
+          cols: Math.min(THUMBNAIL_MAX_COLS, availableColumns - 4),
+          rows: THUMBNAIL_MAX_ROWS,
+          mode: artPreviewModeFor(kind),
+        })
+          .then((rows) => setPreviews((current) => new Map(current).set(mediaId, rows)))
+          .catch(() => undefined);
+      }
       return next;
     } catch (error) {
       const message =
@@ -516,11 +566,23 @@ export function ComposeScreen({
       )}
       {attachments.length === 0 ? null : (
         <Box flexDirection="column" marginBottom={1} flexShrink={0}>
-          {attachments.map((attachment, index) => (
-            <Text key={attachment.mediaId} color={theme.muted}>
-              [{index + 1}] {sanitizeForTerminal(attachment.fileName)}
-            </Text>
-          ))}
+          {attachments.map((attachment, index) => {
+            const preview = previews.get(attachment.mediaId);
+            return (
+              <Box key={attachment.mediaId} flexDirection="column" flexShrink={0}>
+                <Text color={theme.muted}>
+                  [{index + 1}] {sanitizeForTerminal(attachment.fileName)}
+                </Text>
+                {preview === undefined ? null : (
+                  <Box flexDirection="column" flexShrink={0}>
+                    {preview.map((row, rowIndex) => (
+                      <Text key={`${attachment.mediaId}:${String(rowIndex)}`}>{row}</Text>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
         </Box>
       )}
       {attach.status === 'picking' ? (

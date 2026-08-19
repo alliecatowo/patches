@@ -12,12 +12,18 @@ import {
   type GetNodeInfoResponse,
   type Post,
 } from '@patches/proto';
+import { AsciiRenderer, MediaRendererProvider, renderArtPreview } from '@patches/terminal-media';
 import { render } from 'ink-testing-library';
+import sharp from 'sharp';
+import { useState } from 'react';
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import type { ComposeDraft } from '../compose/draft-store.js';
-import { ComposeScreen, POST_BODY_LIMIT } from './ComposeScreen.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
+import { ComposeScreen, POST_BODY_LIMIT, type ComposeScreenProps } from './ComposeScreen.js';
+import { readLocalImage } from '../media/validate.js';
 
 vi.mock('../media/validate.js', () => ({
   InvalidAttachmentError: class InvalidAttachmentError extends Error {},
@@ -29,6 +35,26 @@ vi.mock('../media/validate.js', () => ({
     sha256: 'deadbeef',
   }),
 }));
+
+/** Re-renders `ComposeScreen` with whatever draft `onChange` last produced — most
+ * tests in this file only assert `onChange`'s call args, but the attach-list
+ * thumbnail test needs the attachment to actually reach the render tree. */
+function ControlledComposeScreen({
+  initialDraft,
+  ...rest
+}: Omit<ComposeScreenProps, 'draft' | 'onChange'> & {
+  initialDraft: ComposeDraft;
+}): ReactElement {
+  const [current, setCurrent] = useState(initialDraft);
+  return <ComposeScreen {...rest} draft={current} onChange={setCurrent} />;
+}
+
+async function solidPng(width: number, height: number): Promise<Uint8Array> {
+  const image = sharp({
+    create: { width, height, channels: 3, background: { r: 10, g: 200, b: 40 } },
+  }).png();
+  return new Uint8Array(await image.toBuffer());
+}
 
 vi.mock('../media/upload.js', () => ({
   uploadMediaFile: vi.fn().mockResolvedValue({ mediaId: 'media-1' }),
@@ -334,6 +360,77 @@ describe('ComposeScreen', () => {
     // Never inserted as literal text into the body.
     const bodies = onChange.mock.calls.map((call) => (call[0] as ComposeDraft).body);
     expect(bodies.some((body) => body.includes('/tmp/dropped.png'))).toBe(false);
+  });
+
+  it('shows an art thumbnail for a local image attachment when images are enabled', async () => {
+    const png = await solidPng(40, 40);
+    vi.mocked(readLocalImage).mockResolvedValueOnce({
+      path: '/tmp/dropped.png',
+      bytes: png,
+      mimeType: 'image/png',
+      byteSize: png.byteLength,
+      sha256: 'deadbeef',
+    });
+    const { stdin, lastFrame } = render(
+      <MediaRendererProvider renderer={new AsciiRenderer()}>
+        <ControlledComposeScreen
+          initialDraft={draft()}
+          api={baseApi()}
+          onCancel={() => undefined}
+          ensureAccessToken={() => Promise.resolve('token')}
+          onSubmitted={() => undefined}
+          isActive
+        />
+      </MediaRendererProvider>,
+    );
+
+    // Same params ComposeScreen's own `THUMBNAIL_MAX_COLS`/`THUMBNAIL_MAX_ROWS` and
+    // `useContentSize()`'s test-default 80-column budget produce, so this is exactly
+    // the row the component should draw — not a guess at what "art" looks like.
+    const expectedRows = await renderArtPreview(png, { cols: 24, rows: 6, mode: 'ascii' });
+    const expectedFirstRow = expectedRows[0];
+    expect(expectedFirstRow).toBeDefined();
+
+    stdin.write('\x1b[200~/tmp/dropped.png\x1b[201~');
+    await vi.waitFor(() => expect(lastFrame()).toContain('dropped.png'));
+    // The thumbnail resolves asynchronously after the attachment itself commits.
+    await vi.waitFor(() =>
+      expect(lastFrame() ?? '').toContain(expectedFirstRow ?? '__unreachable__'),
+    );
+  });
+
+  it('renders no thumbnail in plain mode even with a renderer available', async () => {
+    const png = await solidPng(40, 40);
+    vi.mocked(readLocalImage).mockResolvedValueOnce({
+      path: '/tmp/dropped.png',
+      bytes: png,
+      mimeType: 'image/png',
+      byteSize: png.byteLength,
+      sha256: 'deadbeef',
+    });
+    const { stdin, lastFrame } = render(
+      <MediaRendererProvider renderer={new AsciiRenderer()}>
+        <PlainModeProvider plain>
+          <ControlledComposeScreen
+            initialDraft={draft()}
+            api={baseApi()}
+            onCancel={() => undefined}
+            ensureAccessToken={() => Promise.resolve('token')}
+            onSubmitted={() => undefined}
+            isActive
+          />
+        </PlainModeProvider>
+      </MediaRendererProvider>,
+    );
+
+    const expectedRows = await renderArtPreview(png, { cols: 24, rows: 6, mode: 'ascii' });
+    const expectedFirstRow = expectedRows[0];
+    expect(expectedFirstRow).toBeDefined();
+
+    stdin.write('\x1b[200~/tmp/dropped.png\x1b[201~');
+    await vi.waitFor(() => expect(lastFrame()).toContain('dropped.png'));
+    await wait(50);
+    expect(lastFrame() ?? '').not.toContain(expectedFirstRow ?? '__unreachable__');
   });
 
   it('opens @-mention autocomplete over SearchActors and accepts with Tab', async () => {
