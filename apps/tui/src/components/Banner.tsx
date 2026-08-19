@@ -46,3 +46,33 @@ export function Banner({ title, retryAt }: BannerProps): ReactElement {
     </Text>
   );
 }
+
+export interface StickyNewCountProps {
+  /** How many new items arrived since the last read (`usePaginatedList.refresh()`'s
+   * `newCount`). Render nothing at `0` — the caller decides whether to mount this at all. */
+  count: number;
+  /** Bound to whatever key clears it on this screen — `g g`/`Ctrl+R` per the interaction
+   * model, shown so the pill teaches its own dismissal the way every other hint does. */
+  clearHint?: string;
+}
+
+/**
+ * The sticky `↑ N new` pill promoted from `usePaginatedList.refresh()`'s existing `newCount`
+ * (P12-010/P12-105) — a single row pinned above the list content, `accent`-coloured, cleared by
+ * `g g`/`Ctrl+R`. A pill, not the offline `Banner` above: same file (design vision's P12-105
+ * table), different shape, so it's exported separately rather than folded into one component
+ * with a `kind` prop that would make both halves harder to read.
+ */
+export function StickyNewCount({
+  count,
+  clearHint = 'g g',
+}: StickyNewCountProps): ReactElement | null {
+  const plain = usePlainMode();
+  if (count <= 0) return null;
+  const glyph = plain ? '^' : '↑';
+  return (
+    <Text color={theme.accent} wrap="truncate-end">
+      {glyph} {String(count)} new · {clearHint}
+    </Text>
+  );
+}

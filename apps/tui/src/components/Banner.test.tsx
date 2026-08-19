@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PlainModeProvider } from '../theme/plain-mode.js';
-import { Banner } from './Banner.js';
+import { Banner, StickyNewCount } from './Banner.js';
 
 describe('Banner', () => {
   beforeEach(() => {
@@ -53,5 +53,35 @@ describe('Banner', () => {
     expect(plainFrame).not.toContain('●');
     expect(plainFrame).toContain('offline');
     expect(plainFrame).toContain('Ctrl+R');
+  });
+});
+
+describe('StickyNewCount', () => {
+  it('renders nothing at zero', () => {
+    const { lastFrame } = render(<StickyNewCount count={0} />);
+    expect(lastFrame()).toBe('');
+  });
+
+  it('shows the count and the default clear hint', () => {
+    const { lastFrame } = render(<StickyNewCount count={7} />);
+    expect(lastFrame()).toContain('7 new');
+    expect(lastFrame()).toContain('g g');
+    expect(lastFrame()).toContain('↑');
+  });
+
+  it('accepts a screen-specific clear hint', () => {
+    const { lastFrame } = render(<StickyNewCount count={3} clearHint="Ctrl+R" />);
+    expect(lastFrame()).toContain('Ctrl+R');
+  });
+
+  it('drops the glyph in plain mode but keeps the count and hint', () => {
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <StickyNewCount count={2} />
+      </PlainModeProvider>,
+    );
+    expect(lastFrame()).not.toContain('↑');
+    expect(lastFrame()).toContain('2 new');
+    expect(lastFrame()).toContain('g g');
   });
 });
