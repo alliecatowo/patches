@@ -1,0 +1,40 @@
+ patches › Home › Page · ● patches.test:50051 · @alice · ✉ 1
+
+ > Home                                                              │  Page
+ Home                                                                │@alice
+                                                                     │Alice
+ 1/1 · — end of the timeline —                                       │golden fixture page
+ @alice · 5 minutes ago                                              │
+   Golden frame fixture post from alice.                             │A short page body for the golden frame.
+ ♡ 0 · 1 reply                                                       │
+                                                                     │
+                                                                     │e edit · E structured edit · Esc back
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ Signed in as @alice.
+ [ / ] sub-page · j / k select link · Enter open link · e edit · / search · Ctrl+R refresh · c compose · : / Ctrl+P commands · Esc back

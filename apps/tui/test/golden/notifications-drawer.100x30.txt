@@ -1,0 +1,30 @@
+
+ Notifications
+
+ • + @bob followed you · 1 minute ago
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 1/1 · end
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ Signed in as @alice.
+ patches › Notifications · ● patches.test:50051 · @alice · ✉ 1
+ j / k move · Enter open · m mark all read · / search · Ctrl+R refresh · c compose · Esc back

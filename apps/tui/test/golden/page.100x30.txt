@@ -1,0 +1,30 @@
+
+ @alice
+ Alice
+ golden fixture page
+
+ A short page body for the golden frame.
+
+
+ e edit · E structured edit · Esc back
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ Signed in as @alice.
+ patches › Page · ● patches.test:50051 · @alice · ✉ 1
+ [ / ] sub-page · j / k select link · Enter open link · e edit · / search · Esc back

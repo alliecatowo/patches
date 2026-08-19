@@ -690,10 +690,10 @@ edit is available headless: `patches profile edit [--display-name] [--bio] [--lo
 merging any nameplate field left unspecified from the current session actor (same "never
 blank a field the caller didn't ask to change" rule), and prints `@handle · display name`.
 
-**Patches Pages (P45-004..007, B-023, B-024)**: `v` on `ProfileScreen` opens the viewed
-actor's page, `g v` the caller's own, and `patches visit @handle[/slug]` (`cli/args.ts`)
-launches the TUI straight onto `screens/PageScreen.tsx`, skipping `connect`. Full
-renderer/editor detail (block types, the `$EDITOR` round trip) lives in
+**Patches Pages (P45-004..007, P12-109, B-023, B-024)**: `v` on `ProfileScreen` opens the
+viewed actor's page, `g v` the caller's own, and `patches visit @handle[/slug]`
+(`cli/args.ts`) launches the TUI straight onto `screens/PageScreen.tsx`, skipping
+`connect`. Full renderer/editor detail (block types, the `$EDITOR` round trip) lives in
 `docs/architecture/pages.md` §6, not duplicated here — the summary: `[`/`]` switches
 sub-pages (one `GetPage` fetches the whole document, so this is client-side, no re-fetch),
 `j`/`k`/`Enter` select and open a `Links` entry externally, `s` signs the guestbook when
@@ -720,6 +720,29 @@ nameplated handles the same way `TopEight` does. `SearchScreen` (B-028) also rec
 `ActorService.ResolveActor` instead of the usual local `SearchActors` call — needs a
 session (shows a sign-in prompt otherwise), and shows "This node has federation
 disabled" for a gRPC `UNIMPLEMENTED` rather than the generic network-error copy.
+
+**Responsive Pages grid and pinned posts (P12-109)**: `apps/tui/src/pages/render/grid.ts`'s
+`planPageGrid(blocks, width)` lays a sub-page's blocks into 1–3 lanes by the same width
+tiers `app/responsive-layout.ts` already defines (`narrow`/`standard`/`wide`) — narrow is
+always one column in document order; standard splits text-ish blocks into a main lane with
+`TopEight`/`Badges`/`Friends`/`Links` in a right-hand sidebar lane; wide splits that sidebar
+further into two lanes once there are two or more sidebar-shaped blocks. A sub-page with
+nothing sidebar-shaped stays single-column at every tier. `PageScreen` passes its own
+content width net of its border/padding (`innerWidth`) so a themed, bordered page's grid
+never plans against the outer terminal width and overflows its own frame. `Gallery` blocks
+use the same tier→column mapping (`galleryColumnsFor`) for their own 1–3-column image grid;
+`AsciiArt` blocks are centred and hard-clipped (never wrapped) to their lane's width,
+string-width measured the same way the status bar's hint line is
+(`format/measure.ts`'s `truncateToWidth`). `PinnedPostsSection`
+(`pages/render/pinned.tsx`) renders above a sub-page's own blocks, resolving the owner's
+`pinned_post_ids` via one `GetPost` each and silently dropping any that no longer resolve
+(removed, or a block relationship) rather than showing an error — a missing pin is a
+decoration gap, not a page failure. A page's `resolvePageTheme`d accent/border only ever
+applies to `PageScreen`'s own `<Box>`, never to the shell's chrome, and plain mode strips it
+regardless of what the page author set. `PageScreen.test.tsx` and
+`PageBlocksEditorScreen.test.tsx` (both standalone renders, not through `App`) assert no
+line exceeds 80/100/140 columns across a document exercising the grid, gallery, and clipped
+ASCII art together.
 
 ## 14. Testing (B-015)
 
@@ -805,3 +828,35 @@ real, end to end, with no actual HTTP server. `addPage(handle, slug, document)` 
 directly; `getPage`/`updatePage` round-trip through `@patches/domain`'s own
 `parsePageStrict`, so a test document that wouldn't validate server-side won't silently
 "work" in the fake either.
+
+## 15. Golden frames (P12-123)
+
+`apps/tui/test/window.tsx`'s `renderAppInWindow(columns, rows, options)` renders the real
+`App` against a synthetic `stdout`/`stdin` of an exact, resizable size, unlike
+`ink-testing-library`'s own `render()`, which hard-codes 100 columns and reports no rows at
+all — the only way to exercise a specific width _tier boundary_ (`shell-layout.test.tsx`,
+P12-020/021/022/024/127) or capture a frame at a specific size (this section).
+
+`apps/tui/test/golden.test.tsx` renders five representative screens — home timeline, a
+thread (wide enough to trigger `SplitPane`'s two-column layout), compose, the notifications
+screen, and a Patches Page — at the `standard` (100×30) and `wide` (140×40) tiers against a
+fixed `FakeApiHandle` world, and diffs the SGR-stripped frame byte-for-byte against a
+committed fixture under `test/golden/<scenario>.<size>.txt`. `UPDATE_GOLDEN=1 pnpm
+--filter @patches/tui test -- golden` regenerates every fixture after a deliberate visual
+change; every other run is the drift check, so a red run here means "this change altered
+what a screen looks like," not "a network call timed out." Only `Date` is faked
+(`vi.useFakeTimers({ toFake: ['Date'] })` + `vi.setSystemTime`) so `formatRelativeTime`'s
+"2 minutes ago" text is deterministic — faking `setTimeout`/`setInterval` too (even with
+`shouldAdvanceTime`) either starved Ink's own render scheduling of frames entirely or
+reintroduced real-wall-clock drift that could flip a `createdAt` sitting on a minute
+boundary between adjacent test runs; pinning `Date` alone and driving the app with the same
+real-timer `flush`/`expectFrame` `harness.tsx` already exports avoided both failure modes.
+
+`apps/tui/scripts/capture.sh [columns] [rows]` is the same idea against a _real_ terminal —
+tmux, not `ink-testing-library`'s synthetic one — for eyeballing that what a real terminal
+emulator does with Ink's SGR/box-drawing bytes actually matches the corresponding golden
+fixture; it has no live-server dependency by default (connects to an address nothing
+listens on, so the captured frame is always the deterministic "can't reach the server"
+connect screen) but accepts `--server host:port [--insecure]` to capture an authenticated
+screen against a real `apps/server` instead. Run it by hand after a layout change; it is not
+part of `pnpm verify`.

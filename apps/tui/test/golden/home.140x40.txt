@@ -1,0 +1,40 @@
+ patches › Local · ● patches.test:50051 · @alice · ✉ 1
+
+ Local
+
+ 1/2 · — end of the timeline —
+ @bob · 2 minutes ago
+   A reply from bob, seeded for the thread golden frame.
+ ♡ 0 · 0 replies
+
+ @alice · 5 minutes ago
+   Golden frame fixture post from alice.
+ ♡ 0 · 1 reply
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ Signed in as @alice.
+ j / ↓ next · Enter thread · p author · r reply · l like · b bookmark · f follow · R repost · Q quote · / search · Ctrl+R refresh · q quit

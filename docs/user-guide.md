@@ -263,10 +263,29 @@ review reports, suspend accounts, and act on them.
 
 `patches visit @handle[/slug]` (or `v` from a profile/post) opens straight to that actor's
 Patches Page — a personal, declarative profile page (text, markdown, links, your recent
-posts, a "Top 8"-style friend list, and a guestbook other users can sign). It is inert data,
-never executable code, in every client. Press `e` on your own Page to edit it — this opens the
-underlying document in your `$EDITOR` (whatever `$EDITOR` is set to in your shell); save and
-exit to publish the new revision.
+posts, image galleries, a "Top 8"-style friend list, a mutual-follows "Friends" list, and a
+guestbook other users can sign). It is inert data, never executable code, in every client.
+Pinned posts (if the owner has any) show above the page's own content. `[`/`]` switch between
+sub-pages, `j`/`k` move between the links on the current one and `Enter` opens the selected
+one in your browser.
+
+The block layout is responsive: narrow terminals get a single column in document order;
+standard-width terminals split the page-owner's prose/media into a main column with
+"Top 8"/badges/friends/links in a right-hand rail; wide terminals split that rail further
+into two columns. A page's own theme (accent colour, border) never leaks into the shell's own
+chrome — it only ever colours the page's own box, and plain mode (`P`/`PATCHES_PLAIN`) strips
+it entirely regardless of what the page author set. ASCII-art blocks are centred and clipped
+(never wrapped) to whatever width they're rendering at.
+
+Press `e` on your own Page to edit the raw document in your `$EDITOR` (whatever `$EDITOR` is
+set to in your shell); save and exit to publish the new revision. `E` opens a structured,
+block-by-block editor instead: `j`/`k` select a block, `J`/`K` reorder it, `a` adds a new one
+from a type picker, `d` deletes it (`y`/`n` confirms), `Enter` edits the selected block's own
+fields in a small form (`Tab`/arrows move between fields, `←`/`→` cycle an enum field),
+`Ctrl+S` on a field form commits it back to the block list, and `Ctrl+S` on the block list
+validates and saves the _whole_ document via the same `UpdatePage` call the `$EDITOR` flow
+uses. `Esc` at any point backs out one level, keeping whatever you'd typed as a local draft —
+nothing is lost by backing out of either editor.
 
 ### Privacy, filters, filter lists, and labelers
 
