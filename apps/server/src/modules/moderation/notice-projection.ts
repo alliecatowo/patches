@@ -13,13 +13,13 @@ import { moderationReasonCategoryFromInput, toProtoReasonCategory } from './mode
  * appeal's `moderation_notice_id` literally *is* the `admin_audit_log.id` — `Appeal.entity.ts`'s
  * doc comment).
  *
- * Only two write paths in this task's owned file set produce notice-worthy rows today:
- * `patches-admin user suspend|delete` (subject_type `USER`, action `user.suspend`/`user.delete`)
- * and `patches-admin report resolve --action remove-post|suspend` (subject_type `REPORT`,
- * action `report.resolve`) — both already existed before this task (P6-003) and are outside
- * this task's owned file set (`apps/admin/src/commands/{user,report}.ts`), so nothing there
- * changed; this only reads what they already write. `WARN`/`MEDIA_TAKEDOWN` have no admin
- * command producing them yet — an honest gap, not a schema gap (spec §176).
+ * Three write paths produce notice-worthy rows today: `patches-admin user suspend|delete`
+ * (subject_type `USER`, action `user.suspend`/`user.delete`), `patches-admin report resolve
+ * --action remove-post|suspend` (subject_type `REPORT`, action `report.resolve`) — both
+ * pre-date this task (P6-003) — and, as of A-050, `patches-admin appeal resolve` (subject_type
+ * `USER`, action `appeal.resolve`, spec §201.3: "resolution is itself delivered as a moderation
+ * notice"). `WARN`/`MEDIA_TAKEDOWN` have no admin command producing them yet — an honest gap,
+ * not a schema gap (spec §176).
  *
  * For a `report.resolve` row, the explanation is deliberately **not** `metadata.note` — that
  * value is the same free text `report.resolve` also writes into `reports.moderator_note`
@@ -27,6 +27,15 @@ import { moderationReasonCategoryFromInput, toProtoReasonCategory } from './mode
  * "the notice's explanation ... is not `reports.moderator_note`"). A generic, category-derived
  * sentence is used instead; `user.suspend`/`user.delete`'s `metadata.reason` has no such
  * provenance (it never touches `reports`), so it is safe to surface directly.
+ *
+ * `appeal.resolve` is deliberately notice-worthy (`NOTICE_LIST_QUERY`, so it shows up in
+ * `ListMyModerationNotices`) but **not** appealable (excluded from `NOTICE_BY_ID_QUERY`, so
+ * `findNoticeRow`/`AppealService.createAppeal` never resolves one) — an appeal outcome does not
+ * itself accrue a second right of appeal. Its explanation carries the outcome plus
+ * `appeals.resolution_reason` (spec §201.3 gives that field the *same shape* §64 gives
+ * `reports.moderator_note`, but unlike a report's `metadata.note` it has no second,
+ * purpose-written field standing in for it — this is the only place that reason ever surfaces,
+ * so it is used directly).
  */
 
 export interface NoticeRow {
@@ -36,20 +45,31 @@ export interface NoticeRow {
   createdAt: Date;
   reportPostId: string | null;
   appealed: boolean;
+  /** Only set for an `appeal.resolve` row: the *original* enforcement action's `action`/
+   * `metadata`, joined in so `toModerationNotice` can describe what was appealed. Always
+   * `undefined` from `NOTICE_BY_ID_QUERY`, which never selects `appeal.resolve` rows at all. */
+  originalAction?: string | null;
+  originalMetadata?: Record<string, unknown> | null;
 }
 
 const NOTICE_LIST_QUERY = `
   SELECT combined.id, combined.action, combined.metadata, combined.created_at AS "createdAt",
          combined.report_post_id AS "reportPostId",
+         combined.original_action AS "originalAction",
+         combined.original_metadata AS "originalMetadata",
          (ap.id IS NOT NULL) AS appealed
   FROM (
-    SELECT aal.id, aal.action, aal.metadata, aal.created_at, NULL::uuid AS report_post_id
+    SELECT aal.id, aal.action, aal.metadata, aal.created_at, NULL::uuid AS report_post_id,
+           orig.action AS original_action, orig.metadata AS original_metadata
     FROM admin_audit_log aal
     INNER JOIN actors a ON a.user_id = aal.subject_id::uuid
+    LEFT JOIN admin_audit_log orig
+      ON aal.action = 'appeal.resolve' AND orig.id = (aal.metadata ->> 'moderationNoticeId')::uuid
     WHERE aal.subject_type = 'USER' AND a.id = $1
-      AND aal.action IN ('user.suspend', 'user.delete')
+      AND aal.action IN ('user.suspend', 'user.delete', 'appeal.resolve')
     UNION ALL
-    SELECT aal.id, aal.action, aal.metadata, aal.created_at, r.subject_post_id AS report_post_id
+    SELECT aal.id, aal.action, aal.metadata, aal.created_at, r.subject_post_id AS report_post_id,
+           NULL::text AS original_action, NULL::jsonb AS original_metadata
     FROM admin_audit_log aal
     INNER JOIN reports r ON r.id = aal.subject_id::uuid
     LEFT JOIN posts p ON p.id = r.subject_post_id
@@ -130,6 +150,9 @@ export function toModerationNotice(row: NoticeRow, appealWindowDays: number): Mo
   } else if (row.action === 'user.delete') {
     action = ModerationActionType.MODERATION_ACTION_TYPE_BAN;
     explanation = readReasonText(metadata);
+  } else if (row.action === 'appeal.resolve') {
+    action = deriveOriginalActionType(row.originalAction ?? null, row.originalMetadata ?? null);
+    explanation = appealResolutionExplanation(metadata);
   } else {
     // 'report.resolve'
     const resolveAction = metadata.resolveAction;
@@ -147,7 +170,12 @@ export function toModerationNotice(row: NoticeRow, appealWindowDays: number): Mo
     moderationReasonCategoryFromInput(metadata.reasonCategory),
   );
   const deadline = appealDeadlineFor(row, appealWindowDays);
-  const appealDeadline = deadline.getTime() > Date.now() ? dateToTimestamp(deadline) : undefined;
+  // An `appeal.resolve` notice is never itself appealable (see this file's class doc) — its
+  // deadline is always unset, regardless of how recently it landed.
+  const appealDeadline =
+    row.action !== 'appeal.resolve' && deadline.getTime() > Date.now()
+      ? dateToTimestamp(deadline)
+      : undefined;
 
   return {
     id: row.id,
@@ -163,4 +191,43 @@ export function toModerationNotice(row: NoticeRow, appealWindowDays: number): Mo
 
 function readReasonText(metadata: Record<string, unknown>): string {
   return typeof metadata.reason === 'string' ? metadata.reason : '';
+}
+
+/** What `appeal.resolve`'s notice's `action` describes: not the appeal outcome (no
+ * `ModerationActionType` value exists for that — appeals are out of this task's proto-owned
+ * scope), but the *original* enforcement action the appeal was filed against, mirroring exactly
+ * how the primary `if`/`else if` chain above derives it for that same action when it is the
+ * top-level row. */
+function deriveOriginalActionType(
+  originalAction: string | null,
+  originalMetadata: Record<string, unknown> | null,
+): ModerationActionType {
+  if (originalAction === 'user.delete') return ModerationActionType.MODERATION_ACTION_TYPE_BAN;
+  if (originalAction === 'report.resolve') {
+    return (originalMetadata ?? {}).resolveAction === 'remove-post'
+      ? ModerationActionType.MODERATION_ACTION_TYPE_POST_REMOVAL
+      : ModerationActionType.MODERATION_ACTION_TYPE_SUSPEND;
+  }
+  // 'user.suspend', or (defensively, since `appeals.admin_audit_log_id`'s FK is RESTRICT and
+  // should make this unreachable) anything else.
+  return ModerationActionType.MODERATION_ACTION_TYPE_SUSPEND;
+}
+
+const APPEAL_OUTCOME_TEXT: Readonly<Record<string, string>> = {
+  overturned: 'was overturned',
+  modified: 'was modified',
+  upheld: 'was upheld',
+};
+
+/** `appeal.resolve`'s explanation (spec §201.3): outcome + `appeals.resolution_reason`,
+ * purpose-written by the resolving moderator at resolution time for the appellant — see this
+ * file's class doc for why that reason, unlike `report.resolve`'s `metadata.note`, is safe to
+ * surface directly. */
+function appealResolutionExplanation(metadata: Record<string, unknown>): string {
+  const outcome = typeof metadata.outcome === 'string' ? metadata.outcome : '';
+  const reason = typeof metadata.reason === 'string' ? metadata.reason : '';
+  const outcomeText = APPEAL_OUTCOME_TEXT[outcome] ?? 'was resolved';
+  return reason.length > 0
+    ? `Your appeal ${outcomeText}: ${reason}`
+    : `Your appeal ${outcomeText}.`;
 }
