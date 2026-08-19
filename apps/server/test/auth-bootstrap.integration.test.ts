@@ -8,7 +8,7 @@ import {
   type RegisterResponse,
 } from '@patches/proto';
 import type { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createServerTestDataSource } from './support/database.js';
 import {
@@ -52,6 +52,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       await dataSource.destroy();
     });
 
+    beforeEach(async () => {
+      // Every test in this file needs a node with exactly zero accounts to exercise the
+      // bootstrap path — reset before each test rather than rely on execution order.
+      // `RESTART IDENTITY CASCADE` is safe here: `createServerTestDataSource` migrates a
+      // fresh schema per file (see the module doc comment above) and nothing else in the
+      // suite shares this database.
+      await dataSource.query('TRUNCATE TABLE actors, users, credentials RESTART IDENTITY CASCADE');
+    });
+
     function registerRequest(handle: string): RegisterRequest {
       return {
         handle,
@@ -76,6 +85,35 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         registerRequest(`second${Date.now().toString(36)}`),
       );
       expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+    });
+
+    it('lets exactly one of two concurrent bootstrap registrations through (A-040)', async () => {
+      const settled = await Promise.allSettled([
+        callUnary<RegisterRequest, RegisterResponse>(
+          auth.register.bind(auth),
+          registerRequest(`racea${Date.now().toString(36)}`),
+        ),
+        callUnary<RegisterRequest, RegisterResponse>(
+          auth.register.bind(auth),
+          registerRequest(`raceb${Date.now().toString(36)}`),
+        ),
+      ]);
+
+      const fulfilled = settled.filter(
+        (result): result is PromiseFulfilledResult<RegisterResponse> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = settled.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+
+      // Without the `pg_advisory_xact_lock` serialising the bootstrap decision, a plain
+      // `COUNT` inside READ COMMITTED lets both requests observe zero accounts and both
+      // succeed — this is the race A-040 closes.
+      expect(fulfilled).toHaveLength(1);
+      expect(fulfilled[0]?.value.session?.actor?.handle).toBeTruthy();
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0]?.reason as { code?: number }).code).toBe(GrpcStatus.INVALID_ARGUMENT);
     });
   },
 );
