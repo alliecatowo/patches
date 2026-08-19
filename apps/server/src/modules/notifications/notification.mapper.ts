@@ -25,5 +25,10 @@ export function toProtoNotification(view: NotificationView): ProtoNotification {
     postId: view.postId ?? '',
     createdAt: dateToTimestamp(view.createdAt),
     readAt: view.readAt === null ? undefined : dateToTimestamp(view.readAt),
+    // REPOST/QUOTE/MESSAGE/COMMUNITY_INVITE notification rows don't exist yet — no writer
+    // populates `DbNotificationType` with them (P11-001 is schema/contract only) — so these
+    // are always empty for now, same "not produced yet" reasoning as `MODERATION` above.
+    conversationId: '',
+    communityId: '',
   };
 }

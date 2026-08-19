@@ -97,6 +97,8 @@ describe('Resolve a remote actor by acct (B-028)', () => {
       joinedAt: undefined,
       counts: undefined,
       nameplate: undefined,
+      flair: undefined,
+      pinnedPostIds: [],
     });
 
     const { press, lastFrame, unmount } = renderApp({ fake });

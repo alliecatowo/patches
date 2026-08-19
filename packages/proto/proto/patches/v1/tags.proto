@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/common.proto";
+
+// Hashtag search and per-actor tag mutes (spec §189–190). Deliberately no post-count/
+// popularity surface anywhere in this service (spec §181, §58) — there is no engagement
+// ranking in this product and a tag's count is not published.
+service TagService {
+  // Handle-prefix-style search over tag names (spec §112's search pattern, applied to tags).
+  rpc SearchTags(SearchTagsRequest) returns (SearchTagsResponse);
+
+  // Idempotent: muting an already-muted tag is not an error.
+  rpc MuteTag(MuteTagRequest) returns (MuteTagResponse);
+
+  // Idempotent: unmuting a tag the caller hasn't muted is not an error.
+  rpc UnmuteTag(UnmuteTagRequest) returns (UnmuteTagResponse);
+
+  // The caller's own muted tags, most-recent first.
+  rpc ListMutedTags(ListMutedTagsRequest) returns (ListMutedTagsResponse);
+}
+
+message Tag {
+  string id = 1;
+
+  // Canonical form: NFKC-normalized and casefolded (spec §189, §192). Max 30 characters,
+  // at least one letter (spec §188).
+  string name = 2;
+
+  // As originally cased by whoever first used it.
+  string display_name = 3;
+
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SearchTagsRequest {
+  string query = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message SearchTagsResponse {
+  repeated Tag tags = 1;
+  PageInfo page = 2;
+}
+
+message MuteTagRequest {
+  string tag_id = 1;
+}
+
+message MuteTagResponse {}
+
+message UnmuteTagRequest {
+  string tag_id = 1;
+}
+
+message UnmuteTagResponse {}
+
+message ListMutedTagsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListMutedTagsResponse {
+  repeated Tag tags = 1;
+  PageInfo page = 2;
+}

@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 
 import { present } from '../api/present.js';
-import { MEDIA_STATUS, POST_VISIBILITY, type Post } from '@patches/proto';
+import { MEDIA_STATUS, POST_VISIBILITY, QUOTE_POLICY, type Post } from '@patches/proto';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
@@ -85,6 +85,10 @@ export function ComposeScreen({
           mediaIds: attachments.map((attachment) => attachment.mediaId),
           // No content-warning UI yet (follow-up) — every post is created without one.
           contentWarning: '',
+          // No quote/community compose UI yet (Amendment B, P11-00x follow-up).
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QUOTE_POLICY.UNSPECIFIED,
         },
         accessToken,
       );

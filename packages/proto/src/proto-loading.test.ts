@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(13);
+    expect(files.length).toBe(16);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }
@@ -50,6 +50,9 @@ describe('proto files', () => {
         SERVICE_NAMES.feed,
         SERVICE_NAMES.socialGraph,
         SERVICE_NAMES.node,
+        SERVICE_NAMES.community,
+        SERVICE_NAMES.directMessage,
+        SERVICE_NAMES.tag,
         'PageInfo',
       ]),
     );
@@ -95,15 +98,63 @@ describe('proto files', () => {
       ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.post)).toEqual(
-      ['CreatePost', 'DeletePost', 'GetPost', 'ListReplies'].sort(),
+      [
+        'CreatePost',
+        'DeletePost',
+        'EditPost',
+        'GetPost',
+        'ListPostEdits',
+        'ListReplies',
+        'PinPost',
+        'UnpinPost',
+      ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.feed)).toEqual(
-      ['ListActorPosts', 'ListHomeFeed', 'ListLocalFeed'].sort(),
+      [
+        'ListActorPosts',
+        'ListCommunityFeed',
+        'ListHomeFeed',
+        'ListLocalFeed',
+        'ListTagFeed',
+      ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.socialGraph)).toEqual(
       ['FollowActor', 'GetRelationship', 'ListMutualFollows', 'UnfollowActor'].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(['GetNodeInfo']);
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.community)).toEqual(
+      [
+        'BanFromCommunity',
+        'CreateCommunity',
+        'GetCommunity',
+        'InviteToCommunity',
+        'JoinCommunity',
+        'LeaveCommunity',
+        'ListCommunities',
+        'ListCommunityMembers',
+        'RemovePostFromCommunity',
+        'RespondToCommunityInvite',
+        'SetCommunityRole',
+        'UpdateCommunity',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.directMessage)).toEqual(
+      [
+        'CreateConversation',
+        'DeleteMessage',
+        'GetConversation',
+        'LeaveConversation',
+        'ListConversations',
+        'ListMessageRequests',
+        'ListMessages',
+        'MarkConversationRead',
+        'RespondToMessageRequest',
+        'SendMessage',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.tag)).toEqual(
+      ['ListMutedTags', 'MuteTag', 'SearchTags', 'UnmuteTag'].sort(),
+    );
   });
 
   it('declares every RPC as unary and fully-qualified under patches.v1', () => {

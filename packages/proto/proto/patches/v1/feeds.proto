@@ -16,6 +16,13 @@ service FeedService {
 
   // A given actor's posts, chronological.
   rpc ListActorPosts(ListActorPostsRequest) returns (ListActorPostsResponse);
+
+  // All public posts carrying a given tag, chronological. No ordering parameter — same
+  // chronological-only rule as every other feed (spec §182.2).
+  rpc ListTagFeed(ListTagFeedRequest) returns (ListTagFeedResponse);
+
+  // A community's posts, chronological. No ordering parameter (spec §182.2).
+  rpc ListCommunityFeed(ListCommunityFeedRequest) returns (ListCommunityFeedResponse);
 }
 
 message ListHomeFeedRequest {
@@ -45,6 +52,29 @@ message ListActorPostsRequest {
 }
 
 message ListActorPostsResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
+
+message ListTagFeedRequest {
+  // Tag name — matched against the canonical (NFKC-normalized, casefolded) form.
+  string tag = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListTagFeedResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
+}
+
+message ListCommunityFeedRequest {
+  string community_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListCommunityFeedResponse {
   repeated Post posts = 1;
   PageInfo page = 2;
 }

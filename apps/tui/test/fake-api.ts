@@ -8,6 +8,7 @@ import {
   MEDIA_STATUS,
   POST_TYPE,
   POST_VISIBILITY,
+  QUOTE_POLICY,
   type Actor,
   type AddCredentialRequest,
   type AddCredentialResponse,
@@ -506,6 +507,10 @@ export class FakeApiHandle {
       postId: options.postId ?? '',
       createdAt: dateToTimestamp(createdAt),
       readAt: options.read === true ? dateToTimestamp(createdAt) : undefined,
+      // Amendment B fields (P11-001) — fake-api has no message/community-invite notification
+      // writer yet.
+      conversationId: '',
+      communityId: '',
     };
     this.notificationsFor(forUserId).unshift(notification);
     return notification;
@@ -568,6 +573,9 @@ export class FakeApiHandle {
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
       counts: { followers: followerCount, following: followingCount, posts: postCount },
       nameplate: user.nameplate,
+      // Amendment B fields (P11-001) — no fake-api writer produces flair/pinned posts yet.
+      flair: undefined,
+      pinnedPostIds: [],
     };
   }
 
@@ -598,9 +606,13 @@ export class FakeApiHandle {
       createdAt: dateToTimestamp(createdAt),
       editedAt: undefined,
       deleted: false,
-      counts: { replies: 0, likes: 0 },
-      viewerState: { liked: false, bookmarked: false },
+      counts: { replies: 0, likes: 0, reposts: 0, quotes: 0 },
+      viewerState: { liked: false, bookmarked: false, reposted: false },
       contentWarning: '',
+      // Amendment B fields (P11-001) — fake-api has no repost/quote/community writer yet.
+      quotedPost: undefined,
+      community: undefined,
+      quotePolicy: QUOTE_POLICY.UNSPECIFIED,
     };
   }
 
@@ -784,7 +796,15 @@ export class FakeApiHandle {
    * reflects current direct replies, not a value frozen at creation). */
   private withFreshCounts(post: Post): Post {
     const replies = this.posts.filter((p) => p.inReplyToId === post.id && !p.deleted).length;
-    return { ...post, counts: { likes: post.counts?.likes ?? 0, replies } };
+    return {
+      ...post,
+      counts: {
+        likes: post.counts?.likes ?? 0,
+        replies,
+        reposts: post.counts?.reposts ?? 0,
+        quotes: post.counts?.quotes ?? 0,
+      },
+    };
   }
 
   private listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
@@ -969,8 +989,12 @@ export class FakeApiHandle {
     likers.add(session.userId);
     this.likes.set(request.postId, likers);
     return Promise.resolve({
-      counts: { replies: 0, likes: likers.size },
-      viewerState: { liked: true, bookmarked: this.isBookmarked(session.userId, request.postId) },
+      counts: { replies: 0, likes: likers.size, reposts: 0, quotes: 0 },
+      viewerState: {
+        liked: true,
+        bookmarked: this.isBookmarked(session.userId, request.postId),
+        reposted: false,
+      },
     });
   }
 
@@ -981,8 +1005,17 @@ export class FakeApiHandle {
     }
     this.likes.get(request.postId)?.delete(session.userId);
     return Promise.resolve({
-      counts: { replies: 0, likes: this.likes.get(request.postId)?.size ?? 0 },
-      viewerState: { liked: false, bookmarked: this.isBookmarked(session.userId, request.postId) },
+      counts: {
+        replies: 0,
+        likes: this.likes.get(request.postId)?.size ?? 0,
+        reposts: 0,
+        quotes: 0,
+      },
+      viewerState: {
+        liked: false,
+        bookmarked: this.isBookmarked(session.userId, request.postId),
+        reposted: false,
+      },
     });
   }
 
@@ -1008,6 +1041,7 @@ export class FakeApiHandle {
       viewerState: {
         liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
         bookmarked: true,
+        reposted: false,
       },
     });
   }
@@ -1029,6 +1063,7 @@ export class FakeApiHandle {
       viewerState: {
         liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
         bookmarked: false,
+        reposted: false,
       },
     });
   }
@@ -1051,6 +1086,7 @@ export class FakeApiHandle {
         viewerState: {
           liked: this.likes.get(post.id)?.has(session.userId) ?? false,
           bookmarked: true,
+          reposted: false,
         },
       }));
     const { items, page } = this.paginate(bookmarked, request.cursor, request.limit);

@@ -184,6 +184,8 @@ export function EditProfileScreen({
                 profileBorder: fields.profileBorder,
               }
             : undefined,
+          // No flair editor yet (Amendment B, P11-00x follow-up) — always unset.
+          flair: undefined,
         },
         accessToken,
       );

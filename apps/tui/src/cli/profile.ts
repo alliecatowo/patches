@@ -169,6 +169,8 @@ async function runProfileEdit(rest: readonly string[], deps: ProfileDeps): Promi
               profileBorder: parsed.profileBorder ?? currentNameplate?.profileBorder ?? '',
             }
           : undefined,
+        // Flair isn't settable from this CLI yet (no `--flair` flag exists) — always unset.
+        flair: undefined,
       },
       accessToken,
     );

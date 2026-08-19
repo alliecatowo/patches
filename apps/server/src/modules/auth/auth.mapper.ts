@@ -58,6 +58,9 @@ export function toProtoActor(actor: ActorSummary): Actor {
     joinedAt: dateToTimestamp(actor.joinedAt),
     counts: undefined,
     nameplate: undefined,
+    // Same "not loaded here" reasoning as `counts`/`nameplate` above (P11-001).
+    flair: undefined,
+    pinnedPostIds: [],
   };
 }
 

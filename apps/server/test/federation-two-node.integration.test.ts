@@ -14,7 +14,7 @@ import {
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
 } from '@patches/proto';
-import { PostVisibility } from '@patches/proto/nest';
+import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
 import { Post } from '@patches/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -141,6 +141,9 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
           inReplyToId: '',
           mediaIds: [],
           clientRequestId: randomUUID(),
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
         },
         { accessToken: bob.accessToken },
       );

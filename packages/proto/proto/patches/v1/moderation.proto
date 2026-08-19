@@ -33,6 +33,10 @@ service ModerationService {
   rpc ReportPost(ReportPostRequest) returns (ReportPostResponse);
 
   rpc ReportActor(ReportActorRequest) returns (ReportActorResponse);
+
+  // Snapshot-backed (spec §183.4): the reported message's content is captured into the report
+  // at write time so a later deletion by either party can't destroy the evidence.
+  rpc ReportMessage(ReportMessageRequest) returns (ReportMessageResponse);
 }
 
 enum ReportReason {
@@ -118,5 +122,17 @@ message ReportActorRequest {
 }
 
 message ReportActorResponse {
+  string report_id = 1;
+}
+
+message ReportMessageRequest {
+  string message_id = 1;
+  ReportReason reason = 2;
+
+  // Optional free text. Max 2,000 characters (spec §58-style bound).
+  string details = 3;
+}
+
+message ReportMessageResponse {
   string report_id = 1;
 }

@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+
+// Direct messages (spec §183.4, §188–190, §192). Mutual/accepted gating, block-aware both
+// directions with no block oracle, rate-limited per actor and per peer, never federated —
+// bodies never appear in logs/metrics/traces/errors (spec §192). No media, no link previews.
+service DirectMessageService {
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+
+  rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
+
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+
+  // Requires `client_request_id` (spec §45) — same idempotency pattern as `CreatePost`.
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+
+  // Soft delete/tombstone — never a hard delete over this API (same rule as `DeletePost`).
+  rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
+
+  // Starts a direct (1 recipient) or group (up to 8 members total, spec §188) conversation
+  // with its first message. A direct conversation with a non-mutual-follow recipient creates
+  // a `MessageRequest` instead of a `Message` — see `MessageRequest`'s comment.
+  rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
+
+  // Idempotent: leaving a conversation the caller isn't in is not an error.
+  rpc LeaveConversation(LeaveConversationRequest) returns (LeaveConversationResponse);
+
+  rpc MarkConversationRead(MarkConversationReadRequest) returns (MarkConversationReadResponse);
+
+  // The caller's own pending message requests (received), most-recent first.
+  rpc ListMessageRequests(ListMessageRequestsRequest) returns (ListMessageRequestsResponse);
+
+  // Accepting opens (or reuses) the direct conversation and returns it; declining does not
+  // notify the sender and never auto-accepts anything else from them (spec §192).
+  rpc RespondToMessageRequest(RespondToMessageRequestRequest) returns (RespondToMessageRequestResponse);
+}
+
+enum ConversationKind {
+  CONVERSATION_KIND_UNSPECIFIED = 0;
+  CONVERSATION_KIND_DIRECT = 1;
+  CONVERSATION_KIND_GROUP = 2;
+}
+
+enum MessageRequestStatus {
+  MESSAGE_REQUEST_STATUS_UNSPECIFIED = 0;
+  MESSAGE_REQUEST_STATUS_PENDING = 1;
+  MESSAGE_REQUEST_STATUS_ACCEPTED = 2;
+  MESSAGE_REQUEST_STATUS_DECLINED = 3;
+}
+
+message ConversationMember {
+  Actor actor = 1;
+  google.protobuf.Timestamp joined_at = 2;
+
+  // Unset while still a member.
+  google.protobuf.Timestamp left_at = 3;
+
+  // Empty if nothing has been read yet.
+  string last_read_message_id = 4;
+
+  bool muted = 5;
+}
+
+message Conversation {
+  string id = 1;
+  ConversationKind kind = 2;
+  Actor created_by = 3;
+  repeated ConversationMember members = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_message_at = 6;
+
+  // Unread count for the caller specifically — never populated for anyone else.
+  uint32 unread_count = 7;
+}
+
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  Actor sender = 3;
+
+  // Empty when `deleted_at` is set. Max 2,000 characters (spec §188).
+  string body = 4;
+
+  google.protobuf.Timestamp created_at = 5;
+
+  // Unset (zero value) unless this message was deleted.
+  google.protobuf.Timestamp deleted_at = 6;
+}
+
+message ListConversationsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+  PageInfo page = 2;
+}
+
+message GetConversationRequest {
+  string id = 1;
+}
+
+message GetConversationResponse {
+  Conversation conversation = 1;
+}
+
+message ListMessagesRequest {
+  string conversation_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  PageInfo page = 2;
+}
+
+message SendMessageRequest {
+  string client_request_id = 1;
+  string conversation_id = 2;
+  string body = 3;
+}
+
+message SendMessageResponse {
+  Message message = 1;
+}
+
+message DeleteMessageRequest {
+  string id = 1;
+}
+
+message DeleteMessageResponse {
+  // The now-tombstoned message, so the caller can render `[deleted]` without a refetch.
+  Message message = 1;
+}
+
+message CreateConversationRequest {
+  string client_request_id = 1;
+
+  // Excludes the caller. 1 recipient makes a direct conversation; 2+ (up to 7, an 8-member
+  // ceiling including the caller, spec §188) makes a group.
+  repeated string recipient_actor_ids = 2;
+
+  // Required — a conversation is never created empty.
+  string initial_body = 3;
+}
+
+message CreateConversationResponse {
+  Conversation conversation = 1;
+}
+
+message LeaveConversationRequest {
+  string conversation_id = 1;
+}
+
+message LeaveConversationResponse {}
+
+message MarkConversationReadRequest {
+  string conversation_id = 1;
+
+  // Marks every message at or before this one as read.
+  string through_message_id = 2;
+}
+
+message MarkConversationReadResponse {}
+
+// A pending contact request created by `CreateConversation` when the caller and the intended
+// recipient are not mutual follows (spec §189). At most one pending request per
+// (sender, recipient) pair, and at most one message (spec §188) — accepting is what turns it
+// into an ordinary `Conversation`/`Message`.
+message MessageRequest {
+  string id = 1;
+  Actor sender = 2;
+  Actor recipient = 3;
+  string body = 4;
+  MessageRequestStatus status = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListMessageRequestsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListMessageRequestsResponse {
+  repeated MessageRequest requests = 1;
+  PageInfo page = 2;
+}
+
+message RespondToMessageRequestRequest {
+  string id = 1;
+  bool accept = 2;
+}
+
+message RespondToMessageRequestResponse {
+  MessageRequest request = 1;
+
+  // Set only when `accept` was true.
+  Conversation conversation = 2;
+}

@@ -99,6 +99,17 @@ export interface ReportActorResponse {
   reportId: string;
 }
 
+export interface ReportMessageRequest {
+  messageId: string;
+  reason: ReportReason;
+  /** Optional free text. Max 2,000 characters (spec §58-style bound). */
+  details: string;
+}
+
+export interface ReportMessageResponse {
+  reportId: string;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -138,6 +149,16 @@ export interface ModerationServiceClient {
   reportPost(request: ReportPostRequest, metadata?: Metadata): Observable<ReportPostResponse>;
 
   reportActor(request: ReportActorRequest, metadata?: Metadata): Observable<ReportActorResponse>;
+
+  /**
+   * Snapshot-backed (spec §183.4): the reported message's content is captured into the report
+   * at write time so a later deletion by either party can't destroy the evidence.
+   */
+
+  reportMessage(
+    request: ReportMessageRequest,
+    metadata?: Metadata,
+  ): Observable<ReportMessageResponse>;
 }
 
 /**
@@ -201,6 +222,16 @@ export interface ModerationServiceController {
     request: ReportActorRequest,
     metadata?: Metadata,
   ): Promise<ReportActorResponse> | Observable<ReportActorResponse> | ReportActorResponse;
+
+  /**
+   * Snapshot-backed (spec §183.4): the reported message's content is captured into the report
+   * at write time so a later deletion by either party can't destroy the evidence.
+   */
+
+  reportMessage(
+    request: ReportMessageRequest,
+    metadata?: Metadata,
+  ): Promise<ReportMessageResponse> | Observable<ReportMessageResponse> | ReportMessageResponse;
 }
 
 export function ModerationServiceControllerMethods() {
@@ -214,6 +245,7 @@ export function ModerationServiceControllerMethods() {
       'listMutes',
       'reportPost',
       'reportActor',
+      'reportMessage',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

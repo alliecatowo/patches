@@ -1,7 +1,7 @@
 import type { PostType as DbPostType, PostVisibility as DbPostVisibility } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
 import type { MediaAttachment, Post as ProtoPost } from '@patches/proto';
-import { PostType, PostVisibility } from '@patches/proto/nest';
+import { PostType, PostVisibility, QuotePolicy } from '@patches/proto/nest';
 
 import { toProtoActor } from '../auth/auth.mapper.js';
 import type { PostMediaSummary, PostView } from './post.dto.js';
@@ -62,7 +62,24 @@ export function toProtoPost(view: PostView): ProtoPost {
     createdAt: dateToTimestamp(view.createdAt),
     editedAt: view.editedAt === null ? undefined : dateToTimestamp(view.editedAt),
     deleted: view.deleted,
-    counts: { replies: view.counts.replyCount, likes: view.counts.likeCount },
-    viewerState: { liked: view.viewerState.liked, bookmarked: view.viewerState.bookmarked },
+    // reposts/quotes and the `reposted` viewer flag land with `ReactionService.RepostPost`
+    // (P11-00x) — no writer produces them yet, so they read as zero/false rather than a
+    // guessed value (same "not produced yet" reasoning as `notification.mapper.ts`).
+    counts: {
+      replies: view.counts.replyCount,
+      likes: view.counts.likeCount,
+      reposts: 0,
+      quotes: 0,
+    },
+    viewerState: {
+      liked: view.viewerState.liked,
+      bookmarked: view.viewerState.bookmarked,
+      reposted: false,
+    },
+    // Quote/community fields land with `PostService.CreatePost`'s Amendment B body (P11-00x) —
+    // this schema/contract wave has no writer for them yet.
+    quotedPost: undefined,
+    community: undefined,
+    quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
   };
 }
