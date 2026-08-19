@@ -4,11 +4,13 @@ import {
   Actor,
   Community,
   CommunityMember,
+  FILTER_SCOPES,
   FilterList,
   FilterListEntry,
   FilterListException,
   FilterListSubscription,
   type FilterAction as DbFilterAction,
+  type FilterScopeValue as DbFilterScope,
 } from '@patches/database';
 import {
   MAX_FILTER_LIST_EXCEPTIONS_PER_LIST,
@@ -24,7 +26,7 @@ import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { filterTermKindFromProto } from '../filters/filter-enums.js';
 import type { FilterTermInputWire } from '../filters/filter.service.js';
-import { parseFilterTerms } from '../filters/validation.js';
+import { parseFilterScopes, parseFilterTerms } from '../filters/validation.js';
 import type {
   FilterListCommunityOwnerView,
   FilterListEntryListPage,
@@ -280,16 +282,23 @@ export class FilterListService {
     };
   }
 
-  /** Upsert: subscribing again with a different action updates the existing subscription
-   * rather than erroring — an actor is subscribed to a list or not, never twice (the
-   * `filter_list_subscriptions` composite PK). Never creates a block (spec §199.2, §208). */
+  /** Upsert: subscribing again with a different action/scopes updates the existing
+   * subscription rather than erroring — an actor is subscribed to a list or not, never twice
+   * (the `filter_list_subscriptions` composite PK). Never creates a block (spec §199.2, §208).
+   *
+   * `scopesRaw` empty means "every scope" (spec §199.1's "an action and scopes the subscriber
+   * chooses" — an omitted choice is the least surprising default, matching the DB column's own
+   * default, P14-022); otherwise it is validated/deduped exactly like a personal filter's own
+   * `scopes` (`filters/validation.ts#parseFilterScopes`). */
   async subscribeFilterList(
     actorId: string,
     filterListIdRaw: string,
     action: DbFilterAction,
+    scopesRaw: readonly DbFilterScope[],
   ): Promise<FilterListSubscriptionView> {
     const filterListId = parseInput(uuidInputSchema, filterListIdRaw);
     await this.loadFilterListOrThrow(this.dataSource.manager, filterListId);
+    const scopes = scopesRaw.length === 0 ? [...FILTER_SCOPES] : parseFilterScopes(scopesRaw);
 
     await this.consumeSubscribeRateLimit(actorId);
 
@@ -298,6 +307,7 @@ export class FilterListService {
       const existing = await subscriptions.findOne({ where: { actorId, filterListId } });
       if (existing !== null) {
         existing.action = action;
+        existing.scopes = scopes;
         await subscriptions.save(existing);
         return;
       }
@@ -308,7 +318,7 @@ export class FilterListService {
         );
       }
       try {
-        await subscriptions.save(subscriptions.create({ actorId, filterListId, action }));
+        await subscriptions.save(subscriptions.create({ actorId, filterListId, action, scopes }));
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
       }
@@ -367,7 +377,12 @@ export class FilterListService {
     for (const row of page) {
       const filterList = filterListById.get(row.filterListId);
       if (filterList === undefined) continue;
-      subscriptions.push({ filterList, action: row.action, createdAt: row.createdAt });
+      subscriptions.push({
+        filterList,
+        action: row.action,
+        scopes: row.scopes,
+        createdAt: row.createdAt,
+      });
     }
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
@@ -490,7 +505,12 @@ export class FilterListService {
       .findOne({ where: { actorId, filterListId } });
     if (subscription === null) return null;
     const filterList = await this.loadViewOrThrow(manager, filterListId);
-    return { filterList, action: subscription.action, createdAt: subscription.createdAt };
+    return {
+      filterList,
+      action: subscription.action,
+      scopes: subscription.scopes,
+      createdAt: subscription.createdAt,
+    };
   }
 
   private async toViews(

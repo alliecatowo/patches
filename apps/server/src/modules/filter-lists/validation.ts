@@ -59,7 +59,10 @@ export function parseFilterListEntries(raw: readonly FilterTermInput[]): FilterT
       `A filter list can have at most ${String(MAX_FILTER_LIST_ENTRIES)} entries.`,
     );
   }
-  return raw.map((entry) => ({ kind: entry.kind, value: parseFilterTermValue(entry.value) }));
+  return raw.map((entry) => ({
+    kind: entry.kind,
+    value: parseFilterTermValue(entry.value, entry.kind),
+  }));
 }
 
 const FILTER_LIST_UPDATE_PATHS = new Set(['display_name', 'description', 'entries']);

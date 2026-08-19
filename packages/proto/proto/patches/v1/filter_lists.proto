@@ -151,6 +151,11 @@ message SubscribeFilterListRequest {
   // Server defaults to `FILTER_ACTION_COLLAPSE` when unspecified — the least destructive
   // useful action (spec §199.2).
   FilterAction action = 2;
+
+  // Which of the subscriber's own viewing contexts this list's entries apply to (spec §199.1
+  // "an action and scopes the subscriber chooses"). Empty defaults to every scope — the same
+  // "least surprising" default the subscription's DB column carries (P14-022).
+  repeated FilterScope scopes = 3;
 }
 
 message SubscribeFilterListResponse {
@@ -167,6 +172,9 @@ message FilterListSubscription {
   FilterList filter_list = 1;
   FilterAction action = 2;
   google.protobuf.Timestamp created_at = 3;
+
+  // The subscriber-chosen scopes this subscription's entries apply to (spec §199.1, P14-022).
+  repeated FilterScope scopes = 4;
 }
 
 message ListFilterListSubscriptionsRequest {

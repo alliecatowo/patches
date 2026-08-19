@@ -57,6 +57,12 @@ describe('filter-lists/validation (spec §58, §199, §204)', () => {
         { kind: 'DOMAIN', value: 'spam.example' },
       ]);
     });
+
+    // P14-021 (spec §199.4 "domain subscripts"): same rejection filters/validation.ts enforces,
+    // applied here since list entries share the exact same DOMAIN kind.
+    it('rejects a bare public suffix as a DOMAIN entry', () => {
+      expect(() => parseFilterListEntries([{ kind: 'DOMAIN', value: 'co.uk' }])).toThrow();
+    });
   });
 
   describe('parseFilterListUpdateMask', () => {

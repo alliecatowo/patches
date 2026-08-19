@@ -19,6 +19,9 @@ import { Phase14Labelers1787135294583 } from './1787135294583-Phase14Labelers.js
 import { Phase14ModerationAppeals1787135453592 } from './1787135453592-Phase14ModerationAppeals.js';
 import { Phase14AccountLifecycle1787135493158 } from './1787135493158-Phase14AccountLifecycle.js';
 import { Phase14FollowRequests1787153689257 } from './1787153689257-Phase14FollowRequests.js';
+import { FilterListSubscriptionScopes1787159166765 } from './1787159166765-FilterListSubscriptionScopes.js';
+import { AdminAuditLabelerSubjectType1787159300000 } from './1787159300000-AdminAuditLabelerSubjectType.js';
+import { Phase15AuthPolicy1787170000000 } from './1787170000000-Phase15AuthPolicy.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -54,4 +57,7 @@ export const ALL_MIGRATIONS = [
   Phase14ModerationAppeals1787135453592,
   Phase14AccountLifecycle1787135493158,
   Phase14FollowRequests1787153689257,
+  FilterListSubscriptionScopes1787159166765,
+  AdminAuditLabelerSubjectType1787159300000,
+  Phase15AuthPolicy1787170000000,
 ];

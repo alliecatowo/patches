@@ -38,6 +38,7 @@
     "reflect-metadata": "catalog:",
     "resend": "catalog:",
     "rxjs": "catalog:",
+    "tldts": "catalog:",
     "typeorm": "catalog:",
     "zod": "catalog:"
   },
