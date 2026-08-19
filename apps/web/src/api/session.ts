@@ -1,36 +1,30 @@
-import type { Actor, Session } from '@patches/proto/es';
-import { timestampDate } from '@bufbuild/protobuf/wkt';
+import type { Actor } from '@patches/proto/es';
 
 /**
- * Auth session persistence. v0 keeps this deliberately dumb (localStorage, no
- * encryption at rest) — the access/refresh tokens are bearer tokens scoped to
- * this node like any other web session cookie would be. Swapping this for
- * `@patches/client`'s `SessionManager` later only touches this file and
- * `client.ts`'s import of it.
+ * The signed-in actor, cached in `localStorage` purely so UI (nav bar, `ProtectedRoute`,
+ * per-post "is this me" checks) can read "am I signed in, and as whom" synchronously via
+ * `useSyncExternalStore` (`useSession.ts`). The actual access/refresh tokens live in
+ * `@patches/client`'s `SessionManager`, backed by `credentialStore.ts` — this store never
+ * holds a token, only the bits the UI renders.
  */
-
-const STORAGE_KEY = 'patches.web.session.v1';
-
-export interface StoredSession {
-  accessToken: string;
-  accessExpiresAt: string;
-  refreshToken: string;
-  refreshExpiresAt: string;
-  actor: Actor;
+export interface AppSession {
+  readonly actor: Actor;
 }
+
+const STORAGE_KEY = 'patches.web.actor.v1';
 
 type Listener = () => void;
 
-let current: StoredSession | null = readFromStorage();
+let current: AppSession | null = readFromStorage();
 const listeners = new Set<Listener>();
 
-function readFromStorage(): StoredSession | null {
+function readFromStorage(): AppSession | null {
   if (typeof window === 'undefined') return null;
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (isStoredSession(parsed)) return parsed;
+    if (isAppSession(parsed)) return parsed;
     return null;
   } catch {
     // Corrupt/old-shape localStorage value — treat as signed out rather than throwing.
@@ -38,61 +32,33 @@ function readFromStorage(): StoredSession | null {
   }
 }
 
-function isStoredSession(value: unknown): value is StoredSession {
+function isAppSession(value: unknown): value is AppSession {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;
-  return (
-    typeof record['accessToken'] === 'string' &&
-    typeof record['refreshToken'] === 'string' &&
-    typeof record['actor'] === 'object'
-  );
+  return typeof record['actor'] === 'object' && record['actor'] !== null;
 }
 
 function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** Converts a `Session` protobuf message from Auth RPCs into stored form. */
-export function fromProtoSession(session: Session): StoredSession | null {
-  if (!session.actor) return null;
-  return {
-    accessToken: session.accessToken,
-    accessExpiresAt: session.accessExpiresAt
-      ? timestampDate(session.accessExpiresAt).toISOString()
-      : '',
-    refreshToken: session.refreshToken,
-    refreshExpiresAt: session.refreshExpiresAt
-      ? timestampDate(session.refreshExpiresAt).toISOString()
-      : '',
-    actor: session.actor,
-  };
-}
-
-export function setSession(session: StoredSession): void {
-  current = session;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+export function setActorSession(actor: Actor): void {
+  current = { actor };
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   notify();
 }
 
-export function clearSession(): void {
+export function clearActorSession(): void {
   current = null;
   window.localStorage.removeItem(STORAGE_KEY);
   notify();
 }
 
-export function getSession(): StoredSession | null {
+export function getActorSession(): AppSession | null {
   return current;
 }
 
-export function getAccessToken(): string | null {
-  return current?.accessToken ?? null;
-}
-
-export function getRefreshToken(): string | null {
-  return current?.refreshToken ?? null;
-}
-
-export function subscribeSession(listener: Listener): () => void {
+export function subscribeActorSession(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

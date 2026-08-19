@@ -1,9 +1,9 @@
+import { describeError } from '@patches/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type JSX } from 'react';
 
 import { api } from '../api/client.js';
-import { describeError } from '../api/errors.js';
-import { setSession } from '../api/session.js';
+import { setActorSession } from '../api/session.js';
 import { useSession } from '../hooks/useSession.js';
 import styles from './AuthForm.module.css';
 
@@ -24,7 +24,7 @@ export function SettingsProfileRoute(): JSX.Element {
 
   const actorQuery = useQuery({
     queryKey: ['actor', session?.actor.id],
-    queryFn: () => api.actor.getActor({ id: session?.actor.id ?? '' }),
+    queryFn: () => api.actors.getActor({ id: session?.actor.id ?? '' }),
     enabled: session !== null,
   });
 
@@ -51,7 +51,7 @@ export function SettingsProfileRoute(): JSX.Element {
   const mutation = useMutation({
     mutationFn: () => {
       if (form === null) throw new Error('Profile not loaded yet.');
-      return api.actor.updateProfile({
+      return api.actors.updateProfile({
         displayName: form.displayName,
         bio: form.bio,
         locationText: form.locationText,
@@ -68,7 +68,7 @@ export function SettingsProfileRoute(): JSX.Element {
       });
     },
     onSuccess: (response) => {
-      if (response.actor && session) setSession({ ...session, actor: response.actor });
+      if (response.actor) setActorSession(response.actor);
       void queryClient.invalidateQueries({ queryKey: ['actor'] });
     },
   });

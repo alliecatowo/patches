@@ -13,7 +13,7 @@ export function MessagesRoute(): JSX.Element {
 
   const query = useQuery({
     queryKey: ['conversations'],
-    queryFn: () => api.directMessage.listConversations({ cursor: '', limit: 30 }),
+    queryFn: () => api.messages.listConversations({ cursor: '', limit: 30 }),
   });
 
   return (

@@ -12,7 +12,6 @@ import styles from './ToastProvider.module.css';
 
 export interface Toast {
   id: number;
-  title: string;
   message: string;
   tone: 'error' | 'info';
 }
@@ -56,7 +55,6 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
             className={`${styles['toast']} ${toast.tone === 'error' ? styles['error'] : ''}`}
             onClick={() => dismiss(toast.id)}
           >
-            <strong>{toast.title}</strong>
             <span>{toast.message}</span>
           </button>
         ))}

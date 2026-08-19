@@ -20,13 +20,13 @@ export function MessageThreadRoute(): JSX.Element {
 
   const query = useQuery({
     queryKey: ['messages', conversationId],
-    queryFn: () => api.directMessage.listMessages({ conversationId, cursor: '', limit: 50 }),
+    queryFn: () => api.messages.listMessages({ conversationId, cursor: '', limit: 50 }),
     enabled: conversationId !== '',
   });
 
   const sendMutation = useMutation({
     mutationFn: (body: string) =>
-      api.directMessage.sendMessage({ clientRequestId: crypto.randomUUID(), conversationId, body }),
+      api.messages.sendMessage({ clientRequestId: crypto.randomUUID(), conversationId, body }),
     onSuccess: () => {
       setDraft('');
       void queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });

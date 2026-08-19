@@ -39,13 +39,13 @@ export function HomeRoute(): JSX.Element {
       {tab === 'home' && session ? (
         <PostTimeline
           queryKey={['feed', 'home']}
-          fetchPage={(cursor) => api.feed.listHomeFeed({ cursor, limit: 30 })}
+          fetchPage={(cursor) => api.feeds.listHomeFeed({ cursor, limit: 30 })}
           emptyMessage="No posts yet. Follow people to fill your home timeline."
         />
       ) : (
         <PostTimeline
           queryKey={['feed', 'local']}
-          fetchPage={(cursor) => api.feed.listLocalFeed({ cursor, limit: 30 })}
+          fetchPage={(cursor) => api.feeds.listLocalFeed({ cursor, limit: 30 })}
           emptyMessage="No posts on this node yet."
         />
       )}

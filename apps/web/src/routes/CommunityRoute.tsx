@@ -24,15 +24,15 @@ export function CommunityRoute(): JSX.Element {
 
   const communityQuery = useQuery({
     queryKey: ['community', communityId],
-    queryFn: () => api.community.getCommunity({ id: communityId }),
+    queryFn: () => api.communities.getCommunity({ id: communityId }),
     enabled: communityId !== '',
   });
 
   const membershipMutation = useMutation({
     mutationFn: async (join: boolean): Promise<{ community?: Community | undefined }> =>
       join
-        ? await api.community.joinCommunity({ communityId })
-        : await api.community.leaveCommunity({ communityId }),
+        ? await api.communities.joinCommunity({ communityId })
+        : await api.communities.leaveCommunity({ communityId }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['community', communityId] }),
     onError,
   });
@@ -63,7 +63,7 @@ export function CommunityRoute(): JSX.Element {
       </div>
       <PostTimeline
         queryKey={['feed', 'community', communityId]}
-        fetchPage={(cursor) => api.feed.listCommunityFeed({ communityId, cursor, limit: 30 })}
+        fetchPage={(cursor) => api.feeds.listCommunityFeed({ communityId, cursor, limit: 30 })}
         emptyMessage="No posts in this community yet."
       />
     </div>

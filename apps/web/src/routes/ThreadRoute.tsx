@@ -13,14 +13,14 @@ export function ThreadRoute(): JSX.Element {
 
   const postQuery = useQuery({
     queryKey: ['post', postId],
-    queryFn: () => api.post.getPost({ id: postId }),
+    queryFn: () => api.posts.getPost({ id: postId }),
     enabled: postId !== '',
   });
 
   const repliesQuery = useInfiniteQuery({
     queryKey: ['post', postId, 'replies'],
     queryFn: ({ pageParam }) =>
-      api.post.listReplies({ postId, cursor: pageParam, limit: 20, maxDepth: 1 }),
+      api.posts.listReplies({ postId, cursor: pageParam, limit: 20, maxDepth: 1 }),
     initialPageParam: '',
     getNextPageParam: (lastPage) => (lastPage.page?.hasMore ? lastPage.page.nextCursor : undefined),
     enabled: postId !== '',

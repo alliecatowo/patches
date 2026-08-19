@@ -1,10 +1,10 @@
+import { describeError } from '@patches/client';
 import { PostVisibility, QuotePolicy } from '@patches/proto/es';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
-import { describeError } from '../api/errors.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ComposeRoute.module.css';
 
@@ -59,7 +59,7 @@ export function ComposeRoute(): JSX.Element {
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.post.createPost({
+      api.posts.createPost({
         clientRequestId: crypto.randomUUID(),
         body,
         linkUrl: '',

@@ -1,10 +1,9 @@
+import { describeError } from '@patches/client';
 import { useMutation } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { api } from '../api/client.js';
-import { describeError } from '../api/errors.js';
-import { fromProtoSession, setSession } from '../api/session.js';
+import { api, establishSession } from '../api/client.js';
 import styles from './AuthForm.module.css';
 
 /** `/register` — this node is invite-only (spec §33), so `inviteCode` is required. */
@@ -29,9 +28,8 @@ export function RegisterRoute(): JSX.Element {
         clientRequestId: crypto.randomUUID(),
         sshPublicKey: '',
       }),
-    onSuccess: (response) => {
-      const stored = response.session ? fromProtoSession(response.session) : null;
-      if (stored) setSession(stored);
+    onSuccess: async (response) => {
+      if (response.session) await establishSession(response.session);
       void navigate('/', { replace: true });
     },
   });

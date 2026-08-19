@@ -1,10 +1,9 @@
+import { describeError } from '@patches/client';
 import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-import { api } from '../api/client.js';
-import { describeError } from '../api/errors.js';
-import { fromProtoSession, setSession } from '../api/session.js';
+import { api, establishSession } from '../api/client.js';
 import styles from './AuthForm.module.css';
 
 export function LoginRoute(): JSX.Element {
@@ -15,9 +14,8 @@ export function LoginRoute(): JSX.Element {
 
   const mutation = useMutation({
     mutationFn: () => api.auth.login({ emailOrHandle, password }),
-    onSuccess: (response) => {
-      const stored = response.session ? fromProtoSession(response.session) : null;
-      if (stored) setSession(stored);
+    onSuccess: async (response) => {
+      if (response.session) await establishSession(response.session);
       const from = (location.state as { from?: string } | null)?.from ?? '/';
       void navigate(from, { replace: true });
     },
@@ -32,7 +30,9 @@ export function LoginRoute(): JSX.Element {
     <div className={styles['wrap']}>
       <h1>Sign in</h1>
       {mutation.isError ? (
-        <p className={styles['error']}>{describeError(mutation.error).message}</p>
+        <p className={styles['error']}>
+          {describeError(mutation.error, { context: 'credentials' }).message}
+        </p>
       ) : null}
       <form onSubmit={onSubmit}>
         <div className={styles['field']}>

@@ -19,13 +19,13 @@ export function ProfileRoute(): JSX.Element {
 
   const actorQuery = useQuery({
     queryKey: ['actor', 'by-handle', handle],
-    queryFn: () => api.actor.getActorByHandle({ handle: handle ?? '' }),
+    queryFn: () => api.actors.getActorByHandle({ handle: handle ?? '' }),
     enabled: !!handle,
   });
 
   const pageQuery = useQuery({
     queryKey: ['page', handle],
-    queryFn: () => api.page.getPage({ handle: handle ?? '', slug: '' }),
+    queryFn: () => api.pages.getPage({ handle: handle ?? '', slug: '' }),
     enabled: tab === 'wall' && !!handle,
   });
 
@@ -90,7 +90,7 @@ export function ProfileRoute(): JSX.Element {
       {tab === 'posts' ? (
         <PostTimeline
           queryKey={['feed', 'actor', actor.id]}
-          fetchPage={(cursor) => api.feed.listActorPosts({ actorId: actor.id, cursor, limit: 30 })}
+          fetchPage={(cursor) => api.feeds.listActorPosts({ actorId: actor.id, cursor, limit: 30 })}
           emptyMessage="No posts yet."
         />
       ) : (

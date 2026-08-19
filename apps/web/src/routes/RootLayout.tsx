@@ -2,10 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useRef, type JSX } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
-import { api } from '../api/client.js';
+import { api, signOut } from '../api/client.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
-import { clearSession } from '../api/session.js';
 import styles from './RootLayout.module.css';
 
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
@@ -18,7 +17,7 @@ export function RootLayout(): JSX.Element {
 
   const unreadQuery = useQuery({
     queryKey: ['notifications', 'unread-count'],
-    queryFn: () => api.notification.getUnreadCount({}),
+    queryFn: () => api.notifications.getUnreadCount({}),
     enabled: session !== null,
     refetchInterval: 30_000,
   });
@@ -68,8 +67,7 @@ export function RootLayout(): JSX.Element {
               type="button"
               className={styles['navLink']}
               onClick={() => {
-                clearSession();
-                void navigate('/');
+                void signOut().then(() => navigate('/'));
               }}
             >
               <span className={styles['navLabel']}>Sign out</span>

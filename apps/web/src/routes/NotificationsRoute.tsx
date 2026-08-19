@@ -50,13 +50,13 @@ export function NotificationsRoute(): JSX.Element {
   const query = useInfiniteQuery({
     queryKey: ['notifications'],
     queryFn: ({ pageParam }) =>
-      api.notification.listNotifications({ cursor: pageParam, limit: 30 }),
+      api.notifications.listNotifications({ cursor: pageParam, limit: 30 }),
     initialPageParam: '',
     getNextPageParam: (lastPage) => (lastPage.page?.hasMore ? lastPage.page.nextCursor : undefined),
   });
 
   const markAllRead = useMutation({
-    mutationFn: () => api.notification.markNotificationsRead({ markAll: true, throughId: '' }),
+    mutationFn: () => api.notifications.markNotificationsRead({ markAll: true, throughId: '' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });

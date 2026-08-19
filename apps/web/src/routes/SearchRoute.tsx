@@ -19,7 +19,7 @@ export function SearchRoute(): JSX.Element {
 
   const actorsQuery = useQuery({
     queryKey: ['search', 'actors', debouncedQuery],
-    queryFn: () => api.actor.searchActors({ query: debouncedQuery, cursor: '', limit: 20 }),
+    queryFn: () => api.actors.searchActors({ query: debouncedQuery, cursor: '', limit: 20 }),
     enabled: tab === 'people' && debouncedQuery.length > 0,
   });
 
@@ -76,7 +76,7 @@ export function SearchRoute(): JSX.Element {
         <PostTimeline
           queryKey={['search', 'posts', debouncedQuery]}
           fetchPage={(cursor) =>
-            api.post.searchPosts({
+            api.posts.searchPosts({
               query: debouncedQuery,
               cursor,
               limit: 20,

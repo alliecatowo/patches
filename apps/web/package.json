@@ -21,6 +21,7 @@
     "@bufbuild/protobuf": "catalog:",
     "@connectrpc/connect": "catalog:",
     "@connectrpc/connect-web": "catalog:",
+    "@patches/client": "workspace:*",
     "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
     "@tanstack/react-query": "catalog:",
