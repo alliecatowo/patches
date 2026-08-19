@@ -96,3 +96,47 @@ describe('Notifications (P4-004)', () => {
     unmount();
   });
 });
+
+describe('Notifications mark themselves read as they are read (owner feedback 2026-08-18)', () => {
+  it('clears the unread badge for the notifications on screen, without pressing m', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
+    fake.addNotification(alice.id, NOTIFICATION_TYPE.FOLLOW, { actorId: bob.id });
+    fake.addNotification(alice.id, NOTIFICATION_TYPE.LIKE, { actorId: bob.id });
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+    await expectFrame(lastFrame, '2 unread');
+
+    await pressGo(press, 'n');
+    await expectFrame(lastFrame, 'Notifications');
+
+    // No `m`: just being on screen for the debounce is enough.
+    await waitForFrame(lastFrame, (f) => !f.includes('unread'), 4000);
+    unmount();
+  });
+
+  it('o opens a mention notification’s post, same as Enter', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
+    const post = fake.addPost(bob.id, 'hey @alice look at this');
+    fake.addNotification(alice.id, NOTIFICATION_TYPE.MENTION, { actorId: bob.id, postId: post.id });
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+    await pressGo(press, 'n');
+    await expectFrame(lastFrame, 'mentioned you');
+
+    press('o');
+
+    const frame = await expectFrame(lastFrame, 'Thread');
+    // `@alice` is colour-highlighted mid-body, so assert on the surrounding runs.
+    expect(frame).toContain('hey ');
+    expect(frame).toContain('look at this');
+    unmount();
+  });
+});

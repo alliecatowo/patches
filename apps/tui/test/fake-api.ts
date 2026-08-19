@@ -1134,21 +1134,16 @@ export class FakeApiHandle {
     const mine = this.notificationsFor(session.userId);
     const now = dateToTimestamp(new Date());
     let markedCount = 0;
-    for (const notification of mine) {
+    // `through_id` means "everything down to and including this one" in the
+    // newest-first list, not "only this one" — the screen marks what has been on
+    // screen by naming the last visible notification.
+    const through = request.markAll
+      ? mine.length - 1
+      : mine.findIndex((n) => n.id === request.throughId);
+    for (const notification of mine.slice(0, through + 1)) {
       if (notification.readAt !== undefined) continue;
-      if (!request.markAll && notification.id !== request.throughId) continue;
       notification.readAt = now;
       markedCount += 1;
-      if (!request.markAll && notification.id === request.throughId) break;
-    }
-    // `markAll` marks every unread notification, not just those up to a cursor.
-    if (request.markAll) {
-      for (const notification of mine) {
-        if (notification.readAt === undefined) {
-          notification.readAt = now;
-          markedCount += 1;
-        }
-      }
     }
     return Promise.resolve({ markedCount });
   }

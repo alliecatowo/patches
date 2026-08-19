@@ -1,9 +1,10 @@
 import { timestampToDate } from '@patches/proto';
-import { Box, Text, useInput, useWindowSize } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { helpSections, SCREEN_TITLES, type Binding, type Screen } from '../app/keymap.js';
+import { useContentSize } from '../app/layout.js';
 import type { ServerInfoState } from '../hooks/useServerInfo.js';
 import { theme } from '../theme/index.js';
 import { TUI_VERSION } from '../version.js';
@@ -63,11 +64,11 @@ export function HelpScreen({
   contextScreen,
   isActive,
 }: HelpScreenProps): ReactElement {
-  const { rows } = useWindowSize();
+  const content = useContentSize();
   const [offset, setOffset] = useState(0);
   const lines = buildLines(contextScreen);
-  // The header block above plus the shell's separator/status bar cost ~9 rows.
-  const visible = Math.max(4, rows - 9);
+  // Header line, its margin, and the position/scroll line at the bottom.
+  const visible = Math.max(4, content.rows - 3);
   const maxOffset = Math.max(0, lines.length - visible);
   const effectiveOffset = Math.min(offset, maxOffset);
 
@@ -88,12 +89,15 @@ export function HelpScreen({
 
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text color={theme.accent}>patches {TUI_VERSION}</Text>
-        <Text color={theme.muted}> · {target} · </Text>
-        <ServerSummary state={serverInfo} />
+      {/* One clipped line: a header that soft-wraps costs a row the layout has
+          already budgeted, and everything below it slides. */}
+      <Box height={1} flexShrink={0} overflow="hidden">
+        <Text color={theme.muted} wrap="truncate-end">
+          <Text color={theme.accent}>patches {TUI_VERSION}</Text> · {target} ·{' '}
+          <ServerSummary state={serverInfo} />
+        </Text>
       </Box>
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" flexShrink={0} marginTop={1} height={visible} overflow="hidden">
         {window.map((line, index) => {
           const key = `${String(effectiveOffset + index)}:${line.kind}`;
           if (line.kind === 'blank') return <Text key={key}> </Text>;
@@ -105,8 +109,8 @@ export function HelpScreen({
             );
           }
           return (
-            <Box key={key}>
-              <Box width={12}>
+            <Box key={key} flexShrink={0} height={1} overflow="hidden">
+              <Box width={12} flexShrink={0}>
                 <Text color={theme.warn}>{line.keys}</Text>
               </Box>
               <Text color={theme.muted} wrap="truncate-end">
@@ -116,7 +120,7 @@ export function HelpScreen({
           );
         })}
       </Box>
-      <Text color={theme.muted}>
+      <Text color={theme.muted} wrap="truncate-end">
         {effectiveOffset + window.length}/{lines.length} · j/k scroll · ? or Esc close
       </Text>
     </Box>
