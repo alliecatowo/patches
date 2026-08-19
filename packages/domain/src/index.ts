@@ -72,3 +72,21 @@ export type {
   PatchesSubPage,
   PatchesSubPageView,
 } from './page.js';
+
+export {
+  assertConversationModeNegotiation,
+  assertE2eeGroupBounds,
+  assertImmutableConversationMode,
+  CONVERSATION_SECURITY_MODES,
+  E2EE_CAPABILITY_STATES,
+  E2EE_GROUP_MAX_MEMBERS,
+  E2EE_MAX_ACTIVE_DEVICES_PER_ACTOR,
+  E2EE_MAX_DEVICE_ENVELOPES_PER_LOGICAL_MESSAGE,
+  E2EE_MAX_ENVELOPE_BYTES,
+  E2EE_ONE_TIME_PREKEY_TARGET,
+  E2EE_PROTOCOL_V1,
+  E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
+  E2EE_SIGNED_PREKEY_ROTATION_MS,
+  E2eeContractError,
+} from './e2ee.js';
+export type { ConversationSecurityMode, E2eeCapabilityState, E2eeModeNegotiation } from './e2ee.js';

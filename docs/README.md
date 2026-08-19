@@ -18,6 +18,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/media.md`](./architecture/media.md)
   - [`architecture/jobs.md`](./architecture/jobs.md)
   - [`architecture/federation.md`](./architecture/federation.md)
+  - [`architecture/e2ee.md`](./architecture/e2ee.md)
   - [`architecture/tui.md`](./architecture/tui.md)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
