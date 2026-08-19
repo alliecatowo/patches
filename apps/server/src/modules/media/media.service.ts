@@ -147,7 +147,20 @@ export class MediaService {
       throw mediaNotFound();
     }
     if (media.state !== 'READY') {
-      throw new AppError('MEDIA_NOT_READY', 'This media has not finished processing yet.');
+      // Not an error: clients poll this RPC after FinalizeMediaUpload until the worker has
+      // produced derivatives (proto: `GetMediaDownloadResponse.status`). Report the state
+      // with no URLs instead of throwing — the first live upload showed the TUI's attach
+      // flow failing instantly on MEDIA_NOT_READY. FAILED is also reported, not thrown.
+      return {
+        mediaId: media.id,
+        state: media.state,
+        mimeType: media.mimeType ?? '',
+        width: media.width ?? 0,
+        height: media.height ?? 0,
+        downloadUrl: '',
+        thumbnailUrl: '',
+        expiresAt: new Date(0),
+      };
     }
     if (
       media.displayObjectKey === null ||
