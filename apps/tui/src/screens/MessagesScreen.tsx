@@ -28,7 +28,9 @@ import { movementTarget } from '../app/list-movement.js';
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
+import type { GlyphSetName } from '../theme/themes/types.js';
 
 export const DM_DISCLOSURE =
   "Not end-to-end encrypted — this node's operators can read these messages.";
@@ -57,7 +59,19 @@ export interface MessagesScreenProps {
   onBack?: (() => void) | undefined;
   /** Injectable so screen tests and alternate shells do not depend on Node randomness. */
   createRequestId?: (() => string) | undefined;
+  /** Glyph set for the pending-send indicator (P12-114); defaults to `unicode` like the
+   * rest of the shell does before a caller lifts preference state up to it. */
+  glyphSet?: GlyphSetName | undefined;
+  /**
+   * This node's DM retention window in days, from `NodePolicy.retention.dmRetentionDays`
+   * (0 means "no limit enforced"). Omitted when the caller hasn't fetched node policy yet —
+   * the screen renders nothing about retention rather than guess, since an absent number is
+   * not the same claim as "no limit" (spec §197.6).
+   */
+  dmRetentionDays?: number | undefined;
 }
+
+type Folder = 'inbox' | 'requests';
 
 interface Page<T> {
   items: readonly T[];
@@ -208,6 +222,18 @@ function messageBody(message: Message): string {
   return present(message.deletedAt) ? '[deleted]' : sanitizeForTerminal(message.body);
 }
 
+/**
+ * Node-policy retention copy (P12-114, spec §197.6). `undefined` means the caller hasn't
+ * fetched `NodePolicy.retention.dmRetentionDays` yet, and renders nothing — silence is not
+ * the same claim as "no limit enforced" (`0`), so the two must stay distinguishable.
+ */
+function retentionCopyFor(dmRetentionDays: number | undefined): string | undefined {
+  if (dmRetentionDays === undefined) return undefined;
+  if (dmRetentionDays <= 0)
+    return "This node's operators enforce no automatic deletion window for messages.";
+  return `This node automatically deletes messages older than ${String(dmRetentionDays)} day${dmRetentionDays === 1 ? '' : 's'}.`;
+}
+
 type View = 'list' | 'thread' | 'requests';
 
 interface PendingMessage {
@@ -226,6 +252,8 @@ export function MessagesScreen({
   viewerActorId,
   onBack,
   createRequestId = randomUUID,
+  glyphSet = 'unicode',
+  dmRetentionDays,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -397,7 +425,7 @@ export function MessagesScreen({
       }
 
       if (view === 'list') {
-        if (input === 'r') {
+        if (input === 'r' || key.tab) {
           setRequestStatus(undefined);
           setView('requests');
           return;
@@ -425,6 +453,10 @@ export function MessagesScreen({
       }
 
       if (view === 'requests') {
+        if (key.tab) {
+          setView('list');
+          return;
+        }
         if ((input === 'n' || input === ' ') && requests.hasMore) {
           requests.loadMore();
           return;
@@ -469,11 +501,26 @@ export function MessagesScreen({
   const chronologicalMessages = [...messages.items].reverse();
   const knownMessageIds = new Set(chronologicalMessages.map((message) => message.id));
   const locallySent = sentMessages.filter((message) => !knownMessageIds.has(message.id));
+  const folder: Folder = view === 'requests' ? 'requests' : 'inbox';
+  const retentionCopy = retentionCopyFor(dmRetentionDays);
 
   return (
     <Box flexDirection="column">
       <Text color={theme.warn}>{DM_DISCLOSURE}</Text>
       <Text color={theme.accent}>Messages</Text>
+      {retentionCopy === undefined ? null : <Text color={theme.muted}>{retentionCopy}</Text>}
+      {view === 'thread' ? null : (
+        <Text>
+          <Text bold={folder === 'inbox'} inverse={folder === 'inbox'}>
+            {' Inbox '}
+          </Text>
+          <Text> </Text>
+          <Text bold={folder === 'requests'} inverse={folder === 'requests'}>
+            {' Requests '}
+          </Text>
+          <Text color={theme.muted}> · Tab switches</Text>
+        </Text>
+      )}
 
       {view === 'list' ? (
         <Box marginTop={1} flexDirection="column">
@@ -496,7 +543,9 @@ export function MessagesScreen({
             </Text>
           ))}
           {conversations.loadingMore ? <Loading label="Loading more" /> : null}
-          <Text color={theme.muted}>Enter open · r requests · n / space more · Esc back</Text>
+          <Text color={theme.muted}>
+            Enter open · r requests · Tab folder · n / space more · Esc back
+          </Text>
         </Box>
       ) : null}
 
@@ -507,7 +556,9 @@ export function MessagesScreen({
               ? sanitizeForTerminal(conversationId)
               : conversationLabel(selectedConversation, viewerActorId)}
           </Text>
-          {threadError === undefined ? null : <Text color={theme.error}>{threadError}</Text>}
+          {threadError === undefined ? null : (
+            <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>
+          )}
           {messages.error === undefined ? null : <Text color={theme.error}>{messages.error}</Text>}
           {messages.loading ? <Loading label="Loading messages" /> : null}
           {messages.hasMore ? <Text color={theme.muted}>Tab loads older messages</Text> : null}
@@ -525,7 +576,7 @@ export function MessagesScreen({
           ))}
           {pendingMessages.map((message) => (
             <Text key={message.id}>
-              <Text color={theme.muted}>you: </Text>
+              <Text color={theme.muted}>{glyph('pending', glyphSet)} you: </Text>
               {sanitizeForTerminal(message.body)} <Text color={theme.muted}>· sending</Text>
             </Text>
           ))}
@@ -557,7 +608,9 @@ export function MessagesScreen({
             </Text>
           ))}
           {requests.loadingMore ? <Loading label="Loading more" /> : null}
-          <Text color={theme.muted}>a accept · d decline · n / space more · Esc conversations</Text>
+          <Text color={theme.muted}>
+            a accept · d decline · Tab folder · n / space more · Esc conversations
+          </Text>
         </Box>
       ) : null}
     </Box>

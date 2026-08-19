@@ -9,7 +9,8 @@ export type GlyphName =
   | 'unread'
   | 'onlineActive'
   | 'onlineIdle'
-  | 'onlineOffline';
+  | 'onlineOffline'
+  | 'pending';
 
 /**
  * Design vision §3.5: three glyph sets, never required for a control to function — every glyph
@@ -26,6 +27,8 @@ const GLYPH_TABLE: Readonly<Record<GlyphName, Readonly<Record<GlyphSetName, stri
   onlineActive: { unicode: '●', nerd: '●', ascii: 'ok' },
   onlineIdle: { unicode: '◐', nerd: '◐', ascii: '..' },
   onlineOffline: { unicode: '○', nerd: '○', ascii: 'off' },
+  /** An optimistic send/action awaiting a server round-trip (P12-114). */
+  pending: { unicode: '◌', nerd: '◌', ascii: '...' },
 };
 
 /** Every meaning this table can render, for tests that walk the whole set. */

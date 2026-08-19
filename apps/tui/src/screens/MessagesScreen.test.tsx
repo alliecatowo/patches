@@ -217,6 +217,58 @@ describe('MessagesScreen', () => {
     expect(failed).not.toContain('hello · sending');
   });
 
+  it('shows an Inbox/Requests folder strip and switches with Tab (P12-114)', async () => {
+    const api = fakeApi();
+    const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
+    await waitForFrame(lastFrame, 'No conversations yet.');
+    expect(stripSgr(lastFrame() ?? '')).toContain('Inbox');
+    expect(stripSgr(lastFrame() ?? '')).toContain('Requests');
+
+    stdin.write('\t');
+    await waitForFrame(lastFrame, 'No pending requests.');
+
+    stdin.write('\t');
+    await waitForFrame(lastFrame, 'No conversations yet.');
+  });
+
+  it('shows a pending glyph on an optimistic send', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    api.listConversations.mockResolvedValue({ conversations: [existing], page: undefined });
+    api.getConversation.mockResolvedValue({ conversation: existing });
+    api.sendMessage.mockImplementation(() => new Promise(() => undefined));
+
+    const { lastFrame, stdin } = render(
+      <MessagesScreen api={api} isActive createRequestId={() => 'request-id'} />,
+    );
+    await waitForFrame(lastFrame, '@alice');
+    stdin.write(KEY.enter);
+    await waitForFrame(lastFrame, 'Draft:');
+    stdin.write('hi');
+    await waitForFrame(lastFrame, 'Draft: hi');
+    stdin.write(KEY.enter);
+    const frame = await waitForFrame(lastFrame, 'hi · sending');
+    expect(frame).toContain('◌ you:');
+  });
+
+  it('renders node-policy retention copy when the caller supplies it, and nothing when it has not fetched it yet', async () => {
+    const api = fakeApi();
+    const { lastFrame, rerender } = render(
+      <MessagesScreen api={api} isActive dmRetentionDays={30} />,
+    );
+    const frame = await waitForFrame(lastFrame, 'No conversations yet.');
+    expect(frame).toContain('This node automatically deletes messages older than 30 days.');
+
+    rerender(<MessagesScreen api={api} isActive dmRetentionDays={0} />);
+    const unlimited = await waitForFrame(lastFrame, 'No conversations yet.');
+    expect(unlimited).toContain('enforce no automatic deletion window');
+
+    rerender(<MessagesScreen api={api} isActive />);
+    const withoutPolicy = await waitForFrame(lastFrame, 'No conversations yet.');
+    expect(withoutPolicy).not.toContain('automatic deletion');
+    expect(withoutPolicy).not.toContain('automatically deletes');
+  });
+
   it('accepts and declines selected requests without exposing transport details', async () => {
     const api = fakeApi();
     api.listMessageRequests.mockResolvedValue({
