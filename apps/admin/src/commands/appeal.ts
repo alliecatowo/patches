@@ -3,8 +3,10 @@ import {
   AdminAuditLog,
   Appeal,
   appendAdminAuditLog,
+  Notification,
   type AppealStatus,
 } from '@patches/database';
+import type { EntityManager } from 'typeorm';
 
 import {
   booleanOption,
@@ -164,7 +166,34 @@ async function resolveAppeal(args: ParsedArgs, context: AdminContext): Promise<v
       subjectId: appellant.userId,
       metadata: { appealId: id, moderationNoticeId: appeal.adminAuditLogId, outcome, reason },
     });
+
+    // Resolution is itself delivered as a moderation notice (spec §201.3) — the same
+    // content-free `MODERATION` bell `apps/admin/src/commands/user.ts`/`report.ts` write for
+    // their own enforcement actions, pointing the appellant at `ListMyModerationNotices` (which
+    // `notice-projection.ts`'s A-050 change now projects this `appeal.resolve` row into).
+    await writeModerationNotification(manager, appellant.id);
   });
 
   process.stdout.write(`Appeal ${id} resolved (${outcome}).\n`);
+}
+
+/**
+ * Duplicated from `apps/admin/src/commands/user.ts`'s identical helper rather than shared —
+ * see that file's `parseReasonCategory` doc comment for why these CLI command files
+ * deliberately don't share small helpers like this one.
+ */
+async function writeModerationNotification(
+  manager: EntityManager,
+  recipientActorId: string,
+): Promise<void> {
+  await manager.getRepository(Notification).save(
+    manager.getRepository(Notification).create({
+      recipientActorId,
+      type: 'MODERATION',
+      actorId: null,
+      postId: null,
+      conversationId: null,
+      communityId: null,
+    }),
+  );
 }

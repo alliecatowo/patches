@@ -5,6 +5,7 @@ import {
   Credential,
   MODERATION_REASON_CATEGORIES,
   ModerationLogEntry,
+  Notification,
   OutboxJob,
   RefreshToken,
   User,
@@ -12,7 +13,7 @@ import {
   type ModerationReasonCategory,
 } from '@patches/database';
 import { ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT } from '@patches/domain';
-import { IsNull } from 'typeorm';
+import { IsNull, type EntityManager } from 'typeorm';
 
 import {
   booleanOption,
@@ -130,7 +131,7 @@ async function suspendUser(args: ParsedArgs, context: AdminContext): Promise<voi
   const operatorUserId = await requireOperatorUserId(context);
 
   await context.dataSource.transaction(async (manager) => {
-    const { user } = await findUserByHandle(manager, handle);
+    const { user, actor } = await findUserByHandle(manager, handle);
     if (user.status === 'DELETED') {
       throw new Error(`"${handle}" was deleted; there is nothing to suspend.`);
     }
@@ -157,6 +158,8 @@ async function suspendUser(args: ParsedArgs, context: AdminContext): Promise<voi
         appealed: false,
       }),
     );
+
+    await writeModerationNotification(manager, actor.id);
   });
 
   process.stdout.write(`${handle} suspended.\n`);
@@ -280,9 +283,39 @@ async function deleteUser(args: ParsedArgs, context: AdminContext): Promise<void
         appealed: false,
       }),
     );
+
+    await writeModerationNotification(manager, actor.id);
   });
 
   process.stdout.write(`${handle} deleted.\n`);
+}
+
+/**
+ * Delivers the moderation notice a node enforcement action owes the affected actor (spec
+ * §201.2) as a `MODERATION`-type `notifications` row — the bell that tells them to go look at
+ * `ListMyModerationNotices`, not a second copy of the notice's content: the row carries no
+ * actor/post/conversation/community reference and no text of its own (see `Notification.
+ * actorId`'s doc comment: "null for a MODERATION notification with no attributable actor"), so
+ * there is nothing here that could ever leak a moderator's identity or `moderator_note`. Unlike
+ * `NotificationsService.create` (`apps/server/src/modules/notifications`, a different app —
+ * the admin CLI has no gRPC/Nest dependency, spec §128–129), this always inserts: each
+ * enforcement action is its own distinct, non-collapsible event, not a repeat of the same
+ * social interaction `LIKE`/`REPLY` dedupe.
+ */
+async function writeModerationNotification(
+  manager: EntityManager,
+  recipientActorId: string,
+): Promise<void> {
+  await manager.getRepository(Notification).save(
+    manager.getRepository(Notification).create({
+      recipientActorId,
+      type: 'MODERATION',
+      actorId: null,
+      postId: null,
+      conversationId: null,
+      communityId: null,
+    }),
+  );
 }
 
 /**

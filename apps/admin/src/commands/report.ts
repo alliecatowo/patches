@@ -2,12 +2,14 @@ import {
   Actor,
   appendAdminAuditLog,
   ModerationLogEntry,
+  Notification,
   Post,
   Report,
   User,
   type ModerationReasonCategory,
   type ReportReason,
 } from '@patches/database';
+import type { EntityManager } from 'typeorm';
 
 import {
   booleanOption,
@@ -144,6 +146,12 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
       if (report.subjectPostId === null) {
         throw new Error('--action remove-post requires a report whose subject is a POST.');
       }
+      const post = await manager
+        .getRepository(Post)
+        .findOne({ where: { id: report.subjectPostId } });
+      if (post === null) {
+        throw new Error(`Report "${id}"'s subject post no longer exists.`);
+      }
       await manager.getRepository(Post).update(
         { id: report.subjectPostId },
         {
@@ -161,6 +169,9 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
           appealed: false,
         }),
       );
+      // The moderation notice (spec §201.2) goes to the post's author, not the reporter —
+      // reports remain not public (§64), so only the acted-upon actor learns anything happened.
+      await writeModerationNotification(manager, post.authorActorId);
     } else if (resolveAction === 'suspend') {
       if (report.subjectActorId === null) {
         throw new Error('--action suspend requires a report whose subject is an ACTOR.');
@@ -181,6 +192,7 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
           appealed: false,
         }),
       );
+      await writeModerationNotification(manager, actor.id);
     }
 
     await manager.getRepository(Report).update(
@@ -203,4 +215,29 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
   });
 
   process.stdout.write(`Report ${id} resolved (${resolveAction}).\n`);
+}
+
+/**
+ * Delivers the moderation notice a node enforcement action owes the affected actor (spec
+ * §201.2) as a `MODERATION`-type `notifications` row — a content-free bell pointing the
+ * recipient at `ListMyModerationNotices`, never a second copy of the notice's explanation or
+ * anything that could identify the moderator or the reporter (§55, §64: reports stay private).
+ * Duplicated from `apps/admin/src/commands/user.ts`'s identical helper rather than shared —
+ * these are two independently ownable, single-purpose CLI command files (see
+ * `parseReasonCategory`'s doc comment in `user.ts` for the same reasoning).
+ */
+async function writeModerationNotification(
+  manager: EntityManager,
+  recipientActorId: string,
+): Promise<void> {
+  await manager.getRepository(Notification).save(
+    manager.getRepository(Notification).create({
+      recipientActorId,
+      type: 'MODERATION',
+      actorId: null,
+      postId: null,
+      conversationId: null,
+      communityId: null,
+    }),
+  );
 }
