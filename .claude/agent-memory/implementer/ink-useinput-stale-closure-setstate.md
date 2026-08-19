@@ -43,3 +43,18 @@ a string) needs the functional form, full stop — confirmed via Ink 7's `use-in
 that the _handler itself_ is always fresh (`useEffectEvent`), so staleness is purely a React
 batching issue on the state value, not an Ink registration-lag issue (that's a different,
 unrelated hazard — see `ink-flush-to-poll-conversion-hazards`).
+
+**2026-08-19 update — plain `if` guards that only _read_ the state are equally broken, not
+just writes.** Hit in `apps/tui/src/screens/SearchScreen.tsx` (P12-115): typing
+`since:2026-01-15` fast (or a test's per-character `stdin.write()` loop) silently ate the
+`1` and `2` characters. Cause wasn't the append (`setQuery(v => v + input)` was already
+correctly functional) — it was a sibling _guard_ condition, `if (query === '' && (input ===
+'1' || ...)) switchMode(...)`, reading the plain `query` variable to decide whether a typed
+digit means "switch tabs" or "type a digit". Mid-burst, every call still sees `query === ''`
+from before the burst started, so digits `1`/`2` kept getting swallowed as mode-switch
+keypresses even though the field visibly already had text. Same root cause, but there's no
+`setState` updater to make functional — a plain conditional read has no such escape hatch.
+Fix: keep a `useRef` (`queryRef`) in lockstep with every `setQuery` call (write both, always,
+via one `updateQuery()` helper) and read `queryRef.current` in the guard instead of `query`.
+Applies to any same-tick-reachable `if` that branches on a `useState` value read directly
+(mode switches, "is the list empty" checks, etc.), not only to the value being written.
