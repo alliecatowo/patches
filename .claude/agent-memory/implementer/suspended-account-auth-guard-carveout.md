@@ -16,11 +16,15 @@ suspended` on `ListMyModerationNotices`/`CreateAppeal` right after simulating a 
 keeps rejecting a suspended caller) — it's a narrow, additive sibling guard
 (`SuspensionTolerantAuthGuard` in this repo) used via `@UseGuards(...)` on only the specific
 RPCs that must survive suspension, registered as a provider in the owning module(s). A
-**deleted** account is a different, harder problem: once soft-delete sets `deletedAt`, the
-account's session is already invalid everywhere (same `deletedAt IS NULL` filter every guard
-uses), so there's no live session left to authenticate a ban notice through at all — that's a
-real, separate gap (would need a grace-period-aware session check), not something the
-suspension carve-out can also fix.
+**deleted** account is a related but distinct case: if deletion is a hard/immediate delete,
+the session is genuinely gone and there's nothing left to fix. But if deletion is
+soft-with-a-grace-period (`deleted_at` set immediately, actual purge deferred to a worker job
+via something like `account_deletion_requests.purge_after`), the account is exactly as
+appealable as a suspension is during that window — resolved 2026-08-19 by extending
+`SuspensionTolerantAuthGuard` to also allow a caller whose deletion-request row is still
+pending (not cancelled, not purged, `purge_after` not yet passed), rejecting again once the
+grace period lapses. Check for a grace-period table before assuming "deleted = permanently
+unreachable."
 
 **How to apply:** Any time a spec section describes a self-service flow that responds to an
 enforcement action (appeals, dispute mechanisms, "explain yourself" UX), check whether the
