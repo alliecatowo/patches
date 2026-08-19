@@ -55,6 +55,33 @@ export interface NodeLimits {
   websiteUrlMaxChars: number;
   altTextMaxChars: number;
   searchQueryMaxChars: number;
+  /**
+   * Amendment C size limits (spec §204, A-054) — previously only readable as
+   * `@patches/domain` constants a client had no way to see. `packages/domain/src/limits.ts`
+   * is the single source every one of these mirrors; see that file's doc comments for the
+   * spec citation on each.
+   */
+  maxFiltersPerActor: number;
+  maxFilterTermsPerFilter: number;
+  maxFilterListsPublishedPerActor: number;
+  maxFilterListEntries: number;
+  maxFilterListSubscriptions: number;
+  maxFilterListExceptionsPerList: number;
+  maxLabelerSubscriptionsPerActor: number;
+  /**
+   * Vocabulary values a labeler may publish (spec §200.2, §204) — mirrors
+   * `MAX_LABELER_VOCABULARY_ENTRIES` (`apps/server/src/modules/labels/label-validation.ts`),
+   * which has no `@patches/domain` counterpart to import instead.
+   */
+  maxLabelVocabularyEntries: number;
+  maxAppealStatementChars: number;
+  /**
+   * Ready account-export archives kept at a time, per actor (spec §197.3, §204) — a new
+   * export request replaces the previous ready archive rather than accumulating more than
+   * one. `NodePolicy.retention.export_archive_retention_days` is the companion "how long an
+   * archive stays downloadable" figure; this is "how many at once".
+   */
+  accountExportMaxReadyArchives: number;
 }
 
 /**

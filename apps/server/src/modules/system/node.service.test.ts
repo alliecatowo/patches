@@ -1,6 +1,17 @@
 import { type ConfigService } from '@nestjs/config';
 import { DomainBlock, Labeler } from '@patches/database';
 import {
+  ACCOUNT_EXPORT_MAX_READY_ARCHIVES,
+  MAX_APPEAL_STATEMENT_CHARS,
+  MAX_FILTER_LIST_ENTRIES,
+  MAX_FILTER_LIST_EXCEPTIONS_PER_LIST,
+  MAX_FILTER_LIST_SUBSCRIPTIONS,
+  MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR,
+  MAX_FILTER_TERMS_PER_FILTER,
+  MAX_FILTERS_PER_ACTOR,
+  MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR,
+} from '@patches/domain';
+import {
   DomainPolicyAction,
   FederationStance,
   LabelAction,
@@ -11,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { type Env } from '../../config/env.schema.js';
+import { MAX_LABELER_VOCABULARY_ENTRIES } from '../labels/label-validation.js';
 import { NodeService } from './node.service.js';
 
 const FIXED_VERSION = '9.9.9-test';
@@ -105,6 +117,40 @@ describe('NodeService.getNodeInfo (owner decision 2026-08-19, PUBLIC_READ)', () 
       fakeDataSource([]),
     );
     expect(closed.getNodeInfo().publicRead).toBe(false);
+  });
+
+  it('publishes the A-054 Amendment C size limits, matching the constants that enforce them', () => {
+    const service = new NodeService(fakeConfig(), FIXED_VERSION, fakeDataSource([]));
+    const limits = service.getNodeInfo().limits;
+
+    expect(limits?.maxFiltersPerActor).toBe(MAX_FILTERS_PER_ACTOR);
+    expect(limits?.maxFilterTermsPerFilter).toBe(MAX_FILTER_TERMS_PER_FILTER);
+    expect(limits?.maxFilterListsPublishedPerActor).toBe(MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR);
+    expect(limits?.maxFilterListEntries).toBe(MAX_FILTER_LIST_ENTRIES);
+    expect(limits?.maxFilterListSubscriptions).toBe(MAX_FILTER_LIST_SUBSCRIPTIONS);
+    expect(limits?.maxFilterListExceptionsPerList).toBe(MAX_FILTER_LIST_EXCEPTIONS_PER_LIST);
+    expect(limits?.maxLabelerSubscriptionsPerActor).toBe(MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR);
+    expect(limits?.maxLabelVocabularyEntries).toBe(MAX_LABELER_VOCABULARY_ENTRIES);
+    expect(limits?.maxAppealStatementChars).toBe(MAX_APPEAL_STATEMENT_CHARS);
+    expect(limits?.accountExportMaxReadyArchives).toBe(ACCOUNT_EXPORT_MAX_READY_ARCHIVES);
+
+    // Every published limit must be nonzero — a zero would silently render as "unlimited" to
+    // a client that treats 0 that way elsewhere in this API (spec §204's whole point is a
+    // client being able to render "you have N of LIMIT" honestly).
+    for (const value of [
+      limits?.maxFiltersPerActor,
+      limits?.maxFilterTermsPerFilter,
+      limits?.maxFilterListsPublishedPerActor,
+      limits?.maxFilterListEntries,
+      limits?.maxFilterListSubscriptions,
+      limits?.maxFilterListExceptionsPerList,
+      limits?.maxLabelerSubscriptionsPerActor,
+      limits?.maxLabelVocabularyEntries,
+      limits?.maxAppealStatementChars,
+      limits?.accountExportMaxReadyArchives,
+    ]) {
+      expect(value).toBeGreaterThan(0);
+    }
   });
 });
 
