@@ -25,6 +25,7 @@ import { runVerify } from './cli/verify.js';
 import { runWhoami } from './cli/whoami.js';
 import { isTruthy } from './env.js';
 import { App } from './app/App.js';
+import { resolveImageRenderMode } from './media/image-mode.js';
 import { installTerminalCleanup } from './terminal/cleanup.js';
 import { checkForUpgrade, createFileUpgradeCache, isUpgradeCheckEnabled } from './upgrade/check.js';
 import { installUpgrade } from './upgrade/install.js';
@@ -154,7 +155,9 @@ async function runTui(args: {
     await promptForUpgrade({ currentVersion: TUI_VERSION, upgrade, plain: args.plain });
   }
 
-  const mediaRenderer = createRenderer(graphicsCapabilities);
+  const mediaRenderer = createRenderer(graphicsCapabilities, process.stdout, {
+    mode: resolveImageRenderMode(process.env),
+  });
   // Freed on exit/signal even though Ink's own alternate-screen teardown runs first —
   // Ink treats teardown-time writes as disposable, so the actual `d=I` deletes have to
   // reach stdout from an `exit`/signal handler, not a React effect (spec §70).

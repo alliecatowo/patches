@@ -244,10 +244,31 @@ exit to publish the new revision.
 
 Pass `--plain` (or set `PATCHES_PLAIN=1`), or press `P` at runtime, to strip nameplate
 decoration (colored badges/frames) from the UI — useful for screen readers, low-color
-terminals, or just personal preference. Image rendering itself gracefully degrades: on a
-terminal with Kitty graphics protocol support (e.g. Ghostty, kitty), images render inline; on
-any other terminal, Patches falls back to a placeholder box rather than failing or dumping
-raw escape codes.
+terminals, or just personal preference. Plain mode always shows the plain placeholder box for
+images (see below) rather than any form of art.
+
+### Image rendering: Kitty graphics, terminal art, or a plain box
+
+Image rendering gracefully degrades in three tiers, never failing or dumping raw escape codes:
+
+1. **Kitty graphics protocol** (Ghostty, kitty, WezTerm, and other terminals that implement
+   it) — the real image, transmitted out-of-band and drawn inline.
+2. **Terminal art** — on any other terminal, Patches draws the image itself using Unicode
+   half-block characters (two pixels per cell, in truecolor or 256-colour depending on what
+   your terminal reports) or, on a terminal with no usable colour at all (`NO_COLOR` set,
+   `TERM=dumb`, or no `TERM`), a colourless dithered ASCII-art rendering. This is real,
+   recognizable art, not a Kitty-only feature with everyone else stuck on a box.
+3. **A plain description box** (dimensions, format, "press `o` to open externally") — used in
+   plain mode, when you've explicitly asked for it (below), or when nothing else applies.
+
+The **Images** row on the Preferences screen cycles `auto` → `pixel` → `ascii` → `box` → `off`
+(`h`/`l` or arrow keys), with a live one-line description of what each mode does: `auto` picks
+the best of the three tiers above automatically; `pixel` and `ascii` force terminal art even on
+a Kitty-capable terminal; `box` always shows the plain box (still fetching the image, just never
+drawing it); `off` never fetches or draws anything — the box still renders from the post's own
+metadata (dimensions, alt text), since that's content, not decoration. The same modes are
+available as a one-time override via the `PATCHES_IMAGES` environment variable
+(`auto`/`kitty`/`pixel`/`ascii`/`box`/`off`) if you'd rather not touch Preferences.
 
 ## Troubleshooting
 

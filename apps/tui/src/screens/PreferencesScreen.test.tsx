@@ -130,7 +130,7 @@ describe('PreferencesScreen', () => {
     expect(stripSgr(lastFrame() ?? '')).toContain('Glyphs: nerd');
   });
 
-  it('toggles image policy auto/off on its row', async () => {
+  it('cycles image policy auto -> pixel -> ascii -> box -> off -> auto on its row', async () => {
     const onImagePolicyChange = vi.fn();
     const { stack } = renderScreen(baseProps({ imagePolicy: 'auto', onImagePolicyChange }));
     await dispatch(stack, 'j'); // glyphs
@@ -138,7 +138,27 @@ describe('PreferencesScreen', () => {
     await dispatch(stack, 'j'); // quiet
     await dispatch(stack, 'j'); // images
     await dispatch(stack, 'l');
+    expect(onImagePolicyChange).toHaveBeenCalledWith('pixel');
+  });
+
+  it('cycles image policy backwards with h, wrapping from auto to off', async () => {
+    const onImagePolicyChange = vi.fn();
+    const { stack } = renderScreen(baseProps({ imagePolicy: 'auto', onImagePolicyChange }));
+    await dispatch(stack, 'j'); // glyphs
+    await dispatch(stack, 'j'); // plain
+    await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // images
+    await dispatch(stack, 'h');
     expect(onImagePolicyChange).toHaveBeenCalledWith('off');
+  });
+
+  it('shows a live one-line description of the selected image mode', async () => {
+    const { stack, lastFrame } = renderScreen(baseProps({ imagePolicy: 'ascii' }));
+    await dispatch(stack, 'j'); // glyphs
+    await dispatch(stack, 'j'); // plain
+    await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // images
+    expect(stripSgr(lastFrame() ?? '')).toContain('Colourless dithered ascii art');
   });
 
   it('Enter saves, Esc cancels', async () => {

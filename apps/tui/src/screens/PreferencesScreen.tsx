@@ -44,6 +44,7 @@ export interface PreferencesScreenProps {
 type Row = 'theme' | 'glyphs' | 'plain' | 'quiet' | 'images';
 const ROWS: readonly Row[] = ['theme', 'glyphs', 'plain', 'quiet', 'images'];
 const GLYPH_SET_CYCLE: readonly GlyphSetName[] = ['unicode', 'nerd', 'ascii'];
+const IMAGE_POLICY_CYCLE: readonly ImagePolicy[] = ['auto', 'pixel', 'ascii', 'box', 'off'];
 
 const ROW_LABELS: Readonly<Record<Row, string>> = {
   theme: 'Theme',
@@ -58,7 +59,18 @@ const ROW_HELP: Readonly<Record<Row, string>> = {
   glyphs: 'unicode/nerd/ascii — never required: every control has a word alongside a glyph.',
   plain: 'Strips every colour, glyph and border — including your own (spec §173).',
   quiet: 'Hides other actors’ cosmetics; your own decoration stays (spec §185).',
-  images: 'Off never fetches or draws an image — the alt-text box always still renders.',
+  images: 'h/l cycles auto/pixel/ascii/box/off — see the line below for what each does.',
+};
+
+/** One-line description of what each `images` row value actually draws — shown live
+ * below the row list, in place of the generic `ROW_HELP.images` line, while `images`
+ * is selected (P12-113/the terminal-art feature). */
+const IMAGE_POLICY_HELP: Readonly<Record<ImagePolicy, string>> = {
+  auto: 'Best available: real Kitty graphics, then pixel art, then ascii art.',
+  pixel: 'Half-block colour art (truecolor or 256-colour) — even on a Kitty terminal.',
+  ascii: 'Colourless dithered ascii art — no ANSI colour codes at all.',
+  box: 'Always the dimensions box — the image is still fetched, just never drawn.',
+  off: 'Off never fetches or draws an image — the alt-text box always still renders.',
 };
 
 /**
@@ -127,7 +139,10 @@ export function PreferencesScreen({
       onQuietChange(!quiet);
       return;
     }
-    setImagePolicy(imagePolicyValue === 'auto' ? 'off' : 'auto');
+    const index = IMAGE_POLICY_CYCLE.indexOf(imagePolicyValue);
+    const nextIndex = (index + direction + IMAGE_POLICY_CYCLE.length) % IMAGE_POLICY_CYCLE.length;
+    const next = IMAGE_POLICY_CYCLE[nextIndex];
+    if (next !== undefined) setImagePolicy(next);
   }
 
   useKeyLayer(
@@ -203,7 +218,7 @@ export function PreferencesScreen({
         </Text>
       ))}
       <Text color={shellTheme.muted} wrap="truncate-end">
-        {ROW_HELP[current]}
+        {current === 'images' ? IMAGE_POLICY_HELP[imagePolicyValue] : ROW_HELP[current]}
       </Text>
       {showPreview ? (
         <Box

@@ -58,6 +58,14 @@ describe('MemoryPreferenceStore', () => {
     await expect(store.get(ALICE)).resolves.toEqual({ glyphSet: 'ascii', imagePolicy: 'off' });
   });
 
+  it('round-trips every imagePolicy value, including the newer pixel/ascii/box modes', async () => {
+    const store = new MemoryPreferenceStore();
+    for (const imagePolicy of ['auto', 'pixel', 'ascii', 'box', 'off'] as const) {
+      await store.set(ALICE, { imagePolicy });
+      await expect(store.get(ALICE)).resolves.toEqual({ imagePolicy });
+    }
+  });
+
   it('rejects an unrecognized glyphSet or imagePolicy value', () => {
     const store = new MemoryPreferenceStore();
     // Deliberately malformed input — simulates a hand-edited preferences.json, not a type

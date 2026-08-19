@@ -12,10 +12,27 @@ export interface PreferenceKey {
   readonly actorId: string;
 }
 
-/** Whether an image attaches inline at all — distinct from the per-row/viewer *placement*
- * limits (P12-018), which stay a node/terminal-capability concern. `'off'` never fetches or
- * draws a placement; the §75 fallback box (alt text, dimensions) still always renders. */
-export type ImagePolicy = 'auto' | 'off';
+/**
+ * How an image attaches inline — distinct from the per-row/viewer *placement* limits
+ * (P12-018), which stay a node/terminal-capability concern.
+ *
+ * - `'auto'` — the best rendering the terminal supports (Kitty, then half-block art,
+ *   then ascii art), same policy `createRenderer`'s own `'auto'` mode picks.
+ * - `'pixel'` — force half-block art (or ascii, if colour truly isn't available),
+ *   never the real Kitty protocol — useful on a Kitty-capable terminal the viewer
+ *   would rather not spend Kitty's terminal-side placement budget on, or just
+ *   prefers the look of.
+ * - `'ascii'` — force the colourless luminance-ramp renderer, unconditionally.
+ * - `'box'` — force the spec §75 description box, but still fetch/prepare the image
+ *   (matches `createRenderer`'s `'box'` mode).
+ * - `'off'` — never fetches or draws a placement at all; the §75 fallback box (alt
+ *   text, dimensions) still always renders from the attachment's own metadata.
+ *
+ * No `'kitty'` value here on purpose: forcing the real graphics protocol against an
+ * unconfirmed terminal is a footgun this preference row deliberately doesn't expose —
+ * `'auto'` already uses it whenever the probe confirms support.
+ */
+export type ImagePolicy = 'auto' | 'pixel' | 'ascii' | 'box' | 'off';
 
 /** Presentation preferences only. Credentials and session material never belong here. */
 export interface LocalPreferences {
@@ -102,7 +119,7 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
 }
 
 const GLYPH_SET_NAMES: readonly GlyphSetName[] = ['unicode', 'nerd', 'ascii'];
-const IMAGE_POLICIES: readonly ImagePolicy[] = ['auto', 'off'];
+const IMAGE_POLICIES: readonly ImagePolicy[] = ['auto', 'pixel', 'ascii', 'box', 'off'];
 
 function isLocalPreferences(value: unknown): value is LocalPreferences {
   if (

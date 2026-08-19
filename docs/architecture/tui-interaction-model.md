@@ -143,8 +143,30 @@ the reader is actually looking at keeps the differentiator at roughly 1/20th the
 
 Constraints: a bounded **LRU of ≤ 4 live placements** in the renderer, evicting with `d=I`;
 `MediaViewerScreen` is a route (`{screen:'media', postId, index}`) with one placement released on
-pop; `o` (open externally, §76) is unchanged **[v]**; non-Kitty, tmux without `allow-passthrough`,
-plain mode, or no session → fallback box.
+pop; `o` (open externally, §76) is unchanged **[v]**; plain mode or no session → fallback box.
+
+#### 2.6.1 Non-Kitty rendering: terminal art, not just the box — decided **[p]**
+
+`packages/terminal-media`'s `createRenderer(caps, stdout, { mode })` **[v]** picks one of four
+renderer _kinds_ — `kitty` | `halfblock` | `ascii` | `box` — from an `ImageRenderMode`
+(`'auto' | 'kitty' | 'pixel' | 'ascii' | 'box' | 'off'`). `'auto'` (the default) still prefers real
+Kitty graphics when the probe confirms it, same as §2.6 above, but a non-Kitty terminal is **not**
+automatically the §75 box anymore: it gets half-block art (`▀`/`▄` two-pixels-per-cell, truecolor or
+xterm 256-colour depending on `COLORTERM`) or, when no colour is available at all (`NO_COLOR`,
+`TERM=dumb`/unset), colourless dithered ascii art. Only an explicit `box`/`off` mode (or plain mode,
+or no session) still renders the plain description box. `HalfBlockRenderer`/`AsciiRenderer` write
+plain `<Text>` rows through Ink's own tree — no raw stdout APC writes, no terminal-side placement
+state — so unlike Kitty they carry none of §2.6's scroll-churn constraints; the three-inline-places
+rule above exists only because Kitty placements are a scarce, terminal-global resource.
+
+The TUI's `images` preference (`apps/tui/src/preferences/store.ts`'s `ImagePolicy`:
+`'auto' | 'pixel' | 'ascii' | 'box' | 'off'`, cycled on the Preferences screen, or the
+`PATCHES_IMAGES` env var read once in `cli.tsx` before Ink's `render()`) maps 1:1 onto
+`ImageRenderMode` (minus `'kitty'` — forcing the real protocol against an unconfirmed terminal isn't
+exposed as a user preference, only `'auto'`'s own successful probe reaches it). `MediaViewerScreen`
+draws whatever art the active renderer produces at the viewer's full budget (not a timeline row's
+3-row default) whenever `renderer.kind !== 'box'`; see `docs/research/terminal-image-art.md` for the
+half-block/256-colour/dithering technique and citations.
 
 ### 2.7 Plain-mode parity
 
