@@ -64,7 +64,7 @@ Run it (two terminals):
 
 ```bash
 mise run server     # gRPC server on 127.0.0.1:50051
-mise run tui:prod   # the TUI against the live node (same as plain `patches`)
+mise run tui:prod   # the TUI against the live node (same as plain `patches`) — see docs/operations/try-it.md
 mise run ping:prod  # connectivity check against the live node
 mise run tui        # full-screen TUI  (q quit · R reconnect · ? help)
 mise run ping       # non-interactive check (JSON, exit 0/1)
