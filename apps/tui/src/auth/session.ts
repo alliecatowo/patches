@@ -52,6 +52,22 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/**
+ * Emitted by `withSession` (P12-011) so the shell can push an inline re-auth modal without
+ * `SessionManager` importing anything Ink-shaped. `needsReauth` fires once per outstanding
+ * request (repeat callers while one is already pending share the same wait, no second modal);
+ * `reauthResolved`/`reauthCancelled` tell the modal to close.
+ */
+export type SessionEvent =
+  { type: 'needsReauth' } | { type: 'reauthResolved' } | { type: 'reauthCancelled' };
+export type SessionEventListener = (event: SessionEvent) => void;
+
+interface PendingReauth {
+  readonly promise: Promise<string>;
+  readonly resolve: (accessToken: string) => void;
+  readonly reject: (error: unknown) => void;
+}
+
 function isUnauthenticated(error: unknown): boolean {
   // 16 == grpc.status.UNAUTHENTICATED — imported by number to avoid pulling
   // @grpc/grpc-js's `status` enum into this file just for one comparison.
@@ -88,6 +104,8 @@ export class SessionManager {
   private readonly nodeOrigin: string;
   private readonly refreshSkewMs: number;
   private current: ActiveSession | undefined;
+  private readonly eventListeners = new Set<SessionEventListener>();
+  private pendingReauth: PendingReauth | undefined;
 
   constructor(options: SessionManagerOptions) {
     this.api = options.api;
@@ -180,6 +198,79 @@ export class SessionManager {
       }
       return call(refreshed.accessToken);
     }
+  }
+
+  onSessionEvent(listener: SessionEventListener): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  }
+
+  private emit(event: SessionEvent): void {
+    for (const listener of this.eventListeners) listener(event);
+  }
+
+  /**
+   * Like {@link withAuth}, but never loses the caller's work to a session expiry (P12-011,
+   * spec: "Session expiry never loses a draft"). On `UNAUTHENTICATED` that survives a refresh,
+   * instead of throwing immediately this emits `needsReauth` and waits for the shell to call
+   * {@link completeReauth} (or {@link cancelReauth}) — every `withSession` call already waiting
+   * shares the same wait, so a burst of failing requests shows exactly one re-auth modal, not
+   * one per request. Nothing here touches a compose draft or navigation state; that is by
+   * construction — this only ever retries `call`, never anything else.
+   */
+  async withSession<T>(call: (accessToken: string) => Promise<T>): Promise<T> {
+    try {
+      return await this.withAuth(call);
+    } catch (error) {
+      if (!(error instanceof SessionExpiredError)) throw error;
+      const accessToken = await this.requestReauth();
+      return call(accessToken);
+    }
+  }
+
+  private requestReauth(): Promise<string> {
+    if (this.pendingReauth === undefined) {
+      let resolve!: PendingReauth['resolve'];
+      let reject!: PendingReauth['reject'];
+      const promise = new Promise<string>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      this.pendingReauth = { promise, resolve, reject };
+      this.emit({ type: 'needsReauth' });
+    }
+    // A second (or third, …) caller while one modal is already up piggy-backs on the same
+    // promise — a JS `Promise` can be awaited by any number of callers, so no fan-out
+    // bookkeeping is needed beyond returning it.
+    return this.pendingReauth.promise;
+  }
+
+  /**
+   * Called by the shell's re-auth modal on a successful password sign-in. Resolves every
+   * `withSession` call currently waiting with the freshly issued access token, each of which
+   * then replays its own original request.
+   */
+  async completeReauth(emailOrHandle: string, password: string): Promise<void> {
+    const active = await this.loginWithPassword(emailOrHandle, password);
+    const pending = this.pendingReauth;
+    this.pendingReauth = undefined;
+    pending?.resolve(active.accessToken);
+    this.emit({ type: 'reauthResolved' });
+  }
+
+  /**
+   * Called by the shell when the viewer dismisses the re-auth modal (`Esc`) without signing
+   * in. Every waiting `withSession` call rejects with the same {@link SessionExpiredError} it
+   * would have thrown without this mechanism — the caller's existing error handling (and its
+   * draft) is unaffected either way.
+   */
+  cancelReauth(): void {
+    const pending = this.pendingReauth;
+    this.pendingReauth = undefined;
+    pending?.reject(new SessionExpiredError());
+    this.emit({ type: 'reauthCancelled' });
   }
 
   private applySession(session: Session | undefined, fallbackUserId?: string): ActiveSession {
