@@ -10,12 +10,15 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Actor } from './actor.entity.js';
+import { Community } from './community.entity.js';
 import {
   checkIn,
   POST_TYPES,
   POST_VISIBILITIES,
+  QUOTE_POLICIES,
   type PostType,
   type PostVisibility,
+  type QuotePolicy,
 } from './enums.js';
 
 /**
@@ -35,6 +38,9 @@ import {
 @Index(['createdAt', 'id'])
 @Index(['rootPostId', 'createdAt', 'id'])
 @Index(['inReplyToId', 'createdAt', 'id'])
+// Amendment B (§189-190): `ListCommunityFeed` pages a community's posts by
+// `(created_at DESC, id DESC)`, same keyset shape as every other feed index above.
+@Index(['communityId', 'createdAt', 'id'])
 @Index(['canonicalUri'], { unique: true })
 // Idempotent creation under retry (§45): a duplicated CreatePost with the same
 // client_request_id hits this constraint instead of creating a second post. No partial
@@ -47,6 +53,7 @@ import {
 // link") also depends on `post_media` rows, which a row-level CHECK cannot see — that half
 // is enforced in the service layer (documented in docs/architecture/data-model.md).
 @Check('chk_posts_link_url_required_for_link', `"post_type" <> 'LINK' OR "link_url" IS NOT NULL`)
+@Check('chk_posts_quote_policy', checkIn('quote_policy', QUOTE_POLICIES))
 export class Post {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
@@ -143,4 +150,28 @@ export class Post {
    * user-facing label. */
   @Column({ type: 'text', nullable: true })
   declare removalReason: string | null;
+
+  /** Unset unless this post quotes another (`INITIAL_VISION.md` §189, Amendment B). Only one
+   * level of nesting is ever rendered (§188) even if the quoted post itself quotes another. A
+   * quote (unlike `inReplyTo`/`rootPost` above) always references a *different* row, so this
+   * relation needs none of `inReplyTo`'s self-reference care — `SET NULL` un-quotes rather
+   * than blocking or cascading the delete. */
+  @Column({ type: 'uuid', nullable: true })
+  declare quotedPostId: string | null;
+
+  @ManyToOne(() => Post, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'quoted_post_id' })
+  declare quotedPost: Post | null;
+
+  @Column({ type: 'text', default: 'ANYONE' })
+  declare quotePolicy: QuotePolicy;
+
+  /** Unset for a post not posted into a community. Immutable after insert (§189) — enforced
+   * in the service layer, not the database. */
+  @Column({ type: 'uuid', nullable: true })
+  declare communityId: string | null;
+
+  @ManyToOne(() => Community, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'community_id' })
+  declare community: Community | null;
 }
