@@ -252,17 +252,52 @@ client's perspective (`grpc.patches.social:443`, once DNS exists).
 
 ## Health checks
 
+**Status: implemented; verify with `flyctl checks list` after deploy.**
+
 **No native gRPC check type exists on Fly** (documented — `docs/research/fly-io.md` §3;
-only `http`/`tcp`). `infra/fly/fly.toml` uses a `[[services.tcp_checks]]` against the gRPC
-`internal_port` (50051) as the pragmatic fallback this task's scope allows (it can't touch
-`apps/server` source to add a real HTTP health listener) — a TCP check only confirms the
-socket accepts connections, not that gRPC itself is healthy. `apps/server` already
-implements the standard `grpc.health.v1.Health` service internally (`grpc-health-check`,
-see `apps/server/src/grpc-options.ts`) for gRPC-aware clients/probes, which is a different,
-additional thing from Fly's platform-level check and doesn't substitute for it.
-**Follow-up**: add a small plain-HTTP listener alongside the gRPC microservice (the Nest
-"hybrid app" pattern, `docs/research/nestjs-grpc-protobuf.md` §3) and point an `http_checks`
-entry at it instead, once that's in scope for an `apps/server`-owning task.
+only `http`/`tcp`). `infra/fly/fly.toml` keeps the `[[services.tcp_checks]]` against the
+gRPC `internal_port` (50051) — it only confirms the socket accepts connections, not that the
+app is actually healthy — alongside a real application-level check (A-043):
+
+```toml
+[checks]
+  [checks.healthz]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    processes = ["server"]
+```
+
+`GET /healthz` (`apps/server/src/modules/system/health.controller.ts` /
+`health.service.ts`) reports **200** only when the database answers `SELECT 1` **and** the
+`grpc.health.v1.Health` status is `SERVING`, **503** otherwise — a top-level `[checks]`
+entry rather than `[[services.http_checks]]` because port 8080 isn't a routed/public
+`[[services]]` block; `[checks]` targets a port directly, independent of request routing.
+
+`/healthz` is served differently depending on `FEDERATION_ENABLED` (`main.ts`):
+
+- **`FEDERATION_ENABLED=false`** (production default, spec §176): a standalone,
+  single-route HTTP listener (`apps/server/src/modules/system/healthz-server.ts`) binds
+  `HTTP_PORT` and answers only `/healthz` — deliberately **not** Nest's own HTTP adapter.
+  `AppModule` imports `FederationModule` (webfinger/actor/inbox/outbox controllers)
+  unconditionally, and those controllers don't re-check `FEDERATION_ENABLED` themselves
+  (unlike `FederationMetricsController`) — they stay unreachable only because nothing binds
+  a port for Nest's adapter. Binding that adapter to serve `/healthz` would have also
+  opened the federation HTTP surface on every node, contradicting the "zero new network
+  surface when federation is off" invariant documented on `FEDERATION_ENABLED` in
+  `env.schema.ts`. The standalone listener sidesteps that entirely.
+- **`FEDERATION_ENABLED=true`**: `main.ts` calls `app.listen(HTTP_PORT)` on Nest's full HTTP
+  adapter as before, and `HealthController` answers `/healthz` from the same port alongside
+  the federation routes.
+
+Both paths call the same `HealthService.check()`, so the response is identical either way.
+`apps/server` also implements the standard `grpc.health.v1.Health` service internally
+(`grpc-health-check`, see `apps/server/src/grpc-options.ts`) for gRPC-aware clients/probes —
+a different, additional thing from either Fly check above.
 
 ## Production database
 
