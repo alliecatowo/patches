@@ -54,6 +54,15 @@ export { Conversation } from './entities/conversation.entity.js';
 export { ConversationMember } from './entities/conversation-member.entity.js';
 export { Message } from './entities/message.entity.js';
 export { MessageRequest } from './entities/message-request.entity.js';
+export { E2eeIdentityRoot } from './entities/e2ee-identity-root.entity.js';
+export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
+export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';
+export { E2eeSignedPrekey } from './entities/e2ee-signed-prekey.entity.js';
+export { E2eeOneTimePrekey } from './entities/e2ee-one-time-prekey.entity.js';
+export { E2eeLogicalMessage } from './entities/e2ee-logical-message.entity.js';
+export { E2eeMailboxEnvelope } from './entities/e2ee-mailbox-envelope.entity.js';
+export { E2eeReportEvidence } from './entities/e2ee-report-evidence.entity.js';
+export { E2eeReportEvidenceItem } from './entities/e2ee-report-evidence-item.entity.js';
 export { PostEdit } from './entities/post-edit.entity.js';
 export { PinnedPost } from './entities/pinned-post.entity.js';
 export { ActorFlair } from './entities/actor-flair.entity.js';
@@ -64,7 +73,9 @@ export {
   COMMUNITY_INVITE_STATUSES,
   COMMUNITY_ROLES,
   CONVERSATION_KINDS,
+  CONVERSATION_SECURITY_MODES,
   CREDENTIAL_TYPES,
+  E2EE_EVIDENCE_VERIFICATION_STATUSES,
   FOLLOW_STATUSES,
   MEDIA_STATES,
   MESSAGE_REQUEST_STATUSES,
@@ -85,7 +96,9 @@ export type {
   CommunityInviteStatus,
   CommunityRole,
   ConversationKind,
+  ConversationSecurityMode,
   CredentialType,
+  E2eeEvidenceVerificationStatus,
   FollowStatus,
   MediaState,
   MessageRequestStatus,
@@ -115,6 +128,7 @@ export { Phase11SocialDepth1787103400432 } from './migrations/1787103400432-Phas
 export { Phase11ReactionNotifyTypes1787104500000 } from './migrations/1787104500000-Phase11ReactionNotifyTypes.js';
 export { Phase11DirectMessagesModeration1787104600000 } from './migrations/1787104600000-Phase11DirectMessagesModeration.js';
 export { Phase11CommunityIdempotency1787104700000 } from './migrations/1787104700000-Phase11CommunityIdempotency.js';
+export { Phase13E2ee1787134230745 } from './migrations/1787134230745-Phase13E2ee.js';
 
 export {
   claimOutboxJobs,

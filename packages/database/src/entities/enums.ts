@@ -66,7 +66,13 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
  * than duplicating the report model. `MESSAGE` (P11-004, §183.4) is the fourth: reporting a
  * message snapshots up to 10 surrounding messages into `message_snapshot` at write time (see
  * `report.entity.ts`), since the message(s) themselves may later be tombstoned/deleted. */
-export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST', 'GUESTBOOK_ENTRY', 'MESSAGE'] as const;
+export const REPORT_SUBJECT_TYPES = [
+  'ACTOR',
+  'POST',
+  'GUESTBOOK_ENTRY',
+  'MESSAGE',
+  'E2EE_MESSAGE',
+] as const;
 export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number];
 
 export const REPORT_REASONS = [
@@ -136,6 +142,13 @@ export type CommunityInviteStatus = (typeof COMMUNITY_INVITE_STATUSES)[number];
  * members total (§188), enforced in the service layer. */
 export const CONVERSATION_KINDS = ['DIRECT', 'GROUP'] as const;
 export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
+
+/** Immutable direct-message security boundary (ADR 0020). */
+export const CONVERSATION_SECURITY_MODES = ['LEGACY_SERVER_VISIBLE', 'E2EE_V1'] as const;
+export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[number];
+
+export const E2EE_EVIDENCE_VERIFICATION_STATUSES = ['PENDING', 'VERIFIED', 'UNVERIFIABLE'] as const;
+export type E2eeEvidenceVerificationStatus = (typeof E2EE_EVIDENCE_VERIFICATION_STATUSES)[number];
 
 /** `message_requests.status` (`INITIAL_VISION.md` §189). At most one pending request per
  * (sender, recipient) pair (§188) — enforced by a partial unique index, see

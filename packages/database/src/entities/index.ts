@@ -13,6 +13,15 @@ import { Conversation } from './conversation.entity.js';
 import { ConversationMember } from './conversation-member.entity.js';
 import { Credential } from './credential.entity.js';
 import { DomainBlock } from './domain-block.entity.js';
+import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
+import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
+import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
+import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
+import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
+import { E2eeOneTimePrekey } from './e2ee-one-time-prekey.entity.js';
+import { E2eeReportEvidenceItem } from './e2ee-report-evidence-item.entity.js';
+import { E2eeReportEvidence } from './e2ee-report-evidence.entity.js';
+import { E2eeSignedPrekey } from './e2ee-signed-prekey.entity.js';
 import { FederationKey } from './federation-key.entity.js';
 import { Follow } from './follow.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
@@ -54,7 +63,8 @@ import { User } from './user.entity.js';
  * §188-190) adds `reposts`, `tags`, `post_tags`, `tag_mutes`, `communities`,
  * `community_members`, `community_bans`, `community_invites`, `conversations`,
  * `conversation_members`, `messages`, `message_requests`, `post_edits`, `pinned_posts`,
- * `actor_flair`.
+ * `actor_flair`. Phase 13 adds only public E2EE identity/prekey material, opaque mailbox
+ * envelopes, and explicitly consented report evidence.
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -97,6 +107,15 @@ export const ALL_ENTITIES = [
   ConversationMember,
   Message,
   MessageRequest,
+  E2eeIdentityRoot,
+  E2eeDeviceIdentity,
+  E2eeDeviceRoster,
+  E2eeSignedPrekey,
+  E2eeOneTimePrekey,
+  E2eeLogicalMessage,
+  E2eeMailboxEnvelope,
+  E2eeReportEvidence,
+  E2eeReportEvidenceItem,
   PostEdit,
   PinnedPost,
   ActorFlair,

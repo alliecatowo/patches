@@ -1138,6 +1138,7 @@ A direct-message conversation (§183.4). Never federated, no media, no link prev
 | --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------- |
 | `id`                  | `uuid`        | no       | PK                                                                                     |
 | `kind`                | `text`        | no       | `direct` \| `group`, default `direct`                                                  |
+| `security_mode`       | `text`        | no       | immutable `LEGACY_SERVER_VISIBLE` \| `E2EE_V1`; existing rows default to legacy        |
 | `created_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — a conversation outlives its creator's account |
 | `created_at`          | `timestamptz` | no       |                                                                                        |
 | `last_message_at`     | `timestamptz` | no       | denormalized, updated on every `SendMessage`, drives `ListConversations`'s ordering    |
@@ -1253,6 +1254,46 @@ Max 1 KiB serialized (§188) — enforced in the service layer.
 | `community_id`   | `uuid` | yes      | FK → `communities.id`, `ON DELETE SET NULL`; immutable after insert (service-layer enforced)   |
 
 **Indexes**: `posts(community_id, created_at, id)` — backs `FeedService.ListCommunityFeed`.
+
+---
+
+## Phase 13: E2EE direct-message tables (ADR 0020)
+
+**Status: implemented (schema only).** These tables exist and are exercised by
+`packages/database`'s integration tests, but `E2EE_V1` is not a reachable product capability —
+per ADR 0020 §11 this is migration stage 3 ("node protocol behind a disabled capability"), and
+every conversation still created today is `LEGACY_SERVER_VISIBLE` (§1.1, enforced by a
+`BEFORE UPDATE` trigger on `conversations.security_mode` that rejects any change). No plaintext
+body, private/session key, message key, or ratchet state is ever persisted here — see
+`packages/database/src/entities/e2ee-privacy.test.ts`, which asserts that by inspecting every
+`E2ee*` entity's column metadata. The one narrow, intentional exception is
+`e2ee_report_evidence_items.disclosed_plaintext`: content a reporter explicitly selects and
+submits (ADR 0020 §9), never written by ordinary message delivery.
+
+| Table                        | Purpose                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2ee_identity_roots`        | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                      |
+| `e2ee_device_identities`     | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`. |
+| `e2ee_device_rosters`        | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                       |
+| `e2ee_signed_prekeys`        | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                            |
+| `e2ee_one_time_prekeys`      | Public one-time X3DH prekeys; consumed rows are kept as anti-replay tombstones, not deleted.                                                         |
+| `e2ee_logical_messages`      | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                          |
+| `e2ee_mailbox_envelopes`     | One opaque per-recipient-device ciphertext payload per logical message.                                                                              |
+| `e2ee_report_evidence`       | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                |
+| `e2ee_report_evidence_items` | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                        |
+
+`reports.subject_type` gained `E2EE_MESSAGE` and `reports.subject_e2ee_logical_message_id`
+(no FK — evidence must outlive ordinary mailbox/message retention) alongside the pre-existing
+`MESSAGE` subject.
+
+**Partial-index naming note**: several tables above intentionally have only _one_ index over a
+given column set (e.g. `e2ee_mailbox_envelopes` has no non-partial twin of its
+`(recipient_device_identity_id, received_at, id)` index) rather than both a general and a
+partial version — `SnakeNamingStrategy.indexName` (`packages/database/src/naming/`) derives an
+index's name from its sorted column list only, not its `WHERE` predicate, so two indexes over
+the same columns would collide on name. Where two predicates are genuinely both needed (e.g.
+"generation" history vs. "active" pointer), they deliberately use different column sets so
+`pnpm db:generate` sees no drift.
 
 ---
 
