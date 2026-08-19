@@ -32,9 +32,8 @@ kill_timeout = "20s"
   FEDERATION_ENABLED = "false"
   TRUST_PROXY_HEADERS = "true"
   EMAIL_PROVIDER = "resend"
-  # Resend test sender until a real sending domain is verified (resend.com/domains) — delivers
-  # only to the Resend account owner's address; other recipients fail until then (B-031).
-  EMAIL_FROM = "Patches <onboarding@resend.dev>"
+  # Sending domain verified in Resend; the local part does not need a separate sender identity.
+  EMAIL_FROM = "Patches <noreply@updates.allisons.dev>"
 
 # One image, two process groups (docs/research/fly-io.md §1, §5). Fly runs each group's
 # Machines with the corresponding command below, overriding the image's default CMD
