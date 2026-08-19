@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { AppealStatus } from './generated/patches/v1/appeals.js';
-import { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+import {
+  CredentialType,
+  GitHubLoginStatus,
+  PasswordAuthMode,
+} from './generated/patches/v1/auth.js';
 import { CommunityInviteStatus, CommunityRole } from './generated/patches/v1/communities.js';
 import { FilterAction, FilterScope, FilterTermKind } from './generated/patches/v1/filters.js';
 import { LabelAction } from './generated/patches/v1/labels.js';
@@ -49,6 +53,7 @@ import {
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
   NOTIFICATION_TYPE,
+  PASSWORD_AUTH_MODE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
@@ -91,6 +96,10 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('REGISTRATION_MODE matches RegistrationMode', () => {
     expect(Object.values(REGISTRATION_MODE).sort()).toEqual(generatedValues(RegistrationMode));
+  });
+
+  it('PASSWORD_AUTH_MODE matches PasswordAuthMode', () => {
+    expect(Object.values(PASSWORD_AUTH_MODE).sort()).toEqual(generatedValues(PasswordAuthMode));
   });
 
   it('NOTIFICATION_TYPE matches NotificationType', () => {

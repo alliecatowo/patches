@@ -57,6 +57,10 @@ export type {
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
   Credential,
+  GenerateRecoveryCodesRequest,
+  GenerateRecoveryCodesResponse,
+  GetAuthPolicyRequest,
+  GetAuthPolicyResponse,
   GetCurrentSessionRequest,
   GetCurrentSessionResponse,
   ListCredentialsRequest,
@@ -69,6 +73,8 @@ export type {
   LogoutResponse,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
+  RecoveryLoginRequest,
+  RecoveryLoginResponse,
   RefreshSessionRequest,
   RefreshSessionResponse,
   RegisterRequest,
@@ -88,7 +94,11 @@ export type {
 } from './generated/patches/v1/auth.js';
 // Enum *types* only here — `export type` is erased at compile time, unlike a value export
 // (see `enums.ts` for why the runtime values come from a hand-mirrored module instead).
-export type { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+export type {
+  CredentialType,
+  GitHubLoginStatus,
+  PasswordAuthMode,
+} from './generated/patches/v1/auth.js';
 export type {
   ListActorPostsRequest,
   ListActorPostsResponse,
