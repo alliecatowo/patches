@@ -288,6 +288,9 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [x] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
 - [x] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
 
+- [ ] P14-029 — enforce stored discoverability prefs (§197.5): `discoverable=false` omits the actor from `SearchActors`/directories (exact-handle resolution still works), `indexable=false` excludes their posts from `SearchPosts`, `show_in_local_feed=false` hides their public posts from the local timeline; integration tests per control; docs/product/privacy.md flipped from planned
+- [ ] P14-030 — node policy `PUBLIC_READ` (default true): when false, anonymous callers get only system/node-info/auth/health + federation surface; `SIGN_IN_REQUIRED` error; clients show a sign-in prompt (owner decision 2026-08-19: invite-only gates posting, not reading)
+
 ## Phase 15 — passwordless auth (owner request 2026-08-19; ADR 0011 credential model, §165–§168)
 
 - [ ] P15-001 — enable GitHub device-flow login on prod: create the OAuth App (device flow on), `flyctl secrets set GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET`, verify `patches login --github` end-to-end, document in `docs/operations/deployment.md`
