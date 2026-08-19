@@ -33,7 +33,7 @@ import { toPostViews } from './post-batch.js';
  * (§198.4's explicit "unbounded looping to fill a page is prohibited"). Each round advances the
  * cursor to the last row it examined, so a caller who exhausts every round still gets a
  * correct, resumable `next_cursor` — see `page()`. */
-const MAX_FILTER_ROUNDS = 4;
+export const MAX_FILTER_ROUNDS = 4;
 
 /**
  * Chronological, fan-out-on-read feeds. Home-feed repost occurrences are ordered by the

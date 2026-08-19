@@ -27,9 +27,23 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
-import { applyCursor, applyTagMuteFilter, applyVisibilityFilter } from '../feeds/feed.service.js';
+import {
+  applyCursor,
+  applyTagMuteFilter,
+  applyVisibilityFilter,
+  MAX_FILTER_ROUNDS,
+} from '../feeds/feed.service.js';
 import { clampLimit, decodeCursor, pageInfoFor, type Cursor } from '../feeds/pagination.js';
 import { toPostViews } from '../feeds/post-batch.js';
+import {
+  buildFilterMatchCandidates,
+  evaluateCandidate,
+  loadEffectiveFilterRules,
+  type FilterMatch,
+  type FilterMatchCandidate,
+} from '../filters/filter-matching.js';
+import { type FilteredByHintView } from '../filters/filter.dto.js';
+import { labelsForPosts } from '../labels/label-lookup.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import { TagExtractionService, parseTags } from '../tags/tag-extraction.service.js';
 import { communitySummaryOf } from './community-summary.js';
@@ -690,7 +704,7 @@ export class PostService {
       authorActorId = author.id;
     }
 
-    const cursor = decodeCursor(cursorRaw);
+    let cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
 
     const qb = this.dataSource
@@ -728,18 +742,58 @@ export class PostService {
         { searchViewerActorId: viewerActorId },
       );
     }
-    if (cursor !== undefined) applyCursor(qb, 'post', cursor);
-    qb.take(take + 1);
+    const rules =
+      viewerActorId === undefined
+        ? []
+        : await loadEffectiveFilterRules(this.dataSource, viewerActorId, 'SEARCH');
 
-    const rows = await qb.getMany();
-    const hasMore = rows.length > take;
-    const page = hasMore ? rows.slice(0, take) : rows;
-    const posts = await toPostViews(this.dataSource.manager, page, viewerActorId);
-    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
-      createdAt: row.createdAt,
-      id: row.id,
+    // Same bounded over-fetch/re-fetch pattern as `FeedService#page()` (spec §198.3, §198.4):
+    // a `hide` match must not leave the page short, but re-fetching is capped at
+    // `MAX_FILTER_ROUNDS` rounds rather than looped unboundedly.
+    const collected: Array<{ post: Post; hint: FilteredByHintView | null }> = [];
+    let roundHasMore = false;
+    for (let round = 0; round < MAX_FILTER_ROUNDS && collected.length < take; round += 1) {
+      const remaining = take - collected.length;
+      const roundQb = qb.clone();
+      if (cursor !== undefined) applyCursor(roundQb, 'post', cursor);
+      roundQb.take(remaining + 1);
+
+      const rows = await roundQb.getMany();
+      roundHasMore = rows.length > remaining;
+      const roundRows = roundHasMore ? rows.slice(0, remaining) : rows;
+      if (roundRows.length === 0) break;
+
+      const candidates: Map<string, FilterMatchCandidate> =
+        rules.length === 0
+          ? new Map<string, FilterMatchCandidate>()
+          : await buildFilterMatchCandidates(this.dataSource, roundRows);
+      for (const row of roundRows) {
+        const candidate = candidates.get(row.id);
+        const match = candidate === undefined ? null : evaluateCandidate(rules, candidate);
+        if (match?.action === 'HIDE') continue;
+        collected.push({
+          post: row,
+          hint: match === null ? null : toSearchFilteredByHintView(match),
+        });
+      }
+
+      const last = roundRows.at(-1);
+      if (last !== undefined) cursor = { createdAt: last.createdAt, id: last.id };
+      if (!roundHasMore) break;
+    }
+
+    const page = collected.slice(0, take);
+    const views = await toPostViews(
+      this.dataSource.manager,
+      page.map((row) => row.post),
+      viewerActorId,
+    );
+    const posts = views.map((view, index) => ({ ...view, filteredBy: page[index]?.hint ?? null }));
+    const { nextCursor } = pageInfoFor(page, roundHasMore, (row) => ({
+      createdAt: row.post.createdAt,
+      id: row.post.id,
     }));
-    return { posts, nextCursor, hasMore };
+    return { posts, nextCursor, hasMore: roundHasMore };
   }
 
   // ---------------------------------------------------------------- internals
@@ -763,7 +817,15 @@ export class PostService {
       post.deletedAt !== null || post.communityId === null
         ? null
         : await communitySummaryOf(manager, post.communityId);
-    return toPostView(post, media, counts, viewerState, { quotedPost, community });
+    // `Post.labels` (spec §200.3, §203) — same subscriber-scoped lookup feeds already apply
+    // via `feeds/post-batch.ts`; single-post reads (`getPost`/`listReplies`/edit/pin/etc, all
+    // of which funnel through this method) previously left `labels` defaulted to `[]`.
+    const labelsByPost = await labelsForPosts(manager, [post.id], viewerActorId);
+    return toPostView(post, media, counts, viewerState, {
+      quotedPost,
+      community,
+      labels: labelsByPost.get(post.id) ?? [],
+    });
   }
 
   /** One level of quote nesting only (spec §180.2, §188) — the returned `PostView`'s own
@@ -789,7 +851,12 @@ export class PostService {
       quoted.deletedAt !== null || quoted.communityId === null
         ? null
         : await communitySummaryOf(manager, quoted.communityId);
-    return toPostView(quoted, media, counts, viewerState, { quotedPost: null, community });
+    const labelsByPost = await labelsForPosts(manager, [quoted.id], viewerActorId);
+    return toPostView(quoted, media, counts, viewerState, {
+      quotedPost: null,
+      community,
+      labels: labelsByPost.get(quoted.id) ?? [],
+    });
   }
 
   private async countsAndViewerState(
@@ -993,5 +1060,17 @@ function toPostEditView(row: PostEdit): PostEditView {
       : [],
     editedByActorId: row.editedByActorId,
     createdAt: row.createdAt,
+  };
+}
+
+/** Mirrors `feed.service.ts`'s private `toFilteredByHintView` — kept as a separate copy
+ * (rather than exported/shared) because `FilterMatch`/`FilteredByHintView` are tiny value
+ * shapes and `searchPosts` is the only caller outside `feeds/`. */
+function toSearchFilteredByHintView(match: FilterMatch): FilteredByHintView {
+  return {
+    provenance: match.provenance,
+    name: match.name,
+    listOwner: match.listOwner,
+    action: match.action,
   };
 }

@@ -22,6 +22,8 @@ import {
   type FeedGrpcClient,
   type GetLabelerRequest,
   type GetLabelerResponse,
+  type GetPostRequest,
+  type GetPostResponse,
   type LabelGrpcClient,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
@@ -29,6 +31,8 @@ import {
   type ListLabelersResponse,
   type ListLabelsOnSubjectRequest,
   type ListLabelsOnSubjectResponse,
+  type ListRepliesRequest,
+  type ListRepliesResponse,
   type PostGrpcClient,
   type RetractLabelRequest,
   type RetractLabelResponse,
@@ -375,6 +379,125 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       },
       30_000,
     );
+
+    it('populates Post.labels on GetPost and ListReplies, not just feeds (P14 follow-up)', async () => {
+      const suffix = testSuffix();
+
+      const root = await callUnary<CreatePostRequest, CreatePostResponse>(
+        posts.createPost.bind(posts),
+        {
+          clientRequestId: randomUUID(),
+          body: `single-post-label-check ${suffix}`,
+          linkUrl: '',
+          visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+          contentWarning: '',
+          inReplyToId: '',
+          mediaIds: [],
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_ANYONE,
+        },
+        { accessToken: postAuthor.accessToken },
+      );
+      const postId = root.post?.id ?? '';
+      expect(postId).not.toBe('');
+
+      const reply = await callUnary<CreatePostRequest, CreatePostResponse>(
+        posts.createPost.bind(posts),
+        {
+          clientRequestId: randomUUID(),
+          body: `reply-label-check ${suffix}`,
+          linkUrl: '',
+          visibility: PostVisibility.POST_VISIBILITY_PUBLIC,
+          contentWarning: '',
+          inReplyToId: postId,
+          mediaIds: [],
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_ANYONE,
+        },
+        { accessToken: postAuthor.accessToken },
+      );
+      const replyId = reply.post?.id ?? '';
+      expect(replyId).not.toBe('');
+
+      const labeler = await callUnary<CreateLabelerRequest, CreateLabelerResponse>(
+        labels.createLabeler.bind(labels),
+        {
+          communityId: '',
+          vocabulary: [
+            {
+              value: `single-post-${suffix}`,
+              description: 'Single-post check',
+              defaultAction: LabelAction.LABEL_ACTION_WARN,
+              mandatory: false,
+            },
+          ],
+        },
+        { accessToken: owner.accessToken },
+      );
+      const labelerId = labeler.labeler?.id ?? '';
+
+      await callUnary<ApplyLabelRequest, ApplyLabelResponse>(
+        labels.applyLabel.bind(labels),
+        {
+          labelerId,
+          subjectActorId: '',
+          subjectPostId: postId,
+          value: `single-post-${suffix}`,
+          expiresAt: undefined,
+        },
+        { accessToken: owner.accessToken },
+      );
+      await callUnary<ApplyLabelRequest, ApplyLabelResponse>(
+        labels.applyLabel.bind(labels),
+        {
+          labelerId,
+          subjectActorId: '',
+          subjectPostId: replyId,
+          value: `single-post-${suffix}`,
+          expiresAt: undefined,
+        },
+        { accessToken: owner.accessToken },
+      );
+
+      // Before subscribing, GetPost/ListReplies show no labels (subscriber-scoped, spec §200.3).
+      const beforeGet = await callUnary<GetPostRequest, GetPostResponse>(
+        posts.getPost.bind(posts),
+        { id: postId },
+        { accessToken: subscriber.accessToken },
+      );
+      expect(beforeGet.post?.labels ?? []).toEqual([]);
+
+      await callUnary<SubscribeLabelerRequest, SubscribeLabelerResponse>(
+        labels.subscribeLabeler.bind(labels),
+        { labelerId },
+        { accessToken: subscriber.accessToken },
+      );
+
+      const afterGet = await callUnary<GetPostRequest, GetPostResponse>(
+        posts.getPost.bind(posts),
+        { id: postId },
+        { accessToken: subscriber.accessToken },
+      );
+      expect(afterGet.post?.labels.map((label) => label.value)).toContain(`single-post-${suffix}`);
+
+      const repliesPage = await callUnary<ListRepliesRequest, ListRepliesResponse>(
+        posts.listReplies.bind(posts),
+        { postId, cursor: '', limit: 20, maxDepth: 4 },
+        { accessToken: subscriber.accessToken },
+      );
+      const replyView = repliesPage.posts.find((post) => post.id === replyId);
+      expect(replyView?.labels.map((label) => label.value)).toContain(`single-post-${suffix}`);
+
+      // An outsider (not subscribed) never sees the label on either path.
+      const outsiderGet = await callUnary<GetPostRequest, GetPostResponse>(
+        posts.getPost.bind(posts),
+        { id: postId },
+        { accessToken: outsider.accessToken },
+      );
+      expect(outsiderGet.post?.labels ?? []).toEqual([]);
+    });
 
     it('lets a community moderator operate a community-owned labeler, and forbids a non-moderator', async () => {
       const suffix = testSuffix()

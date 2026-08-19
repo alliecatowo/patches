@@ -36,6 +36,8 @@ import {
   type PostGrpcClient,
   type PublishFilterListRequest,
   type PublishFilterListResponse,
+  type SearchPostsRequest,
+  type SearchPostsResponse,
   type SetFilterListEntryExceptionRequest,
   type SetFilterListEntryExceptionResponse,
   type SubscribeFilterListRequest,
@@ -348,6 +350,78 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
       const unfiltered = await listAllLocal(viewer.accessToken);
       expect(unfiltered.find((post) => post.id === postId)?.filteredBy).toBeNull();
+    });
+
+    it('SearchPosts applies SEARCH-scope filters: hide omits, collapse sets filtered_by', async () => {
+      const suffix = testSuffix();
+      const author = await registerTestActor(auth, dataSource, inviterUserId);
+      const viewerActor = await registerTestActor(auth, dataSource, inviterUserId);
+
+      await callUnary<CreateFilterRequest, CreateFilterResponse>(
+        filters.createFilter.bind(filters),
+        {
+          name: `search-hide-${suffix}`,
+          terms: [
+            { kind: FilterTermKind.FILTER_TERM_KIND_SUBSTRING, value: `hidesearch-${suffix}` },
+          ],
+          scopes: [FilterScope.FILTER_SCOPE_SEARCH],
+          action: FilterAction.FILTER_ACTION_HIDE,
+          expiresAt: undefined,
+        },
+        { accessToken: viewerActor.accessToken },
+      );
+      await callUnary<CreateFilterRequest, CreateFilterResponse>(
+        filters.createFilter.bind(filters),
+        {
+          name: `search-collapse-${suffix}`,
+          terms: [
+            { kind: FilterTermKind.FILTER_TERM_KIND_SUBSTRING, value: `collapsesearch-${suffix}` },
+          ],
+          scopes: [FilterScope.FILTER_SCOPE_SEARCH],
+          action: FilterAction.FILTER_ACTION_COLLAPSE,
+          expiresAt: undefined,
+        },
+        { accessToken: viewerActor.accessToken },
+      );
+
+      const needle = `searchable-${suffix}`;
+      const hiddenId = await createLocalPost(author, `${needle} post hidesearch-${suffix} here`);
+      const collapsedId = await createLocalPost(
+        author,
+        `${needle} post collapsesearch-${suffix} here`,
+      );
+      const keptId = await createLocalPost(author, `${needle} post keepsearch-${suffix} here`);
+
+      const filteredResult = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+        posts.searchPosts.bind(posts),
+        { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: true },
+        { accessToken: viewerActor.accessToken },
+      );
+      const filteredIds = filteredResult.posts.map((post) => post.id);
+      expect(filteredIds).not.toContain(hiddenId);
+      expect(filteredIds).toContain(collapsedId);
+      expect(filteredIds).toContain(keptId);
+
+      const collapsedMatch = filteredResult.posts.find((post) => post.id === collapsedId);
+      expect(collapsedMatch?.filteredBy?.provenance).toBe(
+        FilteredByProvenance.FILTERED_BY_PROVENANCE_FILTER,
+      );
+      expect(collapsedMatch?.filteredBy?.name).toBe(`search-collapse-${suffix}`);
+      expect(collapsedMatch?.filteredBy?.action).toBe(FilterAction.FILTER_ACTION_COLLAPSE);
+      // The body is still returned — `collapse` is presentation, not omission (spec §198.3).
+      expect(collapsedMatch?.body).toContain(`collapsesearch-${suffix}`);
+
+      const keptMatch = filteredResult.posts.find((post) => post.id === keptId);
+      expect(keptMatch?.filteredBy).toBeNull();
+
+      // An unfiltered viewer sees every post, including the one this viewer hid.
+      const unfilteredResult = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+        posts.searchPosts.bind(posts),
+        { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: true },
+        { accessToken: viewer.accessToken },
+      );
+      const unfilteredIds = unfilteredResult.posts.map((post) => post.id);
+      expect(unfilteredIds).toEqual(expect.arrayContaining([hiddenId, collapsedId, keptId]));
     });
 
     it(
