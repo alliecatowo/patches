@@ -4,6 +4,7 @@ import {
   Actor,
   Block,
   Follow,
+  FollowRequest,
   ModerationLogEntry,
   Mute,
   Report,
@@ -370,26 +371,41 @@ export class ModerationService {
     targetActorId: string,
   ): Promise<RelationshipView> {
     const follows = manager.getRepository(Follow);
-    const [outbound, inbound, blockingRow, mutingRow] = await Promise.all([
-      follows.findOne({
-        where: { followerActorId: viewerActorId, followeeActorId: targetActorId },
-      }),
-      follows.findOne({
-        where: { followerActorId: targetActorId, followeeActorId: viewerActorId },
-      }),
-      manager
-        .getRepository(Block)
-        .findOne({ where: { blockerActorId: viewerActorId, blockedActorId: targetActorId } }),
-      manager
-        .getRepository(Mute)
-        .findOne({ where: { muterActorId: viewerActorId, mutedActorId: targetActorId } }),
-    ]);
+    const followRequests = manager.getRepository(FollowRequest);
+    const [outbound, inbound, blockingRow, mutingRow, requestedRow, requestedByRow] =
+      await Promise.all([
+        follows.findOne({
+          where: { followerActorId: viewerActorId, followeeActorId: targetActorId },
+        }),
+        follows.findOne({
+          where: { followerActorId: targetActorId, followeeActorId: viewerActorId },
+        }),
+        manager
+          .getRepository(Block)
+          .findOne({ where: { blockerActorId: viewerActorId, blockedActorId: targetActorId } }),
+        manager
+          .getRepository(Mute)
+          .findOne({ where: { muterActorId: viewerActorId, mutedActorId: targetActorId } }),
+        // §197.5: a pending `follow_requests` row toward a locked `targetActorId`, distinct
+        // from the federation-handshake `PENDING` a `Follow` row itself can carry (see
+        // `FollowRequest`'s entity doc) — same fields `GraphService`'s own relationship view
+        // now carries, so `ModerationService.blockActor`/`muteActor`'s `RelationshipView`
+        // return value stays consistent with `GraphService.getRelationship`'s.
+        followRequests.findOne({
+          where: { requesterActorId: viewerActorId, targetActorId },
+        }),
+        followRequests.findOne({
+          where: { requesterActorId: targetActorId, targetActorId: viewerActorId },
+        }),
+      ]);
 
     return {
       state: outbound === null ? 'NONE' : outbound.status,
       followedBy: inbound !== null,
       blocking: blockingRow !== null,
       muting: mutingRow !== null,
+      requested: requestedRow !== null,
+      requestedBy: requestedByRow !== null,
     };
   }
 }
