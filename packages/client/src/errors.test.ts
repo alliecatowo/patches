@@ -1,7 +1,7 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it } from 'vitest';
 
-import { describeError, isSignInRequired } from './errors.js';
+import { describeError, isPrivacyAckRequired, isSignInRequired } from './errors.js';
 
 const TARGET = 'patches-social.fly.dev';
 
@@ -95,5 +95,21 @@ describe('describeError', () => {
   it('handles a thrown non-Error without crashing', () => {
     expect(() => describeError('nope')).not.toThrow();
     expect(describeError(undefined).code).toBe(Code.Unknown);
+  });
+
+  // A-053 (spec §197.1, §197.5, §197.6): REQUIRE_PRIVACY_ACK's RequirePrivacyAckGuard
+  // rejection points at the settings route instead of just repeating the server's raw
+  // "must acknowledge" message.
+  it('recognises PRIVACY_NOTICE_NOT_ACKNOWLEDGED via the x-patches-error-code metadata and points at Settings → Privacy', () => {
+    const error = new ConnectError('', Code.FailedPrecondition, {
+      'x-patches-error-code': 'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
+    });
+    expect(isPrivacyAckRequired(error)).toBe(true);
+    expect(isPrivacyAckRequired(new ConnectError('', Code.FailedPrecondition))).toBe(false);
+
+    const described = describeError(error);
+    expect(described.retryable).toBe(false);
+    expect(described.message).toMatch(/privacy notice changed/i);
+    expect(described.message).toMatch(/settings.*privacy/i);
   });
 });
