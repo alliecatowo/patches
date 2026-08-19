@@ -36,6 +36,12 @@ export enum NotificationType {
   NOTIFICATION_TYPE_MESSAGE = 'NOTIFICATION_TYPE_MESSAGE',
   /** NOTIFICATION_TYPE_COMMUNITY_INVITE - An invite to join a community. */
   NOTIFICATION_TYPE_COMMUNITY_INVITE = 'NOTIFICATION_TYPE_COMMUNITY_INVITE',
+  /**
+   * NOTIFICATION_TYPE_FOLLOW_REQUEST - A follow request awaiting the caller's approval, because the caller's account is locked
+   * (§197.5). Never fires for an ordinary follow of an unlocked account — that stays
+   * `NOTIFICATION_TYPE_FOLLOW`, delivered once, on `AcceptFollowRequest`, not on request.
+   */
+  NOTIFICATION_TYPE_FOLLOW_REQUEST = 'NOTIFICATION_TYPE_FOLLOW_REQUEST',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 

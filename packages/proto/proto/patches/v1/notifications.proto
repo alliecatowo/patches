@@ -41,6 +41,11 @@ enum NotificationType {
 
   // An invite to join a community.
   NOTIFICATION_TYPE_COMMUNITY_INVITE = 9;
+
+  // A follow request awaiting the caller's approval, because the caller's account is locked
+  // (§197.5). Never fires for an ordinary follow of an unlocked account — that stays
+  // `NOTIFICATION_TYPE_FOLLOW`, delivered once, on `AcceptFollowRequest`, not on request.
+  NOTIFICATION_TYPE_FOLLOW_REQUEST = 10;
 }
 
 message Notification {

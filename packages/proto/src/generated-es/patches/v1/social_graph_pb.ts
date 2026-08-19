@@ -4,6 +4,8 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
+import type { Timestamp } from '@bufbuild/protobuf/wkt';
+import { file_google_protobuf_timestamp } from '@bufbuild/protobuf/wkt';
 import type { Actor } from './actors_pb.js';
 import { file_patches_v1_actors } from './actors_pb.js';
 import type { PageInfo } from './common_pb.js';
@@ -16,8 +18,8 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_social_graph: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'Ch1wYXRjaGVzL3YxL3NvY2lhbF9ncmFwaC5wcm90bxIKcGF0Y2hlcy52MSJtCgxSZWxhdGlvbnNoaXASJgoFc3RhdGUYASABKA4yFy5wYXRjaGVzLnYxLkZvbGxvd1N0YXRlEhMKC2ZvbGxvd2VkX2J5GAIgASgIEhAKCGJsb2NraW5nGAMgASgIEg4KBm11dGluZxgEIAEoCCImChJGb2xsb3dBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRQoTRm9sbG93QWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCIoChRVbmZvbGxvd0FjdG9yUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCSJHChVVbmZvbGxvd0FjdG9yUmVzcG9uc2USLgoMcmVsYXRpb25zaGlwGAEgASgLMhgucGF0Y2hlcy52MS5SZWxhdGlvbnNoaXAiKgoWR2V0UmVsYXRpb25zaGlwUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCSJJChdHZXRSZWxhdGlvbnNoaXBSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCJLChhMaXN0TXV0dWFsRm9sbG93c1JlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNImIKGUxpc3RNdXR1YWxGb2xsb3dzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyp4CgtGb2xsb3dTdGF0ZRIcChhGT0xMT1dfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFGT0xMT1dfU1RBVEVfTk9ORRABEhgKFEZPTExPV19TVEFURV9QRU5ESU5HEAISGgoWRk9MTE9XX1NUQVRFX0ZPTExPV0lORxADMvgCChJTb2NpYWxHcmFwaFNlcnZpY2USTgoLRm9sbG93QWN0b3ISHi5wYXRjaGVzLnYxLkZvbGxvd0FjdG9yUmVxdWVzdBofLnBhdGNoZXMudjEuRm9sbG93QWN0b3JSZXNwb25zZRJUCg1VbmZvbGxvd0FjdG9yEiAucGF0Y2hlcy52MS5VbmZvbGxvd0FjdG9yUmVxdWVzdBohLnBhdGNoZXMudjEuVW5mb2xsb3dBY3RvclJlc3BvbnNlEloKD0dldFJlbGF0aW9uc2hpcBIiLnBhdGNoZXMudjEuR2V0UmVsYXRpb25zaGlwUmVxdWVzdBojLnBhdGNoZXMudjEuR2V0UmVsYXRpb25zaGlwUmVzcG9uc2USYAoRTGlzdE11dHVhbEZvbGxvd3MSJC5wYXRjaGVzLnYxLkxpc3RNdXR1YWxGb2xsb3dzUmVxdWVzdBolLnBhdGNoZXMudjEuTGlzdE11dHVhbEZvbGxvd3NSZXNwb25zZWIGcHJvdG8z',
-    [file_patches_v1_actors, file_patches_v1_common],
+    'Ch1wYXRjaGVzL3YxL3NvY2lhbF9ncmFwaC5wcm90bxIKcGF0Y2hlcy52MSKWAQoMUmVsYXRpb25zaGlwEiYKBXN0YXRlGAEgASgOMhcucGF0Y2hlcy52MS5Gb2xsb3dTdGF0ZRITCgtmb2xsb3dlZF9ieRgCIAEoCBIQCghibG9ja2luZxgDIAEoCBIOCgZtdXRpbmcYBCABKAgSEQoJcmVxdWVzdGVkGAUgASgIEhQKDHJlcXVlc3RlZF9ieRgGIAEoCCImChJGb2xsb3dBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiWAoTRm9sbG93QWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcBIRCglyZXF1ZXN0ZWQYAiABKAgiKAoUVW5mb2xsb3dBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRwoVVW5mb2xsb3dBY3RvclJlc3BvbnNlEi4KDHJlbGF0aW9uc2hpcBgBIAEoCzIYLnBhdGNoZXMudjEuUmVsYXRpb25zaGlwIioKFkdldFJlbGF0aW9uc2hpcFJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiSQoXR2V0UmVsYXRpb25zaGlwUmVzcG9uc2USLgoMcmVsYXRpb25zaGlwGAEgASgLMhgucGF0Y2hlcy52MS5SZWxhdGlvbnNoaXAiSwoYTGlzdE11dHVhbEZvbGxvd3NSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJiChlMaXN0TXV0dWFsRm9sbG93c1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iYQoNRm9sbG93UmVxdWVzdBIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3ISLgoKY3JlYXRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiOgoZTGlzdEZvbGxvd1JlcXVlc3RzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0ibQoaTGlzdEZvbGxvd1JlcXVlc3RzUmVzcG9uc2USKwoIcmVxdWVzdHMYASADKAsyGS5wYXRjaGVzLnYxLkZvbGxvd1JlcXVlc3QSIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iLgoaQWNjZXB0Rm9sbG93UmVxdWVzdFJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiTQobQWNjZXB0Rm9sbG93UmVxdWVzdFJlc3BvbnNlEi4KDHJlbGF0aW9uc2hpcBgBIAEoCzIYLnBhdGNoZXMudjEuUmVsYXRpb25zaGlwIi4KGlJlamVjdEZvbGxvd1JlcXVlc3RSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJIh0KG1JlamVjdEZvbGxvd1JlcXVlc3RSZXNwb25zZSp4CgtGb2xsb3dTdGF0ZRIcChhGT0xMT1dfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFGT0xMT1dfU1RBVEVfTk9ORRABEhgKFEZPTExPV19TVEFURV9QRU5ESU5HEAISGgoWRk9MTE9XX1NUQVRFX0ZPTExPV0lORxADMq0FChJTb2NpYWxHcmFwaFNlcnZpY2USTgoLRm9sbG93QWN0b3ISHi5wYXRjaGVzLnYxLkZvbGxvd0FjdG9yUmVxdWVzdBofLnBhdGNoZXMudjEuRm9sbG93QWN0b3JSZXNwb25zZRJUCg1VbmZvbGxvd0FjdG9yEiAucGF0Y2hlcy52MS5VbmZvbGxvd0FjdG9yUmVxdWVzdBohLnBhdGNoZXMudjEuVW5mb2xsb3dBY3RvclJlc3BvbnNlEloKD0dldFJlbGF0aW9uc2hpcBIiLnBhdGNoZXMudjEuR2V0UmVsYXRpb25zaGlwUmVxdWVzdBojLnBhdGNoZXMudjEuR2V0UmVsYXRpb25zaGlwUmVzcG9uc2USYAoRTGlzdE11dHVhbEZvbGxvd3MSJC5wYXRjaGVzLnYxLkxpc3RNdXR1YWxGb2xsb3dzUmVxdWVzdBolLnBhdGNoZXMudjEuTGlzdE11dHVhbEZvbGxvd3NSZXNwb25zZRJjChJMaXN0Rm9sbG93UmVxdWVzdHMSJS5wYXRjaGVzLnYxLkxpc3RGb2xsb3dSZXF1ZXN0c1JlcXVlc3QaJi5wYXRjaGVzLnYxLkxpc3RGb2xsb3dSZXF1ZXN0c1Jlc3BvbnNlEmYKE0FjY2VwdEZvbGxvd1JlcXVlc3QSJi5wYXRjaGVzLnYxLkFjY2VwdEZvbGxvd1JlcXVlc3RSZXF1ZXN0GicucGF0Y2hlcy52MS5BY2NlcHRGb2xsb3dSZXF1ZXN0UmVzcG9uc2USZgoTUmVqZWN0Rm9sbG93UmVxdWVzdBImLnBhdGNoZXMudjEuUmVqZWN0Rm9sbG93UmVxdWVzdFJlcXVlc3QaJy5wYXRjaGVzLnYxLlJlamVjdEZvbGxvd1JlcXVlc3RSZXNwb25zZWIGcHJvdG8z',
+    [file_google_protobuf_timestamp, file_patches_v1_actors, file_patches_v1_common],
   );
 
 /**
@@ -25,7 +27,9 @@ export const file_patches_v1_social_graph: GenFile =
  */
 export type Relationship = Message<'patches.v1.Relationship'> & {
   /**
-   * The caller's follow state toward the target actor.
+   * The caller's follow state toward the target actor. `PENDING` here means `requested` is
+   * also true (see below) whenever it is due to a locked-account follow request; a remote
+   * actor's federation-pending follow is `PENDING` with `requested = false`.
    *
    * @generated from field: patches.v1.FollowState state = 1;
    */
@@ -51,6 +55,24 @@ export type Relationship = Message<'patches.v1.Relationship'> & {
    * @generated from field: bool muting = 4;
    */
   muting: boolean;
+
+  /**
+   * §197.5: true when the caller has a pending follow request outstanding toward the target
+   * (the target is a locked actor who has not yet accepted or rejected it).
+   *
+   * @generated from field: bool requested = 5;
+   */
+  requested: boolean;
+
+  /**
+   * §197.5: true when the target actor has a pending follow request outstanding toward the
+   * caller (only meaningful when the caller's own account is locked) — the caller has not yet
+   * accepted or rejected it. There is no `followed_by`-style state for this until it is
+   * resolved one way or the other.
+   *
+   * @generated from field: bool requested_by = 6;
+   */
+  requestedBy: boolean;
 };
 
 /**
@@ -87,6 +109,14 @@ export type FollowActorResponse = Message<'patches.v1.FollowActorResponse'> & {
    * @generated from field: patches.v1.Relationship relationship = 1;
    */
   relationship?: Relationship | undefined;
+
+  /**
+   * §197.5: true when this call created (or found already outstanding) a pending follow
+   * request rather than an immediate follow, because the target is a locked local actor.
+   *
+   * @generated from field: bool requested = 2;
+   */
+  requested: boolean;
 };
 
 /**
@@ -223,8 +253,155 @@ export const ListMutualFollowsResponseSchema: GenMessage<ListMutualFollowsRespon
   messageDesc(file_patches_v1_social_graph, 8);
 
 /**
- * Mirrors spec §50's future follow states even though v0 only ever produces `NONE`/
- * `FOLLOWING` — `PENDING` is reserved for a later approval-gated follow flow.
+ * §197.5: a pending follow request addressed to the caller's (locked) account.
+ *
+ * @generated from message patches.v1.FollowRequest
+ */
+export type FollowRequest = Message<'patches.v1.FollowRequest'> & {
+  /**
+   * The actor who asked to follow the caller.
+   *
+   * @generated from field: patches.v1.Actor actor = 1;
+   */
+  actor?: Actor | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 2;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.FollowRequest.
+ * Use `create(FollowRequestSchema)` to create a new message.
+ */
+export const FollowRequestSchema: GenMessage<FollowRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 9);
+
+/**
+ * @generated from message patches.v1.ListFollowRequestsRequest
+ */
+export type ListFollowRequestsRequest = Message<'patches.v1.ListFollowRequestsRequest'> & {
+  /**
+   * @generated from field: string cursor = 1;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListFollowRequestsRequest.
+ * Use `create(ListFollowRequestsRequestSchema)` to create a new message.
+ */
+export const ListFollowRequestsRequestSchema: GenMessage<ListFollowRequestsRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 10);
+
+/**
+ * @generated from message patches.v1.ListFollowRequestsResponse
+ */
+export type ListFollowRequestsResponse = Message<'patches.v1.ListFollowRequestsResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.FollowRequest requests = 1;
+   */
+  requests: FollowRequest[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListFollowRequestsResponse.
+ * Use `create(ListFollowRequestsResponseSchema)` to create a new message.
+ */
+export const ListFollowRequestsResponseSchema: GenMessage<ListFollowRequestsResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 11);
+
+/**
+ * @generated from message patches.v1.AcceptFollowRequestRequest
+ */
+export type AcceptFollowRequestRequest = Message<'patches.v1.AcceptFollowRequestRequest'> & {
+  /**
+   * The requester's actor id.
+   *
+   * @generated from field: string actor_id = 1;
+   */
+  actorId: string;
+};
+
+/**
+ * Describes the message patches.v1.AcceptFollowRequestRequest.
+ * Use `create(AcceptFollowRequestRequestSchema)` to create a new message.
+ */
+export const AcceptFollowRequestRequestSchema: GenMessage<AcceptFollowRequestRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 12);
+
+/**
+ * @generated from message patches.v1.AcceptFollowRequestResponse
+ */
+export type AcceptFollowRequestResponse = Message<'patches.v1.AcceptFollowRequestResponse'> & {
+  /**
+   * @generated from field: patches.v1.Relationship relationship = 1;
+   */
+  relationship?: Relationship | undefined;
+};
+
+/**
+ * Describes the message patches.v1.AcceptFollowRequestResponse.
+ * Use `create(AcceptFollowRequestResponseSchema)` to create a new message.
+ */
+export const AcceptFollowRequestResponseSchema: GenMessage<AcceptFollowRequestResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 13);
+
+/**
+ * @generated from message patches.v1.RejectFollowRequestRequest
+ */
+export type RejectFollowRequestRequest = Message<'patches.v1.RejectFollowRequestRequest'> & {
+  /**
+   * The requester's actor id.
+   *
+   * @generated from field: string actor_id = 1;
+   */
+  actorId: string;
+};
+
+/**
+ * Describes the message patches.v1.RejectFollowRequestRequest.
+ * Use `create(RejectFollowRequestRequestSchema)` to create a new message.
+ */
+export const RejectFollowRequestRequestSchema: GenMessage<RejectFollowRequestRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 14);
+
+/**
+ * @generated from message patches.v1.RejectFollowRequestResponse
+ */
+export type RejectFollowRequestResponse = Message<'patches.v1.RejectFollowRequestResponse'> & {};
+
+/**
+ * Describes the message patches.v1.RejectFollowRequestResponse.
+ * Use `create(RejectFollowRequestResponseSchema)` to create a new message.
+ */
+export const RejectFollowRequestResponseSchema: GenMessage<RejectFollowRequestResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_social_graph, 15);
+
+/**
+ * Mirrors spec §50's future follow states — `PENDING` covers both a follow of a remote actor
+ * awaiting that actor's `Accept` (P8-002/P8-003) and, since §197.5, a follow request awaiting
+ * a locked local actor's approval. Which of those two it is is never ambiguous to the caller:
+ * only one directed pair of (follower, followee) can ever be in flight at a time, and
+ * `Relationship.requested`/`requested_by` below disambiguate the locked-account case further.
  *
  * @generated from enum patches.v1.FollowState
  */
@@ -258,17 +435,20 @@ export const FollowStateSchema: GenEnum<FollowState> =
   enumDesc(file_patches_v1_social_graph, 0);
 
 /**
- * Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
- * exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
- * but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
- * Phase 6 (spec §140) — not part of this service yet.
+ * Follows and the block/mute-aware relationship view (spec §50, §61–63, Amendment C §197.5).
+ * `blocks`/`mutes` exist as database tables from Phase 3 on because the feed visibility SQL
+ * needs them (§59), but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing
+ * RPCs deferred to Phase 6 (spec §140) — not part of this service yet.
  *
  * @generated from service patches.v1.SocialGraphService
  */
 export const SocialGraphService: GenService<{
   /**
-   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50). Rejects a
-   * follow in either direction of an existing block.
+   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50) — *unless*
+   * the target is a locked local actor (§197.5), in which case this creates a pending follow
+   * request instead (`FollowActorResponse.requested = true`) and never a `follows` row.
+   * Rejects a follow in either direction of an existing block. Idempotent either way: calling
+   * this again while already following, or while a request is already pending, is a no-op.
    *
    * @generated from rpc patches.v1.SocialGraphService.FollowActor
    */
@@ -278,7 +458,9 @@ export const SocialGraphService: GenService<{
     output: typeof FollowActorResponseSchema;
   };
   /**
-   * Idempotent: unfollowing an actor the caller does not follow is not an error.
+   * Idempotent: unfollowing an actor the caller does not follow is not an error. Also cancels
+   * a pending follow request the caller has outstanding toward `actor_id` (§197.5) — this is
+   * the RPC a client calls for "cancel my follow request", too.
    *
    * @generated from rpc patches.v1.SocialGraphService.UnfollowActor
    */
@@ -311,5 +493,40 @@ export const SocialGraphService: GenService<{
     methodKind: 'unary';
     input: typeof ListMutualFollowsRequestSchema;
     output: typeof ListMutualFollowsResponseSchema;
+  };
+  /**
+   * §197.5: pending follow requests addressed to the caller's own (locked) account, newest
+   * first. Requires an authenticated session — there is no one else's request queue to list.
+   *
+   * @generated from rpc patches.v1.SocialGraphService.ListFollowRequests
+   */
+  listFollowRequests: {
+    methodKind: 'unary';
+    input: typeof ListFollowRequestsRequestSchema;
+    output: typeof ListFollowRequestsResponseSchema;
+  };
+  /**
+   * Accepts a pending follow request from `actor_id` addressed to the caller: creates the
+   * `FOLLOWING` edge and removes the request. `FOLLOW_REQUEST_NOT_FOUND` if no such pending
+   * request exists.
+   *
+   * @generated from rpc patches.v1.SocialGraphService.AcceptFollowRequest
+   */
+  acceptFollowRequest: {
+    methodKind: 'unary';
+    input: typeof AcceptFollowRequestRequestSchema;
+    output: typeof AcceptFollowRequestResponseSchema;
+  };
+  /**
+   * Rejects (discards) a pending follow request from `actor_id` addressed to the caller — no
+   * `follows` row is ever created. `FOLLOW_REQUEST_NOT_FOUND` if no such pending request
+   * exists.
+   *
+   * @generated from rpc patches.v1.SocialGraphService.RejectFollowRequest
+   */
+  rejectFollowRequest: {
+    methodKind: 'unary';
+    input: typeof RejectFollowRequestRequestSchema;
+    output: typeof RejectFollowRequestResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_social_graph, 0);

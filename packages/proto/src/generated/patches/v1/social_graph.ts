@@ -8,14 +8,18 @@
 import type { Metadata } from '@grpc/grpc-js';
 import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
 import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
 
 export const protobufPackage = 'patches.v1';
 
 /**
- * Mirrors spec §50's future follow states even though v0 only ever produces `NONE`/
- * `FOLLOWING` — `PENDING` is reserved for a later approval-gated follow flow.
+ * Mirrors spec §50's future follow states — `PENDING` covers both a follow of a remote actor
+ * awaiting that actor's `Accept` (P8-002/P8-003) and, since §197.5, a follow request awaiting
+ * a locked local actor's approval. Which of those two it is is never ambiguous to the caller:
+ * only one directed pair of (follower, followee) can ever be in flight at a time, and
+ * `Relationship.requested`/`requested_by` below disambiguate the locked-account case further.
  */
 export enum FollowState {
   FOLLOW_STATE_UNSPECIFIED = 'FOLLOW_STATE_UNSPECIFIED',
@@ -26,7 +30,11 @@ export enum FollowState {
 }
 
 export interface Relationship {
-  /** The caller's follow state toward the target actor. */
+  /**
+   * The caller's follow state toward the target actor. `PENDING` here means `requested` is
+   * also true (see below) whenever it is due to a locked-account follow request; a remote
+   * actor's federation-pending follow is `PENDING` with `requested = false`.
+   */
   state: FollowState;
   /** True when the target actor follows the caller back. */
   followedBy: boolean;
@@ -34,6 +42,18 @@ export interface Relationship {
   blocking: boolean;
   /** True when the caller mutes the target actor. */
   muting: boolean;
+  /**
+   * §197.5: true when the caller has a pending follow request outstanding toward the target
+   * (the target is a locked actor who has not yet accepted or rejected it).
+   */
+  requested: boolean;
+  /**
+   * §197.5: true when the target actor has a pending follow request outstanding toward the
+   * caller (only meaningful when the caller's own account is locked) — the caller has not yet
+   * accepted or rejected it. There is no `followed_by`-style state for this until it is
+   * resolved one way or the other.
+   */
+  requestedBy: boolean;
 }
 
 export interface FollowActorRequest {
@@ -42,6 +62,11 @@ export interface FollowActorRequest {
 
 export interface FollowActorResponse {
   relationship: Relationship | undefined;
+  /**
+   * §197.5: true when this call created (or found already outstanding) a pending follow
+   * request rather than an immediate follow, because the target is a locked local actor.
+   */
+  requested: boolean;
 }
 
 export interface UnfollowActorRequest {
@@ -72,24 +97,64 @@ export interface ListMutualFollowsResponse {
   page: PageInfo | undefined;
 }
 
+/** §197.5: a pending follow request addressed to the caller's (locked) account. */
+export interface FollowRequest {
+  /** The actor who asked to follow the caller. */
+  actor: Actor | undefined;
+  createdAt: Timestamp | undefined;
+}
+
+export interface ListFollowRequestsRequest {
+  cursor: string;
+  limit: number;
+}
+
+export interface ListFollowRequestsResponse {
+  requests: FollowRequest[];
+  page: PageInfo | undefined;
+}
+
+export interface AcceptFollowRequestRequest {
+  /** The requester's actor id. */
+  actorId: string;
+}
+
+export interface AcceptFollowRequestResponse {
+  relationship: Relationship | undefined;
+}
+
+export interface RejectFollowRequestRequest {
+  /** The requester's actor id. */
+  actorId: string;
+}
+
+export interface RejectFollowRequestResponse {}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
- * Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
- * exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
- * but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
- * Phase 6 (spec §140) — not part of this service yet.
+ * Follows and the block/mute-aware relationship view (spec §50, §61–63, Amendment C §197.5).
+ * `blocks`/`mutes` exist as database tables from Phase 3 on because the feed visibility SQL
+ * needs them (§59), but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing
+ * RPCs deferred to Phase 6 (spec §140) — not part of this service yet.
  */
 
 export interface SocialGraphServiceClient {
   /**
-   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50). Rejects a
-   * follow in either direction of an existing block.
+   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50) — *unless*
+   * the target is a locked local actor (§197.5), in which case this creates a pending follow
+   * request instead (`FollowActorResponse.requested = true`) and never a `follows` row.
+   * Rejects a follow in either direction of an existing block. Idempotent either way: calling
+   * this again while already following, or while a request is already pending, is a no-op.
    */
 
   followActor(request: FollowActorRequest, metadata?: Metadata): Observable<FollowActorResponse>;
 
-  /** Idempotent: unfollowing an actor the caller does not follow is not an error. */
+  /**
+   * Idempotent: unfollowing an actor the caller does not follow is not an error. Also cancels
+   * a pending follow request the caller has outstanding toward `actor_id` (§197.5) — this is
+   * the RPC a client calls for "cancel my follow request", too.
+   */
 
   unfollowActor(
     request: UnfollowActorRequest,
@@ -118,19 +183,54 @@ export interface SocialGraphServiceClient {
     request: ListMutualFollowsRequest,
     metadata?: Metadata,
   ): Observable<ListMutualFollowsResponse>;
+
+  /**
+   * §197.5: pending follow requests addressed to the caller's own (locked) account, newest
+   * first. Requires an authenticated session — there is no one else's request queue to list.
+   */
+
+  listFollowRequests(
+    request: ListFollowRequestsRequest,
+    metadata?: Metadata,
+  ): Observable<ListFollowRequestsResponse>;
+
+  /**
+   * Accepts a pending follow request from `actor_id` addressed to the caller: creates the
+   * `FOLLOWING` edge and removes the request. `FOLLOW_REQUEST_NOT_FOUND` if no such pending
+   * request exists.
+   */
+
+  acceptFollowRequest(
+    request: AcceptFollowRequestRequest,
+    metadata?: Metadata,
+  ): Observable<AcceptFollowRequestResponse>;
+
+  /**
+   * Rejects (discards) a pending follow request from `actor_id` addressed to the caller — no
+   * `follows` row is ever created. `FOLLOW_REQUEST_NOT_FOUND` if no such pending request
+   * exists.
+   */
+
+  rejectFollowRequest(
+    request: RejectFollowRequestRequest,
+    metadata?: Metadata,
+  ): Observable<RejectFollowRequestResponse>;
 }
 
 /**
- * Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
- * exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
- * but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
- * Phase 6 (spec §140) — not part of this service yet.
+ * Follows and the block/mute-aware relationship view (spec §50, §61–63, Amendment C §197.5).
+ * `blocks`/`mutes` exist as database tables from Phase 3 on because the feed visibility SQL
+ * needs them (§59), but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing
+ * RPCs deferred to Phase 6 (spec §140) — not part of this service yet.
  */
 
 export interface SocialGraphServiceController {
   /**
-   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50). Rejects a
-   * follow in either direction of an existing block.
+   * v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50) — *unless*
+   * the target is a locked local actor (§197.5), in which case this creates a pending follow
+   * request instead (`FollowActorResponse.requested = true`) and never a `follows` row.
+   * Rejects a follow in either direction of an existing block. Idempotent either way: calling
+   * this again while already following, or while a request is already pending, is a no-op.
    */
 
   followActor(
@@ -138,7 +238,11 @@ export interface SocialGraphServiceController {
     metadata?: Metadata,
   ): Promise<FollowActorResponse> | Observable<FollowActorResponse> | FollowActorResponse;
 
-  /** Idempotent: unfollowing an actor the caller does not follow is not an error. */
+  /**
+   * Idempotent: unfollowing an actor the caller does not follow is not an error. Also cancels
+   * a pending follow request the caller has outstanding toward `actor_id` (§197.5) — this is
+   * the RPC a client calls for "cancel my follow request", too.
+   */
 
   unfollowActor(
     request: UnfollowActorRequest,
@@ -173,6 +277,47 @@ export interface SocialGraphServiceController {
     | Promise<ListMutualFollowsResponse>
     | Observable<ListMutualFollowsResponse>
     | ListMutualFollowsResponse;
+
+  /**
+   * §197.5: pending follow requests addressed to the caller's own (locked) account, newest
+   * first. Requires an authenticated session — there is no one else's request queue to list.
+   */
+
+  listFollowRequests(
+    request: ListFollowRequestsRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListFollowRequestsResponse>
+    | Observable<ListFollowRequestsResponse>
+    | ListFollowRequestsResponse;
+
+  /**
+   * Accepts a pending follow request from `actor_id` addressed to the caller: creates the
+   * `FOLLOWING` edge and removes the request. `FOLLOW_REQUEST_NOT_FOUND` if no such pending
+   * request exists.
+   */
+
+  acceptFollowRequest(
+    request: AcceptFollowRequestRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<AcceptFollowRequestResponse>
+    | Observable<AcceptFollowRequestResponse>
+    | AcceptFollowRequestResponse;
+
+  /**
+   * Rejects (discards) a pending follow request from `actor_id` addressed to the caller — no
+   * `follows` row is ever created. `FOLLOW_REQUEST_NOT_FOUND` if no such pending request
+   * exists.
+   */
+
+  rejectFollowRequest(
+    request: RejectFollowRequestRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<RejectFollowRequestResponse>
+    | Observable<RejectFollowRequestResponse>
+    | RejectFollowRequestResponse;
 }
 
 export function SocialGraphServiceControllerMethods() {
@@ -182,6 +327,9 @@ export function SocialGraphServiceControllerMethods() {
       'unfollowActor',
       'getRelationship',
       'listMutualFollows',
+      'listFollowRequests',
+      'acceptFollowRequest',
+      'rejectFollowRequest',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

@@ -282,12 +282,18 @@ import type {
   UnrepostPostResponse,
 } from './generated/patches/v1/reactions.js';
 import type {
+  AcceptFollowRequestRequest,
+  AcceptFollowRequestResponse,
   FollowActorRequest,
   FollowActorResponse,
   GetRelationshipRequest,
   GetRelationshipResponse,
+  ListFollowRequestsRequest,
+  ListFollowRequestsResponse,
   ListMutualFollowsRequest,
   ListMutualFollowsResponse,
+  RejectFollowRequestRequest,
+  RejectFollowRequestResponse,
   UnfollowActorRequest,
   UnfollowActorResponse,
 } from './generated/patches/v1/social_graph.js';
@@ -500,6 +506,9 @@ export interface SocialGraphGrpcClient extends Client {
   unfollowActor: GrpcUnaryCall<UnfollowActorRequest, UnfollowActorResponse>;
   getRelationship: GrpcUnaryCall<GetRelationshipRequest, GetRelationshipResponse>;
   listMutualFollows: GrpcUnaryCall<ListMutualFollowsRequest, ListMutualFollowsResponse>;
+  listFollowRequests: GrpcUnaryCall<ListFollowRequestsRequest, ListFollowRequestsResponse>;
+  acceptFollowRequest: GrpcUnaryCall<AcceptFollowRequestRequest, AcceptFollowRequestResponse>;
+  rejectFollowRequest: GrpcUnaryCall<RejectFollowRequestRequest, RejectFollowRequestResponse>;
 }
 
 /** `patches.v1.NodeService` as seen by a raw grpc-js client. */

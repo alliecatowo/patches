@@ -146,12 +146,19 @@ export type {
 export { FEED_SERVICE_NAME, FeedServiceControllerMethods } from './generated/patches/v1/feeds.js';
 
 export type {
+  AcceptFollowRequestRequest,
+  AcceptFollowRequestResponse,
   FollowActorRequest,
   FollowActorResponse,
+  FollowRequest,
   GetRelationshipRequest,
   GetRelationshipResponse,
+  ListFollowRequestsRequest,
+  ListFollowRequestsResponse,
   ListMutualFollowsRequest,
   ListMutualFollowsResponse,
+  RejectFollowRequestRequest,
+  RejectFollowRequestResponse,
   Relationship,
   SocialGraphServiceClient,
   SocialGraphServiceController,
