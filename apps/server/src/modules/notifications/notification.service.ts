@@ -124,19 +124,48 @@ export class NotificationsService {
   }
 
   async notifyFollow(recipientActorId: string, actorId: string): Promise<void> {
-    await this.create('FOLLOW', recipientActorId, actorId, null);
+    await this.create('FOLLOW', recipientActorId, actorId, {});
   }
 
   async notifyLike(recipientActorId: string, actorId: string, postId: string): Promise<void> {
-    await this.create('LIKE', recipientActorId, actorId, postId);
+    await this.create('LIKE', recipientActorId, actorId, { postId });
   }
 
   async notifyReply(recipientActorId: string, actorId: string, postId: string): Promise<void> {
-    await this.create('REPLY', recipientActorId, actorId, postId);
+    await this.create('REPLY', recipientActorId, actorId, { postId });
   }
 
   async notifyMention(recipientActorId: string, actorId: string, postId: string): Promise<void> {
-    await this.create('MENTION', recipientActorId, actorId, postId);
+    await this.create('MENTION', recipientActorId, actorId, { postId });
+  }
+
+  async notifyRepost(recipientActorId: string, actorId: string, postId: string): Promise<void> {
+    await this.create('REPOST', recipientActorId, actorId, { postId });
+  }
+
+  async notifyQuote(recipientActorId: string, actorId: string, postId: string): Promise<void> {
+    await this.create('QUOTE', recipientActorId, actorId, { postId });
+  }
+
+  async notifyMessage(
+    recipientActorId: string,
+    actorId: string,
+    conversationId: string | null,
+  ): Promise<void> {
+    await this.create(
+      'MESSAGE',
+      recipientActorId,
+      actorId,
+      conversationId === null ? {} : { conversationId },
+    );
+  }
+
+  async notifyCommunityInvite(
+    recipientActorId: string,
+    actorId: string,
+    communityId: string,
+  ): Promise<void> {
+    await this.create('COMMUNITY_INVITE', recipientActorId, actorId, { communityId });
   }
 
   // ---------------------------------------------------------------- internals
@@ -150,7 +179,7 @@ export class NotificationsService {
     type: DbNotificationType,
     recipientActorId: string,
     actorId: string,
-    postId: string | null,
+    target: { postId?: string; conversationId?: string; communityId?: string },
   ): Promise<void> {
     if (recipientActorId === actorId) return;
     if (await this.blockedEitherDirection(recipientActorId, actorId)) return;
@@ -158,7 +187,16 @@ export class NotificationsService {
 
     const notifications = this.dataSource.getRepository(Notification);
     try {
-      await notifications.save(notifications.create({ recipientActorId, type, actorId, postId }));
+      await notifications.save(
+        notifications.create({
+          recipientActorId,
+          type,
+          actorId,
+          postId: target.postId ?? null,
+          conversationId: target.conversationId ?? null,
+          communityId: target.communityId ?? null,
+        }),
+      );
     } catch (error) {
       // The `Notification` entity's two partial unique indexes are the dedupe backstop (§113)
       // — a duplicate of an existing (recipient, type, actor, post) row is not an error, it is
@@ -190,6 +228,8 @@ function toNotificationView(row: Notification & { actor: Actor | null }): Notifi
     type: row.type,
     actor: row.actor === null ? null : toActorSummary(row.actor),
     postId: row.postId,
+    conversationId: row.conversationId,
+    communityId: row.communityId,
     createdAt: row.createdAt,
     readAt: row.readAt,
   };

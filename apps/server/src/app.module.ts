@@ -9,17 +9,20 @@ import { validateEnv } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
 import { ActorModule } from './modules/actors/actor.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { CommunitiesModule } from './modules/communities/communities.module.js';
 import { FederationHttpModule } from './modules/federation/federation-http.module.js';
 import { FederationModule } from './modules/federation/federation.module.js';
 import { FeedModule } from './modules/feeds/feed.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
 import { MediaModule } from './modules/media/media.module.js';
+import { MessagesModule } from './modules/messages/messages.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
 import { PostModule } from './modules/posts/post.module.js';
 import { ReactionModule } from './modules/reactions/reaction.module.js';
 import { SystemModule } from './modules/system/system.module.js';
+import { TagsModule } from './modules/tags/tags.module.js';
 
 /**
  * Decides whether `FederationHttpModule` (webfinger/actor/inbox/outbox) is part of this
@@ -47,6 +50,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     DatabaseModule,
     SystemModule,
     AuthModule,
+    CommunitiesModule,
     PostModule,
     ActorModule,
     FeedModule,
@@ -55,7 +59,9 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     ReactionModule,
     ModerationModule,
     MediaModule,
+    MessagesModule,
     PagesModule,
+    TagsModule,
     FederationModule,
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],

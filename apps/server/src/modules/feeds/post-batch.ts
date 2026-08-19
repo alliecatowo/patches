@@ -1,32 +1,57 @@
-import { Bookmark, Like, Post, PostMedia } from '@patches/database';
+import { Bookmark, Like, Post, PostMedia, Repost } from '@patches/database';
 import { In, type EntityManager } from 'typeorm';
 
-import { toPostView, type PostMediaSummary, type PostView } from '../posts/post.dto.js';
+import { communitySummariesFor } from '../posts/community-summary.js';
+import {
+  toPostView,
+  type CommunitySummaryView,
+  type PostCountsView,
+  type PostMediaSummary,
+  type PostView,
+  type PostViewerStateView,
+} from '../posts/post.dto.js';
 
 /**
- * Builds `PostView`s for one page of posts in a handful of queries total, not `N * queries` —
- * fetching media/counts/viewer-state one post at a time (the naive translation of
- * `PostService.getPost`'s per-post helpers) would be an obvious N+1 the moment a feed page has
- * more than one post.
- *
- * `viewerActorId` is optional — `FeedService.listLocalFeed`/`listActorPosts` and
- * `ReactionsService.listBookmarks` may be called anonymously or by the caller themselves, and
- * with no viewer there is no `liked`/`bookmarked` state to look up (both stay `false`, same as
- * `PostService.viewOf` with no viewer).
+ * Batched post projection shared by feeds and bookmark lists. Quote embeds are deliberately
+ * expanded exactly once; the embedded post is projected with `includeQuotes=false` so a quote
+ * chain can never recurse on the wire (§180.2).
  */
 export async function toPostViews(
   manager: EntityManager,
   posts: readonly Post[],
   viewerActorId?: string,
 ): Promise<PostView[]> {
+  return buildPostViews(manager, posts, viewerActorId, true);
+}
+
+async function buildPostViews(
+  manager: EntityManager,
+  posts: readonly Post[],
+  viewerActorId: string | undefined,
+  includeQuotes: boolean,
+): Promise<PostView[]> {
   if (posts.length === 0) return [];
   const ids = posts.map((post) => post.id);
 
-  const mediaRows = await manager.getRepository(PostMedia).find({
-    where: { postId: In(ids) },
-    relations: { media: true },
-    order: { position: 'ASC' },
-  });
+  const [mediaRows, replyRows, likeRows, repostRows, quoteRows, viewerRows] = await Promise.all([
+    manager.getRepository(PostMedia).find({
+      where: { postId: In(ids) },
+      relations: { media: true },
+      order: { position: 'ASC' },
+    }),
+    groupedPostCount(manager, 'inReplyToId', ids),
+    groupedRelationCount(manager, Like, 'like', ids),
+    groupedRelationCount(manager, Repost, 'repost', ids),
+    groupedPostCount(manager, 'quotedPostId', ids),
+    viewerActorId === undefined
+      ? Promise.resolve({
+          liked: new Set<string>(),
+          bookmarked: new Set<string>(),
+          reposted: new Set<string>(),
+        })
+      : loadViewerState(manager, viewerActorId, ids),
+  ]);
+
   const mediaByPost = new Map<string, PostMediaSummary[]>();
   for (const row of mediaRows) {
     const list = mediaByPost.get(row.postId) ?? [];
@@ -41,47 +66,106 @@ export async function toPostViews(
     mediaByPost.set(row.postId, list);
   }
 
-  const replyCountRows = await manager
-    .getRepository(Post)
-    .createQueryBuilder('post')
-    .select('post.inReplyToId', 'parentId')
-    .addSelect('COUNT(*)', 'count')
-    .where('post.inReplyToId IN (:...ids)', { ids })
-    .andWhere('post.deletedAt IS NULL')
-    .groupBy('post.inReplyToId')
-    .getRawMany<{ parentId: string; count: string }>();
-  const replyCountByPost = new Map(replyCountRows.map((row) => [row.parentId, Number(row.count)]));
+  const communities = await loadCommunities(manager, posts);
+  const quoted: Map<string, PostView> = includeQuotes
+    ? await loadQuotedPosts(manager, posts, viewerActorId)
+    : new Map<string, PostView>();
 
-  const likeCountRows = await manager
-    .getRepository(Like)
-    .createQueryBuilder('like')
-    .select('like.postId', 'postId')
-    .addSelect('COUNT(*)', 'count')
-    .where('like.postId IN (:...ids)', { ids })
-    .groupBy('like.postId')
-    .getRawMany<{ postId: string; count: string }>();
-  const likeCountByPost = new Map(likeCountRows.map((row) => [row.postId, Number(row.count)]));
-
-  let likedPostIds = new Set<string>();
-  let bookmarkedPostIds = new Set<string>();
-  if (viewerActorId !== undefined) {
-    const [likedRows, bookmarkedRows] = await Promise.all([
-      manager.getRepository(Like).find({ where: { actorId: viewerActorId, postId: In(ids) } }),
-      manager.getRepository(Bookmark).find({ where: { actorId: viewerActorId, postId: In(ids) } }),
-    ]);
-    likedPostIds = new Set(likedRows.map((row) => row.postId));
-    bookmarkedPostIds = new Set(bookmarkedRows.map((row) => row.postId));
-  }
-
-  return posts.map((post) =>
-    toPostView(
+  return posts.map((post) => {
+    const counts: PostCountsView = {
+      replyCount: replyRows.get(post.id) ?? 0,
+      likeCount: likeRows.get(post.id) ?? 0,
+      repostCount: repostRows.get(post.id) ?? 0,
+      quoteCount: quoteRows.get(post.id) ?? 0,
+    };
+    const viewerState: PostViewerStateView = {
+      liked: viewerRows.liked.has(post.id),
+      bookmarked: viewerRows.bookmarked.has(post.id),
+      reposted: viewerRows.reposted.has(post.id),
+    };
+    return toPostView(
       post,
-      post.deletedAt !== null ? [] : (mediaByPost.get(post.id) ?? []),
+      post.deletedAt === null ? (mediaByPost.get(post.id) ?? []) : [],
+      counts,
+      viewerState,
       {
-        replyCount: replyCountByPost.get(post.id) ?? 0,
-        likeCount: likeCountByPost.get(post.id) ?? 0,
+        quotedPost: post.quotedPostId === null ? null : (quoted.get(post.quotedPostId) ?? null),
+        community: post.communityId === null ? null : (communities.get(post.communityId) ?? null),
       },
-      { liked: likedPostIds.has(post.id), bookmarked: bookmarkedPostIds.has(post.id) },
-    ),
-  );
+    );
+  });
+}
+
+async function loadViewerState(manager: EntityManager, actorId: string, postIds: string[]) {
+  const [likes, bookmarks, reposts] = await Promise.all([
+    manager.getRepository(Like).find({ where: { actorId, postId: In(postIds) } }),
+    manager.getRepository(Bookmark).find({ where: { actorId, postId: In(postIds) } }),
+    manager.getRepository(Repost).find({ where: { actorId, postId: In(postIds) } }),
+  ]);
+  return {
+    liked: new Set(likes.map((row) => row.postId)),
+    bookmarked: new Set(bookmarks.map((row) => row.postId)),
+    reposted: new Set(reposts.map((row) => row.postId)),
+  };
+}
+
+async function groupedRelationCount(
+  manager: EntityManager,
+  entity: typeof Like | typeof Repost,
+  alias: string,
+  postIds: string[],
+): Promise<Map<string, number>> {
+  const rows = await manager
+    .getRepository(entity)
+    .createQueryBuilder(alias)
+    .select(`${alias}.postId`, 'postId')
+    .addSelect('COUNT(*)', 'count')
+    .where(`${alias}.postId IN (:...postIds)`, { postIds })
+    .groupBy(`${alias}.postId`)
+    .getRawMany<{ postId: string; count: string }>();
+  return new Map(rows.map((row) => [row.postId, Number(row.count)]));
+}
+
+async function groupedPostCount(
+  manager: EntityManager,
+  column: 'inReplyToId' | 'quotedPostId',
+  postIds: string[],
+): Promise<Map<string, number>> {
+  const rows = await manager
+    .getRepository(Post)
+    .createQueryBuilder('countedPost')
+    .select(`countedPost.${column}`, 'postId')
+    .addSelect('COUNT(*)', 'count')
+    .where(`countedPost.${column} IN (:...postIds)`, { postIds })
+    .andWhere('countedPost.deletedAt IS NULL')
+    .groupBy(`countedPost.${column}`)
+    .getRawMany<{ postId: string; count: string }>();
+  return new Map(rows.map((row) => [row.postId, Number(row.count)]));
+}
+
+async function loadCommunities(
+  manager: EntityManager,
+  posts: readonly Post[],
+): Promise<Map<string, CommunitySummaryView>> {
+  const ids = [
+    ...new Set(posts.flatMap((post) => (post.communityId === null ? [] : [post.communityId]))),
+  ];
+  return communitySummariesFor(manager, ids);
+}
+
+async function loadQuotedPosts(
+  manager: EntityManager,
+  posts: readonly Post[],
+  viewerActorId?: string,
+): Promise<Map<string, PostView>> {
+  const ids = [
+    ...new Set(posts.flatMap((post) => (post.quotedPostId === null ? [] : [post.quotedPostId]))),
+  ];
+  if (ids.length === 0) return new Map();
+  const rows = await manager.getRepository(Post).find({
+    where: { id: In(ids) },
+    relations: { authorActor: true },
+  });
+  const views = await buildPostViews(manager, rows, viewerActorId, false);
+  return new Map(views.map((view) => [view.id, view]));
 }

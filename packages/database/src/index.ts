@@ -34,7 +34,7 @@ export { Mute } from './entities/mute.entity.js';
 export { Like } from './entities/like.entity.js';
 export { Bookmark } from './entities/bookmark.entity.js';
 export { Notification } from './entities/notification.entity.js';
-export { Report } from './entities/report.entity.js';
+export { Report, type MessageSnapshotEntry } from './entities/report.entity.js';
 export { Page } from './entities/page.entity.js';
 export { PageRevision } from './entities/page-revision.entity.js';
 export { PageAsset } from './entities/page-asset.entity.js';
@@ -112,6 +112,9 @@ export { Phase45Pages1787062912872 } from './migrations/1787062912872-Phase45Pag
 export { Phase8Federation1787076396680 } from './migrations/1787076396680-Phase8Federation.js';
 export { Phase9Hardening1787082699518 } from './migrations/1787082699518-Phase9Hardening.js';
 export { Phase11SocialDepth1787103400432 } from './migrations/1787103400432-Phase11SocialDepth.js';
+export { Phase11ReactionNotifyTypes1787104500000 } from './migrations/1787104500000-Phase11ReactionNotifyTypes.js';
+export { Phase11DirectMessagesModeration1787104600000 } from './migrations/1787104600000-Phase11DirectMessagesModeration.js';
+export { Phase11CommunityIdempotency1787104700000 } from './migrations/1787104700000-Phase11CommunityIdempotency.js';
 
 export {
   claimOutboxJobs,

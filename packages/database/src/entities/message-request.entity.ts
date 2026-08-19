@@ -27,6 +27,7 @@ import { checkIn, MESSAGE_REQUEST_STATUSES, type MessageRequestStatus } from './
   where: `"status" = 'PENDING'`,
 })
 @Index(['recipientActorId', 'createdAt', 'id'])
+@Index(['senderActorId', 'clientRequestId'], { unique: true })
 @Check('chk_message_requests_status', checkIn('status', MESSAGE_REQUEST_STATUSES))
 export class MessageRequest {
   @PrimaryGeneratedColumn('uuid')
@@ -57,4 +58,9 @@ export class MessageRequest {
 
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;
+
+  /** Client-generated idempotency key (§45) for the `CreateConversation` call that created
+   * this request — same pattern as `Message.clientRequestId`. */
+  @Column({ type: 'uuid', nullable: true })
+  declare clientRequestId: string | null;
 }

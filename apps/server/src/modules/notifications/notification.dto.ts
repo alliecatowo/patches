@@ -14,6 +14,10 @@ export interface NotificationView {
   actor: ActorSummary | null;
   /** `null` for FOLLOW/MODERATION. */
   postId: string | null;
+  /** Set only for MESSAGE notifications. */
+  conversationId: string | null;
+  /** Set only for COMMUNITY_INVITE notifications. */
+  communityId: string | null;
   createdAt: Date;
   readAt: Date | null;
 }

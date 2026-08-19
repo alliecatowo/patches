@@ -18,7 +18,10 @@ import { TokenService } from './token.service.js';
  * authenticate a call; `RateLimitService` is exported too — it's a single process-local
  * limiter shared by every sensitive flow (spec §102), not an auth-only concern (`MediaModule`
  * throttles `BeginMediaUpload` through the same instance rather than a second one with its
- * own, disjoint bucket map).
+ * own, disjoint bucket map). `DbRateLimitStore` is exported too (P11-006): it is a generic
+ * `(key, windowMs)` database-backed counter, not auth-specific — `posts`/`reactions` call it
+ * directly (via `common/rate-limit/window-rate-limiter.ts`) for repost/quote/edit throttling
+ * rather than joining auth's own closed `RateLimitAction` union.
  */
 @Module({
   controllers: [AuthController],
@@ -33,6 +36,6 @@ import { TokenService } from './token.service.js';
     GitHubDeviceFlowService,
     GitHubLoginAttemptsService,
   ],
-  exports: [AuthGuard, TokenService, RateLimitService],
+  exports: [AuthGuard, TokenService, RateLimitService, DbRateLimitStore],
 })
 export class AuthModule {}

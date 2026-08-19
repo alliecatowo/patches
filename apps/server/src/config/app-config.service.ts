@@ -190,6 +190,33 @@ export class AppConfigService {
   get federationKeyEncryptionKey(): string | undefined {
     return this.get('FEDERATION_KEY_ENCRYPTION_KEY');
   }
+
+  /** Whether this node's `DirectMessageService` write paths are enabled (spec §183, §190). */
+  get dmEnabled(): boolean {
+    return this.get('DM_ENABLED');
+  }
+
+  /** 0 means "no retention limit is enforced" (spec §190). */
+  get dmRetentionDays(): number {
+    return this.get('DM_RETENTION_DAYS');
+  }
+
+  /** The post body ceiling this node currently enforces (spec §186.2, §188) — read
+   * dynamically by `PostService`, never hardcoded. */
+  get maxPostChars(): number {
+    return this.get('MAX_POST_CHARS');
+  }
+
+  /** Whether this node grants the `can_create_community` capability (spec §184.3, §190). */
+  get canCreateCommunity(): boolean {
+    return this.get('CAN_CREATE_COMMUNITY');
+  }
+
+  /** Allow-listed single-codepoint `like_glyph`s this node publishes (spec §184.2, §192).
+   * Empty means this node has no custom reaction glyphs enabled. */
+  get likeGlyphAllowList(): readonly string[] {
+    return this.get('LIKE_GLYPH_ALLOW_LIST');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

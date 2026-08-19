@@ -120,6 +120,35 @@ describe('validateEnv', () => {
     });
   });
 
+  it('defaults Amendment B social capabilities and parses operator overrides', () => {
+    expect(validateEnv({})).toMatchObject({
+      DM_ENABLED: true,
+      DM_RETENTION_DAYS: 0,
+      MAX_POST_CHARS: 5000,
+      CAN_CREATE_COMMUNITY: false,
+      LIKE_GLYPH_ALLOW_LIST: [],
+    });
+    expect(
+      validateEnv({
+        DM_ENABLED: 'false',
+        DM_RETENTION_DAYS: '30',
+        MAX_POST_CHARS: '7500',
+        CAN_CREATE_COMMUNITY: 'true',
+        LIKE_GLYPH_ALLOW_LIST: '♥, ★',
+      }),
+    ).toMatchObject({
+      DM_ENABLED: false,
+      DM_RETENTION_DAYS: 30,
+      MAX_POST_CHARS: 7500,
+      CAN_CREATE_COMMUNITY: true,
+      LIKE_GLYPH_ALLOW_LIST: ['♥', '★'],
+    });
+  });
+
+  it('rejects a post limit above the node ceiling', () => {
+    expect(() => validateEnv({ MAX_POST_CHARS: '10001' })).toThrow(ConfigError);
+  });
+
   it('rejects a malformed DATABASE_URL even when optional', () => {
     expect(() => validateEnv({ DATABASE_URL: 'not-a-url' })).toThrow(ConfigError);
   });

@@ -39,9 +39,18 @@ export interface ActorProfile {
   counts: ActorCountsSummary;
   /** `null` when the actor has never customized their presentation (spec §173). */
   nameplate: NameplateSummary | null;
+  flair: { document: string; updatedAt: Date } | null;
+  pinnedPostIds: string[];
 }
 
-export function toActorProfile(actor: ActorEntity, counts: ActorCountsSummary): ActorProfile {
+export function toActorProfile(
+  actor: ActorEntity,
+  counts: ActorCountsSummary,
+  extras: {
+    flair?: { document: unknown; updatedAt: Date } | null;
+    pinnedPostIds?: readonly string[];
+  } = {},
+): ActorProfile {
   return {
     id: actor.id,
     handle: actor.handle,
@@ -53,6 +62,11 @@ export function toActorProfile(actor: ActorEntity, counts: ActorCountsSummary): 
     joinedAt: actor.createdAt,
     counts,
     nameplate: toNameplateSummary(actor.nameplate),
+    flair:
+      extras.flair === null || extras.flair === undefined
+        ? null
+        : { document: JSON.stringify(extras.flair.document), updatedAt: extras.flair.updatedAt },
+    pinnedPostIds: [...(extras.pinnedPostIds ?? [])].slice(0, 3),
   };
 }
 

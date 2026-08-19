@@ -40,17 +40,33 @@ export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 export const AUTH_CODE_PURPOSES = ['VERIFY_EMAIL', 'RESET_PASSWORD'] as const;
 export type AuthCodePurpose = (typeof AUTH_CODE_PURPOSES)[number];
 
-/** Notification row types (`INITIAL_VISION.md` §56, §113). `MODERATION` is reserved — no RPC
- * creates one yet (moderator-initiated notices land with the admin CLI, spec §65). */
-export const NOTIFICATION_TYPES = ['FOLLOW', 'LIKE', 'REPLY', 'MENTION', 'MODERATION'] as const;
+/** Notification row types (`INITIAL_VISION.md` §56, §113, §187). `MODERATION` is reserved —
+ * no RPC creates one yet (moderator-initiated notices land with the admin CLI, spec §65).
+ * `MESSAGE` (P11-004, §183.4) is written by `DirectMessageService.SendMessage`/
+ * `CreateConversation` — never carries the message body, only `conversation_id` (see
+ * `notification.entity.ts`). `REPOST`/`QUOTE` (P11-006, §187) are written by
+ * `ReactionsService.repostPost`/`PostService.createPost` respectively. */
+export const NOTIFICATION_TYPES = [
+  'FOLLOW',
+  'LIKE',
+  'REPLY',
+  'MENTION',
+  'MODERATION',
+  'MESSAGE',
+  'REPOST',
+  'QUOTE',
+  'COMMUNITY_INVITE',
+] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** A report's target (`INITIAL_VISION.md` §64's `subject_type`). `GUESTBOOK_ENTRY` (P45-003)
  * is reportable per §172 ("guestbook entries are ... reportable, §64") — `ModerationService`
  * has no guestbook-entry RPC, so `PageService.ReportGuestbookEntry` (`pages.proto`) writes
  * this subject type directly into the same `reports` table `ModerationService` uses, rather
- * than duplicating the report model. */
-export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST', 'GUESTBOOK_ENTRY'] as const;
+ * than duplicating the report model. `MESSAGE` (P11-004, §183.4) is the fourth: reporting a
+ * message snapshots up to 10 surrounding messages into `message_snapshot` at write time (see
+ * `report.entity.ts`), since the message(s) themselves may later be tombstoned/deleted. */
+export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST', 'GUESTBOOK_ENTRY', 'MESSAGE'] as const;
 export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number];
 
 export const REPORT_REASONS = [
@@ -91,6 +107,7 @@ export const ADMIN_AUDIT_SUBJECT_TYPES = [
   'POST',
   'JOB',
   'DOMAIN',
+  'COMMUNITY',
 ] as const;
 export type AdminAuditSubjectType = (typeof ADMIN_AUDIT_SUBJECT_TYPES)[number];
 

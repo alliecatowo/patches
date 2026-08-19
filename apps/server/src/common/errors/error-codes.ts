@@ -58,6 +58,31 @@ export const ERROR_CODES = [
    * exist — distinct from `PAGE_NOT_FOUND` because a guestbook entry id is looked up directly,
    * not resolved through a handle/block check. */
   'GUESTBOOK_ENTRY_NOT_FOUND',
+  /**
+   * P11-004 (spec §183.4, §192): `DirectMessageService` reports a missing conversation, a
+   * conversation the caller isn't an active member of, and a conversation the caller is
+   * blocked-either-direction from a fellow member of, uniformly as this one code — the DM
+   * "no block oracle" rule (§62, §183.4) applied the same way `POST_NOT_FOUND` already is.
+   */
+  'CONVERSATION_NOT_FOUND',
+  /** `DeleteMessage`/`ModerationService.ReportMessage` on a message id that doesn't exist, or
+   * (for `DeleteMessage`) one the caller didn't send — uniform for the same no-oracle reason
+   * as `CONVERSATION_NOT_FOUND`. */
+  'MESSAGE_NOT_FOUND',
+  /** `RespondToMessageRequest` on a request id that doesn't exist or isn't addressed to the
+   * caller. */
+  'MESSAGE_REQUEST_NOT_FOUND',
+  /** `DirectMessageService`'s write paths when this node has `DM_ENABLED=false` (spec §183,
+   * §190's `dm_enabled` capability). */
+  'DM_DISABLED',
+  /** Community lookup and authorization errors (P11-003, spec §182). */
+  'COMMUNITY_NOT_FOUND',
+  'COMMUNITY_NAME_TAKEN',
+  'COMMUNITY_FORBIDDEN',
+  'COMMUNITY_BANNED',
+  'COMMUNITY_INVITE_NOT_FOUND',
+  /** A tag id supplied to a mute/unmute RPC does not exist (P11-005, spec §181). */
+  'TAG_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -92,6 +117,16 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   PAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
   PAGE_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
   GUESTBOOK_ENTRY_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  CONVERSATION_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  MESSAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  MESSAGE_REQUEST_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  DM_DISABLED: GrpcStatus.FAILED_PRECONDITION,
+  COMMUNITY_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  COMMUNITY_NAME_TAKEN: GrpcStatus.ALREADY_EXISTS,
+  COMMUNITY_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
+  COMMUNITY_BANNED: GrpcStatus.PERMISSION_DENIED,
+  COMMUNITY_INVITE_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  TAG_NOT_FOUND: GrpcStatus.NOT_FOUND,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

@@ -22,11 +22,14 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
       posts: profile.counts.posts,
     },
     nameplate: profile.nameplate === null ? undefined : toProtoNameplate(profile.nameplate),
-    // Amendment B (P11-001): flair/pinned posts land with the `communities`/`messages` wave
-    // (P11-00x) that adds `ActorFlairService`/pin support — no reader/writer exists yet, so
-    // every profile reports "never customized" rather than guessing.
-    flair: undefined,
-    pinnedPostIds: [],
+    flair:
+      profile.flair === null
+        ? undefined
+        : {
+            document: profile.flair.document,
+            updatedAt: dateToTimestamp(profile.flair.updatedAt),
+          },
+    pinnedPostIds: [...profile.pinnedPostIds],
   };
 }
 

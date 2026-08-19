@@ -1,3 +1,4 @@
+import { MAX_POST_CHARS, MAX_POST_CHARS_NODE_CEILING } from '@patches/domain';
 import { z } from 'zod';
 
 import {
@@ -113,6 +114,63 @@ const envObjectSchema = z.object({
    * keys can't federate at all.
    */
   FEDERATION_KEY_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
+
+  /**
+   * Amendment B node capability (P11-004, spec §183, §190's `NodeService.GetNodeInfo`
+   * `social_capabilities.dm_enabled`). Default on: DMs are in scope per §183's "the gate has
+   * passed" — unlike `FEDERATION_ENABLED`, there is no new network surface to gate here, just
+   * the `DirectMessageService` write paths, so an operator opts *out* rather than in.
+   */
+  DM_ENABLED: booleanish().default(true),
+  /** 0 means "no retention limit is enforced" (`NodeService.GetNodeInfo`'s
+   * `social_capabilities.dm_retention_days` doc, spec §190). No DM retention sweep exists yet
+   * — this only ever feeds that advertised capability value in v0. */
+  DM_RETENTION_DAYS: z.coerce.number().int().min(0).default(0),
+
+  /**
+   * Amendment B (P11-006/P11-008, spec §186.2, §188): the post body ceiling this node
+   * currently enforces, published via `NodeService.GetNodeInfo`'s `social_capabilities.
+   * max_post_chars`/`limits.post_body_max_chars` and enforced dynamically by
+   * `PostService.createPost`/`editPost` (a static zod schema can't read config — see
+   * `modules/posts/validation.ts`'s `POST_BODY_MAX_LENGTH` doc). Default 5,000 (`@patches/
+   * domain`'s `MAX_POST_CHARS`); a node may raise this up to `MAX_POST_CHARS_NODE_CEILING`
+   * (10,000) but never higher — clients must read the limit from the node, never hardcode it.
+   */
+  MAX_POST_CHARS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_POST_CHARS_NODE_CEILING)
+    .default(MAX_POST_CHARS),
+
+  /**
+   * Amendment B node capability (P11-008, spec §184.3, §190's `social_capabilities.
+   * can_create_community`). Default off: community creation is capability-gated per §184.3
+   * ("a node MAY grant this per-node"), so an operator opts in rather than every self-hosted
+   * node suddenly allowing it.
+   */
+  CAN_CREATE_COMMUNITY: booleanish().default(false),
+
+  /**
+   * Amendment B (P11-008, spec §184.2, §192): the allow-list of single width-1 codepoints a
+   * `like_glyph` may use, comma-separated, published via `NodeService.GetNodeInfo`'s
+   * `social_capabilities.like_glyph_allow_list`. Default empty — same "honest empty capability
+   * list" reasoning `NodeService`'s existing `CAPABILITIES` constant documents; a self-hoster
+   * opts in per §184.3 ("every cosmetic MUST be available by default or granted per-node").
+   * Validated for shape (single width-1 codepoint, no combining/zero-width/control) by
+   * `modules/actors/glyph-validation.ts` at boot via `ActorFlairModule`'s `AppConfigService`
+   * read, not here — this schema only splits the comma list (same `WEB_ORIGINS` pattern
+   * `@patches/config`'s `serverEnvShape` documents).
+   */
+  LIKE_GLYPH_ALLOW_LIST: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

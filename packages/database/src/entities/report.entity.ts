@@ -19,8 +19,19 @@ import {
   type ReportSubjectType,
 } from './enums.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
+import { Message } from './message.entity.js';
 import { Post } from './post.entity.js';
 import { User } from './user.entity.js';
+
+/** One entry of a `ReportMessage` evidence snapshot (P11-004, §183.4) — plain data, not an
+ * entity: the snapshot is a point-in-time copy stored on the report row itself so a later
+ * tombstone of the underlying message can't destroy the evidence. */
+export interface MessageSnapshotEntry {
+  id: string;
+  senderActorId: string | null;
+  body: string;
+  createdAt: string;
+}
 
 /**
  * A user report (`INITIAL_VISION.md` §64) — the exact shape the spec's `reports` table
@@ -35,21 +46,29 @@ import { User } from './user.entity.js';
  * `subject_guestbook_entry_id` (P45-003) is the third subject column, added alongside
  * `GUESTBOOK_ENTRY` in `REPORT_SUBJECT_TYPES` — `PageService.ReportGuestbookEntry` writes
  * here rather than `ModerationService` growing a guestbook-entry RPC of its own.
+ *
+ * `subject_message_id`/`message_snapshot` (P11-004, §183.4) are the fourth: `ReportMessage`
+ * snapshots up to 10 surrounding messages into `message_snapshot` at write time, because a
+ * report must outlive a later tombstone of the message(s) it is evidence about — the *only*
+ * authorized copy of message bodies outside `messages` itself (spec §183.4, §194), retained
+ * for the lifetime of the report and no longer.
  */
 @Entity({ name: 'reports' })
 @Index(['status', 'createdAt'])
 @Index(['subjectActorId'])
 @Index(['subjectPostId'])
 @Index(['subjectGuestbookEntryId'])
+@Index(['subjectMessageId'])
 @Check('chk_reports_subject_type', checkIn('subject_type', REPORT_SUBJECT_TYPES))
 @Check('chk_reports_reason', checkIn('reason', REPORT_REASONS))
 @Check('chk_reports_status', checkIn('status', REPORT_STATUSES))
-// Exactly one of the three subject columns is set, matching `subject_type`.
+// Exactly one of the four subject columns is set, matching `subject_type`.
 @Check(
   'chk_reports_subject_matches_type',
-  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)
-   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)
-   OR ("subject_type" = 'GUESTBOOK_ENTRY' AND "subject_guestbook_entry_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL)`,
+  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL)
+   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL)
+   OR ("subject_type" = 'GUESTBOOK_ENTRY' AND "subject_guestbook_entry_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_message_id" IS NULL)
+   OR ("subject_type" = 'MESSAGE' AND "subject_message_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)`,
 )
 export class Report {
   @PrimaryGeneratedColumn('uuid')
@@ -85,6 +104,22 @@ export class Report {
   @ManyToOne(() => GuestbookEntry, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'subject_guestbook_entry_id' })
   declare subjectGuestbookEntry: GuestbookEntry | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  declare subjectMessageId: string | null;
+
+  // Deliberately no database FK: the evidence snapshot must outlive physical retention
+  // cleanup of the underlying message (spec §183.4).
+  @ManyToOne(() => Message, { nullable: true, createForeignKeyConstraints: false })
+  @JoinColumn({ name: 'subject_message_id' })
+  declare subjectMessage: Message | null;
+
+  /** Up to 10 surrounding messages (§183.4), captured at `ReportMessage` write time — chosen
+   * over re-deriving evidence from `messages` at review time because either party may delete
+   * (tombstone) a message after reporting it, and the snapshot must survive that. `null` for
+   * every non-MESSAGE report. */
+  @Column({ type: 'jsonb', nullable: true })
+  declare messageSnapshot: MessageSnapshotEntry[] | null;
 
   @Column({ type: 'text' })
   declare reason: ReportReason;

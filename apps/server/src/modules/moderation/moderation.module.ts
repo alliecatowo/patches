@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
+import { MessagesModule } from '../messages/messages.module.js';
 import { PostModule } from '../posts/post.module.js';
 import { ModerationController } from './moderation.controller.js';
 import { ModerationService } from './moderation.service.js';
@@ -12,7 +13,7 @@ import { ReportRateLimitService } from './report-rate-limit.service.js';
  * `ReactionModule`).
  */
 @Module({
-  imports: [AuthModule, PostModule],
+  imports: [AuthModule, PostModule, MessagesModule],
   controllers: [ModerationController],
   providers: [ModerationService, ReportRateLimitService],
 })

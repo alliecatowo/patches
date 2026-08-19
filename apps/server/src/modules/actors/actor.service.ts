@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, Follow, Post } from '@patches/database';
-import { IsNull, type DataSource, type EntityManager } from 'typeorm';
+import { Actor, ActorFlair, Follow, PinnedPost, Post } from '@patches/database';
+import { In, IsNull, type DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
@@ -20,6 +20,7 @@ import {
   locationTextSchema,
   NAMEPLATE_MAX_BYTES,
   nameplateInputSchema,
+  parseActorFlairDocument,
   parseInput,
   searchQuerySchema,
   uuidInputSchema,
@@ -38,6 +39,7 @@ export interface UpdateProfileInput {
   locationText?: string;
   websiteUrl?: string;
   nameplate?: NameplateInput;
+  flairDocument?: string;
   /** Proto field names (snake_case), e.g. `["display_name", "bio"]`; only these are applied. */
   updateMask: readonly string[];
 }
@@ -61,7 +63,7 @@ export class ActorService {
     const parsed = parseInput(uuidInputSchema, id);
     const actor = await this.dataSource.getRepository(Actor).findOne({ where: { id: parsed } });
     if (actor === null || actor.deletedAt !== null) throw actorNotFound();
-    return toActorProfile(actor, await this.countsFor(actor.id));
+    return this.profileOf(actor, await this.countsFor(actor.id));
   }
 
   async getActorByHandle(handle: string): Promise<ActorProfile> {
@@ -70,7 +72,7 @@ export class ActorService {
       .getRepository(Actor)
       .findOne({ where: { handleNormalized } });
     if (actor === null || actor.deletedAt !== null) throw actorNotFound();
-    return toActorProfile(actor, await this.countsFor(actor.id));
+    return this.profileOf(actor, await this.countsFor(actor.id));
   }
 
   /**
@@ -113,7 +115,7 @@ export class ActorService {
       }
       throw error;
     }
-    return toActorProfile(actor, await this.countsFor(actor.id));
+    return this.profileOf(actor, await this.countsFor(actor.id));
   }
 
   /** Partial update of the caller's own profile, driven by `update_mask` (spec: `actors.proto`'s
@@ -147,6 +149,9 @@ export class ActorService {
     const parsedNameplate = paths.has('nameplate')
       ? parseInput(nameplateInputSchema, input.nameplate ?? {})
       : undefined;
+    const parsedFlair = paths.has('flair')
+      ? parseActorFlairDocument(input.flairDocument ?? '{}', this.config.likeGlyphAllowList)
+      : undefined;
 
     return this.dataSource.transaction(async (manager) => {
       const actors = manager.getRepository(Actor);
@@ -164,7 +169,11 @@ export class ActorService {
       // sidesteps that entirely.
       const updated =
         Object.keys(patch).length > 0 ? await actors.save(Object.assign(actor, patch)) : actor;
-      return toActorProfile(updated, await this.countsFor(updated.id, manager));
+      if (parsedFlair !== undefined) {
+        const flairs = manager.getRepository(ActorFlair);
+        await flairs.save(flairs.create({ actorId: actor.id, document: parsedFlair }));
+      }
+      return this.profileOf(updated, await this.countsFor(updated.id, manager), manager);
     });
   }
 
@@ -256,9 +265,7 @@ export class ActorService {
 
     const relatedActors = page.map((row) => row.followeeActor);
     const countsByActorId = await this.countsForMany(relatedActors.map((actor) => actor.id));
-    const actors = page.map((row, index) =>
-      toActorProfile(relatedActors[index]!, countsByActorId.get(relatedActors[index]!.id)!),
-    );
+    const actors = await this.profilesOf(relatedActors, countsByActorId);
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,
@@ -303,9 +310,7 @@ export class ActorService {
     // page rather than the N+1 a per-row `countsFor()` call would be.
     const relatedActors = page.map((row) => row[joinRelation]);
     const countsByActorId = await this.countsForMany(relatedActors.map((actor) => actor.id));
-    const actors = page.map((row, index) =>
-      toActorProfile(relatedActors[index]!, countsByActorId.get(relatedActors[index]!.id)!),
-    );
+    const actors = await this.profilesOf(relatedActors, countsByActorId);
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,
@@ -317,7 +322,7 @@ export class ActorService {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
     const countsByActorId = await this.countsForMany(page.map((row) => row.id));
-    const actors = page.map((row) => toActorProfile(row, countsByActorId.get(row.id)!));
+    const actors = await this.profilesOf(page, countsByActorId);
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,
@@ -335,6 +340,54 @@ export class ActorService {
       manager.getRepository(Follow).countBy({ followerActorId: actorId }),
     ]);
     return { followers: followerCount, following: followingCount, posts: postCount };
+  }
+
+  private async profileOf(
+    actor: Actor,
+    counts: ActorCountsSummary,
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<ActorProfile> {
+    const [flair, pins] = await Promise.all([
+      manager.getRepository(ActorFlair).findOne({ where: { actorId: actor.id } }),
+      manager
+        .getRepository(PinnedPost)
+        .find({ where: { actorId: actor.id }, order: { position: 'ASC' } }),
+    ]);
+    return toActorProfile(actor, counts, {
+      flair: flair === null ? null : { document: flair.document, updatedAt: flair.updatedAt },
+      pinnedPostIds: pins.map((pin) => pin.postId),
+    });
+  }
+
+  private async profilesOf(
+    actors: readonly Actor[],
+    countsByActorId: ReadonlyMap<string, ActorCountsSummary>,
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<ActorProfile[]> {
+    if (actors.length === 0) return [];
+    const actorIds = actors.map((actor) => actor.id);
+    const [flairs, pins] = await Promise.all([
+      manager.getRepository(ActorFlair).find({ where: { actorId: In(actorIds) } }),
+      manager.getRepository(PinnedPost).find({
+        where: { actorId: In(actorIds) },
+        order: { actorId: 'ASC', position: 'ASC' },
+      }),
+    ]);
+    const flairByActor = new Map(flairs.map((flair) => [flair.actorId, flair]));
+    const pinsByActor = new Map<string, string[]>();
+    for (const pin of pins) {
+      const list = pinsByActor.get(pin.actorId) ?? [];
+      list.push(pin.postId);
+      pinsByActor.set(pin.actorId, list);
+    }
+    return actors.map((actor) => {
+      const flair = flairByActor.get(actor.id);
+      return toActorProfile(actor, countsByActorId.get(actor.id)!, {
+        flair:
+          flair === undefined ? null : { document: flair.document, updatedAt: flair.updatedAt },
+        pinnedPostIds: pinsByActor.get(actor.id) ?? [],
+      });
+    });
   }
 
   /**
