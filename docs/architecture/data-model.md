@@ -977,6 +977,285 @@ excludes it. Blocked actors cannot sign (§62). Creation is rate-limited on both
 
 ---
 
+## Amendment B tables (§188–190)
+
+**Status: implemented** (`Phase11SocialDepth1787103400432`, P11-002) — reposts, tags,
+communities, direct messages, post edit history, pinned posts, and actor flair, plus three
+columns added to `posts`. See ADR-pending Amendment B (`INITIAL_VISION.md` §188–192) for the
+product rationale; this section is the schema only.
+
+### `reposts`
+
+A repost is a pointer row, exactly like `likes`/`bookmarks` — never a duplicate of the post's
+content (§190).
+
+| Column       | Type          | Nullable | Notes                                                                 |
+| ------------ | ------------- | -------- | --------------------------------------------------------------------- |
+| `id`         | `uuid`        | no       | PK (unlike `likes`/`bookmarks`, §189 gives this table a surrogate id) |
+| `actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                                 |
+| `post_id`    | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE`                                  |
+| `created_at` | `timestamptz` | no       |                                                                       |
+
+**Constraints**: `UNIQUE (actor_id, post_id)` (§189 — this is what makes `RepostPost`/
+`UnrepostPost` idempotent).
+
+**Indexes** (§189, plus an `id` tiebreaker beyond §189's literal list for keyset-pagination
+correctness — see the entity's doc comment): `reposts(actor_id, created_at, id)`,
+`reposts(post_id, created_at, id)`.
+
+---
+
+### `tags`
+
+A hashtag. `name` is the canonical (NFKC-normalized, casefolded) form; `display_name` keeps
+the original casing. Deliberately has **no** `post_count` column (§181) — there is no
+engagement ranking in this product.
+
+| Column         | Type          | Nullable | Notes                                          |
+| -------------- | ------------- | -------- | ---------------------------------------------- |
+| `id`           | `uuid`        | no       | PK                                             |
+| `name`         | `text`        | no       | canonical form, max 30 chars, ≥1 letter (§188) |
+| `display_name` | `text`        | no       | original casing                                |
+| `created_at`   | `timestamptz` | no       |                                                |
+
+**Constraints**: `UNIQUE (name)`.
+
+---
+
+### `post_tags`
+
+A post's membership in a tag.
+
+| Column       | Type          | Nullable | Notes                                |
+| ------------ | ------------- | -------- | ------------------------------------ |
+| `post_id`    | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE` |
+| `tag_id`     | `uuid`        | no       | FK → `tags.id`, `ON DELETE CASCADE`  |
+| `created_at` | `timestamptz` | no       |                                      |
+
+**Constraints**: composite PK `(post_id, tag_id)`.
+
+**Indexes** (§189): `post_tags(tag_id, created_at, post_id)` — backs `FeedService.ListTagFeed`.
+
+---
+
+### `tag_mutes`
+
+An actor's muted tags — up to 100 (§188), enforced in the service layer.
+
+| Column       | Type          | Nullable | Notes                                 |
+| ------------ | ------------- | -------- | ------------------------------------- |
+| `actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` |
+| `tag_id`     | `uuid`        | no       | FK → `tags.id`, `ON DELETE CASCADE`   |
+| `created_at` | `timestamptz` | no       |                                       |
+
+**Constraints**: composite PK `(actor_id, tag_id)`.
+
+---
+
+### `communities`
+
+A topical community a post may optionally belong to.
+
+| Column                | Type          | Nullable | Notes                                                                                                   |
+| --------------------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                                      |
+| `name`                | `text`        | no       | `[a-z0-9_]`, 3-32 chars (§188), `CHECK` enforced                                                        |
+| `display_name`        | `text`        | no       | max 80 chars                                                                                            |
+| `description`         | `text`        | no       | default `''`, max 500 chars                                                                             |
+| `rules`               | `text`        | no       | default `''`, max 4 KiB                                                                                 |
+| `created_by_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE RESTRICT` — a community outlives nothing about its founder being deletable |
+| `is_public`           | `boolean`     | no       | default `true`                                                                                          |
+| `created_at`          | `timestamptz` | no       |                                                                                                         |
+| `updated_at`          | `timestamptz` | no       |                                                                                                         |
+
+**Constraints**: `UNIQUE (name)`; `CHECK` on `name`'s character grammar.
+
+---
+
+### `community_members`
+
+| Column         | Type          | Nullable | Notes                                      |
+| -------------- | ------------- | -------- | ------------------------------------------ |
+| `community_id` | `uuid`        | no       | FK → `communities.id`, `ON DELETE CASCADE` |
+| `actor_id`     | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`      |
+| `role`         | `text`        | no       | `member` \| `moderator`, default `member`  |
+| `joined_at`    | `timestamptz` | no       |                                            |
+
+**Constraints**: composite PK `(community_id, actor_id)`; `CHECK` on `role`.
+
+**Indexes**: `community_members(community_id, joined_at, actor_id)` — not in §189's literal
+list, added for `CommunityService.ListCommunityMembers`'s cursor pagination (§190's "every new
+list RPC is cursor-paginated").
+
+---
+
+### `community_bans`
+
+No uniqueness beyond the surrogate id (§189 lists none) — an actor can accumulate more than
+one ban record across an appeal/re-ban cycle; "is this actor currently banned" is a
+service-layer query over the most recent row.
+
+| Column               | Type          | Nullable | Notes                                       |
+| -------------------- | ------------- | -------- | ------------------------------------------- |
+| `id`                 | `uuid`        | no       | PK                                          |
+| `community_id`       | `uuid`        | no       | FK → `communities.id`, `ON DELETE CASCADE`  |
+| `actor_id`           | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`       |
+| `reason`             | `text`        | yes      | moderator-facing only, never shown publicly |
+| `banned_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL`      |
+| `created_at`         | `timestamptz` | no       |                                             |
+
+**Indexes**: `community_bans(community_id, actor_id, created_at)`.
+
+---
+
+### `community_invites`
+
+One of the two new unsolicited-contact vectors (§192, alongside `message_requests`):
+rate-limited, block-aware, individually mutable, never auto-joins.
+
+| Column             | Type          | Nullable | Notes                                                    |
+| ------------------ | ------------- | -------- | -------------------------------------------------------- |
+| `id`               | `uuid`        | no       | PK                                                       |
+| `community_id`     | `uuid`        | no       | FK → `communities.id`, `ON DELETE CASCADE`               |
+| `inviter_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                    |
+| `invitee_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                    |
+| `status`           | `text`        | no       | `pending` \| `accepted` \| `declined`, default `pending` |
+| `created_at`       | `timestamptz` | no       |                                                          |
+
+**Constraints** (§189): `UNIQUE (community_id, invitee_actor_id) WHERE status = 'PENDING'` — a
+second invite to the same pair is blocked only while the first is still pending; a declined
+invite can be re-sent.
+
+**Indexes**: `community_invites(invitee_actor_id, created_at, id)`.
+
+---
+
+### `conversations`
+
+A direct-message conversation (§183.4). Never federated, no media, no link previews (§192).
+
+| Column                | Type          | Nullable | Notes                                                                                  |
+| --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                     |
+| `kind`                | `text`        | no       | `direct` \| `group`, default `direct`                                                  |
+| `created_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — a conversation outlives its creator's account |
+| `created_at`          | `timestamptz` | no       |                                                                                        |
+| `last_message_at`     | `timestamptz` | no       | denormalized, updated on every `SendMessage`, drives `ListConversations`'s ordering    |
+
+---
+
+### `conversation_members`
+
+| Column                 | Type          | Nullable | Notes                                                       |
+| ---------------------- | ------------- | -------- | ----------------------------------------------------------- |
+| `conversation_id`      | `uuid`        | no       | FK → `conversations.id`, `ON DELETE CASCADE`                |
+| `actor_id`             | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                       |
+| `joined_at`            | `timestamptz` | no       |                                                             |
+| `left_at`              | `timestamptz` | yes      | null while still a member                                   |
+| `last_read_message_id` | `uuid`        | yes      | no FK — a message can be tombstoned after being marked read |
+| `muted`                | `boolean`     | no       | default `false`                                             |
+
+**Constraints**: composite PK `(conversation_id, actor_id)`.
+
+---
+
+### `messages`
+
+Bodies never appear in logs/metrics/traces/errors (§192, enforced at the logging layer, not
+here). Soft delete (tombstone), same as `posts`.
+
+| Column            | Type          | Nullable | Notes                                                                          |
+| ----------------- | ------------- | -------- | ------------------------------------------------------------------------------ |
+| `id`              | `uuid`        | no       | PK                                                                             |
+| `conversation_id` | `uuid`        | no       | FK → `conversations.id`, `ON DELETE CASCADE`                                   |
+| `sender_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — history outlives the sender's account |
+| `body`            | `text`        | no       | max 2,000 chars (§188); empty once tombstoned                                  |
+| `created_at`      | `timestamptz` | no       |                                                                                |
+| `deleted_at`      | `timestamptz` | yes      | tombstone                                                                      |
+
+**Indexes** (§189): `messages(conversation_id, created_at, id)`.
+
+---
+
+### `message_requests`
+
+The other new unsolicited-contact vector (§192, alongside `community_invites`).
+
+| Column               | Type          | Nullable | Notes                                                       |
+| -------------------- | ------------- | -------- | ----------------------------------------------------------- |
+| `id`                 | `uuid`        | no       | PK                                                          |
+| `sender_actor_id`    | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                       |
+| `recipient_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                       |
+| `body`               | `text`        | no       | max 2,000 chars (§188) — same budget as an ordinary message |
+| `status`             | `text`        | no       | `pending` \| `accepted` \| `declined`, default `pending`    |
+| `created_at`         | `timestamptz` | no       |                                                             |
+
+**Constraints**: `UNIQUE (sender_actor_id, recipient_actor_id) WHERE status = 'PENDING'` — not
+in §189's literal column list, but required by §188's "1 pending per (sender, recipient)"
+limit, which MUST exist as a database constraint where practical; same partial-unique-index
+technique §189 already specifies for `community_invites`.
+
+**Indexes**: `message_requests(recipient_actor_id, created_at, id)`.
+
+---
+
+### `post_edits`
+
+A snapshot of a post's prior state, taken immediately before `EditPost` overwrites it. Up to
+20 per post (§188), enforced in the service layer.
+
+| Column                     | Type          | Nullable | Notes                                                                          |
+| -------------------------- | ------------- | -------- | ------------------------------------------------------------------------------ |
+| `id`                       | `uuid`        | no       | PK                                                                             |
+| `post_id`                  | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE`                                           |
+| `previous_body`            | `text`        | yes      |                                                                                |
+| `previous_content_warning` | `text`        | yes      |                                                                                |
+| `previous_media_manifest`  | `jsonb`       | yes      | frozen array of the prior `MediaAttachment`-shaped objects                     |
+| `edited_by_actor_id`       | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — history outlives the editor's account |
+| `created_at`               | `timestamptz` | no       |                                                                                |
+
+**Indexes** (§189): `post_edits(post_id, created_at, id)`.
+
+---
+
+### `pinned_posts`
+
+| Column       | Type          | Nullable | Notes                                        |
+| ------------ | ------------- | -------- | -------------------------------------------- |
+| `actor_id`   | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`        |
+| `post_id`    | `uuid`        | no       | FK → `posts.id`, `ON DELETE CASCADE`         |
+| `position`   | `smallint`    | no       | 0-2 (§188's 3-pin ceiling), `CHECK` enforced |
+| `created_at` | `timestamptz` | no       |                                              |
+
+**Constraints**: composite PK `(actor_id, post_id)`; `CHECK (position BETWEEN 0 AND 2)`.
+
+---
+
+### `actor_flair`
+
+Free-form, allow-listed self-presentation (§192), distinct from `actors`' nameplate columns.
+Max 1 KiB serialized (§188) — enforced in the service layer.
+
+| Column       | Type          | Nullable | Notes                                     |
+| ------------ | ------------- | -------- | ----------------------------------------- |
+| `actor_id`   | `uuid`        | no       | PK, FK → `actors.id`, `ON DELETE CASCADE` |
+| `document`   | `jsonb`       | no       | shape owned by the client renderer        |
+| `updated_at` | `timestamptz` | no       |                                           |
+
+---
+
+### Columns added to `posts` (§189)
+
+| Column           | Type   | Nullable | Notes                                                                                          |
+| ---------------- | ------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `quoted_post_id` | `uuid` | yes      | FK → `posts.id`, `ON DELETE SET NULL`; only one level of quote nesting is ever rendered (§188) |
+| `quote_policy`   | `text` | no       | `anyone` \| `followers` \| `nobody`, default `anyone`, `CHECK` enforced                        |
+| `community_id`   | `uuid` | yes      | FK → `communities.id`, `ON DELETE SET NULL`; immutable after insert (service-layer enforced)   |
+
+**Indexes**: `posts(community_id, created_at, id)` — backs `FeedService.ListCommunityFeed`.
+
+---
+
 ## Required index summary (§60)
 
 ```text
