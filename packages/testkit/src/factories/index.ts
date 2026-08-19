@@ -50,3 +50,38 @@ export type {
   CreateTestPageOptions,
   CreateTestPageRevisionOptions,
 } from './pages.js';
+
+export {
+  createTestActorFlair,
+  createTestCommunity,
+  createTestCommunityBan,
+  createTestCommunityInvite,
+  createTestCommunityMember,
+  createTestConversation,
+  createTestConversationMember,
+  createTestMessage,
+  createTestMessageRequest,
+  createTestPinnedPost,
+  createTestPostEdit,
+  createTestPostTag,
+  createTestRepost,
+  createTestTag,
+  createTestTagMute,
+} from './social-depth.js';
+export type {
+  CreateTestActorFlairOptions,
+  CreateTestCommunityBanOptions,
+  CreateTestCommunityInviteOptions,
+  CreateTestCommunityMemberOptions,
+  CreateTestCommunityOptions,
+  CreateTestConversationMemberOptions,
+  CreateTestConversationOptions,
+  CreateTestMessageOptions,
+  CreateTestMessageRequestOptions,
+  CreateTestPinnedPostOptions,
+  CreateTestPostEditOptions,
+  CreateTestPostTagOptions,
+  CreateTestRepostOptions,
+  CreateTestTagMuteOptions,
+  CreateTestTagOptions,
+} from './social-depth.js';

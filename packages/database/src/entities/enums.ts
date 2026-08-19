@@ -100,6 +100,32 @@ export type AdminAuditSubjectType = (typeof ADMIN_AUDIT_SUBJECT_TYPES)[number];
 export const PAGE_VISIBILITIES = ['PUBLIC', 'UNLISTED'] as const;
 export type PageVisibility = (typeof PAGE_VISIBILITIES)[number];
 
+/** `posts.quote_policy` (`INITIAL_VISION.md` §189, Amendment B) — who may quote a post.
+ * Re-checked server-side on every quoting `CreatePost` (§192), never inferred from the
+ * client. */
+export const QUOTE_POLICIES = ['ANYONE', 'FOLLOWERS', 'NOBODY'] as const;
+export type QuotePolicy = (typeof QUOTE_POLICIES)[number];
+
+/** `community_members.role` (`INITIAL_VISION.md` §189). A community moderator's authority
+ * stops at the community boundary (§192) — there is no cross-community role. */
+export const COMMUNITY_ROLES = ['MEMBER', 'MODERATOR'] as const;
+export type CommunityRole = (typeof COMMUNITY_ROLES)[number];
+
+/** `community_invites.status` (`INITIAL_VISION.md` §189). */
+export const COMMUNITY_INVITE_STATUSES = ['PENDING', 'ACCEPTED', 'DECLINED'] as const;
+export type CommunityInviteStatus = (typeof COMMUNITY_INVITE_STATUSES)[number];
+
+/** `conversations.kind` (`INITIAL_VISION.md` §189). Group conversations are capped at 8
+ * members total (§188), enforced in the service layer. */
+export const CONVERSATION_KINDS = ['DIRECT', 'GROUP'] as const;
+export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
+
+/** `message_requests.status` (`INITIAL_VISION.md` §189). At most one pending request per
+ * (sender, recipient) pair (§188) — enforced by a partial unique index, see
+ * `message-request.entity.ts`. */
+export const MESSAGE_REQUEST_STATUSES = ['PENDING', 'ACCEPTED', 'DECLINED'] as const;
+export type MessageRequestStatus = (typeof MESSAGE_REQUEST_STATUSES)[number];
+
 /**
  * Builds `"column" IN ('A', 'B')` for a `@Check(...)` expression from a value list, so the
  * TS union and the database constraint are generated from the same array. Values are

@@ -42,18 +42,38 @@ export { GuestbookEntry } from './entities/guestbook-entry.entity.js';
 export { FederationKey } from './entities/federation-key.entity.js';
 export { InboxActivity } from './entities/inbox-activity.entity.js';
 export { DomainBlock } from './entities/domain-block.entity.js';
+export { Repost } from './entities/repost.entity.js';
+export { Tag } from './entities/tag.entity.js';
+export { PostTag } from './entities/post-tag.entity.js';
+export { TagMute } from './entities/tag-mute.entity.js';
+export { Community } from './entities/community.entity.js';
+export { CommunityMember } from './entities/community-member.entity.js';
+export { CommunityBan } from './entities/community-ban.entity.js';
+export { CommunityInvite } from './entities/community-invite.entity.js';
+export { Conversation } from './entities/conversation.entity.js';
+export { ConversationMember } from './entities/conversation-member.entity.js';
+export { Message } from './entities/message.entity.js';
+export { MessageRequest } from './entities/message-request.entity.js';
+export { PostEdit } from './entities/post-edit.entity.js';
+export { PinnedPost } from './entities/pinned-post.entity.js';
+export { ActorFlair } from './entities/actor-flair.entity.js';
 
 export {
   ADMIN_AUDIT_SUBJECT_TYPES,
   AUTH_CODE_PURPOSES,
+  COMMUNITY_INVITE_STATUSES,
+  COMMUNITY_ROLES,
+  CONVERSATION_KINDS,
   CREDENTIAL_TYPES,
   FOLLOW_STATUSES,
   MEDIA_STATES,
+  MESSAGE_REQUEST_STATUSES,
   NOTIFICATION_TYPES,
   OUTBOX_JOB_STATUSES,
   PAGE_VISIBILITIES,
   POST_TYPES,
   POST_VISIBILITIES,
+  QUOTE_POLICIES,
   REPORT_REASONS,
   REPORT_STATUSES,
   REPORT_SUBJECT_TYPES,
@@ -62,14 +82,19 @@ export {
 export type {
   AdminAuditSubjectType,
   AuthCodePurpose,
+  CommunityInviteStatus,
+  CommunityRole,
+  ConversationKind,
   CredentialType,
   FollowStatus,
   MediaState,
+  MessageRequestStatus,
   NotificationType,
   OutboxJobStatus,
   PageVisibility,
   PostType,
   PostVisibility,
+  QuotePolicy,
   ReportReason,
   ReportStatus,
   ReportSubjectType,
@@ -86,6 +111,7 @@ export { Phase6Admin1787062075716 } from './migrations/1787062075716-Phase6Admin
 export { Phase45Pages1787062912872 } from './migrations/1787062912872-Phase45Pages.js';
 export { Phase8Federation1787076396680 } from './migrations/1787076396680-Phase8Federation.js';
 export { Phase9Hardening1787082699518 } from './migrations/1787082699518-Phase9Hardening.js';
+export { Phase11SocialDepth1787103400432 } from './migrations/1787103400432-Phase11SocialDepth.js';
 
 export {
   claimOutboxJobs,
