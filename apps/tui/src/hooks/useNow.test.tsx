@@ -40,7 +40,7 @@ describe('useNow', () => {
     await vi.waitFor(() => expect(lastFrame()).toContain('2026-01-01T00:00:30.000Z'));
   });
 
-  it('never starts more than one interval no matter how many consumers read it', async () => {
+  it('never starts more than one interval no matter how many consumers read it', () => {
     function TwoClocks(): ReactElement {
       return (
         <>

@@ -58,7 +58,7 @@ describe('MemoryPreferenceStore', () => {
     await expect(store.get(ALICE)).resolves.toEqual({ glyphSet: 'ascii', imagePolicy: 'off' });
   });
 
-  it('rejects an unrecognized glyphSet or imagePolicy value', async () => {
+  it('rejects an unrecognized glyphSet or imagePolicy value', () => {
     const store = new MemoryPreferenceStore();
     // Deliberately malformed input — simulates a hand-edited preferences.json, not a type
     // a caller could produce through `LocalPreferences` itself.

@@ -57,9 +57,11 @@ export function ToastLine({ toast }: { toast: Toast | undefined }): ReactElement
 export interface ToastQueue {
   readonly toast: Toast | undefined;
   /** Replaces whatever toast is currently showing — a queue of one, never a stack (§6: "a
-   * second toast replaces the first rather than stacking"). */
-  show(message: string, kind?: ToastKind): void;
-  clear(): void;
+   * second toast replaces the first rather than stacking"). Typed as an arrow-function
+   * property (not method shorthand) so destructuring `{ show, clear }` never trips
+   * `@typescript-eslint/unbound-method` at call sites. */
+  readonly show: (message: string, kind?: ToastKind) => void;
+  readonly clear: () => void;
 }
 
 const ToastQueueContext = createContext<ToastQueue | undefined>(undefined);

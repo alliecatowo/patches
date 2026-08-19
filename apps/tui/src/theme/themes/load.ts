@@ -17,8 +17,8 @@ export function userThemesDir(): string {
 }
 
 export interface ThemeLoadOperations {
-  readFile(path: string, encoding: 'utf8'): Promise<string>;
-  readdir(path: string): Promise<string[]>;
+  readonly readFile: (path: string, encoding: 'utf8') => Promise<string>;
+  readonly readdir: (path: string) => Promise<string[]>;
 }
 
 const FILE_OPERATIONS: ThemeLoadOperations = {

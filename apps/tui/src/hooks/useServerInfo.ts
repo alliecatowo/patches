@@ -46,8 +46,10 @@ function delayForStreak(streak: number): number {
 export function useServerInfo(api: PatchesApi): UseServerInfoResult {
   const [attempt, setAttempt] = useState(0);
   const [outcome, setOutcome] = useState<{ attempt: number; state: ServerInfoState }>();
-  const streak = useRef(0);
   const [retryAt, setRetryAt] = useState<number | undefined>(undefined);
+  // Backoff bookkeeping only — mutated inside effect/event-handler bodies, never during
+  // render, so it never trips `react-hooks/refs`.
+  const streak = useRef(0);
 
   // The "connecting" state is *derived* from the attempt counter rather than
   // written by the effect: setting state synchronously inside an effect body
@@ -60,15 +62,18 @@ export function useServerInfo(api: PatchesApi): UseServerInfoResult {
     api
       .getServerInfo()
       .then((info) => {
-        if (!cancelled) setOutcome({ attempt, state: { status: 'ready', info } });
+        if (cancelled) return;
+        streak.current = 0;
+        setOutcome({ attempt, state: { status: 'ready', info } });
+        setRetryAt(undefined);
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          setOutcome({
-            attempt,
-            state: { status: 'error', error: describeGrpcError(error, api.target) },
-          });
-        }
+        if (cancelled) return;
+        const friendly = describeGrpcError(error, api.target);
+        setOutcome({ attempt, state: { status: 'error', error: friendly } });
+        // Computed here, inside the promise callback — never during render, so
+        // `Date.now()` (an impure call) is fine (react-hooks/purity only restricts render).
+        setRetryAt(friendly.retryable ? Date.now() + delayForStreak(streak.current) : undefined);
       });
 
     return () => {
@@ -78,29 +83,22 @@ export function useServerInfo(api: PatchesApi): UseServerInfoResult {
 
   const retry = useCallback(() => {
     streak.current = 0;
+    setRetryAt(undefined);
     setAttempt((value) => value + 1);
   }, []);
 
+  // Pure scheduling: once `retryAt` is known (set above, from the fetch effect's own
+  // callback), arm exactly one timer for it. The only `setState` this effect ever calls is
+  // inside the timer's own callback — never synchronously in the effect body.
   useEffect(() => {
-    if (state.status === 'ready') {
-      streak.current = 0;
-      setRetryAt(undefined);
-      return;
-    }
-    if (state.status !== 'error' || !state.error.retryable) {
-      setRetryAt(undefined);
-      return;
-    }
-    const delay = delayForStreak(streak.current);
-    setRetryAt(Date.now() + delay);
+    if (retryAt === undefined) return;
+    const delay = Math.max(0, retryAt - Date.now());
     const timer = setTimeout(() => {
       streak.current += 1;
       setAttempt((value) => value + 1);
     }, delay);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `state` (not `state.status`) is
-    // the intended dependency: a new error object (even the same status) should reschedule.
-  }, [state]);
+  }, [retryAt]);
 
   return { state, retry, retryAt };
 }

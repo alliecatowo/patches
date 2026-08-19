@@ -72,7 +72,7 @@ export function parseUserTheme(
   const normalizedColors = Object.fromEntries(
     SEMANTIC_COLOR_TOKENS.map((token) => [
       token,
-      colors[token] === null ? null : normalizeHexColor(colors[token] as string),
+      colors[token] === null ? null : normalizeHexColor(colors[token]),
     ]),
   ) as AnyThemeDefinition['colors'];
   return {
