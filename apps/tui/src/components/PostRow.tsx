@@ -90,8 +90,13 @@ export function PostRow({
               ⚠ {sanitizeForTerminal(post.contentWarning)}
             </Text>
           ) : null}
-          <Box height={bodyMeasurement.rows} flexShrink={0} overflow="hidden">
-            <RichBody text={bodyText} />
+          <Box
+            flexDirection="column"
+            height={bodyMeasurement.rows}
+            flexShrink={0}
+            overflow="hidden"
+          >
+            <RichBody text={bodyText} width={width ?? 40} maxRows={bodyMeasurement.rows} />
           </Box>
           {bodyMeasurement.folded ? <Text color={theme.muted}>… press v to expand</Text> : null}
           <MediaAttachments

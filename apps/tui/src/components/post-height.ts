@@ -1,8 +1,7 @@
 import type { Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
-import { wrappedRowCount } from '../format/measure.js';
-import { sanitizeForTerminal } from '../format/sanitize.js';
+import { measureMarkupHeight } from '../format/markup.js';
 
 /** Rows the spec §75 fallback box occupies (`buildFallbackBox` returns three lines),
  * plus the `marginTop={1}` the attachment block carries. */
@@ -14,11 +13,18 @@ export interface PostBodyMeasurement {
   folded: boolean;
 }
 
-/** Body-only row budget shared by render and viewport measurement. Raw markdown
- * source is conservative: decoration can remove marker cells, never add rows. */
+/**
+ * Body-only row budget shared by render and viewport measurement, computed from the
+ * shared markup grammar so it counts exactly the lines `RichBody` will draw.
+ *
+ * Measured in *plain* mode deliberately: plain reproduces the source markers
+ * (`**bold**`, `[text](href)`), which can only ever be wider than the decorated form,
+ * so this is an upper bound for both modes. Over-measuring costs at most a blank row;
+ * under-measuring is what overflows the frame and smears Ink's line diff.
+ */
 export function measurePostBody(post: Post, width: number, expanded: boolean): PostBodyMeasurement {
-  const body = sanitizeForTerminal(post.body === '' ? post.linkUrl : post.body);
-  const fullRows = wrappedRowCount(body, Math.max(1, width));
+  const body = post.body === '' ? post.linkUrl : post.body;
+  const fullRows = measureMarkupHeight(body, Math.max(1, width), { plain: true });
   if (expanded || fullRows <= COLLAPSED_BODY_ROWS) return { rows: fullRows, folded: false };
   return { rows: COLLAPSED_BODY_ROWS, folded: true };
 }
