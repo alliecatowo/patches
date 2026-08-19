@@ -30,6 +30,7 @@ import {
   QuotePolicy,
 } from '@patches/proto/nest';
 import {
+  AccountDeletionRequest,
   Actor,
   appendAdminAuditLog,
   Post,
@@ -337,6 +338,71 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(rejected.code).toBe(GrpcStatus.FAILED_PRECONDITION);
         expect(rejected.metadata.get(ERROR_CODE_METADATA_KEY)[0]).toBe('APPEAL_WINDOW_CLOSED');
       });
+
+      it(
+        'stays reachable for an account still inside its deletion grace period (P14 follow-up: ' +
+          'SuspensionTolerantAuthGuard previously rejected any deleted_at IS NOT NULL account ' +
+          'outright, making the ban notice unappealable for the single case it exists for)',
+        async () => {
+          const subject = await newActor();
+          const auditLog = await suspendActor(subject.actorId, 'ban pending appeal');
+          const userId = await userIdForActor(subject.actorId);
+
+          // Mirrors `patches-admin user delete <handle>` (`apps/admin/src/commands/user.ts`'s
+          // `deleteUser`, this task's owned file): status flips to DELETED, deleted_at is set
+          // on both `users` and `actors`, and an `account_deletion_requests` row is written
+          // with a future `purge_after` — the account is gone-but-reversible, not purged.
+          const now = new Date();
+          const purgeAfter = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          await dataSource.transaction(async (manager) => {
+            await manager
+              .getRepository(User)
+              .update({ id: userId }, { status: 'DELETED', deletedAt: now });
+            await manager.getRepository(Actor).update({ id: subject.actorId }, { deletedAt: now });
+            await manager.getRepository(AccountDeletionRequest).save(
+              manager.getRepository(AccountDeletionRequest).create({
+                actorId: subject.actorId,
+                requestedAt: now,
+                purgeAfter,
+                cancelledAt: null,
+                purgedAt: null,
+              }),
+            );
+          });
+
+          // The access token issued before deletion still authenticates against
+          // SuspensionTolerantAuthGuard-protected RPCs while the grace period is open.
+          const notices = await myNotices(subject);
+          const notice = notices.notices.find((n) => n.id === auditLog.id);
+          expect(notice).toBeDefined();
+
+          const created = await callUnary<CreateAppealRequest, CreateAppealResponse>(
+            appeals.createAppeal.bind(appeals),
+            { moderationNoticeId: auditLog.id, statement: 'please reconsider before purge' },
+            { accessToken: subject.accessToken },
+          );
+          expect(created.appeal?.status).toBe(AppealStatus.APPEAL_STATUS_OPEN);
+
+          // Past purge_after (or cancelled/purged), the same guard rejects it again — the
+          // grace period, not deletion itself, is what keeps the account reachable.
+          await dataSource
+            .getRepository(AccountDeletionRequest)
+            .update({ actorId: subject.actorId }, { purgeAfter: new Date(now.getTime() - 1000) });
+
+          const rejected = await expectRejection<
+            ListMyModerationNoticesRequest,
+            ListMyModerationNoticesResponse
+          >(
+            moderation.listMyModerationNotices.bind(moderation),
+            { cursor: '', limit: 20 },
+            {
+              accessToken: subject.accessToken,
+            },
+          );
+          expect(rejected.code).toBe(GrpcStatus.UNAUTHENTICATED);
+          expect(rejected.metadata.get(ERROR_CODE_METADATA_KEY)[0]).toBe('AUTH_SESSION_EXPIRED');
+        },
+      );
     });
   },
 );

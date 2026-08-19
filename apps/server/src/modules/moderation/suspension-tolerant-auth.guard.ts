@@ -1,8 +1,8 @@
 import { type Metadata } from '@grpc/grpc-js';
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { User } from '@patches/database';
-import { DataSource, IsNull } from 'typeorm';
+import { AccountDeletionRequest, User } from '@patches/database';
+import { DataSource, IsNull, MoreThan } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { extractBearerToken } from '../auth/auth.guard.js';
@@ -10,21 +10,20 @@ import { setSessionClaims } from '../auth/session-context.js';
 import { TokenService } from '../auth/token.service.js';
 
 /**
- * `AuthGuard`'s twin for exactly the RPCs a suspended account must still be able to reach:
- * `ModerationService.ListMyModerationNotices` and every `AppealService` RPC (spec §201.2,
- * §201.3). A suspension is precisely the enforcement action being appealed — `AuthGuard`'s
- * blanket "a suspended account cannot call any authenticated RPC" (P6-004, spec §65) would
- * make the appeal mechanism unreachable for its single most common case, which defeats the
- * point of publishing an appeal window at all. Every other authenticated RPC keeps using the
- * real `AuthGuard` unchanged — this is a narrow, additive exception, not a relaxation of it.
+ * `AuthGuard`'s twin for exactly the RPCs a suspended or grace-period-deleted account must
+ * still be able to reach: `ModerationService.ListMyModerationNotices` and every `AppealService`
+ * RPC (spec §201.2, §201.3). A suspension — and, per P14 follow-up, an admin-initiated deletion
+ * still inside its `account_deletion_requests` grace period — is precisely the enforcement
+ * action being appealed; `AuthGuard`'s blanket "a suspended/deleted account cannot call any
+ * authenticated RPC" (P6-004, spec §65) would make the appeal mechanism unreachable for its
+ * most common case, which defeats the point of publishing an appeal window at all. Every other
+ * authenticated RPC keeps using the real `AuthGuard` unchanged — this is a narrow, additive
+ * exception, not a relaxation of it.
  *
- * A **deleted** account is a different question this guard does not attempt to answer: once
- * `patches-admin user delete` sets `users.deleted_at`, the account and its access token are
- * already treated as gone everywhere else in this codebase (same `deleted_at IS NULL` filter
- * below), so there is no live session left to authenticate a ban notice through regardless —
- * a real gap, flagged in this task's report as a follow-up (out of scope: it would need a
- * grace-period-aware session check, and `apps/admin/src/commands/user.ts`'s soft-delete
- * semantics are outside this task's owned file set).
+ * Once the grace period lapses (`purgeAfter` passed, or the request was cancelled/already
+ * purged) the account is treated as fully gone, same as before: no live session survives
+ * `patches-admin user delete`'s eventual purge, and there is nothing left to appeal a ban
+ * notice through regardless.
  */
 @Injectable()
 export class SuspensionTolerantAuthGuard implements CanActivate {
@@ -38,10 +37,13 @@ export class SuspensionTolerantAuthGuard implements CanActivate {
     const claims = await this.tokens.verifyAccessToken(requireBearerToken(call));
 
     const user = await this.dataSource.getRepository(User).findOne({
-      where: { id: claims.userId, deletedAt: IsNull() },
-      select: { id: true, status: true },
+      where: { id: claims.userId },
+      select: { id: true, status: true, actorId: true, deletedAt: true },
     });
-    if (user === null) {
+    if (
+      user === null ||
+      (user.deletedAt !== null && !(await this.withinDeletionGrace(user.actorId)))
+    ) {
       throw new AppError(
         'AUTH_SESSION_EXPIRED',
         'Your session is no longer valid. Please sign in again.',
@@ -51,6 +53,21 @@ export class SuspensionTolerantAuthGuard implements CanActivate {
 
     setSessionClaims(call, claims);
     return true;
+  }
+
+  /** True while `actorId`'s deletion is still reversible: a row exists, it was neither
+   * cancelled nor already purged, and its grace period (`purgeAfter`) has not yet elapsed. */
+  private async withinDeletionGrace(actorId: string): Promise<boolean> {
+    const pending = await this.dataSource.getRepository(AccountDeletionRequest).findOne({
+      where: {
+        actorId,
+        cancelledAt: IsNull(),
+        purgedAt: IsNull(),
+        purgeAfter: MoreThan(new Date()),
+      },
+      select: { actorId: true },
+    });
+    return pending !== null;
   }
 }
 
