@@ -133,7 +133,8 @@ export function FilterListsScreen({
     if (list === undefined) return;
     const accessToken = await ensureAccessToken();
     await api.subscribeFilterList(
-      { filterListId: list.id, action: FILTER_ACTION.COLLAPSE },
+      // Empty `scopes` defaults to every scope (P14-022) — this screen has no per-scope UI yet.
+      { filterListId: list.id, action: FILTER_ACTION.COLLAPSE, scopes: [] },
       accessToken,
     );
     setSubscribedIds((current) => new Set(current).add(list.id));

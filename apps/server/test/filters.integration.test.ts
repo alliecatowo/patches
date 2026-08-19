@@ -558,7 +558,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         await callUnary<SubscribeFilterListRequest, SubscribeFilterListResponse>(
           filterLists.subscribeFilterList.bind(filterLists),
-          { filterListId, action: FilterAction.FILTER_ACTION_COLLAPSE },
+          // Empty `scopes` defaults to every scope (P14-022) — same as leaving it unset.
+          { filterListId, action: FilterAction.FILTER_ACTION_COLLAPSE, scopes: [] },
           { accessToken: subscriber.accessToken },
         );
         const subscriptions = await callUnary<
