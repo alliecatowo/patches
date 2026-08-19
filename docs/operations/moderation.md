@@ -1,8 +1,9 @@
 # Moderation and administration (`patches-admin`)
 
 **Status: implemented.** Describes `apps/admin`, the secure moderation/admin CLI
-`INITIAL_VISION.md` §65 asks for (P6-003). Verified locally against a real Postgres database
-on 2026-08-18 — every command below was actually run once as part of building this doc; see
+`INITIAL_VISION.md` §65 asks for (P6-003), extended by Amendment C's decentralized-moderation
+transparency layer (§201, P14-011/012/013). Verified locally against a real Postgres database
+on 2026-08-19 — every command below was actually run once as part of building this doc; see
 "Verifying this doc" at the end.
 
 ## Why a CLI, not a dashboard
@@ -57,9 +58,14 @@ jobs list [--status DEAD]
 jobs show <id>
 jobs replay <id>
 
-domain block <domain> [--reason <text>]
+domain block <domain> [--reason <text>] [--reason-category <category>]
 domain unblock <domain>
 domain list
+domain review-list <file>
+
+appeal list [--status open]
+appeal inspect <id>
+appeal resolve <id> --outcome <upheld|overturned|modified> --reason <text>
 ```
 
 - **`invite create`** prints the raw invite code **once** — only its SHA-256 hash is ever
@@ -83,8 +89,69 @@ domain list
   no-opping) if the job isn't currently `DEAD`.
 - **`domain block`/`domain unblock`** (B-027, `docs/operations/federation.md` "Blocking a
   remote domain") write/delete a `domain_blocks` row, lowercased. `block` is idempotent —
-  re-blocking an already-blocked domain updates `reason` rather than erroring; `unblock`
-  refuses if the domain isn't currently blocked.
+  re-blocking an already-blocked domain updates `reason`/`reason_category` rather than
+  erroring; `unblock` refuses if the domain isn't currently blocked. `--reason-category`
+  (P14-012, spec §201.4/§201.5) is one of `harassment|hate|threats|doxxing|impersonation|
+spam|illegal_content|ncii|infrastructure_abuse|other` — the bounded, **published** category
+  (`domain_blocks.reason_category`, exposed via `ModerationService.ListModerationLog` and
+  `NodeService.GetNodePolicy`), distinct from the free-text `--reason`, which stays the
+  operator's own private note. Omitting it defaults to `other`, but an unrecognized value is
+  rejected rather than silently coerced. `block` also writes a `moderation_log_entries` row
+  in the same transaction — the public, fully-identified domain-kind transparency-log entry
+  (spec §201.4); `unblock` does not (there is no `UNBLOCK` entry in the log's bounded action
+  vocabulary — relief isn't logged the same way enforcement is).
+- **`domain review-list <file>`** (P14-013, spec §201.6) reads a third-party domain blocklist
+  — one domain per line, `#`-prefixed/blank lines ignored — and prints each candidate with
+  whether it's already blocked. **Writes nothing to `domain_blocks`**; it is a review aid,
+  not a write path. Decide per domain and run `domain block` yourself for the ones you want.
+- **`appeal resolve`** (P14-011, spec §201.3) sets the appeal's `status` to `UPHELD`/
+  `OVERTURNED`/`MODIFIED`, records `resolved_at`/`resolved_by_user_id`/`resolution_reason`,
+  and writes its own `admin_audit_log` row (`action: 'appeal.resolve'`) — the resolution is
+  itself an enforcement-adjacent action and gets the same accountability trail the original
+  action did. It does **not** automatically reverse anything: overturning a suspension does
+  not unsuspend the account — run `user unsuspend` yourself. Refuses if the appeal isn't
+  currently `OPEN`.
+
+## Moderation notices, appeals, and the public log (Amendment C, spec §201)
+
+Every node enforcement action that affects a specific actor (today: `user suspend`, `user
+delete`, and `report resolve --action remove-post|suspend`) is visible to the acted-upon
+actor as a **moderation notice** — `ModerationService.ListMyModerationNotices`, a live,
+authenticated gRPC read projection of the `admin_audit_log` row that recorded it. There is no
+separate `moderation_notices` table: the notice's explanation is generated at read time from
+that row (never from `reports.moderator_note` — §55's "no user-facing RPC exposes an internal
+moderator note" applies here too), and its reason category defaults to `other` unless the
+writing command's `admin_audit_log.metadata` carries a `reasonCategory`.
+
+The affected actor may then file an appeal — `AppealService.CreateAppeal`, one per notice,
+within the node's appeal window (`APPEAL_WINDOW_DAYS`, default 14 days) — and both
+`ListMyModerationNotices` and every `AppealService` RPC remain reachable **even from a
+suspended account** (`SuspensionTolerantAuthGuard`, `apps/server/src/modules/moderation/
+suspension-tolerant-auth.guard.ts`): a suspension is exactly the action being appealed, so
+the ordinary `AuthGuard`'s blanket "a suspended account can't call any authenticated RPC"
+would make the appeal mechanism unreachable for its single most common case. A **deleted**
+account has no such carve-out — once `user delete` sets `deleted_at`, the account's access
+token is already treated as gone everywhere in this codebase, so there is currently no live
+session left to view a ban notice through. That's a real gap, not a design choice; closing it
+would need a grace-period-aware session check and is filed as a follow-up.
+
+`ModerationService.ListModerationLog` is the **public**, unauthenticated transparency log
+(spec §201.4): domain-kind entries are fully identified (`patches-admin domain block` writes
+one in the same transaction as its `domain_blocks`/`admin_audit_log` writes); account/post/
+media-kind entries are anonymized by construction — the `moderation_log_entries` table has no
+actor-id/post-id/handle column to leak in the first place. Today only `domain block` writes
+to this table; `user suspend|delete`/`report resolve` producing an anonymized log entry too
+is a follow-up for whoever next touches `apps/admin/src/commands/{user,report}.ts` (outside
+this task's owned file set).
+
+`NodeService.GetNodePolicy` (unauthenticated, cacheable, spec §197.6) publishes this node's
+operator-transparency document — privacy notice/policy URL, moderator contact, federation
+stance, the public `domain_blocks` policy, retention windows, label vocabulary, and the
+appeal window/deletion grace period — from the env vars documented in `.env.example`
+(`NODE_POLICY_URL`, `NODE_MODERATORS`, `FEDERATION_STANCE`, `DATA_LOCATION`,
+`PRIVACY_NOTICE_VERSION`, `APPEAL_WINDOW_DAYS`, `ACCOUNT_DELETION_GRACE_PERIOD_DAYS`). All are
+optional; an unset field renders as "this node publishes no policy" for that field rather
+than hiding the screen, exactly as the proto's own doc comment says.
 
 ## Audit log
 
@@ -135,9 +202,18 @@ DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise r
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- user list
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- jobs list --json
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- invite create --as <existing-handle> --max-uses 5
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- domain block doc-example.test --reason "documentation example" --reason-category spam --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- domain list --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- domain review-list /tmp/blocklist-doc-example.txt --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- domain unblock doc-example.test --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- appeal list --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- appeal inspect <appeal-id> --as <existing-handle>
 ```
 
 The full command surface (including `suspend`/`unsuspend`/`delete`, `report resolve` with
-both `remove-post` and `suspend` actions, `post remove`, and `jobs replay`) is exercised by
+both `remove-post` and `suspend` actions, `post remove`, `jobs replay`, `domain block` with
+`--reason-category`, `domain review-list`, and `appeal list|inspect|resolve`) is exercised by
 `apps/admin/test/admin-cli.integration.test.ts` against a real database on every
-`pnpm test:integration` run.
+`pnpm test:integration` run — `appeal resolve` specifically was run against the same database
+while writing this doc, both successfully (`--outcome overturned`) and refused (a second
+`resolve` on an already-resolved appeal, and an unrecognized `--outcome`).
