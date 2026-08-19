@@ -18,6 +18,7 @@ import {
   FilePreferenceStore,
   MemoryPreferenceStore,
   PREFERENCE_SCHEMA_VERSION,
+  type LocalPreferences,
   type PreferenceKey,
   type PreferenceStoreFileOperations,
 } from './store.js';
@@ -49,6 +50,24 @@ describe('MemoryPreferenceStore', () => {
 
     await expect(store.get(ALICE)).resolves.toBeUndefined();
     await expect(store.get(BOB)).resolves.toEqual({ quietFeed: true });
+  });
+
+  it('round-trips glyphSet and imagePolicy', async () => {
+    const store = new MemoryPreferenceStore();
+    await store.set(ALICE, { glyphSet: 'ascii', imagePolicy: 'off' });
+    await expect(store.get(ALICE)).resolves.toEqual({ glyphSet: 'ascii', imagePolicy: 'off' });
+  });
+
+  it('rejects an unrecognized glyphSet or imagePolicy value', async () => {
+    const store = new MemoryPreferenceStore();
+    // Deliberately malformed input — simulates a hand-edited preferences.json, not a type
+    // a caller could produce through `LocalPreferences` itself.
+    const badGlyphSet = { glyphSet: 'comic-sans' } as unknown as LocalPreferences;
+    const badImagePolicy = { imagePolicy: 'always' } as unknown as LocalPreferences;
+    // `MemoryPreferenceStore.set` isn't declared `async`, so the validation throw is
+    // synchronous rather than a rejection — unlike `FilePreferenceStore` below.
+    expect(() => store.set(ALICE, badGlyphSet)).toThrow(TypeError);
+    expect(() => store.set(ALICE, badImagePolicy)).toThrow(TypeError);
   });
 });
 

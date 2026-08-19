@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+import type { GlyphSetName } from '../theme/themes/types.js';
+
 export const PREFERENCE_SCHEMA_VERSION = 1;
 
 export interface PreferenceKey {
@@ -10,11 +12,18 @@ export interface PreferenceKey {
   readonly actorId: string;
 }
 
+/** Whether an image attaches inline at all — distinct from the per-row/viewer *placement*
+ * limits (P12-018), which stay a node/terminal-capability concern. `'off'` never fetches or
+ * draws a placement; the §75 fallback box (alt text, dimensions) still always renders. */
+export type ImagePolicy = 'auto' | 'off';
+
 /** Presentation preferences only. Credentials and session material never belong here. */
 export interface LocalPreferences {
   readonly theme?: string | undefined;
   readonly plainMode?: boolean | undefined;
   readonly quietFeed?: boolean | undefined;
+  readonly glyphSet?: GlyphSetName | undefined;
+  readonly imagePolicy?: ImagePolicy | undefined;
 }
 
 export interface PreferenceStore {
@@ -92,12 +101,26 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
   return Object.keys(value).every((key) => keys.includes(key));
 }
 
+const GLYPH_SET_NAMES: readonly GlyphSetName[] = ['unicode', 'nerd', 'ascii'];
+const IMAGE_POLICIES: readonly ImagePolicy[] = ['auto', 'off'];
+
 function isLocalPreferences(value: unknown): value is LocalPreferences {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['theme', 'plainMode', 'quietFeed'])) return false;
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['theme', 'plainMode', 'quietFeed', 'glyphSet', 'imagePolicy'])
+  ) {
+    return false;
+  }
   return (
     (value.theme === undefined || (typeof value.theme === 'string' && value.theme.trim() !== '')) &&
     (value.plainMode === undefined || typeof value.plainMode === 'boolean') &&
-    (value.quietFeed === undefined || typeof value.quietFeed === 'boolean')
+    (value.quietFeed === undefined || typeof value.quietFeed === 'boolean') &&
+    (value.glyphSet === undefined ||
+      (typeof value.glyphSet === 'string' &&
+        GLYPH_SET_NAMES.includes(value.glyphSet as GlyphSetName))) &&
+    (value.imagePolicy === undefined ||
+      (typeof value.imagePolicy === 'string' &&
+        IMAGE_POLICIES.includes(value.imagePolicy as ImagePolicy)))
   );
 }
 
@@ -135,12 +158,16 @@ function parseDocument(raw: string): PreferenceDocument | undefined {
 
 function copyPreferences(preferences: LocalPreferences): LocalPreferences {
   if (!isLocalPreferences(preferences)) {
-    throw new TypeError('preferences must contain only theme, plainMode, and quietFeed');
+    throw new TypeError(
+      'preferences must contain only theme, plainMode, quietFeed, glyphSet, and imagePolicy',
+    );
   }
   return {
     ...(preferences.theme === undefined ? {} : { theme: preferences.theme.trim() }),
     ...(preferences.plainMode === undefined ? {} : { plainMode: preferences.plainMode }),
     ...(preferences.quietFeed === undefined ? {} : { quietFeed: preferences.quietFeed }),
+    ...(preferences.glyphSet === undefined ? {} : { glyphSet: preferences.glyphSet }),
+    ...(preferences.imagePolicy === undefined ? {} : { imagePolicy: preferences.imagePolicy }),
   };
 }
 
