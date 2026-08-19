@@ -6,6 +6,8 @@ import "google/protobuf/timestamp.proto";
 import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
 import "patches/v1/communities.proto";
+import "patches/v1/filters.proto";
+import "patches/v1/labels.proto";
 
 // Posts and replies — there is no separate comment entity (spec §23–26, §51).
 service PostService {
@@ -37,6 +39,11 @@ service PostService {
 
   // Idempotent: unpinning a post that isn't pinned is not an error.
   rpc UnpinPost(UnpinPostRequest) returns (UnpinPostResponse);
+
+  // Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+  // strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+  // score and never a `sort`/`order` parameter (spec §194).
+  rpc SearchPosts(SearchPostsRequest) returns (SearchPostsResponse);
 }
 
 enum PostType {
@@ -90,6 +97,30 @@ message PostViewerState {
   bool liked = 1;
   bool bookmarked = 2;
   bool reposted = 3;
+}
+
+// Which mechanism produced a `Post.filtered_by` hint (spec §199.3's provenance requirement —
+// "a viewer must always be able to answer 'why did this disappear, and who decided that?'").
+enum FilteredByProvenance {
+  FILTERED_BY_PROVENANCE_UNSPECIFIED = 0;
+  FILTERED_BY_PROVENANCE_FILTER = 1;
+  FILTERED_BY_PROVENANCE_FILTER_LIST = 2;
+}
+
+// Set only for `FILTER_ACTION_COLLAPSE`/`FILTER_ACTION_WARN` (spec §198.3) — a `hide` match
+// omits the row from the response entirely and is never represented here.
+message FilteredByHint {
+  FilteredByProvenance provenance = 1;
+
+  // The filter's name, or the filter list's `display_name` — rendered as "filtered: <name>".
+  string name = 2;
+
+  // Set only when `provenance == FILTERED_BY_PROVENANCE_FILTER_LIST` — the list's publisher,
+  // rendered as "via @alice" (spec §199.3).
+  Actor list_owner = 3;
+
+  // Never `FILTER_ACTION_HIDE` (a hidden post is never returned to the client at all).
+  FilterAction action = 4;
 }
 
 message Post {
@@ -150,6 +181,15 @@ message Post {
   // `reposted_by`'s length (spec §180.1's "up to three reposters" naming cap). Zero whenever
   // `reposted_by` is empty.
   uint32 reposted_by_total = 20;
+
+  // Set only when a viewer's own filter or filter-list subscription matched this post with
+  // `collapse`/`warn` (spec §198.3, §203). Unset for a `hide` match — that post is never
+  // returned at all — and unset when nothing matched.
+  FilteredByHint filtered_by = 21;
+
+  // Labels from labelers the viewer subscribes to only (spec §200.3, §203) — never a global
+  // annotation. Empty for an anonymous read or a viewer with no labeler subscriptions.
+  repeated Label labels = 22;
 }
 
 message CreatePostRequest {
@@ -272,4 +312,23 @@ message UnpinPostRequest {
 
 message UnpinPostResponse {
   Post post = 1;
+}
+
+message SearchPostsRequest {
+  // Server rejects empty/whitespace-only and caps at 200 Unicode characters.
+  string query = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+
+  // Optional filter: only posts by this local handle. Empty means no author filter.
+  string author_handle = 4;
+
+  // Replies are excluded by default (the common "search posts" expectation); set true to
+  // include them in the results.
+  bool include_replies = 5;
+}
+
+message SearchPostsResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
 }

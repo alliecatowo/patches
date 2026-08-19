@@ -1,0 +1,55 @@
+.skeleton {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeletonAvatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  flex-shrink: 0;
+}
+
+.skeletonLines {
+  flex: 1;
+}
+
+.skeletonLine {
+  height: 0.8rem;
+  background: var(--bg-raised);
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  width: 80%;
+}
+
+.empty {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.sentinel {
+  height: 1px;
+}
+
+.pillWrap {
+  position: sticky;
+  top: 0.5rem;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  height: 0;
+}
+
+.pill {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}

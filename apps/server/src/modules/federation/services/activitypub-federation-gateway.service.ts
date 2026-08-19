@@ -9,6 +9,7 @@ import { buildActivity, buildNoteObject, buildTombstone } from '../activitystrea
 import type { FederationGateway } from '../federation-gateway.js';
 import { localActorFollowersUri, localActorUri, localPostUri } from '../activitystreams/uris.js';
 import { DeliveryService } from './delivery.service.js';
+import { DomainBlockService } from './domain-block.service.js';
 import { KeyService } from './key.service.js';
 
 /**
@@ -17,6 +18,14 @@ import { KeyService } from './key.service.js';
  * recipients, builds the AS2 activity, and hands it to `DeliveryService` — never performs
  * network I/O itself, which is `FederationDeliverHandler`'s (`apps/worker`) job once the job
  * is claimed.
+ *
+ * P14-013 (spec §201.5) closes the outbound recipient-resolution gap `DomainBlockService`'s
+ * own doc comment used to flag: every recipient this gateway resolves — remote followers
+ * (`remoteFollowerInboxes`), a `Follow`/`Undo Follow` target (`loadPair`), and a `Like`/`Undo
+ * Like` target (`buildLikeUndoLike`) — is now checked against `domain_blocks` *before* an
+ * inbox URL is ever handed to `DeliveryService.enqueue`, not only at `DeliveryService`'s own
+ * pre-delivery check (`delivery.service.ts`'s `filterBlockedInboxes`, still kept as a second,
+ * independent check — belt and suspenders, not a replacement for either half).
  */
 @Injectable()
 export class ActivityPubFederationGateway implements FederationGateway {
@@ -24,6 +33,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
     private readonly config: AppConfigService,
     private readonly delivery: DeliveryService,
     private readonly keys: KeyService,
+    private readonly domainBlocks: DomainBlockService,
   ) {}
 
   async publishPost(manager: EntityManager, postId: string): Promise<void> {
@@ -179,6 +189,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
     if (liker === null || post === null || post.isLocal) return undefined;
     const targetInbox = post.authorActor.sharedInboxUri ?? post.authorActor.inboxUri;
     if (targetInbox === null || post.canonicalUri === null) return undefined;
+    if (await this.isActorDomainBlocked(manager, post.authorActor)) return undefined;
     await this.keys.getOrCreateKeyPair(manager, liker.id);
 
     const origin = this.config.publicOrigin;
@@ -201,14 +212,18 @@ export class ActivityPubFederationGateway implements FederationGateway {
       actors.findOneOrFail({ where: { id: followerActorId } }),
       actors.findOneOrFail({ where: { id: targetActorId } }),
     ]);
-    const inboxUrl = target.isLocal
-      ? undefined
-      : (target.sharedInboxUri ?? target.inboxUri ?? undefined);
+    const targetBlocked = !target.isLocal && (await this.isActorDomainBlocked(manager, target));
+    const inboxUrl =
+      target.isLocal || targetBlocked
+        ? undefined
+        : (target.sharedInboxUri ?? target.inboxUri ?? undefined);
     return { follower, target, inboxUrl };
   }
 
   /** Remote followers' inbox URLs for a local actor, shared-inbox-deduped (P8-004: "shared
-   * inbox dedupe"). */
+   * inbox dedupe"), excluding any follower whose home server is in `domain_blocks` (P14-013,
+   * spec §201.5) — a blocked domain's actor is dropped here, before an inbox URL is ever
+   * built, not only at `DeliveryService`'s later pre-delivery check. */
   private async remoteFollowerInboxes(
     manager: EntityManager,
     followeeActorId: string,
@@ -220,10 +235,33 @@ export class ActivityPubFederationGateway implements FederationGateway {
       .where('follow.followeeActorId = :followeeActorId', { followeeActorId })
       .andWhere('follower.isLocal = false')
       .getMany();
-    const inboxes = rows
-      .map((row) => row.followerActor.sharedInboxUri ?? row.followerActor.inboxUri)
-      .filter((inbox): inbox is string => inbox !== null);
+
+    const blockedCache = new Map<string, boolean>();
+    const inboxes: string[] = [];
+    for (const row of rows) {
+      const follower = row.followerActor;
+      const domain = follower.homeServer;
+      if (domain !== null) {
+        let blocked = blockedCache.get(domain);
+        if (blocked === undefined) {
+          blocked = await this.domainBlocks.isBlocked(manager, domain);
+          blockedCache.set(domain, blocked);
+        }
+        if (blocked) continue;
+      }
+      const inbox = follower.sharedInboxUri ?? follower.inboxUri;
+      if (inbox !== null) inboxes.push(inbox);
+    }
     return [...new Set(inboxes)];
+  }
+
+  /** `false` for a remote actor with no `homeServer` on file — that shouldn't happen in
+   * practice (every remote actor upsert sets it), but an unknown domain is never treated as
+   * blocked purely by absence; `DeliveryService`'s own pre-delivery check still applies to
+   * whatever inbox URL this resolves to either way. */
+  private async isActorDomainBlocked(manager: EntityManager, actor: Actor): Promise<boolean> {
+    if (actor.homeServer === null) return false;
+    return this.domainBlocks.isBlocked(manager, actor.homeServer);
   }
 
   /** Resolves `inReplyToId`'s federated object URI: the fast local path (no DB hit) if the

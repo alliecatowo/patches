@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "noEmit": true,
+    // Portable package: must run in browsers and React Native as well as Node, so it may not
+    // use Node built-ins. `types: []` (not `["node"]`) is what enforces that at typecheck
+    // time — `Buffer`, `node:crypto`, `process` are all compile errors in here by design.
+    "types": [],
+    "lib": ["ES2023", "DOM"]
+  },
+  // Config files are `include`d here rather than added to eslint.config.js's
+  // `allowDefaultProject` (same pattern as packages/media, packages/proto, apps/tui).
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
+}

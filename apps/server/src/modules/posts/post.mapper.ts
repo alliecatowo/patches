@@ -13,6 +13,8 @@ import type {
 import { CommunityRole, PostType, PostVisibility, QuotePolicy } from '@patches/proto/nest';
 
 import { toProtoActor } from '../auth/auth.mapper.js';
+import { toProtoFilteredByHint } from '../filters/filter.mapper.js';
+import { toProtoLabel } from '../labels/label.mapper.js';
 import type { CommunitySummaryView, PostEditView, PostMediaSummary, PostView } from './post.dto.js';
 
 /**
@@ -126,6 +128,11 @@ export function toProtoPost(view: PostView): ProtoPost {
     quotePolicy: QUOTE_POLICY_TO_PROTO[view.quotePolicy],
     repostedBy: view.repostedBy.map(toProtoActor),
     repostedByTotal: view.repostedBy.length === 0 ? 0 : view.repostedByTotal,
+    // `filteredBy` (P14-007/P14-008) and `labels` (P14-009) are both wired — see
+    // `post.dto.ts#PostView`'s doc for why a caller that never evaluated either gets an honest
+    // unset/empty value here rather than a guess.
+    filteredBy: view.filteredBy === null ? undefined : toProtoFilteredByHint(view.filteredBy),
+    labels: view.labels.map(toProtoLabel),
   };
 }
 

@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    // This package is isomorphic (browser + Node) and its public API deals directly in
+    // `Headers`/`HeadersInit`/`AbortSignal` (the types `@connectrpc/connect`'s own
+    // `CallOptions`/`ConnectError` use). `@types/node`'s web-globals declare `Headers`
+    // itself but never `HeadersInit` — only `lib.dom.d.ts` does — so without "DOM" here
+    // that type resolves to `any`/error and every read of it looks unsafe to typed-lint.
+    // `@types/node`'s web-global declarations are written to defer to "DOM" when present
+    // (conditional `typeof globalThis extends { onmessage: any } ...` types), so adding
+    // it doesn't duplicate/conflict with the Node globals also in scope.
+    "lib": ["ES2023", "DOM"],
+    "noEmit": true,
+    // tsup's dts build spawns tsc without a tsBuildInfoFile; the base config's
+    // `incremental: true` makes that invocation fail (TS5074). Package-local override only.
+    "incremental": false
+  },
+  // tsup.config.ts/vitest.config.ts are included here (rather than relying on eslint's
+  // allowDefaultProject fallback, which this package isn't listed in) so typed linting
+  // has a project that owns them.
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
+}

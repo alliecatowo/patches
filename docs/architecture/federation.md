@@ -212,7 +212,15 @@ audited, B-027); and `federation_keys.private_key_pem` is encrypted at rest with
 under an operator-supplied `FEDERATION_KEY_ENCRYPTION_KEY` rather than stored plain (B-026,
 `packages/database/src/crypto/federation-key-cipher.ts`) — previously a documented, deliberate
 v0.1 gap (`FederationKey`'s doc comment used to explain why), now closed before any real
-federation is enabled.
+federation is enabled; and `ActivityPubFederationGateway`'s own recipient-resolution queries
+(§201.5, P14-013) now additionally filter on `domain_blocks` — `remoteFollowerInboxes` (posts),
+`loadPair` (`Follow`/`Undo Follow`), and `buildLikeUndoLike` (`Like`/`Undo Like`) each drop a
+blocked domain's actor before an inbox URL is ever built, not only at `DeliveryService`'s later
+pre-delivery check — previously a documented gap in `DomainBlockService`'s own doc comment
+("`ActivityPubFederationGateway`'s recipient-resolution queries would need to additionally
+filter on this to fully close the outbound half"), closed as a second, independent check on
+top of (not a replacement for) `DeliveryService.enqueue`'s existing filter. Covered by
+`apps/server/src/modules/federation/services/activitypub-federation-gateway.service.test.ts`.
 
 ### Stage F2 — interoperability (**v0.3–v0.4**, Phases 10–11)
 
@@ -271,7 +279,9 @@ posture):
 - [x] remote request timeouts exist _(P8-006, `safeFetch` 10s timeout)_
 - [x] domain blocking exists _(B-027: `domain_blocks` enforced on inbound in `InboxService`;
       `DeliveryService.enqueue` filters outbound at enqueue time, and `FederationDeliverHandler`
-      re-checks at delivery time — see §4 and §7)_
+      re-checks at delivery time — see §4 and §7. P14-013 additionally closed the
+      recipient-resolution gap: `ActivityPubFederationGateway` itself now filters on
+      `domain_blocks` before ever building an inbox URL, not only at those two later checks)_
 - [x] remote delete/tombstones work _(local lab, same as `Delete` above)_
 - [x] moderator can block remote server _(B-027: `patches-admin domain block|unblock|list`,
       audited)_

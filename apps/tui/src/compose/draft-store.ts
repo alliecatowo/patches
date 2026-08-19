@@ -22,6 +22,14 @@ export interface ComposeDraft {
   /** The reply target's `@handle`, purely for the "replying to @handle" header —
    * never sent to the server. */
   replyingToHandle?: string;
+  /** Set for a quote-post draft (`Q` on a post). The quoted post is rendered as
+   * context by compose and sent as `quoted_post_id`; its body is never copied into
+   * the draft, so edits/deletes continue to follow the server's pointer semantics. */
+  quotedPostId?: string;
+  /** Display-only quote target label. */
+  quotingHandle?: string;
+  /** Optional click-to-reveal label authored with this post. */
+  contentWarning?: string;
   /** Already-uploaded, `READY` attachments in display order (spec §27–28: up to 4 per
    * post) — `fileName` is display-only (never sent), `mediaId` is what `CreatePost`'s
    * `media_ids` carries. Surviving a crash here means a completed upload is never
@@ -82,6 +90,9 @@ function isComposeDraft(value: unknown): value is ComposeDraft {
     typeof candidate.clientRequestId === 'string' &&
     isOptionalString(candidate.inReplyToId) &&
     isOptionalString(candidate.replyingToHandle) &&
+    isOptionalString(candidate.quotedPostId) &&
+    isOptionalString(candidate.quotingHandle) &&
+    isOptionalString(candidate.contentWarning) &&
     isAttachmentList(candidate.attachments)
   );
 }

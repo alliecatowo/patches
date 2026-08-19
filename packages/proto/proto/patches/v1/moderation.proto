@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package patches.v1;
 
+import "google/protobuf/timestamp.proto";
 import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
 import "patches/v1/social_graph.proto";
@@ -37,6 +38,17 @@ service ModerationService {
   // Snapshot-backed (spec §183.4): the reported message's content is captured into the report
   // at write time so a later deletion by either party can't destroy the evidence.
   rpc ReportMessage(ReportMessageRequest) returns (ReportMessageResponse);
+
+  // A public transparency instrument about the node's own conduct, not a public record of
+  // any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
+  // identified; account/post/media entries are anonymized by construction — no handle, actor
+  // id, or post id, ever.
+  rpc ListModerationLog(ListModerationLogRequest) returns (ListModerationLogResponse);
+
+  // The caller's own moderation notices — the private, notified, appealable read projection
+  // of `admin_audit_log` rows that acted on them (spec §201.2).
+  rpc ListMyModerationNotices(ListMyModerationNoticesRequest)
+      returns (ListMyModerationNoticesResponse);
 }
 
 enum ReportReason {
@@ -135,4 +147,110 @@ message ReportMessageRequest {
 
 message ReportMessageResponse {
   string report_id = 1;
+}
+
+// A bounded vocabulary (spec §202's `MODERATION_LOG_REASON_CATEGORIES`), derived from
+// `docs/product/moderation.md`'s guideline list — never a report's free-text `details`, never
+// a moderator's internal note. Published on `domain_blocks` (as the public counterpart to the
+// operator's free-text `reason`) and on every `ModerationLogEntry`.
+enum ModerationReasonCategory {
+  MODERATION_REASON_CATEGORY_UNSPECIFIED = 0;
+  MODERATION_REASON_CATEGORY_HARASSMENT = 1;
+  MODERATION_REASON_CATEGORY_HATE = 2;
+  MODERATION_REASON_CATEGORY_THREATS = 3;
+  MODERATION_REASON_CATEGORY_DOXXING = 4;
+  MODERATION_REASON_CATEGORY_IMPERSONATION = 5;
+  MODERATION_REASON_CATEGORY_SPAM = 6;
+  MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT = 7;
+  MODERATION_REASON_CATEGORY_NCII = 8;
+  MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE = 9;
+  MODERATION_REASON_CATEGORY_OTHER = 10;
+}
+
+// The node enforcement actions that generate a moderation notice (spec §201.2), plus the
+// domain-level action published in the moderation log (spec §201.4-§201.5).
+enum ModerationActionType {
+  MODERATION_ACTION_TYPE_UNSPECIFIED = 0;
+  MODERATION_ACTION_TYPE_WARN = 1;
+  MODERATION_ACTION_TYPE_SUSPEND = 2;
+  MODERATION_ACTION_TYPE_BAN = 3;
+  MODERATION_ACTION_TYPE_POST_REMOVAL = 4;
+  MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN = 5;
+  MODERATION_ACTION_TYPE_DOMAIN_BLOCK = 6;
+}
+
+enum ModerationLogSubjectKind {
+  MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED = 0;
+  MODERATION_LOG_SUBJECT_KIND_DOMAIN = 1;
+  MODERATION_LOG_SUBJECT_KIND_ACCOUNT = 2;
+  MODERATION_LOG_SUBJECT_KIND_POST = 3;
+  MODERATION_LOG_SUBJECT_KIND_MEDIA = 4;
+}
+
+// A public, anonymized transparency record (spec §201.4). Account/post/media entries never
+// carry a handle, actor id, or post id — the acted-upon actor already has the full,
+// identified version in their own `ModerationNotice`, and moderators have it in
+// `admin_audit_log`. A domain entry is fully identified because it is the node's own
+// federation decision about its own conduct, not a record of any individual's conduct.
+message ModerationLogEntry {
+  string id = 1;
+  ModerationActionType action = 2;
+  ModerationLogSubjectKind subject_kind = 3;
+
+  // Set only when `subject_kind == MODERATION_LOG_SUBJECT_KIND_DOMAIN`.
+  string subject_domain = 4;
+
+  ModerationReasonCategory reason_category = 5;
+
+  // Whether this action was appealed — never the appeal's content (spec §201.3, §208).
+  bool appealed = 6;
+
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListModerationLogRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListModerationLogResponse {
+  repeated ModerationLogEntry entries = 1;
+  PageInfo page = 2;
+}
+
+// A private, notified read projection of the `admin_audit_log` row that enforced an action
+// against the caller (spec §201.2) — not a second source of truth. Contrast with a label
+// (`LabelService`, spec §200.4): a labeler's judgement is never notified, an enforcement
+// action always is.
+message ModerationNotice {
+  string id = 1;
+  ModerationActionType action = 2;
+
+  // Empty unless the action concerned a specific post.
+  string post_id = 3;
+
+  ModerationReasonCategory reason_category = 4;
+
+  // Purpose-written for the subject at resolution time — never `reports.moderator_note`
+  // (spec §55, §201.2, §208).
+  string explanation = 5;
+
+  google.protobuf.Timestamp created_at = 6;
+
+  // Deadline to file an appeal (`AppealService.CreateAppeal`); unset if the appeal window has
+  // already closed or no appeal applies to this action.
+  google.protobuf.Timestamp appeal_deadline = 7;
+
+  // True once the caller has filed an appeal against this notice.
+  bool appealed = 8;
+}
+
+message ListMyModerationNoticesRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListMyModerationNoticesResponse {
+  repeated ModerationNotice notices = 1;
+  PageInfo page = 2;
 }

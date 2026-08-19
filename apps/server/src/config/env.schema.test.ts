@@ -149,6 +149,13 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ MAX_POST_CHARS: '10001' })).toThrow(ConfigError);
   });
 
+  it('defaults REQUIRE_PRIVACY_ACK to false and parses an operator override (P14 follow-up)', () => {
+    expect(validateEnv({})).toMatchObject({ REQUIRE_PRIVACY_ACK: false });
+    expect(validateEnv({ REQUIRE_PRIVACY_ACK: 'true' })).toMatchObject({
+      REQUIRE_PRIVACY_ACK: true,
+    });
+  });
+
   it('rejects a malformed DATABASE_URL even when optional', () => {
     expect(() => validateEnv({ DATABASE_URL: 'not-a-url' })).toThrow(ConfigError);
   });

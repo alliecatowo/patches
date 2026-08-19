@@ -18,11 +18,14 @@ import {
   type PinPostResponse,
   type PostServiceController,
   PostServiceControllerMethods,
+  type SearchPostsRequest,
+  type SearchPostsResponse,
   type UnpinPostRequest,
   type UnpinPostResponse,
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims, TokenService } from '../auth/token.service.js';
@@ -53,7 +56,7 @@ export class PostController implements PostServiceController {
     private readonly tokens: TokenService,
   ) {}
 
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RequirePrivacyAckGuard)
   async createPost(
     @Payload() request: CreatePostRequest,
     @Ctx() _metadata?: Metadata,
@@ -165,6 +168,25 @@ export class PostController implements PostServiceController {
   ): Promise<UnpinPostResponse> {
     const post = await this.posts.unpinPost(requireSession(session).actorId, request.postId);
     return { post: toProtoPost(post) };
+  }
+
+  async searchPosts(
+    @Payload() request: SearchPostsRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<SearchPostsResponse> {
+    const viewerActorId = await this.optionalViewerActorId(metadata);
+    const result = await this.posts.searchPosts(
+      request.query,
+      request.cursor,
+      request.limit,
+      blank(request.authorHandle),
+      request.includeReplies,
+      viewerActorId,
+    );
+    return {
+      posts: result.posts.map(toProtoPost),
+      page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
   }
 
   /**

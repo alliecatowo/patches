@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
+import type { ToastKind } from '../components/Toast.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PostList, type PostRowActions } from '../components/PostList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
@@ -56,6 +57,21 @@ export interface ProfileScreenProps {
   /** `e` — only offered on the viewer's own profile (`actorId === viewerActorId`):
    * opens `EditProfileScreen` (A-027). */
   onEditProfile?: ((actor: Actor) => void) | undefined;
+  /**
+   * Opens the shell's shared measured `ConfirmDialog` for a destructive action
+   * (P12-126). Every destructive path in the app goes through one component; a screen
+   * that rolled its own `y/n` line was a second, unmeasured confirm that could disagree
+   * with it about wording, height and which key cancels.
+   */
+  onConfirm?:
+    | ((request: { id: string; title: string; body: string; onConfirm: () => void }) => void)
+    | undefined;
+  /** Bumped by `App` after a successful post — re-reads this list from the server. */
+  refreshKey?: number;
+  /** Surfaces a toast in the shell — used for "follow request sent" (§197.5: a
+   * locked-account follow doesn't take effect immediately, so the viewer needs to be
+   * told the `f` they just pressed didn't create the follow yet). */
+  onNotify?: ((message: string, kind?: ToastKind) => void) | undefined;
 }
 
 type FollowUi =
@@ -83,7 +99,10 @@ export function ProfileScreen({
   ensureAccessToken,
   onReportActor,
   onVisitPage,
+  onConfirm,
   onEditProfile,
+  refreshKey = 0,
+  onNotify,
 }: ProfileScreenProps): ReactElement {
   const plain = usePlainMode();
   const actorState = useActor(api, actorId, knownActor);
@@ -128,16 +147,26 @@ export function ProfileScreen({
   // here is a normal event-handler state update, not the effect anti-pattern above.
   async function toggleFollow(): Promise<void> {
     if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
-    const following = followUi.relationship.state === FOLLOW_STATE.FOLLOWING;
+    const { relationship } = followUi;
+    // §197.5: a locked target replies `requested` instead of following immediately —
+    // there is no `follows` row yet to unfollow, but `unfollowActor` also deletes any
+    // outstanding `FollowRequest`, so it is the same verb `f` uses to cancel one.
+    const shouldUnfollow = relationship.state === FOLLOW_STATE.FOLLOWING || relationship.requested;
     setOutcome({ actorId, state: { status: 'loading' } });
     try {
       const accessToken = await ensureAccessToken();
-      const response = following
-        ? await api.unfollowActor({ actorId }, accessToken)
-        : await api.followActor({ actorId }, accessToken);
+      if (shouldUnfollow) {
+        const response = await api.unfollowActor({ actorId }, accessToken);
+        if (present(response.relationship)) {
+          setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+        }
+        return;
+      }
+      const response = await api.followActor({ actorId }, accessToken);
       if (present(response.relationship)) {
         setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
       }
+      if (response.requested) onNotify?.('Follow request sent.', 'success');
     } catch (error) {
       setOutcome({
         actorId,
@@ -146,8 +175,35 @@ export function ProfileScreen({
     }
   }
 
-  // `undefined` when no `B`/`M` confirmation is pending.
-  const [confirmAction, setConfirmAction] = useState<ModerationAction | undefined>(undefined);
+  // Not an effect either — a direct response to `a`/`x` on an incoming request
+  // (§197.5: `relationship.requested_by`).
+  async function respondToFollowRequest(accept: boolean): Promise<void> {
+    if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
+    setOutcome({ actorId, state: { status: 'loading' } });
+    try {
+      const accessToken = await ensureAccessToken();
+      if (accept) {
+        const response = await api.acceptFollowRequest({ actorId }, accessToken);
+        if (present(response.relationship)) {
+          setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+          return;
+        }
+      } else {
+        // RejectFollowRequestResponse carries no relationship — re-derive it below
+        // so `requested_by` clears from the UI without a full page reload.
+        await api.rejectFollowRequest({ actorId }, accessToken);
+      }
+      const refreshed = await api.getRelationship({ actorId }, accessToken);
+      if (present(refreshed.relationship)) {
+        setOutcome({ actorId, state: { status: 'ready', relationship: refreshed.relationship } });
+      }
+    } catch (error) {
+      setOutcome({
+        actorId,
+        state: { status: 'error', error: describeGrpcError(error, api.target) },
+      });
+    }
+  }
 
   // Not an effect either, same reasoning as `toggleFollow` — a direct response to `y`.
   async function performModeration(action: ModerationAction): Promise<void> {
@@ -175,19 +231,47 @@ export function ProfileScreen({
     }
   }
 
+  /** Raises the shared confirm for `B`/`M`; without a shell to host it (a bare unit
+   * render) the destructive action is simply not offered, never performed unasked. */
+  function requestModeration(action: ModerationAction): void {
+    if (followUi.status !== 'ready' || onConfirm === undefined) return;
+    const { blocking, muting } = followUi.relationship;
+    const active = action === 'block' ? blocking : muting;
+    const verb = action === 'block' ? (active ? 'Unblock' : 'Block') : active ? 'Unmute' : 'Mute';
+    const handle = sanitizeForTerminal(
+      actorState.status === 'ready' ? actorState.actor.handle : '',
+    );
+    onConfirm({
+      id: `${action}:${actorId}`,
+      title: `${verb} @${handle}?`,
+      body:
+        action === 'block'
+          ? 'Blocking hides you from each other and removes any follow between you.'
+          : 'Muting hides their posts from your timelines. They are not told.',
+      onConfirm: () => void performModeration(action),
+    });
+  }
+
   useInput(
     (input) => {
-      if (confirmAction !== undefined) return;
       if (input === 'f') {
         void toggleFollow();
         return;
       }
+      if (input === 'a' && followUi.status === 'ready' && followUi.relationship.requestedBy) {
+        void respondToFollowRequest(true);
+        return;
+      }
+      if (input === 'x' && followUi.status === 'ready' && followUi.relationship.requestedBy) {
+        void respondToFollowRequest(false);
+        return;
+      }
       if (input === 'B' && followUi.status === 'ready') {
-        setConfirmAction('block');
+        requestModeration('block');
         return;
       }
       if (input === 'M' && followUi.status === 'ready') {
-        setConfirmAction('mute');
+        requestModeration('mute');
         return;
       }
       if (input === '!' && actorState.status === 'ready') {
@@ -205,35 +289,31 @@ export function ProfileScreen({
     { isActive: isActive && actorState.status === 'ready' },
   );
 
-  useInput(
-    (input, key) => {
-      if (confirmAction === undefined) return;
-      if (input === 'y') {
-        void performModeration(confirmAction);
-        setConfirmAction(undefined);
-        return;
-      }
-      if (input === 'n' || key.escape) setConfirmAction(undefined);
-    },
-    { isActive: isActive && confirmAction !== undefined },
-  );
-
   const fetchPage = useCallback(
-    (cursor: string): Promise<PostPage> =>
-      api.listActorPosts({ actorId, cursor, limit: 20 }).then((response) => ({
-        posts: response.posts,
-        page: response.page,
-      })),
-    [api, actorId],
+    async (cursor: string): Promise<PostPage> => {
+      // The token is what makes `viewer_state` (liked/bookmarked) come back populated.
+      const accessToken = ensureAccessToken === undefined ? undefined : await ensureAccessToken();
+      const response = await api.listActorPosts({ actorId, cursor, limit: 20 }, accessToken);
+      return { posts: response.posts, page: response.page };
+    },
+    // `refreshKey` is a deliberate cache-buster, not a value this callback reads:
+    // changing its identity is exactly how `usePaginatedList` is told to re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+    [api, actorId, ensureAccessToken, refreshKey],
   );
-  const { posts, loading, loadingMore, hasMore, error, loadMore } = usePaginatedPosts(
-    api.target,
-    fetchPage,
-  );
+  const { posts, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount } =
+    usePaginatedPosts(api.target, fetchPage);
 
   useInput(
     (input) => {
-      if ((input === 'n' || input === ' ') && hasMore) loadMore();
+      if ((input === 'n' || input === ' ') && hasMore) {
+        loadMore();
+        return;
+      }
+      // `R` re-reads page one from the server: the `↑ N new` marker, and — the
+      // reason it matters — fresh `viewer_state`, so likes made in an earlier
+      // session stop looking un-liked.
+      if (input === 'R') refresh();
     },
     { isActive: isActive && !loading },
   );
@@ -301,32 +381,38 @@ export function ProfileScreen({
         {actorId === viewerActorId && onEditProfile !== undefined ? (
           <Text color={theme.muted}>e edit profile</Text>
         ) : null}
+        {actorId === viewerActorId ? (
+          <Text color={theme.muted}>
+            :followrequests pending follow requests · :privacy account privacy
+          </Text>
+        ) : null}
         {followUi.status === 'ready' ? (
           <Text color={theme.muted}>
-            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'following' : 'not following'}
+            {followUi.relationship.requested
+              ? 'follow requested'
+              : followUi.relationship.state === FOLLOW_STATE.FOLLOWING
+                ? 'following'
+                : 'not following'}
             {followUi.relationship.followedBy ? ' · follows you' : ''}
             {'  ·  f to '}
-            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'unfollow' : 'follow'}
+            {followUi.relationship.requested ||
+            followUi.relationship.state === FOLLOW_STATE.FOLLOWING
+              ? 'unfollow'
+              : 'follow'}
             {'  ·  B to '}
             {followUi.relationship.blocking ? 'unblock' : 'block'}
             {'  ·  M to '}
             {followUi.relationship.muting ? 'unmute' : 'mute'}
           </Text>
         ) : null}
+        {/* §197.5: the target sent *us* a follow request — only meaningful on a
+            locked viewer's own account, since that is the only relationship a
+            request-to-us can exist on. */}
+        {followUi.status === 'ready' && followUi.relationship.requestedBy ? (
+          <Text color={theme.muted}>wants to follow you — a accept · x reject</Text>
+        ) : null}
         {followUi.status === 'error' ? (
           <Text color={theme.error}>{followUi.error.title}</Text>
-        ) : null}
-        {confirmAction !== undefined && followUi.status === 'ready' ? (
-          <Text color={theme.warn}>
-            {confirmAction === 'block'
-              ? followUi.relationship.blocking
-                ? 'Unblock'
-                : 'Block'
-              : followUi.relationship.muting
-                ? 'Unmute'
-                : 'Mute'}{' '}
-            @{sanitizeForTerminal(actor.handle)}? y/n
-          </Text>
         ) : null}
       </Box>
 
@@ -338,7 +424,8 @@ export function ProfileScreen({
       <Box marginTop={1}>
         <PostList
           posts={posts}
-          loading={loading || loadingMore}
+          loading={loading || loadingMore || refreshing}
+          newCount={newCount}
           hasMore={hasMore}
           emptyMessage="No posts yet."
           loadMoreKeyHint="n / space"

@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
-import { Box, Text, useApp, useInput, useStdin, useWindowSize } from 'ink';
-import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Actor, Post } from '@patches/proto';
+import { Box, Text, useApp, useInput, useStdin, useWindowSize, type Key } from 'ink';
+import {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { FOLLOW_STATE, type Actor, type MediaAttachment, type Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
@@ -14,29 +22,80 @@ import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
+import { ToastLine, type Toast, type ToastKind } from '../components/Toast.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
 import { useUnreadCount } from '../hooks/useUnreadCount.js';
 import { MediaCache } from '../media/cache.js';
 import { MediaSessionProvider } from '../media/media-session.js';
 import { openMediaExternally, type OpenMediaOptions } from '../media/open-external.js';
 import { AccountsScreen } from '../screens/AccountsScreen.js';
+import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
-import { ConnectScreen } from '../screens/ConnectScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
+import { FilterListsScreen } from '../screens/FilterListsScreen.js';
+import { FiltersScreen } from '../screens/FiltersScreen.js';
+import { FollowRequestsScreen } from '../screens/FollowRequestsScreen.js';
 import { HelpScreen } from '../screens/HelpScreen.js';
+import { LabelersScreen } from '../screens/LabelersScreen.js';
+import { PostHistoryScreen } from '../screens/PostHistoryScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
+import { ModerationLogScreen } from '../screens/ModerationLogScreen.js';
 import { NotificationsScreen } from '../screens/NotificationsScreen.js';
 import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
+import { PrivacyScreen } from '../screens/PrivacyScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
+import { CommandPalette, type PaletteInvocation } from '../components/CommandPalette.js';
+import { ConfirmDialog } from '../components/ConfirmDialog.js';
+import { Drawer } from '../components/Drawer.js';
+import { Overlay } from '../components/Overlay.js';
+import { SplitPane } from '../components/SplitPane.js';
+import { MediaViewerScreen } from '../screens/MediaViewerScreen.js';
+import { PreferencesScreen } from '../screens/PreferencesScreen.js';
+import {
+  FilePreferenceStore,
+  type ImagePolicy,
+  type PreferenceStore,
+} from '../preferences/store.js';
+import { BUILT_IN_THEMES, getBuiltInTheme } from '../theme/themes/registry.js';
+import { resolveTheme } from '../theme/themes/resolution.js';
+import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js';
+import { ActiveThemeProvider } from './theme-context.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { isTruthy } from '../env.js';
+import { CommandHistory } from './commands.js';
+import {
+  createKeyLayerStack,
+  isCoalescedKeyRun,
+  isCtrlKey,
+  isPaletteShortcut,
+  KeyLayerProvider,
+  legacyInputConsumes,
+} from './input.js';
+import { hintsFor, SCREEN_TITLES, type Binding, type Screen } from './keymap.js';
+import { ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
+import { DRAWER_COLUMNS, drawerAvailable, planResponsiveLayout } from './responsive-layout.js';
+import { presentationFor, wantsSplit } from './routes.js';
+import { ModalStackProvider, useModalStackController } from './modal.js';
+import type { ListJump } from './list-movement.js';
+import {
+  canGoBack,
+  currentEntry,
+  replace,
+  jump,
+  pop,
+  push,
+  reset,
+  rootEntry,
+  type NavEntry,
+  type NavStack,
+} from './navigation.js';
 
 export interface AppProps {
   api: PatchesApi;
@@ -53,37 +112,11 @@ export interface AppProps {
   pageEditorOptions?: PageScreenProps['editorOptions'];
   /** Overridden in tests — a real `FilePageDraftStore` writes to the user's XDG data dir. */
   pageDraftStore?: PageDraftStore;
+  /** Overridden in tests — a real `FilePreferenceStore` writes to the user's XDG config dir. */
+  preferenceStore?: PreferenceStore;
   /** `patches visit @handle[/slug]` (P45-006) — opens straight to that actor's
-   * Patches Page instead of the usual `connect` screen. */
+   * Patches Page, one level above the timeline so `Esc` still lands somewhere. */
   initialPageTarget?: { handle: string; slug: string } | undefined;
-}
-
-type Screen =
-  | 'connect'
-  | 'help'
-  | 'login'
-  | 'compose'
-  | 'profile'
-  | 'editProfile'
-  | 'local'
-  | 'home'
-  | 'search'
-  | 'thread'
-  | 'bookmarks'
-  | 'notifications'
-  | 'report'
-  | 'accounts'
-  | 'page';
-
-/** Screens that own the keyboard entirely (text entry) — the app-level keymap steps aside. */
-function capturesInput(screen: Screen): boolean {
-  return (
-    screen === 'login' ||
-    screen === 'compose' ||
-    screen === 'search' ||
-    screen === 'report' ||
-    screen === 'editProfile'
-  );
 }
 
 /** Optimistic overlay for one post's reaction state (P4-004, spec §79) — only the
@@ -91,8 +124,18 @@ function capturesInput(screen: Screen): boolean {
 interface ReactionOverride {
   liked?: boolean;
   bookmarked?: boolean;
+  reposted?: boolean;
   likes?: number;
+  reposts?: number;
 }
+
+/** The quick-post overlay's box (`tui-interaction-model.md` §3.4: `min(72, columns-8)`
+ * wide, 6–10 rows). Clamped into the region by `placeOverlay`. */
+const QUICK_POST_COLUMNS = 72;
+const QUICK_POST_ROWS = 10;
+/** The command palette's box — wider than a confirm, shorter than a screen. */
+const PALETTE_COLUMNS = 72;
+const PALETTE_ROWS = 12;
 
 function emptyDraft(): ComposeDraft {
   return { body: '', clientRequestId: randomUUID() };
@@ -109,6 +152,22 @@ function replyDraft(target: Post): ComposeDraft {
   };
 }
 
+function quoteDraft(target: Post): ComposeDraft {
+  return {
+    body: '',
+    clientRequestId: randomUUID(),
+    quotedPostId: target.id,
+    quotingHandle: target.author?.handle ?? target.author?.id ?? '',
+  };
+}
+
+/** After signing in, a stack rooted on the local timeline should be rooted on home
+ * instead — without throwing away wherever the viewer had navigated to. */
+function promoteRootToHome(stack: NavStack): NavStack {
+  if (stack[0].screen !== 'local') return stack;
+  return [{ screen: 'home' }, ...stack.slice(1)] as unknown as NavStack;
+}
+
 export function App({
   api,
   credentialStore,
@@ -116,6 +175,7 @@ export function App({
   env = process.env,
   initialPageTarget,
   mediaCache,
+  preferenceStore,
   openMediaOptions,
   pageEditorOptions,
   pageDraftStore,
@@ -125,17 +185,102 @@ export function App({
   const { columns, rows } = useWindowSize();
   const { state: serverInfoState, retry: retryServerInfo } = useServerInfo(api);
 
-  const [screen, setScreen] = useState<Screen>(
-    initialPageTarget === undefined ? 'connect' : 'page',
+  // The navigation stack (see `navigation.ts`). Patches opens straight onto a
+  // timeline — the local one while signed out, home once a stored session restores
+  // (owner feedback 2026-08-18: "help screen up by default entering, it should auto
+  // show home screen"). Connection state lives in the status bar, not a splash.
+  const [stack, setStack] = useState<NavStack>(() =>
+    initialPageTarget === undefined
+      ? reset(rootEntry(false))
+      : [
+          rootEntry(false),
+          {
+            screen: 'page',
+            handle: initialPageTarget.handle,
+            slug: initialPageTarget.slug,
+          },
+        ],
   );
-  const [priorScreen, setPriorScreen] = useState<Screen>('connect');
-  const [notice, setNotice] = useState<string | undefined>(undefined);
-  const [pendingGo, setPendingGo] = useState(false);
+  const entry = currentEntry(stack);
+  const screen: Screen = entry.screen;
+  const inputLayers = useMemo(() => createKeyLayerStack(), []);
+  const modals = useModalStackController();
+  const [commandHistory] = useState(() => new CommandHistory());
+  // True once the viewer has pressed a navigation key — after that, a session
+  // restoring in the background must not yank them somewhere else.
+  const navigated = useRef(false);
+  // Raised by a screen whose *sub-mode* owns the keyboard (PageScreen's guestbook
+  // signing, its block editor) — without it, `Esc` would both cancel the sub-mode and
+  // pop the navigation stack.
+  const [, setLegacySubmodeState] = useState(false);
+  const legacySubmodeActiveRef = useRef(false);
+  function setLegacySubmodeActive(active: boolean): void {
+    legacySubmodeActiveRef.current = active;
+    setLegacySubmodeState(active);
+  }
+  // `g g` — the shell owns the `g` prefix, so the jump is handed to whichever list is
+  // showing rather than handled by it. `G` (bottom) needs no prefix and is handled by
+  // the list itself (`list-movement.ts`).
+  const [listJump, setListJump] = useState<ListJump | undefined>(undefined);
+  // Bumped after any successful post, so the timeline/thread you land on re-reads
+  // itself and your new post is actually there.
+  const [feedNonce, setFeedNonce] = useState(0);
+
+  const [toast, setToast] = useState<Toast | undefined>(undefined);
+  // Mirrored in a ref, and the ref is what the input handler reads. Ink delivers every
+  // key in one stdin chunk through the *same* handler closure, so a `g` and an `h`
+  // typed fast enough to arrive together would both see the pre-`g` state value and the
+  // jump would silently do nothing (reproduced under tmux, QA 2026-08-19).
+  const [pendingGo, setPendingGoState] = useState(false);
+  const pendingGoRef = useRef(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  function setPendingGo(next: boolean): void {
+    pendingGoRef.current = next;
+    setPendingGoState(next);
+  }
   // Spec §173's required "plain mode that strips all decoration" — starts from
   // `PATCHES_PLAIN`/`--plain` (`env` is normalized by `cli.tsx`) and is toggleable at
   // runtime with `P` (below).
   const [plain, setPlain] = useState(() => isTruthy(env.PATCHES_PLAIN));
+  const [quiet, setQuiet] = useState(false);
+  // The saved preference this session's renderer was actually built from (P12-113,
+  // `cli.tsx`'s own env > saved > auto read, before this component ever mounts) — not
+  // reapplied live here, since swapping the terminal-media renderer's kind mid-session
+  // means safely tearing down any in-flight Kitty placements first. The Preferences row
+  // edits this as a plain preference: it is what the *next* launch picks up.
+  const [imagePolicy, setImagePolicy] = useState<ImagePolicy>('auto');
+
+  // --- theme engine (P12-101/P12-127) --------------------------------------
+  // Precedence is resolved once, purely, in `theme/themes/resolution.ts`:
+  // `--theme` > `PATCHES_THEME` > the saved local profile > the actor profile >
+  // `patches`. `cli.tsx` normalises `--theme` into `PATCHES_THEME` the same way it
+  // already normalises `--plain` into `PATCHES_PLAIN`, so the shell only ever reads
+  // env plus whatever the local store returns.
+  const initialThemeResolution = useState(() =>
+    resolveTheme({ envTheme: env.PATCHES_THEME ?? null }),
+  )[0];
+  const [themeName, setThemeName] = useState<BuiltInThemeName>(() =>
+    initialThemeResolution.ok ? initialThemeResolution.theme.name : 'patches',
+  );
+  const [themeSource, setThemeSource] = useState<string>(() =>
+    initialThemeResolution.ok ? initialThemeResolution.source : 'default',
+  );
+  const activeTheme: ThemeDefinition = getBuiltInTheme(themeName) ?? BUILT_IN_THEMES.patches;
+  const [preferences] = useState<PreferenceStore>(
+    () => preferenceStore ?? new FilePreferenceStore(),
+  );
+  /** What `Esc` on the preferences screen restores (P12-112). */
+  const revertPreferences = useRef<
+    | { theme: BuiltInThemeName; plain: boolean; quiet: boolean; imagePolicy: ImagePolicy }
+    | undefined
+  >(undefined);
+
+  // The notifications drawer (`N`, P12-024). Presentation state, deliberately not
+  // navigation state: it never enters the stack, so `Esc` semantics are untouched.
+  const [drawerRequested, setDrawerRequested] = useState(false);
+  // `Tab` in a split moves focus between the list pane and the detail pane. Purely
+  // presentational — it never touches the navigation stack.
+  const [paneFocusSecondary, setPaneFocusSecondary] = useState(false);
 
   const [sessionManager] = useState(
     () => new SessionManager({ api, store: credentialStore, nodeOrigin: api.target }),
@@ -158,34 +303,18 @@ export function App({
     [api, cache, ensureAccessToken],
   );
 
-  // Which actor `profile` currently shows — set by `g p` (the caller's own),
-  // or by selecting a post's author (B-017). `undefined` until one of those fires.
-  const [profileTarget, setProfileTarget] = useState<
-    { actorId: string; knownActor: Actor | undefined } | undefined
-  >(undefined);
-
-  // Which handle `page` currently shows (P45-006) — set by `v` (a profile's own page)
-  // or `g v` (the caller's own).
-  const [pageTarget, setPageTarget] = useState<{ handle: string; slug: string } | undefined>(
-    initialPageTarget,
-  );
-
-  // Thread navigation (P4-004): a stack of post ids, top = the currently focused
-  // thread. Drilling into a reply's own replies pushes; `Esc` pops one level and only
-  // leaves `screen === 'thread'` once the stack empties (see `openThread`/`threadBack`).
-  const [threadStack, setThreadStack] = useState<readonly string[]>([]);
-
   // Optimistic like/bookmark overlay (P4-004, spec §79), keyed by post id — applied at
   // render time (`decoratePost`) over whatever `viewerState`/`counts` a given screen's
   // own paginated list last fetched, so a like registers immediately no matter which
   // list (home/local/profile/thread/bookmarks) is currently showing that post.
+  //
+  // Cleared on login, logout and `R` (refresh): an overlay left over from a previous
+  // session would otherwise sit on top of the server's freshly-read `viewer_state` and
+  // mask it (owner feedback 2026-08-18: "posts I liked, after starting a new session,
+  // showed not liked").
   const [reactionOverrides, setReactionOverrides] = useState<ReadonlyMap<string, ReactionOverride>>(
     new Map(),
   );
-
-  // What `report` currently targets — a post (`!` on a row) or an actor (`!` on a
-  // profile). `undefined` until `openReport` fires.
-  const [reportTarget, setReportTarget] = useState<ReportTarget | undefined>(undefined);
 
   // Bumped by `NotificationsScreen`'s `m` so the status-bar badge doesn't wait for
   // `useUnreadCount`'s next screen-change/60s refresh (`screenKey` below).
@@ -194,7 +323,7 @@ export function App({
     api,
     session !== undefined,
     ensureAccessToken,
-    `${screen}:${unreadNonce}`,
+    `${screen}:${String(unreadNonce)}`,
   );
 
   // Auto sign-in from a stored refresh token, and resume an unsent draft — both
@@ -203,97 +332,182 @@ export function App({
   // initializers above), so this still only ever runs once.
   useEffect(() => {
     void sessionManager.restore().then((restored) => {
-      if (restored !== undefined) setSession(restored);
+      if (restored === undefined) return;
+      setSession(restored);
+      // Only if the viewer hasn't already gone somewhere themselves.
+      if (!navigated.current) setStack((current) => promoteRootToHome(current));
     });
     void store.load().then((loaded) => {
       if (loaded !== undefined) setDraft(loaded);
     });
   }, [sessionManager, store]);
 
+  // Saved presentation preferences for this node+actor (P12-113). `--theme`/
+  // `PATCHES_THEME` still win: `resolveTheme` is handed both, and the saved value only
+  // applies when nothing higher-priority was set (P12-101's precedence).
+  const sessionActorId = session?.userId;
   useEffect(() => {
-    if (notice === undefined) return;
-    const timer = setTimeout(() => setNotice(undefined), 4000);
+    if (sessionActorId === undefined) return;
+    let cancelled = false;
+    void preferences.get({ nodeOrigin: api.target, actorId: sessionActorId }).then(
+      (saved) => {
+        if (cancelled || saved === undefined) return;
+        const resolution = resolveTheme({
+          envTheme: env.PATCHES_THEME ?? null,
+          localTheme: saved.theme ?? null,
+        });
+        if (resolution.ok) {
+          setThemeName(resolution.theme.name);
+          setThemeSource(resolution.source);
+        }
+        if (saved.plainMode !== undefined && !isTruthy(env.PATCHES_PLAIN))
+          setPlain(saved.plainMode);
+        if (saved.quietFeed !== undefined) setQuiet(saved.quietFeed);
+        if (saved.imagePolicy !== undefined) setImagePolicy(saved.imagePolicy);
+      },
+      // Unreadable preferences are not an error worth a toast — the defaults are fine.
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api.target, env.PATCHES_PLAIN, env.PATCHES_THEME, preferences, sessionActorId]);
+
+  useEffect(() => {
+    if (toast === undefined) return;
+    const timer = setTimeout(() => setToast(undefined), toast.kind === 'error' ? 5000 : 2500);
     return () => clearTimeout(timer);
-  }, [notice]);
+  }, [toast]);
 
-  function go(next: Screen): void {
-    setPriorScreen(screen);
-    setScreen(next);
+  function notify(message: string, kind: ToastKind = 'info'): void {
+    setToast({ message, kind });
   }
 
-  function goHelp(): void {
-    if (screen === 'help') setScreen(priorScreen);
-    else go('help');
+  // --- layout geometry ------------------------------------------------------
+  // Computed before the handlers, not in the render body, because navigation itself
+  // depends on it: `Enter` on a row means "open the thread in the right pane" when
+  // there is one, and "push a screen" when there is not.
+  const overlayEntry = modals.top;
+  const screenIsActive = overlayEntry === undefined || overlayEntry.id === 'help';
+  const drawerOpen = drawerRequested && drawerAvailable(Math.max(20, columns - 2));
+  const contentRows = Math.max(3, rows - FOOTER_ROWS);
+  const signedOutOnRoot = session === undefined && (screen === 'home' || screen === 'local');
+  const bannerRows = signedOutOnRoot ? 1 : 0;
+  const regionRows = Math.max(1, contentRows - 2 - bannerRows);
+  const regionColumns = Math.max(20, columns - 2);
+  // The drawer takes its columns off the region *before* split-pane arithmetic, so
+  // opening one can never overflow the frame (tui-interaction-model.md §3.1).
+  const contentColumns = Math.max(20, drawerOpen ? regionColumns - DRAWER_COLUMNS : regionColumns);
+  const layoutPlan = planResponsiveLayout(contentColumns, regionRows, wantsSplit(stack));
+  const presentation = presentationFor(stack, layoutPlan.mode === 'split');
+  const splitActive = presentation.mode === 'split';
+  const focusedPane: 'primary' | 'secondary' =
+    splitActive && paneFocusSecondary ? 'secondary' : 'primary';
+  const listIsActive =
+    !pendingGo && screenIsActive && !drawerOpen && (!splitActive || focusedPane === 'primary');
+
+  // --- navigation -----------------------------------------------------------
+
+  function closeTopModal(): void {
+    notify(`closed ${modals.top?.id ?? 'none'}`);
+    modals.closeTop();
   }
 
-  function requireSession(next: Screen): void {
+  function clearModals(): void {
+    modals.clear();
+  }
+
+  /** Drill down one level (a post's thread, an author's profile, a page). */
+  function navigate(next: NavEntry): void {
+    navigated.current = true;
+    setLegacySubmodeActive(false);
+    clearModals();
+    setStack((current) => push(current, next));
+  }
+
+  /** A `g x`-style jump — see `navigation.jump`. */
+  function goTo(next: NavEntry): void {
+    navigated.current = true;
+    setLegacySubmodeActive(false);
+    clearModals();
+    setStack((current) => jump(current, next));
+  }
+
+  /** `Esc` (and `q` away from the root) — exactly one level, from every screen. */
+  function back(): void {
+    navigated.current = true;
+    setLegacySubmodeActive(false);
+    setStack((current) => pop(current));
+  }
+
+  function requireSession(next: NavEntry): void {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
-    go(next);
+    goTo(next);
+  }
+
+  function toggleHelp(): void {
+    if (modals.top?.id === 'help') closeTopModal();
+    else modals.push({ id: 'help', title: 'Help', render: () => null });
   }
 
   /** Opens `profile` on a given actor — the caller's own, or a post's author. */
   function openProfile(actorId: string, knownActor: Actor | undefined): void {
-    setProfileTarget({ actorId, knownActor });
-    go('profile');
+    navigate({ screen: 'profile', actorId, knownActor });
   }
 
   function openOwnProfile(): void {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
-    openProfile(session.userId, session.actor);
+    goTo({ screen: 'profile', actorId: session.userId, knownActor: session.actor });
   }
 
   /** `v` on a profile, or `g v` for the caller's own (P45-006) — opens that actor's
-   * Patches Page. `g v` needs a session (there is no "own page" without an own
-   * account); `v` on someone else's profile needs none — pages are anonymous-readable
-   * (spec §170), same as `GetPage`. */
+   * Patches Page. Pages are anonymous-readable (spec §170), so viewing someone
+   * else's needs no session. */
   function openPage(handle: string, slug = ''): void {
-    setPageTarget({ handle, slug });
-    go('page');
+    navigate({ screen: 'page', handle, slug });
   }
 
   function openOwnPage(): void {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
-    if (session.actor === undefined) return;
-    openPage(session.actor.handle);
+    const handle = session.actor?.handle;
+    if (handle === undefined || handle === '') {
+      notify("Your profile hasn't loaded yet — try again in a moment.");
+      return;
+    }
+    goTo({ screen: 'page', handle, slug: '' });
   }
 
-  /** `p` on a selected post row (B-017; moved off `Enter` in P4-004) — profile
-   * viewing needs no session of its own. */
+  /** `p` on a selected post row (B-017) — profile viewing needs no session. */
   function openAuthorProfile(post: Post): void {
     if (!present(post.author)) return;
     openProfile(post.author.id, post.author);
   }
 
-  /** `Enter` on a post row (P4-004) — opens/drills into its thread. Pushes onto
-   * `threadStack` when already on the thread screen (viewing a reply's own replies);
-   * otherwise this is a fresh entry, so it also remembers `priorScreen` via `go()`. */
+  /** `Enter` on a post row — opens/drills into its thread. Each level is its own
+   * stack entry, so `Esc` unwinds them one at a time. */
   function openThread(postId: string): void {
-    if (screen !== 'thread') {
-      go('thread');
-      setThreadStack([postId]);
+    const next: NavEntry = { screen: 'thread', postId };
+    // In a split, `Enter` opens the thread *in the right pane* — the same navigation
+    // call, a different presentation (§3.2). Replacing the detail rather than stacking
+    // a second one keeps `Esc` exactly one press away from the list, instead of
+    // unwinding every thread that was ever previewed.
+    if (splitActive && currentEntry(stack).screen === 'thread') {
+      navigated.current = true;
+      setLegacySubmodeActive(false);
+      clearModals();
+      setStack((current) => replace(current, next));
       return;
     }
-    setThreadStack([...threadStack, postId]);
-  }
-
-  /** `Esc` on the thread screen — pops one level, or leaves the thread screen
-   * entirely (back to `priorScreen`) once the stack empties. */
-  function threadBack(): void {
-    if (threadStack.length > 1) {
-      setThreadStack(threadStack.slice(0, -1));
-      return;
-    }
-    setThreadStack([]);
-    setScreen(priorScreen);
+    navigate(next);
   }
 
   function updateDraft(next: ComposeDraft): void {
@@ -306,14 +520,16 @@ export function App({
    * continuing someone else's reply text into it. */
   function openReply(post: Post): void {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
     if (draft.inReplyToId !== post.id) {
       updateDraft(replyDraft(post));
     }
-    go('compose');
+    goTo({ screen: 'compose' });
   }
+
+  // --- reactions ------------------------------------------------------------
 
   /** Merges this post's `ReactionOverride` (if any) over its last-fetched
    * `viewerState`/`counts` — the single place every screen's rendering goes
@@ -329,9 +545,13 @@ export function App({
       viewerState: {
         liked: override.liked ?? viewerState.liked,
         bookmarked: override.bookmarked ?? viewerState.bookmarked,
-        reposted: viewerState.reposted,
+        reposted: override.reposted ?? viewerState.reposted,
       },
-      counts: { ...counts, likes: override.likes ?? counts.likes },
+      counts: {
+        ...counts,
+        likes: override.likes ?? counts.likes,
+        reposts: override.reposts ?? counts.reposts,
+      },
     };
   }
 
@@ -346,7 +566,7 @@ export function App({
   /** `l` on a post row (P4-004, spec §53/§79) — optimistic, reverted on failure. */
   async function toggleLike(post: Post): Promise<void> {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
     const current = decoratePost(post);
@@ -365,16 +585,17 @@ export function App({
         liked: response.viewerState?.liked ?? !wasLiked,
         likes: response.counts?.likes ?? priorLikes,
       });
+      notify(wasLiked ? 'Like removed.' : 'Liked.', 'success');
     } catch (error) {
       setReactionOverride(post.id, { liked: wasLiked, likes: priorLikes });
-      setNotice(describeGrpcError(error, api.target).title);
+      notify(describeGrpcError(error, api.target).title, 'error');
     }
   }
 
   /** `b` on a post row (P4-004, spec §53/§79) — optimistic, reverted on failure. */
   async function toggleBookmark(post: Post): Promise<void> {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
     const current = decoratePost(post);
@@ -388,20 +609,142 @@ export function App({
       setReactionOverride(post.id, {
         bookmarked: response.viewerState?.bookmarked ?? !wasBookmarked,
       });
+      notify(wasBookmarked ? 'Bookmark removed.' : 'Bookmarked.', 'success');
     } catch (error) {
       setReactionOverride(post.id, { bookmarked: wasBookmarked });
-      setNotice(describeGrpcError(error, api.target).title);
+      notify(describeGrpcError(error, api.target).title, 'error');
+    }
+  }
+
+  async function toggleRepost(post: Post): Promise<void> {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    const current = decoratePost(post);
+    const wasReposted = current.viewerState?.reposted ?? false;
+    const priorReposts = current.counts?.reposts ?? 0;
+    setReactionOverride(post.id, {
+      reposted: !wasReposted,
+      reposts: Math.max(0, priorReposts + (wasReposted ? -1 : 1)),
+    });
+    try {
+      const accessToken = await ensureAccessToken();
+      const response = wasReposted
+        ? await api.unrepostPost({ postId: post.id }, accessToken)
+        : await api.repostPost({ postId: post.id }, accessToken);
+      setReactionOverride(post.id, {
+        reposted: response.viewerState?.reposted ?? !wasReposted,
+        reposts: response.counts?.reposts ?? priorReposts,
+      });
+      notify(wasReposted ? 'Repost removed.' : 'Reposted.', 'success');
+    } catch (error) {
+      setReactionOverride(post.id, { reposted: wasReposted, reposts: priorReposts });
+      notify(describeGrpcError(error, api.target).title, 'error');
+    }
+  }
+
+  function openQuote(post: Post): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    updateDraft(quoteDraft(post));
+    goTo({ screen: 'compose' });
+  }
+
+  function confirmDelete(post: Post): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    confirmDestructive({
+      id: `delete-post:${post.id}`,
+      title: 'Delete post?',
+      body: 'This leaves a tombstone and cannot be undone.',
+      onConfirm: () => {
+        void ensureAccessToken()
+          .then((accessToken) => api.deletePost({ id: post.id }, accessToken))
+          .then(
+            () => {
+              setFeedNonce((current) => current + 1);
+              notify('Post deleted.', 'success');
+            },
+            (error: unknown) => notify(describeGrpcError(error, api.target).title, 'error'),
+          );
+      },
+    });
+  }
+
+  async function togglePin(post: Post): Promise<void> {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    const pinned = session.actor?.pinnedPostIds.includes(post.id) ?? false;
+    try {
+      const accessToken = await ensureAccessToken();
+      await (pinned
+        ? api.unpinPost({ postId: post.id }, accessToken)
+        : api.pinPost({ postId: post.id, position: 0 }, accessToken));
+      setSession((current) => {
+        if (current?.actor === undefined) return current;
+        const pinnedPostIds = pinned
+          ? current.actor.pinnedPostIds.filter((id) => id !== post.id)
+          : [...current.actor.pinnedPostIds, post.id];
+        return { ...current, actor: { ...current.actor, pinnedPostIds } };
+      });
+      notify(pinned ? 'Post unpinned.' : 'Post pinned.', 'success');
+    } catch (error) {
+      notify(describeGrpcError(error, api.target).title, 'error');
+    }
+  }
+
+  /** `f` on a post row — follow/unfollow its author without leaving the timeline.
+   * Reads the current relationship first (a row carries no follow state), so this is
+   * two round trips rather than the profile screen's one. */
+  async function toggleFollowAuthor(post: Post): Promise<void> {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    if (!present(post.author)) return;
+    const author = post.author;
+    if (author.id === session.userId) {
+      notify('That is your own post.');
+      return;
+    }
+    try {
+      const accessToken = await ensureAccessToken();
+      const current = await api.getRelationship({ actorId: author.id }, accessToken);
+      // §197.5: a locked author's pending request has no `follows` row yet, but
+      // `unfollowActor` also deletes any outstanding `FollowRequest`, so it is the
+      // same verb that cancels one.
+      const shouldUnfollow =
+        present(current.relationship) &&
+        (current.relationship.state === FOLLOW_STATE.FOLLOWING || current.relationship.requested);
+      if (shouldUnfollow) {
+        await api.unfollowActor({ actorId: author.id }, accessToken);
+        notify(`Unfollowed @${author.handle}.`, 'success');
+      } else {
+        const response = await api.followActor({ actorId: author.id }, accessToken);
+        notify(
+          response.requested ? 'Follow request sent.' : `Following @${author.handle}.`,
+          'success',
+        );
+      }
+    } catch (error) {
+      notify(describeGrpcError(error, api.target).title, 'error');
     }
   }
 
   /** `!` — opens the report screen scoped to a post or an actor (spec §55). */
   function openReport(target: ReportTarget): void {
     if (session === undefined) {
-      setNotice('Log in first — press L.');
+      notify('Log in first — press L.');
       return;
     }
-    setReportTarget(target);
-    go('report');
+    navigate({ screen: 'report', target });
   }
 
   function reportPost(post: Post): void {
@@ -420,26 +763,15 @@ export function App({
   /** `o` on a post row (B-004/P5-003, spec §76) — downloads and opens its first
    * attachment with the OS default handler. A no-op (not an error) for a post with no
    * media. */
-  function openMedia(post: Post): void {
-    const first = post.media[0];
-    if (first === undefined) return;
-    if (session === undefined) {
-      setNotice('Log in first — press L.');
-      return;
-    }
-    openMediaExternally(api, cache, first, ensureAccessToken, { env, ...openMediaOptions }).catch(
-      (error: unknown) => {
-        setNotice(describeGrpcError(error, api.target).title);
-      },
-    );
-  }
 
-  /** `x` on the accounts screen (B-022) — signs out of the current session and
-   * returns to a logged-out screen. */
+  /** `x` on the accounts screen (B-022) — signs out and returns to a logged-out root. */
   async function logout(): Promise<void> {
     await sessionManager.logout();
     setSession(undefined);
-    setScreen('connect');
+    setReactionOverrides(new Map());
+    // A "Signed in as @alice" toast outliving the sign-out would be actively wrong.
+    setToast(undefined);
+    setStack(reset(rootEntry(false)));
   }
 
   /** `r` on the accounts screen, only offered while `emailVerified` is false (A-028) —
@@ -449,10 +781,216 @@ export function App({
     try {
       const accessToken = await ensureAccessToken();
       await api.resendVerification(accessToken);
-      setNotice('Verification email sent.');
+      notify('Verification email sent.', 'success');
     } catch (error) {
-      setNotice(describeGrpcError(error, api.target).title);
+      notify(describeGrpcError(error, api.target).title, 'error');
     }
+  }
+
+  /**
+   * A post was created. One handler for both compose presentations (P12-023): the full
+   * screen pops itself off the stack on the way out, the quick-post overlay was never
+   * on it. A reply lands back on the thread it answers — not on the reply's own thread,
+   * which left you able to reply only to yourself (owner feedback 2026-08-18).
+   */
+  function onPostSubmitted(post: Post, options: { fromOverlay?: boolean } = {}): void {
+    const fromOverlay = options.fromOverlay === true;
+    setDraft(emptyDraft());
+    void store.clear();
+    notify(post.inReplyToId === '' ? 'Posted.' : 'Reply sent.', 'success');
+    setFeedNonce((current) => current + 1);
+    if (post.inReplyToId !== '') {
+      setStack((current) =>
+        jump(fromOverlay ? current : pop(current), {
+          screen: 'thread',
+          postId: post.inReplyToId,
+        }),
+      );
+      return;
+    }
+    // A quick post never moved you off the timeline, so it must not move you now.
+    if (fromOverlay || session === undefined) return;
+    setStack((current) =>
+      jump(pop(current), {
+        screen: 'profile',
+        actorId: present(post.author) ? post.author.id : session.userId,
+        knownActor: present(post.author) ? post.author : session.actor,
+      }),
+    );
+  }
+
+  // --- preferences, theme, drawer, overlays ---------------------------------
+
+  /** `,` — records what `Esc` restores, then opens the settings screen (P12-112). */
+  function openPreferences(): void {
+    revertPreferences.current = { theme: themeName, plain, quiet, imagePolicy };
+    goTo({ screen: 'preferences' });
+  }
+
+  function savePreferences(): void {
+    // Whether this save actually changes `imagePolicy` — unlike theme/plain/quiet
+    // it never takes effect on the renderer already built for this session
+    // (`cli.tsx` decides that once, before `App` mounts), so only tell the viewer
+    // it needs a restart when it would otherwise be silent about that.
+    const imagePolicyChanged = revertPreferences.current?.imagePolicy !== imagePolicy;
+    revertPreferences.current = undefined;
+    back();
+    if (session === undefined) {
+      notify('Preferences apply for this session — sign in to save them.');
+      return;
+    }
+    void preferences
+      .set(
+        { nodeOrigin: api.target, actorId: session.userId },
+        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy },
+      )
+      .then(
+        () =>
+          notify(
+            imagePolicyChanged
+              ? 'Preferences saved. Images: restart patches to apply.'
+              : 'Preferences saved.',
+            'success',
+          ),
+        // A preferences file that cannot be written must never take the app down —
+        // the settings still apply for the rest of this session.
+        () => notify('Preferences apply for this session — saving them failed.', 'error'),
+      );
+  }
+
+  function cancelPreferences(): void {
+    const previous = revertPreferences.current;
+    revertPreferences.current = undefined;
+    if (previous !== undefined) {
+      setThemeName(previous.theme);
+      setPlain(previous.plain);
+      setQuiet(previous.quiet);
+      setImagePolicy(previous.imagePolicy);
+    }
+    back();
+  }
+
+  function setThemeByName(name: string): void {
+    const resolution = resolveTheme({ cliTheme: name });
+    if (!resolution.ok) {
+      notify(resolution.message, 'error');
+      return;
+    }
+    setThemeName(resolution.theme.name);
+    setThemeSource('command');
+    notify(`Theme: ${resolution.theme.name}.`, 'success');
+  }
+
+  /** `N` — the notifications drawer. Below the wide tier there are no columns to give
+   * it, so it falls back to the full screen rather than doing nothing (§3.5). */
+  function toggleNotificationsDrawer(): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    if (!drawerAvailable(Math.max(20, columns - 2))) {
+      goTo({ screen: 'notifications' });
+      return;
+    }
+    setDrawerRequested((current) => !current);
+  }
+
+  /** One measured `ConfirmDialog` for every destructive action (P12-008/P12-126). */
+  function confirmDestructive(request: {
+    id: string;
+    title: string;
+    body: string;
+    onConfirm: () => void;
+  }): void {
+    modals.push({
+      id: request.id,
+      title: request.title,
+      columns: 60,
+      rows: 3,
+      render: ({ closeTop }) => (
+        <ConfirmDialog
+          id={request.id}
+          title={request.title}
+          body={request.body}
+          onCancel={closeTop}
+          onConfirm={() => {
+            closeTop();
+            request.onConfirm();
+          }}
+        />
+      ),
+    });
+  }
+
+  /** `c` — the quick-post overlay. It hosts the *same* `ComposeScreen` (and therefore
+   * the same editor and the same draft) as `C`, in `compact` presentation, so the two
+   * can never diverge (P12-023). */
+  function openQuickPost(): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    modals.push({
+      id: 'quick-post',
+      title: 'Quick post',
+      columns: QUICK_POST_COLUMNS,
+      rows: QUICK_POST_ROWS,
+      // Rendered from the live tree below, not from here: this closure would capture a
+      // stale `draft` and every keystroke would be lost.
+      render: () => null,
+    });
+  }
+
+  /** `Ctrl+F` from the quick post, and `C` directly — the full compose screen. */
+  function openFullCompose(): void {
+    clearModals();
+    requireSession({ screen: 'compose' });
+  }
+
+  /** `o` on a post that carries media (P12-018/P12-127) — the in-app viewer, which is
+   * the only place a Kitty placement is stable enough to be worth drawing. */
+  function openMediaViewer(post: Post): void {
+    if (post.media.length === 0) return;
+    navigate({
+      screen: 'media',
+      postId: post.id,
+      attachments: post.media,
+      initialIndex: 0,
+    });
+  }
+
+  /** `o` from inside the viewer — hands the attachment to the OS handler (spec §76). */
+  function openAttachmentExternally(attachment: MediaAttachment): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    openMediaExternally(api, cache, attachment, ensureAccessToken, {
+      env,
+      ...openMediaOptions,
+    }).catch((error: unknown) => {
+      notify(describeGrpcError(error, api.target).title, 'error');
+    });
+  }
+
+  /** `E` on one of your own posts (P12-125) — compose in edit mode, seeded with the
+   * body as it stands. A separate draft from the compose draft would be a second place
+   * unsent text can hide, so the shared draft is reused and restored on the way out. */
+  function openPostEdit(post: Post): void {
+    if (session === undefined) {
+      notify('Log in first — press L.');
+      return;
+    }
+    if (!present(post.author) || post.author.id !== session.userId) {
+      notify('You can only edit your own posts.', 'error');
+      return;
+    }
+    updateDraft({
+      body: post.body,
+      clientRequestId: randomUUID(),
+      ...(post.contentWarning === '' ? {} : { contentWarning: post.contentWarning }),
+    });
+    navigate({ screen: 'postEdit', postId: post.id, body: post.body });
   }
 
   const rowActions: PostRowActions = {
@@ -461,325 +999,925 @@ export function App({
     onReply: openReply,
     onToggleLike: (post) => void toggleLike(post),
     onToggleBookmark: (post) => void toggleBookmark(post),
+    onToggleFollow: (post) => void toggleFollowAuthor(post),
+    onToggleRepost: (post) => void toggleRepost(post),
+    onQuote: openQuote,
+    onEdit: openPostEdit,
+    onDelete: confirmDelete,
+    onHistory: (post) => goTo({ screen: 'postHistory', postId: post.id }),
+    onTogglePin: (post) => void togglePin(post),
     onReport: reportPost,
-    onOpenMedia: openMedia,
+    onOpenMedia: openMediaViewer,
     decorate: decoratePost,
+    jump: listJump,
   };
 
-  useInput(
-    (input) => {
-      if (input === 'q') {
-        exit();
+  function setToggle(
+    value: string | undefined,
+    current: boolean,
+    update: (next: boolean) => void,
+    label: string,
+  ): void {
+    if (value !== undefined && !['on', 'off', 'toggle'].includes(value)) {
+      notify(`${label} expects on, off, or toggle.`, 'error');
+      return;
+    }
+    const next = value === 'on' ? true : value === 'off' ? false : !current;
+    update(next);
+    notify(`${label} ${next ? 'on' : 'off'}.`, 'success');
+  }
+
+  function forceQuit(): void {
+    const hasDraft = draft.body !== '' || (draft.attachments?.length ?? 0) > 0;
+    if (!hasDraft) {
+      exit();
+      return;
+    }
+    confirmDestructive({
+      id: 'discard-draft',
+      title: 'Discard draft and quit?',
+      body: 'Your current post draft will be discarded.',
+      onConfirm: exit,
+    });
+  }
+
+  function safeQuit(): void {
+    if (canGoBack(stack)) back();
+    else exit();
+  }
+
+  function executeBinding(
+    binding: Binding,
+    command: string | undefined,
+    args: readonly string[],
+  ): void {
+    const name = command ?? binding.commands?.[0]?.name;
+    switch (name) {
+      case 'q':
+      case 'quit':
+      case 'back':
+        safeQuit();
+        return;
+      case 'q!':
+        forceQuit();
+        return;
+      case 'home':
+        requireSession({ screen: 'home' });
+        return;
+      case 'local':
+        goTo({ screen: 'local' });
+        return;
+      case 'profile': {
+        const target = args[0];
+        if (target === undefined) {
+          openOwnProfile();
+          return;
+        }
+        const query = target.replace(/^@/u, '');
+        void api.searchActors({ query, cursor: '', limit: 20 }).then(
+          (response) => {
+            const actor = response.actors.find((candidate) => candidate.handle === query);
+            if (actor === undefined) notify(`No profile found for @${query}.`, 'error');
+            else openProfile(actor.id, actor);
+          },
+          (error: unknown) => notify(describeGrpcError(error, api.target).title, 'error'),
+        );
         return;
       }
-      if (input === '?') {
-        goHelp();
+      case 'page': {
+        const target = args[0];
+        if (target === undefined) {
+          openOwnPage();
+          return;
+        }
+        const [handle = '', slug = ''] = target.replace(/^@/u, '').split('/', 2);
+        if (handle === '') notify('Page expects @handle[/slug].', 'error');
+        else openPage(handle, slug);
         return;
       }
-      if (input === 'R' && screen === 'connect') {
+      case 'search':
+        goTo({ screen: 'search' });
+        if (args.length > 0) notify(`Search opened for “${args.join(' ')}”.`);
+        return;
+      case 'notifications':
+        requireSession({ screen: 'notifications' });
+        return;
+      case 'bookmarks':
+        requireSession({ screen: 'bookmarks' });
+        return;
+      case 'help':
+        toggleHelp();
+        return;
+      case 'reload':
         retryServerInfo();
+        setReactionOverrides(new Map());
+        setFeedNonce((current) => current + 1);
+        notify('Reloaded (Ctrl+R).', 'success');
+        return;
+      case 'plain':
+        setToggle(args[0], plain, setPlain, 'Plain mode');
+        return;
+      case 'quiet':
+        setToggle(args[0], quiet, setQuiet, 'Quiet feed');
+        return;
+      case 'w':
+      case 'post':
+      case 'wq':
+        notify(`:${name} is only available from an editor that supports shell commands.`, 'error');
+        return;
+      case 'preferences':
+        openPreferences();
+        return;
+      case 'theme': {
+        const name = args[0];
+        if (name === undefined) openPreferences();
+        else setThemeByName(name);
         return;
       }
-      if (input === 'L') {
-        go(session === undefined ? 'login' : 'accounts');
+      case 'compose':
+        openFullCompose();
         return;
-      }
-      if (input === 'P') {
+      case 'privacy':
+        requireSession({ screen: 'privacy' });
+        return;
+      case 'followrequests':
+        requireSession({ screen: 'followRequests' });
+        return;
+      case 'filters':
+        requireSession({ screen: 'filters' });
+        return;
+      case 'lists':
+        requireSession({ screen: 'filterLists' });
+        return;
+      case 'labelers':
+        requireSession({ screen: 'labelers' });
+        return;
+      case 'appeals':
+        requireSession({ screen: 'appeals' });
+        return;
+      case 'modlog':
+        goTo({ screen: 'moderationLog' });
+        return;
+      case 'messages':
+      case 'communities':
+      case 'tag':
+        notify(
+          `:${name} is registered but its screen is not connected to this shell yet.`,
+          'error',
+        );
+        return;
+    }
+
+    switch (binding.keys) {
+      case 'g h':
+        requireSession({ screen: 'home' });
+        return;
+      case 'g l':
+        goTo({ screen: 'local' });
+        return;
+      case 'g p':
+        openOwnProfile();
+        return;
+      case 'g b':
+        requireSession({ screen: 'bookmarks' });
+        return;
+      case 'g n':
+        requireSession({ screen: 'notifications' });
+        return;
+      case 'g v':
+        openOwnPage();
+        return;
+      case '/':
+        goTo({ screen: 'search' });
+        return;
+      case 'c':
+        openQuickPost();
+        return;
+      case 'C':
+        openFullCompose();
+        return;
+      case 'N':
+        toggleNotificationsDrawer();
+        return;
+      case ',':
+        openPreferences();
+        return;
+      case '~':
+        setQuiet((current) => !current);
+        return;
+      case 'P':
         setPlain((current) => !current);
         return;
-      }
-      if (input === 'c') {
-        requireSession('compose');
+      case '?':
+        toggleHelp();
         return;
-      }
-      if (input === '/') {
-        go('search');
+      case 'Esc':
+        back();
         return;
-      }
-      if (pendingGo) {
-        setPendingGo(false);
-        if (input === 'p') openOwnProfile();
-        else if (input === 'l') go('local');
-        else if (input === 'h') requireSession('home');
-        else if (input === 's') go('search');
-        else if (input === 'b') requireSession('bookmarks');
-        else if (input === 'n') requireSession('notifications');
-        else if (input === 'v') openOwnPage();
+      case 'q':
+        safeQuit();
         return;
+      case 'Ctrl+R':
+        retryServerInfo();
+        setReactionOverrides(new Map());
+        setFeedNonce((current) => current + 1);
+        return;
+      default:
+        notify(`${binding.keys} — ${binding.description ?? binding.hint}`);
+    }
+  }
+
+  function invokePalette(invocation: PaletteInvocation): void {
+    executeBinding(
+      invocation.binding,
+      invocation.source === 'command' ? invocation.alias.name : undefined,
+      invocation.args,
+    );
+  }
+
+  function openCommandPalette(): void {
+    modals.push({
+      id: 'command-palette',
+      title: 'Commands',
+      render: ({ closeTop }) => (
+        <CommandPalette
+          screen={screen}
+          authenticated={session !== undefined}
+          history={commandHistory}
+          onInvoke={invokePalette}
+          onError={(message) => notify(message, 'error')}
+          onClose={closeTop}
+        />
+      ),
+    });
+  }
+
+  // --- the shell input dispatcher ------------------------------------------
+  // Registered modal/sub-mode/screen layers run top-down. Legacy text screens
+  // are represented by a compatibility layer until they adopt `useKeyLayer`;
+  // this consumes printable keys without disabling Ctrl+C or Ctrl+P.
+  function handleShellInput(input: string, key: Key): void {
+    // Keys typed fast enough to land in one stdin read reach Ink as a single
+    // multi-character keypress; replay them one at a time so `g h` works at speed.
+    if (isCoalescedKeyRun(input, key)) {
+      for (const character of input) handleShellInput(character, key);
+      return;
+    }
+    if (isCtrlKey(input, key, 'c')) {
+      exit();
+      return;
+    }
+    if (inputLayers.dispatch(input, key)) return;
+    if (modals.top !== undefined && key.escape) {
+      closeTopModal();
+      return;
+    }
+    const legacyTextScreen =
+      ['login', 'compose', 'postEdit', 'search', 'report', 'editProfile'].includes(screen) ||
+      // The quick-post overlay hosts the same legacy text screen; without this the
+      // shell would treat every character typed into it as a global key.
+      modals.top?.id === 'quick-post';
+    if (key.escape && legacySubmodeActiveRef.current) {
+      legacySubmodeActiveRef.current = false;
+      setLegacySubmodeState(false);
+      return;
+    }
+    if (legacyInputConsumes(input, key, legacyTextScreen || legacySubmodeActiveRef.current)) {
+      return;
+    }
+    if (isPaletteShortcut(input, key)) {
+      openCommandPalette();
+      return;
+    }
+    if (pendingGoRef.current) {
+      setPendingGo(false);
+      if (input === 'p') openOwnProfile();
+      else if (input === 'l') goTo({ screen: 'local' });
+      else if (input === 'h') requireSession({ screen: 'home' });
+      else if (input === 's') goTo({ screen: 'search' });
+      else if (input === 'b') requireSession({ screen: 'bookmarks' });
+      else if (input === 'n') requireSession({ screen: 'notifications' });
+      else if (input === 'v') openOwnPage();
+      else if (input === 'e') requireSession({ screen: 'editProfile' });
+      else if (input === 'd' || input === 'c') {
+        notify(`g ${input} is registered but its screen is not connected yet.`, 'error');
+      } else if (input === 'g') {
+        setListJump((current) => ({ edge: 'top', nonce: (current?.nonce ?? 0) + 1 }));
       }
-      if (input === 'g') {
-        setPendingGo(true);
-        clearTimeout(pendingGoTimer.current);
-        pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
-      }
-    },
-    { isActive: isRawModeSupported && !capturesInput(screen) },
-  );
+      return;
+    }
+    if (key.tab && splitActive) {
+      setPaneFocusSecondary((current) => !current);
+      return;
+    }
+    if (key.escape) {
+      // The drawer is presentation, not history: `Esc` closes it before it starts
+      // popping the navigation stack.
+      if (drawerRequested) setDrawerRequested(false);
+      else back();
+      return;
+    }
+    if (input === 'q') {
+      safeQuit();
+      return;
+    }
+    if (input === '?') {
+      toggleHelp();
+      return;
+    }
+    if (isCtrlKey(input, key, 'r')) {
+      retryServerInfo();
+      setReactionOverrides(new Map());
+      setFeedNonce((current) => current + 1);
+      return;
+    }
+    if (input === 'L') {
+      goTo({ screen: session === undefined ? 'login' : 'accounts' });
+      return;
+    }
+    if (input === 'P') {
+      setPlain((current) => !current);
+      return;
+    }
+    if (input === 'c') {
+      openQuickPost();
+      return;
+    }
+    if (input === 'C') {
+      openFullCompose();
+      return;
+    }
+    if (input === 'N') {
+      toggleNotificationsDrawer();
+      return;
+    }
+    if (input === ',') {
+      openPreferences();
+      return;
+    }
+    if (input === '~') {
+      setQuiet((current) => !current);
+      return;
+    }
+    if (input === '/') {
+      goTo({ screen: 'search' });
+      return;
+    }
+    if (input === 'g') {
+      setPendingGo(true);
+      clearTimeout(pendingGoTimer.current);
+      pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
+    }
+  }
+  useInput(handleShellInput, { isActive: isRawModeSupported });
 
   // Checked after the hooks, never before — hook order must not depend on size.
   if (columns < MIN_TERMINAL_SIZE.columns || rows < MIN_TERMINAL_SIZE.rows) {
     return <TerminalTooSmall columns={columns} rows={rows} />;
   }
 
+  /**
+   * One screen, given its route payload. Extracted from the render body because a
+   * split renders *two* of them from the same stack (§3.2) — the nearest list beneath
+   * on the left, the detail on top on the right — and neither may be a second,
+   * drifting copy of the other's wiring.
+   */
+  function renderEntry(target: NavEntry, active: boolean): ReactNode {
+    const listActive = active && listIsActive;
+    switch (target.screen) {
+      case 'help':
+        return (
+          <HelpScreen
+            target={api.target}
+            serverInfo={serverInfoState}
+            contextScreen={stack[stack.length - 2]?.screen ?? 'local'}
+            isActive={active}
+            onClose={back}
+          />
+        );
+      case 'postHistory':
+        return (
+          <PostHistoryScreen
+            api={api}
+            postId={target.postId}
+            isActive={active}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+          />
+        );
+      case 'media':
+        return (
+          <MediaViewerScreen
+            attachments={target.attachments}
+            initialIndex={target.initialIndex}
+            isActive={active}
+            onOpenExternal={openAttachmentExternally}
+            onCancel={back}
+          />
+        );
+      case 'preferences':
+        return (
+          <PreferencesScreen
+            isActive={active}
+            themeName={themeName}
+            themeSource={themeSource}
+            onPreviewTheme={setThemeName}
+            plain={plain}
+            onPlainChange={setPlain}
+            quiet={quiet}
+            onQuietChange={setQuiet}
+            imagePolicy={imagePolicy}
+            onImagePolicyChange={setImagePolicy}
+            onSave={savePreferences}
+            onCancel={cancelPreferences}
+            canPersist={session !== undefined}
+            onOpenPrivacy={() => requireSession({ screen: 'privacy' })}
+          />
+        );
+      case 'privacy':
+        return session === undefined ? null : (
+          <PrivacyScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onConfirm={confirmDestructive}
+            onBack={back}
+          />
+        );
+      case 'followRequests':
+        return session === undefined ? null : (
+          <FollowRequestsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'filters':
+        return session === undefined ? null : (
+          <FiltersScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onConfirm={confirmDestructive}
+            onBack={back}
+          />
+        );
+      case 'filterLists':
+        return session === undefined ? null : (
+          <FilterListsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'labelers':
+        return session === undefined ? null : (
+          <LabelersScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'appeals':
+        return session === undefined ? null : (
+          <AppealsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'moderationLog':
+        return <ModerationLogScreen api={api} isActive={active} onBack={back} />;
+      case 'local':
+        return (
+          <LocalScreen
+            api={api}
+            isActive={listActive}
+            actions={rowActions}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            refreshKey={feedNonce}
+          />
+        );
+      case 'home':
+        return session === undefined ? (
+          <Text color={theme.muted}>Log in (L) to see the people you follow.</Text>
+        ) : (
+          <HomeScreen
+            api={api}
+            isActive={listActive}
+            ensureAccessToken={ensureAccessToken}
+            actions={rowActions}
+            refreshKey={feedNonce}
+          />
+        );
+      case 'search':
+        return (
+          <SearchScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            onOpenActor={(actor) => openProfile(actor.id, actor)}
+            actions={rowActions}
+            onCancel={back}
+          />
+        );
+      case 'profile':
+        return (
+          <ProfileScreen
+            api={api}
+            actorId={target.actorId}
+            knownActor={target.knownActor}
+            isActive={listActive}
+            actions={rowActions}
+            viewerActorId={session?.userId}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            onReportActor={reportActor}
+            onVisitPage={(actor) => openPage(actor.handle)}
+            onConfirm={confirmDestructive}
+            onEditProfile={
+              session === undefined ? undefined : () => navigate({ screen: 'editProfile' })
+            }
+            refreshKey={feedNonce}
+            onNotify={notify}
+          />
+        );
+      case 'editProfile':
+        return session?.actor === undefined ? null : (
+          <EditProfileScreen
+            api={api}
+            actor={session.actor}
+            ensureAccessToken={ensureAccessToken}
+            isActive={active}
+            onCancel={back}
+            onSaved={(actor) => {
+              setSession((current) => (current === undefined ? current : { ...current, actor }));
+              notify('Profile saved.', 'success');
+              back();
+            }}
+          />
+        );
+      case 'page':
+        return (
+          <PageScreen
+            api={api}
+            handle={target.handle}
+            initialSlug={target.slug}
+            viewerActorId={session?.userId}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            isActive={listActive}
+            isOwnPage={session?.actor?.handle === target.handle}
+            onCapturingInput={setLegacySubmodeActive}
+            env={env}
+            draftStore={pageDraftStore}
+            editorOptions={pageEditorOptions}
+          />
+        );
+      case 'thread':
+        return (
+          <ThreadScreen
+            api={api}
+            postId={target.postId}
+            isActive={listActive}
+            actions={rowActions}
+            ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
+            refreshKey={feedNonce}
+          />
+        );
+      case 'bookmarks':
+        return session === undefined ? null : (
+          <BookmarksScreen
+            api={api}
+            isActive={listActive}
+            ensureAccessToken={ensureAccessToken}
+            actions={rowActions}
+            refreshKey={feedNonce}
+          />
+        );
+      case 'notifications':
+        return session === undefined ? null : (
+          <NotificationsScreen
+            api={api}
+            isActive={listActive}
+            ensureAccessToken={ensureAccessToken}
+            onOpenPost={openThread}
+            onOpenAuthor={(actor) => openProfile(actor.id, actor)}
+            onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
+          />
+        );
+      case 'report':
+        return session === undefined ? null : (
+          <ReportScreen
+            api={api}
+            target={target.target}
+            ensureAccessToken={ensureAccessToken}
+            isActive={active}
+            onConfirm={confirmDestructive}
+            onCancel={back}
+            onSubmitted={() => {
+              notify('Report submitted — thank you.', 'success');
+              back();
+            }}
+          />
+        );
+      case 'accounts':
+        return session === undefined ? null : (
+          <AccountsScreen
+            api={api}
+            env={env}
+            session={session}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onLogout={() => void logout()}
+            onResendVerification={() => void resendVerificationEmail()}
+            onBack={back}
+          />
+        );
+      case 'login':
+        return (
+          <LoginScreen
+            api={api}
+            sessionManager={sessionManager}
+            env={env}
+            isActive={active}
+            onCancel={back}
+            onSuccess={(newSession) => {
+              setSession(newSession);
+              // A stale overlay from before signing in would mask the server's real
+              // viewer state for this account.
+              setReactionOverrides(new Map());
+              notify(`Signed in as @${newSession.actor?.handle ?? '…'}.`, 'success');
+              setStack((current) => promoteRootToHome(pop(current)));
+            }}
+          />
+        );
+      case 'compose':
+        return session === undefined ? null : (
+          <ComposeScreen
+            api={api}
+            draft={draft}
+            onChange={updateDraft}
+            onCancel={back}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onNotify={notify}
+            onSubmitted={onPostSubmitted}
+          />
+        );
+      case 'postEdit':
+        return session === undefined ? null : (
+          <ComposeScreen
+            api={api}
+            mode="edit"
+            postId={target.postId}
+            draft={draft}
+            onChange={updateDraft}
+            onCancel={back}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onNotify={notify}
+            onSubmitted={(post) => {
+              setDraft(emptyDraft());
+              void store.clear();
+              notify('Post updated.', 'success');
+              setFeedNonce((current) => current + 1);
+              setStack((current) => pop(current));
+              void post;
+            }}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  const paneRows = Math.max(1, regionRows - 1);
+  const screenRegion =
+    presentation.mode === 'split' ? (
+      <SplitPane
+        width={contentColumns}
+        height={regionRows}
+        requestedSplit
+        focusedPane={focusedPane}
+        primaryTitle={SCREEN_TITLES[presentation.primary.screen]}
+        secondaryTitle={SCREEN_TITLES[presentation.secondary.screen]}
+        primary={
+          <ContentSizeProvider size={{ rows: paneRows, columns: layoutPlan.leftWidth }}>
+            {renderEntry(presentation.primary, focusedPane === 'primary' && screenIsActive)}
+          </ContentSizeProvider>
+        }
+        secondary={
+          <ContentSizeProvider size={{ rows: paneRows, columns: layoutPlan.rightWidth }}>
+            {renderEntry(presentation.secondary, focusedPane === 'secondary' && screenIsActive)}
+          </ContentSizeProvider>
+        }
+      />
+    ) : (
+      <ContentSizeProvider size={{ rows: regionRows, columns: contentColumns }}>
+        {renderEntry(presentation.primary, screenIsActive)}
+      </ContentSizeProvider>
+    );
+
+  // `command-palette`, `help` and `quick-post` are rendered from here rather than from
+  // their `ModalEntry.render` closure: those closures are captured when the modal is
+  // pushed, so they would see a stale draft/screen and every keystroke would be lost.
+  const overlayNode: ReactNode =
+    overlayEntry === undefined ? null : overlayEntry.id === 'command-palette' ? (
+      <CommandPalette
+        screen={screen}
+        authenticated={session !== undefined}
+        history={commandHistory}
+        onInvoke={invokePalette}
+        onError={(message) => notify(message, 'error')}
+        onClose={closeTopModal}
+      />
+    ) : overlayEntry.id === 'help' ? (
+      <HelpScreen
+        target={api.target}
+        serverInfo={serverInfoState}
+        contextScreen={screen}
+        isActive
+        onClose={closeTopModal}
+      />
+    ) : overlayEntry.id === 'quick-post' && session !== undefined ? (
+      <ComposeScreen
+        api={api}
+        compact
+        rows={Math.min(QUICK_POST_ROWS, regionRows)}
+        columns={Math.min(QUICK_POST_COLUMNS, Math.max(20, contentColumns - 8))}
+        draft={draft}
+        onChange={updateDraft}
+        onCancel={closeTopModal}
+        onExpand={openFullCompose}
+        onNotify={notify}
+        isActive
+        ensureAccessToken={ensureAccessToken}
+        onSubmitted={(post) => {
+          clearModals();
+          onPostSubmitted(post, { fromOverlay: true });
+        }}
+      />
+    ) : (
+      overlayEntry.render({ closeTop: closeTopModal, clear: clearModals })
+    );
+
+  const overlayColumns =
+    overlayEntry?.id === 'command-palette'
+      ? PALETTE_COLUMNS
+      : (overlayEntry?.columns ?? QUICK_POST_COLUMNS);
+  const overlayRows =
+    overlayEntry?.id === 'command-palette' ? PALETTE_ROWS : (overlayEntry?.rows ?? QUICK_POST_ROWS);
+  // Under 80 columns or under 28 rows a centred box has nowhere to sit, so the overlay
+  // takes the region over instead (§3.1). Help is a reference screen: always a takeover.
+  const overlayTakeover =
+    layoutPlan.widthTier === 'narrow' ||
+    layoutPlan.heightDensity === 'compact' ||
+    overlayEntry?.id === 'help' ||
+    overlayEntry?.presentation === 'takeover';
+
   return (
     <MediaSessionProvider session={mediaSession}>
       <PlainModeProvider plain={plain}>
-        <Box flexDirection="column" justifyContent="space-between" height={rows}>
-          <Box flexDirection="column" paddingX={1} paddingY={1}>
-            {screen === 'help' && <HelpScreen target={api.target} />}
-            {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
-            {screen === 'local' && (
-              <LocalScreen
-                api={api}
-                isActive={screen === 'local' && !pendingGo}
-                actions={rowActions}
-              />
-            )}
-            {screen === 'home' && session !== undefined && (
-              <HomeScreen
-                api={api}
-                isActive={screen === 'home' && !pendingGo}
-                ensureAccessToken={ensureAccessToken}
-                actions={rowActions}
-              />
-            )}
-            {screen === 'search' && (
-              <SearchScreen
-                api={api}
-                isActive={screen === 'search'}
-                ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
-                onOpenActor={(actor) => openProfile(actor.id, actor)}
-                onCancel={() => setScreen(priorScreen)}
-              />
-            )}
-            {screen === 'profile' && profileTarget !== undefined && (
-              <ProfileScreen
-                api={api}
-                actorId={profileTarget.actorId}
-                knownActor={profileTarget.knownActor}
-                isActive={screen === 'profile' && !pendingGo}
-                actions={rowActions}
-                viewerActorId={session?.userId}
-                ensureAccessToken={ensureAccessToken}
-                onReportActor={reportActor}
-                onVisitPage={(actor) => openPage(actor.handle)}
-                onEditProfile={session === undefined ? undefined : () => go('editProfile')}
-              />
-            )}
-            {screen === 'editProfile' && session !== undefined && session.actor !== undefined && (
-              <EditProfileScreen
-                api={api}
-                actor={session.actor}
-                ensureAccessToken={ensureAccessToken}
-                isActive={screen === 'editProfile'}
-                onCancel={() => setScreen(priorScreen)}
-                onSaved={(actor) => {
-                  setSession((current) =>
-                    current === undefined ? current : { ...current, actor },
-                  );
-                  setScreen(priorScreen);
-                }}
-              />
-            )}
-            {screen === 'page' && pageTarget !== undefined && (
-              <PageScreen
-                api={api}
-                handle={pageTarget.handle}
-                initialSlug={pageTarget.slug}
-                viewerActorId={session?.userId}
-                ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
-                isActive={screen === 'page' && !pendingGo}
-                onBack={() => setScreen(priorScreen)}
-                env={env}
-                draftStore={pageDraftStore}
-                editorOptions={pageEditorOptions}
-              />
-            )}
-            {screen === 'thread' && threadStack.length > 0 && (
-              <ThreadScreen
-                api={api}
-                postId={threadStack[threadStack.length - 1] ?? ''}
-                isActive={screen === 'thread' && !pendingGo}
-                actions={rowActions}
-                onBack={threadBack}
-              />
-            )}
-            {screen === 'bookmarks' && session !== undefined && (
-              <BookmarksScreen
-                api={api}
-                isActive={screen === 'bookmarks' && !pendingGo}
-                ensureAccessToken={ensureAccessToken}
-                actions={rowActions}
-              />
-            )}
-            {screen === 'notifications' && session !== undefined && (
-              <NotificationsScreen
-                api={api}
-                isActive={screen === 'notifications' && !pendingGo}
-                ensureAccessToken={ensureAccessToken}
-                onOpenPost={openThread}
-                onOpenAuthor={(actor) => openProfile(actor.id, actor)}
-                onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
-              />
-            )}
-            {screen === 'report' && reportTarget !== undefined && session !== undefined && (
-              <ReportScreen
-                api={api}
-                target={reportTarget}
-                ensureAccessToken={ensureAccessToken}
-                isActive={screen === 'report'}
-                onCancel={() => setScreen(priorScreen)}
-                onSubmitted={() => {
-                  setNotice('Report submitted — thank you.');
-                  setScreen(priorScreen);
-                }}
-              />
-            )}
-            {screen === 'accounts' && session !== undefined && (
-              <AccountsScreen
-                api={api}
-                env={env}
-                session={session}
-                isActive={screen === 'accounts'}
-                ensureAccessToken={ensureAccessToken}
-                onLogout={() => void logout()}
-                onResendVerification={() => void resendVerificationEmail()}
-                onBack={() => setScreen(priorScreen)}
-              />
-            )}
-            {screen === 'login' && (
-              <LoginScreen
-                api={api}
-                sessionManager={sessionManager}
-                env={env}
-                isActive={screen === 'login'}
-                onCancel={() => setScreen(priorScreen)}
-                onSuccess={(newSession) => {
-                  setSession(newSession);
-                  setScreen(priorScreen);
-                }}
-              />
-            )}
-            {screen === 'compose' && session !== undefined && (
-              <ComposeScreen
-                api={api}
-                draft={draft}
-                onChange={updateDraft}
-                onCancel={() => setScreen(priorScreen)}
-                isActive={screen === 'compose'}
-                ensureAccessToken={ensureAccessToken}
-                onSubmitted={(post) => {
-                  const cleared = emptyDraft();
-                  setDraft(cleared);
-                  void store.clear();
-                  if (post.inReplyToId !== '') {
-                    // A reply just posted — show its own thread (parent for context,
-                    // itself in focus) rather than the author's whole timeline. Set
-                    // directly (not `openThread`) so `priorScreen` — already the screen
-                    // `r` was pressed from — survives for `Esc` to return to.
-                    setThreadStack([post.id]);
-                    setScreen('thread');
-                  } else if (present(post.author)) {
-                    openProfile(post.author.id, post.author);
-                  } else if (session !== undefined) {
-                    openProfile(session.userId, session.actor);
-                  } else {
-                    setScreen('profile');
-                  }
-                }}
-              />
-            )}
-          </Box>
+        <ActiveThemeProvider theme={activeTheme}>
+          <ModalStackProvider controller={modals}>
+            <KeyLayerProvider stack={inputLayers}>
+              {/* An open overlay releases every live Kitty placement first: slicing a
+                  unicode-placeholder row would corrupt the grid (§3.3). The §75
+                  fallback box is the same height, so nothing reflows. */}
+              <InlineImagesProvider allowed={overlayEntry === undefined}>
+                {/* `flexShrink={0}` on every direct child of a height-constrained Box is
+                    load-bearing, not decoration: Yoga's default lets children shrink to fit,
+                    and Ink renders a shrunk child by *dropping rows out of the middle of it*,
+                    which is precisely the corrupted timeline the owner reported — counts lines
+                    painted over the previous post's header, bodies cut mid-word (verified
+                    against Ink 7.1.1; see docs/agents/LEARNINGS.md). With `flexShrink={0}` the
+                    overflow is clipped cleanly at the bottom instead. */}
+                <Box flexDirection="column" height={rows} width={columns} overflow="hidden">
+                  <Box
+                    flexDirection="column"
+                    flexShrink={0}
+                    height={contentRows}
+                    paddingX={1}
+                    paddingY={1}
+                    overflow="hidden"
+                  >
+                    {signedOutOnRoot ? (
+                      <Text color={theme.muted} wrap="truncate-end">
+                        Reading as a guest — press L to log in or create an account.
+                      </Text>
+                    ) : null}
+                    <Box
+                      flexDirection="row"
+                      flexShrink={0}
+                      width={regionColumns}
+                      height={regionRows}
+                      overflow="hidden"
+                    >
+                      <Box
+                        flexDirection="column"
+                        flexShrink={0}
+                        width={contentColumns}
+                        height={regionRows}
+                        overflow="hidden"
+                      >
+                        {/* The screen stays mounted behind an overlay — hidden with
+                            `display="none"`, never a zero height — so a sub-mode's
+                            in-progress state and a list's scroll position survive
+                            opening the palette. */}
+                        <Box
+                          flexDirection="column"
+                          flexShrink={0}
+                          display={overlayEntry === undefined ? 'flex' : 'none'}
+                          overflow="hidden"
+                        >
+                          {screenRegion}
+                        </Box>
+                        {overlayEntry === undefined ? null : (
+                          <Overlay
+                            columns={contentColumns}
+                            rows={regionRows}
+                            overlayColumns={Math.min(
+                              overlayColumns,
+                              Math.max(20, contentColumns - 8),
+                            )}
+                            overlayRows={Math.min(overlayRows, regionRows)}
+                            snapshotKey={`${overlayEntry.id}:${String(contentColumns)}x${String(regionRows)}`}
+                            takeover={overlayTakeover}
+                            background={
+                              <PlainModeProvider plain={plain}>
+                                <ActiveThemeProvider theme={activeTheme}>
+                                  {screenRegion}
+                                </ActiveThemeProvider>
+                              </PlainModeProvider>
+                            }
+                          >
+                            {overlayNode}
+                          </Overlay>
+                        )}
+                      </Box>
+                      {drawerOpen ? (
+                        <Drawer
+                          width={DRAWER_COLUMNS}
+                          height={regionRows}
+                          title="Notifications"
+                          focused
+                        >
+                          {session === undefined ? null : (
+                            <NotificationsScreen
+                              api={api}
+                              isActive={screenIsActive && !pendingGo}
+                              ensureAccessToken={ensureAccessToken}
+                              onOpenPost={(postId) => {
+                                setDrawerRequested(false);
+                                openThread(postId);
+                              }}
+                              onOpenAuthor={(actor) => {
+                                setDrawerRequested(false);
+                                openProfile(actor.id, actor);
+                              }}
+                              onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
+                            />
+                          )}
+                        </Drawer>
+                      ) : null}
+                    </Box>
+                  </Box>
 
-          <Box flexDirection="column" paddingX={1}>
-            <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
-            {notice === undefined ? null : <Text color={theme.warn}>{notice}</Text>}
-            <StatusBar
-              target={api.target}
-              status={statusLabel(serverInfoState.status)}
-              statusColor={statusColor(serverInfoState.status)}
-              handle={session?.actor?.handle}
-              keys={statusKeys(screen, session !== undefined)}
-              unreadCount={unreadCount}
-            />
-          </Box>
-        </Box>
+                  <Box
+                    flexDirection="column"
+                    flexShrink={0}
+                    height={FOOTER_ROWS}
+                    paddingX={1}
+                    overflow="hidden"
+                  >
+                    <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
+                    <Box height={1} flexShrink={0} overflow="hidden">
+                      {toast === undefined ? <Text> </Text> : <ToastLine toast={toast} />}
+                    </Box>
+                    <StatusBar
+                      width={Math.max(10, columns - 2)}
+                      target={api.target}
+                      screenTitle={SCREEN_TITLES[screen]}
+                      status={statusLabel(serverInfoState.status)}
+                      statusColor={statusColor(serverInfoState.status)}
+                      handle={session?.actor?.handle}
+                      keys={hintsFor(screen, {
+                        authenticated: session !== undefined,
+                        canGoBack: canGoBack(stack),
+                      })}
+                      unreadCount={unreadCount}
+                    />
+                  </Box>
+                </Box>
+              </InlineImagesProvider>
+            </KeyLayerProvider>
+          </ModalStackProvider>
+        </ActiveThemeProvider>
       </PlainModeProvider>
     </MediaSessionProvider>
   );
-}
-
-function statusKeys(screen: Screen, authenticated: boolean): string[] {
-  if (screen === 'login') return ['Esc cancel'];
-  if (screen === 'compose') return ['Ctrl+S post', 'Ctrl+A attach', 'Esc keep draft'];
-  if (screen === 'search') return ['Enter search/open', 'Esc cancel'];
-  if (screen === 'report') return ['j/k reason', 'Ctrl+S submit', 'Esc cancel'];
-  if (screen === 'accounts') return ['a add key', 'x log out', 'Esc back'];
-  if (screen === 'editProfile') return ['Tab/↑↓ move', 'Ctrl+S save', 'Esc cancel'];
-  if (screen === 'notifications') return ['j/k move', 'Enter open', 'm mark all read'];
-  if (screen === 'thread') {
-    return [
-      'Enter thread',
-      'p author',
-      'r reply',
-      'l like',
-      'b bookmark',
-      'o open media',
-      '! report',
-      'Esc back',
-    ];
-  }
-  if (screen === 'profile') {
-    return [
-      'j/k move',
-      'Enter thread',
-      'r reply',
-      'l like',
-      'b bookmark',
-      'o open media',
-      'v visit page',
-      '! report',
-      'g h/l/p go',
-      '? help',
-    ];
-  }
-  if (screen === 'local' || screen === 'home' || screen === 'bookmarks') {
-    return [
-      'j/k move',
-      'Enter thread',
-      'p author',
-      'r reply',
-      'l like',
-      'b bookmark',
-      'o open media',
-      '! report',
-      'g h/l/p go',
-      '? help',
-    ];
-  }
-  if (screen === 'page') {
-    return [
-      '[ / ] sub-page',
-      'j/k select link',
-      'Enter open link',
-      'e edit',
-      's sign guestbook',
-      'Esc back',
-    ];
-  }
-  const keys = [
-    'g h/l/p go',
-    'g b bookmarks',
-    'g n notifications',
-    'g v your page',
-    '/ search',
-    'c compose',
-    authenticated ? 'L account' : 'L login',
-    'P plain mode',
-    '? help',
-    'q quit',
-  ];
-  return keys;
 }
 
 function statusLabel(status: 'connecting' | 'ready' | 'error'): string {

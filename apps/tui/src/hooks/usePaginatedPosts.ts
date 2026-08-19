@@ -21,6 +21,19 @@ export interface UsePaginatedListResult<T> {
   error: FriendlyError | undefined;
   /** No-op while a page is already loading, or when `hasMore` is false. */
   loadMore: () => void;
+  /**
+   * Re-reads the first page from the server and replaces what is held, discarding
+   * any extra pages already loaded (a refresh means "back to newest"). Two reasons
+   * this exists: the `↑ N new` marker, and viewer state — a like made in a previous
+   * session only shows as liked once the *server's* `viewer_state` is re-read, so a
+   * refresh has to replace rows rather than merge into them (owner feedback
+   * 2026-08-18: "posts I liked, after starting a new session, showed not liked").
+   */
+  refresh: () => void;
+  /** True while `refresh()` is in flight. */
+  refreshing: boolean;
+  /** How many items the last `refresh()` brought in that weren't already held. */
+  newCount: number;
 }
 
 /**
@@ -33,6 +46,9 @@ export interface UsePaginatedListResult<T> {
 export function usePaginatedList<T>(
   target: string,
   fetch: FetchPage<T>,
+  /** Stable identity for an item, so `refresh()` can count what is genuinely new.
+   * Omitted (no identity) means a refresh reports `newCount: 0`. */
+  identify?: (item: T) => string,
 ): UsePaginatedListResult<T> {
   const [items, setItems] = useState<readonly T[]>([]);
   const [cursor, setCursor] = useState('');
@@ -40,6 +56,8 @@ export function usePaginatedList<T>(
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<FriendlyError | undefined>(undefined);
+  const [refreshing, setRefreshing] = useState(false);
+  const [newCount, setNewCount] = useState(0);
   // Guards against `loadMore()` firing twice before the first response lands —
   // state updates from the in-flight request wouldn't be visible yet.
   const fetchingRef = useRef(false);
@@ -87,7 +105,33 @@ export function usePaginatedList<T>(
       });
   }, [cursor, fetch, hasMore, target]);
 
-  return { items, loading, loadingMore, hasMore, error, loadMore };
+  const refresh = useCallback(() => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setRefreshing(true);
+    fetch('')
+      .then((result) => {
+        setItems((previous) => {
+          if (identify !== undefined) {
+            const known = new Set(previous.map(identify));
+            setNewCount(result.items.filter((item) => !known.has(identify(item))).length);
+          }
+          return result.items;
+        });
+        setCursor(result.page?.nextCursor ?? '');
+        setHasMore(result.page?.hasMore ?? false);
+        setError(undefined);
+      })
+      .catch((thrown: unknown) => {
+        setError(describeGrpcError(thrown, target));
+      })
+      .finally(() => {
+        setRefreshing(false);
+        fetchingRef.current = false;
+      });
+  }, [fetch, identify, target]);
+
+  return { items, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +154,15 @@ export interface UsePaginatedPostsResult {
   hasMore: boolean;
   error: FriendlyError | undefined;
   loadMore: () => void;
+  refresh: () => void;
+  refreshing: boolean;
+  newCount: number;
+}
+
+/** Module-level (not inline) so its identity is stable across renders and
+ * `usePaginatedList`'s `refresh` callback doesn't change every render. */
+function postId(post: Post): string {
+  return post.id;
 }
 
 export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePaginatedPostsResult {
@@ -118,9 +171,17 @@ export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePagi
       fetch(cursor).then((result) => ({ items: result.posts, page: result.page })),
     [fetch],
   );
-  const { items, loading, loadingMore, hasMore, error, loadMore } = usePaginatedList<Post>(
-    target,
-    fetchItems,
-  );
-  return { posts: items, loading, loadingMore, hasMore, error, loadMore };
+  const { items, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount } =
+    usePaginatedList<Post>(target, fetchItems, postId);
+  return {
+    posts: items,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    loadMore,
+    refresh,
+    refreshing,
+    newCount,
+  };
 }

@@ -9,6 +9,7 @@ describe('parseArgs', () => {
       target: DEFAULT_TARGET,
       insecure: false,
       plain: false,
+      noUpgradeCheck: false,
       rest: [],
     });
   });
@@ -16,6 +17,18 @@ describe('parseArgs', () => {
   it('reads the server from --server and --server=', () => {
     expect(parseArgs(['--server', 'example.com:443']).target).toBe('example.com:443');
     expect(parseArgs(['--server=example.com:443']).target).toBe('example.com:443');
+  });
+
+  it('reads the theme name from --theme and --theme=', () => {
+    expect(parseArgs(['--theme', 'paper']).themeName).toBe('paper');
+    expect(parseArgs(['--theme=paper']).themeName).toBe('paper');
+    expect(parseArgs([]).themeName).toBeUndefined();
+  });
+
+  it('rejects --theme with no value', () => {
+    const args = parseArgs(['--theme']);
+    expect(args.command).toBe('help');
+    expect(args.error).toContain('--theme');
   });
 
   it('reads the server and insecure flag from the environment', () => {
@@ -56,6 +69,7 @@ describe('parseArgs', () => {
       target: '127.0.0.1:1234',
       insecure: true,
       plain: false,
+      noUpgradeCheck: false,
       rest: [],
     });
   });
@@ -65,6 +79,15 @@ describe('parseArgs', () => {
     expect(parseArgs([], { PATCHES_PLAIN: 'true' }).plain).toBe(true);
     expect(parseArgs([], { PATCHES_PLAIN: 'false' }).plain).toBe(false);
     expect(parseArgs([]).plain).toBe(false);
+  });
+
+  it('reads --no-upgrade-check', () => {
+    expect(parseArgs(['--no-upgrade-check']).noUpgradeCheck).toBe(true);
+    expect(parseArgs([]).noUpgradeCheck).toBe(false);
+  });
+
+  it('recognises the upgrade command', () => {
+    expect(parseArgs(['upgrade']).command).toBe('upgrade');
   });
 
   it('explains an unknown argument instead of failing silently', () => {
@@ -91,12 +114,31 @@ describe('parseArgs', () => {
     expect(parseArgs(['accounts']).command).toBe('accounts');
     expect(parseArgs(['whoami']).command).toBe('whoami');
     expect(parseArgs(['keys']).command).toBe('keys');
+    expect(parseArgs(['dm']).command).toBe('dm');
+  });
+
+  it('forwards dm subcommands and flags into rest', () => {
+    const args = parseArgs(['dm', 'read', 'conversation-1', '--limit', '10']);
+    expect(args.command).toBe('dm');
+    expect(args.rest).toEqual(['read', 'conversation-1', '--limit', '10']);
   });
 
   it('forwards the keys subcommand and its own arguments into rest', () => {
     const args = parseArgs(['keys', 'add', '--ssh-key', 'SHA256:abc', '--yes']);
     expect(args.command).toBe('keys');
     expect(args.rest).toEqual(['add', '--ssh-key', 'SHA256:abc', '--yes']);
+  });
+
+  it('forwards community and tag subcommands for their own parsers', () => {
+    expect(parseArgs(['community', 'post', 'community-1', '--body', 'hello'])).toMatchObject({
+      command: 'community',
+      rest: ['post', 'community-1', '--body', 'hello'],
+    });
+    expect(parseArgs(['tag', 'feed', '#typescript', '--limit', '5'])).toMatchObject({
+      command: 'tag',
+      rest: ['feed', '#typescript', '--limit', '5'],
+    });
+    expect(parseArgs(['tag', '--help'])).toMatchObject({ command: 'tag', rest: ['--help'] });
   });
 
   it('collects unrecognised flags after an auth subcommand into rest, instead of erroring', () => {

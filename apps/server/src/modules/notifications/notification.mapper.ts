@@ -19,6 +19,7 @@ const NOTIFICATION_TYPE_TO_PROTO: Readonly<Record<DbNotificationType, Notificati
     QUOTE: NotificationType.NOTIFICATION_TYPE_QUOTE,
     MESSAGE: NotificationType.NOTIFICATION_TYPE_MESSAGE,
     COMMUNITY_INVITE: NotificationType.NOTIFICATION_TYPE_COMMUNITY_INVITE,
+    FOLLOW_REQUEST: NotificationType.NOTIFICATION_TYPE_FOLLOW_REQUEST,
   });
 
 export function toProtoNotification(view: NotificationView): ProtoNotification {

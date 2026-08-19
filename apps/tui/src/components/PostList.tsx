@@ -1,10 +1,16 @@
 import type { Post } from '@patches/proto';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { useContentSize } from '../app/layout.js';
+import type { ListJump } from '../app/list-movement.js';
 import { theme } from '../theme/index.js';
+import { usePlainMode } from '../theme/plain-mode.js';
+import { Loading } from './Loading.js';
+import { measurePostRowHeight } from './post-height.js';
 import { PostRow } from './PostRow.js';
+import { VirtualList } from './VirtualList.js';
 
 /**
  * The row-level actions `PostList` fires on the selected row — one shared shape so
@@ -28,6 +34,25 @@ export interface PostRowActions {
   /** `o` on the selected row — opens its first attachment externally (spec §76). A
    * no-op when the row has no attachments. */
   onOpenMedia?: ((post: Post) => void) | undefined;
+  /** `f` on the selected row — follows/unfollows its author without leaving the
+   * timeline (owner feedback 2026-08-18: follows existed but only on a profile). */
+  onToggleFollow?: ((post: Post) => void) | undefined;
+  /** `R` — repost/unrepost. Refresh is `Ctrl+R` in keymap v2. */
+  onToggleRepost?: ((post: Post) => void) | undefined;
+  /** `Q` — start a quote-post draft pointing at this post. */
+  onQuote?: ((post: Post) => void) | undefined;
+  /** `e` — edit one of the viewer's own posts. */
+  onEdit?: ((post: Post) => void) | undefined;
+  /** `d` — request deletion; the shell must show a confirm dialog. */
+  onDelete?: ((post: Post) => void) | undefined;
+  /** `H` — open the immutable edit history for this post. */
+  onHistory?: ((post: Post) => void) | undefined;
+  /** `I` — pin/unpin one of the viewer's own profile posts. */
+  onTogglePin?: ((post: Post) => void) | undefined;
+  /** Not an action: `g g` (top) arrives from the shell, because `g` is the shell's
+   * key prefix. Threaded through the same bag every screen already spreads onto
+   * `PostList`, so no screen needs a new prop. */
+  jump?: ListJump | undefined;
   /** Applied to each post before it's rendered (not before it's passed to a row
    * action) — lets a caller overlay optimistic reaction state (P4-004's
    * `App.decoratePost`) without every screen's own paginated list needing to
@@ -50,17 +75,14 @@ export interface PostListProps extends PostRowActions {
   /** Per-row indent level (0 = flush left), e.g. the thread screen indenting
    * replies one step deeper than the focused post it lists alongside them. */
   rowIndent?: ((post: Post) => number) | undefined;
+  /** How many posts a `R` refresh just brought in that weren't there before —
+   * renders the `↑ N new` marker above the list. `0` renders nothing. */
+  newCount?: number;
+  /** Rows the owning screen spends on its own chrome (title, margin, error line,
+   * profile header) before the list starts. Subtracted from the content budget. */
+  chromeRows?: number;
 }
 
-/**
- * The chronological post list shared by the profile timeline, local feed,
- * home feed, thread replies, and bookmarks (spec §68: shared components, not
- * one screen per list). Cursor-based "load more" is driven by the owning
- * screen's `useInput` — this component owns only row selection and the
- * per-row actions: `j`/`k`/arrows to move, `Enter` opens the thread, `p` the
- * author's profile, `r` replies, `l`/`b` like/bookmark, `!` report (spec §69,
- * P4-004).
- */
 export function PostList({
   posts,
   loading,
@@ -75,106 +97,126 @@ export function PostList({
   onToggleBookmark,
   onReport,
   onOpenMedia,
+  onToggleFollow,
+  onToggleRepost,
+  onQuote,
+  onEdit,
+  onDelete,
+  onHistory,
+  onTogglePin,
+  jump,
   rowIndent,
   decorate,
+  newCount = 0,
+  chromeRows = 2,
 }: PostListProps): ReactElement {
-  const [selected, setSelected] = useState(0);
+  const content = useContentSize();
+  // The viewer's actual mode (P12-128) — quiet measures identically to rich (only
+  // plain mode changes body wrapping; quiet just hides other actors' cosmetics), so
+  // `usePlainMode()` is the only mode this measurement needs to know.
+  const plain = usePlainMode();
   // Which `content_warning`-gated posts the viewer has revealed this session — never
   // persisted, never shared across posts (spec: a CW is click-to-reveal per post).
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
-  // Derived rather than clamped via an effect (react-hooks/set-state-in-effect,
-  // and the same "no synchronous setState-in-effect" pattern as `useActor`):
-  // in bounds even right after the list shrinks/grows, with nothing to write back.
-  const maxIndex = Math.max(posts.length - 1, 0);
-  const effectiveSelected = Math.min(selected, maxIndex);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
-  useInput(
-    (input, key) => {
-      if (posts.length === 0) return;
-      if (input === 'j' || key.downArrow) {
-        setSelected(Math.min(effectiveSelected + 1, maxIndex));
-        return;
+  const width = Math.max(10, content.columns - 4);
+  // Two rows of the list's own budget go to the position line and the loading line.
+  const budget = Math.max(3, content.rows - chromeRows - 2);
+
+  function toggle(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }
+
+  /** Every post key that acts on the selected row. Movement, paging and `Home`/`End`
+   * belong to `VirtualList`; this is only the timeline's own verbs. */
+  function handleKey(input: string, _key: unknown, post: Post | undefined): boolean {
+    if (post === undefined) return false;
+    if (input === 'v') {
+      if (post.contentWarning !== '' && !revealed.has(post.id)) {
+        setRevealed((current) => new Set(current).add(post.id));
+      } else {
+        setExpanded((current) => toggle(current, post.id));
       }
-      if (input === 'k' || key.upArrow) {
-        setSelected(Math.max(effectiveSelected - 1, 0));
-        return;
-      }
-      if (input === 'v') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined && post.contentWarning !== '') {
-          setRevealed((current) => {
-            const next = new Set(current);
-            if (next.has(post.id)) next.delete(post.id);
-            else next.add(post.id);
-            return next;
-          });
-        }
-        return;
-      }
-      if (key.return) {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenPost?.(post);
-        return;
-      }
-      if (input === 'p') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenAuthor?.(post);
-        return;
-      }
-      if (input === 'r') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onReply?.(post);
-        return;
-      }
-      if (input === 'l') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleLike?.(post);
-        return;
-      }
-      if (input === 'b') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleBookmark?.(post);
-        return;
-      }
-      if (input === '!') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onReport?.(post);
-        return;
-      }
-      if (input === 'o') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenMedia?.(post);
-      }
-    },
-    { isActive: isActive && posts.length > 0 },
-  );
+      return true;
+    }
+    const action: Record<string, ((target: Post) => void) | undefined> = {
+      p: onOpenAuthor,
+      r: onReply,
+      l: onToggleLike,
+      b: onToggleBookmark,
+      '!': onReport,
+      o: onOpenMedia,
+      f: onToggleFollow,
+      R: onToggleRepost,
+      Q: onQuote,
+      E: onEdit,
+      d: onDelete,
+      H: onHistory,
+      I: onTogglePin,
+    };
+    const handler = action[input];
+    if (handler === undefined) return false;
+    handler(post);
+    return true;
+  }
 
   if (posts.length === 0) {
     return (
       <Box>
-        <Text color={theme.muted}>{loading ? 'Loading…' : emptyMessage}</Text>
+        {loading ? <Loading label="Loading" /> : <Text color={theme.muted}>{emptyMessage}</Text>}
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column">
-      {posts.map((post, index) => (
-        <Box key={post.id} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
+    <Box flexDirection="column" height={budget + 2} overflow="hidden">
+      <VirtualList<Post>
+        items={posts}
+        keyOf={(post) => post.id}
+        width={width}
+        budget={budget}
+        isActive={isActive}
+        jump={jump}
+        indentOf={(post) => rowIndent?.(post) ?? 0}
+        positionSuffix={hasMore ? ` · ${loadMoreKeyHint} for more` : ' · — end of the timeline —'}
+        positionPrefix={
+          newCount > 0 ? (
+            <Text color={theme.ok} wrap="truncate-end">
+              ↑ {newCount} new {newCount === 1 ? 'post' : 'posts'}{' '}
+            </Text>
+          ) : null
+        }
+        measure={(post, rowWidth) =>
+          measurePostRowHeight(
+            decorate?.(post) ?? post,
+            rowWidth,
+            revealed.has(post.id),
+            expanded.has(post.id),
+            plain,
+          )
+        }
+        renderItem={(post, state) => (
           <PostRow
             post={decorate?.(post) ?? post}
-            selected={isActive && index === effectiveSelected}
+            selected={state.selected}
             revealed={revealed.has(post.id)}
+            expanded={expanded.has(post.id)}
+            width={Math.max(10, state.width)}
           />
-        </Box>
-      ))}
-      <Text color={theme.muted}>
-        {loading
-          ? 'Loading more…'
-          : hasMore
-            ? `${loadMoreKeyHint} for more`
-            : '— end of the timeline —'}
-      </Text>
+        )}
+        onKey={(input, key, post) => {
+          if (key.return) {
+            if (post !== undefined) onOpenPost?.(post);
+            return true;
+          }
+          return handleKey(input, key, post);
+        }}
+      />
+      {loading ? <Loading label="Loading more" /> : <Text> </Text>}
     </Box>
   );
 }

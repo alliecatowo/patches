@@ -3,8 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import {
   createAuthClient,
+  createModerationClient,
   createPostClient,
   type AuthGrpcClient,
+  type BlockActorRequest,
+  type BlockActorResponse,
   type CreatePostRequest,
   type CreatePostResponse,
   type DeletePostRequest,
@@ -13,7 +16,10 @@ import {
   type GetPostResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
+  type ModerationGrpcClient,
   type PostGrpcClient,
+  type SearchPostsRequest,
+  type SearchPostsResponse,
 } from '@patches/proto';
 import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
@@ -50,6 +56,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let server: TestServer;
     let auth: AuthGrpcClient;
     let posts: PostGrpcClient;
+    let moderation: ModerationGrpcClient;
     let inviterUserId: string;
     let alice: TestActor;
     let bob: TestActor;
@@ -64,6 +71,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       server = await startTestServer();
       auth = createAuthClient(server.url, grpcCredentials.createInsecure());
       posts = createPostClient(server.url, grpcCredentials.createInsecure());
+      moderation = createModerationClient(server.url, grpcCredentials.createInsecure());
 
       alice = await registerTestActor(auth, dataSource, inviterUserId);
       bob = await registerTestActor(auth, dataSource, inviterUserId);
@@ -72,6 +80,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     afterAll(async () => {
       auth.close();
       posts.close();
+      moderation.close();
       await server.close();
       await dataSource.destroy();
     });
@@ -344,6 +353,172 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { postId: rootId, cursor: '', limit: 10, maxDepth: 2 },
         );
         expect(new Set(deep.posts.map((post) => post.id))).toEqual(new Set([level1Id, level2Id]));
+      });
+    });
+
+    // ------------------------------------------------------------------ SearchPosts
+
+    describe('SearchPosts', () => {
+      it('matches on body text and excludes non-matching posts (§194)', async () => {
+        const needle = `xylophone${testSuffix()}`;
+        const matching = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `I bought a ${needle} today` }),
+          { accessToken: alice.accessToken },
+        );
+        await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `unrelated post ${testSuffix()}` }),
+          { accessToken: alice.accessToken },
+        );
+
+        const result = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+        );
+        expect(result.posts.map((post) => post.id)).toEqual([matching.post?.id]);
+      });
+
+      it('rejects an empty or whitespace-only query with INVALID_ARGUMENT', async () => {
+        const error = await expectRejection<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: '   ', cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+
+      it('excludes replies unless include_replies is set', async () => {
+        const needle = `marmalade${testSuffix()}`;
+        const root = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `${needle} root` }),
+          { accessToken: alice.accessToken },
+        );
+        const reply = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `${needle} reply`, inReplyToId: root.post?.id ?? '' }),
+          { accessToken: bob.accessToken },
+        );
+
+        const withoutReplies = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+        );
+        expect(withoutReplies.posts.map((post) => post.id)).toEqual([root.post?.id]);
+
+        const withReplies = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: true },
+        );
+        expect(new Set(withReplies.posts.map((post) => post.id))).toEqual(
+          new Set([root.post?.id, reply.post?.id]),
+        );
+      });
+
+      it('filters by author_handle', async () => {
+        const needle = `dandelion${testSuffix()}`;
+        const alicePost = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `${needle} from alice` }),
+          { accessToken: alice.accessToken },
+        );
+        await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `${needle} from bob` }),
+          { accessToken: bob.accessToken },
+        );
+
+        const result = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          {
+            query: needle,
+            cursor: '',
+            limit: 20,
+            authorHandle: alice.handle,
+            includeReplies: false,
+          },
+        );
+        expect(result.posts.map((post) => post.id)).toEqual([alicePost.post?.id]);
+      });
+
+      it('anonymous callers never see a FOLLOWERS-only match (§62)', async () => {
+        const needle = `elderberry${testSuffix()}`;
+        await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({
+            body: `${needle} followers-only`,
+            visibility: PostVisibility.POST_VISIBILITY_FOLLOWERS,
+          }),
+          { accessToken: alice.accessToken },
+        );
+
+        const anonymous = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+        );
+        expect(anonymous.posts).toHaveLength(0);
+      });
+
+      it("excludes a blocked-either-direction author's posts (§62)", async () => {
+        const needle = `foxglove${testSuffix()}`;
+        const carol = await registerTestActor(auth, dataSource, inviterUserId);
+
+        await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: `${needle} from carol` }),
+          { accessToken: carol.accessToken },
+        );
+
+        await callUnary<BlockActorRequest, BlockActorResponse>(
+          moderation.blockActor.bind(moderation),
+          { actorId: carol.actorId },
+          { accessToken: alice.accessToken },
+        );
+
+        const asAlice = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+          { accessToken: alice.accessToken },
+        );
+        expect(asAlice.posts).toHaveLength(0);
+
+        // Unauthenticated reads are unaffected by anyone's blocks.
+        const anonymous = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          { query: needle, cursor: '', limit: 20, authorHandle: '', includeReplies: false },
+        );
+        expect(anonymous.posts).toHaveLength(1);
+      });
+
+      it('keyset-paginates newest-first with no duplicates or gaps', async () => {
+        const needle = `honeysuckle${testSuffix()}`;
+        const ids: string[] = [];
+        for (let index = 0; index < 3; index += 1) {
+          const created = await callUnary<CreatePostRequest, CreatePostResponse>(
+            posts.createPost.bind(posts),
+            createPostRequest({ body: `${needle} number ${String(index)}` }),
+            { accessToken: alice.accessToken },
+          );
+          ids.push(created.post?.id ?? '');
+        }
+
+        const seen: string[] = [];
+        let cursor = '';
+        for (let guard = 0; guard < 10; guard += 1) {
+          const page = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+            posts.searchPosts.bind(posts),
+            { query: needle, cursor, limit: 1, authorHandle: '', includeReplies: false },
+          );
+          seen.push(...page.posts.map((post) => post.id));
+          if (!page.page?.hasMore) break;
+          cursor = page.page?.nextCursor ?? '';
+        }
+
+        expect(seen).toHaveLength(3);
+        expect(new Set(seen).size).toBe(3);
+        // Newest first: the most recently created id comes back first.
+        expect(seen[0]).toBe(ids[2]);
+        expect(seen.sort()).toEqual([...ids].sort());
       });
     });
   },

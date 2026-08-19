@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import {
   createAuthClient,
+  createFeedClient,
   createPostClient,
   createReactionClient,
   type AuthGrpcClient,
@@ -10,12 +11,21 @@ import {
   type BookmarkPostResponse,
   type CreatePostRequest,
   type CreatePostResponse,
+  type FeedGrpcClient,
+  type GetPostRequest,
+  type GetPostResponse,
+  type ListActorPostsRequest,
+  type ListActorPostsResponse,
   type ListBookmarksRequest,
   type ListBookmarksResponse,
+  type ListLocalFeedRequest,
+  type ListLocalFeedResponse,
   type ListPostLikersRequest,
   type ListPostLikersResponse,
   type LikePostRequest,
   type LikePostResponse,
+  type LoginRequest,
+  type LoginResponse,
   type PostGrpcClient,
   type ReactionGrpcClient,
   type UnbookmarkPostRequest,
@@ -59,6 +69,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let auth: AuthGrpcClient;
     let posts: PostGrpcClient;
     let reactions: ReactionGrpcClient;
+    let feeds: FeedGrpcClient;
     let inviterUserId: string;
     let alice: TestActor;
     let bob: TestActor;
@@ -74,6 +85,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       auth = createAuthClient(server.url, grpcCredentials.createInsecure());
       posts = createPostClient(server.url, grpcCredentials.createInsecure());
       reactions = createReactionClient(server.url, grpcCredentials.createInsecure());
+      feeds = createFeedClient(server.url, grpcCredentials.createInsecure());
 
       alice = await registerTestActor(auth, dataSource, inviterUserId);
       bob = await registerTestActor(auth, dataSource, inviterUserId);
@@ -83,6 +95,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       auth.close();
       posts.close();
       reactions.close();
+      feeds.close();
       await server.close();
       await dataSource.destroy();
     });
@@ -224,6 +237,58 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { postId, cursor: '', limit: 20 },
         );
         expect(likers.actors.map((actor) => actor.id)).toContain(bob.actorId);
+      });
+    });
+
+    describe('viewer_state.liked survives a fresh session', () => {
+      /** `registerTestActor` always mints `bob`/`alice` with this default password
+       * (`fixtures.ts#registerTestActor`'s own default), so logging back in as `bob` here
+       * needs no new fixture. */
+      const BOB_PASSWORD = 'a-perfectly-fine-password';
+
+      it('reports liked:true on GetPost/ListLocalFeed/ListActorPosts after a brand new login', async () => {
+        const postId = await createPost(alice, `liked-across-sessions ${testSuffix()}`);
+
+        await callUnary<LikePostRequest, LikePostResponse>(
+          reactions.likePost.bind(reactions),
+          { postId },
+          { accessToken: bob.accessToken },
+        );
+
+        // A brand new session: a fresh access token tied to a new session id, but the same
+        // actor — exactly what "log out, then log back in" produces client-side.
+        const { session: freshSession } = await callUnary<LoginRequest, LoginResponse>(
+          auth.login.bind(auth),
+          { emailOrHandle: bob.handle, password: BOB_PASSWORD },
+        );
+        const freshAccessToken = freshSession?.accessToken;
+        if (freshAccessToken === undefined) {
+          throw new Error('Login did not return a fresh session.');
+        }
+        expect(freshSession?.actor?.id).toBe(bob.actorId);
+
+        const gotPost = await callUnary<GetPostRequest, GetPostResponse>(
+          posts.getPost.bind(posts),
+          { id: postId },
+          { accessToken: freshAccessToken },
+        );
+        expect(gotPost.post?.viewerState?.liked).toBe(true);
+
+        const localFeed = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+          feeds.listLocalFeed.bind(feeds),
+          { cursor: '', limit: 20 },
+          { accessToken: freshAccessToken },
+        );
+        const inLocalFeed = localFeed.posts.find((post) => post.id === postId);
+        expect(inLocalFeed?.viewerState?.liked).toBe(true);
+
+        const actorPosts = await callUnary<ListActorPostsRequest, ListActorPostsResponse>(
+          feeds.listActorPosts.bind(feeds),
+          { actorId: alice.actorId, cursor: '', limit: 20 },
+          { accessToken: freshAccessToken },
+        );
+        const inActorPosts = actorPosts.posts.find((post) => post.id === postId);
+        expect(inActorPosts?.viewerState?.liked).toBe(true);
       });
     });
   },

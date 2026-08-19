@@ -1,21 +1,24 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { expectFrame, renderApp } from './harness.js';
+import { expectFrame, flush, renderApp } from './harness.js';
 
-describe('connect screen (B-015)', () => {
-  it('shows the server identity once GetServerInfo answers, then the status bar', async () => {
+describe('shell startup (B-015; owner feedback 2026-08-18)', () => {
+  it('opens straight onto the local timeline while signed out, connection state in the status bar', async () => {
     const { lastFrame, unmount } = renderApp();
 
-    const frame = await expectFrame(lastFrame, 'Connected to patches-test.');
-    expect(frame).toContain('0.1.0 (protocol v1)');
-    expect(frame).toContain('connected');
+    // No connect splash in the way of the content any more — the timeline is up
+    // immediately and the connection resolves into the status bar behind it.
+    const frame = await expectFrame(lastFrame, 'connected');
+    expect(frame).toContain('Local');
+    expect(frame).toContain('Reading as a guest — press L to log in');
+    expect(frame).toContain('patches.test:50051');
     // Not signed in yet — the status bar shows no `@handle`.
     expect(frame).not.toContain('· @');
     unmount();
   });
 
-  it('shows an offline message and recovers when R is pressed (spec §81)', async () => {
+  it('reports an unreachable node in the status bar and recovers when Ctrl+R is pressed', async () => {
     const getServerInfoImpl = vi
       .fn()
       .mockRejectedValueOnce(Object.assign(new Error('down'), { code: GrpcStatus.UNAVAILABLE }))
@@ -27,16 +30,26 @@ describe('connect screen (B-015)', () => {
         instanceName: 'patches-test',
         features: [],
       });
-    const { press, lastFrame, unmount } = renderApp({
-      fakeOptions: { getServerInfoImpl },
-    });
+    const { press, lastFrame, unmount } = renderApp({ fakeOptions: { getServerInfoImpl } });
 
-    const frame = await expectFrame(lastFrame, "Can't reach the Patches server");
-    expect(frame).toContain('offline');
+    await expectFrame(lastFrame, 'offline');
+    await flush();
 
-    press('R');
+    press('\u0012');
 
-    await expectFrame(lastFrame, 'Connected to patches-test.');
+    await expectFrame(lastFrame, 'connected');
+    unmount();
+  });
+
+  it('shows the full server identity on the help screen (where the connect splash went)', async () => {
+    const { press, lastFrame, unmount } = renderApp();
+    await expectFrame(lastFrame, 'Local');
+    await flush();
+
+    press('?');
+
+    const frame = await expectFrame(lastFrame, 'patches-test');
+    expect(frame).toContain('protocol v1');
     unmount();
   });
 });

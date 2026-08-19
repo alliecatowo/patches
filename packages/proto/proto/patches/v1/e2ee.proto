@@ -1,0 +1,872 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/common.proto";
+
+// End-to-end encrypted direct messages (spec §183, §194, §195.1; ADR 0020).
+//
+// **Status: schema-only.** No `apps/server` controller implements any RPC below. A node that
+// loads this schema answers every method with `UNIMPLEMENTED` until ADR 0020 §11's staged
+// delivery reaches "node protocol behind a disabled capability". Publishing the schema is not
+// the capability; `GetE2eeCapability` is, and it reports `DISABLED` on the reference node.
+//
+// The whole point of this service is a boundary, so it is stated once here and re-stated as an
+// invariant on every message below:
+//
+//   * The node routes, authorizes, rate-limits, and retains **opaque bytes**. It never receives
+//     an E2EE message body, a message key, ratchet state, a device private key, or a recovery
+//     key. `E2eeReportEvidenceItem.disclosed_plaintext` is the single, deliberate exception in
+//     this entire schema — plaintext a reporter explicitly selected and submitted (ADR 0020 §9).
+//   * `E2EE_V1` and `LEGACY_SERVER_VISIBLE` are immutable conversation modes fixed at creation.
+//     There is no RPC here that converts one into the other, and there will never be one: the
+//     node has already read a legacy conversation, and re-encrypting that history would be a
+//     false claim (ADR 0020 §11).
+//   * An E2EE send never falls back to plaintext or to a server-held key. When a device, a
+//     prekey, or the capability is unavailable, the send **fails** (ADR 0020 §1.2).
+//   * Only an `E2EE_V1` conversation may be described to a user as encrypted or end-to-end.
+//     Spec §194 forbids that word for every other conversation, absolutely and without a
+//     "mostly"/"soon" qualifier (see `docs/architecture/e2ee.md` §8 for the required copy).
+//   * Nothing here crosses `FederationGateway`. ADR 0020 §13 authorizes local-node E2EE only.
+//
+// Pagination is keyset-only (spec §153). Every list RPC takes an opaque cursor and returns
+// `PageInfo`; no RPC in this file has an offset, a page number, a sort, or an order parameter.
+service E2eeService {
+  // What this node supports and whether it is switched on. Callable before enrollment, because
+  // a client must be able to discover that E2EE is unavailable *before* it offers the option.
+  rpc GetE2eeCapability(GetE2eeCapabilityRequest) returns (GetE2eeCapabilityResponse);
+
+  // Publishes the caller's messaging identity root, or rotates it to a new generation. A
+  // rotation is a hard identity change for every contact (ADR 0020 §3) — the node stores and
+  // serves it, and never certifies it.
+  rpc PublishIdentityRoot(PublishIdentityRootRequest) returns (PublishIdentityRootResponse);
+
+  // The current messaging root of any actor the caller may message. This is first-contact
+  // material, not proof: the node could substitute it, which is exactly what safety-number
+  // comparison over an authenticated channel exists to detect (ADR 0020 §3).
+  rpc GetIdentityRoot(GetIdentityRootRequest) returns (GetIdentityRootResponse);
+
+  // Registers one root-certified device and, in the same transaction, the roster that lists it
+  // and its initial prekeys. Atomic on purpose: a device that peers can find but cannot start a
+  // session with, or a device with prekeys but no roster entry, is a half-enrolled device.
+  rpc EnrollDevice(EnrollDeviceRequest) returns (EnrollDeviceResponse);
+
+  // Revokes a device and publishes the roster that excludes it. The node deletes the device's
+  // unused public prekeys and stops delivering to it. Revocation cannot retract keys or
+  // plaintext the device already holds, and it is never a remote wipe (ADR 0020 §10).
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+
+  // Appends the next roster to the caller's append-only roster log. Rejected unless it is
+  // exactly `current.sequence + 1` and chains to the current digest.
+  rpc PublishDeviceRoster(PublishDeviceRosterRequest) returns (PublishDeviceRosterResponse);
+
+  // The newest roster of an actor, with the device certificates it references.
+  rpc GetDeviceRoster(GetDeviceRosterRequest) returns (GetDeviceRosterResponse);
+
+  // The roster log from the caller's last verified sequence forward, so a client can verify the
+  // hash chain itself instead of trusting the node's newest-roster claim. This is what makes a
+  // node rollback or a split view detectable to communicating devices (ADR 0020 §2).
+  rpc ListDeviceRosters(ListDeviceRostersRequest) returns (ListDeviceRostersResponse);
+
+  // Rotates the calling device's signed prekey and/or tops up its one-time prekeys.
+  rpc UploadPrekeys(UploadPrekeysRequest) returns (UploadPrekeysResponse);
+
+  // The calling device's own prekey inventory, so it knows when to replenish or rotate. Never
+  // another actor's: remaining-prekey counts for someone else are an availability oracle.
+  rpc GetPrekeyInventory(GetPrekeyInventoryRequest) returns (GetPrekeyInventoryResponse);
+
+  // Claims one bundle per active recipient device for X3DH-class setup. Atomically removes at
+  // most one one-time prekey per device per call, and rate-limits draining (ADR 0020 §5).
+  rpc ClaimPrekeyBundles(ClaimPrekeyBundlesRequest) returns (ClaimPrekeyBundlesResponse);
+
+  // Creates an `E2EE_V1` conversation together with its first logical message. Separate from
+  // `DirectMessageService.CreateConversation` because that RPC takes an `initial_body` string:
+  // there is no plaintext body to give it here, and adding an "empty body means encrypted" mode
+  // to it would put the two security modes behind one ambiguous call.
+  rpc CreateE2eeConversation(CreateE2eeConversationRequest) returns (CreateE2eeConversationResponse);
+
+  // Everything a sender needs to build a correct fanout: the membership epoch, the members, and
+  // each member's current roster and active devices.
+  rpc GetE2eeConversationState(GetE2eeConversationStateRequest) returns (GetE2eeConversationStateResponse);
+
+  // Accepts one logical message as one bounded, all-or-nothing per-device fanout, and returns
+  // the node's franking tag over it (ADR 0020 §7, §9).
+  rpc SendEnvelopes(SendEnvelopesRequest) returns (SendEnvelopesResponse);
+
+  // The calling device's mailbox, oldest first, keyset-paginated. Poll-based like every other
+  // Patches delivery path (spec §183.3) — there is no push and no stream.
+  rpc ListMailboxEnvelopes(ListMailboxEnvelopesRequest) returns (ListMailboxEnvelopesResponse);
+
+  // Acknowledges envelopes the calling device has durably committed. An acknowledgement lets
+  // the node clean the mailbox; it is never surfaced to the sender as a read receipt, which
+  // spec §183.3 and §194 both prohibit.
+  rpc AcknowledgeEnvelopes(AcknowledgeEnvelopesRequest) returns (AcknowledgeEnvelopesResponse);
+
+  // Attaches reporter-disclosed evidence to a report created by `ModerationService.CreateReport`.
+  // The node verifies the franking commitment and its own tag. It never decrypts anything.
+  rpc AttachReportEvidence(AttachReportEvidenceRequest) returns (AttachReportEvidenceResponse);
+}
+
+// Which security mode a conversation was created in. Immutable for the life of the row: there
+// is no transition RPC, and a server that changed this value would be relabelling history.
+//
+// The names match the persisted `conversations.security_mode` check constraint
+// (`packages/database/src/entities/enums.ts`) exactly, so no translation layer can drift.
+enum ConversationSecurityMode {
+  CONVERSATION_SECURITY_MODE_UNSPECIFIED = 0;
+
+  // Spec §183.1 / ADR 0017. The node stores and can read these bodies. A client MUST say so on
+  // the screen where the messages are read, and MUST NOT call them encrypted, end-to-end,
+  // secure, or private (spec §194).
+  CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE = 1;
+
+  // ADR 0020. The node routes ciphertext it cannot read. This is the only value for which a
+  // client may use the words "end-to-end encrypted".
+  CONVERSATION_SECURITY_MODE_E2EE_V1 = 2;
+}
+
+// The node operator's rollout position in ADR 0020 §11. Mirrors
+// `packages/domain/src/e2ee/modes.ts`'s `E2EE_CAPABILITY_STATES`.
+//
+// This is a protocol capability, never a payment or a social gate: spec §194 forbids
+// capability-gating a *function*, and DMs are a function. A node that disables E2EE_V1 still
+// offers legacy DMs to everyone.
+enum E2eeCapabilityState {
+  E2EE_CAPABILITY_STATE_UNSPECIFIED = 0;
+
+  // The reference node's value today, and the only correct value before ADR 0020 §12's gates.
+  E2EE_CAPABILITY_STATE_DISABLED = 1;
+
+  // Valid only on an explicitly isolated test node.
+  E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY = 2;
+
+  // Implementation complete, independent review not yet finished. Still not a product.
+  E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING = 3;
+
+  // Post-review, bounded canary, explicitly labelled experimental, with no automatic downgrade.
+  E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY = 4;
+
+  // Post-canary. New conversations between capable members default to `E2EE_V1`; existing
+  // conversations stay visibly legacy (ADR 0020 §11.7).
+  E2EE_CAPABILITY_STATE_ENABLED = 5;
+}
+
+// Lifecycle of a device certificate as the node observes it. The node reports this state; it
+// never decides it. `REVOKED` and `EXPIRED` follow from a root-signed roster and from the
+// certificate's own `expires_at`, both of which a client verifies for itself.
+enum E2eeDeviceStatus {
+  E2EE_DEVICE_STATUS_UNSPECIFIED = 0;
+  E2EE_DEVICE_STATUS_ACTIVE = 1;
+  E2EE_DEVICE_STATUS_REVOKED = 2;
+  E2EE_DEVICE_STATUS_EXPIRED = 3;
+}
+
+// Outcome of the node's verification of reporter-disclosed evidence. Mirrors
+// `e2ee_report_evidence.verification_status`.
+enum E2eeEvidenceVerificationStatus {
+  E2EE_EVIDENCE_VERIFICATION_STATUS_UNSPECIFIED = 0;
+  E2EE_EVIDENCE_VERIFICATION_STATUS_PENDING = 1;
+  E2EE_EVIDENCE_VERIFICATION_STATUS_VERIFIED = 2;
+
+  // Verification failed. The report is **not** discarded — it is queued with the content marked
+  // unverifiable (ADR 0020 §9). A failed franking check is not a finding of innocence.
+  E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE = 3;
+}
+
+// What this node supports, and the protocol constants a client must agree with before it can
+// interoperate. Every numeric field here is a *published copy* of a protocol constant, not a
+// knob: a client that disagrees with any of them refuses to speak `E2EE_V1` rather than
+// adopting the node's value. A remote node must not be able to widen a client's DoS bounds.
+message E2eeCapability {
+  E2eeCapabilityState state = 1;
+
+  // Protocol version identifiers this node will accept, e.g. `patches-e2ee-v1`. A client picks
+  // the highest it also implements, or declines. Empty means the node speaks no E2EE protocol.
+  repeated string supported_protocol_versions = 2;
+
+  // ADR 0020 §2: 8. Bounds the 8-member × 8-device fanout at 64 device envelopes.
+  uint32 max_active_devices_per_actor = 3;
+
+  // Spec §183.3: 8, including the creator. Identical to the legacy DM bound on purpose.
+  uint32 max_group_members = 4;
+
+  // ADR 0020 §5: inventory target 100, replenish at 20.
+  uint32 one_time_prekey_target = 5;
+  uint32 one_time_prekey_replenish_threshold = 6;
+
+  // ADR 0020 §5: signed prekeys rotate every 7 days; the previous signed-prekey private key is
+  // retained only for `mailbox_max_latency_seconds` (30 days) and then deleted.
+  uint32 signed_prekey_rotation_seconds = 7;
+  uint32 mailbox_max_latency_seconds = 8;
+
+  // Hard byte ceiling for `E2eeDeviceEnvelope.ciphertext`. Padding buckets live below it.
+  uint32 max_envelope_bytes = 9;
+
+  // ADR 0020 §9 / spec §183.4: at most 10 reporter-selected surrounding messages, so at most 11
+  // evidence items including the reported message itself.
+  uint32 max_report_context_messages = 10;
+
+  // Franking construction identifier this node's tags use, e.g. `patches-franking-v1`. Versioned
+  // because ADR 0020 §9 defers the exact committing-AE construction to independent review; a
+  // client records the profile it was given rather than assuming one.
+  string franking_profile = 11;
+
+  // Classical X3DH/Double Ratchet makes **no** post-quantum claim (ADR 0020 §5). Present so a
+  // future PQXDH profile is a negotiated version bump, not a reinterpretation of old bytes.
+  bool post_quantum = 12;
+}
+
+// An actor's messaging identity root: a long-lived Ed25519 signing key that is separate from
+// every login credential, and the stable input to that actor's safety number (ADR 0020 §2).
+//
+// Invariant: `generation` increases strictly and never repeats. A new generation is a hard
+// identity change — new sends pause until the user acknowledges it and verified contacts must
+// re-verify, whether or not `previous_root_signature` is present (ADR 0020 §3).
+message E2eeIdentityRoot {
+  string actor_id = 1;
+
+  uint32 generation = 2;
+
+  // Ed25519 public key, 32 bytes. The private key is never sent to the node, in any RPC, ever.
+  bytes public_key = 3;
+
+  // The canonical transcript the signatures below cover. A verifier checks signatures over
+  // *these bytes* and then checks that the decoded fields equal the convenience fields above —
+  // it never trusts the node's decoding.
+  bytes root_bytes = 4;
+
+  // The new root signing its own transcript: proof of possession, so the node cannot publish a
+  // root for an actor who does not hold the private key.
+  bytes self_signature = 5;
+
+  // Present only when the *previous* root signed the transition. It lets a client distinguish a
+  // planned rotation from an unverified reset in the UI. Both remain visible security events;
+  // neither is silently trusted (ADR 0020 §3).
+  bytes previous_root_signature = 6;
+
+  google.protobuf.Timestamp created_at = 7;
+
+  // Set once superseded by a later generation.
+  google.protobuf.Timestamp rotated_at = 8;
+}
+
+// A root-signed certificate binding one installation's two public keys to one actor and device
+// id (ADR 0020 §2). This is what closes the spike's critical gap: an Ed25519 identity and an
+// X25519 identity that are not bound to each other let an attacker name someone else's identity
+// while supplying its own agreement key (`docs/research/e2ee-dms.md` §4.1).
+//
+// Invariant: `certificate_bytes` is the only authoritative content. Every other field is a
+// decoded convenience view supplied by the node. A verifier MUST verify `root_signature` over
+// `certificate_bytes` with strict RFC 8032 semantics (noble's default ZIP-215 mode is not
+// acceptable for protocol signatures) and MUST reject the certificate if any decoded field
+// disagrees with the transcript.
+message E2eeDeviceCertificate {
+  string actor_id = 1;
+
+  // Random and stable per installation. Not derived from hardware, an account id, or a key.
+  string device_id = 2;
+
+  // Which `E2eeIdentityRoot.generation` signed this certificate. A certificate never survives a
+  // root rotation: recovery creates a fresh certificate (ADR 0020 §10).
+  uint32 root_generation = 3;
+
+  // Certificate format version, so a later format is a negotiated change rather than a
+  // reinterpretation of the same bytes.
+  uint32 certificate_version = 4;
+
+  // Ed25519. Signs this device's prekey bundles and control records.
+  bytes signing_public_key = 5;
+
+  // X25519. Used for X3DH and authenticated device-to-device sessions.
+  bytes agreement_public_key = 6;
+
+  // Protocol versions this specific device implements. Capability negotiation is per device,
+  // not per actor: one un-upgraded device must not silently downgrade a conversation, it must
+  // fail the send (ADR 0020 §1.2).
+  repeated string supported_protocol_versions = 7;
+
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+
+  // The exact canonical bytes `root_signature` covers.
+  bytes certificate_bytes = 10;
+
+  // Ed25519 signature by the messaging root over `certificate_bytes`.
+  bytes root_signature = 11;
+
+  // Digest of `certificate_bytes`, referenced by roster entries and prekey bundles so a bundle
+  // cannot be reattached to a different certificate.
+  bytes certificate_digest = 12;
+
+  E2eeDeviceStatus status = 13;
+
+  // Set when a root-signed roster removed this device.
+  google.protobuf.Timestamp revoked_at = 14;
+}
+
+// One device's entry in a roster. Append-only in the sense that follows: a device is never
+// silently dropped from a roster, it is marked inactive with a `revoked_at`, so a peer that
+// compares two rosters sees a removal rather than an absence.
+message E2eeRosterEntry {
+  string device_id = 1;
+
+  // Binds the entry to an exact certificate. A roster that named only a device id could be
+  // satisfied by a substituted certificate.
+  bytes certificate_digest = 2;
+
+  bool active = 3;
+
+  google.protobuf.Timestamp added_at = 4;
+  google.protobuf.Timestamp revoked_at = 5;
+}
+
+// A monotonically versioned, root-signed list of an actor's devices (ADR 0020 §2).
+//
+// Invariants, all of which the node enforces on write and every client re-verifies on read:
+//   * `sequence` starts at 1 and increases by exactly 1. Gaps and reuse are rejected.
+//   * `previous_digest` equals the immediately preceding roster's `digest`, forming a hash
+//     chain. This is what makes a rollback or a split view detectable rather than plausible.
+//   * `root_signature` covers `roster_bytes`, which is the authoritative content; `entries`,
+//     `sequence`, and `previous_digest` are a decoded view and are re-derived by the verifier.
+//   * At most `E2eeCapability.max_active_devices_per_actor` entries have `active = true`.
+//
+// A correctly certified device addition or revocation is a **visible security event** but does
+// not change the actor's safety number — the safety number is over messaging roots (ADR 0020 §3).
+message E2eeDeviceRoster {
+  string actor_id = 1;
+
+  uint64 sequence = 2;
+
+  // Which root generation signed this roster.
+  uint32 root_generation = 3;
+
+  // All-zero (32 bytes) for `sequence = 1`.
+  bytes previous_digest = 4;
+
+  bytes digest = 5;
+
+  // The exact canonical bytes `root_signature` covers.
+  bytes roster_bytes = 6;
+
+  bytes root_signature = 7;
+
+  // Decoded view of `roster_bytes`. Never trusted on its own.
+  repeated E2eeRosterEntry entries = 8;
+
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// A device's current signed prekey (ADR 0020 §5). Rotated every 7 days; the previous private
+// key is kept only long enough to open delayed initial messages, then deleted.
+//
+// Invariant: `signature` is by the device's `signing_public_key` over the whole canonical bundle
+// transcript — certificate digest, agreement key, ids, versions, creation, and expiry — not over
+// the prekey alone. Signing only the prekey is what let the spike's identity go unauthenticated.
+message E2eeSignedPrekey {
+  uint64 key_id = 1;
+
+  // X25519 public key, 32 bytes.
+  bytes public_key = 2;
+
+  bytes signature = 3;
+
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// One unused one-time X25519 prekey. Public halves only; the node holds no private key material
+// for any device, at any point in this protocol.
+message E2eeOneTimePrekey {
+  uint64 key_id = 1;
+  bytes public_key = 2;
+}
+
+// Everything needed to open a session with one device asynchronously (ADR 0020 §5).
+//
+// Invariant: `one_time_prekey` may legitimately be absent when a device's inventory is drained,
+// and X3DH permits that fallback — but the initiator MUST record `one_time_prekey_exhausted` in
+// its local session record. The node must never be able to make a client claim one-time-prekey
+// forward secrecy it did not actually receive.
+message E2eePrekeyBundle {
+  string actor_id = 1;
+  string device_id = 2;
+
+  // The root generation and public key in force for this actor, so the initiator can verify the
+  // certificate chain without a second round trip.
+  uint32 root_generation = 3;
+  bytes root_public_key = 4;
+
+  E2eeDeviceCertificate device_certificate = 5;
+  E2eeSignedPrekey signed_prekey = 6;
+
+  // Absent when exhausted. Consumed atomically by `ClaimPrekeyBundles`; the node never returns
+  // the same one-time prekey twice.
+  E2eeOneTimePrekey one_time_prekey = 7;
+
+  bool one_time_prekey_exhausted = 8;
+
+  // The roster this bundle was served under, so the initiator can bind the session to a roster
+  // state and detect a later rollback.
+  uint64 roster_sequence = 9;
+  bytes roster_digest = 10;
+
+  // The canonical transcript `device_signature` covers.
+  bytes bundle_bytes = 11;
+  bytes device_signature = 12;
+}
+
+// One sealed payload for exactly one recipient device (ADR 0020 §6, §8).
+//
+// Invariant — this is the message the whole boundary rests on. Every `bytes` field here is
+// opaque to the node: it stores them, digests them, and hands them back. It cannot parse them,
+// and no code path may try.
+//
+// Deliberately absent, and not an oversight:
+//   * **No ratchet public key, message number, or previous-chain length.** Revision 4 header
+//     encryption puts them inside `encrypted_header` precisely so the node does not learn chain
+//     boundaries after setup (ADR 0020 §6). A plaintext counter field would hand back exactly
+//     what header encryption is for.
+//   * **No session id.** A device-pair session identifier is a client concept carried inside
+//     `encrypted_header`; the node deduplicates on `(logical_message_id, recipient_device_id)`
+//     and orders by arrival, so it needs no session key of its own. A session id derived from
+//     root or session key material must never be created, and never logged
+//     (`docs/research/e2ee-dms.md` §6).
+//   * **No plaintext length.** The true body length lives in the inner authenticated plaintext;
+//     the wire length reveals only the padding bucket.
+message E2eeDeviceEnvelope {
+  string recipient_actor_id = 1;
+  string recipient_device_id = 2;
+
+  // For an initial (X3DH) message this carries the setup header, whose recipient-readable parts
+  // identify which signed/one-time prekey was used; for a subsequent message it is the
+  // header-encrypted Double Ratchet header. Both are one versioned opaque blob to the node, and
+  // the layout is defined by `@patches/crypto`, not here.
+  bytes encrypted_header = 3;
+
+  // XChaCha20-Poly1305 ciphertext of the padded logical plaintext. Never a body, never a key.
+  bytes ciphertext = 4;
+
+  // The franking opening, encrypted to this device. Each recipient can therefore open the
+  // commitment and report; the node cannot (ADR 0020 §9).
+  bytes opening_ciphertext = 5;
+
+  // Digest of `ciphertext`, bound into the fanout digest and the node's franking tag so a stored
+  // envelope cannot be swapped after acceptance.
+  bytes ciphertext_digest = 6;
+}
+
+// One logical message, fanned out to every recipient device (ADR 0020 §7).
+//
+// Invariant: the fanout is atomic and complete. The node recomputes `fanout_digest` over the
+// ordered `(recipient_device_id, ciphertext_digest)` pairs and rejects the send if it disagrees,
+// or if `device_envelopes` does not cover exactly the currently active devices of every current
+// member — including the sender's own other devices, so sent history reaches them. A node that
+// could silently drop one certified active device could silently exclude a participant.
+message E2eeLogicalMessage {
+  // Monotone membership epoch this message was composed under. A membership change bumps it; a
+  // message composed under a stale epoch is rejected rather than delivered to a departed member.
+  uint64 membership_epoch = 1;
+
+  // The sender's hidden commitment to the logical plaintext, identical across every device
+  // envelope. The node stores it and binds it into its tag; it cannot open it.
+  bytes franking_commitment = 2;
+
+  // Which franking construction produced `franking_commitment`. Rejected if it is not one of
+  // `E2eeCapability.franking_profile`.
+  string franking_profile = 3;
+
+  bytes fanout_digest = 4;
+
+  // At most `max_group_members × max_active_devices_per_actor` (64) entries.
+  repeated E2eeDeviceEnvelope device_envelopes = 5;
+}
+
+// The node's versioned symmetric tag over an accepted logical message (ADR 0020 §9).
+//
+// Invariant, and it must be stated in the moderator UI: this tag is symmetric and node-keyed.
+// It proves to *this node* that it accepted this content under this metadata. It is not
+// transferable proof to a third party, and it is deliberately forgeable by the node — that is
+// what preserves the sender's deniability that a public per-message signature would destroy.
+message E2eeFrankingTag {
+  string profile = 1;
+
+  // Franking key rotation era. Evidence from an older era stays verifiable against the retained
+  // key for that era; an unknown era makes evidence unverifiable, never discarded.
+  uint32 key_era = 2;
+
+  bytes tag = 3;
+
+  // Digest of the canonical transcript the tag covers: node/franking era, protocol, conversation
+  // and epoch, logical message ids, sender actor/device, recipient fanout digest, accepted-at,
+  // commitment, and every ciphertext digest.
+  bytes transcript_digest = 4;
+}
+
+// One envelope as delivered to its recipient device. Every field maps 1:1 onto a column the
+// node already stores (`e2ee_mailbox_envelopes` joined to `e2ee_logical_messages`, P13-002) —
+// there is no metadata here that the node did not already need for routing and moderation.
+message E2eeMailboxEnvelope {
+  string envelope_id = 1;
+  string logical_message_id = 2;
+  string conversation_id = 3;
+  uint64 membership_epoch = 4;
+
+  string sender_actor_id = 5;
+  string sender_device_id = 6;
+  string recipient_device_id = 7;
+
+  bytes encrypted_header = 8;
+  bytes ciphertext = 9;
+  bytes opening_ciphertext = 10;
+  bytes ciphertext_digest = 11;
+
+  bytes franking_commitment = 12;
+  E2eeFrankingTag franking_tag = 13;
+  bytes fanout_digest = 14;
+
+  // When the node accepted the logical message, and when this envelope landed in this mailbox.
+  google.protobuf.Timestamp accepted_at = 15;
+  google.protobuf.Timestamp received_at = 16;
+}
+
+message GetE2eeCapabilityRequest {}
+
+message GetE2eeCapabilityResponse {
+  E2eeCapability capability = 1;
+}
+
+// Invariant: a rotation (generation > 1) MUST carry the roster the new root signs, so an actor
+// never has a live root with an unsigned device list.
+message PublishIdentityRootRequest {
+  E2eeIdentityRoot identity_root = 1;
+
+  // Required when `identity_root.generation > 1`.
+  E2eeDeviceRoster roster = 2;
+}
+
+message PublishIdentityRootResponse {
+  E2eeIdentityRoot identity_root = 1;
+  E2eeDeviceRoster roster = 2;
+}
+
+message GetIdentityRootRequest {
+  string actor_id = 1;
+}
+
+message GetIdentityRootResponse {
+  E2eeIdentityRoot identity_root = 1;
+
+  // True when this actor's root generation is higher than the one the caller last acknowledged.
+  // The client blocks new sends and shows the hard identity-change warning; it never resolves
+  // this silently (ADR 0020 §3).
+  bool identity_changed_since_acknowledged = 2;
+}
+
+message EnrollDeviceRequest {
+  E2eeDeviceCertificate certificate = 1;
+
+  // The next roster, including the new device, signed by the root.
+  E2eeDeviceRoster roster = 2;
+
+  E2eeSignedPrekey signed_prekey = 3;
+
+  // Initial inventory, up to `E2eeCapability.one_time_prekey_target`.
+  repeated E2eeOneTimePrekey one_time_prekeys = 4;
+
+  // Canonical transcript and device signature covering the certificate digest, agreement key,
+  // signed prekey, ids, protocol/KDF versions, creation, and expiry.
+  bytes prekey_bundle_bytes = 5;
+  bytes prekey_bundle_signature = 6;
+}
+
+message EnrollDeviceResponse {
+  E2eeDeviceCertificate certificate = 1;
+  E2eeDeviceRoster roster = 2;
+}
+
+message RevokeDeviceRequest {
+  string device_id = 1;
+
+  // The next roster, with this device marked inactive, signed by the root.
+  E2eeDeviceRoster roster = 2;
+}
+
+message RevokeDeviceResponse {
+  E2eeDeviceRoster roster = 1;
+
+  // Unused public one-time prekeys the node destroyed for the revoked device. Reported so a
+  // client can state what revocation did — and, by omission, what it did not do: it cannot
+  // erase keys or plaintext the device already obtained, and it is not a remote wipe.
+  uint32 deleted_one_time_prekey_count = 2;
+}
+
+message PublishDeviceRosterRequest {
+  E2eeDeviceRoster roster = 1;
+}
+
+message PublishDeviceRosterResponse {
+  E2eeDeviceRoster roster = 1;
+}
+
+message GetDeviceRosterRequest {
+  string actor_id = 1;
+}
+
+message GetDeviceRosterResponse {
+  E2eeDeviceRoster roster = 1;
+
+  // The certificates referenced by the roster's entries, so a client can verify the chain
+  // root → certificate → prekey bundle without another round trip.
+  repeated E2eeDeviceCertificate certificates = 2;
+}
+
+// Keyset pagination (spec §153). Unlike the repo's newest-first list convention, this log is
+// returned **oldest first** by `sequence`: a hash chain can only be verified forwards from the
+// last sequence the caller already trusts.
+message ListDeviceRostersRequest {
+  string actor_id = 1;
+
+  // Keyset start: the highest sequence this caller has already verified. 0 replays from 1.
+  uint64 after_sequence = 2;
+
+  // Opaque continuation cursor from a previous response. Never an offset or a page number.
+  string cursor = 3;
+
+  uint32 limit = 4;
+}
+
+message ListDeviceRostersResponse {
+  repeated E2eeDeviceRoster rosters = 1;
+  PageInfo page = 2;
+}
+
+message UploadPrekeysRequest {
+  string device_id = 1;
+
+  // Present on rotation. Rejected if it does not advance the device's signed prekey.
+  E2eeSignedPrekey signed_prekey = 2;
+
+  // Top-up. The node caps the stored total at `E2eeCapability.one_time_prekey_target`.
+  repeated E2eeOneTimePrekey one_time_prekeys = 3;
+
+  bytes prekey_bundle_bytes = 4;
+  bytes prekey_bundle_signature = 5;
+}
+
+message UploadPrekeysResponse {
+  uint32 one_time_prekey_count = 1;
+  E2eeSignedPrekey signed_prekey = 2;
+}
+
+message GetPrekeyInventoryRequest {
+  // Must be a device belonging to the calling actor. Another actor's remaining count is an
+  // availability oracle and is never served.
+  string device_id = 1;
+}
+
+message GetPrekeyInventoryResponse {
+  uint32 one_time_prekey_count = 1;
+  uint32 one_time_prekey_target = 2;
+  uint32 replenish_threshold = 3;
+
+  // True when the count has reached zero, so peers are receiving fallback bundles. Surfaced,
+  // not hidden: forced depletion is an attack the client should be able to notice.
+  bool one_time_prekeys_exhausted = 4;
+
+  E2eeSignedPrekey signed_prekey = 5;
+  bool signed_prekey_rotation_due = 6;
+}
+
+// Invariant: authorization is checked against the conversation, and a failure is generic. A
+// caller must not be able to tell "blocked me" from "no such actor" from "no capable device"
+// (spec §62, §183.4 — no block oracle).
+message ClaimPrekeyBundlesRequest {
+  // Empty when opening a new conversation; the node then authorizes against §183.2's
+  // mutual-follow / accepted-request rules instead.
+  string conversation_id = 1;
+
+  repeated string actor_ids = 2;
+
+  // Optional narrowing, for retrying a single device rather than re-draining every device's
+  // inventory (ADR 0020 §5's drain rate limits).
+  repeated string device_ids = 3;
+}
+
+message ClaimPrekeyBundlesResponse {
+  repeated E2eePrekeyBundle bundles = 1;
+
+  // The roster each bundle was served under, so the caller can verify the served device set is
+  // exactly the signed active set.
+  repeated E2eeDeviceRoster rosters = 2;
+}
+
+message CreateE2eeConversationRequest {
+  // Idempotency key (spec §45). Retrying must not create a second conversation.
+  string client_request_id = 1;
+
+  // Excludes the caller. 1 recipient makes a direct conversation, 2–7 a group (8 members
+  // including the caller, spec §183.3).
+  repeated string recipient_actor_ids = 2;
+
+  string sender_device_id = 3;
+
+  // The first logical message, already fanned out. There is no plaintext `initial_body`
+  // counterpart to `CreateConversationRequest` here, and there must never be one.
+  E2eeLogicalMessage message = 4;
+}
+
+message CreateE2eeConversationResponse {
+  string conversation_id = 1;
+
+  // Always `CONVERSATION_SECURITY_MODE_E2EE_V1`. Echoed so a client can assert the mode it got
+  // rather than the mode it asked for before it renders any encryption wording.
+  ConversationSecurityMode security_mode = 2;
+
+  string logical_message_id = 3;
+  google.protobuf.Timestamp accepted_at = 4;
+  E2eeFrankingTag franking_tag = 5;
+}
+
+message GetE2eeConversationStateRequest {
+  string conversation_id = 1;
+}
+
+// One member's current device state, as the sender needs it to build a fanout.
+message E2eeConversationMemberState {
+  string actor_id = 1;
+
+  uint32 root_generation = 2;
+  bytes root_public_key = 3;
+
+  uint64 roster_sequence = 4;
+  bytes roster_digest = 5;
+
+  // Active device ids only. A revoked or expired device is absent, and the sender must not
+  // encrypt to it.
+  repeated string active_device_ids = 6;
+
+  // False when any active device lacks a shared protocol version. The send fails; it never
+  // downgrades (ADR 0020 §1.2).
+  bool supports_e2ee_v1 = 7;
+}
+
+message GetE2eeConversationStateResponse {
+  string conversation_id = 1;
+  ConversationSecurityMode security_mode = 2;
+  uint64 membership_epoch = 3;
+  repeated E2eeConversationMemberState members = 4;
+}
+
+message SendEnvelopesRequest {
+  string conversation_id = 1;
+
+  // Idempotency key (spec §45), unique per sender. A retry returns the original acceptance and
+  // its original franking tag rather than re-franking the same content under a new transcript.
+  string client_request_id = 2;
+
+  string sender_device_id = 3;
+
+  E2eeLogicalMessage message = 4;
+}
+
+message SendEnvelopesResponse {
+  string logical_message_id = 1;
+  google.protobuf.Timestamp accepted_at = 2;
+
+  // Issued only after the complete fanout was accepted.
+  E2eeFrankingTag franking_tag = 3;
+
+  // Echoed so the sender can assert the node stored the fanout it sent.
+  bytes fanout_digest = 4;
+  repeated string accepted_recipient_device_ids = 5;
+}
+
+message ListMailboxEnvelopesRequest {
+  // Must belong to the calling actor.
+  string device_id = 1;
+
+  // Opaque keyset cursor over `(received_at, id)` ascending. Never an offset (spec §153).
+  string cursor = 2;
+
+  uint32 limit = 3;
+}
+
+message ListMailboxEnvelopesResponse {
+  repeated E2eeMailboxEnvelope envelopes = 1;
+  PageInfo page = 2;
+}
+
+// Invariant: acknowledgement is committed by the receiving device only *after* AEAD and franking
+// validation succeed and its receive state is durably written (ADR 0020 §4). A forged ciphertext
+// must never be able to make a device acknowledge — and thereby lose — a real message.
+message AcknowledgeEnvelopesRequest {
+  string device_id = 1;
+  repeated string envelope_ids = 2;
+}
+
+message AcknowledgeEnvelopesResponse {
+  uint32 acknowledged_count = 1;
+}
+
+// One reporter-selected message, disclosed with the material needed to verify it (ADR 0020 §9).
+//
+// This message is the single intentional plaintext disclosure in the entire E2EE schema. It
+// exists because a node that cannot read a report's evidence cannot act on harassment
+// (spec §183.1), and the alternative to franked, reporter-consented disclosure is not privacy —
+// it is unactionable abuse. Everything it carries is subject to report-level access control and
+// report retention, and it MUST NOT be logged, traced, metered, or placed in an error payload.
+message E2eeReportEvidenceItem {
+  // 0 is the reported message itself; 1..10 are reporter-selected surrounding messages.
+  uint32 position = 1;
+
+  string logical_message_id = 2;
+
+  // The plaintext the reporter explicitly chose to disclose. Nothing else in this schema is
+  // ever plaintext.
+  bytes disclosed_plaintext = 3;
+
+  // Opens `E2eeLogicalMessage.franking_commitment` over `disclosed_plaintext`. The node checks
+  // the commitment; it cannot derive an opening for anything the reporter did not disclose.
+  bytes opening = 4;
+
+  // The stored envelope transcript and the node's own tag for this message, so verification is
+  // against what the node accepted rather than against what the reporter retyped.
+  bytes envelope_transcript = 5;
+  bytes franking_tag = 6;
+
+  // Sender/recipient actor and device certificates bound at send time.
+  bytes participant_transcript = 7;
+
+  // The roster digest in force, so a substituted-device claim can be checked.
+  bytes roster_digest = 8;
+}
+
+message AttachReportEvidenceRequest {
+  // An existing report from `ModerationService.CreateReport`. Evidence is attached to a report;
+  // it is never a way to open one, so it can never be a covert disclosure channel.
+  string report_id = 1;
+
+  string conversation_id = 2;
+
+  // Must be explicitly true. The node rejects the call otherwise and stamps its own
+  // `consented_at`; the client cannot backdate consent. Disclosure is never a default.
+  bool reporter_consented = 3;
+
+  // At most 11: the reported message plus up to 10 surrounding ones.
+  repeated E2eeReportEvidenceItem items = 4;
+}
+
+message AttachReportEvidenceResponse {
+  E2eeEvidenceVerificationStatus status = 1;
+
+  // Set when `status` is `UNVERIFIABLE`. A stable code, never the failing bytes and never any
+  // fragment of the disclosed plaintext.
+  string verification_failure_code = 2;
+
+  uint32 verified_item_count = 3;
+
+  // Reporter-selected context is not the whole context. Moderator UI MUST say so, because
+  // franking can prove that disclosed content was accepted — never that it was all of it.
+  bool reporter_selected_context = 4;
+}

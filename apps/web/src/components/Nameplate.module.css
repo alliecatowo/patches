@@ -1,0 +1,15 @@
+.nameplate {
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.glyph {
+  margin-right: 0.25em;
+}
+
+.gradient {
+  background-image: var(--nameplate-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}

@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+// Privacy and consent surfaces (spec §197): the privacy notice, per-actor discoverability
+// preferences, account data export, and account deletion with a grace period. None of these
+// functions is ever gated on a paid capability (§174, §184.3, §208).
+service PrivacyService {
+  // Records that the notice text at `notice_version` was shown to the caller. This is a
+  // record that the text was shown — never a waiver of anything beyond what the text
+  // describes, and it MUST NOT gate any safety, moderation, export, or deletion function
+  // (spec §197.1).
+  rpc AcknowledgePrivacyNotice(AcknowledgePrivacyNoticeRequest)
+      returns (AcknowledgePrivacyNoticeResponse);
+
+  rpc GetPrivacyPrefs(GetPrivacyPrefsRequest) returns (GetPrivacyPrefsResponse);
+
+  // Field-mask partial update, same pattern as `ActorService.UpdateProfile` (spec §203).
+  rpc UpdatePrivacyPrefs(UpdatePrivacyPrefsRequest) returns (UpdatePrivacyPrefsResponse);
+
+  // Enqueues a background export job (spec §30, ADR 0004) — never synchronous, and never
+  // streams the archive through this process (spec §197.3).
+  rpc ExportAccount(ExportAccountRequest) returns (ExportAccountResponse);
+
+  rpc GetExportStatus(GetExportStatusRequest) returns (GetExportStatusResponse);
+
+  // Moves the account to `PENDING_DELETION`: it disappears from feeds, search, and the local
+  // timeline immediately, and a grace period follows (spec §197.4).
+  rpc RequestAccountDeletion(RequestAccountDeletionRequest)
+      returns (RequestAccountDeletionResponse);
+
+  // Restores the account intact — only while still within the grace period.
+  rpc CancelAccountDeletion(CancelAccountDeletionRequest)
+      returns (CancelAccountDeletionResponse);
+
+  rpc GetDeletionStatus(GetDeletionStatusRequest) returns (GetDeletionStatusResponse);
+}
+
+enum AccountExportStatus {
+  ACCOUNT_EXPORT_STATUS_UNSPECIFIED = 0;
+  ACCOUNT_EXPORT_STATUS_PENDING = 1;
+  ACCOUNT_EXPORT_STATUS_READY = 2;
+  ACCOUNT_EXPORT_STATUS_FAILED = 3;
+  ACCOUNT_EXPORT_STATUS_EXPIRED = 4;
+}
+
+// Amends §21 and §62–§63 (spec §197.5). All default true except `locked`; none is
+// capability-gated (§174).
+message PrivacyPrefs {
+  // In actor search results and any node directory. Exact-handle resolution
+  // (`GetActorByHandle`, `ResolveActor`) always works regardless of this setting.
+  bool discoverable = 1;
+
+  // In full-text post search (`PostService.SearchPosts`).
+  bool indexable = 2;
+
+  // Public posts appear on the node's local timeline. Local-only; not privacy — the posts
+  // are still public.
+  bool show_in_local_feed = 3;
+
+  // Follows require the actor's approval (follow requests). Never auto-accepted.
+  bool locked = 4;
+
+  uint32 privacy_notice_version = 5;
+
+  // Unset means never acknowledged.
+  google.protobuf.Timestamp privacy_notice_acknowledged_at = 6;
+}
+
+message AcknowledgePrivacyNoticeRequest {
+  // The version being acknowledged.
+  uint32 notice_version = 1;
+}
+
+message AcknowledgePrivacyNoticeResponse {
+  PrivacyPrefs prefs = 1;
+}
+
+message GetPrivacyPrefsRequest {}
+
+message GetPrivacyPrefsResponse {
+  PrivacyPrefs prefs = 1;
+}
+
+// `update_mask` selects which of `discoverable`/`indexable`/`show_in_local_feed`/`locked` to
+// apply — same FieldMask pattern as `ActorService.UpdateProfile` (spec §203).
+message UpdatePrivacyPrefsRequest {
+  bool discoverable = 1;
+  bool indexable = 2;
+  bool show_in_local_feed = 3;
+  bool locked = 4;
+  google.protobuf.FieldMask update_mask = 5;
+}
+
+message UpdatePrivacyPrefsResponse {
+  PrivacyPrefs prefs = 1;
+}
+
+message ExportAccountRequest {}
+
+message ExportAccountResponse {
+  AccountExport export = 1;
+}
+
+// One archive at a time; a new `ready_at` archive is kept for 7 days (spec §204).
+message AccountExport {
+  string id = 1;
+  AccountExportStatus status = 2;
+  google.protobuf.Timestamp requested_at = 3;
+
+  // Unset until `ACCOUNT_EXPORT_STATUS_READY`.
+  google.protobuf.Timestamp ready_at = 4;
+
+  // Unset until `ACCOUNT_EXPORT_STATUS_READY`. A short-lived pre-signed URL (spec §29,
+  // §197.3, ADR 0005) — never a raw storage key.
+  string download_url = 5;
+
+  // Unset until `ACCOUNT_EXPORT_STATUS_READY`.
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message GetExportStatusRequest {}
+
+message GetExportStatusResponse {
+  // Unset (all fields zero) if no export has ever been requested.
+  AccountExport export = 1;
+}
+
+message RequestAccountDeletionRequest {}
+
+message RequestAccountDeletionResponse {
+  AccountDeletionStatus deletion = 1;
+}
+
+message CancelAccountDeletionRequest {}
+
+message CancelAccountDeletionResponse {
+  AccountDeletionStatus deletion = 1;
+}
+
+message AccountDeletionStatus {
+  // True while the account is `PENDING_DELETION`.
+  bool pending = 1;
+
+  // Unset if no deletion has ever been requested.
+  google.protobuf.Timestamp requested_at = 2;
+
+  // When the purge job runs, absent a cancellation within the grace period (spec §204's
+  // 30-day default, node-configurable).
+  google.protobuf.Timestamp purge_after = 3;
+
+  // Unset unless a pending deletion was cancelled.
+  google.protobuf.Timestamp cancelled_at = 4;
+}
+
+message GetDeletionStatusRequest {}
+
+message GetDeletionStatusResponse {
+  AccountDeletionStatus deletion = 1;
+}

@@ -72,7 +72,27 @@ catalog:
   '@connectrpc/connect': ^2.1.2
   '@connectrpc/connect-express': ^2.1.2
   '@connectrpc/connect-node': ^2.1.2
+  '@connectrpc/connect-web': ^2.1.2
   '@types/express': ^5.0.6
+  ink-spinner: ^5.0.0
+  react-dom: ^19.2.8
+  react-router-dom: ^7.18.2
+  '@tanstack/react-query': ^5.101.4
+  '@testing-library/jest-dom': ^6.9.1
+  '@testing-library/react': ^16.3.2
+  '@types/react-dom': ^19.2.4
+  '@vitejs/plugin-react': ^6.0.5
+  jsdom: ^30.0.1
+  vite: ^8.2.1
+  string-width: ^8.2.2
+  '@noble/curves': ^2.3.0
+  '@noble/ciphers': ^2.3.0
+  '@noble/hashes': ^2.3.0
+  slice-ansi: ^9.0.0
+  tar-stream: ^3.2.0
+  '@types/tar-stream': ^3.1.4
+  tldts: ^7.4.10
+  fast-check: ^4.9.0
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

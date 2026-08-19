@@ -263,3 +263,118 @@ describe('SessionManager.logout', () => {
     expect(logout).not.toHaveBeenCalled();
   });
 });
+
+describe('SessionManager.withSession (P12-011 inline re-auth)', () => {
+  function unauthenticatedManager(): {
+    manager: SessionManager;
+    login: ReturnType<typeof vi.fn>;
+  } {
+    const store = new MemoryCredentialStore();
+    const refreshSession = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('nope'), { code: 16 }));
+    const login = vi.fn().mockResolvedValue({ session: session({ accessToken: 'access-reauth' }) });
+    const manager = new SessionManager({
+      api: fakeApi({ refreshSession, login }),
+      store,
+      nodeOrigin: NODE,
+    });
+    return { manager, login };
+  }
+
+  it('passes a successful call straight through, same as withAuth', async () => {
+    const store = new MemoryCredentialStore();
+    const manager = new SessionManager({ api: fakeApi(), store, nodeOrigin: NODE });
+    await manager.loginWithPassword('alice', 'x');
+
+    const result = await manager.withSession((token) => Promise.resolve(`used:${token}`));
+    expect(result).toBe('used:access-1');
+  });
+
+  /** Rejects UNAUTHENTICATED exactly once (simulating the expired access token), then
+   * succeeds — matching the existing `withAuth` tests' shape for the underlying call. */
+  function unauthenticatedOnce<T>(onSuccess: (token: string) => T): (token: string) => Promise<T> {
+    let calls = 0;
+    return (token: string) => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(Object.assign(new Error('unauth'), { code: 16 }));
+      return Promise.resolve(onSuccess(token));
+    };
+  }
+
+  it('emits needsReauth instead of throwing when a 401 survives the refresh, then replays the call on completeReauth — the draft the caller closed over is never touched', async () => {
+    const { manager } = unauthenticatedManager();
+    await manager.loginWithPassword('alice', 'x');
+
+    const events: string[] = [];
+    manager.onSessionEvent((event) => events.push(event.type));
+
+    // Stands in for a compose draft: `withSession`'s job is that this is never mutated on
+    // the way to a successful post, no matter how many times the underlying call retries.
+    const draft = { body: 'unsent thoughts' };
+    const call = vi.fn(unauthenticatedOnce((token) => `${token}:${draft.body}`));
+
+    const pending = manager.withSession(call);
+    // The promise must not resolve/reject before the shell answers.
+    let settled = false;
+    void pending.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.waitFor(() => expect(events).toEqual(['needsReauth']));
+    expect(settled).toBe(false);
+
+    await manager.completeReauth('alice', 'new-password');
+    const result = await pending;
+
+    expect(result).toBe('access-reauth:unsent thoughts');
+    expect(draft.body).toBe('unsent thoughts');
+    expect(events).toEqual(['needsReauth', 'reauthResolved']);
+  });
+
+  it('shares one pending re-auth across concurrent withSession calls — only one needsReauth', async () => {
+    const { manager } = unauthenticatedManager();
+    await manager.loginWithPassword('alice', 'x');
+
+    const events: string[] = [];
+    manager.onSessionEvent((event) => events.push(event.type));
+
+    const callA = vi.fn(unauthenticatedOnce((token) => `a:${token}`));
+    const callB = vi.fn(unauthenticatedOnce((token) => `b:${token}`));
+
+    const pendingA = manager.withSession(callA);
+    const pendingB = manager.withSession(callB);
+    await vi.waitFor(() => expect(events).toEqual(['needsReauth']));
+
+    await manager.completeReauth('alice', 'new-password');
+    await expect(pendingA).resolves.toBe('a:access-reauth');
+    await expect(pendingB).resolves.toBe('b:access-reauth');
+  });
+
+  it('cancelReauth rejects every waiting call with SessionExpiredError and leaves the draft untouched', async () => {
+    const { manager } = unauthenticatedManager();
+    await manager.loginWithPassword('alice', 'x');
+
+    const events: string[] = [];
+    manager.onSessionEvent((event) => events.push(event.type));
+
+    const draft = { body: 'still here' };
+    const call = vi.fn(unauthenticatedOnce((token) => `${token}:${draft.body}`));
+    const pending = manager.withSession(call);
+    await vi.waitFor(() => expect(events).toEqual(['needsReauth']));
+
+    manager.cancelReauth();
+
+    await expect(pending).rejects.toBeInstanceOf(SessionExpiredError);
+    expect(draft.body).toBe('still here');
+  });
+
+  it('does not swallow a non-auth error', async () => {
+    const store = new MemoryCredentialStore();
+    const manager = new SessionManager({ api: fakeApi(), store, nodeOrigin: NODE });
+    await manager.loginWithPassword('alice', 'x');
+
+    const call = vi.fn().mockRejectedValue(new Error('boom'));
+    await expect(manager.withSession(call)).rejects.toThrow('boom');
+  });
+});

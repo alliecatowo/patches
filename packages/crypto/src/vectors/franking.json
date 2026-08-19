@@ -1,0 +1,23 @@
+{
+  "description": "Fixed franking commitment and node report tag over hand-specified hex material (no randomness). Replayed by src/vectors.test.ts.",
+  "openingKeyHex": "5d4f067bc3c55b4c87aa997bb1e6e16111d0db6abfab18cb96bc590c369d9903",
+  "nodeFrankingKeyHex": "4caecfc6dd06a0a751a9fa4bdefcf4632529621def77165acd0b8835c4c754cc",
+  "plaintextUtf8": "vector reported message body",
+  "commitmentHex": "df153e24e5c99b03aa41bf9c84c1f0dd75d5787dd7ba635809863d53223f6219",
+  "transcript": {
+    "frankingKeyEra": 1,
+    "conversationId": "vector-conversation",
+    "membershipEpoch": 1,
+    "logicalMessageId": "vector-message-1",
+    "senderActorId": "alice",
+    "senderDeviceId": "alice-device",
+    "acceptedAtMs": 1700000000000,
+    "commitmentHex": "df153e24e5c99b03aa41bf9c84c1f0dd75d5787dd7ba635809863d53223f6219",
+    "recipientFanoutDigestHex": "8aaf8c6ffdc745806fd0b93b0f9807042ddfff9e2530a0302bad988c23143460",
+    "ciphertextDigestsHex": [
+      "20487b63c00ecc51d407fa70d301160b7b7c67b797da40e8eab25deb8cd03eed",
+      "fd54effea5a468ebdbf9c19f9cc4b07fda86754cca8322c1e9f8cca8245dbdec"
+    ]
+  },
+  "nodeReportTagHex": "873e80550ef04c9b7bcdd57751d38ec83a95f1993fc18cb9a1a021eda5da657f"
+}

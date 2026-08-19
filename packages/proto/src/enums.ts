@@ -16,6 +16,7 @@
  * enum member's runtime value identical to its own name, so these string literals and the
  * generated enum are wire-identical — the cast just restates that fact for the type checker.
  */
+import type { AppealStatus as AppealStatusT } from './generated/patches/v1/appeals.js';
 import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
@@ -24,19 +25,36 @@ import type {
   CommunityInviteStatus as CommunityInviteStatusT,
   CommunityRole as CommunityRoleT,
 } from './generated/patches/v1/communities.js';
+import type {
+  FilterAction as FilterActionT,
+  FilterScope as FilterScopeT,
+  FilterTermKind as FilterTermKindT,
+} from './generated/patches/v1/filters.js';
+import type { LabelAction as LabelActionT } from './generated/patches/v1/labels.js';
 import type { MediaStatus as MediaStatusT } from './generated/patches/v1/media.js';
 import type {
   ConversationKind as ConversationKindT,
   MessageRequestStatus as MessageRequestStatusT,
 } from './generated/patches/v1/messages.js';
-import type { ReportReason as ReportReasonT } from './generated/patches/v1/moderation.js';
-import type { RegistrationMode as RegistrationModeT } from './generated/patches/v1/node.js';
+import type {
+  ModerationActionType as ModerationActionTypeT,
+  ModerationLogSubjectKind as ModerationLogSubjectKindT,
+  ModerationReasonCategory as ModerationReasonCategoryT,
+  ReportReason as ReportReasonT,
+} from './generated/patches/v1/moderation.js';
+import type {
+  DomainPolicyAction as DomainPolicyActionT,
+  FederationStance as FederationStanceT,
+  RegistrationMode as RegistrationModeT,
+} from './generated/patches/v1/node.js';
 import type { NotificationType as NotificationTypeT } from './generated/patches/v1/notifications.js';
 import type {
+  FilteredByProvenance as FilteredByProvenanceT,
   PostType as PostTypeT,
   PostVisibility as PostVisibilityT,
   QuotePolicy as QuotePolicyT,
 } from './generated/patches/v1/posts.js';
+import type { AccountExportStatus as AccountExportStatusT } from './generated/patches/v1/privacy.js';
 import type { FollowState as FollowStateT } from './generated/patches/v1/social_graph.js';
 
 export const POST_TYPE = {
@@ -92,6 +110,7 @@ export const NOTIFICATION_TYPE = {
   QUOTE: 'NOTIFICATION_TYPE_QUOTE' as NotificationTypeT,
   MESSAGE: 'NOTIFICATION_TYPE_MESSAGE' as NotificationTypeT,
   COMMUNITY_INVITE: 'NOTIFICATION_TYPE_COMMUNITY_INVITE' as NotificationTypeT,
+  FOLLOW_REQUEST: 'NOTIFICATION_TYPE_FOLLOW_REQUEST' as NotificationTypeT,
 } as const;
 
 export const REPORT_REASON = {
@@ -143,4 +162,106 @@ export const MESSAGE_REQUEST_STATUS = {
   PENDING: 'MESSAGE_REQUEST_STATUS_PENDING' as MessageRequestStatusT,
   ACCEPTED: 'MESSAGE_REQUEST_STATUS_ACCEPTED' as MessageRequestStatusT,
   DECLINED: 'MESSAGE_REQUEST_STATUS_DECLINED' as MessageRequestStatusT,
+} as const;
+
+export const FILTER_TERM_KIND = {
+  UNSPECIFIED: 'FILTER_TERM_KIND_UNSPECIFIED' as FilterTermKindT,
+  SUBSTRING: 'FILTER_TERM_KIND_SUBSTRING' as FilterTermKindT,
+  WORD: 'FILTER_TERM_KIND_WORD' as FilterTermKindT,
+  TAG: 'FILTER_TERM_KIND_TAG' as FilterTermKindT,
+  ACTOR: 'FILTER_TERM_KIND_ACTOR' as FilterTermKindT,
+  DOMAIN: 'FILTER_TERM_KIND_DOMAIN' as FilterTermKindT,
+} as const;
+
+export const FILTER_SCOPE = {
+  UNSPECIFIED: 'FILTER_SCOPE_UNSPECIFIED' as FilterScopeT,
+  HOME: 'FILTER_SCOPE_HOME' as FilterScopeT,
+  LOCAL: 'FILTER_SCOPE_LOCAL' as FilterScopeT,
+  TAG_FEED: 'FILTER_SCOPE_TAG_FEED' as FilterScopeT,
+  COMMUNITY_FEED: 'FILTER_SCOPE_COMMUNITY_FEED' as FilterScopeT,
+  NOTIFICATIONS: 'FILTER_SCOPE_NOTIFICATIONS' as FilterScopeT,
+  SEARCH: 'FILTER_SCOPE_SEARCH' as FilterScopeT,
+  MESSAGE_REQUESTS: 'FILTER_SCOPE_MESSAGE_REQUESTS' as FilterScopeT,
+} as const;
+
+export const FILTER_ACTION = {
+  UNSPECIFIED: 'FILTER_ACTION_UNSPECIFIED' as FilterActionT,
+  HIDE: 'FILTER_ACTION_HIDE' as FilterActionT,
+  COLLAPSE: 'FILTER_ACTION_COLLAPSE' as FilterActionT,
+  WARN: 'FILTER_ACTION_WARN' as FilterActionT,
+} as const;
+
+export const LABEL_ACTION = {
+  UNSPECIFIED: 'LABEL_ACTION_UNSPECIFIED' as LabelActionT,
+  IGNORE: 'LABEL_ACTION_IGNORE' as LabelActionT,
+  WARN: 'LABEL_ACTION_WARN' as LabelActionT,
+  COLLAPSE: 'LABEL_ACTION_COLLAPSE' as LabelActionT,
+  HIDE: 'LABEL_ACTION_HIDE' as LabelActionT,
+} as const;
+
+export const APPEAL_STATUS = {
+  UNSPECIFIED: 'APPEAL_STATUS_UNSPECIFIED' as AppealStatusT,
+  OPEN: 'APPEAL_STATUS_OPEN' as AppealStatusT,
+  UPHELD: 'APPEAL_STATUS_UPHELD' as AppealStatusT,
+  OVERTURNED: 'APPEAL_STATUS_OVERTURNED' as AppealStatusT,
+  MODIFIED: 'APPEAL_STATUS_MODIFIED' as AppealStatusT,
+} as const;
+
+export const ACCOUNT_EXPORT_STATUS = {
+  UNSPECIFIED: 'ACCOUNT_EXPORT_STATUS_UNSPECIFIED' as AccountExportStatusT,
+  PENDING: 'ACCOUNT_EXPORT_STATUS_PENDING' as AccountExportStatusT,
+  READY: 'ACCOUNT_EXPORT_STATUS_READY' as AccountExportStatusT,
+  FAILED: 'ACCOUNT_EXPORT_STATUS_FAILED' as AccountExportStatusT,
+  EXPIRED: 'ACCOUNT_EXPORT_STATUS_EXPIRED' as AccountExportStatusT,
+} as const;
+
+export const FEDERATION_STANCE = {
+  UNSPECIFIED: 'FEDERATION_STANCE_UNSPECIFIED' as FederationStanceT,
+  DISABLED: 'FEDERATION_STANCE_DISABLED' as FederationStanceT,
+  ALLOWLIST: 'FEDERATION_STANCE_ALLOWLIST' as FederationStanceT,
+  OPEN_WITH_BLOCKLIST: 'FEDERATION_STANCE_OPEN_WITH_BLOCKLIST' as FederationStanceT,
+} as const;
+
+export const DOMAIN_POLICY_ACTION = {
+  UNSPECIFIED: 'DOMAIN_POLICY_ACTION_UNSPECIFIED' as DomainPolicyActionT,
+  BLOCK: 'DOMAIN_POLICY_ACTION_BLOCK' as DomainPolicyActionT,
+} as const;
+
+export const MODERATION_REASON_CATEGORY = {
+  UNSPECIFIED: 'MODERATION_REASON_CATEGORY_UNSPECIFIED' as ModerationReasonCategoryT,
+  HARASSMENT: 'MODERATION_REASON_CATEGORY_HARASSMENT' as ModerationReasonCategoryT,
+  HATE: 'MODERATION_REASON_CATEGORY_HATE' as ModerationReasonCategoryT,
+  THREATS: 'MODERATION_REASON_CATEGORY_THREATS' as ModerationReasonCategoryT,
+  DOXXING: 'MODERATION_REASON_CATEGORY_DOXXING' as ModerationReasonCategoryT,
+  IMPERSONATION: 'MODERATION_REASON_CATEGORY_IMPERSONATION' as ModerationReasonCategoryT,
+  SPAM: 'MODERATION_REASON_CATEGORY_SPAM' as ModerationReasonCategoryT,
+  ILLEGAL_CONTENT: 'MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT' as ModerationReasonCategoryT,
+  NCII: 'MODERATION_REASON_CATEGORY_NCII' as ModerationReasonCategoryT,
+  INFRASTRUCTURE_ABUSE:
+    'MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE' as ModerationReasonCategoryT,
+  OTHER: 'MODERATION_REASON_CATEGORY_OTHER' as ModerationReasonCategoryT,
+} as const;
+
+export const MODERATION_ACTION_TYPE = {
+  UNSPECIFIED: 'MODERATION_ACTION_TYPE_UNSPECIFIED' as ModerationActionTypeT,
+  WARN: 'MODERATION_ACTION_TYPE_WARN' as ModerationActionTypeT,
+  SUSPEND: 'MODERATION_ACTION_TYPE_SUSPEND' as ModerationActionTypeT,
+  BAN: 'MODERATION_ACTION_TYPE_BAN' as ModerationActionTypeT,
+  POST_REMOVAL: 'MODERATION_ACTION_TYPE_POST_REMOVAL' as ModerationActionTypeT,
+  MEDIA_TAKEDOWN: 'MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN' as ModerationActionTypeT,
+  DOMAIN_BLOCK: 'MODERATION_ACTION_TYPE_DOMAIN_BLOCK' as ModerationActionTypeT,
+} as const;
+
+export const MODERATION_LOG_SUBJECT_KIND = {
+  UNSPECIFIED: 'MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED' as ModerationLogSubjectKindT,
+  DOMAIN: 'MODERATION_LOG_SUBJECT_KIND_DOMAIN' as ModerationLogSubjectKindT,
+  ACCOUNT: 'MODERATION_LOG_SUBJECT_KIND_ACCOUNT' as ModerationLogSubjectKindT,
+  POST: 'MODERATION_LOG_SUBJECT_KIND_POST' as ModerationLogSubjectKindT,
+  MEDIA: 'MODERATION_LOG_SUBJECT_KIND_MEDIA' as ModerationLogSubjectKindT,
+} as const;
+
+export const FILTERED_BY_PROVENANCE = {
+  UNSPECIFIED: 'FILTERED_BY_PROVENANCE_UNSPECIFIED' as FilteredByProvenanceT,
+  FILTER: 'FILTERED_BY_PROVENANCE_FILTER' as FilteredByProvenanceT,
+  FILTER_LIST: 'FILTERED_BY_PROVENANCE_FILTER_LIST' as FilteredByProvenanceT,
 } as const;

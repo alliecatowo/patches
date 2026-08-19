@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(16);
+    expect(files.length).toBe(22);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }
@@ -53,6 +53,12 @@ describe('proto files', () => {
         SERVICE_NAMES.community,
         SERVICE_NAMES.directMessage,
         SERVICE_NAMES.tag,
+        SERVICE_NAMES.filter,
+        SERVICE_NAMES.filterList,
+        SERVICE_NAMES.label,
+        SERVICE_NAMES.appeal,
+        SERVICE_NAMES.privacy,
+        SERVICE_NAMES.e2ee,
         'PageInfo',
       ]),
     );
@@ -106,6 +112,7 @@ describe('proto files', () => {
         'ListPostEdits',
         'ListReplies',
         'PinPost',
+        'SearchPosts',
         'UnpinPost',
       ].sort(),
     );
@@ -119,9 +126,19 @@ describe('proto files', () => {
       ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.socialGraph)).toEqual(
-      ['FollowActor', 'GetRelationship', 'ListMutualFollows', 'UnfollowActor'].sort(),
+      [
+        'AcceptFollowRequest',
+        'FollowActor',
+        'GetRelationship',
+        'ListFollowRequests',
+        'ListMutualFollows',
+        'RejectFollowRequest',
+        'UnfollowActor',
+      ].sort(),
     );
-    expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(['GetNodeInfo']);
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.node)).toEqual(
+      ['GetNodeInfo', 'GetNodePolicy'].sort(),
+    );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.community)).toEqual(
       [
         'BanFromCommunity',
@@ -154,6 +171,81 @@ describe('proto files', () => {
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.tag)).toEqual(
       ['ListMutedTags', 'MuteTag', 'SearchTags', 'UnmuteTag'].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.filter)).toEqual(
+      [
+        'CreateFilter',
+        'UpdateFilter',
+        'DeleteFilter',
+        'ListFilters',
+        'ExportFilters',
+        'ImportFilters',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.filterList)).toEqual(
+      [
+        'PublishFilterList',
+        'UpdateFilterList',
+        'DeleteFilterList',
+        'GetFilterList',
+        'ListFilterLists',
+        'ListFilterListEntries',
+        'SubscribeFilterList',
+        'UnsubscribeFilterList',
+        'ListFilterListSubscriptions',
+        'SetFilterListEntryException',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.label)).toEqual(
+      [
+        'CreateLabeler',
+        'GetLabeler',
+        'ListLabelers',
+        'ApplyLabel',
+        'RetractLabel',
+        'SubscribeLabeler',
+        'UnsubscribeLabeler',
+        'SetLabelerSubscriptionAction',
+        'ListLabelsOnSubject',
+      ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.appeal)).toEqual(
+      ['CreateAppeal', 'GetAppeal', 'ListMyAppeals'].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.privacy)).toEqual(
+      [
+        'AcknowledgePrivacyNotice',
+        'GetPrivacyPrefs',
+        'UpdatePrivacyPrefs',
+        'ExportAccount',
+        'GetExportStatus',
+        'RequestAccountDeletion',
+        'CancelAccountDeletion',
+        'GetDeletionStatus',
+      ].sort(),
+    );
+    // `E2eeService` is schema-only (ADR 0020, P13-001): no controller implements it, so this
+    // list is the contract a future implementation has to satisfy, not a claim that it exists.
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.e2ee)).toEqual(
+      [
+        'AcknowledgeEnvelopes',
+        'AttachReportEvidence',
+        'ClaimPrekeyBundles',
+        'CreateE2eeConversation',
+        'EnrollDevice',
+        'GetDeviceRoster',
+        'GetE2eeCapability',
+        'GetE2eeConversationState',
+        'GetIdentityRoot',
+        'GetPrekeyInventory',
+        'ListDeviceRosters',
+        'ListMailboxEnvelopes',
+        'PublishDeviceRoster',
+        'PublishIdentityRoot',
+        'RevokeDevice',
+        'SendEnvelopes',
+        'UploadPrekeys',
+      ].sort(),
     );
   });
 

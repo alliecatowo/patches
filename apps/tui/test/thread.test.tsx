@@ -86,10 +86,14 @@ describe('Thread screen (P4-004)', () => {
     await flush();
     press(KEY.ctrlS);
 
-    frame = await expectFrame(lastFrame, 'Thread');
-    expect(frame).toContain('in reply to');
+    // The reply lands back in the thread of the post it answers — not in its own
+    // thread, which left you able to reply only to yourself (owner feedback
+    // 2026-08-18). Bob's root post and the new reply are both in the one list.
+    frame = await waitForFrame(
+      lastFrame,
+      (f) => f.includes('Thread') && f.includes('Alice reply text'),
+    );
     expect(frame).toContain('Bob root post');
-    expect(frame).toContain('Alice reply text');
     unmount();
   });
 
@@ -129,10 +133,13 @@ describe('Thread screen (P4-004)', () => {
     await flush();
     press(KEY.enter);
 
-    frame = await expectFrame(lastFrame, 'in reply to');
+    // Drilling in re-roots the thread on Bob's reply — its own parent (the root) is
+    // row 0 of the same navigable list, so `k`/`↑` can still reach it.
+    frame = await waitForFrame(
+      lastFrame,
+      (f) => f.includes('Carol nested reply') && f.includes('Bob reply'),
+    );
     expect(frame).toContain('Root post');
-    expect(frame).toContain('Bob reply');
-    expect(frame).toContain('Carol nested reply');
 
     // Esc pops one level — back to the root's thread, not out of the thread screen.
     press(KEY.escape);
@@ -152,6 +159,43 @@ describe('Thread screen (P4-004)', () => {
 
     frame = await expectFrame(lastFrame, 'Local');
     expect(frame).not.toContain('Thread');
+    unmount();
+  });
+});
+
+describe('Thread navigation (owner feedback 2026-08-18)', () => {
+  it('the parent, the focused post and the replies are one list: ↑ reaches the parent, r replies to it', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
+    const root = fake.addPost(alice.id, 'Alice root post');
+    const reply = fake.addPost(bob.id, 'Bob reply', new Date(), root.id);
+    fake.addPost(alice.id, 'Carol-ish nested', new Date(), reply.id);
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'bob', 'x');
+
+    await pressGo(press, 'l');
+
+    // Open Bob's reply's thread directly: its parent (Alice's root) is row 0.
+    press('j');
+    await flush(60);
+    press(KEY.enter);
+    await waitForFrame(lastFrame, (f) => f.includes('Thread') && f.includes('Alice root post'));
+    await flush(60);
+
+    // Move down into the reply, then back up with the arrow key — the parent is
+    // reachable, which it was not when it rendered outside the list.
+    press(KEY.down);
+    await flush(60);
+    press(KEY.up);
+    await flush(60);
+
+    press('r');
+
+    const frame = await expectFrame(lastFrame, 'replying to @alice');
+    expect(frame).toContain('Reply');
     unmount();
   });
 });

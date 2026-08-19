@@ -12,6 +12,8 @@ import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
 import { Community } from './communities.js';
+import { FilterAction } from './filters.js';
+import { Label } from './labels.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -43,6 +45,17 @@ export enum QuotePolicy {
 }
 
 /**
+ * Which mechanism produced a `Post.filtered_by` hint (spec §199.3's provenance requirement —
+ * "a viewer must always be able to answer 'why did this disappear, and who decided that?'").
+ */
+export enum FilteredByProvenance {
+  FILTERED_BY_PROVENANCE_UNSPECIFIED = 'FILTERED_BY_PROVENANCE_UNSPECIFIED',
+  FILTERED_BY_PROVENANCE_FILTER = 'FILTERED_BY_PROVENANCE_FILTER',
+  FILTERED_BY_PROVENANCE_FILTER_LIST = 'FILTERED_BY_PROVENANCE_FILTER_LIST',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
  * One attached image (spec §27–28). `thumbnail_url`/`download_url` are intentionally absent
  * — they arrive as new fields once `MediaService.GetMediaDownload` exists; adding fields
  * later is additive and non-breaking, so there is nothing to reserve now.
@@ -70,6 +83,23 @@ export interface PostViewerState {
   liked: boolean;
   bookmarked: boolean;
   reposted: boolean;
+}
+
+/**
+ * Set only for `FILTER_ACTION_COLLAPSE`/`FILTER_ACTION_WARN` (spec §198.3) — a `hide` match
+ * omits the row from the response entirely and is never represented here.
+ */
+export interface FilteredByHint {
+  provenance: FilteredByProvenance;
+  /** The filter's name, or the filter list's `display_name` — rendered as "filtered: <name>". */
+  name: string;
+  /**
+   * Set only when `provenance == FILTERED_BY_PROVENANCE_FILTER_LIST` — the list's publisher,
+   * rendered as "via @alice" (spec §199.3).
+   */
+  listOwner: Actor | undefined;
+  /** Never `FILTER_ACTION_HIDE` (a hidden post is never returned to the client at all). */
+  action: FilterAction;
 }
 
 export interface Post {
@@ -123,6 +153,17 @@ export interface Post {
    * `reposted_by` is empty.
    */
   repostedByTotal: number;
+  /**
+   * Set only when a viewer's own filter or filter-list subscription matched this post with
+   * `collapse`/`warn` (spec §198.3, §203). Unset for a `hide` match — that post is never
+   * returned at all — and unset when nothing matched.
+   */
+  filteredBy: FilteredByHint | undefined;
+  /**
+   * Labels from labelers the viewer subscribes to only (spec §200.3, §203) — never a global
+   * annotation. Empty for an anonymous read or a viewer with no labeler subscriptions.
+   */
+  labels: Label[];
 }
 
 export interface CreatePostRequest {
@@ -249,6 +290,25 @@ export interface UnpinPostResponse {
   post: Post | undefined;
 }
 
+export interface SearchPostsRequest {
+  /** Server rejects empty/whitespace-only and caps at 200 Unicode characters. */
+  query: string;
+  cursor: string;
+  limit: number;
+  /** Optional filter: only posts by this local handle. Empty means no author filter. */
+  authorHandle: string;
+  /**
+   * Replies are excluded by default (the common "search posts" expectation); set true to
+   * include them in the results.
+   */
+  includeReplies: boolean;
+}
+
+export interface SearchPostsResponse {
+  posts: Post[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -300,6 +360,14 @@ export interface PostServiceClient {
   /** Idempotent: unpinning a post that isn't pinned is not an error. */
 
   unpinPost(request: UnpinPostRequest, metadata?: Metadata): Observable<UnpinPostResponse>;
+
+  /**
+   * Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+   * strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+   * score and never a `sort`/`order` parameter (spec §194).
+   */
+
+  searchPosts(request: SearchPostsRequest, metadata?: Metadata): Observable<SearchPostsResponse>;
 }
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -372,6 +440,17 @@ export interface PostServiceController {
     request: UnpinPostRequest,
     metadata?: Metadata,
   ): Promise<UnpinPostResponse> | Observable<UnpinPostResponse> | UnpinPostResponse;
+
+  /**
+   * Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+   * strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+   * score and never a `sort`/`order` parameter (spec §194).
+   */
+
+  searchPosts(
+    request: SearchPostsRequest,
+    metadata?: Metadata,
+  ): Promise<SearchPostsResponse> | Observable<SearchPostsResponse> | SearchPostsResponse;
 }
 
 export function PostServiceControllerMethods() {
@@ -385,6 +464,7 @@ export function PostServiceControllerMethods() {
       'listPostEdits',
       'pinPost',
       'unpinPost',
+      'searchPosts',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

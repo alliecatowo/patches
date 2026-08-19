@@ -27,6 +27,7 @@ export function useMediaAttachment(
 
   useEffect(() => {
     let cancelled = false;
+    let preparedForThisMount: PreparedImage | undefined;
 
     async function run(): Promise<void> {
       try {
@@ -46,7 +47,11 @@ export function useMediaAttachment(
         );
         if (cancelled) return;
         const prepared = await renderer.prepare({ bytes, mime }, { maxCols, maxRows });
-        if (cancelled) return;
+        if (cancelled) {
+          renderer.release(prepared);
+          return;
+        }
+        preparedForThisMount = prepared;
         setState({ status: 'ready', prepared });
       } catch {
         if (!cancelled) setState({ status: 'error' });
@@ -56,6 +61,12 @@ export function useMediaAttachment(
     void run();
     return () => {
       cancelled = true;
+      // Kitty placements live in the terminal, not in React. If a virtualized row
+      // unmounts without deleting its placement, scrolling leaves a ghost behind
+      // and eventually exhausts terminal-side image memory. The list policy mounts
+      // an inline attachment only for its selected row, so each prepared image has
+      // one active owner and can be released deterministically here.
+      if (preparedForThisMount !== undefined) renderer.release(preparedForThisMount);
     };
   }, [session, renderer, attachment.mediaId, attachment.mimeType, maxCols, maxRows]);
 

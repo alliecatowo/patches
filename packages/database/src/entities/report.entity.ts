@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Actor } from './actor.entity.js';
+import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 import {
   checkIn,
   REPORT_REASONS,
@@ -59,16 +60,18 @@ export interface MessageSnapshotEntry {
 @Index(['subjectPostId'])
 @Index(['subjectGuestbookEntryId'])
 @Index(['subjectMessageId'])
+@Index(['subjectE2eeLogicalMessageId'])
 @Check('chk_reports_subject_type', checkIn('subject_type', REPORT_SUBJECT_TYPES))
 @Check('chk_reports_reason', checkIn('reason', REPORT_REASONS))
 @Check('chk_reports_status', checkIn('status', REPORT_STATUSES))
 // Exactly one of the four subject columns is set, matching `subject_type`.
 @Check(
   'chk_reports_subject_matches_type',
-  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL)
-   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL)
-   OR ("subject_type" = 'GUESTBOOK_ENTRY' AND "subject_guestbook_entry_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_message_id" IS NULL)
-   OR ("subject_type" = 'MESSAGE' AND "subject_message_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL)`,
+  `("subject_type" = 'ACTOR' AND "subject_actor_id" IS NOT NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL AND "subject_e2ee_logical_message_id" IS NULL)
+   OR ("subject_type" = 'POST' AND "subject_post_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL AND "subject_e2ee_logical_message_id" IS NULL)
+   OR ("subject_type" = 'GUESTBOOK_ENTRY' AND "subject_guestbook_entry_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_message_id" IS NULL AND "subject_e2ee_logical_message_id" IS NULL)
+   OR ("subject_type" = 'MESSAGE' AND "subject_message_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_e2ee_logical_message_id" IS NULL)
+   OR ("subject_type" = 'E2EE_MESSAGE' AND "subject_e2ee_logical_message_id" IS NOT NULL AND "subject_actor_id" IS NULL AND "subject_post_id" IS NULL AND "subject_guestbook_entry_id" IS NULL AND "subject_message_id" IS NULL)`,
 )
 export class Report {
   @PrimaryGeneratedColumn('uuid')
@@ -113,6 +116,14 @@ export class Report {
   @ManyToOne(() => Message, { nullable: true, createForeignKeyConstraints: false })
   @JoinColumn({ name: 'subject_message_id' })
   declare subjectMessage: Message | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  declare subjectE2eeLogicalMessageId: string | null;
+
+  // Deliberately no FK: explicit report evidence must outlive ordinary E2EE envelope retention.
+  @ManyToOne(() => E2eeLogicalMessage, { nullable: true, createForeignKeyConstraints: false })
+  @JoinColumn({ name: 'subject_e2ee_logical_message_id' })
+  declare subjectE2eeLogicalMessage: E2eeLogicalMessage | null;
 
   /** Up to 10 surrounding messages (§183.4), captured at `ReportMessage` write time — chosen
    * over re-deriving evidence from `messages` at review time because either party may delete

@@ -6,11 +6,20 @@
  * bordered description box (spec §75). Both satisfy the same interface, so the TUI never
  * branches on terminal capability outside `createRenderer`.
  */
-import { createHash } from 'node:crypto';
-
 import sharp from 'sharp';
 
+import { AsciiRenderer } from './art/ascii-renderer.js';
+import { detectColorSupport } from './art/color.js';
+import { HalfBlockRenderer } from './art/halfblock-renderer.js';
 import type { GraphicsCapabilities } from './detect.js';
+import {
+  assertBoundedInput,
+  clamp,
+  contentHash,
+  DEFAULT_CELL_HEIGHT_PX,
+  DEFAULT_CELL_WIDTH_PX,
+  SHARP_INPUT_LIMITS,
+} from './limits.js';
 import { MAX_PLACEHOLDER_INDEX } from './protocol/diacritics.js';
 import {
   buildPlaceholderGrid,
@@ -19,6 +28,13 @@ import {
   nextImageId,
   wrapTmuxPassthrough,
 } from './protocol/kitty.js';
+
+export {
+  DEFAULT_CELL_HEIGHT_PX,
+  DEFAULT_CELL_WIDTH_PX,
+  MAX_INPUT_BYTES,
+  MediaTooLargeError,
+} from './limits.js';
 
 /** A transmitted image, sized to a cell grid. */
 export interface PreparedImage {
@@ -40,38 +56,6 @@ export interface MediaSource {
   mime: string;
 }
 
-/**
- * Reject anything above this before it ever reaches `sharp()` (spec §153: bound
- * untrusted input). This is defense in depth ahead of Phase 5's real upload limits —
- * without it, `prepare()` would happily buffer and decode a client-supplied file of
- * any size.
- */
-export const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB
-
-/**
- * Pixel-count ceiling passed to every `sharp()` call. Guards against decompression
- * bombs — a small file (well under {@link MAX_INPUT_BYTES}) that decodes to an
- * enormous pixel buffer, e.g. a crafted PNG. 20,000,000 px comfortably covers any
- * real photo (~5000×4000) while still bounding worst-case memory use.
- */
-const SHARP_INPUT_LIMITS = { limitInputPixels: 20_000_000 } as const;
-
-/** Thrown by `prepare()` when the source bytes exceed {@link MAX_INPUT_BYTES}. */
-export class MediaTooLargeError extends Error {
-  constructor(byteLength: number) {
-    super(
-      `Image is ${String(byteLength)} bytes, which exceeds the ${String(MAX_INPUT_BYTES)}-byte limit.`,
-    );
-    this.name = 'MediaTooLargeError';
-  }
-}
-
-function assertBoundedInput(bytes: Uint8Array): void {
-  if (bytes.byteLength > MAX_INPUT_BYTES) {
-    throw new MediaTooLargeError(bytes.byteLength);
-  }
-}
-
 /** The cell budget the image must fit inside. */
 export interface PrepareOptions {
   maxCols: number;
@@ -79,7 +63,7 @@ export interface PrepareOptions {
 }
 
 export interface TerminalMediaRenderer {
-  readonly kind: 'kitty' | 'fallback';
+  readonly kind: 'kitty' | 'halfblock' | 'ascii' | 'box';
   /**
    * Decode, downscale and (for kitty) transmit an image. Idempotent for the same bytes
    * and the same cell budget: the second call returns the cached handle without
@@ -99,24 +83,10 @@ export interface MediaStdout {
   write: (data: string) => unknown;
 }
 
-/**
- * Cell size assumed when `CSI 16 t` went unanswered. Roughly a 10x20px cell (aspect 2.0),
- * which is what a 20px monospace font gives; being wrong only costs letterboxing,
- * because the terminal fits the image into the cell rect preserving aspect anyway.
- */
-export const DEFAULT_CELL_WIDTH_PX = 10;
-export const DEFAULT_CELL_HEIGHT_PX = 20;
-
 /** Largest placement the diacritic table can address, in either axis. */
 const MAX_GRID = MAX_PLACEHOLDER_INDEX + 1;
-
-function contentHash(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
+/** Terminal-side virtual placements are a scarce, process-external resource. */
+export const MAX_LIVE_KITTY_PLACEMENTS = 4;
 
 /** Renders images inline using the kitty graphics protocol with Unicode placeholders. */
 export class KittyGraphicsRenderer implements TerminalMediaRenderer {
@@ -162,7 +132,11 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     const key = `${hash}:${maxCols}x${maxRows}`;
 
     const hit = this.#cache.get(key);
-    if (hit) return hit;
+    if (hit) {
+      this.#cache.delete(key);
+      this.#cache.set(key, hit);
+      return hit;
+    }
 
     // Same bytes at a different cell budget (a resize): the old placement is dead weight.
     const staleKey = this.#keyByHash.get(hash);
@@ -201,7 +175,18 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     this.#live.add(id);
     this.#cache.set(key, prepared);
     this.#keyByHash.set(hash, key);
+    this.#evictOverflow();
     return prepared;
+  }
+
+  /** Oldest prepared placement first. Map insertion order is our LRU order; cache
+   * hits are promoted so a frequently revisited selected image stays resident. */
+  #evictOverflow(): void {
+    while (this.#cache.size > MAX_LIVE_KITTY_PLACEMENTS) {
+      const oldest = this.#cache.values().next();
+      if (oldest.done) return;
+      this.release(oldest.value);
+    }
   }
 
   placeholderRows(img: PreparedImage): string[] {
@@ -240,7 +225,7 @@ interface FallbackDetails {
 
 /** Spec §75: a bordered box describing the image, for terminals with no graphics protocol. */
 export class FallbackMediaRenderer implements TerminalMediaRenderer {
-  readonly kind = 'fallback' as const;
+  readonly kind = 'box' as const;
 
   /** The box is always exactly this tall: top border, hint line, bottom border. */
   static readonly BOX_ROWS = 3;
@@ -321,14 +306,58 @@ export function buildFallbackBox(
 }
 
 /**
- * Pick the renderer that matches the detected terminal.
+ * How an image should be rendered, independent of what the terminal was probed to
+ * support. `'auto'` is the only mode that consults `caps`/colour detection at all —
+ * every other value forces a specific renderer so a user (or `PATCHES_IMAGES`/the
+ * `images` preference row) can always get a predictable result:
  *
- * Spec §153: "TUI must always have a non-Kitty fallback" — this is the only place that
- * decision is made.
+ * - `'kitty'` — the real Kitty graphics protocol. Forced regardless of `caps.kitty`;
+ *   a caller asking for this explicitly is asserting they know their terminal
+ *   supports it (e.g. a probe that failed for an unrelated reason).
+ * - `'pixel'` — half-block art (`HalfBlockRenderer`), truecolor or 256-colour
+ *   depending on `detectColorSupport()`, degrading further to `'ascii'` when colour
+ *   isn't available at all (there is no colourless "pixel" mode).
+ * - `'ascii'` — the colourless luminance-ramp renderer, unconditionally.
+ * - `'box'` / `'off'` — the spec §75 description box. Identical renderer: `'off'`
+ *   exists as a distinct name because the *policy* of "never fetch or draw a
+ *   placement" is enforced one layer up (the TUI's `ImagePolicy`), not by this
+ *   function — by the time a renderer is asked to `prepare()` anything, "should we
+ *   draw at all" has already been decided.
+ */
+export type ImageRenderMode = 'auto' | 'kitty' | 'pixel' | 'ascii' | 'box' | 'off';
+
+export interface CreateRendererOptions {
+  mode?: ImageRenderMode;
+  /** Consulted only for `'auto'`/`'pixel'` colour degradation. Defaults to
+   * `process.env`; overridden in tests. */
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Pick the renderer that matches the detected terminal (`mode: 'auto'`, the default)
+ * or the caller's explicit choice.
+ *
+ * Spec §153: "TUI must always have a non-Kitty fallback" — every mode other than
+ * `'kitty'` satisfies that trivially, and `'auto'` only ever picks `'kitty'` when the
+ * probe confirmed it.
  */
 export function createRenderer(
   caps: GraphicsCapabilities,
   stdout: MediaStdout = process.stdout,
+  options: CreateRendererOptions = {},
 ): TerminalMediaRenderer {
-  return caps.kitty ? new KittyGraphicsRenderer(stdout, caps) : new FallbackMediaRenderer();
+  const { mode = 'auto', env = process.env } = options;
+
+  if (mode === 'box' || mode === 'off') return new FallbackMediaRenderer();
+  if (mode === 'kitty') return new KittyGraphicsRenderer(stdout, caps);
+  if (mode === 'ascii') return new AsciiRenderer(caps);
+  if (mode === 'pixel') {
+    const support = detectColorSupport(env);
+    return support === 'none' ? new AsciiRenderer(caps) : new HalfBlockRenderer(caps, support);
+  }
+
+  // 'auto'
+  if (caps.kitty) return new KittyGraphicsRenderer(stdout, caps);
+  const support = detectColorSupport(env);
+  return support === 'none' ? new AsciiRenderer(caps) : new HalfBlockRenderer(caps, support);
 }

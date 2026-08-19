@@ -1,0 +1,11 @@
+.root {
+  border-bottom: 2px solid var(--border);
+}
+
+.loadMore {
+  width: 100%;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+}

@@ -7,6 +7,8 @@ import type {
 } from '@patches/database';
 
 import { toActorSummary, type ActorSummary } from '../auth/auth.dto.js';
+import type { FilteredByHintView } from '../filters/filter.dto.js';
+import type { LabelView } from '../labels/label.dto.js';
 
 /**
  * `PostService`'s own vocabulary (spec §128–129) — a `Post`/`Media` entity never reaches
@@ -93,6 +95,23 @@ export interface PostView {
   /** Feed-only repost attribution; ordinary post reads leave this empty. */
   repostedBy: ActorSummary[];
   repostedByTotal: number;
+  /** Populated only for labelers the viewer subscribes to (spec §200.3, §203) — empty means
+   * either "no labels" or "the viewer isn't a subscriber of whichever labelers labeled this",
+   * indistinguishably by design (labeler subscriber lists/counts are never published, §208).
+   * Only wired for feed reads so far (`feeds/post-batch.ts` via `modules/labels`'
+   * `labelsForPosts`); a caller that builds a `PostView` without passing `extras.labels` gets
+   * an honestly-empty list rather than a guess (P14-009). */
+  labels: LabelView[];
+  /** Set only when a viewer's own filter or filter-list subscription matched this post with
+   * `collapse`/`warn` (spec §198.3, §199.3, §203) — `null` for a `hide` match (that post is
+   * never returned at all, see `feeds/feed.service.ts`) and `null` when nothing matched. Only
+   * wired for feed reads (`feeds/feed.service.ts`); a caller that builds a `PostView` without
+   * passing `extras.filteredBy` gets an honest `null` rather than a guess — same pattern
+   * `labels` above documents for P14-009, applied here for P14-007/P14-008. Filters are
+   * deliberately never evaluated for a thread/profile read (spec §198.3 — "threads and
+   * profiles are deliberately not filterable in v1"), so `PostService.getPost`/`listReplies`/
+   * `listActorPosts` always pass this as unset too. */
+  filteredBy: FilteredByHintView | null;
 }
 
 export interface ToPostViewExtras {
@@ -100,6 +119,8 @@ export interface ToPostViewExtras {
   community?: CommunitySummaryView | null;
   repostedBy?: readonly ActorSummary[];
   repostedByTotal?: number;
+  labels?: readonly LabelView[];
+  filteredBy?: FilteredByHintView | null;
 }
 
 /**
@@ -141,6 +162,8 @@ export function toPostView(
     quotePolicy: post.quotePolicy,
     repostedBy: [...(extras.repostedBy ?? [])].slice(0, 3),
     repostedByTotal: extras.repostedByTotal ?? 0,
+    labels: deleted ? [] : [...(extras.labels ?? [])],
+    filteredBy: deleted ? null : (extras.filteredBy ?? null),
   };
 }
 

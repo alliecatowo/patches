@@ -1,5 +1,10 @@
 # Moderation
 
+> Two kinds of statement appear below. **Status: implemented** means the
+> behaviour is in the code today. **Status: planned (Amendment C)** means
+> `INITIAL_VISION.md` §196–§210 requires it and it does not exist yet. If a
+> section carries no marker, it is implemented.
+
 Patches doesn't believe an architecture alone can guarantee a healthy
 community — chronological feeds and no algorithmic amplification remove one
 class of problem (rage-bait doesn't get a ranking boost), but people can
@@ -131,6 +136,10 @@ domain-blocklist story once federation lands are all reasonable next
 steps. If you're a moderator and the CLI is missing something you need
 regularly, that's worth a feature request.
 
+Domain blocking already exists (`patches-admin domain block|unblock|list`),
+enforced on inbound federation traffic and at outbound delivery time — see
+[`docs/architecture/federation.md`](../architecture/federation.md) §6.
+
 ## Audit logging
 
 Every admin/moderator action — suspensions, bans, report resolutions,
@@ -159,6 +168,54 @@ A formal in-product appeals flow is on the roadmap but doesn't exist yet.
 Until it does, appeals are handled by hand — expect a real person to look
 at your case, but also expect it to take longer than a polished appeals
 UI eventually will.
+
+**Status: planned (Amendment C, §201.2–§201.3).** Every enforcement action
+against you will generate an in-product moderation notice — what happened,
+which rule, and how to appeal — instead of you having to notice a
+restriction and go ask why. Appeals will be filed and tracked in the
+product (`AppealService`, `patches appeal`), resolved by a moderator with a
+written reason, and the outcome delivered back the same way. Only you and
+moderators ever see the content of your own appeal.
+
+## Node moderation is the floor, not the whole system
+
+**Status: planned (Amendment C, §196–§201).** Everything above this line —
+guidelines, the enforcement ladder, reports, the admin CLI, the audit log —
+is the node's own floor, and Amendment C does not weaken it: a node ban
+removes an account for everyone, regardless of what any individual has
+chosen to filter, subscribe to, or trust. What Amendment C adds sits above
+that floor and is entirely opt-in:
+
+- **Your own filters** — keyword, phrase, tag, author, and link-domain
+  rules that hide or collapse posts for _you_, evaluated by the server so
+  every client agrees, never shared with anyone, never affecting anyone
+  else's view (§198).
+- **Filter lists** you can publish or subscribe to — curated collections
+  of filter terms, with your identity as publisher always shown to
+  subscribers. Subscribing can never create a block on your behalf; you
+  choose the action, and you can promote any single entry to a real block
+  yourself (§199).
+- **Labelers** — actors or communities that annotate posts/accounts with
+  labels from a bounded, node-published vocabulary (no free text, no
+  scores). A label is visible only to that labeler's own subscribers and
+  never changes feed order or ranking for anyone (§200).
+
+None of this is a second moderation system with its own authority — it's a
+set of opt-in lenses a viewer can put on or take off, on top of a floor
+that stays exactly as strict as it is today.
+
+## Public moderation log
+
+**Status: planned (Amendment C, §201.4).** The node will publish a public
+log of its own enforcement actions — domain blocks fully identified (which
+domain, why), and account/post-level actions (warn/suspend/ban/removal)
+recorded only as an anonymized entry: action taken, reason category,
+timestamp, whether it was appealed. **No handle or post is ever named in
+the public log** — publishing "who" would turn a transparency page into a
+harassment target list, which is the opposite of the point. The person the
+action was taken against sees the full detail in their own moderation
+notice; moderators see it in the audit log; the public sees that the floor
+is being enforced, and for what.
 
 ## Invite-only alpha
 

@@ -99,6 +99,31 @@ export const editPostInputSchema = z.object({
 
 export type EditPostInput = z.infer<typeof editPostInputSchema>;
 
+/** `SearchPosts` (spec §194 — no relevance ranking, keyset-paged like every other list RPC).
+ * `query` rejects empty/whitespace-only and is capped well below any Postgres
+ * `websearch_to_tsquery` practical limit; `authorHandle` reuses the same 3-30 char shape
+ * `MENTION_PATTERN` in `post.service.ts` matches, since it is looked up the same
+ * case-insensitive way. */
+export const SEARCH_QUERY_MAX_LENGTH = 200;
+
+export const searchPostsInputSchema = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1, 'query must not be empty')
+    .max(
+      SEARCH_QUERY_MAX_LENGTH,
+      `query must be at most ${String(SEARCH_QUERY_MAX_LENGTH)} characters`,
+    ),
+  authorHandle: z
+    .string()
+    .trim()
+    .regex(/^[a-zA-Z0-9_]{3,30}$/, 'author_handle must be a valid handle')
+    .optional(),
+});
+
+export type SearchPostsInput = z.infer<typeof searchPostsInputSchema>;
+
 /** Same shape/behavior as `modules/auth/validation.ts`'s `parseInput` — kept local so posts
  * has no import from a sibling feature module for something this small. */
 export function parseInput<Schema extends z.ZodType>(

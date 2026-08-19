@@ -1,6 +1,10 @@
 import { Actor } from './actor.entity.js';
+import { AccountDeletionRequest } from './account-deletion-request.entity.js';
+import { AccountExport } from './account-export.entity.js';
 import { ActorFlair } from './actor-flair.entity.js';
+import { ActorPrivacyPrefs } from './actor-privacy-prefs.entity.js';
 import { AdminAuditLog } from './admin-audit-log.entity.js';
+import { Appeal } from './appeal.entity.js';
 import { AppMeta } from './app-meta.entity.js';
 import { AuthCode } from './auth-code.entity.js';
 import { Block } from './block.entity.js';
@@ -13,15 +17,37 @@ import { Conversation } from './conversation.entity.js';
 import { ConversationMember } from './conversation-member.entity.js';
 import { Credential } from './credential.entity.js';
 import { DomainBlock } from './domain-block.entity.js';
+import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
+import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
+import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
+import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
+import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
+import { E2eeOneTimePrekey } from './e2ee-one-time-prekey.entity.js';
+import { E2eeReportEvidenceItem } from './e2ee-report-evidence-item.entity.js';
+import { E2eeReportEvidence } from './e2ee-report-evidence.entity.js';
+import { E2eeSignedPrekey } from './e2ee-signed-prekey.entity.js';
 import { FederationKey } from './federation-key.entity.js';
+import { Filter } from './filter.entity.js';
+import { FilterList } from './filter-list.entity.js';
+import { FilterListEntry } from './filter-list-entry.entity.js';
+import { FilterListException } from './filter-list-exception.entity.js';
+import { FilterListSubscription } from './filter-list-subscription.entity.js';
+import { FilterScope } from './filter-scope.entity.js';
+import { FilterTerm } from './filter-term.entity.js';
 import { Follow } from './follow.entity.js';
+import { FollowRequest } from './follow-request.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { InboxActivity } from './inbox-activity.entity.js';
 import { Invite } from './invite.entity.js';
+import { Label } from './label.entity.js';
+import { Labeler } from './labeler.entity.js';
+import { LabelerSubscription } from './labeler-subscription.entity.js';
+import { LabelerSubscriptionAction } from './labeler-subscription-action.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
 import { Message } from './message.entity.js';
 import { MessageRequest } from './message-request.entity.js';
+import { ModerationLogEntry } from './moderation-log-entry.entity.js';
 import { Mute } from './mute.entity.js';
 import { Notification } from './notification.entity.js';
 import { OutboxJob } from './outbox-job.entity.js';
@@ -54,7 +80,8 @@ import { User } from './user.entity.js';
  * §188-190) adds `reposts`, `tags`, `post_tags`, `tag_mutes`, `communities`,
  * `community_members`, `community_bans`, `community_invites`, `conversations`,
  * `conversation_members`, `messages`, `message_requests`, `post_edits`, `pinned_posts`,
- * `actor_flair`.
+ * `actor_flair`. Phase 13 adds only public E2EE identity/prekey material, opaque mailbox
+ * envelopes, and explicitly consented report evidence.
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -70,6 +97,7 @@ export const ALL_ENTITIES = [
   Post,
   PostMedia,
   Follow,
+  FollowRequest,
   Block,
   Mute,
   Like,
@@ -97,7 +125,32 @@ export const ALL_ENTITIES = [
   ConversationMember,
   Message,
   MessageRequest,
+  E2eeIdentityRoot,
+  E2eeDeviceIdentity,
+  E2eeDeviceRoster,
+  E2eeSignedPrekey,
+  E2eeOneTimePrekey,
+  E2eeLogicalMessage,
+  E2eeMailboxEnvelope,
+  E2eeReportEvidence,
+  E2eeReportEvidenceItem,
   PostEdit,
   PinnedPost,
   ActorFlair,
+  ActorPrivacyPrefs,
+  Filter,
+  FilterScope,
+  FilterTerm,
+  FilterList,
+  FilterListEntry,
+  FilterListSubscription,
+  FilterListException,
+  Labeler,
+  Label,
+  LabelerSubscription,
+  LabelerSubscriptionAction,
+  Appeal,
+  ModerationLogEntry,
+  AccountDeletionRequest,
+  AccountExport,
 ] as const;

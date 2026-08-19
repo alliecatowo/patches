@@ -120,6 +120,30 @@ export async function runRegister(rest: readonly string[], deps: RegisterDeps): 
 
   const api = createApi(target, insecure);
   try {
+    // Shown before the account is ever created (spec §197.1) — a record that the text
+    // was displayed, never a waiver of anything beyond what it describes, and never a
+    // gate on registration itself (registration proceeds even if the notice is empty).
+    try {
+      const { policy } = await api.getNodePolicy();
+      const summary = policy?.privacyNoticeSummary ?? '';
+      io.stdout(
+        `Privacy notice (v${String(policy?.privacyNoticeVersion ?? 0)}): ${
+          summary === '' ? 'this node publishes no privacy notice.' : summary
+        }\n`,
+      );
+      if (canPrompt) {
+        const answer = await io.prompt('Continue registering? [y/N] ');
+        if (answer.trim().toLowerCase() !== 'y') {
+          io.stdout('Cancelled.\n');
+          return 0;
+        }
+      }
+    } catch {
+      // The node is unreachable for policy purposes only — the register call right
+      // below will surface the same problem with a proper error, so this is not
+      // worth failing the command over on its own.
+    }
+
     const store = await openCredentialStore(io, env, rest);
     const manager = new SessionManager({ api, store, nodeOrigin: target });
     const session = await manager.register({

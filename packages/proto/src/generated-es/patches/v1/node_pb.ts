@@ -4,6 +4,10 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
+import type { LabelVocabularyEntry } from './labels_pb.js';
+import { file_patches_v1_labels } from './labels_pb.js';
+import type { ModerationReasonCategory } from './moderation_pb.js';
+import { file_patches_v1_moderation } from './moderation_pb.js';
 import type { Message } from '@bufbuild/protobuf';
 
 /**
@@ -12,7 +16,8 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_node: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi9gEKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0imAEKElNvY2lhbENhcGFiaWxpdGllcxIdChVsaWtlX2dseXBoX2FsbG93X2xpc3QYASADKAkSFgoObWF4X3Bvc3RfY2hhcnMYAiABKA0SHAoUY2FuX2NyZWF0ZV9jb21tdW5pdHkYAyABKAgSEgoKZG1fZW5hYmxlZBgEIAEoCBIZChFkbV9yZXRlbnRpb25fZGF5cxgFIAEoDSIUChJHZXROb2RlSW5mb1JlcXVlc3Qi8wEKE0dldE5vZGVJbmZvUmVzcG9uc2USDgoGZG9tYWluGAEgASgJEhgKEHNvZnR3YXJlX3ZlcnNpb24YAiABKAkSNwoRcmVnaXN0cmF0aW9uX21vZGUYAyABKA4yHC5wYXRjaGVzLnYxLlJlZ2lzdHJhdGlvbk1vZGUSJgoGbGltaXRzGAQgASgLMhYucGF0Y2hlcy52MS5Ob2RlTGltaXRzEhQKDGNhcGFiaWxpdGllcxgFIAMoCRI7ChNzb2NpYWxfY2FwYWJpbGl0aWVzGAYgASgLMh4ucGF0Y2hlcy52MS5Tb2NpYWxDYXBhYmlsaXRpZXMqdAoQUmVnaXN0cmF0aW9uTW9kZRIhCh1SRUdJU1RSQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFlJFR0lTVFJBVElPTl9NT0RFX09QRU4QARIhCh1SRUdJU1RSQVRJT05fTU9ERV9JTlZJVEVfT05MWRACMl0KC05vZGVTZXJ2aWNlEk4KC0dldE5vZGVJbmZvEh4ucGF0Y2hlcy52MS5HZXROb2RlSW5mb1JlcXVlc3QaHy5wYXRjaGVzLnYxLkdldE5vZGVJbmZvUmVzcG9uc2ViBnByb3RvMw',
+    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi9gEKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0imAEKElNvY2lhbENhcGFiaWxpdGllcxIdChVsaWtlX2dseXBoX2FsbG93X2xpc3QYASADKAkSFgoObWF4X3Bvc3RfY2hhcnMYAiABKA0SHAoUY2FuX2NyZWF0ZV9jb21tdW5pdHkYAyABKAgSEgoKZG1fZW5hYmxlZBgEIAEoCBIZChFkbV9yZXRlbnRpb25fZGF5cxgFIAEoDSIUChJHZXROb2RlSW5mb1JlcXVlc3Qi8wEKE0dldE5vZGVJbmZvUmVzcG9uc2USDgoGZG9tYWluGAEgASgJEhgKEHNvZnR3YXJlX3ZlcnNpb24YAiABKAkSNwoRcmVnaXN0cmF0aW9uX21vZGUYAyABKA4yHC5wYXRjaGVzLnYxLlJlZ2lzdHJhdGlvbk1vZGUSJgoGbGltaXRzGAQgASgLMhYucGF0Y2hlcy52MS5Ob2RlTGltaXRzEhQKDGNhcGFiaWxpdGllcxgFIAMoCRI7ChNzb2NpYWxfY2FwYWJpbGl0aWVzGAYgASgLMh4ucGF0Y2hlcy52MS5Tb2NpYWxDYXBhYmlsaXRpZXMikgEKEURvbWFpblBvbGljeUVudHJ5Eg4KBmRvbWFpbhgBIAEoCRIuCgZhY3Rpb24YAiABKA4yHi5wYXRjaGVzLnYxLkRvbWFpblBvbGljeUFjdGlvbhI9Cg9yZWFzb25fY2F0ZWdvcnkYAyABKA4yJC5wYXRjaGVzLnYxLk1vZGVyYXRpb25SZWFzb25DYXRlZ29yeSLEAQoQUmV0ZW50aW9uV2luZG93cxIZChFkbV9yZXRlbnRpb25fZGF5cxgBIAEoDRIoCiBldmlkZW5jZV9zbmFwc2hvdF9yZXRlbnRpb25fZGF5cxgCIAEoDRIoCiB1cGxvYWRlZF9vcmlnaW5hbF9yZXRlbnRpb25fZGF5cxgDIAEoDRIaChJsb2dfcmV0ZW50aW9uX2RheXMYBCABKA0SJQodZXhwb3J0X2FyY2hpdmVfcmV0ZW50aW9uX2RheXMYBSABKA0iiwQKCk5vZGVQb2xpY3kSHgoWcHJpdmFjeV9ub3RpY2Vfc3VtbWFyeRgBIAEoCRIeChZwcml2YWN5X25vdGljZV92ZXJzaW9uGAIgASgNEhoKEnByaXZhY3lfbm90aWNlX3VybBgDIAEoCRIRCgl0ZXJtc191cmwYBCABKAkSGQoRbW9kZXJhdG9yX2NvbnRhY3QYBSABKAkSGwoTYXBwZWFsX2luc3RydWN0aW9ucxgGIAEoCRI3ChFmZWRlcmF0aW9uX3N0YW5jZRgHIAEoDjIcLnBhdGNoZXMudjEuRmVkZXJhdGlvblN0YW5jZRI2Cg9kb21haW5fcG9saWNpZXMYCCADKAsyHS5wYXRjaGVzLnYxLkRvbWFpblBvbGljeUVudHJ5EhUKDWRhdGFfbG9jYXRpb24YCSABKAkSLwoJcmV0ZW50aW9uGAogASgLMhwucGF0Y2hlcy52MS5SZXRlbnRpb25XaW5kb3dzEhkKEW9wZXJhdG9yX2lkZW50aXR5GAsgASgJEjoKEGxhYmVsX3ZvY2FidWxhcnkYDCADKAsyIC5wYXRjaGVzLnYxLkxhYmVsVm9jYWJ1bGFyeUVudHJ5EioKImFjY291bnRfZGVsZXRpb25fZ3JhY2VfcGVyaW9kX2RheXMYDSABKA0SGgoSYXBwZWFsX3dpbmRvd19kYXlzGA4gASgNIhYKFEdldE5vZGVQb2xpY3lSZXF1ZXN0Ij8KFUdldE5vZGVQb2xpY3lSZXNwb25zZRImCgZwb2xpY3kYASABKAsyFi5wYXRjaGVzLnYxLk5vZGVQb2xpY3kqdAoQUmVnaXN0cmF0aW9uTW9kZRIhCh1SRUdJU1RSQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFlJFR0lTVFJBVElPTl9NT0RFX09QRU4QARIhCh1SRUdJU1RSQVRJT05fTU9ERV9JTlZJVEVfT05MWRACKqEBChBGZWRlcmF0aW9uU3RhbmNlEiEKHUZFREVSQVRJT05fU1RBTkNFX1VOU1BFQ0lGSUVEEAASHgoaRkVERVJBVElPTl9TVEFOQ0VfRElTQUJMRUQQARIfChtGRURFUkFUSU9OX1NUQU5DRV9BTExPV0xJU1QQAhIpCiVGRURFUkFUSU9OX1NUQU5DRV9PUEVOX1dJVEhfQkxPQ0tMSVNUEAMqWgoSRG9tYWluUG9saWN5QWN0aW9uEiQKIERPTUFJTl9QT0xJQ1lfQUNUSU9OX1VOU1BFQ0lGSUVEEAASHgoaRE9NQUlOX1BPTElDWV9BQ1RJT05fQkxPQ0sQATKzAQoLTm9kZVNlcnZpY2USTgoLR2V0Tm9kZUluZm8SHi5wYXRjaGVzLnYxLkdldE5vZGVJbmZvUmVxdWVzdBofLnBhdGNoZXMudjEuR2V0Tm9kZUluZm9SZXNwb25zZRJUCg1HZXROb2RlUG9saWN5EiAucGF0Y2hlcy52MS5HZXROb2RlUG9saWN5UmVxdWVzdBohLnBhdGNoZXMudjEuR2V0Tm9kZVBvbGljeVJlc3BvbnNlYgZwcm90bzM',
+    [file_patches_v1_labels, file_patches_v1_moderation],
   );
 
 /**
@@ -191,6 +196,214 @@ export const GetNodeInfoResponseSchema: GenMessage<GetNodeInfoResponse> =
   messageDesc(file_patches_v1_node, 3);
 
 /**
+ * One entry of the node's public federation domain policy (spec §201.5). `reason_category` is
+ * the published bounded category — the operator's free-text `domain_blocks.reason` is never
+ * exposed here (same split as `ModerationLogEntry.reason_category`).
+ *
+ * @generated from message patches.v1.DomainPolicyEntry
+ */
+export type DomainPolicyEntry = Message<'patches.v1.DomainPolicyEntry'> & {
+  /**
+   * @generated from field: string domain = 1;
+   */
+  domain: string;
+
+  /**
+   * @generated from field: patches.v1.DomainPolicyAction action = 2;
+   */
+  action: DomainPolicyAction;
+
+  /**
+   * @generated from field: patches.v1.ModerationReasonCategory reason_category = 3;
+   */
+  reasonCategory: ModerationReasonCategory;
+};
+
+/**
+ * Describes the message patches.v1.DomainPolicyEntry.
+ * Use `create(DomainPolicyEntrySchema)` to create a new message.
+ */
+export const DomainPolicyEntrySchema: GenMessage<DomainPolicyEntry> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 4);
+
+/**
+ * Retention windows this node enforces (spec §197.6, §204). Zero means "no retention limit is
+ * enforced", the same convention as `SocialCapabilities.dm_retention_days`.
+ *
+ * @generated from message patches.v1.RetentionWindows
+ */
+export type RetentionWindows = Message<'patches.v1.RetentionWindows'> & {
+  /**
+   * @generated from field: uint32 dm_retention_days = 1;
+   */
+  dmRetentionDays: number;
+
+  /**
+   * @generated from field: uint32 evidence_snapshot_retention_days = 2;
+   */
+  evidenceSnapshotRetentionDays: number;
+
+  /**
+   * @generated from field: uint32 uploaded_original_retention_days = 3;
+   */
+  uploadedOriginalRetentionDays: number;
+
+  /**
+   * @generated from field: uint32 log_retention_days = 4;
+   */
+  logRetentionDays: number;
+
+  /**
+   * @generated from field: uint32 export_archive_retention_days = 5;
+   */
+  exportArchiveRetentionDays: number;
+};
+
+/**
+ * Describes the message patches.v1.RetentionWindows.
+ * Use `create(RetentionWindowsSchema)` to create a new message.
+ */
+export const RetentionWindowsSchema: GenMessage<RetentionWindows> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 5);
+
+/**
+ * Operator transparency document (spec §197.6). Every field is operator-supplied text or an
+ * enum — never markup, scripts, or remote media (§172, §177).
+ *
+ * @generated from message patches.v1.NodePolicy
+ */
+export type NodePolicy = Message<'patches.v1.NodePolicy'> & {
+  /**
+   * @generated from field: string privacy_notice_summary = 1;
+   */
+  privacyNoticeSummary: string;
+
+  /**
+   * @generated from field: uint32 privacy_notice_version = 2;
+   */
+  privacyNoticeVersion: number;
+
+  /**
+   * @generated from field: string privacy_notice_url = 3;
+   */
+  privacyNoticeUrl: string;
+
+  /**
+   * @generated from field: string terms_url = 4;
+   */
+  termsUrl: string;
+
+  /**
+   * @generated from field: string moderator_contact = 5;
+   */
+  moderatorContact: string;
+
+  /**
+   * How appeals are filed (spec §201.3) — human-readable instructions, not a structured
+   * shape; the actual mechanism is `AppealService.CreateAppeal`.
+   *
+   * @generated from field: string appeal_instructions = 6;
+   */
+  appealInstructions: string;
+
+  /**
+   * @generated from field: patches.v1.FederationStance federation_stance = 7;
+   */
+  federationStance: FederationStance;
+
+  /**
+   * The public subset of this node's domain policy (spec §201.5).
+   *
+   * @generated from field: repeated patches.v1.DomainPolicyEntry domain_policies = 8;
+   */
+  domainPolicies: DomainPolicyEntry[];
+
+  /**
+   * Operator-declared jurisdiction/provider, free text (spec §197.6).
+   *
+   * @generated from field: string data_location = 9;
+   */
+  dataLocation: string;
+
+  /**
+   * @generated from field: patches.v1.RetentionWindows retention = 10;
+   */
+  retention?: RetentionWindows | undefined;
+
+  /**
+   * Who runs this node, or an explicit "anonymous operator" statement (spec §197.6).
+   *
+   * @generated from field: string operator_identity = 11;
+   */
+  operatorIdentity: string;
+
+  /**
+   * The closed label vocabulary this node's own labeler publishes (spec §200.2).
+   *
+   * @generated from field: repeated patches.v1.LabelVocabularyEntry label_vocabulary = 12;
+   */
+  labelVocabulary: LabelVocabularyEntry[];
+
+  /**
+   * Node-configurable, published here (spec §204's 30-day default).
+   *
+   * @generated from field: uint32 account_deletion_grace_period_days = 13;
+   */
+  accountDeletionGracePeriodDays: number;
+
+  /**
+   * Node-configurable, published here (spec §204's 14-day default).
+   *
+   * @generated from field: uint32 appeal_window_days = 14;
+   */
+  appealWindowDays: number;
+};
+
+/**
+ * Describes the message patches.v1.NodePolicy.
+ * Use `create(NodePolicySchema)` to create a new message.
+ */
+export const NodePolicySchema: GenMessage<NodePolicy> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 6);
+
+/**
+ * @generated from message patches.v1.GetNodePolicyRequest
+ */
+export type GetNodePolicyRequest = Message<'patches.v1.GetNodePolicyRequest'> & {};
+
+/**
+ * Describes the message patches.v1.GetNodePolicyRequest.
+ * Use `create(GetNodePolicyRequestSchema)` to create a new message.
+ */
+export const GetNodePolicyRequestSchema: GenMessage<GetNodePolicyRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 7);
+
+/**
+ * @generated from message patches.v1.GetNodePolicyResponse
+ */
+export type GetNodePolicyResponse = Message<'patches.v1.GetNodePolicyResponse'> & {
+  /**
+   * A node that publishes nothing renders as an all-empty `NodePolicy` — clients MUST render
+   * that as "this node publishes no policy" rather than hiding the screen (spec §197.6).
+   *
+   * @generated from field: patches.v1.NodePolicy policy = 1;
+   */
+  policy?: NodePolicy | undefined;
+};
+
+/**
+ * Describes the message patches.v1.GetNodePolicyResponse.
+ * Use `create(GetNodePolicyResponseSchema)` to create a new message.
+ */
+export const GetNodePolicyResponseSchema: GenMessage<GetNodePolicyResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 8);
+
+/**
  * @generated from enum patches.v1.RegistrationMode
  */
 export enum RegistrationMode {
@@ -218,6 +431,66 @@ export const RegistrationModeSchema: GenEnum<RegistrationMode> =
   enumDesc(file_patches_v1_node, 0);
 
 /**
+ * disabled: no federation at all. allowlist: only explicitly-approved domains. open-with-
+ * blocklist: federates with any domain except those on `domain_policies` (spec §197.6).
+ *
+ * @generated from enum patches.v1.FederationStance
+ */
+export enum FederationStance {
+  /**
+   * @generated from enum value: FEDERATION_STANCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: FEDERATION_STANCE_DISABLED = 1;
+   */
+  DISABLED = 1,
+
+  /**
+   * @generated from enum value: FEDERATION_STANCE_ALLOWLIST = 2;
+   */
+  ALLOWLIST = 2,
+
+  /**
+   * @generated from enum value: FEDERATION_STANCE_OPEN_WITH_BLOCKLIST = 3;
+   */
+  OPEN_WITH_BLOCKLIST = 3,
+}
+
+/**
+ * Describes the enum patches.v1.FederationStance.
+ */
+export const FederationStanceSchema: GenEnum<FederationStance> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_node, 1);
+
+/**
+ * v1 ships exactly one action (spec §201.5); kept as an enum rather than a bare bool for
+ * forward compatibility with a graduated `limit`/`silence` tier, a §210 sign-off item.
+ *
+ * @generated from enum patches.v1.DomainPolicyAction
+ */
+export enum DomainPolicyAction {
+  /**
+   * @generated from enum value: DOMAIN_POLICY_ACTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DOMAIN_POLICY_ACTION_BLOCK = 1;
+   */
+  BLOCK = 1,
+}
+
+/**
+ * Describes the enum patches.v1.DomainPolicyAction.
+ */
+export const DomainPolicyActionSchema: GenEnum<DomainPolicyAction> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_node, 2);
+
+/**
  * Node discovery (spec §163, §168, §174) — always unauthenticated. A client calls
  * `GetNodeInfo` before assuming any policy (registration mode, limits, capabilities) rather
  * than hardcoding the reference node's behavior.
@@ -232,5 +505,19 @@ export const NodeService: GenService<{
     methodKind: 'unary';
     input: typeof GetNodeInfoRequestSchema;
     output: typeof GetNodeInfoResponseSchema;
+  };
+  /**
+   * Operator transparency (spec §197.6): what this node's operators do with your data and
+   * your safety. Deliberately a separate RPC from `GetNodeInfo` — this document is larger,
+   * changes rarely, and is cached on a different schedule. A node that publishes nothing
+   * here has said so; clients render an empty policy as "this node publishes no policy"
+   * rather than hiding the screen.
+   *
+   * @generated from rpc patches.v1.NodeService.GetNodePolicy
+   */
+  getNodePolicy: {
+    methodKind: 'unary';
+    input: typeof GetNodePolicyRequestSchema;
+    output: typeof GetNodePolicyResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_node, 0);

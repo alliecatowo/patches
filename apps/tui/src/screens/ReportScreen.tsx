@@ -19,6 +19,15 @@ export interface ReportScreenProps {
   isActive: boolean;
   onCancel: () => void;
   onSubmitted: () => void;
+  /**
+   * Opens the shell's shared measured `ConfirmDialog` (P12-126). Filing a report is
+   * irreversible from the reporter's side and puts a moderator's attention on someone,
+   * so it goes through the same one component every other destructive action does. When
+   * absent (a bare unit render) the report submits directly.
+   */
+  onConfirm?:
+    | ((request: { id: string; title: string; body: string; onConfirm: () => void }) => void)
+    | undefined;
 }
 
 const REASONS: ReadonlyArray<{ value: ReportReason; label: string }> = [
@@ -50,6 +59,7 @@ export function ReportScreen({
   isActive,
   onCancel,
   onSubmitted,
+  onConfirm,
 }: ReportScreenProps): ReactElement {
   const [selected, setSelected] = useState(0);
   const [details, setDetails] = useState('');
@@ -71,6 +81,20 @@ export function ReportScreen({
     }
   }
 
+  /** `Ctrl+S` — through the shared confirm when the shell provides one. */
+  function requestSubmit(): void {
+    if (onConfirm === undefined) {
+      void submit();
+      return;
+    }
+    onConfirm({
+      id: `report:${target.type}:${target.id}`,
+      title: `Report ${target.label}?`,
+      body: 'This node’s moderators will see this report and the text you wrote.',
+      onConfirm: () => void submit(),
+    });
+  }
+
   useInput(
     (input, key) => {
       if (send.status === 'sending') return;
@@ -79,7 +103,7 @@ export function ReportScreen({
         return;
       }
       if (key.ctrl && input === 's') {
-        void submit();
+        requestSubmit();
         return;
       }
       if (input === 'j' || key.downArrow) {

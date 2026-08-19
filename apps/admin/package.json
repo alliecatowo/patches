@@ -17,6 +17,7 @@
   "dependencies": {
     "@patches/config": "workspace:*",
     "@patches/database": "workspace:*",
+    "@patches/domain": "workspace:*",
     "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "typeorm": "catalog:",

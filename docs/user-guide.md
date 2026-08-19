@@ -138,42 +138,86 @@ Once signed in, running `patches` (with `--server`/`--insecure` as above) opens 
 full-screen client. Screens and global keys (see
 [`docs/architecture/tui.md`](./architecture/tui.md) for the authoritative table):
 
-| Key         | Action                                                               |
-| ----------- | -------------------------------------------------------------------- |
-| `g h`       | go to Home feed (posts from people you follow)                       |
-| `g l`       | go to Local feed (public posts on this node)                         |
-| `g p`       | go to your own profile                                               |
-| `g n`       | go to notifications                                                  |
-| `g b`       | go to your bookmarks                                                 |
-| `g s` / `/` | search                                                               |
-| `g v`       | go to your own Patches Page                                          |
-| `c`         | compose a new post                                                   |
-| `Enter`     | open the selected post's thread                                      |
-| `r`         | reply to the selected post                                           |
-| `l`         | like/unlike the selected post                                        |
-| `b`         | bookmark/unbookmark the selected post                                |
-| `p`         | open the selected post's author profile                              |
-| `f`         | follow/unfollow the profile you're viewing                           |
-| `B`         | block/unblock the profile you're viewing (confirm `y`/`n`)           |
-| `M`         | mute/unmute the profile you're viewing (confirm `y`/`n`)             |
-| `!`         | report the selected post, or the profile you're viewing              |
-| `v`         | visit the selected actor's Patches Page (or `patches visit @handle`) |
-| `e`         | edit your own Patches Page (opens `$EDITOR`)                         |
-| `o`         | open the selected post's first attachment externally                 |
-| `L`         | login / switch accounts                                              |
-| `P`         | toggle plain mode (strip nameplate decoration)                       |
-| `?`         | help                                                                 |
-| `q`         | quit                                                                 |
-| `Esc`       | cancel the current modal/action; back one level on the thread screen |
+| Key               | Action                                                                 |
+| ----------------- | ---------------------------------------------------------------------- |
+| `g h`             | go to Home feed (posts from people you follow)                         |
+| `g l`             | go to Local feed (public posts on this node)                           |
+| `g p`             | go to your own profile                                                 |
+| `g n`             | go to notifications                                                    |
+| `g b`             | go to your bookmarks                                                   |
+| `g d`             | go to direct messages                                                  |
+| `g c`             | go to communities on this node                                         |
+| `g e`             | edit your display name, bio and nameplate                              |
+| `g s` / `/`       | search                                                                 |
+| `g v`             | go to your own Patches Page                                            |
+| `: / Ctrl+P`      | command palette — every key above, by name                             |
+| `:privacy`        | privacy notice, discoverability, account export and deletion           |
+| `:followrequests` | pending requests to follow your locked account                         |
+| `:filters`        | your own bring-your-own filters                                        |
+| `:lists`          | browse, subscribe to, and publish filter lists                         |
+| `:labelers`       | subscribe to labelers and set per-value actions                        |
+| `:appeals`        | file and track appeals against a moderation notice                     |
+| `:modlog`         | this node's public, anonymized moderation log                          |
+| `c`               | compose a new post                                                     |
+| `j / ↓`           | move down one post                                                     |
+| `k / ↑`           | move up one post                                                       |
+| `n / space`       | load the next page of posts                                            |
+| `Ctrl+R`          | refresh the current screen                                             |
+| `Enter`           | open the selected post's thread                                        |
+| `r`               | reply to the selected post                                             |
+| `l`               | like/unlike the selected post                                          |
+| `b`               | bookmark/unbookmark the selected post                                  |
+| `R`               | repost/unrepost the selected post                                      |
+| `Q`               | quote the selected post in a new post                                  |
+| `d`               | delete your own selected post (confirm `y`/`n`)                        |
+| `H`               | view the selected post's edit history                                  |
+| `#`               | open the selected post's first tag timeline                            |
+| `t`               | search tags                                                            |
+| `p`               | open the selected post's author profile                                |
+| `f`               | follow/unfollow the profile you're viewing                             |
+| `J`               | join/leave the community you're viewing                                |
+| `B`               | block/unblock the profile you're viewing (confirm `y`/`n`)             |
+| `M`               | mute/unmute the profile you're viewing (confirm `y`/`n`)               |
+| `!`               | report the selected post, or the profile you're viewing                |
+| `v`               | visit the selected actor's Patches Page (or `patches visit @handle`)   |
+| `e`               | edit your own Patches Page (opens `$EDITOR`)                           |
+| `o`               | open the selected post's first attachment externally                   |
+| `L`               | login / switch accounts                                                |
+| `P`               | toggle plain mode (strip nameplate decoration)                         |
+| `?`               | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages |
+| `q`               | quit                                                                   |
+| `Esc`             | cancel the current modal/action; back one level otherwise              |
+
+This table is checked against the TUI's own binding table by
+`apps/tui/test/docs-keymap.test.ts`, so it cannot drift from the keys the app
+actually ships. Press `?` in the app for the complete, contextual list.
 
 ### Composing and attaching images
 
 Press `c` to compose. `Ctrl+S` is the only way to submit — `Enter` always inserts a newline,
-so you can't accidentally post mid-thought. `Ctrl+A` prompts for a local image path and
-attaches it (uploaded, validated, and processed before the post goes out — see
-[`docs/architecture/media.md`](./architecture/media.md)). `Esc` closes the compose screen
-without discarding your draft; drafts persist locally so a stray `Esc` or terminal resize
-won't lose your text.
+so you can't accidentally post mid-thought. The body is a measured multiline editor: arrow
+keys and `Home`/`End` move the cursor, `Alt+Left`/`Alt+Right` jump a word, `Ctrl+E` jumps to
+end of line, `Ctrl+K` deletes to end of line, `Ctrl+W` deletes the previous word, and
+`Ctrl+Z`/`Ctrl+Y` undo/redo. The character counter and limit come from the node's own
+`GetNodeInfo` limits, not a hardcoded number, so it tracks whatever the server you're posting
+to allows.
+
+Typing `@` or `#` opens an autocomplete popover that looks up actors or tags as you type
+(debounced, so a fast typist never sees a stale result); `Tab` accepts the highlighted match,
+`Esc` dismisses the popover without closing compose.
+
+`Ctrl+A` opens a terminal file picker to browse to a local image and attach it (uploaded,
+validated, and processed before the post goes out — see
+[`docs/architecture/media.md`](./architecture/media.md)) instead of typing a raw path.
+Pasting a file path or `file://` URI attaches it directly rather than inserting it as text.
+`Ctrl+X` removes the most recently attached image. `Ctrl+T` toggles a single-line content
+warning field. `Ctrl+O` swaps the editor for a live preview of the rendered post. `Esc` closes
+the compose screen without discarding your draft; drafts persist locally so a stray `Esc` or
+terminal resize won't lose your text. `c` opens a compact quick-post overlay sharing the same
+draft and editor as full compose (never a second copy of the editing logic); `Ctrl+F` expands
+it into the full compose screen (`C` also opens full compose directly) without losing what
+you've typed. Pressing `E` on your own post reopens compose in edit mode, prefilled with the
+existing body.
 
 ### Following and search
 
@@ -203,14 +247,78 @@ never executable code, in every client. Press `e` on your own Page to edit it �
 underlying document in your `$EDITOR` (whatever `$EDITOR` is set to in your shell); save and
 exit to publish the new revision.
 
+### Privacy, filters, filter lists, and labelers
+
+`:privacy` shows this node's privacy notice (with the version you last acknowledged), your
+discoverability preferences (`j`/`k` to move, `l`/`Space` to toggle and save one at a time),
+account export status, and account deletion — `d` requests deletion after this node's grace
+period, `u` cancels a pending one while still inside it. It's also reachable from `,`
+(Preferences) as its own row. The headless equivalent is
+`patches privacy show|set|ack|export|delete|cancel-delete`.
+
+`:filters` lists your own bring-your-own filters (spec §198) — literal substring/word/tag/
+actor/domain matches you author yourself, never a regular expression, applied only to your own
+timelines. `n` opens an inline form (name, term kind, term value, action); `X` deletes with a
+confirm. Multi-term filters and JSON import/export are CLI-only:
+`patches filter list|create|delete|export|import`.
+
+`:lists` browses filter lists other people or communities have published (`Tab` switches to
+your own subscriptions), `S` subscribes (defaulting to collapse, the least destructive useful
+action), `U` unsubscribes, `p` publishes one of your own. Subscribing never creates a block,
+and unsubscribing is instant. Per-entry exceptions ("this list is right about everything except
+this one account") are CLI-only: `patches lists browse|mine|entries|publish|subscribe|
+unsubscribe|exception`.
+
+`:labelers` lists labelers on this node, `S`/`U` subscribe/unsubscribe, `h`/`l` pick a
+vocabulary value and `a` cycles its action (ignore/warn/collapse/hide) — a value the node has
+marked mandatory can't be changed. A label is only ever visible to viewers who subscribed;
+subscribing never affects anyone else. Headless: `patches labelers list|subscribe|unsubscribe|
+action`.
+
+If your account is locked, `:followrequests` lists pending requests to follow you; `A` accepts,
+`D` declines.
+
+### Appeals and the moderation log
+
+If you're warned, suspended, or otherwise acted on, you get a moderation notice — `:appeals`
+lists your notices (`Tab` switches to appeals you've already filed) and `n` files one against
+the selected not-yet-appealed notice, with a short statement. Headless:
+`patches appeal list|create|show`.
+
+`:modlog` is this node's public, anonymized moderation log — a transparency record of the
+node's own conduct, not of any individual's. Domain entries name the domain; account/post/
+media entries never carry a handle, actor id, or post id. No sign-in required. Headless:
+`patches modlog`.
+
 ## Plain mode and accessibility
 
 Pass `--plain` (or set `PATCHES_PLAIN=1`), or press `P` at runtime, to strip nameplate
 decoration (colored badges/frames) from the UI — useful for screen readers, low-color
-terminals, or just personal preference. Image rendering itself gracefully degrades: on a
-terminal with Kitty graphics protocol support (e.g. Ghostty, kitty), images render inline; on
-any other terminal, Patches falls back to a placeholder box rather than failing or dumping
-raw escape codes.
+terminals, or just personal preference. Plain mode always shows the plain placeholder box for
+images (see below) rather than any form of art.
+
+### Image rendering: Kitty graphics, terminal art, or a plain box
+
+Image rendering gracefully degrades in three tiers, never failing or dumping raw escape codes:
+
+1. **Kitty graphics protocol** (Ghostty, kitty, WezTerm, and other terminals that implement
+   it) — the real image, transmitted out-of-band and drawn inline.
+2. **Terminal art** — on any other terminal, Patches draws the image itself using Unicode
+   half-block characters (two pixels per cell, in truecolor or 256-colour depending on what
+   your terminal reports) or, on a terminal with no usable colour at all (`NO_COLOR` set,
+   `TERM=dumb`, or no `TERM`), a colourless dithered ASCII-art rendering. This is real,
+   recognizable art, not a Kitty-only feature with everyone else stuck on a box.
+3. **A plain description box** (dimensions, format, "press `o` to open externally") — used in
+   plain mode, when you've explicitly asked for it (below), or when nothing else applies.
+
+The **Images** row on the Preferences screen cycles `auto` → `pixel` → `ascii` → `box` → `off`
+(`h`/`l` or arrow keys), with a live one-line description of what each mode does: `auto` picks
+the best of the three tiers above automatically; `pixel` and `ascii` force terminal art even on
+a Kitty-capable terminal; `box` always shows the plain box (still fetching the image, just never
+drawing it); `off` never fetches or draws anything — the box still renders from the post's own
+metadata (dimensions, alt text), since that's content, not decoration. The same modes are
+available as a one-time override via the `PATCHES_IMAGES` environment variable
+(`auto`/`kitty`/`pixel`/`ascii`/`box`/`off`) if you'd rather not touch Preferences.
 
 ## Troubleshooting
 

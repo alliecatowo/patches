@@ -42,7 +42,8 @@
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "catalog:",
     "ts-proto": "catalog:",
-    "tsup": "catalog:"
+    "tsup": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",

@@ -23,6 +23,39 @@ paths:
 - **Every cosmetic needs two off switches** (spec §185): plain mode (`P`/`PATCHES_PLAIN`) strips all decoration including the viewer's own; quiet feed (`~`) hides _other_ actors' cosmetics. Both are client-side; the server never gates them. Content (bodies, CWs, alt text, tombstones, moderation notices) always renders under both.
 - **Remote decoration is hostile input** (§173, §184, §192): allow-listed glyphs only, no images/uploads, contrast floor enforced, control/escape sequences stripped, and nothing may draw outside the cells of the block being rendered.
 
+## Measured layout (ADR 0018, P12-001/003)
+
+- **One window-size source.** `App.tsx` is the only caller of `useWindowSize()`; it publishes the
+  content box through `ContentSizeProvider` (`app/layout.tsx`). Screens read `useContentSize()` and
+  never `useWindowSize()` or `process.stdout.columns/rows`. Two components measuring independently
+  disagree by a row the moment a resize lands mid-render, and the frame overflows.
+- **Every measured component ships a height test.** If a component's rows are counted by a
+  viewport (`measurePostRowHeight`, `measureMarkupHeight`, `THEME_PREVIEW_DIMENSIONS`), it needs a
+  test that renders it and asserts the drawn row count equals the measured one. A measurement that
+  under-counts is what smears Ink's line diff — it is not a cosmetic bug.
+- **`<Static>` is banned in the shell.** It writes above the managed frame and permanently
+  desynchronises the layout the fixed-height boxes depend on. Use a bounded scrollback region.
+- **`flexShrink={0}` on every direct child of a height-constrained Box.** Yoga otherwise shrinks a
+  child and Ink renders that by dropping rows out of its middle.
+- **Hide an overlay's background with `display="none"`, never `height={0}`.** A zero-height box is
+  removed from layout but Ink still paints its text into the overlay's rows.
+
+## Input dispatch
+
+- Keys go through the layer stack in `app/input.tsx`; a layer returns `true` only for keys it
+  actually consumed, so shell safety keys stay reachable from every sub-mode.
+- **Ink parses one stdin chunk into one keypress.** Keys typed fast enough to arrive together
+  become a single multi-character `input`; split coalesced runs (`isCoalescedKeyRun`) or two-key
+  sequences silently stop working under fast typing.
+- **Multi-key prefix state lives in a ref**, not `useState` — the same handler closure serves every
+  key in a chunk, so state written by one key is stale for the next.
+
+## Post bodies
+
+- Rich text goes through `format/markup.ts` — one sanitizer, one AST, one layout. Never add a
+  second parser, and never render a body straight from the wire.
+- Plain mode shows source markers; it must never drop characters.
+
 ## Non-TTY safety and verification
 
 - `useInput` throws when stdin isn't a TTY: gate interactive hooks on `useStdin().isRawModeSupported` and keep the non-interactive subcommands (`patches ping`, `--version`) working — CI and agents use them.

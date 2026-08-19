@@ -11,6 +11,7 @@ import { Observable } from 'rxjs';
 import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
+import { ConversationSecurityMode } from './e2ee.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -48,6 +49,19 @@ export interface Conversation {
   lastMessageAt: Timestamp | undefined;
   /** Unread count for the caller specifically — never populated for anyone else. */
   unreadCount: number;
+  /**
+   * Which security mode this conversation was created in (ADR 0017, ADR 0020). Read-only and
+   * fixed at creation: there is no RPC anywhere in this schema that converts a conversation
+   * between modes. `CreateConversation` always produces
+   * `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; `E2eeService.CreateE2eeConversation` is
+   * the only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+   *
+   * Clients MUST render disclosure from this field and never from a local assumption: spec
+   * §183.1 requires the "not end-to-end encrypted — this node's operators can read these
+   * messages" line on the legacy screen, and spec §194 forbids the words encrypted, end-to-end,
+   * secure, or private for anything but `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+   */
+  securityMode: ConversationSecurityMode;
 }
 
 export interface Message {

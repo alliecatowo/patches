@@ -1,0 +1,38 @@
+.wrap {
+  display: flex;
+  gap: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+  align-items: flex-start;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.navLink {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius);
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.navLink:hover {
+  background: var(--bg-raised);
+}
+
+.active {
+  background: var(--bg-raised);
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}

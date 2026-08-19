@@ -130,4 +130,84 @@ export const RATE_LIMITS = Object.freeze({
   messageRequestPerDay: 20,
   /** Tag mutes, total per actor (not a rate — a ceiling on the mute list itself). */
   tagMuteTotal: 100,
+
+  /** Filter create/update, per actor, per hour (§204). */
+  filterCreateOrUpdatePerHour: 30,
+  /** Filter list publish/update, per actor, per hour (§204). */
+  filterListPublishOrUpdatePerHour: 10,
+  /** Filter list subscribe, per actor, per hour (§204). */
+  filterListSubscribePerHour: 50,
+  /** Label apply, per labeler, per day — deliberate, not automatable (§200.5, §204). */
+  labelApplyPerDayPerLabeler: 300,
+  /** Appeals filed, per actor, per day (§204). */
+  appealFiledPerDay: 5,
+  /** Account exports requested, per actor, per day (§204). */
+  exportRequestedPerDay: 3,
+  /** Account deletion requested/cancelled, per actor, per day (§204). */
+  accountDeletionRequestedOrCancelledPerDay: 5,
 } as const);
+
+/**
+ * Amendment C size limits (`INITIAL_VISION.md` §204) — privacy/filters/labelers/moderation.
+ * Same rule as Amendment B's table above: every limit here MUST also exist in protobuf/API
+ * validation and, where practical, a database constraint (see `packages/database`'s
+ * `Phase14*` migrations) — this module is the single source of truth all three read from.
+ */
+
+/** Filters an actor may own at once (§204). */
+export const MAX_FILTERS_PER_ACTOR = 50;
+
+/** Terms per filter (§204). */
+export const MAX_FILTER_TERMS_PER_FILTER = 20;
+
+/** Filter lists an actor may have published at once (§204). */
+export const MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR = 10;
+
+/** Entries per published filter list (§204). */
+export const MAX_FILTER_LIST_ENTRIES = 2_000;
+
+/** Filter list subscriptions an actor may hold at once (§204). */
+export const MAX_FILTER_LIST_SUBSCRIPTIONS = 100;
+
+/** Per-entry exceptions an actor may set on one subscribed filter list (§204). */
+export const MAX_FILTER_LIST_EXCEPTIONS_PER_LIST = 200;
+
+/** A filter's `name` (§198.1) — shown when a post is collapsed by it. No character limit is
+ * given in §204's headline list; bounded generously here so the field cannot be used to smuggle
+ * an oversized payload into `filters.name`/an export/import round trip. */
+export const MAX_FILTER_NAME_CHARS = 100;
+
+/** One `(kind, value)` filter term's literal `value` (§198.2) — long enough for a domain, a
+ * handle, or a short phrase; not a general text field. Shared by `filter_terms.value` and
+ * `filter_list_entries.value`, which use the same five kinds. */
+export const MAX_FILTER_TERM_VALUE_CHARS = 200;
+
+/** A filter list's `name` (§199.1) — the stable identifier a subscriber references; `filter_
+ * lists` has no DB `CHECK` on its shape (unlike `communities.name`), so this is a service-side
+ * bound only. */
+export const MAX_FILTER_LIST_NAME_CHARS = 64;
+
+export const MAX_FILTER_LIST_DISPLAY_NAME_CHARS = 80;
+export const MAX_FILTER_LIST_DESCRIPTION_CHARS = 500;
+
+/** Labeler subscriptions an actor may hold at once (§204). */
+export const MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR = 50;
+
+/** Appeal statement, in characters (§204). */
+export const MAX_APPEAL_STATEMENT_CHARS = 2_000;
+
+/** Ready account-export archives kept at a time, per actor (§197.3, §204) — a new export
+ * request replaces the previous ready archive rather than accumulating more than one. */
+export const ACCOUNT_EXPORT_MAX_READY_ARCHIVES = 1;
+
+/** Days an account export archive remains downloadable after becoming ready (§204). */
+export const ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS = 7;
+
+/** Default account-deletion grace period, in days — node-configurable, published in
+ * `GetNodePolicy` (§197.4, §204). This is the platform default a node may override, not a
+ * hard ceiling. */
+export const ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT = 30;
+
+/** Default appeal window, in days, from the moderation notice — node-configurable, published
+ * in `GetNodePolicy` (§201.3, §204). Platform default, not a hard ceiling. */
+export const APPEAL_WINDOW_DAYS_DEFAULT = 14;

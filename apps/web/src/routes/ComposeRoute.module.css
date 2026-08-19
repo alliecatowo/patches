@@ -1,0 +1,76 @@
+.wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+.counter {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.counter.over {
+  color: var(--danger);
+}
+
+.cwInput {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  margin-top: 0.5rem;
+}
+
+.mediaList {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+
+.mediaItem {
+  width: 90px;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.mediaItem img {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  display: block;
+}
+
+.submit {
+  padding: 0.6rem 1.2rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+}

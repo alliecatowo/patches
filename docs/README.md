@@ -13,11 +13,13 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/overview.md`](./architecture/overview.md)
   - [`architecture/data-model.md`](./architecture/data-model.md)
   - [`architecture/api.md`](./architecture/api.md)
+  - [`architecture/social.md`](./architecture/social.md)
   - [`architecture/auth.md`](./architecture/auth.md)
   - [`architecture/pages.md`](./architecture/pages.md)
   - [`architecture/media.md`](./architecture/media.md)
   - [`architecture/jobs.md`](./architecture/jobs.md)
   - [`architecture/federation.md`](./architecture/federation.md)
+  - [`architecture/e2ee.md`](./architecture/e2ee.md)
   - [`architecture/tui.md`](./architecture/tui.md)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
@@ -30,13 +32,16 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/incidents.md`](./operations/incidents.md)
   - [`operations/local-development.md`](./operations/local-development.md)
   - [`operations/try-it.md`](./operations/try-it.md) — run it against the live node, test several users
+  - [`operations/release.md`](./operations/release.md) — cutting a TUI release
   - [`operations/site.md`](./operations/site.md)
+  - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
 - **`product/`** — what Patches is and why: product principles, roadmap, and (planned)
   moderation policy.
   - [`product/principles.md`](./product/principles.md)
   - [`product/roadmap.md`](./product/roadmap.md)
+  - [`product/tui-design-vision.md`](./product/tui-design-vision.md) — the TUI's design vision (layout, themes, flows)
   - `product/moderation.md` _(planned)_
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,

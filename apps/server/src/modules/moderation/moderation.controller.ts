@@ -6,8 +6,12 @@ import {
   type BlockActorResponse,
   type ListBlocksRequest,
   type ListBlocksResponse,
+  type ListModerationLogRequest,
+  type ListModerationLogResponse,
   type ListMutesRequest,
   type ListMutesResponse,
+  type ListMyModerationNoticesRequest,
+  type ListMyModerationNoticesResponse,
   type ModerationServiceController,
   ModerationServiceControllerMethods,
   type MuteActorRequest,
@@ -34,6 +38,7 @@ import { toProtoRelationship } from '../graph/graph.mapper.js';
 import { reportReasonFromProto } from './moderation.mapper.js';
 import { ModerationService } from './moderation.service.js';
 import { ReportRateLimitService } from './report-rate-limit.service.js';
+import { SuspensionTolerantAuthGuard } from './suspension-tolerant-auth.guard.js';
 
 /**
  * Transport adapter for `patches.v1.ModerationService` — protobuf in, protobuf out, no
@@ -180,6 +185,30 @@ export class ModerationController implements ModerationServiceController {
       request.details,
     );
     return { reportId };
+  }
+
+  /** Unauthenticated public transparency log (spec §201.4) — see `ModerationService.
+   * listModerationLog`'s doc comment for exactly which entries exist today. */
+  async listModerationLog(
+    @Payload() request: ListModerationLogRequest,
+  ): Promise<ListModerationLogResponse> {
+    return this.moderation.listModerationLog(request.cursor, request.limit);
+  }
+
+  /** The caller's own moderation notices (spec §201.2). `SuspensionTolerantAuthGuard`, not
+   * `AuthGuard` — a suspended account is precisely who needs to read this and file an appeal
+   * (see that guard's doc comment). */
+  @UseGuards(SuspensionTolerantAuthGuard)
+  async listMyModerationNotices(
+    @Payload() request: ListMyModerationNoticesRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ListMyModerationNoticesResponse> {
+    return this.moderation.listMyModerationNotices(
+      requireSession(session).actorId,
+      request.cursor,
+      request.limit,
+    );
   }
 }
 

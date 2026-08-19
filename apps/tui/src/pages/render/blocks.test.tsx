@@ -171,6 +171,8 @@ describe('PageBlocksView (P45-004/005)', () => {
               quotePolicy: QUOTE_POLICY.UNSPECIFIED,
               repostedBy: [],
               repostedByTotal: 0,
+              filteredBy: undefined,
+              labels: [],
             },
           ],
           page: { nextCursor: '', hasMore: false },

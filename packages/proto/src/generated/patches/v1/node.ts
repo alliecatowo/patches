@@ -8,6 +8,8 @@
 import type { Metadata } from '@grpc/grpc-js';
 import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
 import { Observable } from 'rxjs';
+import { LabelVocabularyEntry } from './labels.js';
+import { ModerationReasonCategory } from './moderation.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -15,6 +17,28 @@ export enum RegistrationMode {
   REGISTRATION_MODE_UNSPECIFIED = 'REGISTRATION_MODE_UNSPECIFIED',
   REGISTRATION_MODE_OPEN = 'REGISTRATION_MODE_OPEN',
   REGISTRATION_MODE_INVITE_ONLY = 'REGISTRATION_MODE_INVITE_ONLY',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * disabled: no federation at all. allowlist: only explicitly-approved domains. open-with-
+ * blocklist: federates with any domain except those on `domain_policies` (spec §197.6).
+ */
+export enum FederationStance {
+  FEDERATION_STANCE_UNSPECIFIED = 'FEDERATION_STANCE_UNSPECIFIED',
+  FEDERATION_STANCE_DISABLED = 'FEDERATION_STANCE_DISABLED',
+  FEDERATION_STANCE_ALLOWLIST = 'FEDERATION_STANCE_ALLOWLIST',
+  FEDERATION_STANCE_OPEN_WITH_BLOCKLIST = 'FEDERATION_STANCE_OPEN_WITH_BLOCKLIST',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * v1 ships exactly one action (spec §201.5); kept as an enum rather than a bare bool for
+ * forward compatibility with a graduated `limit`/`silence` tier, a §210 sign-off item.
+ */
+export enum DomainPolicyAction {
+  DOMAIN_POLICY_ACTION_UNSPECIFIED = 'DOMAIN_POLICY_ACTION_UNSPECIFIED',
+  DOMAIN_POLICY_ACTION_BLOCK = 'DOMAIN_POLICY_ACTION_BLOCK',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -79,6 +103,70 @@ export interface GetNodeInfoResponse {
   socialCapabilities: SocialCapabilities | undefined;
 }
 
+/**
+ * One entry of the node's public federation domain policy (spec §201.5). `reason_category` is
+ * the published bounded category — the operator's free-text `domain_blocks.reason` is never
+ * exposed here (same split as `ModerationLogEntry.reason_category`).
+ */
+export interface DomainPolicyEntry {
+  domain: string;
+  action: DomainPolicyAction;
+  reasonCategory: ModerationReasonCategory;
+}
+
+/**
+ * Retention windows this node enforces (spec §197.6, §204). Zero means "no retention limit is
+ * enforced", the same convention as `SocialCapabilities.dm_retention_days`.
+ */
+export interface RetentionWindows {
+  dmRetentionDays: number;
+  evidenceSnapshotRetentionDays: number;
+  uploadedOriginalRetentionDays: number;
+  logRetentionDays: number;
+  exportArchiveRetentionDays: number;
+}
+
+/**
+ * Operator transparency document (spec §197.6). Every field is operator-supplied text or an
+ * enum — never markup, scripts, or remote media (§172, §177).
+ */
+export interface NodePolicy {
+  privacyNoticeSummary: string;
+  privacyNoticeVersion: number;
+  privacyNoticeUrl: string;
+  termsUrl: string;
+  moderatorContact: string;
+  /**
+   * How appeals are filed (spec §201.3) — human-readable instructions, not a structured
+   * shape; the actual mechanism is `AppealService.CreateAppeal`.
+   */
+  appealInstructions: string;
+  federationStance: FederationStance;
+  /** The public subset of this node's domain policy (spec §201.5). */
+  domainPolicies: DomainPolicyEntry[];
+  /** Operator-declared jurisdiction/provider, free text (spec §197.6). */
+  dataLocation: string;
+  retention: RetentionWindows | undefined;
+  /** Who runs this node, or an explicit "anonymous operator" statement (spec §197.6). */
+  operatorIdentity: string;
+  /** The closed label vocabulary this node's own labeler publishes (spec §200.2). */
+  labelVocabulary: LabelVocabularyEntry[];
+  /** Node-configurable, published here (spec §204's 30-day default). */
+  accountDeletionGracePeriodDays: number;
+  /** Node-configurable, published here (spec §204's 14-day default). */
+  appealWindowDays: number;
+}
+
+export interface GetNodePolicyRequest {}
+
+export interface GetNodePolicyResponse {
+  /**
+   * A node that publishes nothing renders as an all-empty `NodePolicy` — clients MUST render
+   * that as "this node publishes no policy" rather than hiding the screen (spec §197.6).
+   */
+  policy: NodePolicy | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -89,6 +177,19 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 export interface NodeServiceClient {
   getNodeInfo(request: GetNodeInfoRequest, metadata?: Metadata): Observable<GetNodeInfoResponse>;
+
+  /**
+   * Operator transparency (spec §197.6): what this node's operators do with your data and
+   * your safety. Deliberately a separate RPC from `GetNodeInfo` — this document is larger,
+   * changes rarely, and is cached on a different schedule. A node that publishes nothing
+   * here has said so; clients render an empty policy as "this node publishes no policy"
+   * rather than hiding the screen.
+   */
+
+  getNodePolicy(
+    request: GetNodePolicyRequest,
+    metadata?: Metadata,
+  ): Observable<GetNodePolicyResponse>;
 }
 
 /**
@@ -102,11 +203,24 @@ export interface NodeServiceController {
     request: GetNodeInfoRequest,
     metadata?: Metadata,
   ): Promise<GetNodeInfoResponse> | Observable<GetNodeInfoResponse> | GetNodeInfoResponse;
+
+  /**
+   * Operator transparency (spec §197.6): what this node's operators do with your data and
+   * your safety. Deliberately a separate RPC from `GetNodeInfo` — this document is larger,
+   * changes rarely, and is cached on a different schedule. A node that publishes nothing
+   * here has said so; clients render an empty policy as "this node publishes no policy"
+   * rather than hiding the screen.
+   */
+
+  getNodePolicy(
+    request: GetNodePolicyRequest,
+    metadata?: Metadata,
+  ): Promise<GetNodePolicyResponse> | Observable<GetNodePolicyResponse> | GetNodePolicyResponse;
 }
 
 export function NodeServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['getNodeInfo'];
+    const grpcMethods: string[] = ['getNodeInfo', 'getNodePolicy'];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod('NodeService', method)(constructor.prototype[method], method, descriptor);

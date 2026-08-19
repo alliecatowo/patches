@@ -15,6 +15,8 @@ export interface HomeScreenProps {
    * session before navigating here (`ListHomeFeed` needs one). */
   ensureAccessToken: () => Promise<string>;
   actions: PostRowActions;
+  /** Bumped by `App` after a successful post — re-reads this list from the server. */
+  refreshKey?: number;
 }
 
 /**
@@ -27,22 +29,31 @@ export function HomeScreen({
   isActive,
   ensureAccessToken,
   actions,
+  refreshKey = 0,
 }: HomeScreenProps): ReactElement {
   const fetchPage = useCallback(
     (cursor: string): Promise<PostPage> =>
       ensureAccessToken()
         .then((accessToken) => api.listHomeFeed({ cursor, limit: 20 }, accessToken))
         .then((response) => ({ posts: response.posts, page: response.page })),
-    [api, ensureAccessToken],
+    // `refreshKey` is a deliberate cache-buster, not a value this callback reads:
+    // changing its identity is exactly how `usePaginatedList` is told to re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+    [api, ensureAccessToken, refreshKey],
   );
-  const { posts, loading, loadingMore, hasMore, error, loadMore } = usePaginatedPosts(
-    api.target,
-    fetchPage,
-  );
+  const { posts, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount } =
+    usePaginatedPosts(api.target, fetchPage);
 
   useInput(
     (input) => {
-      if ((input === 'n' || input === ' ') && hasMore) loadMore();
+      if ((input === 'n' || input === ' ') && hasMore) {
+        loadMore();
+        return;
+      }
+      // `R` re-reads page one from the server: the `↑ N new` marker, and — the
+      // reason it matters — fresh `viewer_state`, so likes made in an earlier
+      // session stop looking un-liked.
+      if (input === 'R') refresh();
     },
     { isActive: isActive && !loading },
   );
@@ -54,7 +65,8 @@ export function HomeScreen({
       <Box marginTop={1}>
         <PostList
           posts={posts}
-          loading={loading || loadingMore}
+          loading={loading || loadingMore || refreshing}
+          newCount={newCount}
           hasMore={hasMore}
           emptyMessage="Nobody you follow has posted yet — try Local (g l) or search (/)."
           loadMoreKeyHint="n / space"

@@ -1,18 +1,26 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   AdminAuditLog,
+  Appeal,
   DomainBlock,
   Invite,
+  ModerationLogEntry,
   OutboxJob,
   Post,
   Report,
   User,
+  appendAdminAuditLog,
 } from '@patches/database';
 import { createTestPost, createTestReport, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { requirePositional } from '../src/cli/arg-parser.js';
 import { hashInviteCode } from '../src/cli/crypto.js';
+import { runAppealCommand } from '../src/commands/appeal.js';
 import { runDomainCommand } from '../src/commands/domain.js';
 import { runInviteCommand } from '../src/commands/invite.js';
 import { runJobsCommand } from '../src/commands/jobs.js';
@@ -184,6 +192,56 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(deleted.status).toBe('DELETED');
         expect(deleted.deletedAt).not.toBeNull();
       });
+
+      it('writes anonymized moderation-log entries for suspend (SUSPEND) and delete (BAN) (P14 follow-up)', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}d`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `modlog${Date.now()}`,
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s1 = silence();
+        await runUserCommand(
+          'suspend',
+          {
+            positionals: ['user', 'suspend', actor.handle],
+            options: { reason: 'harassment case', 'reason-category': 'harassment' },
+          },
+          ctx,
+        );
+        s1.restore();
+
+        const suspendEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'SUSPEND', subjectKind: 'ACCOUNT', reasonCategory: 'HARASSMENT' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(suspendEntry).not.toBeNull();
+        expect(suspendEntry?.subjectDomain).toBeNull();
+        // Structurally anonymized: the entity has no actor-id/handle column to check against
+        // in the first place (see `ModerationLogEntry`'s doc comment) — nothing in this row's
+        // own field set could name `actor.handle` or `actor.id` even by accident.
+        expect(Object.values(suspendEntry ?? {})).not.toContain(actor.handle);
+        expect(Object.values(suspendEntry ?? {})).not.toContain(actor.id);
+
+        const s2 = silence();
+        await runUserCommand(
+          'delete',
+          { positionals: ['user', 'delete', actor.handle], options: {} },
+          ctx,
+        );
+        s2.restore();
+
+        const banEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'BAN', subjectKind: 'ACCOUNT' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(banEntry).not.toBeNull();
+        // Default reason category when `--reason-category` is omitted.
+        expect(banEntry?.reasonCategory).toBe('OTHER');
+        expect(banEntry?.subjectDomain).toBeNull();
+      });
     });
 
     describe('report resolve', () => {
@@ -253,6 +311,68 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         const suspended = await dataSource.getRepository(User).findOneByOrFail({ id: target.id });
         expect(suspended.status).toBe('SUSPENDED');
+      });
+
+      it('writes anonymized moderation-log entries for remove-post/suspend, and none for a no-op resolution (P14 follow-up)', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}e`,
+        });
+        const { actor: author } = await createTestUser(dataSource.manager, {
+          handle: `author2${Date.now()}`,
+        });
+        const { actor: reporter } = await createTestUser(dataSource.manager, {
+          handle: `reporter3${Date.now()}`,
+        });
+        const post = await createTestPost(dataSource.manager, { authorActorId: author.id });
+        const report = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter.id,
+          subjectType: 'POST',
+          subjectPostId: post.id,
+          reason: 'HATE_SPEECH',
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s1 = silence();
+        await runReportCommand(
+          'resolve',
+          { positionals: ['report', 'resolve', report.id], options: { action: 'remove-post' } },
+          ctx,
+        );
+        s1.restore();
+
+        const removalEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'POST_REMOVAL', subjectKind: 'POST' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(removalEntry).not.toBeNull();
+        // reports.reason 'HATE_SPEECH' maps to moderation_log_entries.reason_category 'HATE'.
+        expect(removalEntry?.reasonCategory).toBe('HATE');
+        expect(removalEntry?.subjectDomain).toBeNull();
+
+        const { actor: reporter2 } = await createTestUser(dataSource.manager, {
+          handle: `reporter4${Date.now()}`,
+        });
+        const dismissedReport = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter2.id,
+          subjectType: 'POST',
+          subjectPostId: post.id,
+        });
+        const countBefore = await dataSource.getRepository(ModerationLogEntry).count();
+
+        const s2 = silence();
+        await runReportCommand(
+          'resolve',
+          {
+            positionals: ['report', 'resolve', dismissedReport.id],
+            options: { action: 'none' },
+          },
+          ctx,
+        );
+        s2.restore();
+
+        // `none` resolves the report without an enforcement action — no new log entry.
+        const countAfter = await dataSource.getRepository(ModerationLogEntry).count();
+        expect(countAfter).toBe(countBefore);
       });
     });
 
@@ -343,8 +463,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
     });
 
-    describe('domain block/unblock/list (B-027)', () => {
-      it('blocks, re-blocks (updating the reason), lists, and unblocks a domain, auditing each mutation', async () => {
+    describe('domain block/unblock/list (B-027, P14-012/P14-013)', () => {
+      it('blocks (with a reason category, logging a moderation-log entry), re-blocks, lists, and unblocks, auditing each mutation', async () => {
         const { actor: operatorActor } = await createTestUser(dataSource.manager, {
           handle: `op${Date.now()}g`,
         });
@@ -355,7 +475,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const s1 = silence();
         await runDomainCommand(
           'block',
-          { positionals: ['domain', 'block', domain], options: { reason: 'spam' } },
+          {
+            positionals: ['domain', 'block', domain],
+            options: { reason: 'spam', 'reason-category': 'spam' },
+          },
           ctx,
         );
         s1.restore();
@@ -364,16 +487,54 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .getRepository(DomainBlock)
           .findOneByOrFail({ domain: normalized });
         expect(blocked.reason).toBe('spam');
+        expect(blocked.reasonCategory).toBe('SPAM');
 
         const audit = await latestAuditLog('DOMAIN', normalized);
         expect(audit.action).toBe('domain.block');
         expect(audit.adminUserId).toBe(operatorActor.userId);
 
-        // Idempotent re-block updates the reason rather than erroring or duplicating the row.
+        // The public, identified domain-kind transparency-log entry (spec §201.4).
+        const logEntry = await dataSource
+          .getRepository(ModerationLogEntry)
+          .findOneOrFail({ where: { subjectDomain: normalized } });
+        expect(logEntry.action).toBe('DOMAIN_BLOCK');
+        expect(logEntry.subjectKind).toBe('DOMAIN');
+        expect(logEntry.reasonCategory).toBe('SPAM');
+        expect(logEntry.appealed).toBe(false);
+
+        // Defaults to OTHER when --reason-category is omitted.
+        const s1b = silence();
+        await runDomainCommand(
+          'block',
+          { positionals: ['domain', 'block', `other-${domain}`], options: {} },
+          ctx,
+        );
+        s1b.restore();
+        const otherBlocked = await dataSource
+          .getRepository(DomainBlock)
+          .findOneByOrFail({ domain: `other-${normalized}` });
+        expect(otherBlocked.reasonCategory).toBe('OTHER');
+
+        // An unrecognized category is rejected, not silently defaulted.
+        await expect(
+          runDomainCommand(
+            'block',
+            {
+              positionals: ['domain', 'block', `bad-category-${domain}`],
+              options: { 'reason-category': 'not-a-real-category' },
+            },
+            ctx,
+          ),
+        ).rejects.toThrow(/--reason-category must be one of/);
+
+        // Idempotent re-block updates the reason/category rather than erroring or duplicating.
         const s2 = silence();
         await runDomainCommand(
           'block',
-          { positionals: ['domain', 'block', domain], options: { reason: 'worse spam' } },
+          {
+            positionals: ['domain', 'block', domain],
+            options: { reason: 'worse spam', 'reason-category': 'harassment' },
+          },
           ctx,
         );
         s2.restore();
@@ -381,6 +542,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .getRepository(DomainBlock)
           .findOneByOrFail({ domain: normalized });
         expect(reblocked.reason).toBe('worse spam');
+        expect(reblocked.reasonCategory).toBe('HARASSMENT');
 
         const listCapture = captureStdout();
         await runDomainCommand('list', { positionals: ['domain', 'list'], options: {} }, ctx);
@@ -409,6 +571,167 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             ctx,
           ),
         ).rejects.toThrow(/not blocked/);
+      });
+    });
+
+    describe('domain review-list (§201.6)', () => {
+      let tmpDir: string;
+
+      afterEach(async () => {
+        if (tmpDir !== undefined) await rm(tmpDir, { recursive: true, force: true });
+      });
+
+      it('lists candidate domains for a human to review and writes nothing to domain_blocks', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}h`,
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const alreadyBlockedDomain = `already-blocked-${Date.now()}.example`;
+        await dataSource
+          .getRepository(DomainBlock)
+          .save(dataSource.getRepository(DomainBlock).create({ domain: alreadyBlockedDomain }));
+
+        const newDomain = `candidate-${Date.now()}.example`;
+        tmpDir = await mkdtemp(join(tmpdir(), 'patches-admin-blocklist-'));
+        const file = join(tmpDir, 'blocklist.txt');
+        await writeFile(
+          file,
+          `# a comment line, ignored\n\n${alreadyBlockedDomain}\n${newDomain}\n`,
+          'utf8',
+        );
+
+        const countBefore = await dataSource.getRepository(DomainBlock).count();
+
+        const capture = captureStdout();
+        await runDomainCommand(
+          'review-list',
+          { positionals: ['domain', 'review-list', file], options: {} },
+          ctx,
+        );
+        capture.restore();
+
+        expect(capture.text()).toContain(alreadyBlockedDomain);
+        expect(capture.text()).toContain(newDomain);
+        expect(capture.text()).toContain('nothing written');
+
+        // Writes nothing to domain_blocks (spec §201.6 — a reviewed reference list is never a
+        // write path of its own).
+        expect(await dataSource.getRepository(DomainBlock).count()).toBe(countBefore);
+      });
+    });
+
+    describe('appeal list/inspect/resolve (§201.3)', () => {
+      it('resolves an appeal, updating the row and auditing the resolution', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}i`,
+        });
+        const { user: appellantUser, actor: appellantActor } = await createTestUser(
+          dataSource.manager,
+          { handle: `appellant${Date.now()}` },
+        );
+        const ctx = await context(operatorActor.handle);
+
+        // Mirrors `patches-admin user suspend` exactly — the enforcement action being
+        // appealed (`apps/admin/src/commands/user.ts`, outside this task's owned file set).
+        const suspendAudit = await dataSource.transaction(async (manager) => {
+          await manager
+            .getRepository(User)
+            .update({ id: appellantUser.id }, { status: 'SUSPENDED' });
+          return appendAdminAuditLog(manager, {
+            adminUserId: operatorActor.userId ?? '',
+            action: 'user.suspend',
+            subjectType: 'USER',
+            subjectId: appellantUser.id,
+            metadata: { reason: 'spam' },
+          });
+        });
+
+        // Mirrors `AppealService.createAppeal` (`apps/server/src/modules/appeals/**`, the
+        // gRPC write path) directly, since this CLI talks to PostgreSQL, not gRPC.
+        const appealsRepo = dataSource.getRepository(Appeal);
+        const appeal = await appealsRepo.save(
+          appealsRepo.create({
+            actorId: appellantActor.id,
+            adminAuditLogId: suspendAudit.id,
+            statement: 'I was not spamming.',
+            status: 'OPEN',
+          }),
+        );
+
+        const listCapture = captureStdout();
+        await runAppealCommand('list', { positionals: ['appeal', 'list'], options: {} }, ctx);
+        listCapture.restore();
+        expect(listCapture.text()).toContain(appeal.id);
+
+        const inspectCapture = captureStdout();
+        await runAppealCommand(
+          'inspect',
+          { positionals: ['appeal', 'inspect', appeal.id], options: {} },
+          ctx,
+        );
+        inspectCapture.restore();
+        expect(inspectCapture.text()).toContain('I was not spamming.');
+        expect(inspectCapture.text()).toContain('user.suspend');
+
+        const s = silence();
+        await runAppealCommand(
+          'resolve',
+          {
+            positionals: ['appeal', 'resolve', appeal.id],
+            options: { outcome: 'overturned', reason: 'the report was mistaken' },
+          },
+          ctx,
+        );
+        s.restore();
+
+        const resolved = await appealsRepo.findOneByOrFail({ id: appeal.id });
+        expect(resolved.status).toBe('OVERTURNED');
+        expect(resolved.resolvedByUserId).toBe(operatorActor.userId);
+        expect(resolved.resolutionReason).toBe('the report was mistaken');
+        expect(resolved.resolvedAt).not.toBeNull();
+
+        // The resolution is itself audited (spec §201.3, §66) — a fresh admin_audit_log row,
+        // not a mutation of the original suspend row.
+        const resolveAudit = await latestAuditLog('USER', appellantUser.id);
+        expect(resolveAudit.action).toBe('appeal.resolve');
+        expect(resolveAudit.id).not.toBe(suspendAudit.id);
+        expect(resolveAudit.metadata).toEqual({
+          appealId: appeal.id,
+          moderationNoticeId: suspendAudit.id,
+          outcome: 'overturned',
+          reason: 'the report was mistaken',
+        });
+
+        // Resolving an already-resolved appeal is refused, not silently re-accepted.
+        await expect(
+          runAppealCommand(
+            'resolve',
+            {
+              positionals: ['appeal', 'resolve', appeal.id],
+              options: { outcome: 'upheld', reason: 'again' },
+            },
+            ctx,
+          ),
+        ).rejects.toThrow(/already overturned/);
+      });
+
+      it('rejects an unrecognized --outcome', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}j`,
+        });
+        const ctx = await context(operatorActor.handle);
+
+        await expect(
+          runAppealCommand(
+            'resolve',
+            {
+              positionals: ['appeal', 'resolve', '00000000-0000-0000-0000-000000000000'],
+              options: { outcome: 'not-a-real-outcome', reason: 'x' },
+            },
+            ctx,
+          ),
+        ).rejects.toThrow(/--outcome must be one of/);
       });
     });
 

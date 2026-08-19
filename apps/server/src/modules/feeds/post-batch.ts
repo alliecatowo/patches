@@ -1,6 +1,7 @@
 import { Bookmark, Like, Post, PostMedia, Repost } from '@patches/database';
 import { In, type EntityManager } from 'typeorm';
 
+import { labelsForPosts } from '../labels/label-lookup.js';
 import { communitySummariesFor } from '../posts/community-summary.js';
 import {
   toPostView,
@@ -33,24 +34,29 @@ async function buildPostViews(
   if (posts.length === 0) return [];
   const ids = posts.map((post) => post.id);
 
-  const [mediaRows, replyRows, likeRows, repostRows, quoteRows, viewerRows] = await Promise.all([
-    manager.getRepository(PostMedia).find({
-      where: { postId: In(ids) },
-      relations: { media: true },
-      order: { position: 'ASC' },
-    }),
-    groupedPostCount(manager, 'inReplyToId', ids),
-    groupedRelationCount(manager, Like, 'like', ids),
-    groupedRelationCount(manager, Repost, 'repost', ids),
-    groupedPostCount(manager, 'quotedPostId', ids),
-    viewerActorId === undefined
-      ? Promise.resolve({
-          liked: new Set<string>(),
-          bookmarked: new Set<string>(),
-          reposted: new Set<string>(),
-        })
-      : loadViewerState(manager, viewerActorId, ids),
-  ]);
+  const [mediaRows, replyRows, likeRows, repostRows, quoteRows, viewerRows, labelsByPost] =
+    await Promise.all([
+      manager.getRepository(PostMedia).find({
+        where: { postId: In(ids) },
+        relations: { media: true },
+        order: { position: 'ASC' },
+      }),
+      groupedPostCount(manager, 'inReplyToId', ids),
+      groupedRelationCount(manager, Like, 'like', ids),
+      groupedRelationCount(manager, Repost, 'repost', ids),
+      groupedPostCount(manager, 'quotedPostId', ids),
+      viewerActorId === undefined
+        ? Promise.resolve({
+            liked: new Set<string>(),
+            bookmarked: new Set<string>(),
+            reposted: new Set<string>(),
+          })
+        : loadViewerState(manager, viewerActorId, ids),
+      // `Post.labels` (spec §200.3, §203): subscriber-scoped, populated only for feed reads —
+      // see `modules/labels/label-lookup.ts`'s doc for the visibility rule and why this is a
+      // plain function call rather than an injected `LabelService` (no DI container here).
+      labelsForPosts(manager, ids, viewerActorId),
+    ]);
 
   const mediaByPost = new Map<string, PostMediaSummary[]>();
   for (const row of mediaRows) {
@@ -91,6 +97,7 @@ async function buildPostViews(
       {
         quotedPost: post.quotedPostId === null ? null : (quoted.get(post.quotedPostId) ?? null),
         community: post.communityId === null ? null : (communities.get(post.communityId) ?? null),
+        labels: labelsByPost.get(post.id) ?? [],
       },
     );
   });

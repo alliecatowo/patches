@@ -47,12 +47,19 @@ describe('Edit profile — nameplate (A-037)', () => {
     await expectFrame(lastFrame, 'Nameplate');
 
     // Focus order is displayName, bio, location, website, then the five nameplate
-    // fields — four Tabs from the first field lands on "Name colour".
+    // fields — four Tabs from the first field lands on "Name colour", which is
+    // colour-picker-only editing (P12-015 wiring): Enter opens it, Tab moves to its
+    // hex field, Enter there commits and closes the picker back onto the same field.
     for (let index = 0; index < 4; index += 1) press(KEY.tab);
     await flush();
-    press('#7C3AED');
+    press(KEY.enter);
+    await expectFrame(lastFrame, 'Color picker');
+    press(KEY.tab);
     await flush();
-    await expectFrame(lastFrame, '#7C3AED');
+    press('#00ff00');
+    await flush();
+    press(KEY.enter);
+    await expectFrame(lastFrame, '#00ff00');
 
     press(KEY.tab); // -> Glyph
     await flush();

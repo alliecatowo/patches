@@ -462,3 +462,113 @@ first; only fall through to the sanitized generic 500 for everything else. Globa
 filters added for one narrow surface (an HTTP surface that only ever throws AppErrors) silently
 assume nothing else will ever route through them — re-verify that assumption before adding a
 second HTTP surface to the same app.
+
+## 2026-08-19 — Phase 12 TUI wave: uncommitted WIP, host-dependent tests, and two bugs only tmux found
+
+**Learning 1 — commit per green slice, not per session.** A previous wave built most of the
+Phase 12 interaction model (input layers, modal stack, palette, theme engine, pickers, split
+pane, media viewer — ~60 files) and was killed by a session limit with **all of it
+uncommitted**. Nothing was lost this time, but recovering it cost a full session of working out
+what was finished vs. half-done: a `HelpScreen` key handler stubbed to `onClose(); return true;`
+with the real logic commented out below it, a `setLegacySubmodeActive` helper wired to nothing,
+three `FilePicker` tests that had never passed. None of that is discoverable from a diff — only
+from running it. The rule the harness already states ("commit early, commit often") is not about
+tidiness, it is about not losing the _distinction between done and in-progress_. A slice that
+typechecks and has green tests should be committed before starting the next one, even mid-task.
+
+**Learning 2 — `FORCE_COLOR` in a developer's shell silently rewrites every Ink frame
+assertion.** Nine tests "failed" on this machine and passed in CI. Chalk (inside Ink) decides
+colour from the _host_ environment, so `ink-testing-library` frames carry SGR sequences for
+anyone whose shell exports `FORCE_COLOR` (this agent's did) and none for anyone else. Two
+distinct breakages follow: `expect(frame).toContain('Extension .txt is not allowed')` fails
+because colour codes sit inside the phrase, and — subtler — a themed phrase spans several
+`<Text>` nodes, so `waitForFrame(lastFrame, 'Enter run · Tab complete')` times out on a frame
+that plainly shows those words. Fix: pin `env: { FORCE_COLOR: '3' }` in the vitest project (the
+mode the real TUI runs in, so tests exercise the styled path everywhere) and strip SGR in the
+shared frame matcher (`test/ansi.ts`). Sanitisation tests then assert `hasNonSgrEscape` rather
+than "no escapes at all", which still catches a hostile string smuggling a cursor move while
+ignoring the theme's own colour. Any assertion over a raw Ink frame is environment-dependent
+until proven otherwise.
+
+**Learning 3 — Ink parses one stdin chunk into one keypress, so fast typing breaks multi-key
+sequences.** `useInput` calls `parseKeypress(data)` **once per stdin data event**. Two keys typed
+faster than the terminal flushes arrive in the same read and reach the app as a single
+`input: 'gh'` — the `g` prefix is never seen, and `g h` silently does nothing. The faster the
+user types, the less works, which is why it survived a full unit-test suite (`press('g')` and
+`press('h')` are two writes) and only showed up driving the real binary under tmux. Fix: detect a
+coalesced printable run and replay it one key at a time. Related: multi-key prefix state must
+live in a **ref**, since the same handler closure serves every key in a chunk.
+
+**Learning 4 — hiding an overlay's background with `height={0}` does not stop Ink painting it.**
+The help/palette overlay collapsed the screen behind it to zero height with `overflow="hidden"`.
+That removes it from _layout_ but Ink still emits its text into the same rows as the overlay, so
+the live timeline bled through the help screen mid-line (`Here — Homehours ago`). `display="none"`
+is the correct tool — Yoga skips a `DISPLAY_NONE` subtree and Ink's renderer skips painting it —
+and it keeps the subtree mounted, so an in-progress sub-mode survives opening the palette.
+Neither the unit tests nor `frame-fits` caught this: both assert on line count and width, and the
+garbled frame was exactly 36 lines of ≤120 cells. **Run the real binary under tmux and read the
+frame** before calling a layout change done.
+
+**Learning 5 — measurement and rendering must be one computation, not two that agree.** The new
+markup renderer wraps text to exact cells (`layoutMarkup`) and the viewport counts the lines that
+produced (`measureMarkupHeight`), instead of measuring with one function and rendering with Ink's
+independent soft wrap. The old split silently under-counted any body containing markup, and an
+under-count is what smears Ink's line diff.
+
+## 2026-08-19 — `startTestServer()` (no `http: true`) never fires `OnModuleInit` at all
+
+In Nest 11, `app.startAllMicroservices()` does **not** call `app.init()` — it only does
+`Promise.all(this.microservices.map(msvc => msvc.listen()))`. `app.init()` (and therefore every
+module's `OnModuleInit`/`onApplicationBootstrap` lifecycle hook, across the _entire_ module
+graph, not just one module) is only triggered by `app.listen()`, guarded by
+`if (!this.isInitialized) await this.init();`. `apps/server/test/support/test-server.ts`'s
+`startTestServer()` calls `app.listen()` only when invoked as `startTestServer({ http: true })`
+— by default it skips straight to `startAllMicroservices()`. A boot-time `OnModuleInit` seed
+(`modules/labels/label-seed.service.ts`, P14-009) therefore silently never ran under a plain
+`startTestServer()`: providers were constructed fine (regular DI/constructor injection is a
+separate, always-eager phase — `InstanceLoader.createInstancesOfDependencies()`), gRPC calls
+worked normally, and no error was thrown anywhere — the seeded row was just absent, with zero
+diagnostic signal. Confirmed by adding a `console.error` at the top of the constructor (fired)
+vs. the top of `onModuleInit` (never fired). `main.ts` always calls `app.listen()` in production
+(ADR 0016 §4), so this is a test-harness-only gap, not a production bug.
+
+**How to apply:** any integration test asserting on `OnModuleInit`-driven state (a boot-time
+seed, a cache warm, anything in a `providers` array implementing `OnModuleInit`/
+`OnApplicationBootstrap`) must call `startTestServer({ http: true })`, not the bare form —
+otherwise the assertion fails with no hint that lifecycle hooks never ran at all. Also: a
+shared Postgres integration DB (`patches_test_server`) racing another agent's concurrent
+`dropDatabase()`/migration produces a _different_, equally confusing symptom
+(`QueryFailedError: relation "X" does not exist`) — when debugging a mysteriously-empty table,
+rule out lifecycle-hook timing first (isolate with a throwaway private test database via
+`TEST_DATABASE_URL_SERVER`), then rule out concurrent-agent DB contention, before suspecting
+application logic.
+
+## 2026-08-19 — Edit tool text matching can silently drop a literal ESC byte from a test fixture
+
+`ComposeScreen.test.tsx` already had a working bracketed-paste test using
+`stdin.write('\x1b[200~/tmp/dropped.png\x1b[201~')` — but the _source file_ stores that as a
+literal ESC (0x1B) control byte inside the single-quoted string, not the four visible
+characters `\`, `x`, `1`, `b`. Copying that literal string as an `old_string`/`new_string`
+argument through the Edit tool (typed by hand, not `sed`-copied from a `Read`) silently
+dropped the invisible byte, producing `'[200~/tmp/dropped.png[201~'` — a string `TextEditor`'s
+paste detector doesn't recognize, so it inserted literally as text instead of triggering the
+attach flow. The test still "ran" (no syntax error) and failed with a confusing diff (the
+literal escape markers visible in `lastFrame()`) rather than an obvious ESC-byte complaint.
+
+**How to apply:** when a new test needs to send a bracketed-paste (or any control-byte-bearing)
+stdin sequence, write it as an explicit JS escape (`'\x1b[200~...\x1b[201~'`) in the string
+literal rather than copying an existing literal-byte string via a text-editing tool — the two
+are visually identical in a terminal/log but not byte-identical, and only the escape form
+survives being retyped.
+
+## 2026-08-19 — Testing a `renderArtPreview` consumer: compare against its own output, not a regex
+
+`AsciiRenderer`'s output uses `LUMINANCE_RAMP = ' .:-=+*#%@'`, not Unicode half-block
+characters (`▀▄█░▒▓` are `HalfBlockRenderer`'s glyphs, picked only when color support is
+detected) — a test asserting "some row contains an art-looking character" via a block-char
+regex silently passes or fails depending on which renderer kind was constructed, not on
+whether the feature actually drew anything. Calling `renderArtPreview(bytes, sameOptions)`
+directly in the test and asserting the component's frame contains that exact first row (both
+driven by a real `sharp`-generated PNG, e.g. `sharp({ create: {...} }).png()`) is deterministic
+and renderer-kind-agnostic. `@patches/tui` already depends on `sharp` directly (same as
+`@patches/terminal-media`), so no new dependency is needed for this pattern.

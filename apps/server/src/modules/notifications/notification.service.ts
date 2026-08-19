@@ -127,6 +127,14 @@ export class NotificationsService {
     await this.create('FOLLOW', recipientActorId, actorId, {});
   }
 
+  /** §197.5: a follow request awaiting the recipient's approval, because the recipient's
+   * account is locked. Distinct from `notifyFollow`, which `GraphService.acceptFollowRequest`
+   * calls (addressed to the *requester*, not the locked actor) once the request is accepted —
+   * this one is written once, when the request is first created. */
+  async notifyFollowRequest(recipientActorId: string, actorId: string): Promise<void> {
+    await this.create('FOLLOW_REQUEST', recipientActorId, actorId, {});
+  }
+
   async notifyLike(recipientActorId: string, actorId: string, postId: string): Promise<void> {
     await this.create('LIKE', recipientActorId, actorId, { postId });
   }

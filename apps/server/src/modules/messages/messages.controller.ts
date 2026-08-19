@@ -28,6 +28,7 @@ import {
 
 import { getRequestContext } from '../../common/context/request-context.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
@@ -90,6 +91,7 @@ export class MessagesController implements DirectMessageServiceController {
     };
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async sendMessage(
     @Payload() request: SendMessageRequest,
     @Ctx() _metadata?: Metadata,
@@ -114,6 +116,7 @@ export class MessagesController implements DirectMessageServiceController {
     return { message: toProtoMessage(message) };
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async createConversation(
     @Payload() request: CreateConversationRequest,
     @Ctx() _metadata?: Metadata,

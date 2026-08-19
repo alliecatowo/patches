@@ -56,3 +56,21 @@ dependency), and reran the failing test there. It failed identically with zero o
 files present — proving the bug was this task's own, not caused by the concurrent WIP. Cheap,
 conclusive, and avoids fruitlessly diffing/reverting files you don't own in the live shared tree.
 Clean up with `git worktree remove <path> --force`.
+
+**Recurrence, post-push this time (P14-007/P14-008 filters task, 2026-08-19):** despite the
+near-miss entry above already documenting this exact failure mode, ran `git add <my explicit
+paths>` correctly but then `git commit -m "..."` with **no trailing `-- <paths>`** — same root
+cause as the 2026-08-18 near-miss, except this time `git push` had already run before `git show
+--stat HEAD` was checked, so the ~20 unrelated files swept in (another agent's `privacy`
+module, worker export/purge-account job handlers, `packages/database/src/jobs/**`) are now
+baked into shared/pushed history and `git reset`/force-push were correctly ruled out (feature
+branch is shared with other live agents; rewriting pushed history is not safe to do
+unilaterally). The content itself was legitimate finished work, so nothing broke — but the
+commit is now misattributed/bundled, which is a real cost (harder `git blame`, a revert of one
+task's work would revert the other's too). **The fix from the first near-miss was in this file
+and was not applied — reading a lesson once is not enough.** Concrete, mechanical rule going
+forward, no exceptions, even under time pressure: `git commit -- <path1> <path2> ...` (the
+pathspec after `--`, not just relying on having `git add`ed only those paths) is the only form
+of `git commit` to run on this project. If a commit already ran without it, run `git show
+--stat HEAD` **before** `git push`, every single time, as the very next command — that is the
+only checkpoint that catches this before it becomes unfixable.

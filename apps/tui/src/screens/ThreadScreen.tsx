@@ -6,8 +6,8 @@ import type { ReactElement } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
+import { Loading } from '../components/Loading.js';
 import { PostList, type PostRowActions } from '../components/PostList.js';
-import { PostRow } from '../components/PostRow.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
 import { theme } from '../theme/index.js';
 
@@ -17,9 +17,13 @@ export interface ThreadScreenProps {
   postId: string;
   isActive: boolean;
   actions: PostRowActions;
-  /** `Esc` — pops one level of `App`'s thread stack (back to the parent thread, or
-   * out of the thread screen entirely once the stack empties). */
-  onBack: () => void;
+  /** Present only while signed in — without it the server has no viewer and the
+   * focused post and its replies come back with empty `viewer_state`. */
+  ensureAccessToken?: (() => Promise<string>) | undefined;
+  /** Bumped by `App` after a successful post — changes this screen's `fetch`
+   * identity so the focused post and its replies are re-read (a reply you just
+   * sent has to appear without leaving and re-entering the thread). */
+  refreshKey?: number;
 }
 
 type FocusState =
@@ -46,7 +50,8 @@ export function ThreadScreen({
   postId,
   isActive,
   actions,
-  onBack,
+  ensureAccessToken,
+  refreshKey = 0,
 }: ThreadScreenProps): ReactElement {
   const [focus, setFocus] = useState<{ postId: string; state: FocusState } | undefined>();
   const focusState: FocusState = (focus?.postId === postId ? focus.state : undefined) ?? {
@@ -55,8 +60,10 @@ export function ThreadScreen({
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getPost({ id: postId })
+    const withToken = async (): Promise<string | undefined> =>
+      ensureAccessToken === undefined ? undefined : ensureAccessToken();
+    withToken()
+      .then(async (accessToken) => api.getPost({ id: postId }, accessToken))
       .then(async (response) => {
         if (cancelled) return;
         if (!present(response.post)) {
@@ -77,7 +84,8 @@ export function ThreadScreen({
         // Immediate-parent context only ("if cheap" — one extra `GetPost`, never a walk
         // to the root). A deleted/unreachable parent still shows the focused post.
         try {
-          const parentResponse = await api.getPost({ id: post.inReplyToId });
+          const parentToken = await withToken();
+          const parentResponse = await api.getPost({ id: post.inReplyToId }, parentToken);
           if (cancelled) return;
           setFocus({
             postId,
@@ -98,14 +106,21 @@ export function ThreadScreen({
     return () => {
       cancelled = true;
     };
-  }, [api, postId]);
+  }, [api, postId, ensureAccessToken, refreshKey]);
 
   const fetchReplies = useCallback(
-    (cursor: string): Promise<PostPage> =>
-      api
-        .listReplies({ postId, cursor, limit: 20, maxDepth: 1 })
-        .then((response) => ({ posts: response.posts, page: response.page })),
-    [api, postId],
+    async (cursor: string): Promise<PostPage> => {
+      const accessToken = ensureAccessToken === undefined ? undefined : await ensureAccessToken();
+      const response = await api.listReplies(
+        { postId, cursor, limit: 20, maxDepth: 1 },
+        accessToken,
+      );
+      return { posts: response.posts, page: response.page };
+    },
+    // `refreshKey` is a deliberate cache-buster, not a value this callback reads:
+    // changing its identity is exactly how `usePaginatedList` is told to re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+    [api, postId, ensureAccessToken, refreshKey],
   );
   const {
     posts: replies,
@@ -114,15 +129,19 @@ export function ThreadScreen({
     hasMore,
     error,
     loadMore,
+    refresh,
+    refreshing,
   } = usePaginatedPosts(api.target, fetchReplies);
 
+  // No `Esc` handler here on purpose: `App`'s navigation stack owns going back from
+  // *every* screen, so a thread pops exactly one level like everything else.
   useInput(
-    (input, key) => {
-      if (key.escape) {
-        onBack();
+    (input) => {
+      if ((input === 'n' || input === ' ') && hasMore) {
+        loadMore();
         return;
       }
-      if ((input === 'n' || input === ' ') && hasMore) loadMore();
+      if (input === 'R') refresh();
     },
     { isActive },
   );
@@ -130,7 +149,7 @@ export function ThreadScreen({
   if (focusState.status === 'loading') {
     return (
       <Box>
-        <Text color={theme.muted}>Loading thread…</Text>
+        <Loading label="Loading thread" />
       </Box>
     );
   }
@@ -145,19 +164,23 @@ export function ThreadScreen({
   }
 
   const { post, parent } = focusState;
-  // Focused post plus its direct replies share one `PostList` — index 0 is always the
-  // focused post, so `rowIndent` can key off `post.id` alone.
-  const rows: readonly Post[] = [post, ...replies];
+  // The parent (when this post is itself a reply), the focused post and its direct
+  // replies are ONE navigable list, in that order (owner feedback 2026-08-18: "in a
+  // thread I can't arrow up to reply to the parent of the post I'm looking at").
+  // Rendering the parent outside the list is what made it unreachable — every row
+  // `j`/`k`/`↑`/`↓` can land on is a row `r`/`l`/`b`/`p` acts on.
+  const rows: readonly Post[] =
+    parent === undefined ? [post, ...replies] : [parent, post, ...replies];
+  const parentId = parent?.id;
+  const indentFor = (row: Post): number => {
+    if (parentId !== undefined && row.id === parentId) return 0;
+    if (row.id === post.id) return parentId === undefined ? 0 : 1;
+    return parentId === undefined ? 1 : 2;
+  };
 
   return (
     <Box flexDirection="column">
       <Text color={theme.accent}>Thread</Text>
-      {parent === undefined ? null : (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={theme.muted}>in reply to</Text>
-          <PostRow post={parent} />
-        </Box>
-      )}
       {error === undefined ? null : (
         <Box marginTop={1}>
           <Text color={theme.error}>{error.title}</Text>
@@ -166,22 +189,20 @@ export function ThreadScreen({
       <Box marginTop={1}>
         <PostList
           posts={rows}
-          loading={loading || loadingMore}
+          loading={loading || loadingMore || refreshing}
           hasMore={hasMore}
           emptyMessage="No replies yet."
           loadMoreKeyHint="n / space"
           isActive={isActive}
-          rowIndent={(row) => (row.id === post.id ? 0 : 1)}
+          rowIndent={indentFor}
           {...actions}
           onOpenPost={(row) => {
-            // Re-opening the row already in focus would just push a duplicate onto
-            // `threadStack` — a no-op is friendlier than a redundant stack frame.
+            // Re-opening the row already in focus would just push a duplicate
+            // navigation frame — a no-op is friendlier than a redundant one.
+            // `Enter` on the parent or on a reply re-roots the thread there.
             if (row.id !== post.id) actions.onOpenPost?.(row);
           }}
         />
-      </Box>
-      <Box marginTop={1}>
-        <Text color={theme.muted}>r reply · p author · l like · b bookmark · Esc back</Text>
       </Box>
     </Box>
   );

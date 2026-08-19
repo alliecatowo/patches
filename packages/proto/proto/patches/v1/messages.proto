@@ -5,6 +5,7 @@ package patches.v1;
 import "google/protobuf/timestamp.proto";
 import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
+import "patches/v1/e2ee.proto";
 
 // Direct messages (spec §183.4, §188–190, §192). Mutual/accepted gating, block-aware both
 // directions with no block oracle, rate-limited per actor and per peer, never federated —
@@ -76,6 +77,18 @@ message Conversation {
 
   // Unread count for the caller specifically — never populated for anyone else.
   uint32 unread_count = 7;
+
+  // Which security mode this conversation was created in (ADR 0017, ADR 0020). Read-only and
+  // fixed at creation: there is no RPC anywhere in this schema that converts a conversation
+  // between modes. `CreateConversation` always produces
+  // `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; `E2eeService.CreateE2eeConversation` is
+  // the only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+  //
+  // Clients MUST render disclosure from this field and never from a local assumption: spec
+  // §183.1 requires the "not end-to-end encrypted — this node's operators can read these
+  // messages" line on the legacy screen, and spec §194 forbids the words encrypted, end-to-end,
+  // secure, or private for anything but `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+  ConversationSecurityMode security_mode = 8;
 }
 
 message Message {

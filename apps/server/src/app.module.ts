@@ -8,18 +8,23 @@ import { AppConfigModule } from './config/config.module.js';
 import { validateEnv } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
 import { ActorModule } from './modules/actors/actor.module.js';
+import { AppealModule } from './modules/appeals/appeal.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CommunitiesModule } from './modules/communities/communities.module.js';
 import { FederationHttpModule } from './modules/federation/federation-http.module.js';
 import { FederationModule } from './modules/federation/federation.module.js';
 import { FeedModule } from './modules/feeds/feed.module.js';
+import { FilterListsModule } from './modules/filter-lists/filter-lists.module.js';
+import { FiltersModule } from './modules/filters/filters.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
+import { LabelsModule } from './modules/labels/labels.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { MessagesModule } from './modules/messages/messages.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
 import { PostModule } from './modules/posts/post.module.js';
+import { PrivacyModule } from './modules/privacy/privacy.module.js';
 import { ReactionModule } from './modules/reactions/reaction.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { TagsModule } from './modules/tags/tags.module.js';
@@ -58,10 +63,15 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     NotificationsModule,
     ReactionModule,
     ModerationModule,
+    AppealModule,
     MediaModule,
     MessagesModule,
     PagesModule,
     TagsModule,
+    FiltersModule,
+    FilterListsModule,
+    LabelsModule,
+    PrivacyModule,
     FederationModule,
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],

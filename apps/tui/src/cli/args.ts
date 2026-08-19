@@ -12,9 +12,19 @@ export type Command =
   | 'whoami'
   | 'keys'
   | 'verify'
-  | 'profile';
+  | 'profile'
+  | 'dm'
+  | 'community'
+  | 'tag'
+  | 'upgrade'
+  | 'privacy'
+  | 'filter'
+  | 'lists'
+  | 'labelers'
+  | 'appeal'
+  | 'modlog';
 
-const AUTH_COMMANDS: readonly Command[] = [
+const SUBCOMMANDS: readonly Command[] = [
   'register',
   'login',
   'logout',
@@ -23,6 +33,15 @@ const AUTH_COMMANDS: readonly Command[] = [
   'keys',
   'verify',
   'profile',
+  'dm',
+  'community',
+  'tag',
+  'privacy',
+  'filter',
+  'lists',
+  'labelers',
+  'appeal',
+  'modlog',
 ];
 
 export interface ParsedArgs {
@@ -32,6 +51,14 @@ export interface ParsedArgs {
   /** Strips all nameplate decoration app-wide (spec §173's required "plain mode") —
    * `--plain` or `PATCHES_PLAIN=1`. Also toggleable at runtime (`P`, see `App.tsx`). */
   plain: boolean;
+  /** Highest-precedence theme selection (design vision §4.2: `--theme` > `PATCHES_THEME` >
+   * profile preference > `patches`). Resolved against the built-in/user-theme registry by
+   * `theme/themes/resolution.ts`, not here — this parser only recognizes the flag so it
+   * doesn't fall through to "Unknown argument". */
+  themeName?: string;
+  /** `--no-upgrade-check` — also settable via `PATCHES_NO_UPGRADE_CHECK`/`CI` env vars, which
+   * `isUpgradeCheckEnabled` (`upgrade/check.ts`) checks directly rather than through this parser. */
+  noUpgradeCheck: boolean;
   /**
    * Everything after the command word that isn't a shared connection flag
    * (`--server`/`--node`/`--insecure`) — the auth subcommands (`register`,
@@ -75,6 +102,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         : env.PATCHES_SERVER.trim(),
     insecure: isTruthy(env.PATCHES_INSECURE),
     plain: isTruthy(env.PATCHES_PLAIN),
+    noUpgradeCheck: false,
     rest: [],
   };
 
@@ -87,9 +115,9 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         break;
       case '--help':
       case '-h':
-        // An auth subcommand's own --help (e.g. `patches register --help`) is its
+        // A subcommand's own --help (e.g. `patches register --help`) is its
         // business, not this parser's — forward it instead of overriding the command.
-        if (AUTH_COMMANDS.includes(result.command)) {
+        if (SUBCOMMANDS.includes(result.command)) {
           result.rest.push(argument);
         } else {
           result.command = 'help';
@@ -123,6 +151,16 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'keys':
       case 'verify':
       case 'profile':
+      case 'dm':
+      case 'community':
+      case 'tag':
+      case 'upgrade':
+      case 'privacy':
+      case 'filter':
+      case 'lists':
+      case 'labelers':
+      case 'appeal':
+      case 'modlog':
         result.command = argument;
         break;
       case '--insecure':
@@ -131,6 +169,18 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case '--plain':
         result.plain = true;
         break;
+      case '--no-upgrade-check':
+        result.noUpgradeCheck = true;
+        break;
+      case '--theme': {
+        const value = argv[index + 1];
+        if (value === undefined || value.startsWith('-')) {
+          return { ...result, command: 'help', error: '--theme needs a name, e.g. --theme paper' };
+        }
+        result.themeName = value;
+        index += 1;
+        break;
+      }
       case '--server':
       case '--node': {
         const value = argv[index + 1];
@@ -155,7 +205,11 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
           result.target = argument.slice('--node='.length);
           break;
         }
-        if (AUTH_COMMANDS.includes(result.command)) {
+        if (argument.startsWith('--theme=')) {
+          result.themeName = argument.slice('--theme='.length);
+          break;
+        }
+        if (SUBCOMMANDS.includes(result.command)) {
           result.rest.push(argument);
           break;
         }
@@ -182,6 +236,16 @@ Usage:
   patches verify <code>        confirm your email with the code it was sent
   patches verify --resend      ask the server to resend the verification email
   patches profile edit [opts]  edit your display name/bio/location/website
+  patches dm <command>         list, read, send, or manage message requests
+  patches community <command>  list, join, leave, or post to communities
+  patches tag <command>        search or read/mute a tag
+  patches upgrade               check for and install a newer release, then exit
+  patches privacy <command>    privacy notice, discoverability, export, deletion
+  patches filter <command>     manage your own bring-your-own-filter rules
+  patches lists <command>      browse, subscribe to, and publish filter lists
+  patches labelers <command>   subscribe to labelers and set per-value actions
+  patches appeal <command>     file and track appeals against a moderation notice
+  patches modlog                this node's public, anonymized moderation log
   patches --version            print the client version
 
 Options:
@@ -189,9 +253,17 @@ Options:
   --insecure                     connect without TLS (env: PATCHES_INSECURE)
   --plain                        strip nameplate decoration (env: PATCHES_PLAIN;
                                   also toggleable at runtime with P)
+  --theme <name>                 select a theme (env: PATCHES_THEME; patches, paper, mono,
+                                  hacker, pastel, terminal, or a name from
+                                  $XDG_CONFIG_HOME/patches/themes/)
+  --no-upgrade-check             skip the launch-time check for a newer release
+                                  (env: PATCHES_NO_UPGRADE_CHECK; also skipped under CI=true)
   -h, --help                     show this message
   -v, --version                  show the client version
 
 Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` /
-\`patches profile edit --help\` for subcommand-specific options.
+\`patches profile edit --help\` / \`patches dm --help\` / \`patches community --help\` /
+\`patches tag --help\` / \`patches privacy --help\` / \`patches filter --help\` /
+\`patches lists --help\` / \`patches labelers --help\` / \`patches appeal --help\` /
+\`patches modlog --help\` for subcommand-specific options.
 `;

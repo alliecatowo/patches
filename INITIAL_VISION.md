@@ -6335,3 +6335,975 @@ decision, and the first three need an ADR before any code is written.
    default.
 5. **Raising `max_post_chars` above 5,000** on the reference node (§186.2).
 6. **Federated DMs** (§193) — a separate security decision with its own gate.
+
+---
+
+# 196. Amendment C — 2026-08-18: privacy, user-side filters, decentralized moderation
+
+This part is an **amendment**, not a rewrite. Sections §0–§195 remain as written; where this
+amendment and an earlier section disagree, **this amendment wins**, and the earlier section is
+annotated below as amended or superseded.
+
+Do not edit §0–§195 in place to match this part — the history is the point. Do not re-litigate
+a decision recorded here; if it must change, write a further amendment and an ADR.
+
+**Owner direction (2026-08-18):** the product needs a privacy posture it can state out loud, and
+a moderation model that does not depend on a single authority being right. Amendment B gave
+Patches social depth. Amendment C gives the people using it *control* — over what they disclose,
+over what reaches them, and over whose judgement they accept.
+
+The organizing idea, stated once so the rest of this amendment reads as one thing rather than
+five:
+
+> **Moderation is a service you subscribe to, not a truth you are subject to.**
+>
+> A node still enforces its own rules on its own machines — that is not optional and it is not
+> weakened here (§201). But everything *above* that floor is opt-in: filters you write, lists
+> you subscribe to, labelers whose judgement you accept, and the ability to walk away from any
+> of them without losing your account, your posts, or your friends. Nothing in this amendment
+> ranks, scores, promotes, or reorders anything (§194, §208).
+
+Scope of Amendment C:
+
+| Section   | Effect                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------- |
+| §197      | Privacy and consent surfaces: notice, export, deletion, discoverability, locked accounts, operator transparency. **Amends §114, §21, §62–§63; supersedes §143's "0.4 identity personality" placement of these.** |
+| §198      | Bring-your-own filters, evaluated server-side. **Supersedes §111's A1 ("built-in client feed filters") and §143's "client filters"** — filters are a server-evaluated product feature, not a per-client convenience. |
+| §199      | Filter lists: publishable, subscribable, revocable. **Extends §111's A3** from shareable *inclusion* (feed definitions) to shareable *exclusion*. |
+| §200      | Labelers and labels — subscriber-scoped annotation, never global truth.                      |
+| §201      | Decentralized moderation: node transparency, moderation notices, appeals, the public moderation log, domain policies. **Amends §64, §65, §66, §109.** |
+| §202      | Data model. Amends §22, §60, §61, §189 by addition.                                          |
+| §203      | API surface. Amends §47, §55, §168, §190 by addition.                                         |
+| §204      | Limits and rate limits. Amends §58, §102, §188 by addition.                                   |
+| §205      | TUI, CLI, and web surface. Amends §69, §76, §191.                                             |
+| §206      | Security and privacy requirements for this phase. Amends §101–§104, §192.                     |
+| §207      | Federation mapping (later stage). Extends §193.                                               |
+| §208      | Additional hard prohibitions. Amends §153, §177, §194 by addition.                            |
+| §209      | Acceptance checklist for board Phase 13.                                                      |
+| §210      | What this amendment does **not** authorize.                                                   |
+
+**On the paused clients.** §179 paused board Phase 10 (web + React Native) until board Phase 11
+shipped. The web client has since resumed under owner direction and exists
+(`apps/web`). Amendment C is therefore **TUI-first but not TUI-only**: every surface below MUST
+be reachable from the terminal (§179's standard is unchanged), and the web client MUST reach
+parity for the *safety* surfaces — filters, blocks, reports, privacy settings — before it is
+offered to anyone who is not the owner. A client that can read a timeline but cannot filter it
+is not a client, it is a demo. React Native remains paused.
+
+**On what this amendment is not.** It is not a discovery feature, not a recommendation system,
+and not a reputation system. §149 stands: there is no `rankHomeFeed()`, and there is no
+`scoreActor()` either. Every mechanism here **removes or annotates**; none of them **orders**.
+
+---
+
+# 197. Privacy and consent surfaces
+
+**Amends §114**, which required only that a privacy document be written before public MVP. That
+was the right floor and it is no longer sufficient: a document nobody is shown is not consent,
+and a control that exists only in prose is not a control.
+
+## 197.1 The privacy notice is part of registration
+
+- A node MUST publish a **privacy notice** consisting of a short structured **summary** (what is
+  stored, what is public, that this node's operators can read DMs, retention, how to export,
+  how to delete, who to contact) and a link to the full document. The summary is served by the
+  node, not compiled into the client, so a self-hoster publishes their own (§163).
+- The notice is **versioned**. `privacy_notice_version` is a monotonically increasing integer
+  published by the node.
+- Registration MUST show the summary **before the account exists**, in the client itself, as
+  readable text — not a URL the user is told to go read, and not a checkbox next to a link. A
+  terminal-native product cannot discharge its duty of disclosure by pointing at a browser.
+- Acknowledgement is recorded as `(actor_id, notice_version, acknowledged_at)`. When a node
+  publishes a **material** change it increments the version, and every client MUST show the new
+  summary at next session start and record a fresh acknowledgement.
+- **An acknowledgement is a record that the text was shown. It is not a waiver, not a consent to
+  anything beyond what the text describes, and MUST NOT be presented as either.** A node MUST
+  NOT gate any safety, moderation, export, or deletion function on having acknowledged
+  anything (§174 — capabilities never gate safety or portability).
+- The DM disclosure required by §183.1 appears in the registration summary as well as on the
+  messages screen. It is the single most surprising thing about this product and it is stated
+  twice on purpose.
+
+## 197.2 The privacy screen
+
+- Every client MUST have a **privacy screen** reachable at any time, showing: the current notice
+  summary and version, this actor's discoverability settings (§197.5), export status (§197.3),
+  deletion status (§197.4), and the node's policy (§197.6).
+- Headless equivalent: `patches privacy` (§76). The terminal is not the only terminal surface.
+- The screen MUST state, in words a non-engineer understands, which of the things it describes
+  are enforced by the node and which depend on a remote node behaving well once federation is
+  enabled (§207). Do not let a settings toggle imply a guarantee the protocol cannot make.
+
+## 197.3 Account data export
+
+**§177 already prohibits paywalling data export. This section makes it exist.**
+
+- `ExportAccount` enqueues a background job (§30's job model, ADR 0004). It MUST NOT be
+  synchronous and it MUST NOT stream a large archive through the Nest process.
+- The archive contains everything the actor authored or configured: profile, credential
+  *metadata* (never secrets, §177), posts including edit history, media the actor uploaded,
+  social graph, likes, bookmarks, reposts, communities and roles, tags muted, direct messages
+  the actor can read, filters and filter lists (§198, §199), labeler subscriptions, reports the
+  actor filed, and acknowledgement records.
+- Format is **documented, plain, and self-describing**: a directory tree of JSON documents plus
+  media files plus a `README.txt` that explains the layout to a human. It MUST NOT be a database
+  dump and MUST NOT require Patches to read.
+- The archive is written to object storage and downloaded with a short-lived pre-signed URL, the
+  same pattern as media (§29, ADR 0005). Archives expire and are deleted (§204).
+- The export layout is the **same shape** the §164 identity-portability seam will consume. Export
+  is not a dead end that produces a souvenir; it is the first half of leaving.
+- Export contains the actor's **own** data. It MUST NOT contain other actors' private data:
+  a DM export includes messages in the actor's conversations (they were sent to them), but never
+  another actor's filters, reports about them, moderator notes (§55), or audit rows.
+
+## 197.4 Account deletion with a grace period
+
+- `RequestAccountDeletion` moves the account to `PENDING_DELETION`: it disappears from feeds,
+  search, and the local timeline **immediately**, sessions are revoked, and the handle is held.
+- A **grace period** (default 30 days, node-configurable and published, §204) follows, during
+  which `CancelAccountDeletion` restores the account intact. This exists because account
+  deletion is the one destructive action people take at their worst moment.
+- After the grace period a worker job **purges**: profile fields, posts and bodies, media
+  objects, DMs the actor sent, filters, lists, subscriptions, and acknowledgements.
+- What survives purge, and why, MUST be stated in the privacy notice rather than discovered:
+  tombstones needed for thread integrity (§25), evidence snapshots attached to a **still-open**
+  report or appeal (§183.4), and `admin_audit_log` rows (§66) — with the subject reduced to an
+  opaque identifier. Moderation accountability and the right to erasure are in genuine tension;
+  Patches resolves it by keeping the *record of the action* and destroying the *content*.
+- The handle is not recycled. Re-issuing a departed actor's handle is an impersonation vector.
+- `patches-admin user delete` remains, and MUST be made to follow this same path rather than
+  being a second, weaker deletion (it is a soft status flip today — §209).
+
+## 197.5 Discoverability, and locked accounts
+
+**Amends §21 and §62–§63.** Four controls, all default-off in the sense of "no behaviour change
+for an actor who ignores them", all per-actor, none capability-gated (§174):
+
+```text
+discoverable        (default true)   in actor search results and any node directory
+indexable           (default true)   in full-text post search (PostService.SearchPosts)
+show_in_local_feed  (default true)   public posts appear on the node's local timeline
+locked              (default false)  follows require the actor's approval
+```
+
+- `discoverable = false` removes the actor from `SearchActors` and any directory. **Exact-handle
+  resolution still works** (`GetActorByHandle`, `ResolveActor`) — mentions, replies, and
+  federation addressing depend on it, and pretending otherwise would break the network while
+  providing no real concealment.
+- `indexable = false` excludes the actor's posts from `SearchPosts`. Search is recent (§112 said
+  post search MAY be deferred; it shipped) and this control MUST land with it, not after it.
+- `show_in_local_feed = false` lets an actor post publicly without standing in the town square.
+  This is a Patches-local setting with no upstream analogue, and MUST NOT be described as
+  privacy — the posts are still public.
+- **`locked` is required, not optional, and it is a correctness fix.** `POST_VISIBILITY_FOLLOWERS`
+  exists today and is enforced by a `follows` row lookup, while `FollowActor` creates that row
+  with no approval — so a followers-only post is currently one RPC call away from readable by
+  any account on the node. Shipping a visibility level whose promise the system does not keep is
+  worse than not shipping it. `locked` introduces follow **requests**: pending until accepted or
+  rejected, notified, rate-limited, block-aware, and never auto-accepted (§194's rule against
+  auto-accepting a message request applies identically here).
+- Until `locked` ships, every client MUST describe followers-only honestly as "not shown
+  publicly", never as "private".
+- These map onto existing federated vocabulary and MUST use it when federation reaches that
+  stage (§207): `toot:discoverable`, `toot:indexable`, and the standard AS2
+  `as:manuallyApprovesFollowers`. `show_in_local_feed` is local-only and federates as nothing.
+
+## 197.6 Operator transparency
+
+**Amends §163's "nodes MUST expose their own policy to clients".** A node asks people to trust
+it with their data and their safety; it MUST publish what it is.
+
+`NodeService.GetNodePolicy` (unauthenticated, cacheable) publishes:
+
+```text
+privacy notice summary + version + full-document URL
+terms / community guidelines URL
+moderator contact, and how appeals are filed (§201.3)
+federation stance:   disabled | allowlist | open-with-blocklist
+domain policies:     the public subset, with reason category (§201.5)
+data location:       operator-declared jurisdiction/provider, free text
+retention windows:   DMs, evidence snapshots, uploaded originals, logs, export archives
+operator identity:   who runs this node, or an explicit "anonymous operator" statement
+```
+
+- This is a **separate RPC from `GetNodeInfo`**, deliberately. `GetNodeInfo` is on every client's
+  startup path and must stay small; a policy document is larger, changes rarely, and is cached
+  on a different schedule.
+- Every field is operator-supplied text or an enum. A node MUST NOT be able to publish a policy
+  document containing markup, scripts, or remote media (§172, §177).
+- A node that publishes nothing here is a node that has said so. Clients MUST render an empty
+  policy as "this node publishes no policy" rather than hiding the screen.
+
+---
+
+# 198. Bring-your-own filters
+
+**Supersedes §111's A1** ("built-in client feed filters") and **§143's "client filters"**. The
+progression §111 described was right; its placement of the mechanism in the client was not.
+
+## 198.1 What a filter is
+
+A **filter** is a named, viewer-owned rule that **removes or conceals** posts. It has:
+
+```text
+name        what the viewer calls it; shown when a post is collapsed
+terms       1..N match terms (§198.2)
+scopes      where it applies (§198.3)
+action      hide | collapse | warn (§198.3)
+expires_at  optional; a filter may be temporary (an event, a spoiler window, a bad week)
+```
+
+A filter never adds anything, never reorders anything, and never scores anything. It is
+subtractive by construction, and that is the whole reason it is safe to ship in a product that
+prohibits ranking (§149, §194).
+
+## 198.2 Matching: literal terms, no regex
+
+A term is `(kind, value)`:
+
+```text
+substring   case-insensitive, NFKC-folded literal substring of the post body,
+            content warning, or media alt text
+word        as substring, but bounded to word edges
+tag         exact tag match after §181 normalization (the tag-mute model, generalized)
+actor       exact actor match (author, reposter, or quoted author)
+domain      registrable domain of a link in the body or of a link-type post (§104)
+```
+
+**User-supplied regular expressions are prohibited in v1 (§208).** This is not caution, it is
+arithmetic: filters are evaluated server-side against every candidate row for every viewer, Node
+ships no default linear-time regex engine and no `RegExp` timeout, so one pathological pattern is
+a node-wide denial of service written by a user with an account. A linear-time engine exists
+(`re2`) but it is a native addon — a build-and-deploy burden on every self-hoster (§163) — and it
+still cannot execute backreferences or lookaround, so it would not be "regex" as users expect it
+either. Mastodon, which has run user filters at scale for years, escapes every keyword to a
+literal and exposes no regex at all (verified 2026-08-18, `app/models/custom_filter_keyword.rb`).
+Literal terms are sufficient. Regex is a §210 sign-off item, and if it ever ships it ships on RE2.
+
+Rules:
+
+- Values are literals. The server constructs the matcher; the user never supplies a pattern.
+- `word` bounds a term only at edges that are word characters, so a term beginning or ending in
+  punctuation still matches (`:(`, `#1`). Naive `\b` wrapping produces terms that can never
+  match, which users experience as the feature being broken.
+- Matching is NFKC-folded and case-insensitive so that homoglyph and casing games do not defeat a
+  filter trivially. It will still be defeated by a determined poster; a filter is a comfort
+  control, not an access control, and clients MUST NOT describe it as blocking.
+- A filter MUST NOT match against another actor's private data. DM **bodies** are never matched
+  (§208) — see §198.3 on why the `message_requests` scope filters the request, not the message.
+
+## 198.3 Scope and action
+
+Scopes (v1):
+
+```text
+home              local             tag_feed          community_feed
+notifications     search            message_requests
+```
+
+**Threads and profiles are deliberately not filterable in v1.** §181 already settled this for tag
+mutes: "a mute filters discovery, it does not censor a conversation you chose to read." A filter
+governs what arrives unbidden. When you open a thread or a profile you have asked for it.
+(Mastodon does offer `thread` and `account` contexts; adopting them is a §210 sign-off item, not
+an oversight.)
+
+`message_requests` filters the **request** — sender, and the one message a request may carry
+(§183.2) — because a message request is unsolicited contact, which is exactly what a filter is
+for. Accepted conversations are never filtered: you agreed to them.
+
+Actions:
+
+```text
+hide       the post is not returned to the client at all
+collapse   the post is returned, replaced in the client by one line:
+           "filtered: <name>", expandable in place
+warn       the post is returned and rendered normally with a "filtered: <name>" marker
+```
+
+**`hide` is enforced by omission, on the server.** The row does not reach the client. This is a
+deliberate divergence from Mastodon, which returns every status with a `filtered` hint and relies
+on the client to act on it (verified 2026-08-18, `Status.filtered` / `FilterResult`). Patches
+supports third-party clients by design (§175, pillar 5), and a safety guarantee that a
+non-compliant client can ignore is not a guarantee. `collapse` and `warn` return the post with a
+`filtered_by` hint, because those two actions *are* presentation and presentation is the client's
+job.
+
+Consequence, which MUST be documented and tested rather than discovered: because `hide` omits
+rows, **a page may contain fewer items than requested**. Clients MUST page on the cursor and
+`PageInfo`, never on item count. This is already true of blocks and mutes; filters make it
+common.
+
+## 198.4 Filters are evaluated on the server
+
+The forcing question is not "where is it easiest?" but "what happens when it is wrong?".
+
+- **Every client must agree.** A viewer with the TUI on a laptop, the web client in a browser,
+  and a third-party client on a phone must see the same timeline. A filter that lives in one
+  client silently fails in the others.
+- **Pagination stays correct.** Filtering after the fact in a client punches holes in keyset
+  pages and makes "load more" behave differently per client. Keyset pagination is not optional
+  here (§46, §153).
+- **The evaluation point already exists.** `applyVisibilityFilter` in the feeds module is the
+  shared chokepoint that blocks, mutes, and visibility already flow through, and that
+  `PostService.SearchPosts` already reuses. Filters belong there, not in five clients.
+
+This does **not** contradict §185's rule that quiet feed is a client setting the server MUST NOT
+record. §185 governs **decoration** — how things look. §198 governs **content selection** — what
+arrives. The line is sharp and worth keeping sharp: presentation is the client's, selection is
+the node's.
+
+Implementation constraints, recorded because they are load-bearing:
+
+- `actor`, `tag`, and `community` terms are enforced **in SQL**, alongside the existing block/mute
+  predicates. They are joins on indexed columns and cost nothing new.
+- `substring`, `word`, and `domain` terms are enforced **in the application service** over a
+  bounded over-fetch of the page, because a per-row `ILIKE` against a viewer's whole term set is
+  not an index-friendly query and MUST NOT be one. The service over-fetches, filters, and returns
+  a full page where it can, with a **bounded** number of re-fetch rounds and the cursor advanced
+  to the last row *examined*. Unbounded looping to fill a page is prohibited.
+- The compiled term set for a viewer may be cached in-process with a short TTL. No Redis (§153).
+
+## 198.5 Filters are portable
+
+- `ExportFilters` / `ImportFilters` exchange a **plain, documented JSON file**. Not a binary blob,
+  not a proprietary format, not executable (§111's "data, not arbitrary executable code", §153's
+  ban on remote JavaScript feed plugins).
+- Import is additive and previewable: a client MUST show what will be added before adding it.
+- Filters are included in the §197.3 account export, and are deleted with the account (§197.4).
+- Filters are **never federated** (§208). A filter is a record of what someone found painful.
+  That belongs to them.
+
+---
+
+# 199. Filter lists
+
+This is the decentralized primitive. **Extends §111's A3**, which anticipated shareable feed
+definitions (`patches feed install alice/friends-and-raves`) for *inclusion*. §199 ships the
+*exclusion* half first, because safety earns sharing before curation does.
+
+## 199.1 Publishing a list
+
+An actor may publish a **filter list**: a named, public collection of entries.
+
+```text
+entry kinds:  substring | word | tag | actor | domain     (the §198.2 kinds)
+metadata:     name, display name, description, updated_at
+```
+
+- A list is **data**. It carries no code, no action, no scope, no ordering, and no scores.
+- A list is public by construction. Publishing is the point; a private list is just a filter.
+- The publisher's identity is attached and always shown to subscribers (§199.3).
+- Communities (§182) may publish lists too, owned by the community and maintained by its
+  moderators. A community's list has no authority over non-members and no authority inside the
+  community either — it is a recommendation, like every other list.
+
+## 199.2 Subscribing never blocks on your behalf
+
+**The subscriber owns the action. The list author owns the entries. These never swap.**
+
+- Subscribing applies the list's entries as filters, with an action and scopes **the subscriber
+  chooses** (defaulting to `collapse`, the least destructive useful action).
+- **A subscription MUST NOT create a §62 block.** A block removes follows, is bidirectional, and
+  is not undone by unsubscribing. Handing that power to a list author — who can add an entry at
+  any time, to any number of subscribers at once — is how mass-block lists have caused real,
+  uncorrectable harm on other networks. A subscribed `actor` entry produces a **list-derived
+  mute** (§63 semantics: hides posts, suppresses notifications, does not touch follows, is not
+  disclosed to the target) or a filter action, and nothing stronger.
+- A subscriber may **promote** any single entry to a real block, deliberately, one at a time,
+  with the target named in front of them. That is a decision a person makes, not a decision a
+  subscription makes for them.
+- Prior art, since this is the design's crux: Bluesky splits the same choice into two separately
+  named operations — `listblock` (public, destructive) and `muteActorList` (private,
+  non-destructive) — so the list itself is action-neutral and the subscriber picks (verified
+  2026-08-18, `app.bsky.graph.*` lexicons). Patches makes the same split, and additionally
+  removes the destructive option from the subscription path entirely, because Patches blocks are
+  private (§62, no block oracle) and a list-driven public block would be doubly wrong here.
+
+## 199.3 Provenance, exceptions, revocation
+
+- **Provenance is always shown.** A post collapsed by a subscribed list renders its source:
+  `filtered: spam-2026 (via @alice)`. A viewer must always be able to answer "why did this
+  disappear, and who decided that?" without leaving the screen.
+- Subscribers may **inspect the full entry set** of any list they subscribe to, at any time. An
+  unauditable list is a black box with authority, which is the thing this amendment exists to
+  avoid.
+- Subscribers may set **per-entry exceptions** — "this list is right about everything except my
+  friend" — without unsubscribing and without telling the list author.
+- **Subscriptions are evaluated live against the list's current entries; entries are never copied
+  into the subscriber's own filters.** Unsubscribing is therefore instant and complete, and a
+  list author removing an entry immediately stops affecting every subscriber. Revocation that
+  leaves residue is not revocation.
+- The corollary is stated plainly in the client: subscribing means future entries apply too.
+  That is what makes a list useful and it is what makes it a delegation of judgement.
+- **Subscriber counts are never published** (§208). A subscriber count is a popularity score, and
+  a popularity score attached to a moderation artifact is ranking arriving through the one door
+  §194 left unlocked.
+
+## 199.4 Federation is a seam, not a feature, here
+
+There is **no FEP and no W3C mechanism** for publishing or subscribing to shared blocklists,
+filter lists, or labels. FEP-c648 (`DRAFT`) defines a per-actor `blocked`/`blocks`
+`OrderedCollection` — "who I have blocked" — not a third-party subscribable list, and nothing
+else in the FEP index addresses this (verified 2026-08-18). `Flag` exists in the ActivityStreams
+vocabulary with no documented cross-instance semantics at all.
+
+Therefore:
+
+- Patches filter lists are **original protocol surface**, and this amendment records that fact
+  rather than implying interoperability that does not exist.
+- v1 lists are **node-local**. Subscribing across nodes is §207, later stage.
+- The wire shape, when it arrives, is an `OrderedCollection` on the publishing actor, by analogy
+  with `followers`/`following` and with FEP-c648's construction.
+- **No `FederationGateway` method is added by this amendment** (§207). Defining a seam means
+  writing down the shape, not adding interface methods nothing calls.
+
+---
+
+# 200. Labelers and labels
+
+A **labeler** is an actor or community that publishes **labels** on posts and actors. A viewer
+who subscribes to a labeler chooses what each label value does for them.
+
+## 200.1 Model
+
+```text
+labeler        an actor or a community; the node itself operates one
+label          (labeler, subject, value) + created_at, expires_at, retracted_at
+subject        a post or an actor
+subscription   viewer -> labeler, plus a per-value action map
+action         ignore | warn | collapse | hide      (the §198.3 actions, plus ignore)
+```
+
+- Retraction is explicit and preserves history (`retracted_at`), rather than deleting the row.
+- Labels **expire** if the labeler says so. A judgement about a moment should not be permanent by
+  default.
+
+## 200.2 The label vocabulary is bounded and node-published
+
+- Label values come from a **closed vocabulary published by the node** in `GetNodePolicy`. Each
+  value declares a human description and a default action.
+- **Free-text label values are prohibited (§208).** A free-form value attached to a person by a
+  stranger is a harassment channel with a rendering budget. AT Protocol allows free-form values
+  and then spends its specification asking implementers not to abuse them — including an explicit
+  recommendation against encoding scores or confidence numbers (verified 2026-08-18). A bounded
+  vocabulary enforces mechanically what that spec has to request socially, and it is the only way
+  to keep §194's ban on scores true at the edges.
+- Starting vocabulary (a node MAY publish a different one; it MUST publish whichever it uses):
+  `spam`, `scam`, `nsfw`, `graphic-violence`, `needs-cw`, `bot`, `impersonation`.
+- No label value may carry a number, a score, a confidence, a rank, or a tier (§194, §208).
+
+## 200.3 Labels are subscriber-scoped and never ordering
+
+- A label is visible **only** to actors subscribed to that labeler. Labeling someone has no effect
+  whatsoever on anyone who has not opted in. This is what "never global truth" means concretely.
+- The **node's own labeler** is subscribed by default and is always listed by name. A viewer may
+  set any of its values to `ignore` — with the single exception of values a node has designated
+  as legally mandatory (e.g. jurisdiction-required adult-content marking), which MUST be
+  enumerated in `GetNodePolicy` rather than silently enforced.
+- **Labels never affect ordering, and never affect anything but the subscriber's own view**
+  (§208). A label MUST NOT influence feed position, search position, tag-feed inclusion, or
+  delivery. Labels drive §198.3 actions. That is all they do.
+- Labels MUST NOT be aggregated into a per-actor or per-post total, a reputation, a trust score,
+  or a "how many labelers flagged this" count, anywhere, for anyone (§208). Counting labels is
+  how a label vocabulary becomes karma.
+- Labeler subscriber lists and counts are not published (§208).
+
+## 200.4 What the labeled person can see
+
+- An actor MAY query the labels applied to their own posts and account (`ListLabelsOnSubject`),
+  pull-only.
+- An actor is **never notified** that they were labeled (§208). A notification would turn every
+  labeler into a channel for reaching someone who did not ask to be reached, which is precisely
+  the harassment surface §183.2 exists to close.
+- Node-labeler labels that carry an enforcement consequence are a different thing and are
+  delivered as a **moderation notice** (§201.2), which is notified, explained, and appealable.
+
+## 200.5 Labeling is deliberate
+
+- Applying a label is done from the labeler's own screen or CLI, and is audited per labeler.
+- Labels are rate-limited (§204). A labeler that can label faster than a human can consider is a
+  bot doing moderation at scale, which is the failure mode this whole section is arranged against.
+- A labeler operator's authority stops at their own labels. Operating a labeler grants **no**
+  authority over any actor, post, community, or node (§208) — mirroring §182.3's rule that a
+  community moderator's authority stops at the community boundary.
+
+---
+
+# 201. Decentralized moderation
+
+**Amends §64, §65, §66, §109 by addition.** Everything in §198–§200 sits *above* a floor. This
+section is the floor, made transparent and appealable rather than merely present.
+
+## 201.1 The node floor is unchanged
+
+- A node's own rules (`docs/product/moderation.md`'s guidelines and enforcement ladder) are
+  enforced exactly as §64–§66 describe: reports, moderator review, warn/suspend/ban, an
+  append-only audit log. **Nothing in this amendment weakens, replaces, or routes around that.**
+  A filter hides a post from one viewer; a node ban removes an account from the node, for
+  everyone, regardless of what anyone has filtered, subscribed to, or labeled.
+- The relationship is strictly layered: filters (§198) act on what a *viewer* sees; lists
+  (§199) and labelers (§200) act on what a *subscriber* sees; the node floor acts on what
+  *exists on the node at all*. A viewer's filter subscriptions have no bearing on whether the
+  node investigates a report, and a labeler's judgement has no bearing on whether an account
+  gets suspended — §200.5 already says a labeler's authority "stops at their own labels."
+- Community moderation (§182.3) is unaffected: a community moderator's authority still stops at
+  the community boundary, and community-level bans are not node-level bans.
+- What changes here is not the floor's rules — it is that enforcing the floor now produces three
+  things it did not produce before: a **notice** to the person it was enforced against (§201.2),
+  a right to **appeal** it (§201.3), and a **public, anonymized record** that it happened
+  (§201.4). A rule enforced in the dark is not more legitimate for being unaccountable.
+
+## 201.2 Moderation notices
+
+- Every node enforcement action that affects a specific actor — warn, suspend, ban, post
+  removal, media takedown — MUST generate a **moderation notice**: a `MODERATION`-type
+  notification (§56, unchanged type, extended payload) carrying the action taken, which
+  post/account it concerns, a **reason category** (a bounded vocabulary, not free text — see
+  §202), the timestamp, and the appeal window and deadline (§201.3, §204).
+- The notice's explanation is a field **purpose-written for the subject**, authored by the
+  moderator at resolution time. It is **not** `reports.moderator_note` — §55's rule that no
+  user-facing RPC exposes an internal moderator note is unchanged. The notice text is disclosure;
+  the note is not.
+- Notices are private to the affected actor. A reporter still only ever gets the §64 resolution
+  signal ("reviewed, no action taken" or similar) — reports remain not public.
+- The notice is a **read projection of the `admin_audit_log` row**, not a second source of
+  truth. There is exactly one place an enforcement action is recorded; the notice reads from it.
+- Contrast with labels, stated once so it isn't relitigated: a label (§200.4) is never notified,
+  because nobody asked to be watched by a labeler. A moderation notice is always notified,
+  because the node took an action and owes the person an explanation (§201.1).
+
+## 201.3 Appeals
+
+- An actor who received a moderation notice may file an appeal (`AppealService.CreateAppeal`,
+  §203) against that specific action, within the node's published appeal window (§204).
+- **Only the acted-upon actor may appeal.** Not a reporter, not a bystander — the same
+  confidentiality model §64 already applies to reports (reports are not public; neither is who
+  is contesting an action against them, beyond the moderators handling it).
+- One appeal per action: `appeals.audit_log_id` is unique. A resolved appeal does not reopen; a
+  *new* enforcement action, if one follows, may be appealed independently.
+- Outcomes: `UPHELD`, `OVERTURNED`, or `MODIFIED` (e.g. a suspension shortened), each recorded
+  with the resolving admin and a resolution reason — the same shape §64 already uses for report
+  resolution (`moderator_note`, `resolved_by_user_id`), applied here to appeals instead.
+- Resolution is itself delivered as a moderation notice (§201.2) and itself audited (§66) — an
+  appeal outcome is an enforcement-adjacent action and gets the same accountability trail the
+  original action did.
+- Admin-side handling is CLI-only, mirroring `report list|inspect|resolve` (§65): `patches-admin
+  appeal list|inspect|resolve` — extending the existing table, not inventing a parallel one.
+- **What is visible where:** the appellant sees their own appeal's full detail (statement,
+  outcome, resolution reason) via `ListMyAppeals`/`GetAppeal`. Moderators see it via the CLI. The
+  public moderation log (§201.4) shows only that *an* action was appealed (a boolean), never the
+  appeal's content — an appeal is a private conversation about a private notice about a public
+  fact, and only the last of those three is public.
+
+## 201.4 The public moderation log
+
+- A node MUST publish a public moderation log (`ModerationService.ListModerationLog`,
+  unauthenticated, cursor-paginated) of node-level enforcement actions. It is a transparency
+  instrument about **the node's conduct**, not a public record of **any individual's conduct** —
+  that distinction is load-bearing and shapes everything below.
+- **Domain-level entries are fully identified**, the way Mastodon's "moderated servers" page
+  works: domain, action (`block`), reason category, timestamp. A node blocking another node is
+  the node's own decision about its own federation posture, and hiding *which* domain it blocked
+  would defeat the point of publishing the policy at all (§197.6, §201.5).
+- **Account- and post-level entries are anonymized by construction.** An entry records the
+  action taken, the reason category, the timestamp, and whether it was appealed — and
+  **deliberately no handle, actor id, or post id**. Publishing "@alice was suspended for X" turns
+  a transparency log into a wall of shame and a harassment target list, which is exactly the
+  harm §183.2 and the doxxing prohibition (`docs/product/moderation.md`) exist to prevent. The
+  acted-upon actor already has the full, identified version in their own moderation notice
+  (§201.2); moderators have it in `admin_audit_log` (§66). The public gets the aggregate fact
+  that the floor is being enforced, and what it's being enforced for.
+- Reason categories are a bounded vocabulary (`MODERATION_LOG_REASON_CATEGORIES`, §202) derived
+  from `docs/product/moderation.md`'s guideline list (harassment, hate, threats, doxxing,
+  impersonation, spam, illegal-content, ncii, infrastructure-abuse, other) — never the report's
+  free-text `details`, never a moderator's internal note.
+- Entries are **not purged** — they carry no personal data to purge in the first place, unlike
+  `admin_audit_log` itself (§197.4's tombstone-vs-record distinction doesn't apply here because
+  there was never a subject identifier to remove).
+
+## 201.5 Domain policies
+
+- `GetNodePolicy` (§197.6) publishes the node's federation domain policy: for each domain, a
+  policy value and a reason category. **v1 ships one action: `block`** — the binary shape
+  `DomainBlockService`/`domain_blocks` already implement (`apps/server/src/modules/federation`),
+  enforced inbound at `InboxService` and outbound at delivery-enqueue and pre-delivery
+  (`docs/architecture/federation.md` §6). A graduated `limit`/`silence` tier, the way Mastodon's
+  domain moderation offers three levels, is **not** shipped here — it is a §210 sign-off item,
+  recorded rather than implemented speculatively.
+- This section closes a gap `DomainBlockService`'s own comment already flags: outbound delivery
+  is filtered at enqueue and pre-delivery today, but `ActivityPubFederationGateway`'s
+  recipient-resolution queries do not yet additionally filter on `domain_blocks`, so a
+  recipient-list build could still resolve a blocked domain's actor before the pre-delivery check
+  catches it. This amendment does not fix that — it is a Phase 14 task, filed in `tasks.md` — but
+  it does mean
+  the public domain-policy log (§201.4) MUST NOT be read as a stronger guarantee than the code
+  currently provides; §197.2's "state which guarantees the protocol can actually make" applies to
+  the node's own transparency page too.
+- `reason` on `domain_blocks` remains free text for the operator's own record; the **published**
+  reason is the bounded category, same split as §201.4.
+
+## 201.6 Shared blocklists as node input, not automatic action
+
+- A node operator MAY import a third-party published domain blocklist — the same shape as a
+  §199 filter list, but of domains, and consumed by an operator rather than an actor — as a
+  **reference list to review**, never as something that writes to `domain_blocks` by itself.
+  `patches-admin domain block` remains the only write path, and every write it performs is
+  audited (§65, §66) exactly as it is today. An imported list that could silently reconfigure a
+  node's federation surface is exactly the kind of "arbitrary remote code" §153 already
+  prohibits, wearing a data hat instead of a code hat.
+- This is unrelated to §199.2's actor-facing filter list subscriptions, and MUST NOT be confused
+  with them in any client copy: an actor subscribing to a filter list can never produce a block
+  (§199.2, restated); a node operator importing a blocklist can only ever produce a *reviewed,
+  manually-applied* block, one domain at a time, by the same admin who would type `domain block
+  example.com` anyway.
+- No new `FederationGateway` method is added for this (§199.4's restraint, applied identically
+  here) — importing a reference list for a human to read is tooling, not protocol.
+
+---
+
+# 202. Data model
+
+**Amends §22, §60, §61, and §189 by addition.** Same conventions: snake_case, UUID primary keys
+unless noted, `NOT NULL` where the domain says so, explicit `ON DELETE`, UTC timestamps.
+
+```text
+actor_privacy_prefs        (actor_id PK, discoverable, indexable, show_in_local_feed, locked,
+                            privacy_notice_version, privacy_notice_acknowledged_at)
+                            one row per actor; defaults per §197.5 (all true except `locked`)
+
+filters                    (id, actor_id, name, action, expires_at, created_at, updated_at)
+                            INDEX (actor_id)
+filter_scopes              (filter_id, scope)  PRIMARY KEY (filter_id, scope)
+filter_terms                (id, filter_id, kind, value, created_at)  INDEX (filter_id)
+                            kind = substring | word | tag | actor | domain (§198.2)
+
+filter_lists                (id, owner_actor_id NULL, owner_community_id NULL, name,
+                            display_name, description, updated_at, created_at)
+                            CHECK exactly one owner column set
+                            UNIQUE (owner_actor_id, name), UNIQUE (owner_community_id, name)
+filter_list_entries         (id, filter_list_id, kind, value, created_at)
+                            INDEX (filter_list_id)
+filter_list_subscriptions   (actor_id, filter_list_id, action, created_at)
+                            PRIMARY KEY (actor_id, filter_list_id)
+filter_list_exceptions      (actor_id, filter_list_id, filter_list_entry_id, created_at)
+                            PRIMARY KEY (actor_id, filter_list_id, filter_list_entry_id)
+
+labelers                    (id, actor_id NULL, community_id NULL, is_node_labeler boolean,
+                            vocabulary jsonb, created_at)
+                            CHECK exactly one of actor_id/community_id/is_node_labeler is set
+labels                       (id, labeler_id, subject_type, subject_actor_id NULL,
+                            subject_post_id NULL, value, created_at, expires_at, retracted_at)
+                            CHECK exactly one subject column set (mirrors `reports`, §64)
+                            INDEX (labeler_id, subject_actor_id)
+                            INDEX (labeler_id, subject_post_id)
+labeler_subscriptions        (actor_id, labeler_id, created_at)
+                            PRIMARY KEY (actor_id, labeler_id)
+labeler_subscription_actions (actor_id, labeler_id, value, action, created_at)
+                            PRIMARY KEY (actor_id, labeler_id, value)
+
+appeals                     (id, actor_id, admin_audit_log_id, statement, status, created_at,
+                            resolved_at, resolved_by_user_id, resolution_reason)
+                            status = OPEN | UPHELD | OVERTURNED | MODIFIED
+                            UNIQUE (admin_audit_log_id)
+moderation_log_entries       (id, action, subject_kind, subject_domain NULL, reason_category,
+                            appealed boolean, created_at)
+                            subject_kind = domain | account | post | media
+                            CHECK subject_domain IS NOT NULL iff subject_kind = 'domain'
+                            INDEX (created_at DESC, id DESC)
+
+account_deletion_requests    (actor_id PK, requested_at, purge_after, cancelled_at, purged_at)
+account_exports              (id, actor_id, status, requested_at, ready_at, expires_at,
+                            object_key)
+                            status = PENDING | READY | FAILED | EXPIRED
+                            INDEX (actor_id, requested_at DESC)
+```
+
+Columns added to existing tables:
+
+```text
+domain_blocks.reason_category   text NOT NULL DEFAULT 'other'   -- the §201.4/§201.5 published
+                                                                 -- category; `reason` stays as
+                                                                 -- the operator's free-text note
+domain_blocks.source            enum(manual, imported) NOT NULL DEFAULT 'manual'   -- §201.6
+```
+
+Every list query over these tables is keyset paginated on `(created_at, id)` (§46, §153) — no
+exception for the moderation log, filter lists, or appeals.
+
+`filter_terms.value` and `filters.name` are treated as sensitive at the application layer: never
+logged, never shown to a moderator (a filter is not evidence of anything), included in §197.3
+export, deleted with the account (§197.4) or the filter itself.
+
+---
+
+# 203. API surface
+
+**Amends §47, §55, §168, §190 by addition.** New `.proto` files: `filters.proto`,
+`filter_lists.proto`, `labels.proto`, `appeals.proto`, `privacy.proto`. No new service returns a
+TypeORM entity (§153, §128–§129); all new list RPCs are cursor-paginated with opaque cursors
+(§46).
+
+```text
+FilterService (new)       CreateFilter, UpdateFilter, DeleteFilter, ListFilters,
+                          ExportFilters, ImportFilters (§198.5)
+
+FilterListService (new)   PublishFilterList, UpdateFilterList, DeleteFilterList,
+                          GetFilterList, ListFilterLists, ListFilterListEntries,
+                          SubscribeFilterList, UnsubscribeFilterList,
+                          ListFilterListSubscriptions, SetFilterListEntryException (§199.3)
+
+LabelService (new)        CreateLabeler, GetLabeler, ListLabelers, ApplyLabel, RetractLabel,
+                          SubscribeLabeler, UnsubscribeLabeler,
+                          SetLabelerSubscriptionAction, ListLabelsOnSubject (§200.4)
+
+AppealService (new)       CreateAppeal, GetAppeal, ListMyAppeals
+                          (admin-side resolution is CLI-only, §201.3 — no gRPC resolve RPC)
+
+PrivacyService (new)      AcknowledgePrivacyNotice, GetPrivacyPrefs, UpdatePrivacyPrefs,
+                          ExportAccount, GetExportStatus,
+                          RequestAccountDeletion, CancelAccountDeletion, GetDeletionStatus
+
+ModerationService          + ListModerationLog (public, §201.4)
+                          + ListMyModerationNotices (§201.2)
+
+NodeService                + GetNodePolicy (§197.6, unauthenticated, cacheable,
+                            separate RPC from GetNodeInfo)
+
+Post                       + filtered_by (§198.3 hint — set only for `collapse`/`warn`)
+                          + labels (repeated; populated only for labelers the viewer
+                            subscribes to, §200.3)
+```
+
+Service boundaries follow §128–§129 unchanged: controller adapts transport, application service
+holds the logic, repository touches TypeORM. One Nest module per bounded area — `filters`,
+`filter-lists`, `labels`, `appeals`, `privacy` — not a service per module (§153).
+
+`UpdatePrivacyPrefs` reuses the §49 field-mask pattern (`ActorService.UpdateProfile` already
+does this) — a viewer updates one of `discoverable`/`indexable`/`show_in_local_feed`/`locked`
+without needing to resend the others.
+
+---
+
+# 204. Limits and rate limits
+
+**Amends §58, §102, §188 by addition.** Every limit below MUST exist in protobuf/API
+validation, service validation, and a database constraint where practical, and MUST be
+published via `GetNodeInfo`/`GetNodePolicy` where a client needs it to render honestly.
+
+Size limits:
+
+```text
+filters per actor:              50
+terms per filter:                20
+filter lists published per actor: 10
+entries per filter list:       2,000
+filter list subscriptions:      100
+per-entry exceptions per list:  200
+labeler subscriptions per actor: 50
+appeal statement:              2,000 characters
+account export archives kept:    1 ready archive at a time, expires after 7 days
+account deletion grace period:  30 days (node-configurable, published in GetNodePolicy)
+appeal window:                  14 days from the moderation notice (node-configurable,
+                                published in GetNodePolicy)
+```
+
+Rate limits (§102 — database-backed, per actor):
+
+```text
+filter create/update:        30 / hour
+filter list publish/update:  10 / hour
+filter list subscribe:       50 / hour
+labeler label apply:         300 / day, per labeler (§200.5 — deliberate, not automatable)
+appeal filed:                 5 / day
+export requested:             3 / day
+deletion requested/cancelled: 5 / day
+```
+
+These are starting values and may evolve (§58); what MUST NOT happen is a new write path
+shipping with no limit at all — the same rule §188 already states.
+
+---
+
+# 205. TUI, CLI, and web surface
+
+**Amends §69, §76, §191.** §194's last prohibition — never rebind an existing documented key —
+is absolute, and the existing keymap (`apps/tui/src/app/keymap.ts`) is already dense: every
+single letter and every `g`-prefixed letter this amendment might have wanted is taken. So this
+amendment **adds zero new global single-key bindings.** Everything below is reached through the
+two extensible surfaces the TUI already has for exactly this purpose:
+
+- The `,` **preferences** screen (§191, unchanged key) gains sections: Privacy, Filters, Lists,
+  Labelers.
+- The `:` **command palette** (§191, unchanged key) gains commands: `:privacy`, `:filter`,
+  `:filters`, `:lists`, `:labelers`, `:appeals`, `:modlog` — none of these names collide with an
+  existing command (`home`, `local`, `profile`, `messages`, `communities`, `bookmarks`,
+  `notifications`, `page`, `search`, `back`, `q`/`quit`, `q!`, `reload`, `repost`, `tag`, `w`/
+  `post`/`wq`, `plain`, `quiet`, `theme`, `help`).
+- New screens (`PrivacyScreen`, `FiltersScreen`, `FilterListScreen`, `LabelersScreen`,
+  `AppealsScreen`, `ModerationLogScreen`) follow the existing navigation model (§69): `Esc` backs
+  out one level, keyset cursor drives loading, nothing blocks the input loop on a network call.
+  Screen-local keys (e.g. promoting a list entry to a block, §199.2) are scoped to that screen's
+  own region and MUST NOT reuse a key already documented for the global/list regions.
+- Headless equivalents, because the TUI is not the only terminal surface (§76): `patches privacy`
+  (notice, prefs, export, deletion), `patches filter list|create|delete|export|import`, `patches
+  lists publish|subscribe|unsubscribe|inspect`, `patches labelers subscribe|unsubscribe`,
+  `patches appeal file|list|show`, `patches modlog`.
+- Web routes (§179's paused-until-parity rule, restated): `/settings/privacy`,
+  `/settings/filters`, `/settings/lists`, `/settings/labelers`, `/moderation/log`, `/appeals`.
+  Per §196's "on the paused clients" note, these safety surfaces MUST reach parity with the TUI
+  before the web client is offered to anyone who is not the owner — a web client that can browse
+  but not filter or appeal is not eligible for that offer.
+- Admin CLI (§65) gains: `patches-admin appeal list|inspect|resolve`, `patches-admin domain
+  block|unblock|list` (already exists) unchanged in shape, `patches-admin domain review-list
+  <file>` for §201.6's reviewed-import flow, and `patches-admin user delete` is made to follow
+  the §197.4 grace-period path rather than remaining a second, weaker deletion.
+- The `?` help screen and `docs/user-guide.md` MUST list every new command in the same change
+  that adds it, per §191's existing requirement — restated because it applies here identically.
+
+---
+
+# 206. Security and privacy requirements for this phase
+
+**Amends §101–§104, §192 by addition.** Nothing here is new policy; it is §101–§104 applied to
+this amendment's five new write surfaces.
+
+- **Filters**: no user-supplied regular expressions (§198.2, §208) — the server constructs every
+  matcher from a literal value. Term values are sensitive data (§202): never logged, never
+  federated, never shown to a moderator.
+- **Labels**: values are validated server-side against the node-published closed vocabulary
+  (§200.2) on every `ApplyLabel` call; a value not in the vocabulary is rejected, never
+  silently accepted as free text.
+- **Appeals**: statements are bounded (§204) and rate-limited; an appeal never triggers an
+  automated content change — only a human resolution does, same as report resolution (§64).
+- **Account export**: `ExportAccount` runs as a background job (§30, ADR 0004), never
+  synchronously, never streaming a large archive through the Nest process — same pattern
+  §29/ADR 0005 already establishes for media.
+- **Account deletion**: the purge job is idempotent and re-runnable, and every purge step is
+  audited (§66) — the record that a purge happened outlives the data it purged, by design
+  (§197.4).
+- **Moderation log**: the anonymization in §201.4 is enforced at the write path, not the read
+  path — `moderation_log_entries` never stores an actor or post identifier for `account`/`post`
+  kind rows in the first place, so there is nothing to accidentally leak later by a changed
+  query.
+- **Privacy prefs**: `locked` (follow requests) reuses the existing rate-limited,
+  block-aware, never-auto-accepted pattern §194 already requires for message requests and
+  community invites.
+- All new input is validated at the service layer regardless of protobuf typing (§103), and all
+  new list endpoints are keyset paginated (§46, §153).
+
+---
+
+# 207. Federation mapping (later stage)
+
+Nothing here is in board Phase 14's scope. It records where the local model does and does not
+paint federation into a corner (§109), same purpose as §193.
+
+| Feature                 | Shape                                                                 | Stage            |
+| ------------------------ | ---------------------------------------------------------------------- | ----------------- |
+| Domain blocks            | Already local-only; no AS2/FEP shape needed — a node's own federation posture is not a federated object | already implemented (local; outbound recipient-resolution gap, §201.5) |
+| Filter lists              | No FEP; no W3C mechanism (verified 2026-08-18, §199.4) — original protocol surface, `OrderedCollection` by analogy with `followers` when it ships | later, own protocol surface |
+| Labelers/labels           | No FEP; AT Protocol's labeler federation is a different protocol family, not ActivityPub — not adopted, cited for context only | later, own ADR |
+| Cross-node report (`Flag`) | `Flag` exists in AS2 vocabulary with no documented cross-instance semantics (verified 2026-08-18, §199.4) | later, own gate |
+| Actor block propagation   | FEP-c648 (`DRAFT`) defines a per-actor `blocked`/`blocks` collection — not a shared/subscribable list (§199.4) | later, requires re-verification against FEP status at implementation time |
+
+Requirements when these are implemented:
+
+- Domain-policy federation (should it ever cross nodes) MUST NOT bypass local block, mute, or
+  filter rules (§193's existing rule, restated for this amendment's surfaces).
+- Verify each row against current upstream documentation before implementing (§0, §155) — the
+  table above is a starting point, not a specification, exactly as §193 already states.
+
+---
+
+# 208. Additional hard prohibitions
+
+**Amends §153, §177, §194 by addition. Nothing in §153, §177, or §194 is relaxed.** The
+implementation agent MUST NOT:
+
+- let a filter, filter list, label, or labeler affect feed position, search position, tag-feed
+  inclusion, or delivery order, in any way, for anyone (§149, §194, §198.1, §200.3),
+- aggregate labels into a per-actor or per-post total, a reputation, a trust score, or a
+  "how many labelers flagged this" count, anywhere, for anyone (§200.3),
+- publish a filter list's or labeler's subscriber count (§199.3, §200.3),
+- accept a user-supplied regular expression as a filter term (§198.2),
+- accept a free-text label value (§200.2),
+- notify an actor that they were labeled (§200.4) — only an enforcement-carrying moderation
+  notice (§201.2) is notified,
+- let a filter list subscription create a block, or auto-block anything on a subscriber's
+  behalf (§199.2),
+- let a labeler operator's authority extend beyond their own labeler (§200.5),
+- federate a filter, filter list, or label (§198.5, §199.4),
+- identify an acted-upon account or post in the public moderation log (§201.4),
+- expose an appeal's statement or resolution reason to anyone but the appellant and moderators
+  (§201.3),
+- expose `reports.moderator_note` or an appeal's internal resolution detail through any
+  user-facing RPC (§55, restated),
+- let an imported third-party blocklist write to `domain_blocks` without a specific, audited
+  admin action per domain (§201.6),
+- gate any privacy, filter, list, labeler, appeal, export, or deletion function on a paid
+  capability (§174, §184.3 — capabilities never gate function, restated for this amendment's
+  surfaces),
+- rebind an existing documented TUI key or command-palette name to a new feature (§194,
+  restated; see §205's zero-new-global-keys design for why this was achievable).
+
+---
+
+# 209. Acceptance checklist for board Phase 14
+
+- [ ] Privacy notice shown and acknowledged at registration; versioned; re-shown on material
+      change (§197.1).
+- [ ] Privacy screen (`patches privacy`) reachable at any time, showing notice, discoverability,
+      export status, deletion status, node policy (§197.2).
+- [ ] `ExportAccount` produces a documented, self-describing archive via a background job and a
+      pre-signed URL, never synchronous (§197.3).
+- [ ] `RequestAccountDeletion`/`CancelAccountDeletion` implement the grace-period path; purge job
+      removes content and preserves only what §197.4 names; `patches-admin user delete` follows
+      the same path.
+- [ ] `discoverable`/`indexable`/`show_in_local_feed`/`locked` implemented, including follow
+      requests for `locked` accounts (§197.5).
+- [ ] `GetNodePolicy` publishes the full §197.6 shape, separate from `GetNodeInfo`.
+- [ ] Filters: create/update/delete/list, server-evaluated at the §198.4 chokepoint, literal
+      terms only, `hide`/`collapse`/`warn` actions, export/import (§198).
+- [ ] Filter lists: publish/subscribe/unsubscribe, provenance shown, per-entry exceptions,
+      live evaluation (no copy-on-subscribe) (§199).
+- [ ] Labelers: bounded vocabulary, subscriber-scoped labels, node's own labeler subscribed by
+      default, `ListLabelsOnSubject` for self-inspection (§200).
+- [ ] Moderation notices delivered on every node enforcement action; appeals filed, resolved,
+      and notified; public moderation log published with account/post entries anonymized
+      (§201).
+- [ ] Every new limit published via `GetNodeInfo`/`GetNodePolicy` and enforced in three layers
+      (§204).
+- [ ] No new global TUI key bindings added; all surfaces reachable via `,`, `:`, CLI verbs, and
+      (for safety surfaces) web routes at parity (§205).
+- [ ] `docs/product/privacy.md` and `docs/product/moderation.md` describe actual, shipped
+      behaviour — no "planned" marker left on something that is implemented, and vice versa.
+
+---
+
+# 210. What this amendment does not authorize
+
+The following need an explicit owner decision and an ADR before any code is written, same
+standard §195 already sets:
+
+1. **User-supplied regular-expression filters.** §198.2 explains why v1 ships literal terms
+   only. If regex ships, it ships on RE2 (linear-time, no backreferences/lookaround) and needs
+   an explicit build/deploy story for self-hosters (§163).
+2. **Thread- and profile-scoped filters.** §198.3 deliberately excludes them — "a filter governs
+   what arrives unbidden." Extending filters to something a viewer opened on purpose is a
+   different feature with a different justification.
+3. **A graduated domain policy beyond `block`.** §201.5 ships one binary action. A `limit`/
+   `silence` tier changes what "public" means for a remote domain's posts and needs its own
+   design pass, not an incidental addition here.
+4. **Cross-node filter list or labeler subscriptions.** §199.4/§207 record the local-only v1
+   scope and the absence of any FEP. Federating this is new protocol surface, not an extension
+   of an existing one.
+5. **Third-party or dedicated appeal arbitration.** §201.3 ships moderator-resolved appeals
+   within one node. An external review board, binding arbitration, or a federation-wide appeals
+   body is a governance decision, not an engineering one.
+6. **Any monetization of a labeler, a filter list, or list/labeler subscriber counts.** §184.3's
+   line — money buys storage, bandwidth, and a domain; it does not buy function, reach,
+   ordering, or standing — applies to this amendment's mechanisms exactly as it applies to
+   everything else, and a "verified labeler" badge or a paid subscriber-count reveal would cross
+   it.
+
+---

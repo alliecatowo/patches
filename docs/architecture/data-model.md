@@ -1138,6 +1138,7 @@ A direct-message conversation (§183.4). Never federated, no media, no link prev
 | --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------- |
 | `id`                  | `uuid`        | no       | PK                                                                                     |
 | `kind`                | `text`        | no       | `direct` \| `group`, default `direct`                                                  |
+| `security_mode`       | `text`        | no       | immutable `LEGACY_SERVER_VISIBLE` \| `E2EE_V1`; existing rows default to legacy        |
 | `created_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — a conversation outlives its creator's account |
 | `created_at`          | `timestamptz` | no       |                                                                                        |
 | `last_message_at`     | `timestamptz` | no       | denormalized, updated on every `SendMessage`, drives `ListConversations`'s ordering    |
@@ -1253,6 +1254,175 @@ Max 1 KiB serialized (§188) — enforced in the service layer.
 | `community_id`   | `uuid` | yes      | FK → `communities.id`, `ON DELETE SET NULL`; immutable after insert (service-layer enforced)   |
 
 **Indexes**: `posts(community_id, created_at, id)` — backs `FeedService.ListCommunityFeed`.
+
+---
+
+## Phase 13: E2EE direct-message tables (ADR 0020)
+
+**Status: implemented (schema only).** These tables exist and are exercised by
+`packages/database`'s integration tests, but `E2EE_V1` is not a reachable product capability —
+per ADR 0020 §11 this is migration stage 3 ("node protocol behind a disabled capability"), and
+every conversation still created today is `LEGACY_SERVER_VISIBLE` (§1.1, enforced by a
+`BEFORE UPDATE` trigger on `conversations.security_mode` that rejects any change). No plaintext
+body, private/session key, message key, or ratchet state is ever persisted here — see
+`packages/database/src/entities/e2ee-privacy.test.ts`, which asserts that by inspecting every
+`E2ee*` entity's column metadata. The one narrow, intentional exception is
+`e2ee_report_evidence_items.disclosed_plaintext`: content a reporter explicitly selects and
+submits (ADR 0020 §9), never written by ordinary message delivery.
+
+| Table                        | Purpose                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2ee_identity_roots`        | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                      |
+| `e2ee_device_identities`     | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`. |
+| `e2ee_device_rosters`        | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                       |
+| `e2ee_signed_prekeys`        | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                            |
+| `e2ee_one_time_prekeys`      | Public one-time X3DH prekeys; consumed rows are kept as anti-replay tombstones, not deleted.                                                         |
+| `e2ee_logical_messages`      | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                          |
+| `e2ee_mailbox_envelopes`     | One opaque per-recipient-device ciphertext payload per logical message.                                                                              |
+| `e2ee_report_evidence`       | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                |
+| `e2ee_report_evidence_items` | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                        |
+
+`reports.subject_type` gained `E2EE_MESSAGE` and `reports.subject_e2ee_logical_message_id`
+(no FK — evidence must outlive ordinary mailbox/message retention) alongside the pre-existing
+`MESSAGE` subject.
+
+**Partial-index naming note**: several tables above intentionally have only _one_ index over a
+given column set (e.g. `e2ee_mailbox_envelopes` has no non-partial twin of its
+`(recipient_device_identity_id, received_at, id)` index) rather than both a general and a
+partial version — `SnakeNamingStrategy.indexName` (`packages/database/src/naming/`) derives an
+index's name from its sorted column list only, not its `WHERE` predicate, so two indexes over
+the same columns would collide on name. Where two predicates are genuinely both needed (e.g.
+"generation" history vs. "active" pointer), they deliberately use different column sets so
+`pnpm db:generate` sees no drift.
+
+---
+
+## Amendment C tables (§196–204)
+
+**Status: implemented** (`Phase14PrivacyAndFilters1787135113517`,
+`Phase14FilterLists1787135204977`, `Phase14Labelers1787135294583`,
+`Phase14ModerationAppeals1787135453592`, `Phase14AccountLifecycle1787135493158` — P14-002
+through P14-006). Privacy/consent surfaces (§197), bring-your-own filters (§198), filter lists
+(§199), labelers and labels (§200), and decentralized/appealable moderation (§201). Size and
+rate limits for every table below live in `packages/domain/src/limits.ts` §204 (P14-014), the
+single source of truth also read by the (not-yet-implemented) service layer and protobuf
+validation.
+
+### `actor_privacy_prefs`
+
+One row per actor (§197.5). Defaults are all `true` except `locked`.
+
+| Column                           | Type          | Nullable | Notes                                                        |
+| -------------------------------- | ------------- | -------- | ------------------------------------------------------------ |
+| `actor_id`                       | `uuid`        | no       | PK, FK → `actors.id`, `ON DELETE CASCADE`                    |
+| `discoverable`                   | `boolean`     | no       | default `true` — in search results/directory                 |
+| `indexable`                      | `boolean`     | no       | default `true` — in `SearchPosts`                            |
+| `show_in_local_feed`             | `boolean`     | no       | default `true` — local-only, not privacy (posts stay public) |
+| `locked`                         | `boolean`     | no       | default `false` — follows require approval                   |
+| `privacy_notice_version`         | `integer`     | yes      | null until first acknowledgement                             |
+| `privacy_notice_acknowledged_at` | `timestamptz` | yes      | null until first acknowledgement                             |
+
+### `filters`, `filter_scopes`, `filter_terms`
+
+A viewer-owned, subtractive-only filter (§198.1). `name` and `filter_terms.value` are sensitive
+at the application layer: never logged, never shown to a moderator, included in the §197.3
+export, deleted with the account or the filter itself.
+
+| Table           | Column                                                           | Notes                                                                                                            |
+| --------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `filters`       | `id, actor_id, name, action, expires_at, created_at, updated_at` | `action` CHECK ∈ `{HIDE, COLLAPSE, WARN}`; `INDEX(actor_id)`                                                     |
+| `filter_scopes` | `filter_id, scope`                                               | composite PK; `scope` CHECK ∈ `{HOME, LOCAL, TAG_FEED, COMMUNITY_FEED, NOTIFICATIONS, SEARCH, MESSAGE_REQUESTS}` |
+| `filter_terms`  | `id, filter_id, kind, value, created_at`                         | `kind` CHECK ∈ `{SUBSTRING, WORD, TAG, ACTOR, DOMAIN}`; `INDEX(filter_id)`                                       |
+
+All three cascade-delete with `filters`/`actors`.
+
+### `filter_lists`, `filter_list_entries`, `filter_list_subscriptions`, `filter_list_exceptions`
+
+The decentralized primitive (§199). A list is data only — no code, no action, no scope, no
+ordering, no scores — owned by exactly one of an actor or a community.
+
+| Table                       | Column                                                                                            | Notes                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filter_lists`              | `id, owner_actor_id, owner_community_id, name, display_name, description, created_at, updated_at` | `CHECK` exactly one of `owner_actor_id`/`owner_community_id`; `UNIQUE(owner_actor_id, name)`, `UNIQUE(owner_community_id, name)` — NULLs are distinct in Postgres, so no partial `WHERE` is needed |
+| `filter_list_entries`       | `id, filter_list_id, kind, value, created_at`                                                     | same `kind` vocabulary as `filter_terms`; `INDEX(filter_list_id)`                                                                                                                                  |
+| `filter_list_subscriptions` | `actor_id, filter_list_id, action, created_at`                                                    | composite PK; `action` CHECK ∈ `{HIDE, COLLAPSE, WARN}`, service defaults to `COLLAPSE` — never creates a `Block` (§199.2)                                                                         |
+| `filter_list_exceptions`    | `actor_id, filter_list_id, filter_list_entry_id, created_at`                                      | composite PK across all three columns                                                                                                                                                              |
+
+### `labelers`, `labels`, `labeler_subscriptions`, `labeler_subscription_actions`
+
+Subscriber-scoped annotation, never global truth (§200).
+
+| Table                          | Column                                                                                                         | Notes                                                                                                                                                                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `labelers`                     | `id, actor_id, community_id, is_node_labeler, vocabulary, created_at`                                          | `CHECK` exactly one of `actor_id`/`community_id`/`is_node_labeler`; `vocabulary` is a `jsonb` array of value/description/default-action/mandatory tuples, validated service-side, never a free-text column             |
+| `labels`                       | `id, labeler_id, subject_type, subject_actor_id, subject_post_id, value, created_at, expires_at, retracted_at` | `CHECK` exactly one subject column, matching `subject_type` — mirrors `reports`; `INDEX(labeler_id, subject_actor_id)`, `INDEX(labeler_id, subject_post_id)`; `retracted_at` preserves history instead of a row delete |
+| `labeler_subscriptions`        | `actor_id, labeler_id, created_at`                                                                             | composite PK                                                                                                                                                                                                           |
+| `labeler_subscription_actions` | `actor_id, labeler_id, value, action, created_at`                                                              | composite PK across `(actor_id, labeler_id, value)`; `action` CHECK ∈ `{IGNORE, WARN, COLLAPSE, HIDE}`                                                                                                                 |
+
+Free-text label values are prohibited (§200.2, §208) — `labels.value` and
+`labeler_subscription_actions.value` are plain `text` columns validated against the owning
+`labelers.vocabulary` document in the service layer, not by a database `CHECK` (the vocabulary
+is per-row JSON, not a fixed enum).
+
+### `appeals`
+
+An appeal against a node moderation notice (§201.3). Only the acted-upon actor may appeal —
+enforced service-side, not by this schema.
+
+| Column                | Type          | Nullable | Notes                                                                             |
+| --------------------- | ------------- | -------- | --------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                |
+| `actor_id`            | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                                             |
+| `admin_audit_log_id`  | `uuid`        | no       | FK → `admin_audit_log.id`, `ON DELETE RESTRICT`; `UNIQUE` — one appeal per action |
+| `statement`           | `text`        | no       | max 2,000 characters (§204)                                                       |
+| `status`              | `text`        | no       | default `OPEN`; CHECK ∈ `{OPEN, UPHELD, OVERTURNED, MODIFIED}`                    |
+| `created_at`          | `timestamptz` | no       |                                                                                   |
+| `resolved_at`         | `timestamptz` | yes      | null until resolved                                                               |
+| `resolved_by_user_id` | `uuid`        | yes      | FK → `users.id`, `ON DELETE SET NULL`                                             |
+| `resolution_reason`   | `text`        | yes      | authored by the resolving moderator at resolution time                            |
+
+Admin-side resolution is CLI-only (`patches-admin appeal list|inspect|resolve`, mirroring
+`report list|inspect|resolve`) — there is no gRPC resolve RPC.
+
+### `moderation_log_entries`
+
+A public, anonymized transparency record (§201.4) — never a public record of any individual's
+conduct. Domain entries are fully identified; account/post/media entries carry no actor id,
+post id, or handle at all.
+
+| Column            | Type          | Nullable | Notes                                                                          |
+| ----------------- | ------------- | -------- | ------------------------------------------------------------------------------ |
+| `id`              | `uuid`        | no       | PK                                                                             |
+| `action`          | `text`        | no       | CHECK ∈ `{WARN, SUSPEND, BAN, POST_REMOVAL, MEDIA_TAKEDOWN, DOMAIN_BLOCK}`     |
+| `subject_kind`    | `text`        | no       | CHECK ∈ `{DOMAIN, ACCOUNT, POST, MEDIA}`                                       |
+| `subject_domain`  | `text`        | yes      | `CHECK` set iff `subject_kind = 'DOMAIN'`                                      |
+| `reason_category` | `text`        | no       | bounded vocabulary, shared with `domain_blocks.reason_category` (below)        |
+| `appealed`        | `boolean`     | no       | default `false` — whether this action was appealed, never the appeal's content |
+| `created_at`      | `timestamptz` | no       |                                                                                |
+
+**Indexes**: `moderation_log_entries(created_at, id)` — keyset-paginated, no exception (§202).
+
+This table has nothing to purge on account deletion (§197.4): it never held a subject
+identifier to begin with.
+
+### Columns added to `domain_blocks` (§201.5, §201.6)
+
+| Column            | Type   | Nullable | Notes                                                                                                                                                               |
+| ----------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reason_category` | `text` | no       | default `'OTHER'`; CHECK ∈ the same bounded vocabulary as `moderation_log_entries.reason_category` — the published counterpart to the operator's free-text `reason` |
+| `source`          | `text` | no       | default `'MANUAL'`; CHECK ∈ `{MANUAL, IMPORTED}` — `IMPORTED` records provenance only; `patches-admin domain block` remains the only write path either way (§201.6) |
+
+### `account_deletion_requests`, `account_exports`
+
+Account deletion with a grace period, and account data export (§197.3, §197.4).
+
+| Table                       | Column                                                                 | Notes                                                                                                                                                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `account_deletion_requests` | `actor_id, requested_at, purge_after, cancelled_at, purged_at`         | `actor_id` is the PK (one row per actor); `purge_after` is computed at request time from the node's published grace period (default 30 days, node-configurable, §204)                                                                 |
+| `account_exports`           | `id, actor_id, status, requested_at, ready_at, object_key, expires_at` | `status` CHECK ∈ `{PENDING, READY, FAILED, EXPIRED}`, default `PENDING`; `INDEX(actor_id, requested_at)`; `object_key` is the private R2 object key — the presigned `download_url` an RPC returns is derived from it, never persisted |
+
+One `READY` archive is kept at a time and expires after 7 days (§204) — enforced by the export
+job replacing the previous ready row, not by a database constraint.
 
 ---
 

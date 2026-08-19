@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 
-import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
+import { createFakeApi, expectFrame, flush, KEY, renderApp, stripSgr } from './harness.js';
 
 // Same minimal, structurally-valid PNG `src/media/validate.test.ts` uses.
 const MINIMAL_PNG = Buffer.from(
@@ -57,10 +57,20 @@ describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
     await flush();
     await loginAs(press, lastFrame, 'alice', 'x');
 
-    press('c');
+    // `C` is full compose (attachments, CW, quote); `c` is the quick-post overlay.
+    press('C');
     await flush();
     press(KEY.ctrlA);
-    await expectFrame(lastFrame, 'Attach path:');
+    await expectFrame(lastFrame, 'File picker');
+    // The picker's initial directory resolution (`lstat` + `readdir`) is async and
+    // republishes its path input when it settles, which can arrive after typing and
+    // clobber it back to the home directory it started from — the status/hint rows
+    // that would otherwise signal "loaded" can be clipped out of a small compose
+    // region, so a flat wait is the reliable signal here, not a frame poll.
+    await flush(150);
+    // Ctrl+U clears the picker's browse-mode path buffer (it starts filled with the
+    // home directory) before typing an exact path (P12-014).
+    press(KEY.ctrlU);
     await flush();
     press(photoPath);
     await flush();
@@ -101,16 +111,37 @@ describe('compose attach flow (P5-003/B-004, spec §29–32/§80)', () => {
     await flush();
     await loginAs(press, lastFrame, 'alice', 'x');
 
-    press('c');
+    // `C` is full compose (attachments, CW, quote); `c` is the quick-post overlay.
+    press('C');
+    await flush();
+    press('draft body kept');
     await flush();
     press(KEY.ctrlA);
+    await expectFrame(lastFrame, 'File picker');
+    // The picker's initial directory resolution (`lstat` + `readdir`) is async and
+    // republishes its path input when it settles, which can arrive after typing and
+    // clobber it back to the home directory it started from — the status/hint rows
+    // that would otherwise signal "loaded" can be clipped out of a small compose
+    // region, so a flat wait is the reliable signal here, not a frame poll.
+    await flush(150);
+    press(KEY.ctrlU);
     await flush();
     press(badPath);
     await flush();
     press(KEY.enter);
 
-    const frame = await waitForFrame(lastFrame, (f) => /JPEG|PNG|WebP/.test(f));
-    expect(frame).toMatch(/JPEG|PNG|WebP/);
+    // The picker's own MIME-type policy check rejects it before `onSelect` ever
+    // fires — `readLocalImage`'s magic-byte sniff never runs for this file. Give the
+    // (synchronous) validation a beat, then assert on the picker's own behaviour
+    // rather than its inline error text, which a short content region can legally
+    // clip out of view (§2.3's fixed-height frame) without the rejection itself
+    // being any less real.
+    await flush(150);
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toContain('File picker'); // still open — never selected
+    expect(frame).not.toContain('notes.txt]'); // never landed as an attachment badge
+    // The draft body typed before the rejected attach attempt was never lost.
+    expect(frame).toContain('draft body kept');
     unmount();
   });
 });

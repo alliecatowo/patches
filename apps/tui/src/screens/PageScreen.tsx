@@ -1,3 +1,4 @@
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import {
   GUESTBOOK_ENTRY_MAX_CHARS,
   isPageValidationError,
@@ -10,7 +11,8 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
-import { describeGrpcError, type FriendlyError } from '../api/errors.js';
+import { describeGrpcError, grpcStatusCode, type FriendlyError } from '../api/errors.js';
+import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { editInExternalEditor, type EditInEditorOptions } from '../pages/editor.js';
 import { FilePageDraftStore, type PageDraftStore } from '../pages/draft-store.js';
@@ -31,7 +33,15 @@ export interface PageScreenProps {
   viewerActorId?: string | undefined;
   ensureAccessToken?: (() => Promise<string>) | undefined;
   isActive: boolean;
-  onBack: () => void;
+  /** True when this is the signed-in viewer's own page — a `NOT_FOUND` then means
+   * "you have no page yet" and gets an empty starter document to edit, not an
+   * error screen you cannot act on (owner feedback 2026-08-18: "pages didn't
+   * work for me"). */
+  isOwnPage?: boolean;
+  /** Raised while a sub-mode of this screen owns the keyboard (signing the
+   * guestbook, structured block editor) so `App`'s global keymap — `Esc` included —
+   * steps aside instead of double-handling the keypress. */
+  onCapturingInput?: ((capturing: boolean) => void) | undefined;
   env?: NodeJS.ProcessEnv;
   draftStore?: PageDraftStore | undefined;
   /** Test-only override for the `$EDITOR` round trip's `runEditor` (never a real
@@ -39,6 +49,14 @@ export interface PageScreenProps {
    * for the same pattern). */
   editorOptions?: Pick<EditInEditorOptions, 'runEditor'> | undefined;
 }
+
+/** What `e`/`E` start from when you have no page yet — the smallest document
+ * `parsePageStrict` accepts (§171), so the first save creates a real page. */
+const EMPTY_PAGE_DOCUMENT = JSON.stringify(
+  { version: 1, pages: [{ slug: 'home', title: 'Home', blocks: [] }] },
+  undefined,
+  2,
+);
 
 type FetchState =
   | { status: 'loading' }
@@ -64,7 +82,8 @@ export function PageScreen({
   viewerActorId,
   ensureAccessToken,
   isActive,
-  onBack,
+  isOwnPage = false,
+  onCapturingInput,
   env = process.env,
   draftStore,
   editorOptions,
@@ -114,17 +133,33 @@ export function PageScreen({
         });
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
+        if (cancelled) return;
+        if (
+          grpcStatusCode(error) === GrpcStatus.NOT_FOUND &&
+          isOwnPage &&
+          viewerActorId !== undefined
+        ) {
           setStored({
             handle,
-            state: { status: 'error', error: describeGrpcError(error, api.target) },
+            state: {
+              status: 'ready',
+              ownerActorId: viewerActorId,
+              view: parsePageLenient(JSON.parse(EMPTY_PAGE_DOCUMENT) as unknown),
+              rawText: EMPTY_PAGE_DOCUMENT,
+              activeIndex: 0,
+            },
           });
+          return;
         }
+        setStored({
+          handle,
+          state: { status: 'error', error: describeGrpcError(error, api.target) },
+        });
       });
     return () => {
       cancelled = true;
     };
-  }, [api, handle, initialSlug]);
+  }, [api, handle, initialSlug, isOwnPage, viewerActorId]);
 
   const isOwner =
     fetchState.status === 'ready' &&
@@ -195,6 +230,7 @@ export function PageScreen({
     const initialText =
       saved !== undefined && saved.handle === handle ? saved.rawJson : fetchState.rawText;
     setBlocksEditorText(initialText);
+    onCapturingInput?.(true);
   }
 
   /** Shared by `openEditor`'s and `PageBlocksEditorScreen`'s successful `UpdatePage` —
@@ -226,6 +262,7 @@ export function PageScreen({
       );
       setSigning(undefined);
       setSignError(undefined);
+      onCapturingInput?.(false);
       setGuestbookRefreshKey((current) => current + 1);
     } catch (error) {
       setSignError(describeGrpcError(error, api.target).title);
@@ -238,6 +275,7 @@ export function PageScreen({
         if (key.escape) {
           setSigning(undefined);
           setSignError(undefined);
+          onCapturingInput?.(false);
           return;
         }
         if (key.return) {
@@ -255,10 +293,8 @@ export function PageScreen({
         return;
       }
 
-      if (key.escape) {
-        onBack();
-        return;
-      }
+      // No `Esc` branch here: `App`'s navigation stack owns going back from every
+      // screen, so a page pops exactly one level like everything else.
       if (input === '[') {
         switchSubPage(-1);
         return;
@@ -293,6 +329,7 @@ export function PageScreen({
       if (input === 's' && hasGuestbook && canSign) {
         setSigning('');
         setEditorNotice(undefined);
+        onCapturingInput?.(true);
       }
     },
     { isActive: isActive && blocksEditorText === undefined },
@@ -301,7 +338,7 @@ export function PageScreen({
   if (fetchState.status === 'loading') {
     return (
       <Box>
-        <Text color={theme.muted}>Loading page…</Text>
+        <Loading label="Loading page" />
       </Box>
     );
   }
@@ -324,10 +361,14 @@ export function PageScreen({
         isActive={isActive}
         ensureAccessToken={ensureAccessToken}
         draftStore={store}
-        onCancel={() => setBlocksEditorText(undefined)}
+        onCancel={() => {
+          setBlocksEditorText(undefined);
+          onCapturingInput?.(false);
+        }}
         onSaved={(response) => {
           applyUpdatedDocument(response.document);
           setBlocksEditorText(undefined);
+          onCapturingInput?.(false);
           setEditorNotice('Saved.');
         }}
       />
@@ -369,8 +410,15 @@ export function PageScreen({
         ) : null}
       </Box>
 
-      {activeSubPage === undefined ? (
-        <Text color={theme.muted}>This page has no content yet.</Text>
+      {activeSubPage === undefined || activeSubPage.blocks.length === 0 ? (
+        <Box flexDirection="column">
+          <Text color={theme.muted}>This page has no content yet.</Text>
+          {isOwner ? (
+            <Text color={theme.muted}>
+              Press e to write it in $EDITOR, or E for the block editor.
+            </Text>
+          ) : null}
+        </Box>
       ) : (
         <PageBlocksView
           blocks={activeSubPage.blocks}

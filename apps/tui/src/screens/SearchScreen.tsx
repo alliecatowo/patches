@@ -1,13 +1,17 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
-import type { Actor } from '@patches/proto';
+import type { Actor, Post } from '@patches/proto';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
+import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, grpcStatusCode, type FriendlyError } from '../api/errors.js';
+import { Loading } from '../components/Loading.js';
 import { Nameplate } from '../components/Nameplate.js';
+import { PostList, type PostRowActions } from '../components/PostList.js';
+import { VirtualList } from '../components/VirtualList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
 
@@ -20,6 +24,9 @@ export interface SearchScreenProps {
   ensureAccessToken?: (() => Promise<string>) | undefined;
   /** `Enter` on a result — opens that actor's profile. */
   onOpenActor: (actor: Actor) => void;
+  /** Row actions for the Posts tab — the same bag every timeline uses, so `Enter`,
+   * `l`, `b`, `r` and `f` behave identically in search results. */
+  actions?: PostRowActions;
   /** `Esc` — leaves the screen without picking anyone. */
   onCancel: () => void;
 }
@@ -28,11 +35,15 @@ type Status =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; actors: Actor[] }
+  | { status: 'posts'; posts: Post[]; hasMore: boolean }
   | { status: 'error'; error: FriendlyError };
 
 /** A remote `user@domain` handle, `@`-prefix optional (B-028) — anything else is a
  * local handle-prefix/display-name query. */
 const REMOTE_ACCT_PATTERN = /^@?[\w.-]+@[\w.-]+\.[a-z]+$/;
+
+/** What the query is searched against. `Tab` switches between them. */
+export type SearchMode = 'people' | 'posts';
 
 /**
  * `/` or `g s` — handle-prefix + display-name search (spec §112), or a remote-actor
@@ -45,11 +56,19 @@ export function SearchScreen({
   isActive,
   ensureAccessToken,
   onOpenActor,
+  actions,
   onCancel,
 }: SearchScreenProps): ReactElement {
+  const content = useContentSize();
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<Status>({ status: 'idle' });
+  const [mode, setMode] = useState<SearchMode>('people');
+  // A fresh search always lands on the top result, the same way the old
+  // hand-rolled `selected` reset did — `VirtualList` otherwise keeps the previous
+  // selection index across an items change. Reusing its `jump` prop (rather than
+  // `key`-ing a remount) keeps the same `VirtualList` instance mounted, so its
+  // `useInput` subscription never has to re-register mid-keystroke.
+  const [resultsNonce, setResultsNonce] = useState(0);
 
   async function resolveRemoteActor(rawAcct: string): Promise<void> {
     if (ensureAccessToken === undefined) {
@@ -70,7 +89,7 @@ export function SearchScreen({
       const accessToken = await ensureAccessToken();
       const response = await api.resolveActor({ acct }, accessToken);
       setStatus({ status: 'ready', actors: present(response.actor) ? [response.actor] : [] });
-      setSelected(0);
+      setResultsNonce((nonce) => nonce + 1);
     } catch (error) {
       if (grpcStatusCode(error) === GrpcStatus.UNIMPLEMENTED) {
         setStatus({
@@ -88,9 +107,32 @@ export function SearchScreen({
     }
   }
 
+  async function runPostSearch(trimmed: string): Promise<void> {
+    setStatus({ status: 'loading' });
+    try {
+      const accessToken = ensureAccessToken === undefined ? undefined : await ensureAccessToken();
+      // Newest-first keyset, never relevance-by-engagement (§194).
+      const response = await api.searchPosts(
+        { query: trimmed, cursor: '', limit: 20, authorHandle: '', includeReplies: true },
+        accessToken,
+      );
+      setStatus({
+        status: 'posts',
+        posts: [...response.posts],
+        hasMore: response.page?.hasMore ?? false,
+      });
+    } catch (error) {
+      setStatus({ status: 'error', error: describeGrpcError(error, api.target) });
+    }
+  }
+
   async function runSearch(): Promise<void> {
     const trimmed = query.trim();
     if (trimmed === '') return;
+    if (mode === 'posts') {
+      await runPostSearch(trimmed);
+      return;
+    }
     if (REMOTE_ACCT_PATTERN.test(trimmed)) {
       await resolveRemoteActor(trimmed);
       return;
@@ -99,7 +141,7 @@ export function SearchScreen({
     try {
       const response = await api.searchActors({ query: trimmed, cursor: '', limit: 20 });
       setStatus({ status: 'ready', actors: [...response.actors] });
-      setSelected(0);
+      setResultsNonce((nonce) => nonce + 1);
     } catch (error) {
       setStatus({ status: 'error', error: describeGrpcError(error, api.target) });
     }
@@ -112,23 +154,29 @@ export function SearchScreen({
         onCancel();
         return;
       }
+      if (key.tab) {
+        setMode((current) => (current === 'people' ? 'posts' : 'people'));
+        setStatus({ status: 'idle' });
+        return;
+      }
+      // Post results are a normal `PostList`: it owns j/k/Enter/l/b/r/f, so this
+      // handler steps aside except for leaving and re-editing the query.
+      if (status.status === 'posts') {
+        if (key.backspace || key.delete) {
+          setStatus({ status: 'idle' });
+          setQuery((value) => value.slice(0, -1));
+        }
+        return;
+      }
 
       const results = status.status === 'ready' ? status.actors : [];
       if (results.length > 0) {
-        if (input === 'j' || key.downArrow) {
-          setSelected((current) => Math.min(current + 1, results.length - 1));
-          return;
-        }
-        if (input === 'k' || key.upArrow) {
-          setSelected((current) => Math.max(current - 1, 0));
-          return;
-        }
-        if (key.return) {
-          const actor = results[selected];
-          if (actor !== undefined) onOpenActor(actor);
-          return;
-        }
-      } else if (key.return) {
+        // Movement (same vocabulary as every other list — j/k, arrows, Ctrl+D/U, G)
+        // and `Enter` now belong to the actor `VirtualList`; typing only edits the
+        // query while there are no results to move through.
+        return;
+      }
+      if (key.return) {
         void runSearch();
         return;
       }
@@ -137,7 +185,7 @@ export function SearchScreen({
         setQuery((value) => value.slice(0, -1));
         return;
       }
-      if (key.ctrl || key.meta || key.tab) return;
+      if (key.ctrl || key.meta) return;
       if (input.length > 0) setQuery((value) => value + input);
     },
     { isActive },
@@ -145,7 +193,17 @@ export function SearchScreen({
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.accent}>Search</Text>
+      <Box>
+        <Text color={theme.accent}>Search </Text>
+        <Text color={mode === 'people' ? theme.accent : theme.muted} bold={mode === 'people'}>
+          [people]
+        </Text>
+        <Text color={theme.muted}> </Text>
+        <Text color={mode === 'posts' ? theme.accent : theme.muted} bold={mode === 'posts'}>
+          [posts]
+        </Text>
+        <Text color={theme.muted}> Tab switches</Text>
+      </Box>
       <Box marginTop={1}>
         <Text color={theme.muted}>query </Text>
         <Text>
@@ -153,34 +211,68 @@ export function SearchScreen({
           <Text color={theme.accent}>█</Text>
         </Text>
       </Box>
-      {status.status === 'loading' ? <Text color={theme.muted}>Searching…</Text> : null}
+      {status.status === 'loading' ? <Loading label="Searching" /> : null}
       {status.status === 'error' ? <Text color={theme.error}>{status.error.title}</Text> : null}
-      {status.status === 'ready' && (
+      {status.status === 'posts' && (
+        <Box marginTop={1}>
+          <PostList
+            posts={status.posts}
+            loading={false}
+            hasMore={status.hasMore}
+            emptyMessage="No posts matched."
+            isActive={isActive}
+            chromeRows={5}
+            {...actions}
+          />
+        </Box>
+      )}
+      {mode === 'people' && status.status !== 'posts' && (
+        // Mounted for the whole of "people" mode, not just once results land — a
+        // fresh mount's `useInput` only subscribes on a later effect tick, and this
+        // screen's own tests type a query and hit Enter twice back to back with no
+        // frame settle between them. Staying mounted keeps the subscription already
+        // live long before the result-opening `Enter` needs it.
         <Box marginTop={1} flexDirection="column">
-          {status.actors.length === 0 ? (
-            <Text color={theme.muted}>No matches.</Text>
-          ) : (
-            status.actors.map((actor, index) => (
-              <Box key={actor.id}>
+          <VirtualList<Actor>
+            items={status.status === 'ready' ? status.actors : []}
+            keyOf={(actor) => actor.id}
+            measure={() => 1}
+            width={Math.max(10, content.columns - 4)}
+            budget={Math.max(3, content.rows - 8)}
+            jump={{ edge: 'top', nonce: resultsNonce }}
+            isActive={isActive}
+            showPosition={false}
+            empty={status.status === 'ready' ? <Text color={theme.muted}>No matches.</Text> : <></>}
+            renderItem={(actor, state) => (
+              <Box height={1} overflow="hidden" flexShrink={0} width={state.width}>
                 <Nameplate
                   handle={actor.handle}
                   nameplate={actor.nameplate ?? undefined}
-                  bold={index === selected}
-                  fallbackColor={index === selected ? theme.accent : undefined}
+                  bold={state.selected}
+                  fallbackColor={state.selected ? theme.accent : undefined}
                 />
                 {actor.displayName === '' ? null : (
                   <Text color={theme.muted}> · {sanitizeForTerminal(actor.displayName)}</Text>
                 )}
               </Box>
-            ))
-          )}
+            )}
+            onKey={(_input, key, actor) => {
+              if (key.return && actor !== undefined) {
+                onOpenActor(actor);
+                return true;
+              }
+              return false;
+            }}
+          />
         </Box>
       )}
       <Box marginTop={1}>
         <Text color={theme.muted}>
           {status.status === 'ready'
-            ? 'j/k select · Enter open profile · Esc cancel'
-            : 'Enter search · Esc cancel'}
+            ? 'j/k select · Enter open profile · Tab people/posts · Esc cancel'
+            : status.status === 'posts'
+              ? 'j/k · Enter thread · Backspace edit · Tab people/posts · Esc cancel'
+              : 'Enter search · Tab people/posts · Esc cancel'}
         </Text>
       </Box>
     </Box>

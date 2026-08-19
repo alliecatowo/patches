@@ -2,19 +2,25 @@ syntax = "proto3";
 
 package patches.v1;
 
+import "google/protobuf/timestamp.proto";
 import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
 
-// Follows and the block/mute-aware relationship view (spec §50, §61–63). `blocks`/`mutes`
-// exist as database tables from Phase 3 on because the feed visibility SQL needs them (§59),
-// but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing RPCs deferred to
-// Phase 6 (spec §140) — not part of this service yet.
+// Follows and the block/mute-aware relationship view (spec §50, §61–63, Amendment C §197.5).
+// `blocks`/`mutes` exist as database tables from Phase 3 on because the feed visibility SQL
+// needs them (§59), but `BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor` are user-facing
+// RPCs deferred to Phase 6 (spec §140) — not part of this service yet.
 service SocialGraphService {
-  // v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50). Rejects a
-  // follow in either direction of an existing block.
+  // v0 local accounts transition straight to `FOLLOW_STATE_FOLLOWING` (spec §50) — *unless*
+  // the target is a locked local actor (§197.5), in which case this creates a pending follow
+  // request instead (`FollowActorResponse.requested = true`) and never a `follows` row.
+  // Rejects a follow in either direction of an existing block. Idempotent either way: calling
+  // this again while already following, or while a request is already pending, is a no-op.
   rpc FollowActor(FollowActorRequest) returns (FollowActorResponse);
 
-  // Idempotent: unfollowing an actor the caller does not follow is not an error.
+  // Idempotent: unfollowing an actor the caller does not follow is not an error. Also cancels
+  // a pending follow request the caller has outstanding toward `actor_id` (§197.5) — this is
+  // the RPC a client calls for "cancel my follow request", too.
   rpc UnfollowActor(UnfollowActorRequest) returns (UnfollowActorResponse);
 
   // The caller's relationship with `actor_id` — requires an authenticated session, since there
@@ -27,10 +33,27 @@ service SocialGraphService {
   // is always computed relative to `actor_id`, never the caller's own identity, and a public
   // Page's Friends block must be visible to a signed-out visitor.
   rpc ListMutualFollows(ListMutualFollowsRequest) returns (ListMutualFollowsResponse);
+
+  // §197.5: pending follow requests addressed to the caller's own (locked) account, newest
+  // first. Requires an authenticated session — there is no one else's request queue to list.
+  rpc ListFollowRequests(ListFollowRequestsRequest) returns (ListFollowRequestsResponse);
+
+  // Accepts a pending follow request from `actor_id` addressed to the caller: creates the
+  // `FOLLOWING` edge and removes the request. `FOLLOW_REQUEST_NOT_FOUND` if no such pending
+  // request exists.
+  rpc AcceptFollowRequest(AcceptFollowRequestRequest) returns (AcceptFollowRequestResponse);
+
+  // Rejects (discards) a pending follow request from `actor_id` addressed to the caller — no
+  // `follows` row is ever created. `FOLLOW_REQUEST_NOT_FOUND` if no such pending request
+  // exists.
+  rpc RejectFollowRequest(RejectFollowRequestRequest) returns (RejectFollowRequestResponse);
 }
 
-// Mirrors spec §50's future follow states even though v0 only ever produces `NONE`/
-// `FOLLOWING` — `PENDING` is reserved for a later approval-gated follow flow.
+// Mirrors spec §50's future follow states — `PENDING` covers both a follow of a remote actor
+// awaiting that actor's `Accept` (P8-002/P8-003) and, since §197.5, a follow request awaiting
+// a locked local actor's approval. Which of those two it is is never ambiguous to the caller:
+// only one directed pair of (follower, followee) can ever be in flight at a time, and
+// `Relationship.requested`/`requested_by` below disambiguate the locked-account case further.
 enum FollowState {
   FOLLOW_STATE_UNSPECIFIED = 0;
   FOLLOW_STATE_NONE = 1;
@@ -39,7 +62,9 @@ enum FollowState {
 }
 
 message Relationship {
-  // The caller's follow state toward the target actor.
+  // The caller's follow state toward the target actor. `PENDING` here means `requested` is
+  // also true (see below) whenever it is due to a locked-account follow request; a remote
+  // actor's federation-pending follow is `PENDING` with `requested = false`.
   FollowState state = 1;
 
   // True when the target actor follows the caller back.
@@ -50,6 +75,16 @@ message Relationship {
 
   // True when the caller mutes the target actor.
   bool muting = 4;
+
+  // §197.5: true when the caller has a pending follow request outstanding toward the target
+  // (the target is a locked actor who has not yet accepted or rejected it).
+  bool requested = 5;
+
+  // §197.5: true when the target actor has a pending follow request outstanding toward the
+  // caller (only meaningful when the caller's own account is locked) — the caller has not yet
+  // accepted or rejected it. There is no `followed_by`-style state for this until it is
+  // resolved one way or the other.
+  bool requested_by = 6;
 }
 
 message FollowActorRequest {
@@ -58,6 +93,10 @@ message FollowActorRequest {
 
 message FollowActorResponse {
   Relationship relationship = 1;
+
+  // §197.5: true when this call created (or found already outstanding) a pending follow
+  // request rather than an immediate follow, because the target is a locked local actor.
+  bool requested = 2;
 }
 
 message UnfollowActorRequest {
@@ -87,3 +126,37 @@ message ListMutualFollowsResponse {
   repeated Actor actors = 1;
   PageInfo page = 2;
 }
+
+// §197.5: a pending follow request addressed to the caller's (locked) account.
+message FollowRequest {
+  // The actor who asked to follow the caller.
+  Actor actor = 1;
+
+  google.protobuf.Timestamp created_at = 2;
+}
+
+message ListFollowRequestsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListFollowRequestsResponse {
+  repeated FollowRequest requests = 1;
+  PageInfo page = 2;
+}
+
+message AcceptFollowRequestRequest {
+  // The requester's actor id.
+  string actor_id = 1;
+}
+
+message AcceptFollowRequestResponse {
+  Relationship relationship = 1;
+}
+
+message RejectFollowRequestRequest {
+  // The requester's actor id.
+  string actor_id = 1;
+}
+
+message RejectFollowRequestResponse {}

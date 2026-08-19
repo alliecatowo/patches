@@ -65,3 +65,27 @@ export const federationDeliverPayloadSchema = z.object({
   activity: z.record(z.string(), z.unknown()),
 });
 export type FederationDeliverPayload = z.infer<typeof federationDeliverPayloadSchema>;
+
+/**
+ * `EXPORT_ACCOUNT` (P14-010, `INITIAL_VISION.md` §197.3): `exportId` names the
+ * `account_exports` row to fill in; `actorId` is whose data to collect. Both travel on the
+ * payload (rather than the handler re-deriving `actorId` from the row) so the handler can
+ * still log/report which actor a stale/missing row belonged to.
+ */
+export const exportAccountPayloadSchema = z.object({
+  exportId: z.uuid(),
+  actorId: z.uuid(),
+});
+export type ExportAccountPayload = z.infer<typeof exportAccountPayloadSchema>;
+
+/**
+ * `PURGE_ACCOUNT` (P14-010, `INITIAL_VISION.md` §197.4). Just `actorId`: unlike
+ * `EXPORT_ACCOUNT`, the durable record of *why* this job exists is the
+ * `account_deletion_requests` row itself (keyed by `actorId`), not the payload — the handler
+ * re-reads that row at execution time specifically so a `CancelAccountDeletion` that lands
+ * after this job was enqueued (but before it runs) is honored.
+ */
+export const purgeAccountPayloadSchema = z.object({
+  actorId: z.uuid(),
+});
+export type PurgeAccountPayload = z.infer<typeof purgeAccountPayloadSchema>;
