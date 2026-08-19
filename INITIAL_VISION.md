@@ -28,6 +28,11 @@ amendment's scope table.
   node, not "the backend"), credentials separated from identity (SSH / password / GitHub),
   Patches Pages, nameplates, capabilities-not-tiers, and a revised release sequence that
   moves federation earlier without moving its security gates.
+- **§178–§195 — Amendment B (2026-08-18): social depth.** Reposts and quotes, tags and tag
+  timelines, communities, direct messages (server-visible in v0, stated plainly), flair /
+  pinned posts / walls under capabilities-not-tiers, per-viewer plain and quiet modes, post
+  edits with visible history — all TUI-first, with the web and React Native clients paused
+  until the terminal client is feature-complete. Adds prohibitions (§194); relaxes none.
 
 ---
 
@@ -5552,3 +5557,781 @@ Constraints that do not move:
 - make email mandatory for accounts holding a non-password credential, unless the node has
   explicitly configured that policy,
 - enable federation by default in a self-hosted node build.
+
+---
+
+# 178. Amendment B — 2026-08-18: social depth
+
+This part is an **amendment**, not a rewrite. Sections §0–§177 remain as written; where this
+amendment and an earlier section disagree, **this amendment wins**, and the earlier section
+is annotated below as amended or superseded.
+
+Do not edit §0–§177 in place to match this part — the history is the point. Do not
+re-litigate a decision recorded here; if it must change, write a further amendment and an ADR.
+
+**Owner direction (2026-08-18):** the web and React Native clients are paused until the
+terminal client is feature-complete as a social product. Patches earns a second client by
+being finished on the first one, not by being ported early. Everything in this amendment is
+**TUI-first**: a feature is not done until it is usable from the terminal.
+
+Scope of Amendment B:
+
+| Section   | Effect                                                                              |
+| --------- | ----------------------------------------------------------------------------------- |
+| §179      | Phase numbering, and the pause on web/React Native. Amends §144, §176.               |
+| §180      | Reposts and quotes. **Supersedes §51's "Repost — possible later" and its ban on quote-posts.** |
+| §181      | Tags, tag search, tag timelines. **Supersedes §148** ("after MVP" — it is now scheduled). |
+| §182      | Communities. **Supersedes §147** ("if communities become desirable" — they are scheduled). |
+| §183      | Direct messages. **Amends §5** — DMs and group DMs leave the non-goal list, which gated them on "before the MVP is stable" (§5); the MVP is deployed. |
+| §184      | Flair, pinned posts, walls. Amends §4.4, §173, §174.                                |
+| §185      | Viewer control: plain mode and quiet feed. Amends §69, §173.                         |
+| §186      | Micro-blogging polish: edits with history, delete, folds. Amends §26, §51, §58.      |
+| §187      | Notification types for the new events. Amends §56.                                  |
+| §188      | Limits and rate limits. Amends §58, §102 by addition.                               |
+| §189      | Data model. Amends §22, §60, §61 by addition.                                        |
+| §190      | API surface. Amends §47, §51, §52, §53, §56 by addition.                             |
+| §191      | TUI screens and keys. Amends §69, §71.                                               |
+| §192      | Security requirements for this phase. Amends §101–§104 by addition.                  |
+| §193      | Federation mapping. Later stage; moves no §109 gate.                                 |
+| §194      | Additional hard prohibitions. Amends §153 and §177 (adds; removes nothing).           |
+| §195      | Needs owner sign-off.                                                                |
+
+Everything not listed above is unchanged. In particular, Amendment B does **not** relax any
+prohibition in §153 or §177, does **not** change the chronological-feed rule (§4.1), does
+**not** introduce ranking, scoring, or voting anywhere (§149), and does **not** move public
+federation earlier than its security gates (§109, §160). Nothing here is allowed to become a
+reason to rank a feed.
+
+The product this amendment is aiming at, in the owner's words, is "the perfect blend of
+Reddit, Tumblr, Instagram, and Twitter" — taken as: Reddit's **communities**, Tumblr's
+**reblogs and personal walls**, Instagram's **visual media**, Twitter's **chronological
+micro-blogging** — and explicitly **not** any of their ranking engines, ad systems,
+recommendation feeds, or engagement metrics.
+
+---
+
+# 179. Phase numbering, and the paused clients
+
+**Amends §144 and §176.**
+
+Two phase sequences have collided and must be disambiguated permanently:
+
+- **Release phases** are §176's — Phase 8 (v0.1 lab), Phase 9 (v0.2 self-hostable), Phase 10
+  (v0.3 interop), Phase 11 (v0.4 portability), Phase 12 (v1.0 public federation). From here
+  on, refer to these by **release number** (v0.2, v0.3, …), never by phase number.
+- **Board phases** are `tasks.md`'s execution sequence, which continued past 8 with
+  owner-requested work: board Phase 9 (site, media, packaging), board Phase 10 (web +
+  React Native clients), board Phase 11 (this amendment). A board phase number MUST NOT be
+  read as a §176 release phase.
+
+`docs/product/roadmap.md` MUST state this mapping wherever both sequences appear.
+
+The pause:
+
+- Board **Phase 10 (web + React Native) is paused** until board Phase 11 is complete. Work
+  already landed there (the Connect edge, ADR 0016) stays — it is not reverted, it is not
+  extended.
+- Further **site/marketing work is paused** too. Operational credential work (real R2/Resend
+  credentials) is not site work and is not paused.
+- The pause is a scheduling decision, not an architectural one. ADR 0016 remains the
+  decided transport/SDK shape for when the clients resume.
+- §153's "build the mobile app before the TUI/server MVP" prohibition is unchanged and this
+  pause is consistent with it.
+
+Board Phase 11 is complete when every feature in §180–§187 is reachable from the TUI, not
+merely present in the API.
+
+---
+
+# 180. Reposts and quotes
+
+**Supersedes §51**, which listed `Repost` as "possible later" and said "do not implement
+quote-posts in the initial MVP". The MVP shipped; both are now in scope.
+
+## 180.1 Repost
+
+A **repost** is a pointer, not a post.
+
+- A repost row is `(actor, post, created_at)` — unique per pair. It has no body, no media,
+  no content warning, and no thread position. It MUST NOT be a row in `posts`.
+- Rendering: the original post, with an attribution line above it (`reposted by @handle`).
+  The original author's nameplate is the post's identity; the reposter's is the attribution.
+- A repost enters a feed at the **repost's own** `created_at`. Reposting MUST NOT move,
+  bump, re-sort, or otherwise change the position of the original post anywhere, for anyone.
+  There is no boost — the word "boost" MUST NOT be used in Patches UI or code for this
+  reason; the term is `repost`.
+- `Unrepost` deletes the row. Reposting is idempotent per `(actor, post)`.
+- A repost of a repost is impossible: the target always resolves to the underlying post.
+- Eligibility. An actor MUST NOT be able to repost: a post with `FOLLOWERS` visibility that
+  is not their own, a deleted/tombstoned post, or a post whose author blocks them. Unlisted
+  posts MAY be reposted (unlisted governs local-feed inclusion, not amplification).
+- Deleting the original tombstones every repost of it.
+- Duplicate collapsing: within a **single feed page**, a post reachable more than once
+  (original plus reposts, or several reposters) MUST be collapsed to one entry, keeping the
+  newest occurrence and naming up to three reposters. Cross-page deduplication is
+  deliberately not attempted in v0 — keyset pagination (§46, §153) makes it expensive and
+  the failure mode (seeing a post twice on a page boundary) is mild. Document it; don't fake
+  it.
+
+## 180.2 Quote
+
+A **quote** is a real post that points at another post.
+
+- A quote is a normal `posts` row with `quoted_post_id` set. It MUST carry a body or media
+  of its own — a quote with nothing added is a repost, and the client MUST offer a repost
+  instead of creating an empty quote.
+- Rendering nests **exactly one level**: the quoted post is rendered inline, bounded (author
+  nameplate, first few lines, media count), and a nested quote inside it is rendered as a
+  link, never recursively. This is §171's no-recursion rule applied to posts, for the same
+  denial-of-service and renderer-complexity reasons.
+- **Quote policy.** Every post carries `quote_policy`: `ANYONE` (default), `FOLLOWERS`, or
+  `NOBODY`, defaulted from an actor-level preference. It is enforced server-side at quote
+  time. Quoting is the classic vector for dunking and pile-ons; the author gets a say. This
+  maps onto FEP-044f (consent-respecting quote posts) when federation reaches it (§193).
+- An actor whose author blocks them MUST NOT be able to quote them. Mutes do not prevent
+  quoting (a mute is viewer-side, §63).
+- If the quoted post is deleted, the embed tombstones (`[deleted]`) and the quoting post's
+  own body survives.
+- Self-quoting is allowed (it is how threads-of-thought work).
+
+## 180.3 Counts
+
+`PostCounts` gains `reposts` and `quotes`; `PostViewerState` gains `reposted`. Counts are
+displayed as plain numbers next to the post and MUST NOT be used to order anything, ever
+(§4.2, §149). No "top reposted", no repost leaderboard, no trending-by-repost.
+
+---
+
+# 181. Tags, tag search, tag timelines
+
+**Supersedes §148**, which deferred tags to "after MVP". §148's four requirements —
+normalize, store relations, index, expose chronological tag feeds — are adopted verbatim as
+the design.
+
+Rules:
+
+- A tag is written inline as `#tag` in a post body. Extraction happens **at write time**, on
+  the server, into a relation table. Tag extraction MUST NOT be on the read path of a feed
+  query, and MUST NOT be a critical-path system: a tag-extraction failure MUST NOT fail the
+  post (§148, "do not make tag extraction a critical v0 system").
+- **Normalization is the identity.** `tags.name` is NFKC-normalized and case-folded; the
+  post preserves the author's casing for display. Two spellings that normalize to the same
+  name are the same tag.
+- Grammar: after `#`, one or more Unicode letters, digits, or `_`, maximum 30 characters, at
+  least one letter (an all-digit `#2026` is not a tag — it is a year). Control characters,
+  bidirectional overrides, zero-width joiners, and combining-mark pileups are rejected
+  (§192).
+- A post carries at most 10 tags. An eleventh is an `INVALID_ARGUMENT`, not a silent
+  truncation — the author is told (§103).
+- **Tag timeline**: `PUBLIC` posts carrying that tag, strictly chronological, keyset
+  paginated (§46), block- and mute-filtered, excluding community posts the viewer is not a
+  member of (§182). Unlisted posts are excluded (unlisted means "not in public timelines").
+- **Tag search** matches a normalized prefix, returns at most 20 tags, ordered
+  alphabetically. It MUST NOT order by popularity, recency of use, or post count.
+- There is **no trending page, no tag counters, and no tag suggestions** in v0. `tags` MUST
+  NOT carry a `post_count` column — a popularity number that exists will eventually be
+  sorted by, and that is the ranking engine arriving through the back door (§149).
+- **Tag mutes** ship with tags: a viewer may mute a tag, which filters it out of home,
+  local, and tag timelines. A thread the viewer opened deliberately still renders in full —
+  a mute filters discovery, it does not censor a conversation you chose to read. This is the
+  §63 mute model applied to tags, and it is what makes a public tag feed safe to ship.
+- Tags on remote posts are ingested but not trusted for local timeline inclusion until
+  federation reaches §193's stage.
+
+---
+
+# 182. Communities
+
+**Supersedes §147** ("if Reddit-style communities become desirable, add them after the
+people/following social model works"). The following model works and is deployed; the
+condition is met. §147's constraints are kept: membership, moderators, chronological posts,
+rules, subscriptions — and **no karma replication**.
+
+## 182.1 Model
+
+- The entity is `Community`. Per §147 it is **not** called `Patch`.
+- Addressing is `+name` locally and `+name@domain` canonically, mirroring `@handle@domain`.
+  A community name is `[a-z0-9_]{3,32}`, unique per node, drawn from a reserved-name
+  blocklist (`admin`, `mod`, `system`, `patches`, `support`, …).
+- Communities are **local to a node** in v0. Federated communities are §193, later stage.
+- v0 scope, deliberately small: create, list, get, join, leave, post into, community
+  timeline, member list, moderators, rules, invite. Nothing else.
+
+## 182.2 Posting and feeds
+
+- A post MAY belong to at most one community. `community_id` is set at creation and is
+  **immutable** — cross-posting is a copy authored by the poster, never a shared row.
+- The **community timeline** is strictly chronological and keyset paginated. There is no
+  `hot`, no `top`, no `best`, no `controversial`, and no sort selector. `ListCommunityFeed`
+  takes no ordering parameter, because the parameter is where ranking eventually gets added.
+- Home feed semantics are **unchanged** (§4.1): follows only. A community post appears in
+  the home feed of anyone who follows its author, like any other post.
+- Local feed **excludes** community posts unless the viewer is a member. A town square that
+  is 90% board traffic stops being a town square.
+- Community posts appear on their author's profile normally.
+
+## 182.3 Membership and moderation
+
+- Join/leave is self-service for public communities (the only kind in v0). Membership is a
+  subscription, not an identity.
+- The creator is the first moderator. Moderators may appoint and remove other moderators
+  (never the creator), remove a post **from the community** (the post survives on its
+  author's profile with `community_id` cleared and an audit record), and ban an actor from
+  the community.
+- Node moderators outrank community moderators everywhere; community moderation is scoped to
+  the community and MUST NOT be able to suspend an account, delete a post globally, or reach
+  any other community.
+- Every community-moderation action is written to the audit log (§66) with the community as
+  subject.
+- Community `rules` is inert plain text (safe Markdown subset, ≤ 4 KiB), rendered by the
+  client under §172's rules. It is not code, not HTML, not a template.
+- **Invites** are pointers, never auto-joins: a member may invite an actor to a public
+  community, producing a `COMMUNITY_INVITE` notification the invitee accepts or ignores. One
+  pending invite per `(community, actor)`, rate-limited, block-aware, and mutable off
+  entirely by the invitee.
+
+## 182.4 What communities must never grow
+
+No votes, no karma, no score, no member-count leaderboard, no "rising", no recommended
+communities computed from activity. A node MAY publish an **operator-curated** featured list
+— editorial, human, and labelled as such. That is the only kind of ranking allowed near a
+community, and it is not an algorithm.
+
+---
+
+# 183. Direct messages
+
+**Amends §5**, which listed DMs and group DMs as things not to implement "before the MVP is
+stable". The MVP is stable and deployed, so the gate has passed. Nothing else in §5 moves —
+voice, video, stories, live streaming, ads, payments, premium subscriptions, and creator
+monetization all remain non-goals.
+
+## 183.1 The honest security posture
+
+**v0 DMs are not end-to-end encrypted. The node can read them.**
+
+- Message bodies are stored in PostgreSQL in the clear, protected by TLS in transit,
+  provider disk encryption at rest, and access control — the same protection as every other
+  row in the database, and no more.
+- Every client MUST display this plainly on the messages screen, in words a non-engineer
+  understands: *"Not end-to-end encrypted — this node's operators can read these messages."*
+  Not a tooltip, not a settings page footnote — on the screen where messages are read.
+- No Patches client, document, or marketing surface may describe v0 DMs as "encrypted",
+  "secure", "end-to-end", or "private" (§194). "Direct" is the honest word: direct, not
+  secret.
+- This is a deliberate trade, stated so it cannot be quietly forgotten: server-visible DMs
+  are what make DM reporting and moderation (§183.4) possible at all. A node that cannot
+  read a report's evidence cannot act on harassment. E2E messaging is the right long-term
+  answer and it is a different system, not a flag — see §195.
+
+## 183.2 Who may message whom
+
+Unsolicited DMs are the harassment surface; gating them is the feature.
+
+- An actor may open a conversation directly only with a **mutual follow**, or with someone
+  who has **accepted a message request** from them.
+- Otherwise the first message creates a **message request**: pending, in a separate list,
+  carrying at most one message. There is at most one pending request per `(sender,
+  recipient)` — a request is a knock, not a channel.
+- Accept promotes it to a conversation. Decline deletes it and bars a new request from that
+  sender for 30 days. Blocking bars it permanently.
+- Actors MAY set their node-published preference to "mutuals only", refusing requests
+  entirely.
+
+## 183.3 Conversations
+
+- 1:1 and small groups: **at most 8 members**, including the creator.
+- A group creator may only add actors they could DM directly (§183.2). An actor MUST NOT be
+  added to a group containing someone who has blocked them, or someone they have blocked.
+- Any member may leave; a conversation with fewer than two active members is archived.
+- **Text only in v0.** No media, no link previews, no attachments — an unsolicited-image
+  vector is exactly what §183.2 exists to prevent, and previews are an SSRF/tracking surface
+  (§172, §104). Media in DMs is a later decision with its own gate.
+- Body limit 2,000 characters. Sender may delete their own message (tombstone for everyone).
+- **No read receipts and no typing indicators.** They are engagement pressure dressed as a
+  feature, and they leak presence (§4.2).
+- Unread state is per-viewer. Delivery is poll-based like notifications (§56) — no push
+  infrastructure before mobile exists.
+- Retention: messages persist until deleted. A node MAY configure a retention window,
+  published via `GetNodeInfo` so clients can state it truthfully.
+
+## 183.4 Safety
+
+- **Block-aware**: a block stops delivery in both directions and hides the conversation from
+  the blocker; the blocked party's send fails the same way any other unavailable recipient
+  fails, revealing nothing (§62 — no block oracle).
+- **Reportable**: reporting a message or conversation snapshots up to 10 surrounding
+  messages for moderator review, retained for the lifetime of the report and no longer
+  (§64). The snapshot is the evidence; without it a DM report is unactionable.
+- **Rate-limited** (§102, §188): message sends and message requests both, per actor and per
+  peer, database-backed because they are abuse-sensitive.
+- Message bodies MUST NOT appear in logs, error messages, metrics, traces, or exception
+  reports (§101, §103). A DM body belongs in exactly two places: the database row and the
+  authorized reader's terminal.
+- DMs are **not federated in v0** (§193). Private addressing across nodes you do not
+  operate, without E2E, multiplies the exposure this section just documented.
+
+---
+
+# 184. Flair, pinned posts, and walls
+
+**Amends §4.4, §173, and §174.** This is the "Discord-Nitro-style customization" the owner
+asked for, translated into terminal-native, capability-gated, non-monetizable form.
+
+## 184.1 What an actor can customize
+
+Three layers, in increasing scope:
+
+| Layer         | What it is                                          | Where it shows                       |
+| ------------- | --------------------------------------------------- | ------------------------------------ |
+| **Nameplate** | inline identity (§173, exists)                       | everywhere the name appears          |
+| **Flair**     | how *their posts* render                             | timeline, thread, community timeline |
+| **Wall**      | their Page (§170, exists) + pinned posts + theme     | when you visit them                  |
+
+`actor_flair` is a bounded, validated document (≤ 1 KiB) with exactly these fields:
+
+```text
+ActorFlair {
+  post_accent      -- named colour or hex; contrast-floor validated
+  border_style     -- single | double | round | ascii | none
+  like_glyph       -- one codepoint from the node's published allow-list
+  wall_theme       -- the §171 theme fields, reused, not re-invented
+  pinned_post_ids  -- up to 3, own PUBLIC/UNLISTED posts only
+}
+```
+
+Rules:
+
+- Rendering degrades by terminal capability exactly as §173 requires: truecolor → 256 → 16 →
+  none. Flair MUST never be required to read a post, follow a thread, or find a control.
+- §173's legibility rules apply unchanged: contrast floor, no control characters, no
+  zero-width or bidirectional trickery, bounded width, no impersonation of another actor or
+  of a system message.
+- Flair MUST NOT change layout outside the cells of the post being rendered — no cursor
+  moves, no scroll-region tricks, no full-width bleeds, no screen clears (§172).
+- **Pinned posts** appear at the top of a profile and on the wall. Pinning MUST NOT affect
+  ordering in any feed, for anyone. It is a profile arrangement, not a broadcast.
+
+## 184.2 Custom like glyphs are presentation, not a reaction system
+
+A `like_glyph` changes **how the viewer's own like renders**. It does not create a new
+reaction type.
+
+- There is exactly one reaction in v0: the like (§53). A glyph is a skin on it.
+- There MUST NOT be per-glyph counts, glyph breakdowns, reaction leaderboards, or "who
+  reacted with what" lists. That is a reaction system, it is a metrics surface, and it is
+  out of scope (§194).
+- The allow-list is published by the node via `GetNodeInfo` and MUST contain only single
+  width-1 codepoints: no images, no uploads, no custom emoji, no ZWJ sequences, no combining
+  marks, no control characters (§192).
+
+## 184.3 Capabilities, not tiers — restated for cosmetics
+
+§174 is not softened by any of this; it is the reason this section can exist at all.
+
+- Every cosmetic in §184 MUST be available to **every actor on a node** by default, or
+  granted per-node through a **capability** (§174). A self-hoster granting everything to
+  everyone MUST remain a supported, non-degraded configuration.
+- A node MUST NOT paywall a **function**: posting, replying, reposting, quoting, tags,
+  communities, DMs, editing, drafts, a Page, a nameplate, flair, or data export. Money may
+  buy storage, bandwidth, a custom domain, and expensive extravagance — it does not buy
+  social standing, reach, or the ability to speak (§174, §194).
+- A **supporter badge** is fine: it is server-attested (§173), it is a thank-you, and it
+  confers nothing. A supporter-only *feature that changes what you can do* is not fine.
+- No `tier`, `plan`, `premium`, or `is_supporter` field enters the protocol (§177,
+  unchanged). Clients branch on capabilities only.
+- Feed placement, reach, and ordering MUST NOT be purchasable or capability-gated in any
+  form. Chronological means chronological for everyone.
+
+---
+
+# 185. Viewer control: plain mode and quiet feed
+
+**Amends §69 and §173.** Everything in §184 is opt-out for the person *reading*, not just
+the person posting. Self-expression is a right; being rendered at is not.
+
+Two independent controls:
+
+- **Plain mode** (exists — `P`, `PATCHES_PLAIN=1`): strips **all** decoration, the viewer's
+  own included. Nameplates, flair, borders, accents, glyphs, wall themes — everything
+  becomes plain text. This is the accessibility and low-capability baseline, and every new
+  cosmetic MUST have a plain-mode rendering before it ships.
+- **Quiet feed** (new): hides **other actors'** cosmetics while keeping the viewer's own
+  identity and the client's own structural colour (selection, focus, errors). It is for
+  people who want a calm timeline without turning their terminal into a monochrome
+  typewriter.
+
+Rules:
+
+- Quiet feed is a **client** setting. The server does not need to know, MUST NOT gate it,
+  and MUST NOT record it — presentation is the client's job (§175, pillar 5). Every Patches
+  client MUST implement both controls.
+- The controls compose: plain mode wins where they overlap.
+- Content is never hidden by either control. Content warnings, alt text, tombstones, and
+  moderation notices always render — they are content, not decoration.
+
+---
+
+# 186. Micro-blogging polish
+
+**Amends §26, §51, and §58.**
+
+## 186.1 Editing with visible history
+
+§26 made editing optional in v0 and expected by MVP. It is now required, with history.
+
+- `EditPost` may change: body, content warning, media set and order, alt text.
+- It MUST NOT change: `post_type`, `visibility`, `in_reply_to_id`, `community_id`,
+  `quoted_post_id`, or `created_at`. Visibility is immutable after creation — widening it
+  later republishes to an audience that never consented to the original.
+- Every edit writes an immutable `post_edits` snapshot of the **previous** state. History is
+  readable by anyone who can read the post (`ListPostEdits`). An edit that cannot be
+  inspected is indistinguishable from a rewrite of the record.
+- `edited_at` is set; `created_at` is preserved (§26, unchanged).
+- **An edit MUST NOT re-order the post in any feed.** No bumping. A post's position is its
+  creation time, forever (§4.1).
+- Deleting the post tombstones its edit history with it.
+- Federation maps edits to `Update` (§26, §193).
+
+## 186.2 Deletion, drafts, folds
+
+- Deleting one's own post is reachable from the client, with a confirmation, and remains a
+  soft-delete tombstone (§25, unchanged).
+- Drafts exist and are unchanged.
+- **Read-more fold**: in feed contexts a client folds a post past roughly 10 rendered lines
+  or 500 characters, showing a `— read more` affordance; thread and permalink views render
+  in full. Folding is a client-side rendering rule; the server always returns the whole body.
+- Post length stays at §58's 5,000 characters by default. A node MAY publish a larger
+  `maxPostChars` (hard ceiling 10,000) via `GetNodeInfo`; clients MUST read the limit from
+  the node and MUST NOT hardcode it. Long-form belongs on a Page (§170), not in a timeline
+  entry.
+
+## 186.3 Explicitly out of this phase
+
+- **Scheduled posts** — out. A scheduler is an availability surface and a moderation
+  loophole ("post it after the moderators go to bed") with no v0 payoff.
+- **Polls** — out for now, and not to be added casually: a poll is a vote-counting engine
+  one inch away from the ranking machinery this project exists to avoid. If it ever lands it
+  needs an ADR that says how it stays out of feed ordering.
+- **Post analytics / impressions / insights** — permanently out. Metrics theater (§4.2).
+- **Additional reaction types** — out (§184.2).
+
+---
+
+# 187. Notification types
+
+**Amends §56 by addition.** New types, appended — an enum value is never reused or
+renumbered (§153):
+
+| Type               | Fired when                                          | To            |
+| ------------------ | --------------------------------------------------- | ------------- |
+| `REPOST`           | someone reposts your post                            | post author   |
+| `QUOTE`            | someone quotes your post                             | quoted author |
+| `MESSAGE`          | you receive a DM or an accepted message request      | recipient     |
+| `COMMUNITY_INVITE` | you are invited to a community                       | invitee       |
+
+`FOLLOW`, `LIKE`, `REPLY`, `MENTION`, and `MODERATION` are unchanged. Mention notifications
+already exist and now also fire from quote bodies and community posts, with no new type.
+
+Rules:
+
+- `REPOST`/`QUOTE` carry the post; `MESSAGE` carries the conversation (a new, additively
+  numbered field); `COMMUNITY_INVITE` carries the community.
+- **`MESSAGE` notifications collapse**: at most one unread `MESSAGE` notification per
+  conversation. A message storm produces one notification, not fifty.
+- Muted and blocked actors generate no notifications (§62, §63, unchanged). Self-actions
+  never notify.
+- Community post removals notify the author as `MODERATION` — no new type.
+- Still no push infrastructure before mobile exists (§56, unchanged).
+
+---
+
+# 188. Limits and rate limits
+
+**Amends §58 and §102 by addition.** Every limit below MUST exist in protobuf/API
+validation, in service validation, and in a database constraint where practical (§58), and
+MUST be published via `GetNodeInfo` where a client needs it to render honestly.
+
+Size limits:
+
+```text
+tag name:                 30 characters, >= 1 letter
+tags per post:            10
+community name:           3-32 characters, [a-z0-9_]
+community display name:   80 characters
+community description:    500 characters
+community rules:          4 KiB
+community moderators:     16
+DM body:                  2,000 characters
+group conversation:       8 members
+message request:          1 pending per (sender, recipient), 1 message
+actor flair document:     1 KiB
+pinned posts:             3
+quoted post nesting:      1 level rendered
+post edits per post:      20
+post body:                5,000 default; node may publish up to 10,000
+```
+
+Rate limits (§102 — database-backed for the abuse-sensitive ones, per actor and per peer):
+
+```text
+repost/unrepost:      60 / hour
+quote:                30 / hour
+post edit:            30 / hour
+community create:     2 / day        (and node-capability gated)
+community join:       50 / day
+community invite:     20 / day, 5 / hour per community
+DM send:              20 / minute, 300 / hour
+message request:      5 / hour, 20 / day
+tag mute:             100 total
+```
+
+These are starting values and may evolve (§58); what MUST NOT happen is a new write path
+shipping with no limit at all.
+
+---
+
+# 189. Data model
+
+**Amends §22, §60, and §61 by addition.** New tables (snake_case, UUID primary keys, `NOT
+NULL` where the domain says so, foreign keys with explicit `ON DELETE` behavior, timestamps
+in UTC — §22 conventions unchanged):
+
+```text
+reposts               (id, actor_id, post_id, created_at)
+                      UNIQUE (actor_id, post_id); INDEX (actor_id, created_at DESC, id DESC)
+                      INDEX (post_id, created_at DESC)
+
+tags                  (id, name, display_name, created_at)   -- name = NFKC + casefold, UNIQUE
+                      no post_count column, deliberately (§181)
+post_tags             (post_id, tag_id, created_at)
+                      PRIMARY KEY (post_id, tag_id); INDEX (tag_id, created_at DESC, post_id DESC)
+tag_mutes             (actor_id, tag_id, created_at)  PRIMARY KEY (actor_id, tag_id)
+
+communities           (id, name, display_name, description, rules, created_by_actor_id,
+                       is_public, created_at, updated_at)     UNIQUE (name)
+community_members     (community_id, actor_id, role, joined_at)
+                      role = member | moderator; PRIMARY KEY (community_id, actor_id)
+community_bans        (community_id, actor_id, reason, banned_by_actor_id, created_at)
+community_invites     (id, community_id, inviter_actor_id, invitee_actor_id, status, created_at)
+                      UNIQUE (community_id, invitee_actor_id) WHERE status = 'pending'
+
+conversations         (id, kind, created_by_actor_id, created_at, last_message_at)
+                      kind = direct | group
+conversation_members  (conversation_id, actor_id, joined_at, left_at, last_read_message_id,
+                       muted) PRIMARY KEY (conversation_id, actor_id)
+messages              (id, conversation_id, sender_actor_id, body, created_at, deleted_at)
+                      INDEX (conversation_id, created_at DESC, id DESC)
+message_requests      (id, sender_actor_id, recipient_actor_id, body, status, created_at)
+
+post_edits            (id, post_id, previous_body, previous_content_warning,
+                       previous_media_manifest, edited_by_actor_id, created_at)
+                      INDEX (post_id, created_at DESC)
+pinned_posts          (actor_id, post_id, position, created_at)
+                      PRIMARY KEY (actor_id, post_id); position 0-2
+actor_flair           (actor_id PK, document jsonb, updated_at)
+```
+
+Columns added to existing tables:
+
+```text
+posts.quoted_post_id   uuid NULL, FK posts(id) ON DELETE SET NULL
+posts.quote_policy     enum(anyone, followers, nobody) NOT NULL DEFAULT 'anyone'
+posts.community_id     uuid NULL, FK communities(id) ON DELETE SET NULL, immutable after insert
+```
+
+Every timeline query over these tables is **keyset paginated** on `(created_at, id)`. Offset
+pagination remains prohibited (§153) and there is no exception here for tag, community, or
+message history.
+
+Migrations are TypeORM migrations, reviewed before commit; `synchronize` stays off (§153).
+
+---
+
+# 190. API surface
+
+**Amends §47, §51, §52, §53, and §56 by addition.** New `.proto` files:
+`communities.proto`, `messages.proto`, `tags.proto`. All new list RPCs are cursor-paginated
+with opaque cursors (§46). No new service returns a TypeORM entity (§153, §128–§129).
+
+```text
+PostService            + EditPost, ListPostEdits, PinPost, UnpinPost
+                       + CreatePost.quoted_post_id, CreatePost.community_id,
+                         CreatePost.quote_policy
+                       + Post.quoted_post, Post.community, Post.quote_policy
+                       + PostCounts.reposts/.quotes, PostViewerState.reposted
+
+ReactionService        + RepostPost, UnrepostPost, ListPostReposters
+                         (a repost is a pointer row like a like or a bookmark, §189)
+
+FeedService            + ListTagFeed, ListCommunityFeed
+                         neither takes an ordering parameter (§182.2)
+
+TagService (new)       SearchTags, MuteTag, UnmuteTag, ListMutedTags
+
+CommunityService (new) CreateCommunity, GetCommunity, ListCommunities,
+                       JoinCommunity, LeaveCommunity, ListCommunityMembers,
+                       UpdateCommunity, SetCommunityRole, RemovePostFromCommunity,
+                       BanFromCommunity, InviteToCommunity, RespondToCommunityInvite
+
+DirectMessageService   ListConversations, GetConversation, ListMessages,
+  (new)                SendMessage, DeleteMessage, CreateConversation,
+                       LeaveConversation, MarkConversationRead,
+                       ListMessageRequests, RespondToMessageRequest
+
+ActorService           + flair in UpdateProfile's field mask (§49's mask pattern, unchanged)
+                       + Actor.flair, Actor.pinned_post_ids
+
+ModerationService      + ReportMessage (snapshot-backed, §183.4)
+
+NodeService            + capabilities: like_glyph_allow_list, max_post_chars,
+                         can_create_community, dm_enabled, dm_retention_days
+```
+
+Service boundaries follow §128–§129: controller adapts transport, application service holds
+the logic, repository touches TypeORM. One Nest module per bounded area — `posts`,
+`reactions`, `communities`, `messages`, `tags` — and **not** a service per module (§153).
+
+---
+
+# 191. TUI screens and keys
+
+**Amends §69 and §71.** The terminal is where this ships or it does not ship (§179).
+
+New screens: `MessagesScreen` (conversation list + thread), `CommunitiesScreen` (list +
+timeline + members), `TagFeedScreen`, `PostEditScreen`, `PostHistoryScreen`.
+
+Key bindings, chosen to avoid every binding already documented in `docs/user-guide.md`:
+
+```text
+g d    messages (DMs)              R    repost / unrepost selected post
+g c    communities                 Q    quote selected post
+t      tag search                  E    edit own selected post
+#      tag timeline for the        d    delete own selected post (confirm)
+       selected post's first tag   H    view edit history of selected post
+j      join / leave the community  m    message the profile you're viewing
+       you're viewing              ~    toggle quiet feed
+,      preferences (plain mode, quiet feed, flair, pinned posts)
+```
+
+`c` composes into the current community when a community timeline is focused. `P` (plain
+mode), `e` (edit your Page), `l`, `b`, `r`, `!` and every other existing binding are
+unchanged — this amendment MUST NOT rebind an existing key.
+
+Requirements:
+
+- Every action above MUST also be reachable headlessly where it makes sense
+  (`patches dm`, `patches community`, `patches tag`) — the TUI is not the only terminal
+  surface (§76).
+- The `?` help screen and `docs/user-guide.md` MUST list every new key in the same change
+  that adds it.
+- New screens follow the existing navigation model (§69): `Esc` backs out one level, the
+  keyset cursor drives loading, and nothing blocks the input loop on a network call.
+- No screen may require Kitty graphics or truecolor to be usable (§153, §77).
+
+---
+
+# 192. Security requirements for this phase
+
+**Amends §101–§104 by addition.** Nothing here is new policy; it is §101–§104 applied to the
+five new write surfaces, written down so it is not rediscovered per-PR.
+
+- **DMs** (§183.4): mutual/accepted gating, block-aware both directions with no block
+  oracle, reportable with a bounded evidence snapshot, rate-limited per actor and per peer,
+  bodies never in logs/metrics/traces/errors, no media, no link previews, not federated.
+- **Tag and community names** are hostile input: NFKC normalize, reject control characters,
+  bidirectional overrides, zero-width characters, and combining-mark pileups; enforce the
+  character grammar (§181, §182.1); enforce a reserved-name blocklist; render with §172's
+  escape-stripping.
+- **Custom reaction glyphs, flair, and nameplates**: allow-list only, single width-1
+  codepoints, **no images and no uploads**, contrast floor enforced, control and escape
+  sequences stripped at render, and no rendering outside the block's own cells (§172, §173).
+- **Reposts and quotes** re-check authorization at write time: visibility, blocks, and quote
+  policy are enforced server-side on every call, never inferred from what the client was
+  shown.
+- **Community moderation** is scoped: a community moderator's authority stops at the
+  community boundary, and every action is audited (§66).
+- **Invites and message requests** are the two new unsolicited-contact vectors: both are
+  rate-limited, both are block-aware, both are individually mutable, and neither auto-joins
+  or auto-accepts anything.
+- All new input is validated at the service layer regardless of protobuf typing (§103), and
+  all new list endpoints are keyset paginated (§46, §153).
+
+---
+
+# 193. Federation mapping (later stage)
+
+Nothing in this section is in board Phase 11's scope. It is recorded so the local data model
+does not paint federation into a corner, and it moves **no** §109 gate and **no** §160
+checklist item.
+
+| Feature      | ActivityPub shape                                                     | Stage        |
+| ------------ | --------------------------------------------------------------------- | ------------ |
+| Repost       | `Announce` of the object; `Undo(Announce)` for unrepost                | v0.3 interop |
+| Quote        | `Note` with a quote link — Mastodon 4.4+ implements **FEP-044f** (consent-respecting quote posts) and also reads `quoteUri`, `quoteUrl`, `_misskey_quote` (verified 2026-08-18) | v0.3 interop |
+| Tags         | `Tag` entries of type `Hashtag` on the object                          | v0.3 interop |
+| Communities  | likely a `Group` actor that `Announce`s member posts (Lemmy/Guppe pattern) — **unverified**; requires a `docs/research/` note before any implementation | later, own ADR |
+| DMs          | `Note` addressed only to the recipients, no public/followers addressing | later, own gate |
+| Post edits   | `Update(Note)` (§26, ADR from A-035)                                   | already decided |
+
+Requirements when these are implemented:
+
+- `quote_policy` (§180.2) maps to FEP-044f's consent model; a quote of a remote post MUST
+  NOT be displayed as authorized unless authorization was actually received.
+- Remote reposts MUST NOT bypass local block, mute, or domain-block rules.
+- Federated DMs need their own security decision (§195) — they are not implied by shipping
+  local DMs.
+- Verify each of these against current upstream documentation before implementing (§0,
+  §155). The row above is a starting point, not a specification.
+
+---
+
+# 194. Additional hard prohibitions
+
+**Amends §153 and §177 by addition. Nothing in §153 or §177 is relaxed.** The implementation
+agent MUST NOT:
+
+- add votes, karma, scores, or any ordering signal to communities, posts, or tags,
+- add a sort/order parameter to a timeline RPC (home, local, actor, tag, or community),
+- ship a trending page, trending tags, trending communities, or activity-derived
+  recommendations,
+- let a repost, quote, like, edit, or pin change a post's position in any feed,
+- add reaction types beyond the like, per-glyph reaction counts, or reaction leaderboards,
+- allow images, uploads, or custom emoji in reaction glyphs, nameplates, or flair,
+- paywall or capability-gate a **function** (posting, reposting, quoting, tags, communities,
+  DMs, editing, drafts, Pages, nameplates, flair, export), or sell reach, placement, or
+  ordering,
+- describe v0 DMs as encrypted, end-to-end, secure, or private in any client, document, or
+  marketing surface,
+- write DM bodies to logs, metrics, traces, or error payloads,
+- ship DM media, link previews, read receipts, or typing indicators in v0,
+- federate DMs in v0,
+- auto-join an actor into a community from an invite, or auto-accept a message request,
+- allow a community moderator any authority outside their community,
+- use offset pagination in any new list endpoint,
+- implement scheduled posts, polls, or post analytics in this phase,
+- rebind an existing documented TUI key to a new feature.
+
+---
+
+# 195. Needs owner sign-off
+
+The following are **not** authorized by this amendment. Each needs an explicit owner
+decision, and the first three need an ADR before any code is written.
+
+1. **End-to-end encrypted DMs.** §183.1 ships server-visible DMs deliberately. E2E is a
+   different system: key management and multi-device sync, federated key discovery, loss of
+   server-side moderation and reporting evidence (§183.4), backup and recovery, and a
+   migration path for existing plaintext conversations. Decide the moderation trade
+   explicitly — it is the whole question, not a detail.
+2. **Community scope beyond §182's v0.** Private/invite-only communities, federated
+   communities as `Group` actors, per-community feeds or filters, community-level media
+   quotas.
+3. **Any paid cosmetics on the reference node.** The line this amendment draws: money may
+   buy storage, bandwidth, and a custom domain; it MUST NOT buy function, reach, ordering,
+   or social standing (§174, §184.3). A supporter badge is fine. Anything that touches this
+   line needs the owner, not an agent.
+4. **Whether the reference node enables DMs at launch**, and its `dm_retention_days`
+   default.
+5. **Raising `max_post_chars` above 5,000** on the reference node (§186.2).
+6. **Federated DMs** (§193) — a separate security decision with its own gate.
