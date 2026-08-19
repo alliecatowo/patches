@@ -156,6 +156,102 @@ export type E2eeEvidenceVerificationStatus = (typeof E2EE_EVIDENCE_VERIFICATION_
 export const MESSAGE_REQUEST_STATUSES = ['PENDING', 'ACCEPTED', 'DECLINED'] as const;
 export type MessageRequestStatus = (typeof MESSAGE_REQUEST_STATUSES)[number];
 
+/** `filters.action` / `filter_list_subscriptions.action` (`INITIAL_VISION.md` §198.3,
+ * §199.2). What a matched filter (or a list-derived filter) does to a post. Also the base
+ * of `LABEL_ACTIONS`, which adds `IGNORE` (§200.1) — kept as a separate array rather than
+ * derived, since a label subscription action and a filter action are different columns with
+ * different domains, even though three of the four values read the same. */
+export const FILTER_ACTIONS = ['HIDE', 'COLLAPSE', 'WARN'] as const;
+export type FilterAction = (typeof FILTER_ACTIONS)[number];
+
+/** `filter_scopes.scope` (`INITIAL_VISION.md` §198.3). Threads and profiles are deliberately
+ * absent — "a filter governs what arrives unbidden", not something a viewer opened on
+ * purpose. */
+export const FILTER_SCOPES = [
+  'HOME',
+  'LOCAL',
+  'TAG_FEED',
+  'COMMUNITY_FEED',
+  'NOTIFICATIONS',
+  'SEARCH',
+  'MESSAGE_REQUESTS',
+] as const;
+export type FilterScope = (typeof FILTER_SCOPES)[number];
+
+/** `filter_terms.kind` (`INITIAL_VISION.md` §198.2) — shared verbatim by
+ * `filter_list_entries.kind` (§199.1: "the §198.2 kinds"), so both columns' `@Check`
+ * constraints are generated from this one array. No regex kind exists in v1 (§198.2, §208) —
+ * every kind here is a literal the server matches, never a user-supplied pattern. */
+export const FILTER_TERM_KINDS = ['SUBSTRING', 'WORD', 'TAG', 'ACTOR', 'DOMAIN'] as const;
+export type FilterTermKind = (typeof FILTER_TERM_KINDS)[number];
+
+/** `labeler_subscription_actions.action` (`INITIAL_VISION.md` §200.1) — the §198.3 actions
+ * plus `IGNORE`, since a subscriber may choose to ignore a labeler's value entirely (except a
+ * node-mandatory value, enforced in the service layer, not here). */
+export const LABEL_ACTIONS = ['IGNORE', 'WARN', 'COLLAPSE', 'HIDE'] as const;
+export type LabelAction = (typeof LABEL_ACTIONS)[number];
+
+/** `labels.subject_type` (`INITIAL_VISION.md` §202, "mirrors `reports`" — see
+ * `report.entity.ts`'s `REPORT_SUBJECT_TYPES`, of which this is the two-member subset a label
+ * can target). */
+export const LABEL_SUBJECT_TYPES = ['ACTOR', 'POST'] as const;
+export type LabelSubjectType = (typeof LABEL_SUBJECT_TYPES)[number];
+
+/** `appeals.status` (`INITIAL_VISION.md` §201.3). */
+export const APPEAL_STATUSES = ['OPEN', 'UPHELD', 'OVERTURNED', 'MODIFIED'] as const;
+export type AppealStatus = (typeof APPEAL_STATUSES)[number];
+
+/** `moderation_log_entries.subject_kind` (`INITIAL_VISION.md` §201.4). Account/post/media
+ * entries are anonymized by construction (no actor/post id column at all); a domain entry is
+ * fully identified via `subject_domain`, since it is the node's own federation decision about
+ * its own conduct, not a record of any individual's conduct. */
+export const MODERATION_LOG_SUBJECT_KINDS = ['DOMAIN', 'ACCOUNT', 'POST', 'MEDIA'] as const;
+export type ModerationLogSubjectKind = (typeof MODERATION_LOG_SUBJECT_KINDS)[number];
+
+/** `moderation_log_entries.action` (`INITIAL_VISION.md` §201.2/§201.4-5) — the node
+ * enforcement actions that generate a moderation notice, plus the domain-level action
+ * published in the moderation log. Mirrors `ModerationActionType` in `moderation.proto`. */
+export const MODERATION_ACTION_TYPES = [
+  'WARN',
+  'SUSPEND',
+  'BAN',
+  'POST_REMOVAL',
+  'MEDIA_TAKEDOWN',
+  'DOMAIN_BLOCK',
+] as const;
+export type ModerationActionType = (typeof MODERATION_ACTION_TYPES)[number];
+
+/** `moderation_log_entries.reason_category` / `domain_blocks.reason_category`
+ * (`INITIAL_VISION.md` §202, `MODERATION_LOG_REASON_CATEGORIES`) — a bounded vocabulary
+ * derived from `docs/product/moderation.md`'s guideline list, never a report's free-text
+ * `details` and never a moderator's internal note. Mirrors `ModerationReasonCategory` in
+ * `moderation.proto`. Shared by both columns because §201.5 states the published domain-block
+ * reason is "the bounded category, same split as §201.4" — one vocabulary, two call sites. */
+export const MODERATION_REASON_CATEGORIES = [
+  'HARASSMENT',
+  'HATE',
+  'THREATS',
+  'DOXXING',
+  'IMPERSONATION',
+  'SPAM',
+  'ILLEGAL_CONTENT',
+  'NCII',
+  'INFRASTRUCTURE_ABUSE',
+  'OTHER',
+] as const;
+export type ModerationReasonCategory = (typeof MODERATION_REASON_CATEGORIES)[number];
+
+/** `domain_blocks.source` (`INITIAL_VISION.md` §201.6) — `IMPORTED` records provenance only;
+ * an imported blocklist is a reference list for an operator to review, never a write path of
+ * its own (`patches-admin domain block` remains the only writer either way). */
+export const DOMAIN_BLOCK_SOURCES = ['MANUAL', 'IMPORTED'] as const;
+export type DomainBlockSource = (typeof DOMAIN_BLOCK_SOURCES)[number];
+
+/** `account_exports.status` (`INITIAL_VISION.md` §197.3, §204 — one ready archive at a time,
+ * expires after 7 days). */
+export const ACCOUNT_EXPORT_STATUSES = ['PENDING', 'READY', 'FAILED', 'EXPIRED'] as const;
+export type AccountExportStatus = (typeof ACCOUNT_EXPORT_STATUSES)[number];
+
 /**
  * Builds `"column" IN ('A', 'B')` for a `@Check(...)` expression from a value list, so the
  * TS union and the database constraint are generated from the same array. Values are
