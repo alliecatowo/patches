@@ -76,6 +76,15 @@ const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000;
  */
 const AUTH_CODE_BYTES = 32;
 
+/**
+ * `pg_advisory_xact_lock` key for serialising the invite-only bootstrap decision below
+ * (A-040). Arbitrary but fixed for the life of the schema — advisory locks are keyed by a
+ * bare `bigint` with no namespace of their own, so this just needs to not collide with any
+ * other advisory lock this codebase takes (there are none today; grep for
+ * `pg_advisory` before reusing it for something else).
+ */
+const BOOTSTRAP_LOCK_KEY = 7461001;
+
 export interface RegisterInput {
   handle: string;
   displayName: string;
@@ -212,9 +221,15 @@ export class AuthService {
         } else {
           // Bootstrap (P1-013): an invite-only node has no invite-minting admin until its
           // first account exists, so the very first registration is let through without one.
-          // The `users` count is read and the account inserted in the same transaction, so a
-          // second bootstrap attempt racing this one blocks on the same row locks as any other
-          // concurrent registration rather than both slipping through.
+          // A plain `COUNT` inside a READ COMMITTED transaction takes no row lock at all — two
+          // concurrent invite-less registrations on a fresh node would each read 0 and both
+          // bypass the invite requirement (A-040). The `pg_advisory_xact_lock` below forces
+          // them to run one at a time: the first to acquire it sees the pre-lock state (no
+          // accounts) and proceeds; the second blocks until the first's transaction commits or
+          // rolls back, then sees the first account and is correctly rejected. The lock is
+          // released automatically at transaction end (`_xact_` variant), so nothing here needs
+          // an explicit unlock.
+          await manager.query('SELECT pg_advisory_xact_lock($1)', [BOOTSTRAP_LOCK_KEY]);
           const hasAnyAccount = (await manager.getRepository(User).count()) > 0;
           if (hasAnyAccount) {
             throw AppError.validation('This node is invite-only: an invite code is required.');
