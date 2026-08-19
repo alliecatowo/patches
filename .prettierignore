@@ -6,6 +6,9 @@ coverage
 pnpm-lock.yaml
 **/src/generated/**
 *.min.*
+site/docs
+site/.vitepress/cache
+site/.vitepress/dist
 CHANGELOG.md
 .mise
 INITIAL_VISION.md
