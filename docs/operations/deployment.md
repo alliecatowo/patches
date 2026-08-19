@@ -387,6 +387,14 @@ every RPC outside `SystemService.*`, `NodeService.GetNodeInfo`/`GetNodePolicy`, 
 `AuthService.*` then requires a session (`UNAUTHENTICATED`/`SIGN_IN_REQUIRED`) — see
 `apps/server/src/common/guards/public-read.guard.ts` and `docs/architecture/api.md` §7.
 
+**`PASSWORD_AUTH` (Status: implemented, default unchanged on the live deploy)**: P15-002 —
+`off | optional | required`, default `optional` (unchanged behavior). An operator who wants
+to force SSH/GitHub-only sign-in sets `fly secrets set PASSWORD_AUTH=off`: `Login`, a
+password-carrying `Register`, and `AddCredential(PASSWORD)` then reject with
+`FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED`, and `AuthService.GetAuthPolicy` tells clients
+to hide password UI. `required` is accepted but not yet enforced — see
+`docs/architecture/auth.md` §10.
+
 ## Error monitoring
 
 **Status: decided; log drain setup planned (needs live environment).**

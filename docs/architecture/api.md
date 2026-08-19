@@ -133,18 +133,19 @@ node at all, before any auth flow. `GetServerInfo`/`Ping` are exercised by
 
 ### AuthService (§48) — implemented in `auth.proto`
 
-| RPC                    | Notes                                                           |
-| ---------------------- | --------------------------------------------------------------- |
-| `Register`             | invite-gated in v0                                              |
-| `VerifyEmail`          | consumes an `email_verification_codes` row                      |
-| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row |
-| `Login`                | issues access + refresh token                                   |
-| `RefreshSession`       | rotates refresh token; reuse triggers family revocation         |
-| `Logout`               | revokes current session                                         |
-| `LogoutAllSessions`    | revokes all sessions for the user                               |
-| `RequestPasswordReset` | issues a `password_reset_codes` row                             |
-| `ResetPassword`        | consumes the reset code                                         |
-| `GetCurrentSession`    | returns session/actor info for the current access token         |
+| RPC                    | Notes                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `GetAuthPolicy`        | unauthenticated; `password_auth` (P15-002) — call before rendering password UI |
+| `Register`             | invite-gated in v0; carries `privacy_notice_version_acknowledged` (§204.2)     |
+| `VerifyEmail`          | consumes an `email_verification_codes` row                                     |
+| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row                |
+| `Login`                | issues access + refresh token                                                  |
+| `RefreshSession`       | rotates refresh token; reuse triggers family revocation                        |
+| `Logout`               | revokes current session                                                        |
+| `LogoutAllSessions`    | revokes all sessions for the user                                              |
+| `RequestPasswordReset` | issues a `password_reset_codes` row                                            |
+| `ResetPassword`        | consumes the reset code                                                        |
+| `GetCurrentSession`    | returns session/actor info for the current access token                        |
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
 session envelope**, so client session handling is identical regardless of credential type.
@@ -152,16 +153,18 @@ session envelope**, so client session handling is identical regardless of creden
 `UNIMPLEMENTED` when the node has no `GITHUB_CLIENT_ID` configured (`docs/architecture/
 auth.md` §5) rather than pretending the flow works.
 
-| RPC                  | Notes                                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `BeginSshLogin`      | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
-| `CompleteSshLogin`   | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
-| `BeginSshEnrollment` | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
-| `BeginGitHubLogin`   | device flow: returns user code, verification URI, polling interval                                                                |
-| `PollGitHubLogin`    | polls GitHub; returns pending or a session envelope                                                                               |
-| `ListCredentials`    | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
-| `AddCredential`      | requires an authenticated session                                                                                                 |
-| `RevokeCredential`   | fails if it would revoke the last active credential                                                                               |
+| RPC                     | Notes                                                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `BeginSshLogin`         | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
+| `CompleteSshLogin`      | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
+| `BeginSshEnrollment`    | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
+| `BeginGitHubLogin`      | device flow: returns user code, verification URI, polling interval                                                                |
+| `PollGitHubLogin`       | polls GitHub; returns pending or a session envelope                                                                               |
+| `ListCredentials`       | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
+| `AddCredential`         | requires an authenticated session                                                                                                 |
+| `RevokeCredential`      | fails if it would revoke the last active credential                                                                               |
+| `GenerateRecoveryCodes` | authenticated; mints 10 single-use codes (P15-003), revoking any generated previously                                             |
+| `RecoveryLogin`         | unauthenticated; redeems one code for a session, generic failure only                                                             |
 
 Notes:
 
@@ -556,12 +559,15 @@ separately, spec §206).
 | `CancelAccountDeletion`    | restores the account intact, only within the grace period (default 30 days, node-configurable)                  |
 | `GetDeletionStatus`        |                                                                                                                 |
 
-`AuthService.Register` records the account's initial acknowledgement itself (at whatever
-version this node currently publishes, per `PrivacyService.acknowledgePrivacyNotice`'s
-constant) — spec §197.1 requires a client to show the notice summary before the account
-exists, so by the time `Register` succeeds that has already happened; `RegisterRequest` was
-not amended with a notice-version field for this (that would be a proto change outside this
-task's scope). `ExportAccount`/`RequestAccountDeletion` only ever write a row and enqueue a
+`AuthService.Register` records the account's initial acknowledgement itself, via
+`RegisterRequest.privacy_notice_version_acknowledged` (P14-025, §204.2) — spec §197.1
+requires a client to show the notice summary before the account exists, so by the time
+`Register` succeeds that has already happened. When `REQUIRE_PRIVACY_ACK=true`, `Register`
+rejects with `FAILED_PRECONDITION`/`PRIVACY_NOTICE_NOT_ACKNOWLEDGED` unless this field equals
+the node's current `PRIVACY_NOTICE_VERSION`; when the flag is off (the default), any value —
+including the field's `0` zero-value default, for pre-P14-025 clients — is accepted and
+stamped as-is, since the notice has necessarily already been shown by the time this RPC is
+called regardless. `ExportAccount`/`RequestAccountDeletion` only ever write a row and enqueue a
 durable `outbox_jobs` row (`EXPORT_ACCOUNT`/`PURGE_ACCOUNT` — `docs/architecture/jobs.md` §9);
 `apps/worker`'s `ExportAccountHandler`/`PurgeAccountHandler` do the actual work. The export
 archive is currently one self-describing JSON document (not the fuller directory-tree-plus-
@@ -683,6 +689,7 @@ included in error metadata/messages where useful.
 | `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
 | `FOLLOW_REQUEST_NOT_FOUND`        | `NOT_FOUND`           |
 | `SIGN_IN_REQUIRED`                | `UNAUTHENTICATED`     |
+| `PASSWORD_AUTH_DISABLED`          | `FAILED_PRECONDITION` |
 
 There is no `TAG_INVALID` code — an invalid tag grammar (too many tags, bad prefix, etc.) is a
 generic `VALIDATION_ERROR`/`INVALID_ARGUMENT`, same as any other malformed input (§57). Full
