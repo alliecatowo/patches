@@ -45,3 +45,6 @@ Thumbs.db
 tmp/
 .scratch/
 .mise/
+
+# --- local logical database dumps (infra/scripts/db-dump.sh) ---
+backups/
