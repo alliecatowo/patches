@@ -4,8 +4,9 @@ The Ink 7 / React 19 terminal client for Patches — the `patches` command.
 
 ## Status
 
-**Status: planned until first publish.** This package builds a self-contained, publishable
-npm package under the name **`patches-social`** (checked 2026-08-18: `npm view patches`
+**Status: published as a self-contained tarball on GitHub Releases; npm registry publication
+still requires an authenticated owner session.** The package is built under the name
+**`patches-social`** (checked 2026-08-18: `npm view patches`
 shows the bare `patches` name is taken by an unrelated package; `patches-social` is free).
 The npm-facing package name is set via `publishConfig.name` in `package.json` — added in
 pnpm 11.18 (this repo pins pnpm 11.22.0, see `mise.toml`) specifically for this case: a
@@ -16,11 +17,11 @@ repo (root `package.json`, `mise.toml`, CI workflows) is unaffected by this and 
 working unchanged; only the packed/published tarball's `package.json` says
 `"name": "patches-social"`.
 
-`npm i -g patches-social` is not runnable yet because publishing itself (`npm login` +
-`pnpm publish`) hasn't happened — that's the package owner's manual step, see
-`docs/operations/deployment.md`'s "Publishing the TUI" section. Building and packing the
-tarball locally and installing it into a scratch prefix, however, is fully verified below and
-proves the eventual `npm i -g patches-social` will work once published.
+`npm i -g patches-social` is not runnable yet because registry publishing itself (`npm login`
+
+- `pnpm publish`) has not happened. Until then, install the signed release tarball using the
+  command in `docs/operations/try-it.md`. Building, packing, and installing that artifact into a
+  scratch prefix is fully verified below.
 
 ### Self-contained build (P9-003 / A-046)
 

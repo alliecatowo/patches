@@ -6,9 +6,9 @@ end to end with two real accounts (register, login, post, follow, like, reply, t
 notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile`,
 `infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it; the deploy
 workflow itself is still gated behind `vars.FLY_DEPLOY_ENABLED` (unset) — the live deploy so
-far was done by hand with `flyctl`, not yet through CI. Media uploads and verification email
-are **not** working on this node yet (dashboard-only R2/Resend credentials — see "Secrets"
-below and `tasks.md` B-031); federation is off by design. As of 2026-08-18 (A-041),
+far was done by hand with `flyctl`, not yet through CI. Media uploads use the production R2
+bucket and verification email is sent through Resend from the verified
+`noreply@updates.allisons.dev` sender; federation is off by design. As of 2026-08-18 (A-041),
 production `DATABASE_URL` points at **Neon**, not the original Fly Postgres cluster — see
 "Production database" below. Sections describing genuinely not-yet-exercised steps (custom
 domain, autoscaling, log drain) still say `Status: planned`.
@@ -194,11 +194,10 @@ node apps/tui/dist/cli.js ping
 `f` follow, `l` like, `g n` notifications (LIKE + FOLLOW entries appear), `r` reply,
 `Enter` thread, `g h` home feed shows the followed account's post.
 
-**Not working in production yet** (see `tasks.md` B-031): image uploads (no R2 S3 access
-keys — the bucket `patches-media` exists via `wrangler r2 bucket create`, but generating S3
-credentials for it is dashboard-only), verification email (`EMAIL_PROVIDER=console` — codes
-land in `flyctl logs`, not an inbox; Resend needs a verified sending domain), federation
-(`FEDERATION_ENABLED=false` by design for v0.0).
+**Production integrations verified**: media uploads use R2 S3 credentials and the
+`patches-media` bucket; verification messages use Resend and the verified
+`updates.allisons.dev` sending domain. Federation remains disabled by design for v0.0
+(`FEDERATION_ENABLED=false`).
 
 ### "First deploy" checklist
 
@@ -214,8 +213,8 @@ land in `flyctl logs`, not an inbox; Resend needs a verified sending domain), fe
       running.
 - [x] Smoke ping passes (`patches ping` against the live host).
 - [x] End-to-end social loop verified with two real accounts.
-- [ ] R2 media credentials set (**planned** — dashboard-only, `tasks.md` B-031).
-- [ ] Resend sending domain verified (**planned** — dashboard-only, `tasks.md` B-031).
+- [x] R2 media credentials set and a live upload/derivative flow verified.
+- [x] Resend API key and verified `updates.allisons.dev` sending domain configured.
 - [ ] Deploy workflow exercised through CI (**planned** — `vars.FLY_DEPLOY_ENABLED` still
       unset; this deploy was done by hand).
 - [ ] Custom domain `patches.social` (**planned** — node currently only reachable at
@@ -364,7 +363,7 @@ fly secrets set --config infra/fly/fly.toml \
   R2_BUCKET="patches-media" \
   R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
   RESEND_API_KEY="..." \
-  EMAIL_FROM="noreply@patches.social" \
+  EMAIL_FROM="Patches <noreply@updates.allisons.dev>" \
   INVITE_ONLY="true"
 ```
 
@@ -372,17 +371,12 @@ fly secrets set --config infra/fly/fly.toml \
 connecting an externally-provisioned Postgres instead.) `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`
 generation: `pnpm keys:generate` (see root `package.json`).
 
-**R2 bucket + CORS (Status: planned)**: create a dedicated R2 bucket
-(`patches-media` or similar) via the Cloudflare dashboard or `wrangler`, generate an R2 API
-token scoped to that bucket (Account → R2 → Manage API Tokens), and configure CORS on the
-bucket to allow the production origin(s) that need direct browser/client uploads (see
-`docs/decisions/0005-r2-media-storage.md` and `packages/media` for the presigned-URL upload
-flow this backs). No specific CORS JSON is prescribed here yet — write it once
-`packages/media`'s actual upload origins are finalized.
+**R2 bucket + CORS (Status: deployed)**: the dedicated `patches-media` bucket and scoped S3
+credentials back the presigned-URL upload/derivative flow. Browser-origin CORS remains a
+client-specific follow-up; the current TUI upload path does not require it.
 
-**Resend (Status: planned)**: create a Resend account, verify the sending domain
-(`patches.social` or the actual chosen domain) via its DNS records (SPF/DKIM/DMARC), and
-generate an API key scoped to sending only.
+**Resend (Status: deployed)**: `updates.allisons.dev` is verified and production sends as
+`Patches <noreply@updates.allisons.dev>` using the scoped `RESEND_API_KEY` Fly secret.
 
 ## Error monitoring
 
@@ -515,7 +509,10 @@ resolve to concrete semver ranges at pack time (e.g. `"ink": "^7.1.1"`, not the 
 string `catalog:`) — required for the tarball to be installable by a plain `npm install`,
 not just within this pnpm workspace.
 
-**Status: planned** — publishing itself (`npm login`, then `mise exec -- pnpm --filter
+GitHub prerelease tarballs are published and are the supported installation channel today;
+see `docs/operations/try-it.md` for the current URL.
+
+**npm registry status: blocked on authentication** — publishing itself (`npm login`, then `mise exec -- pnpm --filter
 @patches/tui publish --access public`, using the workspace-local filter name; pnpm rewrites
 the published name to `patches-social` via `publishConfig.name`) is a manual, one-time step
 for the package owner and hasn't been run — `npm login` isn't available in this

@@ -7,7 +7,7 @@ _Status: verified 2026-08-18 against the live node and a local stack._
 Install once (Node 24+, no registry login — the repo is public):
 
 ```bash
-npm install --global --allow-remote=all https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.1/patches-social-0.1.0.tgz
+npm install --global --allow-remote=all https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.2/patches-social-0.1.0.tgz
 # (npm 12 blocks remote tarballs by default: keep `--allow-remote=all`, or download the .tgz and install the local file)
 patches ping            # {"ok": true, "target": "patches-social.fly.dev:443", ...}
 ```
@@ -32,8 +32,8 @@ patches                 # the TUI: g h home · g l local · c compose (Ctrl+A at
 patches --help          # every subcommand (login, logout, accounts, whoami, keys, verify, profile, visit …)
 ```
 
-Email verification mails currently deliver only to the Resend account owner's address until a
-sending domain is verified (`docs/operations/deployment.md`); everything else works unverified.
+Email verification is delivered through Resend from the verified
+`noreply@updates.allisons.dev` sender (`docs/operations/deployment.md`).
 
 ## 2. Testing several users at once
 
