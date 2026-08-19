@@ -16,10 +16,25 @@ lives on.
 
 ## Installing
 
-**Status: planned.** A published `npm install -g @patches/tui` is not available yet — the
-package depends on two still-private workspace packages
-(`@patches/proto`, `@patches/terminal-media`) that haven't been published to a registry. Until
-that lands, run the client from a source checkout:
+**Status: planned until first publish.**
+
+```bash
+npm i -g patches-social
+patches --version
+```
+
+`apps/tui` now builds as a single self-contained bundle (`apps/tui/tsup.config.ts`) with the
+three workspace packages it needs (`@patches/domain`, `@patches/proto`,
+`@patches/terminal-media`) inlined directly into `dist/cli.js`, so a plain `npm install -g` no
+longer needs those packages published on their own — see `apps/tui/README.md`'s "Self-contained
+build" section for how. Verified locally end-to-end (2026-08-18): building, packing, and
+installing the tarball into a scratch global prefix produces a working `patches` binary that
+runs `--version`, `--help`, and `ping` against the live node with no repo checkout on `PATH`.
+What's still outstanding is the publish itself (`npm login` + `pnpm publish`, a manual step by
+the package owner — see `docs/operations/deployment.md`'s "Publishing the TUI" section), so
+`npm i -g patches-social` isn't runnable from the public registry yet.
+
+Until it's published, run the client from a source checkout:
 
 ```bash
 git clone <repo-url> patches && cd patches

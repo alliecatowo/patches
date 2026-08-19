@@ -41,9 +41,10 @@ node apps/tui/dist/cli.js --help     # every subcommand (login, whoami, keys, ve
 ```
 
 No `--server`/`--insecure` needed — the client's default target is
-`patches-social.fly.dev:443` over TLS. A published `npm install -g @patches/tui` is planned
-but not live yet (the package still depends on two unpublished workspace packages); building
-from a source checkout, as above, is the supported path today. Two things don't work in
+`patches-social.fly.dev:443` over TLS. A published `npm install -g patches-social` is planned
+but not live yet (publishing itself is a manual owner step, see
+`docs/operations/deployment.md`); building from a source checkout, as above, is the
+supported path today. Two things don't work in
 production yet: image uploads and verification email (see
 [`docs/user-guide.md`](docs/user-guide.md#what-doesnt-work-yet-on-the-live-node)).
 
