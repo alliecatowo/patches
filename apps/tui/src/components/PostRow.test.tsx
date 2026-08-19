@@ -44,6 +44,8 @@ function post(overrides: Partial<Post> = {}): Post {
     quotedPost: undefined,
     community: undefined,
     quotePolicy: QUOTE_POLICY.UNSPECIFIED,
+    repostedBy: [],
+    repostedByTotal: 0,
     ...overrides,
   };
 }
