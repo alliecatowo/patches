@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
-import { movementTarget } from '../app/list-movement.js';
+import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, grpcStatusCode, type FriendlyError } from '../api/errors.js';
 import { Loading } from '../components/Loading.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PostList, type PostRowActions } from '../components/PostList.js';
+import { VirtualList } from '../components/VirtualList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
 
@@ -58,10 +59,16 @@ export function SearchScreen({
   actions,
   onCancel,
 }: SearchScreenProps): ReactElement {
+  const content = useContentSize();
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<Status>({ status: 'idle' });
   const [mode, setMode] = useState<SearchMode>('people');
+  // A fresh search always lands on the top result, the same way the old
+  // hand-rolled `selected` reset did — `VirtualList` otherwise keeps the previous
+  // selection index across an items change. Reusing its `jump` prop (rather than
+  // `key`-ing a remount) keeps the same `VirtualList` instance mounted, so its
+  // `useInput` subscription never has to re-register mid-keystroke.
+  const [resultsNonce, setResultsNonce] = useState(0);
 
   async function resolveRemoteActor(rawAcct: string): Promise<void> {
     if (ensureAccessToken === undefined) {
@@ -82,7 +89,7 @@ export function SearchScreen({
       const accessToken = await ensureAccessToken();
       const response = await api.resolveActor({ acct }, accessToken);
       setStatus({ status: 'ready', actors: present(response.actor) ? [response.actor] : [] });
-      setSelected(0);
+      setResultsNonce((nonce) => nonce + 1);
     } catch (error) {
       if (grpcStatusCode(error) === GrpcStatus.UNIMPLEMENTED) {
         setStatus({
@@ -114,7 +121,6 @@ export function SearchScreen({
         posts: [...response.posts],
         hasMore: response.page?.hasMore ?? false,
       });
-      setSelected(0);
     } catch (error) {
       setStatus({ status: 'error', error: describeGrpcError(error, api.target) });
     }
@@ -135,7 +141,7 @@ export function SearchScreen({
     try {
       const response = await api.searchActors({ query: trimmed, cursor: '', limit: 20 });
       setStatus({ status: 'ready', actors: [...response.actors] });
-      setSelected(0);
+      setResultsNonce((nonce) => nonce + 1);
     } catch (error) {
       setStatus({ status: 'error', error: describeGrpcError(error, api.target) });
     }
@@ -151,7 +157,6 @@ export function SearchScreen({
       if (key.tab) {
         setMode((current) => (current === 'people' ? 'posts' : 'people'));
         setStatus({ status: 'idle' });
-        setSelected(0);
         return;
       }
       // Post results are a normal `PostList`: it owns j/k/Enter/l/b/r/f, so this
@@ -166,25 +171,12 @@ export function SearchScreen({
 
       const results = status.status === 'ready' ? status.actors : [];
       if (results.length > 0) {
-        // Same movement vocabulary as every other list (j/k, arrows, Ctrl+D/U, G) —
-        // typing only edits the query while there are no results to move through.
-        const moved = movementTarget({
-          input,
-          key,
-          current: selected,
-          total: results.length,
-          pageSize: 10,
-        });
-        if (moved !== undefined) {
-          setSelected(moved);
-          return;
-        }
-        if (key.return) {
-          const actor = results[selected];
-          if (actor !== undefined) onOpenActor(actor);
-          return;
-        }
-      } else if (key.return) {
+        // Movement (same vocabulary as every other list — j/k, arrows, Ctrl+D/U, G)
+        // and `Enter` now belong to the actor `VirtualList`; typing only edits the
+        // query while there are no results to move through.
+        return;
+      }
+      if (key.return) {
         void runSearch();
         return;
       }
@@ -234,25 +226,44 @@ export function SearchScreen({
           />
         </Box>
       )}
-      {status.status === 'ready' && (
+      {mode === 'people' && status.status !== 'posts' && (
+        // Mounted for the whole of "people" mode, not just once results land — a
+        // fresh mount's `useInput` only subscribes on a later effect tick, and this
+        // screen's own tests type a query and hit Enter twice back to back with no
+        // frame settle between them. Staying mounted keeps the subscription already
+        // live long before the result-opening `Enter` needs it.
         <Box marginTop={1} flexDirection="column">
-          {status.actors.length === 0 ? (
-            <Text color={theme.muted}>No matches.</Text>
-          ) : (
-            status.actors.map((actor, index) => (
-              <Box key={actor.id}>
+          <VirtualList<Actor>
+            items={status.status === 'ready' ? status.actors : []}
+            keyOf={(actor) => actor.id}
+            measure={() => 1}
+            width={Math.max(10, content.columns - 4)}
+            budget={Math.max(3, content.rows - 8)}
+            jump={{ edge: 'top', nonce: resultsNonce }}
+            isActive={isActive}
+            showPosition={false}
+            empty={status.status === 'ready' ? <Text color={theme.muted}>No matches.</Text> : <></>}
+            renderItem={(actor, state) => (
+              <Box height={1} overflow="hidden" flexShrink={0} width={state.width}>
                 <Nameplate
                   handle={actor.handle}
                   nameplate={actor.nameplate ?? undefined}
-                  bold={index === selected}
-                  fallbackColor={index === selected ? theme.accent : undefined}
+                  bold={state.selected}
+                  fallbackColor={state.selected ? theme.accent : undefined}
                 />
                 {actor.displayName === '' ? null : (
                   <Text color={theme.muted}> · {sanitizeForTerminal(actor.displayName)}</Text>
                 )}
               </Box>
-            ))
-          )}
+            )}
+            onKey={(_input, key, actor) => {
+              if (key.return && actor !== undefined) {
+                onOpenActor(actor);
+                return true;
+              }
+              return false;
+            }}
+          />
         </Box>
       )}
       <Box marginTop={1}>

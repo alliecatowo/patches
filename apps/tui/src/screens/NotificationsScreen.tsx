@@ -5,10 +5,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
-import { movementTarget } from '../app/list-movement.js';
 import type { PatchesApi } from '../api/client.js';
 import { Loading } from '../components/Loading.js';
 import { Nameplate } from '../components/Nameplate.js';
+import { VirtualList } from '../components/VirtualList.js';
 import { formatRelativeTime } from '../format/relative-time.js';
 import { usePaginatedList, type Page } from '../hooks/usePaginatedPosts.js';
 import { theme } from '../theme/index.js';
@@ -81,7 +81,7 @@ export function NotificationsScreen({
   onOpenAuthor,
   onReadStateChanged,
 }: NotificationsScreenProps): ReactElement {
-  const { rows } = useContentSize();
+  const { rows, columns } = useContentSize();
   const fetchPage = useCallback(
     (cursor: string): Promise<Page<Notification>> =>
       ensureAccessToken()
@@ -98,7 +98,10 @@ export function NotificationsScreen({
     loadMore,
   } = usePaginatedList<Notification>(api.target, fetchPage);
 
-  const [selected, setSelected] = useState(0);
+  // Mirrors `VirtualList`'s own selection/viewport so the footer and the auto-read
+  // effect can read them without reaching into the list itself.
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [viewportEnd, setViewportEnd] = useState(0);
   // Highest index already marked read this session, so scrolling back up doesn't
   // re-issue the same `MarkNotificationsRead` over and over.
   const markedThrough = useRef(-1);
@@ -106,9 +109,6 @@ export function NotificationsScreen({
   // reflect that locally (spec: manual refresh is fine, no push infra in v0).
   const [readOverride, setReadOverride] = useState<ReadonlySet<string>>(new Set());
   const [markStatus, setMarkStatus] = useState<'idle' | 'marking'>('idle');
-
-  const maxIndex = Math.max(notifications.length - 1, 0);
-  const effectiveSelected = Math.min(selected, maxIndex);
 
   async function markAllRead(): Promise<void> {
     if (markStatus === 'marking') return;
@@ -153,56 +153,38 @@ export function NotificationsScreen({
   );
 
   const visibleCount = Math.max(3, rows - 6);
-  const windowStart = Math.min(
-    Math.max(0, effectiveSelected - Math.floor(visibleCount / 2)),
-    Math.max(0, notifications.length - visibleCount),
-  );
-  const windowEnd = Math.min(notifications.length, windowStart + visibleCount);
 
   // Anything on screen for `AUTO_READ_DELAY_MS` counts as read. Debounced via the
   // effect's own cleanup, so a fast scroll through five screenfuls only marks the
-  // one you stop on.
+  // one you stop on. `viewportEnd` comes straight from `VirtualList`'s own render —
+  // it is the one component that actually knows which rows are on screen.
   useEffect(() => {
-    if (!isActive || windowEnd === 0) return;
+    if (!isActive || viewportEnd === 0) return;
     const timer = setTimeout(() => {
-      void markReadThrough(windowEnd - 1);
+      void markReadThrough(viewportEnd - 1);
     }, AUTO_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [isActive, windowEnd, markReadThrough]);
+  }, [isActive, viewportEnd, markReadThrough]);
 
-  function openSelected(): void {
-    const notification = notifications[effectiveSelected];
+  function openSelected(index: number, notification: Notification | undefined): void {
     if (notification === undefined) return;
-    void markReadThrough(effectiveSelected);
+    void markReadThrough(index);
     if (notification.postId !== '') onOpenPost(notification.postId);
     else if (present(notification.actor)) onOpenAuthor(notification.actor);
   }
 
+  // Movement (`j`/`k`/`Ctrl+D`/`Ctrl+U`/`Home`/`End`) belongs to `VirtualList`; this
+  // is only the screen's own verbs, gated the same way the old hand-rolled window was
+  // — inert while the first page is still loading.
   useInput(
-    (input, key) => {
+    (input) => {
       if (input === 'm') {
         void markAllRead();
         return;
       }
       if ((input === 'n' || input === ' ') && hasMore) {
         loadMore();
-        return;
       }
-      if (notifications.length === 0) return;
-      const moved = movementTarget({
-        input,
-        key,
-        current: effectiveSelected,
-        total: notifications.length,
-        pageSize: visibleCount,
-      });
-      if (moved !== undefined) {
-        setSelected(moved);
-        return;
-      }
-      // `o` alongside `Enter`: a mention notification is usually something you want
-      // to open, and `o` is "open" everywhere else in the app.
-      if (key.return || input === 'o') openSelected();
     },
     { isActive: isActive && !loading },
   );
@@ -212,39 +194,52 @@ export function NotificationsScreen({
       <Text color={theme.accent}>Notifications</Text>
       {error === undefined ? null : <Text color={theme.error}>{error.title}</Text>}
       <Box marginTop={1} flexDirection="column">
-        {notifications.length === 0 ? (
-          loading ? (
-            <Loading label="Loading" />
-          ) : (
-            <Text color={theme.muted}>Nothing yet.</Text>
-          )
+        {notifications.length === 0 && loading ? (
+          <Loading label="Loading" />
         ) : (
-          notifications.slice(windowStart, windowEnd).map((notification, offset) => {
-            const index = windowStart + offset;
-            const isRead = present(notification.readAt) || readOverride.has(notification.id);
-            const createdAt = timestampToDate(notification.createdAt);
-            const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
-            return (
-              <Box key={notification.id}>
-                <Text
-                  color={isActive && index === effectiveSelected ? theme.accent : theme.muted}
-                  bold={isActive && index === effectiveSelected}
-                >
-                  {isRead ? ' ' : '•'} {typeIcon(notification.type)}{' '}
-                </Text>
-                {present(notification.actor) ? (
-                  <Nameplate
-                    handle={notification.actor.handle}
-                    nameplate={notification.actor.nameplate ?? undefined}
-                  />
-                ) : (
-                  <Text color={theme.muted}>system</Text>
-                )}
-                <Text> {typeLabel(notification.type)}</Text>
-                {when === '' ? null : <Text color={theme.muted}> · {when}</Text>}
-              </Box>
-            );
-          })
+          <VirtualList<Notification>
+            items={notifications}
+            keyOf={(notification) => notification.id}
+            measure={() => 1}
+            width={Math.max(10, columns - 2)}
+            budget={visibleCount}
+            isActive={isActive && !loading}
+            showPosition={false}
+            empty={<Text color={theme.muted}>Nothing yet.</Text>}
+            onSelectionChange={(index) => setSelectedIndex(index)}
+            onViewportChange={(_start, end) => setViewportEnd(end)}
+            renderItem={(notification, state) => {
+              const isRead = present(notification.readAt) || readOverride.has(notification.id);
+              const createdAt = timestampToDate(notification.createdAt);
+              const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
+              return (
+                <Box height={1} overflow="hidden" flexShrink={0} width={state.width}>
+                  <Text color={state.selected ? theme.accent : theme.muted} bold={state.selected}>
+                    {isRead ? ' ' : '•'} {typeIcon(notification.type)}{' '}
+                  </Text>
+                  {present(notification.actor) ? (
+                    <Nameplate
+                      handle={notification.actor.handle}
+                      nameplate={notification.actor.nameplate ?? undefined}
+                    />
+                  ) : (
+                    <Text color={theme.muted}>system</Text>
+                  )}
+                  <Text> {typeLabel(notification.type)}</Text>
+                  {when === '' ? null : <Text color={theme.muted}> · {when}</Text>}
+                </Box>
+              );
+            }}
+            onKey={(input, key, notification, index) => {
+              // `o` alongside `Enter`: a mention notification is usually something
+              // you want to open, and `o` is "open" everywhere else in the app.
+              if (key.return || input === 'o') {
+                openSelected(index, notification);
+                return true;
+              }
+              return false;
+            }}
+          />
         )}
       </Box>
       <Box marginTop={1}>
@@ -254,7 +249,7 @@ export function NotificationsScreen({
           <Text color={theme.muted}>
             {notifications.length === 0
               ? ''
-              : `${String(effectiveSelected + 1)}/${String(notifications.length)}${
+              : `${String(selectedIndex + 1)}/${String(notifications.length)}${
                   hasMore ? ' · ↓ n / space for more' : ' · end'
                 }`}
           </Text>
