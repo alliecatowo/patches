@@ -9,6 +9,7 @@ import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
 import { MediaAttachments } from './MediaAttachments.js';
 import { Nameplate } from './Nameplate.js';
+import { measurePostBody } from './post-height.js';
 
 export interface PostRowProps {
   post: Post;
@@ -21,6 +22,8 @@ export interface PostRowProps {
    * `measurePostRowHeight` predicted — an unmeasured soft-wrap is what corrupts
    * Ink's frame diff (see `format/measure.ts`). */
   width?: number;
+  /** Expands a body beyond the default measured eight-row preview. */
+  expanded?: boolean;
 }
 
 /**
@@ -36,15 +39,31 @@ export function PostRow({
   selected = false,
   revealed = false,
   width,
+  expanded = false,
 }: PostRowProps): ReactElement {
   const createdAt = timestampToDate(post.createdAt);
   const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
   const hasWarning = !post.deleted && post.contentWarning !== '';
   const bodyText = post.body === '' ? post.linkUrl : post.body;
+  const quoted = present(post.quotedPost) ? post.quotedPost : undefined;
+  const repostHandles = post.repostedBy
+    .map((actor) => actor.handle || actor.id)
+    .filter((value) => value !== '');
+  const remainingReposters = Math.max(0, post.repostedByTotal - repostHandles.length);
+  const repostAttribution =
+    repostHandles.length === 0
+      ? ''
+      : `↻ ${repostHandles.map((value) => `@${value}`).join(', ')}${remainingReposters > 0 ? ` +${String(remainingReposters)}` : ''} reposted`;
+  const bodyMeasurement = measurePostBody(post, width ?? 40, expanded);
 
   return (
     <Box flexDirection="column" flexShrink={0} marginBottom={1} width={width} overflow="hidden">
+      {repostAttribution === '' ? null : (
+        <Text color={theme.muted} wrap="truncate-end">
+          {repostAttribution}
+        </Text>
+      )}
       <Box overflow="hidden" flexShrink={0} height={1}>
         <Nameplate
           handle={handle}
@@ -52,7 +71,11 @@ export function PostRow({
           bold={selected}
           fallbackColor={selected ? theme.accent : undefined}
         />
+        {present(post.community) ? (
+          <Text color={theme.accent}> · c/{sanitizeForTerminal(post.community.name)}</Text>
+        ) : null}
         {when === '' ? null : <Text color={theme.muted}> · {when}</Text>}
+        {present(post.editedAt) ? <Text color={theme.muted}> · edited</Text> : null}
       </Box>
       {post.deleted ? (
         <Text color={theme.muted}>[deleted]</Text>
@@ -67,11 +90,16 @@ export function PostRow({
               ⚠ {sanitizeForTerminal(post.contentWarning)}
             </Text>
           ) : null}
-          <RichBody text={bodyText} />
+          <Box height={bodyMeasurement.rows} flexShrink={0} overflow="hidden">
+            <RichBody text={bodyText} />
+          </Box>
+          {bodyMeasurement.folded ? <Text color={theme.muted}>… press v to expand</Text> : null}
           <MediaAttachments
             attachments={post.media}
             maxCols={Math.min(40, Math.max(12, (width ?? 40) - 2))}
+            inline={selected}
           />
+          {quoted === undefined ? null : <QuotedPost post={quoted} />}
         </>
       )}
       {present(post.counts) ? (
@@ -81,9 +109,29 @@ export function PostRow({
         >
           {present(post.viewerState) && post.viewerState.liked ? '♥' : '♡'} {post.counts.likes} ·{' '}
           {post.counts.replies} {post.counts.replies === 1 ? 'reply' : 'replies'}
+          {post.counts.reposts > 0 ? ` · ↻ ${String(post.counts.reposts)}` : ''}
+          {post.counts.quotes > 0 ? ` · ❝ ${String(post.counts.quotes)}` : ''}
+          {present(post.viewerState) && post.viewerState.reposted ? ' · reposted' : ''}
           {present(post.viewerState) && post.viewerState.bookmarked ? ' · ★ bookmarked' : ''}
         </Text>
       ) : null}
+    </Box>
+  );
+}
+
+/** A quote is a pointer preview, never a recursively rendered post. Keeping it to
+ * three measured rows makes deeply nested quote chains impossible and keeps a
+ * timeline resize from changing navigation state (spec §180/§188). */
+function QuotedPost({ post }: { post: Post }): ReactElement {
+  const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
+  const body = post.deleted ? '[deleted]' : post.body === '' ? post.linkUrl : post.body;
+  return (
+    <Box flexDirection="column" height={3} flexShrink={0} overflow="hidden" marginTop={1}>
+      <Text color={theme.muted} wrap="truncate-end">
+        ┌ quoted @{sanitizeForTerminal(handle)}
+      </Text>
+      <Text wrap="truncate-end">│ {sanitizeForTerminal(body)}</Text>
+      <Text color={theme.muted}>└ Enter opens the thread</Text>
     </Box>
   );
 }

@@ -17,22 +17,24 @@ export interface MediaAttachmentsProps {
   /**
    * Draw the real Kitty image, rather than the §75 description box.
    *
-   * **Off in timelines, on purpose.** Kitty images are written straight to
+   * **Focused-only in timelines, on purpose.** Kitty images are written straight to
    * `process.stdout` as APC sequences (they cannot go through Ink's text tree), so
    * Ink has no idea they are there: as soon as the list scrolls, the placement stays
    * behind and the frame diff drifts — the owner saw a solid purple block wedged
    * between rows and every row below it shifted by one (2026-08-18, reproduced on
-   * v0.1.0-alpha.2). A scrolling virtualized list cannot guarantee the image stays
-   * inside its measured box, so lists show the fallback box (which measures exactly
-   * three rows) and `o` opens the real image externally. A dedicated full-screen
-   * viewer — one image, nothing scrolling under it — is the place inline rendering
-   * belongs; see `docs/architecture/tui.md`.
+   * v0.1.0-alpha.2). A scrolling virtualized list cannot safely own several
+   * placements, so only its selected row mounts a real image; every other row shows
+   * the equal-height fallback box. A dedicated full-screen viewer is the other safe
+   * inline owner.
    */
   inline?: boolean;
 }
 
 const DEFAULT_MAX_COLS = 40;
-const DEFAULT_MAX_ROWS = 12;
+// Inline and fallback forms deliberately occupy the same three-row cell budget.
+// Switching the selected row from a fallback box to a Kitty placement must never
+// reflow the list; a height change during an Ink diff is how the live TUI smeared.
+const DEFAULT_MAX_ROWS = 3;
 
 function mimeSubtype(mime: string): string {
   const slash = mime.indexOf('/');
@@ -86,14 +88,22 @@ function InlineAttachment({
 }): ReactElement {
   const state = useMediaAttachment(session, renderer, attachment, { maxCols, maxRows });
   if (state.status === 'ready') {
-    return <InlineImageRow renderer={renderer} image={state.prepared} />;
+    return (
+      <Box height={maxRows} flexShrink={0} overflow="hidden">
+        <InlineImageRow renderer={renderer} image={state.prepared} />
+      </Box>
+    );
   }
   if (state.status === 'error') {
-    return <FallbackAttachment attachment={attachment} cols={maxCols} />;
+    return (
+      <Box height={maxRows} flexShrink={0} overflow="hidden">
+        <FallbackAttachment attachment={attachment} cols={maxCols} />
+      </Box>
+    );
   }
   const rows = buildFallbackBox(maxCols, 'loading image…');
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={maxRows} flexShrink={0} overflow="hidden">
       {rows.map((row, index) => (
         <Text key={`${attachment.mediaId}:loading:${index}`}>{row}</Text>
       ))}
@@ -112,9 +122,9 @@ function InlineImageRow({
 }
 
 /**
- * `PostRow`/`ThreadScreen` attachment rendering (B-004, spec §73–76): Kitty inline
- * images where the terminal supports it and a `MediaSession` is in scope, the spec §75
- * fallback box everywhere else. Renders nothing for a post with no attachments.
+ * Shared attachment rendering (B-004/P12-018, spec §73–76): Kitty inline images only
+ * when the caller explicitly owns a stable placement, the spec §75 fallback box
+ * everywhere else. Renders nothing for a post with no attachments.
  */
 export function MediaAttachments({
   attachments,

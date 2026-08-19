@@ -36,6 +36,18 @@ export interface PostRowActions {
   /** `f` on the selected row — follows/unfollows its author without leaving the
    * timeline (owner feedback 2026-08-18: follows existed but only on a profile). */
   onToggleFollow?: ((post: Post) => void) | undefined;
+  /** `R` — repost/unrepost. Refresh is `Ctrl+R` in keymap v2. */
+  onToggleRepost?: ((post: Post) => void) | undefined;
+  /** `Q` — start a quote-post draft pointing at this post. */
+  onQuote?: ((post: Post) => void) | undefined;
+  /** `e` — edit one of the viewer's own posts. */
+  onEdit?: ((post: Post) => void) | undefined;
+  /** `d` — request deletion; the shell must show a confirm dialog. */
+  onDelete?: ((post: Post) => void) | undefined;
+  /** `H` — open the immutable edit history for this post. */
+  onHistory?: ((post: Post) => void) | undefined;
+  /** `I` — pin/unpin one of the viewer's own profile posts. */
+  onTogglePin?: ((post: Post) => void) | undefined;
   /** Not an action: `g g` (top) arrives from the shell, because `g` is the shell's
    * key prefix. Threaded through the same bag every screen already spreads onto
    * `PostList`, so no screen needs a new prop. */
@@ -85,6 +97,12 @@ export function PostList({
   onReport,
   onOpenMedia,
   onToggleFollow,
+  onToggleRepost,
+  onQuote,
+  onEdit,
+  onDelete,
+  onHistory,
+  onTogglePin,
   jump,
   rowIndent,
   decorate,
@@ -103,6 +121,7 @@ export function PostList({
   // Which `content_warning`-gated posts the viewer has revealed this session — never
   // persisted, never shared across posts (spec: a CW is click-to-reveal per post).
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // Derived rather than clamped via an effect (react-hooks/set-state-in-effect,
   // and the same "no synchronous setState-in-effect" pattern as `useActor`):
   // in bounds even right after the list shrinks/grows, with nothing to write back.
@@ -125,7 +144,12 @@ export function PostList({
   // Two rows of the list's own budget go to the position line and the loading line.
   const budget = Math.max(3, content.rows - chromeRows - 2);
   const heights = posts.map((post) =>
-    measurePostRowHeight(decorate?.(post) ?? post, width, revealed.has(post.id)),
+    measurePostRowHeight(
+      decorate?.(post) ?? post,
+      width,
+      revealed.has(post.id),
+      expanded.has(post.id),
+    ),
   );
   const topIndex = resolveTopIndex(selection.top, effectiveSelected, heights, budget);
   const viewport = computeViewport(topIndex, heights, budget);
@@ -147,8 +171,14 @@ export function PostList({
       }
       if (input === 'v') {
         const post = posts[effectiveSelected];
-        if (post !== undefined && post.contentWarning !== '') {
+        if (post !== undefined && post.contentWarning !== '' && !revealed.has(post.id)) {
           setRevealed((current) => {
+            const next = new Set(current);
+            next.add(post.id);
+            return next;
+          });
+        } else if (post !== undefined) {
+          setExpanded((current) => {
             const next = new Set(current);
             if (next.has(post.id)) next.delete(post.id);
             else next.add(post.id);
@@ -195,6 +225,36 @@ export function PostList({
       if (input === 'f') {
         const post = posts[effectiveSelected];
         if (post !== undefined) onToggleFollow?.(post);
+        return;
+      }
+      if (input === 'R') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onToggleRepost?.(post);
+        return;
+      }
+      if (input === 'Q') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onQuote?.(post);
+        return;
+      }
+      if (input === 'e') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onEdit?.(post);
+        return;
+      }
+      if (input === 'd') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onDelete?.(post);
+        return;
+      }
+      if (input === 'H') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onHistory?.(post);
+        return;
+      }
+      if (input === 'I') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onTogglePin?.(post);
       }
     },
     { isActive: isActive && posts.length > 0 },
@@ -230,6 +290,7 @@ export function PostList({
               post={decorate?.(post) ?? post}
               selected={isActive && viewport.start + index === effectiveSelected}
               revealed={revealed.has(post.id)}
+              expanded={expanded.has(post.id)}
               width={Math.max(10, width - (rowIndent?.(post) ?? 0) * 2)}
             />
           </Box>
