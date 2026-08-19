@@ -11,6 +11,7 @@ import {
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
+import { stripSgr } from '../../test/ansi.js';
 import { DM_DISCLOSURE, MessagesScreen, type MessagesScreenApi } from './MessagesScreen.js';
 
 const KEY = { enter: '\r', escape: '\x1b' } as const;
@@ -101,14 +102,15 @@ function fakeApi(): FakeApi {
   };
 }
 
+/** Frames carry SGR colour (see `vitest.config.ts`), so match on characters. */
 async function waitForFrame(lastFrame: () => string | undefined, text: string): Promise<string> {
   const deadline = Date.now() + 2_000;
-  let frame = lastFrame() ?? '';
+  let frame = stripSgr(lastFrame() ?? '');
   while (!frame.includes(text)) {
     if (Date.now() >= deadline)
       throw new Error(`Timed out waiting for ${text}. Last frame:\n${frame}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
-    frame = lastFrame() ?? '';
+    frame = stripSgr(lastFrame() ?? '');
   }
   return frame;
 }

@@ -6,6 +6,7 @@ import { App, type AppProps } from '../src/app/App.js';
 import { MemoryCredentialStore, type CredentialStore } from '../src/auth/credential-store.js';
 import { MemoryDraftStore, type DraftStore } from '../src/compose/draft-store.js';
 import { MemoryPageDraftStore } from '../src/pages/draft-store.js';
+import { stripSgr } from './ansi.js';
 import { createFakeApi, type FakeApiHandle, type FakeApiOptions } from './fake-api.js';
 
 /**
@@ -73,6 +74,8 @@ export function renderApp(options: RenderAppOptions = {}): RenderAppResult {
   };
 }
 
+export { stripSgr };
+
 /** Lets a pending promise settle and React flush the resulting state update. */
 export async function flush(ms = 20): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +87,11 @@ export async function flush(ms = 20): Promise<void> {
  * promise/render actually settles, which is the source of the intermittent
  * `screens.test.tsx` failures this replaces. Throws with the last observed
  * frame on timeout so failures are debuggable.
+ *
+ * The frame is SGR-stripped before `predicate` sees it: a themed run splits a visible
+ * phrase across colour sequences ("Enter run" and "Tab complete" are separate `<Text>`
+ * nodes), so a raw `includes` misses text that is plainly on screen. Assertions about
+ * escape sequences themselves must call `lastFrame()` directly.
  */
 export async function waitForFrame(
   lastFrame: () => string | undefined,
@@ -92,13 +100,13 @@ export async function waitForFrame(
 ): Promise<string> {
   const stepMs = 10;
   const deadline = Date.now() + timeoutMs;
-  let frame = lastFrame() ?? '';
+  let frame = stripSgr(lastFrame() ?? '');
   while (!predicate(frame)) {
     if (Date.now() >= deadline) {
       throw new Error(`waitForFrame: timed out after ${timeoutMs}ms. Last frame:\n${frame}`);
     }
     await new Promise((resolve) => setTimeout(resolve, stepMs));
-    frame = lastFrame() ?? '';
+    frame = stripSgr(lastFrame() ?? '');
   }
   return frame;
 }

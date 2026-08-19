@@ -1,6 +1,7 @@
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
+import { hasEscapeSequences, stripSgr } from '../../test/ansi.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { extractMentions, RichBody, tokenizeBody } from './rich-text.js';
 
@@ -52,12 +53,13 @@ describe('RichBody', () => {
         <RichBody text="hi @alice #tag" />
       </PlainModeProvider>,
     );
-    // Same text either way…
+    // Whether ink emits colour at all depends on the host's colour support, so this
+    // asserts the two invariants that hold everywhere: plain mode preserves every
+    // character, and never leaks a terminal control sequence.
     expect(plain.lastFrame()).toContain('hi @alice #tag');
-    expect(decorated.lastFrame()).toContain('@alice');
-    // …but only the decorated one carries escape codes.
-    expect(plain.lastFrame()).not.toContain('[');
-    expect(decorated.lastFrame()).toContain('[');
+    // Same characters either way; only the decorated frame may carry SGR colour.
+    expect(stripSgr(decorated.lastFrame() ?? '')).toBe(plain.lastFrame());
+    expect(hasEscapeSequences(plain.lastFrame() ?? '')).toBe(false);
     decorated.unmount();
     plain.unmount();
   });
