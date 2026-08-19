@@ -36,6 +36,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0016](./0016-connect-transport-and-client-sdk.md)   | Connect protocol for web/mobile clients, and a shared client SDK                                | Accepted |
 | [0017](./0017-server-visible-dms.md)                 | Direct messages are server-visible in v0, not end-to-end encrypted                              | Accepted |
 | [0018](./0018-tui-interaction-model.md)              | TUI interaction model: measured frame, screen stack, composited overlays                        | Accepted |
+| [0020](./0020-e2ee-direct-messages.md)               | End-to-end encrypted direct messages                                                            | Accepted |
 
 ## Template
 
