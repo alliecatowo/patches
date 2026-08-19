@@ -613,6 +613,8 @@ export class FakeApiHandle {
       quotedPost: undefined,
       community: undefined,
       quotePolicy: QUOTE_POLICY.UNSPECIFIED,
+      repostedBy: [],
+      repostedByTotal: 0,
     };
   }
 
