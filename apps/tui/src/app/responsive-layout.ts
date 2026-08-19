@@ -31,9 +31,7 @@ export const MIN_CONTENT_COLUMNS_WITH_DRAWER = 84;
  */
 export function drawerAvailable(width: number): boolean {
   const columns = terminalCells(width);
-  return (
-    columns >= WIDE_MIN_COLUMNS && columns - DRAWER_COLUMNS >= MIN_CONTENT_COLUMNS_WITH_DRAWER
-  );
+  return columns >= WIDE_MIN_COLUMNS && columns - DRAWER_COLUMNS >= MIN_CONTENT_COLUMNS_WITH_DRAWER;
 }
 
 /**
