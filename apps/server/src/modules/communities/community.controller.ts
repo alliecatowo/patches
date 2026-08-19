@@ -35,6 +35,7 @@ import {
 import type { CommunityRole as DbCommunityRole } from '@patches/database';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims, TokenService } from '../auth/token.service.js';
@@ -59,7 +60,7 @@ export class CommunityController implements CommunityServiceController {
     private readonly tokens: TokenService,
   ) {}
 
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RequirePrivacyAckGuard)
   async createCommunity(
     @Payload() request: CreateCommunityRequest,
     @Ctx() _metadata?: Metadata,
@@ -98,7 +99,7 @@ export class CommunityController implements CommunityServiceController {
     );
   }
 
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RequirePrivacyAckGuard)
   async joinCommunity(
     @Payload() request: JoinCommunityRequest,
     @Ctx() _metadata?: Metadata,

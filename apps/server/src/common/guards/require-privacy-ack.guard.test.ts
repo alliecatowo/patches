@@ -1,11 +1,14 @@
 import { Metadata } from '@grpc/grpc-js';
 import { type ExecutionContext } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ActorPrivacyPrefs } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 
+import { CommunityController } from '../../modules/communities/community.controller.js';
 import { setSessionClaims } from '../../modules/auth/session-context.js';
 import { type AccessTokenClaims } from '../../modules/auth/token.service.js';
+import { GraphController } from '../../modules/graph/graph.controller.js';
 import type { AppConfigService } from '../../config/app-config.service.js';
 import { AppError } from '../errors/app-error.js';
 import { RequirePrivacyAckGuard } from './require-privacy-ack.guard.js';
@@ -99,5 +102,41 @@ describe('RequirePrivacyAckGuard (P14 follow-up, spec §197.5, §197.6)', () => 
     expect(await codeOf(() => guard.canActivate(contextWithClaims(undefined)))).toBe(
       'AUTH_INVALID_CREDENTIALS',
     );
+  });
+
+  describe('wiring on the write RPCs this task added it to', () => {
+    /** Method-level `@UseGuards(...)` metadata lives on the descriptor's `value` (the method
+     * function itself), not on the controller class or prototype — mirrors how
+     * `@nestjs/core`'s `GuardsContextCreator` reads it off `instance[methodName]` at request
+     * time (LEARNINGS: proto-nest-index-hand-maintained-reexports's neighbor gotchas about
+     * checking framework internals rather than assuming). */
+    function guardsOn(method: (...args: never[]) => unknown): unknown[] {
+      return (Reflect.getMetadata(GUARDS_METADATA, method) as unknown[] | undefined) ?? [];
+    }
+
+    it('GraphController.followActor requires an acknowledged privacy notice', () => {
+      expect(guardsOn(GraphController.prototype.followActor)).toContain(RequirePrivacyAckGuard);
+    });
+
+    it('GraphController.listMutualFollows (an anonymous read) is left ungated', () => {
+      expect(guardsOn(GraphController.prototype.listMutualFollows)).not.toContain(
+        RequirePrivacyAckGuard,
+      );
+    });
+
+    it('CommunityController.createCommunity and joinCommunity require an acknowledged notice', () => {
+      expect(guardsOn(CommunityController.prototype.createCommunity)).toContain(
+        RequirePrivacyAckGuard,
+      );
+      expect(guardsOn(CommunityController.prototype.joinCommunity)).toContain(
+        RequirePrivacyAckGuard,
+      );
+    });
+
+    it('CommunityController.getCommunity (a public read) is left ungated', () => {
+      expect(guardsOn(CommunityController.prototype.getCommunity)).not.toContain(
+        RequirePrivacyAckGuard,
+      );
+    });
   });
 });

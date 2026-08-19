@@ -22,6 +22,7 @@ import {
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { toProtoActor } from '../actors/actor.mapper.js';
 import { type ActorListPage } from '../actors/actor.service.js';
 import { ActorService } from '../actors/actor.service.js';
@@ -49,7 +50,7 @@ export class GraphController implements SocialGraphServiceController {
     private readonly actors: ActorService,
   ) {}
 
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RequirePrivacyAckGuard)
   async followActor(
     @Payload() request: FollowActorRequest,
     @Ctx() _metadata?: Metadata,

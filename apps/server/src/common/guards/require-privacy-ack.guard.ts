@@ -25,11 +25,11 @@ import { AppError } from '../errors/app-error.js';
  * Reads are never gated: this guard is only ever attached to a write RPC, never to a whole
  * controller.
  *
- * Today attached to `PostController.createPost` and `MessagesController.sendMessage`/
- * `createConversation` (the "create post/DM" examples from this task's brief); the third
- * example, `follow`, lives in `apps/server/src/modules/graph/**`, outside this task's owned
- * file set — flagged in this task's report as a follow-up for whoever next touches
- * `graph.controller.ts`'s `followActor`.
+ * Attached to `PostController.createPost`, `MessagesController.sendMessage`/
+ * `createConversation`, `GraphController.followActor`, and
+ * `CommunityController.createCommunity`/`joinCommunity`. Posting *into* a community goes
+ * through `PostController.createPost` (which sets `communityId`), so it is already covered
+ * without a separate attachment on `CommunityController`.
  */
 @Injectable()
 export class RequirePrivacyAckGuard implements CanActivate {
