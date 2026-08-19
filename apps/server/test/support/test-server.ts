@@ -4,6 +4,7 @@ import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import { type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { type MicroserviceOptions } from '@nestjs/microservices';
+import { type NestExpressApplication } from '@nestjs/platform-express';
 import {
   createSystemClient,
   DEADLINES_MS,
@@ -13,13 +14,11 @@ import {
 
 import { AppModule } from '../../src/app.module.js';
 import { type HealthControl, createGrpcMicroservice } from '../../src/grpc-options.js';
-import { HealthService } from '../../src/modules/system/health.service.js';
-import {
-  closeHealthzServer,
-  createHealthzServer,
-  listenHealthzServer,
-} from '../../src/modules/system/healthz-server.js';
 import { ReadinessState } from '../../src/modules/system/readiness-state.js';
+import {
+  type ConnectEdge,
+  mountConnectEdge,
+} from '../../src/transport/connect/connect.middleware.js';
 import { prepareServerEnv } from './env.js';
 
 export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
@@ -27,8 +26,9 @@ export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
 export interface TestServer {
   url: string;
   client: SystemGrpcClient;
-  /** Set only when `startTestServer({ http: true })` was asked to bind the standalone
-   * `/healthz` listener (A-043) — production's `FEDERATION_ENABLED=false` shape. */
+  /** Set only when `startTestServer({ http: true })` asked for the (now always-on-in-
+   * production) HTTP listener: `GET /healthz`, the Connect edge, and — when
+   * `FEDERATION_ENABLED` — the federation HTTP surface, exactly mirroring `main.ts`. */
   httpUrl?: string;
   /** Wraps `HealthControl.setStatus` so a test can flip the gRPC health status and have
    * `/healthz` (via `ReadinessState`) agree, exactly as `main.ts` does. */
@@ -58,8 +58,9 @@ async function freePort(): Promise<number> {
 }
 
 export interface StartTestServerOptions {
-  /** Also bind the standalone `/healthz`-only listener `main.ts` uses when
-   * `FEDERATION_ENABLED=false` (A-043), on its own random port, exposed as `httpUrl`. */
+  /** Also start the (now always-on-in-production, ADR 0016 §4) HTTP listener — `GET
+   * /healthz`, the Connect edge, and the federation HTTP surface when
+   * `FEDERATION_ENABLED` — on its own random port, exposed as `httpUrl`. */
   http?: boolean;
 }
 
@@ -74,11 +75,11 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
   // and `inheritAppConfig: true`. Booting with `NestFactory.createMicroservice` here once let
   // a production-only bug through: without `inheritAppConfig`, the connected microservice
   // silently drops the global APP_FILTER/APP_INTERCEPTOR providers, so every AppError reached
-  // clients as INTERNAL. Nest's own HTTP adapter is never started in tests (that's what would
-  // open the federation surface, per A-043) — `options.http` instead binds the same
-  // standalone `/healthz` listener production uses when federation is off.
-  const app = await NestFactory.create(AppModule, {
+  // clients as INTERNAL. `bodyParser: false` mirrors `main.ts` too (see its comment) — load-
+  // bearing for `options.http`'s Connect edge tests, not just production.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: false,
+    bodyParser: false,
     // Surface a failed boot (e.g. missing DATABASE_URL) as a rejected promise with a
     // readable message instead of Nest's default `process.abort()`, which Vitest can only
     // report as "Worker exited unexpectedly".
@@ -100,12 +101,12 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
   const client = createSystemClient(url, credentials.createInsecure());
 
   let httpUrl: string | undefined;
-  let healthzServer: ReturnType<typeof createHealthzServer> | undefined;
+  let connectEdge: ConnectEdge | undefined;
   if (options.http === true) {
     const httpPort = await freePort();
-    const healthService = app.get(HealthService);
-    healthzServer = createHealthzServer(() => healthService.check());
-    await listenHealthzServer(healthzServer, httpPort, '127.0.0.1');
+    app.set('trust proxy', process.env.TRUST_PROXY_HEADERS === 'true');
+    connectEdge = mountConnectEdge(app, { grpcUrl: url, webOrigins: parseWebOrigins() });
+    await app.listen(httpPort, '127.0.0.1');
     httpUrl = `http://127.0.0.1:${String(httpPort)}`;
   }
 
@@ -116,10 +117,19 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
     health: healthControl,
     close: async () => {
       client.close();
-      if (healthzServer !== undefined) await closeHealthzServer(healthzServer);
+      connectEdge?.close();
       await closeQuietly(app);
     },
   };
+}
+
+/** Same comma-separated parsing `serverEnvShape.WEB_ORIGINS` does, without pulling the full
+ * validated `Env` through here — `startTestServer` boots before a test necessarily wants one. */
+function parseWebOrigins(): readonly string[] {
+  return (process.env.WEB_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
 }
 
 async function closeQuietly(app: INestApplication): Promise<void> {

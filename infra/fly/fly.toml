@@ -79,14 +79,31 @@ kill_timeout = "20s"
     interval = "15s"
     timeout = "2s"
 
+# Public Connect (web/RN) ingress (ADR 0016 §8) — a second, independent `[[services]]`
+# block, since Fly allows only one service per external port and `:443` above is already
+# gRPC. `:8443` is one of Cloudflare's supported HTTPS ports
+# (developers.cloudflare.com/fundamentals/reference/network-ports), so the public web
+# origin fronts this with Cloudflare on `:443` and proxies to Fly's `:8443`. Same
+# `internal_port` (`HTTP_PORT`) the healthz check below also targets — the Connect edge,
+# `/healthz`, and (when `FEDERATION_ENABLED`) the federation HTTP surface all share the one
+# always-on HTTP listener (ADR 0016 §4).
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["server"]
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 8443
+
 # Real application-level health check (A-043): `GET /healthz` on the server process's HTTP
 # port, which reports 200 only when the database answers `SELECT 1` and the gRPC health
 # status is SERVING (`apps/server/src/modules/system/health.service.ts`), 503 otherwise. A
-# top-level `[checks]` entry rather than `[[services.http_checks]]` because HTTP_PORT is not
-# a routed/public `[[services]]` block here — `[checks]` targets a port directly, independent
-# of request routing (docs/research/fly-io.md §3). `FEDERATION_ENABLED=false` in `[env]`
-# above means the server's HTTP port serves *only* `/healthz` (`healthz-server.ts`'s
-# standalone listener, not Nest's own HTTP adapter) — nothing else is reachable on it.
+# top-level `[checks]` entry rather than `[[services.http_checks]]` so it isn't tied to
+# either `[[services]]` block above — `[checks]` targets a port directly, independent of
+# request routing (docs/research/fly-io.md §3). The HTTP listener is always-on (ADR 0016
+# §4): `FEDERATION_ENABLED=false` in `[env]` above means only the federation surface
+# (webfinger/actor/inbox/outbox) is absent, not `/healthz` or the Connect edge.
 [checks]
   [checks.healthz]
     type = "http"

@@ -12,9 +12,9 @@ import { SystemService } from './system.service.js';
 /** `SystemService` (build/version/liveness), `NodeService` (node discovery, spec §163,
  * §168) and `HealthService`/`ReadinessState` (`GET /healthz`, A-043) share this module: all
  * are small, config-driven services with no feature-specific dependencies of their own.
- * `HealthService` and `ReadinessState` are exported so `main.ts` and the standalone
- * `healthz-server.ts` listener can resolve them via `app.get(...)` without going through
- * `HealthController` (see `healthz-server.ts` for why that route isn't always bound). */
+ * `ReadinessState` is also exported so `main.ts` can resolve it via `app.get(...)` to flip
+ * readiness during shutdown (`HealthController` reads it indirectly, through
+ * `HealthService`). */
 @Module({
   controllers: [SystemController, NodeController, HealthController],
   providers: [SystemService, NodeService, serverVersionProvider, HealthService, ReadinessState],

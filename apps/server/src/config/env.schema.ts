@@ -90,19 +90,20 @@ const envObjectSchema = z.object({
   /**
    * Phase 8 two-node federation lab (P8-001..P8-008, `docs/architecture/federation.md`).
    * **Default off** (spec §108 Stage F1, §176's "self-hosted node ships with federation
-   * disabled by default"): when false, `main.ts` never opens Nest's own HTTP adapter at
-   * all — no WebFinger, no actor documents, no inbox/outbox, nothing Internet-facing,
-   * because there is nothing listening on it. This is a stricter reading than "WebFinger may
+   * disabled by default"): when false, `FederationHttpModule` (the webfinger/actor/inbox/
+   * outbox controllers) is never registered at all — absent from the DI graph, not merely
+   * unrouted (ADR 0016 §4, `app.module.ts`). This is a stricter reading than "WebFinger may
    * always be on for discovery" — the whole point of Stage F1 being "local and non-public"
    * (federation.md §3.5) is that a node with federation off has zero new network surface
-   * beyond `/healthz` (A-043's standalone, single-route listener — see `healthz-server.ts`),
-   * not a smaller one.
+   * beyond `/healthz` and the Connect edge (ADR 0016), not a smaller one. Nest's own HTTP
+   * adapter itself is always-on now (ADR 0016 §4 changed this deliberately — see `main.ts`).
    */
   FEDERATION_ENABLED: booleanish().default(false),
-  /** Port for the federation HTTP surface (WebFinger/actor/inbox/outbox) when
-   * `FEDERATION_ENABLED`, or for the standalone `/healthz`-only listener when it's not
-   * (A-043) — either way, this is `/healthz`'s port too. */
+  /** Port for the always-on HTTP listener (ADR 0016): `/healthz`, the Connect edge
+   * (`/patches.v1.*`), and — when `FEDERATION_ENABLED` — the federation HTTP surface
+   * (WebFinger/actor/inbox/outbox). */
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+  // WEB_ORIGINS (ADR 0016 §6) comes from `serverEnvShape` above — no override needed here.
 
   /**
    * B-026: AES-256-GCM key `KeyService` encrypts `federation_keys.private_key_*` under —

@@ -2,8 +2,7 @@ import type { ServerResponse } from 'node:http';
 
 import { type HealthCheckResult } from './health.service.js';
 
-/** Shared by `HealthController` and `healthz-server.ts` so both HTTP surfaces answer
- * `/healthz` identically (A-043). */
+/** `HealthController`'s `GET /healthz` response body/status (A-043). */
 export function writeHealthzResponse(res: ServerResponse, result: HealthCheckResult): void {
   res.statusCode = result.ok ? 200 : 503;
   res.setHeader('content-type', 'application/json');

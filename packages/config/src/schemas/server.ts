@@ -2,6 +2,20 @@ import { z } from 'zod';
 import { booleanish } from '../boolean.js';
 
 /**
+ * One `scheme://host[:port]` origin, no trailing slash/path — the exact shape a browser's
+ * `Origin` request header sends and the exact shape `WEB_ORIGINS` entries must match to be
+ * compared against it. `z.url({ protocol: /^https?$/ })` (not `z.httpUrl()` — see
+ * `PUBLIC_ORIGIN` below) accepts a path/query/hash that an `Origin` header can never carry;
+ * rejecting anything past the authority here catches a copy-pasted full URL in config instead
+ * of silently never matching at request time.
+ */
+const originSchema = z
+  .url({ protocol: /^https?$/ })
+  .refine((value) => new URL(value).origin === value, {
+    message: 'must be a bare origin (scheme://host[:port]), no path/query/fragment',
+  });
+
+/**
  * Plain (non-refined) shape, exported so other schemas/apps can compose it with
  * `z.object({ ...serverEnvShape, ... })` without fighting the `superRefine` wrapper below.
  */
@@ -13,6 +27,22 @@ export const serverEnvShape = {
   // constrains `hostname` to a dotted domain, which rejects `http://localhost:3000`.
   PUBLIC_ORIGIN: z.url({ protocol: /^https?$/ }),
   INVITE_ONLY: booleanish().default(true),
+  /**
+   * ADR 0016 §6: comma-separated allow-list of browser origins permitted to call the Connect
+   * edge cross-origin. Default empty means same-origin only — no `Access-Control-Allow-Origin`
+   * is ever emitted for a request whose `Origin` isn't in this list, and credentials mode
+   * stays off regardless (ADR 0016 §5: bearer tokens only, never cookies).
+   */
+  WEB_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    )
+    .pipe(z.array(originSchema)),
   // Optional here: local/dev environments may run without JWT signing configured yet
   // (Phase 0). Production must have both — enforced below, not by the base type, so the
   // *reason* a boot fails is a clear, listed configuration error rather than a type error.

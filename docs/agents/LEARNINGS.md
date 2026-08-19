@@ -428,3 +428,37 @@ screen transition, not just the ones App.tsx's `screen` state drives."
 **Learning:** `app.connectMicroservice(options)` does **not** apply the app's global filters/interceptors/guards/pipes unless `{ inheritAppConfig: true }` is passed. The test bootstrap used `NestFactory.createMicroservice` (where globals apply) and so never exercised the real `main.ts` wiring. Test bootstraps must mirror `main.ts` transport setup exactly.
 
 **Action taken:** `main.ts` passes `inheritAppConfig: true`; `apps/server/test/support/test-server.ts` boots the same hybrid way (25 auth tests fail without the flag — proven).
+
+## 2026-08-18 — Connect edge (ADR 0016, P10-004): three gotchas worth remembering
+
+**Context:** Adding the Connect (connectrpc.com) HTTP edge alongside gRPC, per ADR 0016.
+
+**Learning 1 — `protoc-gen-es` needs `import_extension=js` for a NodeNext package.** With
+`opt: target=ts` alone, generated `_pb.ts` files import each other with no file extension
+(`import { X } from './common_pb'`), which `tsc` rejects (TS2835) under this repo's NodeNext
+module resolution — every other generated/source file here carries an explicit `.js` extension.
+Fix: add `import_extension=js` to the plugin's `opt:` list in `buf.gen.yaml`.
+
+**Learning 2 — a module can't be "conditionally imported out" if another always-imported module
+also imports it.** The plan was "remove `FederationModule` from `AppModule.imports` when
+`FEDERATION_ENABLED=false`, so its controllers are absent, not just unrouted." That does nothing:
+`PostModule`/`ActorModule`/`GraphModule`/`ReactionModule` all import `FederationModule` directly
+(unconditionally) for the `FEDERATION_GATEWAY` DI token — Nest dedupes a module imported from
+multiple places into one instance, so it stays fully registered regardless of what `AppModule`
+itself lists. The fix was splitting the module: `FederationModule` (gateway/services, no
+controllers, always imported) stays as the thing those four modules depend on; a new
+`FederationHttpModule` (controllers only, imports the first) is the thing that's actually
+conditional in `AppModule`. Before making any Nest module "conditional," grep for every other
+module that imports it — if one of the always-on modules does, conditionality has to move to a
+narrower module that nothing else needs.
+
+**Learning 3 — a global `RpcExceptionsFilter`/`APP_FILTER` that "handles HTTP" must not blanket-
+500 everything.** The filter's HTTP branch (added for the federation surface, which never threw)
+unconditionally wrote `statusCode = 500` for _any_ caught exception, including Nest's own
+`NotFoundException` for an unmatched route — invisible until the HTTP listener became always-on
+and a plain 404 (`GET /not-healthz`, an unmatched Connect path) got exercised for the first time.
+Fix: branch on `exception instanceof HttpException` and use its own `getStatus()`/`message`
+first; only fall through to the sanitized generic 500 for everything else. Global exception
+filters added for one narrow surface (an HTTP surface that only ever throws AppErrors) silently
+assume nothing else will ever route through them — re-verify that assumption before adding a
+second HTTP surface to the same app.

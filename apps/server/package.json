@@ -13,6 +13,9 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "catalog:",
+    "@connectrpc/connect-express": "catalog:",
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
     "@grpc/reflection": "catalog:",
@@ -39,10 +42,12 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@connectrpc/connect-node": "catalog:",
     "@nestjs/cli": "catalog:",
     "@nestjs/testing": "catalog:",
     "@patches/testkit": "workspace:*",
     "@swc/core": "catalog:",
+    "@types/express": "catalog:",
     "@types/nodemailer": "catalog:",
     "unplugin-swc": "catalog:"
   }
