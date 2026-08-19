@@ -132,14 +132,17 @@ By default:
   posts, are visible.
 - Your Patches Page, if it is set to public.
 
-> **Read this if you use followers-only posts. Status: known limitation.**
-> Anyone can follow you instantly — there is no follow approval yet — so a
-> followers-only post is one button-press away from being readable by any
-> account on the node. It keeps your post out of public timelines and away
-> from logged-out visitors, and that is all it currently does. Follower
-> approval ("locked" accounts) is required by Amendment C (§197.5) and is
-> not built yet. Until it ships, treat followers-only as "quieter", not as
-> "private".
+> **Followers-only posts and locked accounts. Status: implemented (Amendment
+> C, §197.5).** By default, anyone can follow you instantly, and a
+> followers-only post is visible to whoever that produces — it keeps your
+> post out of public timelines and away from logged-out visitors, and that
+> is all it does. If you turn on **locked** (see "Your controls" below),
+> every new follow instead becomes a **request** you must accept or reject
+> before that account can see your followers-only posts; nothing is visible
+> to a requester until you accept. Turning `locked` on or off never changes
+> who already follows you, and a pending request is never auto-accepted —
+> you always decide. See
+> [`architecture/social.md`](../architecture/social.md) for how this works.
 
 Not public:
 
@@ -199,8 +202,12 @@ limits for:
 ## Your controls
 
 Implemented today: per-post visibility (public / unlisted / followers-only),
-content warnings, blocking, muting, tag muting, bookmarks (private),
-plain mode, and deleting your own posts and messages.
+content warnings, blocking, muting, tag muting, bookmarks (private), plain
+mode, deleting your own posts and messages, and **follower approval**
+("locked" accounts, Amendment C §197.5) — turn it on and every new follow
+becomes a request you accept or reject, which is what makes followers-only
+posts mean what people assume they mean. See
+[`architecture/social.md`](../architecture/social.md).
 
 **Status: planned (Amendment C).** §197 and §198–§200 add:
 
@@ -211,8 +218,6 @@ plain mode, and deleting your own posts and messages.
 - **Discoverability controls**: opt out of appearing in actor search and any
   node directory; opt out of full-text post search indexing; opt out of the
   local timeline while still posting publicly.
-- **Follower approval** ("locked" accounts), which is what makes
-  followers-only posts mean what people assume they mean.
 - **Your own filters** — keyword, phrase, tag, author, and link-domain
   filters that hide or collapse matching posts, applied by the server so
   every client you use behaves identically. Filter terms are treated as

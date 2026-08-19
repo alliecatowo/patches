@@ -13,6 +13,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/overview.md`](./architecture/overview.md)
   - [`architecture/data-model.md`](./architecture/data-model.md)
   - [`architecture/api.md`](./architecture/api.md)
+  - [`architecture/social.md`](./architecture/social.md)
   - [`architecture/auth.md`](./architecture/auth.md)
   - [`architecture/pages.md`](./architecture/pages.md)
   - [`architecture/media.md`](./architecture/media.md)
