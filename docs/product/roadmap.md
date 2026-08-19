@@ -1,17 +1,23 @@
 # Roadmap
 
-Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amendment A)** and
-**§178–§195 (Amendment B)**. This document restates the execution roadmap and acceptance
+Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amendment A)**,
+**§178–§195 (Amendment B)**, and **§196–§210 (Amendment C)**. This document restates the execution roadmap and acceptance
 checklists in one place so status can be tracked without re-reading the full spec. Update the
 status line at the top of each phase as work lands — don't let this drift into fiction.
 
 **As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 is implemented and deployed — the flagship node `patches-social.fly.dev` is live and verified end to end. Media/email credentials (R2, Resend) are still pending — see `tasks.md` B-031.**
 
-**As of 2026-08-18 (Amendment B, spec §178–§195):** board Phase 11 — social depth (reposts and
-quotes, tags, communities, DMs, feed customization) — is the active work stream, and board
-Phase 10 (web + React Native clients) is **paused** until it ships. See
-[Owner-directed board phases](#owner-directed-board-phases-911) below, and note that §176's
-release-phase numbers and `tasks.md`'s board-phase numbers are different sequences (§179).
+**As of this revision:** board Phase 11 — social depth (Amendment B, spec §178–§195: reposts
+and quotes, tags, communities, DMs, flair/pins, quiet feed, edit history) — is **implemented**
+end to end, reachable from the TUI (15/16 tasks landed; the remaining one is this docs sync).
+Board Phase 14 — privacy, filters, decentralized moderation (Amendment C, spec §196–§210) — is
+also implemented, with a handful of documented follow-ups (see
+[Board Phase 14](#board-phase-14--privacy-filters-decentralized-moderation-amendment-c) below).
+Board Phase 10 (web client) resumed per owner direction 2026-08-18 and has landed
+(`apps/web`); React Native (P10-002) and migrating the TUI onto `@patches/client` (P10-005)
+remain open. See [Owner-directed board phases](#owner-directed-board-phases) below, and note
+that §176's release-phase numbers and `tasks.md`'s board-phase numbers are different sequences
+(§179).
 
 ## Release sequence (§176)
 
@@ -198,13 +204,12 @@ Before calling the project MVP, all of the following must be true:
 
 ---
 
-## Owner-directed board phases (9–11)
+## Owner-directed board phases
 
 **Two phase sequences exist and must not be confused (spec §179).** §176's phase numbers are
 _release_ phases (Phase 8 → v0.1, Phase 9 → v0.2, Phase 10 → v0.3, Phase 11 → v0.4, Phase 12
-→ v1.0) and are referred to below by **release number**. `tasks.md`'s Phase 9/10/11 are
-_board_ phases — owner-requested work streams that continued the task-board sequence past 8.
-A board phase number is not a §176 release phase.
+→ v1.0) and are referred to below by **release number**. `tasks.md`'s Phase 9/10/11/12/13/14
+are _board_ phases — owner-requested work streams that continued the task-board sequence past 8. A board phase number is not a §176 release phase.
 
 ### Board Phase 9 — site, media, packaging
 
@@ -216,19 +221,19 @@ work, and is **not** covered by the pause below.
 
 ### Board Phase 10 — web + React Native clients
 
-**Status: paused (owner, 2026-08-18).** Resume only after board Phase 11 ships. The Connect
-edge (P10-004) and [ADR 0016](../decisions/0016-connect-transport-and-client-sdk.md) stay as
-landed — the decision is unchanged, the schedule is. Further site/marketing work is paused
-on the same terms.
-
-The reasoning is in spec §179: Patches earns a second client by being finished on the first
-one. Nothing about this pause weakens §153's "don't build the mobile app before the TUI/server
-MVP" — it strengthens it.
+**Status: web resumed (owner, 2026-08-18) and landed; React Native still paused.** A scoped,
+production web client (`apps/web`, Vite + React 19, Connect transport) exists and enforces the
+same chronological/no-scores/honest-DM rules as the TUI — see `apps/web/README.md`. The Connect
+edge (P10-004) and [ADR 0016](../decisions/0016-connect-transport-and-client-sdk.md) are as
+landed. Open: React Native (P10-002) and migrating the TUI itself onto the shared
+`@patches/client` SDK (P10-005).
 
 ### Board Phase 11 — social depth (Amendment B)
 
-**Status: planned.** Spec **§178–§195**. TUI-first: a feature is not done until it is usable
-from the terminal.
+**Status: implemented.** Spec **§178–§195**. TUI-first: a feature is not done until it is
+usable from the terminal — every item below is reachable from the TUI today (15/16 tasks
+landed; the remaining task is this docs sync, `P11-014`). See
+[`docs/architecture/social.md`](../architecture/social.md) for the implementation detail.
 
 - **Reposts and quotes** (§180) — a repost is a pointer, a quote is a post with
   `quoted_post_id`, per-post quote policy, and neither ever changes a post's feed position.
@@ -256,6 +261,42 @@ community and post into it, hold a DM conversation they were not spammed into, e
 and show its history, decorate their own posts — and a second actor can turn every bit of
 that decoration off for themselves without losing any content.
 
+### Board Phase 12 — TUI interaction model, rich input, and visual system
+
+**Status: implemented** (see `tasks.md`'s Phase 12 for the individual task list — rich input,
+image rendering policy, responsive layout, thumbnail previews, and the rest of the terminal
+visual-system work that Amendment B's features render through).
+
+### Board Phase 13 — production E2EE direct messages
+
+**Status: schema only, not a reachable capability** (ADR 0020). Every E2EE table exists and is
+privacy-tested (`packages/database/src/entities/e2ee-privacy.test.ts`), but `E2EE_V1` is not
+enabled and every conversation created today is `LEGACY_SERVER_VISIBLE` — see
+[`docs/architecture/e2ee.md`](../architecture/e2ee.md) and
+[`docs/architecture/data-model.md`](../architecture/data-model.md)'s "Phase 13" section for the
+full detail; owned by a separate work stream from this document's Amendment B/C sync.
+
+### Board Phase 14 — privacy, filters, decentralized moderation (Amendment C)
+
+**Status: implemented, with documented follow-ups.** Spec **§196–§210** (2026-08-18). Adds, on
+top of the unweakened node moderation floor: bring-your-own filters (`FilterService`, §198),
+subscribable filter lists (`FilterListService`, §199), labelers and subscriber-scoped labels
+(`LabelService`, §200), appealable moderation notices (`AppealService`, §201.2–§201.3), a
+public anonymized moderation log and domain-policy transparency
+(`ModerationService.ListModerationLog`, `NodeService.GetNodePolicy`, §201.4–§201.6), and
+privacy/consent surfaces — a pre-registration notice, discoverability prefs, account export,
+and self-service deletion with a grace period (`PrivacyService`, §197). 20/28 `P14-*` tasks are
+landed; open follow-ups (`tasks.md`): SQL pushdown for actor/tag filter rules and PSL-based
+domain matching (P14-021), a real `scopes` field for filter-list subscriptions (P14-022), a
+multi-file export archive including media bytes (P14-023), purge-scope expansion to
+bookmarks/reposts/community memberships/tag mutes (P14-024), an explicit privacy-notice
+acknowledgement field on `RegisterRequest` (P14-025), and marking a vocabulary value
+`mandatory` for the node labeler from the admin CLI (P14-026). The discoverability preferences
+(`discoverable`/`indexable`/`show_in_local_feed`) are stored but **not yet enforced** by
+search/feed queries — see [`docs/product/privacy.md`](privacy.md) for the honest statement of
+that gap. See [`docs/architecture/api.md`](../architecture/api.md) §3a for the full RPC-level
+status of each service.
+
 ---
 
 ## Post-v0.0 roadmap (§176)
@@ -266,7 +307,7 @@ experiment. Federation moved earlier too, with every security gate unchanged.
 
 These are **release** phases and are titled by release number here, because `tasks.md` uses
 the same numbers for a different (board) sequence — see §179 and
-[Owner-directed board phases](#owner-directed-board-phases-911) above.
+[Owner-directed board phases](#owner-directed-board-phases) above.
 
 ### v0.1 — two-node federation lab (§176 Phase 8)
 

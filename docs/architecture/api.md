@@ -11,8 +11,9 @@ Patches' canonical client/server application protocol — the contract between a
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
 `social_graph.proto`, `node.proto`, `pages.proto`, `media.proto`, `reactions.proto`,
-`moderation.proto`, `notifications.proto`, `tags.proto`, `communities.proto`, and
-`messages.proto` — the full `AuthService` (including SSH login,
+`moderation.proto`, `notifications.proto`, `tags.proto`, `communities.proto`,
+`messages.proto`, `filters.proto`, `filter_lists.proto`, `labels.proto`, `appeals.proto`, and
+`privacy.proto` — the full `AuthService` (including SSH login,
 GitHub device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
 `PollGitHubLogin` included as of P6-005 (§176, §167). `PostService`
 (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` is a cursor-paginated,
@@ -65,7 +66,12 @@ packages/proto/proto/patches/v1/
 ├── tags.proto        # implemented (P11-005)
 ├── communities.proto # implemented (P11-003)
 ├── messages.proto    # implemented (P11-004)
-└── notifications.proto  # implemented (P4-003)
+├── notifications.proto  # implemented (P4-003)
+├── filters.proto     # implemented (P14-007)
+├── filter_lists.proto # implemented (P14-008)
+├── labels.proto      # implemented (P14-009)
+├── appeals.proto     # implemented (P14-011)
+└── privacy.proto     # implemented (P14-010)
 ```
 
 ```proto
@@ -85,6 +91,7 @@ Transport: `@grpc/grpc-js` — never the deprecated native `grpc` package (§43)
 One service per domain boundary — never one giant `PatchesService` (§47):
 
 ```proto
+service SystemService
 service AuthService
 service NodeService
 service PageService
@@ -106,25 +113,37 @@ service AppealService
 service PrivacyService
 ```
 
-The five services above (Amendment C, §196–§210) are **planned (proto only)** — see
-[§3a](#3a-amendment-c-services-196210--planned-proto-only) below; nothing has a server-side
-handler yet except where noted.
+The five services above (Amendment C, §196–§210) are **implemented**, except the graduated
+domain-limit tier called out in §3a below — see [§3a](#3a-amendment-c-services-196210) for what
+each does and does not cover.
 
 ## 3. RPCs by service
 
+### SystemService (§83) — implemented in `system.proto`
+
+| RPC             | Notes                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `GetServerInfo` | unauthenticated; server build version, wire protocol version, oldest client build still accepted (version compatibility, §9 below) |
+| `Ping`          | unauthenticated; echoes the caller's nonce back — a cheap liveness/latency probe                                                   |
+
+This is the permanent, always-first RPC a client calls to learn whether it can talk to the
+node at all, before any auth flow. `GetServerInfo`/`Ping` are exercised by
+`apps/server/test/system.integration.test.ts` and `apps/server/test/health.integration.test.ts`.
+
 ### AuthService (§48) — implemented in `auth.proto`
 
-| RPC                    | Notes                                                   |
-| ---------------------- | ------------------------------------------------------- |
-| `Register`             | invite-gated in v0                                      |
-| `VerifyEmail`          | consumes an `email_verification_codes` row              |
-| `Login`                | issues access + refresh token                           |
-| `RefreshSession`       | rotates refresh token; reuse triggers family revocation |
-| `Logout`               | revokes current session                                 |
-| `LogoutAllSessions`    | revokes all sessions for the user                       |
-| `RequestPasswordReset` | issues a `password_reset_codes` row                     |
-| `ResetPassword`        | consumes the reset code                                 |
-| `GetCurrentSession`    | returns session/actor info for the current access token |
+| RPC                    | Notes                                                           |
+| ---------------------- | --------------------------------------------------------------- |
+| `Register`             | invite-gated in v0                                              |
+| `VerifyEmail`          | consumes an `email_verification_codes` row                      |
+| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row |
+| `Login`                | issues access + refresh token                                   |
+| `RefreshSession`       | rotates refresh token; reuse triggers family revocation         |
+| `Logout`               | revokes current session                                         |
+| `LogoutAllSessions`    | revokes all sessions for the user                               |
+| `RequestPasswordReset` | issues a `password_reset_codes` row                             |
+| `ResetPassword`        | consumes the reset code                                         |
+| `GetCurrentSession`    | returns session/actor info for the current access token         |
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
 session envelope**, so client session handling is identical regardless of credential type.
@@ -132,15 +151,16 @@ session envelope**, so client session handling is identical regardless of creden
 `UNIMPLEMENTED` when the node has no `GITHUB_CLIENT_ID` configured (`docs/architecture/
 auth.md` §5) rather than pretending the flow works.
 
-| RPC                | Notes                                                                           |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `BeginSshLogin`    | issues a single-use, TTL-bounded challenge; returned regardless of enrollment   |
-| `CompleteSshLogin` | verifies the agent signature over the reconstructed blob; generic failure only  |
-| `BeginGitHubLogin` | device flow: returns user code, verification URI, polling interval              |
-| `PollGitHubLogin`  | polls GitHub; returns pending or a session envelope                             |
-| `ListCredentials`  | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`** |
-| `AddCredential`    | requires an authenticated session                                               |
-| `RevokeCredential` | fails if it would revoke the last active credential                             |
+| RPC                  | Notes                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `BeginSshLogin`      | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
+| `CompleteSshLogin`   | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
+| `BeginSshEnrollment` | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
+| `BeginGitHubLogin`   | device flow: returns user code, verification URI, polling interval                                                                |
+| `PollGitHubLogin`    | polls GitHub; returns pending or a session envelope                                                                               |
+| `ListCredentials`    | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
+| `AddCredential`      | requires an authenticated session                                                                                                 |
+| `RevokeCredential`   | fails if it would revoke the last active credential                                                                               |
 
 Notes:
 
@@ -582,31 +602,55 @@ included in error metadata/messages where useful.
 | `AUTH_INVALID_CREDENTIALS`        | `UNAUTHENTICATED`     |
 | `AUTH_EMAIL_UNVERIFIED`           | `FAILED_PRECONDITION` |
 | `AUTH_SESSION_EXPIRED`            | `UNAUTHENTICATED`     |
+| `ACCOUNT_SUSPENDED`               | `PERMISSION_DENIED`   |
 | `ACTOR_NOT_FOUND`                 | `NOT_FOUND`           |
 | `HANDLE_TAKEN`                    | `ALREADY_EXISTS`      |
 | `ACTOR_BLOCKED`                   | `PERMISSION_DENIED`   |
 | `POST_NOT_FOUND`                  | `NOT_FOUND`           |
 | `POST_FORBIDDEN`                  | `PERMISSION_DENIED`   |
 | `POST_TOO_LONG`                   | `INVALID_ARGUMENT`    |
-| `COMMUNITY_NOT_FOUND`             | `NOT_FOUND`           |
-| `COMMUNITY_FORBIDDEN`             | `PERMISSION_DENIED`   |
-| `TAG_INVALID`                     | `INVALID_ARGUMENT`    |
-| `CONVERSATION_NOT_FOUND`          | `NOT_FOUND`           |
-| `MESSAGE_NOT_FOUND`               | `NOT_FOUND`           |
-| `DM_UNAVAILABLE`                  | `NOT_FOUND`           |
-| `PAGE_NOT_FOUND`                  | `NOT_FOUND`           |
-| `PAGE_FORBIDDEN`                  | `PERMISSION_DENIED`   |
-| `GUESTBOOK_ENTRY_NOT_FOUND`       | `NOT_FOUND`           |
 | `MEDIA_TOO_LARGE`                 | `INVALID_ARGUMENT`    |
 | `MEDIA_UNSUPPORTED_TYPE`          | `INVALID_ARGUMENT`    |
 | `MEDIA_NOT_READY`                 | `FAILED_PRECONDITION` |
+| `MEDIA_NOT_FOUND`                 | `NOT_FOUND`           |
 | `RATE_LIMITED`                    | `RESOURCE_EXHAUSTED`  |
 | `VALIDATION_ERROR`                | `INVALID_ARGUMENT`    |
 | `INTERNAL_ERROR`                  | `INTERNAL`            |
 | `CLIENT_VERSION_UNSUPPORTED`      | `FAILED_PRECONDITION` |
 | `NOT_IMPLEMENTED`                 | `UNIMPLEMENTED`       |
+| `PAGE_NOT_FOUND`                  | `NOT_FOUND`           |
+| `PAGE_FORBIDDEN`                  | `PERMISSION_DENIED`   |
+| `GUESTBOOK_ENTRY_NOT_FOUND`       | `NOT_FOUND`           |
+| `CONVERSATION_NOT_FOUND`          | `NOT_FOUND`           |
+| `MESSAGE_NOT_FOUND`               | `NOT_FOUND`           |
+| `MESSAGE_REQUEST_NOT_FOUND`       | `NOT_FOUND`           |
+| `DM_DISABLED`                     | `FAILED_PRECONDITION` |
+| `COMMUNITY_NOT_FOUND`             | `NOT_FOUND`           |
+| `COMMUNITY_NAME_TAKEN`            | `ALREADY_EXISTS`      |
+| `COMMUNITY_FORBIDDEN`             | `PERMISSION_DENIED`   |
+| `COMMUNITY_BANNED`                | `PERMISSION_DENIED`   |
+| `COMMUNITY_INVITE_NOT_FOUND`      | `NOT_FOUND`           |
+| `TAG_NOT_FOUND`                   | `NOT_FOUND`           |
+| `FILTER_NOT_FOUND`                | `NOT_FOUND`           |
+| `FILTER_IMPORT_INVALID`           | `INVALID_ARGUMENT`    |
+| `FILTER_LIST_NOT_FOUND`           | `NOT_FOUND`           |
+| `FILTER_LIST_ENTRY_NOT_FOUND`     | `NOT_FOUND`           |
+| `FILTER_LIST_FORBIDDEN`           | `PERMISSION_DENIED`   |
+| `LABELER_NOT_FOUND`               | `NOT_FOUND`           |
+| `LABEL_NOT_FOUND`                 | `NOT_FOUND`           |
+| `LABELER_FORBIDDEN`               | `PERMISSION_DENIED`   |
+| `LABEL_VALUE_INVALID`             | `INVALID_ARGUMENT`    |
+| `MODERATION_NOTICE_NOT_FOUND`     | `NOT_FOUND`           |
+| `APPEAL_NOT_FOUND`                | `NOT_FOUND`           |
+| `APPEAL_ALREADY_EXISTS`           | `ALREADY_EXISTS`      |
+| `APPEAL_WINDOW_CLOSED`            | `FAILED_PRECONDITION` |
 | `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
 | `FOLLOW_REQUEST_NOT_FOUND`        | `NOT_FOUND`           |
+
+There is no `TAG_INVALID` code — an invalid tag grammar (too many tags, bad prefix, etc.) is a
+generic `VALIDATION_ERROR`/`INVALID_ARGUMENT`, same as any other malformed input (§57). Full
+source of truth: `apps/server/src/common/errors/error-codes.ts`, whose own doc comments record
+which codes are outside spec §57's starter list and why.
 
 `AUTH_EMAIL_UNVERIFIED` and `MEDIA_NOT_READY` are mapped to `FAILED_PRECONDITION`
 because the request is well-formed but the resource/account is not yet in a state

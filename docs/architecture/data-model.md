@@ -599,7 +599,8 @@ Join table between posts and media (§27).
 
 ## `blocks`
 
-**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001) — no RPC writes to this table yet
+**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001; `ModerationService.BlockActor`/
+`UnblockActor` write path landed P6-001)
 
 | Column             | Type          | Nullable | Notes                                 |
 | ------------------ | ------------- | -------- | ------------------------------------- |
@@ -617,14 +618,15 @@ separately once public web endpoints exist.
 
 **Implementation note**: the table and its read paths (`FeedService`'s block-aware SQL,
 `SocialGraphService.FollowActor`'s block check, `GetRelationship.blocking`) landed in P3-001/
-P3-002 ahead of the table's own write RPCs — `BlockActor`/`UnblockActor` are Phase 6 (spec
-§140). Nothing populates this table yet outside of test fixtures.
+P3-002 ahead of the table's own write RPCs; `ModerationService.BlockActor`/`UnblockActor`
+(spec §140, P6-001) now write it.
 
 ---
 
 ## `mutes`
 
-**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001) — no RPC writes to this table yet
+**Status: implemented** (`Phase3SocialGraph1787055340075`, P3-001; `ModerationService.MuteActor`/
+`UnmuteActor` write path landed P6-001)
 
 | Column           | Type          | Nullable | Notes                                 |
 | ---------------- | ------------- | -------- | ------------------------------------- |
@@ -639,8 +641,36 @@ relationship automatically; hides the muted actor's posts from the muter's home 
 suppresses notifications from the muted actor per product policy.
 
 **Implementation note**: same status as `blocks` above — the table and `FeedService`'s
-mute-aware SQL / `GetRelationship.muting` landed in P3-001/P3-002; `MuteActor`/`UnmuteActor`
-are Phase 6.
+mute-aware SQL / `GetRelationship.muting` landed in P3-001/P3-002; `ModerationService.MuteActor`/
+`UnmuteActor` (P6-001) write it.
+
+---
+
+## `follow_requests` (§197.5)
+
+**Status: implemented** (P14-010's follow-up, `follow-request.entity.ts`)
+
+| Column               | Type          | Nullable | Notes                                                                              |
+| -------------------- | ------------- | -------- | ---------------------------------------------------------------------------------- |
+| `id`                 | `uuid`        | no       | PK                                                                                 |
+| `requester_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` — who asked to follow                        |
+| `target_actor_id`    | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE` — the locked actor whose approval is awaited |
+| `created_at`         | `timestamptz` | no       |                                                                                    |
+
+**Constraints**: `UNIQUE (requester_actor_id, target_actor_id)` — at most one pending request
+per pair.
+
+**Indexes** (§60): the unique constraint above; `(target_actor_id, created_at, id)` for
+`ListFollowRequests`' keyset (the target's own inbound queue).
+
+Deliberately a separate table from `follows.status = 'PENDING'` — that status already means
+"waiting on a remote node's `Accept` activity" (federation handshake), a different process
+from "waiting on a locked local actor's human approval". A row here never becomes a `follows`
+row until `AcceptFollowRequest` creates one and deletes this one in the same transaction.
+Unlocking an account (`actor_privacy_prefs.locked` flipping to `false`) never touches this
+table — a pending request stays pending regardless. See `docs/architecture/social.md` for the
+full lifecycle and `SocialGraphService.FollowActor`/`ListFollowRequests`/`AcceptFollowRequest`/
+`RejectFollowRequest` in `api.md`.
 
 ---
 
@@ -1305,8 +1335,8 @@ the same columns would collide on name. Where two predicates are genuinely both 
 through P14-006). Privacy/consent surfaces (§197), bring-your-own filters (§198), filter lists
 (§199), labelers and labels (§200), and decentralized/appealable moderation (§201). Size and
 rate limits for every table below live in `packages/domain/src/limits.ts` §204 (P14-014), the
-single source of truth also read by the (not-yet-implemented) service layer and protobuf
-validation.
+single source of truth read by both the service layer (e.g. `filter.service.ts`,
+`filter-list.service.ts`) and protobuf-level validation.
 
 ### `actor_privacy_prefs`
 
