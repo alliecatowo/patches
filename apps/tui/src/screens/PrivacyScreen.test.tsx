@@ -110,6 +110,36 @@ describe('PrivacyScreen', () => {
     await vi.waitFor(() => expect(lastFrame()).toContain('Acknowledged.'));
   });
 
+  // A-053 (spec §197.1: "every client MUST show the new summary at next session start and
+  // record a fresh acknowledgement"): an actor who acknowledged an older version must see the
+  // notice as unacknowledged again, even though they already have an `acknowledged_at`
+  // timestamp — the version bump, not just the presence of a timestamp, is what matters.
+  it('shows the notice as unacknowledged again when the actor acknowledged an older version', async () => {
+    const api = buildApi({
+      getPrivacyPrefs: vi.fn<() => Promise<GetPrivacyPrefsResponse>>().mockResolvedValue({
+        prefs: prefs({
+          privacyNoticeVersion: 1,
+          privacyNoticeAcknowledgedAt: dateToTimestamp(new Date('2026-01-01T00:00:00Z')),
+        }),
+      }),
+    });
+    const { lastFrame } = render(
+      <PrivacyScreen
+        api={api}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token')}
+        onConfirm={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    // `buildApi`'s node policy is at version 2; the actor acknowledged version 1.
+    await vi.waitFor(() =>
+      expect(lastFrame()).toContain('We keep the minimum data required to run this node.'),
+    );
+    expect(lastFrame()).toContain('Not yet acknowledged');
+  });
+
   it('toggles the selected discoverability preference with a single-field update mask', async () => {
     const updatePrivacyPrefs = vi.fn().mockResolvedValue({ prefs: prefs({ discoverable: false }) });
     const api = buildApi({ updatePrivacyPrefs });

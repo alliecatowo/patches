@@ -348,6 +348,12 @@ export class FakeApiHandle {
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       getNodePolicy: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      // A-053: App.tsx's session-start staleness check calls this alongside `getNodePolicy`
+      // above — both reject the same way, so `Promise.all` in that effect rejects and the
+      // check silently no-ops, exactly like every other test in this file that doesn't care
+      // about it.
+      getPrivacyPrefs: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       createPost: (request: CreatePostRequest, accessToken: string) =>
         this.createPost(request, accessToken),
       getPost: (request: GetPostRequest) => this.getPost(request),
