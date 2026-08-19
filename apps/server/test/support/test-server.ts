@@ -1,4 +1,4 @@
-import { createServer } from 'node:net';
+import { createServer as createFreePortProbe } from 'node:net';
 
 import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import { type INestApplication } from '@nestjs/common';
@@ -12,7 +12,14 @@ import {
 } from '@patches/proto';
 
 import { AppModule } from '../../src/app.module.js';
-import { createGrpcMicroservice } from '../../src/grpc-options.js';
+import { type HealthControl, createGrpcMicroservice } from '../../src/grpc-options.js';
+import { HealthService } from '../../src/modules/system/health.service.js';
+import {
+  closeHealthzServer,
+  createHealthzServer,
+  listenHealthzServer,
+} from '../../src/modules/system/healthz-server.js';
+import { ReadinessState } from '../../src/modules/system/readiness-state.js';
 import { prepareServerEnv } from './env.js';
 
 export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
@@ -20,13 +27,19 @@ export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
 export interface TestServer {
   url: string;
   client: SystemGrpcClient;
+  /** Set only when `startTestServer({ http: true })` was asked to bind the standalone
+   * `/healthz` listener (A-043) — production's `FEDERATION_ENABLED=false` shape. */
+  httpUrl?: string;
+  /** Wraps `HealthControl.setStatus` so a test can flip the gRPC health status and have
+   * `/healthz` (via `ReadinessState`) agree, exactly as `main.ts` does. */
+  health: HealthControl;
   close(): Promise<void>;
 }
 
 /** Ask the OS for a free TCP port by binding and immediately releasing one. */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
-    const server = createServer();
+    const server = createFreePortProbe();
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
@@ -44,18 +57,26 @@ async function freePort(): Promise<number> {
   });
 }
 
+export interface StartTestServerOptions {
+  /** Also bind the standalone `/healthz`-only listener `main.ts` uses when
+   * `FEDERATION_ENABLED=false` (A-043), on its own random port, exposed as `httpUrl`. */
+  http?: boolean;
+}
+
 /** Boot the real Nest microservice on a random port with a real grpc-js client. */
-export async function startTestServer(): Promise<TestServer> {
+export async function startTestServer(options: StartTestServerOptions = {}): Promise<TestServer> {
   await prepareServerEnv();
   const port = await freePort();
   const url = `127.0.0.1:${String(port)}`;
-  const { options, health } = createGrpcMicroservice(url);
+  const { options: grpcOptions, health } = createGrpcMicroservice(url);
 
   // Mirrors `src/main.ts` exactly — a hybrid app with gRPC attached via `connectMicroservice`
   // and `inheritAppConfig: true`. Booting with `NestFactory.createMicroservice` here once let
   // a production-only bug through: without `inheritAppConfig`, the connected microservice
   // silently drops the global APP_FILTER/APP_INTERCEPTOR providers, so every AppError reached
-  // clients as INTERNAL. The HTTP listener is never started in tests.
+  // clients as INTERNAL. Nest's own HTTP adapter is never started in tests (that's what would
+  // open the federation surface, per A-043) — `options.http` instead binds the same
+  // standalone `/healthz` listener production uses when federation is off.
   const app = await NestFactory.create(AppModule, {
     logger: false,
     // Surface a failed boot (e.g. missing DATABASE_URL) as a rejected promise with a
@@ -63,17 +84,39 @@ export async function startTestServer(): Promise<TestServer> {
     // report as "Worker exited unexpectedly".
     abortOnError: false,
   });
-  app.connectMicroservice<MicroserviceOptions>(options, { inheritAppConfig: true });
+  app.connectMicroservice<MicroserviceOptions>(grpcOptions, { inheritAppConfig: true });
+
+  const readiness = app.get(ReadinessState);
+  const healthControl: HealthControl = {
+    setStatus: (status) => {
+      health.setStatus(status);
+      readiness.setServing(status === 'SERVING');
+    },
+  };
+
   await app.startAllMicroservices();
-  health.setStatus('SERVING');
+  healthControl.setStatus('SERVING');
 
   const client = createSystemClient(url, credentials.createInsecure());
+
+  let httpUrl: string | undefined;
+  let healthzServer: ReturnType<typeof createHealthzServer> | undefined;
+  if (options.http === true) {
+    const httpPort = await freePort();
+    const healthService = app.get(HealthService);
+    healthzServer = createHealthzServer(() => healthService.check());
+    await listenHealthzServer(healthzServer, httpPort, '127.0.0.1');
+    httpUrl = `http://127.0.0.1:${String(httpPort)}`;
+  }
 
   return {
     url,
     client,
+    ...(httpUrl !== undefined ? { httpUrl } : {}),
+    health: healthControl,
     close: async () => {
       client.close();
+      if (healthzServer !== undefined) await closeHealthzServer(healthzServer);
       await closeQuietly(app);
     },
   };

@@ -31,8 +31,10 @@ kill_timeout = "20s"
   INVITE_ONLY = "true"
   FEDERATION_ENABLED = "false"
   TRUST_PROXY_HEADERS = "true"
-  EMAIL_PROVIDER = "console"
-  EMAIL_FROM = "noreply@patches-social.fly.dev"
+  EMAIL_PROVIDER = "resend"
+  # Resend test sender until a real sending domain is verified (resend.com/domains) — delivers
+  # only to the Resend account owner's address; other recipients fail until then (B-031).
+  EMAIL_FROM = "Patches <onboarding@resend.dev>"
 
 # One image, two process groups (docs/research/fly-io.md §1, §5). Fly runs each group's
 # Machines with the corresponding command below, overriding the image's default CMD
@@ -68,16 +70,33 @@ kill_timeout = "20s"
   [services.ports.http_options]
     h2_backend = true
 
-  # Fly has no native gRPC check type (http/tcp only — docs/research/fly-io.md §3). A TCP
-  # check against the gRPC port only confirms the socket accepts connections, not that
-  # gRPC/the app is actually healthy; a real application-level check would need a separate
-  # plain HTTP listener (the Nest "hybrid app" pattern), which apps/server does not
-  # currently expose. Documented here as the deliberate fallback per P7-001's brief, not
-  # a full solution — file a follow-up task if/when a real HTTP health endpoint lands.
+  # Fly has no native gRPC check type (http/tcp only — docs/research/fly-io.md §3). This TCP
+  # check only confirms the gRPC socket accepts connections, not that the app is actually
+  # healthy — kept alongside the real application-level check below (`[checks.healthz]`)
+  # rather than replaced by it, since a TCP check needs no application code at all to pass.
   [[services.tcp_checks]]
     grace_period = "10s"
     interval = "15s"
     timeout = "2s"
+
+# Real application-level health check (A-043): `GET /healthz` on the server process's HTTP
+# port, which reports 200 only when the database answers `SELECT 1` and the gRPC health
+# status is SERVING (`apps/server/src/modules/system/health.service.ts`), 503 otherwise. A
+# top-level `[checks]` entry rather than `[[services.http_checks]]` because HTTP_PORT is not
+# a routed/public `[[services]]` block here — `[checks]` targets a port directly, independent
+# of request routing (docs/research/fly-io.md §3). `FEDERATION_ENABLED=false` in `[env]`
+# above means the server's HTTP port serves *only* `/healthz` (`healthz-server.ts`'s
+# standalone listener, not Nest's own HTTP adapter) — nothing else is reachable on it.
+[checks]
+  [checks.healthz]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    processes = ["server"]
 
 [deploy.release_command_vm]
   size = "shared-cpu-1x"
