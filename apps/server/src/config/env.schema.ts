@@ -90,15 +90,18 @@ const envObjectSchema = z.object({
   /**
    * Phase 8 two-node federation lab (P8-001..P8-008, `docs/architecture/federation.md`).
    * **Default off** (spec §108 Stage F1, §176's "self-hosted node ships with federation
-   * disabled by default"): when false, `main.ts` never opens the HTTP listener at all — no
-   * WebFinger, no actor documents, no inbox/outbox, nothing Internet-facing, because there is
-   * nothing listening. This is a stricter reading than "WebFinger may always be on for
-   * discovery" — the whole point of Stage F1 being "local and non-public" (federation.md §3.5)
-   * is that a node with federation off has zero new network surface, not a smaller one.
+   * disabled by default"): when false, `main.ts` never opens Nest's own HTTP adapter at
+   * all — no WebFinger, no actor documents, no inbox/outbox, nothing Internet-facing,
+   * because there is nothing listening on it. This is a stricter reading than "WebFinger may
+   * always be on for discovery" — the whole point of Stage F1 being "local and non-public"
+   * (federation.md §3.5) is that a node with federation off has zero new network surface
+   * beyond `/healthz` (A-043's standalone, single-route listener — see `healthz-server.ts`),
+   * not a smaller one.
    */
   FEDERATION_ENABLED: booleanish().default(false),
-  /** HTTP listener port for the federation surface (WebFinger/actor/inbox/outbox), only bound
-   * when `FEDERATION_ENABLED`. */
+  /** Port for the federation HTTP surface (WebFinger/actor/inbox/outbox) when
+   * `FEDERATION_ENABLED`, or for the standalone `/healthz`-only listener when it's not
+   * (A-043) — either way, this is `/healthz`'s port too. */
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
 
   /**
