@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Bookmark, Like } from '@patches/database';
+import { Bookmark, Like, Repost } from '@patches/database';
+import { RATE_LIMITS } from '@patches/domain';
 import { DataSource } from 'typeorm';
 
+import { AppError } from '../../common/errors/app-error.js';
 import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { toPostViews } from '../feeds/post-batch.js';
@@ -12,6 +14,8 @@ import { type PostView } from '../posts/post.dto.js';
 import { PostService } from '../posts/post.service.js';
 import type { ActorSummary } from '../auth/auth.dto.js';
 import { toActorSummary } from '../auth/auth.dto.js';
+import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
+import { enforceWindowRateLimit } from '../../common/rate-limit/window-rate-limiter.js';
 
 /**
  * The application service behind `patches.v1.ReactionService` (spec §53).
@@ -36,12 +40,21 @@ export interface ListBookmarksResult {
   hasMore: boolean;
 }
 
+export interface ListPostRepostersResult {
+  actors: ActorSummary[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+
+const HOUR_MS = 60 * 60_000;
+
 @Injectable()
 export class ReactionsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly posts: PostService,
     private readonly notifications: NotificationsService,
+    private readonly dbRateLimit: DbRateLimitStore,
     @Inject(FEDERATION_GATEWAY) private readonly federation: FederationGateway,
   ) {}
 
@@ -108,6 +121,91 @@ export class ReactionsService {
     await this.posts.getPost(postId, actorId);
     await this.dataSource.getRepository(Bookmark).delete({ actorId, postId });
     return this.posts.getPost(postId, actorId);
+  }
+
+  /** A repost is a pointer row. Eligibility is rechecked at write time (§180.1, §192). */
+  async repostPost(actorId: string, postIdRaw: string): Promise<PostView> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    await enforceWindowRateLimit(
+      this.dbRateLimit,
+      'repost',
+      actorId,
+      RATE_LIMITS.repostPerHour,
+      HOUR_MS,
+    );
+    const post = await this.posts.getPost(postId, actorId);
+    if (post.deleted) {
+      throw new AppError('POST_NOT_FOUND', 'That post does not exist or was removed.');
+    }
+    if (post.visibility === 'FOLLOWERS' && post.author.id !== actorId) {
+      throw new AppError('POST_FORBIDDEN', 'Followers-only posts cannot be reposted.');
+    }
+
+    let wasNew = false;
+    await this.dataSource.transaction(async (manager) => {
+      const reposts = manager.getRepository(Repost);
+      if ((await reposts.findOne({ where: { actorId, postId } })) !== null) return;
+      try {
+        await reposts.save(reposts.create({ actorId, postId }));
+        wasNew = true;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    });
+
+    if (wasNew && post.author.id !== actorId) {
+      await this.notifications.notifyRepost(post.author.id, actorId, postId);
+    }
+    return this.posts.getPost(postId, actorId);
+  }
+
+  /** Idempotent, but still rate-limited: alternating repost/unrepost is itself an abuse path. */
+  async unrepostPost(actorId: string, postIdRaw: string): Promise<PostView> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    await enforceWindowRateLimit(
+      this.dbRateLimit,
+      'repost',
+      actorId,
+      RATE_LIMITS.repostPerHour,
+      HOUR_MS,
+    );
+    await this.posts.getPost(postId, actorId);
+    await this.dataSource.getRepository(Repost).delete({ actorId, postId });
+    return this.posts.getPost(postId, actorId);
+  }
+
+  async listPostReposters(
+    postIdRaw: string,
+    cursorRaw: string,
+    limit: number,
+    viewerActorId?: string,
+  ): Promise<ListPostRepostersResult> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    await this.posts.getPost(postId, viewerActorId);
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+    const qb = this.dataSource
+      .getRepository(Repost)
+      .createQueryBuilder('repost')
+      .innerJoinAndSelect('repost.actor', 'actor')
+      .where('repost.postId = :postId', { postId })
+      .orderBy('repost.createdAt', 'DESC')
+      .addOrderBy('repost.id', 'DESC')
+      .take(take + 1);
+    if (cursor !== undefined) {
+      qb.andWhere('(repost.createdAt, repost.id) < (:cursorCreatedAt, :cursorId)', {
+        cursorCreatedAt: cursor.createdAt,
+        cursorId: cursor.id,
+      });
+    }
+    const rows = await qb.getMany();
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+    return { actors: page.map((row) => toActorSummary(row.actor)), nextCursor, hasMore };
   }
 
   /** The caller's own bookmarks, most-recent first (spec §53 — bookmarks are private, so

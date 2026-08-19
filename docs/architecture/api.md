@@ -11,7 +11,8 @@ Patches' canonical client/server application protocol — the contract between a
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
 `social_graph.proto`, `node.proto`, `pages.proto`, `media.proto`, `reactions.proto`,
-`moderation.proto`, `notifications.proto` — the full `AuthService` (including SSH login,
+`moderation.proto`, `notifications.proto`, `tags.proto`, `communities.proto`, and
+`messages.proto` — the full `AuthService` (including SSH login,
 GitHub device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
 `PollGitHubLogin` included as of P6-005 (§176, §167). `PostService`
 (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` is a cursor-paginated,
@@ -35,10 +36,11 @@ PUT plus a worker `PROCESS_MEDIA` job producing Sharp derivatives, ADR 0015), `R
 (`LikePost`/`UnlikePost`/`BookmarkPost`/`UnbookmarkPost`/`ListBookmarks`/`ListPostLikers`,
 P4-002), `ModerationService`
 (`BlockActor`/`UnblockActor`/`MuteActor`/`UnmuteActor`/`ListBlocks`/`ListMutes`/`ReportPost`/
-`ReportActor`, P6-001/P6-002), and `NotificationService`
+`ReportActor`/`ReportMessage`, P6-001/P6-002/P11-004), and `NotificationService`
 (`ListNotifications`/`MarkNotificationsRead`/`GetUnreadCount`, P4-003) are all implemented,
-with server handlers in `packages/proto` and `apps/server`. `EditPost` and `Repost` remain
-**planned**, not yet in `posts.proto`. Per-RPC status is called out inline below.
+with server handlers in `packages/proto` and `apps/server`. Phase 11 adds implemented tag,
+community, direct-message, repost/quote/edit/pin, social-feed, flair, and node-capability
+surfaces. Per-RPC status is called out inline below.
 
 ## 1. Schema layout
 
@@ -60,6 +62,9 @@ packages/proto/proto/patches/v1/
 ├── media.proto       # implemented (Phase 5)
 ├── moderation.proto  # implemented (P6-001/P6-002)
 ├── reactions.proto   # implemented (P4-002)
+├── tags.proto        # implemented (P11-005)
+├── communities.proto # implemented (P11-003)
+├── messages.proto    # implemented (P11-004)
 └── notifications.proto  # implemented (P4-003)
 ```
 
@@ -91,6 +96,9 @@ service SocialGraphService
 service ReactionService
 service NotificationService
 service ModerationService
+service TagService
+service CommunityService
+service DirectMessageService
 ```
 
 ## 3. RPCs by service
@@ -138,9 +146,9 @@ Notes:
 
 ### NodeService (§163, §168) — implemented in `node.proto` (P1-014)
 
-| RPC           | Notes                                                                                                                                                                                               |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), capabilities (§174) — `capabilities` is currently an empty list (v0 grants nothing capability-gated yet) |
+| RPC           | Notes                                                                                                                                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), and configured social capabilities (§174), including post length, community creation policy, DM availability/retention, and allowed like glyphs |
 
 Clients discover node policy here rather than assuming the reference node's behavior. There
 is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
@@ -168,9 +176,9 @@ ignore unknown block types gracefully; the server rejects them on write.
 
 | RPC                | Notes                                                                                                                                                                                                                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GetActor`         | by ID; `counts` is real (`followers`/`following` from `follows`, `posts` from `posts`) as of P3-001                                                                                                                                                                                                                |
+| `GetActor`         | by ID; real counts plus validated flair and up to three `pinned_post_ids`                                                                                                                                                                                                                                          |
 | `GetActorByHandle` |                                                                                                                                                                                                                                                                                                                    |
-| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate` (§173), selected by a `google.protobuf.FieldMask` (`update_mask`); `avatar` is not yet on `UpdateProfileRequest`, though `Actor.avatar`/`MediaService` both exist — wiring it into profile updates is a follow-up                                   |
+| `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate`/`flair`, selected by a `google.protobuf.FieldMask`; flair is size-, color-contrast-, glyph-, border-, and theme-validated                                                                                                                           |
 | `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                                                                                                                                            |
 | `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                                                                                                                                        |
 | `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                                                        |
@@ -194,26 +202,28 @@ badges forward regardless of what a request sends, and validates the serialized 
 `ModerationService` below (P6-001). `FollowActor` calls `NotificationsService.notifyFollow` on a
 genuinely new follow (A-026), after the follow transaction commits.
 
-### PostService (§51) — `CreatePost`/`GetPost`/`DeletePost`/`ListReplies` implemented in `posts.proto`
+### PostService (§51) — implemented in `posts.proto` (P3-001, P11-006)
 
-| RPC           | Notes                                                                                                                                                                                                                                                                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreatePost`  | requires `client_request_id`; idempotent; accepts `content_warning` (B-018); replying to a post by an actor blocked either-direction from the caller is `POST_NOT_FOUND` (§62), not `PERMISSION_DENIED`; triggers a `REPLY` notification to the parent's author and a `MENTION` notification per `@handle` found in the body (P4-003) |
-| `GetPost`     | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                |
-| `DeletePost`  | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                  |
-| `ListReplies` | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                   |
-| `EditPost`    | MVP — **planned**, not yet in `posts.proto`                                                                                                                                                                                                                                                                                           |
-| `Repost`      | possible later; **quote-posts are explicitly out of scope**; **planned**                                                                                                                                                                                                                                                              |
+| RPC                          | Notes                                                                                                                                                                                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreatePost`                 | idempotent; supports replies, community posts, quotes with server-enforced quote policy, and write-time tag extraction; triggers reply, mention, and quote notifications as applicable                                                                                                                              |
+| `GetPost`                    | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                              |
+| `DeletePost`                 | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                |
+| `ListReplies`                | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE |
+| `EditPost` / `ListPostEdits` | body/media edits preserve immutable snapshots and never re-notify or re-order the post; structural fields remain immutable                                                                                                                                                                                          |
+| `PinPost` / `UnpinPost`      | idempotently manages an actor's ordered pinned-post set, capped at three                                                                                                                                                                                                                                            |
 
 `Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
 
 ### FeedService (§52) — implemented (P3-002)
 
-| RPC              | Notes                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `ListHomeFeed`   | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                          |
-| `ListLocalFeed`  | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering |
-| `ListActorPosts` | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                               |
+| RPC                 | Notes                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `ListHomeFeed`      | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                          |
+| `ListLocalFeed`     | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering |
+| `ListActorPosts`    | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                               |
+| `ListTagFeed`       | chronological public, non-community posts for a normalized tag; block/mute/tag-mute aware                                             |
+| `ListCommunityFeed` | chronological posts within a community, subject to membership and moderation state                                                    |
 
 `ListBookmarks` is on `ReactionService` (P4-002), not `FeedService` — bookmarks are a private,
 actor-scoped list, not a feed with visibility rules.
@@ -228,7 +238,9 @@ author or is blocked by them (either direction), and excluded if the viewer mute
 With no viewer (anonymous `ListLocalFeed`/`ListActorPosts`), only `PUBLIC`/`UNLISTED` posts are
 eligible — there is no viewer to test a `FOLLOWERS` post or a block/mute against.
 `ListHomeFeed` additionally restricts the candidate set to the viewer's own posts plus posts
-by actors the viewer follows.
+by actors the viewer follows. Home feed reposts are ordered at the repost pointer's own time,
+collapse duplicates within a page, and expose at most three reposter attributions. Local and
+home feeds exclude community posts unless the viewer is a member.
 
 **Query plan verified** (`EXPLAIN (ANALYZE, BUFFERS)`, ~60,000 seeded posts, one actor
 following 20 of 50 seeded authors): both `ListLocalFeed`'s and `ListHomeFeed`'s queries plan
@@ -260,6 +272,8 @@ image bytes are proxied through Node (§153).
 | `BookmarkPost` / `UnbookmarkPost` | idempotent; bookmarks are private                                                                                                                                          |
 | `ListBookmarks`                   | the caller's own bookmarks only, keyset-paginated `(created_at DESC, post_id DESC)`                                                                                        |
 | `ListPostLikers`                  | anonymous-callable; keyset-paginated `(created_at DESC, actor_id DESC)`                                                                                                    |
+| `RepostPost` / `UnrepostPost`     | idempotent pointer-row reposting with visibility, tombstone, and block checks; a new repost notifies the author                                                            |
+| `ListPostReposters`               | keyset-paginated reposter list, filtered for viewer block/mute state                                                                                                       |
 
 ### ModerationService (§55, §61–64) — implemented in `moderation.proto` (P6-001/P6-002)
 
@@ -269,6 +283,7 @@ image bytes are proxied through Node (§153).
 | `MuteActor` / `UnmuteActor`   | idempotent; never touches an existing follow (§63); returns the updated `Relationship`                                                                                                                                                                                      |
 | `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                                                                     |
 | `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report has no RPC of its own, it's `patches-admin report resolve` (§65, P6-003, `docs/operations/moderation.md`) |
+| `ReportMessage`               | applies the same bounds/rate limit and stores a stable snapshot of the reported message plus up to ten surrounding messages                                                                                                                                                 |
 
 No user-facing RPC exposes internal moderator notes (`reports.moderator_note`), and there is
 no gRPC surface for the admin CLI at all — `apps/admin` reads/writes PostgreSQL directly
@@ -288,13 +303,33 @@ Block/mute enforcement beyond `FeedService`'s visibility filter (already in plac
 | `MarkNotificationsRead` | collapses spec §56's `MarkNotificationRead`/`MarkAllNotificationsRead` into one idempotent RPC (`through_id` or `mark_all`) |
 | `GetUnreadCount`        |                                                                                                                             |
 
-`NotificationsService.notifyFollow`/`notifyLike`/`notifyReply`/`notifyMention` are the write
-side, called from `PostService` (REPLY/MENTION) and `ReactionsService` (LIKE) as a side effect
+`NotificationsService.notifyFollow`/`notifyLike`/`notifyReply`/`notifyMention`/`notifyRepost`/
+`notifyQuote`/`notifyMessage`/`notifyCommunityInvite` are the write side, called from the
+owning service as a side effect
 of their own writes — spec §113 has no separate event service. Every notify path skips
 self-notification and respects blocks (§62) and mutes (§63) before ever writing a row, and
-dedupes via two partial unique indexes on `notifications` (§113). `notifyFollow` exists and is
-exported but nothing calls it yet — `GraphService.followActor` is outside this task's file
-scope; wiring that one-line call is a follow-up (see this task's report).
+dedupes via partial unique indexes on `notifications` (§113).
+
+### TagService (§181) — implemented in `tags.proto` (P11-005)
+
+`SearchTags` returns up to 20 normalized tags in alphabetical order. `MuteTag`, `UnmuteTag`,
+and `ListMutedTags` manage the caller's private tag filters. Post writes normalize using NFKC
+and case-folding, reject unsafe/control-like forms and all-digit tags, and accept at most ten.
+
+### CommunityService (§182) — implemented in `communities.proto` (P11-003)
+
+Provides create/get/search, membership, invitation, ban, and moderator RPCs. Creation is
+capability- and rate-limit-gated and idempotent by creator plus `client_request_id`; the creator
+becomes the first moderator. Moderation changes are audit logged, and removing a community
+clears its posts' `community_id`.
+
+### DirectMessageService (§183) — implemented in `messages.proto` (P11-004)
+
+Provides conversation creation/list/get, send/list/delete, request accept/decline, unread
+marking, and archive operations. Direct threads require mutual follows or an accepted request;
+pending requests allow one message, declined pairs have a 30-day bar, groups are capped at
+eight, and block failures do not expose a recipient oracle. Messages are sanitized text,
+sender deletion is a tombstone, and unread state is per viewer without read receipts.
 
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
@@ -324,7 +359,7 @@ Every RPC call **must** carry a deadline — no call waits forever.
 
 - Reads MAY retry transient failures automatically.
 - Writes MUST NOT blindly retry unless the request is provably idempotent.
-- Creation RPCs (e.g. `CreatePost`) carry a client-generated `client_request_id`
+- Creation RPCs (for example `CreatePost`, `CreateCommunity`, and DM creation/sends) carry a client-generated `client_request_id`
   (UUID). The backend enforces a uniqueness constraint conceptually
   `(author_actor_id, client_request_id)` so a client-side retry cannot duplicate
   server state.
@@ -363,6 +398,12 @@ included in error metadata/messages where useful.
 | `POST_NOT_FOUND`             | `NOT_FOUND`           |
 | `POST_FORBIDDEN`             | `PERMISSION_DENIED`   |
 | `POST_TOO_LONG`              | `INVALID_ARGUMENT`    |
+| `COMMUNITY_NOT_FOUND`        | `NOT_FOUND`           |
+| `COMMUNITY_FORBIDDEN`        | `PERMISSION_DENIED`   |
+| `TAG_INVALID`                | `INVALID_ARGUMENT`    |
+| `CONVERSATION_NOT_FOUND`     | `NOT_FOUND`           |
+| `MESSAGE_NOT_FOUND`          | `NOT_FOUND`           |
+| `DM_UNAVAILABLE`             | `NOT_FOUND`           |
 | `PAGE_NOT_FOUND`             | `NOT_FOUND`           |
 | `PAGE_FORBIDDEN`             | `PERMISSION_DENIED`   |
 | `GUESTBOOK_ENTRY_NOT_FOUND`  | `NOT_FOUND`           |

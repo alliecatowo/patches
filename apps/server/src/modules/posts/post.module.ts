@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { FederationModule } from '../federation/federation.module.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
+import { TagsModule } from '../tags/tags.module.js';
 import { PostController } from './post.controller.js';
 import { PostService } from './post.service.js';
 
@@ -15,7 +16,7 @@ import { PostService } from './post.service.js';
  * logic for `LikePost`/`BookmarkPost`.
  */
 @Module({
-  imports: [AuthModule, NotificationsModule, FederationModule],
+  imports: [AuthModule, NotificationsModule, FederationModule, TagsModule],
   controllers: [PostController],
   providers: [PostService],
   exports: [PostService],

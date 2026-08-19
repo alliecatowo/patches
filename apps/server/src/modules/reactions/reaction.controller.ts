@@ -128,25 +128,42 @@ export class ReactionController implements ReactionServiceController {
     };
   }
 
-  /**
-   * `ReactionsService` has no repost application logic yet — the `reposts` table and
-   * `RepostPost`/`UnrepostPost`/`ListPostReposters` RPCs land with the reactions slice of
-   * Amendment B (P11-00x); this contract-only wave (P11-001) only needs the controller to
-   * satisfy `ReactionServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a
-   * silent no-op.
-   */
-  repostPost(@Payload() _request: RepostPostRequest): Promise<RepostPostResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'RepostPost is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async repostPost(
+    @Payload() request: RepostPostRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<RepostPostResponse> {
+    return toReactionResponse(
+      await this.reactions.repostPost(requireSession(session).actorId, request.postId),
+    );
   }
 
-  unrepostPost(@Payload() _request: UnrepostPostRequest): Promise<UnrepostPostResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'UnrepostPost is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async unrepostPost(
+    @Payload() request: UnrepostPostRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<UnrepostPostResponse> {
+    return toReactionResponse(
+      await this.reactions.unrepostPost(requireSession(session).actorId, request.postId),
+    );
   }
 
-  listPostReposters(
-    @Payload() _request: ListPostRepostersRequest,
+  async listPostReposters(
+    @Payload() request: ListPostRepostersRequest,
+    @Ctx() metadata?: Metadata,
   ): Promise<ListPostRepostersResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'ListPostReposters is not implemented yet.');
+    const result = await this.reactions.listPostReposters(
+      request.postId,
+      request.cursor,
+      request.limit,
+      await this.optionalViewerActorId(metadata),
+    );
+    return {
+      actors: result.actors.map(toProtoActor),
+      page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
   }
 
   /** Same implementation as `PostController`/`FeedController`'s copy — see their doc comments
@@ -174,18 +191,16 @@ function toReactionResponse(post: PostView): {
   viewerState: { liked: boolean; bookmarked: boolean; reposted: boolean };
 } {
   return {
-    // reposts/quotes/reposted are always zero/false here — no repost writer exists yet (see
-    // `repostPost`'s doc comment above).
     counts: {
       replies: post.counts.replyCount,
       likes: post.counts.likeCount,
-      reposts: 0,
-      quotes: 0,
+      reposts: post.counts.repostCount,
+      quotes: post.counts.quoteCount,
     },
     viewerState: {
       liked: post.viewerState.liked,
       bookmarked: post.viewerState.bookmarked,
-      reposted: false,
+      reposted: post.viewerState.reposted,
     },
   };
 }

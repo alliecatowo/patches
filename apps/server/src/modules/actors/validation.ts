@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  MAX_ACTOR_FLAIR_BYTES,
+  PAGE_BORDER_STYLES,
+  PAGE_THEME_FIELD_MAX_CHARS,
+  sanitizeText,
+} from '@patches/domain';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { safeUrlSchema } from '../../common/validation/url.js';
@@ -85,6 +91,99 @@ export const nameplateInputSchema = z.object({
   profileBorder: z.string().trim().max(PROFILE_BORDER_MAX_LENGTH).optional(),
 });
 export type NameplateInput = z.infer<typeof nameplateInputSchema>;
+
+const UNSAFE_GLYPH = /[\p{Cc}\p{Cf}\p{M}\u200B-\u200F\u202A-\u202E\u2060-\u206F]/u;
+const DOUBLE_WIDTH =
+  /[\p{Extended_Pictographic}\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe6f\uff00-\uff60\uffe0-\uffe6]/u;
+const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/;
+const NAMED_COLOURS: Readonly<Record<string, string>> = Object.freeze({
+  black: '#000000',
+  red: '#ff0000',
+  green: '#008000',
+  yellow: '#ffff00',
+  blue: '#0000ff',
+  magenta: '#ff00ff',
+  cyan: '#00ffff',
+  white: '#ffffff',
+  gray: '#808080',
+  grey: '#808080',
+});
+
+/** Conservative terminal width-1 validation: one scalar, with formatting/combining/control,
+ * emoji and East-Asian-wide ranges rejected (§184.2, §192). */
+export function isWidthOneGlyph(value: string): boolean {
+  return Array.from(value).length === 1 && !UNSAFE_GLYPH.test(value) && !DOUBLE_WIDTH.test(value);
+}
+
+export function validateLikeGlyph(value: string, allowList: readonly string[]): string {
+  if (!isWidthOneGlyph(value) || !allowList.includes(value)) {
+    throw AppError.validation(
+      "like_glyph must be one width-1 codepoint from this node's allow-list.",
+    );
+  }
+  return value;
+}
+
+const safeThemeText = z
+  .string()
+  .transform((value) => sanitizeText(value, { multiline: false }).trim())
+  .pipe(z.string().max(PAGE_THEME_FIELD_MAX_CHARS));
+
+const flairThemeSchema = z
+  .object({
+    accent: safeThemeText.optional(),
+    background: safeThemeText.optional(),
+    foreground: safeThemeText.optional(),
+    border: z.enum(PAGE_BORDER_STYLES).optional(),
+    avatarStyle: safeThemeText.optional(),
+  })
+  .strict();
+
+const flairShapeSchema = z
+  .object({
+    post_accent: z.string().max(32).optional(),
+    border_style: z.enum(PAGE_BORDER_STYLES).optional(),
+    like_glyph: z.string().optional(),
+    wall_theme: flairThemeSchema.optional(),
+  })
+  .strict();
+
+/** Strictly validates and canonicalizes the opaque protobuf JSON string. */
+export function parseActorFlairDocument(raw: string, glyphAllowList: readonly string[]): unknown {
+  if (Buffer.byteLength(raw, 'utf8') > MAX_ACTOR_FLAIR_BYTES) {
+    throw AppError.validation(`flair must be at most ${String(MAX_ACTOR_FLAIR_BYTES)} bytes.`);
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw AppError.validation('flair document must be valid JSON.', { cause: error });
+  }
+  const parsed = parseInput(flairShapeSchema, decoded);
+  if (parsed.like_glyph !== undefined) validateLikeGlyph(parsed.like_glyph, glyphAllowList);
+  if (parsed.post_accent !== undefined) validateContrastColour(parsed.post_accent);
+  const canonical = JSON.stringify(parsed);
+  if (Buffer.byteLength(canonical, 'utf8') > MAX_ACTOR_FLAIR_BYTES) {
+    throw AppError.validation(`flair must be at most ${String(MAX_ACTOR_FLAIR_BYTES)} bytes.`);
+  }
+  return parsed;
+}
+
+function validateContrastColour(raw: string): void {
+  const hex = HEX_COLOUR.test(raw) ? raw : NAMED_COLOURS[raw.toLowerCase()];
+  if (hex === undefined)
+    throw AppError.validation('post_accent must be a named colour or #RRGGBB.');
+  const rgb = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const linear = rgb.map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  const luminance = 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  // Against the reference dark terminal canvas (#000). Renderers still degrade colours for
+  // their actual palette, but the server rejects accents that are unreadably dark everywhere.
+  if ((luminance + 0.05) / 0.05 < 3) {
+    throw AppError.validation('post_accent does not meet the minimum contrast ratio.');
+  }
+}
 
 export function parseInput<Schema extends z.ZodType>(
   schema: Schema,

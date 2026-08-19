@@ -56,12 +56,16 @@ import type {
   VerifyEmailResponse,
 } from './generated/patches/v1/auth.js';
 import type {
+  ListCommunityFeedRequest,
+  ListCommunityFeedResponse,
   ListHomeFeedRequest,
   ListHomeFeedResponse,
   ListLocalFeedRequest,
   ListLocalFeedResponse,
   ListActorPostsRequest,
   ListActorPostsResponse,
+  ListTagFeedRequest,
+  ListTagFeedResponse,
 } from './generated/patches/v1/feeds.js';
 import type {
   BeginMediaUploadRequest,
@@ -387,6 +391,8 @@ export interface FeedGrpcClient extends Client {
   listHomeFeed: GrpcUnaryCall<ListHomeFeedRequest, ListHomeFeedResponse>;
   listLocalFeed: GrpcUnaryCall<ListLocalFeedRequest, ListLocalFeedResponse>;
   listActorPosts: GrpcUnaryCall<ListActorPostsRequest, ListActorPostsResponse>;
+  listTagFeed: GrpcUnaryCall<ListTagFeedRequest, ListTagFeedResponse>;
+  listCommunityFeed: GrpcUnaryCall<ListCommunityFeedRequest, ListCommunityFeedResponse>;
 }
 
 /** `patches.v1.SocialGraphService` as seen by a raw grpc-js client. */

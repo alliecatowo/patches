@@ -1,10 +1,19 @@
-import type { PostType as DbPostType, PostVisibility as DbPostVisibility } from '@patches/database';
+import type {
+  PostType as DbPostType,
+  PostVisibility as DbPostVisibility,
+  QuotePolicy as DbQuotePolicy,
+} from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
-import type { MediaAttachment, Post as ProtoPost } from '@patches/proto';
-import { PostType, PostVisibility, QuotePolicy } from '@patches/proto/nest';
+import type {
+  Community as ProtoCommunity,
+  MediaAttachment,
+  Post as ProtoPost,
+  PostEdit as ProtoPostEdit,
+} from '@patches/proto';
+import { CommunityRole, PostType, PostVisibility, QuotePolicy } from '@patches/proto/nest';
 
 import { toProtoActor } from '../auth/auth.mapper.js';
-import type { PostMediaSummary, PostView } from './post.dto.js';
+import type { CommunitySummaryView, PostEditView, PostMediaSummary, PostView } from './post.dto.js';
 
 /**
  * Application DTO → protobuf message (spec §128), field-by-field — see `auth.mapper.ts`'s
@@ -36,6 +45,24 @@ export function postVisibilityFromProto(value: PostVisibility): DbPostVisibility
   return PROTO_TO_POST_VISIBILITY[value] ?? 'PUBLIC';
 }
 
+const QUOTE_POLICY_TO_PROTO: Readonly<Record<DbQuotePolicy, QuotePolicy>> = Object.freeze({
+  ANYONE: QuotePolicy.QUOTE_POLICY_ANYONE,
+  FOLLOWERS: QuotePolicy.QUOTE_POLICY_FOLLOWERS,
+  NOBODY: QuotePolicy.QUOTE_POLICY_NOBODY,
+});
+
+/** `QUOTE_POLICY_UNSPECIFIED` (an unset request field) defaults to `ANYONE` — spec §180.2's
+ * documented default for the actor-level preference this maps a per-post override onto. */
+const PROTO_TO_QUOTE_POLICY: Readonly<Partial<Record<QuotePolicy, DbQuotePolicy>>> = Object.freeze({
+  [QuotePolicy.QUOTE_POLICY_ANYONE]: 'ANYONE',
+  [QuotePolicy.QUOTE_POLICY_FOLLOWERS]: 'FOLLOWERS',
+  [QuotePolicy.QUOTE_POLICY_NOBODY]: 'NOBODY',
+});
+
+export function quotePolicyFromProto(value: QuotePolicy): DbQuotePolicy {
+  return PROTO_TO_QUOTE_POLICY[value] ?? 'ANYONE';
+}
+
 function toProtoMediaAttachment(media: PostMediaSummary): MediaAttachment {
   return {
     mediaId: media.mediaId,
@@ -44,6 +71,24 @@ function toProtoMediaAttachment(media: PostMediaSummary): MediaAttachment {
     height: media.height ?? 0,
     mimeType: media.mimeType ?? '',
     position: media.position,
+  };
+}
+
+/** `Post.community` (spec §189, §190) — see `post.dto.ts`'s `CommunitySummaryView` doc for why
+ * `counts`/`created_by`/`viewer_role` are left unset here rather than guessed at. */
+function toProtoCommunitySummary(summary: CommunitySummaryView): ProtoCommunity {
+  return {
+    id: summary.id,
+    name: summary.name,
+    displayName: summary.displayName,
+    description: summary.description,
+    rules: summary.rules,
+    createdBy: undefined,
+    isPublic: summary.isPublic,
+    createdAt: dateToTimestamp(summary.createdAt),
+    updatedAt: dateToTimestamp(summary.updatedAt),
+    counts: undefined,
+    viewerRole: CommunityRole.COMMUNITY_ROLE_UNSPECIFIED,
   };
 }
 
@@ -62,24 +107,36 @@ export function toProtoPost(view: PostView): ProtoPost {
     createdAt: dateToTimestamp(view.createdAt),
     editedAt: view.editedAt === null ? undefined : dateToTimestamp(view.editedAt),
     deleted: view.deleted,
-    // reposts/quotes and the `reposted` viewer flag land with `ReactionService.RepostPost`
-    // (P11-00x) — no writer produces them yet, so they read as zero/false rather than a
-    // guessed value (same "not produced yet" reasoning as `notification.mapper.ts`).
     counts: {
       replies: view.counts.replyCount,
       likes: view.counts.likeCount,
-      reposts: 0,
-      quotes: 0,
+      reposts: view.counts.repostCount,
+      quotes: view.counts.quoteCount,
     },
     viewerState: {
       liked: view.viewerState.liked,
       bookmarked: view.viewerState.bookmarked,
-      reposted: false,
+      reposted: view.viewerState.reposted,
     },
-    // Quote/community fields land with `PostService.CreatePost`'s Amendment B body (P11-00x) —
-    // this schema/contract wave has no writer for them yet.
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
+    // Only one level ever populated (spec §180.2, §188's "quoted post nesting: 1 level
+    // rendered") — `view.quotedPost.quotedPost` is always `null` by construction
+    // (`post.dto.ts#toPostView`'s doc comment), so this is never a real recursion.
+    quotedPost: view.quotedPost === null ? undefined : toProtoPost(view.quotedPost),
+    community: view.community === null ? undefined : toProtoCommunitySummary(view.community),
+    quotePolicy: QUOTE_POLICY_TO_PROTO[view.quotePolicy],
+    repostedBy: view.repostedBy.map(toProtoActor),
+    repostedByTotal: view.repostedBy.length === 0 ? 0 : view.repostedByTotal,
+  };
+}
+
+export function toProtoPostEdit(view: PostEditView): ProtoPostEdit {
+  return {
+    id: view.id,
+    postId: view.postId,
+    previousBody: view.previousBody ?? '',
+    previousContentWarning: view.previousContentWarning ?? '',
+    previousMedia: view.previousMedia.map(toProtoMediaAttachment),
+    editedByActorId: view.editedByActorId ?? '',
+    createdAt: dateToTimestamp(view.createdAt),
   };
 }

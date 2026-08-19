@@ -17,6 +17,7 @@ import { Conversation } from './conversation.entity.js';
  */
 @Entity({ name: 'messages' })
 @Index(['conversationId', 'createdAt', 'id'])
+@Index(['senderActorId', 'clientRequestId'], { unique: true })
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
@@ -47,4 +48,11 @@ export class Message {
 
   @Column({ type: 'timestamptz', nullable: true })
   declare deletedAt: Date | null;
+
+  /** Client-generated idempotency key (§45) — `SendMessage`'s, or `CreateConversation`'s for a
+   * conversation's first message. `null` only for rows a future writer creates without one;
+   * every message `DirectMessageService` writes sets it. Same pattern as
+   * `Post.clientRequestId`. */
+  @Column({ type: 'uuid', nullable: true })
+  declare clientRequestId: string | null;
 }

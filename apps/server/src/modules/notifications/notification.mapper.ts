@@ -15,6 +15,10 @@ const NOTIFICATION_TYPE_TO_PROTO: Readonly<Record<DbNotificationType, Notificati
     REPLY: NotificationType.NOTIFICATION_TYPE_REPLY,
     MENTION: NotificationType.NOTIFICATION_TYPE_MENTION,
     MODERATION: NotificationType.NOTIFICATION_TYPE_MODERATION,
+    REPOST: NotificationType.NOTIFICATION_TYPE_REPOST,
+    QUOTE: NotificationType.NOTIFICATION_TYPE_QUOTE,
+    MESSAGE: NotificationType.NOTIFICATION_TYPE_MESSAGE,
+    COMMUNITY_INVITE: NotificationType.NOTIFICATION_TYPE_COMMUNITY_INVITE,
   });
 
 export function toProtoNotification(view: NotificationView): ProtoNotification {
@@ -25,10 +29,7 @@ export function toProtoNotification(view: NotificationView): ProtoNotification {
     postId: view.postId ?? '',
     createdAt: dateToTimestamp(view.createdAt),
     readAt: view.readAt === null ? undefined : dateToTimestamp(view.readAt),
-    // REPOST/QUOTE/MESSAGE/COMMUNITY_INVITE notification rows don't exist yet — no writer
-    // populates `DbNotificationType` with them (P11-001 is schema/contract only) — so these
-    // are always empty for now, same "not produced yet" reasoning as `MODERATION` above.
-    conversationId: '',
-    communityId: '',
+    conversationId: view.conversationId ?? '',
+    communityId: view.communityId ?? '',
   };
 }

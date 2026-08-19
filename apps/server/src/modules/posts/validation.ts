@@ -1,4 +1,5 @@
 import { MAX_POST_MEDIA } from '@patches/database';
+import { MAX_POST_CHARS_NODE_CEILING } from '@patches/domain';
 import { z } from 'zod';
 
 import { AppError } from '../../common/errors/app-error.js';
@@ -9,7 +10,12 @@ import { safeUrlSchema } from '../../common/validation/url.js';
  * `modules/auth/validation.ts` documents: protobuf, service, database).
  */
 
-export const POST_BODY_MAX_LENGTH = 5000;
+/** Structural ceiling only — the absolute maximum any node may ever configure
+ * `MAX_POST_CHARS` up to (spec §186.2, `@patches/domain`'s `MAX_POST_CHARS_NODE_CEILING`).
+ * The *actual*, node-configured limit (5,000 default, up to this ceiling) is enforced
+ * dynamically in `PostService` against `AppConfigService.maxPostChars` — a static zod
+ * `.max()` can't read config, so this schema only rejects what no node could ever accept. */
+export const POST_BODY_MAX_LENGTH = MAX_POST_CHARS_NODE_CEILING;
 /** Matches `packages/config`'s `PUBLIC_ORIGIN` pattern: `z.httpUrl()` rejects `localhost`,
  * which a self-hosted node's link posts must not (see LEARNINGS: zod-v4-url-validation). */
 const LINK_URL_MAX_LENGTH = 2048;
@@ -37,6 +43,8 @@ const contentWarningSchema = z
 
 export const uuidInputSchema = z.uuid('must be a valid id');
 
+export const quotePolicyInputSchema = z.enum(['ANYONE', 'FOLLOWERS', 'NOBODY']);
+
 export const createPostInputSchema = z
   .object({
     clientRequestId: z.uuid('client_request_id must be a valid UUID (spec §45)'),
@@ -48,6 +56,14 @@ export const createPostInputSchema = z
     mediaIds: z
       .array(uuidInputSchema)
       .max(MAX_POST_MEDIA, `a post may have at most ${String(MAX_POST_MEDIA)} images`),
+    /** Empty unless this post quotes another (spec §180.2, §189). */
+    quotedPostId: uuidInputSchema.optional(),
+    /** Empty unless this post is being created into a community; immutable after insert
+     * (spec §189) — there is no edit path for it. */
+    communityId: uuidInputSchema.optional(),
+    /** Defaults to `ANYONE` (spec §180.2) — an unset/`UNSPECIFIED` request value maps here
+     * before this schema ever sees it (`post.mapper.ts`'s `quotePolicyFromProto`). */
+    quotePolicy: quotePolicyInputSchema,
   })
   .refine(
     (value) =>
@@ -55,9 +71,33 @@ export const createPostInputSchema = z
       value.linkUrl !== undefined ||
       value.mediaIds.length > 0,
     { message: 'a post needs text, a link, or at least one image (spec §23)' },
+  )
+  .refine(
+    (value) =>
+      value.quotedPostId === undefined ||
+      (value.body !== undefined && value.body.length > 0) ||
+      value.mediaIds.length > 0,
+    {
+      message:
+        'a quote must carry a body or media of its own — an empty quote is a repost (spec §180.2)',
+      path: ['quotedPostId'],
+    },
   );
 
 export type CreatePostInput = z.infer<typeof createPostInputSchema>;
+
+/** `EditPost` has no field mask (spec §189's `EditPostRequest`) — every call resends the full
+ * replacement `body`/`content_warning`/`media_ids`, same "full replace, no partial merge"
+ * shape as the wire message. An empty `body` is valid when media/a link carries the post. */
+export const editPostInputSchema = z.object({
+  body: bodySchema,
+  contentWarning: contentWarningSchema,
+  mediaIds: z
+    .array(uuidInputSchema)
+    .max(MAX_POST_MEDIA, `a post may have at most ${String(MAX_POST_MEDIA)} images`),
+});
+
+export type EditPostInput = z.infer<typeof editPostInputSchema>;
 
 /** Same shape/behavior as `modules/auth/validation.ts`'s `parseInput` — kept local so posts
  * has no import from a sibling feature module for something this small. */

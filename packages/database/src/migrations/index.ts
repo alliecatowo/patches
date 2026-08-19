@@ -8,6 +8,9 @@ import { Phase45Pages1787062912872 } from './1787062912872-Phase45Pages.js';
 import { Phase8Federation1787076396680 } from './1787076396680-Phase8Federation.js';
 import { Phase9Hardening1787082699518 } from './1787082699518-Phase9Hardening.js';
 import { Phase11SocialDepth1787103400432 } from './1787103400432-Phase11SocialDepth.js';
+import { Phase11ReactionNotifyTypes1787104500000 } from './1787104500000-Phase11ReactionNotifyTypes.js';
+import { Phase11DirectMessagesModeration1787104600000 } from './1787104600000-Phase11DirectMessagesModeration.js';
+import { Phase11CommunityIdempotency1787104700000 } from './1787104700000-Phase11CommunityIdempotency.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -32,4 +35,7 @@ export const ALL_MIGRATIONS = [
   Phase8Federation1787076396680,
   Phase9Hardening1787082699518,
   Phase11SocialDepth1787103400432,
+  Phase11ReactionNotifyTypes1787104500000,
+  Phase11DirectMessagesModeration1787104600000,
+  Phase11CommunityIdempotency1787104700000,
 ];

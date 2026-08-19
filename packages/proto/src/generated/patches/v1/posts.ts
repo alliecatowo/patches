@@ -110,6 +110,19 @@ export interface Post {
   /** Unset for a post not posted into a community. */
   community: Community | undefined;
   quotePolicy: QuotePolicy;
+  /**
+   * Set only by a feed list RPC (`FeedService.ListHomeFeed`, spec §180.1) for a post reached
+   * via a repost, never by `GetPost`/`ListReplies`/etc. Up to 3 reposters, newest repost
+   * first, collapsed within the response page — the "reposted by @handle" attribution line.
+   * Unset (empty) for a post shown by its own authorship.
+   */
+  repostedBy: Actor[];
+  /**
+   * How many distinct reposters were collapsed into this entry within this page — may exceed
+   * `reposted_by`'s length (spec §180.1's "up to three reposters" naming cap). Zero whenever
+   * `reposted_by` is empty.
+   */
+  repostedByTotal: number;
 }
 
 export interface CreatePostRequest {

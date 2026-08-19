@@ -152,7 +152,16 @@ message CreateConversationRequest {
 }
 
 message CreateConversationResponse {
+  // Set when the recipient (direct) or every recipient (group) could be messaged directly
+  // (spec §183.2 — mutual follow, or an already-accepted request). Unset when this call
+  // instead created a `MessageRequest` — see `request` below.
   Conversation conversation = 1;
+
+  // Set instead of `conversation` for a direct conversation with a non-mutual-follow
+  // recipient (spec §183.2): the first message becomes the request's one carried message
+  // rather than a `Message` in an open `Conversation`. Never set for a group (a group
+  // creator may only add actors it could already message directly, §183.3).
+  MessageRequest request = 2;
 }
 
 message LeaveConversationRequest {
