@@ -39,10 +39,14 @@ export interface PreferencesScreenProps {
   onCancel: () => void;
   /** False while signed out: preferences are keyed by node origin + actor id. */
   canPersist: boolean;
+  /** `Enter` on the "Privacy" row opens `:privacy` instead of saving (P14-015).
+   * Optional so a caller that hasn't wired it yet still gets a working screen —
+   * the row just does nothing on Enter until it is. */
+  onOpenPrivacy?: () => void;
 }
 
-type Row = 'theme' | 'glyphs' | 'plain' | 'quiet' | 'images';
-const ROWS: readonly Row[] = ['theme', 'glyphs', 'plain', 'quiet', 'images'];
+type Row = 'theme' | 'glyphs' | 'plain' | 'quiet' | 'images' | 'privacy';
+const ROWS: readonly Row[] = ['theme', 'glyphs', 'plain', 'quiet', 'images', 'privacy'];
 const GLYPH_SET_CYCLE: readonly GlyphSetName[] = ['unicode', 'nerd', 'ascii'];
 const IMAGE_POLICY_CYCLE: readonly ImagePolicy[] = ['auto', 'pixel', 'ascii', 'box', 'off'];
 
@@ -52,6 +56,7 @@ const ROW_LABELS: Readonly<Record<Row, string>> = {
   plain: 'Plain mode',
   quiet: 'Quiet feed',
   images: 'Images',
+  privacy: 'Privacy',
 };
 
 const ROW_HELP: Readonly<Record<Row, string>> = {
@@ -60,6 +65,7 @@ const ROW_HELP: Readonly<Record<Row, string>> = {
   plain: 'Strips every colour, glyph and border — including your own (spec §173).',
   quiet: 'Hides other actors’ cosmetics; your own decoration stays (spec §185).',
   images: 'h/l cycles auto/pixel/ascii/box/off — see the line below for what each does.',
+  privacy: 'Enter opens the privacy notice, discoverability, export and deletion (:privacy).',
 };
 
 /** One-line description of what each `images` row value actually draws — shown live
@@ -98,6 +104,7 @@ export function PreferencesScreen({
   onSave,
   onCancel,
   canPersist,
+  onOpenPrivacy,
 }: PreferencesScreenProps): ReactElement {
   const content = useContentSize();
   const [row, setRow] = useState(0);
@@ -139,6 +146,7 @@ export function PreferencesScreen({
       onQuietChange(!quiet);
       return;
     }
+    if (current === 'privacy') return;
     const index = IMAGE_POLICY_CYCLE.indexOf(imagePolicyValue);
     const nextIndex = (index + direction + IMAGE_POLICY_CYCLE.length) % IMAGE_POLICY_CYCLE.length;
     const next = IMAGE_POLICY_CYCLE[nextIndex];
@@ -155,7 +163,8 @@ export function PreferencesScreen({
           return true;
         }
         if (key.return) {
-          onSave();
+          if (current === 'privacy' && onOpenPrivacy !== undefined) onOpenPrivacy();
+          else onSave();
           return true;
         }
         if (input === 'j' || key.downArrow) {
@@ -184,8 +193,8 @@ export function PreferencesScreen({
 
   const previewTheme: ThemeDefinition = getBuiltInTheme(themeName) ?? BUILT_IN_THEMES.patches;
   const glyphPreview = GLYPH_NAMES.map((name) => glyph(name, glyphSetValue)).join(' ');
-  // Title, source line, five option rows, help line, hint line.
-  const chromeRows = 9;
+  // Title, source line, six option rows, help line, hint line.
+  const chromeRows = 10;
   const showPreview = content.rows >= chromeRows + THEME_PREVIEW_DIMENSIONS.height;
 
   function rowValue(candidate: Row): string {
@@ -200,6 +209,8 @@ export function PreferencesScreen({
         return quiet ? 'on' : 'off';
       case 'images':
         return imagePolicyValue;
+      case 'privacy':
+        return 'Enter to open →';
     }
   }
 

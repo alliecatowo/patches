@@ -138,48 +138,55 @@ Once signed in, running `patches` (with `--server`/`--insecure` as above) opens 
 full-screen client. Screens and global keys (see
 [`docs/architecture/tui.md`](./architecture/tui.md) for the authoritative table):
 
-| Key          | Action                                                                 |
-| ------------ | ---------------------------------------------------------------------- |
-| `g h`        | go to Home feed (posts from people you follow)                         |
-| `g l`        | go to Local feed (public posts on this node)                           |
-| `g p`        | go to your own profile                                                 |
-| `g n`        | go to notifications                                                    |
-| `g b`        | go to your bookmarks                                                   |
-| `g d`        | go to direct messages                                                  |
-| `g c`        | go to communities on this node                                         |
-| `g e`        | edit your display name, bio and nameplate                              |
-| `g s` / `/`  | search                                                                 |
-| `g v`        | go to your own Patches Page                                            |
-| `: / Ctrl+P` | command palette — every key above, by name                             |
-| `c`          | compose a new post                                                     |
-| `j / ↓`      | move down one post                                                     |
-| `k / ↑`      | move up one post                                                       |
-| `n / space`  | load the next page of posts                                            |
-| `Ctrl+R`     | refresh the current screen                                             |
-| `Enter`      | open the selected post's thread                                        |
-| `r`          | reply to the selected post                                             |
-| `l`          | like/unlike the selected post                                          |
-| `b`          | bookmark/unbookmark the selected post                                  |
-| `R`          | repost/unrepost the selected post                                      |
-| `Q`          | quote the selected post in a new post                                  |
-| `d`          | delete your own selected post (confirm `y`/`n`)                        |
-| `H`          | view the selected post's edit history                                  |
-| `#`          | open the selected post's first tag timeline                            |
-| `t`          | search tags                                                            |
-| `p`          | open the selected post's author profile                                |
-| `f`          | follow/unfollow the profile you're viewing                             |
-| `J`          | join/leave the community you're viewing                                |
-| `B`          | block/unblock the profile you're viewing (confirm `y`/`n`)             |
-| `M`          | mute/unmute the profile you're viewing (confirm `y`/`n`)               |
-| `!`          | report the selected post, or the profile you're viewing                |
-| `v`          | visit the selected actor's Patches Page (or `patches visit @handle`)   |
-| `e`          | edit your own Patches Page (opens `$EDITOR`)                           |
-| `o`          | open the selected post's first attachment externally                   |
-| `L`          | login / switch accounts                                                |
-| `P`          | toggle plain mode (strip nameplate decoration)                         |
-| `?`          | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages |
-| `q`          | quit                                                                   |
-| `Esc`        | cancel the current modal/action; back one level otherwise              |
+| Key               | Action                                                                 |
+| ----------------- | ---------------------------------------------------------------------- |
+| `g h`             | go to Home feed (posts from people you follow)                         |
+| `g l`             | go to Local feed (public posts on this node)                           |
+| `g p`             | go to your own profile                                                 |
+| `g n`             | go to notifications                                                    |
+| `g b`             | go to your bookmarks                                                   |
+| `g d`             | go to direct messages                                                  |
+| `g c`             | go to communities on this node                                         |
+| `g e`             | edit your display name, bio and nameplate                              |
+| `g s` / `/`       | search                                                                 |
+| `g v`             | go to your own Patches Page                                            |
+| `: / Ctrl+P`      | command palette — every key above, by name                             |
+| `:privacy`        | privacy notice, discoverability, account export and deletion           |
+| `:followrequests` | pending requests to follow your locked account                         |
+| `:filters`        | your own bring-your-own filters                                        |
+| `:lists`          | browse, subscribe to, and publish filter lists                         |
+| `:labelers`       | subscribe to labelers and set per-value actions                        |
+| `:appeals`        | file and track appeals against a moderation notice                     |
+| `:modlog`         | this node's public, anonymized moderation log                          |
+| `c`               | compose a new post                                                     |
+| `j / ↓`           | move down one post                                                     |
+| `k / ↑`           | move up one post                                                       |
+| `n / space`       | load the next page of posts                                            |
+| `Ctrl+R`          | refresh the current screen                                             |
+| `Enter`           | open the selected post's thread                                        |
+| `r`               | reply to the selected post                                             |
+| `l`               | like/unlike the selected post                                          |
+| `b`               | bookmark/unbookmark the selected post                                  |
+| `R`               | repost/unrepost the selected post                                      |
+| `Q`               | quote the selected post in a new post                                  |
+| `d`               | delete your own selected post (confirm `y`/`n`)                        |
+| `H`               | view the selected post's edit history                                  |
+| `#`               | open the selected post's first tag timeline                            |
+| `t`               | search tags                                                            |
+| `p`               | open the selected post's author profile                                |
+| `f`               | follow/unfollow the profile you're viewing                             |
+| `J`               | join/leave the community you're viewing                                |
+| `B`               | block/unblock the profile you're viewing (confirm `y`/`n`)             |
+| `M`               | mute/unmute the profile you're viewing (confirm `y`/`n`)               |
+| `!`               | report the selected post, or the profile you're viewing                |
+| `v`               | visit the selected actor's Patches Page (or `patches visit @handle`)   |
+| `e`               | edit your own Patches Page (opens `$EDITOR`)                           |
+| `o`               | open the selected post's first attachment externally                   |
+| `L`               | login / switch accounts                                                |
+| `P`               | toggle plain mode (strip nameplate decoration)                         |
+| `?`               | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages |
+| `q`               | quit                                                                   |
+| `Esc`             | cancel the current modal/action; back one level otherwise              |
 
 This table is checked against the TUI's own binding table by
 `apps/tui/test/docs-keymap.test.ts`, so it cannot drift from the keys the app
@@ -239,6 +246,49 @@ posts, a "Top 8"-style friend list, and a guestbook other users can sign). It is
 never executable code, in every client. Press `e` on your own Page to edit it — this opens the
 underlying document in your `$EDITOR` (whatever `$EDITOR` is set to in your shell); save and
 exit to publish the new revision.
+
+### Privacy, filters, filter lists, and labelers
+
+`:privacy` shows this node's privacy notice (with the version you last acknowledged), your
+discoverability preferences (`j`/`k` to move, `l`/`Space` to toggle and save one at a time),
+account export status, and account deletion — `d` requests deletion after this node's grace
+period, `u` cancels a pending one while still inside it. It's also reachable from `,`
+(Preferences) as its own row. The headless equivalent is
+`patches privacy show|set|ack|export|delete|cancel-delete`.
+
+`:filters` lists your own bring-your-own filters (spec §198) — literal substring/word/tag/
+actor/domain matches you author yourself, never a regular expression, applied only to your own
+timelines. `n` opens an inline form (name, term kind, term value, action); `X` deletes with a
+confirm. Multi-term filters and JSON import/export are CLI-only:
+`patches filter list|create|delete|export|import`.
+
+`:lists` browses filter lists other people or communities have published (`Tab` switches to
+your own subscriptions), `S` subscribes (defaulting to collapse, the least destructive useful
+action), `U` unsubscribes, `p` publishes one of your own. Subscribing never creates a block,
+and unsubscribing is instant. Per-entry exceptions ("this list is right about everything except
+this one account") are CLI-only: `patches lists browse|mine|entries|publish|subscribe|
+unsubscribe|exception`.
+
+`:labelers` lists labelers on this node, `S`/`U` subscribe/unsubscribe, `h`/`l` pick a
+vocabulary value and `a` cycles its action (ignore/warn/collapse/hide) — a value the node has
+marked mandatory can't be changed. A label is only ever visible to viewers who subscribed;
+subscribing never affects anyone else. Headless: `patches labelers list|subscribe|unsubscribe|
+action`.
+
+If your account is locked, `:followrequests` lists pending requests to follow you; `A` accepts,
+`D` declines.
+
+### Appeals and the moderation log
+
+If you're warned, suspended, or otherwise acted on, you get a moderation notice — `:appeals`
+lists your notices (`Tab` switches to appeals you've already filed) and `n` files one against
+the selected not-yet-appealed notice, with a short statement. Headless:
+`patches appeal list|create|show`.
+
+`:modlog` is this node's public, anonymized moderation log — a transparency record of the
+node's own conduct, not of any individual's. Domain entries name the domain; account/post/
+media entries never carry a handle, actor id, or post id. No sign-in required. Headless:
+`patches modlog`.
 
 ## Plain mode and accessibility
 

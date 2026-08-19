@@ -29,16 +29,23 @@ import { MediaCache } from '../media/cache.js';
 import { MediaSessionProvider } from '../media/media-session.js';
 import { openMediaExternally, type OpenMediaOptions } from '../media/open-external.js';
 import { AccountsScreen } from '../screens/AccountsScreen.js';
+import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
+import { FilterListsScreen } from '../screens/FilterListsScreen.js';
+import { FiltersScreen } from '../screens/FiltersScreen.js';
+import { FollowRequestsScreen } from '../screens/FollowRequestsScreen.js';
 import { HelpScreen } from '../screens/HelpScreen.js';
+import { LabelersScreen } from '../screens/LabelersScreen.js';
 import { PostHistoryScreen } from '../screens/PostHistoryScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
+import { ModerationLogScreen } from '../screens/ModerationLogScreen.js';
 import { NotificationsScreen } from '../screens/NotificationsScreen.js';
 import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
+import { PrivacyScreen } from '../screens/PrivacyScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
@@ -69,11 +76,7 @@ import {
 } from './input.js';
 import { hintsFor, SCREEN_TITLES, type Binding, type Screen } from './keymap.js';
 import { ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
-import {
-  DRAWER_COLUMNS,
-  drawerAvailable,
-  planResponsiveLayout,
-} from './responsive-layout.js';
+import { DRAWER_COLUMNS, drawerAvailable, planResponsiveLayout } from './responsive-layout.js';
 import { presentationFor, wantsSplit } from './routes.js';
 import { ModalStackProvider, useModalStackController } from './modal.js';
 import type { ListJump } from './list-movement.js';
@@ -346,7 +349,8 @@ export function App({
           setThemeName(resolution.theme.name);
           setThemeSource(resolution.source);
         }
-        if (saved.plainMode !== undefined && !isTruthy(env.PATCHES_PLAIN)) setPlain(saved.plainMode);
+        if (saved.plainMode !== undefined && !isTruthy(env.PATCHES_PLAIN))
+          setPlain(saved.plainMode);
         if (saved.quietFeed !== undefined) setQuiet(saved.quietFeed);
       },
       // Unreadable preferences are not an error worth a toast — the defaults are fine.
@@ -1102,6 +1106,27 @@ export function App({
       case 'compose':
         openFullCompose();
         return;
+      case 'privacy':
+        requireSession({ screen: 'privacy' });
+        return;
+      case 'followrequests':
+        requireSession({ screen: 'followRequests' });
+        return;
+      case 'filters':
+        requireSession({ screen: 'filters' });
+        return;
+      case 'lists':
+        requireSession({ screen: 'filterLists' });
+        return;
+      case 'labelers':
+        requireSession({ screen: 'labelers' });
+        return;
+      case 'appeals':
+        requireSession({ screen: 'appeals' });
+        return;
+      case 'modlog':
+        goTo({ screen: 'moderationLog' });
+        return;
       case 'messages':
       case 'communities':
       case 'tag':
@@ -1372,8 +1397,67 @@ export function App({
             onSave={savePreferences}
             onCancel={cancelPreferences}
             canPersist={session !== undefined}
+            onOpenPrivacy={() => requireSession({ screen: 'privacy' })}
           />
         );
+      case 'privacy':
+        return session === undefined ? null : (
+          <PrivacyScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onConfirm={confirmDestructive}
+            onBack={back}
+          />
+        );
+      case 'followRequests':
+        return session === undefined ? null : (
+          <FollowRequestsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'filters':
+        return session === undefined ? null : (
+          <FiltersScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onConfirm={confirmDestructive}
+            onBack={back}
+          />
+        );
+      case 'filterLists':
+        return session === undefined ? null : (
+          <FilterListsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'labelers':
+        return session === undefined ? null : (
+          <LabelersScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'appeals':
+        return session === undefined ? null : (
+          <AppealsScreen
+            api={api}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'moderationLog':
+        return <ModerationLogScreen api={api} isActive={active} onBack={back} />;
       case 'local':
         return (
           <LocalScreen
@@ -1759,9 +1843,7 @@ export function App({
                                 setDrawerRequested(false);
                                 openProfile(actor.id, actor);
                               }}
-                              onReadStateChanged={() =>
-                                setUnreadNonce((current) => current + 1)
-                              }
+                              onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
                             />
                           )}
                         </Drawer>
@@ -1803,7 +1885,6 @@ export function App({
     </MediaSessionProvider>
   );
 }
-
 
 function statusLabel(status: 'connecting' | 'ready' | 'error'): string {
   switch (status) {
