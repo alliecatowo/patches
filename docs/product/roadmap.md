@@ -1,11 +1,17 @@
 # Roadmap
 
-Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amendment A)**. This
-document restates the execution roadmap and acceptance checklists in one place so status can
-be tracked without re-reading the full spec. Update the status line at the top of each phase
-as work lands — don't let this drift into fiction.
+Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amendment A)** and
+**§178–§195 (Amendment B)**. This document restates the execution roadmap and acceptance
+checklists in one place so status can be tracked without re-reading the full spec. Update the
+status line at the top of each phase as work lands — don't let this drift into fiction.
 
 **As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 is implemented and deployed — the flagship node `patches-social.fly.dev` is live and verified end to end. Media/email credentials (R2, Resend) are still pending — see `tasks.md` B-031.**
+
+**As of 2026-08-18 (Amendment B, spec §178–§195):** board Phase 11 — social depth (reposts and
+quotes, tags, communities, DMs, feed customization) — is the active work stream, and board
+Phase 10 (web + React Native clients) is **paused** until it ships. See
+[Owner-directed board phases](#owner-directed-board-phases-911) below, and note that §176's
+release-phase numbers and `tasks.md`'s board-phase numbers are different sequences (§179).
 
 ## Release sequence (§176)
 
@@ -192,13 +198,77 @@ Before calling the project MVP, all of the following must be true:
 
 ---
 
+## Owner-directed board phases (9–11)
+
+**Two phase sequences exist and must not be confused (spec §179).** §176's phase numbers are
+_release_ phases (Phase 8 → v0.1, Phase 9 → v0.2, Phase 10 → v0.3, Phase 11 → v0.4, Phase 12
+→ v1.0) and are referred to below by **release number**. `tasks.md`'s Phase 9/10/11 are
+_board_ phases — owner-requested work streams that continued the task-board sequence past 8.
+A board phase number is not a §176 release phase.
+
+### Board Phase 9 — site, media, packaging
+
+**Status: done except credentials.** The VitePress site is live
+(`https://patches-site.pages.dev`), TUI screenshots/GIFs are recorded and embedded, and the
+TUI is packaged and install-verified from a tarball as `patches-social`. Outstanding: P9-004
+— a real Resend sending domain and real R2 credentials. That work is operational, not site
+work, and is **not** covered by the pause below.
+
+### Board Phase 10 — web + React Native clients
+
+**Status: paused (owner, 2026-08-18).** Resume only after board Phase 11 ships. The Connect
+edge (P10-004) and [ADR 0016](../decisions/0016-connect-transport-and-client-sdk.md) stay as
+landed — the decision is unchanged, the schedule is. Further site/marketing work is paused
+on the same terms.
+
+The reasoning is in spec §179: Patches earns a second client by being finished on the first
+one. Nothing about this pause weakens §153's "don't build the mobile app before the TUI/server
+MVP" — it strengthens it.
+
+### Board Phase 11 — social depth (Amendment B)
+
+**Status: planned.** Spec **§178–§195**. TUI-first: a feature is not done until it is usable
+from the terminal.
+
+- **Reposts and quotes** (§180) — a repost is a pointer, a quote is a post with
+  `quoted_post_id`, per-post quote policy, and neither ever changes a post's feed position.
+- **Tags** (§181) — write-time extraction, normalized identity, chronological tag timelines,
+  tag search, tag mutes. No trending, no tag counters.
+- **Communities** (§182) — `+name`, join/leave, chronological community timelines,
+  moderators, rules, invites. No votes, no karma, no sort selector.
+- **Direct messages** (§183) — 1:1 and groups of ≤ 8, mutual-or-accepted gating, message
+  requests, block-aware, reportable, rate-limited, text-only. **Server-visible, not
+  end-to-end encrypted**, and every client says so on the screen where messages are read.
+- **Flair, pinned posts, walls** (§184) — post accent, border style, like glyph, wall theme,
+  ≤ 3 pinned posts, all under capabilities-not-tiers: cosmetics may be capability-gated, a
+  _function_ may never be paywalled.
+- **Plain mode and quiet feed** (§185) — the reader's opt-out, client-side.
+- **Edits with visible history, deletion, read-more folds** (§186). Scheduled posts, polls,
+  and post analytics are explicitly out.
+- **New notification types** (§187) — `REPOST`, `QUOTE`, `MESSAGE`, `COMMUNITY_INVITE`.
+
+Federation mapping for all of it (§193) is a **later** stage and moves no §109 gate.
+Needs owner sign-off before anyone starts: E2E DMs, community scope beyond v0, any paid
+cosmetics (§195).
+
+**Success criteria:** from the TUI alone, an actor can repost and quote, follow a tag, join a
+community and post into it, hold a DM conversation they were not spammed into, edit a post
+and show its history, decorate their own posts — and a second actor can turn every bit of
+that decoration off for themselves without losing any content.
+
+---
+
 ## Post-v0.0 roadmap (§176)
 
 Amendment A replaced the old 0.3–1.0 sequence. Identity personality (profile theme, Top 8,
 guestbook) moved **earlier**, into Phase 4.5 — it's the personal-web pillar, not a post-MVP
 experiment. Federation moved earlier too, with every security gate unchanged.
 
-### Phase 8 — two-node federation lab (v0.1)
+These are **release** phases and are titled by release number here, because `tasks.md` uses
+the same numbers for a different (board) sequence — see §179 and
+[Owner-directed board phases](#owner-directed-board-phases-911) above.
+
+### v0.1 — two-node federation lab (§176 Phase 8)
 
 **Status: implemented (lab).** Federation Stage F1, **local and non-public**. Two Patches nodes on one
 machine: WebFinger, actor documents, inbox/outbox, `Follow`, `Accept`, `Create` (Note),
@@ -212,7 +282,7 @@ assumption is still cheap to fix.
 **Success criteria:** Alice on node A follows Bob on node B; Bob posts; the post appears in
 Alice's home feed; Bob deletes it; it tombstones on node A.
 
-### Phase 9 — self-hostable node release (v0.2)
+### v0.2 — self-hostable node release (§176 Phase 9)
 
 **Status: planned.** A published node image plus a Compose template, documented environment
 variables, an upgrade/migration path, and a security contact. **Federation is disabled by
@@ -223,20 +293,20 @@ object store, any SMTP endpoint.
 from the published image and documentation, and federate it with a second node only by
 explicit choice.
 
-### Phase 10 — Fediverse interoperability (v0.3)
+### v0.3 — Fediverse interoperability (§176 Phase 10)
 
 **Status: planned.** Federation Stage F2. Interop with Mastodon and Pixelfed: discovery
 robustness, HTTP signing compatible with ecosystem expectations, remote actor caching,
 remote object ingestion, retry, deduplication, blocklists, domain moderation.
 
-### Phase 11 — identity portability (v0.4)
+### v0.4 — identity portability (§176 Phase 11)
 
 **Status: planned.** Account migration between nodes using the seam built in Phase 1
 (`actors.moved_to_uri`, `also_known_as`), with bidirectional verification required before a
 move is honored, plus the full data export (profile, posts, media manifest, page document,
 social graph). Export is never gated behind a capability or payment.
 
-### Phase 12 — public federation (v1.0)
+### v1.0 — public federation (§176 Phase 12)
 
 **Status: planned.** Federation Stage F3. Enabled only after the full §160 readiness
 checklist passes. The single-node product still works without federation — federation is
@@ -253,8 +323,10 @@ code**.
 
 ## React Native
 
-**Status: planned, not started.** Begin only after the server contract is stable enough to
-support a second client — i.e. not before the v0/MVP TUI and server are solid.
+**Status: paused (owner, 2026-08-18).** Begin only after the server contract is stable enough
+to support a second client **and** board Phase 11 (social depth, spec §178–§195) has shipped
+— see [Board Phase 10](#board-phase-10--web--react-native-clients) above. The transport and
+SDK decision (ADR 0016) is already made and stands.
 
 Add `apps/mobile/` using React Native + TypeScript. Reuse domain vocabulary, protobuf
 schemas, API semantics, and authentication concepts. Do not attempt to reuse Ink UI
