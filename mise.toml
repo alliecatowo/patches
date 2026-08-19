@@ -80,6 +80,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker build && pnpm 
 description = "Run the job worker in watch mode"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker dev"
 
+[tasks."tui:prod"]
+description = "Run the TUI against the live flagship node (patches-social.fly.dev:443, TLS) — same as plain `patches`"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-patches-social.fly.dev:443}\" \"$@\""
+
+[tasks."ping:prod"]
+description = "Connectivity check against the live flagship node"
+run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-patches-social.fly.dev:443}\""
+
 [tasks.ping]
 description = "Non-interactive connectivity check against the local server (JSON, exit 0/1)"
 run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure"

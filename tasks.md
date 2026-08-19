@@ -135,6 +135,7 @@ Transport and SDK shape are decided in **ADR 0016** (`docs/decisions/0016-connec
 - [ ] P10-001 — Web client (`apps/web`, Vite + React): read-only first (public timelines, profiles, threads, Pages) over Connect, then auth + posting; Pages v1 rendered same-origin as inert data (advanced HTML/CSS mode would need the dedicated origin + `script-src 'none'` of §172, and is out of scope)
 - [ ] P10-002 — React Native client (`apps/mobile`, Expo): auth, home/local timelines, compose, notifications over Connect (unary only — RN `fetch` cannot stream); tokens in `expo-secure-store`; shares `@patches/client` + `@patches/domain`
 - [ ] P10-005 — Migrate the TUI onto `@patches/client` + the grpc transport; `apps/tui/src/api/client.ts` shrinks to UI-facing wrappers, no behavior change
+- [ ] P10-006 — Web client via **ink-web** (https://www.ink-web.dev/ — Ink rendered in the browser): the terminal-first vibe accessible anywhere, reusing the TUI's screens/components on top of `@patches/client`'s Connect transport; also makes browser-driven automation (Claude in Chrome) trivial. Evaluate first (ADR addendum to 0016: does ink-web support `useInput`, raw-mode, alternate screen, our Kitty image path → fallback boxes only); if viable this replaces the Vite+React plan in P10-001. Owner idea 2026-08-18.
 
 ## Phase 11 — social depth (Amendment B)
 
