@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { resolveTheme } from './resolution.js';
+import { BUILT_IN_THEMES } from './registry.js';
+import { resolveTheme, resolveThemeWithUserThemes } from './resolution.js';
+import { SEMANTIC_COLOR_TOKENS, type AnyThemeDefinition } from './types.js';
 
 describe('resolveTheme', () => {
   it.each([
@@ -45,5 +47,51 @@ describe('resolveTheme', () => {
   ] as const)('does not silently bypass unknown %s configuration', (input, source) => {
     const result = resolveTheme(input);
     expect(result).toMatchObject({ ok: false, source, invalidName: 'unknown' });
+  });
+});
+
+describe('resolveThemeWithUserThemes', () => {
+  const userTheme: AnyThemeDefinition = Object.freeze({
+    name: 'sunset',
+    colors: Object.freeze(
+      Object.fromEntries(SEMANTIC_COLOR_TOKENS.map((token) => [token, '#123456'])),
+    ) as AnyThemeDefinition['colors'],
+    preferredGlyphSet: 'unicode',
+    backgroundMode: 'paint',
+  });
+
+  it('resolves a built-in without ever touching the loader', async () => {
+    const loader = vi.fn();
+    const result = await resolveThemeWithUserThemes({ cliTheme: 'paper' }, loader);
+    expect(loader).not.toHaveBeenCalled();
+    expect(result.resolution).toMatchObject({ ok: true, theme: BUILT_IN_THEMES.paper });
+    expect(result.invalidUserThemeMessage).toBeUndefined();
+  });
+
+  it('falls back to a user theme file when the name is not a built-in', async () => {
+    const loader = vi.fn().mockResolvedValue({ ok: true, theme: userTheme });
+    const result = await resolveThemeWithUserThemes({ cliTheme: 'sunset' }, loader);
+    expect(loader).toHaveBeenCalledWith('sunset');
+    expect(result.resolution).toMatchObject({ ok: true, theme: userTheme, source: 'cli' });
+  });
+
+  it('keeps the plain "unknown theme" error when no user theme file exists either', async () => {
+    const loader = vi.fn().mockResolvedValue({ ok: false, notFound: true });
+    const result = await resolveThemeWithUserThemes({ cliTheme: 'midnight' }, loader);
+    expect(result.resolution).toMatchObject({ ok: false, invalidName: 'midnight' });
+    expect(result.invalidUserThemeMessage).toBeUndefined();
+  });
+
+  it('falls back to the default theme with a toast message when the file exists but is invalid', async () => {
+    const loader = vi
+      .fn()
+      .mockResolvedValue({ ok: false, message: 'Theme "broken" is not valid JSON.' });
+    const result = await resolveThemeWithUserThemes({ cliTheme: 'broken' }, loader);
+    expect(result.resolution).toMatchObject({
+      ok: true,
+      theme: BUILT_IN_THEMES.patches,
+      source: 'default',
+    });
+    expect(result.invalidUserThemeMessage).toBe('Theme "broken" is not valid JSON.');
   });
 });

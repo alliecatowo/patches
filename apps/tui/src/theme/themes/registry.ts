@@ -68,6 +68,7 @@ const PATCHES = defineTheme(
     mention: '#f1b5ff',
     tag: '#9ce5ff',
     focus: '#fff59d',
+    surfaceDim: '#0c0815',
   },
   'unicode',
 );
@@ -88,6 +89,7 @@ const PAPER = defineTheme(
     mention: '#753a8f',
     tag: '#355f23',
     focus: '#5e4600',
+    surfaceDim: '#e4dcc8',
   },
   'unicode',
 );
@@ -108,6 +110,7 @@ const MONO = defineTheme(
     mention: '#ffffff',
     tag: '#ffffff',
     focus: '#ffffff',
+    surfaceDim: '#000000',
   },
   'ascii',
 );
@@ -128,6 +131,7 @@ const HACKER = defineTheme(
     mention: '#a8ff60',
     tag: '#76ffb0',
     focus: '#fff27a',
+    surfaceDim: '#000c00',
   },
   'ascii',
 );
@@ -148,6 +152,7 @@ const PASTEL = defineTheme(
     mention: '#e2c2ff',
     tag: '#b5ead7',
     focus: '#fff5ba',
+    surfaceDim: '#191530',
   },
   'nerd',
 );
@@ -168,6 +173,7 @@ const TERMINAL = defineTheme(
     mention: null,
     tag: null,
     focus: null,
+    surfaceDim: null,
   },
   'ascii',
   'terminal',

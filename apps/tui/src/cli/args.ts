@@ -38,6 +38,11 @@ export interface ParsedArgs {
   /** Strips all nameplate decoration app-wide (spec §173's required "plain mode") —
    * `--plain` or `PATCHES_PLAIN=1`. Also toggleable at runtime (`P`, see `App.tsx`). */
   plain: boolean;
+  /** Highest-precedence theme selection (design vision §4.2: `--theme` > `PATCHES_THEME` >
+   * profile preference > `patches`). Resolved against the built-in/user-theme registry by
+   * `theme/themes/resolution.ts`, not here — this parser only recognizes the flag so it
+   * doesn't fall through to "Unknown argument". */
+  themeName?: string;
   /**
    * Everything after the command word that isn't a shared connection flag
    * (`--server`/`--node`/`--insecure`) — the auth subcommands (`register`,
@@ -140,6 +145,15 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case '--plain':
         result.plain = true;
         break;
+      case '--theme': {
+        const value = argv[index + 1];
+        if (value === undefined || value.startsWith('-')) {
+          return { ...result, command: 'help', error: '--theme needs a name, e.g. --theme paper' };
+        }
+        result.themeName = value;
+        index += 1;
+        break;
+      }
       case '--server':
       case '--node': {
         const value = argv[index + 1];
@@ -162,6 +176,10 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         }
         if (argument.startsWith('--node=')) {
           result.target = argument.slice('--node='.length);
+          break;
+        }
+        if (argument.startsWith('--theme=')) {
+          result.themeName = argument.slice('--theme='.length);
           break;
         }
         if (SUBCOMMANDS.includes(result.command)) {
@@ -201,6 +219,9 @@ Options:
   --insecure                     connect without TLS (env: PATCHES_INSECURE)
   --plain                        strip nameplate decoration (env: PATCHES_PLAIN;
                                   also toggleable at runtime with P)
+  --theme <name>                 select a theme (env: PATCHES_THEME; patches, paper, mono,
+                                  hacker, pastel, terminal, or a name from
+                                  $XDG_CONFIG_HOME/patches/themes/)
   -h, --help                     show this message
   -v, --version                  show the client version
 

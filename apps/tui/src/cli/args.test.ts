@@ -18,6 +18,18 @@ describe('parseArgs', () => {
     expect(parseArgs(['--server=example.com:443']).target).toBe('example.com:443');
   });
 
+  it('reads the theme name from --theme and --theme=', () => {
+    expect(parseArgs(['--theme', 'paper']).themeName).toBe('paper');
+    expect(parseArgs(['--theme=paper']).themeName).toBe('paper');
+    expect(parseArgs([]).themeName).toBeUndefined();
+  });
+
+  it('rejects --theme with no value', () => {
+    const args = parseArgs(['--theme']);
+    expect(args.command).toBe('help');
+    expect(args.error).toContain('--theme');
+  });
+
   it('reads the server and insecure flag from the environment', () => {
     const args = parseArgs([], { PATCHES_SERVER: 'box.local:50051', PATCHES_INSECURE: 'true' });
     expect(args.target).toBe('box.local:50051');
