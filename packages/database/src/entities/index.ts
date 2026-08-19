@@ -1,6 +1,10 @@
 import { Actor } from './actor.entity.js';
+import { AccountDeletionRequest } from './account-deletion-request.entity.js';
+import { AccountExport } from './account-export.entity.js';
 import { ActorFlair } from './actor-flair.entity.js';
+import { ActorPrivacyPrefs } from './actor-privacy-prefs.entity.js';
 import { AdminAuditLog } from './admin-audit-log.entity.js';
+import { Appeal } from './appeal.entity.js';
 import { AppMeta } from './app-meta.entity.js';
 import { AuthCode } from './auth-code.entity.js';
 import { Block } from './block.entity.js';
@@ -23,14 +27,26 @@ import { E2eeReportEvidenceItem } from './e2ee-report-evidence-item.entity.js';
 import { E2eeReportEvidence } from './e2ee-report-evidence.entity.js';
 import { E2eeSignedPrekey } from './e2ee-signed-prekey.entity.js';
 import { FederationKey } from './federation-key.entity.js';
+import { Filter } from './filter.entity.js';
+import { FilterList } from './filter-list.entity.js';
+import { FilterListEntry } from './filter-list-entry.entity.js';
+import { FilterListException } from './filter-list-exception.entity.js';
+import { FilterListSubscription } from './filter-list-subscription.entity.js';
+import { FilterScope } from './filter-scope.entity.js';
+import { FilterTerm } from './filter-term.entity.js';
 import { Follow } from './follow.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { InboxActivity } from './inbox-activity.entity.js';
 import { Invite } from './invite.entity.js';
+import { Label } from './label.entity.js';
+import { Labeler } from './labeler.entity.js';
+import { LabelerSubscription } from './labeler-subscription.entity.js';
+import { LabelerSubscriptionAction } from './labeler-subscription-action.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
 import { Message } from './message.entity.js';
 import { MessageRequest } from './message-request.entity.js';
+import { ModerationLogEntry } from './moderation-log-entry.entity.js';
 import { Mute } from './mute.entity.js';
 import { Notification } from './notification.entity.js';
 import { OutboxJob } from './outbox-job.entity.js';
@@ -119,4 +135,20 @@ export const ALL_ENTITIES = [
   PostEdit,
   PinnedPost,
   ActorFlair,
+  ActorPrivacyPrefs,
+  Filter,
+  FilterScope,
+  FilterTerm,
+  FilterList,
+  FilterListEntry,
+  FilterListSubscription,
+  FilterListException,
+  Labeler,
+  Label,
+  LabelerSubscription,
+  LabelerSubscriptionAction,
+  Appeal,
+  ModerationLogEntry,
+  AccountDeletionRequest,
+  AccountExport,
 ] as const;

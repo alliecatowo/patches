@@ -66,19 +66,46 @@ export { E2eeReportEvidenceItem } from './entities/e2ee-report-evidence-item.ent
 export { PostEdit } from './entities/post-edit.entity.js';
 export { PinnedPost } from './entities/pinned-post.entity.js';
 export { ActorFlair } from './entities/actor-flair.entity.js';
+export { ActorPrivacyPrefs } from './entities/actor-privacy-prefs.entity.js';
+export { Filter } from './entities/filter.entity.js';
+export { FilterScope } from './entities/filter-scope.entity.js';
+export { FilterTerm } from './entities/filter-term.entity.js';
+export { FilterList } from './entities/filter-list.entity.js';
+export { FilterListEntry } from './entities/filter-list-entry.entity.js';
+export { FilterListSubscription } from './entities/filter-list-subscription.entity.js';
+export { FilterListException } from './entities/filter-list-exception.entity.js';
+export { Labeler } from './entities/labeler.entity.js';
+export { Label } from './entities/label.entity.js';
+export { LabelerSubscription } from './entities/labeler-subscription.entity.js';
+export { LabelerSubscriptionAction } from './entities/labeler-subscription-action.entity.js';
+export { Appeal } from './entities/appeal.entity.js';
+export { ModerationLogEntry } from './entities/moderation-log-entry.entity.js';
+export { AccountDeletionRequest } from './entities/account-deletion-request.entity.js';
+export { AccountExport } from './entities/account-export.entity.js';
 
 export {
+  ACCOUNT_EXPORT_STATUSES,
   ADMIN_AUDIT_SUBJECT_TYPES,
+  APPEAL_STATUSES,
   AUTH_CODE_PURPOSES,
   COMMUNITY_INVITE_STATUSES,
   COMMUNITY_ROLES,
   CONVERSATION_KINDS,
   CONVERSATION_SECURITY_MODES,
   CREDENTIAL_TYPES,
+  DOMAIN_BLOCK_SOURCES,
   E2EE_EVIDENCE_VERIFICATION_STATUSES,
+  FILTER_ACTIONS,
+  FILTER_SCOPES,
+  FILTER_TERM_KINDS,
   FOLLOW_STATUSES,
+  LABEL_ACTIONS,
+  LABEL_SUBJECT_TYPES,
   MEDIA_STATES,
   MESSAGE_REQUEST_STATUSES,
+  MODERATION_ACTION_TYPES,
+  MODERATION_LOG_SUBJECT_KINDS,
+  MODERATION_REASON_CATEGORIES,
   NOTIFICATION_TYPES,
   OUTBOX_JOB_STATUSES,
   PAGE_VISIBILITIES,
@@ -91,17 +118,28 @@ export {
   USER_STATUSES,
 } from './entities/enums.js';
 export type {
+  AccountExportStatus,
   AdminAuditSubjectType,
+  AppealStatus,
   AuthCodePurpose,
   CommunityInviteStatus,
   CommunityRole,
   ConversationKind,
   ConversationSecurityMode,
   CredentialType,
+  DomainBlockSource,
   E2eeEvidenceVerificationStatus,
+  FilterAction,
+  FilterScope as FilterScopeValue,
+  FilterTermKind,
   FollowStatus,
+  LabelAction,
+  LabelSubjectType,
   MediaState,
   MessageRequestStatus,
+  ModerationActionType,
+  ModerationLogSubjectKind,
+  ModerationReasonCategory,
   NotificationType,
   OutboxJobStatus,
   PageVisibility,
@@ -129,6 +167,11 @@ export { Phase11ReactionNotifyTypes1787104500000 } from './migrations/1787104500
 export { Phase11DirectMessagesModeration1787104600000 } from './migrations/1787104600000-Phase11DirectMessagesModeration.js';
 export { Phase11CommunityIdempotency1787104700000 } from './migrations/1787104700000-Phase11CommunityIdempotency.js';
 export { Phase13E2ee1787134230745 } from './migrations/1787134230745-Phase13E2ee.js';
+export { Phase14PrivacyAndFilters1787135113517 } from './migrations/1787135113517-Phase14PrivacyAndFilters.js';
+export { Phase14FilterLists1787135204977 } from './migrations/1787135204977-Phase14FilterLists.js';
+export { Phase14Labelers1787135294583 } from './migrations/1787135294583-Phase14Labelers.js';
+export { Phase14ModerationAppeals1787135453592 } from './migrations/1787135453592-Phase14ModerationAppeals.js';
+export { Phase14AccountLifecycle1787135493158 } from './migrations/1787135493158-Phase14AccountLifecycle.js';
 
 export {
   claimOutboxJobs,

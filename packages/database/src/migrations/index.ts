@@ -13,6 +13,11 @@ import { Phase11DirectMessagesModeration1787104600000 } from './1787104600000-Ph
 import { Phase11CommunityIdempotency1787104700000 } from './1787104700000-Phase11CommunityIdempotency.js';
 import { Phase12PostSearch1787104800000 } from './1787104800000-Phase12PostSearch.js';
 import { Phase13E2ee1787134230745 } from './1787134230745-Phase13E2ee.js';
+import { Phase14PrivacyAndFilters1787135113517 } from './1787135113517-Phase14PrivacyAndFilters.js';
+import { Phase14FilterLists1787135204977 } from './1787135204977-Phase14FilterLists.js';
+import { Phase14Labelers1787135294583 } from './1787135294583-Phase14Labelers.js';
+import { Phase14ModerationAppeals1787135453592 } from './1787135453592-Phase14ModerationAppeals.js';
+import { Phase14AccountLifecycle1787135493158 } from './1787135493158-Phase14AccountLifecycle.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -42,4 +47,9 @@ export const ALL_MIGRATIONS = [
   Phase11CommunityIdempotency1787104700000,
   Phase12PostSearch1787104800000,
   Phase13E2ee1787134230745,
+  Phase14PrivacyAndFilters1787135113517,
+  Phase14FilterLists1787135204977,
+  Phase14Labelers1787135294583,
+  Phase14ModerationAppeals1787135453592,
+  Phase14AccountLifecycle1787135493158,
 ];
