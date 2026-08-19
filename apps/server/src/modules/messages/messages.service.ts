@@ -970,6 +970,7 @@ export class MessagesService {
     return {
       id: conversation.id,
       kind: conversation.kind,
+      securityMode: conversation.securityMode,
       createdBy:
         conversation.createdByActor === null ? null : toActorSummary(conversation.createdByActor),
       members: members.map((member) => ({

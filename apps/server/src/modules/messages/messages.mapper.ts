@@ -1,5 +1,6 @@
 import type {
   ConversationKind as DbConversationKind,
+  ConversationSecurityMode as DbConversationSecurityMode,
   MessageRequestStatus as DbMessageRequestStatus,
 } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
@@ -9,7 +10,11 @@ import type {
   Message as ProtoMessage,
   MessageRequest as ProtoMessageRequest,
 } from '@patches/proto';
-import { ConversationKind, MessageRequestStatus } from '@patches/proto/nest';
+import {
+  ConversationKind,
+  ConversationSecurityMode,
+  MessageRequestStatus,
+} from '@patches/proto/nest';
 
 import { toProtoActor } from '../auth/auth.mapper.js';
 import type {
@@ -24,6 +29,18 @@ import type {
 const KIND_TO_PROTO: Readonly<Record<DbConversationKind, ConversationKind>> = Object.freeze({
   DIRECT: ConversationKind.CONVERSATION_KIND_DIRECT,
   GROUP: ConversationKind.CONVERSATION_KIND_GROUP,
+});
+
+/**
+ * Immutable per conversation (ADR 0020). There is deliberately no inverse map: nothing in the
+ * server converts a proto mode back into a persisted one, because nothing may change a
+ * conversation's mode after creation.
+ */
+const SECURITY_MODE_TO_PROTO: Readonly<
+  Record<DbConversationSecurityMode, ConversationSecurityMode>
+> = Object.freeze({
+  LEGACY_SERVER_VISIBLE: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE,
+  E2EE_V1: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
 });
 
 const REQUEST_STATUS_TO_PROTO: Readonly<Record<DbMessageRequestStatus, MessageRequestStatus>> =
@@ -47,6 +64,7 @@ export function toProtoConversation(view: ConversationView): ProtoConversation {
   return {
     id: view.id,
     kind: KIND_TO_PROTO[view.kind],
+    securityMode: SECURITY_MODE_TO_PROTO[view.securityMode],
     createdBy: view.createdBy === null ? undefined : toProtoActor(view.createdBy),
     members: view.members.map(toProtoConversationMember),
     createdAt: dateToTimestamp(view.createdAt),

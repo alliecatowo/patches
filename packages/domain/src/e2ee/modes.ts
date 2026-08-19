@@ -78,3 +78,88 @@ export function assertE2eeGroupBounds(memberCount: number, envelopeCount: number
     throw new E2eeContractError('E2EE device fanout is outside the supported bound.');
   }
 }
+
+/**
+ * One-time prekey count at which a device replenishes its server inventory (ADR 0020 §5).
+ * A protocol constant, not node configuration: a remote node must not be able to move it.
+ */
+export const E2EE_ONE_TIME_PREKEY_REPLENISH_THRESHOLD = 20;
+
+/**
+ * How long a device mailbox holds an undelivered envelope, and therefore how long a superseded
+ * signed-prekey private key must be retained (ADR 0020 §5's `MAXLATENCY`). A device offline
+ * beyond this window rejoins with fresh sessions rather than old prekey state.
+ */
+export const E2EE_MAILBOX_MAX_LATENCY_MS = 30 * 24 * 60 * 60 * 1_000;
+
+/** Device certificate format version this contract describes (ADR 0020 §2). */
+export const E2EE_DEVICE_CERTIFICATE_VERSION = 1;
+
+/**
+ * Identifier of the v1 message-franking construction (ADR 0020 §9).
+ *
+ * The *name* is fixed so evidence carries a versioned profile from the first byte written. The
+ * construction behind it is **not approved**: ADR 0020 §9 defers the exact committing-AE choice
+ * to independent cryptographic review, and §12.7 makes that review a hard ship gate. See
+ * {@link E2EE_APPROVED_FRANKING_PROFILES}.
+ */
+export const E2EE_FRANKING_PROFILE_V1 = 'patches-franking-v1' as const;
+
+/**
+ * Franking profiles that have passed ADR 0020 §12.7's independent cryptographic review.
+ *
+ * Deliberately **empty**. This is the mechanical form of the ship gate: no profile can be
+ * enabled for a production conversation until a reviewed construction is added here, and adding
+ * one requires amending ADR 0020 — not editing a constant in a feature branch.
+ */
+export const E2EE_APPROVED_FRANKING_PROFILES: readonly string[] = Object.freeze([]);
+
+/**
+ * Gate for enabling `E2EE_V1` outside an isolated test node. Throws while the franking
+ * construction is unreviewed, which is the state ADR 0020 records today.
+ */
+export function assertFrankingProfileApproved(profile: string): void {
+  if (!E2EE_APPROVED_FRANKING_PROFILES.includes(profile)) {
+    throw new E2eeContractError(
+      `Franking profile "${profile}" has not passed ADR 0020 §12.7 independent review.`,
+    );
+  }
+}
+
+/**
+ * Per-device capability check (ADR 0020 §1.2, §11). One device that does not implement the
+ * protocol makes the send fail; it never downgrades the conversation, and it never causes a
+ * partial fanout that silently excludes that device.
+ */
+export function assertDeviceSupportsProtocol(
+  supportedProtocolVersions: readonly string[],
+  required: string = E2EE_PROTOCOL_V1,
+): void {
+  if (!supportedProtocolVersions.includes(required)) {
+    throw new E2eeContractError(`Device does not support ${required}; the send must fail.`);
+  }
+}
+
+/**
+ * Whether a client may use the words "encrypted", "end-to-end", or "secure" for a conversation.
+ *
+ * Spec §194 forbids them for anything but `E2EE_V1`, and spec §183.1 requires the legacy screen
+ * to say plainly that the node's operators can read the messages. This function exists so that
+ * rule is one call rather than a condition every client re-derives (and eventually gets wrong).
+ */
+export function mayDescribeAsEndToEndEncrypted(mode: ConversationSecurityMode): boolean {
+  return mode === 'E2EE_V1';
+}
+
+/**
+ * The disclosure a client MUST render for a conversation, per spec §183.1/§194 and ADR 0020 §8.
+ *
+ * Returned as text rather than a boolean because both modes have something the user has to be
+ * told: legacy is readable by the operator, and E2EE still exposes routing metadata. Neither may
+ * be shortened to "private".
+ */
+export function requiredConversationDisclosure(mode: ConversationSecurityMode): string {
+  return mode === 'E2EE_V1'
+    ? 'End-to-end encrypted. This node cannot read these messages, but it can see who you message and when.'
+    : "Not end-to-end encrypted — this node's operators can read these messages.";
+}

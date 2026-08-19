@@ -27,6 +27,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "fast-check": "catalog:",
     "tsup": "catalog:"
   }
 }
