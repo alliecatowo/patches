@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'site'
 
 # `pnpm add <pkg>` picks the catalog version automatically when the package is listed here.
 catalogMode: prefer
@@ -65,6 +66,7 @@ catalog:
   '@aws-sdk/s3-request-presigner': ^3.1111.0
   '@grpc/reflection': ^1.0.4
   wrangler: ^4.123.0
+  vitepress: ^1.6.4
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

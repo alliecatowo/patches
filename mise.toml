@@ -80,6 +80,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker dev"
 description = "Non-interactive connectivity check against the local server (JSON, exit 0/1)"
 run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure"
 
+[tasks.site]
+description = "Run the VitePress docs/marketing site in dev mode (site/) at http://localhost:5173"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm site:dev"
+
+[tasks."site:deploy"]
+description = "Build the site and deploy site/.vitepress/dist to Cloudflare Pages (project patches-site) via wrangler — wrangler is authenticated locally via OAuth (`pnpm exec wrangler whoami`); gated in CI behind vars.SITE_DEPLOY_ENABLED (.github/workflows/site.yml)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm site:deploy"
+
 [tasks.spike]
 description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R rerender, d delete, q quit)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
