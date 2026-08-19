@@ -481,18 +481,45 @@ Already implemented in application code (`apps/server/src/main.ts` calls
 similarly stops claiming new jobs on shutdown — see `apps/worker/src/main.ts`). Fly can
 terminate Machines on its own schedule; nothing here assumes a generous shutdown window.
 
-## npm packaging (`@patches/tui`)
+## npm packaging (`patches-social`, P9-003 / A-046)
 
-See `apps/tui/README.md` for the full picture, including the **known gap**: a real
-`npm install -g @patches/tui` from the public registry won't work yet, because it depends
-on two still-private, unpublished workspace packages (`@patches/proto`,
-`@patches/terminal-media`). Verified locally: packing all three with `pnpm pack` and
-installing the `@patches/tui` tarball into a scratch project with `pnpm-workspace.yaml`
-`overrides` pointing at the other two tarballs works end to end (`patches --version`
-prints `0.1.0`, exit 0) — but that override is exactly what a real registry install can't
-do. A real `pnpm publish` of `@patches/tui` (and, separately, deciding whether to publish
-the other two packages or bundle them at build time) is a later, manual/CI action —
-**Status: planned**, not attempted here.
+See `apps/tui/README.md`'s "Self-contained build" section for the full picture. Summary:
+`apps/tui/tsup.config.ts` bundles the app and its three private workspace dependencies
+(`@patches/domain`, `@patches/proto`, `@patches/terminal-media`) into a single
+`dist/cli.js`, so the published tarball no longer needs those unpublished packages resolved
+separately — the earlier known gap (an `npm install -g` 404ing on them) is closed.
+
+The npm-facing package name is `patches-social` (the bare `patches` name is taken; checked
+2026-08-18). It's set via `publishConfig.name` in `apps/tui/package.json` — a pnpm 11.18+
+feature (this repo pins 11.22.0) that publishes under a different name than the workspace's
+own `package.json` `name`, which stays `@patches/tui`. That means every `--filter
+@patches/tui` reference elsewhere in the repo (`mise.toml`, root `package.json`, CI
+workflows) is untouched by this.
+
+Verified locally (2026-08-18), from a shell with the repo's `node_modules` off `PATH`,
+against the live node:
+
+```bash
+pnpm --filter @patches/tui build
+pnpm --filter @patches/tui pack --pack-destination /tmp/patches-tui-pack
+# -> /tmp/patches-tui-pack/patches-social-0.1.0.tgz (~80 KB)
+
+mkdir -p /tmp/pfx/bin
+PATH="/tmp/pfx/bin:$PATH" PNPM_HOME=/tmp/pfx pnpm add -g /tmp/patches-tui-pack/patches-social-*.tgz
+cd /tmp && /tmp/pfx/bin/patches --version   # -> 0.1.0
+cd /tmp && /tmp/pfx/bin/patches ping --server patches-social.fly.dev:443   # -> {"ok": true, ...}
+```
+
+Inspecting the packed `package.json` confirmed `pnpm-workspace.yaml`'s `catalog:` entries
+resolve to concrete semver ranges at pack time (e.g. `"ink": "^7.1.1"`, not the literal
+string `catalog:`) — required for the tarball to be installable by a plain `npm install`,
+not just within this pnpm workspace.
+
+**Status: planned** — publishing itself (`npm login`, then `mise exec -- pnpm --filter
+@patches/tui publish --access public`, using the workspace-local filter name; pnpm rewrites
+the published name to `patches-social` via `publishConfig.name`) is a manual, one-time step
+for the package owner and hasn't been run — `npm login` isn't available in this
+environment. Everything up to producing and installing the tarball is verified above.
 
 ## Related documents
 

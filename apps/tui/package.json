@@ -5,20 +5,36 @@
   "license": "MIT",
   "private": false,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alliecatowo/patches.git",
+    "directory": "apps/tui"
+  },
+  "homepage": "https://github.com/alliecatowo/patches",
+  "keywords": [
+    "cli",
+    "tui",
+    "terminal",
+    "social",
+    "ink",
+    "patches"
+  ],
   "engines": {
     "node": ">=24 <25"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "name": "patches-social"
   },
   "bin": {
     "patches": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "build": "tsup && node scripts/copy-proto.mjs && chmod +x dist/cli.js",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.tsx",
     "typecheck": "tsc --noEmit",
@@ -30,14 +46,17 @@
     "@grpc/proto-loader": "catalog:",
     "@inkjs/ui": "catalog:",
     "@napi-rs/keyring": "catalog:",
+    "ink": "catalog:",
+    "react": "catalog:",
+    "sharp": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
     "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
     "@patches/terminal-media": "workspace:*",
-    "ink": "catalog:",
-    "react": "catalog:"
-  },
-  "devDependencies": {
     "@types/react": "catalog:",
-    "ink-testing-library": "catalog:"
+    "ink-testing-library": "catalog:",
+    "tsup": "catalog:"
   }
 }
