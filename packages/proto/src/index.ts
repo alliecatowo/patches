@@ -125,6 +125,8 @@ export type {
   PostServiceClient,
   PostServiceController,
   PostViewerState,
+  SearchPostsRequest,
+  SearchPostsResponse,
   UnpinPostRequest,
   UnpinPostResponse,
 } from './generated/patches/v1/posts.js';

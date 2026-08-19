@@ -37,6 +37,11 @@ service PostService {
 
   // Idempotent: unpinning a post that isn't pinned is not an error.
   rpc UnpinPost(UnpinPostRequest) returns (UnpinPostResponse);
+
+  // Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+  // strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+  // score and never a `sort`/`order` parameter (spec §194).
+  rpc SearchPosts(SearchPostsRequest) returns (SearchPostsResponse);
 }
 
 enum PostType {
@@ -272,4 +277,23 @@ message UnpinPostRequest {
 
 message UnpinPostResponse {
   Post post = 1;
+}
+
+message SearchPostsRequest {
+  // Server rejects empty/whitespace-only and caps at 200 Unicode characters.
+  string query = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+
+  // Optional filter: only posts by this local handle. Empty means no author filter.
+  string author_handle = 4;
+
+  // Replies are excluded by default (the common "search posts" expectation); set true to
+  // include them in the results.
+  bool include_replies = 5;
+}
+
+message SearchPostsResponse {
+  repeated Post posts = 1;
+  PageInfo page = 2;
 }

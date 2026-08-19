@@ -249,6 +249,25 @@ export interface UnpinPostResponse {
   post: Post | undefined;
 }
 
+export interface SearchPostsRequest {
+  /** Server rejects empty/whitespace-only and caps at 200 Unicode characters. */
+  query: string;
+  cursor: string;
+  limit: number;
+  /** Optional filter: only posts by this local handle. Empty means no author filter. */
+  authorHandle: string;
+  /**
+   * Replies are excluded by default (the common "search posts" expectation); set true to
+   * include them in the results.
+   */
+  includeReplies: boolean;
+}
+
+export interface SearchPostsResponse {
+  posts: Post[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -300,6 +319,14 @@ export interface PostServiceClient {
   /** Idempotent: unpinning a post that isn't pinned is not an error. */
 
   unpinPost(request: UnpinPostRequest, metadata?: Metadata): Observable<UnpinPostResponse>;
+
+  /**
+   * Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+   * strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+   * score and never a `sort`/`order` parameter (spec §194).
+   */
+
+  searchPosts(request: SearchPostsRequest, metadata?: Metadata): Observable<SearchPostsResponse>;
 }
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -372,6 +399,17 @@ export interface PostServiceController {
     request: UnpinPostRequest,
     metadata?: Metadata,
   ): Promise<UnpinPostResponse> | Observable<UnpinPostResponse> | UnpinPostResponse;
+
+  /**
+   * Full-text search over local post bodies (Postgres `websearch_to_tsquery`). Results are
+   * strictly newest-first, keyset-paged like every other list RPC — there is no relevance
+   * score and never a `sort`/`order` parameter (spec §194).
+   */
+
+  searchPosts(
+    request: SearchPostsRequest,
+    metadata?: Metadata,
+  ): Promise<SearchPostsResponse> | Observable<SearchPostsResponse> | SearchPostsResponse;
 }
 
 export function PostServiceControllerMethods() {
@@ -385,6 +423,7 @@ export function PostServiceControllerMethods() {
       'listPostEdits',
       'pinPost',
       'unpinPost',
+      'searchPosts',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

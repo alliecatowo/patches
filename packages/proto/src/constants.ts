@@ -183,6 +183,8 @@ import type {
   ListRepliesResponse,
   PinPostRequest,
   PinPostResponse,
+  SearchPostsRequest,
+  SearchPostsResponse,
   UnpinPostRequest,
   UnpinPostResponse,
 } from './generated/patches/v1/posts.js';
@@ -384,6 +386,7 @@ export interface PostGrpcClient extends Client {
   listPostEdits: GrpcUnaryCall<ListPostEditsRequest, ListPostEditsResponse>;
   pinPost: GrpcUnaryCall<PinPostRequest, PinPostResponse>;
   unpinPost: GrpcUnaryCall<UnpinPostRequest, UnpinPostResponse>;
+  searchPosts: GrpcUnaryCall<SearchPostsRequest, SearchPostsResponse>;
 }
 
 /** `patches.v1.FeedService` as seen by a raw grpc-js client. */

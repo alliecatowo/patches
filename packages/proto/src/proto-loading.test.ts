@@ -106,6 +106,7 @@ describe('proto files', () => {
         'ListPostEdits',
         'ListReplies',
         'PinPost',
+        'SearchPosts',
         'UnpinPost',
       ].sort(),
     );
