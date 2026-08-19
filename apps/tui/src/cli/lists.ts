@@ -437,7 +437,12 @@ function grpcApi(filterList: FilterListGrpcClient): FilterListCommandApi {
     publishFilterList: (request, token) =>
       unary(filterList.publishFilterList.bind(filterList), request, token),
     subscribeFilterList: (filterListId, action, token) =>
-      unary(filterList.subscribeFilterList.bind(filterList), { filterListId, action }, token),
+      unary(
+        filterList.subscribeFilterList.bind(filterList),
+        // Empty `scopes` defaults to every scope (P14-022) — the CLI has no per-scope UI yet.
+        { filterListId, action, scopes: [] },
+        token,
+      ),
     unsubscribeFilterList: (filterListId, token) =>
       unary(filterList.unsubscribeFilterList.bind(filterList), { filterListId }, token),
     setFilterListEntryException: (filterListId, filterListEntryId, excepted, token) =>

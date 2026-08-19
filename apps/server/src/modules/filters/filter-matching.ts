@@ -14,6 +14,7 @@ import {
   Post,
   PostMedia,
 } from '@patches/database';
+import { getDomain } from 'tldts';
 import { In, type DataSource } from 'typeorm';
 
 import { toActorSummary, type ActorSummary } from '../auth/auth.dto.js';
@@ -27,14 +28,24 @@ import { normalizeTagIdentity } from '../tags/tag-grammar.js';
  * Implementation note (spec §198.4's "implementation constraints, recorded because they are
  * load-bearing"): the spec directs `actor`/`tag`/`domain` term matching toward SQL joins on
  * indexed columns, reserving only `substring`/`word` for application-service evaluation over a
- * bounded over-fetch. This module evaluates all five kinds in the application service instead,
- * uniformly, inside that same bounded-over-fetch loop (`feeds/feed.service.ts`'s `page()`) —
- * still a **bounded** number of re-fetch rounds with the cursor advanced to the last row
- * examined (never unbounded looping), which is the actual correctness requirement (§198.3's "a
- * page may contain fewer items than requested" contract). Pushing `actor`/`tag` `hide` rules
- * into a `NOT EXISTS` SQL predicate ahead of the over-fetch, so fewer rounds are needed under
- * heavy filtering, is a documented follow-up (see this task's report) — not required for
- * correctness, since the bounded loop already produces the right page and the right cursor.
+ * bounded over-fetch. This module evaluates all five kinds in the application service, uniformly,
+ * inside that same bounded-over-fetch loop (`feeds/feed.service.ts`'s `page()`/`listHomeFeed`,
+ * `posts/post.service.ts#searchPosts`) — still a **bounded** number of re-fetch rounds with the
+ * cursor advanced to the last row examined (never unbounded looping), which is the actual
+ * correctness requirement (§198.3's "a page may contain fewer items than requested" contract).
+ *
+ * **P14-021 SQL pushdown.** `hide`-action `ACTOR` and `TAG` rules are *additionally* pushed into
+ * the feed/search query itself as `NOT IN`/`NOT EXISTS` predicates ({@link hideActorIds},
+ * {@link hideTagNames}) so pages under heavy hide-filtering rarely need more than one round.
+ * This is a pure performance optimization layered on top of the still-authoritative in-process
+ * check above, not a replacement for it: the SQL predicate only ever needs to be a *subset* of
+ * what `evaluateCandidate` would hide (it may under-match — e.g. it does not cover an `ACTOR`
+ * rule matching a reposter or quoted author, or a home-feed occurrence's own repost-actor column
+ * — the in-process loop still catches those), because over-matching in SQL would be a real
+ * correctness bug (silently hiding a post nothing actually filters) with no downstream check to
+ * catch it. `DOMAIN` `hide` pushdown is deliberately not attempted: a domain match can come from
+ * a body-embedded URL with no indexed column to join against, and an imprecise SQL substring/
+ * regex predicate risks exactly that over-matching failure mode — it stays in-process only.
  */
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,15 +97,17 @@ const ACTION_RANK: Readonly<Record<DbFilterAction, number>> = Object.freeze({
 
 /**
  * Loads the viewer's effective, scope-filtered rule set: their own active (non-expired)
- * filters that declare `scope`, plus every entry of every filter list they subscribe to
- * (minus their own per-entry exceptions), applied with the subscription's chosen action.
+ * filters that declare `scope`, plus every entry of every filter list they subscribe to whose
+ * own `scopes` include `scope` (minus their own per-entry exceptions), applied with the
+ * subscription's chosen action.
  *
- * List-derived rules apply regardless of `scope`: `SubscribeFilterListRequest` (already
- * generated, `packages/proto/proto/patches/v1/filter_lists.proto`) has no `scopes` field —
- * unlike §199.2's prose ("an action and scopes the subscriber chooses"), the shipped contract
- * only lets a subscriber choose an action. Applying list-derived rules to every scope is the
- * safe reading of that gap (a list a subscriber trusted enough to add is never scope-narrower
- * than a personal filter by omission) — see this task's report for the proto/spec mismatch.
+ * P14-022: `FilterListSubscription.scopes` (`filter_list_subscriptions.scopes`, spec §199.1's
+ * "an action and scopes the subscriber chooses") is the subscription-side half of the
+ * intersection this function performs — a subscription only contributes rules for the scopes
+ * its own subscriber chose, exactly like a personal filter's `filter_scopes`. A subscription
+ * predating P14-022 (or one whose `scopes` was left empty at write time) defaults to every
+ * scope at both the DB column and `FilterListService.subscribeFilterList` layers, so it never
+ * silently narrows on upgrade.
  */
 export async function loadEffectiveFilterRules(
   dataSource: DataSource,
@@ -138,10 +151,15 @@ export async function loadEffectiveFilterRules(
     }
   }
 
-  const subscriptions = await dataSource.getRepository(FilterListSubscription).find({
-    where: { actorId: viewerActorId },
-    relations: { filterList: { ownerActor: true, ownerCommunity: true } },
-  });
+  // P14-022 intersection: only a subscription whose own `scopes` includes this request's
+  // `scope` contributes rules — filtered in-process rather than in SQL since `scopes` is a
+  // small `text[]` per subscriber, not an indexed join target.
+  const subscriptions = (
+    await dataSource.getRepository(FilterListSubscription).find({
+      where: { actorId: viewerActorId },
+      relations: { filterList: { ownerActor: true, ownerCommunity: true } },
+    })
+  ).filter((subscription) => subscription.scopes.includes(scope));
   if (subscriptions.length > 0) {
     const listIds = subscriptions.map((subscription) => subscription.filterListId);
     const entries = await dataSource
@@ -333,6 +351,37 @@ export function evaluateCandidate(
   return best;
 }
 
+/**
+ * `hide`-action `ACTOR` rule values, deduped, already resolved to actor ids (spec §198.4's SQL
+ * pushdown, P14-021): a viewer's whole hide-actor set as a plain `NOT IN`/`NOT EXISTS` param.
+ * Pushing these into SQL is a pure performance optimization — `evaluateCandidate` above still
+ * re-checks every row a query returns (including the reposter/quoted-author match kinds this
+ * pushdown does not cover), so an under-inclusive SQL predicate here can never produce an
+ * incorrect page, only a slower one. See `feeds/feed.service.ts`/`posts/post.service.ts` for the
+ * call sites.
+ */
+export function hideActorIds(rules: readonly EffectiveFilterRule[]): string[] {
+  return [
+    ...new Set(
+      rules
+        .filter((rule) => rule.kind === 'ACTOR' && rule.action === 'HIDE')
+        .map((rule) => rule.value),
+    ),
+  ];
+}
+
+/** `hide`-action `TAG` rule values, deduped and normalized — the SQL-pushdown counterpart of
+ * {@link hideActorIds} for tag rules (spec §198.4, P14-021). */
+export function hideTagNames(rules: readonly EffectiveFilterRule[]): string[] {
+  return [
+    ...new Set(
+      rules
+        .filter((rule) => rule.kind === 'TAG' && rule.action === 'HIDE')
+        .map((rule) => normalizeTagValue(rule.value)),
+    ),
+  ];
+}
+
 function matchesRule(rule: EffectiveFilterRule, candidate: FilterMatchCandidate): boolean {
   switch (rule.kind) {
     case 'ACTOR':
@@ -434,15 +483,31 @@ function stripWww(hostname: string): string {
 }
 
 /**
- * A naive last-two-labels approximation of the registrable domain (eTLD+1) spec §198.2 asks
- * for — this codebase bundles no Public Suffix List (avoiding a new dependency + update
- * treadmill for v1, the same "don't add a build/deploy burden" reasoning §198.2 itself gives
- * for not vendoring an RE2 engine). This under-splits multi-label public suffixes
- * (`example.co.uk` reduces to `co.uk`, not `example.co.uk`) — a documented v0 limitation, not
- * a silent one.
+ * The registrable domain (eTLD+1) per spec §198.2's "domain subscripts" (P14-021): backed by
+ * `tldts`'s bundled Public Suffix List, so a multi-label public suffix like `co.uk` correctly
+ * yields `example.co.uk` for `sub.example.co.uk` rather than under-splitting to `co.uk` (the
+ * documented v0 limitation this replaces). `getDomain` returns `null` for a hostname that is
+ * itself entirely a public suffix (`co.uk`), an unrecognized/local host (`localhost`), or an IP
+ * address — those fall back to the bare (www-stripped) hostname, which cannot spuriously match a
+ * real registrable-domain rule and is never itself accepted as a rule value (see
+ * {@link isRegistrableDomainValue}).
  */
 function registrableDomainOf(hostname: string): string {
-  const stripped = stripWww(hostname);
-  const labels = stripped.split('.').filter((label) => label.length > 0);
-  return labels.length <= 2 ? stripped : labels.slice(-2).join('.');
+  return getDomain(hostname) ?? stripWww(hostname);
+}
+
+/**
+ * `true` iff `rawValue` (a `DOMAIN`-kind filter/filter-list-entry value, as typed by the user —
+ * see this module's export/import round-trip note) reduces to a real registrable domain rather
+ * than a bare public suffix. `co.uk` MUST NOT be usable as a rule: it would match every
+ * `*.co.uk` site any viewer's timeline could ever surface, which is a wildcard, not a domain.
+ * Called from `filters/validation.ts#parseFilterTerms` and
+ * `filter-lists/validation.ts#parseFilterListEntries` at write time — matching itself
+ * (`normalizeDomainValue` below) never rejects, it only normalizes.
+ */
+export function isRegistrableDomainValue(rawValue: string): boolean {
+  const trimmed = rawValue.trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const hostname = hostnameOf(withScheme) ?? stripWww(trimmed.toLowerCase());
+  return getDomain(hostname) !== null;
 }

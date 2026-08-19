@@ -8,7 +8,11 @@ import type {
 import { CommunityRole } from '@patches/proto/nest';
 
 import { toProtoActor } from '../auth/auth.mapper.js';
-import { filterActionToProto, filterTermKindToProto } from '../filters/filter-enums.js';
+import {
+  filterActionToProto,
+  filterScopeToProto,
+  filterTermKindToProto,
+} from '../filters/filter-enums.js';
 import type {
   FilterListCommunityOwnerView,
   FilterListEntryView,
@@ -63,6 +67,7 @@ export function toProtoFilterListSubscription(
   return {
     filterList: toProtoFilterList(view.filterList),
     action: filterActionToProto(view.action),
+    scopes: view.scopes.map(filterScopeToProto),
     createdAt: dateToTimestamp(view.createdAt),
   };
 }

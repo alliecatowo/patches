@@ -11,6 +11,7 @@ import {
   RemoteActorService,
   RemoteFetchError,
 } from '../federation/services/remote-actor.service.js';
+import { applyDiscoverableFilter } from '../privacy/discoverability.js';
 import { ActorResolveRateLimitService } from './actor-resolve-rate-limit.service.js';
 import { toActorProfile, type ActorCountsSummary, type ActorProfile } from './actor.dto.js';
 import {
@@ -196,6 +197,9 @@ export class ActorService {
       .orderBy('actor.createdAt', 'DESC')
       .addOrderBy('actor.id', 'DESC')
       .take(take + 1);
+    // §197.5: `discoverable = false` removes the actor from search/directory results.
+    // Exact-handle resolution (`getActorByHandle`/`resolveActor` above) never calls this.
+    applyDiscoverableFilter(qb, '"actor"."id"');
 
     if (cursor !== undefined) {
       qb.andWhere('(actor.createdAt, actor.id) < (:cursorCreatedAt, :cursorId)', {

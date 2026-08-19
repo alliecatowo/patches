@@ -36,6 +36,27 @@ export function useContentSize(): ContentSize {
 /** Rows the footer always occupies: separator, message line, status line, hint line. */
 export const FOOTER_ROWS = 4;
 
+/** Rows a header ribbon occupies at row 0, when one is drawn (P12-102). */
+export const RIBBON_ROWS = 1;
+
+/**
+ * Splits the fixed `FOOTER_ROWS` chrome budget between a row-0 ribbon and the bottom
+ * footer, budget-neutral either way (design vision §2.1: "One presentation request …
+ * budget-neutral: … draw the status row as a header ribbon at row 0 … Same four rows,
+ * just where the eye lands first").
+ *
+ * `full` height tier moves the status line to row 0 (`ribbonRows`) and leaves the
+ * separator/notice/hints rows at the bottom (`footerRows`); `compact` keeps everything
+ * at the bottom, exactly as before this existed. `ribbonRows + footerRows` is always
+ * `FOOTER_ROWS`, so `App.tsx`'s `contentRows = rows - FOOTER_ROWS` never has to change
+ * depending on which layout is chosen.
+ */
+export function chromeSplit(showRibbon: boolean): { ribbonRows: number; footerRows: number } {
+  return showRibbon
+    ? { ribbonRows: RIBBON_ROWS, footerRows: FOOTER_ROWS - RIBBON_ROWS }
+    : { ribbonRows: 0, footerRows: FOOTER_ROWS };
+}
+
 const InlineImagesContext = createContext(true);
 
 /**

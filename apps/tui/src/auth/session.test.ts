@@ -41,6 +41,7 @@ function fakeApi(overrides: Partial<SessionAuthApi> = {}): SessionAuthApi {
   return {
     register: vi.fn().mockResolvedValue({ session: session() }),
     login: vi.fn().mockResolvedValue({ session: session() }),
+    recoveryLogin: vi.fn().mockResolvedValue({ session: session() }),
     refreshSession: vi.fn().mockResolvedValue({ session: session() }),
     logout: vi.fn().mockResolvedValue({}),
     beginSshLogin: vi.fn(),
@@ -79,8 +80,23 @@ describe('SessionManager.register / loginWithPassword', () => {
       inviteCode: 'invite',
       clientRequestId: 'req-1',
       sshPublicKey: '',
+      privacyNoticeVersionAcknowledged: 0,
     });
     expect(active.emailVerified).toBe(false);
+  });
+
+  it('loginWithRecoveryCode applies the returned session the same way (P15-003)', async () => {
+    const store = new MemoryCredentialStore();
+    const recoveryLogin = vi.fn().mockResolvedValue({ session: session() });
+    const api = fakeApi({ recoveryLogin });
+    const manager = new SessionManager({ api, store, nodeOrigin: NODE });
+
+    const active = await manager.loginWithRecoveryCode('alice', 'ABCDE-FGHJK-MNPQR-STVWX');
+    expect(recoveryLogin).toHaveBeenCalledWith({
+      emailOrHandle: 'alice',
+      code: 'ABCDE-FGHJK-MNPQR-STVWX',
+    });
+    expect(active.accessToken).toBe('access-1');
   });
 });
 

@@ -8,6 +8,7 @@ import {
   AuthCode,
   Credential,
   Invite,
+  Notification,
   OutboxJob,
   RefreshToken,
   User,
@@ -50,6 +51,7 @@ import {
   normalizeHandle,
   opaqueCodeSchema,
   parseInput,
+  recoveryLoginInputSchema,
   refreshTokenInputSchema,
   registerInputSchema,
   requestPasswordResetInputSchema,
@@ -77,6 +79,33 @@ const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000;
  */
 const AUTH_CODE_BYTES = 32;
 
+/** P15-003: 10 codes minted together by `GenerateRecoveryCodes`, matching the proto RPC's own
+ * documented count. */
+const RECOVERY_CODE_COUNT = 10;
+
+/** 20 base32 characters (Crockford alphabet, no padding) = 100 bits of entropy, grouped
+ * `XXXXX-XXXXX-XXXXX-XXXXX` for human transcription — plenty under Argon2id verification
+ * (which is what actually rate-limits guessing, same as a password), short enough to type
+ * from a printed backup. Excludes visually ambiguous characters (`I`, `L`, `O`, `U`), which
+ * the Crockford alphabet already drops. 13 random bytes (104 bits) comfortably covers the 100
+ * bits consumed below; the leftover 4 bits are simply never read. */
+const RECOVERY_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const RECOVERY_CODE_CHAR_COUNT = 20;
+const RECOVERY_CODE_ENTROPY_BYTES = 13;
+
+function generateRecoveryCode(): string {
+  const bytes = randomBytes(RECOVERY_CODE_ENTROPY_BYTES);
+  let bits = 0n;
+  for (const byte of bytes) bits = (bits << 8n) | BigInt(byte);
+
+  let chars = '';
+  for (let i = 0; i < RECOVERY_CODE_CHAR_COUNT; i += 1) {
+    chars = RECOVERY_CODE_ALPHABET[Number(bits & 0x1fn)] + chars;
+    bits >>= 5n;
+  }
+  return chars.match(/.{1,5}/g)?.join('-') ?? chars;
+}
+
 /**
  * `pg_advisory_xact_lock` key for serialising the invite-only bootstrap decision below
  * (A-040). Arbitrary but fixed for the life of the schema — advisory locks are keyed by a
@@ -87,18 +116,15 @@ const AUTH_CODE_BYTES = 32;
 const BOOTSTRAP_LOCK_KEY = 7461001;
 
 /**
- * P14-010 (spec §197.1): the privacy notice version this node currently publishes. Mirrors
- * `NodeService.getNodePolicy()`'s deliberate `privacyNoticeVersion: 0` stub
- * (`apps/server/src/modules/system/node.service.ts`, P14-001 — real operator-supplied notice
- * text/version is a follow-up task); kept as its own local constant rather than an import from
- * `modules/system` so `AuthModule` doesn't take on a dependency on a sibling feature module for
- * one shared literal. `RegisterRequest` carries no acknowledgement field of its own — spec
- * §197.1 requires the client to show the notice summary *before the account exists*, so by the
- * time `register()` succeeds the notice at whatever version this node currently publishes has
- * necessarily already been shown, and `createActorAndUser` below stamps that as the account's
- * initial acknowledgement. Whoever wires real operator-supplied policy content into
- * `GetNodePolicy` must update this constant (or, better, both read from one shared source) in
- * the same change, so the two never disagree about what "current" means.
+ * P14-010/P14-025 (spec §197.1, §204.2): the privacy notice version stamped for a registration
+ * that carries no (or a zero/default) `privacyNoticeVersionAcknowledged` — i.e. every node
+ * whose `REQUIRE_PRIVACY_ACK` policy is off, and any pre-P14-025 client. Spec §197.1 requires
+ * the client to show the notice summary *before the account exists*, so even without an
+ * explicit field the notice at whatever version this node currently publishes has necessarily
+ * already been shown; this is the fallback that keeps that implicit acknowledgement honest.
+ * When `REQUIRE_PRIVACY_ACK=true`, `register()` instead requires and stamps the caller's real
+ * `privacyNoticeVersionAcknowledged`, validated against `AppConfigService.privacyNoticeVersion`
+ * — see the check in `register()` below.
  */
 const REGISTRATION_PRIVACY_NOTICE_VERSION = 0;
 
@@ -109,6 +135,9 @@ export interface RegisterInput {
   password?: string;
   inviteCode?: string;
   sshPublicKey?: string;
+  /** §204.2. `0`/omitted means "not acknowledged" — see `REGISTRATION_PRIVACY_NOTICE_VERSION`
+   * for what gets stamped in that case. */
+  privacyNoticeVersionAcknowledged?: number;
 }
 
 export interface LoginInput {
@@ -153,6 +182,23 @@ export interface AddCredentialInput {
   sshProof?: SshEnrollmentProofInput;
 }
 
+/** P15-002: what `AuthService.GetAuthPolicy` (proto) publishes. */
+export interface AuthPolicy {
+  passwordAuthMode: 'off' | 'optional' | 'required';
+}
+
+/** P15-003: the plaintext codes are returned exactly once, here — nothing after this call ever
+ * has them again, only their Argon2id hashes. */
+export interface RecoveryCodesResult {
+  codes: readonly string[];
+  generatedAt: Date;
+}
+
+export interface RecoveryLoginInput {
+  emailOrHandle: string;
+  code: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -167,6 +213,14 @@ export class AuthService {
     private readonly githubFlow: GitHubDeviceFlowService,
     private readonly githubAttempts: GitHubLoginAttemptsService,
   ) {}
+
+  // ---------------------------------------------------------------- policy
+
+  /** Always unauthenticated, always cheap (P15-002) — see the RPC's own doc comment in
+   * `auth.proto` for why clients must call this before rendering password UI. */
+  getAuthPolicy(): AuthPolicy {
+    return { passwordAuthMode: this.config.passwordAuthMode };
+  }
 
   // ---------------------------------------------------------------- registration
 
@@ -192,6 +246,32 @@ export class AuthService {
         'Set a password or enrol an SSH public key — an account needs at least one way in.',
       );
     }
+
+    // P15-002: a node with PASSWORD_AUTH=off refuses the credential type entirely, not just a
+    // particular password — checked before the (expensive) Argon2id hash below.
+    if (parsed.password !== undefined && this.config.passwordAuthMode === 'off') {
+      throw passwordAuthDisabled();
+    }
+
+    // §204.2: when this node requires an explicit privacy-notice acknowledgement, Register
+    // itself enforces it (rather than only gating *later* writes, like `RequirePrivacyAckGuard`
+    // does) — an account that exists but can never post because it registered against a stale
+    // notice version is a worse experience than a clear rejection up front.
+    if (
+      this.config.requirePrivacyAck &&
+      parsed.privacyNoticeVersionAcknowledged !== this.config.privacyNoticeVersion
+    ) {
+      throw new AppError(
+        'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
+        'You must acknowledge this node’s current privacy notice to register.',
+      );
+    }
+    // Stamped as the account's initial acknowledgement below — the real client-sent version
+    // once one is present, else the implicit-acknowledgement fallback (see the constant's doc).
+    const privacyNoticeVersionAcknowledged =
+      parsed.privacyNoticeVersionAcknowledged > 0
+        ? parsed.privacyNoticeVersionAcknowledged
+        : REGISTRATION_PRIVACY_NOTICE_VERSION;
 
     // The invite-only/no-code combination is either an error or bootstrap registration
     // (P1-013, below) — which one it is depends on whether any account exists yet, so it
@@ -265,6 +345,7 @@ export class AuthService {
         email: parsed.email ?? null,
         emailNormalized,
         clientRequestId: parsed.clientRequestId ?? null,
+        privacyNoticeVersionAcknowledged,
       });
       // `createActorAndUser` always back-fills `actor.userId` before returning — `?? ''` here
       // would silently write an empty-string `userId` instead of failing loudly if that ever
@@ -403,6 +484,12 @@ export class AuthService {
 
   /** Password login (§33–§34, §168): handle or verified recovery email, plus a password. */
   async login(input: LoginInput): Promise<SessionEnvelope> {
+    // P15-002: `Login` is entirely the password credential — a node with PASSWORD_AUTH=off
+    // rejects it outright, before even parsing. Clients must have hidden the password field
+    // already (`GetAuthPolicy`); reaching this is a client bug or a stale cache, not a
+    // legitimate attempt.
+    if (this.config.passwordAuthMode === 'off') throw passwordAuthDisabled();
+
     const parsed = parseInput(loginInputSchema, input);
     // Both a handle and an email address normalize by lowercasing, so one key covers both.
     const subject = normalizeEmail(parsed.emailOrHandle);
@@ -846,6 +933,9 @@ export class AuthService {
     });
 
     if (input.type === 'PASSWORD') {
+      // P15-002: same node-wide refusal `register()`/`login()` apply.
+      if (this.config.passwordAuthMode === 'off') throw passwordAuthDisabled();
+
       const password = parseInput(resetPasswordInputSchema.shape.newPassword, parsed.secret);
       const secretHash = await this.hasher.hash(password);
 
@@ -948,6 +1038,118 @@ export class AuthService {
       }
 
       await credentials.update({ id: credential.id }, { revokedAt: new Date() });
+    });
+  }
+
+  /**
+   * Mints a fresh set of `RECOVERY_CODE_COUNT` single-use codes for the caller, revoking any
+   * generated previously (P15-003) — regenerating always replaces the whole set rather than
+   * topping it up, so a user is never unsure which of two printed batches is still valid.
+   * Plaintext codes exist only in this call's return value; only their Argon2id hash (the same
+   * `PasswordHasher` a `PASSWORD` credential uses) is ever stored.
+   */
+  async generateRecoveryCodes(claims: AccessTokenClaims): Promise<RecoveryCodesResult> {
+    const generatedAt = new Date();
+    const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () => generateRecoveryCode());
+    // Sequential, not `Promise.all`: `PasswordHasher`'s OWASP-baseline Argon2id cost is tuned
+    // assuming one hash runs at a time — ten concurrent hashes would multiply its memory cost
+    // by ten for the life of this call.
+    const hashes: string[] = [];
+    for (const code of codes) hashes.push(await this.hasher.hash(code));
+
+    await this.dataSource.transaction(async (manager) => {
+      const credentials = manager.getRepository(Credential);
+      await credentials.update(
+        { userId: claims.userId, type: 'RECOVERY_CODE', revokedAt: IsNull() },
+        { revokedAt: generatedAt },
+      );
+      await credentials.save(
+        hashes.map((secretHash, index) =>
+          credentials.create({
+            userId: claims.userId,
+            type: 'RECOVERY_CODE',
+            identifier: null,
+            secretHash,
+            label: `Recovery code ${String(index + 1)} of ${String(RECOVERY_CODE_COUNT)}`,
+          }),
+        ),
+      );
+    });
+
+    return { codes, generatedAt };
+  }
+
+  // ---------------------------------------------------------------- recovery login
+
+  /**
+   * Consumes one single-use recovery code and returns a session, the same way `login()` does
+   * for a password (P15-003) — including the same uniform-failure posture (§166's no-
+   * enumeration rule): a bad handle, a bad code, and an account with zero remaining codes all
+   * fail identically with `invalidCredentials()`. Unlike password login, the number of
+   * Argon2id verifications this call performs varies with how many codes are still active
+   * (0–10) — a real, documented gap in *timing* uniformity that a fixed one-hash-per-attempt
+   * design (password/SSH) doesn't have. Always running ten verifications regardless would
+   * close it, but at real cost to an already-slow (Argon2id), already-rare flow; not worth it
+   * for what a handle/email lookup already leaks via `AUTH_INVALID_CREDENTIALS`'s existence
+   * elsewhere in this same service.
+   */
+  async recoveryLogin(input: RecoveryLoginInput): Promise<SessionEnvelope> {
+    const parsed = parseInput(recoveryLoginInputSchema, input);
+    const subject = normalizeEmail(parsed.emailOrHandle);
+    this.rateLimit.consumePeer('recovery_login', getRequestContext()?.peer);
+    this.rateLimit.consume('recovery_login', subject);
+    await this.rateLimit.consumeDistributed('recovery_login', subject);
+
+    return this.dataSource.transaction(async (manager) => {
+      const user = await findUserByHandleOrEmail(manager, subject);
+      if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+        // Same timing-uniformity reasoning `login()` documents: spend one real Argon2id
+        // verification even when there is no user (and so nothing real to compare against).
+        await this.hasher.verify(undefined, parsed.code);
+        throw invalidCredentials();
+      }
+
+      const activeCodes = await manager.getRepository(Credential).find({
+        where: { userId: user.id, type: 'RECOVERY_CODE', revokedAt: IsNull() },
+      });
+
+      let matched: Credential | undefined;
+      for (const candidate of activeCodes) {
+        if (await this.hasher.verify(candidate.secretHash, parsed.code)) {
+          matched = candidate;
+          break;
+        }
+      }
+      if (matched === undefined) throw invalidCredentials();
+
+      const actor = await requireActor(manager, user.actorId);
+      const usedAt = new Date();
+      await manager
+        .getRepository(Credential)
+        .update({ id: matched.id }, { revokedAt: usedAt, lastUsedAt: usedAt });
+
+      // P15-003: a redeemed recovery code is significant enough that the account holder should
+      // find out even though they were the one who triggered it — written directly here rather
+      // than through `NotificationsService` (`NotificationsModule` already imports `AuthModule`
+      // for `AuthGuard`; the reverse import would be circular) and with `actorId: null`, the
+      // same "no other actor" convention `MODERATION` notifications use.
+      const notifications = manager.getRepository(Notification);
+      await notifications.save(
+        notifications.create({
+          recipientActorId: actor.id,
+          type: 'SECURITY',
+          actorId: null,
+          postId: null,
+          conversationId: null,
+          communityId: null,
+        }),
+      );
+
+      const tokens = await this.tokens.issueSession(manager, {
+        userId: user.id,
+        actorId: actor.id,
+      });
+      return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
     });
   }
 
@@ -1072,6 +1274,7 @@ async function createActorAndUser(
     email: string | null;
     emailNormalized: string | null;
     clientRequestId: string | null;
+    privacyNoticeVersionAcknowledged: number;
   },
 ): Promise<Actor> {
   const actors = manager.getRepository(Actor);
@@ -1100,14 +1303,13 @@ async function createActorAndUser(
   await actors.update({ id: actor.id }, { userId: user.id });
   actor.userId = user.id;
 
-  // P14-010 (spec §197.1): every new actor gets a privacy-prefs row from birth, with the
-  // current registration flow's implicit notice acknowledgement already stamped — see
-  // `REGISTRATION_PRIVACY_NOTICE_VERSION`'s doc above for why this is honest even though
-  // `RegisterRequest` carries no acknowledgement field of its own. Additive only: nothing
-  // above this reads or depends on this row existing, so a registration whose privacy-prefs
-  // insert somehow failed would still leave a usable account — it doesn't, since this is
-  // still inside the caller's transaction, but the ordering keeps the change a pure addition
-  // to the existing flow rather than a rewrite of it.
+  // P14-010/P14-025 (spec §197.1, §204.2): every new actor gets a privacy-prefs row from
+  // birth, with the registration's notice acknowledgement already stamped (see
+  // `RegisterInput.privacyNoticeVersionAcknowledged`'s doc and `register()`'s validation of
+  // it above). Additive only: nothing above this reads or depends on this row existing, so a
+  // registration whose privacy-prefs insert somehow failed would still leave a usable account
+  // — it doesn't, since this is still inside the caller's transaction, but the ordering keeps
+  // the change a pure addition to the existing flow rather than a rewrite of it.
   const privacyPrefs = manager.getRepository(ActorPrivacyPrefs);
   await privacyPrefs.save(
     privacyPrefs.create({
@@ -1116,7 +1318,7 @@ async function createActorAndUser(
       indexable: true,
       showInLocalFeed: true,
       locked: false,
-      privacyNoticeVersion: REGISTRATION_PRIVACY_NOTICE_VERSION,
+      privacyNoticeVersion: input.privacyNoticeVersionAcknowledged,
       privacyNoticeAcknowledgedAt: new Date(),
     }),
   );
@@ -1192,6 +1394,11 @@ function requireUserId(actor: Actor): string {
 
 function invalidCredentials(): AppError {
   return new AppError('AUTH_INVALID_CREDENTIALS', 'Incorrect handle, email address or password.');
+}
+
+/** P15-002: `AppConfigService.passwordAuthMode === 'off'`. */
+function passwordAuthDisabled(): AppError {
+  return new AppError('PASSWORD_AUTH_DISABLED', 'This node does not accept password sign-in.');
 }
 
 /** GitHub login RPCs answer this until `GITHUB_CLIENT_ID` is configured (spec §176) — never

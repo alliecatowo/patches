@@ -40,7 +40,7 @@ function list(): FilterList {
 }
 
 function subscription(): FilterListSubscription {
-  return { filterList: list(), action: FILTER_ACTION.COLLAPSE, createdAt: undefined };
+  return { filterList: list(), action: FILTER_ACTION.COLLAPSE, scopes: [], createdAt: undefined };
 }
 
 function fakeApi(): FilterListCommandApi {

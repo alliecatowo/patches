@@ -378,6 +378,23 @@ client-specific follow-up; the current TUI upload path does not require it.
 **Resend (Status: deployed)**: `updates.allisons.dev` is verified and production sends as
 `Patches <noreply@updates.allisons.dev>` using the scoped `RESEND_API_KEY` Fly secret.
 
+**`PUBLIC_READ` (Status: implemented, default unchanged on the live deploy)**: owner decision,
+2026-08-19 — `INVITE_ONLY` gates _posting_, not _reading_; this node's public content stays
+readable logged-out by default (`PUBLIC_READ=true`, the default, so nothing needs to change on
+`patches-social.fly.dev` to keep today's behavior). An operator who wants a fully closed node
+sets `fly secrets set PUBLIC_READ=false` (or the env var directly for a self-hosted node):
+every RPC outside `SystemService.*`, `NodeService.GetNodeInfo`/`GetNodePolicy`, and
+`AuthService.*` then requires a session (`UNAUTHENTICATED`/`SIGN_IN_REQUIRED`) — see
+`apps/server/src/common/guards/public-read.guard.ts` and `docs/architecture/api.md` §7.
+
+**`PASSWORD_AUTH` (Status: implemented, default unchanged on the live deploy)**: P15-002 —
+`off | optional | required`, default `optional` (unchanged behavior). An operator who wants
+to force SSH/GitHub-only sign-in sets `fly secrets set PASSWORD_AUTH=off`: `Login`, a
+password-carrying `Register`, and `AddCredential(PASSWORD)` then reject with
+`FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED`, and `AuthService.GetAuthPolicy` tells clients
+to hide password UI. `required` is accepted but not yet enforced — see
+`docs/architecture/auth.md` §10.
+
 ## Error monitoring
 
 **Status: decided; log drain setup planned (needs live environment).**

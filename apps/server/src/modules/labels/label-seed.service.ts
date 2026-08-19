@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import type { LabelerVocabularyEntryView } from './label.dto.js';
+import { parseStoredVocabulary } from './label-validation.js';
 
 /** Arbitrary fixed key for `pg_advisory_xact_lock` — serializes concurrent boots (multiple
  * server processes starting at once, e.g. a rolling deploy) racing to seed the same "the
@@ -37,12 +38,12 @@ export class LabelSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const vocabulary = this.buildVocabulary();
     await this.dataSource.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock($1)', [NODE_LABELER_SEED_LOCK_KEY]);
 
       const labelers = manager.getRepository(Labeler);
       const existing = await labelers.findOne({ where: { isNodeLabeler: true } });
+      const vocabulary = this.buildVocabulary(existing?.vocabulary);
       if (existing === null) {
         await labelers.save(
           labelers.create({ actorId: null, communityId: null, isNodeLabeler: true, vocabulary }),
@@ -58,18 +59,40 @@ export class LabelSeedService implements OnModuleInit {
     });
   }
 
-  /** `LABEL_VOCABULARY` values only carry a name (spec §200.2's comma-list convention, same
-   * as `LIKE_GLYPH_ALLOW_LIST`) — every entry gets an empty description and `WARN` as a
+  /** `LABEL_VOCABULARY` names which values exist and their order — a value's `description`/
+   * `default_action`/`mandatory` (P14-026, spec §200.3) are preserved from the row's prior
+   * state when the value already existed, so `patches-admin labeler vocabulary set-mandatory`
+   * (the only writer of those three fields — there is no RPC) survives the next boot's resync
+   * instead of being silently reset to the fresh-entry defaults below on every restart. A
+   * value newly added to `LABEL_VOCABULARY` gets an empty description and `WARN` as a
    * conservative starting default action (never `HIDE`: the node's own labeler should not
-   * silently remove content from a subscriber's view by default). None are `mandatory` — this
-   * node has not designated any value legally mandatory (spec §200.3); an operator wanting
-   * that has no RPC to set it and would need a follow-up admin-CLI/migration mechanism. */
-  private buildVocabulary(): LabelerVocabularyEntryView[] {
-    return this.config.labelVocabulary.map((value) => ({
-      value,
-      description: '',
-      defaultAction: 'WARN',
-      mandatory: false,
-    }));
+   * silently remove content from a subscriber's view by default) and `mandatory: false` — an
+   * operator designating it mandatory does so afterward, via the admin CLI. A value removed
+   * from `LABEL_VOCABULARY` is dropped, prior state and all — there is no RPC referencing a
+   * value that no longer exists, so nothing else on the schema keys off dropped vocabulary
+   * rows. */
+  private buildVocabulary(existingRaw: unknown): LabelerVocabularyEntryView[] {
+    const priorByValue = new Map<string, LabelerVocabularyEntryView>();
+    if (existingRaw !== undefined) {
+      // Malformed prior state (should be unreachable — `existingRaw` is only ever written by
+      // this same method or the admin CLI's identically-shaped write) must not block boot;
+      // falling back to fresh defaults for every value is the same "empty vocabulary is
+      // honest, never invented" reasoning the rest of this module already applies.
+      try {
+        for (const entry of parseStoredVocabulary(existingRaw))
+          priorByValue.set(entry.value, entry);
+      } catch {
+        // swallow: see comment above — an unreadable prior row degrades to fresh defaults.
+      }
+    }
+    return this.config.labelVocabulary.map((value) => {
+      const prior = priorByValue.get(value);
+      return {
+        value,
+        description: prior?.description ?? '',
+        defaultAction: prior?.defaultAction ?? 'WARN',
+        mandatory: prior?.mandatory ?? false,
+      };
+    });
   }
 }

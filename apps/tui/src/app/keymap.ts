@@ -736,6 +736,20 @@ export const KEYMAP: readonly Binding[] = [
     commands: [{ name: 'quiet', argument: 'optional', usage: 'quiet [on|off|toggle]' }],
   },
   {
+    // Palette-only, same reasoning as `:privacy`/`:filters` below (spec §191: no new
+    // bare-letter global bindings) — `--linear`/`PATCHES_LINEAR` cover launch time,
+    // this covers toggling mid-session (P12-118).
+    keys: ':linear',
+    hint: 'linear mode',
+    description:
+      'Toggle linear/screen-reader mode — one column, no overlays or drawers, indexed rows',
+    group: 'Account',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'linear', argument: 'optional', usage: 'linear [on|off|toggle]' }],
+  },
+  {
     keys: ',',
     hint: 'preferences',
     description: 'Open display and account preferences',
@@ -753,6 +767,21 @@ export const KEYMAP: readonly Binding[] = [
     hint: 'notifications drawer',
     description:
       'Toggle the notifications drawer beside the timeline (wide terminals; falls back to g n)',
+    group: 'Account',
+    on: 'global',
+    session: true,
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
+    // Plain `D` collides with per-screen bindings (follow requests' decline, profile's
+    // mute) — Ink's `useInput` has no stop-propagation, so every mounted listener sees
+    // every keypress and a bare `D` here would fire alongside them. `Ctrl+D` is free
+    // everywhere (P12-122).
+    keys: 'Ctrl+D',
+    hint: 'messages drawer',
+    description:
+      'Toggle the direct-message drawer beside the timeline (wide terminals; falls back to g d)',
     group: 'Account',
     on: 'global',
     session: true,

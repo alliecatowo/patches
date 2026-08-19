@@ -1,0 +1,69 @@
+# A second, independent mirror of the docs/marketing site (site/) on GitHub Pages, so it
+# survives losing either host on its own — the primary is Cloudflare Pages (.github/
+# workflows/site.yml, project `patches-site`, live at https://patches-site.pages.dev).
+# GitHub Pages serves a project site from a repo-name subpath
+# (https://alliecatowo.github.io/patches/), unlike Cloudflare Pages' domain root, so this
+# build sets VITEPRESS_BASE=/patches/ (site/.vitepress/config.mts reads it, default `/`)
+# purely for this workflow — the Cloudflare build is untouched.
+#
+# One-time manual step (Status: planned until the repo owner clicks it): GitHub Pages must
+# have "Source: GitHub Actions" enabled in the repo's Settings → Pages before this workflow's
+# `actions/deploy-pages` step can publish anything — see docs/operations/site.md.
+
+name: Site (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-gh-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build the site (GitHub Pages base path)
+        run: pnpm --filter @patches/site build
+        env:
+          VITEPRESS_BASE: /patches/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/.vitepress/dist
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -163,7 +163,7 @@ Transport and SDK shape are decided in **ADR 0016** (`docs/decisions/0016-connec
 - [x] P11-011 — TUI: communities (§182, §191). Owns `apps/tui/src/screens/CommunitiesScreen.tsx`, `apps/tui/src/cli/community.ts`. `g c` community list → timeline → members, `j` join/leave, `c` composes into the focused community, rules view, moderator actions for moderators, invite accept/decline. Acceptance: no vote, score, or sort affordance exists in any view (§194); the timeline is chronological with keyset paging; non-members see a public community read-only with a clear join affordance; headless `patches community list|join|leave|post` works.
 - [x] P11-012 — TUI: tags (§181, §191). Owns `apps/tui/src/screens/TagFeedScreen.tsx`, `apps/tui/src/cli/tag.ts`. `t` tag search, `#` tag timeline for the selected post's first tag, tag mute/unmute, `#tag` highlighted in rendered bodies. Acceptance: no trending or popularity display anywhere; muted tags disappear from home/local/tag feeds but an explicitly opened thread still renders (§181); search results alphabetical; `patches tag search|feed|mute` works headlessly.
 - [x] P11-013 — TUI: flair, pinned posts, quiet feed (§184, §185, §191). Owns `apps/tui/src/screens/{PreferencesScreen,EditProfileScreen}.tsx`, `apps/tui/src/components/Nameplate.tsx`, flair rendering helpers. `,` preferences (plain mode, quiet feed, flair, pinned posts), `~` toggles quiet feed, pin/unpin from a profile. Acceptance: quiet feed hides **others'** cosmetics while keeping the viewer's own and structural colour; plain mode still strips everything and wins where they overlap (§185); flair degrades truecolor → 256 → 16 → none; a test proves rendered flair cannot emit control characters, move the cursor, or draw outside the post's cells (§192); content warnings and tombstones always render under both modes.
-- [ ] P11-014 — docs sync for Amendment B. Owns `docs/architecture/api.md`, `docs/architecture/social.md` (new), `docs/user-guide.md`, `docs/product/roadmap.md`, `docs/product/moderation.md`, `docs/product/privacy.md`, `README.md`. Every new RPC in `api.md` with real status markers; the §191 keys in the user guide and the `?` help screen's source of truth; DM/community moderation surfaces in `moderation.md`; the honest DM data-handling statement in `privacy.md` (§183.1). Acceptance: every documented command was actually run by the author (working agreement rule 7); no "planned" claim that is already shipped and no shipped claim that is not. — _partial: api.md/user-guide.md/product docs updated; social.md missing_
+- [x] P11-014 — docs sync for Amendment B. Owns `docs/architecture/api.md`, `docs/architecture/social.md` (new), `docs/user-guide.md`, `docs/product/roadmap.md`, `docs/product/moderation.md`, `docs/product/privacy.md`, `README.md`. Every new RPC in `api.md` with real status markers; the §191 keys in the user guide and the `?` help screen's source of truth; DM/community moderation surfaces in `moderation.md`; the honest DM data-handling statement in `privacy.md` (§183.1). Acceptance: every documented command was actually run by the author (working agreement rule 7); no "planned" claim that is already shipped and no shipped claim that is not. — _partial: api.md/user-guide.md/product docs updated; social.md missing_
 - [x] P11-015 — federation mapping notes only, no code (§193). Owns `docs/research/activitypub-social-depth.md` (new), `docs/architecture/federation.md`. Verify against **current** upstream sources: `Announce`/`Undo(Announce)` for reposts, FEP-044f + `quoteUri`/`quoteUrl`/`_misskey_quote` for quotes, `Tag`/`Hashtag` for tags, the `Group`-actor pattern for communities (**currently unverified** — that is the point of the note), and private-`Note` addressing for DMs. Acceptance: every claim carries a citation and a verification date; the note states plainly that none of this is in Phase 11 scope and that no §109 gate or §160 checklist item moves (§193).
 - [x] P11-016 — ADR: DMs are server-visible in v0 (§183.1, §195). Owns `docs/decisions/0017-server-visible-dms.md` + the index row in `docs/decisions/README.md`. Record the decision, the moderation trade that motivates it (reporting evidence, §183.4), the labelling obligation, and what E2E would actually require (key management, multi-device, federated key discovery, loss of server-side evidence, migration of existing plaintext conversations). Acceptance: the ADR states explicitly that E2E is **not** authorized by this decision and needs owner sign-off (§195); it does not authorize anything §194 prohibits.
 
@@ -193,7 +193,7 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-012 — measured multiline `TextEditor`: cursor, movement, undo/redo, bracketed paste, node-provided limit
 - [x] P12-013 — measured `@` / `#` autocomplete with debounced actor/tag lookup and stale-request cancellation
 - [x] P12-014 — terminal file picker/path completion replaces raw attachment path entry
-- [ ] P12-015 — colour picker with contrast enforcement and truecolour → 256 → 16 → text degradation
+- [x] P12-015 — colour picker with contrast enforcement and truecolour → 256 → 16 → text degradation
 - [x] P12-016 — post search wired to `SearchPosts`, people/posts modes, newest-first keyset results with no ranking/order control
 - [x] P12-017 — shared markdown-lite post renderer + measured read-more folding; plain mode keeps source markers
 - [x] P12-018 — bounded image policy + media viewer; inline selected/focused/viewer only, fallback height parity, ≤4 live placements
@@ -206,32 +206,32 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-025 — polish primitives: semantic theme tokens, borders, progress bar, single shared relative-time clock
 - [x] P12-026 — interaction docs/keymap sync; executable-command verification and generated key-table parity test
 - [x] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
-- [ ] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
+- [x] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
 - [x] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
 - [x] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
 - [x] P12-105 — destructive confirm styling, toast queue styling, and sticky new-count styling
 - [x] P12-106 — quick-post overlay UX: counter/CW/expand/shared-draft, with narrow takeover
-- [ ] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
-- [ ] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
-- [ ] P12-109 — Pages renderer: responsive cell grid, scoped wall themes, pins, Top 8, guestbook, gallery, clipped ASCII
-- [ ] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
+- [x] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
+- [x] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
+- [x] P12-109 — Pages renderer: responsive cell grid, scoped wall themes, pins, Top 8, guestbook, gallery, clipped ASCII
+- [x] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
 - [x] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
-- [ ] P12-112 — theme + colour picker live preview, reversible with `Esc`, with contrast explanation
+- [x] P12-112 — theme + colour picker live preview, reversible with `Esc`, with contrast explanation
 - [x] P12-113 — preferences information architecture with live post preview and per-profile local persistence
-- [ ] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
-- [ ] P12-115 — search mode strip and subtractive filters (`since:`, `from:`, `#tag`) with recent-query recall; no order control
-- [ ] P12-116 — contextual palette actions for quoted posts, mentions, tags, links, and selected-row verbs
-- [ ] P12-117 — restrained motion/feedback: scroll thumb, success flash, finite refresh spinner, offline countdown, one clock
-- [ ] P12-118 — linear/screen-reader mode: one column, no overlays/drawers, indexed items, plain implied
+- [x] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
+- [x] P12-115 — search mode strip and subtractive filters (`since:`, `from:`, `#tag`) with recent-query recall; no order control
+- [x] P12-116 — contextual palette actions for quoted posts, mentions, tags, links, and selected-row verbs
+- [x] P12-117 — restrained motion/feedback: scroll thumb, success flash, finite refresh spinner, offline countdown, one clock
+- [x] P12-118 — linear/screen-reader mode: one column, no overlays/drawers, indexed items, plain implied
 - [ ] P12-119 — **BLOCKED** proposal/ADR for ephemeral `Now` status; no code until owner approves the exact non-story constraints
 - [ ] P12-120 — **BLOCKED on P12-119** server `Now` protocol/storage/expiry implementation
 - [ ] P12-121 — **BLOCKED on P12-120** TUI `Now` ring + screen/drawer
-- [ ] P12-122 — DM drawer reusing the drawer primitive and retaining the permanent privacy disclosure
+- [x] P12-122 — DM drawer reusing the drawer primitive and retaining the permanent privacy disclosure
 - [x] P12-125 — route `E` (edit your own post) to a compose-in-edit-mode screen; it is bound in `KEYMAP` and raises "not connected yet", and is held out of the user guide until it works
 - [x] P12-126 — migrate the block/mute/report confirmations onto the shared measured `ConfirmDialog` so every destructive action uses one component
 - [x] P12-127 — wire the landed-but-unreachable Phase 12 modules into the shell: theme engine + preferences precedence, `ThemePreview`/`ColorPicker`, `FilePicker` for attachments, `MediaViewerScreen`, and `SplitPane`/responsive tiers
 - [x] P12-128 — replace `measurePostBody`'s conservative plain-mode upper bound with the viewer's actual mode, so a decorated body doesn't reserve rows it won't draw
-- [ ] P12-123 — committed 100×30 / 140×40 golden frames, tmux captures, and drift tests
+- [x] P12-123 — committed 100×30 / 140×40 golden frames, tmux captures, and drift tests
 - [x] P12-124 — Vim-style command mode (`:`): generated route/action commands, aliases, history, completion, contextual verbs, and explicit rejection of `:!` shell execution
 - [x] P12-129 — TUI self-upgrade prompt on launch (`y` upgrades via the release tarball, then "press Ctrl+C to exit and relaunch"; `patches upgrade`; `--no-upgrade-check` flag)
 - [x] P12-130 — ASCII/half-block/braille image art fallback renderer in `@patches/terminal-media` with `PATCHES_IMAGES`/preference modes auto|pixel|ascii|box|off and compose/file-picker preview
@@ -240,9 +240,9 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 
 ADR 0020 is binding. This phase replaces the preserved crypto spike; no client or node may advertise `E2EE_V1` until every ship gate in ADR 0020 §13 is complete. Existing conversations remain visibly `LEGACY_SERVER_VISIBLE`; federated DMs remain prohibited.
 
-- [ ] P13-001 — protocol/domain contract: immutable conversation modes, account-root/device certificates, monotonic rosters, prekey bundles, per-device envelopes, capability negotiation, and E2EE report evidence
+- [x] P13-001 — protocol/domain contract: immutable conversation modes, account-root/device certificates, monotonic rosters, prekey bundles, per-device envelopes, capability negotiation, and E2EE report evidence
 - [x] P13-002 — database schema/migrations: device roster/prekey/envelope/mailbox/report tables and constraints; no plaintext body, message key, ratchet state, or recovery secret may enter node persistence
-- [ ] P13-003 — replace the crypto spike with reviewed primitives, X3DH transcript binding, and a full revision-4 Double Ratchet with encrypted headers, bounded skipped keys, deterministic vectors, fuzz/property tests, and zeroization boundaries
+- [x] P13-003 — replace the crypto spike with reviewed primitives, X3DH transcript binding, and a full revision-4 Double Ratchet with encrypted headers, bounded skipped keys, deterministic vectors, fuzz/property tests, and zeroization boundaries
 - [ ] P13-004 — account-root and certified-device lifecycle: enrollment, safety numbers, signed monotonic roster changes, device change warnings, revocation, and compromise recovery
 - [ ] P13-005 — prekey service: signed-prekey rotation, atomic one-time-prekey consume/replenish, exhaustion fallback disclosure, anti-replay, concurrency tests, and abuse limits
 - [ ] P13-006 — encrypted local state: OS-keyring-wrapped database, atomic ratchet commits before acknowledgement, crash/retry recovery, rollback detection, and explicit logout/device-wipe semantics
@@ -277,22 +277,25 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [x] P14-016 — TUI: filters / filter-lists / labelers screens + `patches filter|lists|labelers`. Owns `apps/tui/src/screens/{Filters,FilterList,Labelers}Screen.tsx`. Acceptance: provenance ("filtered: name (via @author)") always rendered.
 - [x] P14-017 — TUI: appeals + moderation-log screens (`patches appeal|modlog`), notices via notifications. Owns `apps/tui/src/screens/{Appeals,ModerationLog}Screen.tsx`. Acceptance: `?` help + `docs/user-guide.md` list every new command.
 - [x] P14-018 — web: `/settings/{privacy,filters,lists,labelers}`, `/moderation/log`, `/appeals` at safety-surface parity with the TUI. Owns `apps/web/src/routes/settings/**`, `apps/web/src/routes/moderation/**`. Acceptance: every safety action reachable in the web client (§205).
-- [ ] P14-019 — docs sync: `docs/user-guide.md`, `docs/architecture/federation.md` (§201.5 gap closure, domain-policy transparency), `docs/architecture/data-model.md`. Acceptance: no documented command that doesn't work; status markers flipped as pieces ship.
+- [x] P14-019 — docs sync: `docs/user-guide.md`, `docs/architecture/federation.md` (§201.5 gap closure, domain-policy transparency), `docs/architecture/data-model.md`. Acceptance: no documented command that doesn't work; status markers flipped as pieces ship.
 - [ ] P14-020 — cross-cutting verification: §208 prohibition sweep + §209 checklist sign-off with evidence (file:line or test). Spawns reviewer/spec-auditor.
-- [ ] P14-021 — SQL pushdown for ACTOR/TAG hide filter rules + PSL-based domain matching (§198.2 phrase matching, §199.4 domain subscripts)
-- [ ] P14-022 — real `scopes` field for filter-list subscriptions (proto + ADR for scope types; §199.1 intersection)
-- [ ] P14-023 — multi-file account export archive including media bytes (§204.2 format, list endpoint, tarball composition)
-- [ ] P14-024 — purge scope expansion: bookmarks/reposts/community memberships/tag mutes + cascade constraints (§204.1)
-- [ ] P14-025 — RegisterRequest explicit privacy-notice acknowledgement field (proto) + REQUIRE_PRIVACY_ACK enforcement (§197.1)
-- [ ] P14-026 — admin CLI to mark a vocabulary value `mandatory` for the node labeler (§203 mandatory-category enforcement)
+- [x] P14-021 — SQL pushdown for ACTOR/TAG hide filter rules + PSL-based domain matching (§198.2 phrase matching, §199.4 domain subscripts)
+- [x] P14-022 — real `scopes` field for filter-list subscriptions (proto + ADR for scope types; §199.1 intersection)
+- [x] P14-023 — multi-file account export archive including media bytes (§204.2 format, list endpoint, tarball composition)
+- [x] P14-024 — purge scope expansion: bookmarks/reposts/community memberships/tag mutes + cascade constraints (§204.1)
+- [x] P14-025 — RegisterRequest explicit privacy-notice acknowledgement field (proto) + REQUIRE_PRIVACY_ACK enforcement (§197.1)
+- [x] P14-026 — admin CLI to mark a vocabulary value `mandatory` for the node labeler (§203 mandatory-category enforcement)
 - [x] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
 - [x] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
+
+- [x] P14-029 — enforce stored discoverability prefs (§197.5): `discoverable=false` omits the actor from `SearchActors`/directories (exact-handle resolution still works), `indexable=false` excludes their posts from `SearchPosts`, `show_in_local_feed=false` hides their public posts from the local timeline; integration tests per control; docs/product/privacy.md flipped from planned
+- [x] P14-030 — node policy `PUBLIC_READ` (default true): when false, anonymous callers get only system/node-info/auth/health + federation surface; `SIGN_IN_REQUIRED` error; clients show a sign-in prompt (owner decision 2026-08-19: invite-only gates posting, not reading)
 
 ## Phase 15 — passwordless auth (owner request 2026-08-19; ADR 0011 credential model, §165–§168)
 
 - [ ] P15-001 — enable GitHub device-flow login on prod: create the OAuth App (device flow on), `flyctl secrets set GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET`, verify `patches login --github` end-to-end, document in `docs/operations/deployment.md`
-- [ ] P15-002 — node policy switch `PASSWORD_AUTH=off|optional|required` (env + `GetNodePolicy`/`GetNodeInfo` capability): `off` rejects `Login`, password `Register`, `AddCredential(PASSWORD)`; clients hide password UI when off; tests both states
-- [ ] P15-003 — recovery codes credential type (one-time codes shown at enrollment, hashed at rest, `RecoveryLogin`), so an SSH/passkey-only account can recover without email/password; TUI `patches recovery-codes`
+- [x] P15-002 — node policy switch `PASSWORD_AUTH=off|optional|required` (env + `GetNodePolicy`/`GetNodeInfo` capability): `off` rejects `Login`, password `Register`, `AddCredential(PASSWORD)`; clients hide password UI when off; tests both states
+- [x] P15-003 — recovery codes credential type (one-time codes shown at enrollment, hashed at rest, `RecoveryLogin`), so an SSH/passkey-only account can recover without email/password; TUI `patches recovery-codes`
 - [ ] P15-004 — passkeys/WebAuthn (`PASSKEY` credential, `BeginPasskeyRegistration/CompletePasskeyRegistration/BeginPasskeyLogin/CompletePasskeyLogin`, `@simplewebauthn/server`, migration, RP id = node origin); web client register/login/manage; ADR amending 0011's deferral now that a browser RP exists
 - [ ] P15-005 — web: GitHub device-flow login page + "approve this web login from your terminal" device-link (`BeginDeviceLink` code → `patches approve <code>` over an SSH-authenticated session → web polls → session); no central SSO anywhere
 - [ ] P15-006 — generic OIDC-device-flow credential provider (GitLab/Codeberg/any) reusing the GitHub credential pattern; provider list from node config; credential never becomes identity

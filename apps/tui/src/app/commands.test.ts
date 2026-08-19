@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY, type Actor, type Post } from '@patches/proto';
+import { describe, expect, it, vi } from 'vitest';
 
+import type { PostRowActions } from '../components/PostList.js';
 import {
   CommandHistory,
   completeCommand,
+  contextualCommands,
+  filterCommands,
   filterPaletteBindings,
   paletteBindings,
   parseCommand,
@@ -107,5 +111,141 @@ describe('KEYMAP validation and fuzzy palette source', () => {
     expect(
       filterPaletteBindings('local', available).some((binding) => binding.keys === 'g l'),
     ).toBe(true);
+  });
+});
+
+function actor(id: string, handle: string): Actor {
+  return {
+    id,
+    handle,
+    displayName: '',
+    bio: '',
+    locationText: '',
+    websiteUrl: '',
+    avatar: undefined,
+    isLocal: true,
+    joinedAt: undefined,
+    counts: undefined,
+    nameplate: undefined,
+    flair: undefined,
+    pinnedPostIds: [],
+  };
+}
+
+function post(overrides: Partial<Post> = {}): Post {
+  return {
+    id: 'post-1',
+    author: actor('actor-1', 'alice'),
+    body: 'hello world',
+    postType: POST_TYPE.NOTE,
+    linkUrl: '',
+    visibility: POST_VISIBILITY.PUBLIC,
+    inReplyToId: '',
+    rootPostId: 'post-1',
+    media: [],
+    createdAt: undefined,
+    editedAt: undefined,
+    deleted: false,
+    counts: undefined,
+    viewerState: undefined,
+    contentWarning: '',
+    quotedPost: undefined,
+    community: undefined,
+    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
+    repostedBy: [],
+    repostedByTotal: 0,
+    filteredBy: undefined,
+    labels: [],
+    ...overrides,
+  };
+}
+
+describe('contextualCommands (P12-116)', () => {
+  it('returns no commands when nothing is selected', () => {
+    expect(contextualCommands({})).toEqual([]);
+  });
+
+  it('only offers a row verb when the caller wired its callback', () => {
+    const onReply = vi.fn();
+    const actions: PostRowActions = { onReply };
+    const commands = contextualCommands({ post: post(), actions });
+    expect(commands.map((command) => command.id)).toEqual(['reply']);
+    commands[0]?.run();
+    expect(onReply).toHaveBeenCalledWith(post());
+  });
+
+  it('labels like/bookmark/repost by the post’s own viewer state', () => {
+    const actions: PostRowActions = {
+      onToggleLike: vi.fn(),
+      onToggleBookmark: vi.fn(),
+      onToggleRepost: vi.fn(),
+    };
+    const liked = post({ viewerState: { liked: true, bookmarked: true, reposted: true } });
+    const commands = contextualCommands({ post: liked, actions });
+    const labels = Object.fromEntries(commands.map((command) => [command.id, command.label]));
+    expect(labels['like']).toBe('Unlike');
+    expect(labels['bookmark']).toBe('Remove bookmark');
+    expect(labels['repost']).toBe('Undo repost');
+  });
+
+  it('offers Open attachment only when the post has media', () => {
+    const actions: PostRowActions = { onOpenMedia: vi.fn() };
+    expect(contextualCommands({ post: post(), actions })).toEqual([]);
+    const withMedia = post({
+      media: [
+        { mediaId: 'm1', altText: '', width: 0, height: 0, mimeType: 'image/png', position: 0 },
+      ],
+    });
+    const commands = contextualCommands({ post: withMedia, actions });
+    expect(commands.map((command) => command.id)).toEqual(['open-media']);
+  });
+
+  it('gates Edit/Delete/Pin to the viewer’s own post', () => {
+    const actions: PostRowActions = {
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+      onTogglePin: vi.fn(),
+    };
+    const mine = post({ author: actor('viewer-1', 'me') });
+    expect(contextualCommands({ post: mine, actions, viewerActorId: 'someone-else' })).toEqual([]);
+    const commands = contextualCommands({ post: mine, actions, viewerActorId: 'viewer-1' });
+    expect(commands.map((command) => command.id).sort()).toEqual(['delete', 'edit', 'pin']);
+  });
+
+  it('parses @mentions, #tags and links out of the body into their own commands', () => {
+    const onOpenActor = vi.fn();
+    const onOpenTag = vi.fn();
+    const onOpenLink = vi.fn();
+    const withEntities = post({
+      body: 'hey @bob check #patches at https://example.com/thread',
+    });
+    const commands = contextualCommands({
+      post: withEntities,
+      onOpenActor,
+      onOpenTag,
+      onOpenLink,
+    });
+    expect(commands.map(({ id, label, hint }) => ({ id, label, hint }))).toEqual([
+      { id: 'mention:bob', label: 'Open @bob', hint: '' },
+      { id: 'tag:patches', label: 'Open #patches', hint: '' },
+      { id: 'link:https://example.com/thread', label: 'Open https://example.com/thread', hint: '' },
+    ]);
+    commands[0]?.run();
+    expect(onOpenActor).toHaveBeenCalledWith('bob');
+    commands[1]?.run();
+    expect(onOpenTag).toHaveBeenCalledWith('patches');
+    commands[2]?.run();
+    expect(onOpenLink).toHaveBeenCalledWith('https://example.com/thread');
+  });
+});
+
+describe('filterCommands', () => {
+  it('fuzzy-filters by label the same way filterPaletteBindings filters by hint', () => {
+    const commands = contextualCommands({
+      post: post({ body: 'no entities here' }),
+      actions: { onReply: vi.fn(), onToggleLike: vi.fn() },
+    });
+    expect(filterCommands('unlike', commands)).toEqual([]);
+    expect(filterCommands('like', commands).map((command) => command.id)).toEqual(['like']);
   });
 });

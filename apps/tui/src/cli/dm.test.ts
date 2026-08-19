@@ -3,6 +3,7 @@ import {
   MESSAGE_REQUEST_STATUS,
   type Actor,
   type Conversation,
+  type ConversationSecurityMode,
   type Message,
   type MessageRequest,
 } from '@patches/proto';
@@ -35,6 +36,7 @@ function conversation(id = 'conversation-1'): Conversation {
   return {
     id,
     kind: CONVERSATION_KIND.DIRECT,
+    securityMode: 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE' as ConversationSecurityMode,
     createdBy: alice,
     members: [
       {

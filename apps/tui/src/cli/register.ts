@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { PASSWORD_AUTH_MODE } from '@patches/proto';
+
 import { SessionManager } from '../auth/session.js';
 import {
   createApi,
@@ -90,42 +92,67 @@ export async function runRegister(rest: readonly string[], deps: RegisterDeps): 
   }
 
   const canPrompt = io.isTTY;
-  const email = parsed.email ?? (canPrompt ? await io.prompt('email (optional): ') : '');
-  const handle = parsed.handle ?? (canPrompt ? await io.prompt('handle: ') : undefined);
-  const displayName =
-    parsed.displayName ?? (canPrompt ? await io.prompt('display name: ') : undefined);
-  const invite = parsed.invite ?? (canPrompt ? await io.prompt('invite code: ') : '');
-  const password = parsed.passwordStdin
-    ? await io.readStdin()
-    : (parsed.password ?? (canPrompt ? await io.promptPassword('password: ') : undefined));
-
-  if (handle === undefined || handle.trim() === '') {
-    io.stderr('A handle is required: pass --handle, or run this interactively.\n');
-    return 1;
-  }
-  if (password === undefined || password === '') {
-    io.stderr('A password is required: pass --password-stdin, or run this interactively.\n');
-    return 1;
-  }
-
-  let sshPublicKey = '';
-  if (parsed.sshKey !== undefined) {
-    const resolved = await resolveSshIdentity(parsed.sshKey, env);
-    if ('error' in resolved) {
-      io.stderr(`${resolved.error}\n`);
-      return 1;
-    }
-    sshPublicKey = resolved.publicKeyOpenssh;
-  }
-
   const api = createApi(target, insecure);
   try {
+    // P15-002: hide the password prompt entirely — not merely skip validating it — when this
+    // node has opted out of the PASSWORD credential type. A failure here (unreachable node)
+    // falls back to the pre-P15-002 default of prompting for a password, same tolerance
+    // `getNodePolicy` below already has: the `register()` call itself surfaces a real error.
+    let passwordAuthOff = false;
+    try {
+      const { passwordAuth } = await api.getAuthPolicy();
+      passwordAuthOff = passwordAuth === PASSWORD_AUTH_MODE.OFF;
+    } catch {
+      // See comment above.
+    }
+
+    const email = parsed.email ?? (canPrompt ? await io.prompt('email (optional): ') : '');
+    const handle = parsed.handle ?? (canPrompt ? await io.prompt('handle: ') : undefined);
+    const displayName =
+      parsed.displayName ?? (canPrompt ? await io.prompt('display name: ') : undefined);
+    const invite = parsed.invite ?? (canPrompt ? await io.prompt('invite code: ') : '');
+    const password = passwordAuthOff
+      ? undefined
+      : parsed.passwordStdin
+        ? await io.readStdin()
+        : (parsed.password ?? (canPrompt ? await io.promptPassword('password: ') : undefined));
+
+    if (handle === undefined || handle.trim() === '') {
+      io.stderr('A handle is required: pass --handle, or run this interactively.\n');
+      return 1;
+    }
+    if (passwordAuthOff) {
+      if (parsed.sshKey === undefined) {
+        io.stderr(
+          'This node does not accept password sign-in: pass --ssh-key to enrol an SSH key instead.\n',
+        );
+        return 1;
+      }
+    } else if (password === undefined || password === '') {
+      io.stderr('A password is required: pass --password-stdin, or run this interactively.\n');
+      return 1;
+    }
+
+    let sshPublicKey = '';
+    if (parsed.sshKey !== undefined) {
+      const resolved = await resolveSshIdentity(parsed.sshKey, env);
+      if ('error' in resolved) {
+        io.stderr(`${resolved.error}\n`);
+        return 1;
+      }
+      sshPublicKey = resolved.publicKeyOpenssh;
+    }
+
     // Shown before the account is ever created (spec §197.1) — a record that the text
     // was displayed, never a waiver of anything beyond what it describes, and never a
     // gate on registration itself (registration proceeds even if the notice is empty).
+    // §204.2: whatever version this node published above is what we tell it we acknowledged
+    // — the account really did see it, one screen up, moments before this call.
+    let privacyNoticeVersionAcknowledged = 0;
     try {
       const { policy } = await api.getNodePolicy();
       const summary = policy?.privacyNoticeSummary ?? '';
+      privacyNoticeVersionAcknowledged = policy?.privacyNoticeVersion ?? 0;
       io.stdout(
         `Privacy notice (v${String(policy?.privacyNoticeVersion ?? 0)}): ${
           summary === '' ? 'this node publishes no privacy notice.' : summary
@@ -150,10 +177,11 @@ export async function runRegister(rest: readonly string[], deps: RegisterDeps): 
       email,
       handle: handle.trim(),
       displayName: displayName ?? handle.trim(),
-      password,
+      password: password ?? '',
       inviteCode: invite,
       clientRequestId: randomUUID(),
       sshPublicKey,
+      privacyNoticeVersionAcknowledged,
     });
     io.stdout(`Registered as @${session.actor?.handle ?? handle}. Logged in on ${target}.\n`);
     return 0;

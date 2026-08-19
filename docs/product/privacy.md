@@ -6,9 +6,12 @@
 >
 > Two kinds of statement appear below. **Status: implemented** means the
 > behaviour is in the code today and was checked against it when this
-> document was last revised. **Status: planned (Amendment C)** means
-> `INITIAL_VISION.md` §196–§210 requires it and it does not exist yet. If a
-> section carries no marker, it is implemented.
+> document was last revised. **Status: planned** means
+> `INITIAL_VISION.md` §196–§210 (Amendment C) requires it and it does not
+> exist yet. If a section carries no marker, it is implemented. Amendment C
+> (§196–§210, privacy/filters/decentralized moderation) landed as of P14 —
+> most of what this document used to mark "planned (Amendment C)" is now
+> shipped; see each section below for what remains open.
 
 # Privacy Notice (Draft)
 
@@ -144,6 +147,14 @@ By default:
 > you always decide. See
 > [`architecture/social.md`](../architecture/social.md) for how this works.
 
+> **Reading logged-out. Status: implemented (owner decision, 2026-08-19).** An invite-only
+> node gates who can post an account, not who can read public content — by default, this
+> node's public profiles, posts, and timelines stay visible to a logged-out visitor exactly
+> like they are to a signed-in one. Node operators may close reads entirely instead (a
+> "members-only" node): call `NodeService.GetNodePolicy`/`GetNodeInfo` before assuming either
+> way, since a closed node answers every RPC except node discovery and sign-in with
+> "sign-in required" rather than showing you anything.
+
 Not public:
 
 - Your email address, whether verified or not.
@@ -183,21 +194,22 @@ Honest current state:
   implied "a separate, more permanent retention policy" existed, it did
   not.
 
-**Status: planned (Amendment C).** §197.3 and §197.4 require, and §204 sets
-limits for:
+**Status: implemented** (§197.3, §197.4, P14-010). `PrivacyService.ExportAccount` requests a
+background job that produces a single self-describing JSON archive (not yet the fuller
+directory-tree-plus-media-files layout §197.3 describes — a documented v0 simplification, see
+the archive's own embedded `readme` field), downloadable via `GetExportStatus` for 7 days
+before it expires; export is never paywalled. `RequestAccountDeletion` moves the account to
+"pending deletion" — it disappears from feeds/search/the local timeline immediately — and after
+a grace period (30 days by default, node-configurable) a `PURGE_ACCOUNT` job actually erases
+it; `CancelAccountDeletion` restores the account intact within the grace period. The purge
+job's scope today is posts and bodies, media objects, follows, likes, DMs sent, sessions,
+credentials, and the notice acknowledgement — **not yet** bookmarks, reposts, community
+memberships, muted tags, or filter/list/labeler subscriptions.
 
-- **Account data export** — request an archive of your account (profile,
-  posts, edit history, social graph, likes/bookmarks, communities, DMs,
-  filters, your published lists, and your media), produced by a background
-  job and downloaded directly from object storage. Export may never be
-  paywalled (§177, §174).
-- **Self-service account deletion with a grace period** — you request
-  deletion, the account stops appearing anywhere immediately, and after a
-  published grace period (30 days by default, node-configurable) a purge
-  job actually erases it. You can cancel during the grace period.
-- **A published retention schedule** for uploaded originals, evidence
-  snapshots, tombstones, and logs — with jobs that actually enforce it,
-  rather than prose that describes an intention.
+**Status: planned.** A published, enforced retention schedule for uploaded originals, evidence
+snapshots, tombstones, and general logs still does not exist — there is no DM retention sweep,
+no report/evidence-snapshot expiry job, no tombstone purge, and no log-retention job in the
+code, beyond the account-purge job described above.
 
 ## Your controls
 
@@ -209,37 +221,52 @@ becomes a request you accept or reject, which is what makes followers-only
 posts mean what people assume they mean. See
 [`architecture/social.md`](../architecture/social.md).
 
-**Status: planned (Amendment C).** §197 and §198–§200 add:
+**Status: implemented** (§197, §198–§200, P14-007 through P14-010):
 
-- A **privacy notice shown before you finish registering**, summarizing this
-  document in the client itself — including, in plain words, that this
-  node's operators can read your DMs — plus an in-app `privacy` screen and
-  `patches privacy` command that show the same thing at any time.
-- **Discoverability controls**: opt out of appearing in actor search and any
-  node directory; opt out of full-text post search indexing; opt out of the
-  local timeline while still posting publicly.
-- **Your own filters** — keyword, phrase, tag, author, and link-domain
-  filters that hide or collapse matching posts, applied by the server so
-  every client you use behaves identically. Filter terms are treated as
-  sensitive: they are never logged, never shown to moderators, never
-  federated, included in your export, and deleted with your account
-  (§206).
-- **Subscribable filter lists and labelers** — opt-in, revocable, and
-  never able to block on your behalf (§199.2).
-- **Operator transparency** and an **appeals** path — see
-  [`moderation.md`](moderation.md).
+- A **privacy notice acknowledgement**: `PrivacyService.AcknowledgePrivacyNotice` records that
+  the notice text was shown, and `AuthService.Register` records the account's first
+  acknowledgement automatically at whatever version the node currently publishes — the client
+  is expected to show the notice summary before submitting registration (the TUI does this).
+  `GetPrivacyPrefs` reports acknowledgement state. `REQUIRE_PRIVACY_ACK=true` (operator opt-in,
+  default off) additionally gates `CreatePost` on having acknowledged the current
+  `PRIVACY_NOTICE_VERSION`; DM-send and follow are the same shape of gate but not wired yet.
+- **Your own filters** (`FilterService`) — up to 50 per actor, 20 literal (never regex) terms
+  each: substring, whole-word, tag, author, or domain, scoped to home/local/tag/community
+  feeds and search, each with a `hide`/`collapse`/`warn` action. Applied server-side at the
+  same chokepoint blocks/mutes use, so every client behaves identically. `ExportFilters`/
+  `ImportFilters` make them portable. Filter terms are never logged, never shown to
+  moderators, and never federated.
+- **Subscribable filter lists and labelers** (`FilterListService`/`LabelService`) — opt-in,
+  revocable, per-entry exceptions available, and never able to create a block on your behalf
+  (§199.2). A label is visible only to actors who subscribe to that labeler.
+- **Operator transparency** (`NodeService.GetNodePolicy`) and an **appeals** path
+  (`AppealService`) — see [`moderation.md`](moderation.md).
+- §197.5's **discoverability controls** (`discoverable`/`indexable`/`show_in_local_feed` on
+  `actor_privacy_prefs`, read/written via `GetPrivacyPrefs`/`UpdatePrivacyPrefs`, P14-029):
+  `discoverable = false` removes the actor from `ActorService.SearchActors`
+  (`GetActorByHandle`/`ResolveActor` — exact-handle resolution — still work, as required by
+  §197.5, since mentions/replies/federation addressing depend on them); `indexable = false`
+  excludes the actor's posts from `PostService.SearchPosts`; `show_in_local_feed = false` keeps
+  the actor's still-public posts off `FeedService.ListLocalFeed` specifically — their followers'
+  home feeds are unaffected. An actor with no `actor_privacy_prefs` row (registered before the
+  table existed) is treated as every default: `true`.
 
 ## Operator transparency
 
-**Status: planned (Amendment C, §197.6.)** A node will publish, through
-`NodeService.GetNodePolicy` and a client screen, the things you need in
-order to decide whether to trust it: where its policy documents live, who
-its moderators are or how to reach them, its federation stance and the
-domains it blocks or limits, where the data physically lives, its retention
-windows, and its appeal contact.
+**Status: implemented** (§197.6, P14-012). `NodeService.GetNodePolicy` (unauthenticated,
+cacheable, separate from `GetNodeInfo`) publishes the node's `domain_policies` (each blocked
+domain plus a bounded reason category), the label vocabulary, federation stance, account
+deletion grace period and appeal window, and any operator-supplied `NODE_POLICY_URL`/
+`NODE_MODERATORS`/`DATA_LOCATION`/`PRIVACY_NOTICE_VERSION`. Fields with no configuration
+surface yet — `privacy_notice_summary`, `terms_url`, `appeal_instructions`,
+`operator_identity` — and three retention windows with no sweep job behind them
+(`evidence_snapshot_retention_days`, `uploaded_original_retention_days`,
+`log_retention_days`) render honestly empty/zero rather than invented values; an unset field
+means "this node publishes no policy" for that field, not "there is no policy." See
+[`api.md`](../architecture/api.md)'s `NodeService` section for the full field list.
 
-Today, none of that is exposed through the API. `GetNodeInfo` publishes the
-node's domain, software version, registration mode, and input limits only.
+`GetNodeInfo` continues to publish the node's domain, software version, registration mode, and
+input limits — the two RPCs are deliberately separate (§197.6).
 
 ## Future federation exposure
 

@@ -26,3 +26,16 @@ paste, ANSI escapes, etc.), write it as an explicit JS escape in the string lite
 (`'\x1b[200~...\x1b[201~'`) rather than hand-copying an existing literal-byte string
 through a text-editing tool. If a paste/escape-driven test behaves as if the input were
 plain text, suspect a dropped control byte before suspecting the component's own logic.
+
+**Companion observation (Write, not Edit, 2026-08-19):** the `Write` tool's opposite
+failure mode is silent _conversion_, not loss — passing the literal 4-character text
+`\x1b` (backslash, x, 1, b) as part of `content` can land in the file as a real raw ESC
+byte instead of the 4 source characters (confirmed via `cat -A`: `up: '\x1b[A'` in the
+tool call became `up: '^[[A'` on disk). This is actually harmless — a raw control byte
+embedded directly in a single-quoted JS string literal is byte-identical at runtime to
+the `\x1b` escape sequence — but it produces a source file that looks wrong next to
+sibling files (`CommunitiesScreen.test.tsx`'s `escape: '\x1b'` stays literal text) and
+makes subsequent `Edit` calls targeting that line fail to match if your `old_string`
+uses the textual escape. Prefer fixing such a line via `Bash`/`python3` (open, string-
+replace, write) over another `Write`/`Edit` round-trip, and `cat -A` the result to
+confirm it now contains the literal 4-character escape, not a raw byte.

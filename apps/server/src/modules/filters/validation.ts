@@ -15,6 +15,7 @@ import {
 import { z } from 'zod';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { isRegistrableDomainValue } from './filter-matching.js';
 import type { FilterTermInput } from './filter.dto.js';
 
 /** Service-boundary validation for `FilterService`/`FilterListService` inputs (spec §58, §198,
@@ -55,15 +56,26 @@ export function parseFilterTerms(raw: readonly FilterTermInput[]): FilterTermInp
       `A filter can have at most ${String(MAX_FILTER_TERMS_PER_FILTER)} terms.`,
     );
   }
-  return raw.map((term) => ({ kind: term.kind, value: parseFilterTermValue(term.value) }));
+  return raw.map((term) => ({
+    kind: term.kind,
+    value: parseFilterTermValue(term.value, term.kind),
+  }));
 }
 
-export function parseFilterTermValue(raw: string): string {
+export function parseFilterTermValue(raw: string, kind?: DbFilterTermKind): string {
   const value = sanitizeText(raw).trim();
   if (value.length === 0) throw AppError.validation('A filter term value cannot be empty.');
   if (value.length > MAX_FILTER_TERM_VALUE_CHARS) {
     throw AppError.validation(
       `A filter term value must be at most ${String(MAX_FILTER_TERM_VALUE_CHARS)} characters.`,
+    );
+  }
+  // P14-021 (spec §199.4 "domain subscripts"): a bare public suffix (`co.uk`) would match every
+  // site under it — reject it as a domain term/entry value at write time, same as every other
+  // shape rule this function already enforces.
+  if (kind === 'DOMAIN' && !isRegistrableDomainValue(value)) {
+    throw AppError.validation(
+      `"${value}" is not a registrable domain (a public suffix such as "co.uk" cannot be used as a domain filter).`,
     );
   }
   return value;

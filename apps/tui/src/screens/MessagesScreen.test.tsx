@@ -5,6 +5,7 @@ import {
   MESSAGE_REQUEST_STATUS,
   type Actor,
   type Conversation,
+  type ConversationSecurityMode,
   type Message,
   type MessageRequest,
 } from '@patches/proto';
@@ -53,6 +54,10 @@ function conversation(id: string, peer = alice): Conversation {
     createdAt: undefined,
     lastMessageAt: undefined,
     unreadCount: 0,
+    // Every v0 conversation this screen renders is server-visible (ADR 0017) —
+    // `CONVERSATION_SECURITY_MODE_E2EE_V1` conversations are a different feature's
+    // concurrent WIP on this branch (`E2eeService`) and don't yet reach this screen.
+    securityMode: 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE' as ConversationSecurityMode,
   };
 }
 

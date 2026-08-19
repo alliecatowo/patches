@@ -1,8 +1,10 @@
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
+import stringWidth from 'string-width';
 
-import { VirtualList } from './VirtualList.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
+import { scrollThumbRows, VirtualList } from './VirtualList.js';
 
 /** Raw CSI bytes for keys real terminals send (see `test/harness.tsx`'s `KEY`). */
 const HOME = '[H';
@@ -194,5 +196,84 @@ describe('VirtualList (P12-004)', () => {
       />,
     );
     expect(onViewportChange).toHaveBeenCalledWith(0, 2);
+  });
+
+  it('reserves a thumb column without exceeding the given width (P12-117)', () => {
+    const items = Array.from({ length: 50 }, (_, index) => `item-${String(index)}`);
+    const { lastFrame } = render(
+      <VirtualList<string>
+        items={items}
+        keyOf={(item) => item}
+        measure={() => 1}
+        width={20}
+        budget={5}
+        isActive
+        showScrollThumb
+        renderItem={(item, state) => <Text>{item.padEnd(state.width)}</Text>}
+      />,
+    );
+    const lines = (lastFrame() ?? '').split('\n');
+    for (const line of lines) expect(stringWidth(line)).toBeLessThanOrEqual(20);
+    // The track/thumb glyphs land in the reserved rightmost column.
+    expect(lines.some((line) => line.includes('│') || line.includes('█'))).toBe(true);
+  });
+
+  it('omits the scroll thumb gutter in plain mode', () => {
+    const items = Array.from({ length: 50 }, (_, index) => `item-${String(index)}`);
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <VirtualList<string>
+          items={items}
+          keyOf={(item) => item}
+          measure={() => 1}
+          width={20}
+          budget={5}
+          isActive
+          showScrollThumb
+          renderItem={(item, state) => <Text>{item.padEnd(state.width)}</Text>}
+        />
+      </PlainModeProvider>,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('█');
+  });
+
+  it('prefixes rows with a 1-based index when `indexed` is set (P12-118)', () => {
+    const { lastFrame } = render(
+      <VirtualList<string>
+        items={['a', 'b', 'c']}
+        keyOf={(item) => item}
+        measure={() => 1}
+        width={20}
+        budget={5}
+        isActive
+        indexed
+        renderItem={(item) => <Text>{item}</Text>}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('[1]');
+    expect(frame).toContain('[2]');
+    expect(frame).toContain('[3]');
+  });
+});
+
+describe('scrollThumbRows', () => {
+  it('covers the whole track when every item is already visible', () => {
+    expect(scrollThumbRows(4, 3, 0, 3)).toEqual([true, true, true, true]);
+  });
+
+  it('is a proportionally smaller, positioned segment when the list overflows', () => {
+    const rows = scrollThumbRows(10, 100, 0, 10);
+    expect(rows.filter(Boolean).length).toBeGreaterThanOrEqual(1);
+    expect(rows.filter(Boolean).length).toBeLessThan(10);
+    expect(rows[0]).toBe(true);
+  });
+
+  it('moves toward the end of the track as the window scrolls down', () => {
+    const atTop = scrollThumbRows(10, 100, 0, 10);
+    const atBottom = scrollThumbRows(10, 100, 90, 100);
+    const firstFilledIndex = (thumb: boolean[]): number => thumb.findIndex(Boolean);
+    expect(firstFilledIndex(atBottom)).toBeGreaterThan(firstFilledIndex(atTop));
   });
 });

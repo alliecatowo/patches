@@ -56,6 +56,10 @@ export type {
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
   Credential,
+  GenerateRecoveryCodesRequest,
+  GenerateRecoveryCodesResponse,
+  GetAuthPolicyRequest,
+  GetAuthPolicyResponse,
   GetCurrentSessionRequest,
   GetCurrentSessionResponse,
   ListCredentialsRequest,
@@ -68,6 +72,8 @@ export type {
   LogoutResponse,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
+  RecoveryLoginRequest,
+  RecoveryLoginResponse,
   RefreshSessionRequest,
   RefreshSessionResponse,
   RegisterRequest,
@@ -90,6 +96,7 @@ export {
   AuthServiceControllerMethods,
   CredentialType,
   GitHubLoginStatus,
+  PasswordAuthMode,
 } from './generated/patches/v1/auth.js';
 
 export type {

@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { RpcExceptionsFilter } from './common/errors/rpc-exception.filter.js';
+import { PublicReadGuard } from './common/guards/public-read.guard.js';
 import { RequestContextInterceptor } from './common/interceptors/request-context.interceptor.js';
 import { LoggingInterceptor } from './common/logging/logging.interceptor.js';
 import { AppConfigModule } from './config/config.module.js';
@@ -81,6 +82,10 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_FILTER, useClass: RpcExceptionsFilter },
+    // PUBLIC_READ=false's global gate (owner decision 2026-08-19) — see
+    // common/guards/public-read.guard.ts for the allow-list and reasoning. Depends on
+    // AuthModule's exported AuthGuard, which AppModule already imports below.
+    { provide: APP_GUARD, useClass: PublicReadGuard },
   ],
 })
 export class AppModule {}

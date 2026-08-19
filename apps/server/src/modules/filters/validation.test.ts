@@ -44,6 +44,17 @@ describe('filters/validation (spec §58, §198, §204)', () => {
       const parsed = parseFilterTerms([{ kind: 'TAG', value: '  spoilers  ' }]);
       expect(parsed).toEqual([{ kind: 'TAG', value: 'spoilers' }]);
     });
+
+    // P14-021 (spec §199.4 "domain subscripts"): a bare public suffix cannot be used as a
+    // DOMAIN term — it would match every site under it.
+    it('rejects a bare public suffix as a DOMAIN term', () => {
+      expect(() => parseFilterTerms([{ kind: 'DOMAIN', value: 'co.uk' }])).toThrow();
+    });
+
+    it('accepts a real registrable domain, including a multi-label public-suffix one', () => {
+      const parsed = parseFilterTerms([{ kind: 'DOMAIN', value: 'example.co.uk' }]);
+      expect(parsed).toEqual([{ kind: 'DOMAIN', value: 'example.co.uk' }]);
+    });
   });
 
   describe('parseFilterScopes', () => {

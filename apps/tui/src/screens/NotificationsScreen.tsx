@@ -1,7 +1,7 @@
 import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
 import { NOTIFICATION_TYPE, timestampToDate, type Actor, type Notification } from '@patches/proto';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
@@ -11,7 +11,56 @@ import { Nameplate } from '../components/Nameplate.js';
 import { VirtualList } from '../components/VirtualList.js';
 import { formatRelativeTime } from '../format/relative-time.js';
 import { usePaginatedList, type Page } from '../hooks/usePaginatedPosts.js';
+import { useLinearMode } from '../hooks/useLinearMode.js';
+import { useNow } from '../hooks/useNow.js';
 import { theme } from '../theme/index.js';
+
+/** How close together two same-type/same-post notifications have to land to collapse
+ * into one row (design vision §5.6: "same type + same post within 10 min collapses"). */
+const GROUP_WINDOW_MS = 10 * 60 * 1000;
+
+export interface NotificationGroup {
+  readonly type: Notification['type'];
+  readonly postId: string;
+  /** Newest-first, same order as the source list — `notifications[0]` is the row's
+   * primary (the one `Enter`/`o` opens, and whose glyph/relative-time draws). */
+  readonly notifications: readonly Notification[];
+}
+
+/**
+ * Collapses consecutive same-type, same-post notifications no more than
+ * {@link GROUP_WINDOW_MS} apart into one {@link NotificationGroup} (P12-107). Pure and
+ * exported so the rule is unit-testable without rendering — the list is already
+ * newest-first, so this only ever looks at the group it is currently extending.
+ */
+export function groupNotifications(
+  notifications: readonly Notification[],
+): readonly NotificationGroup[] {
+  const groups: NotificationGroup[] = [];
+  for (const notification of notifications) {
+    const last = groups.at(-1);
+    const lastItem = last?.notifications.at(-1);
+    const lastCreatedAt = present(lastItem) ? timestampToDate(lastItem.createdAt) : undefined;
+    const createdAt = timestampToDate(notification.createdAt);
+    const withinWindow =
+      last !== undefined &&
+      last.type === notification.type &&
+      last.postId === notification.postId &&
+      present(lastCreatedAt) &&
+      present(createdAt) &&
+      Math.abs(lastCreatedAt.getTime() - createdAt.getTime()) <= GROUP_WINDOW_MS;
+    if (withinWindow && last !== undefined) {
+      groups[groups.length - 1] = { ...last, notifications: [...last.notifications, notification] };
+    } else {
+      groups.push({
+        type: notification.type,
+        postId: notification.postId,
+        notifications: [notification],
+      });
+    }
+  }
+  return groups;
+}
 
 export interface NotificationsScreenProps {
   api: PatchesApi;
@@ -105,8 +154,26 @@ export function NotificationsScreen({
     loadMore,
   } = usePaginatedList<Notification>(api.target, fetchPage);
 
+  // P12-107: consecutive same-type/same-post notifications collapse into one row.
+  const groups = useMemo(() => groupNotifications(notifications), [notifications]);
+  // The flat `notifications`-array index of the last (oldest) item each group covers —
+  // `markReadThrough` below still takes a flat index (it is what `throughId` is keyed
+  // to), so a group-list index only ever needs translating at the two call sites.
+  const groupEndIndex = useMemo(() => {
+    const ends: number[] = [];
+    let flat = -1;
+    for (const group of groups) {
+      flat += group.notifications.length;
+      ends.push(flat);
+    }
+    return ends;
+  }, [groups]);
+  const now = useNow();
+  const linear = useLinearMode();
+
   // Mirrors `VirtualList`'s own selection/viewport so the footer and the auto-read
-  // effect can read them without reaching into the list itself.
+  // effect can read them without reaching into the list itself. Indices here are into
+  // `groups`, one per rendered row — not the flat `notifications` array.
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewportEnd, setViewportEnd] = useState(0);
   // Highest index already marked read this session, so scrolling back up doesn't
@@ -167,17 +234,24 @@ export function NotificationsScreen({
   // it is the one component that actually knows which rows are on screen.
   useEffect(() => {
     if (!isActive || viewportEnd === 0) return;
+    const flatIndex = groupEndIndex[viewportEnd - 1];
+    if (flatIndex === undefined) return;
     const timer = setTimeout(() => {
-      void markReadThrough(viewportEnd - 1);
+      void markReadThrough(flatIndex);
     }, AUTO_READ_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [isActive, viewportEnd, markReadThrough]);
+  }, [isActive, viewportEnd, markReadThrough, groupEndIndex]);
 
-  function openSelected(index: number, notification: Notification | undefined): void {
-    if (notification === undefined) return;
-    void markReadThrough(index);
-    if (notification.postId !== '') onOpenPost(notification.postId);
-    else if (present(notification.actor)) onOpenAuthor(notification.actor);
+  function openSelected(index: number, group: NotificationGroup | undefined): void {
+    if (group === undefined) return;
+    const flatIndex = groupEndIndex[index];
+    if (flatIndex !== undefined) void markReadThrough(flatIndex);
+    // The newest notification in the group is the one `Enter`/`o` opens — a grouped
+    // `@erin +2 followed you` row opens @erin's profile, not the oldest follower's.
+    const primary = group.notifications[0];
+    if (primary === undefined) return;
+    if (primary.postId !== '') onOpenPost(primary.postId);
+    else if (present(primary.actor)) onOpenAuthor(primary.actor);
   }
 
   // Movement (`j`/`k`/`Ctrl+D`/`Ctrl+U`/`Home`/`End`) belongs to `VirtualList`; this
@@ -201,47 +275,55 @@ export function NotificationsScreen({
       <Text color={theme.accent}>Notifications</Text>
       {error === undefined ? null : <Text color={theme.error}>{error.title}</Text>}
       <Box marginTop={1} flexDirection="column">
-        {notifications.length === 0 && loading ? (
+        {groups.length === 0 && loading ? (
           <Loading label="Loading" />
         ) : (
-          <VirtualList<Notification>
-            items={notifications}
-            keyOf={(notification) => notification.id}
+          <VirtualList<NotificationGroup>
+            items={groups}
+            keyOf={(group) => group.notifications[0]?.id ?? `${String(group.type)}:${group.postId}`}
             measure={() => 1}
             width={Math.max(10, columns - 2)}
             budget={visibleCount}
             isActive={isActive && !loading}
             showPosition={false}
+            indexed={linear}
             empty={<Text color={theme.muted}>Nothing yet.</Text>}
             onSelectionChange={(index) => setSelectedIndex(index)}
             onViewportChange={(_start, end) => setViewportEnd(end)}
-            renderItem={(notification, state) => {
-              const isRead = present(notification.readAt) || readOverride.has(notification.id);
-              const createdAt = timestampToDate(notification.createdAt);
-              const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
+            renderItem={(group, state) => {
+              const primary = group.notifications[0];
+              const isRead = group.notifications.every(
+                (notification) => present(notification.readAt) || readOverride.has(notification.id),
+              );
+              const createdAt = present(primary) ? timestampToDate(primary.createdAt) : undefined;
+              const when = present(createdAt) ? formatRelativeTime(createdAt, now) : '';
+              const othersCount = group.notifications.length - 1;
               return (
                 <Box height={1} overflow="hidden" flexShrink={0} width={state.width}>
                   <Text color={state.selected ? theme.accent : theme.muted} bold={state.selected}>
-                    {isRead ? ' ' : '•'} {typeIcon(notification.type)}{' '}
+                    {isRead ? ' ' : '•'} {typeIcon(group.type)}{' '}
                   </Text>
-                  {present(notification.actor) ? (
+                  {present(primary?.actor) ? (
                     <Nameplate
-                      handle={notification.actor.handle}
-                      nameplate={notification.actor.nameplate ?? undefined}
+                      handle={primary.actor.handle}
+                      nameplate={primary.actor.nameplate ?? undefined}
                     />
                   ) : (
                     <Text color={theme.muted}>system</Text>
                   )}
-                  <Text> {typeLabel(notification.type)}</Text>
+                  {othersCount > 0 ? (
+                    <Text color={theme.muted}> +{String(othersCount)}</Text>
+                  ) : null}
+                  <Text> {typeLabel(group.type)}</Text>
                   {when === '' ? null : <Text color={theme.muted}> · {when}</Text>}
                 </Box>
               );
             }}
-            onKey={(input, key, notification, index) => {
+            onKey={(input, key, group, index) => {
               // `o` alongside `Enter`: a mention notification is usually something
               // you want to open, and `o` is "open" everywhere else in the app.
               if (key.return || input === 'o') {
-                openSelected(index, notification);
+                openSelected(index, group);
                 return true;
               }
               return false;
@@ -254,9 +336,9 @@ export function NotificationsScreen({
           <Loading label="Loading" />
         ) : (
           <Text color={theme.muted}>
-            {notifications.length === 0
+            {groups.length === 0
               ? ''
-              : `${String(selectedIndex + 1)}/${String(notifications.length)}${
+              : `${String(selectedIndex + 1)}/${String(groups.length)}${
                   hasMore ? ' · ↓ n / space for more' : ' · end'
                 }`}
           </Text>

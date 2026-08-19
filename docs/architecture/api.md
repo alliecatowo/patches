@@ -11,8 +11,9 @@ Patches' canonical client/server application protocol — the contract between a
 **Implementation status.** `packages/proto/proto/patches/v1/` currently defines
 `common.proto`, `system.proto`, `auth.proto`, `actors.proto`, `posts.proto`, `feeds.proto`,
 `social_graph.proto`, `node.proto`, `pages.proto`, `media.proto`, `reactions.proto`,
-`moderation.proto`, `notifications.proto`, `tags.proto`, `communities.proto`, and
-`messages.proto` — the full `AuthService` (including SSH login,
+`moderation.proto`, `notifications.proto`, `tags.proto`, `communities.proto`,
+`messages.proto`, `filters.proto`, `filter_lists.proto`, `labels.proto`, `appeals.proto`, and
+`privacy.proto` — the full `AuthService` (including SSH login,
 GitHub device-flow login, and credential management) has server handlers, `BeginGitHubLogin`/
 `PollGitHubLogin` included as of P6-005 (§176, §167). `PostService`
 (`CreatePost`/`GetPost`/`DeletePost`/`ListReplies` — `ListReplies` is a cursor-paginated,
@@ -65,7 +66,12 @@ packages/proto/proto/patches/v1/
 ├── tags.proto        # implemented (P11-005)
 ├── communities.proto # implemented (P11-003)
 ├── messages.proto    # implemented (P11-004)
-└── notifications.proto  # implemented (P4-003)
+├── notifications.proto  # implemented (P4-003)
+├── filters.proto     # implemented (P14-007)
+├── filter_lists.proto # implemented (P14-008)
+├── labels.proto      # implemented (P14-009)
+├── appeals.proto     # implemented (P14-011)
+└── privacy.proto     # implemented (P14-010)
 ```
 
 ```proto
@@ -85,6 +91,7 @@ Transport: `@grpc/grpc-js` — never the deprecated native `grpc` package (§43)
 One service per domain boundary — never one giant `PatchesService` (§47):
 
 ```proto
+service SystemService
 service AuthService
 service NodeService
 service PageService
@@ -99,6 +106,7 @@ service ModerationService
 service TagService
 service CommunityService
 service DirectMessageService
+service E2eeService  // schema-only, ADR 0020 — no controller implements it
 service FilterService
 service FilterListService
 service LabelService
@@ -106,25 +114,38 @@ service AppealService
 service PrivacyService
 ```
 
-The five services above (Amendment C, §196–§210) are **planned (proto only)** — see
-[§3a](#3a-amendment-c-services-196210--planned-proto-only) below; nothing has a server-side
-handler yet except where noted.
+The five services above (Amendment C, §196–§210) are **implemented**, except the graduated
+domain-limit tier called out in §3a below — see [§3a](#3a-amendment-c-services-196210) for what
+each does and does not cover.
 
 ## 3. RPCs by service
 
+### SystemService (§83) — implemented in `system.proto`
+
+| RPC             | Notes                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `GetServerInfo` | unauthenticated; server build version, wire protocol version, oldest client build still accepted (version compatibility, §9 below) |
+| `Ping`          | unauthenticated; echoes the caller's nonce back — a cheap liveness/latency probe                                                   |
+
+This is the permanent, always-first RPC a client calls to learn whether it can talk to the
+node at all, before any auth flow. `GetServerInfo`/`Ping` are exercised by
+`apps/server/test/system.integration.test.ts` and `apps/server/test/health.integration.test.ts`.
+
 ### AuthService (§48) — implemented in `auth.proto`
 
-| RPC                    | Notes                                                   |
-| ---------------------- | ------------------------------------------------------- |
-| `Register`             | invite-gated in v0                                      |
-| `VerifyEmail`          | consumes an `email_verification_codes` row              |
-| `Login`                | issues access + refresh token                           |
-| `RefreshSession`       | rotates refresh token; reuse triggers family revocation |
-| `Logout`               | revokes current session                                 |
-| `LogoutAllSessions`    | revokes all sessions for the user                       |
-| `RequestPasswordReset` | issues a `password_reset_codes` row                     |
-| `ResetPassword`        | consumes the reset code                                 |
-| `GetCurrentSession`    | returns session/actor info for the current access token |
+| RPC                    | Notes                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `GetAuthPolicy`        | unauthenticated; `password_auth` (P15-002) — call before rendering password UI |
+| `Register`             | invite-gated in v0; carries `privacy_notice_version_acknowledged` (§204.2)     |
+| `VerifyEmail`          | consumes an `email_verification_codes` row                                     |
+| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row                |
+| `Login`                | issues access + refresh token                                                  |
+| `RefreshSession`       | rotates refresh token; reuse triggers family revocation                        |
+| `Logout`               | revokes current session                                                        |
+| `LogoutAllSessions`    | revokes all sessions for the user                                              |
+| `RequestPasswordReset` | issues a `password_reset_codes` row                                            |
+| `ResetPassword`        | consumes the reset code                                                        |
+| `GetCurrentSession`    | returns session/actor info for the current access token                        |
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
 session envelope**, so client session handling is identical regardless of credential type.
@@ -132,15 +153,18 @@ session envelope**, so client session handling is identical regardless of creden
 `UNIMPLEMENTED` when the node has no `GITHUB_CLIENT_ID` configured (`docs/architecture/
 auth.md` §5) rather than pretending the flow works.
 
-| RPC                | Notes                                                                           |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `BeginSshLogin`    | issues a single-use, TTL-bounded challenge; returned regardless of enrollment   |
-| `CompleteSshLogin` | verifies the agent signature over the reconstructed blob; generic failure only  |
-| `BeginGitHubLogin` | device flow: returns user code, verification URI, polling interval              |
-| `PollGitHubLogin`  | polls GitHub; returns pending or a session envelope                             |
-| `ListCredentials`  | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`** |
-| `AddCredential`    | requires an authenticated session                                               |
-| `RevokeCredential` | fails if it would revoke the last active credential                             |
+| RPC                     | Notes                                                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `BeginSshLogin`         | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
+| `CompleteSshLogin`      | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
+| `BeginSshEnrollment`    | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
+| `BeginGitHubLogin`      | device flow: returns user code, verification URI, polling interval                                                                |
+| `PollGitHubLogin`       | polls GitHub; returns pending or a session envelope                                                                               |
+| `ListCredentials`       | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
+| `AddCredential`         | requires an authenticated session                                                                                                 |
+| `RevokeCredential`      | fails if it would revoke the last active credential                                                                               |
+| `GenerateRecoveryCodes` | authenticated; mints 10 single-use codes (P15-003), revoking any generated previously                                             |
+| `RecoveryLogin`         | unauthenticated; redeems one code for a session, generic failure only                                                             |
 
 Notes:
 
@@ -189,7 +213,7 @@ ignore unknown block types gracefully; the server rejects them on write.
 | `GetActor`         | by ID; real counts plus validated flair and up to three `pinned_post_ids`                                                                                                                                                                                                                                          |
 | `GetActorByHandle` |                                                                                                                                                                                                                                                                                                                    |
 | `UpdateProfile`    | `display_name`/`bio`/`location_text`/`website_url`/`nameplate`/`flair`, selected by a `google.protobuf.FieldMask`; flair is size-, color-contrast-, glyph-, border-, and theme-validated                                                                                                                           |
-| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text                                                                                                                                            |
+| `SearchActors`     | handle prefix (`LIKE`) + display-name match (`ILIKE`) (§112), keyset-paginated on `(created_at DESC, id DESC)`, newest matching actor first — not yet trigram/full-text; excludes actors with `discoverable = false` (§197.5, P14-029) — `GetActorByHandle`/`ResolveActor` are unaffected                          |
 | `ListFollowers`    | cursor-paginated on the `follows` row's own `(created_at DESC, id DESC)`; `counts` left zeroed (a list summary, not `GetActor`'s guarantee)                                                                                                                                                                        |
 | `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                                                        |
 | `ResolveActor`     | (B-028) discovers a remote actor by `acct:user@domain` via WebFinger (`RemoteActorService`) and upserts/returns it (`is_local = false`) so the caller can `SocialGraphService.FollowActor` it; requires an authenticated session and is rate-limited per caller; `NOT_IMPLEMENTED` when `FEDERATION_ENABLED=false` |
@@ -227,15 +251,15 @@ explicit rule) — see `docs/architecture/social.md`.
 
 ### PostService (§51) — implemented in `posts.proto` (P3-001, P11-006)
 
-| RPC                          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreatePost`                 | idempotent; supports replies, community posts, quotes with server-enforced quote policy, and write-time tag extraction; triggers reply, mention, and quote notifications as applicable; gated by `RequirePrivacyAckGuard` when `REQUIRE_PRIVACY_ACK=true` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `GetPost`                    | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `DeletePost`                 | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ListReplies`                | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `EditPost` / `ListPostEdits` | body/media edits preserve immutable snapshots and never re-notify or re-order the post; structural fields remain immutable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `PinPost` / `UnpinPost`      | idempotently manages an actor's ordered pinned-post set, capped at three                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `SearchPosts`                | Status: implemented (P12; SEARCH-scope filters P14 follow-up) — Postgres full-text (`websearch_to_tsquery('simple', …)` against a GIN expression index on `to_tsvector('simple', body)`, `Phase12PostSearch` migration); strictly newest-first, keyset-paged like every other list RPC — no relevance score, never a `sort`/`order` param (§194); optional bearer token, same block/mute/`FOLLOWERS`-visibility/tag-mute/community rules as `ListLocalFeed` (reuses its exported filter helpers); optional `author_handle` filter; replies excluded unless `include_replies` is set; rejects an empty/whitespace or >200-char `query` with `INVALID_ARGUMENT`; a viewer's `SEARCH`-scope filters (§198) are applied with the same bounded-over-fetch/`MAX_FILTER_ROUNDS` pattern `FeedService#page()` uses — a `hide` match is omitted (pagination stays correct across rounds), `collapse`/`warn` populate `filtered_by` |
+| RPC                          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CreatePost`                 | idempotent; supports replies, community posts, quotes with server-enforced quote policy, and write-time tag extraction; triggers reply, mention, and quote notifications as applicable; gated by `RequirePrivacyAckGuard` when `REQUIRE_PRIVACY_ACK=true` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GetPost`                    | optional bearer token — with one, the author's own `viewer_state.liked`/`bookmarked` is filled in and a blocked-either-direction post is `POST_NOT_FOUND` (§62), same as `ListReplies`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `DeletePost`                 | soft delete / tombstone; returns the tombstoned post                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ListReplies`                | cursor-paginated, bounded-depth breadth-first walk (`max_depth`, clamped 1–6, default 4) capped at 500 total nodes per call (§24); optional bearer token filters out blocked-either-direction repliers (§62); see `PostService.listReplies`'s doc comment for why this is BFS-in-memory rather than a recursive CTE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `EditPost` / `ListPostEdits` | body/media edits preserve immutable snapshots and never re-notify or re-order the post; structural fields remain immutable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `PinPost` / `UnpinPost`      | idempotently manages an actor's ordered pinned-post set, capped at three                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `SearchPosts`                | Status: implemented (P12; SEARCH-scope filters P14 follow-up) — Postgres full-text (`websearch_to_tsquery('simple', …)` against a GIN expression index on `to_tsvector('simple', body)`, `Phase12PostSearch` migration); strictly newest-first, keyset-paged like every other list RPC — no relevance score, never a `sort`/`order` param (§194); optional bearer token, same block/mute/`FOLLOWERS`-visibility/tag-mute/community rules as `ListLocalFeed` (reuses its exported filter helpers); optional `author_handle` filter; replies excluded unless `include_replies` is set; rejects an empty/whitespace or >200-char `query` with `INVALID_ARGUMENT`; a viewer's `SEARCH`-scope filters (§198) are applied with the same bounded-over-fetch/`MAX_FILTER_ROUNDS` pattern `FeedService#page()` uses — a `hide` match is omitted (pagination stays correct across rounds), `collapse`/`warn` populate `filtered_by`; excludes posts by an actor with `indexable = false` (§197.5, P14-029) |
 
 `Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
 
@@ -258,13 +282,13 @@ follow-up for whoever next touches `apps/server/src/modules/messages/**`/`graph/
 
 ### FeedService (§52) — implemented (P3-002)
 
-| RPC                 | Notes                                                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `ListHomeFeed`      | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                          |
-| `ListLocalFeed`     | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering |
-| `ListActorPosts`    | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                               |
-| `ListTagFeed`       | chronological public, non-community posts for a normalized tag; block/mute/tag-mute aware                                             |
-| `ListCommunityFeed` | chronological posts within a community, subject to membership and moderation state                                                    |
+| RPC                 | Notes                                                                                                                                                                                                                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ListHomeFeed`      | fan-out-on-read, chronological; own posts + posts by followed actors only; requires an authenticated session                                                                                                                                                                                              |
+| `ListLocalFeed`     | chronological, local public posts; anonymous-callable, but honors a sent bearer token for block/mute/`FOLLOWERS`-visibility filtering; excludes posts by an actor with `show_in_local_feed = false` (§197.5, P14-029) — the posts remain public elsewhere (profile, home feed of a follower, direct link) |
+| `ListActorPosts`    | a given actor's posts; same optional-viewer behavior as `ListLocalFeed`                                                                                                                                                                                                                                   |
+| `ListTagFeed`       | chronological public, non-community posts for a normalized tag; block/mute/tag-mute aware                                                                                                                                                                                                                 |
+| `ListCommunityFeed` | chronological posts within a community, subject to membership and moderation state                                                                                                                                                                                                                        |
 
 `ListBookmarks` is on `ReactionService` (P4-002), not `FeedService` — bookmarks are a private,
 actor-scoped list, not a feed with visibility rules.
@@ -391,6 +415,41 @@ sender deletion is a tombstone, and unread state is per viewer without read rece
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
 
+`Conversation.security_mode` is read-only and fixed at creation. `CreateConversation` always
+produces `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; there is no RPC in this service that
+converts a conversation between modes. Clients render the §183.1/§194 disclosure from that field.
+
+### E2eeService (§183, §194, §195.1) — **schema-only** in `e2ee.proto` (P13-001, ADR 0020)
+
+**Status: schema-only. No `apps/server` controller implements any RPC below.** A node that loads
+the schema answers every method `UNIMPLEMENTED`, and `GetE2eeCapability` reports
+`E2EE_CAPABILITY_STATE_DISABLED`. Publishing the schema is not the capability. The rows below are
+the contract a future implementation has to satisfy, not a description of behaviour that exists —
+see [`e2ee.md`](./e2ee.md) for the boundary and the state machines.
+
+| RPC                        | Status      | Notes                                                                                                                                                     |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetE2eeCapability`        | schema-only | Rollout state and the node's copy of the protocol constants. Callable before enrollment, so a client can discover E2EE is unavailable before offering it. |
+| `PublishIdentityRoot`      | schema-only | Publishes or rotates the caller's messaging identity root. The node stores and serves it; it never certifies it.                                          |
+| `GetIdentityRoot`          | schema-only | First-contact material, not proof — safety-number comparison is the authentication control.                                                               |
+| `EnrollDevice`             | schema-only | Certificate + roster `n+1` + initial prekeys, atomically. A half-enrolled device is not a state the schema allows.                                        |
+| `RevokeDevice`             | schema-only | Roster excluding the device; unused prekeys deleted. Never a remote wipe, and it cannot retract what the device holds.                                    |
+| `PublishDeviceRoster`      | schema-only | Appends roster `current.sequence + 1`, chained to the current digest. Rejected otherwise.                                                                 |
+| `GetDeviceRoster`          | schema-only | Newest roster plus the device certificates it references.                                                                                                 |
+| `ListDeviceRosters`        | schema-only | Keyset over the roster log, so a client verifies the hash chain itself instead of trusting a newest-roster claim.                                         |
+| `UploadPrekeys`            | schema-only | Rotate the signed prekey and/or top up one-time prekeys.                                                                                                  |
+| `GetPrekeyInventory`       | schema-only | The calling device's own counts only — another actor's remaining count is an availability oracle.                                                         |
+| `ClaimPrekeyBundles`       | schema-only | One bundle per active recipient device; consumes at most one one-time prekey per device per call; draining is rate-limited.                               |
+| `CreateE2eeConversation`   | schema-only | The only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`. Separate from `CreateConversation`, which takes a plaintext body.                           |
+| `GetE2eeConversationState` | schema-only | Membership epoch, members, rosters and active devices — everything a correct fanout needs.                                                                |
+| `SendEnvelopes`            | schema-only | One logical message as one atomic, exactly-covering per-device fanout; returns the node's franking tag.                                                   |
+| `ListMailboxEnvelopes`     | schema-only | Keyset on `(received_at, envelope_id)` ascending. Poll-based; no push, no stream, no sort parameter.                                                      |
+| `AcknowledgeEnvelopes`     | schema-only | Lets the node clean the mailbox. Never surfaced to the sender — that would be a read receipt (§183.3, §194).                                              |
+| `AttachReportEvidence`     | schema-only | Franking commitment + reporter-disclosed plaintext against an existing report. The node verifies; it never decrypts.                                      |
+
+`E2eeReportEvidenceItem.disclosed_plaintext` is the single intentional plaintext field in the whole
+schema. Everything else the node touches is opaque bytes.
+
 ### 3a. Amendment C services (§196–§210)
 
 **Status: implemented, except the graduated domain-limit tier (§201.5's `limit`/`silence`,
@@ -500,12 +559,15 @@ separately, spec §206).
 | `CancelAccountDeletion`    | restores the account intact, only within the grace period (default 30 days, node-configurable)                  |
 | `GetDeletionStatus`        |                                                                                                                 |
 
-`AuthService.Register` records the account's initial acknowledgement itself (at whatever
-version this node currently publishes, per `PrivacyService.acknowledgePrivacyNotice`'s
-constant) — spec §197.1 requires a client to show the notice summary before the account
-exists, so by the time `Register` succeeds that has already happened; `RegisterRequest` was
-not amended with a notice-version field for this (that would be a proto change outside this
-task's scope). `ExportAccount`/`RequestAccountDeletion` only ever write a row and enqueue a
+`AuthService.Register` records the account's initial acknowledgement itself, via
+`RegisterRequest.privacy_notice_version_acknowledged` (P14-025, §204.2) — spec §197.1
+requires a client to show the notice summary before the account exists, so by the time
+`Register` succeeds that has already happened. When `REQUIRE_PRIVACY_ACK=true`, `Register`
+rejects with `FAILED_PRECONDITION`/`PRIVACY_NOTICE_NOT_ACKNOWLEDGED` unless this field equals
+the node's current `PRIVACY_NOTICE_VERSION`; when the flag is off (the default), any value —
+including the field's `0` zero-value default, for pre-P14-025 clients — is accepted and
+stamped as-is, since the notice has necessarily already been shown by the time this RPC is
+called regardless. `ExportAccount`/`RequestAccountDeletion` only ever write a row and enqueue a
 durable `outbox_jobs` row (`EXPORT_ACCOUNT`/`PURGE_ACCOUNT` — `docs/architecture/jobs.md` §9);
 `apps/worker`'s `ExportAccountHandler`/`PurgeAccountHandler` do the actual work. The export
 archive is currently one self-describing JSON document (not the fuller directory-tree-plus-
@@ -582,31 +644,57 @@ included in error metadata/messages where useful.
 | `AUTH_INVALID_CREDENTIALS`        | `UNAUTHENTICATED`     |
 | `AUTH_EMAIL_UNVERIFIED`           | `FAILED_PRECONDITION` |
 | `AUTH_SESSION_EXPIRED`            | `UNAUTHENTICATED`     |
+| `ACCOUNT_SUSPENDED`               | `PERMISSION_DENIED`   |
 | `ACTOR_NOT_FOUND`                 | `NOT_FOUND`           |
 | `HANDLE_TAKEN`                    | `ALREADY_EXISTS`      |
 | `ACTOR_BLOCKED`                   | `PERMISSION_DENIED`   |
 | `POST_NOT_FOUND`                  | `NOT_FOUND`           |
 | `POST_FORBIDDEN`                  | `PERMISSION_DENIED`   |
 | `POST_TOO_LONG`                   | `INVALID_ARGUMENT`    |
-| `COMMUNITY_NOT_FOUND`             | `NOT_FOUND`           |
-| `COMMUNITY_FORBIDDEN`             | `PERMISSION_DENIED`   |
-| `TAG_INVALID`                     | `INVALID_ARGUMENT`    |
-| `CONVERSATION_NOT_FOUND`          | `NOT_FOUND`           |
-| `MESSAGE_NOT_FOUND`               | `NOT_FOUND`           |
-| `DM_UNAVAILABLE`                  | `NOT_FOUND`           |
-| `PAGE_NOT_FOUND`                  | `NOT_FOUND`           |
-| `PAGE_FORBIDDEN`                  | `PERMISSION_DENIED`   |
-| `GUESTBOOK_ENTRY_NOT_FOUND`       | `NOT_FOUND`           |
 | `MEDIA_TOO_LARGE`                 | `INVALID_ARGUMENT`    |
 | `MEDIA_UNSUPPORTED_TYPE`          | `INVALID_ARGUMENT`    |
 | `MEDIA_NOT_READY`                 | `FAILED_PRECONDITION` |
+| `MEDIA_NOT_FOUND`                 | `NOT_FOUND`           |
 | `RATE_LIMITED`                    | `RESOURCE_EXHAUSTED`  |
 | `VALIDATION_ERROR`                | `INVALID_ARGUMENT`    |
 | `INTERNAL_ERROR`                  | `INTERNAL`            |
 | `CLIENT_VERSION_UNSUPPORTED`      | `FAILED_PRECONDITION` |
 | `NOT_IMPLEMENTED`                 | `UNIMPLEMENTED`       |
+| `PAGE_NOT_FOUND`                  | `NOT_FOUND`           |
+| `PAGE_FORBIDDEN`                  | `PERMISSION_DENIED`   |
+| `GUESTBOOK_ENTRY_NOT_FOUND`       | `NOT_FOUND`           |
+| `CONVERSATION_NOT_FOUND`          | `NOT_FOUND`           |
+| `MESSAGE_NOT_FOUND`               | `NOT_FOUND`           |
+| `MESSAGE_REQUEST_NOT_FOUND`       | `NOT_FOUND`           |
+| `DM_DISABLED`                     | `FAILED_PRECONDITION` |
+| `COMMUNITY_NOT_FOUND`             | `NOT_FOUND`           |
+| `COMMUNITY_NAME_TAKEN`            | `ALREADY_EXISTS`      |
+| `COMMUNITY_FORBIDDEN`             | `PERMISSION_DENIED`   |
+| `COMMUNITY_BANNED`                | `PERMISSION_DENIED`   |
+| `COMMUNITY_INVITE_NOT_FOUND`      | `NOT_FOUND`           |
+| `TAG_NOT_FOUND`                   | `NOT_FOUND`           |
+| `FILTER_NOT_FOUND`                | `NOT_FOUND`           |
+| `FILTER_IMPORT_INVALID`           | `INVALID_ARGUMENT`    |
+| `FILTER_LIST_NOT_FOUND`           | `NOT_FOUND`           |
+| `FILTER_LIST_ENTRY_NOT_FOUND`     | `NOT_FOUND`           |
+| `FILTER_LIST_FORBIDDEN`           | `PERMISSION_DENIED`   |
+| `LABELER_NOT_FOUND`               | `NOT_FOUND`           |
+| `LABEL_NOT_FOUND`                 | `NOT_FOUND`           |
+| `LABELER_FORBIDDEN`               | `PERMISSION_DENIED`   |
+| `LABEL_VALUE_INVALID`             | `INVALID_ARGUMENT`    |
+| `MODERATION_NOTICE_NOT_FOUND`     | `NOT_FOUND`           |
+| `APPEAL_NOT_FOUND`                | `NOT_FOUND`           |
+| `APPEAL_ALREADY_EXISTS`           | `ALREADY_EXISTS`      |
+| `APPEAL_WINDOW_CLOSED`            | `FAILED_PRECONDITION` |
 | `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
 | `FOLLOW_REQUEST_NOT_FOUND`        | `NOT_FOUND`           |
+| `SIGN_IN_REQUIRED`                | `UNAUTHENTICATED`     |
+| `PASSWORD_AUTH_DISABLED`          | `FAILED_PRECONDITION` |
+
+There is no `TAG_INVALID` code — an invalid tag grammar (too many tags, bad prefix, etc.) is a
+generic `VALIDATION_ERROR`/`INVALID_ARGUMENT`, same as any other malformed input (§57). Full
+source of truth: `apps/server/src/common/errors/error-codes.ts`, whose own doc comments record
+which codes are outside spec §57's starter list and why.
 
 `AUTH_EMAIL_UNVERIFIED` and `MEDIA_NOT_READY` are mapped to `FAILED_PRECONDITION`
 because the request is well-formed but the resource/account is not yet in a state
@@ -615,6 +703,15 @@ that permits the action — the canonical gRPC semantics for that status.
 `NOT_IMPLEMENTED` is for an RPC that exists in the schema but nothing on this node answers
 yet (`BeginGitHubLogin`/`PollGitHubLogin` until Phase 6, §176) — distinct from a client asking
 for something malformed, which is `VALIDATION_ERROR`/`INVALID_ARGUMENT`.
+
+`SIGN_IN_REQUIRED` is `PublicReadGuard`'s (`apps/server/src/common/guards/public-read.guard.ts`)
+code for a node running with `PUBLIC_READ=false` (owner decision, 2026-08-19): an invite-only
+node gates _posting_, not _reading_, by default, but an operator may opt into closing reads
+entirely. When closed, every RPC outside a small always-open allow-list (`SystemService.*`,
+`NodeService.GetNodeInfo`/`GetNodePolicy`, `AuthService.*`) rejects an unauthenticated caller
+with this code instead of `AUTH_INVALID_CREDENTIALS`/`AUTH_SESSION_EXPIRED` — distinct so a
+client can show "this node requires sign-in to read" rather than implying the caller's
+credentials were wrong.
 
 ## 8. Input limits (§58)
 

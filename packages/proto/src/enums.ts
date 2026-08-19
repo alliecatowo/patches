@@ -20,6 +20,7 @@ import type { AppealStatus as AppealStatusT } from './generated/patches/v1/appea
 import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
+  PasswordAuthMode as PasswordAuthModeT,
 } from './generated/patches/v1/auth.js';
 import type {
   CommunityInviteStatus as CommunityInviteStatusT,
@@ -75,6 +76,7 @@ export const CREDENTIAL_TYPE = {
   PASSWORD: 'CREDENTIAL_TYPE_PASSWORD' as CredentialTypeT,
   SSH_PUBLIC_KEY: 'CREDENTIAL_TYPE_SSH_PUBLIC_KEY' as CredentialTypeT,
   GITHUB: 'CREDENTIAL_TYPE_GITHUB' as CredentialTypeT,
+  RECOVERY_CODE: 'CREDENTIAL_TYPE_RECOVERY_CODE' as CredentialTypeT,
 } as const;
 
 export const GITHUB_LOGIN_STATUS = {
@@ -91,6 +93,13 @@ export const FOLLOW_STATE = {
   NONE: 'FOLLOW_STATE_NONE' as FollowStateT,
   PENDING: 'FOLLOW_STATE_PENDING' as FollowStateT,
   FOLLOWING: 'FOLLOW_STATE_FOLLOWING' as FollowStateT,
+} as const;
+
+export const PASSWORD_AUTH_MODE = {
+  UNSPECIFIED: 'PASSWORD_AUTH_MODE_UNSPECIFIED' as PasswordAuthModeT,
+  OFF: 'PASSWORD_AUTH_MODE_OFF' as PasswordAuthModeT,
+  OPTIONAL: 'PASSWORD_AUTH_MODE_OPTIONAL' as PasswordAuthModeT,
+  REQUIRED: 'PASSWORD_AUTH_MODE_REQUIRED' as PasswordAuthModeT,
 } as const;
 
 export const REGISTRATION_MODE = {
@@ -111,6 +120,7 @@ export const NOTIFICATION_TYPE = {
   MESSAGE: 'NOTIFICATION_TYPE_MESSAGE' as NotificationTypeT,
   COMMUNITY_INVITE: 'NOTIFICATION_TYPE_COMMUNITY_INVITE' as NotificationTypeT,
   FOLLOW_REQUEST: 'NOTIFICATION_TYPE_FOLLOW_REQUEST' as NotificationTypeT,
+  SECURITY: 'NOTIFICATION_TYPE_SECURITY' as NotificationTypeT,
 } as const;
 
 export const REPORT_REASON = {

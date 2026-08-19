@@ -572,3 +572,37 @@ directly in the test and asserting the component's frame contains that exact fir
 driven by a real `sharp`-generated PNG, e.g. `sharp({ create: {...} }).png()`) is deterministic
 and renderer-kind-agnostic. `@patches/tui` already depends on `sharp` directly (same as
 `@patches/terminal-media`), so no new dependency is needed for this pattern.
+
+## 2026-08-19 — Adding a `repeated` proto field is wire-additive but source-breaking for ts-proto callers
+
+ts-proto emits `repeated` fields as plain non-optional arrays (no `?`), never optional-with-
+implicit-`[]`-default. Adding `repeated FilterScope scopes` to the existing
+`SubscribeFilterListRequest`/`FilterListSubscription` messages (P14-022) passed `buf lint`/
+`buf breaking` and every `@patches/proto` check clean, but broke `tsc --noEmit` in every
+_other_ consuming package with an existing object literal for that message — `apps/tui`'s
+`subscribeFilterList({ filterListId, action })` call sites and their test fixtures, and a
+leftover server integration-test literal — all needed `scopes: []` added by hand.
+`apps/web`'s Connect-es/protobuf-es client was unaffected: its generated call-init types make
+every field optional regardless.
+
+**How to apply:** after any `.proto` change adding a non-`optional` field to an
+already-consumed message, `grep -rln "<methodName>"` across every app (not just the one you're
+implementing in) and add the new field to every existing literal before calling the proto
+change done — a green `@patches/proto build` does not mean the monorepo is green.
+
+## 2026-08-19 — `@patches/database`'s `FilterScope` entity class shadows its own `FilterScopeValue` type alias
+
+`packages/database/src/index.ts` exports `FilterScope` twice: the `filter_scopes` join-table
+**entity class** (value export) and the `FILTER_SCOPES`-backed string-union **type**, aliased
+`FilterScope as FilterScopeValue` specifically to dodge the name collision. A resumed-WIP file
+(`filter-list.dto.ts`/`filter-list.service.ts`, P14-022) imported `type FilterScope as
+DbFilterScope` instead of `type FilterScopeValue as DbFilterScope` — TS accepted this with no
+error at the import (the class's instance type is a real type), and the mismatch only surfaced
+far away at `tsc --noEmit` as "Type 'string' is not assignable to type 'FilterScope'" inside
+unrelated `.map()`/array-literal code, not at the bad import line.
+
+**How to apply:** before aliasing an import from `@patches/database` for a plain string/enum
+column type, check `packages/database/src/index.ts` for an `X as XValue` pattern on that name
+— `filters/filter-enums.ts` already gets this right and is the reference example. If a `tsc`
+error names a type that should be a string union but the message shape looks like an
+object/class, suspect this collision first.

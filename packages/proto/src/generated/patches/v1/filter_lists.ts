@@ -12,7 +12,7 @@ import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
 import { Community } from './communities.js';
-import { FilterAction, FilterTermInput, FilterTermKind } from './filters.js';
+import { FilterAction, FilterScope, FilterTermInput, FilterTermKind } from './filters.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -121,6 +121,12 @@ export interface SubscribeFilterListRequest {
    * useful action (spec §199.2).
    */
   action: FilterAction;
+  /**
+   * Which of the subscriber's own viewing contexts this list's entries apply to (spec §199.1
+   * "an action and scopes the subscriber chooses"). Empty defaults to every scope — the same
+   * "least surprising" default the subscription's DB column carries (P14-022).
+   */
+  scopes: FilterScope[];
 }
 
 export interface SubscribeFilterListResponse {
@@ -137,6 +143,8 @@ export interface FilterListSubscription {
   filterList: FilterList | undefined;
   action: FilterAction;
   createdAt: Timestamp | undefined;
+  /** The subscriber-chosen scopes this subscription's entries apply to (spec §199.1, P14-022). */
+  scopes: FilterScope[];
 }
 
 export interface ListFilterListSubscriptionsRequest {

@@ -4,12 +4,15 @@ Terminal-native social media.
 
 Patches is a small, chronological, open-source social network whose first-class client is a
 terminal app. No ranking algorithm, no infinite scroll, no ads — people, posts, images,
-replies, and a feed sorted by time. Built as a TypeScript monorepo: a NestJS gRPC server,
-an Ink (React) TUI, TypeORM + PostgreSQL, Protobuf/Buf, with ActivityPub federation and a
-React Native client on the roadmap.
+replies, reposts and quotes, tags, communities, direct messages, and a feed sorted by time,
+always. Built as a TypeScript monorepo: a NestJS gRPC server, an Ink (React) TUI, a scoped web
+client, TypeORM + PostgreSQL, Protobuf/Buf, with two-node ActivityPub federation running in a
+local lab and a React Native client on the roadmap.
 
-> **Status:** Phases 0–8 implemented; the flagship node **patches-social.fly.dev** is live —
-> see [`docs/product/roadmap.md`](docs/product/roadmap.md).
+> **Status:** the single-node social product (Phases 0–8) plus Amendment B social depth
+> (reposts/quotes, tags, communities, DMs, flair, edit history) and Amendment C privacy/
+> filters/decentralized moderation are implemented; the flagship node
+> **patches-social.fly.dev** is live — see [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
 ![Patches TUI: home feed, thread, reply, and notifications, recorded against the live node](docs/media/hero.gif)
 
@@ -17,6 +20,12 @@ React Native client on the roadmap.
 
 The flagship node, `patches-social.fly.dev`, is running the real network — the client
 connects there by default. It's invite-only right now; ask Allie for an invite code.
+
+Two hosted surfaces sit in front of the flagship node: [patches-web.pages.dev](https://patches-web.pages.dev)
+is the scoped browser GUI (`apps/web`), talking to `patches-social.fly.dev` over Connect; and
+[patches-site.pages.dev](https://patches-site.pages.dev) is the docs/marketing site (`site/`,
+VitePress) — see [`docs/operations/web.md`](docs/operations/web.md) and
+[`docs/operations/site.md`](docs/operations/site.md) for hosting/deploy detail.
 
 <p>
   <img src="docs/media/home.png" alt="Home feed" width="32%" />
@@ -102,13 +111,21 @@ More: [`docs/operations/local-development.md`](docs/operations/local-development
 
 ```
 apps/server            NestJS 11 gRPC server (modular monolith)
+apps/worker            NestJS standalone background-job worker (media, exports, federation delivery, ...)
 apps/tui               Ink 7 / React 19 terminal client  (`patches`)
-packages/proto         Protobuf schemas (patches.v1) + generated TypeScript (Buf + ts-proto)
+apps/web               Scoped browser GUI (Vite + React 19), Connect transport, no separate backend
+apps/admin             Moderation/admin CLI (`patches-admin`) — reads/writes Postgres directly
+packages/proto         Protobuf schemas (patches.v1) + generated TypeScript (Buf + ts-proto, protobuf-es)
 packages/database      TypeORM 1.x DataSource, entities, migrations
+packages/domain        Shared domain types, error codes, and limits (@patches/domain)
 packages/config        Validated environment schemas (zod)
+packages/client        Transport-agnostic client SDK shared by web/RN (@patches/client)
+packages/crypto        Shared cryptographic primitives (e.g. federation key encryption)
+packages/media         Media processing (Sharp derivatives) shared by server/worker
+packages/markup        Safe Markdown-subset rendering for Pages/community rules
 packages/terminal-media  Terminal image rendering (Kitty graphics protocol + fallback)
 packages/testkit       Test database helpers and factories
-infra/                 compose stack (postgres, mailpit, optional minio); infra/docker (Dockerfile); infra/fly (fly.toml, planned deploy)
+infra/                 compose stack (postgres, mailpit, optional minio); infra/docker (Dockerfile); infra/fly (fly.toml, live deploy)
 docs/                  product principles & roadmap, architecture, ADRs, operations, research
 ```
 

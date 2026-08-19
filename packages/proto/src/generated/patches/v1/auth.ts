@@ -23,12 +23,35 @@ export enum GitHubLoginStatus {
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
+/**
+ * P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
+ * password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
+ * `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED` — clients must hide password UI entirely
+ * rather than let the user hit that rejection. `REQUIRED` is reserved for a node that wants to
+ * forbid SSH/GitHub-only registration; v0 does not yet enforce it server-side beyond
+ * publishing the value.
+ */
+export enum PasswordAuthMode {
+  PASSWORD_AUTH_MODE_UNSPECIFIED = 'PASSWORD_AUTH_MODE_UNSPECIFIED',
+  PASSWORD_AUTH_MODE_OFF = 'PASSWORD_AUTH_MODE_OFF',
+  PASSWORD_AUTH_MODE_OPTIONAL = 'PASSWORD_AUTH_MODE_OPTIONAL',
+  PASSWORD_AUTH_MODE_REQUIRED = 'PASSWORD_AUTH_MODE_REQUIRED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
 /** PASSKEY is spec-reserved (§165) but not a v0 value — do not add it until it ships. */
 export enum CredentialType {
   CREDENTIAL_TYPE_UNSPECIFIED = 'CREDENTIAL_TYPE_UNSPECIFIED',
   CREDENTIAL_TYPE_PASSWORD = 'CREDENTIAL_TYPE_PASSWORD',
   CREDENTIAL_TYPE_SSH_PUBLIC_KEY = 'CREDENTIAL_TYPE_SSH_PUBLIC_KEY',
   CREDENTIAL_TYPE_GITHUB = 'CREDENTIAL_TYPE_GITHUB',
+  /**
+   * CREDENTIAL_TYPE_RECOVERY_CODE - A one-time recovery code (P15-003). Unlike the other three, an account can hold several
+   * live credentials of this type at once (up to 10, minted together by
+   * `GenerateRecoveryCodes`) — each redeemed code is immediately revoked, so
+   * `ListCredentials` naturally shows only the still-unused ones.
+   */
+  CREDENTIAL_TYPE_RECOVERY_CODE = 'CREDENTIAL_TYPE_RECOVERY_CODE',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -83,6 +106,15 @@ export interface RegisterRequest {
    * user action, never automatic, even when the TUI found this key on disk/in an agent.
    */
   sshPublicKey: string;
+  /**
+   * The privacy notice version shown to and acknowledged by the registering user (§204.2).
+   * When this node's REQUIRE_PRIVACY_ACK policy is enabled, Register fails with
+   * FAILED_PRECONDITION/PRIVACY_NOTICE_NOT_ACKNOWLEDGED unless this equals the node's current
+   * PRIVACY_NOTICE_VERSION; the acknowledgement is then recorded as part of this same request
+   * so the account's first write is never blocked on a separate "acknowledge" call. Zero
+   * (the default) means "not acknowledged" — version numbers start at 1.
+   */
+  privacyNoticeVersionAcknowledged: number;
 }
 
 export interface RegisterResponse {
@@ -247,6 +279,12 @@ export interface PollGitHubLoginResponse {
   session: Session | undefined;
 }
 
+export interface GetAuthPolicyRequest {}
+
+export interface GetAuthPolicyResponse {
+  passwordAuth: PasswordAuthMode;
+}
+
 /**
  * Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —
  * only what a user needs to recognize and manage their own credentials.
@@ -311,6 +349,27 @@ export interface RevokeCredentialRequest {
 
 export interface RevokeCredentialResponse {}
 
+export interface GenerateRecoveryCodesRequest {}
+
+export interface GenerateRecoveryCodesResponse {
+  /**
+   * Plaintext, shown exactly once — the server never stores or returns these again. Exactly
+   * 10 codes (P15-003).
+   */
+  codes: string[];
+  generatedAt: Timestamp | undefined;
+}
+
+export interface RecoveryLoginRequest {
+  /** Either a recovery email address or a handle, same as `LoginRequest.email_or_handle`. */
+  emailOrHandle: string;
+  code: string;
+}
+
+export interface RecoveryLoginResponse {
+  session: Session | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -324,6 +383,21 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  */
 
 export interface AuthServiceClient {
+  /**
+   * Always unauthenticated, always cheap (P15-002): what credential types this node currently
+   * accepts. A client MUST call this — or read `password_auth` off a cached recent call —
+   * before rendering any password field on a login or register screen, and hide that field
+   * entirely (not merely disable it) when the answer is `PASSWORD_AUTH_MODE_OFF`. Kept on
+   * `AuthService` rather than `NodeService.GetNodeInfo`/`GetNodePolicy` (§163, §197.6) even
+   * though it is conceptually node policy, so this credential-focused capability lives next to
+   * the RPCs it actually gates (`Login`, `Register`, `AddCredential`).
+   */
+
+  getAuthPolicy(
+    request: GetAuthPolicyRequest,
+    metadata?: Metadata,
+  ): Observable<GetAuthPolicyResponse>;
+
   /**
    * Invite-gated in v0 (spec §33). Accepts an optional initial credential beyond the
    * password (`ssh_public_key`) so SSH-first registration never has to pass through a
@@ -484,6 +558,31 @@ export interface AuthServiceClient {
     request: RevokeCredentialRequest,
     metadata?: Metadata,
   ): Observable<RevokeCredentialResponse>;
+
+  /**
+   * Mints a fresh set of 10 single-use recovery codes for the authenticated caller, replacing
+   * (revoking) any codes generated previously (P15-003, spec §165). Codes are returned exactly
+   * once, in this response, and only their Argon2id hash is ever stored — there is no
+   * `GetRecoveryCodes`. Meant for an SSH/GitHub-only account (no password, no verified
+   * recovery email) to still be able to recover access.
+   */
+
+  generateRecoveryCodes(
+    request: GenerateRecoveryCodesRequest,
+    metadata?: Metadata,
+  ): Observable<GenerateRecoveryCodesResponse>;
+
+  /**
+   * Consumes one single-use recovery code and returns a session, the same way `Login` does for
+   * a password (P15-003). The redeemed code is immediately revoked so it cannot be replayed;
+   * the account's other unused codes remain valid. Always issues the same generic-failure
+   * error as `Login` on a bad handle/code combination, for the same no-enumeration reason.
+   */
+
+  recoveryLogin(
+    request: RecoveryLoginRequest,
+    metadata?: Metadata,
+  ): Observable<RecoveryLoginResponse>;
 }
 
 /**
@@ -497,6 +596,21 @@ export interface AuthServiceClient {
  */
 
 export interface AuthServiceController {
+  /**
+   * Always unauthenticated, always cheap (P15-002): what credential types this node currently
+   * accepts. A client MUST call this — or read `password_auth` off a cached recent call —
+   * before rendering any password field on a login or register screen, and hide that field
+   * entirely (not merely disable it) when the answer is `PASSWORD_AUTH_MODE_OFF`. Kept on
+   * `AuthService` rather than `NodeService.GetNodeInfo`/`GetNodePolicy` (§163, §197.6) even
+   * though it is conceptually node policy, so this credential-focused capability lives next to
+   * the RPCs it actually gates (`Login`, `Register`, `AddCredential`).
+   */
+
+  getAuthPolicy(
+    request: GetAuthPolicyRequest,
+    metadata?: Metadata,
+  ): Promise<GetAuthPolicyResponse> | Observable<GetAuthPolicyResponse> | GetAuthPolicyResponse;
+
   /**
    * Invite-gated in v0 (spec §33). Accepts an optional initial credential beyond the
    * password (`ssh_public_key`) so SSH-first registration never has to pass through a
@@ -699,11 +813,40 @@ export interface AuthServiceController {
     | Promise<RevokeCredentialResponse>
     | Observable<RevokeCredentialResponse>
     | RevokeCredentialResponse;
+
+  /**
+   * Mints a fresh set of 10 single-use recovery codes for the authenticated caller, replacing
+   * (revoking) any codes generated previously (P15-003, spec §165). Codes are returned exactly
+   * once, in this response, and only their Argon2id hash is ever stored — there is no
+   * `GetRecoveryCodes`. Meant for an SSH/GitHub-only account (no password, no verified
+   * recovery email) to still be able to recover access.
+   */
+
+  generateRecoveryCodes(
+    request: GenerateRecoveryCodesRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<GenerateRecoveryCodesResponse>
+    | Observable<GenerateRecoveryCodesResponse>
+    | GenerateRecoveryCodesResponse;
+
+  /**
+   * Consumes one single-use recovery code and returns a session, the same way `Login` does for
+   * a password (P15-003). The redeemed code is immediately revoked so it cannot be replayed;
+   * the account's other unused codes remain valid. Always issues the same generic-failure
+   * error as `Login` on a bad handle/code combination, for the same no-enumeration reason.
+   */
+
+  recoveryLogin(
+    request: RecoveryLoginRequest,
+    metadata?: Metadata,
+  ): Promise<RecoveryLoginResponse> | Observable<RecoveryLoginResponse> | RecoveryLoginResponse;
 }
 
 export function AuthServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
+      'getAuthPolicy',
       'register',
       'verifyEmail',
       'resendVerification',
@@ -722,6 +865,8 @@ export function AuthServiceControllerMethods() {
       'beginSshEnrollment',
       'addCredential',
       'revokeCredential',
+      'generateRecoveryCodes',
+      'recoveryLogin',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

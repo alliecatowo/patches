@@ -44,7 +44,12 @@ function toProtoCommunitySummary(summary: CommunitySummaryView): ProtoCommunity 
   };
 }
 
-function toProtoVocabularyEntry(entry: LabelerVocabularyEntryView): ProtoLabelVocabularyEntry {
+/** Exported for `system/node.service.ts#getNodePolicy` (P14-026, spec §200.3/§203) — the node's
+ * own `GetNodePolicy.label_vocabulary` publishes exactly the same view/mapping a labeler's own
+ * vocabulary entry gets everywhere else, mandatory flag included. */
+export function toProtoVocabularyEntry(
+  entry: LabelerVocabularyEntryView,
+): ProtoLabelVocabularyEntry {
   return {
     value: entry.value,
     description: entry.description,

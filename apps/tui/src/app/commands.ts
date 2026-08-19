@@ -1,3 +1,7 @@
+import type { Post } from '@patches/proto';
+
+import type { PostRowActions } from '../components/PostList.js';
+import { extractLinks, extractMentions, extractTags } from '../format/markup.js';
 import { KEYMAP, type Binding, type CommandAlias, type Screen } from './keymap.js';
 
 export interface CommandInvocation {
@@ -158,6 +162,128 @@ export function filterPaletteBindings(
         left.score - right.score || left.binding.hint.localeCompare(right.binding.hint),
     )
     .map(({ binding }) => binding);
+}
+
+// --- contextual commands (P12-116) --------------------------------------------
+
+export interface Command {
+  readonly id: string;
+  readonly label: string;
+  /** A keybinding-style hint shown beside the label (e.g. `'l'`); empty for a command
+   * with no dedicated shortcut, such as one parsed out of the post body. */
+  readonly hint: string;
+  readonly run: () => void;
+}
+
+export interface ContextualSelection {
+  /** The row under the cursor when the palette was opened over a list. `undefined`
+   * (the palette's usual case — opened from a chrome-only screen) yields no commands. */
+  post?: Post | undefined;
+  /** The same action bag every timeline already spreads onto `PostList`/`VirtualList`
+   * rows — reused here so a contextual command never needs its own copy of "how do I
+   * like a post". A verb whose callback the caller hasn't wired is simply omitted,
+   * the same way `PostList` itself only dispatches the keys it was given. */
+  actions?: PostRowActions | undefined;
+  /** Signed-in viewer's own actor id — gates Edit/Delete/Pin to the viewer's own posts. */
+  viewerActorId?: string | undefined;
+  /** `@handle` found in the body -> open that actor's profile. */
+  onOpenActor?: ((handle: string) => void) | undefined;
+  /** `#tag` found in the body -> open that tag's feed. */
+  onOpenTag?: ((tag: string) => void) | undefined;
+  /** A link href found in the body -> open it externally (same affordance as `o` on
+   * an attachment). No in-DM/in-body link preview is ever rendered (spec §194) — this
+   * is an explicit, viewer-initiated open, not an automatic fetch. */
+  onOpenLink?: ((url: string) => void) | undefined;
+}
+
+function bind<T>(fn: ((arg: T) => void) | undefined, arg: T): (() => void) | undefined {
+  return fn === undefined
+    ? undefined
+    : () => {
+        fn(arg);
+      };
+}
+
+/**
+ * Row verbs (reply/like/bookmark/...) bound to the selected post, plus one command per
+ * distinct `@mention`, `#tag` and link href parsed out of its body via `format/markup.ts`
+ * — never a second parser (`.claude/rules/tui.md`). The command palette's contextual
+ * half (P12-116): `CommandPalette` merges this list ahead of the static `KEYMAP`
+ * bindings when it is opened with a selection.
+ */
+export function contextualCommands(selection: ContextualSelection): Command[] {
+  const { post, actions, viewerActorId, onOpenActor, onOpenTag, onOpenLink } = selection;
+  if (post === undefined) return [];
+  const commands: Command[] = [];
+  const push = (id: string, label: string, hint: string, run: (() => void) | undefined): void => {
+    if (run === undefined) return;
+    commands.push({ id, label, hint, run });
+  };
+
+  push('open-thread', 'Open thread', 'Enter', bind(actions?.onOpenPost, post));
+  push('open-author', 'Open author profile', 'p', bind(actions?.onOpenAuthor, post));
+  push('reply', 'Reply', 'r', bind(actions?.onReply, post));
+  push(
+    'like',
+    post.viewerState?.liked === true ? 'Unlike' : 'Like',
+    'l',
+    bind(actions?.onToggleLike, post),
+  );
+  push(
+    'bookmark',
+    post.viewerState?.bookmarked === true ? 'Remove bookmark' : 'Bookmark',
+    'b',
+    bind(actions?.onToggleBookmark, post),
+  );
+  push(
+    'repost',
+    post.viewerState?.reposted === true ? 'Undo repost' : 'Repost',
+    'R',
+    bind(actions?.onToggleRepost, post),
+  );
+  push('quote', 'Quote post', 'Q', bind(actions?.onQuote, post));
+  push('follow', 'Follow/unfollow author', 'f', bind(actions?.onToggleFollow, post));
+  push('report', 'Report post', '!', bind(actions?.onReport, post));
+  if (post.media.length > 0) {
+    push('open-media', 'Open attachment', 'o', bind(actions?.onOpenMedia, post));
+  }
+  const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
+  if (isOwn) {
+    push('edit', 'Edit post', 'e', bind(actions?.onEdit, post));
+    push('delete', 'Delete post', 'd', bind(actions?.onDelete, post));
+    const pinned = post.author?.pinnedPostIds.includes(post.id) === true;
+    push('pin', pinned ? 'Unpin post' : 'Pin post', 'I', bind(actions?.onTogglePin, post));
+  }
+  push('history', 'Edit history', 'H', bind(actions?.onHistory, post));
+
+  for (const handle of extractMentions(post.body)) {
+    push(`mention:${handle}`, `Open @${handle}`, '', bind(onOpenActor, handle));
+  }
+  for (const tag of extractTags(post.body)) {
+    push(`tag:${tag}`, `Open #${tag}`, '', bind(onOpenTag, tag));
+  }
+  for (const href of extractLinks(post.body)) {
+    push(`link:${href}`, `Open ${href}`, '', bind(onOpenLink, href));
+  }
+
+  return commands;
+}
+
+/** Fuzzy-filters `contextualCommands`' output the same way `filterPaletteBindings`
+ * filters `KEYMAP` — one scoring function, so a query behaves identically whichever
+ * half of the merged palette list it matches. */
+export function filterCommands(query: string, commands: readonly Command[]): readonly Command[] {
+  const normalized = query.trim().replace(/^:/u, '');
+  const scored = commands.flatMap((command) => {
+    const score = fuzzyScore(normalized, command.label);
+    return score === undefined ? [] : [{ command, score }];
+  });
+  return scored
+    .sort(
+      (left, right) =>
+        left.score - right.score || left.command.label.localeCompare(right.command.label),
+    )
+    .map(({ command }) => command);
 }
 
 export function completeCommand(query: string, bindings: readonly Binding[] = KEYMAP): string {

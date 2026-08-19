@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  breadcrumbSegmentLimit,
   FULL_MIN_ROWS,
   MIN_SPLIT_PANE_COLUMNS,
   planResponsiveLayout,
@@ -70,5 +71,17 @@ describe('planResponsiveLayout', () => {
     expect(plan.rightWidth).toBeGreaterThanOrEqual(MIN_SPLIT_PANE_COLUMNS);
     expect(plan.leftWidth / width).toBeGreaterThanOrEqual(0.45);
     expect(plan.leftWidth / width).toBeLessThanOrEqual(0.55);
+  });
+});
+
+describe('breadcrumbSegmentLimit', () => {
+  it('grows monotonically with the width tier, narrowest first', () => {
+    const tiers: readonly WidthTier[] = ['narrow', 'standard', 'wide', 'ultra'];
+    const limits = tiers.map(breadcrumbSegmentLimit);
+
+    expect(limits).toEqual([1, 2, 3, 4]);
+    for (let index = 1; index < limits.length; index += 1) {
+      expect(limits[index]).toBeGreaterThan(limits[index - 1] ?? 0);
+    }
   });
 });

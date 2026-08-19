@@ -156,6 +156,21 @@ describe('validateEnv', () => {
     });
   });
 
+  it('defaults PUBLIC_READ to true and parses an operator override to close reads', () => {
+    expect(validateEnv({})).toMatchObject({ PUBLIC_READ: true });
+    expect(validateEnv({ PUBLIC_READ: 'false' })).toMatchObject({ PUBLIC_READ: false });
+    expect(validateEnv({ PUBLIC_READ: '0' })).toMatchObject({ PUBLIC_READ: false });
+  });
+
+  it('defaults PASSWORD_AUTH to optional and accepts off/required overrides (P15-002)', () => {
+    expect(validateEnv({})).toMatchObject({ PASSWORD_AUTH: 'optional' });
+    expect(validateEnv({ PASSWORD_AUTH: 'off' })).toMatchObject({ PASSWORD_AUTH: 'off' });
+    expect(validateEnv({ PASSWORD_AUTH: 'required' })).toMatchObject({
+      PASSWORD_AUTH: 'required',
+    });
+    expect(() => validateEnv({ PASSWORD_AUTH: 'nope' })).toThrow(ConfigError);
+  });
+
   it('rejects a malformed DATABASE_URL even when optional', () => {
     expect(() => validateEnv({ DATABASE_URL: 'not-a-url' })).toThrow(ConfigError);
   });

@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 
+import { cellWidth, truncateToWidth } from '../../format/measure.js';
 import { sanitizeForTerminal } from '../../format/sanitize.js';
 import { theme } from '../../theme/index.js';
 
@@ -96,17 +97,31 @@ function renderInline(text: string): (string | ReactElement)[] {
   return nodes;
 }
 
-/** `AsciiArt` blocks (P45-004) — pre-formatted text, rendered verbatim (still
- * sanitized) with no Markdown/wrap processing so alignment survives. */
-export function AsciiArtBlockView({ art }: { art: string }): ReactElement {
+/** `AsciiArt` blocks (P45-004, P12-109 §5.5) — pre-formatted text, rendered verbatim
+ * (still sanitized) with no Markdown processing so alignment survives. Centred and
+ * *clipped*, never wrapped: reflowing pre-aligned art breaks it far worse than losing
+ * the part that doesn't fit, so a line wider than `width` is hard-clipped to `width`
+ * cells (string-width measured — `truncateToWidth`, the same helper the status bar's
+ * hint line uses) with a trailing `…` rather than handed to Ink's own `wrap`, which
+ * would either soft-wrap it onto extra rows or (via `wrap="truncate"`) silently
+ * garble a placeholder-bearing row (`.claude/rules/tui.md`'s Kitty hazard). `width`
+ * is `undefined` outside a sized `PageBlocksView` (unit tests, `PageScreen` before its
+ * first content-size read) — art then renders unclipped, matching the previous
+ * behaviour for those callers. */
+export function AsciiArtBlockView({ art, width }: { art: string; width?: number }): ReactElement {
   const lines = sanitizeForTerminal(art).split('\n');
   return (
     <Box flexDirection="column">
       {lines.map((line, index) => (
-        // No `wrap="truncate"` (`.claude/rules/tui.md`) — a long line reflows rather
-        // than silently dropping art off the edge of a narrow terminal.
-        <Text key={index}>{line}</Text>
+        <Text key={index}>{width === undefined ? line : centerAndClip(line, width)}</Text>
       ))}
     </Box>
   );
+}
+
+function centerAndClip(line: string, width: number): string {
+  if (width <= 0) return '';
+  const clipped = truncateToWidth(line, width);
+  const pad = Math.max(0, width - cellWidth(clipped));
+  return ' '.repeat(Math.floor(pad / 2)) + clipped;
 }

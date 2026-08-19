@@ -253,6 +253,31 @@ const envObjectSchema = z.object({
    * make the node unusable out of the box. Reads are never gated regardless of this flag.
    */
   REQUIRE_PRIVACY_ACK: booleanish().default(false),
+
+  /**
+   * Owner decision (2026-08-19): an invite-only node gates *posting*, not *reading* — its
+   * public content stays readable logged-out by default, exactly as `INVITE_ONLY` already
+   * says nothing about read access. **Default true.** Setting this `false` opts a node into
+   * a fully closed mode: `PublicReadGuard` (`common/guards/public-read.guard.ts`, global)
+   * then rejects every RPC except `SystemService.*`, `NodeService.GetNodeInfo`/
+   * `GetNodePolicy`, and `AuthService.*` (you cannot sign in while already required to be
+   * signed in) with `UNAUTHENTICATED`/`SIGN_IN_REQUIRED` unless the caller sends a valid
+   * session — `/healthz` and the federation HTTP surface are unaffected, since they are Nest
+   * HTTP routes, not gRPC `rpc` execution contexts, so the guard's transport check already
+   * excludes them without a separate allow-list entry.
+   */
+  PUBLIC_READ: booleanish().default(true),
+
+  /**
+   * P15-002: whether this node accepts the PASSWORD credential at all, published to clients via
+   * `AuthService.GetAuthPolicy`. `off` makes `Login`, a password-carrying `Register`, and
+   * `AddCredential(PASSWORD)` all reject with `PASSWORD_AUTH_DISABLED` — see `AuthService`'s
+   * checks. `required` is accepted and published but not yet enforced beyond that (v0 does not
+   * forbid SSH/GitHub-only registration even in `required` mode). **Default `optional`**:
+   * matches v0's behavior before this flag existed — password auth stays on unless an operator
+   * opts out.
+   */
+  PASSWORD_AUTH: z.enum(['off', 'optional', 'required']).default('optional'),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

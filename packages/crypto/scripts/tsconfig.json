@@ -1,0 +1,12 @@
+{
+  // The vector generator is a Node-only dev script, deliberately outside the package's own
+  // browser-portable tsconfig (`types: []` forbids node builtins there by design). This
+  // sibling config exists so typescript-eslint's project service can type the script.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2023"]
+  },
+  "include": ["./*.ts", "../src/**/*.ts"]
+}

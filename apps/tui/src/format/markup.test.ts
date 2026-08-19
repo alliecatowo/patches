@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { cellWidth } from './measure.js';
 import {
+  extractLinks,
+  extractTags,
   layoutMarkup,
   lineText,
   looksLikeHtml,
@@ -12,6 +14,42 @@ import {
   type BlockNode,
   type InlineNode,
 } from './markup.js';
+
+describe('extractTags', () => {
+  it('collects distinct #tags, lowercased, in first-appearance order', () => {
+    expect(extractTags('loving #Patches and #patches, also #TUI')).toEqual(['patches', 'tui']);
+  });
+
+  it('never treats an all-digits run as a tag', () => {
+    expect(extractTags('see you in #2026')).toEqual([]);
+  });
+
+  it('returns an empty list for text with no tags', () => {
+    expect(extractTags('no tags here')).toEqual([]);
+  });
+});
+
+describe('extractLinks', () => {
+  it('collects a markdown link and a bare autolink, in first-appearance order', () => {
+    expect(
+      extractLinks('see [the docs](https://example.com/docs) or just https://example.com/raw'),
+    ).toEqual(['https://example.com/docs', 'https://example.com/raw']);
+  });
+
+  it('deduplicates a repeated href', () => {
+    expect(extractLinks('https://example.com https://example.com')).toEqual([
+      'https://example.com',
+    ]);
+  });
+
+  it('never surfaces an unsafe scheme as a link', () => {
+    expect(extractLinks('[click me](javascript:alert(1))')).toEqual([]);
+  });
+
+  it('returns an empty list for text with no links', () => {
+    expect(extractLinks('no links here')).toEqual([]);
+  });
+});
 
 function render(source: string, width = 40, plain = false): string[] {
   return layoutMarkup(parseMarkup(source), width, { plain }).map(lineText);

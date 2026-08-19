@@ -25,6 +25,7 @@ import { runModlog } from './cli/modlog.js';
 import { runPing } from './cli/ping.js';
 import { runPrivacy } from './cli/privacy.js';
 import { runProfile } from './cli/profile.js';
+import { runRecoveryCodes } from './cli/recovery-codes.js';
 import { runRegister } from './cli/register.js';
 import { runTag } from './cli/tag.js';
 import { runVerify } from './cli/verify.js';
@@ -98,6 +99,8 @@ async function main(): Promise<number> {
   if (args.command === 'register')
     return runRegister(rest, { io, env: process.env, target, insecure });
   if (args.command === 'login') return runLogin(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'recovery-codes')
+    return runRecoveryCodes(rest, { io, env: process.env, target, insecure });
   if (args.command === 'logout') return runLogout(rest, { io, env: process.env, target, insecure });
   if (args.command === 'accounts') return runAccounts(rest, { io, env: process.env });
   if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });
@@ -125,6 +128,7 @@ async function runTui(args: {
   target: string;
   insecure: boolean;
   plain: boolean;
+  linear: boolean;
   noUpgradeCheck: boolean;
   visitTarget?: { handle: string; slug: string };
 }): Promise<number> {
@@ -142,9 +146,17 @@ async function runTui(args: {
   // Opened before `render()` — its one-time "no keyring available" warning (if any)
   // goes to a normal stderr, not the alternate screen (spec §37).
   const credentialStore = await openCredentialStore(createNodeIo(), process.env);
-  // `--plain` normalized into the env `App` already reads (`PATCHES_PLAIN`) rather than
-  // a separate prop — one source of truth for "is plain mode on at startup" (spec §173).
-  const env = args.plain ? { ...process.env, PATCHES_PLAIN: '1' } : process.env;
+  // `--plain`/`--linear` normalized into the env `App` already reads (`PATCHES_PLAIN`/
+  // `PATCHES_LINEAR`) rather than separate props — one source of truth for "is
+  // plain/linear mode on at startup" (spec §173, P12-118).
+  const env =
+    args.plain || args.linear
+      ? {
+          ...process.env,
+          ...(args.plain ? { PATCHES_PLAIN: '1' } : {}),
+          ...(args.linear ? { PATCHES_LINEAR: '1' } : {}),
+        }
+      : process.env;
 
   // Started here, not awaited yet, so the network round trip overlaps
   // `detectTerminalGraphics()`'s own wait instead of adding to launch time.

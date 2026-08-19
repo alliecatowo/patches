@@ -23,6 +23,10 @@ import {
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
   createAuthClient,
+  type GenerateRecoveryCodesRequest,
+  type GenerateRecoveryCodesResponse,
+  type GetAuthPolicyRequest,
+  type GetAuthPolicyResponse,
   type GetCurrentSessionRequest,
   type GetCurrentSessionResponse,
   type ListCredentialsRequest,
@@ -33,6 +37,8 @@ import {
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type RecoveryLoginRequest,
+  type RecoveryLoginResponse,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
@@ -47,7 +53,7 @@ import {
   type VerifyEmailRequest,
   type VerifyEmailResponse,
 } from '@patches/proto';
-import { CredentialType } from '@patches/proto/nest';
+import { CredentialType, PasswordAuthMode } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
 import { Not, type DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -132,6 +138,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         inviteCode: overrides.inviteCode ?? (await mintInvite()),
         clientRequestId: overrides.clientRequestId ?? randomUUID(),
         sshPublicKey: overrides.sshPublicKey ?? '',
+        privacyNoticeVersionAcknowledged: overrides.privacyNoticeVersionAcknowledged ?? 0,
       });
     }
 
@@ -207,6 +214,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             inviteCode: '',
             clientRequestId: randomUUID(),
             sshPublicKey: '',
+            privacyNoticeVersionAcknowledged: 0,
           },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
@@ -226,6 +234,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             inviteCode,
             clientRequestId: randomUUID(),
             sshPublicKey: '',
+            privacyNoticeVersionAcknowledged: 0,
           },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
@@ -258,6 +267,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             inviteCode: await mintInvite(),
             clientRequestId: randomUUID(),
             sshPublicKey: '',
+            privacyNoticeVersionAcknowledged: 0,
           },
         );
         expect(error.code).toBe(GrpcStatus.ALREADY_EXISTS);
@@ -284,6 +294,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             inviteCode: '',
             clientRequestId,
             sshPublicKey: '',
+            privacyNoticeVersionAcknowledged: 0,
           },
         );
         expect(error.code).toBe(GrpcStatus.ALREADY_EXISTS);
@@ -328,6 +339,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             inviteCode: await mintInvite(),
             clientRequestId: randomUUID(),
             sshPublicKey: '',
+            privacyNoticeVersionAcknowledged: 0,
           },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
@@ -840,6 +852,85 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { accessToken },
         );
         expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+    });
+
+    describe('GetAuthPolicy (P15-002)', () => {
+      it('publishes PASSWORD_AUTH_MODE_OPTIONAL — this node runs with no PASSWORD_AUTH override', async () => {
+        const { passwordAuth } = await callUnary<GetAuthPolicyRequest, GetAuthPolicyResponse>(
+          auth.getAuthPolicy.bind(auth),
+          {},
+        );
+        expect(passwordAuth).toBe(PasswordAuthMode.PASSWORD_AUTH_MODE_OPTIONAL);
+      });
+    });
+
+    describe('recovery codes (P15-003)', () => {
+      it('mints 10 codes, redeems one for a session, and refuses to redeem it twice', async () => {
+        const handle = `recovery${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+
+        const generated = await callUnary<
+          GenerateRecoveryCodesRequest,
+          GenerateRecoveryCodesResponse
+        >(auth.generateRecoveryCodes.bind(auth), {}, { accessToken });
+        expect(generated.codes).toHaveLength(10);
+        expect(new Set(generated.codes).size).toBe(10);
+
+        const code = generated.codes[0] ?? '';
+        const redeemed = await callUnary<RecoveryLoginRequest, RecoveryLoginResponse>(
+          auth.recoveryLogin.bind(auth),
+          { emailOrHandle: handle, code },
+        );
+        expect(redeemed.session?.actor?.handle).toBe(handle);
+
+        const error = await expectRejection<RecoveryLoginRequest, RecoveryLoginResponse>(
+          auth.recoveryLogin.bind(auth),
+          { emailOrHandle: handle, code },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('rejects an unknown handle and a wrong code with the same generic error (§166)', async () => {
+        const handle = `recoverybad${suffix()}`;
+        await register({ handle });
+
+        const noSuchAccount = await expectRejection<RecoveryLoginRequest, RecoveryLoginResponse>(
+          auth.recoveryLogin.bind(auth),
+          { emailOrHandle: `nosuchaccount${suffix()}`, code: 'ABCDE-FGHJK-MNPQR-STVWX' },
+        );
+        expect(noSuchAccount.code).toBe(GrpcStatus.UNAUTHENTICATED);
+
+        const wrongCode = await expectRejection<RecoveryLoginRequest, RecoveryLoginResponse>(
+          auth.recoveryLogin.bind(auth),
+          { emailOrHandle: handle, code: 'ABCDE-FGHJK-MNPQR-STVWX' },
+        );
+        expect(wrongCode.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+
+      it('regenerating invalidates every code from the previous batch', async () => {
+        const handle = `recoveryregen${suffix()}`;
+        const { session } = await register({ handle });
+        const accessToken = session?.accessToken ?? '';
+
+        const first = await callUnary<GenerateRecoveryCodesRequest, GenerateRecoveryCodesResponse>(
+          auth.generateRecoveryCodes.bind(auth),
+          {},
+          { accessToken },
+        );
+        await callUnary<GenerateRecoveryCodesRequest, GenerateRecoveryCodesResponse>(
+          auth.generateRecoveryCodes.bind(auth),
+          {},
+          { accessToken },
+        );
+
+        const staleCode = first.codes[0] ?? '';
+        const error = await expectRejection<RecoveryLoginRequest, RecoveryLoginResponse>(
+          auth.recoveryLogin.bind(auth),
+          { emailOrHandle: handle, code: staleCode },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
       });
     });
 

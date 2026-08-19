@@ -12,12 +12,14 @@ import type { ReactElement } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, grpcStatusCode, type FriendlyError } from '../api/errors.js';
+import { useContentSize } from '../app/layout.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { editInExternalEditor, type EditInEditorOptions } from '../pages/editor.js';
 import { FilePageDraftStore, type PageDraftStore } from '../pages/draft-store.js';
 import { openLinkExternally } from '../pages/open-link.js';
 import { collectLinks, PageBlocksView } from '../pages/render/blocks.js';
+import { PinnedPostsSection } from '../pages/render/pinned.js';
 import { resolvePageTheme } from '../pages/render/theme.js';
 import { theme } from '../theme/index.js';
 import { usePlainMode } from '../theme/plain-mode.js';
@@ -89,6 +91,7 @@ export function PageScreen({
   editorOptions,
 }: PageScreenProps): ReactElement {
   const plain = usePlainMode();
+  const { columns: contentColumns } = useContentSize();
   const [store] = useState<PageDraftStore>(() => draftStore ?? new FilePageDraftStore());
   // Keyed by `handle` and derived rather than reset synchronously at the top of the
   // fetch effect below (same "no setState-in-effect just to produce a value already
@@ -376,6 +379,10 @@ export function PageScreen({
   }
 
   const resolved = resolvePageTheme(fetchState.view.theme, plain);
+  // Net of this Box's own border + `paddingX` below — `PageBlocksView`'s grid must
+  // never plan against the outer terminal width, or a bordered page overflows its
+  // own frame by exactly the border/padding it draws (P12-109's frame-fits test).
+  const innerWidth = Math.max(20, contentColumns - (resolved.border === undefined ? 0 : 4));
   const hints = [
     fetchState.view.pages.length > 1 ? '[ / ] sub-page' : undefined,
     links.length > 0 ? 'j/k select link · Enter open' : undefined,
@@ -410,6 +417,8 @@ export function PageScreen({
         ) : null}
       </Box>
 
+      <PinnedPostsSection api={api} ownerActorId={fetchState.ownerActorId} />
+
       {activeSubPage === undefined || activeSubPage.blocks.length === 0 ? (
         <Box flexDirection="column">
           <Text color={theme.muted}>This page has no content yet.</Text>
@@ -430,6 +439,7 @@ export function PageScreen({
             guestbookRefreshKey,
           }}
           selectedLinkIndex={selectedLinkIndex}
+          width={innerWidth}
         />
       )}
 

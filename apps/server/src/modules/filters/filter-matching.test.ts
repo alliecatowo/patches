@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   evaluateCandidate,
+  hideActorIds,
+  hideTagNames,
+  isRegistrableDomainValue,
   type EffectiveFilterRule,
   type FilterMatchCandidate,
 } from './filter-matching.js';
@@ -168,6 +171,58 @@ describe('filter-matching (spec §198.2, §198.3)', () => {
           candidate({ linkUrl: 'https://good.example/x' }),
         ),
       ).toBeNull();
+    });
+
+    // P14-021: tldts-backed PSL matching, replacing the naive last-two-labels approximation.
+    it('a multi-label public-suffix rule (example.co.uk) matches a subdomain', () => {
+      const match = evaluateCandidate(
+        [rule({ kind: 'DOMAIN', value: 'example.co.uk' })],
+        candidate({ linkUrl: 'https://sub.example.co.uk/path' }),
+      );
+      expect(match).not.toBeNull();
+    });
+
+    it('a multi-label public-suffix rule does not match a different registrant under the same suffix', () => {
+      expect(
+        evaluateCandidate(
+          [rule({ kind: 'DOMAIN', value: 'example.co.uk' })],
+          candidate({ linkUrl: 'https://other.co.uk/path' }),
+        ),
+      ).toBeNull();
+    });
+  });
+
+  describe('isRegistrableDomainValue (P14-021, spec §199.4 "domain subscripts")', () => {
+    it('accepts a real registrable domain, with or without a scheme/subdomain', () => {
+      expect(isRegistrableDomainValue('example.co.uk')).toBe(true);
+      expect(isRegistrableDomainValue('https://sub.example.co.uk/path')).toBe(true);
+      expect(isRegistrableDomainValue('example.com')).toBe(true);
+    });
+
+    it('rejects a bare public suffix such as co.uk', () => {
+      expect(isRegistrableDomainValue('co.uk')).toBe(false);
+      expect(isRegistrableDomainValue('com')).toBe(false);
+    });
+  });
+
+  describe('hideActorIds / hideTagNames (P14-021 SQL pushdown)', () => {
+    it('collects only HIDE-action ACTOR rule values, deduped', () => {
+      const rules: EffectiveFilterRule[] = [
+        rule({ kind: 'ACTOR', value: 'actor-1', action: 'HIDE' }),
+        rule({ kind: 'ACTOR', value: 'actor-1', action: 'HIDE' }),
+        rule({ kind: 'ACTOR', value: 'actor-2', action: 'COLLAPSE' }),
+        rule({ kind: 'TAG', value: 'spoilers', action: 'HIDE' }),
+      ];
+      expect(hideActorIds(rules)).toEqual(['actor-1']);
+    });
+
+    it('collects only HIDE-action TAG rule values, normalized and deduped', () => {
+      const rules: EffectiveFilterRule[] = [
+        rule({ kind: 'TAG', value: '#Spoilers', action: 'HIDE' }),
+        rule({ kind: 'TAG', value: 'spoilers', action: 'HIDE' }),
+        rule({ kind: 'TAG', value: 'news', action: 'WARN' }),
+      ];
+      expect(hideTagNames(rules)).toEqual(['spoilers']);
     });
   });
 

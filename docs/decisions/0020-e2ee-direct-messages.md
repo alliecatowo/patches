@@ -322,6 +322,51 @@ the federation seam. Section 194 and §195.6 remain unsatisfied for federated DM
 needs separate owner sign-off, current research, a threat model spanning independently operated
 nodes, and a new ADR.
 
+### 14. Implementation contract (P13-001, 2026-08-19)
+
+The wire and domain contract is now written down, ahead of any node implementation, so that every
+rule above has exactly one enforcement point instead of three client re-derivations.
+
+**Schema-only.** `packages/proto/proto/patches/v1/e2ee.proto` defines `E2eeService`. No controller
+implements it; a node answers every method `UNIMPLEMENTED` and `GetE2eeCapability` reports
+`DISABLED`. Publishing the schema is not the capability. `Conversation.security_mode` (field 8 in
+`messages.proto`) is additive and read-only, so clients render §183.1/§194 disclosure from the wire
+rather than from a local assumption.
+
+**One validator, three processes.** `packages/domain/src/e2ee/` holds pure, synchronous validators
+with no crypto dependency: signature verification, digests, and franking checks are injected
+interfaces (`SignatureVerifier`, `DigestFunction`, `FrankingVerifier`). `@patches/crypto` supplies
+the implementations; the node and every client run the same rules. Every validator fails closed — an
+unknown, malformed, or unverifiable input is rejected, never treated as absent.
+
+Binding decisions any implementation — including `@patches/crypto` — must honour:
+
+1. **Canonical transcripts live in `@patches/domain`.** `canonicalFanoutTranscript` is
+   length-prefixed and domain-separated, and is the single encoder the sender, the node, and every
+   recipient use. Three independent encoders would turn a detected attack into an interop bug that
+   gets worked around.
+2. **Certificate bytes are authoritative.** Signatures are verified over `certificate_bytes` /
+   `roster_bytes`, and a decoded field view is only accepted when the caller has confirmed it
+   matches the transcript it decoded. A verifier never trusts a server-supplied decoding of signed
+   bytes.
+3. **Strict RFC 8032**, not noble's default ZIP-215, for every protocol signature.
+4. **Rosters are append-only.** Sequence advances by exactly 1, chains by digest, never drops a
+   device (inactive, never removed), never re-points a device id at a new certificate, never
+   un-revokes, and never goes backwards relative to a sequence the client already verified.
+5. **Fanout is atomic and exact** over every active device of every current member, including the
+   sender's own other devices. A stale membership epoch is rejected, not delivered.
+6. **Franking has two halves.** The sender commitment must be the binding check of a committing AE;
+   the node tag is symmetric, node-keyed, and deliberately forgeable by the node, which is what
+   preserves deniability. Neither may be presented as transferable proof.
+7. **Evidence fails to `UNVERIFIABLE`, never to discarded**, with a closed set of failure codes and
+   no plaintext in any diagnostic.
+8. **`E2EE_APPROVED_FRANKING_PROFILES` is empty**, and `assertFrankingProfileApproved` throws for
+   every profile. This is §12.7's independent-review gate in mechanical form: enabling a profile in
+   production requires amending this ADR, not editing a constant in a feature branch.
+
+`docs/architecture/e2ee.md` carries the state machines, the flows, the stores/never-stores table,
+and the required client copy.
+
 ## Consequences
 
 **Positive.** The node cannot read ordinary E2EE bodies; every message gets forward secrecy and,

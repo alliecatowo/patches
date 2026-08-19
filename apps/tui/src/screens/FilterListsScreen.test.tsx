@@ -66,7 +66,7 @@ describe('FilterListsScreen', () => {
     stdin.write('S');
     await vi.waitFor(() =>
       expect(subscribeFilterList).toHaveBeenCalledWith(
-        { filterListId: 'list-1', action: FILTER_ACTION.COLLAPSE },
+        { filterListId: 'list-1', action: FILTER_ACTION.COLLAPSE, scopes: [] },
         'token',
       ),
     );

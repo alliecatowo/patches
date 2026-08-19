@@ -6,13 +6,14 @@ several nodes at once. Source of truth: `INITIAL_VISION.md` §33–§39 as amend
 ADR [0010](../decisions/0010-argon2id-jose-jwt.md).
 
 **Status: implemented.** All flows described below are implemented in
-`apps/server/src/modules/auth/` and covered by integration tests: registration, email
-verification, password login, refresh-token rotation with reuse detection, logout and
-logout-all, password reset, SSH-key challenge/response login, GitHub OAuth device-flow
-login, and credential list/add/revoke (including server-verified SSH enrollment proof), plus
-DB-backed and peer rate limiting on the auth surface and bootstrap (first-user) registration.
-Where a flow depends on an external protocol, the citation and verification date are given
-inline.
+`apps/server/src/modules/auth/` and covered by integration tests: registration (including the
+explicit privacy-notice acknowledgement, §204.2), email verification, password login,
+refresh-token rotation with reuse detection, logout and logout-all, password reset, SSH-key
+challenge/response login, GitHub OAuth device-flow login, recovery-code generation and login
+(§11), the `PASSWORD_AUTH` node policy switch (§10), and credential list/add/revoke
+(including server-verified SSH enrollment proof), plus DB-backed and peer rate limiting on
+the auth surface and bootstrap (first-user) registration. Where a flow depends on an external
+protocol, the citation and verification date are given inline.
 
 ## 1. The core split
 
@@ -23,7 +24,7 @@ actors        social identity      (@handle, display name, bio, nameplate, page)
   ^ 1:1
 users         local account        (status, optional recovery email)
   ^ 1:N
-credentials   ways to authenticate (PASSWORD | SSH_PUBLIC_KEY | GITHUB)
+credentials   ways to authenticate (PASSWORD | SSH_PUBLIC_KEY | GITHUB | RECOVERY_CODE)
 ```
 
 Adding, rotating, or revoking a credential never changes the actor, the handle, or any social
@@ -318,7 +319,59 @@ has the same gap — its handler exists but nothing enqueues it periodically yet
 scheduling primitive is out of scope for this task and the lazy sweep needs none of it. Revisit
 if/when a real cron-style scheduler lands in `apps/worker`.
 
-## 10. Security checklist for Phase 1 review
+## 10. Node password-auth policy (P15-002)
+
+`PASSWORD_AUTH=off|optional|required` (env, default `optional`) governs whether this node
+accepts the `PASSWORD` credential type at all — published to clients via the unauthenticated
+`AuthService.GetAuthPolicy` RPC, `AppConfigService.passwordAuthMode` server-side.
+
+- **`optional`** (default): unchanged behavior — every flow in this document works as
+  described.
+- **`off`**: `Login`, a password-carrying `Register`, and `AddCredential(PASSWORD)` all reject
+  with `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED`. A client MUST call `GetAuthPolicy`
+  before rendering any password field on a login or register screen and **hide it entirely**
+  — not merely disable it — rather than let a caller reach the rejection. `apps/tui`'s
+  `LoginScreen`/`patches login`/`patches register` and `apps/web`'s `LoginRoute`/
+  `RegisterRoute` all do this; `apps/web`'s `RegisterRoute` has no SSH-enrollment flow, so a
+  node running `PASSWORD_AUTH=off` cannot be registered on from the web client at all — the
+  form says so rather than submitting a request the server will reject.
+- **`required`**: accepted and published, but v0 does not yet enforce it beyond that (an
+  SSH/GitHub-only registration still succeeds even when `required` is set). A future task
+  that wants to actually forbid password-less registration reads this value in `register()`.
+
+Kept on `AuthService` rather than `NodeService.GetNodeInfo`/`GetNodePolicy` even though it is
+conceptually node policy — `patches.v1.node.proto` is a shared file other work touches
+concurrently, and this capability is scoped tightly enough to the RPCs it gates
+(`Login`/`Register`/`AddCredential`) that it reads naturally as part of `AuthService` instead.
+
+## 11. Recovery codes (P15-003)
+
+A fourth credential type, `RECOVERY_CODE`, for an account with no password and no verified
+recovery email (an SSH- or GitHub-only account) to still be able to get back in if that
+credential is lost.
+
+- **`AuthService.GenerateRecoveryCodes`** (authenticated): mints exactly 10 codes
+  (`ABCDE-FGHJK-MNPQR-STVWX`-shaped, Crockford base32, 100 bits of entropy), returned in
+  plaintext **exactly once** in the response. Only each code's Argon2id hash (the same
+  `PasswordHasher` a `PASSWORD` credential uses) is ever stored, as its own `credentials` row
+  (`type = 'RECOVERY_CODE'`). Regenerating immediately revokes every code from the previous
+  batch — there is no "add more codes" operation, only "replace the whole set".
+- **`AuthService.RecoveryLogin`** (unauthenticated): the same `email_or_handle` resolution as
+  `Login`, verified against each of the account's still-active recovery-code hashes. A match
+  is redeemed (revoked) immediately, so it can never be replayed; the account's other unused
+  codes stay valid. A bad handle, a bad code, and an account with no remaining codes all fail
+  identically with `AUTH_INVALID_CREDENTIALS` (§166's no-enumeration rule) — the one
+  documented gap is _timing_: unlike a fixed one-hash password check, this call's Argon2id
+  verification count varies with how many codes are still active (0–10).
+- A successful `RecoveryLogin` writes a self-addressed `NOTIFICATION_TYPE_SECURITY`
+  notification (`actor_id = NULL`, the same "no other actor" convention `MODERATION`
+  notifications use) — the account holder finds out promptly even though they were the one
+  who triggered it, in case the redeemed code wasn't actually them.
+- CLI: `patches recovery-codes` (generate/print a fresh batch), `patches login --recovery`
+  (redeem one). Neither is wired into the interactive TUI screens yet — the web client has no
+  recovery-code UI beyond `LoginRoute`'s "use a recovery code instead" toggle.
+
+## 12. Security checklist for Phase 1 review
 
 - [ ] No plaintext secret of any type is stored; `secret_hash` never leaves the server.
 - [ ] Argon2id parameters benchmarked on deployment hardware (§34).
@@ -333,7 +386,7 @@ if/when a real cron-style scheduler lands in `apps/worker`.
 - [ ] Adding a credential requires an authenticated session.
 - [ ] No third-party OAuth token persisted anywhere.
 
-## 11. Related documents
+## 13. Related documents
 
 - [`data-model.md`](./data-model.md) — `users`, `credentials`, `ssh_login_challenges` schema
 - [`api.md`](./api.md) — `AuthService` / `NodeService` RPC list

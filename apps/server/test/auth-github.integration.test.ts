@@ -99,6 +99,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           inviteCode: await mintInvite(),
           clientRequestId: randomUUID(),
           sshPublicKey: '',
+          privacyNoticeVersionAcknowledged: 0,
         },
       );
       return { accessToken: response.session?.accessToken ?? '' };

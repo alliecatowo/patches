@@ -31,7 +31,10 @@ export type RateLimitAction =
   /** `PrivacyService.RequestAccountDeletion`/`CancelAccountDeletion` share one budget (spec
    * §204: `accountDeletionRequestedOrCancelledPerDay`) — either call, in any combination,
    * spends from it. */
-  | 'account_deletion_request_or_cancel';
+  | 'account_deletion_request_or_cancel'
+  /** `RecoveryLogin` (P15-003) — the same credential-guessing sensitivity as `login`, so it
+   * gets the same shape of subject + peer + distributed budget. */
+  | 'recovery_login';
 
 interface Window {
   limit: number;
@@ -66,6 +69,7 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
     limit: RATE_LIMITS.accountDeletionRequestedOrCancelledPerDay,
     windowMs: 24 * 60 * 60_000,
   },
+  recovery_login: { limit: 10, windowMs: 5 * 60_000 },
 });
 
 /**
@@ -86,6 +90,7 @@ const PEER_WINDOWS: Readonly<Partial<Record<RateLimitAction, Window>>> = Object.
   ssh_complete: { limit: 60, windowMs: 5 * 60_000 },
   github_begin_login: { limit: 40, windowMs: 5 * 60_000 },
   github_poll_login: { limit: 240, windowMs: 5 * 60_000 },
+  recovery_login: { limit: 60, windowMs: 5 * 60_000 },
 });
 
 /** Above this many live buckets, a brand-new key is refused rather than admitted. */
@@ -111,6 +116,7 @@ export const DB_BACKED_RATE_LIMIT_ACTIONS: ReadonlySet<RateLimitAction> = new Se
   'verify_email',
   'resend_verification',
   'ssh_challenge',
+  'recovery_login',
   // 24-hour windows especially cannot be process-local only: a single server restart (or a
   // second process) must not silently double an actor's daily export/deletion budget.
   'export_account',

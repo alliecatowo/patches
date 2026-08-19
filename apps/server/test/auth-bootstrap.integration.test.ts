@@ -70,6 +70,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         inviteCode: '',
         clientRequestId: randomUUID(),
         sshPublicKey: '',
+        privacyNoticeVersionAcknowledged: 0,
       };
     }
 

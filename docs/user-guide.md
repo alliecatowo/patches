@@ -183,6 +183,7 @@ full-screen client. Screens and global keys (see
 | `e`               | edit your own Patches Page (opens `$EDITOR`)                           |
 | `o`               | open the selected post's first attachment externally                   |
 | `L`               | login / switch accounts                                                |
+| `Ctrl+D`          | toggle the direct-message drawer (falls back to `g d`)                 |
 | `P`               | toggle plain mode (strip nameplate decoration)                         |
 | `?`               | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages |
 | `q`               | quit                                                                   |
@@ -221,13 +222,34 @@ existing body.
 
 ### Following and search
 
-`g s` or `/` opens actor search (handle prefix and display-name match). From a profile, `f`
-follows or unfollows; `Ctrl+A`/attach and the rest of compose behave the same whether you're
-posting fresh or replying (`r`).
+`g s` or `/` opens search. `Tab` (or `1`/`2`/`3` while the query field is empty) switches
+between three modes: **people** (handle prefix and display-name match, or a remote
+`user@domain` lookup if you're signed in), **posts**, and **tags**. In posts mode, three
+tokens inside the query are parsed out before the search runs: `since:YYYY-MM-DD`, `from:@handle`
+(or `from:handle`), and `#tag` — `from:` reaches the server as a real filter, `since:` and `#tag`
+are applied to the results locally (the screen says "filtered locally" when that happens, since a
+local filter can only narrow what the server already sent back). `↑`/`↓` recall your last 20
+searches, persisted across restarts. There is no way to sort or rank search results — posts
+always come back newest-first. From a profile, `f` follows or unfollows; `Ctrl+A`/attach and the
+rest of compose behave the same whether you're posting fresh or replying (`r`).
 
 ### Notifications
 
 `g n` lists notifications (replies, mentions, likes, follows), deduplicated server-side.
+
+### Direct messages
+
+`Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
+full-screen `g d` isn't wired into the shell yet). The first line is always the same disclosure —
+**"Not end-to-end encrypted — this node's operators can read these messages."** — because that's
+true of every v0 conversation; nothing in this client ever calls a DM "encrypted," "secure," or
+"private." `Tab` switches between your **Inbox** and pending **Requests** (a message from someone
+you don't follow lands as a request until you accept it). Sending is optimistic: your message
+appears immediately, marked as sending; if it fails to actually send, the draft comes back into
+the compose field instead of silently vanishing, so you can just try again. The screen also has a
+plain-language retention note ("This node automatically deletes messages older than N days") for
+when a node exposes its message retention policy — _Status: planned_, the shell doesn't fetch and
+pass that policy through yet, so nothing shows there today.
 
 ### Blocking, muting, and reporting
 
@@ -242,10 +264,29 @@ review reports, suspend accounts, and act on them.
 
 `patches visit @handle[/slug]` (or `v` from a profile/post) opens straight to that actor's
 Patches Page — a personal, declarative profile page (text, markdown, links, your recent
-posts, a "Top 8"-style friend list, and a guestbook other users can sign). It is inert data,
-never executable code, in every client. Press `e` on your own Page to edit it — this opens the
-underlying document in your `$EDITOR` (whatever `$EDITOR` is set to in your shell); save and
-exit to publish the new revision.
+posts, image galleries, a "Top 8"-style friend list, a mutual-follows "Friends" list, and a
+guestbook other users can sign). It is inert data, never executable code, in every client.
+Pinned posts (if the owner has any) show above the page's own content. `[`/`]` switch between
+sub-pages, `j`/`k` move between the links on the current one and `Enter` opens the selected
+one in your browser.
+
+The block layout is responsive: narrow terminals get a single column in document order;
+standard-width terminals split the page-owner's prose/media into a main column with
+"Top 8"/badges/friends/links in a right-hand rail; wide terminals split that rail further
+into two columns. A page's own theme (accent colour, border) never leaks into the shell's own
+chrome — it only ever colours the page's own box, and plain mode (`P`/`PATCHES_PLAIN`) strips
+it entirely regardless of what the page author set. ASCII-art blocks are centred and clipped
+(never wrapped) to whatever width they're rendering at.
+
+Press `e` on your own Page to edit the raw document in your `$EDITOR` (whatever `$EDITOR` is
+set to in your shell); save and exit to publish the new revision. `E` opens a structured,
+block-by-block editor instead: `j`/`k` select a block, `J`/`K` reorder it, `a` adds a new one
+from a type picker, `d` deletes it (`y`/`n` confirms), `Enter` edits the selected block's own
+fields in a small form (`Tab`/arrows move between fields, `←`/`→` cycle an enum field),
+`Ctrl+S` on a field form commits it back to the block list, and `Ctrl+S` on the block list
+validates and saves the _whole_ document via the same `UpdatePage` call the `$EDITOR` flow
+uses. `Esc` at any point backs out one level, keeping whatever you'd typed as a local draft —
+nothing is lost by backing out of either editor.
 
 ### Privacy, filters, filter lists, and labelers
 
@@ -290,12 +331,30 @@ node's own conduct, not of any individual's. Domain entries name the domain; acc
 media entries never carry a handle, actor id, or post id. No sign-in required. Headless:
 `patches modlog`.
 
+### Themes and colour
+
+`,` opens Preferences. The **Theme** row previews live as you cycle it (`h`/`l` or arrow keys) —
+the whole UI repaints in the theme under the cursor before you commit to anything — and shows a
+line explaining its contrast against the background (e.g. "AA contrast 7.12:1 against
+background"), the same WCAG AA floor (4.5:1 for normal text) the nameplate colour picker enforces.
+`Enter` saves the previewed theme (and the rest of the row's settings) to this node+account's
+local preferences; `Esc` reverts everything back to what you had before you opened the screen. A
+custom nameplate colour (`g e` to edit your profile) goes through the same picker and the same
+floor — it degrades the swatch preview itself through truecolor → 256-colour → 16-colour → text
+depending on what your terminal reports, so what you see while picking is what you'll actually get.
+
 ## Plain mode and accessibility
 
 Pass `--plain` (or set `PATCHES_PLAIN=1`), or press `P` at runtime, to strip nameplate
 decoration (colored badges/frames) from the UI — useful for screen readers, low-color
 terminals, or just personal preference. Plain mode always shows the plain placeholder box for
 images (see below) rather than any form of art.
+
+Pass `--linear` (or set `PATCHES_LINEAR=1`), or run `:linear` at runtime, for linear/
+screen-reader mode: one column regardless of terminal width (no split panes), no overlays or
+drawers (they open as a full-screen takeover instead), every list row prefixed with its
+1-based position (`[1]`, `[2]`, …) so you can refer to "item 3" without a persistent cursor,
+and plain mode is always implied.
 
 ### Image rendering: Kitty graphics, terminal art, or a plain box
 

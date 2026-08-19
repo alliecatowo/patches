@@ -1,7 +1,7 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it } from 'vitest';
 
-import { describeError } from './errors.js';
+import { describeError, isSignInRequired } from './errors.js';
 
 const TARGET = 'patches-social.fly.dev';
 
@@ -31,6 +31,18 @@ describe('describeError', () => {
     const described = describeError(new ConnectError('', Code.Unauthenticated));
     expect(described.retryable).toBe(false);
     expect(described.message).toMatch(/sign in again/i);
+  });
+
+  it('recognises PUBLIC_READ=false rejections via the x-patches-error-code metadata (2026-08-19)', () => {
+    const error = new ConnectError('', Code.Unauthenticated, {
+      'x-patches-error-code': 'SIGN_IN_REQUIRED',
+    });
+    expect(isSignInRequired(error)).toBe(true);
+    expect(isSignInRequired(new ConnectError('', Code.Unauthenticated))).toBe(false);
+
+    const described = describeError(error);
+    expect(described.retryable).toBe(false);
+    expect(described.message).toMatch(/requires sign-in to read/i);
   });
 
   it('maps Unauthenticated in a credentials context to a wrong-password message (B-016)', () => {

@@ -1,5 +1,6 @@
 import type {
   FilterAction as DbFilterAction,
+  FilterScopeValue as DbFilterScope,
   FilterTermKind as DbFilterTermKind,
 } from '@patches/database';
 
@@ -49,6 +50,10 @@ export interface FilterListView {
 export interface FilterListSubscriptionView {
   filterList: FilterListView;
   action: DbFilterAction;
+  /** Which of the subscriber's own viewing contexts this subscription's entries apply to
+   * (spec §199.1, P14-022). Never empty — `FilterListService.subscribeFilterList` defaults an
+   * empty request to every scope. */
+  scopes: readonly DbFilterScope[];
   createdAt: Date;
 }
 

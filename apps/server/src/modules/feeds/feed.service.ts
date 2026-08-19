@@ -15,12 +15,15 @@ import { toActorSummary } from '../auth/auth.dto.js';
 import {
   buildFilterMatchCandidates,
   evaluateCandidate,
+  hideActorIds,
+  hideTagNames,
   loadEffectiveFilterRules,
   type EffectiveFilterRule,
   type FilterMatch,
   type FilterMatchCandidate,
 } from '../filters/filter-matching.js';
 import { type FilteredByHintView } from '../filters/filter.dto.js';
+import { applyShowInLocalFeedFilter } from '../privacy/discoverability.js';
 import { type PostView } from '../posts/post.dto.js';
 import { parseInput, uuidInputSchema } from '../posts/validation.js';
 import { parseTags } from '../tags/tag-extraction.service.js';
@@ -64,6 +67,11 @@ export class FeedService {
     // Overfetch to absorb duplicates before the page-local collapse. Work remains bounded.
     const scanTake = take * 4 + 1;
 
+    // Loaded up front (unlike the rest of this method's filter evaluation, which happens after
+    // both queries return) so the P14-021 SQL pushdown below can apply to `originals`/`reposts`
+    // before they execute.
+    const rules = await loadEffectiveFilterRules(this.dataSource, viewerActorId, 'HOME');
+
     const originals = this.baseQuery(viewerActorId).andWhere(
       `("post"."author_actor_id" = :homeViewerActorId OR EXISTS (
         SELECT 1 FROM follows home_follow
@@ -73,6 +81,7 @@ export class FeedService {
       { homeViewerActorId: viewerActorId },
     );
     applyTagMuteFilter(originals, viewerActorId, 'post');
+    applyHidePushdown(originals, rules, '"post"."author_actor_id"', '"post"."id"');
     if (cursor !== undefined) applyCursor(originals, 'post', cursor);
     originals.take(scanTake);
 
@@ -113,6 +122,16 @@ export class FeedService {
       .take(scanTake);
     applyVisibilityFilter(reposts, viewerActorId, 'repostedPost');
     applyTagMuteFilter(reposts, viewerActorId, 'repostedPost');
+    // P14-021: a hide-actor rule matches the underlying post's author OR the reposter — two
+    // independent pushdown predicates, ANDed, so a row survives only if neither matches.
+    applyActorHidePushdown(
+      reposts,
+      rules,
+      '"repostedPost"."author_actor_id"',
+      'pushdownHideActorIds',
+    );
+    applyActorHidePushdown(reposts, rules, '"repost"."actor_id"', 'pushdownHideReposterActorIds');
+    applyTagHidePushdown(reposts, rules, '"repostedPost"."id"');
     if (cursor !== undefined) applyCursor(reposts, 'repost', cursor);
 
     const [originalRows, repostRows] = await Promise.all([originals.getMany(), reposts.getMany()]);
@@ -151,15 +170,13 @@ export class FeedService {
       collapsed.push(occurrence);
     }
 
-    // `HOME`-scoped filter rules, evaluated once for the whole overfetched batch — not the
+    // `rules` was already loaded up front (P14-021's SQL pushdown needs it before the queries
+    // above execute) and is evaluated once here for the whole overfetched batch — not the
     // `page()` bounded-round loop other feeds use, since this method already merges two
     // separate queries (originals + reposts) into one page-local collapse; re-running that
     // merge per filter round is out of scope here (documented in this task's report). The
-    // existing `scanTake = take * 4 + 1` overfetch already gives filtering slack.
-    const rules =
-      viewerActorId === undefined
-        ? []
-        : await loadEffectiveFilterRules(this.dataSource, viewerActorId, 'HOME');
+    // existing `scanTake = take * 4 + 1` overfetch, now narrowed further by the SQL pushdown
+    // above, already gives filtering slack.
     const reposterIdsByPost = new Map<string, readonly string[]>(
       [...repostersByPost.entries()].map(([postId, actors]) => [
         postId,
@@ -212,6 +229,9 @@ export class FeedService {
 
   async listLocalFeed(cursorRaw: string, limit: number, viewerActorId?: string): Promise<FeedPage> {
     const qb = this.baseQuery(viewerActorId).andWhere('post.isLocal = true');
+    // §197.5: `show_in_local_feed = false` keeps an actor's (still-public) posts off the
+    // node's local timeline specifically — every other listing is unaffected.
+    applyShowInLocalFeedFilter(qb, '"post"."author_actor_id"');
     if (viewerActorId !== undefined) applyTagMuteFilter(qb, viewerActorId, 'post');
     if (viewerActorId === undefined) {
       qb.andWhere('post.communityId IS NULL');
@@ -349,6 +369,9 @@ export class FeedService {
       viewerActorId === undefined || scope === undefined
         ? []
         : await loadEffectiveFilterRules(this.dataSource, viewerActorId, scope);
+    // P14-021: push `hide`-action ACTOR/TAG rules into the query once, before rounds begin —
+    // `qb.clone()` below carries the predicate into every round.
+    applyHidePushdown(qb, rules, '"post"."author_actor_id"', '"post"."id"');
 
     const collected: Array<{ post: Post; hint: FilteredByHintView | null }> = [];
     let roundHasMore = false;
@@ -493,6 +516,63 @@ export function applyTagMuteFilter<T extends ObjectLiteral>(
     )`,
     { mutedTagViewerActorId: viewerActorId },
   );
+}
+
+/**
+ * P14-021 SQL pushdown (spec §198.4): excludes rows a `hide`-action `ACTOR` rule already rules
+ * out, ahead of the application-service round loop. `actorColumnRef` must be a fully-qualified,
+ * quoted column reference (e.g. `"post"."author_actor_id"`, `"repost"."actor_id"`) — the same
+ * convention {@link applyVisibilityFilter} uses. `paramName` must be unique within a single
+ * query builder if this is called more than once on the same `qb` (e.g. once for the post
+ * author, once for a repost's reposter) — see `listHomeFeed`. Exported for reuse by
+ * `posts/post.service.ts#searchPosts`, same reason {@link applyVisibilityFilter} is.
+ */
+export function applyActorHidePushdown<T extends ObjectLiteral>(
+  qb: SelectQueryBuilder<T>,
+  rules: readonly EffectiveFilterRule[],
+  actorColumnRef: string,
+  paramName: string,
+): void {
+  const actorIds = hideActorIds(rules);
+  if (actorIds.length === 0) return;
+  qb.andWhere(`${actorColumnRef} NOT IN (:...${paramName})`, { [paramName]: actorIds });
+}
+
+/**
+ * P14-021 SQL pushdown counterpart of {@link applyActorHidePushdown} for `TAG` rules:
+ * `postIdColumnRef` must be a fully-qualified, quoted post-id column reference (e.g.
+ * `"post"."id"`, `"repostedPost"."id"`).
+ */
+export function applyTagHidePushdown<T extends ObjectLiteral>(
+  qb: SelectQueryBuilder<T>,
+  rules: readonly EffectiveFilterRule[],
+  postIdColumnRef: string,
+): void {
+  const tagNames = hideTagNames(rules);
+  if (tagNames.length === 0) return;
+  qb.andWhere(
+    `NOT EXISTS (
+      SELECT 1 FROM post_tags pushdown_hide_post_tag
+      INNER JOIN tags pushdown_hide_tag ON pushdown_hide_tag.id = pushdown_hide_post_tag.tag_id
+      WHERE pushdown_hide_post_tag.post_id = ${postIdColumnRef}
+        AND pushdown_hide_tag.name = ANY(:pushdownHideTagNames)
+    )`,
+    { pushdownHideTagNames: tagNames },
+  );
+}
+
+/** Applies both {@link applyActorHidePushdown} (against the post author) and
+ * {@link applyTagHidePushdown} in one call — the shape every single-post-alias query
+ * (`page()`, `searchPosts`) wants. `listHomeFeed` calls the two pieces separately instead,
+ * since its repost query needs a second actor pushdown for the reposter column. */
+export function applyHidePushdown<T extends ObjectLiteral>(
+  qb: SelectQueryBuilder<T>,
+  rules: readonly EffectiveFilterRule[],
+  authorColumnRef: string,
+  postIdColumnRef: string,
+): void {
+  applyActorHidePushdown(qb, rules, authorColumnRef, 'pushdownHideActorIds');
+  applyTagHidePushdown(qb, rules, postIdColumnRef);
 }
 
 function compareOccurrences(a: HomeOccurrence, b: HomeOccurrence): number {

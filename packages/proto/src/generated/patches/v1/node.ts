@@ -101,6 +101,15 @@ export interface GetNodeInfoResponse {
   capabilities: string[];
   /** Value-carrying capabilities added by Amendment B (spec §188, §190). */
   socialCapabilities: SocialCapabilities | undefined;
+  /**
+   * Owner decision (2026-08-19): whether this node's public content is readable without
+   * signing in. Default true — `registration_mode ==
+   * REGISTRATION_MODE_INVITE_ONLY` gates *posting*, not reading, on its own. `false` means
+   * an operator has closed reads entirely: every RPC except `SystemService.*`,
+   * `NodeService.GetNodeInfo`/`GetNodePolicy`, and `AuthService.*` then requires an
+   * authenticated session (`UNAUTHENTICATED`/`SIGN_IN_REQUIRED`).
+   */
+  publicRead: boolean;
 }
 
 /**

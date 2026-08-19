@@ -9,7 +9,7 @@ import {
   E2EE_PROTOCOL_V1,
   E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
   E2EE_SIGNED_PREKEY_ROTATION_MS,
-} from './e2ee.js';
+} from './modes.js';
 
 describe('E2EE domain contract', () => {
   it('keeps legacy and E2EE modes immutable', () => {

@@ -1,4 +1,8 @@
-import type { ConversationKind, MessageRequestStatus } from '@patches/database';
+import type {
+  ConversationKind,
+  ConversationSecurityMode,
+  MessageRequestStatus,
+} from '@patches/database';
 
 import type { ActorSummary } from '../auth/auth.dto.js';
 
@@ -21,6 +25,13 @@ export interface ConversationMemberView {
 export interface ConversationView {
   id: string;
   kind: ConversationKind;
+  /**
+   * Fixed at creation and never converted (ADR 0017, ADR 0020). Carried on the view rather than
+   * assumed by each client, because spec §183.1 requires the "this node's operators can read
+   * these messages" disclosure on a legacy conversation and §194 forbids the word "encrypted"
+   * for it — and a client can only render either correctly if the mode is on the wire.
+   */
+  securityMode: ConversationSecurityMode;
   /** `null` if the creator's account was later deleted. */
   createdBy: ActorSummary | null;
   members: ConversationMemberView[];

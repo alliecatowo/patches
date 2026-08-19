@@ -99,6 +99,8 @@ export function RootLayout(): JSX.Element {
           <code title={`built ${__PATCHES_WEB_BUILT_AT__}`}>{__PATCHES_WEB_VERSION__}</code>
           {' · '}
           <a href="https://github.com/alliecatowo/patches">source</a>
+          {' · '}
+          <a href="https://patches-site.pages.dev">docs</a>
         </small>
       </footer>
       <dialog ref={helpRef} className={styles['helpDialog']}>

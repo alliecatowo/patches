@@ -1,6 +1,12 @@
-# Social graph: follows and locked-account follow requests
+# Social graph and Amendment B social depth
 
-Status: implemented. Spec: `INITIAL_VISION.md` §50, §61–63, Amendment C §197.5.
+Status: implemented. Spec: `INITIAL_VISION.md` §50, §61–63 (follows), Amendment B §178–§195
+(reposts/quotes, tags, communities, DMs, flair/pins, quiet feed, edit history), Amendment C
+§197.5 (follow requests).
+
+This document covers the social-graph primitive (follows) and every Amendment B feature. RPC
+signatures and status markers live in [`api.md`](./api.md) — this doc is about behavior, not
+the wire contract.
 
 ## Follows
 
@@ -79,3 +85,136 @@ case specifically:
   the recipient following that actor, not the other way around).
 - `FOLLOWERS`-visibility posts may now be described honestly as private to accepted followers,
   not merely "not shown publicly" (see `docs/product/privacy.md`).
+
+## Reposts and quotes (§180)
+
+A **repost** (`ReactionService.RepostPost`/`UnrepostPost`/`ListPostReposters`,
+`apps/server/src/modules/reactions/reaction.service.ts`) is a pointer row — `(actor, post,
+created_at)` — never a row in `posts`, and never resolves to another repost (reposting a
+repost reposts the underlying original). It carries no body/media/content-warning and enters a
+feed at its own `created_at`; it never changes the original post's position. Ineligible
+targets (`FOLLOWERS`-visibility post that isn't the reposter's own, a tombstoned post, or an
+author who blocks the reposter) are rejected; unlisted posts are repostable. Deleting the
+original tombstones every repost of it. `FeedService`'s home-feed read collapses a post
+reachable more than once within a single page (original plus reposts) to one entry, naming up
+to three reposters — deliberately per-page only, not cross-page (§180.1's documented
+trade-off, keyset pagination makes cross-page dedup expensive).
+
+A **quote** is an ordinary `posts` row with `quoted_post_id` set and its own body/media — a
+client MUST offer a repost instead of letting an author create an empty quote. Every post
+carries `quote_policy` (`ANYONE`/`FOLLOWERS`/`NOBODY`, default `ANYONE`), enforced server-side
+in `PostService.createPost` (`apps/server/src/modules/posts/post.service.ts`): a `NOBODY`
+quote target rejects everyone but the author, a `FOLLOWERS` target rejects non-followers, and
+an author who blocks the quoting actor rejects regardless of policy. A deleted quoted post
+renders as a tombstoned embed; the quoting post's own body survives. Rendering nests exactly
+one level (a quote of a quote shows the inner quote as a link, never recursively) — a client
+concern, not a server one. `PostCounts.reposts`/`.quotes` and `PostViewerState.reposted` are
+real counts/flags, displayed only, never used to order anything.
+
+## Editing with history, deletion (§186.1–186.2)
+
+`PostService.editPost`/`ListPostEdits` (`post.service.ts`) may change body, content warning,
+media set/order, and alt text; `post_type`, `visibility`, `in_reply_to_id`, `community_id`,
+`quoted_post_id`, and `created_at` are immutable after creation. Every edit snapshots the
+**previous** state into a `post_edits` row before applying the new one, capped at
+`MAX_POST_EDITS_PER_POST` (`@patches/domain`); `edited_at` is set, `created_at` untouched, and
+an edit never re-orders the post in any feed. `ListPostEdits` stops serving rows once the post
+is deleted (deletion tombstones the edit history with it). Deletion itself remains the
+existing soft-delete tombstone (§25), reachable from the client with a confirmation.
+
+## Pinned posts (§184.1)
+
+`PostService.pinPost`/`unpinPost` manage an actor's own ordered `pinned_post_ids` (on `Actor`),
+capped at `MAX_PINNED_POSTS` (three). Only the actor's own `PUBLIC`/`UNLISTED` posts are
+pinnable — a `FOLLOWERS` post can't be pinned, since pinning surfaces it on the public profile
+wall regardless of the viewer's follow state. Pinning never affects feed ordering; it is a
+profile/wall arrangement only.
+
+## Tags (§181)
+
+Written inline as `#tag` in a post body; extraction happens server-side at write time into a
+relation table (`packages/database/src/entities/tag.entity.ts` and the post-tag join), never
+on a feed's read path, and never fails the post if extraction itself fails. `tags.name` is
+NFKC-normalized and case-folded (the post preserves the author's original casing for display);
+grammar is letters/digits/`_` after `#`, ≤ 30 chars, at least one letter (an all-digit tag is
+rejected), at most 10 tags per post (an eleventh is `INVALID_ARGUMENT`, not silent truncation).
+`TagService.SearchTags` returns up to 20 normalized-prefix matches in alphabetical order —
+never by popularity or recency; there is no `post_count` column anywhere, deliberately, so a
+future "sort by popularity" has nothing to read. `FeedService.ListTagFeed` is `PUBLIC`-only,
+chronological, keyset-paginated, block/mute-aware, and excludes community posts the viewer
+isn't a member of. `TagService.MuteTag`/`UnmuteTag`/`ListMutedTags` manage a viewer's private
+tag filters (home/local/tag-timeline discovery only — a thread the viewer opened directly
+still renders in full, the §63 mute model applied to tags).
+
+## Communities (§182)
+
+`CommunityService` (`apps/server/src/modules/communities/community.controller.ts`) implements
+create/get/list/search, join/leave, membership listing, update, moderator-role assignment,
+post removal from the community, bans, and invites. A community's name is `[a-z0-9_]{3,32}`,
+unique per node, drawn against a reserved-name blocklist, addressed `+name` locally. A post
+carries at most one `community_id`, set at creation and immutable — cross-posting copies the
+post rather than sharing a row. `ListCommunityFeed` is strictly chronological, keyset-paginated,
+with no ordering parameter. The home feed is unchanged (follows-only; a community post reaches
+a follower's home feed like any other post from that author); the local feed excludes
+community posts unless the viewer is a member. The creator is the first moderator; moderators
+may appoint/remove other moderators (never the creator), remove a post from the community
+(the post survives on the author's own profile with `community_id` cleared, and the removal is
+audit-logged), and ban an actor from the community. Community moderation is scoped to that
+community only — it cannot suspend an account or reach any other community; node moderators
+outrank community moderators everywhere. Invites are pointers, not auto-joins: one pending
+invite per `(community, actor)`, producing a `COMMUNITY_INVITE` notification the invitee
+accepts (`RespondToCommunityInvite`) or ignores.
+
+## Direct messages (§183) — server-visible, not encrypted
+
+**v0 DMs are not end-to-end encrypted; the node's operators can read them.** Message bodies
+are stored in PostgreSQL in the clear (TLS in transit, provider disk encryption at rest, and
+ordinary row-level access control — the same protection every other row gets, no more). No
+Patches client, document, or marketing surface may call v0 DMs "encrypted", "secure",
+"end-to-end", or "private" (§194); every client must display the honest statement above
+plainly on the messages screen itself, not a settings footnote. This is a deliberate trade:
+server-visible bodies are what make `ReportMessage`'s evidence snapshot possible at all.
+
+`MessagesService`/`MessagesController` (`apps/server/src/modules/messages/`) gate unsolicited
+DMs: an actor may open a conversation directly only with a mutual follow, or someone who
+accepted a prior message request from them (`isMessageEligible`,
+`messages.service.ts`). Otherwise the first message creates a `MessageRequest` row — at most
+one pending request per `(sender, recipient)`, carrying a single message. Accepting promotes
+it to a conversation (`RespondToMessageRequest`); declining deletes the request and bars a new
+request from that sender for 30 days (`THIRTY_DAYS_MS`, enforced by `declineBar` lookup in
+`messages.service.ts`); blocking bars it permanently and reveals nothing to the blocked sender
+(§62's no-oracle rule). Groups cap at 8 members; an actor cannot be added to a group with
+someone who has blocked them or whom they have blocked. Messages are plain text only (2,000
+char limit) — no media, no link previews, no attachments in v0. Sender deletion is a
+per-message tombstone. There are no read receipts and no typing indicators. Unread state is
+per-viewer; delivery is poll-based, no push infra. `ReportMessage` snapshots the reported
+message plus up to ten surrounding messages for moderator review. DMs are not federated in v0.
+
+## Flair, pinned posts, and quiet feed (§184–§185)
+
+`ActorFlair` (`Actor.flair`, validated in `apps/server/src/modules/actors/flair-validation.ts`
+and exercised by `flair-validation.test.ts`) is a bounded (≤ 1 KiB) document: `post_accent`,
+`border_style`, `like_glyph` (one codepoint from the node's `GetNodeInfo`-published allow-list
+— no images/uploads/custom emoji/ZWJ/combining marks/control characters), `wall_theme`, and
+`pinned_post_ids`. `ActorService.UpdateProfile`'s field mask includes `flair`;
+`UpdateProfile`'s mapper (`actor.mapper.ts`) enforces contrast-floor and legibility rules the
+same way nameplates already do (§173) — flair is presentation, never required to read a post
+or find a control, and it must never move a cursor, open a scroll region, or clear the screen.
+A custom `like_glyph` changes only how the **viewer's own like** renders; there is exactly one
+reaction (the like), no per-glyph counts, no reaction breakdowns.
+
+**Plain mode** (`P`, `PATCHES_PLAIN=1`) strips all decoration including the viewer's own.
+**Quiet feed** is a distinct, TUI-local preference (`apps/tui/src/preferences/store.ts`'s
+`quietFeed` field, wired through `App.tsx`) that hides _other actors'_ cosmetics while keeping
+the viewer's own identity and the client's structural colors (selection, focus, errors) intact.
+Quiet feed is client-only — the server has no field for it and must never gate on it (§185,
+presentation is the client's job). The two controls compose, with plain mode winning where
+they overlap. Neither control ever hides content: content warnings, alt text, tombstones, and
+moderation notices always render.
+
+## Reaching every client
+
+`docs/user-guide.md` documents the TUI keys for reposting/quoting, editing, pinning, tags,
+communities, DMs, flair, and quiet feed (§191) — the `?` help screen is generated from
+`apps/tui/src/app/keymap.ts`, the source of truth `apps/tui/test/docs-keymap.test.ts` enforces
+stays in sync with this doc.

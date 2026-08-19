@@ -140,6 +140,7 @@ function nodeInfo(postBodyMaxChars: number): GetNodeInfoResponse {
     },
     capabilities: [],
     socialCapabilities: undefined,
+    publicRead: true,
   };
 }
 

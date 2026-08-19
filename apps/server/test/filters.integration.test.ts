@@ -316,6 +316,83 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       for (const id of [...hiddenIds, ...visibleIds]) expect(unfilteredIds).toContain(id);
     });
 
+    // P14-021: SQL pushdown for HIDE-action ACTOR/TAG rules. Before the pushdown, a run of
+    // 50 consecutive hidden rows ahead of the visible ones could exceed `MAX_FILTER_ROUNDS`'s
+    // bounded scan and force the client into extra round trips (a "short page"). With the rule
+    // pushed into the query itself, a single call already returns a full page regardless of how
+    // many hidden rows sit in front of it.
+    it('an ACTOR hide rule never produces a short page across 50 matching rows', async () => {
+      const suffix = testSuffix();
+      const spamAuthor = await registerTestActor(auth, dataSource, inviterUserId);
+      const keepAuthor = await registerTestActor(auth, dataSource, inviterUserId);
+      const pushdownViewer = await registerTestActor(auth, dataSource, inviterUserId);
+
+      await callUnary<CreateFilterRequest, CreateFilterResponse>(
+        filters.createFilter.bind(filters),
+        {
+          name: 'hide-spam-actor',
+          terms: [{ kind: FilterTermKind.FILTER_TERM_KIND_ACTOR, value: spamAuthor.actorId }],
+          scopes: [FilterScope.FILTER_SCOPE_LOCAL],
+          action: FilterAction.FILTER_ACTION_HIDE,
+          expiresAt: undefined,
+        },
+        { accessToken: pushdownViewer.accessToken },
+      );
+
+      // 50 hidden rows, all newer than nothing yet — created first so they sort ahead of the
+      // "keep" posts created below (feeds are newest-first).
+      for (let index = 0; index < 50; index += 1) {
+        await createLocalPost(spamAuthor, `spam ${String(index)} ${suffix}`);
+      }
+      const keepIds: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        keepIds.push(await createLocalPost(keepAuthor, `keep ${String(index)} ${suffix}`));
+      }
+      keepIds.reverse(); // newest-first, matching feed order
+
+      const page = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+        feeds.listLocalFeed.bind(feeds),
+        { cursor: '', limit: 3 },
+        { accessToken: pushdownViewer.accessToken },
+      );
+      expect(page.posts.map((post) => post.id)).toEqual(keepIds);
+    });
+
+    it('a TAG hide rule never produces a short page across 50 matching rows', async () => {
+      const suffix = testSuffix();
+      const author = await registerTestActor(auth, dataSource, inviterUserId);
+      const pushdownViewer = await registerTestActor(auth, dataSource, inviterUserId);
+      const hideTag = `hidetag${suffix}`;
+
+      await callUnary<CreateFilterRequest, CreateFilterResponse>(
+        filters.createFilter.bind(filters),
+        {
+          name: 'hide-tag',
+          terms: [{ kind: FilterTermKind.FILTER_TERM_KIND_TAG, value: hideTag }],
+          scopes: [FilterScope.FILTER_SCOPE_LOCAL],
+          action: FilterAction.FILTER_ACTION_HIDE,
+          expiresAt: undefined,
+        },
+        { accessToken: pushdownViewer.accessToken },
+      );
+
+      for (let index = 0; index < 50; index += 1) {
+        await createLocalPost(author, `spam ${String(index)} #${hideTag}`);
+      }
+      const keepIds: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        keepIds.push(await createLocalPost(author, `keep ${String(index)} ${suffix}`));
+      }
+      keepIds.reverse();
+
+      const page = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+        feeds.listLocalFeed.bind(feeds),
+        { cursor: '', limit: 3 },
+        { accessToken: pushdownViewer.accessToken },
+      );
+      expect(page.posts.map((post) => post.id)).toEqual(keepIds);
+    });
+
     it('collapse/warn return the post and set filtered_by with "own filter" provenance', async () => {
       const suffix = testSuffix();
       const author = await registerTestActor(auth, dataSource, inviterUserId);
@@ -481,7 +558,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         await callUnary<SubscribeFilterListRequest, SubscribeFilterListResponse>(
           filterLists.subscribeFilterList.bind(filterLists),
-          { filterListId, action: FilterAction.FILTER_ACTION_COLLAPSE },
+          // Empty `scopes` defaults to every scope (P14-022) — same as leaving it unset.
+          { filterListId, action: FilterAction.FILTER_ACTION_COLLAPSE, scopes: [] },
           { accessToken: subscriber.accessToken },
         );
         const subscriptions = await callUnary<
@@ -533,6 +611,75 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         );
         const afterUnsubscribe = await listAllLocal(subscriber.accessToken);
         expect(afterUnsubscribe.find((post) => post.id === postId)?.filteredBy).toBeNull();
+      },
+    );
+
+    it(
+      'a subscription scope excludes list-derived rules from other scopes (P14-022, spec ' +
+        '§199.1)',
+      async () => {
+        const suffix = testSuffix();
+        const publisher = await registerTestActor(auth, dataSource, inviterUserId);
+        const subscriber = await registerTestActor(auth, dataSource, inviterUserId);
+        const target = await registerTestActor(auth, dataSource, inviterUserId);
+
+        const published = await callUnary<PublishFilterListRequest, PublishFilterListResponse>(
+          filterLists.publishFilterList.bind(filterLists),
+          {
+            name: `scoped-list-${suffix}`,
+            displayName: `Scoped list ${suffix}`,
+            description: 'test list',
+            ownerCommunityId: '',
+            entries: [{ kind: FilterTermKind.FILTER_TERM_KIND_ACTOR, value: target.actorId }],
+          },
+          { accessToken: publisher.accessToken },
+        );
+        const filterListId = published.filterList?.id ?? '';
+        expect(filterListId).not.toBe('');
+
+        const postId = await createLocalPost(target, `scoped subscription target ${suffix}`);
+
+        // Subscribing with only SEARCH in `scopes` must not filter LOCAL — the P14-022
+        // intersection `loadEffectiveFilterRules` performs.
+        await callUnary<SubscribeFilterListRequest, SubscribeFilterListResponse>(
+          filterLists.subscribeFilterList.bind(filterLists),
+          {
+            filterListId,
+            action: FilterAction.FILTER_ACTION_HIDE,
+            scopes: [FilterScope.FILTER_SCOPE_SEARCH],
+          },
+          { accessToken: subscriber.accessToken },
+        );
+
+        const subscriptions = await callUnary<
+          ListFilterListSubscriptionsRequest,
+          ListFilterListSubscriptionsResponse
+        >(
+          filterLists.listFilterListSubscriptions.bind(filterLists),
+          { cursor: '', limit: 20 },
+          { accessToken: subscriber.accessToken },
+        );
+        expect(
+          subscriptions.subscriptions.find((row) => row.filterList?.id === filterListId)?.scopes,
+        ).toEqual([FilterScope.FILTER_SCOPE_SEARCH]);
+
+        // LOCAL is out of scope for this subscription: the post is still visible there.
+        const local = await listAllLocal(subscriber.accessToken);
+        expect(local.find((post) => post.id === postId)?.filteredBy).toBeNull();
+
+        // SEARCH is in scope: the same rule hides the post there.
+        const searched = await callUnary<SearchPostsRequest, SearchPostsResponse>(
+          posts.searchPosts.bind(posts),
+          {
+            query: `scoped subscription target ${suffix}`,
+            cursor: '',
+            limit: 20,
+            authorHandle: '',
+            includeReplies: true,
+          },
+          { accessToken: subscriber.accessToken },
+        );
+        expect(searched.posts.map((post) => post.id)).not.toContain(postId);
       },
     );
   },

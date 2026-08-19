@@ -7,6 +7,7 @@ import { runAppealCommand } from './commands/appeal.js';
 import { runDomainCommand } from './commands/domain.js';
 import { runInviteCommand } from './commands/invite.js';
 import { runJobsCommand } from './commands/jobs.js';
+import { runLabelerCommand } from './commands/labeler.js';
 import { runPostCommand } from './commands/post.js';
 import { runReportCommand } from './commands/report.js';
 import { runUserCommand } from './commands/user.js';
@@ -62,6 +63,8 @@ async function dispatch(
       return runDomainCommand(action, args, context);
     case 'appeal':
       return runAppealCommand(action, args, context);
+    case 'labeler':
+      return runLabelerCommand(action, args, context);
     default:
       printUsage();
       process.exitCode = 1;
@@ -101,6 +104,9 @@ Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--j
   appeal list [--status open]
   appeal inspect <id>
   appeal resolve <id> --outcome <upheld|overturned|modified> --reason <text>
+
+  labeler vocabulary list [--json]
+  labeler vocabulary set-mandatory <value> [--off]
 
 Every mutating command needs an operator: --as <handle>, or set PATCHES_ADMIN_OPERATOR.
 `);

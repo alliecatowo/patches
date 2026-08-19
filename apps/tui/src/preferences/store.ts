@@ -41,6 +41,10 @@ export interface LocalPreferences {
   readonly quietFeed?: boolean | undefined;
   readonly glyphSet?: GlyphSetName | undefined;
   readonly imagePolicy?: ImagePolicy | undefined;
+  /** P12-118's linear/screen-reader mode — one column, no overlays/drawers, indexed
+   * rows, plain mode implied. Lowest-precedence source: `--linear`/`PATCHES_LINEAR`
+   * still win at launch (`App.tsx`), same precedence shape as `plainMode`. */
+  readonly linearMode?: boolean | undefined;
 }
 
 export interface PreferenceStore {
@@ -124,7 +128,14 @@ const IMAGE_POLICIES: readonly ImagePolicy[] = ['auto', 'pixel', 'ascii', 'box',
 function isLocalPreferences(value: unknown): value is LocalPreferences {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ['theme', 'plainMode', 'quietFeed', 'glyphSet', 'imagePolicy'])
+    !hasOnlyKeys(value, [
+      'theme',
+      'plainMode',
+      'quietFeed',
+      'glyphSet',
+      'imagePolicy',
+      'linearMode',
+    ])
   ) {
     return false;
   }
@@ -137,7 +148,8 @@ function isLocalPreferences(value: unknown): value is LocalPreferences {
         GLYPH_SET_NAMES.includes(value.glyphSet as GlyphSetName))) &&
     (value.imagePolicy === undefined ||
       (typeof value.imagePolicy === 'string' &&
-        IMAGE_POLICIES.includes(value.imagePolicy as ImagePolicy)))
+        IMAGE_POLICIES.includes(value.imagePolicy as ImagePolicy))) &&
+    (value.linearMode === undefined || typeof value.linearMode === 'boolean')
   );
 }
 
@@ -176,7 +188,7 @@ function parseDocument(raw: string): PreferenceDocument | undefined {
 function copyPreferences(preferences: LocalPreferences): LocalPreferences {
   if (!isLocalPreferences(preferences)) {
     throw new TypeError(
-      'preferences must contain only theme, plainMode, quietFeed, glyphSet, and imagePolicy',
+      'preferences must contain only theme, plainMode, quietFeed, glyphSet, imagePolicy, and linearMode',
     );
   }
   return {
@@ -185,6 +197,7 @@ function copyPreferences(preferences: LocalPreferences): LocalPreferences {
     ...(preferences.quietFeed === undefined ? {} : { quietFeed: preferences.quietFeed }),
     ...(preferences.glyphSet === undefined ? {} : { glyphSet: preferences.glyphSet }),
     ...(preferences.imagePolicy === undefined ? {} : { imagePolicy: preferences.imagePolicy }),
+    ...(preferences.linearMode === undefined ? {} : { linearMode: preferences.linearMode }),
   };
 }
 

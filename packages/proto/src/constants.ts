@@ -28,6 +28,10 @@ import type {
   BeginSshLoginResponse,
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
+  GenerateRecoveryCodesRequest,
+  GenerateRecoveryCodesResponse,
+  GetAuthPolicyRequest,
+  GetAuthPolicyResponse,
   GetCurrentSessionRequest,
   GetCurrentSessionResponse,
   ListCredentialsRequest,
@@ -40,6 +44,8 @@ import type {
   LogoutResponse,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
+  RecoveryLoginRequest,
+  RecoveryLoginResponse,
   RefreshSessionRequest,
   RefreshSessionResponse,
   RegisterRequest,
@@ -448,6 +454,7 @@ export interface SystemGrpcClient extends Client {
 
 /** `patches.v1.AuthService` as seen by a raw grpc-js client. */
 export interface AuthGrpcClient extends Client {
+  getAuthPolicy: GrpcUnaryCall<GetAuthPolicyRequest, GetAuthPolicyResponse>;
   register: GrpcUnaryCall<RegisterRequest, RegisterResponse>;
   verifyEmail: GrpcUnaryCall<VerifyEmailRequest, VerifyEmailResponse>;
   resendVerification: GrpcUnaryCall<ResendVerificationRequest, ResendVerificationResponse>;
@@ -466,6 +473,8 @@ export interface AuthGrpcClient extends Client {
   listCredentials: GrpcUnaryCall<ListCredentialsRequest, ListCredentialsResponse>;
   addCredential: GrpcUnaryCall<AddCredentialRequest, AddCredentialResponse>;
   revokeCredential: GrpcUnaryCall<RevokeCredentialRequest, RevokeCredentialResponse>;
+  generateRecoveryCodes: GrpcUnaryCall<GenerateRecoveryCodesRequest, GenerateRecoveryCodesResponse>;
+  recoveryLogin: GrpcUnaryCall<RecoveryLoginRequest, RecoveryLoginResponse>;
 }
 
 /** `patches.v1.ActorService` as seen by a raw grpc-js client. */

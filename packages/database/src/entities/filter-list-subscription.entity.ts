@@ -8,8 +8,19 @@ import {
   PrimaryColumn,
 } from 'typeorm';
 import { Actor } from './actor.entity.js';
-import { checkIn, FILTER_ACTIONS, type FilterAction } from './enums.js';
+import {
+  checkIn,
+  FILTER_ACTIONS,
+  FILTER_SCOPES,
+  type FilterAction,
+  type FilterScope,
+} from './enums.js';
 import { FilterList } from './filter-list.entity.js';
+
+/** The full `FILTER_SCOPES` set, as a Postgres `ARRAY[...]` literal — the subscription-table
+ * `scopes` column's DEFAULT (P14-022, spec §199.1's subscriber-chosen scopes, "empty defaults
+ * to every scope"). Kept next to the column it defaults so the two never drift independently. */
+const ALL_FILTER_SCOPES_ARRAY_LITERAL = `ARRAY[${FILTER_SCOPES.map((scope) => `'${scope}'`).join(', ')}]::text[]`;
 
 /**
  * An actor's subscription to a published filter list (`INITIAL_VISION.md` §199.2). Composite
@@ -41,6 +52,14 @@ export class FilterListSubscription {
    * explicitly. */
   @Column({ type: 'text' })
   declare action: FilterAction;
+
+  /** Which of the subscriber's own viewing contexts this list's entries apply to (spec §199.1
+   * "an action and scopes the subscriber chooses", P14-022) — the subscription-side half of
+   * the "intersection" `feeds/filter-matching.ts#loadEffectiveFilterRules` performs against a
+   * request's own scope. Defaults to every scope at the DB level so a pre-P14-022 row (and any
+   * write that genuinely means "every scope") never silently narrows. */
+  @Column({ type: 'text', array: true, default: () => ALL_FILTER_SCOPES_ARRAY_LITERAL })
+  declare scopes: FilterScope[];
 
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;

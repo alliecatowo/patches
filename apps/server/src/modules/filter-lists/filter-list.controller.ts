@@ -33,7 +33,10 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
-import { filterActionFromProtoWithCollapseDefault } from '../filters/filter-enums.js';
+import {
+  filterActionFromProtoWithCollapseDefault,
+  filterScopeFromProto,
+} from '../filters/filter-enums.js';
 import type {
   FilterListEntryListPage,
   FilterListListPage,
@@ -132,6 +135,7 @@ export class FilterListController implements FilterListServiceController {
       requireSession(session).actorId,
       request.filterListId,
       filterActionFromProtoWithCollapseDefault(request.action),
+      request.scopes.map(filterScopeFromProto),
     );
     return { subscription: toProtoFilterListSubscription(subscription) };
   }

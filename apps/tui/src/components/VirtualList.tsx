@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 
 import { movementTarget, type ListJump } from '../app/list-movement.js';
 import { theme } from '../theme/index.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 import { computeViewport, resolveTopIndex } from './list-viewport.js';
 
 export interface VirtualRowState {
@@ -53,6 +54,20 @@ export interface VirtualListProps<T> {
   positionPrefix?: ReactNode;
   /** Set false for a list whose owner draws its own position/status line. */
   showPosition?: boolean;
+  /**
+   * Reserves a 1-column gutter (taken out of `width`, not added to it — the P12-117
+   * width invariant every existing caller depends on) for a proportional scroll thumb
+   * alongside the rendered rows. Opt-in and ignored in plain mode, where a visual
+   * scrollbar is exactly the decoration `usePlainMode` strips.
+   */
+  showScrollThumb?: boolean | undefined;
+  /**
+   * Prefixes every rendered row with its 1-based position (`[1]`, `[2]`, …) — P12-118's
+   * linear/screen-reader mode, where a viewer without colour or a persistent cursor
+   * still needs a stable way to refer to "item 3". Reserves its own width up front from
+   * `width`, same invariant as {@link showScrollThumb}.
+   */
+  indexed?: boolean | undefined;
 }
 
 export interface VirtualListPosition {
@@ -91,7 +106,10 @@ export function VirtualList<T>({
   positionSuffix,
   positionPrefix,
   showPosition = true,
+  showScrollThumb,
+  indexed,
 }: VirtualListProps<T>): ReactElement {
+  const plain = usePlainMode();
   // The applied jump nonce travels with the selection so `g g` is *derived* during
   // render rather than written back from an effect — the same rule the rest of this
   // codebase follows.
@@ -110,7 +128,11 @@ export function VirtualList<T>({
         ? 0
         : maxIndex;
 
-  const rowWidth = Math.max(1, width);
+  // Both gutters are opt-in and taken *out of* `width`, never added to it — the
+  // invariant every existing caller's own row measurement already depends on.
+  const thumbEnabled = showScrollThumb === true && !plain;
+  const indexWidth = indexed === true ? `[${String(items.length)}]`.length + 1 : 0;
+  const rowWidth = Math.max(1, width - (thumbEnabled ? 1 : 0) - indexWidth);
   const heights = items.map((item, index) =>
     measure(item, Math.max(1, rowWidth - (indentOf?.(item, index) ?? 0) * 2), index),
   );
@@ -176,21 +198,62 @@ export function VirtualList<T>({
           </Text>
         </Box>
       ) : null}
-      <Box flexDirection="column" flexShrink={0} height={rowBudget} overflow="hidden">
-        {visible.map((item, offset) => {
-          const index = viewport.start + offset;
-          const indent = (indentOf?.(item, index) ?? 0) * 2;
-          return (
-            <Box key={keyOf(item, index)} flexShrink={0} marginLeft={indent}>
-              {renderItem(item, {
-                index,
-                selected: isActive && index === selected,
-                width: Math.max(1, rowWidth - indent),
-              })}
-            </Box>
-          );
-        })}
+      <Box flexDirection="row" flexShrink={0} height={rowBudget} overflow="hidden">
+        <Box flexDirection="column" flexShrink={0} height={rowBudget} overflow="hidden">
+          {visible.map((item, offset) => {
+            const index = viewport.start + offset;
+            const indent = (indentOf?.(item, index) ?? 0) * 2;
+            return (
+              <Box key={keyOf(item, index)} flexShrink={0} flexDirection="row" marginLeft={indent}>
+                {indexed === true ? (
+                  <Text color={theme.muted}>{`[${String(index + 1)}]`.padEnd(indexWidth)}</Text>
+                ) : null}
+                {renderItem(item, {
+                  index,
+                  selected: isActive && index === selected,
+                  width: Math.max(1, rowWidth - indent),
+                })}
+              </Box>
+            );
+          })}
+        </Box>
+        {thumbEnabled ? (
+          <Box width={1} height={rowBudget} flexShrink={0} overflow="hidden">
+            <Text color={theme.muted}>
+              {scrollThumbRows(rowBudget, items.length, viewport.start, viewport.end)
+                .map((filled) => (filled ? '█' : '│'))
+                .join('\n')}
+            </Text>
+          </Box>
+        ) : null}
       </Box>
     </Box>
+  );
+}
+
+/**
+ * The scroll thumb's track, one boolean per row (P12-117): `true` where the thumb
+ * covers that row. Pure and exported so the proportions are unit-testable without
+ * rendering — `trackRows` is the rows budget, `total` the item count, `start`/`end`
+ * the on-screen window (`viewport.start`/`viewport.end`).
+ */
+export function scrollThumbRows(
+  trackRows: number,
+  total: number,
+  start: number,
+  end: number,
+): boolean[] {
+  if (trackRows <= 0 || total <= 0) return [];
+  const visibleCount = Math.max(1, end - start);
+  if (visibleCount >= total) return Array.from({ length: trackRows }, () => true);
+  const thumbSize = Math.max(
+    1,
+    Math.min(trackRows, Math.round((trackRows * visibleCount) / total)),
+  );
+  const maxStart = Math.max(0, trackRows - thumbSize);
+  const thumbStart = Math.max(0, Math.min(maxStart, Math.round((trackRows * start) / total)));
+  return Array.from(
+    { length: trackRows },
+    (_, row) => row >= thumbStart && row < thumbStart + thumbSize,
   );
 }

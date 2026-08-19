@@ -1,0 +1,40 @@
+ patches › Local › Thread · ● patches.test:50051 · @alice · ✉ 1
+
+ > Local                                                             │  Thread
+ Local                                                               │⠋ Loading thread…
+                                                                     │
+ ⠋ Loading…                                                          │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+                                                                     │
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ Signed in as @alice.
+ j / ↓ next · Enter thread · p author · r reply · l like · b bookmark · f follow · R repost · Q quote · / search · Esc back

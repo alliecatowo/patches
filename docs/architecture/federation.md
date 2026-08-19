@@ -291,6 +291,32 @@ posture):
 - [x] two Patches servers interoperate _(P8-008, `federation-two-node.integration.test.ts`)_
 - [ ] at least one mainstream Fediverse implementation interoperates _(F2 scope, not started)_
 
+## 5.5 Domain-policy transparency (§197.6, §201.4, §201.5) — implemented (P14-012)
+
+A node's federation domain policy is publishable, not merely enforced. Two RPCs cover it,
+both documented in full in [`api.md`](./api.md):
+
+- `NodeService.GetNodePolicy` (unauthenticated, cacheable) publishes each `domain_blocks` row
+  as a `domain_policies` entry — `action = BLOCK` (v1 ships only this one action; a graduated
+  `limit`/`silence` tier is a recorded, not implemented, §210 sign-off item, same restraint
+  §201.5 states) plus a bounded, published `reason_category` (never the operator's free-text
+  `domain_blocks.reason`, which stays internal). `apps/server/src/modules/system/node.service.ts`
+  maps `domain_blocks` rows straight onto this response.
+- `ModerationService.ListModerationLog` (unauthenticated, keyset-paginated over
+  `moderation_log_entries`) carries fully-identified domain-kind rows — `patches-admin domain
+block` writes a `DOMAIN_BLOCK` entry naming the domain — alongside account/post/media rows,
+  which stay anonymized by construction (no actor-id/post-id column exists on that table to
+  leak). See `api.md`'s `ModerationService` section for the full entry-kind breakdown.
+
+**This transparency surface must not be read as a stronger enforcement guarantee than the code
+provides.** §201.5's own text: outbound delivery has been filtered on `domain_blocks` at
+enqueue and pre-delivery since B-027, and `ActivityPubFederationGateway`'s recipient-resolution
+queries additionally filter on `domain_blocks` as of P14-013 (§4's Stage F1 section above) — so
+as of this doc the outbound gap the spec flagged is closed. If a future change to recipient
+resolution reopens a gap between "what `GetNodePolicy` publishes" and "what delivery actually
+filters", that is a bug to fix or a fact to disclose here, not something to leave the published
+policy silently overstating.
+
 ## 6. Federation security (§109)
 
 Federation means ingesting hostile Internet input. Before any Stage F1+ work ships

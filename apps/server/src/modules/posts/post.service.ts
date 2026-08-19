@@ -29,6 +29,7 @@ import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import {
   applyCursor,
+  applyHidePushdown,
   applyTagMuteFilter,
   applyVisibilityFilter,
   MAX_FILTER_ROUNDS,
@@ -45,6 +46,7 @@ import {
 import { type FilteredByHintView } from '../filters/filter.dto.js';
 import { labelsForPosts } from '../labels/label-lookup.js';
 import { NotificationsService } from '../notifications/notification.service.js';
+import { applyIndexableFilter } from '../privacy/discoverability.js';
 import { TagExtractionService, parseTags } from '../tags/tag-extraction.service.js';
 import { communitySummaryOf } from './community-summary.js';
 import { toPostView, type PostEditView, type PostMediaSummary, type PostView } from './post.dto.js';
@@ -721,6 +723,9 @@ export class PostService {
 
     applyVisibilityFilter(qb, viewerActorId, 'post');
     if (viewerActorId !== undefined) applyTagMuteFilter(qb, viewerActorId, 'post');
+    // §197.5: `indexable = false` excludes an actor's posts from full-text search specifically —
+    // the post remains visible everywhere else (profile, feeds, direct link).
+    applyIndexableFilter(qb, '"post"."author_actor_id"');
 
     if (authorActorId !== undefined) {
       qb.andWhere('post.authorActorId = :searchAuthorActorId', {
@@ -746,6 +751,9 @@ export class PostService {
       viewerActorId === undefined
         ? []
         : await loadEffectiveFilterRules(this.dataSource, viewerActorId, 'SEARCH');
+    // P14-021: push `hide`-action ACTOR/TAG rules into the query before the round loop clones
+    // it — same treatment `FeedService#page()` gives its own query.
+    applyHidePushdown(qb, rules, '"post"."author_actor_id"', '"post"."id"');
 
     // Same bounded over-fetch/re-fetch pattern as `FeedService#page()` (spec §198.3, §198.4):
     // a `hide` match must not leave the page short, but re-fetching is capped at

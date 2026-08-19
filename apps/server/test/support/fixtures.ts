@@ -64,6 +64,7 @@ export async function registerTestActor(
     inviteCode: overrides.inviteCode ?? (await mintInvite(dataSource, inviterUserId)),
     clientRequestId: overrides.clientRequestId ?? randomUUID(),
     sshPublicKey: overrides.sshPublicKey ?? '',
+    privacyNoticeVersionAcknowledged: overrides.privacyNoticeVersionAcknowledged ?? 0,
   });
 
   const actor = response.session?.actor;
