@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 
 import { useMediaAttachment } from '../hooks/useMediaAttachment.js';
 import { useOptionalMediaSession, type MediaSession } from '../media/media-session.js';
+import { useInlineImagesAllowed } from '../app/layout.js';
 import { usePlainMode } from '../theme/plain-mode.js';
 
 export interface MediaAttachmentsProps {
@@ -135,11 +136,13 @@ export function MediaAttachments({
   const plain = usePlainMode();
   const renderer = useOptionalMediaRenderer();
   const session = useOptionalMediaSession();
+  const inlineAllowed = useInlineImagesAllowed();
 
   if (attachments.length === 0) return null;
 
   const useInline =
     inline &&
+    inlineAllowed &&
     !plain &&
     renderer !== undefined &&
     renderer.kind === 'kitty' &&

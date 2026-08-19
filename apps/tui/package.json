@@ -50,6 +50,7 @@
     "ink-spinner": "catalog:",
     "react": "catalog:",
     "sharp": "catalog:",
+    "slice-ansi": "catalog:",
     "string-width": "catalog:",
     "zod": "catalog:"
   },

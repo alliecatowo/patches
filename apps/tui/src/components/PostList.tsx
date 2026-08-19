@@ -257,7 +257,13 @@ export function PostList({
         if (post !== undefined) onTogglePin?.(post);
       }
     },
-    { isActive: isActive && posts.length > 0 },
+    // Deliberately *not* `isActive && posts.length > 0`: Ink subscribes a `useInput`
+    // in an effect that bails out while `isActive` is false, and a list always renders
+    // once empty before its first page arrives. Gating on the post count therefore left
+    // a freshly-launched timeline deaf to `j`/`Enter` until some *other* state change
+    // flipped the flag back on (reproduced 2026-08-19). The handler's own
+    // `posts.length === 0` guard is what keeps an empty list inert.
+    { isActive },
   );
 
   if (posts.length === 0) {

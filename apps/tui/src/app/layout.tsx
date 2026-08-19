@@ -35,3 +35,29 @@ export function useContentSize(): ContentSize {
 
 /** Rows the footer always occupies: separator, message line, status line, hint line. */
 export const FOOTER_ROWS = 4;
+
+const InlineImagesContext = createContext(true);
+
+/**
+ * Whether inline Kitty placements are allowed right now.
+ *
+ * An open overlay sets this to `false` so every `InlineAttachment` unmounts and its
+ * hook emits the terminal delete *before* the composited frame is painted — slicing a
+ * unicode-placeholder row would corrupt the placement grid
+ * (`docs/architecture/tui-interaction-model.md` §3.3). §2.6's identical-height rule
+ * makes this free: the §75 fallback box occupies the same rows, so the frame does not
+ * reflow when images come and go.
+ */
+export function InlineImagesProvider({
+  allowed,
+  children,
+}: {
+  allowed: boolean;
+  children: ReactNode;
+}): ReactElement {
+  return <InlineImagesContext.Provider value={allowed}>{children}</InlineImagesContext.Provider>;
+}
+
+export function useInlineImagesAllowed(): boolean {
+  return useContext(InlineImagesContext);
+}

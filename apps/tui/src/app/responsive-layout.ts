@@ -19,6 +19,22 @@ export const ULTRA_MIN_COLUMNS = 160;
 export const FULL_MIN_ROWS = 28;
 export const SPLIT_GAP_COLUMNS = 1;
 export const MIN_SPLIT_PANE_COLUMNS = 48;
+/** Columns a right-hand drawer occupies (`tui-interaction-model.md` §3.5). */
+export const DRAWER_COLUMNS = 36;
+/** A drawer is only offered when what is left of the content region stays usable. */
+export const MIN_CONTENT_COLUMNS_WITH_DRAWER = 84;
+
+/**
+ * Whether a drawer may open at this width. It is deliberately decided *before* split
+ * math: the drawer takes its columns off the content region first, so opening one can
+ * never overflow the frame (§3.1).
+ */
+export function drawerAvailable(width: number): boolean {
+  const columns = terminalCells(width);
+  return (
+    columns >= WIDE_MIN_COLUMNS && columns - DRAWER_COLUMNS >= MIN_CONTENT_COLUMNS_WITH_DRAWER
+  );
+}
 
 /**
  * Converts a terminal size into presentation geometry only. Navigation state is

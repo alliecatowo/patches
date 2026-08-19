@@ -88,6 +88,7 @@ catalog:
   '@noble/curves': ^2.3.0
   '@noble/ciphers': ^2.3.0
   '@noble/hashes': ^2.3.0
+  slice-ansi: ^9.0.0
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

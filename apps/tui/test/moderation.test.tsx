@@ -39,7 +39,7 @@ async function pressGo(press: (input: string) => void, letter: string): Promise<
 }
 
 describe('Moderation (P4-004)', () => {
-  it('B block/unblock a profile behind a y/n confirm', async () => {
+  it('B block/unblock a profile behind the shared ConfirmDialog', async () => {
     const fake = createFakeApi();
     fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
     const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
@@ -58,7 +58,9 @@ describe('Moderation (P4-004)', () => {
 
     press('B');
 
-    await expectFrame(lastFrame, 'Block @bob? y/n');
+    // P12-126: the same measured `ConfirmDialog` every other destructive action uses.
+    await expectFrame(lastFrame, 'Block @bob?');
+    await expectFrame(lastFrame, '[y/n]');
 
     await flush();
 
@@ -118,6 +120,11 @@ describe('Moderation (P4-004)', () => {
     expect(frame).toContain('Spam');
 
     press(KEY.ctrlS);
+
+    // P12-126: filing a report goes through the shared confirm too.
+    await expectFrame(lastFrame, '[y/n]');
+    await flush();
+    press('y');
 
     await expectFrame(lastFrame, 'Report submitted');
     unmount();

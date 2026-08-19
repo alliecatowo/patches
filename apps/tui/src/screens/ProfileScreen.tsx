@@ -56,6 +56,15 @@ export interface ProfileScreenProps {
   /** `e` — only offered on the viewer's own profile (`actorId === viewerActorId`):
    * opens `EditProfileScreen` (A-027). */
   onEditProfile?: ((actor: Actor) => void) | undefined;
+  /**
+   * Opens the shell's shared measured `ConfirmDialog` for a destructive action
+   * (P12-126). Every destructive path in the app goes through one component; a screen
+   * that rolled its own `y/n` line was a second, unmeasured confirm that could disagree
+   * with it about wording, height and which key cancels.
+   */
+  onConfirm?:
+    | ((request: { id: string; title: string; body: string; onConfirm: () => void }) => void)
+    | undefined;
   /** Bumped by `App` after a successful post — re-reads this list from the server. */
   refreshKey?: number;
 }
@@ -85,6 +94,7 @@ export function ProfileScreen({
   ensureAccessToken,
   onReportActor,
   onVisitPage,
+  onConfirm,
   onEditProfile,
   refreshKey = 0,
 }: ProfileScreenProps): ReactElement {
@@ -149,9 +159,6 @@ export function ProfileScreen({
     }
   }
 
-  // `undefined` when no `B`/`M` confirmation is pending.
-  const [confirmAction, setConfirmAction] = useState<ModerationAction | undefined>(undefined);
-
   // Not an effect either, same reasoning as `toggleFollow` — a direct response to `y`.
   async function performModeration(action: ModerationAction): Promise<void> {
     if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
@@ -178,19 +185,40 @@ export function ProfileScreen({
     }
   }
 
+  /** Raises the shared confirm for `B`/`M`; without a shell to host it (a bare unit
+   * render) the destructive action is simply not offered, never performed unasked. */
+  function requestModeration(action: ModerationAction): void {
+    if (followUi.status !== 'ready' || onConfirm === undefined) return;
+    const { blocking, muting } = followUi.relationship;
+    const active = action === 'block' ? blocking : muting;
+    const verb =
+      action === 'block' ? (active ? 'Unblock' : 'Block') : active ? 'Unmute' : 'Mute';
+    const handle = sanitizeForTerminal(
+      actorState.status === 'ready' ? actorState.actor.handle : '',
+    );
+    onConfirm({
+      id: `${action}:${actorId}`,
+      title: `${verb} @${handle}?`,
+      body:
+        action === 'block'
+          ? 'Blocking hides you from each other and removes any follow between you.'
+          : 'Muting hides their posts from your timelines. They are not told.',
+      onConfirm: () => void performModeration(action),
+    });
+  }
+
   useInput(
     (input) => {
-      if (confirmAction !== undefined) return;
       if (input === 'f') {
         void toggleFollow();
         return;
       }
       if (input === 'B' && followUi.status === 'ready') {
-        setConfirmAction('block');
+        requestModeration('block');
         return;
       }
       if (input === 'M' && followUi.status === 'ready') {
-        setConfirmAction('mute');
+        requestModeration('mute');
         return;
       }
       if (input === '!' && actorState.status === 'ready') {
@@ -206,19 +234,6 @@ export function ProfileScreen({
       }
     },
     { isActive: isActive && actorState.status === 'ready' },
-  );
-
-  useInput(
-    (input, key) => {
-      if (confirmAction === undefined) return;
-      if (input === 'y') {
-        void performModeration(confirmAction);
-        setConfirmAction(undefined);
-        return;
-      }
-      if (input === 'n' || key.escape) setConfirmAction(undefined);
-    },
-    { isActive: isActive && confirmAction !== undefined },
   );
 
   const fetchPage = useCallback(
@@ -327,18 +342,6 @@ export function ProfileScreen({
         ) : null}
         {followUi.status === 'error' ? (
           <Text color={theme.error}>{followUi.error.title}</Text>
-        ) : null}
-        {confirmAction !== undefined && followUi.status === 'ready' ? (
-          <Text color={theme.warn}>
-            {confirmAction === 'block'
-              ? followUi.relationship.blocking
-                ? 'Unblock'
-                : 'Block'
-              : followUi.relationship.muting
-                ? 'Unmute'
-                : 'Mute'}{' '}
-            @{sanitizeForTerminal(actor.handle)}? y/n
-          </Text>
         ) : null}
       </Box>
 

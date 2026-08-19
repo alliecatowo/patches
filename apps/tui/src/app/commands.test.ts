@@ -58,7 +58,9 @@ describe('Vim command parser', () => {
     expect(parseCommand(':nope')).toEqual({ ok: false, error: 'Unknown command: :nope' });
     expect(parseCommand(':search')).toMatchObject({ ok: false });
     expect(parseCommand(':tag')).toMatchObject({ ok: false });
-    expect(parseCommand(':theme')).toMatchObject({ ok: false });
+    // `:theme` takes an optional name now: bare `:theme` opens the preferences screen
+    // with the live picker, which is a better answer than an error (P12-127).
+    expect(parseCommand(':theme')).toMatchObject({ ok: true });
     expect(parseCommand(':home now')).toEqual({
       ok: false,
       error: ':home does not take arguments.',

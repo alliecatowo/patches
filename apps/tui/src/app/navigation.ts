@@ -1,4 +1,4 @@
-import type { Actor } from '@patches/proto';
+import type { Actor, MediaAttachment } from '@patches/proto';
 
 import type { ReportTarget } from '../screens/ReportScreen.js';
 import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
@@ -18,12 +18,28 @@ import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
  * Pure functions, no React — unit-tested in `navigation.test.ts`.
  */
 export type NavEntry =
-  | { screen: Exclude<Screen, 'profile' | 'thread' | 'page' | 'report' | 'postHistory'> }
+  | {
+      screen: Exclude<
+        Screen,
+        'profile' | 'thread' | 'page' | 'report' | 'postHistory' | 'media' | 'postEdit'
+      >;
+    }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
   | { screen: 'thread'; postId: string }
   | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }
-  | { screen: 'report'; target: ReportTarget };
+  | { screen: 'report'; target: ReportTarget }
+  /** `o` on a post that carries media (P12-018/P12-127) — the attachments travel on
+   * the stack entry so the viewer needs no second fetch and `Esc` is still a `pop`. */
+  | {
+      screen: 'media';
+      postId: string;
+      attachments: readonly MediaAttachment[];
+      initialIndex: number;
+    }
+  /** `E` on one of your own posts (P12-125) — compose in edit mode, seeded with the
+   * body as it stands now. */
+  | { screen: 'postEdit'; postId: string; body: string };
 
 export type NavStack = readonly [NavEntry, ...NavEntry[]];
 
@@ -52,6 +68,8 @@ function sameEntry(a: NavEntry, b: NavEntry): boolean {
   if (a.screen === 'thread' && b.screen === 'thread') return a.postId === b.postId;
   if (a.screen === 'page' && b.screen === 'page') return a.handle === b.handle && a.slug === b.slug;
   if (a.screen === 'report' && b.screen === 'report') return a.target.id === b.target.id;
+  if (a.screen === 'media' && b.screen === 'media') return a.postId === b.postId;
+  if (a.screen === 'postEdit' && b.screen === 'postEdit') return a.postId === b.postId;
   return true;
 }
 

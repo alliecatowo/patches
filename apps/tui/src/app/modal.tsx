@@ -9,6 +9,17 @@ export interface ModalControls {
 export interface ModalEntry {
   id: string;
   title: string;
+  /** The overlay box's width in cells; the shell centres it (P12-022). */
+  columns?: number;
+  /** The overlay box's height in cells. */
+  rows?: number;
+  /**
+   * `float` (default) composites the overlay over a dimmed snapshot of the screen;
+   * `takeover` fills the content region instead. The shell downgrades `float` to
+   * `takeover` on its own at `narrow` width or `compact` height — a centred box under
+   * 80 columns has nowhere to sit (`tui-interaction-model.md` §3.1).
+   */
+  presentation?: 'float' | 'takeover';
   render: (controls: ModalControls) => ReactNode;
 }
 

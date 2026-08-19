@@ -29,6 +29,7 @@ export type Screen =
   | 'preferences'
   | 'postEdit'
   | 'postHistory'
+  | 'media'
   | 'report'
   | 'accounts'
   | 'page';
@@ -361,6 +362,17 @@ export const KEYMAP: readonly Binding[] = [
     region: 'shell',
   },
   {
+    keys: 'C',
+    hint: 'full compose',
+    description: 'Open the full compose screen — attachments, content warning, quote target',
+    group: 'Post actions',
+    on: 'global',
+    session: true,
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'compose' }],
+  },
+  {
     keys: 'R',
     hint: 'repost',
     description: 'Repost / unrepost the selected post',
@@ -668,6 +680,24 @@ export const KEYMAP: readonly Binding[] = [
     on: ['help'],
   },
 
+  // --- Media viewer ---------------------------------------------------------
+  {
+    keys: 'h / l',
+    hint: 'prev / next',
+    description: 'Previous / next attachment in the media viewer',
+    group: 'Screens',
+    on: ['media'],
+    region: 'screen',
+  },
+  {
+    keys: 'o',
+    hint: 'open externally',
+    description: 'Hand the attachment you are viewing to the OS image viewer',
+    group: 'Screens',
+    on: ['media'],
+    region: 'screen',
+  },
+
   // --- Account --------------------------------------------------------------
   {
     keys: 'L',
@@ -704,10 +734,23 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open display and account preferences',
     group: 'Account',
     on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [
+      { name: 'preferences' },
+      { name: 'theme', argument: 'optional', usage: 'theme [name]' },
+    ],
+  },
+  {
+    keys: 'N',
+    hint: 'notifications drawer',
+    description:
+      'Toggle the notifications drawer beside the timeline (wide terminals; falls back to g n)',
+    group: 'Account',
+    on: 'global',
     session: true,
     helpOnly: true,
     region: 'shell',
-    commands: [{ name: 'theme', argument: 'required', usage: 'theme <name>' }],
   },
   {
     keys: ': / Ctrl+P',
@@ -846,6 +889,7 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   preferences: 'Preferences',
   postEdit: 'Edit post',
   postHistory: 'Post history',
+  media: 'Media',
   report: 'Report',
   accounts: 'Account',
   page: 'Page',
