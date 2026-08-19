@@ -1,4 +1,5 @@
 import { describeError } from '@patches/client';
+import { PasswordAuthMode } from '@patches/proto/es';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -28,6 +29,17 @@ export function RegisterRoute(): JSX.Element {
   });
   const policy = policyQuery.data?.policy;
 
+  // P15-002: hidden, not merely disabled, when this node has opted out of PASSWORD_AUTH — see
+  // `LoginRoute`'s identical read. The web client has no SSH-key enrollment flow, so a node
+  // running PASSWORD_AUTH=off cannot be registered on from here at all; the form says so
+  // rather than submitting a request the server will reject.
+  const authPolicyQuery = useQuery({
+    queryKey: ['auth-policy'],
+    queryFn: () => api.auth.getAuthPolicy({}),
+    staleTime: 60_000,
+  });
+  const passwordAuthOff = authPolicyQuery.data?.passwordAuth === PasswordAuthMode.OFF;
+
   const mutation = useMutation({
     mutationFn: () =>
       api.auth.register({
@@ -38,6 +50,10 @@ export function RegisterRoute(): JSX.Element {
         inviteCode: form.inviteCode,
         clientRequestId: crypto.randomUUID(),
         sshPublicKey: '',
+        // §204.2: the notice shown above (`policy.privacyNoticeSummary`) is what the
+        // acknowledgement checkbox gates submit on — send the version it belongs to so a
+        // REQUIRE_PRIVACY_ACK node can verify it's current, and record it in this same call.
+        privacyNoticeVersionAcknowledged: policy?.privacyNoticeVersion ?? 0,
       }),
     onSuccess: async (response) => {
       if (response.session) await establishSession(response.session);
@@ -99,17 +115,24 @@ export function RegisterRoute(): JSX.Element {
             required
           />
         </div>
-        <div className={styles['field']}>
-          <label htmlFor="reg-password">Password</label>
-          <input
-            id="reg-password"
-            type="password"
-            value={form.password}
-            onChange={set('password')}
-            autoComplete="new-password"
-            required
-          />
-        </div>
+        {passwordAuthOff ? (
+          <p className={styles['error']}>
+            This node does not accept password sign-up. Registration from the web client isn't
+            available here — use the Patches TUI (`patches register --ssh-key`) instead.
+          </p>
+        ) : (
+          <div className={styles['field']}>
+            <label htmlFor="reg-password">Password</label>
+            <input
+              id="reg-password"
+              type="password"
+              value={form.password}
+              onChange={set('password')}
+              autoComplete="new-password"
+              required
+            />
+          </div>
+        )}
         <div className={styles['field']}>
           <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
             {policy?.privacyNoticeSummary || 'This node has not published a privacy notice.'}
@@ -137,7 +160,7 @@ export function RegisterRoute(): JSX.Element {
         <button
           type="submit"
           className={styles['submit']}
-          disabled={mutation.isPending || !noticeAcknowledged}
+          disabled={mutation.isPending || !noticeAcknowledged || passwordAuthOff}
         >
           {mutation.isPending ? 'Creating account…' : 'Create account'}
         </button>
