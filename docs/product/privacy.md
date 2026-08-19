@@ -241,13 +241,15 @@ posts mean what people assume they mean. See
   (§199.2). A label is visible only to actors who subscribe to that labeler.
 - **Operator transparency** (`NodeService.GetNodePolicy`) and an **appeals** path
   (`AppealService`) — see [`moderation.md`](moderation.md).
-
-**Status: planned.** §197.5's **discoverability controls** (`discoverable`/`indexable`/
-`show_in_local_feed` on `actor_privacy_prefs`) are stored and round-trip through
-`GetPrivacyPrefs`/`UpdatePrivacyPrefs`, but **nothing reads them yet** — `SearchActors`,
-`SearchPosts`, and the local-feed query do not check these flags, so toggling them today has
-no observable effect. Do not describe this as a working discoverability control in any client
-copy until a follow-up wires the read side.
+- §197.5's **discoverability controls** (`discoverable`/`indexable`/`show_in_local_feed` on
+  `actor_privacy_prefs`, read/written via `GetPrivacyPrefs`/`UpdatePrivacyPrefs`, P14-029):
+  `discoverable = false` removes the actor from `ActorService.SearchActors`
+  (`GetActorByHandle`/`ResolveActor` — exact-handle resolution — still work, as required by
+  §197.5, since mentions/replies/federation addressing depend on them); `indexable = false`
+  excludes the actor's posts from `PostService.SearchPosts`; `show_in_local_feed = false` keeps
+  the actor's still-public posts off `FeedService.ListLocalFeed` specifically — their followers'
+  home feeds are unaffected. An actor with no `actor_privacy_prefs` row (registered before the
+  table existed) is treated as every default: `true`.
 
 ## Operator transparency
 
