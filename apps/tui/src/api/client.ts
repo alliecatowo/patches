@@ -218,6 +218,95 @@ import {
   type VerifyEmailRequest,
   type VerifyEmailResponse,
 } from '@patches/proto';
+import {
+  createAppealClient,
+  createFilterClient,
+  createFilterListClient,
+  createLabelClient,
+  createPrivacyClient,
+  type AcknowledgePrivacyNoticeRequest,
+  type AcknowledgePrivacyNoticeResponse,
+  type AppealGrpcClient,
+  type ApplyLabelRequest,
+  type ApplyLabelResponse,
+  type CancelAccountDeletionRequest,
+  type CancelAccountDeletionResponse,
+  type CreateAppealRequest,
+  type CreateAppealResponse,
+  type CreateFilterRequest,
+  type CreateFilterResponse,
+  type CreateLabelerRequest,
+  type CreateLabelerResponse,
+  type DeleteFilterListRequest,
+  type DeleteFilterListResponse,
+  type DeleteFilterRequest,
+  type DeleteFilterResponse,
+  type ExportAccountRequest,
+  type ExportAccountResponse,
+  type ExportFiltersRequest,
+  type ExportFiltersResponse,
+  type FilterGrpcClient,
+  type FilterListGrpcClient,
+  type GetAppealRequest,
+  type GetAppealResponse,
+  type GetDeletionStatusRequest,
+  type GetDeletionStatusResponse,
+  type GetExportStatusRequest,
+  type GetExportStatusResponse,
+  type GetFilterListRequest,
+  type GetFilterListResponse,
+  type GetLabelerRequest,
+  type GetLabelerResponse,
+  type GetNodePolicyResponse,
+  type GetPrivacyPrefsRequest,
+  type GetPrivacyPrefsResponse,
+  type ImportFiltersRequest,
+  type ImportFiltersResponse,
+  type LabelGrpcClient,
+  type ListFilterListEntriesRequest,
+  type ListFilterListEntriesResponse,
+  type ListFilterListsRequest,
+  type ListFilterListsResponse,
+  type ListFilterListSubscriptionsRequest,
+  type ListFilterListSubscriptionsResponse,
+  type ListFiltersRequest,
+  type ListFiltersResponse,
+  type ListLabelersRequest,
+  type ListLabelersResponse,
+  type ListLabelsOnSubjectRequest,
+  type ListLabelsOnSubjectResponse,
+  type ListModerationLogRequest,
+  type ListModerationLogResponse,
+  type ListMyAppealsRequest,
+  type ListMyAppealsResponse,
+  type ListMyModerationNoticesRequest,
+  type ListMyModerationNoticesResponse,
+  type PrivacyGrpcClient,
+  type PublishFilterListRequest,
+  type PublishFilterListResponse,
+  type RequestAccountDeletionRequest,
+  type RequestAccountDeletionResponse,
+  type RetractLabelRequest,
+  type RetractLabelResponse,
+  type SetFilterListEntryExceptionRequest,
+  type SetFilterListEntryExceptionResponse,
+  type SetLabelerSubscriptionActionRequest,
+  type SetLabelerSubscriptionActionResponse,
+  type SubscribeFilterListRequest,
+  type SubscribeFilterListResponse,
+  type SubscribeLabelerRequest,
+  type SubscribeLabelerResponse,
+  type UnsubscribeFilterListRequest,
+  type UnsubscribeFilterListResponse,
+  type UnsubscribeLabelerRequest,
+  type UnsubscribeLabelerResponse,
+  type UpdateFilterListRequest,
+  type UpdateFilterListResponse,
+  type UpdateFilterRequest,
+  type UpdateFilterResponse,
+  type UpdatePrivacyPrefsRequest,
+  type UpdatePrivacyPrefsResponse,
+} from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 
@@ -253,6 +342,11 @@ export class PatchesApi {
   private readonly community: CommunityGrpcClient;
   private readonly directMessage: DirectMessageGrpcClient;
   private readonly tag: TagGrpcClient;
+  private readonly filter: FilterGrpcClient;
+  private readonly filterList: FilterListGrpcClient;
+  private readonly label: LabelGrpcClient;
+  private readonly appeal: AppealGrpcClient;
+  private readonly privacy: PrivacyGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -274,6 +368,11 @@ export class PatchesApi {
     this.community = createCommunityClient(options.target, channelCredentials);
     this.directMessage = createDirectMessageClient(options.target, channelCredentials);
     this.tag = createTagClient(options.target, channelCredentials);
+    this.filter = createFilterClient(options.target, channelCredentials);
+    this.filterList = createFilterListClient(options.target, channelCredentials);
+    this.label = createLabelClient(options.target, channelCredentials);
+    this.appeal = createAppealClient(options.target, channelCredentials);
+    this.privacy = createPrivacyClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -522,6 +621,13 @@ export class PatchesApi {
 
   async getNodeInfo(): Promise<GetNodeInfoResponse> {
     return unary(this.node.getNodeInfo.bind(this.node), {}, DEADLINES_MS.unary);
+  }
+
+  /** Operator transparency document (spec §197.6) — unauthenticated, like `getNodeInfo`.
+   * An all-empty `NodePolicy` means "this node publishes no policy"; render that
+   * explicitly rather than hiding the screen. */
+  async getNodePolicy(): Promise<GetNodePolicyResponse> {
+    return unary(this.node.getNodePolicy.bind(this.node), {}, DEADLINES_MS.unary);
   }
 
   // ---- PostService — requires an authenticated session ----
@@ -775,6 +881,29 @@ export class PatchesApi {
   ): Promise<ReportActorResponse> {
     return unary(
       this.moderation.reportActor.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** A public, anonymized transparency record (spec §201.4) — unauthenticated. */
+  async listModerationLog(request: ListModerationLogRequest): Promise<ListModerationLogResponse> {
+    return unary(
+      this.moderation.listModerationLog.bind(this.moderation),
+      request,
+      DEADLINES_MS.unary,
+    );
+  }
+
+  /** The caller's own notified enforcement actions (spec §201.2) — never a report's
+   * internal moderator note. */
+  async listMyModerationNotices(
+    request: ListMyModerationNoticesRequest,
+    accessToken: string,
+  ): Promise<ListMyModerationNoticesResponse> {
+    return unary(
+      this.moderation.listMyModerationNotices.bind(this.moderation),
       request,
       DEADLINES_MS.unary,
       accessToken,
@@ -1169,6 +1298,437 @@ export class PatchesApi {
     return unary(this.tag.listMutedTags.bind(this.tag), request, DEADLINES_MS.unary, accessToken);
   }
 
+  // ---- FilterService — bring-your-own filters (spec §198), all require a session ----
+
+  async createFilter(
+    request: CreateFilterRequest,
+    accessToken: string,
+  ): Promise<CreateFilterResponse> {
+    return unary(
+      this.filter.createFilter.bind(this.filter),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async updateFilter(
+    request: UpdateFilterRequest,
+    accessToken: string,
+  ): Promise<UpdateFilterResponse> {
+    return unary(
+      this.filter.updateFilter.bind(this.filter),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async deleteFilter(
+    request: DeleteFilterRequest,
+    accessToken: string,
+  ): Promise<DeleteFilterResponse> {
+    return unary(
+      this.filter.deleteFilter.bind(this.filter),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listFilters(
+    request: ListFiltersRequest,
+    accessToken: string,
+  ): Promise<ListFiltersResponse> {
+    return unary(
+      this.filter.listFilters.bind(this.filter),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async exportFilters(accessToken: string): Promise<ExportFiltersResponse> {
+    return unary(
+      this.filter.exportFilters.bind(this.filter),
+      {} as ExportFiltersRequest,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** `apply: false` (the default) previews what would be added without writing
+   * anything (spec §198.5) — the client always renders that preview before a second
+   * call with `apply: true` actually commits it. */
+  async importFilters(
+    request: ImportFiltersRequest,
+    accessToken: string,
+  ): Promise<ImportFiltersResponse> {
+    return unary(
+      this.filter.importFilters.bind(this.filter),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- FilterListService — publishable/subscribable filter lists (spec §199) ----
+
+  async publishFilterList(
+    request: PublishFilterListRequest,
+    accessToken: string,
+  ): Promise<PublishFilterListResponse> {
+    return unary(
+      this.filterList.publishFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async updateFilterList(
+    request: UpdateFilterListRequest,
+    accessToken: string,
+  ): Promise<UpdateFilterListResponse> {
+    return unary(
+      this.filterList.updateFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async deleteFilterList(
+    request: DeleteFilterListRequest,
+    accessToken: string,
+  ): Promise<DeleteFilterListResponse> {
+    return unary(
+      this.filterList.deleteFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Anonymous-readable — a published list is public by construction (spec §199.1). */
+  async getFilterList(
+    request: GetFilterListRequest,
+    accessToken?: string,
+  ): Promise<GetFilterListResponse> {
+    return unary(
+      this.filterList.getFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listFilterLists(
+    request: ListFilterListsRequest,
+    accessToken?: string,
+  ): Promise<ListFilterListsResponse> {
+    return unary(
+      this.filterList.listFilterLists.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** The full entry set — visible to any subscriber, never a black box (spec §199.3). */
+  async listFilterListEntries(
+    request: ListFilterListEntriesRequest,
+    accessToken?: string,
+  ): Promise<ListFilterListEntriesResponse> {
+    return unary(
+      this.filterList.listFilterListEntries.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async subscribeFilterList(
+    request: SubscribeFilterListRequest,
+    accessToken: string,
+  ): Promise<SubscribeFilterListResponse> {
+    return unary(
+      this.filterList.subscribeFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unsubscribeFilterList(
+    request: UnsubscribeFilterListRequest,
+    accessToken: string,
+  ): Promise<UnsubscribeFilterListResponse> {
+    return unary(
+      this.filterList.unsubscribeFilterList.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listFilterListSubscriptions(
+    request: ListFilterListSubscriptionsRequest,
+    accessToken: string,
+  ): Promise<ListFilterListSubscriptionsResponse> {
+    return unary(
+      this.filterList.listFilterListSubscriptions.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** "This list is right about everything except my friend" (spec §199.3) — never
+   * unsubscribes, never tells the list author. */
+  async setFilterListEntryException(
+    request: SetFilterListEntryExceptionRequest,
+    accessToken: string,
+  ): Promise<SetFilterListEntryExceptionResponse> {
+    return unary(
+      this.filterList.setFilterListEntryException.bind(this.filterList),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- LabelService — subscriber-scoped annotation (spec §200) ----
+
+  async createLabeler(
+    request: CreateLabelerRequest,
+    accessToken: string,
+  ): Promise<CreateLabelerResponse> {
+    return unary(
+      this.label.createLabeler.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getLabeler(request: GetLabelerRequest, accessToken?: string): Promise<GetLabelerResponse> {
+    return unary(this.label.getLabeler.bind(this.label), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async listLabelers(
+    request: ListLabelersRequest,
+    accessToken?: string,
+  ): Promise<ListLabelersResponse> {
+    return unary(
+      this.label.listLabelers.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async applyLabel(request: ApplyLabelRequest, accessToken: string): Promise<ApplyLabelResponse> {
+    return unary(this.label.applyLabel.bind(this.label), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async retractLabel(
+    request: RetractLabelRequest,
+    accessToken: string,
+  ): Promise<RetractLabelResponse> {
+    return unary(
+      this.label.retractLabel.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async subscribeLabeler(
+    request: SubscribeLabelerRequest,
+    accessToken: string,
+  ): Promise<SubscribeLabelerResponse> {
+    return unary(
+      this.label.subscribeLabeler.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unsubscribeLabeler(
+    request: UnsubscribeLabelerRequest,
+    accessToken: string,
+  ): Promise<UnsubscribeLabelerResponse> {
+    return unary(
+      this.label.unsubscribeLabeler.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** A viewer may set any value to `LABEL_ACTION_IGNORE` except a value the node has
+   * designated legally mandatory (`LabelVocabularyEntry.mandatory`, spec §200.3) —
+   * enforced server-side. */
+  async setLabelerSubscriptionAction(
+    request: SetLabelerSubscriptionActionRequest,
+    accessToken: string,
+  ): Promise<SetLabelerSubscriptionActionResponse> {
+    return unary(
+      this.label.setLabelerSubscriptionAction.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Pull-only self-inspection (spec §200.4) — an actor is never notified that they
+   * were labeled. */
+  async listLabelsOnSubject(
+    request: ListLabelsOnSubjectRequest,
+    accessToken?: string,
+  ): Promise<ListLabelsOnSubjectResponse> {
+    return unary(
+      this.label.listLabelsOnSubject.bind(this.label),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- AppealService — appeals against a node moderation notice (spec §201.3) ----
+
+  async createAppeal(
+    request: CreateAppealRequest,
+    accessToken: string,
+  ): Promise<CreateAppealResponse> {
+    return unary(
+      this.appeal.createAppeal.bind(this.appeal),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getAppeal(request: GetAppealRequest, accessToken: string): Promise<GetAppealResponse> {
+    return unary(this.appeal.getAppeal.bind(this.appeal), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async listMyAppeals(
+    request: ListMyAppealsRequest,
+    accessToken: string,
+  ): Promise<ListMyAppealsResponse> {
+    return unary(
+      this.appeal.listMyAppeals.bind(this.appeal),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- PrivacyService — notice, discoverability, export, deletion (spec §197) ----
+
+  async acknowledgePrivacyNotice(
+    request: AcknowledgePrivacyNoticeRequest,
+    accessToken: string,
+  ): Promise<AcknowledgePrivacyNoticeResponse> {
+    return unary(
+      this.privacy.acknowledgePrivacyNotice.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getPrivacyPrefs(
+    request: GetPrivacyPrefsRequest,
+    accessToken: string,
+  ): Promise<GetPrivacyPrefsResponse> {
+    return unary(
+      this.privacy.getPrivacyPrefs.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async updatePrivacyPrefs(
+    request: UpdatePrivacyPrefsRequest,
+    accessToken: string,
+  ): Promise<UpdatePrivacyPrefsResponse> {
+    return unary(
+      this.privacy.updatePrivacyPrefs.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Enqueues a background export job — never synchronous (spec §30, ADR 0004). */
+  async exportAccount(
+    request: ExportAccountRequest,
+    accessToken: string,
+  ): Promise<ExportAccountResponse> {
+    return unary(
+      this.privacy.exportAccount.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getExportStatus(
+    request: GetExportStatusRequest,
+    accessToken: string,
+  ): Promise<GetExportStatusResponse> {
+    return unary(
+      this.privacy.getExportStatus.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Moves the account to `PENDING_DELETION` immediately, then a grace period
+   * (spec §197.4). */
+  async requestAccountDeletion(
+    request: RequestAccountDeletionRequest,
+    accessToken: string,
+  ): Promise<RequestAccountDeletionResponse> {
+    return unary(
+      this.privacy.requestAccountDeletion.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Only while still within the grace period. */
+  async cancelAccountDeletion(
+    request: CancelAccountDeletionRequest,
+    accessToken: string,
+  ): Promise<CancelAccountDeletionResponse> {
+    return unary(
+      this.privacy.cancelAccountDeletion.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getDeletionStatus(
+    request: GetDeletionStatusRequest,
+    accessToken: string,
+  ): Promise<GetDeletionStatusResponse> {
+    return unary(
+      this.privacy.getDeletionStatus.bind(this.privacy),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
@@ -1185,6 +1745,11 @@ export class PatchesApi {
     this.community.close();
     this.directMessage.close();
     this.tag.close();
+    this.filter.close();
+    this.filterList.close();
+    this.label.close();
+    this.appeal.close();
+    this.privacy.close();
   }
 }
 
