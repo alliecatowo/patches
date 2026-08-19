@@ -18,6 +18,8 @@ import {
   type PinPostResponse,
   type PostServiceController,
   PostServiceControllerMethods,
+  type SearchPostsRequest,
+  type SearchPostsResponse,
   type UnpinPostRequest,
   type UnpinPostResponse,
 } from '@patches/proto/nest';
@@ -165,6 +167,25 @@ export class PostController implements PostServiceController {
   ): Promise<UnpinPostResponse> {
     const post = await this.posts.unpinPost(requireSession(session).actorId, request.postId);
     return { post: toProtoPost(post) };
+  }
+
+  async searchPosts(
+    @Payload() request: SearchPostsRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<SearchPostsResponse> {
+    const viewerActorId = await this.optionalViewerActorId(metadata);
+    const result = await this.posts.searchPosts(
+      request.query,
+      request.cursor,
+      request.limit,
+      blank(request.authorHandle),
+      request.includeReplies,
+      viewerActorId,
+    );
+    return {
+      posts: result.posts.map(toProtoPost),
+      page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
   }
 
   /**

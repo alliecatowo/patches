@@ -27,7 +27,9 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
+import { applyCursor, applyTagMuteFilter, applyVisibilityFilter } from '../feeds/feed.service.js';
 import { clampLimit, decodeCursor, pageInfoFor, type Cursor } from '../feeds/pagination.js';
+import { toPostViews } from '../feeds/post-batch.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import { TagExtractionService, parseTags } from '../tags/tag-extraction.service.js';
 import { communitySummaryOf } from './community-summary.js';
@@ -36,6 +38,7 @@ import {
   createPostInputSchema,
   editPostInputSchema,
   parseInput,
+  searchPostsInputSchema,
   uuidInputSchema,
 } from './validation.js';
 
@@ -85,6 +88,12 @@ export interface ListRepliesResult {
 
 export interface ListPostEditsResult {
   edits: PostEditView[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+
+export interface SearchPostsResult {
+  posts: PostView[];
   nextCursor: string;
   hasMore: boolean;
 }
@@ -639,6 +648,93 @@ export class PostService {
     const posts = await Promise.all(
       page.map((row) => this.viewOf(this.dataSource.manager, row, viewerActorId)),
     );
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+    return { posts, nextCursor, hasMore };
+  }
+
+  /**
+   * Full-text search over local post bodies (spec §194): Postgres `websearch_to_tsquery`
+   * against the `idx_posts_body_fts` GIN expression index (`Phase12PostSearch` migration),
+   * strictly newest-first and keyset-paged like every other list RPC — never a relevance
+   * score, never a `sort`/`order` parameter.
+   *
+   * Reuses `FeedService`'s exported `applyVisibilityFilter`/`applyTagMuteFilter`/`applyCursor`
+   * so the exact same block/mute/`FOLLOWERS`-visibility/tag-mute rules `ListLocalFeed` applies
+   * govern search too (spec §62), and mirrors `listLocalFeed`'s `isLocal`/community-visibility
+   * shape rather than duplicating it.
+   */
+  async searchPosts(
+    queryRaw: string,
+    cursorRaw: string,
+    limit: number,
+    authorHandleRaw: string | undefined,
+    includeReplies: boolean,
+    viewerActorId?: string,
+  ): Promise<SearchPostsResult> {
+    const parsed = parseInput(searchPostsInputSchema, {
+      query: queryRaw,
+      authorHandle: authorHandleRaw,
+    });
+
+    let authorActorId: string | undefined;
+    if (parsed.authorHandle !== undefined) {
+      const author = await this.dataSource
+        .getRepository(Actor)
+        .findOne({ where: { handleNormalized: parsed.authorHandle.toLowerCase() } });
+      // An unknown handle is an empty result set, not an error — the same "degrade to no
+      // matches" treatment `listTagFeed` gives an unknown tag.
+      if (author === null) return { posts: [], nextCursor: '', hasMore: false };
+      authorActorId = author.id;
+    }
+
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+
+    const qb = this.dataSource
+      .getRepository(Post)
+      .createQueryBuilder('post')
+      .leftJoinAndSelect('post.authorActor', 'author')
+      .andWhere(
+        `to_tsvector('simple', COALESCE("post"."body", '')) @@ websearch_to_tsquery('simple', :searchQuery)`,
+        { searchQuery: parsed.query },
+      )
+      .andWhere('post.isLocal = true')
+      .orderBy('post.createdAt', 'DESC')
+      .addOrderBy('post.id', 'DESC');
+
+    applyVisibilityFilter(qb, viewerActorId, 'post');
+    if (viewerActorId !== undefined) applyTagMuteFilter(qb, viewerActorId, 'post');
+
+    if (authorActorId !== undefined) {
+      qb.andWhere('post.authorActorId = :searchAuthorActorId', {
+        searchAuthorActorId: authorActorId,
+      });
+    }
+    if (!includeReplies) {
+      qb.andWhere('post.inReplyToId IS NULL');
+    }
+    if (viewerActorId === undefined) {
+      qb.andWhere('post.communityId IS NULL');
+    } else {
+      qb.andWhere(
+        `(post.communityId IS NULL OR EXISTS (
+          SELECT 1 FROM community_members search_member
+          WHERE search_member.community_id = "post"."community_id"
+            AND search_member.actor_id = :searchViewerActorId
+        ))`,
+        { searchViewerActorId: viewerActorId },
+      );
+    }
+    if (cursor !== undefined) applyCursor(qb, 'post', cursor);
+    qb.take(take + 1);
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const posts = await toPostViews(this.dataSource.manager, page, viewerActorId);
     const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,

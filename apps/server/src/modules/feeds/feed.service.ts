@@ -281,7 +281,13 @@ export class FeedService {
   }
 }
 
-function applyVisibilityFilter<T extends ObjectLiteral>(
+/**
+ * Exported so `PostService.searchPosts` (`modules/posts/post.service.ts`) can apply the exact
+ * same block/mute/`FOLLOWERS`-visibility rules `ListLocalFeed` does, rather than duplicating
+ * this query (spec §62). Both modules are `apps/server`-internal — this is a plain function
+ * import, not a cross-module Nest dependency.
+ */
+export function applyVisibilityFilter<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   viewerActorId: string | undefined,
   alias: 'post' | 'repostedPost',
@@ -324,7 +330,9 @@ function applyVisibilityFilter<T extends ObjectLiteral>(
   );
 }
 
-function applyCursor<T extends ObjectLiteral>(
+/** Exported for the same reason {@link applyVisibilityFilter} is — reused by
+ * `PostService.searchPosts`. */
+export function applyCursor<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   alias: 'post' | 'repost',
   cursor: Cursor,
@@ -335,7 +343,9 @@ function applyCursor<T extends ObjectLiteral>(
   });
 }
 
-function applyTagMuteFilter<T extends ObjectLiteral>(
+/** Exported for the same reason {@link applyVisibilityFilter} is — reused by
+ * `PostService.searchPosts`. */
+export function applyTagMuteFilter<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   viewerActorId: string,
   alias: 'post' | 'repostedPost',
