@@ -6,10 +6,14 @@ import {
   FeedServiceControllerMethods,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
+  type ListCommunityFeedRequest,
+  type ListCommunityFeedResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListTagFeedRequest,
+  type ListTagFeedResponse,
   type Post as ProtoPost,
 } from '@patches/proto/nest';
 
@@ -74,6 +78,23 @@ export class FeedController implements FeedServiceController {
         viewerActorId,
       ),
     );
+  }
+
+  /**
+   * `FeedService` has no tag/community feed application logic yet — `ListTagFeed`'s
+   * `post_tags`/`tags` join and `ListCommunityFeed`'s `posts.community_id` filter land with
+   * the tags/communities slice of Amendment B (P11-00x); this contract-only wave (P11-001)
+   * only needs the controller to satisfy `FeedServiceController`. Honest `NOT_IMPLEMENTED`
+   * (spec §176) rather than a silent empty page.
+   */
+  listTagFeed(@Payload() _request: ListTagFeedRequest): Promise<ListTagFeedResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'ListTagFeed is not implemented yet.');
+  }
+
+  listCommunityFeed(
+    @Payload() _request: ListCommunityFeedRequest,
+  ): Promise<ListCommunityFeedResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'ListCommunityFeed is not implemented yet.');
   }
 
   /**

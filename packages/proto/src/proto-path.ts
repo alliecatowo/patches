@@ -81,6 +81,7 @@ export function getProtoFiles(): readonly string[] {
         'system',
         'auth',
         'actors',
+        'communities',
         'posts',
         'feeds',
         'social_graph',
@@ -90,6 +91,8 @@ export function getProtoFiles(): readonly string[] {
         'moderation',
         'media',
         'pages',
+        'messages',
+        'tags',
       ].map((name) => join(dir, 'patches', 'v1', `${name}.proto`)),
     );
   }

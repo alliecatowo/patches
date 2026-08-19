@@ -1,0 +1,225 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+
+// Topical communities a post may optionally belong to (spec §189–190). A community
+// moderator's authority stops at the community boundary (spec §192) — no cross-community
+// power, and every moderation action here is audited (spec §66).
+service CommunityService {
+  rpc CreateCommunity(CreateCommunityRequest) returns (CreateCommunityResponse);
+
+  rpc GetCommunity(GetCommunityRequest) returns (GetCommunityResponse);
+
+  rpc ListCommunities(ListCommunitiesRequest) returns (ListCommunitiesResponse);
+
+  // Idempotent: joining a community the caller already belongs to is not an error.
+  rpc JoinCommunity(JoinCommunityRequest) returns (JoinCommunityResponse);
+
+  // Idempotent: leaving a community the caller doesn't belong to is not an error.
+  rpc LeaveCommunity(LeaveCommunityRequest) returns (LeaveCommunityResponse);
+
+  rpc ListCommunityMembers(ListCommunityMembersRequest) returns (ListCommunityMembersResponse);
+
+  // Partial update, `update_mask`-driven — same pattern as `ActorService.UpdateProfile`.
+  // Requires the caller to be a moderator of the community.
+  rpc UpdateCommunity(UpdateCommunityRequest) returns (UpdateCommunityResponse);
+
+  // Promotes/demotes a member between `member` and `moderator`. Requires the caller to be a
+  // moderator.
+  rpc SetCommunityRole(SetCommunityRoleRequest) returns (SetCommunityRoleResponse);
+
+  // Moderator-only: detaches a post from the community without deleting the post itself.
+  rpc RemovePostFromCommunity(RemovePostFromCommunityRequest) returns (RemovePostFromCommunityResponse);
+
+  rpc BanFromCommunity(BanFromCommunityRequest) returns (BanFromCommunityResponse);
+
+  // Rate-limited, block-aware unsolicited-contact vector (spec §188, §192). Never
+  // auto-joins the invitee.
+  rpc InviteToCommunity(InviteToCommunityRequest) returns (InviteToCommunityResponse);
+
+  rpc RespondToCommunityInvite(RespondToCommunityInviteRequest) returns (RespondToCommunityInviteResponse);
+}
+
+enum CommunityRole {
+  COMMUNITY_ROLE_UNSPECIFIED = 0;
+  COMMUNITY_ROLE_MEMBER = 1;
+  COMMUNITY_ROLE_MODERATOR = 2;
+}
+
+enum CommunityInviteStatus {
+  COMMUNITY_INVITE_STATUS_UNSPECIFIED = 0;
+  COMMUNITY_INVITE_STATUS_PENDING = 1;
+  COMMUNITY_INVITE_STATUS_ACCEPTED = 2;
+  COMMUNITY_INVITE_STATUS_DECLINED = 3;
+}
+
+message CommunityCounts {
+  uint32 members = 1;
+  uint32 posts = 2;
+}
+
+message Community {
+  string id = 1;
+
+  // [a-z0-9_], 3-32 characters, unique per node (spec §188).
+  string name = 2;
+
+  // Max 80 characters (spec §188).
+  string display_name = 3;
+
+  // Max 500 characters (spec §188).
+  string description = 4;
+
+  // Max 4 KiB (spec §188).
+  string rules = 5;
+
+  Actor created_by = 6;
+  bool is_public = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  CommunityCounts counts = 10;
+
+  // `COMMUNITY_ROLE_UNSPECIFIED` when the viewer is not a member (including an anonymous
+  // read).
+  CommunityRole viewer_role = 11;
+}
+
+message CreateCommunityRequest {
+  // Idempotency key (spec §45), same pattern as `CreatePostRequest.client_request_id`.
+  string client_request_id = 1;
+
+  string name = 2;
+  string display_name = 3;
+  string description = 4;
+  string rules = 5;
+  bool is_public = 6;
+}
+
+message CreateCommunityResponse {
+  Community community = 1;
+}
+
+message GetCommunityRequest {
+  string id = 1;
+}
+
+message GetCommunityResponse {
+  Community community = 1;
+}
+
+message ListCommunitiesRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListCommunitiesResponse {
+  repeated Community communities = 1;
+  PageInfo page = 2;
+}
+
+message JoinCommunityRequest {
+  string community_id = 1;
+}
+
+message JoinCommunityResponse {
+  Community community = 1;
+}
+
+message LeaveCommunityRequest {
+  string community_id = 1;
+}
+
+message LeaveCommunityResponse {
+  Community community = 1;
+}
+
+message CommunityMember {
+  Actor actor = 1;
+  CommunityRole role = 2;
+  google.protobuf.Timestamp joined_at = 3;
+}
+
+message ListCommunityMembersRequest {
+  string community_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListCommunityMembersResponse {
+  repeated CommunityMember members = 1;
+  PageInfo page = 2;
+}
+
+// `update_mask` selects which of `display_name`/`description`/`rules`/`is_public` to apply —
+// same FieldMask pattern as `ActorService.UpdateProfile`.
+message UpdateCommunityRequest {
+  string id = 1;
+  string display_name = 2;
+  string description = 3;
+  string rules = 4;
+  bool is_public = 5;
+  google.protobuf.FieldMask update_mask = 6;
+}
+
+message UpdateCommunityResponse {
+  Community community = 1;
+}
+
+message SetCommunityRoleRequest {
+  string community_id = 1;
+  string actor_id = 2;
+  CommunityRole role = 3;
+}
+
+message SetCommunityRoleResponse {
+  CommunityMember member = 1;
+}
+
+message RemovePostFromCommunityRequest {
+  string community_id = 1;
+  string post_id = 2;
+}
+
+message RemovePostFromCommunityResponse {}
+
+message BanFromCommunityRequest {
+  string community_id = 1;
+  string actor_id = 2;
+
+  // Optional free text, moderator-facing only (spec §55-style bound, §58).
+  string reason = 3;
+}
+
+message BanFromCommunityResponse {}
+
+message CommunityInvite {
+  string id = 1;
+  string community_id = 2;
+  Actor inviter = 3;
+  Actor invitee = 4;
+  CommunityInviteStatus status = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message InviteToCommunityRequest {
+  string community_id = 1;
+  string invitee_actor_id = 2;
+}
+
+message InviteToCommunityResponse {
+  CommunityInvite invite = 1;
+}
+
+message RespondToCommunityInviteRequest {
+  string invite_id = 1;
+  bool accept = 2;
+}
+
+message RespondToCommunityInviteResponse {
+  CommunityInvite invite = 1;
+}

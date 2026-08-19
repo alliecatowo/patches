@@ -5,6 +5,7 @@ package patches.v1;
 import "google/protobuf/timestamp.proto";
 import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
+import "patches/v1/communities.proto";
 
 // Posts and replies — there is no separate comment entity (spec §23–26, §51).
 service PostService {
@@ -21,6 +22,21 @@ service PostService {
   // Cursor-paginated, depth-bounded thread read (spec §24). Never loads an arbitrarily large
   // thread in one call.
   rpc ListReplies(ListRepliesRequest) returns (ListRepliesResponse);
+
+  // In-place body/content-warning/media edit (spec §189, §26 amended). Up to 20 edits per
+  // post (spec §188); every edit is snapshotted to `post_edits` before it is applied, readable
+  // via `ListPostEdits`.
+  rpc EditPost(EditPostRequest) returns (EditPostResponse);
+
+  // The edit history of a post, most-recent first.
+  rpc ListPostEdits(ListPostEditsRequest) returns (ListPostEditsResponse);
+
+  // Pins one of the caller's own posts to their profile. Up to 3 pinned posts per actor
+  // (spec §188); `position` (0-2) sets display order.
+  rpc PinPost(PinPostRequest) returns (PinPostResponse);
+
+  // Idempotent: unpinning a post that isn't pinned is not an error.
+  rpc UnpinPost(UnpinPostRequest) returns (UnpinPostResponse);
 }
 
 enum PostType {
@@ -34,6 +50,15 @@ enum PostVisibility {
   POST_VISIBILITY_PUBLIC = 1;
   POST_VISIBILITY_UNLISTED = 2;
   POST_VISIBILITY_FOLLOWERS = 3;
+}
+
+// Who may quote a post (spec §189, §192 — re-checked server-side on every `CreatePost` quote,
+// never inferred from what the client was shown).
+enum QuotePolicy {
+  QUOTE_POLICY_UNSPECIFIED = 0;
+  QUOTE_POLICY_ANYONE = 1;
+  QUOTE_POLICY_FOLLOWERS = 2;
+  QUOTE_POLICY_NOBODY = 3;
 }
 
 // One attached image (spec §27–28). `thumbnail_url`/`download_url` are intentionally absent
@@ -56,12 +81,15 @@ message MediaAttachment {
 message PostCounts {
   uint32 replies = 1;
   uint32 likes = 2;
+  uint32 reposts = 3;
+  uint32 quotes = 4;
 }
 
-// Only meaningful for an authenticated viewer; both fields are false for an anonymous read.
+// Only meaningful for an authenticated viewer; all fields are false for an anonymous read.
 message PostViewerState {
   bool liked = 1;
   bool bookmarked = 2;
+  bool reposted = 3;
 }
 
 message Post {
@@ -101,6 +129,16 @@ message Post {
   // Optional click-to-reveal label (e.g. "spoilers"); empty means none. Same length budget as
   // `body` (spec §58).
   string content_warning = 15;
+
+  // Unset unless this post quotes another. Only one level is ever populated here even if the
+  // quoted post itself quotes another post — quoted-post nesting renders one level deep
+  // (spec §188).
+  Post quoted_post = 16;
+
+  // Unset for a post not posted into a community.
+  Community community = 17;
+
+  QuotePolicy quote_policy = 18;
 }
 
 message CreatePostRequest {
@@ -124,6 +162,16 @@ message CreatePostRequest {
   // Optional click-to-reveal label (e.g. "spoilers"); empty means none. Same length budget as
   // `body` (spec §58).
   string content_warning = 7;
+
+  // Empty unless this post quotes another. Re-checked server-side against the quoted post's
+  // `quote_policy` and blocks at write time (spec §192) — never trust a client-side check.
+  string quoted_post_id = 8;
+
+  // Empty unless this post is being created into a community. Immutable after insert
+  // (spec §189).
+  string community_id = 9;
+
+  QuotePolicy quote_policy = 10;
 }
 
 message CreatePostResponse {
@@ -160,4 +208,57 @@ message ListRepliesRequest {
 message ListRepliesResponse {
   repeated Post posts = 1;
   PageInfo page = 2;
+}
+
+// A single prior version of a post, snapshotted immediately before an `EditPost` call
+// overwrites it (spec §189's `post_edits` table).
+message PostEdit {
+  string id = 1;
+  string post_id = 2;
+  string previous_body = 3;
+  string previous_content_warning = 4;
+  repeated MediaAttachment previous_media = 5;
+  string edited_by_actor_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message EditPostRequest {
+  string id = 1;
+  string body = 2;
+  string content_warning = 3;
+  repeated string media_ids = 4;
+}
+
+message EditPostResponse {
+  Post post = 1;
+}
+
+message ListPostEditsRequest {
+  string post_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListPostEditsResponse {
+  repeated PostEdit edits = 1;
+  PageInfo page = 2;
+}
+
+message PinPostRequest {
+  string post_id = 1;
+
+  // 0-2 (spec §188's 3-pin ceiling).
+  uint32 position = 2;
+}
+
+message PinPostResponse {
+  Post post = 1;
+}
+
+message UnpinPostRequest {
+  string post_id = 1;
+}
+
+message UnpinPostResponse {
+  Post post = 1;
 }

@@ -44,6 +44,29 @@ export interface ListActorPostsResponse {
   page: PageInfo | undefined;
 }
 
+export interface ListTagFeedRequest {
+  /** Tag name — matched against the canonical (NFKC-normalized, casefolded) form. */
+  tag: string;
+  cursor: string;
+  limit: number;
+}
+
+export interface ListTagFeedResponse {
+  posts: Post[];
+  page: PageInfo | undefined;
+}
+
+export interface ListCommunityFeedRequest {
+  communityId: string;
+  cursor: string;
+  limit: number;
+}
+
+export interface ListCommunityFeedResponse {
+  posts: Post[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -69,6 +92,20 @@ export interface FeedServiceClient {
     request: ListActorPostsRequest,
     metadata?: Metadata,
   ): Observable<ListActorPostsResponse>;
+
+  /**
+   * All public posts carrying a given tag, chronological. No ordering parameter — same
+   * chronological-only rule as every other feed (spec §182.2).
+   */
+
+  listTagFeed(request: ListTagFeedRequest, metadata?: Metadata): Observable<ListTagFeedResponse>;
+
+  /** A community's posts, chronological. No ordering parameter (spec §182.2). */
+
+  listCommunityFeed(
+    request: ListCommunityFeedRequest,
+    metadata?: Metadata,
+  ): Observable<ListCommunityFeedResponse>;
 }
 
 /**
@@ -97,11 +134,37 @@ export interface FeedServiceController {
     request: ListActorPostsRequest,
     metadata?: Metadata,
   ): Promise<ListActorPostsResponse> | Observable<ListActorPostsResponse> | ListActorPostsResponse;
+
+  /**
+   * All public posts carrying a given tag, chronological. No ordering parameter — same
+   * chronological-only rule as every other feed (spec §182.2).
+   */
+
+  listTagFeed(
+    request: ListTagFeedRequest,
+    metadata?: Metadata,
+  ): Promise<ListTagFeedResponse> | Observable<ListTagFeedResponse> | ListTagFeedResponse;
+
+  /** A community's posts, chronological. No ordering parameter (spec §182.2). */
+
+  listCommunityFeed(
+    request: ListCommunityFeedRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListCommunityFeedResponse>
+    | Observable<ListCommunityFeedResponse>
+    | ListCommunityFeedResponse;
 }
 
 export function FeedServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['listHomeFeed', 'listLocalFeed', 'listActorPosts'];
+    const grpcMethods: string[] = [
+      'listHomeFeed',
+      'listLocalFeed',
+      'listActorPosts',
+      'listTagFeed',
+      'listCommunityFeed',
+    ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod('FeedService', method)(constructor.prototype[method], method, descriptor);

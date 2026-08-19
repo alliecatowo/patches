@@ -8,14 +8,20 @@ import {
   type ListBookmarksResponse,
   type ListPostLikersRequest,
   type ListPostLikersResponse,
+  type ListPostRepostersRequest,
+  type ListPostRepostersResponse,
   type LikePostRequest,
   type LikePostResponse,
   type ReactionServiceController,
   ReactionServiceControllerMethods,
+  type RepostPostRequest,
+  type RepostPostResponse,
   type UnbookmarkPostRequest,
   type UnbookmarkPostResponse,
   type UnlikePostRequest,
   type UnlikePostResponse,
+  type UnrepostPostRequest,
+  type UnrepostPostResponse,
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
@@ -122,6 +128,27 @@ export class ReactionController implements ReactionServiceController {
     };
   }
 
+  /**
+   * `ReactionsService` has no repost application logic yet — the `reposts` table and
+   * `RepostPost`/`UnrepostPost`/`ListPostReposters` RPCs land with the reactions slice of
+   * Amendment B (P11-00x); this contract-only wave (P11-001) only needs the controller to
+   * satisfy `ReactionServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a
+   * silent no-op.
+   */
+  repostPost(@Payload() _request: RepostPostRequest): Promise<RepostPostResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'RepostPost is not implemented yet.');
+  }
+
+  unrepostPost(@Payload() _request: UnrepostPostRequest): Promise<UnrepostPostResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'UnrepostPost is not implemented yet.');
+  }
+
+  listPostReposters(
+    @Payload() _request: ListPostRepostersRequest,
+  ): Promise<ListPostRepostersResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'ListPostReposters is not implemented yet.');
+  }
+
   /** Same implementation as `PostController`/`FeedController`'s copy — see their doc comments
    * for why this is not shared across modules. */
   private async optionalViewerActorId(metadata: Metadata | undefined): Promise<string | undefined> {
@@ -143,12 +170,23 @@ export class ReactionController implements ReactionServiceController {
 }
 
 function toReactionResponse(post: PostView): {
-  counts: { replies: number; likes: number };
-  viewerState: { liked: boolean; bookmarked: boolean };
+  counts: { replies: number; likes: number; reposts: number; quotes: number };
+  viewerState: { liked: boolean; bookmarked: boolean; reposted: boolean };
 } {
   return {
-    counts: { replies: post.counts.replyCount, likes: post.counts.likeCount },
-    viewerState: { liked: post.viewerState.liked, bookmarked: post.viewerState.bookmarked },
+    // reposts/quotes/reposted are always zero/false here — no repost writer exists yet (see
+    // `repostPost`'s doc comment above).
+    counts: {
+      replies: post.counts.replyCount,
+      likes: post.counts.likeCount,
+      reposts: 0,
+      quotes: 0,
+    },
+    viewerState: {
+      liked: post.viewerState.liked,
+      bookmarked: post.viewerState.bookmarked,
+      reposted: false,
+    },
   };
 }
 

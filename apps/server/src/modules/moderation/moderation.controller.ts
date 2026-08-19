@@ -14,6 +14,8 @@ import {
   type MuteActorResponse,
   type ReportActorRequest,
   type ReportActorResponse,
+  type ReportMessageRequest,
+  type ReportMessageResponse,
   type ReportPostRequest,
   type ReportPostResponse,
   type UnblockActorRequest,
@@ -162,6 +164,17 @@ export class ModerationController implements ModerationServiceController {
       request.details,
     );
     return { reportId };
+  }
+
+  /**
+   * `ModerationService`'s application layer has no message-report path yet — snapshot-backed
+   * `ReportMessage` (spec §183.4) lands with `DirectMessageService`'s slice of Amendment B
+   * (P11-00x); this contract-only wave (P11-001) only needs the controller to satisfy
+   * `ModerationServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a silent
+   * no-op report.
+   */
+  reportMessage(@Payload() _request: ReportMessageRequest): Promise<ReportMessageResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'ReportMessage is not implemented yet.');
   }
 }
 

@@ -20,13 +20,22 @@ import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
 } from './generated/patches/v1/auth.js';
+import type {
+  CommunityInviteStatus as CommunityInviteStatusT,
+  CommunityRole as CommunityRoleT,
+} from './generated/patches/v1/communities.js';
 import type { MediaStatus as MediaStatusT } from './generated/patches/v1/media.js';
+import type {
+  ConversationKind as ConversationKindT,
+  MessageRequestStatus as MessageRequestStatusT,
+} from './generated/patches/v1/messages.js';
 import type { ReportReason as ReportReasonT } from './generated/patches/v1/moderation.js';
 import type { RegistrationMode as RegistrationModeT } from './generated/patches/v1/node.js';
 import type { NotificationType as NotificationTypeT } from './generated/patches/v1/notifications.js';
 import type {
   PostType as PostTypeT,
   PostVisibility as PostVisibilityT,
+  QuotePolicy as QuotePolicyT,
 } from './generated/patches/v1/posts.js';
 import type { FollowState as FollowStateT } from './generated/patches/v1/social_graph.js';
 
@@ -79,6 +88,10 @@ export const NOTIFICATION_TYPE = {
   REPLY: 'NOTIFICATION_TYPE_REPLY' as NotificationTypeT,
   MENTION: 'NOTIFICATION_TYPE_MENTION' as NotificationTypeT,
   MODERATION: 'NOTIFICATION_TYPE_MODERATION' as NotificationTypeT,
+  REPOST: 'NOTIFICATION_TYPE_REPOST' as NotificationTypeT,
+  QUOTE: 'NOTIFICATION_TYPE_QUOTE' as NotificationTypeT,
+  MESSAGE: 'NOTIFICATION_TYPE_MESSAGE' as NotificationTypeT,
+  COMMUNITY_INVITE: 'NOTIFICATION_TYPE_COMMUNITY_INVITE' as NotificationTypeT,
 } as const;
 
 export const REPORT_REASON = {
@@ -97,4 +110,37 @@ export const MEDIA_STATUS = {
   PROCESSING: 'MEDIA_STATUS_PROCESSING' as MediaStatusT,
   READY: 'MEDIA_STATUS_READY' as MediaStatusT,
   FAILED: 'MEDIA_STATUS_FAILED' as MediaStatusT,
+} as const;
+
+export const QUOTE_POLICY = {
+  UNSPECIFIED: 'QUOTE_POLICY_UNSPECIFIED' as QuotePolicyT,
+  ANYONE: 'QUOTE_POLICY_ANYONE' as QuotePolicyT,
+  FOLLOWERS: 'QUOTE_POLICY_FOLLOWERS' as QuotePolicyT,
+  NOBODY: 'QUOTE_POLICY_NOBODY' as QuotePolicyT,
+} as const;
+
+export const COMMUNITY_ROLE = {
+  UNSPECIFIED: 'COMMUNITY_ROLE_UNSPECIFIED' as CommunityRoleT,
+  MEMBER: 'COMMUNITY_ROLE_MEMBER' as CommunityRoleT,
+  MODERATOR: 'COMMUNITY_ROLE_MODERATOR' as CommunityRoleT,
+} as const;
+
+export const COMMUNITY_INVITE_STATUS = {
+  UNSPECIFIED: 'COMMUNITY_INVITE_STATUS_UNSPECIFIED' as CommunityInviteStatusT,
+  PENDING: 'COMMUNITY_INVITE_STATUS_PENDING' as CommunityInviteStatusT,
+  ACCEPTED: 'COMMUNITY_INVITE_STATUS_ACCEPTED' as CommunityInviteStatusT,
+  DECLINED: 'COMMUNITY_INVITE_STATUS_DECLINED' as CommunityInviteStatusT,
+} as const;
+
+export const CONVERSATION_KIND = {
+  UNSPECIFIED: 'CONVERSATION_KIND_UNSPECIFIED' as ConversationKindT,
+  DIRECT: 'CONVERSATION_KIND_DIRECT' as ConversationKindT,
+  GROUP: 'CONVERSATION_KIND_GROUP' as ConversationKindT,
+} as const;
+
+export const MESSAGE_REQUEST_STATUS = {
+  UNSPECIFIED: 'MESSAGE_REQUEST_STATUS_UNSPECIFIED' as MessageRequestStatusT,
+  PENDING: 'MESSAGE_REQUEST_STATUS_PENDING' as MessageRequestStatusT,
+  ACCEPTED: 'MESSAGE_REQUEST_STATUS_ACCEPTED' as MessageRequestStatusT,
+  DECLINED: 'MESSAGE_REQUEST_STATUS_DECLINED' as MessageRequestStatusT,
 } as const;

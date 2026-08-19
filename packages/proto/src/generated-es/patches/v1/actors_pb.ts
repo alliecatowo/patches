@@ -19,7 +19,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_actors: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChdwYXRjaGVzL3YxL2FjdG9ycy5wcm90bxIKcGF0Y2hlcy52MSIpCghNZWRpYVJlZhIQCghtZWRpYV9pZBgBIAEoCRILCgN1cmwYAiABKAkiQgoLQWN0b3JDb3VudHMSEQoJZm9sbG93ZXJzGAEgASgNEhEKCWZvbGxvd2luZxgCIAEoDRINCgVwb3N0cxgDIAEoDSKBAQoJTmFtZXBsYXRlEhIKCm5hbWVfY29sb3IYASABKAkSDQoFZ2x5cGgYAiABKAkSDgoGYmFkZ2VzGAMgAygJEhQKDGF2YXRhcl9mcmFtZRgEIAEoCRITCgtzdGF0dXNfbGluZRgFIAEoCRIWCg5wcm9maWxlX2JvcmRlchgGIAEoCSKsAgoFQWN0b3ISCgoCaWQYASABKAkSDgoGaGFuZGxlGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCRILCgNiaW8YBCABKAkSFQoNbG9jYXRpb25fdGV4dBgFIAEoCRITCgt3ZWJzaXRlX3VybBgGIAEoCRIkCgZhdmF0YXIYByABKAsyFC5wYXRjaGVzLnYxLk1lZGlhUmVmEhAKCGlzX2xvY2FsGAggASgIEi0KCWpvaW5lZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASJwoGY291bnRzGAogASgLMhcucGF0Y2hlcy52MS5BY3RvckNvdW50cxIoCgluYW1lcGxhdGUYCyABKAsyFS5wYXRjaGVzLnYxLk5hbWVwbGF0ZSIdCg9HZXRBY3RvclJlcXVlc3QSCgoCaWQYASABKAkiNAoQR2V0QWN0b3JSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IiKQoXR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QSDgoGaGFuZGxlGAEgASgJIjwKGEdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IiwAEKFFVwZGF0ZVByb2ZpbGVSZXF1ZXN0EhQKDGRpc3BsYXlfbmFtZRgBIAEoCRILCgNiaW8YAiABKAkSFQoNbG9jYXRpb25fdGV4dBgDIAEoCRITCgt3ZWJzaXRlX3VybBgEIAEoCRIvCgt1cGRhdGVfbWFzaxgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE1hc2sSKAoJbmFtZXBsYXRlGAYgASgLMhUucGF0Y2hlcy52MS5OYW1lcGxhdGUiOQoVVXBkYXRlUHJvZmlsZVJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvciJDChNTZWFyY2hBY3RvcnNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJdChRTZWFyY2hBY3RvcnNSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIkcKFExpc3RGb2xsb3dlcnNSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJeChVMaXN0Rm9sbG93ZXJzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChRMaXN0Rm9sbG93aW5nUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXgoVTGlzdEZvbGxvd2luZ1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iIwoTUmVzb2x2ZUFjdG9yUmVxdWVzdBIMCgRhY2N0GAEgASgJIjgKFFJlc29sdmVBY3RvclJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvcjLcBAoMQWN0b3JTZXJ2aWNlEkUKCEdldEFjdG9yEhsucGF0Y2hlcy52MS5HZXRBY3RvclJlcXVlc3QaHC5wYXRjaGVzLnYxLkdldEFjdG9yUmVzcG9uc2USXQoQR2V0QWN0b3JCeUhhbmRsZRIjLnBhdGNoZXMudjEuR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QaJC5wYXRjaGVzLnYxLkdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRJUCg1VcGRhdGVQcm9maWxlEiAucGF0Y2hlcy52MS5VcGRhdGVQcm9maWxlUmVxdWVzdBohLnBhdGNoZXMudjEuVXBkYXRlUHJvZmlsZVJlc3BvbnNlElEKDFNlYXJjaEFjdG9ycxIfLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVxdWVzdBogLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVzcG9uc2USVAoNTGlzdEZvbGxvd2VycxIgLnBhdGNoZXMudjEuTGlzdEZvbGxvd2Vyc1JlcXVlc3QaIS5wYXRjaGVzLnYxLkxpc3RGb2xsb3dlcnNSZXNwb25zZRJUCg1MaXN0Rm9sbG93aW5nEiAucGF0Y2hlcy52MS5MaXN0Rm9sbG93aW5nUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdEZvbGxvd2luZ1Jlc3BvbnNlElEKDFJlc29sdmVBY3RvchIfLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVxdWVzdBogLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVzcG9uc2ViBnByb3RvMw',
+    'ChdwYXRjaGVzL3YxL2FjdG9ycy5wcm90bxIKcGF0Y2hlcy52MSIpCghNZWRpYVJlZhIQCghtZWRpYV9pZBgBIAEoCRILCgN1cmwYAiABKAkiQgoLQWN0b3JDb3VudHMSEQoJZm9sbG93ZXJzGAEgASgNEhEKCWZvbGxvd2luZxgCIAEoDRINCgVwb3N0cxgDIAEoDSKBAQoJTmFtZXBsYXRlEhIKCm5hbWVfY29sb3IYASABKAkSDQoFZ2x5cGgYAiABKAkSDgoGYmFkZ2VzGAMgAygJEhQKDGF2YXRhcl9mcmFtZRgEIAEoCRITCgtzdGF0dXNfbGluZRgFIAEoCRIWCg5wcm9maWxlX2JvcmRlchgGIAEoCSJOCgpBY3RvckZsYWlyEhAKCGRvY3VtZW50GAEgASgJEi4KCnVwZGF0ZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIuwCCgVBY3RvchIKCgJpZBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEgsKA2JpbxgEIAEoCRIVCg1sb2NhdGlvbl90ZXh0GAUgASgJEhMKC3dlYnNpdGVfdXJsGAYgASgJEiQKBmF2YXRhchgHIAEoCzIULnBhdGNoZXMudjEuTWVkaWFSZWYSEAoIaXNfbG9jYWwYCCABKAgSLQoJam9pbmVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBInCgZjb3VudHMYCiABKAsyFy5wYXRjaGVzLnYxLkFjdG9yQ291bnRzEigKCW5hbWVwbGF0ZRgLIAEoCzIVLnBhdGNoZXMudjEuTmFtZXBsYXRlEiUKBWZsYWlyGAwgASgLMhYucGF0Y2hlcy52MS5BY3RvckZsYWlyEhcKD3Bpbm5lZF9wb3N0X2lkcxgNIAMoCSIdCg9HZXRBY3RvclJlcXVlc3QSCgoCaWQYASABKAkiNAoQR2V0QWN0b3JSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IiKQoXR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QSDgoGaGFuZGxlGAEgASgJIjwKGEdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3Ii5wEKFFVwZGF0ZVByb2ZpbGVSZXF1ZXN0EhQKDGRpc3BsYXlfbmFtZRgBIAEoCRILCgNiaW8YAiABKAkSFQoNbG9jYXRpb25fdGV4dBgDIAEoCRITCgt3ZWJzaXRlX3VybBgEIAEoCRIvCgt1cGRhdGVfbWFzaxgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE1hc2sSKAoJbmFtZXBsYXRlGAYgASgLMhUucGF0Y2hlcy52MS5OYW1lcGxhdGUSJQoFZmxhaXIYByABKAsyFi5wYXRjaGVzLnYxLkFjdG9yRmxhaXIiOQoVVXBkYXRlUHJvZmlsZVJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvciJDChNTZWFyY2hBY3RvcnNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJdChRTZWFyY2hBY3RvcnNSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIkcKFExpc3RGb2xsb3dlcnNSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJeChVMaXN0Rm9sbG93ZXJzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChRMaXN0Rm9sbG93aW5nUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXgoVTGlzdEZvbGxvd2luZ1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iIwoTUmVzb2x2ZUFjdG9yUmVxdWVzdBIMCgRhY2N0GAEgASgJIjgKFFJlc29sdmVBY3RvclJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvcjLcBAoMQWN0b3JTZXJ2aWNlEkUKCEdldEFjdG9yEhsucGF0Y2hlcy52MS5HZXRBY3RvclJlcXVlc3QaHC5wYXRjaGVzLnYxLkdldEFjdG9yUmVzcG9uc2USXQoQR2V0QWN0b3JCeUhhbmRsZRIjLnBhdGNoZXMudjEuR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QaJC5wYXRjaGVzLnYxLkdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRJUCg1VcGRhdGVQcm9maWxlEiAucGF0Y2hlcy52MS5VcGRhdGVQcm9maWxlUmVxdWVzdBohLnBhdGNoZXMudjEuVXBkYXRlUHJvZmlsZVJlc3BvbnNlElEKDFNlYXJjaEFjdG9ycxIfLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVxdWVzdBogLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVzcG9uc2USVAoNTGlzdEZvbGxvd2VycxIgLnBhdGNoZXMudjEuTGlzdEZvbGxvd2Vyc1JlcXVlc3QaIS5wYXRjaGVzLnYxLkxpc3RGb2xsb3dlcnNSZXNwb25zZRJUCg1MaXN0Rm9sbG93aW5nEiAucGF0Y2hlcy52MS5MaXN0Rm9sbG93aW5nUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdEZvbGxvd2luZ1Jlc3BvbnNlElEKDFJlc29sdmVBY3RvchIfLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVxdWVzdBogLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVzcG9uc2ViBnByb3RvMw',
     [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_patches_v1_common],
   );
 
@@ -147,6 +147,36 @@ export const NameplateSchema: GenMessage<Nameplate> =
   messageDesc(file_patches_v1_actors, 2);
 
 /**
+ * Free-form, allow-listed self-presentation, distinct from `Nameplate` (spec §189, §192):
+ * allow-list only, no images/uploads, control and escape sequences stripped at render. Max
+ * 1 KiB serialized (spec §188).
+ *
+ * @generated from message patches.v1.ActorFlair
+ */
+export type ActorFlair = Message<'patches.v1.ActorFlair'> & {
+  /**
+   * Arbitrary JSON document, shape owned by the client renderer; the server only validates
+   * size and strips unsafe bytes (spec §192) — it does not interpret the document's keys.
+   *
+   * @generated from field: string document = 1;
+   */
+  document: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp updated_at = 2;
+   */
+  updatedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ActorFlair.
+ * Use `create(ActorFlairSchema)` to create a new message.
+ */
+export const ActorFlairSchema: GenMessage<ActorFlair> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_actors, 3);
+
+/**
  * A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
  * summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
  * `ActorCounts` comment for what's guaranteed in each case.
@@ -224,13 +254,27 @@ export type Actor = Message<'patches.v1.Actor'> & {
    * @generated from field: patches.v1.Nameplate nameplate = 11;
    */
   nameplate?: Nameplate | undefined;
+
+  /**
+   * Unset when the actor has never set flair (spec §189, §192).
+   *
+   * @generated from field: patches.v1.ActorFlair flair = 12;
+   */
+  flair?: ActorFlair | undefined;
+
+  /**
+   * Up to 3, in display order (spec §188).
+   *
+   * @generated from field: repeated string pinned_post_ids = 13;
+   */
+  pinnedPostIds: string[];
 };
 
 /**
  * Describes the message patches.v1.Actor.
  * Use `create(ActorSchema)` to create a new message.
  */
-export const ActorSchema: GenMessage<Actor> = /*@__PURE__*/ messageDesc(file_patches_v1_actors, 3);
+export const ActorSchema: GenMessage<Actor> = /*@__PURE__*/ messageDesc(file_patches_v1_actors, 4);
 
 /**
  * @generated from message patches.v1.GetActorRequest
@@ -248,7 +292,7 @@ export type GetActorRequest = Message<'patches.v1.GetActorRequest'> & {
  */
 export const GetActorRequestSchema: GenMessage<GetActorRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 4);
+  messageDesc(file_patches_v1_actors, 5);
 
 /**
  * @generated from message patches.v1.GetActorResponse
@@ -266,7 +310,7 @@ export type GetActorResponse = Message<'patches.v1.GetActorResponse'> & {
  */
 export const GetActorResponseSchema: GenMessage<GetActorResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 5);
+  messageDesc(file_patches_v1_actors, 6);
 
 /**
  * @generated from message patches.v1.GetActorByHandleRequest
@@ -284,7 +328,7 @@ export type GetActorByHandleRequest = Message<'patches.v1.GetActorByHandleReques
  */
 export const GetActorByHandleRequestSchema: GenMessage<GetActorByHandleRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 6);
+  messageDesc(file_patches_v1_actors, 7);
 
 /**
  * @generated from message patches.v1.GetActorByHandleResponse
@@ -302,7 +346,7 @@ export type GetActorByHandleResponse = Message<'patches.v1.GetActorByHandleRespo
  */
 export const GetActorByHandleResponseSchema: GenMessage<GetActorByHandleResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 7);
+  messageDesc(file_patches_v1_actors, 8);
 
 /**
  * Partial update of the caller's profile. `update_mask` selects which of the fields below to
@@ -346,6 +390,13 @@ export type UpdateProfileRequest = Message<'patches.v1.UpdateProfileRequest'> & 
    * @generated from field: patches.v1.Nameplate nameplate = 6;
    */
   nameplate?: Nameplate | undefined;
+
+  /**
+   * Applied when `"flair"` is in `update_mask` (spec §189, §190).
+   *
+   * @generated from field: patches.v1.ActorFlair flair = 7;
+   */
+  flair?: ActorFlair | undefined;
 };
 
 /**
@@ -354,7 +405,7 @@ export type UpdateProfileRequest = Message<'patches.v1.UpdateProfileRequest'> & 
  */
 export const UpdateProfileRequestSchema: GenMessage<UpdateProfileRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 8);
+  messageDesc(file_patches_v1_actors, 9);
 
 /**
  * @generated from message patches.v1.UpdateProfileResponse
@@ -372,7 +423,7 @@ export type UpdateProfileResponse = Message<'patches.v1.UpdateProfileResponse'> 
  */
 export const UpdateProfileResponseSchema: GenMessage<UpdateProfileResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 9);
+  messageDesc(file_patches_v1_actors, 10);
 
 /**
  * @generated from message patches.v1.SearchActorsRequest
@@ -402,7 +453,7 @@ export type SearchActorsRequest = Message<'patches.v1.SearchActorsRequest'> & {
  */
 export const SearchActorsRequestSchema: GenMessage<SearchActorsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 10);
+  messageDesc(file_patches_v1_actors, 11);
 
 /**
  * @generated from message patches.v1.SearchActorsResponse
@@ -425,7 +476,7 @@ export type SearchActorsResponse = Message<'patches.v1.SearchActorsResponse'> & 
  */
 export const SearchActorsResponseSchema: GenMessage<SearchActorsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 11);
+  messageDesc(file_patches_v1_actors, 12);
 
 /**
  * @generated from message patches.v1.ListFollowersRequest
@@ -453,7 +504,7 @@ export type ListFollowersRequest = Message<'patches.v1.ListFollowersRequest'> & 
  */
 export const ListFollowersRequestSchema: GenMessage<ListFollowersRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 12);
+  messageDesc(file_patches_v1_actors, 13);
 
 /**
  * @generated from message patches.v1.ListFollowersResponse
@@ -476,7 +527,7 @@ export type ListFollowersResponse = Message<'patches.v1.ListFollowersResponse'> 
  */
 export const ListFollowersResponseSchema: GenMessage<ListFollowersResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 13);
+  messageDesc(file_patches_v1_actors, 14);
 
 /**
  * @generated from message patches.v1.ListFollowingRequest
@@ -504,7 +555,7 @@ export type ListFollowingRequest = Message<'patches.v1.ListFollowingRequest'> & 
  */
 export const ListFollowingRequestSchema: GenMessage<ListFollowingRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 14);
+  messageDesc(file_patches_v1_actors, 15);
 
 /**
  * @generated from message patches.v1.ListFollowingResponse
@@ -527,7 +578,7 @@ export type ListFollowingResponse = Message<'patches.v1.ListFollowingResponse'> 
  */
 export const ListFollowingResponseSchema: GenMessage<ListFollowingResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 15);
+  messageDesc(file_patches_v1_actors, 16);
 
 /**
  * @generated from message patches.v1.ResolveActorRequest
@@ -548,7 +599,7 @@ export type ResolveActorRequest = Message<'patches.v1.ResolveActorRequest'> & {
  */
 export const ResolveActorRequestSchema: GenMessage<ResolveActorRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 16);
+  messageDesc(file_patches_v1_actors, 17);
 
 /**
  * @generated from message patches.v1.ResolveActorResponse
@@ -566,7 +617,7 @@ export type ResolveActorResponse = Message<'patches.v1.ResolveActorResponse'> & 
  */
 export const ResolveActorResponseSchema: GenMessage<ResolveActorResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_actors, 17);
+  messageDesc(file_patches_v1_actors, 18);
 
 /**
  * Social identities: local accounts today, remote (federated) actors later (spec §19, §21,

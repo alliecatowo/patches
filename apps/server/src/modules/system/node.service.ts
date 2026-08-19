@@ -54,6 +54,17 @@ export class NodeService {
         searchQueryMaxChars: SEARCH_QUERY_MAX_LENGTH,
       },
       capabilities: [...CAPABILITIES],
+      // Amendment B value-carrying capabilities (spec §188, §190) — `CommunityService`/
+      // `DirectMessageService` have no application logic yet (P11-001 is schema/contract
+      // only), so `canCreateCommunity`/`dmEnabled` are honestly `false` rather than a guess,
+      // same reasoning as `CAPABILITIES` being empty above.
+      socialCapabilities: {
+        likeGlyphAllowList: [],
+        maxPostChars: POST_BODY_MAX_LENGTH,
+        canCreateCommunity: false,
+        dmEnabled: false,
+        dmRetentionDays: 0,
+      },
     };
   }
 }

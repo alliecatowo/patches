@@ -28,6 +28,26 @@ message NodeLimits {
   uint32 search_query_max_chars = 8;
 }
 
+// Amendment B capabilities (spec §190) that carry a value rather than being a bare named flag
+// — unlike `GetNodeInfoResponse.capabilities`, which stays a `repeated string` allow-list of
+// on/off features.
+message SocialCapabilities {
+  // Allow-listed single-codepoint glyphs a custom reaction/nameplate may use (spec §192). An
+  // empty list means this node has no custom reaction glyphs enabled.
+  repeated string like_glyph_allow_list = 1;
+
+  // The post body ceiling this node currently enforces; may be raised up to 10,000 characters
+  // from the 5,000 default (spec §188). Mirrors `NodeLimits.post_body_max_chars` — kept here
+  // too so a client reading only the new capabilities message still gets the current value.
+  uint32 max_post_chars = 2;
+
+  bool can_create_community = 3;
+  bool dm_enabled = 4;
+
+  // 0 means "no retention limit is enforced".
+  uint32 dm_retention_days = 5;
+}
+
 message GetNodeInfoRequest {}
 
 message GetNodeInfoResponse {
@@ -47,4 +67,7 @@ message GetNodeInfoResponse {
   // `premium` field anywhere in this message, and there never will be — clients branch on
   // capabilities only. Clients must tolerate unknown entries.
   repeated string capabilities = 5;
+
+  // Value-carrying capabilities added by Amendment B (spec §188, §190).
+  SocialCapabilities social_capabilities = 6;
 }

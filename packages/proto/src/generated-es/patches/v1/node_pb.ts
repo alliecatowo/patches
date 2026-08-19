@@ -12,7 +12,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_node: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi9gEKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0iFAoSR2V0Tm9kZUluZm9SZXF1ZXN0IrYBChNHZXROb2RlSW5mb1Jlc3BvbnNlEg4KBmRvbWFpbhgBIAEoCRIYChBzb2Z0d2FyZV92ZXJzaW9uGAIgASgJEjcKEXJlZ2lzdHJhdGlvbl9tb2RlGAMgASgOMhwucGF0Y2hlcy52MS5SZWdpc3RyYXRpb25Nb2RlEiYKBmxpbWl0cxgEIAEoCzIWLnBhdGNoZXMudjEuTm9kZUxpbWl0cxIUCgxjYXBhYmlsaXRpZXMYBSADKAkqdAoQUmVnaXN0cmF0aW9uTW9kZRIhCh1SRUdJU1RSQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFlJFR0lTVFJBVElPTl9NT0RFX09QRU4QARIhCh1SRUdJU1RSQVRJT05fTU9ERV9JTlZJVEVfT05MWRACMl0KC05vZGVTZXJ2aWNlEk4KC0dldE5vZGVJbmZvEh4ucGF0Y2hlcy52MS5HZXROb2RlSW5mb1JlcXVlc3QaHy5wYXRjaGVzLnYxLkdldE5vZGVJbmZvUmVzcG9uc2ViBnByb3RvMw',
+    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi9gEKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0imAEKElNvY2lhbENhcGFiaWxpdGllcxIdChVsaWtlX2dseXBoX2FsbG93X2xpc3QYASADKAkSFgoObWF4X3Bvc3RfY2hhcnMYAiABKA0SHAoUY2FuX2NyZWF0ZV9jb21tdW5pdHkYAyABKAgSEgoKZG1fZW5hYmxlZBgEIAEoCBIZChFkbV9yZXRlbnRpb25fZGF5cxgFIAEoDSIUChJHZXROb2RlSW5mb1JlcXVlc3Qi8wEKE0dldE5vZGVJbmZvUmVzcG9uc2USDgoGZG9tYWluGAEgASgJEhgKEHNvZnR3YXJlX3ZlcnNpb24YAiABKAkSNwoRcmVnaXN0cmF0aW9uX21vZGUYAyABKA4yHC5wYXRjaGVzLnYxLlJlZ2lzdHJhdGlvbk1vZGUSJgoGbGltaXRzGAQgASgLMhYucGF0Y2hlcy52MS5Ob2RlTGltaXRzEhQKDGNhcGFiaWxpdGllcxgFIAMoCRI7ChNzb2NpYWxfY2FwYWJpbGl0aWVzGAYgASgLMh4ucGF0Y2hlcy52MS5Tb2NpYWxDYXBhYmlsaXRpZXMqdAoQUmVnaXN0cmF0aW9uTW9kZRIhCh1SRUdJU1RSQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFlJFR0lTVFJBVElPTl9NT0RFX09QRU4QARIhCh1SRUdJU1RSQVRJT05fTU9ERV9JTlZJVEVfT05MWRACMl0KC05vZGVTZXJ2aWNlEk4KC0dldE5vZGVJbmZvEh4ucGF0Y2hlcy52MS5HZXROb2RlSW5mb1JlcXVlc3QaHy5wYXRjaGVzLnYxLkdldE5vZGVJbmZvUmVzcG9uc2ViBnByb3RvMw',
   );
 
 /**
@@ -72,6 +72,57 @@ export const NodeLimitsSchema: GenMessage<NodeLimits> =
   messageDesc(file_patches_v1_node, 0);
 
 /**
+ * Amendment B capabilities (spec §190) that carry a value rather than being a bare named flag
+ * — unlike `GetNodeInfoResponse.capabilities`, which stays a `repeated string` allow-list of
+ * on/off features.
+ *
+ * @generated from message patches.v1.SocialCapabilities
+ */
+export type SocialCapabilities = Message<'patches.v1.SocialCapabilities'> & {
+  /**
+   * Allow-listed single-codepoint glyphs a custom reaction/nameplate may use (spec §192). An
+   * empty list means this node has no custom reaction glyphs enabled.
+   *
+   * @generated from field: repeated string like_glyph_allow_list = 1;
+   */
+  likeGlyphAllowList: string[];
+
+  /**
+   * The post body ceiling this node currently enforces; may be raised up to 10,000 characters
+   * from the 5,000 default (spec §188). Mirrors `NodeLimits.post_body_max_chars` — kept here
+   * too so a client reading only the new capabilities message still gets the current value.
+   *
+   * @generated from field: uint32 max_post_chars = 2;
+   */
+  maxPostChars: number;
+
+  /**
+   * @generated from field: bool can_create_community = 3;
+   */
+  canCreateCommunity: boolean;
+
+  /**
+   * @generated from field: bool dm_enabled = 4;
+   */
+  dmEnabled: boolean;
+
+  /**
+   * 0 means "no retention limit is enforced".
+   *
+   * @generated from field: uint32 dm_retention_days = 5;
+   */
+  dmRetentionDays: number;
+};
+
+/**
+ * Describes the message patches.v1.SocialCapabilities.
+ * Use `create(SocialCapabilitiesSchema)` to create a new message.
+ */
+export const SocialCapabilitiesSchema: GenMessage<SocialCapabilities> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 1);
+
+/**
  * @generated from message patches.v1.GetNodeInfoRequest
  */
 export type GetNodeInfoRequest = Message<'patches.v1.GetNodeInfoRequest'> & {};
@@ -82,7 +133,7 @@ export type GetNodeInfoRequest = Message<'patches.v1.GetNodeInfoRequest'> & {};
  */
 export const GetNodeInfoRequestSchema: GenMessage<GetNodeInfoRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 1);
+  messageDesc(file_patches_v1_node, 2);
 
 /**
  * @generated from message patches.v1.GetNodeInfoResponse
@@ -122,6 +173,13 @@ export type GetNodeInfoResponse = Message<'patches.v1.GetNodeInfoResponse'> & {
    * @generated from field: repeated string capabilities = 5;
    */
   capabilities: string[];
+
+  /**
+   * Value-carrying capabilities added by Amendment B (spec §188, §190).
+   *
+   * @generated from field: patches.v1.SocialCapabilities social_capabilities = 6;
+   */
+  socialCapabilities?: SocialCapabilities | undefined;
 };
 
 /**
@@ -130,7 +188,7 @@ export type GetNodeInfoResponse = Message<'patches.v1.GetNodeInfoResponse'> & {
  */
 export const GetNodeInfoResponseSchema: GenMessage<GetNodeInfoResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 2);
+  messageDesc(file_patches_v1_node, 3);
 
 /**
  * @generated from enum patches.v1.RegistrationMode

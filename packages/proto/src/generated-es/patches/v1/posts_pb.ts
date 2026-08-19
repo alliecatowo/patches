@@ -10,6 +10,8 @@ import type { Actor } from './actors_pb.js';
 import { file_patches_v1_actors } from './actors_pb.js';
 import type { PageInfo } from './common_pb.js';
 import { file_patches_v1_common } from './common_pb.js';
+import type { Community } from './communities_pb.js';
+import { file_patches_v1_communities } from './communities_pb.js';
 import type { Message } from '@bufbuild/protobuf';
 
 /**
@@ -18,8 +20,13 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_posts: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChZwYXRjaGVzL3YxL3Bvc3RzLnByb3RvEgpwYXRjaGVzLnYxInkKD01lZGlhQXR0YWNobWVudBIQCghtZWRpYV9pZBgBIAEoCRIQCghhbHRfdGV4dBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SEQoJbWltZV90eXBlGAUgASgJEhAKCHBvc2l0aW9uGAYgASgNIiwKClBvc3RDb3VudHMSDwoHcmVwbGllcxgBIAEoDRINCgVsaWtlcxgCIAEoDSI0Cg9Qb3N0Vmlld2VyU3RhdGUSDQoFbGlrZWQYASABKAgSEgoKYm9va21hcmtlZBgCIAEoCCLsAwoEUG9zdBIKCgJpZBgBIAEoCRIhCgZhdXRob3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEgwKBGJvZHkYAyABKAkSJwoJcG9zdF90eXBlGAQgASgOMhQucGF0Y2hlcy52MS5Qb3N0VHlwZRIQCghsaW5rX3VybBgFIAEoCRIuCgp2aXNpYmlsaXR5GAYgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgHIAEoCRIUCgxyb290X3Bvc3RfaWQYCCABKAkSKgoFbWVkaWEYCSADKAsyGy5wYXRjaGVzLnYxLk1lZGlhQXR0YWNobWVudBIuCgpjcmVhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgllZGl0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2RlbGV0ZWQYDCABKAgSJgoGY291bnRzGA0gASgLMhYucGF0Y2hlcy52MS5Qb3N0Q291bnRzEjEKDHZpZXdlcl9zdGF0ZRgOIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlEhcKD2NvbnRlbnRfd2FybmluZxgPIAEoCSLCAQoRQ3JlYXRlUG9zdFJlcXVlc3QSGQoRY2xpZW50X3JlcXVlc3RfaWQYASABKAkSDAoEYm9keRgCIAEoCRIQCghsaW5rX3VybBgDIAEoCRIuCgp2aXNpYmlsaXR5GAQgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgFIAEoCRIRCgltZWRpYV9pZHMYBiADKAkSFwoPY29udGVudF93YXJuaW5nGAcgASgJIjQKEkNyZWF0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IhwKDkdldFBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjEKD0dldFBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0Ih8KEURlbGV0ZVBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjQKEkRlbGV0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IlcKEkxpc3RSZXBsaWVzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDRIRCgltYXhfZGVwdGgYBCABKA0iWgoTTGlzdFJlcGxpZXNSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbypNCghQb3N0VHlwZRIZChVQT1NUX1RZUEVfVU5TUEVDSUZJRUQQABISCg5QT1NUX1RZUEVfTk9URRABEhIKDlBPU1RfVFlQRV9MSU5LEAIqigEKDlBvc3RWaXNpYmlsaXR5Eh8KG1BPU1RfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhoKFlBPU1RfVklTSUJJTElUWV9QVUJMSUMQARIcChhQT1NUX1ZJU0lCSUxJVFlfVU5MSVNURUQQAhIdChlQT1NUX1ZJU0lCSUxJVFlfRk9MTE9XRVJTEAMyuwIKC1Bvc3RTZXJ2aWNlEksKCkNyZWF0ZVBvc3QSHS5wYXRjaGVzLnYxLkNyZWF0ZVBvc3RSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5DcmVhdGVQb3N0UmVzcG9uc2USQgoHR2V0UG9zdBIaLnBhdGNoZXMudjEuR2V0UG9zdFJlcXVlc3QaGy5wYXRjaGVzLnYxLkdldFBvc3RSZXNwb25zZRJLCgpEZWxldGVQb3N0Eh0ucGF0Y2hlcy52MS5EZWxldGVQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuRGVsZXRlUG9zdFJlc3BvbnNlEk4KC0xpc3RSZXBsaWVzEh4ucGF0Y2hlcy52MS5MaXN0UmVwbGllc1JlcXVlc3QaHy5wYXRjaGVzLnYxLkxpc3RSZXBsaWVzUmVzcG9uc2ViBnByb3RvMw',
-    [file_google_protobuf_timestamp, file_patches_v1_actors, file_patches_v1_common],
+    'ChZwYXRjaGVzL3YxL3Bvc3RzLnByb3RvEgpwYXRjaGVzLnYxInkKD01lZGlhQXR0YWNobWVudBIQCghtZWRpYV9pZBgBIAEoCRIQCghhbHRfdGV4dBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SEQoJbWltZV90eXBlGAUgASgJEhAKCHBvc2l0aW9uGAYgASgNIk0KClBvc3RDb3VudHMSDwoHcmVwbGllcxgBIAEoDRINCgVsaWtlcxgCIAEoDRIPCgdyZXBvc3RzGAMgASgNEg4KBnF1b3RlcxgEIAEoDSJGCg9Qb3N0Vmlld2VyU3RhdGUSDQoFbGlrZWQYASABKAgSEgoKYm9va21hcmtlZBgCIAEoCBIQCghyZXBvc3RlZBgDIAEoCCLsBAoEUG9zdBIKCgJpZBgBIAEoCRIhCgZhdXRob3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEgwKBGJvZHkYAyABKAkSJwoJcG9zdF90eXBlGAQgASgOMhQucGF0Y2hlcy52MS5Qb3N0VHlwZRIQCghsaW5rX3VybBgFIAEoCRIuCgp2aXNpYmlsaXR5GAYgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgHIAEoCRIUCgxyb290X3Bvc3RfaWQYCCABKAkSKgoFbWVkaWEYCSADKAsyGy5wYXRjaGVzLnYxLk1lZGlhQXR0YWNobWVudBIuCgpjcmVhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgllZGl0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2RlbGV0ZWQYDCABKAgSJgoGY291bnRzGA0gASgLMhYucGF0Y2hlcy52MS5Qb3N0Q291bnRzEjEKDHZpZXdlcl9zdGF0ZRgOIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlEhcKD2NvbnRlbnRfd2FybmluZxgPIAEoCRIlCgtxdW90ZWRfcG9zdBgQIAEoCzIQLnBhdGNoZXMudjEuUG9zdBIoCgljb21tdW5pdHkYESABKAsyFS5wYXRjaGVzLnYxLkNvbW11bml0eRItCgxxdW90ZV9wb2xpY3kYEiABKA4yFy5wYXRjaGVzLnYxLlF1b3RlUG9saWN5Ip8CChFDcmVhdGVQb3N0UmVxdWVzdBIZChFjbGllbnRfcmVxdWVzdF9pZBgBIAEoCRIMCgRib2R5GAIgASgJEhAKCGxpbmtfdXJsGAMgASgJEi4KCnZpc2liaWxpdHkYBCABKA4yGi5wYXRjaGVzLnYxLlBvc3RWaXNpYmlsaXR5EhYKDmluX3JlcGx5X3RvX2lkGAUgASgJEhEKCW1lZGlhX2lkcxgGIAMoCRIXCg9jb250ZW50X3dhcm5pbmcYByABKAkSFgoOcXVvdGVkX3Bvc3RfaWQYCCABKAkSFAoMY29tbXVuaXR5X2lkGAkgASgJEi0KDHF1b3RlX3BvbGljeRgKIAEoDjIXLnBhdGNoZXMudjEuUXVvdGVQb2xpY3kiNAoSQ3JlYXRlUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QiHAoOR2V0UG9zdFJlcXVlc3QSCgoCaWQYASABKAkiMQoPR2V0UG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QiHwoRRGVsZXRlUG9zdFJlcXVlc3QSCgoCaWQYASABKAkiNAoSRGVsZXRlUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QiVwoSTGlzdFJlcGxpZXNSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNEhEKCW1heF9kZXB0aBgEIAEoDSJaChNMaXN0UmVwbGllc1Jlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIuEBCghQb3N0RWRpdBIKCgJpZBgBIAEoCRIPCgdwb3N0X2lkGAIgASgJEhUKDXByZXZpb3VzX2JvZHkYAyABKAkSIAoYcHJldmlvdXNfY29udGVudF93YXJuaW5nGAQgASgJEjMKDnByZXZpb3VzX21lZGlhGAUgAygLMhsucGF0Y2hlcy52MS5NZWRpYUF0dGFjaG1lbnQSGgoSZWRpdGVkX2J5X2FjdG9yX2lkGAYgASgJEi4KCmNyZWF0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIlcKD0VkaXRQb3N0UmVxdWVzdBIKCgJpZBgBIAEoCRIMCgRib2R5GAIgASgJEhcKD2NvbnRlbnRfd2FybmluZxgDIAEoCRIRCgltZWRpYV9pZHMYBCADKAkiMgoQRWRpdFBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IkYKFExpc3RQb3N0RWRpdHNSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNImAKFUxpc3RQb3N0RWRpdHNSZXNwb25zZRIjCgVlZGl0cxgBIAMoCzIULnBhdGNoZXMudjEuUG9zdEVkaXQSIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iMwoOUGluUG9zdFJlcXVlc3QSDwoHcG9zdF9pZBgBIAEoCRIQCghwb3NpdGlvbhgCIAEoDSIxCg9QaW5Qb3N0UmVzcG9uc2USHgoEcG9zdBgBIAEoCzIQLnBhdGNoZXMudjEuUG9zdCIjChBVbnBpblBvc3RSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkiMwoRVW5waW5Qb3N0UmVzcG9uc2USHgoEcG9zdBgBIAEoCzIQLnBhdGNoZXMudjEuUG9zdCpNCghQb3N0VHlwZRIZChVQT1NUX1RZUEVfVU5TUEVDSUZJRUQQABISCg5QT1NUX1RZUEVfTk9URRABEhIKDlBPU1RfVFlQRV9MSU5LEAIqigEKDlBvc3RWaXNpYmlsaXR5Eh8KG1BPU1RfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhoKFlBPU1RfVklTSUJJTElUWV9QVUJMSUMQARIcChhQT1NUX1ZJU0lCSUxJVFlfVU5MSVNURUQQAhIdChlQT1NUX1ZJU0lCSUxJVFlfRk9MTE9XRVJTEAMqeQoLUXVvdGVQb2xpY3kSHAoYUVVPVEVfUE9MSUNZX1VOU1BFQ0lGSUVEEAASFwoTUVVPVEVfUE9MSUNZX0FOWU9ORRABEhoKFlFVT1RFX1BPTElDWV9GT0xMT1dFUlMQAhIXChNRVU9URV9QT0xJQ1lfTk9CT0RZEAMy5gQKC1Bvc3RTZXJ2aWNlEksKCkNyZWF0ZVBvc3QSHS5wYXRjaGVzLnYxLkNyZWF0ZVBvc3RSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5DcmVhdGVQb3N0UmVzcG9uc2USQgoHR2V0UG9zdBIaLnBhdGNoZXMudjEuR2V0UG9zdFJlcXVlc3QaGy5wYXRjaGVzLnYxLkdldFBvc3RSZXNwb25zZRJLCgpEZWxldGVQb3N0Eh0ucGF0Y2hlcy52MS5EZWxldGVQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuRGVsZXRlUG9zdFJlc3BvbnNlEk4KC0xpc3RSZXBsaWVzEh4ucGF0Y2hlcy52MS5MaXN0UmVwbGllc1JlcXVlc3QaHy5wYXRjaGVzLnYxLkxpc3RSZXBsaWVzUmVzcG9uc2USRQoIRWRpdFBvc3QSGy5wYXRjaGVzLnYxLkVkaXRQb3N0UmVxdWVzdBocLnBhdGNoZXMudjEuRWRpdFBvc3RSZXNwb25zZRJUCg1MaXN0UG9zdEVkaXRzEiAucGF0Y2hlcy52MS5MaXN0UG9zdEVkaXRzUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdFBvc3RFZGl0c1Jlc3BvbnNlEkIKB1BpblBvc3QSGi5wYXRjaGVzLnYxLlBpblBvc3RSZXF1ZXN0GhsucGF0Y2hlcy52MS5QaW5Qb3N0UmVzcG9uc2USSAoJVW5waW5Qb3N0EhwucGF0Y2hlcy52MS5VbnBpblBvc3RSZXF1ZXN0Gh0ucGF0Y2hlcy52MS5VbnBpblBvc3RSZXNwb25zZWIGcHJvdG8z',
+    [
+      file_google_protobuf_timestamp,
+      file_patches_v1_actors,
+      file_patches_v1_common,
+      file_patches_v1_communities,
+    ],
   );
 
 /**
@@ -86,6 +93,16 @@ export type PostCounts = Message<'patches.v1.PostCounts'> & {
    * @generated from field: uint32 likes = 2;
    */
   likes: number;
+
+  /**
+   * @generated from field: uint32 reposts = 3;
+   */
+  reposts: number;
+
+  /**
+   * @generated from field: uint32 quotes = 4;
+   */
+  quotes: number;
 };
 
 /**
@@ -97,7 +114,7 @@ export const PostCountsSchema: GenMessage<PostCounts> =
   messageDesc(file_patches_v1_posts, 1);
 
 /**
- * Only meaningful for an authenticated viewer; both fields are false for an anonymous read.
+ * Only meaningful for an authenticated viewer; all fields are false for an anonymous read.
  *
  * @generated from message patches.v1.PostViewerState
  */
@@ -111,6 +128,11 @@ export type PostViewerState = Message<'patches.v1.PostViewerState'> & {
    * @generated from field: bool bookmarked = 2;
    */
   bookmarked: boolean;
+
+  /**
+   * @generated from field: bool reposted = 3;
+   */
+  reposted: boolean;
 };
 
 /**
@@ -215,6 +237,27 @@ export type Post = Message<'patches.v1.Post'> & {
    * @generated from field: string content_warning = 15;
    */
   contentWarning: string;
+
+  /**
+   * Unset unless this post quotes another. Only one level is ever populated here even if the
+   * quoted post itself quotes another post — quoted-post nesting renders one level deep
+   * (spec §188).
+   *
+   * @generated from field: patches.v1.Post quoted_post = 16;
+   */
+  quotedPost?: Post | undefined;
+
+  /**
+   * Unset for a post not posted into a community.
+   *
+   * @generated from field: patches.v1.Community community = 17;
+   */
+  community?: Community | undefined;
+
+  /**
+   * @generated from field: patches.v1.QuotePolicy quote_policy = 18;
+   */
+  quotePolicy: QuotePolicy;
 };
 
 /**
@@ -274,6 +317,27 @@ export type CreatePostRequest = Message<'patches.v1.CreatePostRequest'> & {
    * @generated from field: string content_warning = 7;
    */
   contentWarning: string;
+
+  /**
+   * Empty unless this post quotes another. Re-checked server-side against the quoted post's
+   * `quote_policy` and blocks at write time (spec §192) — never trust a client-side check.
+   *
+   * @generated from field: string quoted_post_id = 8;
+   */
+  quotedPostId: string;
+
+  /**
+   * Empty unless this post is being created into a community. Immutable after insert
+   * (spec §189).
+   *
+   * @generated from field: string community_id = 9;
+   */
+  communityId: string;
+
+  /**
+   * @generated from field: patches.v1.QuotePolicy quote_policy = 10;
+   */
+  quotePolicy: QuotePolicy;
 };
 
 /**
@@ -436,6 +500,238 @@ export const ListRepliesResponseSchema: GenMessage<ListRepliesResponse> =
   messageDesc(file_patches_v1_posts, 11);
 
 /**
+ * A single prior version of a post, snapshotted immediately before an `EditPost` call
+ * overwrites it (spec §189's `post_edits` table).
+ *
+ * @generated from message patches.v1.PostEdit
+ */
+export type PostEdit = Message<'patches.v1.PostEdit'> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string post_id = 2;
+   */
+  postId: string;
+
+  /**
+   * @generated from field: string previous_body = 3;
+   */
+  previousBody: string;
+
+  /**
+   * @generated from field: string previous_content_warning = 4;
+   */
+  previousContentWarning: string;
+
+  /**
+   * @generated from field: repeated patches.v1.MediaAttachment previous_media = 5;
+   */
+  previousMedia: MediaAttachment[];
+
+  /**
+   * @generated from field: string edited_by_actor_id = 6;
+   */
+  editedByActorId: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 7;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.PostEdit.
+ * Use `create(PostEditSchema)` to create a new message.
+ */
+export const PostEditSchema: GenMessage<PostEdit> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 12);
+
+/**
+ * @generated from message patches.v1.EditPostRequest
+ */
+export type EditPostRequest = Message<'patches.v1.EditPostRequest'> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string body = 2;
+   */
+  body: string;
+
+  /**
+   * @generated from field: string content_warning = 3;
+   */
+  contentWarning: string;
+
+  /**
+   * @generated from field: repeated string media_ids = 4;
+   */
+  mediaIds: string[];
+};
+
+/**
+ * Describes the message patches.v1.EditPostRequest.
+ * Use `create(EditPostRequestSchema)` to create a new message.
+ */
+export const EditPostRequestSchema: GenMessage<EditPostRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 13);
+
+/**
+ * @generated from message patches.v1.EditPostResponse
+ */
+export type EditPostResponse = Message<'patches.v1.EditPostResponse'> & {
+  /**
+   * @generated from field: patches.v1.Post post = 1;
+   */
+  post?: Post | undefined;
+};
+
+/**
+ * Describes the message patches.v1.EditPostResponse.
+ * Use `create(EditPostResponseSchema)` to create a new message.
+ */
+export const EditPostResponseSchema: GenMessage<EditPostResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 14);
+
+/**
+ * @generated from message patches.v1.ListPostEditsRequest
+ */
+export type ListPostEditsRequest = Message<'patches.v1.ListPostEditsRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+
+  /**
+   * @generated from field: string cursor = 2;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 3;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListPostEditsRequest.
+ * Use `create(ListPostEditsRequestSchema)` to create a new message.
+ */
+export const ListPostEditsRequestSchema: GenMessage<ListPostEditsRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 15);
+
+/**
+ * @generated from message patches.v1.ListPostEditsResponse
+ */
+export type ListPostEditsResponse = Message<'patches.v1.ListPostEditsResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.PostEdit edits = 1;
+   */
+  edits: PostEdit[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListPostEditsResponse.
+ * Use `create(ListPostEditsResponseSchema)` to create a new message.
+ */
+export const ListPostEditsResponseSchema: GenMessage<ListPostEditsResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 16);
+
+/**
+ * @generated from message patches.v1.PinPostRequest
+ */
+export type PinPostRequest = Message<'patches.v1.PinPostRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+
+  /**
+   * 0-2 (spec §188's 3-pin ceiling).
+   *
+   * @generated from field: uint32 position = 2;
+   */
+  position: number;
+};
+
+/**
+ * Describes the message patches.v1.PinPostRequest.
+ * Use `create(PinPostRequestSchema)` to create a new message.
+ */
+export const PinPostRequestSchema: GenMessage<PinPostRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 17);
+
+/**
+ * @generated from message patches.v1.PinPostResponse
+ */
+export type PinPostResponse = Message<'patches.v1.PinPostResponse'> & {
+  /**
+   * @generated from field: patches.v1.Post post = 1;
+   */
+  post?: Post | undefined;
+};
+
+/**
+ * Describes the message patches.v1.PinPostResponse.
+ * Use `create(PinPostResponseSchema)` to create a new message.
+ */
+export const PinPostResponseSchema: GenMessage<PinPostResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 18);
+
+/**
+ * @generated from message patches.v1.UnpinPostRequest
+ */
+export type UnpinPostRequest = Message<'patches.v1.UnpinPostRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+};
+
+/**
+ * Describes the message patches.v1.UnpinPostRequest.
+ * Use `create(UnpinPostRequestSchema)` to create a new message.
+ */
+export const UnpinPostRequestSchema: GenMessage<UnpinPostRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 19);
+
+/**
+ * @generated from message patches.v1.UnpinPostResponse
+ */
+export type UnpinPostResponse = Message<'patches.v1.UnpinPostResponse'> & {
+  /**
+   * @generated from field: patches.v1.Post post = 1;
+   */
+  post?: Post | undefined;
+};
+
+/**
+ * Describes the message patches.v1.UnpinPostResponse.
+ * Use `create(UnpinPostResponseSchema)` to create a new message.
+ */
+export const UnpinPostResponseSchema: GenMessage<UnpinPostResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 20);
+
+/**
  * @generated from enum patches.v1.PostType
  */
 export enum PostType {
@@ -493,6 +789,41 @@ export const PostVisibilitySchema: GenEnum<PostVisibility> =
   enumDesc(file_patches_v1_posts, 1);
 
 /**
+ * Who may quote a post (spec §189, §192 — re-checked server-side on every `CreatePost` quote,
+ * never inferred from what the client was shown).
+ *
+ * @generated from enum patches.v1.QuotePolicy
+ */
+export enum QuotePolicy {
+  /**
+   * @generated from enum value: QUOTE_POLICY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUOTE_POLICY_ANYONE = 1;
+   */
+  ANYONE = 1,
+
+  /**
+   * @generated from enum value: QUOTE_POLICY_FOLLOWERS = 2;
+   */
+  FOLLOWERS = 2,
+
+  /**
+   * @generated from enum value: QUOTE_POLICY_NOBODY = 3;
+   */
+  NOBODY = 3,
+}
+
+/**
+ * Describes the enum patches.v1.QuotePolicy.
+ */
+export const QuotePolicySchema: GenEnum<QuotePolicy> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_posts, 2);
+
+/**
  * Posts and replies — there is no separate comment entity (spec §23–26, §51).
  *
  * @generated from service patches.v1.PostService
@@ -538,5 +869,48 @@ export const PostService: GenService<{
     methodKind: 'unary';
     input: typeof ListRepliesRequestSchema;
     output: typeof ListRepliesResponseSchema;
+  };
+  /**
+   * In-place body/content-warning/media edit (spec §189, §26 amended). Up to 20 edits per
+   * post (spec §188); every edit is snapshotted to `post_edits` before it is applied, readable
+   * via `ListPostEdits`.
+   *
+   * @generated from rpc patches.v1.PostService.EditPost
+   */
+  editPost: {
+    methodKind: 'unary';
+    input: typeof EditPostRequestSchema;
+    output: typeof EditPostResponseSchema;
+  };
+  /**
+   * The edit history of a post, most-recent first.
+   *
+   * @generated from rpc patches.v1.PostService.ListPostEdits
+   */
+  listPostEdits: {
+    methodKind: 'unary';
+    input: typeof ListPostEditsRequestSchema;
+    output: typeof ListPostEditsResponseSchema;
+  };
+  /**
+   * Pins one of the caller's own posts to their profile. Up to 3 pinned posts per actor
+   * (spec §188); `position` (0-2) sets display order.
+   *
+   * @generated from rpc patches.v1.PostService.PinPost
+   */
+  pinPost: {
+    methodKind: 'unary';
+    input: typeof PinPostRequestSchema;
+    output: typeof PinPostResponseSchema;
+  };
+  /**
+   * Idempotent: unpinning a post that isn't pinned is not an error.
+   *
+   * @generated from rpc patches.v1.PostService.UnpinPost
+   */
+  unpinPost: {
+    methodKind: 'unary';
+    input: typeof UnpinPostRequestSchema;
+    output: typeof UnpinPostResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_posts, 0);

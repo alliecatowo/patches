@@ -68,6 +68,20 @@ export interface Nameplate {
 }
 
 /**
+ * Free-form, allow-listed self-presentation, distinct from `Nameplate` (spec §189, §192):
+ * allow-list only, no images/uploads, control and escape sequences stripped at render. Max
+ * 1 KiB serialized (spec §188).
+ */
+export interface ActorFlair {
+  /**
+   * Arbitrary JSON document, shape owned by the client renderer; the server only validates
+   * size and strips unsafe bytes (spec §192) — it does not interpret the document's keys.
+   */
+  document: string;
+  updatedAt: Timestamp | undefined;
+}
+
+/**
  * A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
  * summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
  * `ActorCounts` comment for what's guaranteed in each case.
@@ -95,6 +109,10 @@ export interface Actor {
   counts: ActorCounts | undefined;
   /** Unset when the actor has never customized their presentation (spec §173). */
   nameplate: Nameplate | undefined;
+  /** Unset when the actor has never set flair (spec §189, §192). */
+  flair: ActorFlair | undefined;
+  /** Up to 3, in display order (spec §188). */
+  pinnedPostIds: string[];
 }
 
 export interface GetActorRequest {
@@ -131,6 +149,8 @@ export interface UpdateProfileRequest {
    * server-attested only (spec §173).
    */
   nameplate: Nameplate | undefined;
+  /** Applied when `"flair"` is in `update_mask` (spec §189, §190). */
+  flair: ActorFlair | undefined;
 }
 
 export interface UpdateProfileResponse {

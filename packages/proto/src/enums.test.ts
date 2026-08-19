@@ -1,20 +1,27 @@
 import { describe, expect, it } from 'vitest';
 
 import { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
+import { CommunityInviteStatus, CommunityRole } from './generated/patches/v1/communities.js';
 import { MediaStatus } from './generated/patches/v1/media.js';
+import { ConversationKind, MessageRequestStatus } from './generated/patches/v1/messages.js';
 import { ReportReason } from './generated/patches/v1/moderation.js';
 import { RegistrationMode } from './generated/patches/v1/node.js';
 import { NotificationType } from './generated/patches/v1/notifications.js';
-import { PostType, PostVisibility } from './generated/patches/v1/posts.js';
+import { PostType, PostVisibility, QuotePolicy } from './generated/patches/v1/posts.js';
 import { FollowState } from './generated/patches/v1/social_graph.js';
 import {
+  COMMUNITY_INVITE_STATUS,
+  COMMUNITY_ROLE,
+  CONVERSATION_KIND,
   CREDENTIAL_TYPE,
   FOLLOW_STATE,
   GITHUB_LOGIN_STATUS,
   MEDIA_STATUS,
+  MESSAGE_REQUEST_STATUS,
   NOTIFICATION_TYPE,
   POST_TYPE,
   POST_VISIBILITY,
+  QUOTE_POLICY,
   REGISTRATION_MODE,
   REPORT_REASON,
 } from './enums.js';
@@ -66,5 +73,29 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('MEDIA_STATUS matches MediaStatus', () => {
     expect(Object.values(MEDIA_STATUS).sort()).toEqual(generatedValues(MediaStatus));
+  });
+
+  it('QUOTE_POLICY matches QuotePolicy', () => {
+    expect(Object.values(QUOTE_POLICY).sort()).toEqual(generatedValues(QuotePolicy));
+  });
+
+  it('COMMUNITY_ROLE matches CommunityRole', () => {
+    expect(Object.values(COMMUNITY_ROLE).sort()).toEqual(generatedValues(CommunityRole));
+  });
+
+  it('COMMUNITY_INVITE_STATUS matches CommunityInviteStatus', () => {
+    expect(Object.values(COMMUNITY_INVITE_STATUS).sort()).toEqual(
+      generatedValues(CommunityInviteStatus),
+    );
+  });
+
+  it('CONVERSATION_KIND matches ConversationKind', () => {
+    expect(Object.values(CONVERSATION_KIND).sort()).toEqual(generatedValues(ConversationKind));
+  });
+
+  it('MESSAGE_REQUEST_STATUS matches MessageRequestStatus', () => {
+    expect(Object.values(MESSAGE_REQUEST_STATUS).sort()).toEqual(
+      generatedValues(MessageRequestStatus),
+    );
   });
 });

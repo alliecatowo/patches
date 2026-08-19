@@ -11,6 +11,7 @@ import { Observable } from 'rxjs';
 import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
+import { Community } from './communities.js';
 
 export const protobufPackage = 'patches.v1';
 
@@ -26,6 +27,18 @@ export enum PostVisibility {
   POST_VISIBILITY_PUBLIC = 'POST_VISIBILITY_PUBLIC',
   POST_VISIBILITY_UNLISTED = 'POST_VISIBILITY_UNLISTED',
   POST_VISIBILITY_FOLLOWERS = 'POST_VISIBILITY_FOLLOWERS',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * Who may quote a post (spec §189, §192 — re-checked server-side on every `CreatePost` quote,
+ * never inferred from what the client was shown).
+ */
+export enum QuotePolicy {
+  QUOTE_POLICY_UNSPECIFIED = 'QUOTE_POLICY_UNSPECIFIED',
+  QUOTE_POLICY_ANYONE = 'QUOTE_POLICY_ANYONE',
+  QUOTE_POLICY_FOLLOWERS = 'QUOTE_POLICY_FOLLOWERS',
+  QUOTE_POLICY_NOBODY = 'QUOTE_POLICY_NOBODY',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -48,12 +61,15 @@ export interface MediaAttachment {
 export interface PostCounts {
   replies: number;
   likes: number;
+  reposts: number;
+  quotes: number;
 }
 
-/** Only meaningful for an authenticated viewer; both fields are false for an anonymous read. */
+/** Only meaningful for an authenticated viewer; all fields are false for an anonymous read. */
 export interface PostViewerState {
   liked: boolean;
   bookmarked: boolean;
+  reposted: boolean;
 }
 
 export interface Post {
@@ -85,6 +101,15 @@ export interface Post {
    * `body` (spec §58).
    */
   contentWarning: string;
+  /**
+   * Unset unless this post quotes another. Only one level is ever populated here even if the
+   * quoted post itself quotes another post — quoted-post nesting renders one level deep
+   * (spec §188).
+   */
+  quotedPost: Post | undefined;
+  /** Unset for a post not posted into a community. */
+  community: Community | undefined;
+  quotePolicy: QuotePolicy;
 }
 
 export interface CreatePostRequest {
@@ -107,6 +132,17 @@ export interface CreatePostRequest {
    * `body` (spec §58).
    */
   contentWarning: string;
+  /**
+   * Empty unless this post quotes another. Re-checked server-side against the quoted post's
+   * `quote_policy` and blocks at write time (spec §192) — never trust a client-side check.
+   */
+  quotedPostId: string;
+  /**
+   * Empty unless this post is being created into a community. Immutable after insert
+   * (spec §189).
+   */
+  communityId: string;
+  quotePolicy: QuotePolicy;
 }
 
 export interface CreatePostResponse {
@@ -146,6 +182,60 @@ export interface ListRepliesResponse {
   page: PageInfo | undefined;
 }
 
+/**
+ * A single prior version of a post, snapshotted immediately before an `EditPost` call
+ * overwrites it (spec §189's `post_edits` table).
+ */
+export interface PostEdit {
+  id: string;
+  postId: string;
+  previousBody: string;
+  previousContentWarning: string;
+  previousMedia: MediaAttachment[];
+  editedByActorId: string;
+  createdAt: Timestamp | undefined;
+}
+
+export interface EditPostRequest {
+  id: string;
+  body: string;
+  contentWarning: string;
+  mediaIds: string[];
+}
+
+export interface EditPostResponse {
+  post: Post | undefined;
+}
+
+export interface ListPostEditsRequest {
+  postId: string;
+  cursor: string;
+  limit: number;
+}
+
+export interface ListPostEditsResponse {
+  edits: PostEdit[];
+  page: PageInfo | undefined;
+}
+
+export interface PinPostRequest {
+  postId: string;
+  /** 0-2 (spec §188's 3-pin ceiling). */
+  position: number;
+}
+
+export interface PinPostResponse {
+  post: Post | undefined;
+}
+
+export interface UnpinPostRequest {
+  postId: string;
+}
+
+export interface UnpinPostResponse {
+  post: Post | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -171,6 +261,32 @@ export interface PostServiceClient {
    */
 
   listReplies(request: ListRepliesRequest, metadata?: Metadata): Observable<ListRepliesResponse>;
+
+  /**
+   * In-place body/content-warning/media edit (spec §189, §26 amended). Up to 20 edits per
+   * post (spec §188); every edit is snapshotted to `post_edits` before it is applied, readable
+   * via `ListPostEdits`.
+   */
+
+  editPost(request: EditPostRequest, metadata?: Metadata): Observable<EditPostResponse>;
+
+  /** The edit history of a post, most-recent first. */
+
+  listPostEdits(
+    request: ListPostEditsRequest,
+    metadata?: Metadata,
+  ): Observable<ListPostEditsResponse>;
+
+  /**
+   * Pins one of the caller's own posts to their profile. Up to 3 pinned posts per actor
+   * (spec §188); `position` (0-2) sets display order.
+   */
+
+  pinPost(request: PinPostRequest, metadata?: Metadata): Observable<PinPostResponse>;
+
+  /** Idempotent: unpinning a post that isn't pinned is not an error. */
+
+  unpinPost(request: UnpinPostRequest, metadata?: Metadata): Observable<UnpinPostResponse>;
 }
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
@@ -208,11 +324,55 @@ export interface PostServiceController {
     request: ListRepliesRequest,
     metadata?: Metadata,
   ): Promise<ListRepliesResponse> | Observable<ListRepliesResponse> | ListRepliesResponse;
+
+  /**
+   * In-place body/content-warning/media edit (spec §189, §26 amended). Up to 20 edits per
+   * post (spec §188); every edit is snapshotted to `post_edits` before it is applied, readable
+   * via `ListPostEdits`.
+   */
+
+  editPost(
+    request: EditPostRequest,
+    metadata?: Metadata,
+  ): Promise<EditPostResponse> | Observable<EditPostResponse> | EditPostResponse;
+
+  /** The edit history of a post, most-recent first. */
+
+  listPostEdits(
+    request: ListPostEditsRequest,
+    metadata?: Metadata,
+  ): Promise<ListPostEditsResponse> | Observable<ListPostEditsResponse> | ListPostEditsResponse;
+
+  /**
+   * Pins one of the caller's own posts to their profile. Up to 3 pinned posts per actor
+   * (spec §188); `position` (0-2) sets display order.
+   */
+
+  pinPost(
+    request: PinPostRequest,
+    metadata?: Metadata,
+  ): Promise<PinPostResponse> | Observable<PinPostResponse> | PinPostResponse;
+
+  /** Idempotent: unpinning a post that isn't pinned is not an error. */
+
+  unpinPost(
+    request: UnpinPostRequest,
+    metadata?: Metadata,
+  ): Promise<UnpinPostResponse> | Observable<UnpinPostResponse> | UnpinPostResponse;
 }
 
 export function PostServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['createPost', 'getPost', 'deletePost', 'listReplies'];
+    const grpcMethods: string[] = [
+      'createPost',
+      'getPost',
+      'deletePost',
+      'listReplies',
+      'editPost',
+      'listPostEdits',
+      'pinPost',
+      'unpinPost',
+    ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod('PostService', method)(constructor.prototype[method], method, descriptor);

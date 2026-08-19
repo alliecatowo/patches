@@ -60,6 +60,8 @@ function makeSession(): Session {
       joinedAt: dateToTimestamp(new Date()),
       counts: { followers: 0, following: 0, posts: 0 },
       nameplate: undefined,
+      flair: undefined,
+      pinnedPostIds: [],
     },
     accessToken: 'access-token',
     accessExpiresAt: dateToTimestamp(new Date(now + 3_600_000)),

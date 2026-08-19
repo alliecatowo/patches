@@ -72,6 +72,54 @@ import type {
   GetMediaDownloadResponse,
 } from './generated/patches/v1/media.js';
 import type {
+  BanFromCommunityRequest,
+  BanFromCommunityResponse,
+  CreateCommunityRequest,
+  CreateCommunityResponse,
+  GetCommunityRequest,
+  GetCommunityResponse,
+  InviteToCommunityRequest,
+  InviteToCommunityResponse,
+  JoinCommunityRequest,
+  JoinCommunityResponse,
+  LeaveCommunityRequest,
+  LeaveCommunityResponse,
+  ListCommunitiesRequest,
+  ListCommunitiesResponse,
+  ListCommunityMembersRequest,
+  ListCommunityMembersResponse,
+  RemovePostFromCommunityRequest,
+  RemovePostFromCommunityResponse,
+  RespondToCommunityInviteRequest,
+  RespondToCommunityInviteResponse,
+  SetCommunityRoleRequest,
+  SetCommunityRoleResponse,
+  UpdateCommunityRequest,
+  UpdateCommunityResponse,
+} from './generated/patches/v1/communities.js';
+import type {
+  CreateConversationRequest,
+  CreateConversationResponse,
+  DeleteMessageRequest,
+  DeleteMessageResponse,
+  GetConversationRequest,
+  GetConversationResponse,
+  LeaveConversationRequest,
+  LeaveConversationResponse,
+  ListConversationsRequest,
+  ListConversationsResponse,
+  ListMessageRequestsRequest,
+  ListMessageRequestsResponse,
+  ListMessagesRequest,
+  ListMessagesResponse,
+  MarkConversationReadRequest,
+  MarkConversationReadResponse,
+  RespondToMessageRequestRequest,
+  RespondToMessageRequestResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+} from './generated/patches/v1/messages.js';
+import type {
   BlockActorRequest,
   BlockActorResponse,
   ListBlocksRequest,
@@ -82,6 +130,8 @@ import type {
   MuteActorResponse,
   ReportActorRequest,
   ReportActorResponse,
+  ReportMessageRequest,
+  ReportMessageResponse,
   ReportPostRequest,
   ReportPostResponse,
   UnblockActorRequest,
@@ -119,10 +169,18 @@ import type {
   CreatePostResponse,
   DeletePostRequest,
   DeletePostResponse,
+  EditPostRequest,
+  EditPostResponse,
   GetPostRequest,
   GetPostResponse,
+  ListPostEditsRequest,
+  ListPostEditsResponse,
   ListRepliesRequest,
   ListRepliesResponse,
+  PinPostRequest,
+  PinPostResponse,
+  UnpinPostRequest,
+  UnpinPostResponse,
 } from './generated/patches/v1/posts.js';
 import type {
   BookmarkPostRequest,
@@ -131,12 +189,18 @@ import type {
   ListBookmarksResponse,
   ListPostLikersRequest,
   ListPostLikersResponse,
+  ListPostRepostersRequest,
+  ListPostRepostersResponse,
   LikePostRequest,
   LikePostResponse,
+  RepostPostRequest,
+  RepostPostResponse,
   UnbookmarkPostRequest,
   UnbookmarkPostResponse,
   UnlikePostRequest,
   UnlikePostResponse,
+  UnrepostPostRequest,
+  UnrepostPostResponse,
 } from './generated/patches/v1/reactions.js';
 import type {
   FollowActorRequest,
@@ -154,6 +218,16 @@ import type {
   PingRequest,
   PingResponse,
 } from './generated/patches/v1/system.js';
+import type {
+  ListMutedTagsRequest,
+  ListMutedTagsResponse,
+  MuteTagRequest,
+  MuteTagResponse,
+  SearchTagsRequest,
+  SearchTagsResponse,
+  UnmuteTagRequest,
+  UnmuteTagResponse,
+} from './generated/patches/v1/tags.js';
 import { getProtoDir } from './proto-path.js';
 
 /**
@@ -190,6 +264,9 @@ export const SERVICE_NAMES = Object.freeze({
   moderation: 'ModerationService',
   media: 'MediaService',
   page: 'PageService',
+  community: 'CommunityService',
+  directMessage: 'DirectMessageService',
+  tag: 'TagService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -299,6 +376,10 @@ export interface PostGrpcClient extends Client {
   getPost: GrpcUnaryCall<GetPostRequest, GetPostResponse>;
   deletePost: GrpcUnaryCall<DeletePostRequest, DeletePostResponse>;
   listReplies: GrpcUnaryCall<ListRepliesRequest, ListRepliesResponse>;
+  editPost: GrpcUnaryCall<EditPostRequest, EditPostResponse>;
+  listPostEdits: GrpcUnaryCall<ListPostEditsRequest, ListPostEditsResponse>;
+  pinPost: GrpcUnaryCall<PinPostRequest, PinPostResponse>;
+  unpinPost: GrpcUnaryCall<UnpinPostRequest, UnpinPostResponse>;
 }
 
 /** `patches.v1.FeedService` as seen by a raw grpc-js client. */
@@ -329,6 +410,9 @@ export interface ReactionGrpcClient extends Client {
   unbookmarkPost: GrpcUnaryCall<UnbookmarkPostRequest, UnbookmarkPostResponse>;
   listBookmarks: GrpcUnaryCall<ListBookmarksRequest, ListBookmarksResponse>;
   listPostLikers: GrpcUnaryCall<ListPostLikersRequest, ListPostLikersResponse>;
+  repostPost: GrpcUnaryCall<RepostPostRequest, RepostPostResponse>;
+  unrepostPost: GrpcUnaryCall<UnrepostPostRequest, UnrepostPostResponse>;
+  listPostReposters: GrpcUnaryCall<ListPostRepostersRequest, ListPostRepostersResponse>;
 }
 
 /** `patches.v1.NotificationService` as seen by a raw grpc-js client. */
@@ -348,6 +432,7 @@ export interface ModerationGrpcClient extends Client {
   listMutes: GrpcUnaryCall<ListMutesRequest, ListMutesResponse>;
   reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
   reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
+  reportMessage: GrpcUnaryCall<ReportMessageRequest, ReportMessageResponse>;
 }
 
 /** `patches.v1.MediaService` as seen by a raw grpc-js client. */
@@ -366,4 +451,51 @@ export interface PageGrpcClient extends Client {
   signGuestbook: GrpcUnaryCall<SignGuestbookRequest, SignGuestbookResponse>;
   removeGuestbookEntry: GrpcUnaryCall<RemoveGuestbookEntryRequest, RemoveGuestbookEntryResponse>;
   reportGuestbookEntry: GrpcUnaryCall<ReportGuestbookEntryRequest, ReportGuestbookEntryResponse>;
+}
+
+/** `patches.v1.CommunityService` as seen by a raw grpc-js client. */
+export interface CommunityGrpcClient extends Client {
+  createCommunity: GrpcUnaryCall<CreateCommunityRequest, CreateCommunityResponse>;
+  getCommunity: GrpcUnaryCall<GetCommunityRequest, GetCommunityResponse>;
+  listCommunities: GrpcUnaryCall<ListCommunitiesRequest, ListCommunitiesResponse>;
+  joinCommunity: GrpcUnaryCall<JoinCommunityRequest, JoinCommunityResponse>;
+  leaveCommunity: GrpcUnaryCall<LeaveCommunityRequest, LeaveCommunityResponse>;
+  listCommunityMembers: GrpcUnaryCall<ListCommunityMembersRequest, ListCommunityMembersResponse>;
+  updateCommunity: GrpcUnaryCall<UpdateCommunityRequest, UpdateCommunityResponse>;
+  setCommunityRole: GrpcUnaryCall<SetCommunityRoleRequest, SetCommunityRoleResponse>;
+  removePostFromCommunity: GrpcUnaryCall<
+    RemovePostFromCommunityRequest,
+    RemovePostFromCommunityResponse
+  >;
+  banFromCommunity: GrpcUnaryCall<BanFromCommunityRequest, BanFromCommunityResponse>;
+  inviteToCommunity: GrpcUnaryCall<InviteToCommunityRequest, InviteToCommunityResponse>;
+  respondToCommunityInvite: GrpcUnaryCall<
+    RespondToCommunityInviteRequest,
+    RespondToCommunityInviteResponse
+  >;
+}
+
+/** `patches.v1.DirectMessageService` as seen by a raw grpc-js client. */
+export interface DirectMessageGrpcClient extends Client {
+  listConversations: GrpcUnaryCall<ListConversationsRequest, ListConversationsResponse>;
+  getConversation: GrpcUnaryCall<GetConversationRequest, GetConversationResponse>;
+  listMessages: GrpcUnaryCall<ListMessagesRequest, ListMessagesResponse>;
+  sendMessage: GrpcUnaryCall<SendMessageRequest, SendMessageResponse>;
+  deleteMessage: GrpcUnaryCall<DeleteMessageRequest, DeleteMessageResponse>;
+  createConversation: GrpcUnaryCall<CreateConversationRequest, CreateConversationResponse>;
+  leaveConversation: GrpcUnaryCall<LeaveConversationRequest, LeaveConversationResponse>;
+  markConversationRead: GrpcUnaryCall<MarkConversationReadRequest, MarkConversationReadResponse>;
+  listMessageRequests: GrpcUnaryCall<ListMessageRequestsRequest, ListMessageRequestsResponse>;
+  respondToMessageRequest: GrpcUnaryCall<
+    RespondToMessageRequestRequest,
+    RespondToMessageRequestResponse
+  >;
+}
+
+/** `patches.v1.TagService` as seen by a raw grpc-js client. */
+export interface TagGrpcClient extends Client {
+  searchTags: GrpcUnaryCall<SearchTagsRequest, SearchTagsResponse>;
+  muteTag: GrpcUnaryCall<MuteTagRequest, MuteTagResponse>;
+  unmuteTag: GrpcUnaryCall<UnmuteTagRequest, UnmuteTagResponse>;
+  listMutedTags: GrpcUnaryCall<ListMutedTagsRequest, ListMutedTagsResponse>;
 }

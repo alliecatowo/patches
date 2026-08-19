@@ -17,7 +17,7 @@ import {
   type ListLocalFeedResponse,
   type PostGrpcClient,
 } from '@patches/proto';
-import { PostVisibility } from '@patches/proto/nest';
+import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
 import {
   createTestBlock,
   createTestFollow,
@@ -96,6 +96,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           contentWarning: '',
           inReplyToId: '',
           mediaIds: [],
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
           ...overrides,
         },
         { accessToken: alice.accessToken },
@@ -120,6 +123,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               contentWarning: '',
               inReplyToId: '',
               mediaIds: [],
+              quotedPostId: '',
+              communityId: '',
+              quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
             },
             { accessToken: author.accessToken },
           );
@@ -156,6 +162,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             contentWarning: '',
             inReplyToId: '',
             mediaIds: [],
+            quotedPostId: '',
+            communityId: '',
+            quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
           },
           { accessToken: author.accessToken },
         );
@@ -169,6 +178,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             contentWarning: '',
             inReplyToId: '',
             mediaIds: [],
+            quotedPostId: '',
+            communityId: '',
+            quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
           },
           { accessToken: author.accessToken },
         );
@@ -210,6 +222,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             contentWarning: '',
             inReplyToId: '',
             mediaIds: [],
+            quotedPostId: '',
+            communityId: '',
+            quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
           },
           { accessToken: blocked.accessToken },
         );
@@ -297,6 +312,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           contentWarning: '',
           inReplyToId: '',
           mediaIds: [],
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
         },
         { accessToken },
       );
