@@ -1,7 +1,12 @@
-import type { Relationship as ProtoRelationship } from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type {
+  FollowRequest as ProtoFollowRequest,
+  Relationship as ProtoRelationship,
+} from '@patches/proto';
 import { FollowState } from '@patches/proto/nest';
 
-import type { RelationshipView } from './graph.dto.js';
+import { toProtoActor } from '../actors/actor.mapper.js';
+import type { FollowRequestView, RelationshipView } from './graph.dto.js';
 
 const STATE_TO_PROTO: Readonly<Record<RelationshipView['state'], FollowState>> = Object.freeze({
   NONE: FollowState.FOLLOW_STATE_NONE,
@@ -16,5 +21,15 @@ export function toProtoRelationship(view: RelationshipView): ProtoRelationship {
     followedBy: view.followedBy,
     blocking: view.blocking,
     muting: view.muting,
+    requested: view.requested,
+    requestedBy: view.requestedBy,
+  };
+}
+
+/** §197.5. */
+export function toProtoFollowRequest(view: FollowRequestView): ProtoFollowRequest {
+  return {
+    actor: toProtoActor(view.actor),
+    createdAt: dateToTimestamp(view.createdAt),
   };
 }

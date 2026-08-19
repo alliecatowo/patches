@@ -124,6 +124,16 @@ export const ERROR_CODES = [
   /** `AppealService.CreateAppeal` after the node's published appeal window
    * (`NodeService.GetNodePolicy.appeal_window_days`) has closed (spec §201.3, §204). */
   'APPEAL_WINDOW_CLOSED',
+  /** `RequirePrivacyAckGuard` (`common/guards/require-privacy-ack.guard.ts`, P14 follow-up,
+   * spec §197.5, §197.6): a mutating RPC called by an authenticated actor who has not yet
+   * called `PrivacyService.AcknowledgePrivacyNotice` for this node's current
+   * `PRIVACY_NOTICE_VERSION`, on a node that has opted into `REQUIRE_PRIVACY_ACK=true`. Reads
+   * are never gated — only RPCs the guard is explicitly attached to. */
+  'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
+  /** `SocialGraphService.AcceptFollowRequest`/`RejectFollowRequest` on an `actor_id` with no
+   * pending follow request addressed to the caller (spec §197.5) — never exists, was already
+   * accepted/rejected, or was cancelled by the requester. */
+  'FOLLOW_REQUEST_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -181,6 +191,8 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   APPEAL_NOT_FOUND: GrpcStatus.NOT_FOUND,
   APPEAL_ALREADY_EXISTS: GrpcStatus.ALREADY_EXISTS,
   APPEAL_WINDOW_CLOSED: GrpcStatus.FAILED_PRECONDITION,
+  PRIVACY_NOTICE_NOT_ACKNOWLEDGED: GrpcStatus.FAILED_PRECONDITION,
+  FOLLOW_REQUEST_NOT_FOUND: GrpcStatus.NOT_FOUND,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {
