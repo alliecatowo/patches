@@ -1,12 +1,15 @@
 import { describeError } from '@patches/client';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
 import styles from './AuthForm.module.css';
 
-/** `/register` — this node is invite-only (spec §33), so `inviteCode` is required. */
+/** `/register` — this node is invite-only (spec §33), so `inviteCode` is required.
+ * The privacy notice is shown before submit, never after (spec §197.1) — the
+ * acknowledgement checkbox gates the submit button, and once the account exists we
+ * record the acknowledgement server-side via `PrivacyService.AcknowledgePrivacyNotice`. */
 export function RegisterRoute(): JSX.Element {
   const navigate = useNavigate();
   const [form, setForm] = useState({
@@ -16,6 +19,14 @@ export function RegisterRoute(): JSX.Element {
     password: '',
     inviteCode: '',
   });
+  const [noticeAcknowledged, setNoticeAcknowledged] = useState(false);
+
+  const policyQuery = useQuery({
+    queryKey: ['node-policy'],
+    queryFn: () => api.node.getNodePolicy({}),
+    staleTime: 60_000,
+  });
+  const policy = policyQuery.data?.policy;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -30,6 +41,16 @@ export function RegisterRoute(): JSX.Element {
       }),
     onSuccess: async (response) => {
       if (response.session) await establishSession(response.session);
+      if (policy) {
+        try {
+          await api.privacy.acknowledgePrivacyNotice({
+            noticeVersion: policy.privacyNoticeVersion,
+          });
+        } catch {
+          // Non-fatal — the account exists either way; the privacy screen will offer
+          // acknowledgement again next visit.
+        }
+      }
       void navigate('/', { replace: true });
     },
   });
@@ -89,7 +110,35 @@ export function RegisterRoute(): JSX.Element {
             required
           />
         </div>
-        <button type="submit" className={styles['submit']} disabled={mutation.isPending}>
+        <div className={styles['field']}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+            {policy?.privacyNoticeSummary || 'This node has not published a privacy notice.'}
+          </p>
+          <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+            Direct messages on this node are <strong>server-visible</strong>, not end-to-end
+            encrypted — operators can read them.
+          </p>
+          {policy?.privacyNoticeUrl ? (
+            <p>
+              <a href={policy.privacyNoticeUrl} target="_blank" rel="noopener noreferrer">
+                Read the full privacy notice
+              </a>
+            </p>
+          ) : null}
+          <label>
+            <input
+              type="checkbox"
+              checked={noticeAcknowledged}
+              onChange={(e) => setNoticeAcknowledged(e.target.checked)}
+            />{' '}
+            I have read the privacy notice
+          </label>
+        </div>
+        <button
+          type="submit"
+          className={styles['submit']}
+          disabled={mutation.isPending || !noticeAcknowledged}
+        >
           {mutation.isPending ? 'Creating account…' : 'Create account'}
         </button>
       </form>

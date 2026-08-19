@@ -8,6 +8,7 @@ import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PageBlocks } from '../components/PageBlocks.js';
 import { PostTimeline } from '../components/PostTimeline.js';
+import { RichBody } from '../components/RichBody.js';
 import { decodePageDocument } from '../lib/page.js';
 import styles from './ProfileRoute.module.css';
 
@@ -52,7 +53,11 @@ export function ProfileRoute(): JSX.Element {
         <ModerationActions actorId={actor.id} />
         <h1 className={styles['displayName']}>{actor.displayName || actor.handle}</h1>
         <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
-        {actor.bio !== '' ? <p className={styles['bio']}>{actor.bio}</p> : null}
+        {actor.bio !== '' ? (
+          <div className={styles['bio']}>
+            <RichBody source={actor.bio} />
+          </div>
+        ) : null}
         {actor.locationText !== '' ? <p>{actor.locationText}</p> : null}
         {actor.websiteUrl !== '' ? (
           <p>
