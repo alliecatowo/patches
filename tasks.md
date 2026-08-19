@@ -188,7 +188,7 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-007 — keymap v2: `R` repost, `Ctrl+R` refresh, `Q` quote, `J` community join/leave, all §191 keys derived into help/hints
 - [x] P12-008 — modal stack + measured `ConfirmDialog` for every destructive action
 - [x] P12-009 — command palette (`:` / `Ctrl+P`) generated from `KEYMAP`, including routes and contextual actions
-- [ ] P12-010 — feedback layer: per-region loading, toast queue, offline/retry banner, sticky new-items indicator
+- [x] P12-010 — feedback layer: per-region loading, toast queue, offline/retry banner, sticky new-items indicator
 - [ ] P12-011 — inline re-authentication on `UNAUTHENTICATED` without losing drafts or navigation state
 - [ ] P12-012 — measured multiline `TextEditor`: cursor, movement, undo/redo, bracketed paste, node-provided limit
 - [ ] P12-013 — measured `@` / `#` autocomplete with debounced actor/tag lookup and stale-request cancellation
@@ -205,9 +205,9 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [ ] P12-024 — notifications drawer (`N`) with narrow fallback to `g n` and read-on-view reuse
 - [ ] P12-025 — polish primitives: semantic theme tokens, borders, progress bar, single shared relative-time clock
 - [x] P12-026 — interaction docs/keymap sync; executable-command verification and generated key-table parity test
-- [ ] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
+- [x] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
 - [ ] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
-- [ ] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
+- [x] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
 - [ ] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
 - [ ] P12-105 — destructive confirm styling, toast queue styling, and sticky new-count styling
 - [ ] P12-106 — quick-post overlay UX: counter/CW/expand/shared-draft, with narrow takeover
@@ -217,7 +217,7 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [ ] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
 - [ ] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
 - [ ] P12-112 — theme + colour picker live preview, reversible with `Esc`, with contrast explanation
-- [ ] P12-113 — preferences information architecture with live post preview and per-profile local persistence
+- [x] P12-113 — preferences information architecture with live post preview and per-profile local persistence
 - [ ] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
 - [ ] P12-115 — search mode strip and subtractive filters (`since:`, `from:`, `#tag`) with recent-query recall; no order control
 - [ ] P12-116 — contextual palette actions for quoted posts, mentions, tags, links, and selected-row verbs
