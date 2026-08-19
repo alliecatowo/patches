@@ -34,3 +34,10 @@ paths:
 message-typed field (`counts`, `avatar`, `editedAt`, `post`, …) as **`null`**, while ts-proto's
 types say `undefined`. Never test `=== undefined` on such fields — use `present()` from
 `apps/tui/src/api/present.ts`. (Found the hard way: the app crashed on `author.counts.posts`.)
+
+## Direct messages (§183.1, §194)
+
+The messages screen MUST render, on the screen itself (not help/tooltip), the exact notice:
+"Not end-to-end encrypted — this node's operators can read these messages". No TUI string may
+describe DMs as "encrypted", "secure" or "private" (a test greps for it). No attachment or
+link-preview affordance in DMs in v0.
