@@ -22,7 +22,8 @@ export type Command =
   | 'lists'
   | 'labelers'
   | 'appeal'
-  | 'modlog';
+  | 'modlog'
+  | 'recovery-codes';
 
 const SUBCOMMANDS: readonly Command[] = [
   'register',
@@ -42,6 +43,7 @@ const SUBCOMMANDS: readonly Command[] = [
   'labelers',
   'appeal',
   'modlog',
+  'recovery-codes',
 ];
 
 export interface ParsedArgs {
@@ -161,6 +163,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'labelers':
       case 'appeal':
       case 'modlog':
+      case 'recovery-codes':
         result.command = argument;
         break;
       case '--insecure':

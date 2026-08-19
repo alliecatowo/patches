@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
+
+import { PASSWORD_AUTH_MODE } from '@patches/proto';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
@@ -19,7 +21,7 @@ export interface LoginScreenProps {
   isActive: boolean;
 }
 
-type Mode = 'choose' | 'password' | 'ssh';
+type Mode = 'choose' | 'password' | 'ssh' | 'unavailable';
 type Field = 'emailOrHandle' | 'password';
 type Status =
   { status: 'idle' } | { status: 'submitting' } | { status: 'error'; error: FriendlyError };
@@ -44,6 +46,39 @@ export function LoginScreen({
   const [emailOrHandle, setEmailOrHandle] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<Status>({ status: 'idle' });
+  const [passwordAuthOff, setPasswordAuthOff] = useState(false);
+
+  // P15-002: hide the password field entirely — not merely disable it — once we learn this
+  // node has opted out of PASSWORD_AUTH. Runs once per mount; tolerant of an unreachable node
+  // the same way every other node-capability read in this app is (password stays offered until
+  // proven otherwise, rather than the screen failing to render at all).
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getAuthPolicy()
+      .then(({ passwordAuth }) => {
+        if (cancelled || passwordAuth !== PASSWORD_AUTH_MODE.OFF) return;
+        setPasswordAuthOff(true);
+        setMode((current) => {
+          if (current !== 'password' && current !== 'choose') return current;
+          if (sshAvailable) {
+            void submitSsh();
+            return 'ssh';
+          }
+          return 'unavailable';
+        });
+      })
+      .catch(() => {
+        // See the comment above — an unreachable node just leaves password offered.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `submitSsh`/`sshAvailable` are stable for the life of this screen (constructed from
+    // `api`/`env` props that never change after mount); re-running this on every render would
+    // refire the policy fetch and could re-trigger `submitSsh()` mid-attempt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [api]);
 
   async function submitPassword(): Promise<void> {
     if (emailOrHandle.trim() === '' || password === '') return;
@@ -96,7 +131,7 @@ export function LoginScreen({
       }
 
       if (mode === 'choose') {
-        if (input === 'p') setMode('password');
+        if (input === 'p' && !passwordAuthOff) setMode('password');
         else if (input === 's') {
           setMode('ssh');
           void submitSsh();
@@ -108,6 +143,8 @@ export function LoginScreen({
         if (input === 'r' && status.status === 'error') void submitSsh();
         return;
       }
+
+      if (mode === 'unavailable') return;
       if (mode === 'password') {
         if (key.tab) {
           setField((current) => (current === 'emailOrHandle' ? 'password' : 'emailOrHandle'));
@@ -137,8 +174,22 @@ export function LoginScreen({
     return (
       <Box flexDirection="column">
         <Text color={theme.accent}>Sign in to {api.target}</Text>
-        <Text>(p)assword or (s)sh key?</Text>
+        <Text>{passwordAuthOff ? '(s)sh key?' : '(p)assword or (s)sh key?'}</Text>
         <Text color={theme.muted}>Esc cancel</Text>
+      </Box>
+    );
+  }
+
+  if (mode === 'unavailable') {
+    return (
+      <Box flexDirection="column">
+        <Text color={theme.accent}>Sign in to {api.target}</Text>
+        <Text color={theme.error}>
+          This node does not accept password sign-in and no SSH agent is reachable here.
+        </Text>
+        <Text color={theme.muted}>
+          Run `patches login --recovery` from a terminal, or connect an SSH agent. Esc cancel
+        </Text>
       </Box>
     );
   }

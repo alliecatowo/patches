@@ -25,6 +25,7 @@ import { runModlog } from './cli/modlog.js';
 import { runPing } from './cli/ping.js';
 import { runPrivacy } from './cli/privacy.js';
 import { runProfile } from './cli/profile.js';
+import { runRecoveryCodes } from './cli/recovery-codes.js';
 import { runRegister } from './cli/register.js';
 import { runTag } from './cli/tag.js';
 import { runVerify } from './cli/verify.js';
@@ -98,6 +99,8 @@ async function main(): Promise<number> {
   if (args.command === 'register')
     return runRegister(rest, { io, env: process.env, target, insecure });
   if (args.command === 'login') return runLogin(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'recovery-codes')
+    return runRecoveryCodes(rest, { io, env: process.env, target, insecure });
   if (args.command === 'logout') return runLogout(rest, { io, env: process.env, target, insecure });
   if (args.command === 'accounts') return runAccounts(rest, { io, env: process.env });
   if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });

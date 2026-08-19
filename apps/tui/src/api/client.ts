@@ -56,10 +56,12 @@ import {
   type FinalizeMediaUploadResponse,
   type FollowActorRequest,
   type FollowActorResponse,
+  type GenerateRecoveryCodesResponse,
   type GetActorByHandleRequest,
   type GetActorByHandleResponse,
   type GetActorRequest,
   type GetActorResponse,
+  type GetAuthPolicyResponse,
   type GetCurrentSessionResponse,
   type GetCommunityRequest,
   type GetCommunityResponse,
@@ -132,6 +134,8 @@ import {
   type ListTagFeedResponse,
   type LoginRequest,
   type LoginResponse,
+  type RecoveryLoginRequest,
+  type RecoveryLoginResponse,
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
@@ -402,6 +406,17 @@ export class PatchesApi {
     return unary(this.auth.login.bind(this.auth), request, DEADLINES_MS.auth);
   }
 
+  /** Always unauthenticated, always cheap (P15-002) — call before rendering password UI. */
+  async getAuthPolicy(): Promise<GetAuthPolicyResponse> {
+    return unary(this.auth.getAuthPolicy.bind(this.auth), {}, DEADLINES_MS.auth);
+  }
+
+  /** Redeems a single-use recovery code for a session (P15-003), the unauthenticated
+   * counterpart to `login()`. */
+  async recoveryLogin(request: RecoveryLoginRequest): Promise<RecoveryLoginResponse> {
+    return unary(this.auth.recoveryLogin.bind(this.auth), request, DEADLINES_MS.auth);
+  }
+
   async refreshSession(request: RefreshSessionRequest): Promise<RefreshSessionResponse> {
     return unary(this.auth.refreshSession.bind(this.auth), request, DEADLINES_MS.auth);
   }
@@ -436,6 +451,17 @@ export class PatchesApi {
 
   async listCredentials(accessToken: string): Promise<ListCredentialsResponse> {
     return unary(this.auth.listCredentials.bind(this.auth), {}, DEADLINES_MS.auth, accessToken);
+  }
+
+  /** Mints a fresh set of 10 recovery codes, invalidating any generated previously
+   * (P15-003). */
+  async generateRecoveryCodes(accessToken: string): Promise<GenerateRecoveryCodesResponse> {
+    return unary(
+      this.auth.generateRecoveryCodes.bind(this.auth),
+      {},
+      DEADLINES_MS.auth,
+      accessToken,
+    );
   }
 
   /** Adds a PASSWORD or SSH_PUBLIC_KEY credential to the caller's account (spec §165). */

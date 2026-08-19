@@ -9,6 +9,8 @@ import {
   type LoginResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type RecoveryLoginRequest,
+  type RecoveryLoginResponse,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
@@ -27,6 +29,7 @@ import { type CredentialStore, type StoredCredential } from './credential-store.
 export interface SessionAuthApi {
   register(request: RegisterRequest): Promise<RegisterResponse>;
   login(request: LoginRequest): Promise<LoginResponse>;
+  recoveryLogin(request: RecoveryLoginRequest): Promise<RecoveryLoginResponse>;
   refreshSession(request: RefreshSessionRequest): Promise<RefreshSessionResponse>;
   logout(request: LogoutRequest): Promise<LogoutResponse>;
   beginSshLogin(request: BeginSshLoginRequest): Promise<BeginSshLoginResponse>;
@@ -142,6 +145,13 @@ export class SessionManager {
 
   async loginWithPassword(emailOrHandle: string, password: string): Promise<ActiveSession> {
     const response = await this.api.login({ emailOrHandle, password });
+    return this.applySession(response.session);
+  }
+
+  /** P15-003: redeems a single-use recovery code, the same way `loginWithPassword` redeems a
+   * password. */
+  async loginWithRecoveryCode(emailOrHandle: string, code: string): Promise<ActiveSession> {
+    const response = await this.api.recoveryLogin({ emailOrHandle, code });
     return this.applySession(response.session);
   }
 
