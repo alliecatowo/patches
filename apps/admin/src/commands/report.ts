@@ -1,4 +1,13 @@
-import { Actor, appendAdminAuditLog, Post, Report, User } from '@patches/database';
+import {
+  Actor,
+  appendAdminAuditLog,
+  ModerationLogEntry,
+  Post,
+  Report,
+  User,
+  type ModerationReasonCategory,
+  type ReportReason,
+} from '@patches/database';
 
 import {
   booleanOption,
@@ -12,6 +21,23 @@ import { type AdminContext, requireOperatorUserId } from '../context.js';
 
 const RESOLVE_ACTIONS = ['none', 'remove-post', 'suspend'] as const;
 type ResolveAction = (typeof RESOLVE_ACTIONS)[number];
+
+/** `reports.reason` → `moderation_log_entries.reason_category` (spec §201.4, §202): the two
+ * enums are separately declared (`REPORT_REASONS`/`MODERATION_REASON_CATEGORIES` in
+ * `packages/database/src/entities/enums.ts`) but describe the same underlying guideline
+ * categories, so a report-driven enforcement action publishes the closest match rather than
+ * always falling back to `OTHER`. Only `HATE_SPEECH` needs renaming; everything else is an
+ * identical string. */
+const REPORT_REASON_TO_MODERATION_CATEGORY: Readonly<
+  Record<ReportReason, ModerationReasonCategory>
+> = Object.freeze({
+  SPAM: 'SPAM',
+  HARASSMENT: 'HARASSMENT',
+  HATE_SPEECH: 'HATE',
+  ILLEGAL_CONTENT: 'ILLEGAL_CONTENT',
+  IMPERSONATION: 'IMPERSONATION',
+  OTHER: 'OTHER',
+});
 
 /** `report list|show|resolve` (spec §64–65). */
 export async function runReportCommand(
@@ -106,6 +132,14 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
       throw new Error(`Report "${id}" is already ${report.status.toLowerCase()}.`);
     }
 
+    // The public, anonymized transparency-log entry for a report-driven enforcement action
+    // (spec §201.4) — same `moderation_log_entries` shape `patches-admin domain block`/
+    // `user suspend`/`user delete` write, closed reason-category vocabulary mapped from the
+    // report's own `reason` (`REPORT_REASON_TO_MODERATION_CATEGORY`). `none` resolves the
+    // report without taking an enforcement action, so it gets no log entry — same as
+    // `report resolve`'s existing `admin_audit_log` row, which is written unconditionally
+    // below regardless of `resolveAction`.
+    const reasonCategory = REPORT_REASON_TO_MODERATION_CATEGORY[report.reason];
     if (resolveAction === 'remove-post') {
       if (report.subjectPostId === null) {
         throw new Error('--action remove-post requires a report whose subject is a POST.');
@@ -118,6 +152,15 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
           removalReason: note ?? 'Removed following a moderation report.',
         },
       );
+      await manager.getRepository(ModerationLogEntry).save(
+        manager.getRepository(ModerationLogEntry).create({
+          action: 'POST_REMOVAL',
+          subjectKind: 'POST',
+          subjectDomain: null,
+          reasonCategory,
+          appealed: false,
+        }),
+      );
     } else if (resolveAction === 'suspend') {
       if (report.subjectActorId === null) {
         throw new Error('--action suspend requires a report whose subject is an ACTOR.');
@@ -129,6 +172,15 @@ async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<v
         throw new Error('The reported actor has no local account to suspend.');
       }
       await manager.getRepository(User).update({ id: actor.userId }, { status: 'SUSPENDED' });
+      await manager.getRepository(ModerationLogEntry).save(
+        manager.getRepository(ModerationLogEntry).create({
+          action: 'SUSPEND',
+          subjectKind: 'ACCOUNT',
+          subjectDomain: null,
+          reasonCategory,
+          appealed: false,
+        }),
+      );
     }
 
     await manager.getRepository(Report).update(

@@ -192,6 +192,56 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(deleted.status).toBe('DELETED');
         expect(deleted.deletedAt).not.toBeNull();
       });
+
+      it('writes anonymized moderation-log entries for suspend (SUSPEND) and delete (BAN) (P14 follow-up)', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}d`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `modlog${Date.now()}`,
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s1 = silence();
+        await runUserCommand(
+          'suspend',
+          {
+            positionals: ['user', 'suspend', actor.handle],
+            options: { reason: 'harassment case', 'reason-category': 'harassment' },
+          },
+          ctx,
+        );
+        s1.restore();
+
+        const suspendEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'SUSPEND', subjectKind: 'ACCOUNT', reasonCategory: 'HARASSMENT' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(suspendEntry).not.toBeNull();
+        expect(suspendEntry?.subjectDomain).toBeNull();
+        // Structurally anonymized: the entity has no actor-id/handle column to check against
+        // in the first place (see `ModerationLogEntry`'s doc comment) — nothing in this row's
+        // own field set could name `actor.handle` or `actor.id` even by accident.
+        expect(Object.values(suspendEntry ?? {})).not.toContain(actor.handle);
+        expect(Object.values(suspendEntry ?? {})).not.toContain(actor.id);
+
+        const s2 = silence();
+        await runUserCommand(
+          'delete',
+          { positionals: ['user', 'delete', actor.handle], options: {} },
+          ctx,
+        );
+        s2.restore();
+
+        const banEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'BAN', subjectKind: 'ACCOUNT' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(banEntry).not.toBeNull();
+        // Default reason category when `--reason-category` is omitted.
+        expect(banEntry?.reasonCategory).toBe('OTHER');
+        expect(banEntry?.subjectDomain).toBeNull();
+      });
     });
 
     describe('report resolve', () => {
@@ -261,6 +311,68 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         const suspended = await dataSource.getRepository(User).findOneByOrFail({ id: target.id });
         expect(suspended.status).toBe('SUSPENDED');
+      });
+
+      it('writes anonymized moderation-log entries for remove-post/suspend, and none for a no-op resolution (P14 follow-up)', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}e`,
+        });
+        const { actor: author } = await createTestUser(dataSource.manager, {
+          handle: `author2${Date.now()}`,
+        });
+        const { actor: reporter } = await createTestUser(dataSource.manager, {
+          handle: `reporter3${Date.now()}`,
+        });
+        const post = await createTestPost(dataSource.manager, { authorActorId: author.id });
+        const report = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter.id,
+          subjectType: 'POST',
+          subjectPostId: post.id,
+          reason: 'HATE_SPEECH',
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s1 = silence();
+        await runReportCommand(
+          'resolve',
+          { positionals: ['report', 'resolve', report.id], options: { action: 'remove-post' } },
+          ctx,
+        );
+        s1.restore();
+
+        const removalEntry = await dataSource.getRepository(ModerationLogEntry).findOne({
+          where: { action: 'POST_REMOVAL', subjectKind: 'POST' },
+          order: { createdAt: 'DESC' },
+        });
+        expect(removalEntry).not.toBeNull();
+        // reports.reason 'HATE_SPEECH' maps to moderation_log_entries.reason_category 'HATE'.
+        expect(removalEntry?.reasonCategory).toBe('HATE');
+        expect(removalEntry?.subjectDomain).toBeNull();
+
+        const { actor: reporter2 } = await createTestUser(dataSource.manager, {
+          handle: `reporter4${Date.now()}`,
+        });
+        const dismissedReport = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter2.id,
+          subjectType: 'POST',
+          subjectPostId: post.id,
+        });
+        const countBefore = await dataSource.getRepository(ModerationLogEntry).count();
+
+        const s2 = silence();
+        await runReportCommand(
+          'resolve',
+          {
+            positionals: ['report', 'resolve', dismissedReport.id],
+            options: { action: 'none' },
+          },
+          ctx,
+        );
+        s2.restore();
+
+        // `none` resolves the report without an enforcement action — no new log entry.
+        const countAfter = await dataSource.getRepository(ModerationLogEntry).count();
+        expect(countAfter).toBe(countBefore);
       });
     });
 
