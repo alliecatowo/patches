@@ -30,6 +30,7 @@ import { useUnreadCount } from '../hooks/useUnreadCount.js';
 import { MediaCache } from '../media/cache.js';
 import { MediaSessionProvider } from '../media/media-session.js';
 import { openMediaExternally, type OpenMediaOptions } from '../media/open-external.js';
+import { openLinkExternally } from '../pages/open-link.js';
 import { AccountsScreen } from '../screens/AccountsScreen.js';
 import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
@@ -73,7 +74,7 @@ import { ActiveThemeProvider } from './theme-context.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { isTruthy } from '../env.js';
-import { CommandHistory } from './commands.js';
+import { CommandHistory, contextualCommands, type ContextualSelection } from './commands.js';
 import {
   createKeyLayerStack,
   isCoalescedKeyRun,
@@ -569,6 +570,41 @@ export function App({
       return;
     }
     goTo({ screen: 'profile', actorId: session.userId, knownActor: session.actor });
+  }
+
+  /** `@handle` parsed out of a post body (`contextualCommands`' mention entries,
+   * P12-116) — same lookup-then-navigate shape as `:profile <handle>`. */
+  function openActorByHandle(handle: string): void {
+    const query = handle.replace(/^@/u, '');
+    void api.searchActors({ query, cursor: '', limit: 20 }).then(
+      (response) => {
+        const actor = response.actors.find((candidate) => candidate.handle === query);
+        if (actor === undefined) notify(`No profile found for @${query}.`, 'error');
+        else openProfile(actor.id, actor);
+      },
+      (error: unknown) => notify(describeGrpcError(error, api.target).title, 'error'),
+    );
+  }
+
+  /** `#tag` parsed out of a post body (`contextualCommands`' tag entries, P12-116) —
+   * same lookup-then-navigate shape as `:tag <name>`. */
+  function openTagByName(name: string): void {
+    const normalized = name.replace(/^#/u, '').toLowerCase();
+    void api.searchTags({ query: normalized, cursor: '', limit: 20 }).then(
+      (response) => {
+        const tag = response.tags.find((candidate) => candidate.name === normalized);
+        if (tag === undefined) notify(`No tag found for #${normalized}.`, 'error');
+        else navigate({ screen: 'tagFeed', tag });
+      },
+      (error: unknown) => notify(describeGrpcError(error, api.target).title, 'error'),
+    );
+  }
+
+  /** A link href parsed out of a post body (`contextualCommands`' link entries,
+   * P12-116) — an explicit, viewer-initiated open, never an automatic fetch/preview
+   * (spec §194). */
+  function openLinkFromPost(url: string): void {
+    if (!openLinkExternally(url, openMediaOptions)) notify('That link was blocked.', 'error');
   }
 
   /** `v` on a profile, or `g v` for the caller's own (P45-006) — opens that actor's
@@ -1150,6 +1186,27 @@ export function App({
     jump: listJump,
   };
 
+  // The command palette's contextual half (P12-116): `rowActions` plus the
+  // mention/tag/link lookups, ready for whichever post is under the cursor. `post`
+  // itself stays `undefined` here — no list screen yet reports its own `VirtualList`
+  // selection up to the shell (that plumbing is the rest of P12-116, not this task) —
+  // so `contextualCommands()` below is a harmless no-op today and starts producing
+  // real entries the moment a screen fills `post` in.
+  const contextualSelection: ContextualSelection = {
+    actions: rowActions,
+    viewerActorId: session?.userId,
+    onOpenActor: (handle: string) => openActorByHandle(handle),
+    onOpenTag: (name: string) => openTagByName(name),
+    onOpenLink: (url: string) => openLinkFromPost(url),
+  };
+  // False positive below: `contextualCommands` never invokes `onOpenActor`/`onOpenTag`/
+  // `onOpenLink` itself, only `bind()`s them into closures `CommandPalette` calls later
+  // from `onInvoke` (an event handler) — the static check can't see that
+  // `openActorByHandle` (which touches `navigated.current` via `navigate()`) is reached
+  // only once a viewer actually picks a mention command, never synchronously here.
+  // eslint-disable-next-line react-hooks/refs
+  const contextualPaletteCommands = contextualCommands(contextualSelection);
+
   function setToggle(
     value: string | undefined,
     current: boolean,
@@ -1402,6 +1459,7 @@ export function App({
           screen={screen}
           authenticated={session !== undefined}
           history={commandHistory}
+          contextualCommands={contextualPaletteCommands}
           onInvoke={invokePalette}
           onError={(message) => notify(message, 'error')}
           onClose={closeTop}
@@ -1920,6 +1978,7 @@ export function App({
         screen={screen}
         authenticated={session !== undefined}
         history={commandHistory}
+        contextualCommands={contextualPaletteCommands}
         onInvoke={invokePalette}
         onError={(message) => notify(message, 'error')}
         onClose={closeTopModal}
