@@ -1,16 +1,27 @@
 # Try it — running Patches and testing multiple users
 
-_Status: verified 2026-08-18 against the live node and a local stack._
+_Status: verified 2026-08-19 against the live node and a local stack._
 
 ## 1. Against the live node (recommended)
 
-Install once (Node 24+, no registry login — the repo is public):
+Install the latest release (Node 24+, no registry login — the repo is public). Check
+[github.com/alliecatowo/patches/releases](https://github.com/alliecatowo/patches/releases) for
+the newest prerelease tag and asset name, then:
 
 ```bash
-npm install --global --allow-remote=all https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.2/patches-social-0.1.0.tgz
+npm install --global --allow-remote=all https://github.com/alliecatowo/patches/releases/download/<tag>/<asset>.tgz
+# e.g. .../download/v0.1.0-alpha.3/patches-social-0.1.0-alpha.3.tgz
 # (npm 12 blocks remote tarballs by default: keep `--allow-remote=all`, or download the .tgz and install the local file)
 patches ping            # {"ok": true, "target": "patches-social.fly.dev:443", ...}
 ```
+
+Already installed? `patches` itself checks for a newer release on every interactive launch (at
+most once every 6 hours) and offers to upgrade in place — "A Patches upgrade is available: … →
+… . Upgrade now? [y/n]"; `y` installs it and tells you to Ctrl+C and relaunch, `n` continues
+into the app as normal. `patches upgrade` does the same thing non-interactively (forces a fresh
+check, installs if newer, prints the result and exits) — handy after cutting a release
+(`docs/operations/release.md`). Skip the check entirely with `--no-upgrade-check` or
+`PATCHES_NO_UPGRADE_CHECK=1`; it's already off under `CI=true`.
 
 Or from the repo checkout: `mise run tui:prod` (builds and runs the TUI against the live node;
 `mise run ping:prod` for a connectivity check). Plain `patches` / `node apps/tui/dist/cli.js`

@@ -15,7 +15,8 @@ export type Command =
   | 'profile'
   | 'dm'
   | 'community'
-  | 'tag';
+  | 'tag'
+  | 'upgrade';
 
 const SUBCOMMANDS: readonly Command[] = [
   'register',
@@ -43,6 +44,9 @@ export interface ParsedArgs {
    * `theme/themes/resolution.ts`, not here — this parser only recognizes the flag so it
    * doesn't fall through to "Unknown argument". */
   themeName?: string;
+  /** `--no-upgrade-check` — also settable via `PATCHES_NO_UPGRADE_CHECK`/`CI` env vars, which
+   * `isUpgradeCheckEnabled` (`upgrade/check.ts`) checks directly rather than through this parser. */
+  noUpgradeCheck: boolean;
   /**
    * Everything after the command word that isn't a shared connection flag
    * (`--server`/`--node`/`--insecure`) — the auth subcommands (`register`,
@@ -86,6 +90,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         : env.PATCHES_SERVER.trim(),
     insecure: isTruthy(env.PATCHES_INSECURE),
     plain: isTruthy(env.PATCHES_PLAIN),
+    noUpgradeCheck: false,
     rest: [],
   };
 
@@ -137,6 +142,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'dm':
       case 'community':
       case 'tag':
+      case 'upgrade':
         result.command = argument;
         break;
       case '--insecure':
@@ -144,6 +150,9 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
         break;
       case '--plain':
         result.plain = true;
+        break;
+      case '--no-upgrade-check':
+        result.noUpgradeCheck = true;
         break;
       case '--theme': {
         const value = argv[index + 1];
@@ -212,6 +221,7 @@ Usage:
   patches dm <command>         list, read, send, or manage message requests
   patches community <command>  list, join, leave, or post to communities
   patches tag <command>        search or read/mute a tag
+  patches upgrade               check for and install a newer release, then exit
   patches --version            print the client version
 
 Options:
@@ -222,6 +232,8 @@ Options:
   --theme <name>                 select a theme (env: PATCHES_THEME; patches, paper, mono,
                                   hacker, pastel, terminal, or a name from
                                   $XDG_CONFIG_HOME/patches/themes/)
+  --no-upgrade-check             skip the launch-time check for a newer release
+                                  (env: PATCHES_NO_UPGRADE_CHECK; also skipped under CI=true)
   -h, --help                     show this message
   -v, --version                  show the client version
 

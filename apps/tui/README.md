@@ -67,6 +67,18 @@ cd /tmp && /tmp/pfx/bin/patches ping --server patches-social.fly.dev:443
 `npm install -g patches-social` once it's published — both resolve the same npm-registry
 semver ranges in the packed `package.json`, so this is an equivalent proof of installability.)
 
+## Upgrading
+
+An interactive launch checks GitHub Releases for a newer build at most once every 6 hours
+(cached under `$XDG_CACHE_HOME/patches/upgrade-check.json`) and, if one exists, prompts before
+opening the app: "A Patches upgrade is available: … → … . Upgrade now? [y/n]". `y` installs it
+in place (`npm install -g` / `pnpm add -g` / "you're running from a repo checkout, `git pull &&
+pnpm build` instead" — detected from how the running binary got there) and tells you to Ctrl+C
+and relaunch; `n` continues into the app unchanged. `patches upgrade` does the same check and
+install non-interactively, bypassing the cache. Skip the check with `--no-upgrade-check` /
+`PATCHES_NO_UPGRADE_CHECK=1`; it's already off under `CI=true`. See `src/upgrade/` and
+`docs/operations/release.md` (cutting a release).
+
 ## Running against a server
 
 Once installed (locally, per above, or via `pnpm --filter @patches/tui start` from a repo

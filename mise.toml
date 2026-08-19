@@ -105,6 +105,10 @@ trap 'rm -rf "$snapshot"' EXIT
 node "$snapshot/cli.js" --server "${PATCHES_SERVER:-patches-social.fly.dev:443}" "$@"
 """
 
+[tasks."tui:release"]
+description = "Build + pack the TUI release tarball and create a GitHub prerelease from it (bump apps/tui/package.json's version first) — see docs/operations/release.md. Add --pack-only to stop after packing (no `gh release create`, no GitHub write)."
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/tui-release.sh \"$@\""
+
 [tasks."ping:prod"]
 description = "Connectivity check against the live flagship node"
 run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-patches-social.fly.dev:443}\""

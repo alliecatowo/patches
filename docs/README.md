@@ -31,6 +31,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/incidents.md`](./operations/incidents.md)
   - [`operations/local-development.md`](./operations/local-development.md)
   - [`operations/try-it.md`](./operations/try-it.md) — run it against the live node, test several users
+  - [`operations/release.md`](./operations/release.md) — cutting a TUI release
   - [`operations/site.md`](./operations/site.md)
   - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)

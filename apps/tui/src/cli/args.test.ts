@@ -9,6 +9,7 @@ describe('parseArgs', () => {
       target: DEFAULT_TARGET,
       insecure: false,
       plain: false,
+      noUpgradeCheck: false,
       rest: [],
     });
   });
@@ -68,6 +69,7 @@ describe('parseArgs', () => {
       target: '127.0.0.1:1234',
       insecure: true,
       plain: false,
+      noUpgradeCheck: false,
       rest: [],
     });
   });
@@ -77,6 +79,15 @@ describe('parseArgs', () => {
     expect(parseArgs([], { PATCHES_PLAIN: 'true' }).plain).toBe(true);
     expect(parseArgs([], { PATCHES_PLAIN: 'false' }).plain).toBe(false);
     expect(parseArgs([]).plain).toBe(false);
+  });
+
+  it('reads --no-upgrade-check', () => {
+    expect(parseArgs(['--no-upgrade-check']).noUpgradeCheck).toBe(true);
+    expect(parseArgs([]).noUpgradeCheck).toBe(false);
+  });
+
+  it('recognises the upgrade command', () => {
+    expect(parseArgs(['upgrade']).command).toBe('upgrade');
   });
 
   it('explains an unknown argument instead of failing silently', () => {

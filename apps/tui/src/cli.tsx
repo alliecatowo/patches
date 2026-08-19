@@ -23,9 +23,38 @@ import { runRegister } from './cli/register.js';
 import { runTag } from './cli/tag.js';
 import { runVerify } from './cli/verify.js';
 import { runWhoami } from './cli/whoami.js';
+import { isTruthy } from './env.js';
 import { App } from './app/App.js';
 import { installTerminalCleanup } from './terminal/cleanup.js';
+import { checkForUpgrade, createFileUpgradeCache, isUpgradeCheckEnabled } from './upgrade/check.js';
+import { installUpgrade } from './upgrade/install.js';
+import { UpgradePrompt } from './upgrade/UpgradePrompt.js';
 import { TUI_VERSION } from './version.js';
+
+/** Debug logging for the upgrade check only — never printed in normal mode (harness brief:
+ * "never print errors in normal mode; --verbose/PATCHES_DEBUG may log"). */
+function debugUpgradeLog(message: string): void {
+  if (isTruthy(process.env.PATCHES_DEBUG)) {
+    process.stderr.write(`patches: upgrade check: ${message}\n`);
+  }
+}
+
+/** After `detectTerminalGraphics()` resolves, give the (already-started) upgrade check a small
+ * extra cap rather than the network request's own multi-second timeout — launch must not get
+ * noticeably slower just because GitHub is slow to answer. 800ms is enough for a normal GitHub
+ * API round trip (the graphics probe alone rarely covers that) while staying well under a
+ * human's "did this just hang" threshold; a genuinely slow/offline network still just skips the
+ * prompt for this one launch — the cache makes every launch inside the next 6h resolve instantly. */
+const UPGRADE_CHECK_RENDER_CAP_MS = 800;
+
+function raceWithCap<T>(promise: Promise<T>, capMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      setTimeout(() => resolve(fallback), capMs);
+    }),
+  ]);
+}
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2), process.env);
@@ -49,6 +78,10 @@ async function main(): Promise<number> {
     const { json, exitCode } = await runPing(args);
     process.stdout.write(json);
     return exitCode;
+  }
+
+  if (args.command === 'upgrade') {
+    return runUpgradeCommand();
   }
 
   const io = createNodeIo();
@@ -76,6 +109,7 @@ async function runTui(args: {
   target: string;
   insecure: boolean;
   plain: boolean;
+  noUpgradeCheck: boolean;
   visitTarget?: { handle: string; slug: string };
 }): Promise<number> {
   if (!process.stdout.isTTY) {
@@ -96,10 +130,30 @@ async function runTui(args: {
   // a separate prop — one source of truth for "is plain mode on at startup" (spec §173).
   const env = args.plain ? { ...process.env, PATCHES_PLAIN: '1' } : process.env;
 
+  // Started here, not awaited yet, so the network round trip overlaps
+  // `detectTerminalGraphics()`'s own wait instead of adding to launch time.
+  const upgradeCheckPromise = isUpgradeCheckEnabled(process.env, args.noUpgradeCheck)
+    ? checkForUpgrade({
+        currentVersion: TUI_VERSION,
+        fetch: globalThis.fetch,
+        cache: createFileUpgradeCache(),
+        onDebug: debugUpgradeLog,
+      })
+    : Promise.resolve(undefined);
+
   // MUST run before `render()` — Ink puts stdin in raw mode and consumes `data`, and a
   // probe started afterwards races Ink's key parser (@patches/terminal-media's README,
   // spec §74's "probe before render").
   const graphicsCapabilities = await detectTerminalGraphics();
+
+  // Give the (already-running) upgrade check a small extra cap rather than the multi-second
+  // network timeout it owns internally — a slow GitHub response must never noticeably delay
+  // opening the TUI (harness brief).
+  const upgrade = await raceWithCap(upgradeCheckPromise, UPGRADE_CHECK_RENDER_CAP_MS, undefined);
+  if (upgrade !== undefined) {
+    await promptForUpgrade({ currentVersion: TUI_VERSION, upgrade, plain: args.plain });
+  }
+
   const mediaRenderer = createRenderer(graphicsCapabilities);
   // Freed on exit/signal even though Ink's own alternate-screen teardown runs first —
   // Ink treats teardown-time writes as disposable, so the actual `d=I` deletes have to
@@ -131,6 +185,75 @@ async function runTui(args: {
     mediaRenderer.releaseAll();
     restoreTerminal();
   }
+}
+
+/**
+ * Renders `UpgradePrompt` in its own `render()` call — deliberately not on the alternate
+ * screen, so the prompt (and any decline) stays in scrollback either way — and resolves once
+ * the user declines or dismisses a failure. A successful upgrade never resolves this promise:
+ * the component stays on screen showing "press Ctrl+C to exit", and `exitOnCtrlC: true` on
+ * this render instance is what actually lets Ctrl+C end the process from there.
+ */
+function promptForUpgrade(props: {
+  currentVersion: string;
+  upgrade: Parameters<typeof UpgradePrompt>[0]['upgrade'];
+  plain: boolean;
+}): Promise<void> {
+  return new Promise((resolve) => {
+    const instance = render(
+      <UpgradePrompt
+        currentVersion={props.currentVersion}
+        upgrade={props.upgrade}
+        plain={props.plain}
+        install={(upgrade, onOutput) => installUpgrade(upgrade, { onOutput })}
+        onDone={() => {
+          instance.unmount();
+          resolve();
+        }}
+      />,
+      { exitOnCtrlC: true },
+    );
+  });
+}
+
+/** `patches upgrade` — forces a fresh (cache-bypassing) check and installs synchronously,
+ * printing to stdout/stderr and returning a process exit code, no Ink involved. */
+async function runUpgradeCommand(): Promise<number> {
+  let checkFailed = false;
+  const upgrade = await checkForUpgrade({
+    currentVersion: TUI_VERSION,
+    fetch: globalThis.fetch,
+    cache: createFileUpgradeCache(),
+    force: true,
+    onDebug: () => {
+      checkFailed = true;
+    },
+  });
+
+  if (upgrade === undefined) {
+    if (checkFailed) {
+      process.stderr.write('patches: could not reach GitHub to check for an upgrade.\n');
+      return 1;
+    }
+    process.stdout.write(`patches: already up to date (${TUI_VERSION}).\n`);
+    return 0;
+  }
+
+  process.stdout.write(`Upgrading ${TUI_VERSION} -> ${upgrade.latestVersion}...\n`);
+  const result = await installUpgrade(upgrade, {
+    onOutput: (line) => process.stdout.write(`${line}\n`),
+  });
+
+  if (result.ok) {
+    process.stdout.write(`Upgraded to ${upgrade.latestVersion}. Relaunch \`patches\` to use it.\n`);
+    return 0;
+  }
+
+  process.stderr.write(`patches: upgrade failed: ${result.message}\n`);
+  if (result.manualCommand !== undefined) {
+    process.stderr.write(`Try it by hand: ${result.manualCommand}\n`);
+  }
+  return 1;
 }
 
 main()
