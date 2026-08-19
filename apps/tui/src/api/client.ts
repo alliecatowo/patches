@@ -4,6 +4,8 @@ import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import {
   createActorClient,
   createAuthClient,
+  createCommunityClient,
+  createDirectMessageClient,
   createFeedClient,
   createMediaClient,
   createModerationClient,
@@ -14,6 +16,7 @@ import {
   createReactionClient,
   createSocialGraphClient,
   createSystemClient,
+  createTagClient,
   DEADLINES_MS,
   METADATA_KEYS,
   type ActorGrpcClient,
@@ -26,16 +29,28 @@ import {
   type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
+  type BanFromCommunityRequest,
+  type BanFromCommunityResponse,
   type BlockActorRequest,
   type BlockActorResponse,
   type BookmarkPostRequest,
   type BookmarkPostResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
+  type CommunityGrpcClient,
+  type CreateCommunityRequest,
+  type CreateCommunityResponse,
+  type CreateConversationRequest,
+  type CreateConversationResponse,
   type CreatePostRequest,
   type CreatePostResponse,
+  type DeleteMessageRequest,
+  type DeleteMessageResponse,
   type DeletePostRequest,
   type DeletePostResponse,
+  type DirectMessageGrpcClient,
+  type EditPostRequest,
+  type EditPostResponse,
   type FeedGrpcClient,
   type FinalizeMediaUploadRequest,
   type FinalizeMediaUploadResponse,
@@ -46,6 +61,10 @@ import {
   type GetActorRequest,
   type GetActorResponse,
   type GetCurrentSessionResponse,
+  type GetCommunityRequest,
+  type GetCommunityResponse,
+  type GetConversationRequest,
+  type GetConversationResponse,
   type GetMediaDownloadRequest,
   type GetMediaDownloadResponse,
   type GetNodeInfoResponse,
@@ -60,17 +79,39 @@ import {
   type GetUnreadCountResponse,
   type LikePostRequest,
   type LikePostResponse,
+  type InviteToCommunityRequest,
+  type InviteToCommunityResponse,
+  type JoinCommunityRequest,
+  type JoinCommunityResponse,
+  type LeaveCommunityRequest,
+  type LeaveCommunityResponse,
+  type LeaveConversationRequest,
+  type LeaveConversationResponse,
   type ListActorPostsRequest,
   type ListActorPostsResponse,
   type ListBlocksRequest,
   type ListBlocksResponse,
   type ListBookmarksRequest,
   type ListBookmarksResponse,
+  type ListCommunitiesRequest,
+  type ListCommunitiesResponse,
+  type ListCommunityFeedRequest,
+  type ListCommunityFeedResponse,
+  type ListCommunityMembersRequest,
+  type ListCommunityMembersResponse,
+  type ListConversationsRequest,
+  type ListConversationsResponse,
   type ListCredentialsResponse,
   type ListHomeFeedRequest,
   type ListHomeFeedResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMessageRequestsRequest,
+  type ListMessageRequestsResponse,
+  type ListMessagesRequest,
+  type ListMessagesResponse,
+  type ListMutedTagsRequest,
+  type ListMutedTagsResponse,
   type ListMutualFollowsRequest,
   type ListMutualFollowsResponse,
   type ListMutesRequest,
@@ -81,25 +122,35 @@ import {
   type ListPageRevisionsResponse,
   type ListPostLikersRequest,
   type ListPostLikersResponse,
+  type ListPostEditsRequest,
+  type ListPostEditsResponse,
   type ListGuestbookRequest,
   type ListGuestbookResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
+  type ListTagFeedRequest,
+  type ListTagFeedResponse,
   type LoginRequest,
   type LoginResponse,
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type MarkConversationReadRequest,
+  type MarkConversationReadResponse,
   type MarkNotificationsReadRequest,
   type MarkNotificationsReadResponse,
   type MediaGrpcClient,
   type ModerationGrpcClient,
   type MuteActorRequest,
   type MuteActorResponse,
+  type MuteTagRequest,
+  type MuteTagResponse,
   type NodeGrpcClient,
   type NotificationGrpcClient,
   type PageGrpcClient,
   type PingResponse,
+  type PinPostRequest,
+  type PinPostResponse,
   type PostGrpcClient,
   type ReactionGrpcClient,
   type RefreshSessionRequest,
@@ -108,25 +159,40 @@ import {
   type RegisterResponse,
   type RemoveGuestbookEntryRequest,
   type RemoveGuestbookEntryResponse,
+  type RemovePostFromCommunityRequest,
+  type RemovePostFromCommunityResponse,
   type ReportActorRequest,
   type ReportActorResponse,
   type ReportGuestbookEntryRequest,
   type ReportGuestbookEntryResponse,
   type ReportPostRequest,
   type ReportPostResponse,
+  type RepostPostRequest,
+  type RepostPostResponse,
   type ResendVerificationResponse,
   type ResolveActorRequest,
   type ResolveActorResponse,
+  type RespondToCommunityInviteRequest,
+  type RespondToCommunityInviteResponse,
+  type RespondToMessageRequestRequest,
+  type RespondToMessageRequestResponse,
   type RevokeCredentialRequest,
   type RevokeCredentialResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
   type SearchPostsRequest,
   type SearchPostsResponse,
+  type SearchTagsRequest,
+  type SearchTagsResponse,
+  type SendMessageRequest,
+  type SendMessageResponse,
+  type SetCommunityRoleRequest,
+  type SetCommunityRoleResponse,
   type SignGuestbookRequest,
   type SignGuestbookResponse,
   type SocialGraphGrpcClient,
   type SystemGrpcClient,
+  type TagGrpcClient,
   type UnblockActorRequest,
   type UnblockActorResponse,
   type UnbookmarkPostRequest,
@@ -137,6 +203,14 @@ import {
   type UnlikePostResponse,
   type UnmuteActorRequest,
   type UnmuteActorResponse,
+  type UnmuteTagRequest,
+  type UnmuteTagResponse,
+  type UnpinPostRequest,
+  type UnpinPostResponse,
+  type UnrepostPostRequest,
+  type UnrepostPostResponse,
+  type UpdateCommunityRequest,
+  type UpdateCommunityResponse,
   type UpdatePageRequest,
   type UpdatePageResponse,
   type UpdateProfileRequest,
@@ -176,6 +250,9 @@ export class PatchesApi {
   private readonly moderation: ModerationGrpcClient;
   private readonly media: MediaGrpcClient;
   private readonly page: PageGrpcClient;
+  private readonly community: CommunityGrpcClient;
+  private readonly directMessage: DirectMessageGrpcClient;
+  private readonly tag: TagGrpcClient;
 
   constructor(options: ClientOptions) {
     this.target = options.target;
@@ -194,6 +271,9 @@ export class PatchesApi {
     this.moderation = createModerationClient(options.target, channelCredentials);
     this.media = createMediaClient(options.target, channelCredentials);
     this.page = createPageClient(options.target, channelCredentials);
+    this.community = createCommunityClient(options.target, channelCredentials);
+    this.directMessage = createDirectMessageClient(options.target, channelCredentials);
+    this.tag = createTagClient(options.target, channelCredentials);
   }
 
   async getServerInfo(): Promise<GetServerInfoResponse> {
@@ -360,6 +440,25 @@ export class PatchesApi {
     return unary(this.feed.listLocalFeed.bind(this.feed), request, DEADLINES_MS.unary, accessToken);
   }
 
+  async listTagFeed(
+    request: ListTagFeedRequest,
+    accessToken?: string,
+  ): Promise<ListTagFeedResponse> {
+    return unary(this.feed.listTagFeed.bind(this.feed), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async listCommunityFeed(
+    request: ListCommunityFeedRequest,
+    accessToken?: string,
+  ): Promise<ListCommunityFeedResponse> {
+    return unary(
+      this.feed.listCommunityFeed.bind(this.feed),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
   // ---- FeedService / SocialGraphService — the caller's own network, requires a session ----
 
   async listHomeFeed(
@@ -460,6 +559,25 @@ export class PatchesApi {
     return unary(this.post.deletePost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
+  async editPost(request: EditPostRequest, accessToken: string): Promise<EditPostResponse> {
+    return unary(this.post.editPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async listPostEdits(
+    request: ListPostEditsRequest,
+    accessToken?: string,
+  ): Promise<ListPostEditsResponse> {
+    return unary(this.post.listPostEdits.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async pinPost(request: PinPostRequest, accessToken: string): Promise<PinPostResponse> {
+    return unary(this.post.pinPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async unpinPost(request: UnpinPostRequest, accessToken: string): Promise<UnpinPostResponse> {
+    return unary(this.post.unpinPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
   // ---- ReactionService — likes/bookmarks, all require a session (spec §53) ----
 
   async likePost(request: LikePostRequest, accessToken: string): Promise<LikePostResponse> {
@@ -519,6 +637,27 @@ export class PatchesApi {
 
   async listPostLikers(request: ListPostLikersRequest): Promise<ListPostLikersResponse> {
     return unary(this.reaction.listPostLikers.bind(this.reaction), request, DEADLINES_MS.unary);
+  }
+
+  async repostPost(request: RepostPostRequest, accessToken: string): Promise<RepostPostResponse> {
+    return unary(
+      this.reaction.repostPost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async unrepostPost(
+    request: UnrepostPostRequest,
+    accessToken: string,
+  ): Promise<UnrepostPostResponse> {
+    return unary(
+      this.reaction.unrepostPost.bind(this.reaction),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
   }
 
   // ---- NotificationService — requires a session; the TUI polls, no push (spec §56, §113) ----
@@ -741,6 +880,295 @@ export class PatchesApi {
     );
   }
 
+  // ---- CommunityService — public discovery; membership and moderation require a session ----
+
+  async createCommunity(
+    request: CreateCommunityRequest,
+    accessToken: string,
+  ): Promise<CreateCommunityResponse> {
+    return unary(
+      this.community.createCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getCommunity(
+    request: GetCommunityRequest,
+    accessToken?: string,
+  ): Promise<GetCommunityResponse> {
+    return unary(
+      this.community.getCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listCommunities(
+    request: ListCommunitiesRequest,
+    accessToken?: string,
+  ): Promise<ListCommunitiesResponse> {
+    return unary(
+      this.community.listCommunities.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async joinCommunity(
+    request: JoinCommunityRequest,
+    accessToken: string,
+  ): Promise<JoinCommunityResponse> {
+    return unary(
+      this.community.joinCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async leaveCommunity(
+    request: LeaveCommunityRequest,
+    accessToken: string,
+  ): Promise<LeaveCommunityResponse> {
+    return unary(
+      this.community.leaveCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listCommunityMembers(
+    request: ListCommunityMembersRequest,
+    accessToken: string,
+  ): Promise<ListCommunityMembersResponse> {
+    return unary(
+      this.community.listCommunityMembers.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async updateCommunity(
+    request: UpdateCommunityRequest,
+    accessToken: string,
+  ): Promise<UpdateCommunityResponse> {
+    return unary(
+      this.community.updateCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async setCommunityRole(
+    request: SetCommunityRoleRequest,
+    accessToken: string,
+  ): Promise<SetCommunityRoleResponse> {
+    return unary(
+      this.community.setCommunityRole.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async removePostFromCommunity(
+    request: RemovePostFromCommunityRequest,
+    accessToken: string,
+  ): Promise<RemovePostFromCommunityResponse> {
+    return unary(
+      this.community.removePostFromCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async banFromCommunity(
+    request: BanFromCommunityRequest,
+    accessToken: string,
+  ): Promise<BanFromCommunityResponse> {
+    return unary(
+      this.community.banFromCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async inviteToCommunity(
+    request: InviteToCommunityRequest,
+    accessToken: string,
+  ): Promise<InviteToCommunityResponse> {
+    return unary(
+      this.community.inviteToCommunity.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async respondToCommunityInvite(
+    request: RespondToCommunityInviteRequest,
+    accessToken: string,
+  ): Promise<RespondToCommunityInviteResponse> {
+    return unary(
+      this.community.respondToCommunityInvite.bind(this.community),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- DirectMessageService — all calls require a session (spec §183) ----
+
+  async listConversations(
+    request: ListConversationsRequest,
+    accessToken: string,
+  ): Promise<ListConversationsResponse> {
+    return unary(
+      this.directMessage.listConversations.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async getConversation(
+    request: GetConversationRequest,
+    accessToken: string,
+  ): Promise<GetConversationResponse> {
+    return unary(
+      this.directMessage.getConversation.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listMessages(
+    request: ListMessagesRequest,
+    accessToken: string,
+  ): Promise<ListMessagesResponse> {
+    return unary(
+      this.directMessage.listMessages.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async sendMessage(
+    request: SendMessageRequest,
+    accessToken: string,
+  ): Promise<SendMessageResponse> {
+    return unary(
+      this.directMessage.sendMessage.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async deleteMessage(
+    request: DeleteMessageRequest,
+    accessToken: string,
+  ): Promise<DeleteMessageResponse> {
+    return unary(
+      this.directMessage.deleteMessage.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async createConversation(
+    request: CreateConversationRequest,
+    accessToken: string,
+  ): Promise<CreateConversationResponse> {
+    return unary(
+      this.directMessage.createConversation.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async leaveConversation(
+    request: LeaveConversationRequest,
+    accessToken: string,
+  ): Promise<LeaveConversationResponse> {
+    return unary(
+      this.directMessage.leaveConversation.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async markConversationRead(
+    request: MarkConversationReadRequest,
+    accessToken: string,
+  ): Promise<MarkConversationReadResponse> {
+    return unary(
+      this.directMessage.markConversationRead.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async listMessageRequests(
+    request: ListMessageRequestsRequest,
+    accessToken: string,
+  ): Promise<ListMessageRequestsResponse> {
+    return unary(
+      this.directMessage.listMessageRequests.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async respondToMessageRequest(
+    request: RespondToMessageRequestRequest,
+    accessToken: string,
+  ): Promise<RespondToMessageRequestResponse> {
+    return unary(
+      this.directMessage.respondToMessageRequest.bind(this.directMessage),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  // ---- TagService — public search; mute state requires a session ----
+
+  async searchTags(request: SearchTagsRequest, accessToken?: string): Promise<SearchTagsResponse> {
+    return unary(this.tag.searchTags.bind(this.tag), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async muteTag(request: MuteTagRequest, accessToken: string): Promise<MuteTagResponse> {
+    return unary(this.tag.muteTag.bind(this.tag), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async unmuteTag(request: UnmuteTagRequest, accessToken: string): Promise<UnmuteTagResponse> {
+    return unary(this.tag.unmuteTag.bind(this.tag), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  async listMutedTags(
+    request: ListMutedTagsRequest,
+    accessToken: string,
+  ): Promise<ListMutedTagsResponse> {
+    return unary(this.tag.listMutedTags.bind(this.tag), request, DEADLINES_MS.unary, accessToken);
+  }
+
   close(): void {
     this.system.close();
     this.auth.close();
@@ -754,6 +1182,9 @@ export class PatchesApi {
     this.moderation.close();
     this.media.close();
     this.page.close();
+    this.community.close();
+    this.directMessage.close();
+    this.tag.close();
   }
 }
 

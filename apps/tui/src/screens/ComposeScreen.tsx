@@ -14,6 +14,8 @@ import { sanitizeForTerminal } from '../format/sanitize.js';
 import { InvalidAttachmentError, readLocalImage } from '../media/validate.js';
 import { pollUntilReady, uploadMediaFile, type UploadProgress } from '../media/upload.js';
 import { theme } from '../theme/index.js';
+import { useContentSize } from '../app/layout.js';
+import { TextEditor } from '../components/input/TextEditor.js';
 
 /** Post body limit (spec §58). */
 export const POST_BODY_LIMIT = 5000;
@@ -67,27 +69,26 @@ export function ComposeScreen({
   onSubmitted,
   isActive,
 }: ComposeScreenProps): ReactElement {
+  const content = useContentSize();
   const [send, setSend] = useState<SendState>({ status: 'idle' });
   const [attach, setAttach] = useState<AttachState>({ status: 'idle' });
   const attachments = draft.attachments ?? [];
 
-  async function submit(): Promise<void> {
-    if (draft.body.trim() === '') return;
+  async function submit(body = draft.body): Promise<void> {
+    if (body.trim() === '') return;
     setSend({ status: 'sending' });
     try {
       const accessToken = await ensureAccessToken();
       const response = await api.createPost(
         {
           clientRequestId: draft.clientRequestId,
-          body: draft.body,
+          body,
           linkUrl: '',
           visibility: POST_VISIBILITY.PUBLIC,
           inReplyToId: draft.inReplyToId ?? '',
           mediaIds: attachments.map((attachment) => attachment.mediaId),
-          // No content-warning UI yet (follow-up) — every post is created without one.
-          contentWarning: '',
-          // No quote/community compose UI yet (Amendment B, P11-00x follow-up).
-          quotedPostId: '',
+          contentWarning: draft.contentWarning ?? '',
+          quotedPostId: draft.quotedPostId ?? '',
           communityId: '',
           quotePolicy: QUOTE_POLICY.UNSPECIFIED,
         },
@@ -171,14 +172,6 @@ export function ComposeScreen({
         return;
       }
 
-      if (key.escape) {
-        onCancel();
-        return;
-      }
-      if (key.ctrl && input === 's') {
-        void submit();
-        return;
-      }
       if (key.ctrl && input === 'a') {
         setAttach({ status: 'entering', path: '' });
         return;
@@ -187,19 +180,6 @@ export function ComposeScreen({
         removeLastAttachment();
         return;
       }
-      if (key.return) {
-        onChange({ ...draft, body: `${draft.body}\n` });
-        return;
-      }
-      if (key.backspace || key.delete) {
-        onChange({ ...draft, body: draft.body.slice(0, -1) });
-        return;
-      }
-      // Anything else with a modifier is ignored rather than inserted literally.
-      if (key.ctrl || key.meta || key.tab) return;
-      if (input.length > 0 && draft.body.length < POST_BODY_LIMIT) {
-        onChange({ ...draft, body: draft.body + input });
-      }
     },
     { isActive },
   );
@@ -207,20 +187,33 @@ export function ComposeScreen({
   const remaining = POST_BODY_LIMIT - draft.body.length;
   const mentions = extractMentions(draft.body);
   const isReply = draft.inReplyToId !== undefined && draft.inReplyToId !== '';
+  const isQuote = draft.quotedPostId !== undefined && draft.quotedPostId !== '';
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.accent}>{isReply ? 'Reply' : 'New Post'}</Text>
+      <Text color={theme.accent}>{isReply ? 'Reply' : isQuote ? 'Quote Post' : 'New Post'}</Text>
       {isReply ? (
         <Text color={theme.muted}>
           replying to @{sanitizeForTerminal(draft.replyingToHandle ?? '')}
         </Text>
       ) : null}
-      <Box marginTop={1} marginBottom={1} flexDirection="column">
-        <Text wrap="wrap">
-          {draft.body}
-          <Text color={theme.accent}>{send.status === 'sending' ? '' : '█'}</Text>
+      {isQuote ? (
+        <Text color={theme.muted}>
+          quoting @{sanitizeForTerminal(draft.quotingHandle ?? 'unknown')}
         </Text>
+      ) : null}
+      <Box marginTop={1} marginBottom={1} flexDirection="column">
+        <TextEditor
+          value={draft.body}
+          onChange={(body) => onChange({ ...draft, body })}
+          columns={Math.max(20, content.columns)}
+          rows={Math.max(4, Math.min(8, content.rows - 10))}
+          maxChars={POST_BODY_LIMIT}
+          isActive={isActive && send.status !== 'sending' && attach.status === 'idle'}
+          onEscape={onCancel}
+          onSubmit={(body) => void submit(body)}
+          ariaLabel="Post body"
+        />
       </Box>
       {mentions.length === 0 ? null : (
         // The server extracts `@handle` from the body and notifies those actors

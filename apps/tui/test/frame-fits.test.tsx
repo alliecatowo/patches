@@ -95,7 +95,7 @@ describe('the rendered frame always fits the terminal', () => {
     await flush();
 
     press('?');
-    const frame = await expectFrame(lastFrame, 'Navigation');
+    const frame = await expectFrame(lastFrame, 'Space/PgDn page');
     assertFits(frame, 'help screen');
 
     for (let step = 0; step < 30; step += 1) press('j');

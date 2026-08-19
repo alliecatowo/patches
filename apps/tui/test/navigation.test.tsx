@@ -92,7 +92,7 @@ describe('Esc pops exactly one level, from every screen', () => {
     await flush(40);
 
     press('?');
-    await expectFrame(lastFrame, 'Navigation');
+    await expectFrame(lastFrame, 'Space/PgDn page');
     await flush(40);
     press(KEY.escape);
     await expectFrame(lastFrame, 'Home');
@@ -149,7 +149,7 @@ describe('g x works from every screen', () => {
     await expectFrame(lastFrame, 'Page');
     await flush(40);
     press('?');
-    await expectFrame(lastFrame, 'Navigation');
+    await expectFrame(lastFrame, 'Space/PgDn page');
     await flush(40);
 
     // …and `g h` still lands on home from four levels down, with nothing stale

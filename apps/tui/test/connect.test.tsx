@@ -18,7 +18,7 @@ describe('shell startup (B-015; owner feedback 2026-08-18)', () => {
     unmount();
   });
 
-  it('reports an unreachable node in the status bar and recovers when R is pressed (spec §81)', async () => {
+  it('reports an unreachable node in the status bar and recovers when Ctrl+R is pressed', async () => {
     const getServerInfoImpl = vi
       .fn()
       .mockRejectedValueOnce(Object.assign(new Error('down'), { code: GrpcStatus.UNAVAILABLE }))
@@ -35,7 +35,7 @@ describe('shell startup (B-015; owner feedback 2026-08-18)', () => {
     await expectFrame(lastFrame, 'offline');
     await flush();
 
-    press('R');
+    press('\u0012');
 
     await expectFrame(lastFrame, 'connected');
     unmount();

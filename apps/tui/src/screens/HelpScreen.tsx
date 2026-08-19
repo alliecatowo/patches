@@ -1,9 +1,10 @@
 import { timestampToDate } from '@patches/proto';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, type Key } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { helpSections, SCREEN_TITLES, type Binding, type Screen } from '../app/keymap.js';
+import { useKeyLayer } from '../app/input.js';
 import { useContentSize } from '../app/layout.js';
 import type { ServerInfoState } from '../hooks/useServerInfo.js';
 import { theme } from '../theme/index.js';
@@ -18,6 +19,7 @@ export interface HelpScreenProps {
   /** The screen `?` was pressed from — its keys are listed first ("Here"). */
   contextScreen: Screen;
   isActive: boolean;
+  onClose: () => void;
 }
 
 type HelpLine =
@@ -63,6 +65,7 @@ export function HelpScreen({
   serverInfo,
   contextScreen,
   isActive,
+  onClose,
 }: HelpScreenProps): ReactElement {
   const content = useContentSize();
   const [offset, setOffset] = useState(0);
@@ -72,18 +75,37 @@ export function HelpScreen({
   const maxOffset = Math.max(0, lines.length - visible);
   const effectiveOffset = Math.min(offset, maxOffset);
 
-  useInput(
-    (input, key) => {
-      if (input === 'j' || key.downArrow) {
-        setOffset(Math.min(effectiveOffset + 1, maxOffset));
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        setOffset(Math.max(effectiveOffset - 1, 0));
-      }
-    },
-    { isActive },
-  );
+  // Help owns only its own keys. Anything else (`g h`, `q`, Ctrl+P) falls through to
+  // the shell, so the overlay never becomes a trap the viewer has to Esc out of first.
+  function handleKey(input: string, key: Key): boolean {
+    if (input === '?' || key.escape) {
+      onClose();
+      return true;
+    }
+    if (input === 'j' || key.downArrow) {
+      setOffset(Math.min(effectiveOffset + 1, maxOffset));
+      return true;
+    }
+    if (input === 'k' || key.upArrow) {
+      setOffset(Math.max(effectiveOffset - 1, 0));
+      return true;
+    }
+    // The full keymap is far longer than any terminal, so line-at-a-time scrolling
+    // alone would bury the grouped sections behind ~90 keypresses.
+    if (input === ' ' || key.pageDown) {
+      setOffset(Math.min(effectiveOffset + visible, maxOffset));
+      return true;
+    }
+    if (key.pageUp) {
+      setOffset(Math.max(effectiveOffset - visible, 0));
+      return true;
+    }
+    return false;
+  }
+
+  // The shell dispatches through the layer stack (`app/input.tsx`); registering a
+  // second `useInput` here would run every key twice (scrolling two rows per press).
+  useKeyLayer({ id: 'help-scroll', onKey: handleKey }, isActive);
 
   const window = lines.slice(effectiveOffset, effectiveOffset + visible);
 
@@ -121,7 +143,7 @@ export function HelpScreen({
         })}
       </Box>
       <Text color={theme.muted} wrap="truncate-end">
-        {effectiveOffset + window.length}/{lines.length} · j/k scroll · ? or Esc close
+        {`${String(effectiveOffset + window.length)}/${String(lines.length)} · j/k line · Space/PgDn page · ? or Esc close`}
       </Text>
     </Box>
   );

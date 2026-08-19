@@ -23,6 +23,12 @@ export type Screen =
   | 'thread'
   | 'bookmarks'
   | 'notifications'
+  | 'messages'
+  | 'communities'
+  | 'tagFeed'
+  | 'preferences'
+  | 'postEdit'
+  | 'postHistory'
   | 'report'
   | 'accounts'
   | 'page';
@@ -35,21 +41,6 @@ export function isRootScreen(screen: Screen): screen is RootScreen {
   return (ROOT_SCREENS as readonly Screen[]).includes(screen);
 }
 
-/**
- * Screens that own the keyboard entirely (text entry) — the app-level keymap steps
- * aside, and only the screen's own bindings show in the status bar. `Esc` still
- * cancels back out of every one of them (that is the screen's own binding).
- */
-export function capturesInput(screen: Screen): boolean {
-  return (
-    screen === 'login' ||
-    screen === 'compose' ||
-    screen === 'search' ||
-    screen === 'report' ||
-    screen === 'editProfile'
-  );
-}
-
 export const KEY_GROUPS = [
   'Navigation',
   'Timeline',
@@ -60,6 +51,15 @@ export const KEY_GROUPS = [
   'Account',
 ] as const;
 export type KeyGroup = (typeof KEY_GROUPS)[number];
+
+export type CommandArgument = 'none' | 'optional' | 'required';
+
+export interface CommandAlias {
+  /** Command name without the leading `:`. */
+  name: string;
+  argument?: CommandArgument;
+  usage?: string;
+}
 
 export interface Binding {
   /** How the key is written, e.g. `g h`, `Ctrl+S`, `j / ↓`. */
@@ -75,6 +75,11 @@ export interface Binding {
   session?: boolean;
   /** Listed in the help screen but never in the status bar (rarely-pressed keys). */
   helpOnly?: boolean;
+  /** Focus scope used by duplicate-key validation. */
+  region?: 'shell' | 'list' | 'screen' | 'editor' | 'modal';
+  /** Vim-style aliases. These resolve back to this binding; they are not handlers. */
+  commands?: readonly CommandAlias[];
+  destructive?: boolean;
 }
 
 /** Screens that show a `PostList` and therefore share the timeline/post-action keys. */
@@ -90,6 +95,8 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'home' }],
   },
   {
     keys: 'g l',
@@ -98,6 +105,8 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Navigation',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'local' }],
   },
   {
     keys: 'g p',
@@ -107,6 +116,29 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'profile', argument: 'optional', usage: 'profile [@handle]' }],
+  },
+  {
+    keys: 'g d',
+    hint: 'messages',
+    description: 'Direct-message conversations',
+    group: 'Navigation',
+    on: 'global',
+    session: true,
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'messages' }],
+  },
+  {
+    keys: 'g c',
+    hint: 'communities',
+    description: 'Communities on this node',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'communities' }],
   },
   {
     keys: 'g e',
@@ -116,6 +148,7 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
   },
   {
     keys: 'g b',
@@ -125,6 +158,8 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'bookmarks' }],
   },
   {
     keys: 'g n',
@@ -134,6 +169,8 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'notifications' }],
   },
   {
     keys: 'g v',
@@ -143,6 +180,8 @@ export const KEYMAP: readonly Binding[] = [
     on: 'global',
     session: true,
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'page', argument: 'optional', usage: 'page [@handle[/slug]]' }],
   },
   {
     keys: 'g s',
@@ -151,6 +190,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Navigation',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
   },
   {
     keys: '/',
@@ -158,6 +198,8 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Search people and posts',
     group: 'Navigation',
     on: 'global',
+    region: 'shell',
+    commands: [{ name: 'search', argument: 'required', usage: 'search <query>' }],
   },
   {
     keys: 'Esc',
@@ -166,6 +208,8 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Navigation',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'back' }],
   },
   {
     keys: 'q',
@@ -174,6 +218,8 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Navigation',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'q' }, { name: 'quit' }],
   },
   {
     keys: 'Ctrl+C',
@@ -182,6 +228,9 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Navigation',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
+    destructive: true,
+    commands: [{ name: 'q!' }],
   },
 
   // --- Timeline -------------------------------------------------------------
@@ -191,6 +240,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Move down one post',
     group: 'Timeline',
     on: LIST_SCREENS,
+    region: 'list',
   },
   {
     keys: 'k / ↑',
@@ -198,6 +248,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Move up one post',
     group: 'Timeline',
     on: LIST_SCREENS,
+    region: 'list',
     helpOnly: true,
   },
   {
@@ -206,14 +257,17 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Load the next page of posts (keyset cursor, never a page number)',
     group: 'Timeline',
     on: LIST_SCREENS,
+    region: 'list',
     helpOnly: true,
   },
   {
-    keys: 'R',
+    keys: 'Ctrl+R',
     hint: 'refresh',
     description: 'Refresh from the server — re-reads like/bookmark state and shows what is new',
     group: 'Timeline',
     on: 'global',
+    region: 'shell',
+    commands: [{ name: 'reload' }],
   },
   {
     keys: 'v',
@@ -222,6 +276,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Timeline',
     on: LIST_SCREENS,
     helpOnly: true,
+    region: 'list',
   },
 
   // --- Post actions ---------------------------------------------------------
@@ -231,6 +286,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open the selected post’s thread',
     group: 'Post actions',
     on: LIST_SCREENS,
+    region: 'list',
   },
   {
     keys: 'p',
@@ -238,6 +294,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open the selected post’s author profile',
     group: 'Post actions',
     on: LIST_SCREENS,
+    region: 'list',
   },
   {
     keys: 'r',
@@ -246,6 +303,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: LIST_SCREENS,
     session: true,
+    region: 'list',
   },
   {
     keys: 'l',
@@ -254,6 +312,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: LIST_SCREENS,
     session: true,
+    region: 'list',
   },
   {
     keys: 'b',
@@ -262,6 +321,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: LIST_SCREENS,
     session: true,
+    region: 'list',
   },
   {
     keys: 'f',
@@ -270,6 +330,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: LIST_SCREENS,
     session: true,
+    region: 'list',
   },
   {
     keys: 'o',
@@ -278,6 +339,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: LIST_SCREENS,
     helpOnly: true,
+    region: 'list',
   },
   {
     keys: '!',
@@ -287,6 +349,7 @@ export const KEYMAP: readonly Binding[] = [
     on: LIST_SCREENS,
     session: true,
     helpOnly: true,
+    region: 'list',
   },
   {
     keys: 'c',
@@ -295,6 +358,75 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Post actions',
     on: 'global',
     session: true,
+    region: 'shell',
+  },
+  {
+    keys: 'R',
+    hint: 'repost',
+    description: 'Repost / unrepost the selected post',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    session: true,
+    region: 'list',
+    commands: [{ name: 'repost' }],
+  },
+  {
+    keys: 'Q',
+    hint: 'quote',
+    description: 'Quote the selected post in a new post',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    session: true,
+    region: 'list',
+  },
+  {
+    keys: 'E',
+    hint: 'edit post',
+    description: 'Edit your selected post',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    session: true,
+    helpOnly: true,
+    region: 'list',
+  },
+  {
+    keys: 'd',
+    hint: 'delete post',
+    description: 'Delete your selected post after confirmation',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    session: true,
+    helpOnly: true,
+    region: 'list',
+    destructive: true,
+  },
+  {
+    keys: 'H',
+    hint: 'history',
+    description: 'View the selected post’s edit history',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    helpOnly: true,
+    region: 'list',
+  },
+  {
+    keys: 't',
+    hint: 'tags',
+    description: 'Search tags',
+    group: 'Post actions',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'tag', argument: 'required', usage: 'tag <name>' }],
+  },
+  {
+    keys: '#',
+    hint: 'tag feed',
+    description: 'Open the selected post’s first tag timeline',
+    group: 'Post actions',
+    on: LIST_SCREENS,
+    helpOnly: true,
+    region: 'list',
   },
 
   // --- Profile & social -----------------------------------------------------
@@ -305,6 +437,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Profile & social',
     on: ['profile'],
     session: true,
+    region: 'screen',
   },
   {
     keys: 'e',
@@ -313,6 +446,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Profile & social',
     on: ['profile'],
     session: true,
+    region: 'screen',
   },
   {
     keys: 'v',
@@ -320,6 +454,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open this actor’s Patches Page',
     group: 'Profile & social',
     on: ['profile'],
+    region: 'screen',
   },
   {
     keys: 'B',
@@ -329,6 +464,8 @@ export const KEYMAP: readonly Binding[] = [
     on: ['profile'],
     session: true,
     helpOnly: true,
+    region: 'screen',
+    destructive: true,
   },
   {
     keys: 'M',
@@ -338,6 +475,17 @@ export const KEYMAP: readonly Binding[] = [
     on: ['profile'],
     session: true,
     helpOnly: true,
+    region: 'screen',
+    destructive: true,
+  },
+  {
+    keys: 'J',
+    hint: 'join / leave',
+    description: 'Join or leave the community you are viewing',
+    group: 'Profile & social',
+    on: ['communities'],
+    session: true,
+    region: 'screen',
   },
 
   // --- Pages ----------------------------------------------------------------
@@ -347,6 +495,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Previous / next sub-page',
     group: 'Pages',
     on: ['page'],
+    region: 'screen',
   },
   {
     keys: 'j / k',
@@ -354,6 +503,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Move between the links on this page',
     group: 'Pages',
     on: ['page'],
+    region: 'screen',
   },
   {
     keys: 'Enter',
@@ -361,6 +511,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open the selected link in your browser',
     group: 'Pages',
     on: ['page'],
+    region: 'screen',
   },
   {
     keys: 'e',
@@ -369,6 +520,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Pages',
     on: ['page'],
     session: true,
+    region: 'screen',
   },
   {
     keys: 'E',
@@ -378,6 +530,7 @@ export const KEYMAP: readonly Binding[] = [
     on: ['page'],
     session: true,
     helpOnly: true,
+    region: 'screen',
   },
   {
     keys: 's',
@@ -387,6 +540,7 @@ export const KEYMAP: readonly Binding[] = [
     on: ['page'],
     session: true,
     helpOnly: true,
+    region: 'screen',
   },
 
   // --- Screens (per-screen, non-timeline) -----------------------------------
@@ -396,6 +550,8 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Send the post you are writing',
     group: 'Screens',
     on: ['compose'],
+    region: 'editor',
+    commands: [{ name: 'w' }, { name: 'post' }, { name: 'wq' }],
   },
   {
     keys: 'Ctrl+A',
@@ -403,6 +559,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Attach an image to the post you are writing',
     group: 'Screens',
     on: ['compose'],
+    region: 'editor',
   },
   {
     keys: 'Esc',
@@ -410,6 +567,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Leave compose, keeping the draft for next time',
     group: 'Screens',
     on: ['compose'],
+    region: 'editor',
   },
   {
     keys: 'Tab',
@@ -417,6 +575,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Switch the search between people and posts',
     group: 'Screens',
     on: ['search'],
+    region: 'editor',
   },
   {
     keys: 'Enter',
@@ -424,14 +583,22 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Run the search, then open the selected result',
     group: 'Screens',
     on: ['search'],
+    region: 'editor',
   },
-  { keys: 'Esc', hint: 'cancel', group: 'Screens', on: ['search', 'login', 'report'] },
+  {
+    keys: 'Esc',
+    hint: 'cancel',
+    group: 'Screens',
+    on: ['search', 'login', 'report'],
+    region: 'editor',
+  },
   {
     keys: 'j / k',
     hint: 'reason',
     description: 'Choose a report reason',
     group: 'Screens',
     on: ['report'],
+    region: 'editor',
   },
   {
     keys: 'Ctrl+S',
@@ -439,6 +606,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Send the report',
     group: 'Screens',
     on: ['report'],
+    region: 'editor',
   },
   {
     keys: 'Tab / ↑↓',
@@ -446,6 +614,7 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Move between profile fields',
     group: 'Screens',
     on: ['editProfile'],
+    region: 'editor',
   },
   {
     keys: 'Ctrl+S',
@@ -453,8 +622,9 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Save your profile',
     group: 'Screens',
     on: ['editProfile'],
+    region: 'editor',
   },
-  { keys: 'Esc', hint: 'cancel', group: 'Screens', on: ['editProfile'] },
+  { keys: 'Esc', hint: 'cancel', group: 'Screens', on: ['editProfile'], region: 'editor' },
   {
     keys: 'j / k',
     hint: 'move',
@@ -506,6 +676,7 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Account',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
   },
   {
     keys: 'P',
@@ -514,6 +685,37 @@ export const KEYMAP: readonly Binding[] = [
     group: 'Account',
     on: 'global',
     helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'plain', argument: 'optional', usage: 'plain [on|off|toggle]' }],
+  },
+  {
+    keys: '~',
+    hint: 'quiet feed',
+    description: 'Toggle other actors’ cosmetic decoration',
+    group: 'Account',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'quiet', argument: 'optional', usage: 'quiet [on|off|toggle]' }],
+  },
+  {
+    keys: ',',
+    hint: 'preferences',
+    description: 'Open display and account preferences',
+    group: 'Account',
+    on: 'global',
+    session: true,
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'theme', argument: 'required', usage: 'theme <name>' }],
+  },
+  {
+    keys: ': / Ctrl+P',
+    hint: 'commands',
+    description: 'Open the command palette and Vim-style command line',
+    group: 'Account',
+    on: 'global',
+    region: 'shell',
   },
   {
     keys: '?',
@@ -521,6 +723,8 @@ export const KEYMAP: readonly Binding[] = [
     description: 'Open or close this help screen',
     group: 'Account',
     on: 'global',
+    region: 'shell',
+    commands: [{ name: 'help' }],
   },
 ];
 
@@ -556,14 +760,22 @@ export function hintsFor(screen: Screen, context: HintContext): string[] {
       (binding.session !== true || context.authenticated),
   ).map(label);
 
-  if (capturesInput(screen)) return dedupe(own);
-
   const tail = KEYMAP.filter(
     (binding) =>
       binding.on === 'global' &&
       binding.helpOnly !== true &&
       (binding.session !== true || context.authenticated),
   ).map(label);
+
+  // Legacy text screens still own printable input while they migrate to
+  // `useKeyLayer`. Keep their concise editor hints, plus the two shell escape
+  // hatches that remain reachable from every text/sub-mode layer.
+  const hasEditorLayer = KEYMAP.some(
+    (binding) => appliesTo(binding, screen) && binding.region === 'editor',
+  );
+  if (hasEditorLayer) {
+    return dedupe([...own, ': / Ctrl+P commands', 'Ctrl+C quit']);
+  }
 
   return dedupe([...own, ...tail, context.canGoBack ? 'Esc back' : 'q quit']);
 }
@@ -582,6 +794,39 @@ export function helpSections(): HelpSection[] {
   })).filter((section) => section.bindings.length > 0);
 }
 
+function keyAlternatives(keys: string): readonly string[] {
+  return keys.split(/\s+\/\s+/).map((key) => key.trim());
+}
+
+/** Returns every duplicate key in one screen+region and every duplicate command alias. */
+export function validateKeymap(bindings: readonly Binding[]): readonly string[] {
+  const errors: string[] = [];
+  const keys = new Map<string, Binding>();
+  const commands = new Map<string, Binding>();
+
+  for (const binding of bindings) {
+    const scopes =
+      binding.on === 'global'
+        ? [`global:${binding.region ?? 'shell'}`]
+        : binding.on.map((screen) => `${screen}:${binding.region ?? 'screen'}`);
+    for (const scope of scopes) {
+      for (const key of keyAlternatives(binding.keys)) {
+        const token = `${scope}:${key}`;
+        const previous = keys.get(token);
+        if (previous === undefined) keys.set(token, binding);
+        else errors.push(`${scope} binds ${key} to both “${previous.hint}” and “${binding.hint}”`);
+      }
+    }
+    for (const command of binding.commands ?? []) {
+      const name = command.name.toLowerCase();
+      const previous = commands.get(name);
+      if (previous === undefined) commands.set(name, binding);
+      else errors.push(`:${name} aliases both “${previous.hint}” and “${binding.hint}”`);
+    }
+  }
+  return errors;
+}
+
 /** The human name of a screen, for the help screen's "you are here" line. */
 export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   help: 'Help',
@@ -595,6 +840,12 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   thread: 'Thread',
   bookmarks: 'Bookmarks',
   notifications: 'Notifications',
+  messages: 'Messages',
+  communities: 'Communities',
+  tagFeed: 'Tags',
+  preferences: 'Preferences',
+  postEdit: 'Edit post',
+  postHistory: 'Post history',
   report: 'Report',
   accounts: 'Account',
   page: 'Page',

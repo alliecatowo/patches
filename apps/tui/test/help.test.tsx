@@ -10,7 +10,7 @@ describe('help screen (spec §69: keybindings must stay discoverable)', () => {
     await flush();
 
     press('?');
-    const frame = await expectFrame(lastFrame, 'Navigation');
+    const frame = await expectFrame(lastFrame, 'Space/PgDn page');
     // Contextual: the screen `?` was pressed from is listed first.
     expect(frame).toContain('Here — Local');
 
@@ -26,7 +26,7 @@ describe('help screen (spec §69: keybindings must stay discoverable)', () => {
     await flush();
 
     press('?');
-    await expectFrame(lastFrame, 'Navigation');
+    await expectFrame(lastFrame, 'Space/PgDn page');
 
     await flush();
     press(KEY.escape);
@@ -70,8 +70,14 @@ describe('status hints and help come from one keymap table', () => {
     expect(hints.indexOf('Enter thread')).toBeLessThan(hints.indexOf('c compose'));
   });
 
-  it('gives a text-entry screen only its own keys — the global keymap is standing aside', () => {
+  it('adds only shell safety/palette keys to a text-entry screen’s own hints', () => {
     const hints = hintsFor('compose', { authenticated: true, canGoBack: true });
-    expect(hints).toEqual(['Ctrl+S post', 'Ctrl+A attach', 'Esc keep draft']);
+    expect(hints).toEqual([
+      'Ctrl+S post',
+      'Ctrl+A attach',
+      'Esc keep draft',
+      ': / Ctrl+P commands',
+      'Ctrl+C quit',
+    ]);
   });
 });
