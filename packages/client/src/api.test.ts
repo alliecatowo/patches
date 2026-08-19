@@ -88,4 +88,15 @@ describe('createPatchesApi', () => {
     expect(seenHeaders?.get('authorization')).toBe('Bearer token-123');
     expect(seenHeaders?.get('x-patches-client')).toBe('test-client');
   });
+
+  it('binds every Amendment C safety-surface service (P14-018)', () => {
+    const transport = createRouterTransport(() => {});
+    const api = createPatchesApi({ transport, clientName: 'test-client', clientVersion: '1.0.0' });
+
+    expect(api.filters).toBeDefined();
+    expect(api.filterLists).toBeDefined();
+    expect(api.labels).toBeDefined();
+    expect(api.appeals).toBeDefined();
+    expect(api.privacy).toBeDefined();
+  });
 });

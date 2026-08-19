@@ -2,16 +2,21 @@ import { createClient, type CallOptions, type Client, type Transport } from '@co
 import { type DescService } from '@bufbuild/protobuf';
 import {
   ActorService,
+  AppealService,
   AuthService,
   CommunityService,
   DirectMessageService,
   FeedService,
+  FilterListService,
+  FilterService,
+  LabelService,
   MediaService,
   ModerationService,
   NodeService,
   NotificationService,
   PageService,
   PostService,
+  PrivacyService,
   ReactionService,
   SocialGraphService,
   SystemService,
@@ -61,6 +66,16 @@ export interface PatchesApi {
   readonly tags: Client<typeof TagService>;
   readonly communities: Client<typeof CommunityService>;
   readonly messages: Client<typeof DirectMessageService>;
+  /** Amendment C (P14-001): personal keyword/actor/domain mute-style filters. */
+  readonly filters: Client<typeof FilterService>;
+  /** Amendment C: publicly shareable, subscribable filter lists. */
+  readonly filterLists: Client<typeof FilterListService>;
+  /** Amendment C: labeler CRUD, label application, subscriptions. */
+  readonly labels: Client<typeof LabelService>;
+  /** Amendment C: moderation appeals. */
+  readonly appeals: Client<typeof AppealService>;
+  /** Amendment C: privacy notice ack, discoverability prefs, export, deletion. */
+  readonly privacy: Client<typeof PrivacyService>;
   readonly session: SessionManager;
 }
 
@@ -99,6 +114,11 @@ export function createPatchesApi(options: CreatePatchesApiOptions): PatchesApi {
     tags: bind(TagService, UNARY_DEADLINE_MS),
     communities: bind(CommunityService, UNARY_DEADLINE_MS),
     messages: bind(DirectMessageService, UNARY_DEADLINE_MS),
+    filters: bind(FilterService, UNARY_DEADLINE_MS),
+    filterLists: bind(FilterListService, UNARY_DEADLINE_MS),
+    labels: bind(LabelService, UNARY_DEADLINE_MS),
+    appeals: bind(AppealService, UNARY_DEADLINE_MS),
+    privacy: bind(PrivacyService, UNARY_DEADLINE_MS),
     session: new SessionManager(
       options.credentialStore === undefined
         ? { transport: options.transport }
