@@ -179,6 +179,12 @@ export class AppConfigService {
     return this.get('HTTP_PORT');
   }
 
+  /** Browser origins allowed to call the Connect edge cross-origin (ADR 0016 §6). Empty
+   * means same-origin only. */
+  get webOrigins(): readonly string[] {
+    return this.get('WEB_ORIGINS');
+  }
+
   /** Undefined only when federation is disabled — `envSchema`'s `superRefine` requires this
    * when `FEDERATION_ENABLED=true`, so `KeyService` can assume it's set whenever it runs. */
   get federationKeyEncryptionKey(): string | undefined {

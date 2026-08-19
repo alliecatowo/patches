@@ -1,4 +1,4 @@
-import { type ArgumentsHost } from '@nestjs/common';
+import { NotFoundException, type ArgumentsHost } from '@nestjs/common';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { RpcException } from '@nestjs/microservices';
 import { describe, expect, it } from 'vitest';
@@ -143,6 +143,48 @@ describe('RpcExceptionsFilter (spec §57)', () => {
     it('includes the request id in the generic message when present, for support purposes', async () => {
       const error = await withRequestId('req-support-123', () => catchException(new Error('boom')));
       expect(error.message).toContain('req-support-123');
+    });
+  });
+
+  describe('HTTP branch (ADR 0016 §4: the always-on HTTP listener)', () => {
+    interface StubResponse {
+      statusCode?: number | undefined;
+      setHeader: (name: string, value: string) => void;
+      end: (body?: string) => void;
+    }
+
+    function catchHttpException(exception: unknown): { response: StubResponse; body: unknown } {
+      const response: StubResponse = {
+        statusCode: undefined,
+        setHeader: () => undefined,
+        end: (body) => {
+          endedBody = body;
+        },
+      };
+      let endedBody: string | undefined;
+      const host = {
+        getType: () => 'http',
+        switchToHttp: () => ({ getResponse: () => response }),
+      } as unknown as ArgumentsHost;
+
+      const filter = new RpcExceptionsFilter();
+      filter.catch(exception, host);
+      return { response, body: endedBody === undefined ? undefined : JSON.parse(endedBody) };
+    }
+
+    it("preserves Nest's own HttpException status (e.g. a 404 for an unmatched route)", () => {
+      const { response, body } = catchHttpException(new NotFoundException('Cannot GET /nope'));
+
+      expect(response.statusCode).toBe(404);
+      expect((body as { error: string }).error).toBe('Cannot GET /nope');
+    });
+
+    it('still sanitizes a non-HttpException as a generic 500', () => {
+      const { response, body } = catchHttpException(new Error('db connection string leaked'));
+
+      expect(response.statusCode).toBe(500);
+      expect((body as { error: string }).error).toBe('internal_error');
+      expect(JSON.stringify(body)).not.toContain('db connection string leaked');
     });
   });
 });

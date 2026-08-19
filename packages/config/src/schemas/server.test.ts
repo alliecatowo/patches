@@ -53,4 +53,29 @@ describe('serverEnvSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('defaults WEB_ORIGINS to an empty allow-list', () => {
+    const result = serverEnvSchema.parse(base);
+    expect(result.WEB_ORIGINS).toEqual([]);
+  });
+
+  it('parses a comma-separated WEB_ORIGINS list, trimming whitespace', () => {
+    const result = serverEnvSchema.parse({
+      ...base,
+      WEB_ORIGINS: ' https://app.example, https://second.example:8443 ',
+    });
+    expect(result.WEB_ORIGINS).toEqual(['https://app.example', 'https://second.example:8443']);
+  });
+
+  it('rejects a WEB_ORIGINS entry carrying a path', () => {
+    expect(
+      serverEnvSchema.safeParse({ ...base, WEB_ORIGINS: 'https://app.example/callback' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a WEB_ORIGINS entry with a non-http(s) scheme', () => {
+    expect(serverEnvSchema.safeParse({ ...base, WEB_ORIGINS: 'ftp://app.example' }).success).toBe(
+      false,
+    );
+  });
 });

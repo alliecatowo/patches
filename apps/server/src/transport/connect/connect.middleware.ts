@@ -1,0 +1,54 @@
+import { type INestApplication } from '@nestjs/common';
+import { createContextValues } from '@connectrpc/connect';
+import { expressConnectMiddleware } from '@connectrpc/connect-express';
+import { PATCHES_V1_FILES } from '@patches/proto/es';
+import type { Express } from 'express';
+
+import { connectCorsMiddleware } from './cors.js';
+import { createGrpcProxyClient, PEER_IP_CONTEXT_KEY, registerGrpcService } from './grpc-proxy.js';
+
+export interface ConnectEdgeOptions {
+  /** Loopback address of the in-process gRPC server this proxies to, e.g.
+   * `127.0.0.1:50051` (ADR 0016 §3) — never a public address. */
+  grpcUrl: string;
+  /** ADR 0016 §6 CORS allow-list. Empty means same-origin only. */
+  webOrigins: readonly string[];
+}
+
+export interface ConnectEdge {
+  /** Closes the internal loopback gRPC client this edge dialed — call during shutdown
+   * alongside the rest of `main.ts`'s drain sequence. */
+  close(): void;
+}
+
+/**
+ * Mounts the Connect edge (ADR 0016) onto an already-created hybrid Nest app's Express
+ * instance: CORS scoped to `/patches.v1.*`, then a generic handler that proxies every unary
+ * RPC in the schema to the in-process gRPC server as opaque protobuf bytes. Callers
+ * (`main.ts`, `test/support/test-server.ts`) mount this *after* `app.set('trust proxy', ...)`
+ * so `req.ip` (read via {@link PEER_IP_CONTEXT_KEY}) already reflects `TRUST_PROXY_HEADERS`.
+ */
+export function mountConnectEdge(app: INestApplication, options: ConnectEdgeOptions): ConnectEdge {
+  const client = createGrpcProxyClient(options.grpcUrl);
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+
+  expressApp.use(connectCorsMiddleware(options.webOrigins));
+  expressApp.use(
+    expressConnectMiddleware({
+      routes: (router) => {
+        for (const file of PATCHES_V1_FILES) {
+          for (const service of file.services) {
+            registerGrpcService(router, service, client);
+          }
+        }
+      },
+      contextValues: (req) => createContextValues().set(PEER_IP_CONTEXT_KEY, req.ip),
+    }),
+  );
+
+  return {
+    close: () => {
+      client.close();
+    },
+  };
+}

@@ -67,6 +67,12 @@ catalog:
   '@grpc/reflection': ^1.0.4
   wrangler: ^4.123.0
   vitepress: ^1.6.4
+  '@bufbuild/protobuf': ^2.14.0
+  '@bufbuild/protoc-gen-es': ^2.14.0
+  '@connectrpc/connect': ^2.1.2
+  '@connectrpc/connect-express': ^2.1.2
+  '@connectrpc/connect-node': ^2.1.2
+  '@types/express': ^5.0.6
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

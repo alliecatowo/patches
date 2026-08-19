@@ -428,3 +428,65 @@ buf generate   # emit ts-proto output
 
 CI treats `buf format`, `buf lint`, and `buf breaking` as required PR checks (see
 `overview.md` §CI in the parent spec, §120).
+
+## 11. Connect edge (web/RN clients, ADR 0016)
+
+**Status: server-side implemented (P10-004).** Browsers and React Native cannot speak
+gRPC-over-HTTP/2, so the same schema is also served over the
+[Connect protocol](https://connectrpc.com) — plain HTTP/1.1 or HTTP/2, JSON or protobuf
+binary, `fetch`-compatible — on the same always-on HTTP listener that serves `/healthz`
+(`HTTP_PORT`, default `8080`). gRPC on `:50051` is unchanged and stays the TUI's transport.
+
+**Codegen.** `packages/proto/buf.gen.yaml` runs a second plugin, `protoc-gen-es` (v2,
+`target=ts`, `import_extension=js`), emitting `packages/proto/src/generated-es/` — protobuf-es
+message classes and `GenService` descriptors, one `_pb.ts` per `.proto` file. Exported as
+`@patches/proto/es`, alongside `PATCHES_V1_FILES` (every generated `GenFile`, hand-maintained —
+add a new `.proto` file's `file_...` const to that array when adding one). This is a fully
+independent codegen from the root/`./nest` ts-proto output: protobuf-es keeps its own canonical
+wire representation (numeric enums, `bigint` `Timestamp.seconds`), and the two families never
+meet in one process.
+
+**The Connect edge is a byte-level proxy, not a second controller layer**
+(`apps/server/src/transport/connect/`):
+
+- `grpc-proxy.ts` walks every `GenService` in `PATCHES_V1_FILES` and registers a generic
+  handler for each unary method (the schema has no streaming RPCs — enforced by
+  `packages/proto/src/es.test.ts` and a runtime backstop in `registerGrpcService` itself).
+  Each call: decode the Connect request (already done by `ConnectRouter` before the handler
+  runs) → `toBinary` it → `client.makeUnaryRequest` a raw grpc-js `Client` dialing the
+  in-process gRPC server over loopback (`127.0.0.1:GRPC_PORT`, never a public address) →
+  `fromBinary` the response. No mapper, guard, rate limiter or error mapping is duplicated —
+  every Connect call runs through the exact same `AuthGuard`, `RequestContextInterceptor` and
+  `RpcExceptionsFilter` a gRPC call does.
+- gRPC status codes map 1:1 onto Connect `Code` values (numerically identical, 1–16); a
+  `ServiceError`'s `x-patches-error-code`/`x-request-id` trailer metadata is carried over onto
+  the thrown `ConnectError`'s `.metadata` unchanged.
+- Only `authorization`, `x-request-id`, `x-patches-client`, `x-patches-client-version`,
+  `user-agent` and `accept-language` are forwarded from the incoming HTTP request; a
+  caller-supplied `x-forwarded-for` is **never** forwarded — the internal call's
+  `x-forwarded-for` is always Express's own `req.ip` (honouring `TRUST_PROXY_HEADERS`, same
+  flag gRPC's peer derivation already used).
+
+**Auth.** `authorization: Bearer <access token>` only — no cookies, no CSRF surface. Refresh
+uses the same `AuthService` RPCs as the TUI.
+
+**CORS** (`transport/connect/cors.ts`): scoped to the `/patches.v1.*` path prefix, driven by
+`WEB_ORIGINS` (comma-separated origin allow-list, `packages/config`'s `serverEnvShape`, default
+empty = same-origin only). Never emits `Access-Control-Allow-Credentials`; an origin outside the
+allow-list gets no CORS headers at all, so a browser blocks the request itself.
+
+**Federation stays absent, not merely unrouted, when off.** `FederationModule` (the
+`FEDERATION_GATEWAY` DI token + supporting services) is always registered — `PostModule`/
+`ActorModule`/`GraphModule`/`ReactionModule` depend on it unconditionally — but its HTTP
+controllers (webfinger/actor/inbox/outbox) live in a separate `FederationHttpModule`,
+registered in `app.module.ts` only when `FEDERATION_ENABLED=true` (read once at that module's
+own evaluation time, the same timing `ConfigModule.forRoot`'s `validate` already uses).
+
+**Deployment** (`infra/fly/fly.toml`): gRPC keeps Fly `:443 → 50051`; a second `[[services]]`
+exposes `:8443 → 8080` (one of Cloudflare's supported HTTPS ports) for the Connect edge, so a
+public web origin can front it with Cloudflare on `:443` without contending with gRPC for the
+same port.
+
+See [ADR 0016](../decisions/0016-connect-transport-and-client-sdk.md) for the full design and
+alternatives considered. `@patches/client` (the transport-agnostic SDK) and `apps/web` are
+later phases (P10-003, P10-001).
