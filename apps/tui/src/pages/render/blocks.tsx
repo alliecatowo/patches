@@ -7,7 +7,7 @@ import {
   type MediaAttachment,
   type Post,
 } from '@patches/proto';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 
@@ -18,6 +18,7 @@ import { PostRow } from '../../components/PostRow.js';
 import { formatRelativeTime } from '../../format/relative-time.js';
 import { sanitizeForTerminal } from '../../format/sanitize.js';
 import { theme } from '../../theme/index.js';
+import { chunkIntoRows, galleryColumnsFor, GRID_GAP_COLUMNS, planPageGrid } from './grid.js';
 import { AsciiArtBlockView, renderMarkdown } from './markdown.js';
 
 /** Everything a block needs to render beyond its own fields — one bag so `PageBlockView`
@@ -31,6 +32,11 @@ export interface PageRenderContext {
   /** Bumped by `PageScreen` after a successful `SignGuestbook` — the only prop
    * `GuestbookBlockView` needs to know "re-fetch, something changed." */
   guestbookRefreshKey: number;
+  /** The terminal-cell width of the lane a block is rendering in — set per-lane by
+   * `PageBlocksView` from `planPageGrid`, `undefined` outside a sized `PageBlocksView`
+   * (most block-level unit tests). Only `AsciiArt` and `Gallery` read this; every other
+   * block already wraps at its container's width via Ink's own `<Text wrap="wrap">`. */
+  columnWidth?: number;
 }
 
 export interface LinkTarget {
@@ -69,6 +75,12 @@ export interface PageBlocksViewProps {
   context: PageRenderContext;
   /** Index into `collectLinks(blocks)` — `undefined` selects nothing. */
   selectedLinkIndex: number | undefined;
+  /** Total terminal-cell width available to lay these blocks out in — drives the
+   * responsive cell grid (P12-109: narrow 1-col / standard 2-col / wide 3-col,
+   * `planPageGrid`). Omitted by most direct-render unit tests, which then render the
+   * original single-column stack (`context.columnWidth`, if the caller set one
+   * directly, passes through unchanged). */
+  width?: number;
 }
 
 /** Renders every block in a sub-page in order — never throws for a block `packages/
@@ -78,10 +90,66 @@ export function PageBlocksView({
   blocks,
   context,
   selectedLinkIndex,
+  width,
 }: PageBlocksViewProps): ReactElement {
+  if (width === undefined) {
+    const entries = blocks.map((block, index) => ({ block, index }));
+    return (
+      <PageBlocksLane
+        entries={entries}
+        blocks={blocks}
+        context={context}
+        selectedLinkIndex={selectedLinkIndex}
+      />
+    );
+  }
+
+  const lanes = planPageGrid(blocks, width);
+  const [single] = lanes;
+  if (lanes.length === 1 && single !== undefined) {
+    return (
+      <PageBlocksLane
+        entries={single.entries}
+        blocks={blocks}
+        context={{ ...context, columnWidth: single.width }}
+        selectedLinkIndex={selectedLinkIndex}
+      />
+    );
+  }
+
+  return (
+    <Box flexDirection="row" width={width} flexShrink={0} overflow="hidden">
+      {lanes.map((lane, laneIndex) => (
+        <Fragment key={laneIndex}>
+          {laneIndex > 0 ? <Box width={GRID_GAP_COLUMNS} flexShrink={0} /> : null}
+          <Box width={lane.width} flexShrink={0} overflow="hidden" flexDirection="column">
+            <PageBlocksLane
+              entries={lane.entries}
+              blocks={blocks}
+              context={{ ...context, columnWidth: lane.width }}
+              selectedLinkIndex={selectedLinkIndex}
+            />
+          </Box>
+        </Fragment>
+      ))}
+    </Box>
+  );
+}
+
+function PageBlocksLane({
+  entries,
+  blocks,
+  context,
+  selectedLinkIndex,
+}: {
+  entries: readonly { block: RenderablePageBlock; index: number }[];
+  blocks: readonly RenderablePageBlock[];
+  context: PageRenderContext;
+  selectedLinkIndex: number | undefined;
+}): ReactElement {
   return (
     <Box flexDirection="column">
-      {blocks.map((block, index) => {
+      {entries.map(({ block, index }) => {
         if (block.type === 'Links') {
           const startIndex = countLinksBefore(blocks, index);
           return (
@@ -129,16 +197,7 @@ function PageBlockView({
         </Box>
       );
     case 'Gallery':
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          {block.caption === '' || block.caption === undefined ? null : (
-            <Text color={theme.muted}>{sanitizeForTerminal(block.caption)}</Text>
-          )}
-          <MediaAttachments
-            attachments={block.mediaIds.map((mediaId, index) => stubAttachment(mediaId, '', index))}
-          />
-        </Box>
-      );
+      return <GalleryBlockView block={block} columnWidth={context.columnWidth} />;
     case 'Posts':
       return <PostsBlockView context={context} limit={block.limit ?? 5} />;
     case 'TopEight':
@@ -156,7 +215,10 @@ function PageBlockView({
     case 'AsciiArt':
       return (
         <Box marginBottom={1}>
-          <AsciiArtBlockView art={block.art} />
+          <AsciiArtBlockView
+            art={block.art}
+            {...(context.columnWidth === undefined ? {} : { width: context.columnWidth })}
+          />
         </Box>
       );
     case 'Spacer':
@@ -195,6 +257,49 @@ function PageBlockView({
  * switch hasn't caught yet fails typecheck here rather than silently rendering nothing. */
 function blockNever(block: never): ReactElement {
   return <Text color={theme.muted}>{JSON.stringify(block)}</Text>;
+}
+
+/** `Gallery` (§5.5: "shows §75 boxes in a 2–3 column grid with the selected cell
+ * inline") — the "selected cell inline" affordance is a `PostList`-row-level Kitty
+ * concern (`MediaAttachments`' own `inline` prop); this is the grid arrangement half
+ * of that, reusing `MediaAttachments`'s existing §75 fallback box unchanged (art
+ * fallback is automatic — the same non-Kitty path a post's own attachments use). */
+function GalleryBlockView({
+  block,
+  columnWidth,
+}: {
+  block: Extract<PageBlock, { type: 'Gallery' }>;
+  columnWidth: number | undefined;
+}): ReactElement {
+  const width = columnWidth ?? 80;
+  const columns = Math.min(galleryColumnsFor(width), block.mediaIds.length) || 1;
+  const rows = chunkIntoRows(block.mediaIds, columns);
+  const cellWidth = Math.max(10, Math.floor((width - GRID_GAP_COLUMNS * (columns - 1)) / columns));
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {block.caption === '' || block.caption === undefined ? null : (
+        <Text color={theme.muted}>{sanitizeForTerminal(block.caption)}</Text>
+      )}
+      {rows.map((row, rowIndex) => (
+        <Box key={rowIndex} flexDirection="row">
+          {row.map((mediaId, cellIndex) => (
+            <Box
+              key={mediaId}
+              width={cellWidth}
+              flexShrink={0}
+              marginRight={cellIndex < row.length - 1 ? GRID_GAP_COLUMNS : 0}
+            >
+              <MediaAttachments
+                attachments={[stubAttachment(mediaId, '', rowIndex * columns + cellIndex)]}
+                maxCols={cellWidth}
+              />
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
 function stubAttachment(mediaId: string, altText: string, position = 0): MediaAttachment {
@@ -319,6 +424,7 @@ function TopEightBlockView({
 
   return (
     <Box flexDirection="column" marginBottom={1}>
+      <Text color={theme.muted}>Top 8</Text>
       {actors.map((ref, index) => {
         const handle = ref.slice(1);
         const actor = resolved.get(handle.split('@')[0] ?? handle);
