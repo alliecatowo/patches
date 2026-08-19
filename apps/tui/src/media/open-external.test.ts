@@ -6,7 +6,7 @@ import { MEDIA_STATUS, type GetMediaDownloadResponse, type MediaAttachment } fro
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
-import { openMediaExternally } from './open-external.js';
+import { hasUnsafeLeadingDash, openMediaExternally } from './open-external.js';
 import { MediaCache } from './cache.js';
 
 function attachment(overrides: Partial<MediaAttachment> = {}): MediaAttachment {
@@ -100,5 +100,47 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
         spawnFn: vi.fn(),
       }),
     ).rejects.toThrow(/processing/);
+  });
+
+  it('refuses to spawn a cached path that starts with "-" (A-045 argument-injection defense)', async () => {
+    const download: GetMediaDownloadResponse = {
+      mediaId: 'media-1',
+      status: MEDIA_STATUS.READY,
+      mimeType: 'image/png',
+      width: 10,
+      height: 10,
+      downloadUrl: 'https://example.test/media-1',
+      thumbnailUrl: '',
+      expiresAt: undefined,
+    };
+    const api = {
+      getMediaDownload: vi.fn().mockResolvedValue(download),
+    } as unknown as PatchesApi;
+    // `MediaCache.getOrFetch` always returns a `join(<absolute dir>, ...)` path in
+    // practice — this stub only exists to exercise the defense-in-depth guard for the
+    // case where that invariant ever breaks.
+    const cache = {
+      getOrFetch: vi.fn().mockResolvedValue({ bytes: new Uint8Array(), path: '--exec=evil' }),
+    } as unknown as MediaCache;
+    const spawnFn = vi.fn();
+    await expect(
+      openMediaExternally(api, cache, attachment(), () => Promise.resolve('token'), {
+        env: {},
+        spawnFn,
+      }),
+    ).rejects.toThrow(/unsafe local path/);
+    expect(spawnFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasUnsafeLeadingDash', () => {
+  it('flags a leading dash', () => {
+    expect(hasUnsafeLeadingDash('-flag')).toBe(true);
+    expect(hasUnsafeLeadingDash('--exec=evil')).toBe(true);
+  });
+
+  it('accepts an ordinary absolute path or URL', () => {
+    expect(hasUnsafeLeadingDash('/home/user/.cache/patches/media/media-1.display.png')).toBe(false);
+    expect(hasUnsafeLeadingDash('https://example.test/page')).toBe(false);
   });
 });
