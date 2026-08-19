@@ -31,6 +31,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/local-development.md`](./operations/local-development.md)
   - [`operations/try-it.md`](./operations/try-it.md) — run it against the live node, test several users
   - [`operations/site.md`](./operations/site.md)
+  - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
 - **`product/`** — what Patches is and why: product principles, roadmap, and (planned)

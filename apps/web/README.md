@@ -30,45 +30,56 @@ gRPC/Connect edge — no separate backend of its own.
 ## Running it
 
 ```sh
-mise exec -- pnpm --filter @patches/web dev       # http://localhost:5173
+mise run web                                       # dev server, http://localhost:5173
 mise exec -- pnpm --filter @patches/web build      # tsc --noEmit && vite build -> dist/
 mise exec -- pnpm --filter @patches/web preview
 mise exec -- pnpm --filter @patches/web typecheck
 mise exec -- pnpm --filter @patches/web lint
 mise exec -- pnpm --filter @patches/web test
+mise run web:deploy                                # build + deploy to Cloudflare Pages
 ```
 
 ### Talking to a node
 
-The server's `WEB_ORIGINS` CORS allowlist isn't configured for a browser origin yet, so dev
-mode proxies `/api/*` to a real node instead of hitting it directly from the browser
-(`vite.config.ts`'s `server.proxy`). By default that upstream is the live node,
+The running live node's CORS allow-list hasn't actually been redeployed with a browser
+origin yet (see `docs/operations/web.md`'s "CORS coupling" section — `infra/fly/fly.toml`
+now sets `WEB_ORIGINS`, but that config change hasn't shipped), so dev mode proxies `/api/*`
+to a real node instead of hitting it directly from the browser (`vite.config.ts`'s
+`server.proxy`). By default that upstream is the live node,
 `https://patches-social.fly.dev:8443`; override it with `PATCHES_DEV_UPSTREAM` for a local
 server (`http://127.0.0.1:8080`, the Nest HTTP listener that also serves Connect at
 `/patches.v1.*`):
 
 ```sh
-PATCHES_DEV_UPSTREAM=http://127.0.0.1:8080 mise exec -- pnpm --filter @patches/web dev
+PATCHES_DEV_UPSTREAM=http://127.0.0.1:8080 mise run web
 ```
 
-In production, set `VITE_PATCHES_API_BASE` to the node's real public origin (once `WEB_ORIGINS`
-allows it) — the app's own Connect base URL defaults to `/api` (the dev-proxy path) otherwise.
+In production (`mise run web:deploy`), `VITE_PATCHES_API_BASE` is set to the node's real
+public origin at build time — the app's own Connect base URL defaults to `/api` (the
+dev-proxy path) otherwise. See `docs/operations/web.md` for the live URL and deploy
+commands.
 
 ## API layer (`src/api/`)
 
-Kept as a small, self-contained boundary so swapping it for `@patches/client` (the shared SDK
-another workstream is building — `createPatchesApi({ transport })`, `SessionManager`,
-`describeError`) later only touches these three files, not any route/component:
+Built on `@patches/client` (ADR 0016 §9), the shared SDK this app, the TUI, and (eventually)
+React Native all use — `createPatchesApi({ transport })` builds one typed client per
+`patches.v1` service (`api.posts`, `api.feeds`, `api.actors`, ... — plural, matching the
+SDK's `PatchesApi` interface, not this app's old singular names), `describeError(error)`
+maps a thrown `ConnectError` to user-safe copy, and `SessionManager` holds the access/refresh
+token pair behind a pluggable `CredentialStore`:
 
-- `client.ts` — builds the Connect transport (`x-request-id`/`x-patches-client*` headers on
-  every call via an interceptor) and exports `api`, one typed client per `patches.v1` service.
-  A second interceptor attaches `authorization: Bearer <access>` and, on a single
-  `Code.Unauthenticated` failure, rotates the refresh token once (via a _separate_,
-  non-authenticated transport, to avoid recursing) and retries the original call once.
-- `session.ts` — `localStorage`-backed session store (access/refresh tokens + the signed-in
-  `Actor`), subscribable via `useSyncExternalStore` (see `src/hooks/useSession.ts`).
-- `errors.ts` — `describeError(error)` maps a thrown `ConnectError` code to user-safe
-  title/message/retryable copy for toasts (`src/components/ToastProvider.tsx`).
+- `client.ts` — builds the Connect transport, a single app-level `SessionManager`, an
+  auth-attaching interceptor (`authorization: Bearer <token>` on every non-`AuthService`
+  call when signed in, refresh-and-retry-once on `Code.Unauthenticated`), and exports `api`.
+  See the file's own comment for why `api.session` (the `SessionManager`
+  `createPatchesApi` builds internally) is deliberately never used — only the one
+  constructed here is, so there's a single cache over `credentialStore` instead of two
+  silently diverging.
+- `credentialStore.ts` — `localStorage`-backed `CredentialStore` (the SDK's persistence
+  seam), keyed by the node's base URL, holding only `{ accessToken, refreshToken }`.
+- `session.ts` — a much smaller `localStorage` store than before this migration: just the
+  signed-in `Actor`, for synchronous UI reads (`useSyncExternalStore`, see
+  `src/hooks/useSession.ts`). Never holds a token — that's `credentialStore.ts`'s job now.
 
 ## Routes shipped
 
@@ -95,7 +106,12 @@ dialog. All are ignored while typing in a form field.
   `Posts`/`Badges` blocks show a visible "not supported here yet" placeholder rather than a
   real render (spec §171 requires a placeholder over failing the page, which this satisfies,
   but the blocks themselves are still worth building out).
-- Block/mute actions (`ModerationService`) aren't wired into the profile UI yet — only follow/
-  unfollow is.
-- No dynamic `import()` code-splitting yet; the production bundle is a single ~600 KB (~178 KB
-  gzip) chunk. Fine for v0, worth revisiting before this becomes the primary client surface.
+- Block/unblock, mute/unmute, and report (`ModerationService`) are wired into the profile
+  page (`src/components/ModerationActions.tsx`, next to `FollowButton`) — not yet into
+  `PostCard` (no "report this post" from a timeline) or a dedicated blocks/mutes list view.
+- Routes are code-split via react-router v7's `route.lazy()` (`src/router.tsx`) — only the
+  shell (`RootLayout`, `ProtectedRoute`, `NotFoundRoute`) is in the eager entry chunk, now
+  310 KB raw / 97.68 KB gzip (down from one ~598 KB/178 KB gzip bundle).
+
+See `docs/operations/web.md` for hosting (Cloudflare Pages), the `WEB_ORIGINS` CORS
+coupling, and deploy commands.
