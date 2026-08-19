@@ -144,9 +144,7 @@ export function FiltersSettingsRoute(): JSX.Element {
               value={term.kind}
               onChange={(e) =>
                 setTerms((current) =>
-                  current.map((t, i) =>
-                    i === index ? { ...t, kind: Number(e.target.value) } : t,
-                  ),
+                  current.map((t, i) => (i === index ? { ...t, kind: Number(e.target.value) } : t)),
                 )
               }
             >

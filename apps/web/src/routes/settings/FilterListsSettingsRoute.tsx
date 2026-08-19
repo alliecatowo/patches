@@ -249,9 +249,7 @@ export function FilterListsSettingsRoute(): JSX.Element {
               value={entry.kind}
               onChange={(e) =>
                 setEntries((current) =>
-                  current.map((v, i) =>
-                    i === index ? { ...v, kind: Number(e.target.value) } : v,
-                  ),
+                  current.map((v, i) => (i === index ? { ...v, kind: Number(e.target.value) } : v)),
                 )
               }
             >

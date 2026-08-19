@@ -1,13 +1,15 @@
 # Web (`@patches/web`)
 
-**Status: deployed 2026-08-19, CORS not yet live.** `apps/web/` is a real, text-forward
-browser GUI for Patches (spec §0, §154, Amendment B §179 — web is paused as a _general_
-client target until board Phase 11, but this scoped GUI gives the node a proper web front
-door in the meantime). Vite + React 19, built on the shared `@patches/client` SDK
-(ADR 0016 §9 — the same SDK the TUI and, eventually, React Native use). Deployed to
-Cloudflare Pages (project `patches-web`) at **https://patches-web.pages.dev**, but the
-production node's CORS allow-list hasn't been redeployed to include that origin yet — see
-"The CORS coupling" below before assuming the live page actually works end to end.
+**Status: deployed 2026-08-19, CORS live.** `apps/web/` is a real, text-forward browser GUI
+for Patches (spec §0, §154, Amendment B §179 — web is paused as a _general_ client target
+until board Phase 11, but this scoped GUI gives the node a proper web front door in the
+meantime). Vite + React 19, built on the shared `@patches/client` SDK (ADR 0016 §9 — the
+same SDK the TUI and, eventually, React Native use). Deployed to Cloudflare Pages (project
+`patches-web`) at **https://patches-web.pages.dev**. Verified 2026-08-19: the production
+node's CORS allow-list (`WEB_ORIGINS`) includes that origin —
+`curl -sI -H 'Origin: https://patches-web.pages.dev' -X OPTIONS -H 'Access-Control-Request-Method: POST' https://patches-social.fly.dev:8443/patches.v1.SystemService/GetServerInfo`
+returns `access-control-allow-origin: https://patches-web.pages.dev` — so the live page can
+successfully call the live node end to end.
 
 ## What it is
 
@@ -29,6 +31,13 @@ production node's CORS allow-list hasn't been redeployed to include that origin 
   `FollowButton`. It shares `FollowButton`'s `['relationship', actorId]` TanStack Query
   cache key, so a block (which also clears any existing follow server-side, spec §62) is
   reflected in both without a second fetch.
+- `apps/web/src/components/RichBody.tsx` — renders a post body/bio through the shared
+  `@patches/markup` grammar to React elements (no `dangerouslySetInnerHTML`); used in
+  `PostCard`, `ComposeRoute`'s preview toggle, and `ProfileRoute`'s bio.
+- `apps/web/src/routes/settings/*`, `apps/web/src/routes/moderation/ModerationLogRoute.tsx`,
+  `apps/web/src/routes/AppealsRoute.tsx` — the Amendment C safety surface (P14-018): privacy
+  prefs/export/deletion, personal filters, filter lists, labelers, the public moderation
+  log, and appeals — see `apps/web/README.md`'s route list for the full breakdown.
 
 See `apps/web/README.md` for the full route list, product rules the UI enforces (strictly
 chronological timelines, the mandatory DM disclosure, cosmetics never gating function,
@@ -109,13 +118,10 @@ bare-origin (`scheme://host[:port]`, no path) list. `infra/fly/fly.toml`'s `[env
 WEB_ORIGINS = "https://patches-web.pages.dev"
 ```
 
-**but the running `patches-social` Fly app has not been redeployed with this change** —
-redeploying the server is out of scope for the change that added this line (see
-`docs/operations/deployment.md` for that runbook; someone with Fly access needs to run
-`flyctl deploy`). Until that redeploy happens, every cross-origin request from
-`https://patches-web.pages.dev` to the live node will fail in the browser with a CORS
-error — the page loads (it's static), but every API call after that (login, timelines,
-everything) will not. This is expected and not a bug in the web app itself.
+and the running `patches-social` Fly app has been redeployed with this change — verified
+2026-08-19 with the `curl -X OPTIONS` preflight check in the status line above, which
+returns `access-control-allow-origin: https://patches-web.pages.dev`. Cross-origin requests
+from `https://patches-web.pages.dev` to the live node succeed.
 
 If you add a preview-deploy origin (`<hash>.patches-web.pages.dev`) or a custom domain
 later, append it to the same comma-separated `WEB_ORIGINS` value and redeploy the server —
@@ -123,11 +129,10 @@ Pages preview URLs are not covered by the production entry above.
 
 ## Known gaps / follow-ups
 
-Carried over from `apps/web/README.md`, still true after the SDK migration:
+Carried over from `apps/web/README.md` — see that file for the full, current list:
 
 - `/c/:id` treats the route param as `Community.id`, not its display name — there is no
-  `GetCommunityByName` RPC yet. Either add one, or resolve name→id client-side once
-  `ListCommunities` exposes a name filter.
+  `GetCommunityByName` RPC yet, and no communities discovery/browse page.
 - `PageBlocks` renders `Text`/`Markdown` (as plain text, no Markdown rendering yet)/`Image`/
   `Links`/`Hero`/`NowPlaying`/`AsciiArt`/`Spacer`. `Gallery`/`Friends`/`TopEight`/
   `Guestbook`/`Posts`/`Badges` blocks still show a "not supported here yet" placeholder
@@ -136,7 +141,10 @@ Carried over from `apps/web/README.md`, still true after the SDK migration:
 - Block/mute/report are wired into the profile page only — not into `PostCard` (e.g.
   "report this post" from a timeline) or a dedicated "my blocks/mutes" settings view
   (`ModerationService.ListBlocks`/`ListMutes` are unused so far).
+- `LabelService` has no "list my labeler subscriptions" RPC yet — `/settings/labelers` can
+  subscribe/unsubscribe/set-action but can't show current subscription state on load.
+- `PinPost` always pins at `position: 0` — no UI yet for managing all three pin slots.
+- No TUI-palette theme picker on web yet (spec §185's plain/quiet-feed toggles are a TUI
+  concept; the cosmetic parity item is a selectable colour theme, still open).
 - No CI deploy workflow for `apps/web` yet (unlike `site.yml`'s `workflow_run` +
   `vars.SITE_DEPLOY_ENABLED` gate) — every deploy is `mise run web:deploy` by hand.
-- The server's CORS allow-list change hasn't shipped (see above) — the live Pages URL
-  cannot successfully call the live node until that redeploy happens.
