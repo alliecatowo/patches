@@ -106,6 +106,7 @@ service ModerationService
 service TagService
 service CommunityService
 service DirectMessageService
+service E2eeService  // schema-only, ADR 0020 — no controller implements it
 service FilterService
 service FilterListService
 service LabelService
@@ -411,6 +412,41 @@ sender deletion is a tombstone, and unread state is per viewer without read rece
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
 
+`Conversation.security_mode` is read-only and fixed at creation. `CreateConversation` always
+produces `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; there is no RPC in this service that
+converts a conversation between modes. Clients render the §183.1/§194 disclosure from that field.
+
+### E2eeService (§183, §194, §195.1) — **schema-only** in `e2ee.proto` (P13-001, ADR 0020)
+
+**Status: schema-only. No `apps/server` controller implements any RPC below.** A node that loads
+the schema answers every method `UNIMPLEMENTED`, and `GetE2eeCapability` reports
+`E2EE_CAPABILITY_STATE_DISABLED`. Publishing the schema is not the capability. The rows below are
+the contract a future implementation has to satisfy, not a description of behaviour that exists —
+see [`e2ee.md`](./e2ee.md) for the boundary and the state machines.
+
+| RPC                        | Status      | Notes                                                                                                                                                     |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetE2eeCapability`        | schema-only | Rollout state and the node's copy of the protocol constants. Callable before enrollment, so a client can discover E2EE is unavailable before offering it. |
+| `PublishIdentityRoot`      | schema-only | Publishes or rotates the caller's messaging identity root. The node stores and serves it; it never certifies it.                                          |
+| `GetIdentityRoot`          | schema-only | First-contact material, not proof — safety-number comparison is the authentication control.                                                               |
+| `EnrollDevice`             | schema-only | Certificate + roster `n+1` + initial prekeys, atomically. A half-enrolled device is not a state the schema allows.                                        |
+| `RevokeDevice`             | schema-only | Roster excluding the device; unused prekeys deleted. Never a remote wipe, and it cannot retract what the device holds.                                    |
+| `PublishDeviceRoster`      | schema-only | Appends roster `current.sequence + 1`, chained to the current digest. Rejected otherwise.                                                                 |
+| `GetDeviceRoster`          | schema-only | Newest roster plus the device certificates it references.                                                                                                 |
+| `ListDeviceRosters`        | schema-only | Keyset over the roster log, so a client verifies the hash chain itself instead of trusting a newest-roster claim.                                         |
+| `UploadPrekeys`            | schema-only | Rotate the signed prekey and/or top up one-time prekeys.                                                                                                  |
+| `GetPrekeyInventory`       | schema-only | The calling device's own counts only — another actor's remaining count is an availability oracle.                                                         |
+| `ClaimPrekeyBundles`       | schema-only | One bundle per active recipient device; consumes at most one one-time prekey per device per call; draining is rate-limited.                               |
+| `CreateE2eeConversation`   | schema-only | The only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`. Separate from `CreateConversation`, which takes a plaintext body.                           |
+| `GetE2eeConversationState` | schema-only | Membership epoch, members, rosters and active devices — everything a correct fanout needs.                                                                |
+| `SendEnvelopes`            | schema-only | One logical message as one atomic, exactly-covering per-device fanout; returns the node's franking tag.                                                   |
+| `ListMailboxEnvelopes`     | schema-only | Keyset on `(received_at, envelope_id)` ascending. Poll-based; no push, no stream, no sort parameter.                                                      |
+| `AcknowledgeEnvelopes`     | schema-only | Lets the node clean the mailbox. Never surfaced to the sender — that would be a read receipt (§183.3, §194).                                              |
+| `AttachReportEvidence`     | schema-only | Franking commitment + reporter-disclosed plaintext against an existing report. The node verifies; it never decrypts.                                      |
+
+`E2eeReportEvidenceItem.disclosed_plaintext` is the single intentional plaintext field in the whole
+schema. Everything else the node touches is opaque bytes.
+
 ### 3a. Amendment C services (§196–§210)
 
 **Status: implemented, except the graduated domain-limit tier (§201.5's `limit`/`silence`,
@@ -646,6 +682,7 @@ included in error metadata/messages where useful.
 | `APPEAL_WINDOW_CLOSED`            | `FAILED_PRECONDITION` |
 | `PRIVACY_NOTICE_NOT_ACKNOWLEDGED` | `FAILED_PRECONDITION` |
 | `FOLLOW_REQUEST_NOT_FOUND`        | `NOT_FOUND`           |
+| `SIGN_IN_REQUIRED`                | `UNAUTHENTICATED`     |
 
 There is no `TAG_INVALID` code — an invalid tag grammar (too many tags, bad prefix, etc.) is a
 generic `VALIDATION_ERROR`/`INVALID_ARGUMENT`, same as any other malformed input (§57). Full
@@ -659,6 +696,15 @@ that permits the action — the canonical gRPC semantics for that status.
 `NOT_IMPLEMENTED` is for an RPC that exists in the schema but nothing on this node answers
 yet (`BeginGitHubLogin`/`PollGitHubLogin` until Phase 6, §176) — distinct from a client asking
 for something malformed, which is `VALIDATION_ERROR`/`INVALID_ARGUMENT`.
+
+`SIGN_IN_REQUIRED` is `PublicReadGuard`'s (`apps/server/src/common/guards/public-read.guard.ts`)
+code for a node running with `PUBLIC_READ=false` (owner decision, 2026-08-19): an invite-only
+node gates _posting_, not _reading_, by default, but an operator may opt into closing reads
+entirely. When closed, every RPC outside a small always-open allow-list (`SystemService.*`,
+`NodeService.GetNodeInfo`/`GetNodePolicy`, `AuthService.*`) rejects an unauthenticated caller
+with this code instead of `AUTH_INVALID_CREDENTIALS`/`AUTH_SESSION_EXPIRED` — distinct so a
+client can show "this node requires sign-in to read" rather than implying the caller's
+credentials were wrong.
 
 ## 8. Input limits (§58)
 
