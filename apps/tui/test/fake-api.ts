@@ -346,6 +346,8 @@ export class FakeApiHandle {
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       getNodeInfo: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      getNodePolicy: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       createPost: (request: CreatePostRequest, accessToken: string) =>
         this.createPost(request, accessToken),
       getPost: (request: GetPostRequest) => this.getPost(request),
