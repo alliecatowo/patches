@@ -7,6 +7,14 @@ import './index.css';
 import { router } from './router.js';
 import { ToastProvider } from './components/ToastProvider.js';
 
+// Build identity, readable from devtools (`window.__PATCHES_WEB__`) and printed once on boot so
+// "which web version am I on?" is answerable without reading the footer.
+Object.assign(window, {
+  __PATCHES_WEB__: { version: __PATCHES_WEB_VERSION__, builtAt: __PATCHES_WEB_BUILT_AT__ },
+});
+// eslint-disable-next-line no-console -- intentional one-line boot banner with the build version
+console.info(`patches web ${__PATCHES_WEB_VERSION__} (built ${__PATCHES_WEB_BUILT_AT__})`);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

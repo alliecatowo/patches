@@ -153,3 +153,13 @@ since it only applies to a subset of posts.
 
 See `docs/operations/web.md` for hosting (Cloudflare Pages), the `WEB_ORIGINS` CORS
 coupling, and deploy commands.
+
+## Which version is deployed?
+
+Three ways, all showing `<package version>+<short git sha>` of the build:
+
+- the page footer (`patches web 0.1.0+abc1234`, hover for the build timestamp);
+- the browser console prints `patches web 0.1.0+abc1234 (built …)` once on load;
+- devtools: `window.__PATCHES_WEB__` → `{ version, builtAt }`.
+
+The sha is `git rev-parse HEAD` at build time (`CF_PAGES_COMMIT_SHA`/`GITHUB_SHA` win when set by CI).

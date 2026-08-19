@@ -93,6 +93,14 @@ export function RootLayout(): JSX.Element {
       <main className={styles['main']}>
         <Outlet />
       </main>
+      <footer className={styles['footer']}>
+        <small>
+          patches web{' '}
+          <code title={`built ${__PATCHES_WEB_BUILT_AT__}`}>{__PATCHES_WEB_VERSION__}</code>
+          {' · '}
+          <a href="https://github.com/alliecatowo/patches">source</a>
+        </small>
+      </footer>
       <dialog ref={helpRef} className={styles['helpDialog']}>
         <h2>Keyboard shortcuts</h2>
         <p>
