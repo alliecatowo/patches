@@ -7,7 +7,8 @@ _Status: verified 2026-08-18 against the live node and a local stack._
 Install once (Node 24+, no registry login — the repo is public):
 
 ```bash
-npm install --global https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.1/patches-social-0.1.0.tgz
+npm install --global --allow-remote=all https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.1/patches-social-0.1.0.tgz
+# (npm 12 blocks remote tarballs by default: keep `--allow-remote=all`, or download the .tgz and install the local file)
 patches ping            # {"ok": true, "target": "patches-social.fly.dev:443", ...}
 ```
 
