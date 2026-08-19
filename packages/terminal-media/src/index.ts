@@ -45,12 +45,24 @@ export {
   MediaTooLargeError,
   buildFallbackBox,
   createRenderer,
+  type CreateRendererOptions,
+  type ImageRenderMode,
   type MediaSource,
   type MediaStdout,
   type PrepareOptions,
   type PreparedImage,
   type TerminalMediaRenderer,
 } from './renderer.js';
+
+export { AsciiRenderer, LUMINANCE_RAMP } from './art/ascii-renderer.js';
+
+export { HalfBlockRenderer } from './art/halfblock-renderer.js';
+
+export { detectColorSupport, rgbToAnsi256, type ColorSupport } from './art/color.js';
+
+export { MAX_ART_COLS, MAX_ART_ROWS } from './art/shared.js';
+
+export { renderArtPreview, type RenderArtPreviewOptions } from './art/preview.js';
 
 export { installMediaCleanup, type MediaCleanupOptions } from './cleanup.js';
 

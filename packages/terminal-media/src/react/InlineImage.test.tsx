@@ -79,7 +79,7 @@ describe('InlineImage', () => {
   it('accepts an explicit renderer prop that overrides the context', () => {
     const other: TerminalMediaRenderer = {
       ...stubRenderer,
-      kind: 'fallback',
+      kind: 'box',
       placeholderRows: () => ['[BOX]'],
     };
     const frame = frameOf(

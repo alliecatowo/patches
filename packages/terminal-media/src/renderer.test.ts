@@ -302,7 +302,7 @@ describe('FallbackMediaRenderer', () => {
       { bytes: await solidPng(1600, 1067), mime: 'image/jpeg' },
       { maxCols: 40, maxRows: 10 },
     );
-    expect(renderer.kind).toBe('fallback');
+    expect(renderer.kind).toBe('box');
     expect(image.widthPx).toBe(1600);
     expect(image.heightPx).toBe(1067);
     expect(image.rows).toBe(3);
@@ -363,10 +363,47 @@ describe('buildFallbackBox', () => {
 });
 
 describe('createRenderer', () => {
-  it('picks kitty only when the probe said yes', () => {
+  const TRUECOLOR_ENV = { COLORTERM: 'truecolor' };
+
+  it('picks kitty only when the probe said yes, in auto mode', () => {
     const stdout = new RecordingStdout();
-    expect(createRenderer(KITTY_CAPS, stdout).kind).toBe('kitty');
-    expect(createRenderer({ ...KITTY_CAPS, kitty: false }, stdout).kind).toBe('fallback');
+    expect(createRenderer(KITTY_CAPS, stdout, { env: TRUECOLOR_ENV }).kind).toBe('kitty');
+    expect(
+      createRenderer({ ...KITTY_CAPS, kitty: false }, stdout, { env: TRUECOLOR_ENV }).kind,
+    ).toBe('halfblock');
+  });
+
+  it('auto falls back to ascii when colour is unavailable', () => {
+    const stdout = new RecordingStdout();
+    const renderer = createRenderer({ ...KITTY_CAPS, kitty: false }, stdout, {
+      env: { NO_COLOR: '1' },
+    });
+    expect(renderer.kind).toBe('ascii');
+  });
+
+  it('every explicit mode forces its renderer regardless of caps.kitty', () => {
+    const stdout = new RecordingStdout();
+    expect(createRenderer(KITTY_CAPS, stdout, { mode: 'box' }).kind).toBe('box');
+    expect(createRenderer(KITTY_CAPS, stdout, { mode: 'off' }).kind).toBe('box');
+    expect(createRenderer(KITTY_CAPS, stdout, { mode: 'ascii' }).kind).toBe('ascii');
+    expect(
+      createRenderer({ ...KITTY_CAPS, kitty: false }, stdout, {
+        mode: 'kitty',
+      }).kind,
+    ).toBe('kitty');
+    expect(
+      createRenderer({ ...KITTY_CAPS, kitty: false }, stdout, {
+        mode: 'pixel',
+        env: TRUECOLOR_ENV,
+      }).kind,
+    ).toBe('halfblock');
+  });
+
+  it('pixel mode still degrades to ascii when colour is unavailable', () => {
+    const stdout = new RecordingStdout();
+    expect(createRenderer(KITTY_CAPS, stdout, { mode: 'pixel', env: { NO_COLOR: '1' } }).kind).toBe(
+      'ascii',
+    );
   });
 });
 
