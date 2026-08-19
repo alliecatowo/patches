@@ -51,12 +51,13 @@ export default defineConfig([
             'apps/worker/*.config.{ts,mts,cts}',
             'packages/config/*.config.{ts,mts,cts}',
             'packages/database/*.config.{ts,mts,cts}',
+            'packages/markup/*.config.{ts,mts,cts}',
             'packages/testkit/*.config.{ts,mts,cts}',
             'packages/terminal-media/*.config.{ts,mts,cts}',
           ],
           // apps/web/tsconfig.json already includes vite.config.ts/vitest.config.ts
           // itself (same pattern as apps/tui), so it doesn't need an entry here.
-          // Default cap is 8; the packages above contribute 15 matching config files, all
+          // Default cap is 8; the packages above contribute 17 matching config files, all
           // small and cheap to parse standalone (no type info needed) — raising this is the
           // documented escape hatch, not a performance red flag at this file count.
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,

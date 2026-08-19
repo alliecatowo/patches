@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": [],
+    "noEmit": true,
+    // tsup's dts build spawns tsc without a tsBuildInfoFile; the base config's
+    // `incremental: true` makes that invocation fail (TS5074). Package-local override only
+    // (not touching tsconfig.base.json, which apps/other packages may still rely on).
+    "incremental": false
+  },
+  // tsup.config.ts/vitest.config.ts are linted via eslint.config.js's
+  // `allowDefaultProject: ['packages/markup/*.config.{ts,mts,cts}']` rather than being
+  // `include`d here — they aren't part of this package's actual TS program.
+  "include": ["src"]
+}
