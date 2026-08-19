@@ -130,4 +130,66 @@ export const RATE_LIMITS = Object.freeze({
   messageRequestPerDay: 20,
   /** Tag mutes, total per actor (not a rate — a ceiling on the mute list itself). */
   tagMuteTotal: 100,
+
+  /** Filter create/update, per actor, per hour (§204). */
+  filterCreateOrUpdatePerHour: 30,
+  /** Filter list publish/update, per actor, per hour (§204). */
+  filterListPublishOrUpdatePerHour: 10,
+  /** Filter list subscribe, per actor, per hour (§204). */
+  filterListSubscribePerHour: 50,
+  /** Label apply, per labeler, per day — deliberate, not automatable (§200.5, §204). */
+  labelApplyPerDayPerLabeler: 300,
+  /** Appeals filed, per actor, per day (§204). */
+  appealFiledPerDay: 5,
+  /** Account exports requested, per actor, per day (§204). */
+  exportRequestedPerDay: 3,
+  /** Account deletion requested/cancelled, per actor, per day (§204). */
+  accountDeletionRequestedOrCancelledPerDay: 5,
 } as const);
+
+/**
+ * Amendment C size limits (`INITIAL_VISION.md` §204) — privacy/filters/labelers/moderation.
+ * Same rule as Amendment B's table above: every limit here MUST also exist in protobuf/API
+ * validation and, where practical, a database constraint (see `packages/database`'s
+ * `Phase14*` migrations) — this module is the single source of truth all three read from.
+ */
+
+/** Filters an actor may own at once (§204). */
+export const MAX_FILTERS_PER_ACTOR = 50;
+
+/** Terms per filter (§204). */
+export const MAX_FILTER_TERMS_PER_FILTER = 20;
+
+/** Filter lists an actor may have published at once (§204). */
+export const MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR = 10;
+
+/** Entries per published filter list (§204). */
+export const MAX_FILTER_LIST_ENTRIES = 2_000;
+
+/** Filter list subscriptions an actor may hold at once (§204). */
+export const MAX_FILTER_LIST_SUBSCRIPTIONS = 100;
+
+/** Per-entry exceptions an actor may set on one subscribed filter list (§204). */
+export const MAX_FILTER_LIST_EXCEPTIONS_PER_LIST = 200;
+
+/** Labeler subscriptions an actor may hold at once (§204). */
+export const MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR = 50;
+
+/** Appeal statement, in characters (§204). */
+export const MAX_APPEAL_STATEMENT_CHARS = 2_000;
+
+/** Ready account-export archives kept at a time, per actor (§197.3, §204) — a new export
+ * request replaces the previous ready archive rather than accumulating more than one. */
+export const ACCOUNT_EXPORT_MAX_READY_ARCHIVES = 1;
+
+/** Days an account export archive remains downloadable after becoming ready (§204). */
+export const ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS = 7;
+
+/** Default account-deletion grace period, in days — node-configurable, published in
+ * `GetNodePolicy` (§197.4, §204). This is the platform default a node may override, not a
+ * hard ceiling. */
+export const ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT = 30;
+
+/** Default appeal window, in days, from the moderation notice — node-configurable, published
+ * in `GetNodePolicy` (§201.3, §204). Platform default, not a hard ceiling. */
+export const APPEAL_WINDOW_DAYS_DEFAULT = 14;
