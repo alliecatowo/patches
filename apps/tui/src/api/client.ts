@@ -224,6 +224,8 @@ import {
   createFilterListClient,
   createLabelClient,
   createPrivacyClient,
+  type AcceptFollowRequestRequest,
+  type AcceptFollowRequestResponse,
   type AcknowledgePrivacyNoticeRequest,
   type AcknowledgePrivacyNoticeResponse,
   type AppealGrpcClient,
@@ -243,7 +245,6 @@ import {
   type DeleteFilterResponse,
   type ExportAccountRequest,
   type ExportAccountResponse,
-  type ExportFiltersRequest,
   type ExportFiltersResponse,
   type FilterGrpcClient,
   type FilterListGrpcClient,
@@ -263,6 +264,8 @@ import {
   type ImportFiltersRequest,
   type ImportFiltersResponse,
   type LabelGrpcClient,
+  type ListFollowRequestsRequest,
+  type ListFollowRequestsResponse,
   type ListFilterListEntriesRequest,
   type ListFilterListEntriesResponse,
   type ListFilterListsRequest,
@@ -284,6 +287,8 @@ import {
   type PrivacyGrpcClient,
   type PublishFilterListRequest,
   type PublishFilterListResponse,
+  type RejectFollowRequestRequest,
+  type RejectFollowRequestResponse,
   type RequestAccountDeletionRequest,
   type RequestAccountDeletionResponse,
   type RetractLabelRequest,
@@ -611,6 +616,44 @@ export class PatchesApi {
   ): Promise<ListMutualFollowsResponse> {
     return unary(
       this.socialGraph.listMutualFollows.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  /** Pending follow requests addressed to the caller's own locked account (spec §197.5),
+   * newest first. */
+  async listFollowRequests(
+    request: ListFollowRequestsRequest,
+    accessToken: string,
+  ): Promise<ListFollowRequestsResponse> {
+    return unary(
+      this.socialGraph.listFollowRequests.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async acceptFollowRequest(
+    request: AcceptFollowRequestRequest,
+    accessToken: string,
+  ): Promise<AcceptFollowRequestResponse> {
+    return unary(
+      this.socialGraph.acceptFollowRequest.bind(this.socialGraph),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
+  }
+
+  async rejectFollowRequest(
+    request: RejectFollowRequestRequest,
+    accessToken: string,
+  ): Promise<RejectFollowRequestResponse> {
+    return unary(
+      this.socialGraph.rejectFollowRequest.bind(this.socialGraph),
       request,
       DEADLINES_MS.unary,
       accessToken,
@@ -1349,12 +1392,7 @@ export class PatchesApi {
   }
 
   async exportFilters(accessToken: string): Promise<ExportFiltersResponse> {
-    return unary(
-      this.filter.exportFilters.bind(this.filter),
-      {} as ExportFiltersRequest,
-      DEADLINES_MS.unary,
-      accessToken,
-    );
+    return unary(this.filter.exportFilters.bind(this.filter), {}, DEADLINES_MS.unary, accessToken);
   }
 
   /** `apply: false` (the default) previews what would be added without writing
