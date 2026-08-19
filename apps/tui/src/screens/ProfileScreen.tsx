@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
+import type { ToastKind } from '../components/Toast.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PostList, type PostRowActions } from '../components/PostList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
@@ -67,6 +68,10 @@ export interface ProfileScreenProps {
     | undefined;
   /** Bumped by `App` after a successful post — re-reads this list from the server. */
   refreshKey?: number;
+  /** Surfaces a toast in the shell — used for "follow request sent" (§197.5: a
+   * locked-account follow doesn't take effect immediately, so the viewer needs to be
+   * told the `f` they just pressed didn't create the follow yet). */
+  onNotify?: ((message: string, kind?: ToastKind) => void) | undefined;
 }
 
 type FollowUi =
@@ -97,6 +102,7 @@ export function ProfileScreen({
   onConfirm,
   onEditProfile,
   refreshKey = 0,
+  onNotify,
 }: ProfileScreenProps): ReactElement {
   const plain = usePlainMode();
   const actorState = useActor(api, actorId, knownActor);
@@ -141,15 +147,55 @@ export function ProfileScreen({
   // here is a normal event-handler state update, not the effect anti-pattern above.
   async function toggleFollow(): Promise<void> {
     if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
-    const following = followUi.relationship.state === FOLLOW_STATE.FOLLOWING;
+    const { relationship } = followUi;
+    // §197.5: a locked target replies `requested` instead of following immediately —
+    // there is no `follows` row yet to unfollow, but `unfollowActor` also deletes any
+    // outstanding `FollowRequest`, so it is the same verb `f` uses to cancel one.
+    const shouldUnfollow = relationship.state === FOLLOW_STATE.FOLLOWING || relationship.requested;
     setOutcome({ actorId, state: { status: 'loading' } });
     try {
       const accessToken = await ensureAccessToken();
-      const response = following
-        ? await api.unfollowActor({ actorId }, accessToken)
-        : await api.followActor({ actorId }, accessToken);
+      if (shouldUnfollow) {
+        const response = await api.unfollowActor({ actorId }, accessToken);
+        if (present(response.relationship)) {
+          setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+        }
+        return;
+      }
+      const response = await api.followActor({ actorId }, accessToken);
       if (present(response.relationship)) {
         setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+      }
+      if (response.requested) onNotify?.('Follow request sent.', 'success');
+    } catch (error) {
+      setOutcome({
+        actorId,
+        state: { status: 'error', error: describeGrpcError(error, api.target) },
+      });
+    }
+  }
+
+  // Not an effect either — a direct response to `a`/`x` on an incoming request
+  // (§197.5: `relationship.requested_by`).
+  async function respondToFollowRequest(accept: boolean): Promise<void> {
+    if (followUi.status !== 'ready' || ensureAccessToken === undefined) return;
+    setOutcome({ actorId, state: { status: 'loading' } });
+    try {
+      const accessToken = await ensureAccessToken();
+      if (accept) {
+        const response = await api.acceptFollowRequest({ actorId }, accessToken);
+        if (present(response.relationship)) {
+          setOutcome({ actorId, state: { status: 'ready', relationship: response.relationship } });
+          return;
+        }
+      } else {
+        // RejectFollowRequestResponse carries no relationship — re-derive it below
+        // so `requested_by` clears from the UI without a full page reload.
+        await api.rejectFollowRequest({ actorId }, accessToken);
+      }
+      const refreshed = await api.getRelationship({ actorId }, accessToken);
+      if (present(refreshed.relationship)) {
+        setOutcome({ actorId, state: { status: 'ready', relationship: refreshed.relationship } });
       }
     } catch (error) {
       setOutcome({
@@ -210,6 +256,14 @@ export function ProfileScreen({
     (input) => {
       if (input === 'f') {
         void toggleFollow();
+        return;
+      }
+      if (input === 'a' && followUi.status === 'ready' && followUi.relationship.requestedBy) {
+        void respondToFollowRequest(true);
+        return;
+      }
+      if (input === 'x' && followUi.status === 'ready' && followUi.relationship.requestedBy) {
+        void respondToFollowRequest(false);
         return;
       }
       if (input === 'B' && followUi.status === 'ready') {
@@ -334,15 +388,28 @@ export function ProfileScreen({
         ) : null}
         {followUi.status === 'ready' ? (
           <Text color={theme.muted}>
-            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'following' : 'not following'}
+            {followUi.relationship.requested
+              ? 'follow requested'
+              : followUi.relationship.state === FOLLOW_STATE.FOLLOWING
+                ? 'following'
+                : 'not following'}
             {followUi.relationship.followedBy ? ' · follows you' : ''}
             {'  ·  f to '}
-            {followUi.relationship.state === FOLLOW_STATE.FOLLOWING ? 'unfollow' : 'follow'}
+            {followUi.relationship.requested ||
+            followUi.relationship.state === FOLLOW_STATE.FOLLOWING
+              ? 'unfollow'
+              : 'follow'}
             {'  ·  B to '}
             {followUi.relationship.blocking ? 'unblock' : 'block'}
             {'  ·  M to '}
             {followUi.relationship.muting ? 'unmute' : 'mute'}
           </Text>
+        ) : null}
+        {/* §197.5: the target sent *us* a follow request — only meaningful on a
+            locked viewer's own account, since that is the only relationship a
+            request-to-us can exist on. */}
+        {followUi.status === 'ready' && followUi.relationship.requestedBy ? (
+          <Text color={theme.muted}>wants to follow you — a accept · x reject</Text>
         ) : null}
         {followUi.status === 'error' ? (
           <Text color={theme.error}>{followUi.error.title}</Text>

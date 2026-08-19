@@ -705,14 +705,21 @@ export function App({
     try {
       const accessToken = await ensureAccessToken();
       const current = await api.getRelationship({ actorId: author.id }, accessToken);
-      const following =
-        present(current.relationship) && current.relationship.state === FOLLOW_STATE.FOLLOWING;
-      if (following) {
+      // §197.5: a locked author's pending request has no `follows` row yet, but
+      // `unfollowActor` also deletes any outstanding `FollowRequest`, so it is the
+      // same verb that cancels one.
+      const shouldUnfollow =
+        present(current.relationship) &&
+        (current.relationship.state === FOLLOW_STATE.FOLLOWING || current.relationship.requested);
+      if (shouldUnfollow) {
         await api.unfollowActor({ actorId: author.id }, accessToken);
         notify(`Unfollowed @${author.handle}.`, 'success');
       } else {
-        await api.followActor({ actorId: author.id }, accessToken);
-        notify(`Following @${author.handle}.`, 'success');
+        const response = await api.followActor({ actorId: author.id }, accessToken);
+        notify(
+          response.requested ? 'Follow request sent.' : `Following @${author.handle}.`,
+          'success',
+        );
       }
     } catch (error) {
       notify(describeGrpcError(error, api.target).title, 'error');
@@ -1508,6 +1515,7 @@ export function App({
               session === undefined ? undefined : () => navigate({ screen: 'editProfile' })
             }
             refreshKey={feedNonce}
+            onNotify={notify}
           />
         );
       case 'editProfile':

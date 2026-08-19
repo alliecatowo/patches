@@ -45,6 +45,8 @@ function typeIcon(type: Notification['type']): string {
       return '@';
     case NOTIFICATION_TYPE.MODERATION:
       return '!';
+    case NOTIFICATION_TYPE.FOLLOW_REQUEST:
+      return '?';
     default:
       return '·';
   }
@@ -62,6 +64,11 @@ function typeLabel(type: Notification['type']): string {
       return 'mentioned you';
     case NOTIFICATION_TYPE.MODERATION:
       return 'moderation notice';
+    case NOTIFICATION_TYPE.FOLLOW_REQUEST:
+      // §197.5: accept/reject only happens on the dedicated `:followrequests`
+      // screen (or the requester's own profile) — this row is a pointer, not an
+      // inline actionable control.
+      return 'wants to follow you — see :followrequests';
     default:
       return 'notification';
   }
