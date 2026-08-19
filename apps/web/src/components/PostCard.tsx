@@ -7,10 +7,10 @@ import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
-import { linkifyBody } from '../lib/linkify.js';
 import { MediaImage } from './MediaImage.js';
 import { Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
+import { RichBody } from './RichBody.js';
 
 export interface PostCardProps {
   post: Post;
@@ -134,7 +134,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
           </button>
         ) : (
           <>
-            <p className={styles['text']}>{linkifyBody(post.body)}</p>
+            <div className={styles['text']}>
+              <RichBody source={post.body} />
+            </div>
             {post.media.length > 0 ? (
               <div className={styles['mediaGrid']}>
                 {post.media.map((media) => (
@@ -145,7 +147,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
             {post.quotedPost ? (
               <div className={styles['quoted']}>
                 <strong>@{post.quotedPost.author?.handle}</strong>
-                <p className={styles['text']}>{post.quotedPost.body}</p>
+                <div className={styles['text']}>
+                  <RichBody source={post.quotedPost.body} />
+                </div>
               </div>
             ) : null}
           </>

@@ -23,6 +23,7 @@
     "@connectrpc/connect-web": "catalog:",
     "@patches/client": "workspace:*",
     "@patches/domain": "workspace:*",
+    "@patches/markup": "workspace:*",
     "@patches/proto": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "react": "catalog:",

@@ -5,17 +5,23 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { useDebouncedValue } from '../hooks/useDebouncedValue.js';
+import { toDate } from '../lib/format.js';
+import { parseSearchQuery } from '../lib/searchQuery.js';
 import styles from './SearchRoute.module.css';
 
 type Tab = 'people' | 'posts';
 
 /** `/search` — people search via `ActorService.SearchActors`; post search via
- * `PostService.SearchPosts` (both chronological result ordering, no ranking). */
+ * `PostService.SearchPosts` (both chronological result ordering, no ranking).
+ * The posts tab accepts subtractive filter tokens `from:handle` and `since:date`
+ * (spec §194 — no ranking/sort param, so `since:` trims already-chronological
+ * pages rather than resorting or scoring them) alongside free text. */
 export function SearchRoute(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [tab, setTab] = useState<Tab>('people');
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
+  const parsed = parseSearchQuery(debouncedQuery);
 
   const actorsQuery = useQuery({
     queryKey: ['search', 'actors', debouncedQuery],
@@ -28,7 +34,7 @@ export function SearchRoute(): JSX.Element {
       <input
         className={styles['input']}
         type="search"
-        placeholder="Search people or posts…"
+        placeholder="Search people or posts… (try from:handle, since:2026-01-01)"
         value={query}
         autoFocus
         onChange={(event) => {
@@ -75,15 +81,24 @@ export function SearchRoute(): JSX.Element {
       ) : (
         <PostTimeline
           queryKey={['search', 'posts', debouncedQuery]}
-          fetchPage={(cursor) =>
-            api.posts.searchPosts({
-              query: debouncedQuery,
+          fetchPage={async (cursor) => {
+            const page = await api.posts.searchPosts({
+              query: parsed.text,
               cursor,
               limit: 20,
-              authorHandle: '',
+              authorHandle: parsed.authorHandle,
               includeReplies: false,
-            })
-          }
+            });
+            if (parsed.sinceMs === undefined) return page;
+            const sinceMs = parsed.sinceMs;
+            return {
+              ...page,
+              posts: page.posts.filter((post) => {
+                const created = toDate(post.createdAt);
+                return created !== null && created.getTime() >= sinceMs;
+              }),
+            };
+          }}
           emptyMessage="No posts found."
         />
       )}

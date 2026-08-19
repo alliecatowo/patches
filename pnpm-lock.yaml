@@ -494,6 +494,9 @@ importers:
       '@patches/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@patches/markup':
+        specifier: workspace:*
+        version: link:../../packages/markup
       '@patches/proto':
         specifier: workspace:*
         version: link:../../packages/proto
