@@ -34,6 +34,11 @@ import { Post } from './post.entity.js';
 @Entity({ name: 'notifications' })
 @Index(['recipientActorId', 'createdAt', 'id'])
 @Index(['recipientActorId', 'readAt'])
+// P11-004 (`Phase11DirectMessagesModeration`) created `idx_notifications_community_id` by
+// hand-written migration SQL without a matching decorator here — `db:generate` therefore
+// always proposed re-creating it. Adding the decorator makes generate clean (drift fix, see
+// this task's report).
+@Index(['communityId'])
 @Index(['recipientActorId', 'type', 'actorId', 'postId'], {
   unique: true,
   where: '"post_id" IS NOT NULL',
