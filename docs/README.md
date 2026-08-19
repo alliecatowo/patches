@@ -37,18 +37,18 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
-- **`product/`** — what Patches is and why: product principles, roadmap, and (planned)
-  moderation policy.
+- **`product/`** — what Patches is and why: product principles, roadmap, moderation policy,
+  and the privacy notice.
   - [`product/principles.md`](./product/principles.md)
   - [`product/roadmap.md`](./product/roadmap.md)
   - [`product/tui-design-vision.md`](./product/tui-design-vision.md) — the TUI's design vision (layout, themes, flows)
-  - `product/moderation.md` _(planned)_
+  - [`product/moderation.md`](./product/moderation.md) — community guidelines, enforcement, appeals, decentralized moderation
+  - [`product/privacy.md`](./product/privacy.md) — the draft privacy notice
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
-- **`agents/`** — guidance for AI implementation agents working in this repository, if/when
-  that becomes its own documented surface distinct from `INITIAL_VISION.md` itself.
-  _(Currently empty.)_
+- **`agents/`** — guidance for AI implementation agents working in this repository:
+  `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`.
 
 ## Where to start
 
