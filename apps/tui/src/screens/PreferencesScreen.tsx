@@ -8,7 +8,13 @@ import { ThemePreview, THEME_PREVIEW_DIMENSIONS } from '../components/ThemePrevi
 import type { ImagePolicy } from '../preferences/store.js';
 import { theme as shellTheme } from '../theme/index.js';
 import { GLYPH_NAMES, glyph } from '../theme/glyphs.js';
-import { BUILT_IN_THEMES, getBuiltInTheme, listBuiltInThemes } from '../theme/themes/registry.js';
+import {
+  BUILT_IN_THEMES,
+  getBuiltInTheme,
+  listBuiltInThemes,
+  READABLE_TEXT_CONTRAST,
+  validateThemeContrast,
+} from '../theme/themes/registry.js';
 import type { BuiltInThemeName, GlyphSetName, ThemeDefinition } from '../theme/themes/types.js';
 
 export interface PreferencesScreenProps {
@@ -193,6 +199,19 @@ export function PreferencesScreen({
 
   const previewTheme: ThemeDefinition = getBuiltInTheme(themeName) ?? BUILT_IN_THEMES.patches;
   const glyphPreview = GLYPH_NAMES.map((name) => glyph(name, glyphSetValue)).join(' ');
+  // Live contrast explanation for the theme currently previewed (P12-112) — the
+  // same WCAG floor `ColorPicker` enforces per-swatch, surfaced here per-theme so
+  // switching themes tells you *why* a theme is (or isn't) readable, not just that
+  // it applied.
+  const themeContrast = validateThemeContrast(previewTheme).checks.find(
+    (check) => check.foreground === 'foreground' && check.background === 'background',
+  );
+  const themeContrastLine =
+    themeContrast === undefined || themeContrast.ratio === null
+      ? "Delegates foreground and background to your terminal's colours — no contrast to check."
+      : `AA contrast ${themeContrast.ratio.toFixed(2)}:1 against background${
+          themeContrast.readable ? '' : ` — below the ${READABLE_TEXT_CONTRAST.toFixed(2)}:1 floor`
+        }.`;
   // Title, source line, six option rows, help line, hint line.
   const chromeRows = 10;
   const showPreview = content.rows >= chromeRows + THEME_PREVIEW_DIMENSIONS.height;
@@ -229,7 +248,11 @@ export function PreferencesScreen({
         </Text>
       ))}
       <Text color={shellTheme.muted} wrap="truncate-end">
-        {current === 'images' ? IMAGE_POLICY_HELP[imagePolicyValue] : ROW_HELP[current]}
+        {current === 'images'
+          ? IMAGE_POLICY_HELP[imagePolicyValue]
+          : current === 'theme'
+            ? themeContrastLine
+            : ROW_HELP[current]}
       </Text>
       {showPreview ? (
         <Box

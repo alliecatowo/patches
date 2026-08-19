@@ -161,6 +161,18 @@ describe('PreferencesScreen', () => {
     expect(stripSgr(lastFrame() ?? '')).toContain('Colourless dithered ascii art');
   });
 
+  it('shows a live AA contrast explanation for the previewed theme (P12-112)', () => {
+    const { lastFrame } = renderScreen(baseProps({ themeName: 'patches' }));
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toMatch(/AA contrast \d+\.\d\d:1 against background\./);
+  });
+
+  it('explains that the terminal theme delegates colours instead of a ratio', () => {
+    const { lastFrame } = renderScreen(baseProps({ themeName: 'terminal' }));
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toContain("Delegates foreground and background to your terminal's colours");
+  });
+
   it('Enter saves, Esc cancels', async () => {
     const onSave = vi.fn();
     const onCancel = vi.fn();
