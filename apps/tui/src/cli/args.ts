@@ -16,7 +16,13 @@ export type Command =
   | 'dm'
   | 'community'
   | 'tag'
-  | 'upgrade';
+  | 'upgrade'
+  | 'privacy'
+  | 'filter'
+  | 'lists'
+  | 'labelers'
+  | 'appeal'
+  | 'modlog';
 
 const SUBCOMMANDS: readonly Command[] = [
   'register',
@@ -30,6 +36,12 @@ const SUBCOMMANDS: readonly Command[] = [
   'dm',
   'community',
   'tag',
+  'privacy',
+  'filter',
+  'lists',
+  'labelers',
+  'appeal',
+  'modlog',
 ];
 
 export interface ParsedArgs {
@@ -143,6 +155,12 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'community':
       case 'tag':
       case 'upgrade':
+      case 'privacy':
+      case 'filter':
+      case 'lists':
+      case 'labelers':
+      case 'appeal':
+      case 'modlog':
         result.command = argument;
         break;
       case '--insecure':
@@ -222,6 +240,12 @@ Usage:
   patches community <command>  list, join, leave, or post to communities
   patches tag <command>        search or read/mute a tag
   patches upgrade               check for and install a newer release, then exit
+  patches privacy <command>    privacy notice, discoverability, export, deletion
+  patches filter <command>     manage your own bring-your-own-filter rules
+  patches lists <command>      browse, subscribe to, and publish filter lists
+  patches labelers <command>   subscribe to labelers and set per-value actions
+  patches appeal <command>     file and track appeals against a moderation notice
+  patches modlog                this node's public, anonymized moderation log
   patches --version            print the client version
 
 Options:
@@ -239,5 +263,7 @@ Options:
 
 Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` /
 \`patches profile edit --help\` / \`patches dm --help\` / \`patches community --help\` /
-\`patches tag --help\` for subcommand-specific options.
+\`patches tag --help\` / \`patches privacy --help\` / \`patches filter --help\` /
+\`patches lists --help\` / \`patches labelers --help\` / \`patches appeal --help\` /
+\`patches modlog --help\` for subcommand-specific options.
 `;
