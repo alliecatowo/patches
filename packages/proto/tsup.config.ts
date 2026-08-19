@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/nest.ts'],
+  entry: ['src/index.ts', 'src/nest.ts', 'src/es.ts'],
   tsconfig: 'tsconfig.build.json',
   format: ['esm', 'cjs'],
   dts: true,
@@ -10,7 +10,15 @@ export default defineConfig({
   target: 'node24',
   // Rewrites `import.meta.url` for the CJS output (see src/proto-path.ts).
   shims: true,
-  // Keep the two entries separate so importing the root never drags Nest in.
+  // Keep the entries separate so importing the root never drags Nest in, and importing
+  // `./es` (ADR 0016 — the browser/RN-reachable entry point) never drags in `@grpc/grpc-js`
+  // or `@nestjs/microservices` either.
   splitting: false,
-  external: ['@nestjs/microservices', '@grpc/grpc-js', '@grpc/proto-loader', 'rxjs'],
+  external: [
+    '@nestjs/microservices',
+    '@grpc/grpc-js',
+    '@grpc/proto-loader',
+    'rxjs',
+    '@bufbuild/protobuf',
+  ],
 });

@@ -14,6 +14,11 @@
       "import": "./dist/nest.js",
       "require": "./dist/nest.cjs"
     },
+    "./es": {
+      "types": "./dist/es.d.ts",
+      "import": "./dist/es.js",
+      "require": "./dist/es.cjs"
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.cjs",
@@ -24,7 +29,7 @@
     "proto"
   ],
   "scripts": {
-    "gen": "buf generate && prettier --write src/generated",
+    "gen": "buf generate && prettier --write src/generated src/generated-es",
     "lint:buf": "buf lint",
     "format:buf": "buf format -d --exit-code",
     "breaking": "./scripts/breaking.sh",
@@ -35,10 +40,12 @@
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "catalog:",
     "ts-proto": "catalog:",
     "tsup": "catalog:"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
     "@nestjs/microservices": "catalog:",

@@ -1,22 +1,15 @@
-import { Injectable, MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
+import { Injectable, Module } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
 import { PagesModule } from '../pages/pages.module.js';
-import { MAX_INBOUND_BODY_BYTES } from './federation.constants.js';
 import { FederationMetricsService } from './federation-metrics.service.js';
 import {
   FEDERATION_GATEWAY,
   NoopFederationGateway,
   type FederationGateway,
 } from './federation-gateway.js';
-import { ActorController } from './http/actor.controller.js';
-import { FederationMetricsController } from './http/federation-metrics.controller.js';
-import { InboxController } from './http/inbox.controller.js';
-import { OutboxController } from './http/outbox.controller.js';
-import { rawBodyCollector } from './http/raw-body.middleware.js';
-import { WebfingerController } from './http/webfinger.controller.js';
 import { PeerRateLimiterService } from './security/peer-rate-limiter.service.js';
 import { ActivityPubFederationGateway } from './services/activitypub-federation-gateway.service.js';
 import { ActorDocumentService } from './services/actor-document.service.js';
@@ -81,22 +74,20 @@ class LazyFederationGateway implements FederationGateway {
 }
 
 /**
- * The federation HTTP surface + the `FederationGateway` real implementation (P8-001..P8-008).
- * Registered unconditionally in `AppModule` — what actually gates any of this being reachable
- * is `main.ts` only opening the HTTP listener when `FEDERATION_ENABLED=true` (spec §176's
- * "self-hosted node ships with federation disabled by default"). `FEDERATION_GATEWAY` itself
- * is bound to `LazyFederationGateway`, so `GraphService`/`PostService`/`ReactionsService`
- * never need to know which underlying implementation is live.
+ * The `FederationGateway` real implementation and every service the federation HTTP surface
+ * needs (P8-001..P8-008) — no controllers. Registered unconditionally in `AppModule`
+ * (imported directly by `PostModule`/`ActorModule`/`GraphModule`/`ReactionModule` too, for
+ * `FEDERATION_GATEWAY`/`RemoteActorService`) because `publishPost`/`followRemoteActor`/etc.
+ * must resolve to *something* — `LazyFederationGateway` — on every node regardless of
+ * `FEDERATION_ENABLED`; it's the target it dispatches to (`NoopFederationGateway` vs the real
+ * one) that's conditional, decided per-call, not at DI-construction time (see the class doc
+ * comment above). The HTTP surface itself (webfinger/actor/inbox/outbox) is a separate
+ * module, `FederationHttpModule`, so it can be the thing that's actually absent — not merely
+ * unrouted — when federation is off (ADR 0016 §4; ADR 0016 also changed *how* that HTTP
+ * surface reaches the network — see `main.ts`).
  */
 @Module({
   imports: [NotificationsModule, PagesModule],
-  controllers: [
-    WebfingerController,
-    ActorController,
-    OutboxController,
-    InboxController,
-    FederationMetricsController,
-  ],
   providers: [
     KeyService,
     RemoteActorService,
@@ -111,13 +102,22 @@ class LazyFederationGateway implements FederationGateway {
     ActivityPubFederationGateway,
     { provide: FEDERATION_GATEWAY, useClass: LazyFederationGateway },
   ],
-  // `RemoteActorService` is also exported (in addition to `FEDERATION_GATEWAY`) so
+  // `RemoteActorService` is exported (in addition to `FEDERATION_GATEWAY`) so
   // `ActorModule`'s `ResolveActor` (B-028) can discover-and-upsert a remote actor by
-  // `acct:user@domain` without duplicating WebFinger/actor-document fetch logic.
-  exports: [FEDERATION_GATEWAY, RemoteActorService],
+  // `acct:user@domain` without duplicating WebFinger/actor-document fetch logic. The rest
+  // (`ActorDocumentService`, `WebfingerService`, `InboxService`, `PeerRateLimiterService`,
+  // `FederationMetricsService`, `OutboxCollectionService`) are exported solely so
+  // `FederationHttpModule`'s controllers — which live in a different module and only import
+  // this one — can inject them; nothing else in the app needs them.
+  exports: [
+    FEDERATION_GATEWAY,
+    RemoteActorService,
+    ActorDocumentService,
+    WebfingerService,
+    InboxService,
+    PeerRateLimiterService,
+    FederationMetricsService,
+    OutboxCollectionService,
+  ],
 })
-export class FederationModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(rawBodyCollector(MAX_INBOUND_BODY_BYTES)).forRoutes('*');
-  }
-}
+export class FederationModule {}

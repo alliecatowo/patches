@@ -11,12 +11,9 @@ export interface HealthCheckResult {
 }
 
 /**
- * The logic behind `GET /healthz` (A-043) — reachable from two places: `HealthController`
- * (Nest route, only bound to a port when `FEDERATION_ENABLED` opens the full HTTP app) and
- * the standalone `healthz`-only listener `main.ts`/`test/support/test-server.ts` bind
- * otherwise (`healthz-server.ts`). Both call this so there is exactly one definition of
- * "healthy": the gRPC health status is SERVING (mirrored via `ReadinessState`) and the
- * database answers a trivial query.
+ * The logic behind `GET /healthz` (A-043), answered by `HealthController` on the always-on
+ * HTTP adapter (ADR 0016 §4). One definition of "healthy": the gRPC health status is SERVING
+ * (mirrored via `ReadinessState`) and the database answers a trivial query.
  */
 @Injectable()
 export class HealthService {

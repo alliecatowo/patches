@@ -6,19 +6,15 @@ import { dirname, join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { type MicroserviceOptions } from '@nestjs/microservices';
+import { type NestExpressApplication } from '@nestjs/platform-express';
 import { readDotEnvFile } from '@patches/config';
 
 import { AppModule } from './app.module.js';
 import { createLogger } from './common/logging/logger.factory.js';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
-import { HealthService } from './modules/system/health.service.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
-import {
-  closeHealthzServer,
-  createHealthzServer,
-  listenHealthzServer,
-} from './modules/system/healthz-server.js';
+import { mountConnectEdge } from './transport/connect/connect.middleware.js';
 
 /**
  * Load `.env` from the repo root in development so a fresh clone works with just
@@ -50,6 +46,18 @@ function loadDotEnv(): void {
   }
 }
 
+/**
+ * The loopback address the Connect edge dials for its internal gRPC calls (ADR 0016 §3).
+ * `GRPC_HOST` is `0.0.0.0` in production (so the gRPC server itself binds every interface for
+ * Fly's proxy) — that's never a valid address to *connect to*, so the proxy always targets
+ * `127.0.0.1` instead in that case, and `GRPC_HOST` verbatim otherwise (dev's `127.0.0.1`,
+ * or a test's bound loopback address).
+ */
+function grpcLoopbackUrl(grpcHost: string, grpcPort: number): string {
+  const host = grpcHost === '0.0.0.0' ? '127.0.0.1' : grpcHost;
+  return `${host}:${String(grpcPort)}`;
+}
+
 async function bootstrap(): Promise<void> {
   loadDotEnv();
 
@@ -63,15 +71,26 @@ async function bootstrap(): Promise<void> {
 
   // A full Nest HTTP application (the NestJS "hybrid app" pattern, `docs/research/
   // nestjs-grpc-protobuf.md` §"Hybrid app"), not `NestFactory.createMicroservice` — gRPC is
-  // attached via `connectMicroservice` below and stays the only *always-on* transport.
-  // `app.listen(HTTP_PORT)` — which binds Nest's own Express adapter, and with it every
-  // route in `AppModule` including `FederationModule`'s webfinger/actor/inbox/outbox
-  // controllers — is only called when `FEDERATION_ENABLED` (spec §176: a self-hosted node
-  // ships with federation off by default, with *zero* new network surface, not a smaller
-  // one). When federation is off, `/healthz` (A-043) is instead served by the standalone,
-  // single-route listener from `healthz-server.ts` on the same port, so it stays reachable
-  // either way without opening the federation surface.
-  const app = await NestFactory.create(AppModule, { logger, bufferLogs: true });
+  // attached via `connectMicroservice` below and stays the primary transport. `app.listen()`
+  // below is now **always** called (ADR 0016 §4 — this changed deliberately from the
+  // previous "only when FEDERATION_ENABLED" behaviour): the HTTP listener now also serves
+  // `/healthz` and the Connect edge (`/patches.v1.*`, web/RN clients) on every node. What
+  // stays conditional on `FEDERATION_ENABLED` is `FederationHttpModule` itself
+  // (`app.module.ts`) — webfinger/actor/inbox/outbox are absent from the DI graph, not
+  // merely unrouted, when federation is off, which is what actually preserves spec §176's
+  // "zero new network surface" intent for that surface specifically.
+  //
+  // `bodyParser: false`: Nest's default Express body parser would otherwise consume the
+  // request stream for any `application/json`-ish request before `expressConnectMiddleware`
+  // (mounted by `mountConnectEdge` below) gets a chance to read it itself
+  // (`docs/research/connect-es.md` §4) — the federation HTTP surface already relied on no
+  // body parser running ahead of its own raw body collector (`FederationHttpModule`), so
+  // disabling it globally here just makes that reliance explicit instead of accidental.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger,
+    bufferLogs: true,
+    bodyParser: false,
+  });
   // `inheritAppConfig: true` is load-bearing: a hybrid app's connected microservices do NOT
   // get the `APP_FILTER`/`APP_INTERCEPTOR` providers (RpcExceptionsFilter, request-context
   // + logging interceptors) unless told to inherit them — without it every AppError surfaced
@@ -79,25 +98,29 @@ async function bootstrap(): Promise<void> {
   // in-process test server uses `createMicroservice` and never hit it).
   app.connectMicroservice<MicroserviceOptions>(options, { inheritAppConfig: true });
 
+  // `TRUST_PROXY_HEADERS` (A-039) now also governs Express's own peer-IP derivation
+  // (`req.ip`), which the Connect edge forwards as `x-forwarded-for` for internal gRPC calls
+  // (ADR 0016 §7) — set *before* `mountConnectEdge` so its `contextValues` hook reads the
+  // already-trust-proxy-aware value.
+  app.set('trust proxy', env.TRUST_PROXY_HEADERS);
+  const connectEdge = mountConnectEdge(app, {
+    grpcUrl: grpcLoopbackUrl(env.GRPC_HOST, env.GRPC_PORT),
+    webOrigins: env.WEB_ORIGINS,
+  });
+
   // `ReadinessState` (A-043) mirrors the gRPC health status into Nest's DI graph so
-  // `HealthService` — resolved by both `HealthController` (bound only when federation opens
-  // the full app) and the standalone `healthzServer` below — can read it. Every
+  // `HealthService` — resolved by `HealthController`, now always reachable at
+  // `GET /healthz` since the HTTP adapter is always-on — can read it. Every
   // `health.setStatus` call below is paired with a `readiness.setServing` call so the two
   // never disagree.
   const readiness = app.get(ReadinessState);
-  const healthService = app.get(HealthService);
-  const healthzServer = createHealthzServer(() => healthService.check());
 
   // Drain order matters (A-044): Node runs signal listeners in registration order, so the
   // health flip to NOT_SERVING is registered *before* Nest's shutdown hooks — otherwise the
   // gRPC server is already closing by the time the check reports unhealthy. Nest's hooks then
   // run `onModuleDestroy`/`onApplicationShutdown` and close gRPC (grpc-js `tryShutdown`
-  // waits for in-flight calls) and, if opened, the HTTP server (spec §124). fly.toml's
-  // `kill_timeout` must exceed this drain (see infra/fly/fly.toml). The standalone
-  // `healthzServer` is deliberately left listening (and reporting 503, via `readiness`)
-  // through the whole drain, and closed only once Nest itself has finished shutting down —
-  // Fly's HTTP check should see the node go unhealthy before its socket disappears, not the
-  // other way round.
+  // waits for in-flight calls) and the HTTP server (spec §124). fly.toml's `kill_timeout`
+  // must exceed this drain (see infra/fly/fly.toml).
   const stopServing = (signal: string): void => {
     logger.log(`received ${signal}, draining`, 'Bootstrap');
     health.setStatus('NOT_SERVING');
@@ -108,6 +131,12 @@ async function bootstrap(): Promise<void> {
   });
   process.once('SIGINT', () => {
     stopServing('SIGINT');
+  });
+  process.once('SIGTERM', () => {
+    connectEdge.close();
+  });
+  process.once('SIGINT', () => {
+    connectEdge.close();
   });
   app.enableShutdownHooks();
 
@@ -120,23 +149,13 @@ async function bootstrap(): Promise<void> {
     'Bootstrap',
   );
 
-  if (env.FEDERATION_ENABLED) {
-    // `HealthController` answers `/healthz` from this same port once the full app listens.
-    await app.listen(env.HTTP_PORT);
-    logger.log(
-      `federation HTTP surface listening on :${String(env.HTTP_PORT)} (origin=${env.PUBLIC_ORIGIN})`,
-      'Bootstrap',
-    );
-  } else {
-    await listenHealthzServer(healthzServer, env.HTTP_PORT);
-    logger.log(`healthz listening on :${String(env.HTTP_PORT)}`, 'Bootstrap');
-    process.once('SIGTERM', () => {
-      void closeHealthzServer(healthzServer);
-    });
-    process.once('SIGINT', () => {
-      void closeHealthzServer(healthzServer);
-    });
-  }
+  await app.listen(env.HTTP_PORT);
+  logger.log(
+    `patches HTTP listener on :${String(env.HTTP_PORT)} — /healthz, Connect edge` +
+      (env.FEDERATION_ENABLED ? ', federation surface' : '') +
+      ` (origin=${env.PUBLIC_ORIGIN})`,
+    'Bootstrap',
+  );
 }
 
 bootstrap().catch((error: unknown) => {

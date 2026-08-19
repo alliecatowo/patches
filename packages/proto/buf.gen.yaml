@@ -36,5 +36,21 @@ plugins:
       # matching the real runtime shape.
       - stringEnums=true
     strategy: all
+  # ADR 0016: the Connect edge's schema, generated independently of the ts-proto output
+  # above and never imported by it (`@patches/proto/es` is a separate package entry point —
+  # see `src/es.ts`). protobuf-es keeps its own canonical wire representation (numeric
+  # enums, bigint Timestamp.seconds) rather than mirroring ts-proto's proto-loader-shaped
+  # `stringEnums=true`/`forceLong=string` options above — the two families never
+  # (de)serialize the same runtime value, so there is nothing to keep them in sync on.
+  - local: node_modules/.bin/protoc-gen-es
+    out: src/generated-es
+    opt:
+      - target=ts
+      # This package's `tsconfig.base.json` (like every other TS source in the repo) uses
+      # NodeNext module resolution, which requires relative import specifiers to carry an
+      # explicit extension — protoc-gen-es omits one by default (`import_extension=none`,
+      # meant for bundler-resolved consumers), which tsc rejects (TS2835).
+      - import_extension=js
+    strategy: all
 inputs:
   - directory: proto

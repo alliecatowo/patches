@@ -1,5 +1,11 @@
 import { Metadata, status as GrpcStatus } from '@grpc/grpc-js';
-import { type ArgumentsHost, Catch, Logger, type RpcExceptionFilter } from '@nestjs/common';
+import {
+  HttpException,
+  type ArgumentsHost,
+  Catch,
+  Logger,
+  type RpcExceptionFilter,
+} from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { EMPTY, type Observable, throwError } from 'rxjs';
 
@@ -61,12 +67,29 @@ export class RpcExceptionsFilter implements RpcExceptionFilter<unknown> {
     // withholds it (spec §57's sanitized-errors rule applies identically to both transports).
     if (host.getType() !== 'rpc') {
       const requestId = getRequestContext()?.requestId;
-      this.logger.error({ msg: 'http.unhandled_exception', requestId }, toStack(exception));
       const response = host.switchToHttp().getResponse<{
         statusCode?: number;
         setHeader: (name: string, value: string) => void;
         end: (body?: string) => void;
       }>();
+
+      // Nest's own HTTP-layer exceptions — most commonly `NotFoundException`, which Nest
+      // throws itself for any request that matches no controller route (every unmatched
+      // path under the always-on HTTP listener, ADR 0016 §4: a stray path, a typo'd
+      // `/healthz`, a Connect request for a service this schema doesn't have). These are
+      // framework routing outcomes, not application bugs — spec §57's "sanitize errors"
+      // rule is about *our* thrown errors leaking internals, not about masking Nest's own
+      // 404/405 as a fake 500. Logged at `warn`, not `error` (found the hard way: every
+      // client mistyping a path doesn't belong in the same log tier as an actual crash).
+      if (exception instanceof HttpException) {
+        this.logger.warn({ msg: 'http.exception', requestId, status: exception.getStatus() });
+        response.statusCode = exception.getStatus();
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ error: exception.message, requestId }));
+        return EMPTY;
+      }
+
+      this.logger.error({ msg: 'http.unhandled_exception', requestId }, toStack(exception));
       response.statusCode = 500;
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify({ error: 'internal_error', requestId }));

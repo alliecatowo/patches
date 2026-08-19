@@ -4,9 +4,9 @@ import { startTestServer, type TestServer } from './support/test-server.js';
 
 /**
  * A-043: `GET /healthz` must report 200 only when the database answers and the gRPC health
- * status is SERVING, and 503 otherwise — the standalone listener from `healthz-server.ts`,
- * which is what actually runs in production when `FEDERATION_ENABLED=false` (the default,
- * spec §176). `startTestServer({ http: true })` binds that same listener on a random port.
+ * status is SERVING, and 503 otherwise — answered by `HealthController` on the always-on
+ * HTTP listener (ADR 0016 §4). `startTestServer({ http: true })` binds that same listener
+ * (plus the Connect edge — see `connect.integration.test.ts`) on a random port.
  */
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
