@@ -49,10 +49,43 @@ export interface PreferencesScreenProps {
    * Optional so a caller that hasn't wired it yet still gets a working screen —
    * the row just does nothing on Enter until it is. */
   onOpenPrivacy?: () => void;
+  /** `Enter` on the "Filters"/"Filter lists"/"Labelers" rows opens `:filters`/`:lists`/
+   * `:labelers` instead of saving (§205's preferences-reachability requirement, A-056) —
+   * same optional shape as {@link onOpenPrivacy}. */
+  onOpenFilters?: () => void;
+  onOpenFilterLists?: () => void;
+  onOpenLabelers?: () => void;
 }
 
-type Row = 'theme' | 'glyphs' | 'plain' | 'quiet' | 'images' | 'privacy';
-const ROWS: readonly Row[] = ['theme', 'glyphs', 'plain', 'quiet', 'images', 'privacy'];
+type Row =
+  | 'theme'
+  | 'glyphs'
+  | 'plain'
+  | 'quiet'
+  | 'images'
+  | 'privacy'
+  | 'filters'
+  | 'filterLists'
+  | 'labelers';
+const ROWS: readonly Row[] = [
+  'theme',
+  'glyphs',
+  'plain',
+  'quiet',
+  'images',
+  'privacy',
+  'filters',
+  'filterLists',
+  'labelers',
+];
+/** Rows that open another screen on `Enter` rather than cycling a value with `h`/`l` — same
+ * "does nothing on Enter until wired" fallback as `privacy` already had. */
+const NAVIGATION_ROWS: ReadonlySet<Row> = new Set([
+  'privacy',
+  'filters',
+  'filterLists',
+  'labelers',
+]);
 const GLYPH_SET_CYCLE: readonly GlyphSetName[] = ['unicode', 'nerd', 'ascii'];
 const IMAGE_POLICY_CYCLE: readonly ImagePolicy[] = ['auto', 'pixel', 'ascii', 'box', 'off'];
 
@@ -63,6 +96,9 @@ const ROW_LABELS: Readonly<Record<Row, string>> = {
   quiet: 'Quiet feed',
   images: 'Images',
   privacy: 'Privacy',
+  filters: 'Filters',
+  filterLists: 'Filter lists',
+  labelers: 'Labelers',
 };
 
 const ROW_HELP: Readonly<Record<Row, string>> = {
@@ -72,6 +108,10 @@ const ROW_HELP: Readonly<Record<Row, string>> = {
   quiet: 'Hides other actors’ cosmetics; your own decoration stays (spec §185).',
   images: 'h/l cycles auto/pixel/ascii/box/off — see the line below for what each does.',
   privacy: 'Enter opens the privacy notice, discoverability, export and deletion (:privacy).',
+  filters: 'Enter opens your bring-your-own filter rules (:filters, spec §198).',
+  filterLists:
+    'Enter opens shareable filter lists to browse, subscribe to, or publish (:lists, spec §199).',
+  labelers: 'Enter opens labeler subscriptions and per-value actions (:labelers, spec §200).',
 };
 
 /** One-line description of what each `images` row value actually draws — shown live
@@ -111,6 +151,9 @@ export function PreferencesScreen({
   onCancel,
   canPersist,
   onOpenPrivacy,
+  onOpenFilters,
+  onOpenFilterLists,
+  onOpenLabelers,
 }: PreferencesScreenProps): ReactElement {
   const content = useContentSize();
   const [row, setRow] = useState(0);
@@ -152,7 +195,7 @@ export function PreferencesScreen({
       onQuietChange(!quiet);
       return;
     }
-    if (current === 'privacy') return;
+    if (NAVIGATION_ROWS.has(current)) return;
     const index = IMAGE_POLICY_CYCLE.indexOf(imagePolicyValue);
     const nextIndex = (index + direction + IMAGE_POLICY_CYCLE.length) % IMAGE_POLICY_CYCLE.length;
     const next = IMAGE_POLICY_CYCLE[nextIndex];
@@ -170,6 +213,10 @@ export function PreferencesScreen({
         }
         if (key.return) {
           if (current === 'privacy' && onOpenPrivacy !== undefined) onOpenPrivacy();
+          else if (current === 'filters' && onOpenFilters !== undefined) onOpenFilters();
+          else if (current === 'filterLists' && onOpenFilterLists !== undefined)
+            onOpenFilterLists();
+          else if (current === 'labelers' && onOpenLabelers !== undefined) onOpenLabelers();
           else onSave();
           return true;
         }
@@ -212,8 +259,8 @@ export function PreferencesScreen({
       : `AA contrast ${themeContrast.ratio.toFixed(2)}:1 against background${
           themeContrast.readable ? '' : ` — below the ${READABLE_TEXT_CONTRAST.toFixed(2)}:1 floor`
         }.`;
-  // Title, source line, six option rows, help line, hint line.
-  const chromeRows = 10;
+  // Title, source line, nine option rows, help line, hint line.
+  const chromeRows = 13;
   const showPreview = content.rows >= chromeRows + THEME_PREVIEW_DIMENSIONS.height;
 
   function rowValue(candidate: Row): string {
@@ -229,6 +276,9 @@ export function PreferencesScreen({
       case 'images':
         return imagePolicyValue;
       case 'privacy':
+      case 'filters':
+      case 'filterLists':
+      case 'labelers':
         return 'Enter to open →';
     }
   }
