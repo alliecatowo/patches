@@ -1,9 +1,9 @@
 import { CommunityRole } from '@patches/proto/nest';
 import { describe, expect, it } from 'vitest';
 
-import { roleFromProto } from './community.controller.js';
+import { roleFromProto } from './community.mapper.js';
 
-describe('CommunityController role mapping', () => {
+describe('community.mapper role mapping', () => {
   it('maps the only two writable roles', () => {
     expect(roleFromProto(CommunityRole.COMMUNITY_ROLE_MEMBER)).toBe('MEMBER');
     expect(roleFromProto(CommunityRole.COMMUNITY_ROLE_MODERATOR)).toBe('MODERATOR');

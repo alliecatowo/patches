@@ -1,4 +1,7 @@
-import type { CommunityInviteStatus as DbCommunityInviteStatus } from '@patches/database';
+import type {
+  CommunityInviteStatus as DbCommunityInviteStatus,
+  CommunityRole as DbCommunityRole,
+} from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
 import type {
   Community as ProtoCommunity,
@@ -7,6 +10,7 @@ import type {
 } from '@patches/proto';
 import { CommunityInviteStatus, CommunityRole } from '@patches/proto/nest';
 
+import { AppError } from '../../common/errors/app-error.js';
 import { toProtoActor } from '../auth/auth.mapper.js';
 import type {
   CommunityInviteView,
@@ -62,4 +66,13 @@ export function toProtoCommunityInvite(view: CommunityInviteView): ProtoCommunit
     status: INVITE_STATUS_TO_PROTO[view.status],
     createdAt: dateToTimestamp(view.createdAt),
   };
+}
+
+/** Protobuf message → application/persistence vocabulary (spec §128) — the only two writable
+ * roles map through; anything else (unspecified/unrecognized) is a validation error, not a
+ * transport concern, so it belongs here rather than in the controller. */
+export function roleFromProto(role: CommunityRole): DbCommunityRole {
+  if (role === CommunityRole.COMMUNITY_ROLE_MEMBER) return 'MEMBER';
+  if (role === CommunityRole.COMMUNITY_ROLE_MODERATOR) return 'MODERATOR';
+  throw AppError.validation('role must be MEMBER or MODERATOR.');
 }
