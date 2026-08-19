@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import {
   ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT,
   APPEAL_WINDOW_DAYS_DEFAULT,
@@ -204,6 +206,36 @@ const envObjectSchema = z.object({
    * than a stub error, so an unset value here is a real, honest answer, not a placeholder.
    */
   NODE_POLICY_URL: z.union([z.url(), z.literal('')]).default(''),
+  /**
+   * A-052 (spec §197.1, §197.6): the privacy notice's short structured summary — what is
+   * stored, what is public, that this node's operators can read DMs, retention, how to
+   * export, how to delete, who to contact. Text-only (§197.6's "MUST NOT be able to publish
+   * ... markup, scripts, or remote media") — plain string, rendered as plain text by every
+   * client, never parsed as markdown/HTML. `PRIVACY_NOTICE_FILE` below wins when both are
+   * set, so an operator can keep the real text in a mounted file instead of a single env
+   * line; this default stays the literal fallback for an operator who prefers env vars.
+   */
+  PRIVACY_NOTICE_SUMMARY: z.string().max(4000).default(''),
+  /**
+   * A-052: path to a file containing the privacy notice summary, read once at boot (this
+   * schema's `.transform` below) and used verbatim (trimmed) as `PRIVACY_NOTICE_SUMMARY` —
+   * lets an operator mount a richer, easier-to-edit text file (e.g. a Fly volume or Docker
+   * secret) instead of cramming the summary into one `[env]` line. Wins over
+   * `PRIVACY_NOTICE_SUMMARY` when both are set. A boot-time read, not a live one: like every
+   * other env var here, changing the file requires a redeploy/restart to take effect, and
+   * that's fine — the notice is already versioned for change tracking (`PRIVACY_NOTICE_VERSION`).
+   */
+  PRIVACY_NOTICE_FILE: z.string().trim().min(1).optional(),
+  /** A-052 (spec §197.6): `NodePolicy.terms_url` — link to this node's terms/community
+   * guidelines. Empty means unpublished, same convention as `NODE_POLICY_URL`. */
+  TERMS_URL: z.union([z.url(), z.literal('')]).default(''),
+  /** A-052 (spec §197.6, §201.3): `NodePolicy.appeal_instructions` — human-readable "how
+   * appeals are filed" text; the actual mechanism is `AppealService.CreateAppeal`. Text-only,
+   * same constraint as `PRIVACY_NOTICE_SUMMARY`. Empty means unpublished. */
+  APPEAL_INSTRUCTIONS: z.string().max(2000).default(''),
+  /** A-052 (spec §197.6): `NodePolicy.operator_identity` — who runs this node, or an explicit
+   * "anonymous operator" statement. Text-only. Empty means unpublished. */
+  OPERATOR_CONTACT: z.string().max(500).default(''),
   /** Moderator handles, comma-separated (spec §197.6's "who runs this node"/moderator
    * contact) — joined into `NodePolicy.moderator_contact`. Same comma-list convention as
    * `LIKE_GLYPH_ALLOW_LIST`/`LABEL_VOCABULARY` above. */
@@ -280,39 +312,62 @@ const envObjectSchema = z.object({
   PASSWORD_AUTH: z.enum(['off', 'optional', 'required']).default('optional'),
 });
 
-export const envSchema = envObjectSchema.superRefine((value, ctx) => {
-  if (value.FEDERATION_ENABLED) {
-    if (value.FEDERATION_KEY_ENCRYPTION_KEY === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
-        message: 'FEDERATION_KEY_ENCRYPTION_KEY is required when FEDERATION_ENABLED=true',
-      });
-    } else if (Buffer.from(value.FEDERATION_KEY_ENCRYPTION_KEY, 'base64').length !== 32) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
-        message: 'FEDERATION_KEY_ENCRYPTION_KEY must decode (base64) to exactly 32 bytes',
-      });
+export const envSchema = envObjectSchema
+  .superRefine((value, ctx) => {
+    if (value.FEDERATION_ENABLED) {
+      if (value.FEDERATION_KEY_ENCRYPTION_KEY === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
+          message: 'FEDERATION_KEY_ENCRYPTION_KEY is required when FEDERATION_ENABLED=true',
+        });
+      } else if (Buffer.from(value.FEDERATION_KEY_ENCRYPTION_KEY, 'base64').length !== 32) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['FEDERATION_KEY_ENCRYPTION_KEY'],
+          message: 'FEDERATION_KEY_ENCRYPTION_KEY must decode (base64) to exactly 32 bytes',
+        });
+      }
     }
-  }
 
-  if (value.NODE_ENV !== 'production') return;
+    if (value.NODE_ENV !== 'production') return;
 
-  // Production-only requirements live here rather than in the base types so that a
-  // misconfigured deploy fails with a listed configuration error naming the variable,
-  // not a type error somewhere downstream.
-  const requiredInProduction = ['DATABASE_URL', 'JWT_PRIVATE_KEY', 'JWT_PUBLIC_KEY'] as const;
-  for (const key of requiredInProduction) {
-    if (!value[key]) {
+    // Production-only requirements live here rather than in the base types so that a
+    // misconfigured deploy fails with a listed configuration error naming the variable,
+    // not a type error somewhere downstream.
+    const requiredInProduction = ['DATABASE_URL', 'JWT_PRIVATE_KEY', 'JWT_PUBLIC_KEY'] as const;
+    for (const key of requiredInProduction) {
+      if (!value[key]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `${key} is required when NODE_ENV=production`,
+        });
+      }
+    }
+  })
+  .transform((value, ctx) => {
+    // A-052: `PRIVACY_NOTICE_FILE` wins over `PRIVACY_NOTICE_SUMMARY` when both are set — a
+    // boot-time read (not per-request) of the operator-mounted file, trimmed and substituted
+    // in place of the env var value. Runs after the production `superRefine` above so a
+    // missing/unreadable file surfaces as its own listed configuration error rather than being
+    // masked by an unrelated production-only failure.
+    if (value.PRIVACY_NOTICE_FILE === undefined) return value;
+
+    try {
+      const fileSummary = readFileSync(value.PRIVACY_NOTICE_FILE, 'utf8').trim();
+      return { ...value, PRIVACY_NOTICE_SUMMARY: fileSummary };
+    } catch (error) {
       ctx.addIssue({
         code: 'custom',
-        path: [key],
-        message: `${key} is required when NODE_ENV=production`,
+        path: ['PRIVACY_NOTICE_FILE'],
+        message: `could not read PRIVACY_NOTICE_FILE (${value.PRIVACY_NOTICE_FILE}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       });
+      return value;
     }
-  }
-});
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

@@ -230,6 +230,29 @@ export class AppConfigService {
     return this.get('NODE_POLICY_URL');
   }
 
+  /** A-052: `NodePolicy.privacy_notice_summary` (spec §197.1, §197.6) — already resolved
+   * against `PRIVACY_NOTICE_FILE` (file wins) by `env.schema.ts`'s boot-time transform, so
+   * this is always the final text. Empty means unpublished. */
+  get privacyNoticeSummary(): string {
+    return this.get('PRIVACY_NOTICE_SUMMARY');
+  }
+
+  /** A-052: `NodePolicy.terms_url` (spec §197.6). Empty means unpublished. */
+  get termsUrl(): string {
+    return this.get('TERMS_URL');
+  }
+
+  /** A-052: `NodePolicy.appeal_instructions` (spec §197.6, §201.3). Empty means unpublished. */
+  get appealInstructions(): string {
+    return this.get('APPEAL_INSTRUCTIONS');
+  }
+
+  /** A-052: `NodePolicy.operator_identity` (spec §197.6) — who runs this node. Empty means
+   * unpublished. */
+  get operatorIdentity(): string {
+    return this.get('OPERATOR_CONTACT');
+  }
+
   /** Moderator handles this node publishes (spec §197.6). Empty means unpublished. */
   get nodeModerators(): readonly string[] {
     return this.get('NODE_MODERATORS');

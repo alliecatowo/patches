@@ -169,6 +169,15 @@ GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-s
 NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
 EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
 
+**A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
+`[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
+(what's stored, what's public, that DMs are server-visible, retention, export/deletion,
+contact — summarizing ADR 0017 and `docs/product/privacy.md`), `TERMS_URL` (points at the
+full `docs/product/privacy.md` on GitHub — there is no separate ToS page), `APPEAL_INSTRUCTIONS`
+(the in-client Appeals screen, or email the operator), `OPERATOR_CONTACT` (who runs this node),
+and `DATA_LOCATION` (Fly for compute, Neon Postgres in `aws-us-east-2` for the database,
+Cloudflare R2 for media). See the file itself for the exact published text.
+
 **Gotcha: `LOG_LEVEL` is `log`, not `info`.** The server's logger factory
 (`apps/server/src/common/logging/logger.factory.ts`) uses Nest's own `LogLevel` union, whose
 "normal operation" level is literally named `log` — setting `LOG_LEVEL=info` (a very natural

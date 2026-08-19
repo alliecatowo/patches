@@ -28,6 +28,10 @@ function fakeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
     DM_ENABLED: true,
     DM_RETENTION_DAYS: 0,
     NODE_POLICY_URL: '',
+    PRIVACY_NOTICE_SUMMARY: '',
+    TERMS_URL: '',
+    APPEAL_INSTRUCTIONS: '',
+    OPERATOR_CONTACT: '',
     NODE_MODERATORS: [],
     FEDERATION_STANCE: undefined,
     DATA_LOCATION: '',
@@ -110,6 +114,10 @@ describe('NodeService.getNodePolicy (P14-012, spec §197.6)', () => {
     const { policy } = await service.getNodePolicy();
 
     expect(policy?.privacyNoticeUrl).toBe('');
+    expect(policy?.privacyNoticeSummary).toBe('');
+    expect(policy?.termsUrl).toBe('');
+    expect(policy?.appealInstructions).toBe('');
+    expect(policy?.operatorIdentity).toBe('');
     expect(policy?.privacyNoticeVersion).toBe(0);
     expect(policy?.moderatorContact).toBe('');
     expect(policy?.domainPolicies).toEqual([]);
@@ -216,5 +224,30 @@ describe('NodeService.getNodePolicy (P14-012, spec §197.6)', () => {
     const service = new NodeService(fakeConfig(), FIXED_VERSION, fakeDataSource([], null));
     const { policy } = await service.getNodePolicy();
     expect(policy?.labelVocabulary).toEqual([]);
+  });
+
+  // A-052 (spec §197.1, §197.6): an operator-configured privacy summary, terms URL, appeal
+  // instructions, and operator identity all flow straight through from `AppConfigService`.
+  it('publishes the operator-configured privacy summary, terms URL, appeal instructions, and operator identity', async () => {
+    const service = new NodeService(
+      fakeConfig({
+        PRIVACY_NOTICE_SUMMARY: 'We store your posts and DMs; DMs are readable by operators.',
+        TERMS_URL: 'https://patches.test/terms',
+        APPEAL_INSTRUCTIONS: 'Email appeals@patches.test with your handle and notice ID.',
+        OPERATOR_CONTACT: 'Operated by the Patches test node maintainers.',
+      }),
+      FIXED_VERSION,
+      fakeDataSource([]),
+    );
+    const { policy } = await service.getNodePolicy();
+
+    expect(policy?.privacyNoticeSummary).toBe(
+      'We store your posts and DMs; DMs are readable by operators.',
+    );
+    expect(policy?.termsUrl).toBe('https://patches.test/terms');
+    expect(policy?.appealInstructions).toBe(
+      'Email appeals@patches.test with your handle and notice ID.',
+    );
+    expect(policy?.operatorIdentity).toBe('Operated by the Patches test node maintainers.');
   });
 });

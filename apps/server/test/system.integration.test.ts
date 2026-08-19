@@ -4,6 +4,8 @@ import {
   ERROR_CODE_METADATA_KEY,
   type GetNodeInfoRequest,
   type GetNodeInfoResponse,
+  type GetNodePolicyRequest,
+  type GetNodePolicyResponse,
   type GetServerInfoRequest,
   type GetServerInfoResponse,
   MIN_CLIENT_VERSION,
@@ -155,5 +157,35 @@ describe('patches.v1.NodeService/GetNodeInfo (P1-014)', () => {
     // compile-time guarantee (the generated type has no such property), not something a
     // runtime assertion can usefully re-check.
     expect(Array.isArray(response.capabilities)).toBe(true);
+  });
+});
+
+// A-052 (spec §197.1, §197.6): `prepareServerEnv` (test/support/env.ts) forces
+// PRIVACY_NOTICE_SUMMARY/TERMS_URL/APPEAL_INSTRUCTIONS/OPERATOR_CONTACT to fixed test values
+// for the whole integration suite (`ConfigModule.forRoot`'s validate runs once per process —
+// see docs/agents/LEARNINGS.md — so this is the only reliable way to exercise them end to end).
+describe('patches.v1.NodeService/GetNodePolicy (A-052)', () => {
+  it('publishes the operator-configured privacy summary, terms URL, appeal instructions, and operator identity', async () => {
+    const response = await callUnary<GetNodePolicyRequest, GetNodePolicyResponse>(
+      node.getNodePolicy.bind(node),
+      {},
+    );
+
+    expect(response.policy?.privacyNoticeSummary).toBe(
+      'This node stores your posts and direct messages; DMs are readable by this node’s operators.',
+    );
+    expect(response.policy?.termsUrl).toBe('https://patches.test/terms');
+    expect(response.policy?.appealInstructions).toBe(
+      'Email appeals@patches.test with your handle and notice ID.',
+    );
+    expect(response.policy?.operatorIdentity).toBe(
+      'Operated by the Patches test node maintainers.',
+    );
+  });
+
+  it('is callable with no authorization metadata at all (spec §163, §168)', async () => {
+    await expect(
+      callUnary<GetNodePolicyRequest, GetNodePolicyResponse>(node.getNodePolicy.bind(node), {}),
+    ).resolves.toBeDefined();
   });
 });
