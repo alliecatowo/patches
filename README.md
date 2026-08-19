@@ -11,21 +11,18 @@ React Native client on the roadmap.
 > **Status:** Phases 0–8 implemented; the flagship node **patches-social.fly.dev** is live —
 > see [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
-```
-┌ patches ─────────────────────────────────────────────────────────┐
-│ Connected to patches-social.                                     │
-│                                                                  │
-│ server        0.1.0 (protocol v1)                                │
-│ features      system.ping                                        │
-├──────────────────────────────────────────────────────────────────┤
-│ connected · patches-social.fly.dev:443   R reconnect ? help q quit│
-└──────────────────────────────────────────────────────────────────┘
-```
+![Patches TUI: home feed, thread, reply, and notifications, recorded against the live node](docs/media/hero.gif)
 
 ## Try the live node
 
 The flagship node, `patches-social.fly.dev`, is running the real network — the client
 connects there by default. It's invite-only right now; ask Allie for an invite code.
+
+<p>
+  <img src="docs/media/home.png" alt="Home feed" width="32%" />
+  <img src="docs/media/thread.png" alt="Thread view" width="32%" />
+  <img src="docs/media/profile.png" alt="Profile view" width="32%" />
+</p>
 
 ```bash
 git clone <repo-url> patches && cd patches
