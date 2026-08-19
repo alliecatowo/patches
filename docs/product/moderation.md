@@ -221,7 +221,7 @@ that stays exactly as strict as it is today.
 
 ## Public moderation log
 
-**Status: implemented** (§201.4, P14-012; account/post entries a documented follow-up).
+**Status: implemented** (§201.4, P14-012, P14-027).
 `ModerationService.ListModerationLog` (unauthenticated, keyset-paginated) publishes the node's
 own enforcement actions — domain blocks fully identified (which domain, why), and
 account/post-level actions (warn/suspend/ban/removal) recorded only as an anonymized entry:
