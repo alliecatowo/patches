@@ -131,7 +131,7 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 Transport and SDK shape are decided in **ADR 0016** (`docs/decisions/0016-connect-transport-and-client-sdk.md`) — read it before starting any of these. Do them in the order listed (A→F in the ADR's phase table, which also holds the acceptance criteria).
 
 - [x] P10-004 — Server Connect edge (ADR 0016 §2–8): `protoc-gen-es` as a second `buf.gen.yaml` plugin → `@patches/proto/es`; `apps/server/src/transport/connect/` mounts `@connectrpc/connect-express` at `/patches.v1.*` on an **always-on** Nest HTTP listener, proxying each unary call to the in-process gRPC server as opaque protobuf bytes (no duplicated mappers/guards); `FederationModule` becomes conditionally registered on `FEDERATION_ENABLED`; `WEB_ORIGINS` CORS allow-list; `x-forwarded-for` derived via `TRUST_PROXY_HEADERS`; second `[[services]]` (`:8443 → 8080`) in `infra/fly/fly.toml`
-- [ ] P10-003 — Shared client SDK (`packages/client`, protobuf-es types): transport-agnostic `PatchesApi`, `SessionManager` (access token + refresh rotation, pluggable credential store), status→user-copy error mapping (from `apps/tui/src/api/errors.ts`), cursor pagination helpers; transports `@patches/client/connect` (fetch, web+RN) and `@patches/client/grpc` (Node/TUI)
+- [x] P10-003 — Shared client SDK (`packages/client`, protobuf-es types): transport-agnostic `PatchesApi`, `SessionManager` (access token + refresh rotation, pluggable credential store), status→user-copy error mapping (from `apps/tui/src/api/errors.ts`), cursor pagination helpers; transports `@patches/client/connect` (fetch, web+RN) and `@patches/client/grpc` (Node/TUI)
 - [ ] P10-001 — Web client (`apps/web`, Vite + React): read-only first (public timelines, profiles, threads, Pages) over Connect, then auth + posting; Pages v1 rendered same-origin as inert data (advanced HTML/CSS mode would need the dedicated origin + `script-src 'none'` of §172, and is out of scope)
 - [ ] P10-002 — React Native client (`apps/mobile`, Expo): auth, home/local timelines, compose, notifications over Connect (unary only — RN `fetch` cannot stream); tokens in `expo-secure-store`; shares `@patches/client` + `@patches/domain`
 - [ ] P10-005 — Migrate the TUI onto `@patches/client` + the grpc transport; `apps/tui/src/api/client.ts` shrinks to UI-facing wrappers, no behavior change
@@ -166,6 +166,92 @@ Transport and SDK shape are decided in **ADR 0016** (`docs/decisions/0016-connec
 - [ ] P11-014 — docs sync for Amendment B. Owns `docs/architecture/api.md`, `docs/architecture/social.md` (new), `docs/user-guide.md`, `docs/product/roadmap.md`, `docs/product/moderation.md`, `docs/product/privacy.md`, `README.md`. Every new RPC in `api.md` with real status markers; the §191 keys in the user guide and the `?` help screen's source of truth; DM/community moderation surfaces in `moderation.md`; the honest DM data-handling statement in `privacy.md` (§183.1). Acceptance: every documented command was actually run by the author (working agreement rule 7); no "planned" claim that is already shipped and no shipped claim that is not.
 - [x] P11-015 — federation mapping notes only, no code (§193). Owns `docs/research/activitypub-social-depth.md` (new), `docs/architecture/federation.md`. Verify against **current** upstream sources: `Announce`/`Undo(Announce)` for reposts, FEP-044f + `quoteUri`/`quoteUrl`/`_misskey_quote` for quotes, `Tag`/`Hashtag` for tags, the `Group`-actor pattern for communities (**currently unverified** — that is the point of the note), and private-`Note` addressing for DMs. Acceptance: every claim carries a citation and a verification date; the note states plainly that none of this is in Phase 11 scope and that no §109 gate or §160 checklist item moves (§193).
 - [x] P11-016 — ADR: DMs are server-visible in v0 (§183.1, §195). Owns `docs/decisions/0017-server-visible-dms.md` + the index row in `docs/decisions/README.md`. Record the decision, the moderation trade that motivates it (reporting evidence, §183.4), the labelling obligation, and what E2E would actually require (key management, multi-device, federated key discovery, loss of server-side evidence, migration of existing plaintext conversations). Acceptance: the ADR states explicitly that E2E is **not** authorized by this decision and needs owner sign-off (§195); it does not authorize anything §194 prohibits.
+
+## Phase 12 — TUI interaction model, rich input, and visual system
+
+The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`; the visual and product-level contract is `docs/product/tui-design-vision.md`. Tasks below preserve the stage ordering in those documents. `P12-119`–`P12-121` remain blocked on separate owner sign-off; everything else is authorized interaction work.
+
+- [x] P12-001 — fixed frame budget + `ContentSizeProvider`; one window-size source; footer and content regions are explicitly bounded
+- [x] P12-002 — shell renders every screen inside a fixed-height clipped content frame and re-checks minimum terminal size every render
+- [x] P12-003 — frame-fit invariant harness across representative terminal sizes, long/wide Unicode, and media rows
+
+> **Landed but not yet wired (2026-08-19).** `SplitPane` + `responsive-layout`,
+> `MediaViewerScreen`, `FilePicker` + `file-picker-model`, `ColorPicker`, `ThemePreview`,
+> `theme/themes/*` (registry/resolution) and `preferences/store` are all implemented,
+> measured and unit-tested, but nothing in `app/App.tsx` renders or routes to them yet, so
+> the corresponding tasks below stay open — a module a viewer cannot reach is not shipped.
+> `P12-127` tracks connecting them.
+
+- [ ] P12-004 — generalized measured `VirtualList` used by posts, notifications, help, search, conversations, communities, and tags
+- [x] P12-005 — key-layer stack replaces `capturesInput` / `screenCapturing`; shell safety keys remain reachable from every sub-mode
+- [x] P12-006 — typed navigation stack + route payloads + `Esc`-from-everywhere coverage
+- [x] P12-007 — keymap v2: `R` repost, `Ctrl+R` refresh, `Q` quote, `J` community join/leave, all §191 keys derived into help/hints
+- [x] P12-008 — modal stack + measured `ConfirmDialog` for every destructive action
+- [x] P12-009 — command palette (`:` / `Ctrl+P`) generated from `KEYMAP`, including routes and contextual actions
+- [ ] P12-010 — feedback layer: per-region loading, toast queue, offline/retry banner, sticky new-items indicator
+- [ ] P12-011 — inline re-authentication on `UNAUTHENTICATED` without losing drafts or navigation state
+- [ ] P12-012 — measured multiline `TextEditor`: cursor, movement, undo/redo, bracketed paste, node-provided limit
+- [ ] P12-013 — measured `@` / `#` autocomplete with debounced actor/tag lookup and stale-request cancellation
+- [ ] P12-014 — terminal file picker/path completion replaces raw attachment path entry
+- [ ] P12-015 — colour picker with contrast enforcement and truecolour → 256 → 16 → text degradation
+- [x] P12-016 — post search wired to `SearchPosts`, people/posts modes, newest-first keyset results with no ranking/order control
+- [x] P12-017 — shared markdown-lite post renderer + measured read-more folding; plain mode keeps source markers
+- [ ] P12-018 — bounded image policy + media viewer; inline selected/focused/viewer only, fallback height parity, ≤4 live placements
+- [x] P12-019 — thread rows share one focusable list so parent/root/replies are reachable and reply targets the selected row
+- [ ] P12-020 — responsive layout tiers (narrow/standard/wide/ultra, compact/full) with pure boundary tests
+- [ ] P12-021 — split-pane presentation from the same nav stack; resize changes presentation, never history
+- [ ] P12-022 — frozen-background ANSI-safe overlay compositing with narrow/compact takeover fallback
+- [ ] P12-023 — quick-post overlay (`c`) + full compose (`C`) share one draft and one editor
+- [ ] P12-024 — notifications drawer (`N`) with narrow fallback to `g n` and read-on-view reuse
+- [ ] P12-025 — polish primitives: semantic theme tokens, borders, progress bar, single shared relative-time clock
+- [x] P12-026 — interaction docs/keymap sync; executable-command verification and generated key-table parity test
+- [ ] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
+- [ ] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
+- [ ] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
+- [ ] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
+- [ ] P12-105 — destructive confirm styling, toast queue styling, and sticky new-count styling
+- [ ] P12-106 — quick-post overlay UX: counter/CW/expand/shared-draft, with narrow takeover
+- [ ] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
+- [ ] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
+- [ ] P12-109 — Pages renderer: responsive cell grid, scoped wall themes, pins, Top 8, guestbook, gallery, clipped ASCII
+- [ ] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
+- [ ] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
+- [ ] P12-112 — theme + colour picker live preview, reversible with `Esc`, with contrast explanation
+- [ ] P12-113 — preferences information architecture with live post preview and per-profile local persistence
+- [ ] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
+- [ ] P12-115 — search mode strip and subtractive filters (`since:`, `from:`, `#tag`) with recent-query recall; no order control
+- [ ] P12-116 — contextual palette actions for quoted posts, mentions, tags, links, and selected-row verbs
+- [ ] P12-117 — restrained motion/feedback: scroll thumb, success flash, finite refresh spinner, offline countdown, one clock
+- [ ] P12-118 — linear/screen-reader mode: one column, no overlays/drawers, indexed items, plain implied
+- [ ] P12-119 — **BLOCKED** proposal/ADR for ephemeral `Now` status; no code until owner approves the exact non-story constraints
+- [ ] P12-120 — **BLOCKED on P12-119** server `Now` protocol/storage/expiry implementation
+- [ ] P12-121 — **BLOCKED on P12-120** TUI `Now` ring + screen/drawer
+- [ ] P12-122 — DM drawer reusing the drawer primitive and retaining the permanent privacy disclosure
+- [ ] P12-125 — route `E` (edit your own post) to a compose-in-edit-mode screen; it is bound in `KEYMAP` and raises "not connected yet", and is held out of the user guide until it works
+- [ ] P12-126 — migrate the block/mute/report confirmations onto the shared measured `ConfirmDialog` so every destructive action uses one component
+- [ ] P12-127 — wire the landed-but-unreachable Phase 12 modules into the shell: theme engine + preferences precedence, `ThemePreview`/`ColorPicker`, `FilePicker` for attachments, `MediaViewerScreen`, and `SplitPane`/responsive tiers
+- [ ] P12-128 — replace `measurePostBody`'s conservative plain-mode upper bound with the viewer's actual mode, so a decorated body doesn't reserve rows it won't draw
+- [ ] P12-123 — committed 100×30 / 140×40 golden frames, tmux captures, and drift tests
+- [x] P12-124 — Vim-style command mode (`:`): generated route/action commands, aliases, history, completion, contextual verbs, and explicit rejection of `:!` shell execution
+
+## Phase 13 — production E2EE direct messages
+
+ADR 0020 is binding. This phase replaces the preserved crypto spike; no client or node may advertise `E2EE_V1` until every ship gate in ADR 0020 §13 is complete. Existing conversations remain visibly `LEGACY_SERVER_VISIBLE`; federated DMs remain prohibited.
+
+- [ ] P13-001 — protocol/domain contract: immutable conversation modes, account-root/device certificates, monotonic rosters, prekey bundles, per-device envelopes, capability negotiation, and E2EE report evidence
+- [ ] P13-002 — database schema/migrations: device roster/prekey/envelope/mailbox/report tables and constraints; no plaintext body, message key, ratchet state, or recovery secret may enter node persistence
+- [ ] P13-003 — replace the crypto spike with reviewed primitives, X3DH transcript binding, and a full revision-4 Double Ratchet with encrypted headers, bounded skipped keys, deterministic vectors, fuzz/property tests, and zeroization boundaries
+- [ ] P13-004 — account-root and certified-device lifecycle: enrollment, safety numbers, signed monotonic roster changes, device change warnings, revocation, and compromise recovery
+- [ ] P13-005 — prekey service: signed-prekey rotation, atomic one-time-prekey consume/replenish, exhaustion fallback disclosure, anti-replay, concurrency tests, and abuse limits
+- [ ] P13-006 — encrypted local state: OS-keyring-wrapped database, atomic ratchet commits before acknowledgement, crash/retry recovery, rollback detection, and explicit logout/device-wipe semantics
+- [ ] P13-007 — Sesame-style multi-device fanout and convergence: one device-pair session per active device, dedupe/retry/out-of-order handling, offline device catch-up, and revocation races
+- [ ] P13-008 — small-group E2EE (≤8 members) as pairwise fanout with authenticated roster transitions, add/remove semantics, epoch changes, and no sender-key/MLS shortcut
+- [ ] P13-009 — message franking design + implementation, forged/truncated/replayed evidence tests, moderation ingestion, and an independent cryptographic review gate
+- [ ] P13-010 — TUI E2EE UX: immutable mode labels, verification/safety-number flow, change/compromise interstitials, backup-loss disclosure, device manager, and inaccessible-history states
+- [ ] P13-011 — optional recovery archive and authenticated peer history transfer; never restore live ratchet counters, skipped keys, old prekeys, or revoked device identity keys
+- [ ] P13-012 — E2EE reporting/moderation flow: user-disclosed plaintext evidence only, explicit consent, audit trail, and no ordinary-message decryption path for node operators
+- [ ] P13-013 — cross-layer privacy verification: automated storage/log/metric/error/notification scans for plaintext and keys, legacy/E2EE migration tests, export/deletion semantics, and proof no E2EE path crosses federation
+- [ ] P13-014 — independent security review remediation, experimental capability rollout, multi-client interoperability lab, production runbook, and only then enable `E2EE_V1`
 
 ## Backlog / discovered
 

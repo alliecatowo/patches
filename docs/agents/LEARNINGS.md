@@ -473,12 +473,12 @@ what was finished vs. half-done: a `HelpScreen` key handler stubbed to `onClose(
 with the real logic commented out below it, a `setLegacySubmodeActive` helper wired to nothing,
 three `FilePicker` tests that had never passed. None of that is discoverable from a diff — only
 from running it. The rule the harness already states ("commit early, commit often") is not about
-tidiness, it is about not losing the *distinction between done and in-progress*. A slice that
+tidiness, it is about not losing the _distinction between done and in-progress_. A slice that
 typechecks and has green tests should be committed before starting the next one, even mid-task.
 
 **Learning 2 — `FORCE_COLOR` in a developer's shell silently rewrites every Ink frame
 assertion.** Nine tests "failed" on this machine and passed in CI. Chalk (inside Ink) decides
-colour from the *host* environment, so `ink-testing-library` frames carry SGR sequences for
+colour from the _host_ environment, so `ink-testing-library` frames carry SGR sequences for
 anyone whose shell exports `FORCE_COLOR` (this agent's did) and none for anyone else. Two
 distinct breakages follow: `expect(frame).toContain('Extension .txt is not allowed')` fails
 because colour codes sit inside the phrase, and — subtler — a themed phrase spans several
@@ -501,7 +501,7 @@ live in a **ref**, since the same handler closure serves every key in a chunk.
 
 **Learning 4 — hiding an overlay's background with `height={0}` does not stop Ink painting it.**
 The help/palette overlay collapsed the screen behind it to zero height with `overflow="hidden"`.
-That removes it from *layout* but Ink still emits its text into the same rows as the overlay, so
+That removes it from _layout_ but Ink still emits its text into the same rows as the overlay, so
 the live timeline bled through the help screen mid-line (`Here — Homehours ago`). `display="none"`
 is the correct tool — Yoga skips a `DISPLAY_NONE` subtree and Ink's renderer skips painting it —
 and it keeps the subtree mounted, so an in-progress sub-mode survives opening the palette.
