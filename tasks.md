@@ -128,9 +128,13 @@ Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep 
 
 ## Phase 10 — web + React Native clients (owner request 2026-08-18; priority stays TUI + service)
 
-- [ ] P10-001 — Web client (`apps/web`): read-only first (public timelines, profiles, threads, Pages) over gRPC-Web/Connect (needs an envoy/connect adapter or a Connect handler on the server — architect ADR first), then auth + posting; renders Patches Pages in an isolated origin (§172)
-- [ ] P10-002 — React Native client (`apps/mobile`): auth, home/local timelines, compose, notifications; shares the domain/proto packages; ADR on transport (Connect over HTTP/1.1+2)
-- [ ] P10-003 — Shared client SDK package (`packages/client`) extracted from the TUI's `PatchesApi` + session manager so web/mobile don't reimplement auth refresh, error mapping, pagination
+Transport and SDK shape are decided in **ADR 0016** (`docs/decisions/0016-connect-transport-and-client-sdk.md`) — read it before starting any of these. Do them in the order listed (A→F in the ADR's phase table, which also holds the acceptance criteria).
+
+- [ ] P10-004 — Server Connect edge (ADR 0016 §2–8): `protoc-gen-es` as a second `buf.gen.yaml` plugin → `@patches/proto/es`; `apps/server/src/transport/connect/` mounts `@connectrpc/connect-express` at `/patches.v1.*` on an **always-on** Nest HTTP listener, proxying each unary call to the in-process gRPC server as opaque protobuf bytes (no duplicated mappers/guards); `FederationModule` becomes conditionally registered on `FEDERATION_ENABLED`; `WEB_ORIGINS` CORS allow-list; `x-forwarded-for` derived via `TRUST_PROXY_HEADERS`; second `[[services]]` (`:8443 → 8080`) in `infra/fly/fly.toml`
+- [ ] P10-003 — Shared client SDK (`packages/client`, protobuf-es types): transport-agnostic `PatchesApi`, `SessionManager` (access token + refresh rotation, pluggable credential store), status→user-copy error mapping (from `apps/tui/src/api/errors.ts`), cursor pagination helpers; transports `@patches/client/connect` (fetch, web+RN) and `@patches/client/grpc` (Node/TUI)
+- [ ] P10-001 — Web client (`apps/web`, Vite + React): read-only first (public timelines, profiles, threads, Pages) over Connect, then auth + posting; Pages v1 rendered same-origin as inert data (advanced HTML/CSS mode would need the dedicated origin + `script-src 'none'` of §172, and is out of scope)
+- [ ] P10-002 — React Native client (`apps/mobile`, Expo): auth, home/local timelines, compose, notifications over Connect (unary only — RN `fetch` cannot stream); tokens in `expo-secure-store`; shares `@patches/client` + `@patches/domain`
+- [ ] P10-005 — Migrate the TUI onto `@patches/client` + the grpc transport; `apps/tui/src/api/client.ts` shrinks to UI-facing wrappers, no behavior change
 
 ## Backlog / discovered
 

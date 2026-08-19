@@ -30,6 +30,7 @@ amendment first — the ADRs explain _why_; the amendment is what implementers m
 | [0013](./0013-node-model-and-earlier-federation.md)  | Patches is node software; `patches.social` is the reference node; federation moves earlier      | Accepted |
 | [0014](./0014-capabilities-not-tiers.md)             | Capabilities, not tiers, in the protocol                                                        | Accepted |
 | [0015](./0015-minio-for-local-media-dev.md)          | MinIO for local media dev, Cloudflare R2 in production                                          | Accepted |
+| [0016](./0016-connect-transport-and-client-sdk.md)   | Connect protocol for web/mobile clients, and a shared client SDK                                | Accepted |
 
 ## Template
 
