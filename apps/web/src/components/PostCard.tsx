@@ -44,8 +44,8 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     setCounts((c) => (c ? { ...c, likes: c.likes + (wasLiked ? -1 : 1) } : c));
     try {
       const response = wasLiked
-        ? await api.reaction.unlikePost({ postId: post.id })
-        : await api.reaction.likePost({ postId: post.id });
+        ? await api.reactions.unlikePost({ postId: post.id })
+        : await api.reactions.likePost({ postId: post.id });
       if (response.viewerState) setViewerState(response.viewerState);
       if (response.counts) setCounts(response.counts);
     } catch (error) {
@@ -61,8 +61,8 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     setViewerState((v) => (v ? { ...v, bookmarked: !wasBookmarked } : v));
     try {
       const response = wasBookmarked
-        ? await api.reaction.unbookmarkPost({ postId: post.id })
-        : await api.reaction.bookmarkPost({ postId: post.id });
+        ? await api.reactions.unbookmarkPost({ postId: post.id })
+        : await api.reactions.bookmarkPost({ postId: post.id });
       if (response.viewerState) setViewerState(response.viewerState);
     } catch (error) {
       setViewerState((v) => (v ? { ...v, bookmarked: wasBookmarked } : v));
@@ -77,8 +77,8 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     setCounts((c) => (c ? { ...c, reposts: c.reposts + (wasReposted ? -1 : 1) } : c));
     try {
       const response = wasReposted
-        ? await api.reaction.unrepostPost({ postId: post.id })
-        : await api.reaction.repostPost({ postId: post.id });
+        ? await api.reactions.unrepostPost({ postId: post.id })
+        : await api.reactions.repostPost({ postId: post.id });
       if (response.viewerState) setViewerState(response.viewerState);
       if (response.counts) setCounts(response.counts);
     } catch (error) {

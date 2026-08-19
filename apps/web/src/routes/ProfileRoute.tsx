@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { FollowButton } from '../components/FollowButton.js';
+import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PageBlocks } from '../components/PageBlocks.js';
 import { PostTimeline } from '../components/PostTimeline.js';
@@ -48,6 +49,7 @@ export function ProfileRoute(): JSX.Element {
           />
           <FollowButton actorId={actor.id} />
         </div>
+        <ModerationActions actorId={actor.id} />
         <h1 className={styles['displayName']}>{actor.displayName || actor.handle}</h1>
         <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
         {actor.bio !== '' ? <p className={styles['bio']}>{actor.bio}</p> : null}

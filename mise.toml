@@ -62,7 +62,19 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server dev"
 
 [tasks.tui]
 description = "Run the full-screen TUI against the local server (extra args pass through, e.g. -- --server host:port)"
-run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure \"$@\""
+# Runs from a private snapshot of dist/, not dist/ itself: an agent rebuilding
+# apps/tui (or packages/terminal-media) while the TUI is open used to yank module
+# files out from under it mid-session, which looks exactly like the app breaking
+# (arrow keys "stopping", images "stopping"). See docs/agents/LEARNINGS.md.
+run = """
+cd "$MISE_PROJECT_ROOT"
+pnpm --filter @patches/tui build >/dev/null
+snapshot="${XDG_CACHE_HOME:-$HOME/.cache}/patches/tui-$$"
+rm -rf "$snapshot" && mkdir -p "$snapshot"
+cp -R apps/tui/dist/. "$snapshot/"
+trap 'rm -rf "$snapshot"' EXIT
+node "$snapshot/cli.js" --server "${PATCHES_SERVER:-127.0.0.1:50051}" --insecure "$@"
+"""
 
 [tasks.demos]
 description = "Render every VHS tape in infra/demos/tapes/ (TUI screenshots + GIFs for README/site) — see infra/demos/render.sh for required session env vars. Not idempotent: re-running posts/follows for real against the live node (P9-002)."
@@ -82,7 +94,16 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/worker dev"
 
 [tasks."tui:prod"]
 description = "Run the TUI against the live flagship node (patches-social.fly.dev:443, TLS) — same as plain `patches`"
-run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-patches-social.fly.dev:443}\" \"$@\""
+# Snapshotted for the same reason as `mise run tui` above.
+run = """
+cd "$MISE_PROJECT_ROOT"
+pnpm --filter @patches/tui build >/dev/null
+snapshot="${XDG_CACHE_HOME:-$HOME/.cache}/patches/tui-$$"
+rm -rf "$snapshot" && mkdir -p "$snapshot"
+cp -R apps/tui/dist/. "$snapshot/"
+trap 'rm -rf "$snapshot"' EXIT
+node "$snapshot/cli.js" --server "${PATCHES_SERVER:-patches-social.fly.dev:443}" "$@"
+"""
 
 [tasks."ping:prod"]
 description = "Connectivity check against the live flagship node"
@@ -99,6 +120,20 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm site:dev"
 [tasks."site:deploy"]
 description = "Build the site and deploy site/.vitepress/dist to Cloudflare Pages (project patches-site) via wrangler — wrangler is authenticated locally via OAuth (`pnpm exec wrangler whoami`); gated in CI behind vars.SITE_DEPLOY_ENABLED (.github/workflows/site.yml)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm site:deploy"
+
+[tasks.web]
+description = "Run the @patches/web dev server (http://localhost:5173) — proxies /api to the live node by default (PATCHES_DEV_UPSTREAM overrides for a local server, see apps/web/README.md)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/web dev"
+
+[tasks."web:deploy"]
+description = "Build @patches/web (VITE_PATCHES_API_BASE set for production, no dev proxy) and deploy apps/web/dist to Cloudflare Pages (project patches-web) via wrangler — wrangler is authenticated locally via OAuth (`pnpm exec wrangler whoami`); see docs/operations/web.md"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+VITE_PATCHES_API_BASE="${VITE_PATCHES_API_BASE:-https://patches-social.fly.dev:8443}" pnpm --filter @patches/web build
+pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
+"""
 
 [tasks.spike]
 description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R rerender, d delete, q quit)"
