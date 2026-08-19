@@ -28,7 +28,6 @@ export interface ModerationLogCommandApi {
 
 export interface ModerationLogCliDeps {
   io: CliIo;
-  env: NodeJS.ProcessEnv;
   target: string;
   insecure: boolean;
   /** Test/embedding seam; omitted by the executable, which builds a real gRPC client. */

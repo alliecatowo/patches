@@ -9,15 +9,21 @@ import {
 
 import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
+import { runAppeal } from './cli/appeal.js';
 import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
 import { runCommunity } from './cli/community.js';
 import { runDm } from './cli/dm.js';
+import { runFilter } from './cli/filter.js';
 import { createNodeIo } from './cli/io.js';
 import { runKeys } from './cli/keys.js';
+import { runLabelers } from './cli/labelers.js';
+import { runLists } from './cli/lists.js';
 import { runLogin } from './cli/login.js';
 import { runLogout } from './cli/logout.js';
+import { runModlog } from './cli/modlog.js';
 import { runPing } from './cli/ping.js';
+import { runPrivacy } from './cli/privacy.js';
 import { runProfile } from './cli/profile.js';
 import { runRegister } from './cli/register.js';
 import { runTag } from './cli/tag.js';
@@ -102,6 +108,14 @@ async function main(): Promise<number> {
   if (args.command === 'community')
     return runCommunity(rest, { io, env: process.env, target, insecure });
   if (args.command === 'tag') return runTag(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'privacy')
+    return runPrivacy(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'filter') return runFilter(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'lists') return runLists(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'labelers')
+    return runLabelers(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'appeal') return runAppeal(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'modlog') return runModlog(rest, { io, target, insecure });
 
   return runTui(args);
 }
