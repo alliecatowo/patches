@@ -29,6 +29,9 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/backups.md`](./operations/backups.md)
   - [`operations/incidents.md`](./operations/incidents.md)
   - [`operations/local-development.md`](./operations/local-development.md)
+  - [`operations/site.md`](./operations/site.md)
+  - [`operations/federation.md`](./operations/federation.md)
+  - [`operations/moderation.md`](./operations/moderation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
 - **`product/`** — what Patches is and why: product principles, roadmap, and (planned)
   moderation policy.
