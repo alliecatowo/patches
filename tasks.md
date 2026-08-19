@@ -288,6 +288,16 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
 - [ ] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
 
+## Phase 15 — passwordless auth (owner request 2026-08-19; ADR 0011 credential model, §165–§168)
+
+- [ ] P15-001 — enable GitHub device-flow login on prod: create the OAuth App (device flow on), `flyctl secrets set GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET`, verify `patches login --github` end-to-end, document in `docs/operations/deployment.md`
+- [ ] P15-002 — node policy switch `PASSWORD_AUTH=off|optional|required` (env + `GetNodePolicy`/`GetNodeInfo` capability): `off` rejects `Login`, password `Register`, `AddCredential(PASSWORD)`; clients hide password UI when off; tests both states
+- [ ] P15-003 — recovery codes credential type (one-time codes shown at enrollment, hashed at rest, `RecoveryLogin`), so an SSH/passkey-only account can recover without email/password; TUI `patches recovery-codes`
+- [ ] P15-004 — passkeys/WebAuthn (`PASSKEY` credential, `BeginPasskeyRegistration/CompletePasskeyRegistration/BeginPasskeyLogin/CompletePasskeyLogin`, `@simplewebauthn/server`, migration, RP id = node origin); web client register/login/manage; ADR amending 0011's deferral now that a browser RP exists
+- [ ] P15-005 — web: GitHub device-flow login page + "approve this web login from your terminal" device-link (`BeginDeviceLink` code → `patches approve <code>` over an SSH-authenticated session → web polls → session); no central SSO anywhere
+- [ ] P15-006 — generic OIDC-device-flow credential provider (GitLab/Codeberg/any) reusing the GitHub credential pattern; provider list from node config; credential never becomes identity
+- [ ] P15-007 — TUI/web credential manager parity: list/add/revoke every type, last-credential guard surfaced, docs `docs/architecture/auth.md` + user guide
+
 ## Backlog / discovered
 
 <!-- Audit sweep 2026-08-18 (round 2: deployed production posture + new modules vs INITIAL_VISION.md §101-104/§128-129/§153/§158-160) -->
