@@ -206,13 +206,13 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-025 — polish primitives: semantic theme tokens, borders, progress bar, single shared relative-time clock
 - [x] P12-026 — interaction docs/keymap sync; executable-command verification and generated key-table parity test
 - [x] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
-- [ ] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
+- [x] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
 - [x] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
 - [x] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
 - [x] P12-105 — destructive confirm styling, toast queue styling, and sticky new-count styling
 - [x] P12-106 — quick-post overlay UX: counter/CW/expand/shared-draft, with narrow takeover
-- [ ] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
-- [ ] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
+- [x] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
+- [x] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
 - [x] P12-109 — Pages renderer: responsive cell grid, scoped wall themes, pins, Top 8, guestbook, gallery, clipped ASCII
 - [x] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
 - [x] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
@@ -221,12 +221,12 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
 - [x] P12-115 — search mode strip and subtractive filters (`since:`, `from:`, `#tag`) with recent-query recall; no order control
 - [x] P12-116 — contextual palette actions for quoted posts, mentions, tags, links, and selected-row verbs
-- [ ] P12-117 — restrained motion/feedback: scroll thumb, success flash, finite refresh spinner, offline countdown, one clock
-- [ ] P12-118 — linear/screen-reader mode: one column, no overlays/drawers, indexed items, plain implied
+- [x] P12-117 — restrained motion/feedback: scroll thumb, success flash, finite refresh spinner, offline countdown, one clock
+- [x] P12-118 — linear/screen-reader mode: one column, no overlays/drawers, indexed items, plain implied
 - [ ] P12-119 — **BLOCKED** proposal/ADR for ephemeral `Now` status; no code until owner approves the exact non-story constraints
 - [ ] P12-120 — **BLOCKED on P12-119** server `Now` protocol/storage/expiry implementation
 - [ ] P12-121 — **BLOCKED on P12-120** TUI `Now` ring + screen/drawer
-- [ ] P12-122 — DM drawer reusing the drawer primitive and retaining the permanent privacy disclosure
+- [x] P12-122 — DM drawer reusing the drawer primitive and retaining the permanent privacy disclosure
 - [x] P12-125 — route `E` (edit your own post) to a compose-in-edit-mode screen; it is bound in `KEYMAP` and raises "not connected yet", and is held out of the user guide until it works
 - [x] P12-126 — migrate the block/mute/report confirmations onto the shared measured `ConfirmDialog` so every destructive action uses one component
 - [x] P12-127 — wire the landed-but-unreachable Phase 12 modules into the shell: theme engine + preferences precedence, `ThemePreview`/`ColorPicker`, `FilePicker` for attachments, `MediaViewerScreen`, and `SplitPane`/responsive tiers
