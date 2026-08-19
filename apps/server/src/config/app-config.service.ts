@@ -217,6 +217,13 @@ export class AppConfigService {
   get likeGlyphAllowList(): readonly string[] {
     return this.get('LIKE_GLYPH_ALLOW_LIST');
   }
+
+  /** The closed label vocabulary this node's own labeler publishes (spec §200.2, §204's
+   * `NodeService.GetNodePolicy` doc) — read by `modules/labels`' boot-time seed and by
+   * `NodeService.GetNodePolicy`'s `label_vocabulary`. */
+  get labelVocabulary(): readonly string[] {
+    return this.get('LABEL_VOCABULARY');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

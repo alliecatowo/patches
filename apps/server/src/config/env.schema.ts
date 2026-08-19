@@ -171,6 +171,26 @@ const envObjectSchema = z.object({
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0),
     ),
+
+  /**
+   * Amendment C (P14-009, spec §200.2, §200.3): the closed vocabulary this node's own labeler
+   * publishes, comma-separated. Read by `modules/labels`' boot-time seed (which keeps the
+   * node's own `labelers` row's `vocabulary` column in sync with this list) and by
+   * `NodeService.GetNodePolicy`'s `label_vocabulary` (same list, published so clients can
+   * render every labeler's values honestly — a node "MUST publish whichever [vocabulary] it
+   * uses", §200.2). Same comma-list convention as `LIKE_GLYPH_ALLOW_LIST` above. Default is
+   * this node's own starting vocabulary, not the spec's §200.2 example list verbatim — a node
+   * MAY publish a different one.
+   */
+  LABEL_VOCABULARY: z
+    .string()
+    .default('spam,nsfw,needs-cw,harassment,misinformation,other')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

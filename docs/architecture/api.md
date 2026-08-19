@@ -414,20 +414,25 @@ chooses "an action and scopes"; the shipped `SubscribeFilterListRequest` has no 
 List-derived rules are therefore applied to every scope, unconditionally — see
 `filter-matching.ts#loadEffectiveFilterRules`'s doc comment.
 
-#### LabelService (§200) — implemented in `labels.proto` (P14-001, contract only)
+#### LabelService (§200) — implemented in `labels.proto`/`modules/labels/**` (P14-009)
 
-| RPC                                       | Notes                                                                                                                                                    |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreateLabeler`                           | personal or (via `community_id`) community-owned; every node also runs an implicit `is_node_labeler` one                                                 |
-| `GetLabeler` / `ListLabelers`             |                                                                                                                                                          |
-| `ApplyLabel`                              | rate-limited 300/day per labeler (§204, §200.5); `value` must be one of the labeler's node-published vocabulary — free text is prohibited (§200.2, §208) |
-| `RetractLabel`                            | sets `retracted_at`; history is preserved, never hard-deleted (§200.1)                                                                                   |
-| `SubscribeLabeler` / `UnsubscribeLabeler` | a label is visible only to subscribers — labeling someone has zero effect on anyone who hasn't opted in (§200.3)                                         |
-| `SetLabelerSubscriptionAction`            | per-value action override; any value may be set to `ignore` except one the node marks legally mandatory (§200.3)                                         |
-| `ListLabelsOnSubject`                     | pull-only self-inspection (§200.4) — an actor is never notified that they were labeled                                                                   |
+| RPC                                       | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateLabeler`                           | personal (caller's own actor) or, via `community_id`, community-owned (requires the caller be a moderator); every node also runs an implicit `is_node_labeler` one, seeded idempotently at boot from `LABEL_VOCABULARY` (`label-seed.service.ts`) and re-synced on every boot                                                                                                                                                            |
+| `GetLabeler` / `ListLabelers`             | anonymous-readable — a labeler and its vocabulary are public, like a community                                                                                                                                                                                                                                                                                                                                                           |
+| `ApplyLabel`                              | rate-limited 300/day per labeler (§204, §200.5, keyed on the labeler, not the caller); `value` must be one of the labeler's own node-published vocabulary — free text is prohibited (§200.2, §208); idempotent (re-applying the same still-active `(labeler, subject, value)` returns the existing row); forbidden on the node's own labeler through this RPC (§200.5, §208 — no gRPC-session concept of node-operator authority exists) |
+| `RetractLabel`                            | sets `retracted_at`; history is preserved, never hard-deleted (§200.1); idempotent                                                                                                                                                                                                                                                                                                                                                       |
+| `SubscribeLabeler` / `UnsubscribeLabeler` | a label is visible only to subscribers — labeling someone has zero effect on anyone who hasn't opted in (§200.3); a no-op on the node's own labeler, which is subscribed by default and not togglable in v0                                                                                                                                                                                                                              |
+| `SetLabelerSubscriptionAction`            | per-value action override; any value may be set to `ignore` except one the labeler's vocabulary marks `mandatory` (§200.3)                                                                                                                                                                                                                                                                                                               |
+| `ListLabelsOnSubject`                     | pull-only self-inspection (§200.4) — an actor is never notified that they were labeled; when the caller _is_ the subject (their own account, or a post they authored), every label is visible regardless of subscription; otherwise subscription-scoped like `Post.labels`                                                                                                                                                               |
 
 Labels never affect feed position, search position, or delivery, and are never aggregated into
-a count/reputation/trust score for anyone (§200.3, §208).
+a count/reputation/trust score for anyone (§200.3, §208). `Post.labels` is populated by
+`feeds/post-batch.ts` via `LabelService.labelsForPosts`/`modules/labels/label-lookup.ts`'s
+shared, non-DI query — feed reads only so far (`modules/posts/post.service.ts`'s single-post
+paths still return an empty list, a follow-up task). The closed vocabulary the node's own
+labeler publishes comes from the `LABEL_VOCABULARY` env var (comma-separated, also read by
+`NodeService.GetNodePolicy`'s `label_vocabulary`).
 
 #### AppealService (§201.3) — implemented in `appeals.proto` (P14-001, contract only)
 

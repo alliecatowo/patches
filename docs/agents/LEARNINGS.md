@@ -514,3 +514,31 @@ markup renderer wraps text to exact cells (`layoutMarkup`) and the viewport coun
 produced (`measureMarkupHeight`), instead of measuring with one function and rendering with Ink's
 independent soft wrap. The old split silently under-counted any body containing markup, and an
 under-count is what smears Ink's line diff.
+
+## 2026-08-19 — `startTestServer()` (no `http: true`) never fires `OnModuleInit` at all
+
+In Nest 11, `app.startAllMicroservices()` does **not** call `app.init()` — it only does
+`Promise.all(this.microservices.map(msvc => msvc.listen()))`. `app.init()` (and therefore every
+module's `OnModuleInit`/`onApplicationBootstrap` lifecycle hook, across the _entire_ module
+graph, not just one module) is only triggered by `app.listen()`, guarded by
+`if (!this.isInitialized) await this.init();`. `apps/server/test/support/test-server.ts`'s
+`startTestServer()` calls `app.listen()` only when invoked as `startTestServer({ http: true })`
+— by default it skips straight to `startAllMicroservices()`. A boot-time `OnModuleInit` seed
+(`modules/labels/label-seed.service.ts`, P14-009) therefore silently never ran under a plain
+`startTestServer()`: providers were constructed fine (regular DI/constructor injection is a
+separate, always-eager phase — `InstanceLoader.createInstancesOfDependencies()`), gRPC calls
+worked normally, and no error was thrown anywhere — the seeded row was just absent, with zero
+diagnostic signal. Confirmed by adding a `console.error` at the top of the constructor (fired)
+vs. the top of `onModuleInit` (never fired). `main.ts` always calls `app.listen()` in production
+(ADR 0016 §4), so this is a test-harness-only gap, not a production bug.
+
+**How to apply:** any integration test asserting on `OnModuleInit`-driven state (a boot-time
+seed, a cache warm, anything in a `providers` array implementing `OnModuleInit`/
+`OnApplicationBootstrap`) must call `startTestServer({ http: true })`, not the bare form —
+otherwise the assertion fails with no hint that lifecycle hooks never ran at all. Also: a
+shared Postgres integration DB (`patches_test_server`) racing another agent's concurrent
+`dropDatabase()`/migration produces a _different_, equally confusing symptom
+(`QueryFailedError: relation "X" does not exist`) — when debugging a mysteriously-empty table,
+rule out lifecycle-hook timing first (isolate with a throwaway private test database via
+`TEST_DATABASE_URL_SERVER`), then rule out concurrent-agent DB contention, before suspecting
+application logic.
