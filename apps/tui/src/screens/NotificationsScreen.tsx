@@ -1,10 +1,12 @@
 import { present } from '../api/present.js';
 import { NOTIFICATION_TYPE, timestampToDate, type Actor, type Notification } from '@patches/proto';
-import { useCallback, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import type { ReactElement } from 'react';
 
+import { movementTarget } from '../app/list-movement.js';
 import type { PatchesApi } from '../api/client.js';
+import { Loading } from '../components/Loading.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { formatRelativeTime } from '../format/relative-time.js';
 import { usePaginatedList, type Page } from '../hooks/usePaginatedPosts.js';
@@ -19,10 +21,16 @@ export interface NotificationsScreenProps {
   onOpenPost: (postId: string) => void;
   /** `Enter` on a FOLLOW notification — opens the triggering actor's profile. */
   onOpenAuthor: (actor: Actor) => void;
-  /** Fires after `m` successfully marks everything read — lets `App` refresh the
-   * status bar's unread badge without waiting for its next poll/screen change. */
-  onMarkedAllRead?: (() => void) | undefined;
+  /** Fires whenever notifications are marked read — by `m`, by opening one, or by
+   * simply having them on screen long enough — so `App` can drop the status bar's
+   * unread badge without waiting for its next poll (owner feedback 2026-08-18:
+   * "notifications aren't being read as I read them"). */
+  onReadStateChanged?: (() => void) | undefined;
 }
+
+/** How long a notification has to sit on screen before it counts as read. Long
+ * enough that scrolling straight past a screenful doesn't silently clear it. */
+const AUTO_READ_DELAY_MS = 800;
 
 function typeIcon(type: Notification['type']): string {
   switch (type) {
@@ -70,8 +78,9 @@ export function NotificationsScreen({
   ensureAccessToken,
   onOpenPost,
   onOpenAuthor,
-  onMarkedAllRead,
+  onReadStateChanged,
 }: NotificationsScreenProps): ReactElement {
+  const { rows } = useWindowSize();
   const fetchPage = useCallback(
     (cursor: string): Promise<Page<Notification>> =>
       ensureAccessToken()
@@ -89,6 +98,9 @@ export function NotificationsScreen({
   } = usePaginatedList<Notification>(api.target, fetchPage);
 
   const [selected, setSelected] = useState(0);
+  // Highest index already marked read this session, so scrolling back up doesn't
+  // re-issue the same `MarkNotificationsRead` over and over.
+  const markedThrough = useRef(-1);
   // Ids marked read this session by `m` — `ListNotifications` isn't refetched just to
   // reflect that locally (spec: manual refresh is fine, no push infra in v0).
   const [readOverride, setReadOverride] = useState<ReadonlySet<string>>(new Set());
@@ -104,10 +116,65 @@ export function NotificationsScreen({
       const accessToken = await ensureAccessToken();
       await api.markNotificationsRead({ throughId: '', markAll: true }, accessToken);
       setReadOverride(new Set(notifications.map((notification) => notification.id)));
-      onMarkedAllRead?.();
+      markedThrough.current = notifications.length - 1;
+      onReadStateChanged?.();
     } finally {
       setMarkStatus('idle');
     }
+  }
+
+  /** Marks everything down to `index` read (the list is newest-first, so `through_id`
+   * covers exactly the ones already scrolled past). */
+  const markReadThrough = useCallback(
+    async (index: number): Promise<void> => {
+      if (index <= markedThrough.current) return;
+      const target = notifications[index];
+      if (target === undefined) return;
+      markedThrough.current = index;
+      const covered = notifications.slice(0, index + 1);
+      if (covered.every((notification) => present(notification.readAt))) return;
+      try {
+        const accessToken = await ensureAccessToken();
+        await api.markNotificationsRead({ throughId: target.id, markAll: false }, accessToken);
+        setReadOverride((current) => {
+          const next = new Set(current);
+          for (const notification of covered) next.add(notification.id);
+          return next;
+        });
+        onReadStateChanged?.();
+      } catch {
+        // Marking read is best-effort: it is not worth an error banner over, and the
+        // next poll of `GetUnreadCount` will simply show the badge again.
+        markedThrough.current = index - 1;
+      }
+    },
+    [api, ensureAccessToken, notifications, onReadStateChanged],
+  );
+
+  const visibleCount = Math.max(3, rows - 12);
+  const windowStart = Math.min(
+    Math.max(0, effectiveSelected - Math.floor(visibleCount / 2)),
+    Math.max(0, notifications.length - visibleCount),
+  );
+  const windowEnd = Math.min(notifications.length, windowStart + visibleCount);
+
+  // Anything on screen for `AUTO_READ_DELAY_MS` counts as read. Debounced via the
+  // effect's own cleanup, so a fast scroll through five screenfuls only marks the
+  // one you stop on.
+  useEffect(() => {
+    if (!isActive || windowEnd === 0) return;
+    const timer = setTimeout(() => {
+      void markReadThrough(windowEnd - 1);
+    }, AUTO_READ_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isActive, windowEnd, markReadThrough]);
+
+  function openSelected(): void {
+    const notification = notifications[effectiveSelected];
+    if (notification === undefined) return;
+    void markReadThrough(effectiveSelected);
+    if (notification.postId !== '') onOpenPost(notification.postId);
+    else if (present(notification.actor)) onOpenAuthor(notification.actor);
   }
 
   useInput(
@@ -121,20 +188,20 @@ export function NotificationsScreen({
         return;
       }
       if (notifications.length === 0) return;
-      if (input === 'j' || key.downArrow) {
-        setSelected(Math.min(effectiveSelected + 1, maxIndex));
+      const moved = movementTarget({
+        input,
+        key,
+        current: effectiveSelected,
+        total: notifications.length,
+        pageSize: visibleCount,
+      });
+      if (moved !== undefined) {
+        setSelected(moved);
         return;
       }
-      if (input === 'k' || key.upArrow) {
-        setSelected(Math.max(effectiveSelected - 1, 0));
-        return;
-      }
-      if (key.return) {
-        const notification = notifications[effectiveSelected];
-        if (notification === undefined) return;
-        if (notification.postId !== '') onOpenPost(notification.postId);
-        else if (present(notification.actor)) onOpenAuthor(notification.actor);
-      }
+      // `o` alongside `Enter`: a mention notification is usually something you want
+      // to open, and `o` is "open" everywhere else in the app.
+      if (key.return || input === 'o') openSelected();
     },
     { isActive: isActive && !loading },
   );
@@ -145,9 +212,14 @@ export function NotificationsScreen({
       {error === undefined ? null : <Text color={theme.error}>{error.title}</Text>}
       <Box marginTop={1} flexDirection="column">
         {notifications.length === 0 ? (
-          <Text color={theme.muted}>{loading ? 'Loading…' : 'Nothing yet.'}</Text>
+          loading ? (
+            <Loading label="Loading" />
+          ) : (
+            <Text color={theme.muted}>Nothing yet.</Text>
+          )
         ) : (
-          notifications.map((notification, index) => {
+          notifications.slice(windowStart, windowEnd).map((notification, offset) => {
+            const index = windowStart + offset;
             const isRead = present(notification.readAt) || readOverride.has(notification.id);
             const createdAt = timestampToDate(notification.createdAt);
             const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
@@ -175,18 +247,17 @@ export function NotificationsScreen({
         )}
       </Box>
       <Box marginTop={1}>
-        <Text color={theme.muted}>
-          {loading || loadingMore
-            ? 'Loading…'
-            : hasMore
-              ? 'n / space for more'
-              : notifications.length === 0
-                ? ''
-                : '— end —'}
-        </Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text color={theme.muted}>Enter open · m mark all read</Text>
+        {loading || loadingMore ? (
+          <Loading label="Loading" />
+        ) : (
+          <Text color={theme.muted}>
+            {notifications.length === 0
+              ? ''
+              : `${String(effectiveSelected + 1)}/${String(notifications.length)}${
+                  hasMore ? ' · ↓ n / space for more' : ' · end'
+                }`}
+          </Text>
+        )}
       </Box>
     </Box>
   );

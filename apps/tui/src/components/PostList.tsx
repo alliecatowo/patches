@@ -3,7 +3,12 @@ import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { useContentSize } from '../app/layout.js';
+import { movementTarget, type ListJump } from '../app/list-movement.js';
 import { theme } from '../theme/index.js';
+import { computeViewport, resolveTopIndex } from './list-viewport.js';
+import { Loading } from './Loading.js';
+import { measurePostRowHeight } from './post-height.js';
 import { PostRow } from './PostRow.js';
 
 /**
@@ -28,6 +33,13 @@ export interface PostRowActions {
   /** `o` on the selected row — opens its first attachment externally (spec §76). A
    * no-op when the row has no attachments. */
   onOpenMedia?: ((post: Post) => void) | undefined;
+  /** `f` on the selected row — follows/unfollows its author without leaving the
+   * timeline (owner feedback 2026-08-18: follows existed but only on a profile). */
+  onToggleFollow?: ((post: Post) => void) | undefined;
+  /** Not an action: `g g` (top) arrives from the shell, because `g` is the shell's
+   * key prefix. Threaded through the same bag every screen already spreads onto
+   * `PostList`, so no screen needs a new prop. */
+  jump?: ListJump | undefined;
   /** Applied to each post before it's rendered (not before it's passed to a row
    * action) — lets a caller overlay optimistic reaction state (P4-004's
    * `App.decoratePost`) without every screen's own paginated list needing to
@@ -50,17 +62,14 @@ export interface PostListProps extends PostRowActions {
   /** Per-row indent level (0 = flush left), e.g. the thread screen indenting
    * replies one step deeper than the focused post it lists alongside them. */
   rowIndent?: ((post: Post) => number) | undefined;
+  /** How many posts a `R` refresh just brought in that weren't there before —
+   * renders the `↑ N new` marker above the list. `0` renders nothing. */
+  newCount?: number;
+  /** Rows the owning screen spends on its own chrome (title, margin, error line,
+   * profile header) before the list starts. Subtracted from the content budget. */
+  chromeRows?: number;
 }
 
-/**
- * The chronological post list shared by the profile timeline, local feed,
- * home feed, thread replies, and bookmarks (spec §68: shared components, not
- * one screen per list). Cursor-based "load more" is driven by the owning
- * screen's `useInput` — this component owns only row selection and the
- * per-row actions: `j`/`k`/arrows to move, `Enter` opens the thread, `p` the
- * author's profile, `r` replies, `l`/`b` like/bookmark, `!` report (spec §69,
- * P4-004).
- */
 export function PostList({
   posts,
   loading,
@@ -75,10 +84,22 @@ export function PostList({
   onToggleBookmark,
   onReport,
   onOpenMedia,
+  onToggleFollow,
+  jump,
   rowIndent,
   decorate,
+  newCount = 0,
+  chromeRows = 2,
 }: PostListProps): ReactElement {
-  const [selected, setSelected] = useState(0);
+  const content = useContentSize();
+  // The applied jump nonce travels with the selection so a `g g` can be *derived*
+  // during render instead of written back from an effect (the same rule the rest of
+  // this codebase follows — no setState-in-effect just to compute a value).
+  const [selection, setSelection] = useState<{ index: number; jumpNonce: number; top: number }>({
+    index: 0,
+    jumpNonce: 0,
+    top: 0,
+  });
   // Which `content_warning`-gated posts the viewer has revealed this session — never
   // persisted, never shared across posts (spec: a CW is click-to-reveal per post).
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
@@ -86,17 +107,42 @@ export function PostList({
   // and the same "no synchronous setState-in-effect" pattern as `useActor`):
   // in bounds even right after the list shrinks/grows, with nothing to write back.
   const maxIndex = Math.max(posts.length - 1, 0);
-  const effectiveSelected = Math.min(selected, maxIndex);
+  const pendingJump = jump !== undefined && jump.nonce !== selection.jumpNonce ? jump : undefined;
+  const effectiveSelected =
+    pendingJump === undefined
+      ? Math.min(selection.index, maxIndex)
+      : pendingJump.edge === 'top'
+        ? 0
+        : maxIndex;
+
+  function select(index: number): void {
+    setSelection({ index, jumpNonce: jump?.nonce ?? 0, top: topIndex });
+  }
+
+  // Measured layout: every row's exact height at the real width, so the window can
+  // never render more rows than the shell budgeted for it.
+  const width = Math.max(10, content.columns - 4);
+  // Two rows of the list's own budget go to the position line and the loading line.
+  const budget = Math.max(3, content.rows - chromeRows - 2);
+  const heights = posts.map((post) =>
+    measurePostRowHeight(decorate?.(post) ?? post, width, revealed.has(post.id)),
+  );
+  const topIndex = resolveTopIndex(selection.top, effectiveSelected, heights, budget);
+  const viewport = computeViewport(topIndex, heights, budget);
+  const visible = posts.slice(viewport.start, viewport.end);
 
   useInput(
     (input, key) => {
       if (posts.length === 0) return;
-      if (input === 'j' || key.downArrow) {
-        setSelected(Math.min(effectiveSelected + 1, maxIndex));
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        setSelected(Math.max(effectiveSelected - 1, 0));
+      const moved = movementTarget({
+        input,
+        key,
+        current: effectiveSelected,
+        total: posts.length,
+        pageSize: Math.max(1, viewport.end - viewport.start),
+      });
+      if (moved !== undefined) {
+        select(moved);
         return;
       }
       if (input === 'v') {
@@ -144,6 +190,11 @@ export function PostList({
       if (input === 'o') {
         const post = posts[effectiveSelected];
         if (post !== undefined) onOpenMedia?.(post);
+        return;
+      }
+      if (input === 'f') {
+        const post = posts[effectiveSelected];
+        if (post !== undefined) onToggleFollow?.(post);
       }
     },
     { isActive: isActive && posts.length > 0 },
@@ -152,29 +203,39 @@ export function PostList({
   if (posts.length === 0) {
     return (
       <Box>
-        <Text color={theme.muted}>{loading ? 'Loading…' : emptyMessage}</Text>
+        {loading ? <Loading label="Loading" /> : <Text color={theme.muted}>{emptyMessage}</Text>}
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column">
-      {posts.map((post, index) => (
-        <Box key={post.id} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
-          <PostRow
-            post={decorate?.(post) ?? post}
-            selected={isActive && index === effectiveSelected}
-            revealed={revealed.has(post.id)}
-          />
-        </Box>
-      ))}
-      <Text color={theme.muted}>
-        {loading
-          ? 'Loading more…'
-          : hasMore
-            ? `${loadMoreKeyHint} for more`
-            : '— end of the timeline —'}
-      </Text>
+    <Box flexDirection="column" height={budget + 2} overflow="hidden">
+      <Box flexShrink={0}>
+        {newCount > 0 ? (
+          <Text color={theme.ok} wrap="truncate-end">
+            ↑ {newCount} new {newCount === 1 ? 'post' : 'posts'}{' '}
+          </Text>
+        ) : null}
+        <Text color={theme.muted} wrap="truncate-end">
+          {viewport.above > 0 ? `↑ ${String(viewport.above)} above  ` : ''}
+          {effectiveSelected + 1}/{posts.length}
+          {viewport.below > 0 ? `  ↓ ${String(viewport.below)} below` : ''}
+          {hasMore ? ` · ${loadMoreKeyHint} for more` : ' · — end of the timeline —'}
+        </Text>
+      </Box>
+      <Box flexDirection="column" flexShrink={0} height={budget} overflow="hidden">
+        {visible.map((post, index) => (
+          <Box key={post.id} flexShrink={0} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
+            <PostRow
+              post={decorate?.(post) ?? post}
+              selected={isActive && viewport.start + index === effectiveSelected}
+              revealed={revealed.has(post.id)}
+              width={Math.max(10, width - (rowIndent?.(post) ?? 0) * 2)}
+            />
+          </Box>
+        ))}
+      </Box>
+      {loading ? <Loading label="Loading more" /> : <Text> </Text>}
     </Box>
   );
 }

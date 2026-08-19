@@ -47,8 +47,10 @@
     "@inkjs/ui": "catalog:",
     "@napi-rs/keyring": "catalog:",
     "ink": "catalog:",
+    "ink-spinner": "catalog:",
     "react": "catalog:",
     "sharp": "catalog:",
+    "string-width": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

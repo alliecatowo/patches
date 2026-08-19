@@ -121,6 +121,8 @@ import {
   type RevokeCredentialResponse,
   type SearchActorsRequest,
   type SearchActorsResponse,
+  type SearchPostsRequest,
+  type SearchPostsResponse,
   type SignGuestbookRequest,
   type SignGuestbookResponse,
   type SocialGraphGrpcClient,
@@ -334,12 +336,28 @@ export class PatchesApi {
     );
   }
 
-  async listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
-    return unary(this.feed.listActorPosts.bind(this.feed), request, DEADLINES_MS.unary);
+  /** Anonymous-readable, but the token is passed whenever there is a session: without
+   * it the server has no viewer to compute `viewer_state` for, and every post comes
+   * back un-liked/un-bookmarked (owner report 2026-08-18 — the server was right, the
+   * client simply wasn't identifying itself on these reads). */
+  async listActorPosts(
+    request: ListActorPostsRequest,
+    accessToken?: string,
+  ): Promise<ListActorPostsResponse> {
+    return unary(
+      this.feed.listActorPosts.bind(this.feed),
+      request,
+      DEADLINES_MS.unary,
+      accessToken,
+    );
   }
 
-  async listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
-    return unary(this.feed.listLocalFeed.bind(this.feed), request, DEADLINES_MS.unary);
+  /** Anonymous-readable; pass the token when signed in so `viewer_state` is populated. */
+  async listLocalFeed(
+    request: ListLocalFeedRequest,
+    accessToken?: string,
+  ): Promise<ListLocalFeedResponse> {
+    return unary(this.feed.listLocalFeed.bind(this.feed), request, DEADLINES_MS.unary, accessToken);
   }
 
   // ---- FeedService / SocialGraphService — the caller's own network, requires a session ----
@@ -413,16 +431,29 @@ export class PatchesApi {
     return unary(this.post.createPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
-  /** Readable anonymously (spec §51) — the thread screen works whether or not the viewer is signed in. */
-  async getPost(request: GetPostRequest): Promise<GetPostResponse> {
-    return unary(this.post.getPost.bind(this.post), request, DEADLINES_MS.unary);
+  /** Readable anonymously (spec §51) — the thread screen works whether or not the viewer
+   * is signed in; the token, when there is one, is what fills in `viewer_state`. */
+  async getPost(request: GetPostRequest, accessToken?: string): Promise<GetPostResponse> {
+    return unary(this.post.getPost.bind(this.post), request, DEADLINES_MS.unary, accessToken);
+  }
+
+  /** Full-text post search (newest-first keyset, never relevance-by-engagement — §194).
+   * Anonymous-readable; the token fills in `viewer_state` for the results. */
+  async searchPosts(
+    request: SearchPostsRequest,
+    accessToken?: string,
+  ): Promise<SearchPostsResponse> {
+    return unary(this.post.searchPosts.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
   /** Cursor-paginated, one level deep only — `max_depth` is accepted but not yet honoured
    * server-side (see `apps/server/src/modules/posts/post.controller.ts`). The thread screen
    * gets depth by recursing `ListReplies` per drill-down rather than one deep fetch. */
-  async listReplies(request: ListRepliesRequest): Promise<ListRepliesResponse> {
-    return unary(this.post.listReplies.bind(this.post), request, DEADLINES_MS.unary);
+  async listReplies(
+    request: ListRepliesRequest,
+    accessToken?: string,
+  ): Promise<ListRepliesResponse> {
+    return unary(this.post.listReplies.bind(this.post), request, DEADLINES_MS.unary, accessToken);
   }
 
   async deletePost(request: DeletePostRequest, accessToken: string): Promise<DeletePostResponse> {

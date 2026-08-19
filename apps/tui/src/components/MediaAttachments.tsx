@@ -14,6 +14,21 @@ export interface MediaAttachmentsProps {
    * timeline row. */
   maxCols?: number;
   maxRows?: number;
+  /**
+   * Draw the real Kitty image, rather than the §75 description box.
+   *
+   * **Off in timelines, on purpose.** Kitty images are written straight to
+   * `process.stdout` as APC sequences (they cannot go through Ink's text tree), so
+   * Ink has no idea they are there: as soon as the list scrolls, the placement stays
+   * behind and the frame diff drifts — the owner saw a solid purple block wedged
+   * between rows and every row below it shifted by one (2026-08-18, reproduced on
+   * v0.1.0-alpha.2). A scrolling virtualized list cannot guarantee the image stays
+   * inside its measured box, so lists show the fallback box (which measures exactly
+   * three rows) and `o` opens the real image externally. A dedicated full-screen
+   * viewer — one image, nothing scrolling under it — is the place inline rendering
+   * belongs; see `docs/architecture/tui.md`.
+   */
+  inline?: boolean;
 }
 
 const DEFAULT_MAX_COLS = 40;
@@ -105,6 +120,7 @@ export function MediaAttachments({
   attachments,
   maxCols = DEFAULT_MAX_COLS,
   maxRows = DEFAULT_MAX_ROWS,
+  inline = false,
 }: MediaAttachmentsProps): ReactElement | null {
   const plain = usePlainMode();
   const renderer = useOptionalMediaRenderer();
@@ -113,7 +129,11 @@ export function MediaAttachments({
   if (attachments.length === 0) return null;
 
   const useInline =
-    !plain && renderer !== undefined && renderer.kind === 'kitty' && session !== undefined;
+    inline &&
+    !plain &&
+    renderer !== undefined &&
+    renderer.kind === 'kitty' &&
+    session !== undefined;
 
   return (
     <Box flexDirection="column" marginTop={1}>

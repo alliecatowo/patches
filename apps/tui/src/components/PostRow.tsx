@@ -4,6 +4,7 @@ import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 
 import { formatRelativeTime } from '../format/relative-time.js';
+import { RichBody } from '../format/rich-text.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
 import { MediaAttachments } from './MediaAttachments.js';
@@ -15,6 +16,11 @@ export interface PostRowProps {
   selected?: boolean;
   /** Reveals `post.content_warning`-gated content — off by default (B-018/P3-003). */
   revealed?: boolean;
+  /** Columns this row may use. Single-line rows are hard-clipped to it and the body
+   * wraps inside it, so the row's height always matches what
+   * `measurePostRowHeight` predicted — an unmeasured soft-wrap is what corrupts
+   * Ink's frame diff (see `format/measure.ts`). */
+  width?: number;
 }
 
 /**
@@ -25,16 +31,21 @@ export interface PostRowProps {
  * `.claude/rules/tui.md`) `"truncate"` corrupts Kitty placeholder rows once
  * images share this component (spec §73–76).
  */
-export function PostRow({ post, selected = false, revealed = false }: PostRowProps): ReactElement {
+export function PostRow({
+  post,
+  selected = false,
+  revealed = false,
+  width,
+}: PostRowProps): ReactElement {
   const createdAt = timestampToDate(post.createdAt);
   const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
   const hasWarning = !post.deleted && post.contentWarning !== '';
-  const bodyText = sanitizeForTerminal(post.body === '' ? post.linkUrl : post.body);
+  const bodyText = post.body === '' ? post.linkUrl : post.body;
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Box>
+    <Box flexDirection="column" flexShrink={0} marginBottom={1} width={width} overflow="hidden">
+      <Box overflow="hidden" flexShrink={0} height={1}>
         <Nameplate
           handle={handle}
           nameplate={post.author?.nameplate ?? undefined}
@@ -46,20 +57,26 @@ export function PostRow({ post, selected = false, revealed = false }: PostRowPro
       {post.deleted ? (
         <Text color={theme.muted}>[deleted]</Text>
       ) : hasWarning && !revealed ? (
-        <Text color={theme.warn}>
+        <Text color={theme.warn} wrap="truncate-end">
           ⚠ {sanitizeForTerminal(post.contentWarning)} — press v to reveal
         </Text>
       ) : (
         <>
           {hasWarning ? (
-            <Text color={theme.warn}>⚠ {sanitizeForTerminal(post.contentWarning)}</Text>
+            <Text color={theme.warn} wrap="truncate-end">
+              ⚠ {sanitizeForTerminal(post.contentWarning)}
+            </Text>
           ) : null}
-          <Text wrap="wrap">{bodyText}</Text>
-          <MediaAttachments attachments={post.media} />
+          <RichBody text={bodyText} />
+          <MediaAttachments
+            attachments={post.media}
+            maxCols={Math.min(40, Math.max(12, (width ?? 40) - 2))}
+          />
         </>
       )}
       {present(post.counts) ? (
         <Text
+          wrap="truncate-end"
           color={present(post.viewerState) && post.viewerState.liked ? theme.accent : theme.muted}
         >
           {present(post.viewerState) && post.viewerState.liked ? '♥' : '♡'} {post.counts.likes} ·{' '}

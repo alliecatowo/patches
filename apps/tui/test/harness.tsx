@@ -20,6 +20,11 @@ export const KEY = {
   backspace: '',
   ctrlS: '',
   ctrlA: '',
+  /** CSI arrow keys, as a real terminal sends them. */
+  up: '[A',
+  down: '[B',
+  pageUp: '[5~',
+  pageDown: '[6~',
 } as const;
 
 export interface RenderAppOptions {
