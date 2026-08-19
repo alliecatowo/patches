@@ -22,6 +22,17 @@ export function isTruthyEnv(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== '0' && value.toLowerCase() !== 'false';
 }
 
+/**
+ * Defense in depth against argument injection (spec §76, A-045): every `SpawnFn`
+ * implementation here uses an argument array (never a shell string), but the opener
+ * commands (`xdg-open`, `open`, `cmd /c start`) still parse a leading `-` on their one
+ * positional argument as a flag rather than a target. Exported so `pages/open-link.ts`
+ * shares the same check for URLs.
+ */
+export function hasUnsafeLeadingDash(value: string): boolean {
+  return value.startsWith('-');
+}
+
 /** Exported for `pages/open-link.ts` — the real (non-test) `SpawnFn` implementation. */
 export function realSpawn(command: string, args: readonly string[]): void {
   const child = spawn(command, [...args], { detached: true, stdio: 'ignore' });
@@ -67,6 +78,14 @@ export async function openMediaExternally(
   const { path } = await cache.getOrFetch(attachment.mediaId, 'display', mime, () =>
     fetchBytes(download.downloadUrl),
   );
+
+  // `path` is always `join(<absolute cache dir>, <sanitised segment>.<fixed extension>)`
+  // (`media/cache.ts`'s `pathFor`), so this should never trip — kept as the same defense
+  // in depth `openLinkExternally` applies to server-supplied URLs (A-045), in case that
+  // invariant ever changes.
+  if (hasUnsafeLeadingDash(path)) {
+    throw new Error('Blocked opening this attachment: unsafe local path.');
+  }
 
   const spawnFn = options.spawnFn ?? realSpawn;
   const [command, args] = openerCommand(options.platform ?? process.platform, path);
