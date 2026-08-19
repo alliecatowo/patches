@@ -38,6 +38,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   moderation policy.
   - [`product/principles.md`](./product/principles.md)
   - [`product/roadmap.md`](./product/roadmap.md)
+  - [`product/tui-design-vision.md`](./product/tui-design-vision.md) — the TUI's design vision (layout, themes, flows)
   - `product/moderation.md` _(planned)_
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,
