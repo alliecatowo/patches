@@ -76,17 +76,26 @@ export function truncateToWidth(text: string, width: number): string {
 }
 
 /**
- * Joins hint labels with ` · `, dropping the lowest-priority ones (the tail) until
- * the line fits. `hintsFor` already orders them most-useful-first, so the screen's
- * own keys survive and `? help` is the first thing to go.
+ * Joins hint labels with ` · `, dropping the lowest-priority ones until the line
+ * fits. `hintsFor` orders them most-useful-first, so the screen's own keys survive.
+ *
+ * The **last** hint is pinned: it is always `Esc back` / `q quit`, and "how do I get
+ * out of here" is the one hint that must never be the casualty of a narrow terminal
+ * (that was the owner's "you try to escape, can't go back, then see nothing").
  */
 export function fitHints(hints: readonly string[], width: number): string {
   const separator = ' · ';
+  if (hints.length === 0) return '';
+  const pinned = hints[hints.length - 1] ?? '';
+  const rest = hints.slice(0, -1);
+  const budget = width - (rest.length === 0 ? 0 : cellWidth(pinned) + cellWidth(separator));
+
   let line = '';
-  for (const hint of hints) {
+  for (const hint of rest) {
     const candidate = line === '' ? hint : `${line}${separator}${hint}`;
-    if (cellWidth(candidate) > width) break;
+    if (cellWidth(candidate) > budget) break;
     line = candidate;
   }
-  return line === '' ? truncateToWidth(hints[0] ?? '', width) : line;
+  if (line === '') return truncateToWidth(pinned, width);
+  return `${line}${separator}${pinned}`;
 }

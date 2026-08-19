@@ -9,6 +9,7 @@ import type { ReactElement } from 'react';
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 import type { ComposeDraft } from '../compose/draft-store.js';
+import { extractMentions } from '../format/rich-text.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { InvalidAttachmentError, readLocalImage } from '../media/validate.js';
 import { pollUntilReady, uploadMediaFile, type UploadProgress } from '../media/upload.js';
@@ -204,6 +205,7 @@ export function ComposeScreen({
   );
 
   const remaining = POST_BODY_LIMIT - draft.body.length;
+  const mentions = extractMentions(draft.body);
   const isReply = draft.inReplyToId !== undefined && draft.inReplyToId !== '';
 
   return (
@@ -220,6 +222,14 @@ export function ComposeScreen({
           <Text color={theme.accent}>{send.status === 'sending' ? '' : '█'}</Text>
         </Text>
       </Box>
+      {mentions.length === 0 ? null : (
+        // The server extracts `@handle` from the body and notifies those actors
+        // (`post.service.ts`'s `MENTION_PATTERN`) — showing who that will be before
+        // you press Ctrl+S means no surprise notifications.
+        <Text color={theme.muted} wrap="truncate-end">
+          mentions: {mentions.map((handle) => `@${handle}`).join(' ')}
+        </Text>
+      )}
       {attachments.length === 0 ? null : (
         <Box flexDirection="column" marginBottom={1}>
           {attachments.map((attachment, index) => (
