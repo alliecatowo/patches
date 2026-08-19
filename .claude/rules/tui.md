@@ -20,6 +20,8 @@ paths:
 - **Clean exit**: always restore terminal state (cursor visibility, alternate screen, Kitty image clear) on every exit path, including signals and uncaught errors — not just the happy path.
 - **Never lose a compose draft** — persist to local state/disk before any risky operation (submit, navigate away); spec §80 requires drafts to survive.
 - **Errors render as human-readable messages**, never a raw stack trace or gRPC status string, in the TUI itself.
+- **Every cosmetic needs two off switches** (spec §185): plain mode (`P`/`PATCHES_PLAIN`) strips all decoration including the viewer's own; quiet feed (`~`) hides _other_ actors' cosmetics. Both are client-side; the server never gates them. Content (bodies, CWs, alt text, tombstones, moderation notices) always renders under both.
+- **Remote decoration is hostile input** (§173, §184, §192): allow-listed glyphs only, no images/uploads, contrast floor enforced, control/escape sequences stripped, and nothing may draw outside the cells of the block being rendered.
 
 ## Non-TTY safety and verification
 

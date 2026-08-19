@@ -16,13 +16,20 @@ lists sections). Do not reinterpret architectural decisions; write an ADR in `do
 - Protobuf: `pnpm proto:gen` (buf generate), `pnpm proto:lint`, `pnpm proto:breaking`.
 - DB: `pnpm db:migrate`, `pnpm db:generate --name=<Name>` (TypeORM migrations, reviewed by a human/agent before commit).
 
-## Hard rules (from the spec, §153)
+## Hard rules (from the spec, §153, §177, §194)
 
 No Prisma/Drizzle/GraphQL/tRPC/Firebase/Supabase-as-backend/Redis/Kafka/Kubernetes in v0. No offset timeline
 pagination. No engagement ranking (never a `rankHomeFeed()`). No `synchronize: true`. No TypeORM entities returned
 over gRPC. No plaintext passwords/refresh tokens. No image uploads proxied through Node. Never reuse a removed
 protobuf field number. Federation is a seam (`FederationGateway` → `Noop`) only. TUI must always have a
 non-Kitty fallback. No `any`, `@ts-ignore`, `eslint-disable`, or empty `catch {}` without a one-line justification comment.
+
+**Amendment B (§178–§195, 2026-08-18) adds:** no votes/karma/scores anywhere; no `sort`/`order` parameter on any
+timeline RPC; no trending pages or activity-derived recommendations; a repost/quote/like/edit/pin never changes a
+post's feed position; no reaction types beyond the like (a custom glyph is a skin, not a reaction); no paywalled
+**function** (cosmetics may be capability-gated, capabilities never gate function, §184.3); v0 DMs are
+**server-visible** and every client must say so — never call them encrypted/secure/private (§183.1); no DM bodies in
+logs/metrics/errors. Web + React Native are **paused** until board Phase 11 ships (§179).
 
 ## Layering
 
