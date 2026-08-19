@@ -13,7 +13,6 @@ import {
   sha256Hash,
   sign,
   verifyStrict,
-  wipe,
 } from './primitives.js';
 import {
   E2EE_ALGORITHM,
@@ -29,6 +28,7 @@ import {
   type X3dhHandshake,
   type X3dhSecrets,
 } from './types.js';
+import { zeroize } from './zeroize.js';
 
 const TRANSCRIPT_CONTEXT = 'patches-e2ee-v1/x3dh-transcript';
 const KDF_CONTEXT = 'patches-e2ee-v1/x3dh-kdf';
@@ -89,7 +89,7 @@ function deriveSecrets(
     .finish();
   const material = hkdfSha256(input, ZERO_SALT, info, 96);
   const secrets = splitSecrets(material);
-  wipe(input, material, dh1, dh2, dh3, dh4);
+  zeroize(input, material, dh1, dh2, dh3, dh4);
   return secrets;
 }
 

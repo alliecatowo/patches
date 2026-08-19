@@ -224,3 +224,90 @@ These are not the architecture decision, but they prevent treating the snapshot 
    post-quantum claim for v1.
 8. E2EE does not authorize federated DMs. All key discovery, envelopes, reports, and delivery in
    ADR 0020 remain within one node.
+
+## P13-003 implementation notes (2026-08-19)
+
+This section records what `packages/crypto/**` implements as of task P13-003, against the stop-ship
+findings in §4 above. It does not change the production conclusions in §7 or any ADR 0020 ship
+gate: the package is still protocol core only, disabled outside isolated test nodes.
+
+### Findings closed
+
+- **§4.1 (unauthenticated initiator identity).** `identity.ts` now certifies both the Ed25519
+  signing key and the X25519 agreement key together in one root-signed `DeviceCertificate`
+  covering user id, device id, both public keys, generation, and a validity interval. `x3dh.ts`'s
+  handshake transcript includes both certified devices in full (`encodeCertifiedDevice`), both
+  signed roster digests, the signed prekey, and the optional one-time prekey id/key; the initiator
+  signs that whole transcript with its certified Ed25519 device key, and `respondX3dh` re-derives
+  and verifies the same transcript before deriving secrets. An attacker can no longer name a
+  victim's Ed25519 identity while supplying its own X25519 key: `verifyCertifiedDevice` rejects
+  any certificate not signed by the claimed root, and `respondX3dh` rejects any handshake whose
+  initiator device is absent from the presented (roster-verified) roster.
+- **§4.2 (not the Double Ratchet).** `double-ratchet.ts` implements the Signal revision-4
+  header-encryption state machine: retained root key, sending/receiving chain keys, a DH ratchet
+  step (`dhRatchet`) that mixes fresh X25519 output into the root chain on every direction change,
+  header keys (current + next, both directions) encrypted with XChaCha20-Poly1305, and skipped
+  keys indexed by `(sha256(header key), message number)` with two independent bounds (`MAX_SKIP`
+  per gap, `MAX_SKIPPED_KEYS` total retained). Post-compromise healing now holds: compromising a
+  snapshot of `DoubleRatchetState` does not compromise ciphertexts sent after the next DH ratchet
+  step in either direction, once an uncompromised party contributes fresh key material.
+- **§6 build/inspection defects.** The package builds, typechecks, and has full test coverage
+  (`build`/`typecheck`/`eslint`/`test` all green — see Verification below); `src/index.ts` exports
+  every public module; `fromHex` in `codec.ts` already rejected malformed input (`/^[0-9a-f]*$/i`
+  plus an even-length check) by the time of this task, so that defect was already closed.
+
+### New in this task (beyond closing the audit findings)
+
+- **`franking.ts`** — a from-scratch, byte-level committing scheme: a random sender-chosen opening
+  key HMAC-binds a commitment to the exact plaintext; the node's own HMAC report tag binds a
+  canonical transcript (franking-key era, conversation id, membership epoch, logical message id,
+  sender actor/device, recipient fanout digest, accepted-at, commitment, and every accepted
+  ciphertext digest). `verifyFrankingReport` composes both checks and throws `FrankingError` (a
+  new `E2eeProtocolError` subclass) the instant any check fails — forged plaintext, forged opening,
+  a disclosed commitment that doesn't match the accepted transcript, a forged/truncated node tag,
+  and a transcript replayed against a different logical message are all covered by
+  `franking.test.ts`. This is still a **candidate** construction pending the independent
+  cryptographic review ADR 0020 §9/§12.7 requires — the audit's §4.5 finding that a
+  committing-AE/franking profile needs external selection remains open. What changed is that the
+  candidate is now a real HMAC-based commitment/tag design with negative tests, not the prior
+  keyed-BLAKE2b sketch this ADR already rejected.
+- **`zeroize.ts`** — the prior `wipe()` helper (previously duplicated inside `primitives.ts`) is
+  now its own module with a documented limits section; every call site in `double-ratchet.ts` and
+  `x3dh.ts` was moved to it.
+- **Explicit, versioned ratchet-state serialization.** `encodeRatchetState`/`decodeRatchetState`
+  give a canonical byte encoding of `DoubleRatchetState` (own `RATCHET_STATE_FORMAT_VERSION`,
+  independent of the wire protocol's `E2EE_VERSION`) for an encrypted vault, including the
+  skipped-key cache. Decoding rejects an unknown format version and a skipped-key count above
+  `MAX_SKIPPED_KEYS` before allocating anything proportional to an attacker-controlled count, so a
+  corrupted vault entry fails closed rather than reconstructing unbounded state.
+- **Deterministic generated vectors + property/fuzz tests.** `scripts/generate-vectors.ts` (not
+  part of the build; run deliberately and reviewed on protocol changes) produces
+  `src/vectors/*.json` covering an X3DH handshake, an 8-message out-of-order Double Ratchet session
+  with its final serialized receiver state, and a franking commitment/tag pair, all from
+  fixed seeds. `src/vectors.test.ts` recomputes every one of those outputs from the same seeds on
+  every test run. `src/double-ratchet.property.test.ts` adds `fast-check` properties: random
+  drop/reorder of up to 30 messages always decrypts every delivered message to its original
+  plaintext, and mutating a single byte of either the header ciphertext or the body ciphertext
+  always throws an `E2eeProtocolError` subclass and never advances the receiver's counters.
+
+### What the wire/domain contract agent must align with
+
+This task did not touch `packages/proto` or `packages/domain`; the concurrent contract work should
+treat the following as the byte-level shapes it wraps, not renegotiate them without a corresponding
+crypto-package change:
+
+- `DeviceCertificate`/`CertifiedDevice`/`DeviceRoster`/`SignedDeviceRoster`/`PreKeyBundle` in
+  `types.ts` are the certificate/roster/prekey shapes; roster verification is monotonic-sequence +
+  digest-chain based (`verifyDeviceRoster`), not a single "latest wins" check.
+- `X3dhHandshake`/`X3dhSecrets` in `types.ts` are the initial-message shape; `initiateX3dh`/
+  `respondX3dh` in `x3dh.ts` are the only supported entry points (no raw DH-output access).
+- `EncryptedRatchetMessage` (`{ encryptedHeader, ciphertext }`) is the on-wire shape of every
+  post-setup Double Ratchet message; there is no separate plaintext-header variant.
+- `encodeRatchetState`/`decodeRatchetState` bytes are vault-internal only and must never appear on
+  the wire or in a server envelope.
+- Franking wiring is not yet decided: this task exposes `commitFranking`/`verifyFrankingCommitment`
+  (sender/recipient side) and `createNodeReportTag`/`verifyNodeReportTag`/`verifyFrankingReport`
+  (node side) as pure functions over caller-supplied byte fields. Where the opening key and
+  commitment travel inside the inner AEAD plaintext, and how `FrankingReportTranscript`'s fields
+  map onto the logical envelope in ADR 0020 §8, is domain/proto-layer design this task deliberately
+  left open.

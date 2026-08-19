@@ -18,3 +18,4 @@ export class PreKeyError extends E2eeProtocolError {}
 export class RatchetStateError extends E2eeProtocolError {}
 export class TooManySkippedMessagesError extends E2eeProtocolError {}
 export class ReplayedMessageError extends E2eeProtocolError {}
+export class FrankingError extends E2eeProtocolError {}

@@ -1,0 +1,11 @@
+{
+  "description": "Transcript-bound X3DH handshake between two synthetic certified devices, derived entirely from `seed` via src/testing/fixtures.ts. Replayed by src/vectors.test.ts.",
+  "seed": 101,
+  "nowMs": 10000,
+  "initiatorSignatureHex": "72a8b3499665e2c108dc8815154a3ba45751fa2a58dbf4212b748449ec740b7251c93a12bd31cc171d08233a33dab951163e3de6e3c6bb86d82c2db326aa6a04",
+  "ephemeralPublicKeyHex": "25a49f9c7574940704ee60da1039673652f090e974b254893df69f19f2989a7a",
+  "consumedOneTimePreKeyId": 91,
+  "rootKeyHex": "f5028d236b4aead0bb7f55f3b0c765fa34550f97332d571523c293d5c6d72ed1",
+  "initiatorHeaderKeyHex": "864cf1d3d02935cf697b2d27f8c41310495b5194df76ec33504066bdd8232527",
+  "responderHeaderKeyHex": "c8dd31418a612a838666f62496cdefe620d6a1bd6f5ca00484ff66076b95a585"
+}

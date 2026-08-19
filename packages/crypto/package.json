@@ -24,6 +24,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
+    "fast-check": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

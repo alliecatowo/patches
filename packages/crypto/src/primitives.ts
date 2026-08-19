@@ -1,5 +1,5 @@
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
-import { clean, randomBytes as nobleRandomBytes } from '@noble/ciphers/utils.js';
+import { randomBytes as nobleRandomBytes } from '@noble/ciphers/utils.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -19,10 +19,6 @@ export function randomBytes(length: number): Uint8Array {
     throw new MalformedInputError('Random byte length is invalid.');
   }
   return nobleRandomBytes(length);
-}
-
-export function wipe(...secrets: readonly (Uint8Array | undefined)[]): void {
-  for (const secret of secrets) if (secret !== undefined) clean(secret);
 }
 
 export function keyAgreementKeyPairFromPrivate(privateKey: Uint8Array): KeyPair {

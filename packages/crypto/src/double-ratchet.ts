@@ -15,7 +15,6 @@ import {
   keyAgreement,
   randomBytes,
   sha256Hash,
-  wipe,
 } from './primitives.js';
 import {
   E2EE_PROTOCOL,
@@ -32,7 +31,14 @@ import {
   type SkippedMessageKey,
   type X3dhSecrets,
 } from './types.js';
+import { zeroize } from './zeroize.js';
 
+/**
+ * Versioned independently of `E2EE_VERSION`: this is the on-disk shape of a persisted ratchet
+ * state, not the wire protocol. Bump it whenever a field is added, removed, or reordered so an
+ * older vault entry is rejected instead of silently misparsed.
+ */
+const RATCHET_STATE_FORMAT_VERSION = 1;
 const ROOT_KDF_CONTEXT = 'patches-e2ee-v1/double-ratchet/root-he-r4';
 const MESSAGE_KDF_CONTEXT = 'patches-e2ee-v1/double-ratchet/message';
 const HEADER_AEAD_CONTEXT = new TextEncoder().encode('patches-e2ee-v1/double-ratchet/header-he-r4');
@@ -123,14 +129,14 @@ function kdfRoot(
     chainKey: material.slice(32, 64),
     nextHeaderKey: material.slice(64, 96),
   };
-  wipe(material, dhOutput);
+  zeroize(material, dhOutput);
   return result;
 }
 
 function messageAeadMaterial(messageKey: Uint8Array): { key: Uint8Array; nonce: Uint8Array } {
   const material = hkdfSha256(messageKey, ZERO_SALT, MESSAGE_KDF_CONTEXT, 56);
   const result = { key: material.slice(0, 32), nonce: material.slice(32, 56) };
-  wipe(material);
+  zeroize(material);
   return result;
 }
 
@@ -214,7 +220,7 @@ function skipMessageKeys(state: MutableRatchetState, until: number): void {
   }
   while (state.receivedCount < until) {
     const derived = kdfChain(state.receivingChainKey);
-    wipe(state.receivingChainKey);
+    zeroize(state.receivingChainKey);
     state.receivingChainKey = derived.chainKey;
     const record: SkippedMessageKey = {
       headerKey: state.receivingHeaderKey.slice(),
@@ -238,7 +244,7 @@ function dhRatchet(state: MutableRatchetState, header: Header, source: RatchetRa
     state.rootKey,
     keyAgreement(state.sendingRatchetKey.privateKey, header.ratchetPublicKey),
   );
-  wipe(state.rootKey, state.receivingChainKey);
+  zeroize(state.rootKey, state.receivingChainKey);
   state.rootKey = receiving.rootKey;
   state.receivingChainKey = receiving.chainKey;
   state.nextReceivingHeaderKey = receiving.nextHeaderKey;
@@ -248,7 +254,7 @@ function dhRatchet(state: MutableRatchetState, header: Header, source: RatchetRa
     state.rootKey,
     keyAgreement(nextRatchetKey.privateKey, header.ratchetPublicKey),
   );
-  wipe(
+  zeroize(
     state.rootKey,
     state.sendingChainKey,
     state.sendingRatchetKey.privateKey,
@@ -336,7 +342,7 @@ export function ratchetEncrypt(
     plaintext,
     bodyAssociatedData(associatedData, encryptedHeader),
   );
-  wipe(state.sendingChainKey, derived.messageKey, material.key, material.nonce);
+  zeroize(state.sendingChainKey, derived.messageKey, material.key, material.nonce);
   state.sendingChainKey = derived.chainKey;
   state.sentCount += 1;
   return { state: freezeState(state), output: { encryptedHeader, ciphertext } };
@@ -358,7 +364,7 @@ function trySkippedMessage(
       bodyAssociatedData(associatedData, message.encryptedHeader),
     );
     state.skippedMessageKeys.delete(id);
-    wipe(skipped.headerKey, skipped.messageKey, material.key, material.nonce);
+    zeroize(skipped.headerKey, skipped.messageKey, material.key, material.nonce);
     return plaintext;
   }
   return undefined;
@@ -402,7 +408,7 @@ export function ratchetDecrypt(
     message.ciphertext,
     bodyAssociatedData(associatedData, message.encryptedHeader),
   );
-  wipe(state.receivingChainKey, derived.messageKey, material.key, material.nonce);
+  zeroize(state.receivingChainKey, derived.messageKey, material.key, material.nonce);
   state.receivingChainKey = derived.chainKey;
   state.receivedCount += 1;
   return { state: freezeState(state), output: plaintext };
@@ -410,7 +416,7 @@ export function ratchetDecrypt(
 
 /** Best-effort JS zeroization after a newer state has been durably committed. */
 export function disposeRatchetState(state: DoubleRatchetState): void {
-  wipe(
+  zeroize(
     state.rootKey,
     state.sendingRatchetKey.privateKey,
     state.sendingRatchetKey.publicKey,
@@ -423,6 +429,111 @@ export function disposeRatchetState(state: DoubleRatchetState): void {
     state.nextReceivingHeaderKey,
   );
   for (const skipped of state.skippedMessageKeys.values()) {
-    wipe(skipped.headerKey, skipped.messageKey);
+    zeroize(skipped.headerKey, skipped.messageKey);
   }
+}
+
+function writeOptionalKey(writer: ByteWriter, value: Uint8Array | undefined): ByteWriter {
+  writer.u8(value === undefined ? 0 : 1);
+  return value === undefined ? writer : writer.fixed(value);
+}
+
+function readOptionalKey(reader: ByteReader): Uint8Array | undefined {
+  const present = reader.u8();
+  if (present === 0) return undefined;
+  if (present !== 1) throw new MalformedInputError('Optional key presence flag is invalid.');
+  return reader.fixed(KEY_BYTES);
+}
+
+/**
+ * Explicit, versioned byte encoding of a Double Ratchet session for an encrypted client vault.
+ * Never call `JSON.stringify`/log a `DoubleRatchetState` directly — its sequence counters and
+ * key material must only leave memory through this opaque, vault-bound byte form.
+ */
+export function encodeRatchetState(state: DoubleRatchetState): Uint8Array {
+  if (state.protocol !== E2EE_PROTOCOL || state.version !== E2EE_VERSION) {
+    throw new RatchetStateError('Unsupported ratchet state protocol or version.');
+  }
+  const writer = new ByteWriter()
+    .u8(RATCHET_STATE_FORMAT_VERSION)
+    .fixed(state.rootKey)
+    .fixed(state.sendingRatchetKey.publicKey)
+    .fixed(state.sendingRatchetKey.privateKey);
+  writeOptionalKey(writer, state.receivingRatchetPublicKey);
+  writeOptionalKey(writer, state.sendingChainKey);
+  writeOptionalKey(writer, state.receivingChainKey);
+  writeOptionalKey(writer, state.sendingHeaderKey);
+  writeOptionalKey(writer, state.receivingHeaderKey);
+  writer
+    .fixed(state.nextSendingHeaderKey)
+    .fixed(state.nextReceivingHeaderKey)
+    .u32(state.sentCount)
+    .u32(state.receivedCount)
+    .u32(state.previousSendingChainLength)
+    .u32(state.skippedMessageKeys.size);
+  for (const skipped of state.skippedMessageKeys.values()) {
+    writer.fixed(skipped.headerKey).u32(skipped.messageNumber).fixed(skipped.messageKey);
+  }
+  return writer.finish();
+}
+
+/**
+ * Inverse of {@link encodeRatchetState}. Rejects an unknown format version, a truncated or
+ * over-long buffer, and a skipped-key count above `MAX_SKIPPED_KEYS` before allocating anything
+ * proportional to an attacker-controlled count, so a corrupted vault entry fails closed.
+ */
+export function decodeRatchetState(bytes: Uint8Array): DoubleRatchetState {
+  const reader = new ByteReader(bytes);
+  const formatVersion = reader.u8();
+  if (formatVersion !== RATCHET_STATE_FORMAT_VERSION) {
+    throw new RatchetStateError('Unsupported ratchet state format version.');
+  }
+  const rootKey = reader.fixed(KEY_BYTES);
+  const sendingRatchetKey: KeyPair = {
+    publicKey: reader.fixed(KEY_BYTES),
+    privateKey: reader.fixed(KEY_BYTES),
+  };
+  const receivingRatchetPublicKey = readOptionalKey(reader);
+  const sendingChainKey = readOptionalKey(reader);
+  const receivingChainKey = readOptionalKey(reader);
+  const sendingHeaderKey = readOptionalKey(reader);
+  const receivingHeaderKey = readOptionalKey(reader);
+  const nextSendingHeaderKey = reader.fixed(KEY_BYTES);
+  const nextReceivingHeaderKey = reader.fixed(KEY_BYTES);
+  const sentCount = reader.u32();
+  const receivedCount = reader.u32();
+  const previousSendingChainLength = reader.u32();
+  const skippedCount = reader.u32();
+  if (skippedCount > MAX_SKIPPED_KEYS) {
+    throw new TooManySkippedMessagesError('Serialized skipped-key count exceeds the bound.');
+  }
+  const skippedMessageKeys = new Map<string, SkippedMessageKey>();
+  for (let index = 0; index < skippedCount; index += 1) {
+    const headerKey = reader.fixed(KEY_BYTES);
+    const messageNumber = reader.u32();
+    const messageKey = reader.fixed(KEY_BYTES);
+    skippedMessageKeys.set(skippedKeyId(headerKey, messageNumber), {
+      headerKey,
+      messageNumber,
+      messageKey,
+    });
+  }
+  reader.end();
+  return {
+    protocol: E2EE_PROTOCOL,
+    version: E2EE_VERSION,
+    rootKey,
+    sendingRatchetKey,
+    receivingRatchetPublicKey,
+    sendingChainKey,
+    receivingChainKey,
+    sendingHeaderKey,
+    receivingHeaderKey,
+    nextSendingHeaderKey,
+    nextReceivingHeaderKey,
+    sentCount,
+    receivedCount,
+    previousSendingChainLength,
+    skippedMessageKeys,
+  };
 }

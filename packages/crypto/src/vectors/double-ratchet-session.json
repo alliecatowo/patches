@@ -1,0 +1,60 @@
+{
+  "description": "One-directional 8-message Double Ratchet session (alice -> bob) delivered out of order, plus the receiver state serialized after all messages land. Replayed by src/vectors.test.ts.",
+  "seed": 202,
+  "associatedData": "conversation-vector/device-pair-a-b",
+  "messages": [
+    {
+      "plaintext": "vector message 0",
+      "encryptedHeaderHex": "cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb3e0d2515ebd88771ccb83708b9f432c8ba5121f24dd6656a214867d8764c70d92f6c030c4ddb314877c2c3aa83a18c452e225a800910569800",
+      "ciphertextHex": "2336a65cfb6632b925e296f75a1db7aa366836f2d7f1f07e2cfd7e6f2e89d8ac"
+    },
+    {
+      "plaintext": "vector message 1",
+      "encryptedHeaderHex": "ccccccccccccccccccccccccccccccccccccccccccccccccfcfae32a415773af9dd4b26570b937e108195c2ce00922f7c6a3d24cb595987ebf032b33e025c8892415d34afab6674d65eda9eea63f10230d",
+      "ciphertextHex": "206320d0316b769487e3089d1614219bd900a4259f58313aaf1d658221592c35"
+    },
+    {
+      "plaintext": "vector message 2",
+      "encryptedHeaderHex": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdd81581abdec56a88b6ad38d422a23e906b09e7424d360cdc94992627aa6ceb6e0125bc0c0e550a0530ebcad4f21d71c86aa00a3440f4bd9679",
+      "ciphertextHex": "b503221c3e8a4d4b3e1e3d9751484306df5b7093a1585ee5eb159b098e3db5e5"
+    },
+    {
+      "plaintext": "vector message 3",
+      "encryptedHeaderHex": "cecececececececececececececececececececececececeaeedb2776538ae0c933c89a15db19a3196ecbcecb2b41006c74f820f8736bf692b67ec5f3ccef6f37f573bda7882cbe0d5f562de590feafbb6",
+      "ciphertextHex": "54cc39ced14feddfd15a707712507094179af4cfb204bada44e356974e0d7b55"
+    },
+    {
+      "plaintext": "vector message 4",
+      "encryptedHeaderHex": "cfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcf671183d0d69ae2651b05e437f68e4a25dc297e0297aeb1508c0fb4efe4076baa9677081cfee5273286a3a7e293d009554a0079d2dd69448d88",
+      "ciphertextHex": "3e06577d735e0d675ed37ab7417a058814828bae8bc6a51168d131e763a86f2b"
+    },
+    {
+      "plaintext": "vector message 5",
+      "encryptedHeaderHex": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d086c558bdc6ecbe03d74060caedf6ed60aceb4cd25b6ed2dbe109372cd9d4265315a4f5fe4bbd9c512a814f51c9a69a1dadc6dcfa37bf81026f",
+      "ciphertextHex": "e84e1b705210a343f49ddf14d0e34f2c9957e2105e223fa6e765977217698e61"
+    },
+    {
+      "plaintext": "vector message 6",
+      "encryptedHeaderHex": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d126f819a5958cd31848a0b2f8c0db964ccff5b5741f9e297642d3e88510870a6af128af92ff9a85ffc579ecd7afabf27e9be8686b67ca39a5da",
+      "ciphertextHex": "4dc104fee905cdee46d1cb4bf06f9da8684aa6f98f13309065c1bbd111ed4c0c"
+    },
+    {
+      "plaintext": "vector message 7",
+      "encryptedHeaderHex": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2dff876d333103671580f94cff22fc01952388e046e95c57b980cc8580b665058d5c876927324d6cea58d87877a62ad32b48327e6e176fc6586",
+      "ciphertextHex": "9b57f6d014a0b47ea1f7df2057d33763e0e1442f6da0381e03466e7d33679585"
+    }
+  ],
+  "deliveryOrder": [3, 0, 5, 1, 7, 2, 6, 4],
+  "decryptedInDeliveryOrder": [
+    "vector message 3",
+    "vector message 0",
+    "vector message 5",
+    "vector message 1",
+    "vector message 7",
+    "vector message 2",
+    "vector message 6",
+    "vector message 4"
+  ],
+  "finalReceiverSkippedKeyCount": 0,
+  "finalReceiverStateHex": "01a7421bbc0df3ea8913c461eaa3dcdbb9a5dcb1cde41b54b4425bb209b4abfe54e8980c4ea5ebf8fb6c281098b75cdd32862922a638778251979b6d322ed7e02ecccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc012dfc122e60d7e18dbdc438b419609d7620c1d88dfd73e76e3eebaff520703a5801ba9c153c21bd27250bef418ab196911c839bd4bdf150214fa12aaaff1233436a0161cf77ff4c0d3d8a5a2ba7de837bdd8c22db425dc4793b98d890f5621c65bc1701131f1b05cd99ac006bef387991bde7a9da302a9a3a57f1b052a58505901f4fa7018b960767abbd3339963ee64b1c6bcb506d6c2e146dd9940dc57c311866f24bc52ce068945a9f50135d2aea973af2f690da8a301509f21bea227e781f7922f712982f4c1f78990a92ea1fcf527a3a7217df785076b33e1984aa995032d6d0f1ed00000000000000080000000000000000"
+}
