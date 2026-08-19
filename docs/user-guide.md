@@ -221,13 +221,34 @@ existing body.
 
 ### Following and search
 
-`g s` or `/` opens actor search (handle prefix and display-name match). From a profile, `f`
-follows or unfollows; `Ctrl+A`/attach and the rest of compose behave the same whether you're
-posting fresh or replying (`r`).
+`g s` or `/` opens search. `Tab` (or `1`/`2`/`3` while the query field is empty) switches
+between three modes: **people** (handle prefix and display-name match, or a remote
+`user@domain` lookup if you're signed in), **posts**, and **tags**. In posts mode, three
+tokens inside the query are parsed out before the search runs: `since:YYYY-MM-DD`, `from:@handle`
+(or `from:handle`), and `#tag` — `from:` reaches the server as a real filter, `since:` and `#tag`
+are applied to the results locally (the screen says "filtered locally" when that happens, since a
+local filter can only narrow what the server already sent back). `↑`/`↓` recall your last 20
+searches, persisted across restarts. There is no way to sort or rank search results — posts
+always come back newest-first. From a profile, `f` follows or unfollows; `Ctrl+A`/attach and the
+rest of compose behave the same whether you're posting fresh or replying (`r`).
 
 ### Notifications
 
 `g n` lists notifications (replies, mentions, likes, follows), deduplicated server-side.
+
+### Direct messages
+
+`Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
+full-screen `g d` isn't wired into the shell yet). The first line is always the same disclosure —
+**"Not end-to-end encrypted — this node's operators can read these messages."** — because that's
+true of every v0 conversation; nothing in this client ever calls a DM "encrypted," "secure," or
+"private." `Tab` switches between your **Inbox** and pending **Requests** (a message from someone
+you don't follow lands as a request until you accept it). Sending is optimistic: your message
+appears immediately, marked as sending; if it fails to actually send, the draft comes back into
+the compose field instead of silently vanishing, so you can just try again. The screen also has a
+plain-language retention note ("This node automatically deletes messages older than N days") for
+when a node exposes its message retention policy — _Status: planned_, the shell doesn't fetch and
+pass that policy through yet, so nothing shows there today.
 
 ### Blocking, muting, and reporting
 
@@ -289,6 +310,18 @@ the selected not-yet-appealed notice, with a short statement. Headless:
 node's own conduct, not of any individual's. Domain entries name the domain; account/post/
 media entries never carry a handle, actor id, or post id. No sign-in required. Headless:
 `patches modlog`.
+
+### Themes and colour
+
+`,` opens Preferences. The **Theme** row previews live as you cycle it (`h`/`l` or arrow keys) —
+the whole UI repaints in the theme under the cursor before you commit to anything — and shows a
+line explaining its contrast against the background (e.g. "AA contrast 7.12:1 against
+background"), the same WCAG AA floor (4.5:1 for normal text) the nameplate colour picker enforces.
+`Enter` saves the previewed theme (and the rest of the row's settings) to this node+account's
+local preferences; `Esc` reverts everything back to what you had before you opened the screen. A
+custom nameplate colour (`g e` to edit your profile) goes through the same picker and the same
+floor — it degrades the swatch preview itself through truecolor → 256-colour → 16-colour → text
+depending on what your terminal reports, so what you see while picking is what you'll actually get.
 
 ## Plain mode and accessibility
 
