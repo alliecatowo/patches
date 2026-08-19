@@ -226,10 +226,12 @@ genuinely new follow (A-026), after the follow transaction commits.
 
 `Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
 
-`Post.filtered_by`/`Post.labels` (Amendment C, §198.3/§200.3) are **planned (proto only,
-P14-001)** — every response leaves them unset/empty today; populating them requires the
-`FilterService`/`LabelService` evaluation chokepoint at `FeedService.applyVisibilityFilter`,
-which doesn't exist yet.
+`Post.filtered_by` (§198.3, P14-007/P14-008) and `Post.labels` (§200.3, P14-009) are both wired:
+`feeds/post-batch.ts` populates each per post before mapping to the wire. `Post.labels` is
+subscriber-scoped — populated only for labelers the viewer subscribes to (plus the node's own
+labeler, subscribed by default, `modules/labels/label-lookup.ts`) — and only for feed reads so
+far; single-post read paths in `modules/posts/post.service.ts` (`GetPost` and friends) still
+leave it empty rather than guessing, a follow-up task.
 
 ### FeedService (§52) — implemented (P3-002)
 
@@ -352,46 +354,65 @@ sender deletion is a tombstone, and unread state is per viewer without read rece
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
 
-### 3a. Amendment C services (§196–§210) — planned (proto only)
+### 3a. Amendment C services (§196–§210)
 
-**Status: planned (proto only, P14-001).** The `.proto` contract below exists and is
-generated; no Nest module, service, or repository backs any of these RPCs yet except
-`NodeService.GetNodePolicy` and `ModerationService.ListModerationLog`/
-`ListMyModerationNotices`, which have controller wiring that returns an honest empty
-result/`NOT_IMPLEMENTED` (see their notes in §3 above) rather than a schema gap. Amendment C's
-organizing rule — filters/lists/labelers act on what a _viewer_/_subscriber_ sees, the node
-floor (reports, moderator review, the audit log) is unchanged and unweakened, and nothing here
-ever ranks, scores, or reorders anything (§194, §208) — governs the implementation that will
-land in follow-up tasks.
+**Status: mostly planned (proto only, P14-001); `PrivacyService` (P14-010), `FilterService`
+(P14-007), `FilterListService` (P14-008), and `LabelService` (P14-009) implemented.** The
+`.proto` contract below exists and is generated for every service in this section. Beyond
+`NodeService.GetNodePolicy` and `ModerationService.ListModerationLog`/`ListMyModerationNotices`
+(controller wiring that returns an honest empty result/`NOT_IMPLEMENTED` — see their notes in §3
+above, rather than a schema gap), `PrivacyService`/`FilterService`/`FilterListService`/
+`LabelService` now have a real Nest module/service/repository behind them end to end — see their
+own subsections below for what that does and does not cover. `AppealService` remains
+contract-only as of this writing. Amendment C's organizing rule — filters/lists/labelers act on
+what a _viewer_/_subscriber_ sees, the node floor (reports, moderator review, the audit log) is
+unchanged and unweakened, and nothing here ever ranks, scores, or reorders anything (§194, §208)
+— governs the implementation that will land in follow-up tasks.
 
-#### FilterService (§198) — implemented in `filters.proto` (P14-001, contract only)
+#### FilterService (§198) — implemented in `filters.proto` (P14-007)
 
-| RPC             | Notes                                                                                                            |
-| --------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `CreateFilter`  | up to 50 filters/actor, 20 terms/filter (§204); literal terms only — no user-supplied regex, ever (§198.2, §208) |
-| `UpdateFilter`  | `google.protobuf.FieldMask`-selected partial update, same pattern as `ActorService.UpdateProfile`                |
-| `DeleteFilter`  |                                                                                                                  |
-| `ListFilters`   | the caller's own filters                                                                                         |
-| `ExportFilters` | plain, documented JSON — never a binary blob or executable format (§153, §198.5)                                 |
-| `ImportFilters` | additive; `apply = false` previews what would be added without writing anything                                  |
+| RPC             | Notes                                                                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateFilter`  | up to 50 filters/actor, 20 terms/filter (§204); literal terms only — no user-supplied regex, ever (§198.2, §208)                                   |
+| `UpdateFilter`  | `google.protobuf.FieldMask`-selected partial update, same pattern as `ActorService.UpdateProfile`                                                  |
+| `DeleteFilter`  | idempotent — deleting an already-gone (or never-owned) filter id is not an error (§62)                                                             |
+| `ListFilters`   | the caller's own filters, most recent first                                                                                                        |
+| `ExportFilters` | plain, documented JSON — never a binary blob or executable format (§153, §198.5)                                                                   |
+| `ImportFilters` | additive; `apply = false` previews what would be added without writing anything; a malformed entry is skipped rather than failing the whole import |
 
-`hide` is enforced by omission on the server — a hidden post never reaches the client, so a
-page can legitimately contain fewer items than requested (clients must page on `PageInfo`, not
-item count). `collapse`/`warn` surface as `Post.filtered_by` instead (§198.3).
+Evaluation is wired at the same chokepoint blocks/mutes already use
+(`apps/server/src/modules/feeds/feed.service.ts`'s `page()`/`listHomeFeed()`, via the pure
+matching helpers in `apps/server/src/modules/filters/filter-matching.ts`) for `ListHomeFeed`,
+`ListLocalFeed`, `ListTagFeed`, and `ListCommunityFeed` — **not** `ListActorPosts`, which spec
+§198.3 explicitly excludes ("threads and profiles are deliberately not filterable in v1"; there
+is no `PROFILE`/`ACTOR` value in `FilterScope`). `hide` is enforced by omission on the server —
+a hidden post never reaches the client, so a page can legitimately contain fewer items than
+requested (clients must page on `PageInfo`, not item count); `page()` re-fetches in a **bounded**
+number of rounds (`MAX_FILTER_ROUNDS = 4`) to backfill a short page where it can, advancing the
+cursor to the last row examined each round — never an unbounded loop (§198.4). `collapse`/`warn`
+surface as `Post.filtered_by` instead. `actor`/`tag`/`domain`/`substring`/`word` terms are all
+evaluated in the application service (not pushed into SQL as §198.4's implementation note
+suggests for `actor`/`tag`) — a documented v0 simplification; see the class doc on
+`filter-matching.ts` and this task's report for the trade-off.
 
-#### FilterListService (§199) — implemented in `filter_lists.proto` (P14-001, contract only)
+#### FilterListService (§199) — implemented in `filter_lists.proto` (P14-008)
 
-| RPC                                 | Notes                                                                                                                           |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `PublishFilterList`                 | personal or (via `owner_community_id`) community-owned; up to 10 lists/actor, 2,000 entries/list (§204)                         |
-| `UpdateFilterList`                  | field-mask partial update; `name`/ownership immutable after publish                                                             |
-| `DeleteFilterList`                  |                                                                                                                                 |
-| `GetFilterList` / `ListFilterLists` | lists are public by construction (§199.1)                                                                                       |
-| `ListFilterListEntries`             | the full entry set — visible to any subscriber, always (§199.3)                                                                 |
-| `SubscribeFilterList`               | applies entries as filters/mutes with a subscriber-chosen action (default `collapse`); **never creates a block** (§199.2, §208) |
-| `UnsubscribeFilterList`             | instant and complete — subscriptions evaluate live, entries are never copied (§199.3)                                           |
-| `ListFilterListSubscriptions`       | the caller's own subscriptions only — subscriber counts are never published anywhere (§199.3, §208)                             |
-| `SetFilterListEntryException`       | per-entry opt-out without unsubscribing or notifying the list author                                                            |
+| RPC                                 | Notes                                                                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PublishFilterList`                 | personal or (via `owner_community_id`, requiring the caller be a moderator) community-owned; up to 10 lists per owner, 2,000 entries/list (§204)                            |
+| `UpdateFilterList`                  | field-mask partial update; `name`/ownership immutable after publish                                                                                                         |
+| `DeleteFilterList`                  | idempotent; owner-actor or community-moderator only                                                                                                                         |
+| `GetFilterList` / `ListFilterLists` | lists are public by construction (§199.1) — anonymous-readable, no viewer gate                                                                                              |
+| `ListFilterListEntries`             | the full entry set — anonymous-readable, always (§199.3)                                                                                                                    |
+| `SubscribeFilterList`               | applies entries as filters/mutes with a subscriber-chosen action (default `collapse`); upsert (re-subscribing updates the action); **never creates a block** (§199.2, §208) |
+| `UnsubscribeFilterList`             | instant and complete — also clears the caller's per-entry exceptions on that list, so a later re-subscribe never inherits a stale exception set (§199.3)                    |
+| `ListFilterListSubscriptions`       | the caller's own subscriptions only — subscriber counts are never published anywhere, on this or any other RPC in this pair (§199.3, §208)                                  |
+| `SetFilterListEntryException`       | per-entry opt-out without unsubscribing or notifying the list author; requires an active subscription to the list                                                           |
+
+**Proto/spec gap, recorded rather than silently resolved:** §199.2's prose says a subscriber
+chooses "an action and scopes"; the shipped `SubscribeFilterListRequest` has no `scopes` field.
+List-derived rules are therefore applied to every scope, unconditionally — see
+`filter-matching.ts#loadEffectiveFilterRules`'s doc comment.
 
 #### LabelService (§200) — implemented in `labels.proto` (P14-001, contract only)
 
@@ -420,7 +441,7 @@ Admin-side resolution is CLI-only (`patches-admin appeal list\|inspect\|resolve`
 task extending the existing `report list\|inspect\|resolve` pattern, §65) — there is
 deliberately no gRPC resolve RPC.
 
-#### PrivacyService (§197) — implemented in `privacy.proto` (P14-001, contract only)
+#### PrivacyService (§197) — implemented in `privacy.proto` and `apps/server/src/modules/privacy/**` (P14-010)
 
 | RPC                        | Notes                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -429,14 +450,32 @@ deliberately no gRPC resolve RPC.
 | `UpdatePrivacyPrefs`       | field-mask partial update, same pattern as `ActorService.UpdateProfile`                                         |
 | `ExportAccount`            | enqueues a background job (§30, ADR 0004) — never synchronous, never streams the archive through this process   |
 | `GetExportStatus`          | one ready archive at a time, expires after 7 days (§204)                                                        |
-| `RequestAccountDeletion`   | moves the account to `PENDING_DELETION`; disappears from feeds/search/local-timeline immediately (§197.4)       |
+| `RequestAccountDeletion`   | moves the account to "pending deletion"; disappears from feeds/search/local-timeline immediately (§197.4)       |
 | `CancelAccountDeletion`    | restores the account intact, only within the grace period (default 30 days, node-configurable)                  |
 | `GetDeletionStatus`        |                                                                                                                 |
 
+`AuthService.Register` records the account's initial acknowledgement itself (at whatever
+version this node currently publishes, per `PrivacyService.acknowledgePrivacyNotice`'s
+constant) — spec §197.1 requires a client to show the notice summary before the account
+exists, so by the time `Register` succeeds that has already happened; `RegisterRequest` was
+not amended with a notice-version field for this (that would be a proto change outside this
+task's scope). `ExportAccount`/`RequestAccountDeletion` only ever write a row and enqueue a
+durable `outbox_jobs` row (`EXPORT_ACCOUNT`/`PURGE_ACCOUNT` — `docs/architecture/jobs.md` §9);
+`apps/worker`'s `ExportAccountHandler`/`PurgeAccountHandler` do the actual work. The export
+archive is currently one self-describing JSON document (not the fuller directory-tree-plus-
+media-files layout §197.3 describes) — a documented v0 simplification, not a data-loss bug;
+see the archive's own embedded `readme` field. The `PURGE_ACCOUNT` job's scope is posts and
+bodies, media objects, follows, likes, DMs sent, sessions, credentials, and the notice
+acknowledgement itself — not yet bookmarks/reposts/community memberships/muted tags (nor
+filters/lists/labeler subscriptions, which this node doesn't implement yet). `patches-admin
+user delete` now routes through this same request-then-purge path in addition to its existing
+immediate status flip, rather than being a second, weaker deletion.
+
 `locked` (follow requests, a correctness fix for the currently-unenforced `FOLLOWERS`
-visibility promise) is part of this contract but has no enforcement yet — until it ships,
-`FOLLOWERS`-visibility posts must be described honestly as "not shown publicly", never
-"private" (§197.5).
+visibility promise) is accepted and stored by `UpdatePrivacyPrefs`, but has **no follow-request
+enforcement yet** — that requires `modules/graph` (`FollowActor` gaining a pending/approve
+flow), which is a follow-up task. Until it ships, `FOLLOWERS`-visibility posts must be
+described honestly as "not shown publicly", never "private" (§197.5).
 
 ## 4. Metadata conventions (§44)
 

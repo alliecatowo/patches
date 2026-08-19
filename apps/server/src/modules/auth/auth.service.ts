@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
+  ActorPrivacyPrefs,
   AuthCode,
   Credential,
   Invite,
@@ -84,6 +85,22 @@ const AUTH_CODE_BYTES = 32;
  * `pg_advisory` before reusing it for something else).
  */
 const BOOTSTRAP_LOCK_KEY = 7461001;
+
+/**
+ * P14-010 (spec §197.1): the privacy notice version this node currently publishes. Mirrors
+ * `NodeService.getNodePolicy()`'s deliberate `privacyNoticeVersion: 0` stub
+ * (`apps/server/src/modules/system/node.service.ts`, P14-001 — real operator-supplied notice
+ * text/version is a follow-up task); kept as its own local constant rather than an import from
+ * `modules/system` so `AuthModule` doesn't take on a dependency on a sibling feature module for
+ * one shared literal. `RegisterRequest` carries no acknowledgement field of its own — spec
+ * §197.1 requires the client to show the notice summary *before the account exists*, so by the
+ * time `register()` succeeds the notice at whatever version this node currently publishes has
+ * necessarily already been shown, and `createActorAndUser` below stamps that as the account's
+ * initial acknowledgement. Whoever wires real operator-supplied policy content into
+ * `GetNodePolicy` must update this constant (or, better, both read from one shared source) in
+ * the same change, so the two never disagree about what "current" means.
+ */
+const REGISTRATION_PRIVACY_NOTICE_VERSION = 0;
 
 export interface RegisterInput {
   handle: string;
@@ -1082,6 +1099,28 @@ async function createActorAndUser(
 
   await actors.update({ id: actor.id }, { userId: user.id });
   actor.userId = user.id;
+
+  // P14-010 (spec §197.1): every new actor gets a privacy-prefs row from birth, with the
+  // current registration flow's implicit notice acknowledgement already stamped — see
+  // `REGISTRATION_PRIVACY_NOTICE_VERSION`'s doc above for why this is honest even though
+  // `RegisterRequest` carries no acknowledgement field of its own. Additive only: nothing
+  // above this reads or depends on this row existing, so a registration whose privacy-prefs
+  // insert somehow failed would still leave a usable account — it doesn't, since this is
+  // still inside the caller's transaction, but the ordering keeps the change a pure addition
+  // to the existing flow rather than a rewrite of it.
+  const privacyPrefs = manager.getRepository(ActorPrivacyPrefs);
+  await privacyPrefs.save(
+    privacyPrefs.create({
+      actorId: actor.id,
+      discoverable: true,
+      indexable: true,
+      showInLocalFeed: true,
+      locked: false,
+      privacyNoticeVersion: REGISTRATION_PRIVACY_NOTICE_VERSION,
+      privacyNoticeAcknowledgedAt: new Date(),
+    }),
+  );
+
   return actor;
 }
 

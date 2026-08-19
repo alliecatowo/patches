@@ -83,6 +83,47 @@ export const ERROR_CODES = [
   'COMMUNITY_INVITE_NOT_FOUND',
   /** A tag id supplied to a mute/unmute RPC does not exist (P11-005, spec §181). */
   'TAG_NOT_FOUND',
+  /** `FilterService` lookup/authorization errors (P14-007, spec §198): a filter id that
+   * doesn't exist, or exists but belongs to another actor — uniform for the same §62 reason
+   * `POST_NOT_FOUND` is. */
+  'FILTER_NOT_FOUND',
+  /** `ImportFilters` given a payload that isn't the documented `ExportFilters` JSON shape
+   * (spec §198.5). */
+  'FILTER_IMPORT_INVALID',
+  /** `FilterListService` lookup errors (P14-008, spec §199): a filter list id, or a filter
+   * list entry id, that doesn't exist. */
+  'FILTER_LIST_NOT_FOUND',
+  'FILTER_LIST_ENTRY_NOT_FOUND',
+  /** `PublishFilterList`/`UpdateFilterList`/`DeleteFilterList` by someone who isn't the list's
+   * owning actor, or isn't a moderator of its owning community (spec §199.1). */
+  'FILTER_LIST_FORBIDDEN',
+  /** `LabelService` lookup errors (P14-009, spec §200): a labeler or label id that does not
+   * exist — uniform for the same §62 reason `POST_NOT_FOUND` is. */
+  'LABELER_NOT_FOUND',
+  'LABEL_NOT_FOUND',
+  /** `ApplyLabel`/`RetractLabel`/`CreateLabeler` by someone who isn't the labeler's own actor
+   * and isn't a moderator of its owning community, or any attempt to operate the node's own
+   * labeler through this RPC surface at all — a labeler operator's authority stops at their
+   * own labeler (§200.5, §208). */
+  'LABELER_FORBIDDEN',
+  /** `ApplyLabel`/`SetLabelerSubscriptionAction` given a `value` that is not one of the
+   * labeler's node-published, closed vocabulary — free-text label values are prohibited
+   * (spec §200.2, §208). */
+  'LABEL_VALUE_INVALID',
+  /** `AppealService.CreateAppeal` given a `moderation_notice_id` that doesn't resolve to a
+   * notice-worthy `admin_audit_log` row for the caller — uniform for "doesn't exist" and
+   * "isn't yours" for the same §62/§64 no-oracle reason `POST_NOT_FOUND` is (spec §201.3: only
+   * the acted-upon actor may appeal). */
+  'MODERATION_NOTICE_NOT_FOUND',
+  /** `AppealService.GetAppeal` on an id that doesn't exist or isn't the caller's own appeal
+   * (spec §201.3 — visible only to the appellant and moderators). */
+  'APPEAL_NOT_FOUND',
+  /** `AppealService.CreateAppeal` when `appeals.admin_audit_log_id` is already taken — one
+   * appeal per action (spec §201.3). */
+  'APPEAL_ALREADY_EXISTS',
+  /** `AppealService.CreateAppeal` after the node's published appeal window
+   * (`NodeService.GetNodePolicy.appeal_window_days`) has closed (spec §201.3, §204). */
+  'APPEAL_WINDOW_CLOSED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -127,6 +168,19 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   COMMUNITY_BANNED: GrpcStatus.PERMISSION_DENIED,
   COMMUNITY_INVITE_NOT_FOUND: GrpcStatus.NOT_FOUND,
   TAG_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  FILTER_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  FILTER_IMPORT_INVALID: GrpcStatus.INVALID_ARGUMENT,
+  FILTER_LIST_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  FILTER_LIST_ENTRY_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  FILTER_LIST_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
+  LABELER_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  LABEL_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  LABELER_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
+  LABEL_VALUE_INVALID: GrpcStatus.INVALID_ARGUMENT,
+  MODERATION_NOTICE_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  APPEAL_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  APPEAL_ALREADY_EXISTS: GrpcStatus.ALREADY_EXISTS,
+  APPEAL_WINDOW_CLOSED: GrpcStatus.FAILED_PRECONDITION,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

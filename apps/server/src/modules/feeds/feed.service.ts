@@ -1,15 +1,39 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Community, CommunityMember, Post, Repost, Tag } from '@patches/database';
+import {
+  Community,
+  CommunityMember,
+  Post,
+  Repost,
+  Tag,
+  type FilterScopeValue as DbFilterScope,
+} from '@patches/database';
 import { DataSource, type ObjectLiteral, type SelectQueryBuilder } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { toActorSummary } from '../auth/auth.dto.js';
+import {
+  buildFilterMatchCandidates,
+  evaluateCandidate,
+  loadEffectiveFilterRules,
+  type EffectiveFilterRule,
+  type FilterMatch,
+  type FilterMatchCandidate,
+} from '../filters/filter-matching.js';
+import { type FilteredByHintView } from '../filters/filter.dto.js';
 import { type PostView } from '../posts/post.dto.js';
 import { parseInput, uuidInputSchema } from '../posts/validation.js';
 import { parseTags } from '../tags/tag-extraction.service.js';
 import { clampLimit, decodeCursor, encodeCursor, pageInfoFor, type Cursor } from './pagination.js';
 import { toPostViews } from './post-batch.js';
+
+/** A bounded number of over-fetch rounds for `hide`-filtered pages (spec §198.3, §198.4): a
+ * `hide` match must never leave the page short just because the round it landed in also
+ * contained a run of hidden posts, but the re-fetching this requires MUST NOT be unbounded
+ * (§198.4's explicit "unbounded looping to fill a page is prohibited"). Each round advances the
+ * cursor to the last row it examined, so a caller who exhausts every round still gets a
+ * correct, resumable `next_cursor` — see `page()`. */
+const MAX_FILTER_ROUNDS = 4;
 
 /**
  * Chronological, fan-out-on-read feeds. Home-feed repost occurrences are ordered by the
@@ -116,30 +140,66 @@ export class FeedService {
       repostersByPost.set(occurrence.post.id, actors);
     }
 
+    // Every unique post in this round's overfetch, not yet capped to `take` — filter
+    // evaluation (below) can drop `hide` matches, and capping before that would understate how
+    // many rows are actually available for this page (spec §198.4).
     const collapsed: HomeOccurrence[] = [];
     const seen = new Set<string>();
     for (const occurrence of occurrences) {
       if (seen.has(occurrence.post.id)) continue;
       seen.add(occurrence.post.id);
       collapsed.push(occurrence);
-      if (collapsed.length > take) break;
     }
-    const hasMore = collapsed.length > take;
-    const page = hasMore ? collapsed.slice(0, take) : collapsed;
+
+    // `HOME`-scoped filter rules, evaluated once for the whole overfetched batch — not the
+    // `page()` bounded-round loop other feeds use, since this method already merges two
+    // separate queries (originals + reposts) into one page-local collapse; re-running that
+    // merge per filter round is out of scope here (documented in this task's report). The
+    // existing `scanTake = take * 4 + 1` overfetch already gives filtering slack.
+    const rules =
+      viewerActorId === undefined
+        ? []
+        : await loadEffectiveFilterRules(this.dataSource, viewerActorId, 'HOME');
+    const reposterIdsByPost = new Map<string, readonly string[]>(
+      [...repostersByPost.entries()].map(([postId, actors]) => [
+        postId,
+        actors.map((actor) => actor.id),
+      ]),
+    );
+    const candidates =
+      rules.length === 0
+        ? new Map()
+        : await buildFilterMatchCandidates(
+            this.dataSource,
+            collapsed.map((occurrence) => occurrence.post),
+            reposterIdsByPost,
+          );
+
+    const visible: Array<{ occurrence: HomeOccurrence; hint: FilteredByHintView | null }> = [];
+    for (const occurrence of collapsed) {
+      const match = matchFor(rules, candidates, occurrence.post.id);
+      if (match?.action === 'HIDE') continue;
+      visible.push({ occurrence, hint: match === null ? null : toFilteredByHintView(match) });
+    }
+
+    const hasMore = visible.length > take;
+    const page = hasMore ? visible.slice(0, take) : visible;
     const views = await toPostViews(
       this.dataSource.manager,
-      page.map((row) => row.post),
+      page.map((row) => row.occurrence.post),
       viewerActorId,
     );
-    const posts = views.map((view) => {
+    const posts = views.map((view, index) => {
+      const row = page[index];
       const reposters = repostersByPost.get(view.id) ?? [];
       return {
         ...view,
         repostedBy: reposters.slice(0, 3).map(toActorSummary),
         repostedByTotal: reposters.length,
+        filteredBy: row?.hint ?? null,
       };
     });
-    const tail = page.at(-1);
+    const tail = page.at(-1)?.occurrence;
     return {
       posts,
       nextCursor:
@@ -165,9 +225,12 @@ export class FeedService {
         { localViewerActorId: viewerActorId },
       );
     }
-    return this.page(qb, cursorRaw, limit, viewerActorId);
+    return this.page(qb, cursorRaw, limit, viewerActorId, 'LOCAL');
   }
 
+  /** A profile timeline — deliberately unfiltered (spec §198.3: "threads and profiles are
+   * deliberately not filterable in v1"; there is no `PROFILE`/`ACTOR` value in
+   * `FILTER_SCOPES`). A viewer who opened this actor's page asked for it. */
   async listActorPosts(
     actorId: string,
     cursorRaw: string,
@@ -180,6 +243,7 @@ export class FeedService {
       cursorRaw,
       limit,
       viewerActorId,
+      undefined,
     );
   }
 
@@ -219,7 +283,7 @@ export class FeedService {
       );
       applyTagMuteFilter(qb, viewerActorId, 'post');
     }
-    return this.page(qb, cursorRaw, limit, viewerActorId);
+    return this.page(qb, cursorRaw, limit, viewerActorId, 'TAG_FEED');
   }
 
   async listCommunityFeed(
@@ -245,6 +309,7 @@ export class FeedService {
       cursorRaw,
       limit,
       viewerActorId,
+      'COMMUNITY_FEED',
     );
   }
 
@@ -259,26 +324,94 @@ export class FeedService {
     return qb;
   }
 
+  /**
+   * `qb` must already carry every WHERE clause (visibility, tag mutes, scope-specific
+   * predicates) but no cursor/`take` — those are (re-)applied per round via `qb.clone()`
+   * (spec §198.4: `actor`/`tag`/`domain` term matching stays in the application service here,
+   * not pushed into SQL; see `filters/filter-matching.ts`'s module doc for why that is a
+   * documented simplification, not a correctness gap).
+   *
+   * `scope` selects the viewer's effective filter rule set for this RPC; `undefined` means
+   * "never evaluate filters for this read" — used by `listActorPosts` (a profile timeline),
+   * which spec §198.3 explicitly excludes from filtering ("threads and profiles are
+   * deliberately not filterable in v1").
+   */
   private async page(
     qb: SelectQueryBuilder<Post>,
     cursorRaw: string,
     limit: number,
-    viewerActorId?: string,
+    viewerActorId: string | undefined,
+    scope: DbFilterScope | undefined,
   ): Promise<FeedPage> {
-    const cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
-    if (cursor !== undefined) applyCursor(qb, 'post', cursor);
-    qb.take(take + 1);
-    const rows = await qb.getMany();
-    const hasMore = rows.length > take;
-    const page = hasMore ? rows.slice(0, take) : rows;
-    const posts = await toPostViews(this.dataSource.manager, page, viewerActorId);
-    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
-      createdAt: row.createdAt,
-      id: row.id,
+    let cursor = decodeCursor(cursorRaw);
+    const rules =
+      viewerActorId === undefined || scope === undefined
+        ? []
+        : await loadEffectiveFilterRules(this.dataSource, viewerActorId, scope);
+
+    const collected: Array<{ post: Post; hint: FilteredByHintView | null }> = [];
+    let roundHasMore = false;
+    for (let round = 0; round < MAX_FILTER_ROUNDS && collected.length < take; round += 1) {
+      const remaining = take - collected.length;
+      const roundQb = qb.clone();
+      if (cursor !== undefined) applyCursor(roundQb, 'post', cursor);
+      roundQb.take(remaining + 1);
+
+      const rows = await roundQb.getMany();
+      roundHasMore = rows.length > remaining;
+      const roundRows = roundHasMore ? rows.slice(0, remaining) : rows;
+      if (roundRows.length === 0) break;
+
+      const candidates =
+        rules.length === 0
+          ? new Map()
+          : await buildFilterMatchCandidates(this.dataSource, roundRows);
+      for (const row of roundRows) {
+        const match = matchFor(rules, candidates, row.id);
+        if (match?.action === 'HIDE') continue;
+        collected.push({ post: row, hint: match === null ? null : toFilteredByHintView(match) });
+      }
+
+      const last = roundRows.at(-1);
+      if (last !== undefined) cursor = { createdAt: last.createdAt, id: last.id };
+      if (!roundHasMore) break;
+    }
+
+    const page = collected.slice(0, take);
+    const views = await toPostViews(
+      this.dataSource.manager,
+      page.map((row) => row.post),
+      viewerActorId,
+    );
+    const posts = views.map((view, index) => ({ ...view, filteredBy: page[index]?.hint ?? null }));
+    const { nextCursor } = pageInfoFor(page, roundHasMore, (row) => ({
+      createdAt: row.post.createdAt,
+      id: row.post.id,
     }));
-    return { posts, nextCursor, hasMore };
+    return { posts, nextCursor, hasMore: roundHasMore };
   }
+}
+
+/** `EffectiveFilterRule[]`/candidate lookup → the strongest match, or `null` — a tiny wrapper
+ * so `page()`'s round loop stays a plain `for`, not nested closures. */
+function matchFor(
+  rules: readonly EffectiveFilterRule[],
+  candidates: ReadonlyMap<string, FilterMatchCandidate>,
+  postId: string,
+): FilterMatch | null {
+  const candidate = candidates.get(postId);
+  if (candidate === undefined) return null;
+  return evaluateCandidate(rules, candidate);
+}
+
+function toFilteredByHintView(match: FilterMatch): FilteredByHintView {
+  return {
+    provenance: match.provenance,
+    name: match.name,
+    listOwner: match.listOwner,
+    action: match.action,
+  };
 }
 
 /**

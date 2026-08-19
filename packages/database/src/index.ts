@@ -202,4 +202,8 @@ export {
   type CleanExpiredUploadsPayload,
   federationDeliverPayloadSchema,
   type FederationDeliverPayload,
+  exportAccountPayloadSchema,
+  type ExportAccountPayload,
+  purgeAccountPayloadSchema,
+  type PurgeAccountPayload,
 } from './jobs/payloads.js';

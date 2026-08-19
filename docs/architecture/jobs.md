@@ -123,6 +123,15 @@ Concretely:
 - Future `FEDERATION_DELIVER`: must deduplicate deliveries at the remote-activity
   level, since federation explicitly requires duplicate-delivery safety (§108 F2,
   §160).
+- `EXPORT_ACCOUNT`: the `account_exports` row it fills in only ever moves `PENDING` →
+  `READY`/terminal once, checked at the top of the handler — a redelivery of an
+  already-non-`PENDING` row is a no-op.
+- `PURGE_ACCOUNT`: re-checks the owning `account_deletion_requests` row's
+  `cancelled_at`/`purged_at` at execution time (not just at enqueue time) and no-ops on
+  either — the first covers a `CancelAccountDeletion` that landed after the job was
+  scheduled, the second covers a redelivery after a prior run already purged. Every
+  mutation inside the handler is itself conditional/idempotent, so even a crash mid-purge
+  followed by a full re-run never double-applies anything.
 
 ## 8. No busy polling / graceful shutdown (§124)
 
@@ -174,16 +183,35 @@ FEDERATION_DELIVER
 with related future types such as federation retry and remote actor refresh
 following the same table/mechanism (§11, §108).
 
+Amendment C, privacy and consent (§197, P14-010):
+
+```text
+EXPORT_ACCOUNT
+PURGE_ACCOUNT
+```
+
+`PrivacyService.ExportAccount`/`RequestAccountDeletion` (`apps/server/src/modules/privacy/`)
+enqueue these; `apps/worker/src/jobs/handlers/export-account.handler.ts`/
+`purge-account.handler.ts` run them. `PURGE_ACCOUNT`'s `available_at` is set to the deletion
+request's `purge_after` at enqueue time — the outbox's own delay mechanism _is_ the grace-period
+timer (§197.4), so no separate scheduler/cron exists for it.
+
 ## 10. Implementation status
 
 `Status: implemented` — `apps/worker` (P1-006): `JobRunner` claim loop (`src/jobs/job-runner.ts`),
 `EmailProvider` adapters for `console`/`smtp` (Mailpit)/`resend` (`src/email/`), and handlers for
 `SEND_VERIFICATION_EMAIL`, `SEND_PASSWORD_RESET_EMAIL`, `CLEAN_EXPIRED_TOKENS`. Job type
-constants and payload zod schemas live in `packages/database/src/jobs/`.
+constants and payload zod schemas live in `packages/database/src/jobs/`. `PROCESS_MEDIA` and
+`CLEAN_EXPIRED_UPLOADS` are also implemented (media landed in Phase 5, after this section was
+first written — `release-claim.ts` below is now dead code for these two types specifically,
+kept for whichever job type is next to ship its handler after its producer). `EXPORT_ACCOUNT`/
+`PURGE_ACCOUNT` are implemented too (P14-010) — see `docs/architecture/api.md` §3a's
+`PrivacyService` subsection for what each one's scope does and does not cover yet (the export
+archive is one JSON document rather than the fuller directory-tree-plus-media layout §197.3
+describes; the purge's content scope is posts/media/follows/likes/DMs-sent/sessions/
+credentials, not yet bookmarks/reposts/community memberships/muted tags).
 
-`Status: planned` — `PROCESS_MEDIA` and `CLEAN_EXPIRED_UPLOADS` have no registered handler yet
-(media isn't implemented); a claimed job of either type is released back to `PENDING` without
-penalizing `attempts` (see `apps/worker/src/jobs/release-claim.ts`) rather than being
-dead-lettered. Producers that enqueue jobs (e.g. `AuthService` writing a
-`SEND_VERIFICATION_EMAIL` row in the same transaction as `register()`) are tracked separately
-under the Phase 1 auth tasks, not part of this worker build.
+`release-claim.ts`'s "release an unhandled job type back to `PENDING` without penalizing
+`attempts`" mechanism is still real and still used — it just isn't needed for any job type
+`JobDispatcher` currently registers a handler for; it exists for whatever future job type a
+producer ships ahead of its handler.

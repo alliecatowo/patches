@@ -172,6 +172,24 @@ export const MAX_FILTER_LIST_SUBSCRIPTIONS = 100;
 /** Per-entry exceptions an actor may set on one subscribed filter list (§204). */
 export const MAX_FILTER_LIST_EXCEPTIONS_PER_LIST = 200;
 
+/** A filter's `name` (§198.1) — shown when a post is collapsed by it. No character limit is
+ * given in §204's headline list; bounded generously here so the field cannot be used to smuggle
+ * an oversized payload into `filters.name`/an export/import round trip. */
+export const MAX_FILTER_NAME_CHARS = 100;
+
+/** One `(kind, value)` filter term's literal `value` (§198.2) — long enough for a domain, a
+ * handle, or a short phrase; not a general text field. Shared by `filter_terms.value` and
+ * `filter_list_entries.value`, which use the same five kinds. */
+export const MAX_FILTER_TERM_VALUE_CHARS = 200;
+
+/** A filter list's `name` (§199.1) — the stable identifier a subscriber references; `filter_
+ * lists` has no DB `CHECK` on its shape (unlike `communities.name`), so this is a service-side
+ * bound only. */
+export const MAX_FILTER_LIST_NAME_CHARS = 64;
+
+export const MAX_FILTER_LIST_DISPLAY_NAME_CHARS = 80;
+export const MAX_FILTER_LIST_DESCRIPTION_CHARS = 500;
+
 /** Labeler subscriptions an actor may hold at once (§204). */
 export const MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR = 50;
 

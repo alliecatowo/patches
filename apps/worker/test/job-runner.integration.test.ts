@@ -7,8 +7,10 @@ import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
 import { CleanExpiredTokensHandler } from '../src/jobs/handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from '../src/jobs/handlers/clean-expired-uploads.handler.js';
+import { ExportAccountHandler } from '../src/jobs/handlers/export-account.handler.js';
 import { FederationDeliverHandler } from '../src/jobs/handlers/federation-deliver.handler.js';
 import { ProcessMediaHandler } from '../src/jobs/handlers/process-media.handler.js';
+import { PurgeAccountHandler } from '../src/jobs/handlers/purge-account.handler.js';
 import { SendPasswordResetEmailHandler } from '../src/jobs/handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from '../src/jobs/handlers/send-verification-email.handler.js';
 import { JobDispatcher } from '../src/jobs/job-dispatcher.js';
@@ -17,7 +19,7 @@ import { waitFor } from './support/wait-for.js';
 
 /** Neither `PROCESS_MEDIA` nor `CLEAN_EXPIRED_UPLOADS` is enqueued by this file's tests
  * (see `media-processing.integration.test.ts` for those) — this stub only exists so
- * `JobDispatcher`'s now-five-handler constructor is satisfiable without a real MinIO. */
+ * `JobDispatcher`'s multi-handler constructor is satisfiable without a real MinIO. */
 function unusedStorage(): StorageClient {
   const fail = (): never => {
     throw new Error('unusedStorage: not expected to be called by this test file');
@@ -88,6 +90,8 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       new ProcessMediaHandler(dataSource, storage, config),
       new CleanExpiredUploadsHandler(dataSource, storage, config),
       new FederationDeliverHandler(dataSource, config),
+      new ExportAccountHandler(dataSource, storage),
+      new PurgeAccountHandler(dataSource, storage),
     );
     const runner = new JobRunner(dataSource, dispatcher, config);
     return { runner, emailProvider };

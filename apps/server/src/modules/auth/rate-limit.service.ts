@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { RATE_LIMITS } from '@patches/domain';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { DbRateLimitStore } from './db-rate-limit-store.service.js';
@@ -23,7 +24,14 @@ export type RateLimitAction =
   | 'github_begin_login'
   /** `PollGitHubLogin`: `AuthService` also honors GitHub's own `interval`/`slow_down` per
    * device code, but this bounds the *number of distinct device codes* one peer can poll. */
-  | 'github_poll_login';
+  | 'github_poll_login'
+  /** `PrivacyService.ExportAccount` (P14-010, spec §204: `exportRequestedPerDay`) — bounds how
+   * many background export jobs one actor can enqueue. */
+  | 'export_account'
+  /** `PrivacyService.RequestAccountDeletion`/`CancelAccountDeletion` share one budget (spec
+   * §204: `accountDeletionRequestedOrCancelledPerDay`) — either call, in any combination,
+   * spends from it. */
+  | 'account_deletion_request_or_cancel';
 
 interface Window {
   limit: number;
@@ -50,6 +58,14 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
   media_begin_upload: { limit: 30, windowMs: 5 * 60_000 },
   github_begin_login: { limit: 20, windowMs: 5 * 60_000 },
   github_poll_login: { limit: 120, windowMs: 5 * 60_000 },
+  // Daily windows, straight from `packages/domain`'s §204 table — the single source of truth
+  // every layer (proto docs, this limiter, the future database constraint) reads from, same
+  // rule the `filters`/`labels` rate limits already follow.
+  export_account: { limit: RATE_LIMITS.exportRequestedPerDay, windowMs: 24 * 60 * 60_000 },
+  account_deletion_request_or_cancel: {
+    limit: RATE_LIMITS.accountDeletionRequestedOrCancelledPerDay,
+    windowMs: 24 * 60 * 60_000,
+  },
 });
 
 /**
@@ -95,6 +111,10 @@ export const DB_BACKED_RATE_LIMIT_ACTIONS: ReadonlySet<RateLimitAction> = new Se
   'verify_email',
   'resend_verification',
   'ssh_challenge',
+  // 24-hour windows especially cannot be process-local only: a single server restart (or a
+  // second process) must not silently double an actor's daily export/deletion budget.
+  'export_account',
+  'account_deletion_request_or_cancel',
 ]);
 
 /**

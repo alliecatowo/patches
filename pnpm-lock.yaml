@@ -177,6 +177,9 @@ catalogs:
     sharp:
       specifier: ^0.35.3
       version: 0.35.3
+    slice-ansi:
+      specifier: ^9.0.0
+      version: 9.0.0
     string-width:
       specifier: ^8.2.2
       version: 8.2.2
@@ -275,6 +278,9 @@ importers:
       '@patches/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@patches/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       pg:
         specifier: 'catalog:'
         version: 8.23.0
@@ -442,6 +448,9 @@ importers:
       sharp:
         specifier: 'catalog:'
         version: 0.35.3(@types/node@24.13.3)
+      slice-ansi:
+        specifier: 'catalog:'
+        version: 9.0.0
       string-width:
         specifier: 'catalog:'
         version: 8.2.2
@@ -543,6 +552,9 @@ importers:
       '@patches/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@patches/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@patches/media':
         specifier: workspace:*
         version: link:../../packages/media
@@ -645,7 +657,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12))
+        version: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(terser@5.50.0)(tsx@4.23.12))
 
   packages/database:
     dependencies:
@@ -8388,7 +8400,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12))
+      vitest: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(terser@5.50.0)(tsx@4.23.12))
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -8398,14 +8410,6 @@ snapshots:
       '@vitest/utils': 4.1.10
       chai: 6.2.2
       tinyrainbow: 3.1.1
-
-  '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12))':
-    dependencies:
-      '@vitest/spy': 4.1.10
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12)
 
   '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(terser@5.50.0)(tsx@4.23.12))':
     dependencies:
@@ -10921,20 +10925,6 @@ snapshots:
       lightningcss: 1.33.0
       terser: 5.50.0
 
-  vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12):
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.5
-      postcss: 8.5.26
-      rolldown: 1.2.4
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 24.13.3
-      esbuild: 0.27.7
-      fsevents: 2.3.3
-      terser: 5.50.0
-      tsx: 4.23.12
-
   vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(terser@5.50.0)(tsx@4.23.12):
     dependencies:
       lightningcss: 1.33.0
@@ -10998,35 +10988,6 @@ snapshots:
       - terser
       - typescript
       - universal-cookie
-
-  vitest@4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12)):
-    dependencies:
-      '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12))
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/runner': 4.1.10
-      '@vitest/snapshot': 4.1.10
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
-      es-module-lexer: 2.3.2
-      expect-type: 1.4.0
-      magic-string: 0.30.21
-      obug: 2.1.4
-      pathe: 2.0.3
-      picomatch: 4.0.5
-      std-env: 4.2.0
-      tinybench: 2.9.0
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      tinyrainbow: 3.1.1
-      vite: 8.2.1(@types/node@24.13.3)(esbuild@0.27.7)(terser@5.50.0)(tsx@4.23.12)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 24.13.3
-      '@vitest/coverage-v8': 4.1.10(vitest@4.1.10)
-      jsdom: 30.0.1(@noble/hashes@2.3.0)
-    transitivePeerDependencies:
-      - msw
 
   vitest@4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(terser@5.50.0)(tsx@4.23.12)):
     dependencies:

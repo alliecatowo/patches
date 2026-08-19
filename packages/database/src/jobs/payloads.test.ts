@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { processMediaPayloadSchema } from './payloads.js';
+import {
+  exportAccountPayloadSchema,
+  processMediaPayloadSchema,
+  purgeAccountPayloadSchema,
+} from './payloads.js';
 
 describe('processMediaPayloadSchema', () => {
   it('accepts a mediaId with no expectedSha256', () => {
@@ -26,5 +30,36 @@ describe('processMediaPayloadSchema', () => {
         expectedSha256: 'A'.repeat(64),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('exportAccountPayloadSchema', () => {
+  const exportId = '11111111-1111-4111-8111-111111111111';
+  const actorId = '22222222-2222-4222-8222-222222222222';
+
+  it('accepts a valid exportId/actorId pair', () => {
+    expect(exportAccountPayloadSchema.safeParse({ exportId, actorId }).success).toBe(true);
+  });
+
+  it('rejects a non-uuid exportId or actorId', () => {
+    expect(exportAccountPayloadSchema.safeParse({ exportId: 'not-a-uuid', actorId }).success).toBe(
+      false,
+    );
+    expect(exportAccountPayloadSchema.safeParse({ exportId, actorId: 'not-a-uuid' }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('purgeAccountPayloadSchema', () => {
+  it('accepts a valid actorId', () => {
+    expect(
+      purgeAccountPayloadSchema.safeParse({ actorId: '22222222-2222-4222-8222-222222222222' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects a non-uuid actorId', () => {
+    expect(purgeAccountPayloadSchema.safeParse({ actorId: 'nope' }).success).toBe(false);
   });
 });
