@@ -109,6 +109,8 @@ export const DEFAULT_CELL_HEIGHT_PX = 20;
 
 /** Largest placement the diacritic table can address, in either axis. */
 const MAX_GRID = MAX_PLACEHOLDER_INDEX + 1;
+/** Terminal-side virtual placements are a scarce, process-external resource. */
+export const MAX_LIVE_KITTY_PLACEMENTS = 4;
 
 function contentHash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -162,7 +164,11 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     const key = `${hash}:${maxCols}x${maxRows}`;
 
     const hit = this.#cache.get(key);
-    if (hit) return hit;
+    if (hit) {
+      this.#cache.delete(key);
+      this.#cache.set(key, hit);
+      return hit;
+    }
 
     // Same bytes at a different cell budget (a resize): the old placement is dead weight.
     const staleKey = this.#keyByHash.get(hash);
@@ -201,7 +207,18 @@ export class KittyGraphicsRenderer implements TerminalMediaRenderer {
     this.#live.add(id);
     this.#cache.set(key, prepared);
     this.#keyByHash.set(hash, key);
+    this.#evictOverflow();
     return prepared;
+  }
+
+  /** Oldest prepared placement first. Map insertion order is our LRU order; cache
+   * hits are promoted so a frequently revisited selected image stays resident. */
+  #evictOverflow(): void {
+    while (this.#cache.size > MAX_LIVE_KITTY_PLACEMENTS) {
+      const oldest = this.#cache.values().next();
+      if (oldest.done) return;
+      this.release(oldest.value);
+    }
   }
 
   placeholderRows(img: PreparedImage): string[] {

@@ -9,6 +9,7 @@ import {
   buildFallbackBox,
   createRenderer,
   MAX_INPUT_BYTES,
+  MAX_LIVE_KITTY_PLACEMENTS,
   MediaTooLargeError,
   type MediaStdout,
 } from './renderer.js';
@@ -223,6 +224,28 @@ describe('KittyGraphicsRenderer', () => {
       { maxCols: 20, maxRows: 10 },
     );
     expect(second.id).not.toBe(first.id);
+  });
+
+  it('keeps at most four live placements and evicts the least recently used', async () => {
+    const stdout = new RecordingStdout();
+    const renderer = new KittyGraphicsRenderer(stdout, KITTY_CAPS);
+    const prepared = [];
+    for (let index = 0; index < MAX_LIVE_KITTY_PLACEMENTS + 1; index += 1) {
+      prepared.push(
+        await renderer.prepare(
+          { bytes: await solidPng(40 + index, 20, 20 + index), mime: 'image/png' },
+          { maxCols: 20, maxRows: 3 },
+        ),
+      );
+    }
+    const first = prepared[0];
+    expect(first).toBeDefined();
+    expect(stdout.all).toContain(`${ESC}_Ga=d,d=I,i=${String(first?.id)},q=2${ESC}\\`);
+
+    stdout.writes.length = 0;
+    renderer.releaseAll();
+    const deletes = stdout.all.match(/a=d,d=I/g) ?? [];
+    expect(deletes).toHaveLength(MAX_LIVE_KITTY_PLACEMENTS);
   });
 
   describe('tmux passthrough (B-007)', () => {
