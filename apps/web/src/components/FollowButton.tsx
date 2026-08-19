@@ -1,0 +1,44 @@
+import { FollowState, type Relationship } from '@patches/proto/es';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { JSX } from 'react';
+
+import { api } from '../api/client.js';
+import { useErrorToast } from '../hooks/useErrorToast.js';
+import { useSession } from '../hooks/useSession.js';
+
+export function FollowButton({ actorId }: { actorId: string }): JSX.Element | null {
+  const session = useSession();
+  const onError = useErrorToast();
+  const queryClient = useQueryClient();
+  const isSelf = session?.actor.id === actorId;
+
+  const relationshipQuery = useQuery({
+    queryKey: ['relationship', actorId],
+    queryFn: () => api.socialGraph.getRelationship({ actorId }),
+    enabled: session !== null && !isSelf,
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (follow: boolean): Promise<{ relationship?: Relationship | undefined }> =>
+      follow
+        ? await api.socialGraph.followActor({ actorId })
+        : await api.socialGraph.unfollowActor({ actorId }),
+    onSuccess: (response) => {
+      queryClient.setQueryData(['relationship', actorId], { relationship: response.relationship });
+    },
+    onError,
+  });
+
+  if (session === null || isSelf) return null;
+  if (relationshipQuery.isPending) return <button disabled>…</button>;
+
+  const state = relationshipQuery.data?.relationship?.state ?? FollowState.NONE;
+  const following = state === FollowState.FOLLOWING;
+  const pending = state === FollowState.PENDING;
+
+  return (
+    <button type="button" onClick={() => mutation.mutate(!following)} disabled={mutation.isPending}>
+      {pending ? 'Requested' : following ? 'Following' : 'Follow'}
+    </button>
+  );
+}

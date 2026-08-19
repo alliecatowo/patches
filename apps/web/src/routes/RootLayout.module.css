@@ -1,0 +1,90 @@
+.shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 640px);
+  justify-content: center;
+  gap: 0;
+  min-height: 100%;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .brand,
+  .navLabel {
+    display: none;
+  }
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--border);
+  align-items: flex-start;
+}
+
+.brand {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem 0.5rem;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--fg);
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+.navLink:hover,
+.navLink.active {
+  background: var(--bg-raised);
+}
+
+.main {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  min-height: 100vh;
+}
+
+.helpKbd {
+  font-family: var(--font-mono);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  margin-right: 0.5em;
+}
+
+.helpDialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 1.25rem;
+  max-width: 360px;
+}
+
+.helpDialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}

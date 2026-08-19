@@ -54,6 +54,8 @@ export default defineConfig([
             'packages/testkit/*.config.{ts,mts,cts}',
             'packages/terminal-media/*.config.{ts,mts,cts}',
           ],
+          // apps/web/tsconfig.json already includes vite.config.ts/vitest.config.ts
+          // itself (same pattern as apps/tui), so it doesn't need an entry here.
           // Default cap is 8; the packages above contribute 15 matching config files, all
           // small and cheap to parse standalone (no type info needed) — raising this is the
           // documented escape hatch, not a performance red flag at this file count.
@@ -99,6 +101,14 @@ export default defineConfig([
     rules: {
       // The TUI writes to stdout deliberately via Ink; direct console use corrupts the screen.
       'no-console': 'error',
+    },
+  },
+  {
+    // Vite/React 19 web client — runs in the browser, not Node.
+    files: ['apps/web/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat.recommended],
+    languageOptions: {
+      globals: { ...globals.browser },
     },
   },
   {

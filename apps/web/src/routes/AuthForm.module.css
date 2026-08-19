@@ -1,0 +1,56 @@
+.wrap {
+  max-width: 360px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.wrap h1 {
+  font-family: var(--font-mono);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.field input,
+.field textarea {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.submit {
+  width: 100%;
+  padding: 0.6rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+}
+
+.switchLink {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  // `vite.config.ts`/`vitest.config.ts` are included so typescript-eslint's project
+  // service can type-check them (same pattern as apps/tui/tsconfig.json).
+  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+}

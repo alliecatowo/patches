@@ -1,0 +1,74 @@
+.header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  object-fit: cover;
+  margin-bottom: 0.6rem;
+}
+
+.displayName {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.bio {
+  white-space: pre-wrap;
+  margin: 0.6rem 0;
+}
+
+.counts {
+  display: flex;
+  gap: 1.25rem;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+.counts strong {
+  color: var(--fg);
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  flex: 1;
+  padding: 0.7rem;
+  background: none;
+  border: none;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.wall {
+  padding: 1rem 1.25rem;
+}
+
+.wallBlock {
+  margin-bottom: 0.75rem;
+}
+
+.wallBlock img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
