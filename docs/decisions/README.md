@@ -11,6 +11,9 @@ Keep ADRs short: context, decision, consequences, alternatives considered. See
 ADRs 0011–0014 record Amendment A to the spec (`INITIAL_VISION.md` §162–§177). Read the
 amendment first — the ADRs explain _why_; the amendment is what implementers must follow.
 
+ADR 0017 records a decision from Amendment B (§178–§195); §195 lists what that amendment
+deliberately does **not** authorize without owner sign-off.
+
 ## Index
 
 | ADR                                                  | Title                                                                                           | Status   |
@@ -31,6 +34,7 @@ amendment first — the ADRs explain _why_; the amendment is what implementers m
 | [0014](./0014-capabilities-not-tiers.md)             | Capabilities, not tiers, in the protocol                                                        | Accepted |
 | [0015](./0015-minio-for-local-media-dev.md)          | MinIO for local media dev, Cloudflare R2 in production                                          | Accepted |
 | [0016](./0016-connect-transport-and-client-sdk.md)   | Connect protocol for web/mobile clients, and a shared client SDK                                | Accepted |
+| [0017](./0017-server-visible-dms.md)                 | Direct messages are server-visible in v0, not end-to-end encrypted                              | Accepted |
 
 ## Template
 
