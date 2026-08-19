@@ -182,7 +182,7 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 > the corresponding tasks below stay open — a module a viewer cannot reach is not shipped.
 > `P12-127` tracks connecting them.
 
-- [ ] P12-004 — generalized measured `VirtualList` used by posts, notifications, help, search, conversations, communities, and tags
+- [x] P12-004 — generalized measured `VirtualList` used by posts, notifications, help, search, conversations, communities, and tags
 - [x] P12-005 — key-layer stack replaces `capturesInput` / `screenCapturing`; shell safety keys remain reachable from every sub-mode
 - [x] P12-006 — typed navigation stack + route payloads + `Esc`-from-everywhere coverage
 - [x] P12-007 — keymap v2: `R` repost, `Ctrl+R` refresh, `Q` quote, `J` community join/leave, all §191 keys derived into help/hints
@@ -190,32 +190,32 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-009 — command palette (`:` / `Ctrl+P`) generated from `KEYMAP`, including routes and contextual actions
 - [x] P12-010 — feedback layer: per-region loading, toast queue, offline/retry banner, sticky new-items indicator
 - [x] P12-011 — inline re-authentication on `UNAUTHENTICATED` without losing drafts or navigation state
-- [ ] P12-012 — measured multiline `TextEditor`: cursor, movement, undo/redo, bracketed paste, node-provided limit
+- [x] P12-012 — measured multiline `TextEditor`: cursor, movement, undo/redo, bracketed paste, node-provided limit
 - [x] P12-013 — measured `@` / `#` autocomplete with debounced actor/tag lookup and stale-request cancellation
 - [x] P12-014 — terminal file picker/path completion replaces raw attachment path entry
 - [ ] P12-015 — colour picker with contrast enforcement and truecolour → 256 → 16 → text degradation
 - [x] P12-016 — post search wired to `SearchPosts`, people/posts modes, newest-first keyset results with no ranking/order control
 - [x] P12-017 — shared markdown-lite post renderer + measured read-more folding; plain mode keeps source markers
-- [ ] P12-018 — bounded image policy + media viewer; inline selected/focused/viewer only, fallback height parity, ≤4 live placements
+- [x] P12-018 — bounded image policy + media viewer; inline selected/focused/viewer only, fallback height parity, ≤4 live placements
 - [x] P12-019 — thread rows share one focusable list so parent/root/replies are reachable and reply targets the selected row
 - [x] P12-020 — responsive layout tiers (narrow/standard/wide/ultra, compact/full) with pure boundary tests
 - [x] P12-021 — split-pane presentation from the same nav stack; resize changes presentation, never history
 - [x] P12-022 — frozen-background ANSI-safe overlay compositing with narrow/compact takeover fallback
-- [ ] P12-023 — quick-post overlay (`c`) + full compose (`C`) share one draft and one editor
+- [x] P12-023 — quick-post overlay (`c`) + full compose (`C`) share one draft and one editor
 - [x] P12-024 — notifications drawer (`N`) with narrow fallback to `g n` and read-on-view reuse
 - [x] P12-025 — polish primitives: semantic theme tokens, borders, progress bar, single shared relative-time clock
 - [x] P12-026 — interaction docs/keymap sync; executable-command verification and generated key-table parity test
 - [x] P12-101 — theme engine and built-ins (`patches`, `paper`, `mono`, `hacker`, `pastel`, `terminal`) with CLI/env/profile precedence
 - [ ] P12-102 — responsive ribbon/status chrome with connection state, unread pill, and focus breadcrumb
 - [x] P12-103 — Unicode/Nerd/ASCII glyph sets with locale fallback and no glyph-only affordance
-- [ ] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
+- [x] P12-104 — post-row rhythm pass: selection gutter, body indent, attribution, quote embed, rich/plain/quiet height parity
 - [x] P12-105 — destructive confirm styling, toast queue styling, and sticky new-count styling
 - [x] P12-106 — quick-post overlay UX: counter/CW/expand/shared-draft, with narrow takeover
 - [ ] P12-107 — notifications drawer grouping, read-on-view, and live unread indicator
 - [ ] P12-108 — split-pane thread presentation polish, pane focus, titles, breadcrumb, below-count
 - [ ] P12-109 — Pages renderer: responsive cell grid, scoped wall themes, pins, Top 8, guestbook, gallery, clipped ASCII
 - [ ] P12-110 — structured Pages block editor: list/reorder/add/remove/field edit with inline validation; `$EDITOR` remains available
-- [ ] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
+- [x] P12-111 — bracketed-paste/file-URI attachment detection with safe path handling
 - [ ] P12-112 — theme + colour picker live preview, reversible with `Esc`, with contrast explanation
 - [x] P12-113 — preferences information architecture with live post preview and per-profile local persistence
 - [ ] P12-114 — messages visual layer: permanent E2E state disclosure, folders, optimistic send, retention copy
@@ -230,11 +230,11 @@ The binding design is ADR 0018 plus `docs/architecture/tui-interaction-model.md`
 - [x] P12-125 — route `E` (edit your own post) to a compose-in-edit-mode screen; it is bound in `KEYMAP` and raises "not connected yet", and is held out of the user guide until it works
 - [x] P12-126 — migrate the block/mute/report confirmations onto the shared measured `ConfirmDialog` so every destructive action uses one component
 - [x] P12-127 — wire the landed-but-unreachable Phase 12 modules into the shell: theme engine + preferences precedence, `ThemePreview`/`ColorPicker`, `FilePicker` for attachments, `MediaViewerScreen`, and `SplitPane`/responsive tiers
-- [ ] P12-128 — replace `measurePostBody`'s conservative plain-mode upper bound with the viewer's actual mode, so a decorated body doesn't reserve rows it won't draw
+- [x] P12-128 — replace `measurePostBody`'s conservative plain-mode upper bound with the viewer's actual mode, so a decorated body doesn't reserve rows it won't draw
 - [ ] P12-123 — committed 100×30 / 140×40 golden frames, tmux captures, and drift tests
 - [x] P12-124 — Vim-style command mode (`:`): generated route/action commands, aliases, history, completion, contextual verbs, and explicit rejection of `:!` shell execution
-- [ ] P12-129 — TUI self-upgrade prompt on launch (`y` upgrades via the release tarball, then "press Ctrl+C to exit and relaunch"; `patches upgrade`; `--no-upgrade-check` flag)
-- [ ] P12-130 — ASCII/half-block/braille image art fallback renderer in `@patches/terminal-media` with `PATCHES_IMAGES`/preference modes auto|pixel|ascii|box|off and compose/file-picker preview
+- [x] P12-129 — TUI self-upgrade prompt on launch (`y` upgrades via the release tarball, then "press Ctrl+C to exit and relaunch"; `patches upgrade`; `--no-upgrade-check` flag)
+- [x] P12-130 — ASCII/half-block/braille image art fallback renderer in `@patches/terminal-media` with `PATCHES_IMAGES`/preference modes auto|pixel|ascii|box|off and compose/file-picker preview
 
 ## Phase 13 — production E2EE direct messages
 
@@ -273,10 +273,10 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [x] P14-012 — server: public moderation log + node policy — `ListModerationLog` (anonymized account/post entries, identified domain entries), `NodeService.GetNodePolicy`. Owns `apps/server/src/modules/moderation/moderation-log.*`, `apps/server/src/modules/system/node.*`. Acceptance: no handle/actor-id/post-id retrievable from account/post-kind entries.
 - [x] P14-013 — server: close the outbound domain-block gap (recipient resolution must filter `domain_blocks`); `patches-admin domain review-list <file>`. Owns `apps/server/src/modules/federation/services/activitypub-federation-gateway.service.ts`, `apps/admin/src/commands/domain.ts`. Acceptance: blocked domain never enqueues delivery; imported list never auto-writes blocks.
 - [x] P14-014 — `packages/domain/src/limits.ts` additions for filters/lists/labelers/appeals/export/deletion (§204). Acceptance: every §204 limit has a named export; no duplicated magic numbers.
-- [ ] P14-015 — TUI: privacy screen (`,` submenu / `:privacy` / `patches privacy`), registration notice, discoverability + locked prefs, follow-request flow. Owns `apps/tui/src/screens/PrivacyScreen.tsx`, `app/keymap.ts` (commands only, no new global keys). Acceptance: no key rebound; registration shows the notice per §197.1.
-- [ ] P14-016 — TUI: filters / filter-lists / labelers screens + `patches filter|lists|labelers`. Owns `apps/tui/src/screens/{Filters,FilterList,Labelers}Screen.tsx`. Acceptance: provenance ("filtered: name (via @author)") always rendered.
-- [ ] P14-017 — TUI: appeals + moderation-log screens (`patches appeal|modlog`), notices via notifications. Owns `apps/tui/src/screens/{Appeals,ModerationLog}Screen.tsx`. Acceptance: `?` help + `docs/user-guide.md` list every new command.
-- [ ] P14-018 — web: `/settings/{privacy,filters,lists,labelers}`, `/moderation/log`, `/appeals` at safety-surface parity with the TUI. Owns `apps/web/src/routes/settings/**`, `apps/web/src/routes/moderation/**`. Acceptance: every safety action reachable in the web client (§205).
+- [x] P14-015 — TUI: privacy screen (`,` submenu / `:privacy` / `patches privacy`), registration notice, discoverability + locked prefs, follow-request flow. Owns `apps/tui/src/screens/PrivacyScreen.tsx`, `app/keymap.ts` (commands only, no new global keys). Acceptance: no key rebound; registration shows the notice per §197.1.
+- [x] P14-016 — TUI: filters / filter-lists / labelers screens + `patches filter|lists|labelers`. Owns `apps/tui/src/screens/{Filters,FilterList,Labelers}Screen.tsx`. Acceptance: provenance ("filtered: name (via @author)") always rendered.
+- [x] P14-017 — TUI: appeals + moderation-log screens (`patches appeal|modlog`), notices via notifications. Owns `apps/tui/src/screens/{Appeals,ModerationLog}Screen.tsx`. Acceptance: `?` help + `docs/user-guide.md` list every new command.
+- [x] P14-018 — web: `/settings/{privacy,filters,lists,labelers}`, `/moderation/log`, `/appeals` at safety-surface parity with the TUI. Owns `apps/web/src/routes/settings/**`, `apps/web/src/routes/moderation/**`. Acceptance: every safety action reachable in the web client (§205).
 - [ ] P14-019 — docs sync: `docs/user-guide.md`, `docs/architecture/federation.md` (§201.5 gap closure, domain-policy transparency), `docs/architecture/data-model.md`. Acceptance: no documented command that doesn't work; status markers flipped as pieces ship.
 - [ ] P14-020 — cross-cutting verification: §208 prohibition sweep + §209 checklist sign-off with evidence (file:line or test). Spawns reviewer/spec-auditor.
 - [ ] P14-021 — SQL pushdown for ACTOR/TAG hide filter rules + PSL-based domain matching (§198.2 phrase matching, §199.4 domain subscripts)
@@ -286,7 +286,7 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] P14-025 — RegisterRequest explicit privacy-notice acknowledgement field (proto) + REQUIRE_PRIVACY_ACK enforcement (§197.1)
 - [ ] P14-026 — admin CLI to mark a vocabulary value `mandatory` for the node labeler (§203 mandatory-category enforcement)
 - [ ] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
-- [ ] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
+- [x] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
 
 ## Phase 15 — passwordless auth (owner request 2026-08-19; ADR 0011 credential model, §165–§168)
 
