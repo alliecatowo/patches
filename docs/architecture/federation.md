@@ -363,6 +363,40 @@ reading a remote post. Remote page documents are subject to the same §109 inges
 any other remote input — bounded size, validated content type, capped JSON depth — and to the
 same strict-on-write validation as local documents.
 
+## 7.6 Amendment B mapping (§193) — **Status: planned, no code**
+
+Amendment B (§178–§195) adds reposts, quotes, tags, communities and DMs as **local,
+single-node** features. None of them federate in Phase 11. This section exists only so the
+local schema does not paint federation into a corner, and it moves **no** §109 gate and
+**no** §160 checklist item above — the checklist is unchanged by Amendment B.
+
+The verified protocol detail, with citations and verification dates, lives in
+**`docs/research/activitypub-social-depth.md`**. Summary:
+
+| Feature     | ActivityPub shape                                                                           | Footing                                        |
+| ----------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Repost      | `Announce` of the object; `Undo(Announce)` to unrepost                                      | W3C Recommendation                             |
+| Quote       | FEP-044f `quote` + `quoteAuthorization`, plus legacy `quoteUri`/`quoteUrl`/`_misskey_quote` | FEP **draft**; Mastodon 4.4 reads, 4.5 authors |
+| Tags        | `Hashtag` entries in `tag` (an AS2 **extension** term, not in the Recommendation)           | de facto convention                            |
+| Communities | `Group` actor that `Announce`-wraps member activities (FEP-1b12, Lemmy/Mbin)                | FEP final, implementation docs thin            |
+| DMs         | `Note` addressed to recipients only — no `as:Public`, no follower collection                | W3C Recommendation                             |
+
+Four things that are already settled and must not be re-litigated per feature:
+
+- **DMs do not federate in v0** (§183.4, §194). Federated DMs are a separate security
+  decision with its own gate (§195.6), and shipping local DMs does not imply them. See ADR
+  [0017](../decisions/0017-server-visible-dms.md).
+- **Federated communities need their own ADR** (§193, §195.2). The `Group`-actor pattern is
+  real and standardized (FEP-1b12, final 2023-02-09), but how a microblog server renders a
+  `Group` actor is **unverified** — that gap is the note's whole point.
+- **A remote repost gets no exemption.** Inbound `Announce` must respect local block, mute
+  and domain-block rules like any other activity (§193), and a quote of a remote post MUST
+  NOT be displayed as authorized unless a FEP-044f authorization was actually received
+  (`quote_policy`, §180.2).
+- **Re-verify before implementing** (§0, §155). FEP-044f is a draft and Mastodon's quote
+  support changed across two minor releases in four months; the table above is a starting
+  point, not a specification.
+
 ## 8. Domain stability warning (§21, §91)
 
 Federated identities are URLs. Canonical actor/object URIs must use a **stable
