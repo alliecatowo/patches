@@ -166,4 +166,51 @@ describe('TextEditor', () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(onEscape).toHaveBeenCalledOnce();
   });
+
+  it('yields Escape/↑↓/Enter to a sibling popover while autocompleteOpen, but keeps typing', async () => {
+    const onEscape = vi.fn();
+    const values: string[] = [];
+    const rendered = render(
+      <EditorHarness
+        initialValue="hi @bo"
+        autocompleteOpen
+        onEscape={onEscape}
+        onValue={(value) => values.push(value)}
+      />,
+    );
+
+    rendered.stdin.write(KEY.up);
+    rendered.stdin.write(KEY.enter);
+    rendered.stdin.write(KEY.escape);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(onEscape).not.toHaveBeenCalled();
+    expect(values).toHaveLength(0); // no newline inserted, no cursor moved by ↑
+
+    rendered.stdin.write('b');
+    expect(values.at(-1)).toBe('hi @bob');
+  });
+
+  it('lets interceptPaste swallow a paste instead of inserting it', async () => {
+    const values: string[] = [];
+    const intercepted: string[] = [];
+    const rendered = render(
+      <EditorHarness
+        initialValue=""
+        interceptPaste={(text) => {
+          intercepted.push(text);
+          return text.startsWith('/');
+        }}
+        onValue={(value) => values.push(value)}
+      />,
+    );
+
+    rendered.stdin.write('[200~/home/a/pic.png[201~');
+    await settle();
+    expect(intercepted).toEqual(['/home/a/pic.png']);
+    expect(values).toHaveLength(0);
+
+    rendered.stdin.write('[200~hello[201~');
+    await settle();
+    expect(values.at(-1)).toBe('hello');
+  });
 });

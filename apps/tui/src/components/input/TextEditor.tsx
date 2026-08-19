@@ -26,12 +26,30 @@ export interface TextEditorProps {
   rows: number;
   maxChars?: number;
   isActive?: boolean;
-  initialCursor?: number;
+  /** Explicit `| undefined` (not just optional) so a caller that recomputes this on
+   * every render — e.g. after an autocomplete accept forces a remount, ComposeScreen
+   * §7 — can pass `undefined` under `exactOptionalPropertyTypes` without a conditional
+   * spread. */
+  initialCursor?: number | undefined;
   onCursorChange?: (cursor: number) => void;
   onEscape?: () => void;
   /** Invoked by Ctrl+S or modified Enter; ordinary Enter always inserts a newline. */
   onSubmit?: (value: string) => void;
   ariaLabel?: string;
+  /**
+   * A sibling popover (`Autocomplete`) is open and owns Escape/↑↓/Enter for this
+   * keystroke — the editor still takes character input, backspace/delete, and
+   * left/right so the query text keeps updating live, but yields the four keys the
+   * popover needs so a suggestion select doesn't also move the cursor line, and
+   * closing the popover doesn't also cancel the whole screen (interaction model §7).
+   */
+  autocompleteOpen?: boolean;
+  /**
+   * Runs before a bracketed paste is inserted as text. Returning `true` means the
+   * caller fully handled the paste (e.g. detected an attachable file path,
+   * P12-111) — the editor does not insert anything for that paste.
+   */
+  interceptPaste?: (pastedText: string) => boolean;
 }
 
 function boundedHistory(
@@ -58,6 +76,8 @@ export function TextEditor({
   onEscape,
   onSubmit,
   ariaLabel = 'Text editor',
+  autocompleteOpen = false,
+  interceptPaste,
 }: TextEditorProps): ReactElement {
   const { isRawModeSupported } = useStdin();
   const interactive = isActive && isRawModeSupported;
@@ -137,7 +157,9 @@ export function TextEditor({
       const lowerInput = input.toLowerCase();
 
       if (key.escape) {
-        onEscape?.();
+        // While the autocomplete popover is open, Escape closes only the popover
+        // (its own `useInput` handles that) — it must not also cancel compose.
+        if (!autocompleteOpen) onEscape?.();
         return;
       }
       if ((key.ctrl && key.return) || (key.ctrl && lowerInput === 's')) {
@@ -197,6 +219,8 @@ export function TextEditor({
         return;
       }
       if (key.upArrow || key.downArrow) {
+        // The popover owns ↑↓ for selecting a suggestion while it is open.
+        if (autocompleteOpen) return;
         const preferred =
           preferredColumnRef.current ?? editorCellColumn(currentValue, currentCursor);
         preferredColumnRef.current = preferred;
@@ -217,6 +241,8 @@ export function TextEditor({
         return;
       }
       if (key.return) {
+        // The popover owns Enter to accept a suggestion while it is open.
+        if (autocompleteOpen) return;
         insert('\n');
         return;
       }
@@ -225,7 +251,13 @@ export function TextEditor({
     { isActive: interactive },
   );
 
-  usePaste((pastedText) => insert(pastedText), { isActive: interactive });
+  usePaste(
+    (pastedText) => {
+      if (interceptPaste?.(pastedText) === true) return;
+      insert(pastedText);
+    },
+    { isActive: interactive },
+  );
 
   useEffect(() => {
     onCursorChange?.(displayCursor);
