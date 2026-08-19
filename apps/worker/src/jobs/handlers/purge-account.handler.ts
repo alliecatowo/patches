@@ -1,17 +1,25 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AccountDeletionRequest,
+  AccountExport,
   Actor,
   ActorPrivacyPrefs,
   appendAdminAuditLog,
+  Bookmark,
+  CommunityMember,
   Credential,
+  FilterListSubscription,
   Follow,
+  FollowRequest,
+  LabelerSubscription,
   Like,
   Media,
   Message,
   Post,
   purgeAccountPayloadSchema,
   RefreshToken,
+  Repost,
+  TagMute,
   User,
   type JobType,
 } from '@patches/database';
@@ -28,13 +36,14 @@ import { STORAGE_CLIENT } from '../../storage/storage.module.js';
 import { type JobContext, type JobHandler } from '../job-handler.js';
 
 /**
- * `PURGE_ACCOUNT` (P14-010, `INITIAL_VISION.md` §197.4): erases an account's content once its
- * grace period has elapsed. The scope purged here is the set the P14-010 task brief names —
- * profile fields, posts and bodies, media objects, follows, reactions (likes), DMs sent,
- * sessions, and credentials — plus the notice acknowledgement itself. Bookmarks, reposts,
- * community memberships, and muted tags are *not* purged yet (nor are filters/lists/labeler
- * subscriptions — this node doesn't implement those); see this task's final report for the
- * follow-up.
+ * `PURGE_ACCOUNT` (P14-010/P14-024, `INITIAL_VISION.md` §197.4): erases an account's content
+ * once its grace period has elapsed. Scope: profile fields, posts and bodies, media objects,
+ * follows, follow requests (both directions), reactions (likes), bookmarks, reposts, community
+ * memberships, muted tags, filter-list subscriptions, labeler subscriptions, DMs sent, export
+ * archives, sessions, and credentials — plus the notice acknowledgement itself
+ * ("filters, lists, subscriptions, and acknowledgements", §197.4). Filter *lists* and labelers
+ * themselves are not purged here — those are owned by the actor as author, not as subscriber,
+ * and are out of this task's scope (owned by the filters/labels module).
  *
  * Idempotent (`docs/architecture/jobs.md` §7) two different ways: a `CancelAccountDeletion`
  * that lands after this job was enqueued but before it ran makes this whole handler a no-op
@@ -89,6 +98,15 @@ export class PurgeAccountHandler implements JobHandler {
           this.storage.deleteObject(mediaVariantKey(item.id, variant)),
         ),
       ]);
+    }
+
+    // Same reasoning for export archives — an export row's `objectKey` points at storage this
+    // purge is about to make orphaned data if left behind.
+    const exportsWithObjects = await this.dataSource
+      .getRepository(AccountExport)
+      .find({ where: { actorId } });
+    for (const row of exportsWithObjects) {
+      if (row.objectKey !== null) await this.storage.deleteObject(row.objectKey);
     }
 
     await this.dataSource.transaction(async (manager) => this.purgeInTransaction(manager, actorId));
@@ -171,8 +189,30 @@ export class PurgeAccountHandler implements JobHandler {
       .where('follower_actor_id = :actorId OR followee_actor_id = :actorId', { actorId })
       .execute();
 
-    // Reactions (likes).
+    // Pending follow requests, both directions (P14-024) — a request this actor sent to
+    // someone locked, or one someone else sent awaiting this actor's own approval.
+    await manager
+      .getRepository(FollowRequest)
+      .createQueryBuilder()
+      .delete()
+      .where('requester_actor_id = :actorId OR target_actor_id = :actorId', { actorId })
+      .execute();
+
+    // Reactions (likes), bookmarks, and reposts (P14-024) — all private-to-the-actor pointer
+    // rows, same shape/purge reasoning as `Follow`/`Like` already had.
     await manager.getRepository(Like).delete({ actorId });
+    await manager.getRepository(Bookmark).delete({ actorId });
+    await manager.getRepository(Repost).delete({ actorId });
+
+    // Community memberships and muted tags (P14-024).
+    await manager.getRepository(CommunityMember).delete({ actorId });
+    await manager.getRepository(TagMute).delete({ actorId });
+
+    // Filter-list and labeler subscriptions (P14-024, spec §197.4's "subscriptions"). The
+    // filter lists / labelers this actor *authored* are out of this handler's scope (owned by
+    // the filters/labels module) — only this actor's own subscription rows are purged here.
+    await manager.getRepository(FilterListSubscription).delete({ actorId });
+    await manager.getRepository(LabelerSubscription).delete({ actorId });
 
     // DMs the actor sent — same tombstone convention `DirectMessageService.deleteMessage`
     // already uses (`body` cleared, `deletedAt` set), applied to every message this actor
@@ -180,6 +220,11 @@ export class PurgeAccountHandler implements JobHandler {
     await manager
       .getRepository(Message)
       .update({ senderActorId: actorId, deletedAt: IsNull() }, { body: '', deletedAt: now });
+
+    // Export archives (P14-024) — storage objects were already deleted above (outside the
+    // transaction); this removes the rows themselves rather than merely expiring them, since
+    // the account they describe no longer has data to re-export.
+    await manager.getRepository(AccountExport).delete({ actorId });
 
     // Acknowledgement records (spec §197.4's explicit purge list).
     await manager

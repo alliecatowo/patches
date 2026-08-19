@@ -89,6 +89,10 @@ catalog:
   '@noble/ciphers': ^2.3.0
   '@noble/hashes': ^2.3.0
   slice-ansi: ^9.0.0
+  tar-stream: ^3.2.0
+  '@types/tar-stream': ^3.1.4
+  tldts: ^7.4.10
+  fast-check: ^4.9.0
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

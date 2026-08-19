@@ -26,6 +26,7 @@
     "resend": "catalog:",
     "rxjs": "catalog:",
     "sharp": "catalog:",
+    "tar-stream": "catalog:",
     "typeorm": "catalog:",
     "zod": "catalog:"
   },
@@ -36,6 +37,7 @@
     "@swc/core": "catalog:",
     "@types/nodemailer": "catalog:",
     "@types/pg": "catalog:",
+    "@types/tar-stream": "catalog:",
     "unplugin-swc": "catalog:"
   }
 }
