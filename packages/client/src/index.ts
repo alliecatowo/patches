@@ -13,7 +13,12 @@ export {
   type SessionManagerOptions,
   type StoredSession,
 } from './session.js';
-export { describeError, type DescribedError, type DescribeErrorOptions } from './errors.js';
+export {
+  describeError,
+  isSignInRequired,
+  type DescribedError,
+  type DescribeErrorOptions,
+} from './errors.js';
 export {
   paginate,
   type CursorPage,

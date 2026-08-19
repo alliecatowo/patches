@@ -1,13 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DomainBlock } from '@patches/database';
+import { DomainBlock, Labeler } from '@patches/database';
 import { ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS } from '@patches/domain';
 import {
   DomainPolicyAction,
   FederationStance,
   type GetNodeInfoResponse,
   type GetNodePolicyResponse,
-  LabelAction,
   RegistrationMode,
 } from '@patches/proto/nest';
 import type { DataSource } from 'typeorm';
@@ -22,6 +21,8 @@ import {
   isWidthOneGlyph,
 } from '../actors/validation.js';
 import { HANDLE_MAX_LENGTH } from '../auth/validation.js';
+import { toProtoVocabularyEntry } from '../labels/label.mapper.js';
+import { parseStoredVocabulary } from '../labels/label-validation.js';
 import { toProtoReasonCategory } from '../moderation/moderation.mapper.js';
 import { SERVER_VERSION } from './server-version.provider.js';
 
@@ -74,6 +75,7 @@ export class NodeService {
         dmEnabled: this.config.dmEnabled,
         dmRetentionDays: this.config.dmRetentionDays,
       },
+      publicRead: this.config.publicRead,
     };
   }
 
@@ -91,6 +93,15 @@ export class NodeService {
       .createQueryBuilder('block')
       .orderBy('block.domain', 'ASC')
       .getMany();
+    // P14-026 (spec §200.3, §203): published straight from the node's own labeler row —
+    // `LabelSeedService` is the only writer, and preserves a value's `mandatory` flag across
+    // reboots once `patches-admin labeler vocabulary set-mandatory` has set one (see that
+    // service's doc). No row yet (a labeler seed hasn't run, e.g. a server that has never
+    // booted with `http: true`) renders as an honest empty vocabulary, same convention every
+    // other unconfigured field in this response already uses.
+    const nodeLabeler = await this.dataSource
+      .getRepository(Labeler)
+      .findOne({ where: { isNodeLabeler: true } });
 
     return {
       policy: {
@@ -118,12 +129,10 @@ export class NodeService {
           exportArchiveRetentionDays: ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS,
         },
         operatorIdentity: '',
-        labelVocabulary: this.config.labelVocabulary.map((value) => ({
-          value,
-          description: '',
-          defaultAction: LabelAction.LABEL_ACTION_WARN,
-          mandatory: false,
-        })),
+        labelVocabulary:
+          nodeLabeler === null
+            ? []
+            : parseStoredVocabulary(nodeLabeler.vocabulary).map(toProtoVocabularyEntry),
         accountDeletionGracePeriodDays: this.config.accountDeletionGracePeriodDays,
         appealWindowDays: this.config.appealWindowDays,
       },

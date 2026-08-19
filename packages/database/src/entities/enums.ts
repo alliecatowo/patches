@@ -34,7 +34,16 @@ export type MediaState = (typeof MEDIA_STATES)[number];
  * account; a password is just one credential among several, and email is only a recovery
  * channel.
  */
-export const CREDENTIAL_TYPES = ['PASSWORD', 'SSH_PUBLIC_KEY', 'GITHUB', 'PASSKEY'] as const;
+export const CREDENTIAL_TYPES = [
+  'PASSWORD',
+  'SSH_PUBLIC_KEY',
+  'GITHUB',
+  'PASSKEY',
+  /** A one-time recovery code (P15-003, `AuthService.GenerateRecoveryCodes`/`RecoveryLogin`).
+   * Unlike the other types, an account can hold several live rows of this type at once (up to
+   * 10, minted together) — each redeemed code is revoked immediately on use. */
+  'RECOVERY_CODE',
+] as const;
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
 export const AUTH_CODE_PURPOSES = ['VERIFY_EMAIL', 'RESET_PASSWORD'] as const;
@@ -61,6 +70,10 @@ export const NOTIFICATION_TYPES = [
    * only ever written once a follow (request or otherwise) is actually accepted — see
    * `follow-request.entity.ts`. */
   'FOLLOW_REQUEST',
+  /** A security-relevant event on the account's own recipient — currently: a successful
+   * `AuthService.RecoveryLogin` (P15-003). Always written with `actor_id = NULL` (there is no
+   * "other actor" for your own account), the same convention `MODERATION` uses. */
+  'SECURITY',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -119,6 +132,7 @@ export const ADMIN_AUDIT_SUBJECT_TYPES = [
   'JOB',
   'DOMAIN',
   'COMMUNITY',
+  'LABELER',
 ] as const;
 export type AdminAuditSubjectType = (typeof ADMIN_AUDIT_SUBJECT_TYPES)[number];
 

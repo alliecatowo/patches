@@ -265,6 +265,20 @@ export class AppConfigService {
   get requirePrivacyAck(): boolean {
     return this.get('REQUIRE_PRIVACY_ACK');
   }
+
+  /** Whether this node's public content stays readable to an anonymous caller (owner
+   * decision, 2026-08-19). Default true — `false` puts `PublicReadGuard`
+   * (`common/guards/public-read.guard.ts`) into its closed-node mode. */
+  get publicRead(): boolean {
+    return this.get('PUBLIC_READ');
+  }
+
+  /** P15-002: whether this node currently accepts the PASSWORD credential type. Default
+   * `'optional'`. See `AuthService`'s `PASSWORD_AUTH_DISABLED` checks and
+   * `AuthService.GetAuthPolicy`. */
+  get passwordAuthMode(): 'off' | 'optional' | 'required' {
+    return this.get('PASSWORD_AUTH');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

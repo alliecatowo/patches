@@ -134,6 +134,19 @@ export const ERROR_CODES = [
    * pending follow request addressed to the caller (spec §197.5) — never exists, was already
    * accepted/rejected, or was cancelled by the requester. */
   'FOLLOW_REQUEST_NOT_FOUND',
+  /** `PublicReadGuard` (`common/guards/public-read.guard.ts`, owner decision 2026-08-19): a
+   * node with `PUBLIC_READ=false` rejects an unauthenticated call to any RPC outside its
+   * always-open allow-list (`SystemService.*`, `NodeService.GetNodeInfo`/`GetNodePolicy`,
+   * `AuthService.*`) with this code — distinct from `AUTH_INVALID_CREDENTIALS` so a client can
+   * tell "this node requires sign-in to read" apart from "your credentials were wrong" (the
+   * latter implies a login form was already shown).
+   */
+  'SIGN_IN_REQUIRED',
+  /** P15-002: `Login`, a password-carrying `Register`, or `AddCredential(PASSWORD)` on a node
+   * with `PASSWORD_AUTH=off` — the credential type itself is rejected node-wide, not any
+   * particular account or password. Clients must hide password UI rather than let a caller
+   * reach this (`AuthService.GetAuthPolicy`). */
+  'PASSWORD_AUTH_DISABLED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -193,6 +206,8 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   APPEAL_WINDOW_CLOSED: GrpcStatus.FAILED_PRECONDITION,
   PRIVACY_NOTICE_NOT_ACKNOWLEDGED: GrpcStatus.FAILED_PRECONDITION,
   FOLLOW_REQUEST_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  SIGN_IN_REQUIRED: GrpcStatus.UNAUTHENTICATED,
+  PASSWORD_AUTH_DISABLED: GrpcStatus.FAILED_PRECONDITION,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

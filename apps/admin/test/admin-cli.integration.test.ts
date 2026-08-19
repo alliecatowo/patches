@@ -7,6 +7,7 @@ import {
   Appeal,
   DomainBlock,
   Invite,
+  Labeler,
   ModerationLogEntry,
   OutboxJob,
   Post,
@@ -24,6 +25,7 @@ import { runAppealCommand } from '../src/commands/appeal.js';
 import { runDomainCommand } from '../src/commands/domain.js';
 import { runInviteCommand } from '../src/commands/invite.js';
 import { runJobsCommand } from '../src/commands/jobs.js';
+import { runLabelerCommand } from '../src/commands/labeler.js';
 import { runPostCommand } from '../src/commands/post.js';
 import { runReportCommand } from '../src/commands/report.js';
 import { runUserCommand } from '../src/commands/user.js';
@@ -732,6 +734,137 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             ctx,
           ),
         ).rejects.toThrow(/--outcome must be one of/);
+      });
+    });
+
+    describe('labeler vocabulary set-mandatory/list (P14-026, spec §200.3, §203)', () => {
+      // Every test in this block creates its own node-labeler row (`isNodeLabeler: true`) —
+      // `requireNodeLabeler`'s `findOne({ where: { isNodeLabeler: true } })` would otherwise
+      // pick up whichever row a prior test in this file left behind, since nothing enforces
+      // "at most one" beyond the service layer (`labeler.entity.ts`'s doc).
+      afterEach(async () => {
+        await dataSource.getRepository(Labeler).delete({ isNodeLabeler: true });
+      });
+
+      /** This CLI never boots a full server, so nothing runs `LabelSeedService`'s boot-time
+       * seed (`apps/server/src/modules/labels/label-seed.service.ts`) — a fresh, unmandatory
+       * node-labeler row is created directly, matching that seed's own initial shape. */
+      async function seedNodeLabeler(): Promise<Labeler> {
+        const labelers = dataSource.getRepository(Labeler);
+        return labelers.save(
+          labelers.create({
+            actorId: null,
+            communityId: null,
+            isNodeLabeler: true,
+            vocabulary: [
+              { value: 'spam', description: '', defaultAction: 'WARN', mandatory: false },
+              { value: 'nsfw', description: '', defaultAction: 'WARN', mandatory: false },
+            ],
+          }),
+        );
+      }
+
+      it('sets and unsets mandatory on an existing value, auditing each change', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}k`,
+        });
+        const ctx = await context(operatorActor.handle);
+        const labeler = await seedNodeLabeler();
+
+        const s1 = silence();
+        await runLabelerCommand(
+          'vocabulary',
+          { positionals: ['labeler', 'vocabulary', 'set-mandatory', 'nsfw'], options: {} },
+          ctx,
+        );
+        s1.restore();
+
+        const afterSet = await dataSource
+          .getRepository(Labeler)
+          .findOneByOrFail({ id: labeler.id });
+        expect(afterSet.vocabulary).toEqual([
+          { value: 'spam', description: '', defaultAction: 'WARN', mandatory: false },
+          { value: 'nsfw', description: '', defaultAction: 'WARN', mandatory: true },
+        ]);
+
+        const setAudit = await latestAuditLog('LABELER', labeler.id);
+        expect(setAudit.action).toBe('labeler.vocabulary.set-mandatory');
+        expect(setAudit.adminUserId).toBe(operatorActor.userId);
+        expect(setAudit.metadata).toEqual({ value: 'nsfw', mandatory: true });
+
+        const s2 = silence();
+        await runLabelerCommand(
+          'vocabulary',
+          {
+            positionals: ['labeler', 'vocabulary', 'set-mandatory', 'nsfw'],
+            options: { off: true },
+          },
+          ctx,
+        );
+        s2.restore();
+
+        const afterUnset = await dataSource
+          .getRepository(Labeler)
+          .findOneByOrFail({ id: labeler.id });
+        expect(afterUnset.vocabulary).toEqual([
+          { value: 'spam', description: '', defaultAction: 'WARN', mandatory: false },
+          { value: 'nsfw', description: '', defaultAction: 'WARN', mandatory: false },
+        ]);
+
+        const unsetAudit = await latestAuditLog('LABELER', labeler.id);
+        expect(unsetAudit.metadata).toEqual({ value: 'nsfw', mandatory: false });
+        expect(unsetAudit.id).not.toBe(setAudit.id);
+      });
+
+      it('rejects a value not in the node labeler’s vocabulary', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}l`,
+        });
+        const ctx = await context(operatorActor.handle);
+        await seedNodeLabeler();
+
+        await expect(
+          runLabelerCommand(
+            'vocabulary',
+            {
+              positionals: ['labeler', 'vocabulary', 'set-mandatory', 'not-a-real-value'],
+              options: {},
+            },
+            ctx,
+          ),
+        ).rejects.toThrow(/is not part of the node labeler's vocabulary/);
+      });
+
+      it('lists the node labeler’s vocabulary, mandatory flags included', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}m`,
+        });
+        const ctx = await context(operatorActor.handle);
+        const labelers = dataSource.getRepository(Labeler);
+        await labelers.save(
+          labelers.create({
+            actorId: null,
+            communityId: null,
+            isNodeLabeler: true,
+            vocabulary: [
+              { value: 'spam', description: '', defaultAction: 'WARN', mandatory: false },
+              { value: 'nsfw', description: '', defaultAction: 'HIDE', mandatory: true },
+            ],
+          }),
+        );
+
+        const capture = captureStdout();
+        await runLabelerCommand(
+          'vocabulary',
+          { positionals: ['labeler', 'vocabulary', 'list'], options: { json: true } },
+          ctx,
+        );
+        capture.restore();
+
+        expect(JSON.parse(capture.text())).toEqual([
+          { value: 'spam', description: '', defaultAction: 'WARN', mandatory: false },
+          { value: 'nsfw', description: '', defaultAction: 'HIDE', mandatory: true },
+        ]);
       });
     });
 

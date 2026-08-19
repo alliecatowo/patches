@@ -17,3 +17,9 @@
   color: var(--fg);
   border-bottom-color: var(--accent);
 }
+
+.signInRequired {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--fg-muted);
+}

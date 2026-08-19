@@ -1,12 +1,22 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { describe, expect, it } from 'vitest';
 
-import { describeGrpcError } from './errors.js';
+import { describeGrpcError, isSignInRequired } from './errors.js';
 
 const TARGET = 'patches.local:50051';
 
 function grpcError(code: number, details = ''): unknown {
   return Object.assign(new Error(details), { code, details });
+}
+
+/** A minimal grpc-js `Metadata`-shaped fake carrying a single `x-patches-error-code` entry,
+ * exactly as `RpcExceptionsFilter` sets it (`docs/architecture/api.md` §7). */
+function grpcErrorWithCode(code: number, appErrorCode: string): unknown {
+  return Object.assign(new Error(''), {
+    code,
+    details: '',
+    metadata: { get: (key: string) => (key === 'x-patches-error-code' ? [appErrorCode] : []) },
+  });
 }
 
 describe('describeGrpcError (spec §81)', () => {
@@ -37,6 +47,17 @@ describe('describeGrpcError (spec §81)', () => {
     const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET);
     expect(friendly.retryable).toBe(false);
     expect(friendly.hint).toContain('Sign in');
+  });
+
+  it('recognises PUBLIC_READ=false rejections via the x-patches-error-code metadata (2026-08-19)', () => {
+    const error = grpcErrorWithCode(GrpcStatus.UNAUTHENTICATED, 'SIGN_IN_REQUIRED');
+    expect(isSignInRequired(error)).toBe(true);
+    expect(isSignInRequired(grpcError(GrpcStatus.UNAUTHENTICATED))).toBe(false);
+
+    const friendly = describeGrpcError(error, TARGET);
+    expect(friendly.retryable).toBe(false);
+    expect(friendly.title).toMatch(/requires sign-in to read/i);
+    expect(friendly.hint).toMatch(/press l/i);
   });
 
   it('surfaces ALREADY_EXISTS with the server message (e.g. HANDLE_TAKEN)', () => {

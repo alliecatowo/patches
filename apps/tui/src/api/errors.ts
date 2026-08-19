@@ -17,10 +17,17 @@ export interface FriendlyError {
   code: number;
 }
 
+interface GrpcMetadataLike {
+  get: (key: string) => unknown;
+}
+
 interface GrpcLikeError {
   code?: unknown;
   details?: unknown;
   message?: unknown;
+  /** grpc-js `ServiceError.metadata` — the trailer `RpcExceptionsFilter` sets
+   * `x-patches-error-code`/`x-request-id` on. */
+  metadata?: unknown;
 }
 
 function statusOf(error: unknown): number | undefined {
@@ -32,6 +39,30 @@ function statusOf(error: unknown): number | undefined {
 /** Exposed for callers (e.g. `SessionManager`) that need to branch on the raw status. */
 export function grpcStatusCode(error: unknown): number | undefined {
   return statusOf(error);
+}
+
+/** The application error code from `x-patches-error-code` response metadata
+ * (`docs/architecture/api.md` §7), when the error carries one. */
+function appErrorCodeOf(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { metadata } = error as GrpcLikeError;
+  if (typeof metadata !== 'object' || metadata === null) return undefined;
+  const { get } = metadata as GrpcMetadataLike;
+  if (typeof get !== 'function') return undefined;
+  const values: unknown = get.call(metadata, 'x-patches-error-code');
+  const value = Array.isArray(values) ? (values[0] as unknown) : undefined;
+  if (typeof value === 'string') return value;
+  if (value instanceof Buffer) return value.toString('utf8');
+  return undefined;
+}
+
+/**
+ * True when the server's `PUBLIC_READ=false` gate (owner decision, 2026-08-19: an
+ * invite-only node gates posting, not reading, unless an operator opts into a fully closed
+ * node) is what rejected this call — distinct from every other `UNAUTHENTICATED` failure.
+ */
+export function isSignInRequired(error: unknown): boolean {
+  return appErrorCodeOf(error) === 'SIGN_IN_REQUIRED';
 }
 
 /** The server's own message, when it sent one worth showing. */
@@ -87,6 +118,14 @@ export function describeGrpcError(
         code,
       };
     case GrpcStatus.UNAUTHENTICATED:
+      if (isSignInRequired(error)) {
+        return {
+          title: 'This node requires sign-in to read.',
+          hint: 'Press L to log in.',
+          retryable: false,
+          code,
+        };
+      }
       if (options?.context === 'credentials') {
         return {
           title: 'Wrong handle/email or password.',

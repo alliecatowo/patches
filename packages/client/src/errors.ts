@@ -29,6 +29,21 @@ export interface DescribeErrorOptions {
   target?: string | undefined;
 }
 
+/**
+ * True when the server's `PUBLIC_READ=false` gate (owner decision, 2026-08-19: an
+ * invite-only node gates posting, not reading, unless an operator opts into a fully closed
+ * node) is what rejected this call — distinct from every other `Code.Unauthenticated` failure,
+ * which `describeError` already tells apart via `options.context === 'credentials'`. The
+ * application error code travels in the `x-patches-error-code` response metadata
+ * (`RpcExceptionsFilter`, `docs/architecture/api.md` §7); connect-es unions response
+ * headers/trailers into `ConnectError.metadata` regardless of transport
+ * (`docs/research/connect-es.md` §9). Exposed separately from `describeError` so a route can
+ * render a dedicated sign-in prompt instead of (or in addition to) the generic message.
+ */
+export function isSignInRequired(error: unknown): boolean {
+  return ConnectError.from(error).metadata.get('x-patches-error-code') === 'SIGN_IN_REQUIRED';
+}
+
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: ConnectError): string | undefined {
   const trimmed = error.rawMessage.trim();
@@ -71,6 +86,16 @@ export function describeError(error: unknown, options?: DescribeErrorOptions): D
         code,
       };
     case Code.Unauthenticated:
+      if (isSignInRequired(connectError)) {
+        return {
+          message: combine(
+            'This node requires sign-in to read.',
+            'Sign in or create an account to continue.',
+          ),
+          retryable: false,
+          code,
+        };
+      }
       if (options?.context === 'credentials') {
         return { message: 'Wrong handle/email or password.', retryable: false, code };
       }

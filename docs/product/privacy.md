@@ -147,6 +147,14 @@ By default:
 > you always decide. See
 > [`architecture/social.md`](../architecture/social.md) for how this works.
 
+> **Reading logged-out. Status: implemented (owner decision, 2026-08-19).** An invite-only
+> node gates who can post an account, not who can read public content — by default, this
+> node's public profiles, posts, and timelines stay visible to a logged-out visitor exactly
+> like they are to a signed-in one. Node operators may close reads entirely instead (a
+> "members-only" node): call `NodeService.GetNodePolicy`/`GetNodeInfo` before assuming either
+> way, since a closed node answers every RPC except node discovery and sign-in with
+> "sign-in required" rather than showing you anything.
+
 Not public:
 
 - Your email address, whether verified or not.
