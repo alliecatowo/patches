@@ -9,16 +9,21 @@ import { loadSync } from '@grpc/proto-loader';
 import { PATCHES_PACKAGE_NAME, PROTO_LOADER_OPTIONS, SERVICE_NAMES } from './constants.js';
 import type {
   ActorGrpcClient,
+  AppealGrpcClient,
   AuthGrpcClient,
   CommunityGrpcClient,
   DirectMessageGrpcClient,
   FeedGrpcClient,
+  FilterGrpcClient,
+  FilterListGrpcClient,
+  LabelGrpcClient,
   MediaGrpcClient,
   ModerationGrpcClient,
   NodeGrpcClient,
   NotificationGrpcClient,
   PageGrpcClient,
   PostGrpcClient,
+  PrivacyGrpcClient,
   ReactionGrpcClient,
   SocialGraphGrpcClient,
   SystemGrpcClient,
@@ -218,4 +223,51 @@ export function createTagClient(
   options?: ChannelOptions,
 ): TagGrpcClient {
   return buildClient<TagGrpcClient>(SERVICE_NAMES.tag, target, credentials, options);
+}
+
+/** Build a `patches.v1.FilterService` client. See {@link createSystemClient} for the pattern. */
+export function createFilterClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): FilterGrpcClient {
+  return buildClient<FilterGrpcClient>(SERVICE_NAMES.filter, target, credentials, options);
+}
+
+/** Build a `patches.v1.FilterListService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createFilterListClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): FilterListGrpcClient {
+  return buildClient<FilterListGrpcClient>(SERVICE_NAMES.filterList, target, credentials, options);
+}
+
+/** Build a `patches.v1.LabelService` client. See {@link createSystemClient} for the pattern. */
+export function createLabelClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): LabelGrpcClient {
+  return buildClient<LabelGrpcClient>(SERVICE_NAMES.label, target, credentials, options);
+}
+
+/** Build a `patches.v1.AppealService` client. See {@link createSystemClient} for the pattern. */
+export function createAppealClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): AppealGrpcClient {
+  return buildClient<AppealGrpcClient>(SERVICE_NAMES.appeal, target, credentials, options);
+}
+
+/** Build a `patches.v1.PrivacyService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createPrivacyClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): PrivacyGrpcClient {
+  return buildClient<PrivacyGrpcClient>(SERVICE_NAMES.privacy, target, credentials, options);
 }

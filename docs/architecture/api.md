@@ -99,7 +99,16 @@ service ModerationService
 service TagService
 service CommunityService
 service DirectMessageService
+service FilterService
+service FilterListService
+service LabelService
+service AppealService
+service PrivacyService
 ```
+
+The five services above (Amendment C, §196–§210) are **planned (proto only)** — see
+[§3a](#3a-amendment-c-services-196210--planned-proto-only) below; nothing has a server-side
+handler yet except where noted.
 
 ## 3. RPCs by service
 
@@ -146,9 +155,10 @@ Notes:
 
 ### NodeService (§163, §168) — implemented in `node.proto` (P1-014)
 
-| RPC           | Notes                                                                                                                                                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GetNodeInfo` | **unauthenticated**; node domain, software version, registration mode, input limits (§58), and configured social capabilities (§174), including post length, community creation policy, DM availability/retention, and allowed like glyphs |
+| RPC             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetNodeInfo`   | **unauthenticated**; node domain, software version, registration mode, input limits (§58), and configured social capabilities (§174), including post length, community creation policy, DM availability/retention, and allowed like glyphs                                                                                                                                                                                                                                                                                |
+| `GetNodePolicy` | Status: implemented, returns an empty policy (§197.6, P14-001) — **unauthenticated**, cacheable, a deliberately separate RPC from `GetNodeInfo`; today it always returns an all-zero `NodePolicy` (privacy notice text, moderator contact, domain policies, retention windows, label vocabulary are all unset) because no operator-configuration surface exists yet — populating it is a follow-up task, not a stub error, since the proto's own contract says an empty policy renders as "this node publishes no policy" |
 
 Clients discover node policy here rather than assuming the reference node's behavior. There
 is no `tier`/`plan`/`premium` field anywhere in the protocol (§174, ADR 0014) — clients branch
@@ -215,6 +225,11 @@ genuinely new follow (A-026), after the follow transaction commits.
 | `SearchPosts`                | Status: implemented (P12) — Postgres full-text (`websearch_to_tsquery('simple', …)` against a GIN expression index on `to_tsvector('simple', body)`, `Phase12PostSearch` migration); strictly newest-first, keyset-paged like every other list RPC — no relevance score, never a `sort`/`order` param (§194); optional bearer token, same block/mute/`FOLLOWERS`-visibility/tag-mute/community rules as `ListLocalFeed` (reuses its exported filter helpers); optional `author_handle` filter; replies excluded unless `include_replies` is set; rejects an empty/whitespace or >200-char `query` with `INVALID_ARGUMENT` |
 
 `Post.counts.likes`/`viewer_state.liked`/`viewer_state.bookmarked` are real as of P4-002 (previously always zero/false) — computed by `PostService.viewOf`/`feeds/post-batch.ts`'s `toPostViews` from the `likes`/`bookmarks` tables.
+
+`Post.filtered_by`/`Post.labels` (Amendment C, §198.3/§200.3) are **planned (proto only,
+P14-001)** — every response leaves them unset/empty today; populating them requires the
+`FilterService`/`LabelService` evaluation chokepoint at `FeedService.applyVisibilityFilter`,
+which doesn't exist yet.
 
 ### FeedService (§52) — implemented (P3-002)
 
@@ -285,6 +300,8 @@ image bytes are proxied through Node (§153).
 | `ListBlocks` / `ListMutes`    | the caller's own list, keyset-paginated                                                                                                                                                                                                                                     |
 | `ReportPost` / `ReportActor`  | rate-limited (10/hour per network peer, `ReportRateLimitService`); bounded 2,000-character `details`; always creates an `OPEN` `reports` row — resolving a report has no RPC of its own, it's `patches-admin report resolve` (§65, P6-003, `docs/operations/moderation.md`) |
 | `ReportMessage`               | applies the same bounds/rate limit and stores a stable snapshot of the reported message plus up to ten surrounding messages                                                                                                                                                 |
+| `ListModerationLog`           | Status: planned (proto only, P14-001) — **unauthenticated**; the public, anonymized transparency log (§201.4); server returns `NOT_IMPLEMENTED` until `moderation_log_entries` and its projection service exist                                                             |
+| `ListMyModerationNotices`     | Status: planned (proto only, P14-001) — authenticated; the private, notified read projection of `admin_audit_log` rows that acted on the caller (§201.2); server returns `NOT_IMPLEMENTED` until that projection exists                                                     |
 
 No user-facing RPC exposes internal moderator notes (`reports.moderator_note`), and there is
 no gRPC surface for the admin CLI at all — `apps/admin` reads/writes PostgreSQL directly
@@ -334,6 +351,92 @@ sender deletion is a tombstone, and unread state is per viewer without read rece
 
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
+
+### 3a. Amendment C services (§196–§210) — planned (proto only)
+
+**Status: planned (proto only, P14-001).** The `.proto` contract below exists and is
+generated; no Nest module, service, or repository backs any of these RPCs yet except
+`NodeService.GetNodePolicy` and `ModerationService.ListModerationLog`/
+`ListMyModerationNotices`, which have controller wiring that returns an honest empty
+result/`NOT_IMPLEMENTED` (see their notes in §3 above) rather than a schema gap. Amendment C's
+organizing rule — filters/lists/labelers act on what a _viewer_/_subscriber_ sees, the node
+floor (reports, moderator review, the audit log) is unchanged and unweakened, and nothing here
+ever ranks, scores, or reorders anything (§194, §208) — governs the implementation that will
+land in follow-up tasks.
+
+#### FilterService (§198) — implemented in `filters.proto` (P14-001, contract only)
+
+| RPC             | Notes                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `CreateFilter`  | up to 50 filters/actor, 20 terms/filter (§204); literal terms only — no user-supplied regex, ever (§198.2, §208) |
+| `UpdateFilter`  | `google.protobuf.FieldMask`-selected partial update, same pattern as `ActorService.UpdateProfile`                |
+| `DeleteFilter`  |                                                                                                                  |
+| `ListFilters`   | the caller's own filters                                                                                         |
+| `ExportFilters` | plain, documented JSON — never a binary blob or executable format (§153, §198.5)                                 |
+| `ImportFilters` | additive; `apply = false` previews what would be added without writing anything                                  |
+
+`hide` is enforced by omission on the server — a hidden post never reaches the client, so a
+page can legitimately contain fewer items than requested (clients must page on `PageInfo`, not
+item count). `collapse`/`warn` surface as `Post.filtered_by` instead (§198.3).
+
+#### FilterListService (§199) — implemented in `filter_lists.proto` (P14-001, contract only)
+
+| RPC                                 | Notes                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `PublishFilterList`                 | personal or (via `owner_community_id`) community-owned; up to 10 lists/actor, 2,000 entries/list (§204)                         |
+| `UpdateFilterList`                  | field-mask partial update; `name`/ownership immutable after publish                                                             |
+| `DeleteFilterList`                  |                                                                                                                                 |
+| `GetFilterList` / `ListFilterLists` | lists are public by construction (§199.1)                                                                                       |
+| `ListFilterListEntries`             | the full entry set — visible to any subscriber, always (§199.3)                                                                 |
+| `SubscribeFilterList`               | applies entries as filters/mutes with a subscriber-chosen action (default `collapse`); **never creates a block** (§199.2, §208) |
+| `UnsubscribeFilterList`             | instant and complete — subscriptions evaluate live, entries are never copied (§199.3)                                           |
+| `ListFilterListSubscriptions`       | the caller's own subscriptions only — subscriber counts are never published anywhere (§199.3, §208)                             |
+| `SetFilterListEntryException`       | per-entry opt-out without unsubscribing or notifying the list author                                                            |
+
+#### LabelService (§200) — implemented in `labels.proto` (P14-001, contract only)
+
+| RPC                                       | Notes                                                                                                                                                    |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateLabeler`                           | personal or (via `community_id`) community-owned; every node also runs an implicit `is_node_labeler` one                                                 |
+| `GetLabeler` / `ListLabelers`             |                                                                                                                                                          |
+| `ApplyLabel`                              | rate-limited 300/day per labeler (§204, §200.5); `value` must be one of the labeler's node-published vocabulary — free text is prohibited (§200.2, §208) |
+| `RetractLabel`                            | sets `retracted_at`; history is preserved, never hard-deleted (§200.1)                                                                                   |
+| `SubscribeLabeler` / `UnsubscribeLabeler` | a label is visible only to subscribers — labeling someone has zero effect on anyone who hasn't opted in (§200.3)                                         |
+| `SetLabelerSubscriptionAction`            | per-value action override; any value may be set to `ignore` except one the node marks legally mandatory (§200.3)                                         |
+| `ListLabelsOnSubject`                     | pull-only self-inspection (§200.4) — an actor is never notified that they were labeled                                                                   |
+
+Labels never affect feed position, search position, or delivery, and are never aggregated into
+a count/reputation/trust score for anyone (§200.3, §208).
+
+#### AppealService (§201.3) — implemented in `appeals.proto` (P14-001, contract only)
+
+| RPC             | Notes                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| `CreateAppeal`  | against a specific `ModerationNotice`; only the acted-upon actor may appeal; one appeal per notice     |
+| `GetAppeal`     | visible only to the appellant and moderators — never the reporter, never the public log (§201.3, §208) |
+| `ListMyAppeals` | the caller's own appeals                                                                               |
+
+Admin-side resolution is CLI-only (`patches-admin appeal list\|inspect\|resolve`, a follow-up
+task extending the existing `report list\|inspect\|resolve` pattern, §65) — there is
+deliberately no gRPC resolve RPC.
+
+#### PrivacyService (§197) — implemented in `privacy.proto` (P14-001, contract only)
+
+| RPC                        | Notes                                                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `AcknowledgePrivacyNotice` | records that the notice text was shown — never a waiver, never gates a safety/export/deletion function (§197.1) |
+| `GetPrivacyPrefs`          | `discoverable`/`indexable`/`show_in_local_feed`/`locked` + notice acknowledgement state (§197.5)                |
+| `UpdatePrivacyPrefs`       | field-mask partial update, same pattern as `ActorService.UpdateProfile`                                         |
+| `ExportAccount`            | enqueues a background job (§30, ADR 0004) — never synchronous, never streams the archive through this process   |
+| `GetExportStatus`          | one ready archive at a time, expires after 7 days (§204)                                                        |
+| `RequestAccountDeletion`   | moves the account to `PENDING_DELETION`; disappears from feeds/search/local-timeline immediately (§197.4)       |
+| `CancelAccountDeletion`    | restores the account intact, only within the grace period (default 30 days, node-configurable)                  |
+| `GetDeletionStatus`        |                                                                                                                 |
+
+`locked` (follow requests, a correctness fix for the currently-unenforced `FOLLOWERS`
+visibility promise) is part of this contract but has no enforcement yet — until it ships,
+`FOLLOWERS`-visibility posts must be described honestly as "not shown publicly", never
+"private" (§197.5).
 
 ## 4. Metadata conventions (§44)
 

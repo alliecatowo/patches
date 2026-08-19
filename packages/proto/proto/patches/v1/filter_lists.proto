@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+import "patches/v1/communities.proto";
+import "patches/v1/filters.proto";
+
+// Filter lists: publishable, subscribable, revocable (spec §199) — the decentralized
+// primitive, extending §111's A3 from shareable inclusion to shareable exclusion. A list is
+// data only: no code, no action, no scope, no ordering, no scores (§199.1). The subscriber
+// owns the action; the list author owns the entries — these never swap (§199.2), and a
+// subscription can never create a block (§199.2, §208). Subscriptions are evaluated live
+// against the list's current entries; entries are never copied into a subscriber's own
+// filters, so unsubscribing is instant and complete (§199.3).
+service FilterListService {
+  rpc PublishFilterList(PublishFilterListRequest) returns (PublishFilterListResponse);
+
+  rpc UpdateFilterList(UpdateFilterListRequest) returns (UpdateFilterListResponse);
+
+  rpc DeleteFilterList(DeleteFilterListRequest) returns (DeleteFilterListResponse);
+
+  rpc GetFilterList(GetFilterListRequest) returns (GetFilterListResponse);
+
+  // Publicly published lists, most-recently-updated first.
+  rpc ListFilterLists(ListFilterListsRequest) returns (ListFilterListsResponse);
+
+  // The full entry set, visible to any subscriber at any time — an unauditable list is a
+  // black box with authority (spec §199.3).
+  rpc ListFilterListEntries(ListFilterListEntriesRequest) returns (ListFilterListEntriesResponse);
+
+  // Applies the list's entries as filters/mutes with an action and scopes the subscriber
+  // chooses, defaulting to `FILTER_ACTION_COLLAPSE` (spec §199.2). Never creates a block.
+  rpc SubscribeFilterList(SubscribeFilterListRequest) returns (SubscribeFilterListResponse);
+
+  rpc UnsubscribeFilterList(UnsubscribeFilterListRequest) returns (UnsubscribeFilterListResponse);
+
+  // The caller's own subscriptions. Subscriber counts are never published anywhere (§199.3,
+  // §208) — this is the caller's own list, not an aggregate.
+  rpc ListFilterListSubscriptions(ListFilterListSubscriptionsRequest)
+      returns (ListFilterListSubscriptionsResponse);
+
+  // "This list is right about everything except my friend" — an exception without
+  // unsubscribing and without telling the list author (spec §199.3).
+  rpc SetFilterListEntryException(SetFilterListEntryExceptionRequest)
+      returns (SetFilterListEntryExceptionResponse);
+}
+
+message FilterListEntry {
+  string id = 1;
+  FilterTermKind kind = 2;
+  string value = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message FilterList {
+  string id = 1;
+
+  // Exactly one of these is set (spec §202's `CHECK exactly one owner column set`) — a
+  // personal list or a community-owned one, maintained by its moderators (spec §199.1).
+  Actor owner_actor = 2;
+  Community owner_community = 3;
+
+  string name = 4;
+  string display_name = 5;
+  string description = 6;
+
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message PublishFilterListRequest {
+  string name = 1;
+  string display_name = 2;
+  string description = 3;
+
+  // Empty publishes as the caller's own list. Set to a community the caller moderates to
+  // publish it as that community's list instead (spec §199.1); a community's list has no
+  // authority over non-members or inside the community — it is a recommendation like any
+  // other.
+  string owner_community_id = 4;
+
+  // Up to 2,000 entries per list (spec §204).
+  repeated FilterTermInput entries = 5;
+}
+
+message PublishFilterListResponse {
+  FilterList filter_list = 1;
+}
+
+// `update_mask` selects which of `display_name`/`description`/`entries` to apply — same
+// FieldMask pattern as `ActorService.UpdateProfile`. `name` and ownership are immutable after
+// publish.
+message UpdateFilterListRequest {
+  string id = 1;
+  string display_name = 2;
+  string description = 3;
+  repeated FilterTermInput entries = 4;
+  google.protobuf.FieldMask update_mask = 5;
+}
+
+message UpdateFilterListResponse {
+  FilterList filter_list = 1;
+}
+
+message DeleteFilterListRequest {
+  string id = 1;
+}
+
+message DeleteFilterListResponse {}
+
+message GetFilterListRequest {
+  string id = 1;
+}
+
+message GetFilterListResponse {
+  FilterList filter_list = 1;
+}
+
+message ListFilterListsRequest {
+  // Empty lists every publicly published list (spec §199.1 — "a list is public by
+  // construction"). Set to an actor id to scope to lists that actor published.
+  string owner_actor_id = 1;
+
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListFilterListsResponse {
+  repeated FilterList filter_lists = 1;
+  PageInfo page = 2;
+}
+
+message ListFilterListEntriesRequest {
+  string filter_list_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListFilterListEntriesResponse {
+  repeated FilterListEntry entries = 1;
+  PageInfo page = 2;
+}
+
+message SubscribeFilterListRequest {
+  string filter_list_id = 1;
+
+  // Server defaults to `FILTER_ACTION_COLLAPSE` when unspecified — the least destructive
+  // useful action (spec §199.2).
+  FilterAction action = 2;
+}
+
+message SubscribeFilterListResponse {
+  FilterListSubscription subscription = 1;
+}
+
+message UnsubscribeFilterListRequest {
+  string filter_list_id = 1;
+}
+
+message UnsubscribeFilterListResponse {}
+
+message FilterListSubscription {
+  FilterList filter_list = 1;
+  FilterAction action = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message ListFilterListSubscriptionsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListFilterListSubscriptionsResponse {
+  repeated FilterListSubscription subscriptions = 1;
+  PageInfo page = 2;
+}
+
+message SetFilterListEntryExceptionRequest {
+  string filter_list_id = 1;
+  string filter_list_entry_id = 2;
+
+  // True adds the exception, false removes it — idempotent either way.
+  bool excepted = 3;
+}
+
+message SetFilterListEntryExceptionResponse {}

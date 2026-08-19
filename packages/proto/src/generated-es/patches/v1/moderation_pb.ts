@@ -4,6 +4,8 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
+import type { Timestamp } from '@bufbuild/protobuf/wkt';
+import { file_google_protobuf_timestamp } from '@bufbuild/protobuf/wkt';
 import type { Actor } from './actors_pb.js';
 import { file_patches_v1_actors } from './actors_pb.js';
 import type { PageInfo } from './common_pb.js';
@@ -18,8 +20,13 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_moderation: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChtwYXRjaGVzL3YxL21vZGVyYXRpb24ucHJvdG8SCnBhdGNoZXMudjEiJQoRQmxvY2tBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRAoSQmxvY2tBY3RvclJlc3BvbnNlEi4KDHJlbGF0aW9uc2hpcBgBIAEoCzIYLnBhdGNoZXMudjEuUmVsYXRpb25zaGlwIicKE1VuYmxvY2tBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRgoUVW5ibG9ja0FjdG9yUmVzcG9uc2USLgoMcmVsYXRpb25zaGlwGAEgASgLMhgucGF0Y2hlcy52MS5SZWxhdGlvbnNoaXAiJAoQTXV0ZUFjdG9yUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCSJDChFNdXRlQWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCImChJVbm11dGVBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRQoTVW5tdXRlQWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCIyChFMaXN0QmxvY2tzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0iWwoSTGlzdEJsb2Nrc1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iMQoQTGlzdE11dGVzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0iWgoRTGlzdE11dGVzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJfChFSZXBvcnRQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEigKBnJlYXNvbhgCIAEoDjIYLnBhdGNoZXMudjEuUmVwb3J0UmVhc29uEg8KB2RldGFpbHMYAyABKAkiJwoSUmVwb3J0UG9zdFJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSJhChJSZXBvcnRBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkSKAoGcmVhc29uGAIgASgOMhgucGF0Y2hlcy52MS5SZXBvcnRSZWFzb24SDwoHZGV0YWlscxgDIAEoCSIoChNSZXBvcnRBY3RvclJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSJlChRSZXBvcnRNZXNzYWdlUmVxdWVzdBISCgptZXNzYWdlX2lkGAEgASgJEigKBnJlYXNvbhgCIAEoDjIYLnBhdGNoZXMudjEuUmVwb3J0UmVhc29uEg8KB2RldGFpbHMYAyABKAkiKgoVUmVwb3J0TWVzc2FnZVJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSrfAQoMUmVwb3J0UmVhc29uEh0KGVJFUE9SVF9SRUFTT05fVU5TUEVDSUZJRUQQABIWChJSRVBPUlRfUkVBU09OX1NQQU0QARIcChhSRVBPUlRfUkVBU09OX0hBUkFTU01FTlQQAhIdChlSRVBPUlRfUkVBU09OX0hBVEVfU1BFRUNIEAMSIQodUkVQT1JUX1JFQVNPTl9JTExFR0FMX0NPTlRFTlQQBBIfChtSRVBPUlRfUkVBU09OX0lNUEVSU09OQVRJT04QBRIXChNSRVBPUlRfUkVBU09OX09USEVSEAYy1wUKEU1vZGVyYXRpb25TZXJ2aWNlEksKCkJsb2NrQWN0b3ISHS5wYXRjaGVzLnYxLkJsb2NrQWN0b3JSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5CbG9ja0FjdG9yUmVzcG9uc2USUQoMVW5ibG9ja0FjdG9yEh8ucGF0Y2hlcy52MS5VbmJsb2NrQWN0b3JSZXF1ZXN0GiAucGF0Y2hlcy52MS5VbmJsb2NrQWN0b3JSZXNwb25zZRJICglNdXRlQWN0b3ISHC5wYXRjaGVzLnYxLk11dGVBY3RvclJlcXVlc3QaHS5wYXRjaGVzLnYxLk11dGVBY3RvclJlc3BvbnNlEk4KC1VubXV0ZUFjdG9yEh4ucGF0Y2hlcy52MS5Vbm11dGVBY3RvclJlcXVlc3QaHy5wYXRjaGVzLnYxLlVubXV0ZUFjdG9yUmVzcG9uc2USSwoKTGlzdEJsb2NrcxIdLnBhdGNoZXMudjEuTGlzdEJsb2Nrc1JlcXVlc3QaHi5wYXRjaGVzLnYxLkxpc3RCbG9ja3NSZXNwb25zZRJICglMaXN0TXV0ZXMSHC5wYXRjaGVzLnYxLkxpc3RNdXRlc1JlcXVlc3QaHS5wYXRjaGVzLnYxLkxpc3RNdXRlc1Jlc3BvbnNlEksKClJlcG9ydFBvc3QSHS5wYXRjaGVzLnYxLlJlcG9ydFBvc3RSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5SZXBvcnRQb3N0UmVzcG9uc2USTgoLUmVwb3J0QWN0b3ISHi5wYXRjaGVzLnYxLlJlcG9ydEFjdG9yUmVxdWVzdBofLnBhdGNoZXMudjEuUmVwb3J0QWN0b3JSZXNwb25zZRJUCg1SZXBvcnRNZXNzYWdlEiAucGF0Y2hlcy52MS5SZXBvcnRNZXNzYWdlUmVxdWVzdBohLnBhdGNoZXMudjEuUmVwb3J0TWVzc2FnZVJlc3BvbnNlYgZwcm90bzM',
-    [file_patches_v1_actors, file_patches_v1_common, file_patches_v1_social_graph],
+    'ChtwYXRjaGVzL3YxL21vZGVyYXRpb24ucHJvdG8SCnBhdGNoZXMudjEiJQoRQmxvY2tBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRAoSQmxvY2tBY3RvclJlc3BvbnNlEi4KDHJlbGF0aW9uc2hpcBgBIAEoCzIYLnBhdGNoZXMudjEuUmVsYXRpb25zaGlwIicKE1VuYmxvY2tBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRgoUVW5ibG9ja0FjdG9yUmVzcG9uc2USLgoMcmVsYXRpb25zaGlwGAEgASgLMhgucGF0Y2hlcy52MS5SZWxhdGlvbnNoaXAiJAoQTXV0ZUFjdG9yUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCSJDChFNdXRlQWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCImChJVbm11dGVBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkiRQoTVW5tdXRlQWN0b3JSZXNwb25zZRIuCgxyZWxhdGlvbnNoaXAYASABKAsyGC5wYXRjaGVzLnYxLlJlbGF0aW9uc2hpcCIyChFMaXN0QmxvY2tzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0iWwoSTGlzdEJsb2Nrc1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iMQoQTGlzdE11dGVzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0iWgoRTGlzdE11dGVzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJfChFSZXBvcnRQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEigKBnJlYXNvbhgCIAEoDjIYLnBhdGNoZXMudjEuUmVwb3J0UmVhc29uEg8KB2RldGFpbHMYAyABKAkiJwoSUmVwb3J0UG9zdFJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSJhChJSZXBvcnRBY3RvclJlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkSKAoGcmVhc29uGAIgASgOMhgucGF0Y2hlcy52MS5SZXBvcnRSZWFzb24SDwoHZGV0YWlscxgDIAEoCSIoChNSZXBvcnRBY3RvclJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSJlChRSZXBvcnRNZXNzYWdlUmVxdWVzdBISCgptZXNzYWdlX2lkGAEgASgJEigKBnJlYXNvbhgCIAEoDjIYLnBhdGNoZXMudjEuUmVwb3J0UmVhc29uEg8KB2RldGFpbHMYAyABKAkiKgoVUmVwb3J0TWVzc2FnZVJlc3BvbnNlEhEKCXJlcG9ydF9pZBgBIAEoCSKnAgoSTW9kZXJhdGlvbkxvZ0VudHJ5EgoKAmlkGAEgASgJEjAKBmFjdGlvbhgCIAEoDjIgLnBhdGNoZXMudjEuTW9kZXJhdGlvbkFjdGlvblR5cGUSOgoMc3ViamVjdF9raW5kGAMgASgOMiQucGF0Y2hlcy52MS5Nb2RlcmF0aW9uTG9nU3ViamVjdEtpbmQSFgoOc3ViamVjdF9kb21haW4YBCABKAkSPQoPcmVhc29uX2NhdGVnb3J5GAUgASgOMiQucGF0Y2hlcy52MS5Nb2RlcmF0aW9uUmVhc29uQ2F0ZWdvcnkSEAoIYXBwZWFsZWQYBiABKAgSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiOQoYTGlzdE1vZGVyYXRpb25Mb2dSZXF1ZXN0Eg4KBmN1cnNvchgBIAEoCRINCgVsaW1pdBgCIAEoDSJwChlMaXN0TW9kZXJhdGlvbkxvZ1Jlc3BvbnNlEi8KB2VudHJpZXMYASADKAsyHi5wYXRjaGVzLnYxLk1vZGVyYXRpb25Mb2dFbnRyeRIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyKsAgoQTW9kZXJhdGlvbk5vdGljZRIKCgJpZBgBIAEoCRIwCgZhY3Rpb24YAiABKA4yIC5wYXRjaGVzLnYxLk1vZGVyYXRpb25BY3Rpb25UeXBlEg8KB3Bvc3RfaWQYAyABKAkSPQoPcmVhc29uX2NhdGVnb3J5GAQgASgOMiQucGF0Y2hlcy52MS5Nb2RlcmF0aW9uUmVhc29uQ2F0ZWdvcnkSEwoLZXhwbGFuYXRpb24YBSABKAkSLgoKY3JlYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMwoPYXBwZWFsX2RlYWRsaW5lGAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghhcHBlYWxlZBgIIAEoCCI/Ch5MaXN0TXlNb2RlcmF0aW9uTm90aWNlc1JlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNInQKH0xpc3RNeU1vZGVyYXRpb25Ob3RpY2VzUmVzcG9uc2USLQoHbm90aWNlcxgBIAMoCzIcLnBhdGNoZXMudjEuTW9kZXJhdGlvbk5vdGljZRIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyrfAQoMUmVwb3J0UmVhc29uEh0KGVJFUE9SVF9SRUFTT05fVU5TUEVDSUZJRUQQABIWChJSRVBPUlRfUkVBU09OX1NQQU0QARIcChhSRVBPUlRfUkVBU09OX0hBUkFTU01FTlQQAhIdChlSRVBPUlRfUkVBU09OX0hBVEVfU1BFRUNIEAMSIQodUkVQT1JUX1JFQVNPTl9JTExFR0FMX0NPTlRFTlQQBBIfChtSRVBPUlRfUkVBU09OX0lNUEVSU09OQVRJT04QBRIXChNSRVBPUlRfUkVBU09OX09USEVSEAYq6QMKGE1vZGVyYXRpb25SZWFzb25DYXRlZ29yeRIqCiZNT0RFUkFUSU9OX1JFQVNPTl9DQVRFR09SWV9VTlNQRUNJRklFRBAAEikKJU1PREVSQVRJT05fUkVBU09OX0NBVEVHT1JZX0hBUkFTU01FTlQQARIjCh9NT0RFUkFUSU9OX1JFQVNPTl9DQVRFR09SWV9IQVRFEAISJgoiTU9ERVJBVElPTl9SRUFTT05fQ0FURUdPUllfVEhSRUFUUxADEiYKIk1PREVSQVRJT05fUkVBU09OX0NBVEVHT1JZX0RPWFhJTkcQBBIsCihNT0RFUkFUSU9OX1JFQVNPTl9DQVRFR09SWV9JTVBFUlNPTkFUSU9OEAUSIwofTU9ERVJBVElPTl9SRUFTT05fQ0FURUdPUllfU1BBTRAGEi4KKk1PREVSQVRJT05fUkVBU09OX0NBVEVHT1JZX0lMTEVHQUxfQ09OVEVOVBAHEiMKH01PREVSQVRJT05fUkVBU09OX0NBVEVHT1JZX05DSUkQCBIzCi9NT0RFUkFUSU9OX1JFQVNPTl9DQVRFR09SWV9JTkZSQVNUUlVDVFVSRV9BQlVTRRAJEiQKIE1PREVSQVRJT05fUkVBU09OX0NBVEVHT1JZX09USEVSEAoqoAIKFE1vZGVyYXRpb25BY3Rpb25UeXBlEiYKIk1PREVSQVRJT05fQUNUSU9OX1RZUEVfVU5TUEVDSUZJRUQQABIfChtNT0RFUkFUSU9OX0FDVElPTl9UWVBFX1dBUk4QARIiCh5NT0RFUkFUSU9OX0FDVElPTl9UWVBFX1NVU1BFTkQQAhIeChpNT0RFUkFUSU9OX0FDVElPTl9UWVBFX0JBThADEicKI01PREVSQVRJT05fQUNUSU9OX1RZUEVfUE9TVF9SRU1PVkFMEAQSKQolTU9ERVJBVElPTl9BQ1RJT05fVFlQRV9NRURJQV9UQUtFRE9XThAFEicKI01PREVSQVRJT05fQUNUSU9OX1RZUEVfRE9NQUlOX0JMT0NLEAYq5QEKGE1vZGVyYXRpb25Mb2dTdWJqZWN0S2luZBIrCidNT0RFUkFUSU9OX0xPR19TVUJKRUNUX0tJTkRfVU5TUEVDSUZJRUQQABImCiJNT0RFUkFUSU9OX0xPR19TVUJKRUNUX0tJTkRfRE9NQUlOEAESJwojTU9ERVJBVElPTl9MT0dfU1VCSkVDVF9LSU5EX0FDQ09VTlQQAhIkCiBNT0RFUkFUSU9OX0xPR19TVUJKRUNUX0tJTkRfUE9TVBADEiUKIU1PREVSQVRJT05fTE9HX1NVQkpFQ1RfS0lORF9NRURJQRAEMq0HChFNb2RlcmF0aW9uU2VydmljZRJLCgpCbG9ja0FjdG9yEh0ucGF0Y2hlcy52MS5CbG9ja0FjdG9yUmVxdWVzdBoeLnBhdGNoZXMudjEuQmxvY2tBY3RvclJlc3BvbnNlElEKDFVuYmxvY2tBY3RvchIfLnBhdGNoZXMudjEuVW5ibG9ja0FjdG9yUmVxdWVzdBogLnBhdGNoZXMudjEuVW5ibG9ja0FjdG9yUmVzcG9uc2USSAoJTXV0ZUFjdG9yEhwucGF0Y2hlcy52MS5NdXRlQWN0b3JSZXF1ZXN0Gh0ucGF0Y2hlcy52MS5NdXRlQWN0b3JSZXNwb25zZRJOCgtVbm11dGVBY3RvchIeLnBhdGNoZXMudjEuVW5tdXRlQWN0b3JSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5Vbm11dGVBY3RvclJlc3BvbnNlEksKCkxpc3RCbG9ja3MSHS5wYXRjaGVzLnYxLkxpc3RCbG9ja3NSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5MaXN0QmxvY2tzUmVzcG9uc2USSAoJTGlzdE11dGVzEhwucGF0Y2hlcy52MS5MaXN0TXV0ZXNSZXF1ZXN0Gh0ucGF0Y2hlcy52MS5MaXN0TXV0ZXNSZXNwb25zZRJLCgpSZXBvcnRQb3N0Eh0ucGF0Y2hlcy52MS5SZXBvcnRQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuUmVwb3J0UG9zdFJlc3BvbnNlEk4KC1JlcG9ydEFjdG9yEh4ucGF0Y2hlcy52MS5SZXBvcnRBY3RvclJlcXVlc3QaHy5wYXRjaGVzLnYxLlJlcG9ydEFjdG9yUmVzcG9uc2USVAoNUmVwb3J0TWVzc2FnZRIgLnBhdGNoZXMudjEuUmVwb3J0TWVzc2FnZVJlcXVlc3QaIS5wYXRjaGVzLnYxLlJlcG9ydE1lc3NhZ2VSZXNwb25zZRJgChFMaXN0TW9kZXJhdGlvbkxvZxIkLnBhdGNoZXMudjEuTGlzdE1vZGVyYXRpb25Mb2dSZXF1ZXN0GiUucGF0Y2hlcy52MS5MaXN0TW9kZXJhdGlvbkxvZ1Jlc3BvbnNlEnIKF0xpc3RNeU1vZGVyYXRpb25Ob3RpY2VzEioucGF0Y2hlcy52MS5MaXN0TXlNb2RlcmF0aW9uTm90aWNlc1JlcXVlc3QaKy5wYXRjaGVzLnYxLkxpc3RNeU1vZGVyYXRpb25Ob3RpY2VzUmVzcG9uc2ViBnByb3RvMw',
+    [
+      file_google_protobuf_timestamp,
+      file_patches_v1_actors,
+      file_patches_v1_common,
+      file_patches_v1_social_graph,
+    ],
   );
 
 /**
@@ -403,6 +410,226 @@ export const ReportMessageResponseSchema: GenMessage<ReportMessageResponse> =
   messageDesc(file_patches_v1_moderation, 17);
 
 /**
+ * A public, anonymized transparency record (spec §201.4). Account/post/media entries never
+ * carry a handle, actor id, or post id — the acted-upon actor already has the full,
+ * identified version in their own `ModerationNotice`, and moderators have it in
+ * `admin_audit_log`. A domain entry is fully identified because it is the node's own
+ * federation decision about its own conduct, not a record of any individual's conduct.
+ *
+ * @generated from message patches.v1.ModerationLogEntry
+ */
+export type ModerationLogEntry = Message<'patches.v1.ModerationLogEntry'> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: patches.v1.ModerationActionType action = 2;
+   */
+  action: ModerationActionType;
+
+  /**
+   * @generated from field: patches.v1.ModerationLogSubjectKind subject_kind = 3;
+   */
+  subjectKind: ModerationLogSubjectKind;
+
+  /**
+   * Set only when `subject_kind == MODERATION_LOG_SUBJECT_KIND_DOMAIN`.
+   *
+   * @generated from field: string subject_domain = 4;
+   */
+  subjectDomain: string;
+
+  /**
+   * @generated from field: patches.v1.ModerationReasonCategory reason_category = 5;
+   */
+  reasonCategory: ModerationReasonCategory;
+
+  /**
+   * Whether this action was appealed — never the appeal's content (spec §201.3, §208).
+   *
+   * @generated from field: bool appealed = 6;
+   */
+  appealed: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 7;
+   */
+  createdAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ModerationLogEntry.
+ * Use `create(ModerationLogEntrySchema)` to create a new message.
+ */
+export const ModerationLogEntrySchema: GenMessage<ModerationLogEntry> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 18);
+
+/**
+ * @generated from message patches.v1.ListModerationLogRequest
+ */
+export type ListModerationLogRequest = Message<'patches.v1.ListModerationLogRequest'> & {
+  /**
+   * @generated from field: string cursor = 1;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListModerationLogRequest.
+ * Use `create(ListModerationLogRequestSchema)` to create a new message.
+ */
+export const ListModerationLogRequestSchema: GenMessage<ListModerationLogRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 19);
+
+/**
+ * @generated from message patches.v1.ListModerationLogResponse
+ */
+export type ListModerationLogResponse = Message<'patches.v1.ListModerationLogResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.ModerationLogEntry entries = 1;
+   */
+  entries: ModerationLogEntry[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListModerationLogResponse.
+ * Use `create(ListModerationLogResponseSchema)` to create a new message.
+ */
+export const ListModerationLogResponseSchema: GenMessage<ListModerationLogResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 20);
+
+/**
+ * A private, notified read projection of the `admin_audit_log` row that enforced an action
+ * against the caller (spec §201.2) — not a second source of truth. Contrast with a label
+ * (`LabelService`, spec §200.4): a labeler's judgement is never notified, an enforcement
+ * action always is.
+ *
+ * @generated from message patches.v1.ModerationNotice
+ */
+export type ModerationNotice = Message<'patches.v1.ModerationNotice'> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: patches.v1.ModerationActionType action = 2;
+   */
+  action: ModerationActionType;
+
+  /**
+   * Empty unless the action concerned a specific post.
+   *
+   * @generated from field: string post_id = 3;
+   */
+  postId: string;
+
+  /**
+   * @generated from field: patches.v1.ModerationReasonCategory reason_category = 4;
+   */
+  reasonCategory: ModerationReasonCategory;
+
+  /**
+   * Purpose-written for the subject at resolution time — never `reports.moderator_note`
+   * (spec §55, §201.2, §208).
+   *
+   * @generated from field: string explanation = 5;
+   */
+  explanation: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 6;
+   */
+  createdAt?: Timestamp | undefined;
+
+  /**
+   * Deadline to file an appeal (`AppealService.CreateAppeal`); unset if the appeal window has
+   * already closed or no appeal applies to this action.
+   *
+   * @generated from field: google.protobuf.Timestamp appeal_deadline = 7;
+   */
+  appealDeadline?: Timestamp | undefined;
+
+  /**
+   * True once the caller has filed an appeal against this notice.
+   *
+   * @generated from field: bool appealed = 8;
+   */
+  appealed: boolean;
+};
+
+/**
+ * Describes the message patches.v1.ModerationNotice.
+ * Use `create(ModerationNoticeSchema)` to create a new message.
+ */
+export const ModerationNoticeSchema: GenMessage<ModerationNotice> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 21);
+
+/**
+ * @generated from message patches.v1.ListMyModerationNoticesRequest
+ */
+export type ListMyModerationNoticesRequest =
+  Message<'patches.v1.ListMyModerationNoticesRequest'> & {
+    /**
+     * @generated from field: string cursor = 1;
+     */
+    cursor: string;
+
+    /**
+     * @generated from field: uint32 limit = 2;
+     */
+    limit: number;
+  };
+
+/**
+ * Describes the message patches.v1.ListMyModerationNoticesRequest.
+ * Use `create(ListMyModerationNoticesRequestSchema)` to create a new message.
+ */
+export const ListMyModerationNoticesRequestSchema: GenMessage<ListMyModerationNoticesRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 22);
+
+/**
+ * @generated from message patches.v1.ListMyModerationNoticesResponse
+ */
+export type ListMyModerationNoticesResponse =
+  Message<'patches.v1.ListMyModerationNoticesResponse'> & {
+    /**
+     * @generated from field: repeated patches.v1.ModerationNotice notices = 1;
+     */
+    notices: ModerationNotice[];
+
+    /**
+     * @generated from field: patches.v1.PageInfo page = 2;
+     */
+    page?: PageInfo | undefined;
+  };
+
+/**
+ * Describes the message patches.v1.ListMyModerationNoticesResponse.
+ * Use `create(ListMyModerationNoticesResponseSchema)` to create a new message.
+ */
+export const ListMyModerationNoticesResponseSchema: GenMessage<ListMyModerationNoticesResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_moderation, 23);
+
+/**
  * @generated from enum patches.v1.ReportReason
  */
 export enum ReportReason {
@@ -448,6 +675,165 @@ export enum ReportReason {
 export const ReportReasonSchema: GenEnum<ReportReason> =
   /*@__PURE__*/
   enumDesc(file_patches_v1_moderation, 0);
+
+/**
+ * A bounded vocabulary (spec §202's `MODERATION_LOG_REASON_CATEGORIES`), derived from
+ * `docs/product/moderation.md`'s guideline list — never a report's free-text `details`, never
+ * a moderator's internal note. Published on `domain_blocks` (as the public counterpart to the
+ * operator's free-text `reason`) and on every `ModerationLogEntry`.
+ *
+ * @generated from enum patches.v1.ModerationReasonCategory
+ */
+export enum ModerationReasonCategory {
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_HARASSMENT = 1;
+   */
+  HARASSMENT = 1,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_HATE = 2;
+   */
+  HATE = 2,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_THREATS = 3;
+   */
+  THREATS = 3,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_DOXXING = 4;
+   */
+  DOXXING = 4,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_IMPERSONATION = 5;
+   */
+  IMPERSONATION = 5,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_SPAM = 6;
+   */
+  SPAM = 6,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT = 7;
+   */
+  ILLEGAL_CONTENT = 7,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_NCII = 8;
+   */
+  NCII = 8,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE = 9;
+   */
+  INFRASTRUCTURE_ABUSE = 9,
+
+  /**
+   * @generated from enum value: MODERATION_REASON_CATEGORY_OTHER = 10;
+   */
+  OTHER = 10,
+}
+
+/**
+ * Describes the enum patches.v1.ModerationReasonCategory.
+ */
+export const ModerationReasonCategorySchema: GenEnum<ModerationReasonCategory> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_moderation, 1);
+
+/**
+ * The node enforcement actions that generate a moderation notice (spec §201.2), plus the
+ * domain-level action published in the moderation log (spec §201.4-§201.5).
+ *
+ * @generated from enum patches.v1.ModerationActionType
+ */
+export enum ModerationActionType {
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_WARN = 1;
+   */
+  WARN = 1,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_SUSPEND = 2;
+   */
+  SUSPEND = 2,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_BAN = 3;
+   */
+  BAN = 3,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_POST_REMOVAL = 4;
+   */
+  POST_REMOVAL = 4,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN = 5;
+   */
+  MEDIA_TAKEDOWN = 5,
+
+  /**
+   * @generated from enum value: MODERATION_ACTION_TYPE_DOMAIN_BLOCK = 6;
+   */
+  DOMAIN_BLOCK = 6,
+}
+
+/**
+ * Describes the enum patches.v1.ModerationActionType.
+ */
+export const ModerationActionTypeSchema: GenEnum<ModerationActionType> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_moderation, 2);
+
+/**
+ * @generated from enum patches.v1.ModerationLogSubjectKind
+ */
+export enum ModerationLogSubjectKind {
+  /**
+   * @generated from enum value: MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: MODERATION_LOG_SUBJECT_KIND_DOMAIN = 1;
+   */
+  DOMAIN = 1,
+
+  /**
+   * @generated from enum value: MODERATION_LOG_SUBJECT_KIND_ACCOUNT = 2;
+   */
+  ACCOUNT = 2,
+
+  /**
+   * @generated from enum value: MODERATION_LOG_SUBJECT_KIND_POST = 3;
+   */
+  POST = 3,
+
+  /**
+   * @generated from enum value: MODERATION_LOG_SUBJECT_KIND_MEDIA = 4;
+   */
+  MEDIA = 4,
+}
+
+/**
+ * Describes the enum patches.v1.ModerationLogSubjectKind.
+ */
+export const ModerationLogSubjectKindSchema: GenEnum<ModerationLogSubjectKind> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_moderation, 3);
 
 /**
  * User-facing block/mute/report surface (spec §55, §61–64, Phase 6 spec §140). Moderator/admin
@@ -544,5 +930,29 @@ export const ModerationService: GenService<{
     methodKind: 'unary';
     input: typeof ReportMessageRequestSchema;
     output: typeof ReportMessageResponseSchema;
+  };
+  /**
+   * A public transparency instrument about the node's own conduct, not a public record of
+   * any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
+   * identified; account/post/media entries are anonymized by construction — no handle, actor
+   * id, or post id, ever.
+   *
+   * @generated from rpc patches.v1.ModerationService.ListModerationLog
+   */
+  listModerationLog: {
+    methodKind: 'unary';
+    input: typeof ListModerationLogRequestSchema;
+    output: typeof ListModerationLogResponseSchema;
+  };
+  /**
+   * The caller's own moderation notices — the private, notified, appealable read projection
+   * of `admin_audit_log` rows that acted on them (spec §201.2).
+   *
+   * @generated from rpc patches.v1.ModerationService.ListMyModerationNotices
+   */
+  listMyModerationNotices: {
+    methodKind: 'unary';
+    input: typeof ListMyModerationNoticesRequestSchema;
+    output: typeof ListMyModerationNoticesResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_moderation, 0);

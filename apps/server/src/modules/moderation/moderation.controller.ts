@@ -6,8 +6,12 @@ import {
   type BlockActorResponse,
   type ListBlocksRequest,
   type ListBlocksResponse,
+  type ListModerationLogRequest,
+  type ListModerationLogResponse,
   type ListMutesRequest,
   type ListMutesResponse,
+  type ListMyModerationNoticesRequest,
+  type ListMyModerationNoticesResponse,
   type ModerationServiceController,
   ModerationServiceControllerMethods,
   type MuteActorRequest,
@@ -180,6 +184,25 @@ export class ModerationController implements ModerationServiceController {
       request.details,
     );
     return { reportId };
+  }
+
+  /**
+   * P14-001 lands the `patches.v1` contract only; the `moderation_log_entries` table and its
+   * projection service are a follow-up task (§201.4). An honest `NOT_IMPLEMENTED` (§176's
+   * rule — an RPC that exists in the schema but isn't implemented on this node yet) rather
+   * than a fabricated empty page, which would silently lie about there being no log at all.
+   */
+  listModerationLog(_request: ListModerationLogRequest): ListModerationLogResponse {
+    throw new AppError('NOT_IMPLEMENTED', 'The public moderation log is not available yet.');
+  }
+
+  /** See `listModerationLog` — `admin_audit_log`'s read projection (§201.2) is a follow-up
+   * task. */
+  @UseGuards(AuthGuard)
+  listMyModerationNotices(
+    @Payload() _request: ListMyModerationNoticesRequest,
+  ): ListMyModerationNoticesResponse {
+    throw new AppError('NOT_IMPLEMENTED', 'Moderation notices are not available yet.');
   }
 }
 

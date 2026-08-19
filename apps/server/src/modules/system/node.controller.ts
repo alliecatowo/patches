@@ -2,6 +2,8 @@ import { Controller } from '@nestjs/common';
 import {
   type GetNodeInfoRequest,
   type GetNodeInfoResponse,
+  type GetNodePolicyRequest,
+  type GetNodePolicyResponse,
   type NodeServiceController,
   NodeServiceControllerMethods,
 } from '@patches/proto/nest';
@@ -20,5 +22,9 @@ export class NodeController implements NodeServiceController {
 
   getNodeInfo(_request: GetNodeInfoRequest): GetNodeInfoResponse {
     return this.node.getNodeInfo();
+  }
+
+  getNodePolicy(_request: GetNodePolicyRequest): GetNodePolicyResponse {
+    return this.node.getNodePolicy();
   }
 }

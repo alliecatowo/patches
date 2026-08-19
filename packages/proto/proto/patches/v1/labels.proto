@@ -1,0 +1,189 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/actors.proto";
+import "patches/v1/common.proto";
+import "patches/v1/communities.proto";
+
+// Labelers and labels (spec §200): subscriber-scoped annotation, never global truth. A label
+// is visible only to actors subscribed to that labeler; labeling someone has no effect on
+// anyone who has not opted in. Labels never affect ordering and are never aggregated into a
+// count, a reputation, or a trust score, for anyone (§200.3, §208). Label values come from a
+// closed vocabulary published by the node (`NodeService.GetNodePolicy`) — free-text values
+// are prohibited (§200.2, §208).
+service LabelService {
+  rpc CreateLabeler(CreateLabelerRequest) returns (CreateLabelerResponse);
+
+  rpc GetLabeler(GetLabelerRequest) returns (GetLabelerResponse);
+
+  rpc ListLabelers(ListLabelersRequest) returns (ListLabelersResponse);
+
+  // Rate-limited (spec §204) — a labeler that can label faster than a human can consider is
+  // bot moderation at scale (§200.5). The applying actor's authority stops at their own
+  // labeler; operating one grants no authority over any actor, post, community, or node.
+  rpc ApplyLabel(ApplyLabelRequest) returns (ApplyLabelResponse);
+
+  // Sets `retracted_at` rather than deleting the row — retraction preserves history
+  // (spec §200.1).
+  rpc RetractLabel(RetractLabelRequest) returns (RetractLabelResponse);
+
+  rpc SubscribeLabeler(SubscribeLabelerRequest) returns (SubscribeLabelerResponse);
+
+  rpc UnsubscribeLabeler(UnsubscribeLabelerRequest) returns (UnsubscribeLabelerResponse);
+
+  // Per-value action override for the caller's own subscription (spec §200.1's action map).
+  // A viewer may set any value to `LABEL_ACTION_IGNORE` except a value the node has
+  // designated legally mandatory (`LabelVocabularyEntry.mandatory`, spec §200.3).
+  rpc SetLabelerSubscriptionAction(SetLabelerSubscriptionActionRequest)
+      returns (SetLabelerSubscriptionActionResponse);
+
+  // Pull-only self-inspection (spec §200.4) — an actor is never notified that they were
+  // labeled; this is the only way to find out. A label with an enforcement consequence is
+  // delivered separately as a moderation notice (`ModerationService.ListMyModerationNotices`).
+  rpc ListLabelsOnSubject(ListLabelsOnSubjectRequest) returns (ListLabelsOnSubjectResponse);
+}
+
+// The §198.3 actions plus `ignore` (spec §200.1).
+enum LabelAction {
+  LABEL_ACTION_UNSPECIFIED = 0;
+  LABEL_ACTION_IGNORE = 1;
+  LABEL_ACTION_WARN = 2;
+  LABEL_ACTION_COLLAPSE = 3;
+  LABEL_ACTION_HIDE = 4;
+}
+
+// One value in a labeler's closed, node-published vocabulary (spec §200.2). `value` is never
+// free text — it must be one the node currently publishes, e.g. `spam`, `scam`, `nsfw`.
+message LabelVocabularyEntry {
+  string value = 1;
+  string description = 2;
+  LabelAction default_action = 3;
+
+  // True when the node has designated this value legally mandatory (e.g. jurisdiction-
+  // required adult-content marking) — a viewer cannot set it to `LABEL_ACTION_IGNORE`
+  // (spec §200.3).
+  bool mandatory = 4;
+}
+
+message Labeler {
+  string id = 1;
+
+  // Exactly one of `actor`/`community` is set for a non-node labeler; a node's own labeler
+  // sets neither and `is_node_labeler` instead (spec §202's `CHECK exactly one of
+  // actor_id/community_id/is_node_labeler`).
+  Actor actor = 2;
+  Community community = 3;
+  bool is_node_labeler = 4;
+
+  repeated LabelVocabularyEntry vocabulary = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message Label {
+  string id = 1;
+  string labeler_id = 2;
+
+  // Exactly one subject is set (spec §202, mirrors `reports`).
+  string subject_actor_id = 3;
+  string subject_post_id = 4;
+
+  string value = 5;
+  google.protobuf.Timestamp created_at = 6;
+
+  // Unset means this label never expires.
+  google.protobuf.Timestamp expires_at = 7;
+
+  // Unset means not retracted.
+  google.protobuf.Timestamp retracted_at = 8;
+}
+
+message CreateLabelerRequest {
+  // Empty publishes as the caller's own labeler. Set to a community the caller moderates to
+  // publish it as that community's labeler instead (spec §200.1).
+  string community_id = 1;
+
+  repeated LabelVocabularyEntry vocabulary = 2;
+}
+
+message CreateLabelerResponse {
+  Labeler labeler = 1;
+}
+
+message GetLabelerRequest {
+  string id = 1;
+}
+
+message GetLabelerResponse {
+  Labeler labeler = 1;
+}
+
+message ListLabelersRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListLabelersResponse {
+  repeated Labeler labelers = 1;
+  PageInfo page = 2;
+}
+
+message ApplyLabelRequest {
+  string labeler_id = 1;
+
+  // Exactly one of these.
+  string subject_actor_id = 2;
+  string subject_post_id = 3;
+
+  string value = 4;
+
+  // Unset means this label never expires.
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message ApplyLabelResponse {
+  Label label = 1;
+}
+
+message RetractLabelRequest {
+  string label_id = 1;
+}
+
+message RetractLabelResponse {
+  Label label = 1;
+}
+
+message SubscribeLabelerRequest {
+  string labeler_id = 1;
+}
+
+message SubscribeLabelerResponse {}
+
+message UnsubscribeLabelerRequest {
+  string labeler_id = 1;
+}
+
+message UnsubscribeLabelerResponse {}
+
+message SetLabelerSubscriptionActionRequest {
+  string labeler_id = 1;
+  string value = 2;
+  LabelAction action = 3;
+}
+
+message SetLabelerSubscriptionActionResponse {}
+
+message ListLabelsOnSubjectRequest {
+  // Exactly one of these.
+  string subject_actor_id = 1;
+  string subject_post_id = 2;
+
+  string cursor = 3;
+  uint32 limit = 4;
+}
+
+message ListLabelsOnSubjectResponse {
+  repeated Label labels = 1;
+  PageInfo page = 2;
+}

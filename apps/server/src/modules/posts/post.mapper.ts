@@ -126,6 +126,11 @@ export function toProtoPost(view: PostView): ProtoPost {
     quotePolicy: QUOTE_POLICY_TO_PROTO[view.quotePolicy],
     repostedBy: view.repostedBy.map(toProtoActor),
     repostedByTotal: view.repostedBy.length === 0 ? 0 : view.repostedByTotal,
+    // P14-001 lands the `patches.v1` contract only (spec §198.3, §200.3) — the filter/label
+    // evaluation chokepoint is a follow-up task, so every post is honestly unfiltered and
+    // unlabeled here rather than guessed at.
+    filteredBy: undefined,
+    labels: [],
   };
 }
 

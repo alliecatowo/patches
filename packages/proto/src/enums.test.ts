@@ -1,23 +1,53 @@
 import { describe, expect, it } from 'vitest';
 
+import { AppealStatus } from './generated/patches/v1/appeals.js';
 import { CredentialType, GitHubLoginStatus } from './generated/patches/v1/auth.js';
 import { CommunityInviteStatus, CommunityRole } from './generated/patches/v1/communities.js';
+import { FilterAction, FilterScope, FilterTermKind } from './generated/patches/v1/filters.js';
+import { LabelAction } from './generated/patches/v1/labels.js';
 import { MediaStatus } from './generated/patches/v1/media.js';
 import { ConversationKind, MessageRequestStatus } from './generated/patches/v1/messages.js';
-import { ReportReason } from './generated/patches/v1/moderation.js';
-import { RegistrationMode } from './generated/patches/v1/node.js';
+import {
+  ModerationActionType,
+  ModerationLogSubjectKind,
+  ModerationReasonCategory,
+  ReportReason,
+} from './generated/patches/v1/moderation.js';
+import {
+  DomainPolicyAction,
+  FederationStance,
+  RegistrationMode,
+} from './generated/patches/v1/node.js';
 import { NotificationType } from './generated/patches/v1/notifications.js';
-import { PostType, PostVisibility, QuotePolicy } from './generated/patches/v1/posts.js';
+import {
+  FilteredByProvenance,
+  PostType,
+  PostVisibility,
+  QuotePolicy,
+} from './generated/patches/v1/posts.js';
+import { AccountExportStatus } from './generated/patches/v1/privacy.js';
 import { FollowState } from './generated/patches/v1/social_graph.js';
 import {
+  ACCOUNT_EXPORT_STATUS,
+  APPEAL_STATUS,
   COMMUNITY_INVITE_STATUS,
   COMMUNITY_ROLE,
   CONVERSATION_KIND,
   CREDENTIAL_TYPE,
+  DOMAIN_POLICY_ACTION,
+  FEDERATION_STANCE,
+  FILTER_ACTION,
+  FILTER_SCOPE,
+  FILTER_TERM_KIND,
+  FILTERED_BY_PROVENANCE,
   FOLLOW_STATE,
   GITHUB_LOGIN_STATUS,
+  LABEL_ACTION,
   MEDIA_STATUS,
   MESSAGE_REQUEST_STATUS,
+  MODERATION_ACTION_TYPE,
+  MODERATION_LOG_SUBJECT_KIND,
+  MODERATION_REASON_CATEGORY,
   NOTIFICATION_TYPE,
   POST_TYPE,
   POST_VISIBILITY,
@@ -96,6 +126,64 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
   it('MESSAGE_REQUEST_STATUS matches MessageRequestStatus', () => {
     expect(Object.values(MESSAGE_REQUEST_STATUS).sort()).toEqual(
       generatedValues(MessageRequestStatus),
+    );
+  });
+
+  it('FILTER_TERM_KIND matches FilterTermKind', () => {
+    expect(Object.values(FILTER_TERM_KIND).sort()).toEqual(generatedValues(FilterTermKind));
+  });
+
+  it('FILTER_SCOPE matches FilterScope', () => {
+    expect(Object.values(FILTER_SCOPE).sort()).toEqual(generatedValues(FilterScope));
+  });
+
+  it('FILTER_ACTION matches FilterAction', () => {
+    expect(Object.values(FILTER_ACTION).sort()).toEqual(generatedValues(FilterAction));
+  });
+
+  it('LABEL_ACTION matches LabelAction', () => {
+    expect(Object.values(LABEL_ACTION).sort()).toEqual(generatedValues(LabelAction));
+  });
+
+  it('APPEAL_STATUS matches AppealStatus', () => {
+    expect(Object.values(APPEAL_STATUS).sort()).toEqual(generatedValues(AppealStatus));
+  });
+
+  it('ACCOUNT_EXPORT_STATUS matches AccountExportStatus', () => {
+    expect(Object.values(ACCOUNT_EXPORT_STATUS).sort()).toEqual(
+      generatedValues(AccountExportStatus),
+    );
+  });
+
+  it('FEDERATION_STANCE matches FederationStance', () => {
+    expect(Object.values(FEDERATION_STANCE).sort()).toEqual(generatedValues(FederationStance));
+  });
+
+  it('DOMAIN_POLICY_ACTION matches DomainPolicyAction', () => {
+    expect(Object.values(DOMAIN_POLICY_ACTION).sort()).toEqual(generatedValues(DomainPolicyAction));
+  });
+
+  it('MODERATION_REASON_CATEGORY matches ModerationReasonCategory', () => {
+    expect(Object.values(MODERATION_REASON_CATEGORY).sort()).toEqual(
+      generatedValues(ModerationReasonCategory),
+    );
+  });
+
+  it('MODERATION_ACTION_TYPE matches ModerationActionType', () => {
+    expect(Object.values(MODERATION_ACTION_TYPE).sort()).toEqual(
+      generatedValues(ModerationActionType),
+    );
+  });
+
+  it('MODERATION_LOG_SUBJECT_KIND matches ModerationLogSubjectKind', () => {
+    expect(Object.values(MODERATION_LOG_SUBJECT_KIND).sort()).toEqual(
+      generatedValues(ModerationLogSubjectKind),
+    );
+  });
+
+  it('FILTERED_BY_PROVENANCE matches FilteredByProvenance', () => {
+    expect(Object.values(FILTERED_BY_PROVENANCE).sort()).toEqual(
+      generatedValues(FilteredByProvenance),
     );
   });
 });

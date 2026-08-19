@@ -12,6 +12,10 @@ import type { PageInfo } from './common_pb.js';
 import { file_patches_v1_common } from './common_pb.js';
 import type { Community } from './communities_pb.js';
 import { file_patches_v1_communities } from './communities_pb.js';
+import type { FilterAction } from './filters_pb.js';
+import { file_patches_v1_filters } from './filters_pb.js';
+import type { Label } from './labels_pb.js';
+import { file_patches_v1_labels } from './labels_pb.js';
 import type { Message } from '@bufbuild/protobuf';
 
 /**
@@ -20,12 +24,14 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_posts: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChZwYXRjaGVzL3YxL3Bvc3RzLnByb3RvEgpwYXRjaGVzLnYxInkKD01lZGlhQXR0YWNobWVudBIQCghtZWRpYV9pZBgBIAEoCRIQCghhbHRfdGV4dBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SEQoJbWltZV90eXBlGAUgASgJEhAKCHBvc2l0aW9uGAYgASgNIk0KClBvc3RDb3VudHMSDwoHcmVwbGllcxgBIAEoDRINCgVsaWtlcxgCIAEoDRIPCgdyZXBvc3RzGAMgASgNEg4KBnF1b3RlcxgEIAEoDSJGCg9Qb3N0Vmlld2VyU3RhdGUSDQoFbGlrZWQYASABKAgSEgoKYm9va21hcmtlZBgCIAEoCBIQCghyZXBvc3RlZBgDIAEoCCKvBQoEUG9zdBIKCgJpZBgBIAEoCRIhCgZhdXRob3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEgwKBGJvZHkYAyABKAkSJwoJcG9zdF90eXBlGAQgASgOMhQucGF0Y2hlcy52MS5Qb3N0VHlwZRIQCghsaW5rX3VybBgFIAEoCRIuCgp2aXNpYmlsaXR5GAYgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgHIAEoCRIUCgxyb290X3Bvc3RfaWQYCCABKAkSKgoFbWVkaWEYCSADKAsyGy5wYXRjaGVzLnYxLk1lZGlhQXR0YWNobWVudBIuCgpjcmVhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgllZGl0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2RlbGV0ZWQYDCABKAgSJgoGY291bnRzGA0gASgLMhYucGF0Y2hlcy52MS5Qb3N0Q291bnRzEjEKDHZpZXdlcl9zdGF0ZRgOIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlEhcKD2NvbnRlbnRfd2FybmluZxgPIAEoCRIlCgtxdW90ZWRfcG9zdBgQIAEoCzIQLnBhdGNoZXMudjEuUG9zdBIoCgljb21tdW5pdHkYESABKAsyFS5wYXRjaGVzLnYxLkNvbW11bml0eRItCgxxdW90ZV9wb2xpY3kYEiABKA4yFy5wYXRjaGVzLnYxLlF1b3RlUG9saWN5EiYKC3JlcG9zdGVkX2J5GBMgAygLMhEucGF0Y2hlcy52MS5BY3RvchIZChFyZXBvc3RlZF9ieV90b3RhbBgUIAEoDSKfAgoRQ3JlYXRlUG9zdFJlcXVlc3QSGQoRY2xpZW50X3JlcXVlc3RfaWQYASABKAkSDAoEYm9keRgCIAEoCRIQCghsaW5rX3VybBgDIAEoCRIuCgp2aXNpYmlsaXR5GAQgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgFIAEoCRIRCgltZWRpYV9pZHMYBiADKAkSFwoPY29udGVudF93YXJuaW5nGAcgASgJEhYKDnF1b3RlZF9wb3N0X2lkGAggASgJEhQKDGNvbW11bml0eV9pZBgJIAEoCRItCgxxdW90ZV9wb2xpY3kYCiABKA4yFy5wYXRjaGVzLnYxLlF1b3RlUG9saWN5IjQKEkNyZWF0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IhwKDkdldFBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjEKD0dldFBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0Ih8KEURlbGV0ZVBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjQKEkRlbGV0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IlcKEkxpc3RSZXBsaWVzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDRIRCgltYXhfZGVwdGgYBCABKA0iWgoTTGlzdFJlcGxpZXNSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyLhAQoIUG9zdEVkaXQSCgoCaWQYASABKAkSDwoHcG9zdF9pZBgCIAEoCRIVCg1wcmV2aW91c19ib2R5GAMgASgJEiAKGHByZXZpb3VzX2NvbnRlbnRfd2FybmluZxgEIAEoCRIzCg5wcmV2aW91c19tZWRpYRgFIAMoCzIbLnBhdGNoZXMudjEuTWVkaWFBdHRhY2htZW50EhoKEmVkaXRlZF9ieV9hY3Rvcl9pZBgGIAEoCRIuCgpjcmVhdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJXCg9FZGl0UG9zdFJlcXVlc3QSCgoCaWQYASABKAkSDAoEYm9keRgCIAEoCRIXCg9jb250ZW50X3dhcm5pbmcYAyABKAkSEQoJbWVkaWFfaWRzGAQgAygJIjIKEEVkaXRQb3N0UmVzcG9uc2USHgoEcG9zdBgBIAEoCzIQLnBhdGNoZXMudjEuUG9zdCJGChRMaXN0UG9zdEVkaXRzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJgChVMaXN0UG9zdEVkaXRzUmVzcG9uc2USIwoFZWRpdHMYASADKAsyFC5wYXRjaGVzLnYxLlBvc3RFZGl0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIjMKDlBpblBvc3RSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkSEAoIcG9zaXRpb24YAiABKA0iMQoPUGluUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QiIwoQVW5waW5Qb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIjMKEVVucGluUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QicgoSU2VhcmNoUG9zdHNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDRIVCg1hdXRob3JfaGFuZGxlGAQgASgJEhcKD2luY2x1ZGVfcmVwbGllcxgFIAEoCCJaChNTZWFyY2hQb3N0c1Jlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvKk0KCFBvc3RUeXBlEhkKFVBPU1RfVFlQRV9VTlNQRUNJRklFRBAAEhIKDlBPU1RfVFlQRV9OT1RFEAESEgoOUE9TVF9UWVBFX0xJTksQAiqKAQoOUG9zdFZpc2liaWxpdHkSHwobUE9TVF9WSVNJQklMSVRZX1VOU1BFQ0lGSUVEEAASGgoWUE9TVF9WSVNJQklMSVRZX1BVQkxJQxABEhwKGFBPU1RfVklTSUJJTElUWV9VTkxJU1RFRBACEh0KGVBPU1RfVklTSUJJTElUWV9GT0xMT1dFUlMQAyp5CgtRdW90ZVBvbGljeRIcChhRVU9URV9QT0xJQ1lfVU5TUEVDSUZJRUQQABIXChNRVU9URV9QT0xJQ1lfQU5ZT05FEAESGgoWUVVPVEVfUE9MSUNZX0ZPTExPV0VSUxACEhcKE1FVT1RFX1BPTElDWV9OT0JPRFkQAzK2BQoLUG9zdFNlcnZpY2USSwoKQ3JlYXRlUG9zdBIdLnBhdGNoZXMudjEuQ3JlYXRlUG9zdFJlcXVlc3QaHi5wYXRjaGVzLnYxLkNyZWF0ZVBvc3RSZXNwb25zZRJCCgdHZXRQb3N0EhoucGF0Y2hlcy52MS5HZXRQb3N0UmVxdWVzdBobLnBhdGNoZXMudjEuR2V0UG9zdFJlc3BvbnNlEksKCkRlbGV0ZVBvc3QSHS5wYXRjaGVzLnYxLkRlbGV0ZVBvc3RSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5EZWxldGVQb3N0UmVzcG9uc2USTgoLTGlzdFJlcGxpZXMSHi5wYXRjaGVzLnYxLkxpc3RSZXBsaWVzUmVxdWVzdBofLnBhdGNoZXMudjEuTGlzdFJlcGxpZXNSZXNwb25zZRJFCghFZGl0UG9zdBIbLnBhdGNoZXMudjEuRWRpdFBvc3RSZXF1ZXN0GhwucGF0Y2hlcy52MS5FZGl0UG9zdFJlc3BvbnNlElQKDUxpc3RQb3N0RWRpdHMSIC5wYXRjaGVzLnYxLkxpc3RQb3N0RWRpdHNSZXF1ZXN0GiEucGF0Y2hlcy52MS5MaXN0UG9zdEVkaXRzUmVzcG9uc2USQgoHUGluUG9zdBIaLnBhdGNoZXMudjEuUGluUG9zdFJlcXVlc3QaGy5wYXRjaGVzLnYxLlBpblBvc3RSZXNwb25zZRJICglVbnBpblBvc3QSHC5wYXRjaGVzLnYxLlVucGluUG9zdFJlcXVlc3QaHS5wYXRjaGVzLnYxLlVucGluUG9zdFJlc3BvbnNlEk4KC1NlYXJjaFBvc3RzEh4ucGF0Y2hlcy52MS5TZWFyY2hQb3N0c1JlcXVlc3QaHy5wYXRjaGVzLnYxLlNlYXJjaFBvc3RzUmVzcG9uc2ViBnByb3RvMw',
+    'ChZwYXRjaGVzL3YxL3Bvc3RzLnByb3RvEgpwYXRjaGVzLnYxInkKD01lZGlhQXR0YWNobWVudBIQCghtZWRpYV9pZBgBIAEoCRIQCghhbHRfdGV4dBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SEQoJbWltZV90eXBlGAUgASgJEhAKCHBvc2l0aW9uGAYgASgNIk0KClBvc3RDb3VudHMSDwoHcmVwbGllcxgBIAEoDRINCgVsaWtlcxgCIAEoDRIPCgdyZXBvc3RzGAMgASgNEg4KBnF1b3RlcxgEIAEoDSJGCg9Qb3N0Vmlld2VyU3RhdGUSDQoFbGlrZWQYASABKAgSEgoKYm9va21hcmtlZBgCIAEoCBIQCghyZXBvc3RlZBgDIAEoCCKlAQoORmlsdGVyZWRCeUhpbnQSNAoKcHJvdmVuYW5jZRgBIAEoDjIgLnBhdGNoZXMudjEuRmlsdGVyZWRCeVByb3ZlbmFuY2USDAoEbmFtZRgCIAEoCRIlCgpsaXN0X293bmVyGAMgASgLMhEucGF0Y2hlcy52MS5BY3RvchIoCgZhY3Rpb24YBCABKA4yGC5wYXRjaGVzLnYxLkZpbHRlckFjdGlvbiKDBgoEUG9zdBIKCgJpZBgBIAEoCRIhCgZhdXRob3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEgwKBGJvZHkYAyABKAkSJwoJcG9zdF90eXBlGAQgASgOMhQucGF0Y2hlcy52MS5Qb3N0VHlwZRIQCghsaW5rX3VybBgFIAEoCRIuCgp2aXNpYmlsaXR5GAYgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgHIAEoCRIUCgxyb290X3Bvc3RfaWQYCCABKAkSKgoFbWVkaWEYCSADKAsyGy5wYXRjaGVzLnYxLk1lZGlhQXR0YWNobWVudBIuCgpjcmVhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgllZGl0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB2RlbGV0ZWQYDCABKAgSJgoGY291bnRzGA0gASgLMhYucGF0Y2hlcy52MS5Qb3N0Q291bnRzEjEKDHZpZXdlcl9zdGF0ZRgOIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlEhcKD2NvbnRlbnRfd2FybmluZxgPIAEoCRIlCgtxdW90ZWRfcG9zdBgQIAEoCzIQLnBhdGNoZXMudjEuUG9zdBIoCgljb21tdW5pdHkYESABKAsyFS5wYXRjaGVzLnYxLkNvbW11bml0eRItCgxxdW90ZV9wb2xpY3kYEiABKA4yFy5wYXRjaGVzLnYxLlF1b3RlUG9saWN5EiYKC3JlcG9zdGVkX2J5GBMgAygLMhEucGF0Y2hlcy52MS5BY3RvchIZChFyZXBvc3RlZF9ieV90b3RhbBgUIAEoDRIvCgtmaWx0ZXJlZF9ieRgVIAEoCzIaLnBhdGNoZXMudjEuRmlsdGVyZWRCeUhpbnQSIQoGbGFiZWxzGBYgAygLMhEucGF0Y2hlcy52MS5MYWJlbCKfAgoRQ3JlYXRlUG9zdFJlcXVlc3QSGQoRY2xpZW50X3JlcXVlc3RfaWQYASABKAkSDAoEYm9keRgCIAEoCRIQCghsaW5rX3VybBgDIAEoCRIuCgp2aXNpYmlsaXR5GAQgASgOMhoucGF0Y2hlcy52MS5Qb3N0VmlzaWJpbGl0eRIWCg5pbl9yZXBseV90b19pZBgFIAEoCRIRCgltZWRpYV9pZHMYBiADKAkSFwoPY29udGVudF93YXJuaW5nGAcgASgJEhYKDnF1b3RlZF9wb3N0X2lkGAggASgJEhQKDGNvbW11bml0eV9pZBgJIAEoCRItCgxxdW90ZV9wb2xpY3kYCiABKA4yFy5wYXRjaGVzLnYxLlF1b3RlUG9saWN5IjQKEkNyZWF0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IhwKDkdldFBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjEKD0dldFBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0Ih8KEURlbGV0ZVBvc3RSZXF1ZXN0EgoKAmlkGAEgASgJIjQKEkRlbGV0ZVBvc3RSZXNwb25zZRIeCgRwb3N0GAEgASgLMhAucGF0Y2hlcy52MS5Qb3N0IlcKEkxpc3RSZXBsaWVzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDRIRCgltYXhfZGVwdGgYBCABKA0iWgoTTGlzdFJlcGxpZXNSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyLhAQoIUG9zdEVkaXQSCgoCaWQYASABKAkSDwoHcG9zdF9pZBgCIAEoCRIVCg1wcmV2aW91c19ib2R5GAMgASgJEiAKGHByZXZpb3VzX2NvbnRlbnRfd2FybmluZxgEIAEoCRIzCg5wcmV2aW91c19tZWRpYRgFIAMoCzIbLnBhdGNoZXMudjEuTWVkaWFBdHRhY2htZW50EhoKEmVkaXRlZF9ieV9hY3Rvcl9pZBgGIAEoCRIuCgpjcmVhdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJXCg9FZGl0UG9zdFJlcXVlc3QSCgoCaWQYASABKAkSDAoEYm9keRgCIAEoCRIXCg9jb250ZW50X3dhcm5pbmcYAyABKAkSEQoJbWVkaWFfaWRzGAQgAygJIjIKEEVkaXRQb3N0UmVzcG9uc2USHgoEcG9zdBgBIAEoCzIQLnBhdGNoZXMudjEuUG9zdCJGChRMaXN0UG9zdEVkaXRzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJgChVMaXN0UG9zdEVkaXRzUmVzcG9uc2USIwoFZWRpdHMYASADKAsyFC5wYXRjaGVzLnYxLlBvc3RFZGl0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIjMKDlBpblBvc3RSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkSEAoIcG9zaXRpb24YAiABKA0iMQoPUGluUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QiIwoQVW5waW5Qb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIjMKEVVucGluUG9zdFJlc3BvbnNlEh4KBHBvc3QYASABKAsyEC5wYXRjaGVzLnYxLlBvc3QicgoSU2VhcmNoUG9zdHNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDRIVCg1hdXRob3JfaGFuZGxlGAQgASgJEhcKD2luY2x1ZGVfcmVwbGllcxgFIAEoCCJaChNTZWFyY2hQb3N0c1Jlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvKk0KCFBvc3RUeXBlEhkKFVBPU1RfVFlQRV9VTlNQRUNJRklFRBAAEhIKDlBPU1RfVFlQRV9OT1RFEAESEgoOUE9TVF9UWVBFX0xJTksQAiqKAQoOUG9zdFZpc2liaWxpdHkSHwobUE9TVF9WSVNJQklMSVRZX1VOU1BFQ0lGSUVEEAASGgoWUE9TVF9WSVNJQklMSVRZX1BVQkxJQxABEhwKGFBPU1RfVklTSUJJTElUWV9VTkxJU1RFRBACEh0KGVBPU1RfVklTSUJJTElUWV9GT0xMT1dFUlMQAyp5CgtRdW90ZVBvbGljeRIcChhRVU9URV9QT0xJQ1lfVU5TUEVDSUZJRUQQABIXChNRVU9URV9QT0xJQ1lfQU5ZT05FEAESGgoWUVVPVEVfUE9MSUNZX0ZPTExPV0VSUxACEhcKE1FVT1RFX1BPTElDWV9OT0JPRFkQAyqJAQoURmlsdGVyZWRCeVByb3ZlbmFuY2USJgoiRklMVEVSRURfQllfUFJPVkVOQU5DRV9VTlNQRUNJRklFRBAAEiEKHUZJTFRFUkVEX0JZX1BST1ZFTkFOQ0VfRklMVEVSEAESJgoiRklMVEVSRURfQllfUFJPVkVOQU5DRV9GSUxURVJfTElTVBACMrYFCgtQb3N0U2VydmljZRJLCgpDcmVhdGVQb3N0Eh0ucGF0Y2hlcy52MS5DcmVhdGVQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuQ3JlYXRlUG9zdFJlc3BvbnNlEkIKB0dldFBvc3QSGi5wYXRjaGVzLnYxLkdldFBvc3RSZXF1ZXN0GhsucGF0Y2hlcy52MS5HZXRQb3N0UmVzcG9uc2USSwoKRGVsZXRlUG9zdBIdLnBhdGNoZXMudjEuRGVsZXRlUG9zdFJlcXVlc3QaHi5wYXRjaGVzLnYxLkRlbGV0ZVBvc3RSZXNwb25zZRJOCgtMaXN0UmVwbGllcxIeLnBhdGNoZXMudjEuTGlzdFJlcGxpZXNSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5MaXN0UmVwbGllc1Jlc3BvbnNlEkUKCEVkaXRQb3N0EhsucGF0Y2hlcy52MS5FZGl0UG9zdFJlcXVlc3QaHC5wYXRjaGVzLnYxLkVkaXRQb3N0UmVzcG9uc2USVAoNTGlzdFBvc3RFZGl0cxIgLnBhdGNoZXMudjEuTGlzdFBvc3RFZGl0c1JlcXVlc3QaIS5wYXRjaGVzLnYxLkxpc3RQb3N0RWRpdHNSZXNwb25zZRJCCgdQaW5Qb3N0EhoucGF0Y2hlcy52MS5QaW5Qb3N0UmVxdWVzdBobLnBhdGNoZXMudjEuUGluUG9zdFJlc3BvbnNlEkgKCVVucGluUG9zdBIcLnBhdGNoZXMudjEuVW5waW5Qb3N0UmVxdWVzdBodLnBhdGNoZXMudjEuVW5waW5Qb3N0UmVzcG9uc2USTgoLU2VhcmNoUG9zdHMSHi5wYXRjaGVzLnYxLlNlYXJjaFBvc3RzUmVxdWVzdBofLnBhdGNoZXMudjEuU2VhcmNoUG9zdHNSZXNwb25zZWIGcHJvdG8z',
     [
       file_google_protobuf_timestamp,
       file_patches_v1_actors,
       file_patches_v1_common,
       file_patches_v1_communities,
+      file_patches_v1_filters,
+      file_patches_v1_labels,
     ],
   );
 
@@ -142,6 +148,49 @@ export type PostViewerState = Message<'patches.v1.PostViewerState'> & {
 export const PostViewerStateSchema: GenMessage<PostViewerState> =
   /*@__PURE__*/
   messageDesc(file_patches_v1_posts, 2);
+
+/**
+ * Set only for `FILTER_ACTION_COLLAPSE`/`FILTER_ACTION_WARN` (spec §198.3) — a `hide` match
+ * omits the row from the response entirely and is never represented here.
+ *
+ * @generated from message patches.v1.FilteredByHint
+ */
+export type FilteredByHint = Message<'patches.v1.FilteredByHint'> & {
+  /**
+   * @generated from field: patches.v1.FilteredByProvenance provenance = 1;
+   */
+  provenance: FilteredByProvenance;
+
+  /**
+   * The filter's name, or the filter list's `display_name` — rendered as "filtered: <name>".
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * Set only when `provenance == FILTERED_BY_PROVENANCE_FILTER_LIST` — the list's publisher,
+   * rendered as "via @alice" (spec §199.3).
+   *
+   * @generated from field: patches.v1.Actor list_owner = 3;
+   */
+  listOwner?: Actor | undefined;
+
+  /**
+   * Never `FILTER_ACTION_HIDE` (a hidden post is never returned to the client at all).
+   *
+   * @generated from field: patches.v1.FilterAction action = 4;
+   */
+  action: FilterAction;
+};
+
+/**
+ * Describes the message patches.v1.FilteredByHint.
+ * Use `create(FilteredByHintSchema)` to create a new message.
+ */
+export const FilteredByHintSchema: GenMessage<FilteredByHint> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_posts, 3);
 
 /**
  * @generated from message patches.v1.Post
@@ -277,13 +326,30 @@ export type Post = Message<'patches.v1.Post'> & {
    * @generated from field: uint32 reposted_by_total = 20;
    */
   repostedByTotal: number;
+
+  /**
+   * Set only when a viewer's own filter or filter-list subscription matched this post with
+   * `collapse`/`warn` (spec §198.3, §203). Unset for a `hide` match — that post is never
+   * returned at all — and unset when nothing matched.
+   *
+   * @generated from field: patches.v1.FilteredByHint filtered_by = 21;
+   */
+  filteredBy?: FilteredByHint | undefined;
+
+  /**
+   * Labels from labelers the viewer subscribes to only (spec §200.3, §203) — never a global
+   * annotation. Empty for an anonymous read or a viewer with no labeler subscriptions.
+   *
+   * @generated from field: repeated patches.v1.Label labels = 22;
+   */
+  labels: Label[];
 };
 
 /**
  * Describes the message patches.v1.Post.
  * Use `create(PostSchema)` to create a new message.
  */
-export const PostSchema: GenMessage<Post> = /*@__PURE__*/ messageDesc(file_patches_v1_posts, 3);
+export const PostSchema: GenMessage<Post> = /*@__PURE__*/ messageDesc(file_patches_v1_posts, 4);
 
 /**
  * @generated from message patches.v1.CreatePostRequest
@@ -365,7 +431,7 @@ export type CreatePostRequest = Message<'patches.v1.CreatePostRequest'> & {
  */
 export const CreatePostRequestSchema: GenMessage<CreatePostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 4);
+  messageDesc(file_patches_v1_posts, 5);
 
 /**
  * @generated from message patches.v1.CreatePostResponse
@@ -383,7 +449,7 @@ export type CreatePostResponse = Message<'patches.v1.CreatePostResponse'> & {
  */
 export const CreatePostResponseSchema: GenMessage<CreatePostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 5);
+  messageDesc(file_patches_v1_posts, 6);
 
 /**
  * @generated from message patches.v1.GetPostRequest
@@ -401,7 +467,7 @@ export type GetPostRequest = Message<'patches.v1.GetPostRequest'> & {
  */
 export const GetPostRequestSchema: GenMessage<GetPostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 6);
+  messageDesc(file_patches_v1_posts, 7);
 
 /**
  * @generated from message patches.v1.GetPostResponse
@@ -419,7 +485,7 @@ export type GetPostResponse = Message<'patches.v1.GetPostResponse'> & {
  */
 export const GetPostResponseSchema: GenMessage<GetPostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 7);
+  messageDesc(file_patches_v1_posts, 8);
 
 /**
  * @generated from message patches.v1.DeletePostRequest
@@ -437,7 +503,7 @@ export type DeletePostRequest = Message<'patches.v1.DeletePostRequest'> & {
  */
 export const DeletePostRequestSchema: GenMessage<DeletePostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 8);
+  messageDesc(file_patches_v1_posts, 9);
 
 /**
  * @generated from message patches.v1.DeletePostResponse
@@ -457,7 +523,7 @@ export type DeletePostResponse = Message<'patches.v1.DeletePostResponse'> & {
  */
 export const DeletePostResponseSchema: GenMessage<DeletePostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 9);
+  messageDesc(file_patches_v1_posts, 10);
 
 /**
  * @generated from message patches.v1.ListRepliesRequest
@@ -493,7 +559,7 @@ export type ListRepliesRequest = Message<'patches.v1.ListRepliesRequest'> & {
  */
 export const ListRepliesRequestSchema: GenMessage<ListRepliesRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 10);
+  messageDesc(file_patches_v1_posts, 11);
 
 /**
  * @generated from message patches.v1.ListRepliesResponse
@@ -516,7 +582,7 @@ export type ListRepliesResponse = Message<'patches.v1.ListRepliesResponse'> & {
  */
 export const ListRepliesResponseSchema: GenMessage<ListRepliesResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 11);
+  messageDesc(file_patches_v1_posts, 12);
 
 /**
  * A single prior version of a post, snapshotted immediately before an `EditPost` call
@@ -567,7 +633,7 @@ export type PostEdit = Message<'patches.v1.PostEdit'> & {
  */
 export const PostEditSchema: GenMessage<PostEdit> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 12);
+  messageDesc(file_patches_v1_posts, 13);
 
 /**
  * @generated from message patches.v1.EditPostRequest
@@ -600,7 +666,7 @@ export type EditPostRequest = Message<'patches.v1.EditPostRequest'> & {
  */
 export const EditPostRequestSchema: GenMessage<EditPostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 13);
+  messageDesc(file_patches_v1_posts, 14);
 
 /**
  * @generated from message patches.v1.EditPostResponse
@@ -618,7 +684,7 @@ export type EditPostResponse = Message<'patches.v1.EditPostResponse'> & {
  */
 export const EditPostResponseSchema: GenMessage<EditPostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 14);
+  messageDesc(file_patches_v1_posts, 15);
 
 /**
  * @generated from message patches.v1.ListPostEditsRequest
@@ -646,7 +712,7 @@ export type ListPostEditsRequest = Message<'patches.v1.ListPostEditsRequest'> & 
  */
 export const ListPostEditsRequestSchema: GenMessage<ListPostEditsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 15);
+  messageDesc(file_patches_v1_posts, 16);
 
 /**
  * @generated from message patches.v1.ListPostEditsResponse
@@ -669,7 +735,7 @@ export type ListPostEditsResponse = Message<'patches.v1.ListPostEditsResponse'> 
  */
 export const ListPostEditsResponseSchema: GenMessage<ListPostEditsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 16);
+  messageDesc(file_patches_v1_posts, 17);
 
 /**
  * @generated from message patches.v1.PinPostRequest
@@ -694,7 +760,7 @@ export type PinPostRequest = Message<'patches.v1.PinPostRequest'> & {
  */
 export const PinPostRequestSchema: GenMessage<PinPostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 17);
+  messageDesc(file_patches_v1_posts, 18);
 
 /**
  * @generated from message patches.v1.PinPostResponse
@@ -712,7 +778,7 @@ export type PinPostResponse = Message<'patches.v1.PinPostResponse'> & {
  */
 export const PinPostResponseSchema: GenMessage<PinPostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 18);
+  messageDesc(file_patches_v1_posts, 19);
 
 /**
  * @generated from message patches.v1.UnpinPostRequest
@@ -730,7 +796,7 @@ export type UnpinPostRequest = Message<'patches.v1.UnpinPostRequest'> & {
  */
 export const UnpinPostRequestSchema: GenMessage<UnpinPostRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 19);
+  messageDesc(file_patches_v1_posts, 20);
 
 /**
  * @generated from message patches.v1.UnpinPostResponse
@@ -748,7 +814,7 @@ export type UnpinPostResponse = Message<'patches.v1.UnpinPostResponse'> & {
  */
 export const UnpinPostResponseSchema: GenMessage<UnpinPostResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 20);
+  messageDesc(file_patches_v1_posts, 21);
 
 /**
  * @generated from message patches.v1.SearchPostsRequest
@@ -793,7 +859,7 @@ export type SearchPostsRequest = Message<'patches.v1.SearchPostsRequest'> & {
  */
 export const SearchPostsRequestSchema: GenMessage<SearchPostsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 21);
+  messageDesc(file_patches_v1_posts, 22);
 
 /**
  * @generated from message patches.v1.SearchPostsResponse
@@ -816,7 +882,7 @@ export type SearchPostsResponse = Message<'patches.v1.SearchPostsResponse'> & {
  */
 export const SearchPostsResponseSchema: GenMessage<SearchPostsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_posts, 22);
+  messageDesc(file_patches_v1_posts, 23);
 
 /**
  * @generated from enum patches.v1.PostType
@@ -909,6 +975,36 @@ export enum QuotePolicy {
 export const QuotePolicySchema: GenEnum<QuotePolicy> =
   /*@__PURE__*/
   enumDesc(file_patches_v1_posts, 2);
+
+/**
+ * Which mechanism produced a `Post.filtered_by` hint (spec §199.3's provenance requirement —
+ * "a viewer must always be able to answer 'why did this disappear, and who decided that?'").
+ *
+ * @generated from enum patches.v1.FilteredByProvenance
+ */
+export enum FilteredByProvenance {
+  /**
+   * @generated from enum value: FILTERED_BY_PROVENANCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: FILTERED_BY_PROVENANCE_FILTER = 1;
+   */
+  FILTER = 1,
+
+  /**
+   * @generated from enum value: FILTERED_BY_PROVENANCE_FILTER_LIST = 2;
+   */
+  FILTER_LIST = 2,
+}
+
+/**
+ * Describes the enum patches.v1.FilteredByProvenance.
+ */
+export const FilteredByProvenanceSchema: GenEnum<FilteredByProvenance> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_posts, 3);
 
 /**
  * Posts and replies — there is no separate comment entity (spec §23–26, §51).

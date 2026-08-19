@@ -93,6 +93,11 @@ export function getProtoFiles(): readonly string[] {
         'pages',
         'messages',
         'tags',
+        'filters',
+        'filter_lists',
+        'labels',
+        'appeals',
+        'privacy',
       ].map((name) => join(dir, 'patches', 'v1', `${name}.proto`)),
     );
   }

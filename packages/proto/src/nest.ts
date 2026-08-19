@@ -99,6 +99,7 @@ export type {
   DeletePostResponse,
   EditPostRequest,
   EditPostResponse,
+  FilteredByHint,
   GetPostRequest,
   GetPostResponse,
   ListPostEditsRequest,
@@ -120,6 +121,7 @@ export type {
   UnpinPostResponse,
 } from './generated/patches/v1/posts.js';
 export {
+  FilteredByProvenance,
   POST_SERVICE_NAME,
   PostServiceControllerMethods,
   PostType,
@@ -163,14 +165,21 @@ export {
 } from './generated/patches/v1/social_graph.js';
 
 export type {
+  DomainPolicyEntry,
   GetNodeInfoRequest,
   GetNodeInfoResponse,
+  GetNodePolicyRequest,
+  GetNodePolicyResponse,
   NodeLimits,
+  NodePolicy,
   NodeServiceClient,
   NodeServiceController,
+  RetentionWindows,
   SocialCapabilities,
 } from './generated/patches/v1/node.js';
 export {
+  DomainPolicyAction,
+  FederationStance,
   NODE_SERVICE_NAME,
   NodeServiceControllerMethods,
   RegistrationMode,
@@ -225,8 +234,14 @@ export type {
   BlockActorResponse,
   ListBlocksRequest,
   ListBlocksResponse,
+  ListModerationLogRequest,
+  ListModerationLogResponse,
   ListMutesRequest,
   ListMutesResponse,
+  ListMyModerationNoticesRequest,
+  ListMyModerationNoticesResponse,
+  ModerationLogEntry,
+  ModerationNotice,
   ModerationServiceClient,
   ModerationServiceController,
   MuteActorRequest,
@@ -244,6 +259,9 @@ export type {
 } from './generated/patches/v1/moderation.js';
 export {
   MODERATION_SERVICE_NAME,
+  ModerationActionType,
+  ModerationLogSubjectKind,
+  ModerationReasonCategory,
   ModerationServiceControllerMethods,
   ReportReason,
 } from './generated/patches/v1/moderation.js';
@@ -375,3 +393,139 @@ export type {
   UnmuteTagResponse,
 } from './generated/patches/v1/tags.js';
 export { TAG_SERVICE_NAME, TagServiceControllerMethods } from './generated/patches/v1/tags.js';
+
+export type {
+  CreateFilterRequest,
+  CreateFilterResponse,
+  DeleteFilterRequest,
+  DeleteFilterResponse,
+  ExportFiltersRequest,
+  ExportFiltersResponse,
+  Filter,
+  FilterServiceClient,
+  FilterServiceController,
+  FilterTerm,
+  FilterTermInput,
+  ImportFiltersRequest,
+  ImportFiltersResponse,
+  ListFiltersRequest,
+  ListFiltersResponse,
+  UpdateFilterRequest,
+  UpdateFilterResponse,
+} from './generated/patches/v1/filters.js';
+export {
+  FILTER_SERVICE_NAME,
+  FilterAction,
+  FilterScope,
+  FilterServiceControllerMethods,
+  FilterTermKind,
+} from './generated/patches/v1/filters.js';
+
+export type {
+  DeleteFilterListRequest,
+  DeleteFilterListResponse,
+  FilterList,
+  FilterListEntry,
+  FilterListServiceClient,
+  FilterListServiceController,
+  FilterListSubscription,
+  GetFilterListRequest,
+  GetFilterListResponse,
+  ListFilterListEntriesRequest,
+  ListFilterListEntriesResponse,
+  ListFilterListsRequest,
+  ListFilterListsResponse,
+  ListFilterListSubscriptionsRequest,
+  ListFilterListSubscriptionsResponse,
+  PublishFilterListRequest,
+  PublishFilterListResponse,
+  SetFilterListEntryExceptionRequest,
+  SetFilterListEntryExceptionResponse,
+  SubscribeFilterListRequest,
+  SubscribeFilterListResponse,
+  UnsubscribeFilterListRequest,
+  UnsubscribeFilterListResponse,
+  UpdateFilterListRequest,
+  UpdateFilterListResponse,
+} from './generated/patches/v1/filter_lists.js';
+export {
+  FILTER_LIST_SERVICE_NAME,
+  FilterListServiceControllerMethods,
+} from './generated/patches/v1/filter_lists.js';
+
+export type {
+  ApplyLabelRequest,
+  ApplyLabelResponse,
+  CreateLabelerRequest,
+  CreateLabelerResponse,
+  GetLabelerRequest,
+  GetLabelerResponse,
+  Label,
+  Labeler,
+  LabelServiceClient,
+  LabelServiceController,
+  LabelVocabularyEntry,
+  ListLabelersRequest,
+  ListLabelersResponse,
+  ListLabelsOnSubjectRequest,
+  ListLabelsOnSubjectResponse,
+  RetractLabelRequest,
+  RetractLabelResponse,
+  SetLabelerSubscriptionActionRequest,
+  SetLabelerSubscriptionActionResponse,
+  SubscribeLabelerRequest,
+  SubscribeLabelerResponse,
+  UnsubscribeLabelerRequest,
+  UnsubscribeLabelerResponse,
+} from './generated/patches/v1/labels.js';
+export {
+  LABEL_SERVICE_NAME,
+  LabelAction,
+  LabelServiceControllerMethods,
+} from './generated/patches/v1/labels.js';
+
+export type {
+  Appeal,
+  AppealServiceClient,
+  AppealServiceController,
+  CreateAppealRequest,
+  CreateAppealResponse,
+  GetAppealRequest,
+  GetAppealResponse,
+  ListMyAppealsRequest,
+  ListMyAppealsResponse,
+} from './generated/patches/v1/appeals.js';
+export {
+  APPEAL_SERVICE_NAME,
+  AppealServiceControllerMethods,
+  AppealStatus,
+} from './generated/patches/v1/appeals.js';
+
+export type {
+  AccountDeletionStatus,
+  AccountExport,
+  AcknowledgePrivacyNoticeRequest,
+  AcknowledgePrivacyNoticeResponse,
+  CancelAccountDeletionRequest,
+  CancelAccountDeletionResponse,
+  ExportAccountRequest,
+  ExportAccountResponse,
+  GetDeletionStatusRequest,
+  GetDeletionStatusResponse,
+  GetExportStatusRequest,
+  GetExportStatusResponse,
+  GetPrivacyPrefsRequest,
+  GetPrivacyPrefsResponse,
+  PrivacyPrefs,
+  PrivacyServiceClient,
+  PrivacyServiceController,
+  RequestAccountDeletionRequest,
+  RequestAccountDeletionResponse,
+  UpdatePrivacyPrefsRequest,
+  UpdatePrivacyPrefsResponse,
+} from './generated/patches/v1/privacy.js';
+export {
+  AccountExportStatus,
+  PRIVACY_SERVICE_NAME,
+  PrivacyServiceControllerMethods,
+} from './generated/patches/v1/privacy.js';

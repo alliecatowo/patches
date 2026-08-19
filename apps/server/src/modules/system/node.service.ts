@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type GetNodeInfoResponse, RegistrationMode } from '@patches/proto/nest';
+import {
+  FederationStance,
+  type GetNodeInfoResponse,
+  type GetNodePolicyResponse,
+  RegistrationMode,
+} from '@patches/proto/nest';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import {
@@ -60,6 +65,42 @@ export class NodeService {
         canCreateCommunity: this.config.canCreateCommunity,
         dmEnabled: this.config.dmEnabled,
         dmRetentionDays: this.config.dmRetentionDays,
+      },
+    };
+  }
+
+  /**
+   * P14-001 lands the `patches.v1.NodeService.GetNodePolicy` contract only (spec §197.6) —
+   * populating it from real operator-supplied settings (privacy notice text, moderator
+   * contact, domain policies, retention windows) is a follow-up task. An all-empty
+   * `NodePolicy` is the honest answer in the meantime: the proto's own doc says a node that
+   * publishes nothing here has said so, and clients render that as "this node publishes no
+   * policy" rather than hiding the screen — so this is a real, spec-sanctioned response, not
+   * a stub error.
+   */
+  getNodePolicy(): GetNodePolicyResponse {
+    return {
+      policy: {
+        privacyNoticeSummary: '',
+        privacyNoticeVersion: 0,
+        privacyNoticeUrl: '',
+        termsUrl: '',
+        moderatorContact: '',
+        appealInstructions: '',
+        federationStance: FederationStance.FEDERATION_STANCE_UNSPECIFIED,
+        domainPolicies: [],
+        dataLocation: '',
+        retention: {
+          dmRetentionDays: 0,
+          evidenceSnapshotRetentionDays: 0,
+          uploadedOriginalRetentionDays: 0,
+          logRetentionDays: 0,
+          exportArchiveRetentionDays: 0,
+        },
+        operatorIdentity: '',
+        labelVocabulary: [],
+        accountDeletionGracePeriodDays: 0,
+        appealWindowDays: 0,
       },
     };
   }

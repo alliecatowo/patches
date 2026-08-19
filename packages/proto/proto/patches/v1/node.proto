@@ -2,11 +2,21 @@ syntax = "proto3";
 
 package patches.v1;
 
+import "patches/v1/labels.proto";
+import "patches/v1/moderation.proto";
+
 // Node discovery (spec §163, §168, §174) — always unauthenticated. A client calls
 // `GetNodeInfo` before assuming any policy (registration mode, limits, capabilities) rather
 // than hardcoding the reference node's behavior.
 service NodeService {
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+
+  // Operator transparency (spec §197.6): what this node's operators do with your data and
+  // your safety. Deliberately a separate RPC from `GetNodeInfo` — this document is larger,
+  // changes rarely, and is cached on a different schedule. A node that publishes nothing
+  // here has said so; clients render an empty policy as "this node publishes no policy"
+  // rather than hiding the screen.
+  rpc GetNodePolicy(GetNodePolicyRequest) returns (GetNodePolicyResponse);
 }
 
 enum RegistrationMode {
@@ -70,4 +80,85 @@ message GetNodeInfoResponse {
 
   // Value-carrying capabilities added by Amendment B (spec §188, §190).
   SocialCapabilities social_capabilities = 6;
+}
+
+// disabled: no federation at all. allowlist: only explicitly-approved domains. open-with-
+// blocklist: federates with any domain except those on `domain_policies` (spec §197.6).
+enum FederationStance {
+  FEDERATION_STANCE_UNSPECIFIED = 0;
+  FEDERATION_STANCE_DISABLED = 1;
+  FEDERATION_STANCE_ALLOWLIST = 2;
+  FEDERATION_STANCE_OPEN_WITH_BLOCKLIST = 3;
+}
+
+// v1 ships exactly one action (spec §201.5); kept as an enum rather than a bare bool for
+// forward compatibility with a graduated `limit`/`silence` tier, a §210 sign-off item.
+enum DomainPolicyAction {
+  DOMAIN_POLICY_ACTION_UNSPECIFIED = 0;
+  DOMAIN_POLICY_ACTION_BLOCK = 1;
+}
+
+// One entry of the node's public federation domain policy (spec §201.5). `reason_category` is
+// the published bounded category — the operator's free-text `domain_blocks.reason` is never
+// exposed here (same split as `ModerationLogEntry.reason_category`).
+message DomainPolicyEntry {
+  string domain = 1;
+  DomainPolicyAction action = 2;
+  ModerationReasonCategory reason_category = 3;
+}
+
+// Retention windows this node enforces (spec §197.6, §204). Zero means "no retention limit is
+// enforced", the same convention as `SocialCapabilities.dm_retention_days`.
+message RetentionWindows {
+  uint32 dm_retention_days = 1;
+  uint32 evidence_snapshot_retention_days = 2;
+  uint32 uploaded_original_retention_days = 3;
+  uint32 log_retention_days = 4;
+  uint32 export_archive_retention_days = 5;
+}
+
+// Operator transparency document (spec §197.6). Every field is operator-supplied text or an
+// enum — never markup, scripts, or remote media (§172, §177).
+message NodePolicy {
+  string privacy_notice_summary = 1;
+  uint32 privacy_notice_version = 2;
+  string privacy_notice_url = 3;
+
+  string terms_url = 4;
+
+  string moderator_contact = 5;
+
+  // How appeals are filed (spec §201.3) — human-readable instructions, not a structured
+  // shape; the actual mechanism is `AppealService.CreateAppeal`.
+  string appeal_instructions = 6;
+
+  FederationStance federation_stance = 7;
+
+  // The public subset of this node's domain policy (spec §201.5).
+  repeated DomainPolicyEntry domain_policies = 8;
+
+  // Operator-declared jurisdiction/provider, free text (spec §197.6).
+  string data_location = 9;
+
+  RetentionWindows retention = 10;
+
+  // Who runs this node, or an explicit "anonymous operator" statement (spec §197.6).
+  string operator_identity = 11;
+
+  // The closed label vocabulary this node's own labeler publishes (spec §200.2).
+  repeated LabelVocabularyEntry label_vocabulary = 12;
+
+  // Node-configurable, published here (spec §204's 30-day default).
+  uint32 account_deletion_grace_period_days = 13;
+
+  // Node-configurable, published here (spec §204's 14-day default).
+  uint32 appeal_window_days = 14;
+}
+
+message GetNodePolicyRequest {}
+
+message GetNodePolicyResponse {
+  // A node that publishes nothing renders as an all-empty `NodePolicy` — clients MUST render
+  // that as "this node publishes no policy" rather than hiding the screen (spec §197.6).
+  NodePolicy policy = 1;
 }

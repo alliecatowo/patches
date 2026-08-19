@@ -68,6 +68,70 @@ import type {
   ListTagFeedResponse,
 } from './generated/patches/v1/feeds.js';
 import type {
+  CreateAppealRequest,
+  CreateAppealResponse,
+  GetAppealRequest,
+  GetAppealResponse,
+  ListMyAppealsRequest,
+  ListMyAppealsResponse,
+} from './generated/patches/v1/appeals.js';
+import type {
+  DeleteFilterListRequest,
+  DeleteFilterListResponse,
+  GetFilterListRequest,
+  GetFilterListResponse,
+  ListFilterListEntriesRequest,
+  ListFilterListEntriesResponse,
+  ListFilterListsRequest,
+  ListFilterListsResponse,
+  ListFilterListSubscriptionsRequest,
+  ListFilterListSubscriptionsResponse,
+  PublishFilterListRequest,
+  PublishFilterListResponse,
+  SetFilterListEntryExceptionRequest,
+  SetFilterListEntryExceptionResponse,
+  SubscribeFilterListRequest,
+  SubscribeFilterListResponse,
+  UnsubscribeFilterListRequest,
+  UnsubscribeFilterListResponse,
+  UpdateFilterListRequest,
+  UpdateFilterListResponse,
+} from './generated/patches/v1/filter_lists.js';
+import type {
+  CreateFilterRequest,
+  CreateFilterResponse,
+  DeleteFilterRequest,
+  DeleteFilterResponse,
+  ExportFiltersRequest,
+  ExportFiltersResponse,
+  ImportFiltersRequest,
+  ImportFiltersResponse,
+  ListFiltersRequest,
+  ListFiltersResponse,
+  UpdateFilterRequest,
+  UpdateFilterResponse,
+} from './generated/patches/v1/filters.js';
+import type {
+  ApplyLabelRequest,
+  ApplyLabelResponse,
+  CreateLabelerRequest,
+  CreateLabelerResponse,
+  GetLabelerRequest,
+  GetLabelerResponse,
+  ListLabelersRequest,
+  ListLabelersResponse,
+  ListLabelsOnSubjectRequest,
+  ListLabelsOnSubjectResponse,
+  RetractLabelRequest,
+  RetractLabelResponse,
+  SetLabelerSubscriptionActionRequest,
+  SetLabelerSubscriptionActionResponse,
+  SubscribeLabelerRequest,
+  SubscribeLabelerResponse,
+  UnsubscribeLabelerRequest,
+  UnsubscribeLabelerResponse,
+} from './generated/patches/v1/labels.js';
+import type {
   BeginMediaUploadRequest,
   BeginMediaUploadResponse,
   FinalizeMediaUploadRequest,
@@ -128,8 +192,12 @@ import type {
   BlockActorResponse,
   ListBlocksRequest,
   ListBlocksResponse,
+  ListModerationLogRequest,
+  ListModerationLogResponse,
   ListMutesRequest,
   ListMutesResponse,
+  ListMyModerationNoticesRequest,
+  ListMyModerationNoticesResponse,
   MuteActorRequest,
   MuteActorResponse,
   ReportActorRequest,
@@ -143,7 +211,12 @@ import type {
   UnmuteActorRequest,
   UnmuteActorResponse,
 } from './generated/patches/v1/moderation.js';
-import type { GetNodeInfoRequest, GetNodeInfoResponse } from './generated/patches/v1/node.js';
+import type {
+  GetNodeInfoRequest,
+  GetNodeInfoResponse,
+  GetNodePolicyRequest,
+  GetNodePolicyResponse,
+} from './generated/patches/v1/node.js';
 import type {
   GetUnreadCountRequest,
   GetUnreadCountResponse,
@@ -234,6 +307,24 @@ import type {
   UnmuteTagRequest,
   UnmuteTagResponse,
 } from './generated/patches/v1/tags.js';
+import type {
+  AcknowledgePrivacyNoticeRequest,
+  AcknowledgePrivacyNoticeResponse,
+  CancelAccountDeletionRequest,
+  CancelAccountDeletionResponse,
+  ExportAccountRequest,
+  ExportAccountResponse,
+  GetDeletionStatusRequest,
+  GetDeletionStatusResponse,
+  GetExportStatusRequest,
+  GetExportStatusResponse,
+  GetPrivacyPrefsRequest,
+  GetPrivacyPrefsResponse,
+  RequestAccountDeletionRequest,
+  RequestAccountDeletionResponse,
+  UpdatePrivacyPrefsRequest,
+  UpdatePrivacyPrefsResponse,
+} from './generated/patches/v1/privacy.js';
 import { getProtoDir } from './proto-path.js';
 
 /**
@@ -273,6 +364,11 @@ export const SERVICE_NAMES = Object.freeze({
   community: 'CommunityService',
   directMessage: 'DirectMessageService',
   tag: 'TagService',
+  filter: 'FilterService',
+  filterList: 'FilterListService',
+  label: 'LabelService',
+  appeal: 'AppealService',
+  privacy: 'PrivacyService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -409,6 +505,7 @@ export interface SocialGraphGrpcClient extends Client {
 /** `patches.v1.NodeService` as seen by a raw grpc-js client. */
 export interface NodeGrpcClient extends Client {
   getNodeInfo: GrpcUnaryCall<GetNodeInfoRequest, GetNodeInfoResponse>;
+  getNodePolicy: GrpcUnaryCall<GetNodePolicyRequest, GetNodePolicyResponse>;
 }
 
 /** `patches.v1.ReactionService` as seen by a raw grpc-js client. */
@@ -442,6 +539,11 @@ export interface ModerationGrpcClient extends Client {
   reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
   reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
   reportMessage: GrpcUnaryCall<ReportMessageRequest, ReportMessageResponse>;
+  listModerationLog: GrpcUnaryCall<ListModerationLogRequest, ListModerationLogResponse>;
+  listMyModerationNotices: GrpcUnaryCall<
+    ListMyModerationNoticesRequest,
+    ListMyModerationNoticesResponse
+  >;
 }
 
 /** `patches.v1.MediaService` as seen by a raw grpc-js client. */
@@ -507,4 +609,75 @@ export interface TagGrpcClient extends Client {
   muteTag: GrpcUnaryCall<MuteTagRequest, MuteTagResponse>;
   unmuteTag: GrpcUnaryCall<UnmuteTagRequest, UnmuteTagResponse>;
   listMutedTags: GrpcUnaryCall<ListMutedTagsRequest, ListMutedTagsResponse>;
+}
+
+/** `patches.v1.FilterService` as seen by a raw grpc-js client. */
+export interface FilterGrpcClient extends Client {
+  createFilter: GrpcUnaryCall<CreateFilterRequest, CreateFilterResponse>;
+  updateFilter: GrpcUnaryCall<UpdateFilterRequest, UpdateFilterResponse>;
+  deleteFilter: GrpcUnaryCall<DeleteFilterRequest, DeleteFilterResponse>;
+  listFilters: GrpcUnaryCall<ListFiltersRequest, ListFiltersResponse>;
+  exportFilters: GrpcUnaryCall<ExportFiltersRequest, ExportFiltersResponse>;
+  importFilters: GrpcUnaryCall<ImportFiltersRequest, ImportFiltersResponse>;
+}
+
+/** `patches.v1.FilterListService` as seen by a raw grpc-js client. */
+export interface FilterListGrpcClient extends Client {
+  publishFilterList: GrpcUnaryCall<PublishFilterListRequest, PublishFilterListResponse>;
+  updateFilterList: GrpcUnaryCall<UpdateFilterListRequest, UpdateFilterListResponse>;
+  deleteFilterList: GrpcUnaryCall<DeleteFilterListRequest, DeleteFilterListResponse>;
+  getFilterList: GrpcUnaryCall<GetFilterListRequest, GetFilterListResponse>;
+  listFilterLists: GrpcUnaryCall<ListFilterListsRequest, ListFilterListsResponse>;
+  listFilterListEntries: GrpcUnaryCall<ListFilterListEntriesRequest, ListFilterListEntriesResponse>;
+  subscribeFilterList: GrpcUnaryCall<SubscribeFilterListRequest, SubscribeFilterListResponse>;
+  unsubscribeFilterList: GrpcUnaryCall<UnsubscribeFilterListRequest, UnsubscribeFilterListResponse>;
+  listFilterListSubscriptions: GrpcUnaryCall<
+    ListFilterListSubscriptionsRequest,
+    ListFilterListSubscriptionsResponse
+  >;
+  setFilterListEntryException: GrpcUnaryCall<
+    SetFilterListEntryExceptionRequest,
+    SetFilterListEntryExceptionResponse
+  >;
+}
+
+/** `patches.v1.LabelService` as seen by a raw grpc-js client. */
+export interface LabelGrpcClient extends Client {
+  createLabeler: GrpcUnaryCall<CreateLabelerRequest, CreateLabelerResponse>;
+  getLabeler: GrpcUnaryCall<GetLabelerRequest, GetLabelerResponse>;
+  listLabelers: GrpcUnaryCall<ListLabelersRequest, ListLabelersResponse>;
+  applyLabel: GrpcUnaryCall<ApplyLabelRequest, ApplyLabelResponse>;
+  retractLabel: GrpcUnaryCall<RetractLabelRequest, RetractLabelResponse>;
+  subscribeLabeler: GrpcUnaryCall<SubscribeLabelerRequest, SubscribeLabelerResponse>;
+  unsubscribeLabeler: GrpcUnaryCall<UnsubscribeLabelerRequest, UnsubscribeLabelerResponse>;
+  setLabelerSubscriptionAction: GrpcUnaryCall<
+    SetLabelerSubscriptionActionRequest,
+    SetLabelerSubscriptionActionResponse
+  >;
+  listLabelsOnSubject: GrpcUnaryCall<ListLabelsOnSubjectRequest, ListLabelsOnSubjectResponse>;
+}
+
+/** `patches.v1.AppealService` as seen by a raw grpc-js client. */
+export interface AppealGrpcClient extends Client {
+  createAppeal: GrpcUnaryCall<CreateAppealRequest, CreateAppealResponse>;
+  getAppeal: GrpcUnaryCall<GetAppealRequest, GetAppealResponse>;
+  listMyAppeals: GrpcUnaryCall<ListMyAppealsRequest, ListMyAppealsResponse>;
+}
+
+/** `patches.v1.PrivacyService` as seen by a raw grpc-js client. */
+export interface PrivacyGrpcClient extends Client {
+  acknowledgePrivacyNotice: GrpcUnaryCall<
+    AcknowledgePrivacyNoticeRequest,
+    AcknowledgePrivacyNoticeResponse
+  >;
+  getPrivacyPrefs: GrpcUnaryCall<GetPrivacyPrefsRequest, GetPrivacyPrefsResponse>;
+  updatePrivacyPrefs: GrpcUnaryCall<UpdatePrivacyPrefsRequest, UpdatePrivacyPrefsResponse>;
+  exportAccount: GrpcUnaryCall<ExportAccountRequest, ExportAccountResponse>;
+  getExportStatus: GrpcUnaryCall<GetExportStatusRequest, GetExportStatusResponse>;
+  requestAccountDeletion: GrpcUnaryCall<
+    RequestAccountDeletionRequest,
+    RequestAccountDeletionResponse
+  >;
+  cancelAccountDeletion: GrpcUnaryCall<CancelAccountDeletionRequest, CancelAccountDeletionResponse>;
+  getDeletionStatus: GrpcUnaryCall<GetDeletionStatusRequest, GetDeletionStatusResponse>;
 }

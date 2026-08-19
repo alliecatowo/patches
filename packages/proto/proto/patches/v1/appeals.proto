@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/common.proto";
+
+// Appeals against a node moderation notice (spec §201.3). Only the acted-upon actor may
+// appeal — not a reporter, not a bystander. One appeal per moderation notice. Admin-side
+// resolution is CLI-only (`patches-admin appeal list|inspect|resolve`) — there is
+// deliberately no gRPC resolve RPC here, mirroring `report list|inspect|resolve`.
+service AppealService {
+  // `moderation_notice_id` identifies the notice being appealed
+  // (`ModerationService.ListMyModerationNotices`). Rejected if the caller already has an
+  // appeal for that notice, or the node's published appeal window has closed
+  // (`NodeService.GetNodePolicy`).
+  rpc CreateAppeal(CreateAppealRequest) returns (CreateAppealResponse);
+
+  rpc GetAppeal(GetAppealRequest) returns (GetAppealResponse);
+
+  // The caller's own appeals, most-recent first.
+  rpc ListMyAppeals(ListMyAppealsRequest) returns (ListMyAppealsResponse);
+}
+
+enum AppealStatus {
+  APPEAL_STATUS_UNSPECIFIED = 0;
+  APPEAL_STATUS_OPEN = 1;
+  APPEAL_STATUS_UPHELD = 2;
+  APPEAL_STATUS_OVERTURNED = 3;
+  APPEAL_STATUS_MODIFIED = 4;
+}
+
+// Visible only to the appellant and moderators (§201.3, §208) — the public moderation log
+// shows only that an action was appealed (a boolean), never this message's content.
+message Appeal {
+  string id = 1;
+  string moderation_notice_id = 2;
+
+  // Max 2,000 characters (spec §204).
+  string statement = 3;
+
+  AppealStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+
+  // Unset until resolved.
+  google.protobuf.Timestamp resolved_at = 6;
+
+  // Authored by the resolving moderator — never `reports.moderator_note` or any other
+  // internal-only field (spec §55, §201.3, §208).
+  string resolution_reason = 7;
+}
+
+message CreateAppealRequest {
+  string moderation_notice_id = 1;
+  string statement = 2;
+}
+
+message CreateAppealResponse {
+  Appeal appeal = 1;
+}
+
+message GetAppealRequest {
+  string id = 1;
+}
+
+message GetAppealResponse {
+  Appeal appeal = 1;
+}
+
+message ListMyAppealsRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListMyAppealsResponse {
+  repeated Appeal appeals = 1;
+  PageInfo page = 2;
+}

@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "patches/v1/common.proto";
+
+// Bring-your-own filters (spec §198). A filter is a named, viewer-owned rule that removes or
+// conceals posts — it never adds, reorders, or scores anything (§198.1, §208). Evaluated
+// server-side at the same chokepoint blocks/mutes already flow through (§198.4): every client
+// sees the same timeline, and pagination stays correct. Filter terms are always literal —
+// user-supplied regular expressions are prohibited in v1 (§198.2, §208).
+service FilterService {
+  rpc CreateFilter(CreateFilterRequest) returns (CreateFilterResponse);
+
+  rpc UpdateFilter(UpdateFilterRequest) returns (UpdateFilterResponse);
+
+  rpc DeleteFilter(DeleteFilterRequest) returns (DeleteFilterResponse);
+
+  // The caller's own filters, most-recent first.
+  rpc ListFilters(ListFiltersRequest) returns (ListFiltersResponse);
+
+  // A plain, documented JSON export (spec §198.5) — never a binary blob, never executable.
+  rpc ExportFilters(ExportFiltersRequest) returns (ExportFiltersResponse);
+
+  // Additive and previewable: pass `apply = false` to see what would be added without
+  // writing anything (spec §198.5).
+  rpc ImportFilters(ImportFiltersRequest) returns (ImportFiltersResponse);
+}
+
+// A filter-term kind (spec §198.2). Shared with filter list entries (`filter_lists.proto`) —
+// same five kinds, same matching semantics.
+enum FilterTermKind {
+  FILTER_TERM_KIND_UNSPECIFIED = 0;
+  FILTER_TERM_KIND_SUBSTRING = 1;
+  FILTER_TERM_KIND_WORD = 2;
+  FILTER_TERM_KIND_TAG = 3;
+  FILTER_TERM_KIND_ACTOR = 4;
+  FILTER_TERM_KIND_DOMAIN = 5;
+}
+
+// Where a filter applies (spec §198.3). Threads and profiles are deliberately absent — "a
+// filter governs what arrives unbidden", not something a viewer opened on purpose.
+enum FilterScope {
+  FILTER_SCOPE_UNSPECIFIED = 0;
+  FILTER_SCOPE_HOME = 1;
+  FILTER_SCOPE_LOCAL = 2;
+  FILTER_SCOPE_TAG_FEED = 3;
+  FILTER_SCOPE_COMMUNITY_FEED = 4;
+  FILTER_SCOPE_NOTIFICATIONS = 5;
+  FILTER_SCOPE_SEARCH = 6;
+  FILTER_SCOPE_MESSAGE_REQUESTS = 7;
+}
+
+// What a matched filter does to a post (spec §198.3). Reused by filter list subscriptions
+// (`filter_lists.proto`) and, with an added `ignore` value, by `LabelAction`
+// (`labels.proto`).
+enum FilterAction {
+  FILTER_ACTION_UNSPECIFIED = 0;
+
+  // The row is not returned to the client at all — enforced by omission, on the server.
+  FILTER_ACTION_HIDE = 1;
+
+  // Returned, replaced client-side by one collapsed line naming the filter, expandable in
+  // place.
+  FILTER_ACTION_COLLAPSE = 2;
+
+  // Returned and rendered normally with a "filtered: <name>" marker.
+  FILTER_ACTION_WARN = 3;
+}
+
+// A term as supplied by the caller (create/update/import) — no `id`, the server assigns one.
+message FilterTermInput {
+  FilterTermKind kind = 1;
+
+  // A literal value the server matches against — never a user-supplied pattern (§198.2,
+  // §208).
+  string value = 2;
+}
+
+message FilterTerm {
+  string id = 1;
+  FilterTermKind kind = 2;
+
+  // Sensitive at the application layer: never logged, never shown to a moderator (a filter
+  // is not evidence of anything) — spec §202.
+  string value = 3;
+}
+
+message Filter {
+  string id = 1;
+
+  // Shown when a post is collapsed by this filter. Sensitive at the application layer, same
+  // as `FilterTerm.value`.
+  string name = 2;
+
+  repeated FilterTerm terms = 3;
+  repeated FilterScope scopes = 4;
+  FilterAction action = 5;
+
+  // Unset means the filter never expires.
+  google.protobuf.Timestamp expires_at = 6;
+
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message CreateFilterRequest {
+  string name = 1;
+
+  // Up to 20 terms per filter (spec §204).
+  repeated FilterTermInput terms = 2;
+
+  repeated FilterScope scopes = 3;
+  FilterAction action = 4;
+
+  // Unset means the filter never expires.
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message CreateFilterResponse {
+  Filter filter = 1;
+}
+
+// `update_mask` selects which of `name`/`terms`/`scopes`/`action`/`expires_at` to apply —
+// same FieldMask pattern as `ActorService.UpdateProfile`. A full replacement of `terms` is
+// intentional: a filter's term set is small (up to 20, spec §204) and partial term editing
+// would need its own add/remove RPCs for no real benefit.
+message UpdateFilterRequest {
+  string id = 1;
+  string name = 2;
+  repeated FilterTermInput terms = 3;
+  repeated FilterScope scopes = 4;
+  FilterAction action = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.FieldMask update_mask = 7;
+}
+
+message UpdateFilterResponse {
+  Filter filter = 1;
+}
+
+message DeleteFilterRequest {
+  string id = 1;
+}
+
+message DeleteFilterResponse {}
+
+message ListFiltersRequest {
+  string cursor = 1;
+  uint32 limit = 2;
+}
+
+message ListFiltersResponse {
+  repeated Filter filters = 1;
+  PageInfo page = 2;
+}
+
+message ExportFiltersRequest {}
+
+message ExportFiltersResponse {
+  // A plain, documented JSON document (spec §198.5): `{ "filters": [...] }`, one entry per
+  // `Filter` with term ids omitted (import assigns new ones). Never a binary blob, never
+  // executable (§153).
+  string json = 1;
+}
+
+message ImportFiltersRequest {
+  // Same JSON shape `ExportFilters` produces.
+  string json = 1;
+
+  // False (the default): dry run — return what would be added without writing anything, so
+  // the client can render the required preview (§198.5). True: apply.
+  bool apply = 2;
+}
+
+message ImportFiltersResponse {
+  // The filters that were (or, if `apply` was false, would be) added.
+  repeated Filter added = 1;
+}

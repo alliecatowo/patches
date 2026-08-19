@@ -8,6 +8,7 @@
 import type { Metadata } from '@grpc/grpc-js';
 import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
 import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
 import { Actor } from './actors.js';
 import { PageInfo } from './common.js';
 import { Relationship } from './social_graph.js';
@@ -22,6 +23,51 @@ export enum ReportReason {
   REPORT_REASON_ILLEGAL_CONTENT = 'REPORT_REASON_ILLEGAL_CONTENT',
   REPORT_REASON_IMPERSONATION = 'REPORT_REASON_IMPERSONATION',
   REPORT_REASON_OTHER = 'REPORT_REASON_OTHER',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * A bounded vocabulary (spec §202's `MODERATION_LOG_REASON_CATEGORIES`), derived from
+ * `docs/product/moderation.md`'s guideline list — never a report's free-text `details`, never
+ * a moderator's internal note. Published on `domain_blocks` (as the public counterpart to the
+ * operator's free-text `reason`) and on every `ModerationLogEntry`.
+ */
+export enum ModerationReasonCategory {
+  MODERATION_REASON_CATEGORY_UNSPECIFIED = 'MODERATION_REASON_CATEGORY_UNSPECIFIED',
+  MODERATION_REASON_CATEGORY_HARASSMENT = 'MODERATION_REASON_CATEGORY_HARASSMENT',
+  MODERATION_REASON_CATEGORY_HATE = 'MODERATION_REASON_CATEGORY_HATE',
+  MODERATION_REASON_CATEGORY_THREATS = 'MODERATION_REASON_CATEGORY_THREATS',
+  MODERATION_REASON_CATEGORY_DOXXING = 'MODERATION_REASON_CATEGORY_DOXXING',
+  MODERATION_REASON_CATEGORY_IMPERSONATION = 'MODERATION_REASON_CATEGORY_IMPERSONATION',
+  MODERATION_REASON_CATEGORY_SPAM = 'MODERATION_REASON_CATEGORY_SPAM',
+  MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT = 'MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT',
+  MODERATION_REASON_CATEGORY_NCII = 'MODERATION_REASON_CATEGORY_NCII',
+  MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE = 'MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE',
+  MODERATION_REASON_CATEGORY_OTHER = 'MODERATION_REASON_CATEGORY_OTHER',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * The node enforcement actions that generate a moderation notice (spec §201.2), plus the
+ * domain-level action published in the moderation log (spec §201.4-§201.5).
+ */
+export enum ModerationActionType {
+  MODERATION_ACTION_TYPE_UNSPECIFIED = 'MODERATION_ACTION_TYPE_UNSPECIFIED',
+  MODERATION_ACTION_TYPE_WARN = 'MODERATION_ACTION_TYPE_WARN',
+  MODERATION_ACTION_TYPE_SUSPEND = 'MODERATION_ACTION_TYPE_SUSPEND',
+  MODERATION_ACTION_TYPE_BAN = 'MODERATION_ACTION_TYPE_BAN',
+  MODERATION_ACTION_TYPE_POST_REMOVAL = 'MODERATION_ACTION_TYPE_POST_REMOVAL',
+  MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN = 'MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN',
+  MODERATION_ACTION_TYPE_DOMAIN_BLOCK = 'MODERATION_ACTION_TYPE_DOMAIN_BLOCK',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+export enum ModerationLogSubjectKind {
+  MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED = 'MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED',
+  MODERATION_LOG_SUBJECT_KIND_DOMAIN = 'MODERATION_LOG_SUBJECT_KIND_DOMAIN',
+  MODERATION_LOG_SUBJECT_KIND_ACCOUNT = 'MODERATION_LOG_SUBJECT_KIND_ACCOUNT',
+  MODERATION_LOG_SUBJECT_KIND_POST = 'MODERATION_LOG_SUBJECT_KIND_POST',
+  MODERATION_LOG_SUBJECT_KIND_MEDIA = 'MODERATION_LOG_SUBJECT_KIND_MEDIA',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -110,6 +156,72 @@ export interface ReportMessageResponse {
   reportId: string;
 }
 
+/**
+ * A public, anonymized transparency record (spec §201.4). Account/post/media entries never
+ * carry a handle, actor id, or post id — the acted-upon actor already has the full,
+ * identified version in their own `ModerationNotice`, and moderators have it in
+ * `admin_audit_log`. A domain entry is fully identified because it is the node's own
+ * federation decision about its own conduct, not a record of any individual's conduct.
+ */
+export interface ModerationLogEntry {
+  id: string;
+  action: ModerationActionType;
+  subjectKind: ModerationLogSubjectKind;
+  /** Set only when `subject_kind == MODERATION_LOG_SUBJECT_KIND_DOMAIN`. */
+  subjectDomain: string;
+  reasonCategory: ModerationReasonCategory;
+  /** Whether this action was appealed — never the appeal's content (spec §201.3, §208). */
+  appealed: boolean;
+  createdAt: Timestamp | undefined;
+}
+
+export interface ListModerationLogRequest {
+  cursor: string;
+  limit: number;
+}
+
+export interface ListModerationLogResponse {
+  entries: ModerationLogEntry[];
+  page: PageInfo | undefined;
+}
+
+/**
+ * A private, notified read projection of the `admin_audit_log` row that enforced an action
+ * against the caller (spec §201.2) — not a second source of truth. Contrast with a label
+ * (`LabelService`, spec §200.4): a labeler's judgement is never notified, an enforcement
+ * action always is.
+ */
+export interface ModerationNotice {
+  id: string;
+  action: ModerationActionType;
+  /** Empty unless the action concerned a specific post. */
+  postId: string;
+  reasonCategory: ModerationReasonCategory;
+  /**
+   * Purpose-written for the subject at resolution time — never `reports.moderator_note`
+   * (spec §55, §201.2, §208).
+   */
+  explanation: string;
+  createdAt: Timestamp | undefined;
+  /**
+   * Deadline to file an appeal (`AppealService.CreateAppeal`); unset if the appeal window has
+   * already closed or no appeal applies to this action.
+   */
+  appealDeadline: Timestamp | undefined;
+  /** True once the caller has filed an appeal against this notice. */
+  appealed: boolean;
+}
+
+export interface ListMyModerationNoticesRequest {
+  cursor: string;
+  limit: number;
+}
+
+export interface ListMyModerationNoticesResponse {
+  notices: ModerationNotice[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -159,6 +271,28 @@ export interface ModerationServiceClient {
     request: ReportMessageRequest,
     metadata?: Metadata,
   ): Observable<ReportMessageResponse>;
+
+  /**
+   * A public transparency instrument about the node's own conduct, not a public record of
+   * any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
+   * identified; account/post/media entries are anonymized by construction — no handle, actor
+   * id, or post id, ever.
+   */
+
+  listModerationLog(
+    request: ListModerationLogRequest,
+    metadata?: Metadata,
+  ): Observable<ListModerationLogResponse>;
+
+  /**
+   * The caller's own moderation notices — the private, notified, appealable read projection
+   * of `admin_audit_log` rows that acted on them (spec §201.2).
+   */
+
+  listMyModerationNotices(
+    request: ListMyModerationNoticesRequest,
+    metadata?: Metadata,
+  ): Observable<ListMyModerationNoticesResponse>;
 }
 
 /**
@@ -232,6 +366,34 @@ export interface ModerationServiceController {
     request: ReportMessageRequest,
     metadata?: Metadata,
   ): Promise<ReportMessageResponse> | Observable<ReportMessageResponse> | ReportMessageResponse;
+
+  /**
+   * A public transparency instrument about the node's own conduct, not a public record of
+   * any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
+   * identified; account/post/media entries are anonymized by construction — no handle, actor
+   * id, or post id, ever.
+   */
+
+  listModerationLog(
+    request: ListModerationLogRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListModerationLogResponse>
+    | Observable<ListModerationLogResponse>
+    | ListModerationLogResponse;
+
+  /**
+   * The caller's own moderation notices — the private, notified, appealable read projection
+   * of `admin_audit_log` rows that acted on them (spec §201.2).
+   */
+
+  listMyModerationNotices(
+    request: ListMyModerationNoticesRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListMyModerationNoticesResponse>
+    | Observable<ListMyModerationNoticesResponse>
+    | ListMyModerationNoticesResponse;
 }
 
 export function ModerationServiceControllerMethods() {
@@ -246,6 +408,8 @@ export function ModerationServiceControllerMethods() {
       'reportPost',
       'reportActor',
       'reportMessage',
+      'listModerationLog',
+      'listMyModerationNotices',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
