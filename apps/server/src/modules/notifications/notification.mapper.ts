@@ -20,6 +20,9 @@ const NOTIFICATION_TYPE_TO_PROTO: Readonly<Record<DbNotificationType, Notificati
     MESSAGE: NotificationType.NOTIFICATION_TYPE_MESSAGE,
     COMMUNITY_INVITE: NotificationType.NOTIFICATION_TYPE_COMMUNITY_INVITE,
     FOLLOW_REQUEST: NotificationType.NOTIFICATION_TYPE_FOLLOW_REQUEST,
+    // P15-003: written directly by `AuthService.recoveryLogin`, not `NotificationsService` —
+    // see that method's doc for why.
+    SECURITY: NotificationType.NOTIFICATION_TYPE_SECURITY,
   });
 
 export function toProtoNotification(view: NotificationView): ProtoNotification {

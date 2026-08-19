@@ -42,6 +42,14 @@ export enum NotificationType {
    * `NOTIFICATION_TYPE_FOLLOW`, delivered once, on `AcceptFollowRequest`, not on request.
    */
   NOTIFICATION_TYPE_FOLLOW_REQUEST = 'NOTIFICATION_TYPE_FOLLOW_REQUEST',
+  /**
+   * NOTIFICATION_TYPE_SECURITY - A security-relevant event on the caller's own account — currently: a successful
+   * `AuthService.RecoveryLogin` (P15-003), so an account holder finds out promptly if a
+   * recovery code they didn't use was redeemed. Always self-addressed: `Notification.actor`
+   * is unset (there is no "other actor" for your own account's security event), so this is
+   * exempt from the usual "never notify yourself" rule the other types follow.
+   */
+  NOTIFICATION_TYPE_SECURITY = 'NOTIFICATION_TYPE_SECURITY',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 

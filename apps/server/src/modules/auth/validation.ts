@@ -75,11 +75,22 @@ export const registerInputSchema = z.object({
   inviteCode: opaqueCodeSchema.optional(),
   sshPublicKey: z.string().trim().min(1).max(4096).optional(),
   clientRequestId: z.uuid().optional(),
+  // §204.2: 0 (proto's default) means "not acknowledged" — a real version starts at 1.
+  privacyNoticeVersionAcknowledged: z.number().int().min(0).default(0),
 });
 
 export const loginInputSchema = z.object({
   emailOrHandle: z.string().trim().min(1, 'handle or email is required').max(EMAIL_MAX_LENGTH),
   password: z.string().min(1, 'password is required').max(PASSWORD_MAX_LENGTH),
+});
+
+/** P15-003: same `emailOrHandle` shape as `loginInputSchema`; `code` is bounded the same way
+ * `opaqueCodeSchema` bounds other server-minted single-use codes (a recovery code is minted by
+ * `generateRecoveryCode` below at a fixed, much shorter length — the wide ceiling here is just
+ * "don't let an unbounded string reach the database", not a real format constraint). */
+export const recoveryLoginInputSchema = z.object({
+  emailOrHandle: z.string().trim().min(1, 'handle or email is required').max(EMAIL_MAX_LENGTH),
+  code: z.string().trim().min(1, 'recovery code is required').max(200),
 });
 
 export const codeInputSchema = z.object({ code: opaqueCodeSchema });

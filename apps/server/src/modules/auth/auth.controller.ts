@@ -16,6 +16,10 @@ import {
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
   CredentialType,
+  type GenerateRecoveryCodesRequest,
+  type GenerateRecoveryCodesResponse,
+  type GetAuthPolicyRequest,
+  type GetAuthPolicyResponse,
   type GetCurrentSessionRequest,
   type GetCurrentSessionResponse,
   type ListCredentialsRequest,
@@ -28,6 +32,8 @@ import {
   type LogoutResponse,
   type PollGitHubLoginRequest,
   type PollGitHubLoginResponse,
+  type RecoveryLoginRequest,
+  type RecoveryLoginResponse,
   type RefreshSessionRequest,
   type RefreshSessionResponse,
   type RegisterRequest,
@@ -51,6 +57,7 @@ import {
   toProtoActor,
   toProtoCredential,
   toProtoGitHubLoginStatus,
+  toProtoPasswordAuthMode,
   toProtoSession,
 } from './auth.mapper.js';
 import { AuthService } from './auth.service.js';
@@ -76,6 +83,11 @@ export class AuthController implements AuthServiceController {
     private readonly tokens: TokenService,
   ) {}
 
+  async getAuthPolicy(@Payload() _request: GetAuthPolicyRequest): Promise<GetAuthPolicyResponse> {
+    const policy = this.auth.getAuthPolicy();
+    return { passwordAuth: toProtoPasswordAuthMode(policy.passwordAuthMode) };
+  }
+
   async register(@Payload() request: RegisterRequest): Promise<RegisterResponse> {
     const session = await this.auth.register({
       handle: request.handle,
@@ -85,6 +97,7 @@ export class AuthController implements AuthServiceController {
       ...optional('inviteCode', request.inviteCode),
       ...optional('sshPublicKey', request.sshPublicKey),
       ...optional('clientRequestId', request.clientRequestId),
+      privacyNoticeVersionAcknowledged: request.privacyNoticeVersionAcknowledged,
     });
     return { session: toProtoSession(session) };
   }
@@ -107,6 +120,14 @@ export class AuthController implements AuthServiceController {
     const session = await this.auth.login({
       emailOrHandle: request.emailOrHandle,
       password: request.password,
+    });
+    return { session: toProtoSession(session) };
+  }
+
+  async recoveryLogin(@Payload() request: RecoveryLoginRequest): Promise<RecoveryLoginResponse> {
+    const session = await this.auth.recoveryLogin({
+      emailOrHandle: request.emailOrHandle,
+      code: request.code,
     });
     return { session: toProtoSession(session) };
   }
@@ -298,6 +319,16 @@ export class AuthController implements AuthServiceController {
   ): Promise<RevokeCredentialResponse> {
     await this.auth.revokeCredential(requireSession(session), request.id);
     return {};
+  }
+
+  @UseGuards(AuthGuard)
+  async generateRecoveryCodes(
+    @Payload() _request: GenerateRecoveryCodesRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<GenerateRecoveryCodesResponse> {
+    const result = await this.auth.generateRecoveryCodes(requireSession(session));
+    return { codes: [...result.codes], generatedAt: dateToTimestamp(result.generatedAt) };
   }
 }
 

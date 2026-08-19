@@ -106,3 +106,29 @@ describe('parseInput', () => {
     }
   });
 });
+
+describe('privacyNoticeVersionAcknowledged (§204.2, P14-025)', () => {
+  it('defaults to 0 ("not acknowledged") when the field is omitted — proto3 default', () => {
+    const parsed = parseInput(registerInputSchema, { handle: 'abc', displayName: '' });
+    expect(parsed.privacyNoticeVersionAcknowledged).toBe(0);
+  });
+
+  it('accepts an explicit acknowledged version', () => {
+    const parsed = parseInput(registerInputSchema, {
+      handle: 'abc',
+      displayName: '',
+      privacyNoticeVersionAcknowledged: 3,
+    });
+    expect(parsed.privacyNoticeVersionAcknowledged).toBe(3);
+  });
+
+  it('rejects a negative version', () => {
+    expect(() =>
+      parseInput(registerInputSchema, {
+        handle: 'abc',
+        displayName: '',
+        privacyNoticeVersionAcknowledged: -1,
+      }),
+    ).toThrow(AppError);
+  });
+});

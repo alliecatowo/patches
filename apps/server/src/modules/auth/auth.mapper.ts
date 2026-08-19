@@ -1,7 +1,7 @@
 import type { CredentialType as DbCredentialType } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
 import type { Actor, Credential, Session } from '@patches/proto';
-import { CredentialType, GitHubLoginStatus } from '@patches/proto/nest';
+import { CredentialType, GitHubLoginStatus, PasswordAuthMode } from '@patches/proto/nest';
 
 import type { ActorSummary, CredentialSummary, SessionEnvelope } from './auth.dto.js';
 import type { GitHubLoginPollResult } from './auth.service.js';
@@ -20,7 +20,21 @@ const CREDENTIAL_TYPE_TO_PROTO: Readonly<Record<DbCredentialType, CredentialType
   SSH_PUBLIC_KEY: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
   GITHUB: CredentialType.CREDENTIAL_TYPE_GITHUB,
   PASSKEY: CredentialType.CREDENTIAL_TYPE_UNSPECIFIED,
+  RECOVERY_CODE: CredentialType.CREDENTIAL_TYPE_RECOVERY_CODE,
 });
+
+/** P15-002: `AppConfigService.passwordAuthMode`'s three string values → the wire enum. */
+const PASSWORD_AUTH_MODE_TO_PROTO: Readonly<
+  Record<'off' | 'optional' | 'required', PasswordAuthMode>
+> = Object.freeze({
+  off: PasswordAuthMode.PASSWORD_AUTH_MODE_OFF,
+  optional: PasswordAuthMode.PASSWORD_AUTH_MODE_OPTIONAL,
+  required: PasswordAuthMode.PASSWORD_AUTH_MODE_REQUIRED,
+});
+
+export function toProtoPasswordAuthMode(mode: 'off' | 'optional' | 'required'): PasswordAuthMode {
+  return PASSWORD_AUTH_MODE_TO_PROTO[mode];
+}
 
 /** Deliberately narrower than `DbCredentialType`: no protobuf value maps to `PASSKEY`. */
 export type AddableCredentialType = Extract<
