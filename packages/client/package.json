@@ -1,0 +1,59 @@
+{
+  "name": "@patches/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./connect": {
+      "types": "./dist/connect.d.ts",
+      "import": "./dist/connect.js",
+      "require": "./dist/connect.cjs"
+    },
+    "./grpc": {
+      "types": "./dist/grpc.d.ts",
+      "import": "./dist/grpc.js",
+      "require": "./dist/grpc.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "catalog:",
+    "@patches/proto": "workspace:*"
+  },
+  "devDependencies": {
+    "@connectrpc/connect-node": "catalog:",
+    "@connectrpc/connect-web": "catalog:",
+    "tsup": "catalog:"
+  },
+  "peerDependencies": {
+    "@connectrpc/connect-node": "catalog:",
+    "@connectrpc/connect-web": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@connectrpc/connect-node": {
+      "optional": true
+    },
+    "@connectrpc/connect-web": {
+      "optional": true
+    }
+  }
+}
