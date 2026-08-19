@@ -238,7 +238,7 @@ describe.skipIf(!databaseReachable)('media over gRPC (integration)', () => {
     expect(error.code).toBe(GrpcStatus.NOT_FOUND);
   });
 
-  it('rejects GetMediaDownload for media that has not finished processing', async (ctx) => {
+  it('reports the processing state (no URLs) for media that has not finished processing', async (ctx) => {
     skipIfNoMinio(ctx);
     const begin = await callUnary<BeginMediaUploadRequest, BeginMediaUploadResponse>(
       media.beginMediaUpload.bind(media),
@@ -246,12 +246,15 @@ describe.skipIf(!databaseReachable)('media over gRPC (integration)', () => {
       { accessToken: alice.accessToken },
     );
 
-    const error = await expectRejection<GetMediaDownloadRequest, GetMediaDownloadResponse>(
+    // Clients poll this RPC after finalize; a not-yet-READY row must be a normal response
+    // with its status, not an error (the TUI attach flow relies on this).
+    const response = await callUnary<GetMediaDownloadRequest, GetMediaDownloadResponse>(
       media.getMediaDownload.bind(media),
       { mediaId: begin.mediaId },
       { accessToken: alice.accessToken },
     );
-    expect(error.code).toBe(GrpcStatus.FAILED_PRECONDITION);
+    expect(response.status).toBe('MEDIA_STATUS_PENDING');
+    expect(response.downloadUrl).toBe('');
   });
 
   it('returns working presigned download/thumbnail URLs for READY media, to any authenticated caller', async (ctx) => {

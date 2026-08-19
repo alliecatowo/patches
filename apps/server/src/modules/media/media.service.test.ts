@@ -302,12 +302,13 @@ describe('MediaService.getMediaDownload', () => {
     });
   });
 
-  it('rejects a not-yet-READY row with MEDIA_NOT_READY', async () => {
+  it('reports a not-yet-READY row by state, with no URLs, so clients can poll', async () => {
     mediaRepo.findOne.mockResolvedValue(readyRow({ state: 'PROCESSING' }));
 
-    await expect(service().getMediaDownload(MEDIA_ID)).rejects.toSatisfy(
-      (error: unknown) => isAppError(error) && error.code === 'MEDIA_NOT_READY',
-    );
+    const view = await service().getMediaDownload(MEDIA_ID);
+    expect(view.state).toBe('PROCESSING');
+    expect(view.downloadUrl).toBe('');
+    expect(view.thumbnailUrl).toBe('');
   });
 
   it('rejects an unknown media id with MEDIA_NOT_FOUND', async () => {
