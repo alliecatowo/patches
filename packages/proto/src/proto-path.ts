@@ -92,6 +92,7 @@ export function getProtoFiles(): readonly string[] {
         'media',
         'pages',
         'messages',
+        'e2ee',
         'tags',
         'filters',
         'filter_lists',

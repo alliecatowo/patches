@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(21);
+    expect(files.length).toBe(22);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }
@@ -58,6 +58,7 @@ describe('proto files', () => {
         SERVICE_NAMES.label,
         SERVICE_NAMES.appeal,
         SERVICE_NAMES.privacy,
+        SERVICE_NAMES.e2ee,
         'PageInfo',
       ]),
     );
@@ -221,6 +222,29 @@ describe('proto files', () => {
         'RequestAccountDeletion',
         'CancelAccountDeletion',
         'GetDeletionStatus',
+      ].sort(),
+    );
+    // `E2eeService` is schema-only (ADR 0020, P13-001): no controller implements it, so this
+    // list is the contract a future implementation has to satisfy, not a claim that it exists.
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.e2ee)).toEqual(
+      [
+        'AcknowledgeEnvelopes',
+        'AttachReportEvidence',
+        'ClaimPrekeyBundles',
+        'CreateE2eeConversation',
+        'EnrollDevice',
+        'GetDeviceRoster',
+        'GetE2eeCapability',
+        'GetE2eeConversationState',
+        'GetIdentityRoot',
+        'GetPrekeyInventory',
+        'ListDeviceRosters',
+        'ListMailboxEnvelopes',
+        'PublishDeviceRoster',
+        'PublishIdentityRoot',
+        'RevokeDevice',
+        'SendEnvelopes',
+        'UploadPrekeys',
       ].sort(),
     );
   });

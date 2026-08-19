@@ -31,6 +31,7 @@ export * from './generated-es/patches/v1/moderation_pb.js';
 export * from './generated-es/patches/v1/media_pb.js';
 export * from './generated-es/patches/v1/pages_pb.js';
 export * from './generated-es/patches/v1/messages_pb.js';
+export * from './generated-es/patches/v1/e2ee_pb.js';
 export * from './generated-es/patches/v1/tags_pb.js';
 export * from './generated-es/patches/v1/filters_pb.js';
 export * from './generated-es/patches/v1/filter_lists_pb.js';
@@ -43,6 +44,7 @@ import { file_patches_v1_appeals } from './generated-es/patches/v1/appeals_pb.js
 import { file_patches_v1_auth } from './generated-es/patches/v1/auth_pb.js';
 import { file_patches_v1_common } from './generated-es/patches/v1/common_pb.js';
 import { file_patches_v1_communities } from './generated-es/patches/v1/communities_pb.js';
+import { file_patches_v1_e2ee } from './generated-es/patches/v1/e2ee_pb.js';
 import { file_patches_v1_feeds } from './generated-es/patches/v1/feeds_pb.js';
 import { file_patches_v1_filter_lists } from './generated-es/patches/v1/filter_lists_pb.js';
 import { file_patches_v1_filters } from './generated-es/patches/v1/filters_pb.js';
@@ -87,6 +89,7 @@ export const PATCHES_V1_FILES: readonly GenFile[] = Object.freeze([
   file_patches_v1_media,
   file_patches_v1_pages,
   file_patches_v1_messages,
+  file_patches_v1_e2ee,
   file_patches_v1_tags,
   file_patches_v1_filters,
   file_patches_v1_filter_lists,

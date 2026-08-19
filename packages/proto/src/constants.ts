@@ -369,6 +369,7 @@ export const SERVICE_NAMES = Object.freeze({
   page: 'PageService',
   community: 'CommunityService',
   directMessage: 'DirectMessageService',
+  e2ee: 'E2eeService',
   tag: 'TagService',
   filter: 'FilterService',
   filterList: 'FilterListService',
