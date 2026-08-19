@@ -57,6 +57,10 @@ describe('split panes are a presentation of one stack (P12-020/P12-021)', () => 
   it('opens the thread beside the timeline at wide, and collapses on resize without touching history', async () => {
     const app = renderAppInWindow(140, 40, { fake: seedTimeline() });
     await expectFrame(app.lastFrame, 'a post about split panes');
+    // A frame can be written during the commit that *mounts* the list, before React
+    // has flushed the passive effect that subscribes its `useInput`. Give the effect a
+    // turn before pressing, or the keypress lands on nobody.
+    await flush(30);
     assertFits(app, 'wide timeline');
 
     app.press(KEY.enter);
@@ -89,6 +93,7 @@ describe('split panes are a presentation of one stack (P12-020/P12-021)', () => 
   it('stays single-pane at standard width even for a detail route', async () => {
     const app = renderAppInWindow(100, 40, { fake: seedTimeline() });
     await expectFrame(app.lastFrame, 'a post about split panes');
+    await flush(30);
     app.press(KEY.enter);
     await expectFrame(app.lastFrame, 'Thread');
     const frame = assertFits(app, 'standard thread');

@@ -1,15 +1,16 @@
 import type { Post } from '@patches/proto';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { useContentSize } from '../app/layout.js';
-import { movementTarget, type ListJump } from '../app/list-movement.js';
+import type { ListJump } from '../app/list-movement.js';
 import { theme } from '../theme/index.js';
-import { computeViewport, resolveTopIndex } from './list-viewport.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 import { Loading } from './Loading.js';
 import { measurePostRowHeight } from './post-height.js';
 import { PostRow } from './PostRow.js';
+import { VirtualList } from './VirtualList.js';
 
 /**
  * The row-level actions `PostList` fires on the selected row — one shared shape so
@@ -110,161 +111,58 @@ export function PostList({
   chromeRows = 2,
 }: PostListProps): ReactElement {
   const content = useContentSize();
-  // The applied jump nonce travels with the selection so a `g g` can be *derived*
-  // during render instead of written back from an effect (the same rule the rest of
-  // this codebase follows — no setState-in-effect just to compute a value).
-  const [selection, setSelection] = useState<{ index: number; jumpNonce: number; top: number }>({
-    index: 0,
-    jumpNonce: 0,
-    top: 0,
-  });
+  // The viewer's actual mode (P12-128) — quiet measures identically to rich (only
+  // plain mode changes body wrapping; quiet just hides other actors' cosmetics), so
+  // `usePlainMode()` is the only mode this measurement needs to know.
+  const plain = usePlainMode();
   // Which `content_warning`-gated posts the viewer has revealed this session — never
   // persisted, never shared across posts (spec: a CW is click-to-reveal per post).
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  // Derived rather than clamped via an effect (react-hooks/set-state-in-effect,
-  // and the same "no synchronous setState-in-effect" pattern as `useActor`):
-  // in bounds even right after the list shrinks/grows, with nothing to write back.
-  const maxIndex = Math.max(posts.length - 1, 0);
-  const pendingJump = jump !== undefined && jump.nonce !== selection.jumpNonce ? jump : undefined;
-  const effectiveSelected =
-    pendingJump === undefined
-      ? Math.min(selection.index, maxIndex)
-      : pendingJump.edge === 'top'
-        ? 0
-        : maxIndex;
 
-  function select(index: number): void {
-    setSelection({ index, jumpNonce: jump?.nonce ?? 0, top: topIndex });
-  }
-
-  // Measured layout: every row's exact height at the real width, so the window can
-  // never render more rows than the shell budgeted for it.
   const width = Math.max(10, content.columns - 4);
   // Two rows of the list's own budget go to the position line and the loading line.
   const budget = Math.max(3, content.rows - chromeRows - 2);
-  const heights = posts.map((post) =>
-    measurePostRowHeight(
-      decorate?.(post) ?? post,
-      width,
-      revealed.has(post.id),
-      expanded.has(post.id),
-    ),
-  );
-  const topIndex = resolveTopIndex(selection.top, effectiveSelected, heights, budget);
-  const viewport = computeViewport(topIndex, heights, budget);
-  const visible = posts.slice(viewport.start, viewport.end);
 
-  useInput(
-    (input, key) => {
-      if (posts.length === 0) return;
-      const moved = movementTarget({
-        input,
-        key,
-        current: effectiveSelected,
-        total: posts.length,
-        pageSize: Math.max(1, viewport.end - viewport.start),
-      });
-      if (moved !== undefined) {
-        select(moved);
-        return;
+  function toggle(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }
+
+  /** Every post key that acts on the selected row. Movement, paging and `Home`/`End`
+   * belong to `VirtualList`; this is only the timeline's own verbs. */
+  function handleKey(input: string, _key: unknown, post: Post | undefined): boolean {
+    if (post === undefined) return false;
+    if (input === 'v') {
+      if (post.contentWarning !== '' && !revealed.has(post.id)) {
+        setRevealed((current) => new Set(current).add(post.id));
+      } else {
+        setExpanded((current) => toggle(current, post.id));
       }
-      if (input === 'v') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined && post.contentWarning !== '' && !revealed.has(post.id)) {
-          setRevealed((current) => {
-            const next = new Set(current);
-            next.add(post.id);
-            return next;
-          });
-        } else if (post !== undefined) {
-          setExpanded((current) => {
-            const next = new Set(current);
-            if (next.has(post.id)) next.delete(post.id);
-            else next.add(post.id);
-            return next;
-          });
-        }
-        return;
-      }
-      if (key.return) {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenPost?.(post);
-        return;
-      }
-      if (input === 'p') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenAuthor?.(post);
-        return;
-      }
-      if (input === 'r') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onReply?.(post);
-        return;
-      }
-      if (input === 'l') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleLike?.(post);
-        return;
-      }
-      if (input === 'b') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleBookmark?.(post);
-        return;
-      }
-      if (input === '!') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onReport?.(post);
-        return;
-      }
-      if (input === 'o') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onOpenMedia?.(post);
-        return;
-      }
-      if (input === 'f') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleFollow?.(post);
-        return;
-      }
-      if (input === 'R') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onToggleRepost?.(post);
-        return;
-      }
-      if (input === 'Q') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onQuote?.(post);
-        return;
-      }
-      if (input === 'e') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onEdit?.(post);
-        return;
-      }
-      if (input === 'd') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onDelete?.(post);
-        return;
-      }
-      if (input === 'H') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onHistory?.(post);
-        return;
-      }
-      if (input === 'I') {
-        const post = posts[effectiveSelected];
-        if (post !== undefined) onTogglePin?.(post);
-      }
-    },
-    // Deliberately *not* `isActive && posts.length > 0`: Ink subscribes a `useInput`
-    // in an effect that bails out while `isActive` is false, and a list always renders
-    // once empty before its first page arrives. Gating on the post count therefore left
-    // a freshly-launched timeline deaf to `j`/`Enter` until some *other* state change
-    // flipped the flag back on (reproduced 2026-08-19). The handler's own
-    // `posts.length === 0` guard is what keeps an empty list inert.
-    { isActive },
-  );
+      return true;
+    }
+    const action: Record<string, ((target: Post) => void) | undefined> = {
+      p: onOpenAuthor,
+      r: onReply,
+      l: onToggleLike,
+      b: onToggleBookmark,
+      '!': onReport,
+      o: onOpenMedia,
+      f: onToggleFollow,
+      R: onToggleRepost,
+      Q: onQuote,
+      E: onEdit,
+      d: onDelete,
+      H: onHistory,
+      I: onTogglePin,
+    };
+    const handler = action[input];
+    if (handler === undefined) return false;
+    handler(post);
+    return true;
+  }
 
   if (posts.length === 0) {
     return (
@@ -276,32 +174,48 @@ export function PostList({
 
   return (
     <Box flexDirection="column" height={budget + 2} overflow="hidden">
-      <Box flexShrink={0}>
-        {newCount > 0 ? (
-          <Text color={theme.ok} wrap="truncate-end">
-            ↑ {newCount} new {newCount === 1 ? 'post' : 'posts'}{' '}
-          </Text>
-        ) : null}
-        <Text color={theme.muted} wrap="truncate-end">
-          {viewport.above > 0 ? `↑ ${String(viewport.above)} above  ` : ''}
-          {effectiveSelected + 1}/{posts.length}
-          {viewport.below > 0 ? `  ↓ ${String(viewport.below)} below` : ''}
-          {hasMore ? ` · ${loadMoreKeyHint} for more` : ' · — end of the timeline —'}
-        </Text>
-      </Box>
-      <Box flexDirection="column" flexShrink={0} height={budget} overflow="hidden">
-        {visible.map((post, index) => (
-          <Box key={post.id} flexShrink={0} marginLeft={(rowIndent?.(post) ?? 0) * 2}>
-            <PostRow
-              post={decorate?.(post) ?? post}
-              selected={isActive && viewport.start + index === effectiveSelected}
-              revealed={revealed.has(post.id)}
-              expanded={expanded.has(post.id)}
-              width={Math.max(10, width - (rowIndent?.(post) ?? 0) * 2)}
-            />
-          </Box>
-        ))}
-      </Box>
+      <VirtualList<Post>
+        items={posts}
+        keyOf={(post) => post.id}
+        width={width}
+        budget={budget}
+        isActive={isActive}
+        jump={jump}
+        indentOf={(post) => rowIndent?.(post) ?? 0}
+        positionSuffix={hasMore ? ` · ${loadMoreKeyHint} for more` : ' · — end of the timeline —'}
+        positionPrefix={
+          newCount > 0 ? (
+            <Text color={theme.ok} wrap="truncate-end">
+              ↑ {newCount} new {newCount === 1 ? 'post' : 'posts'}{' '}
+            </Text>
+          ) : null
+        }
+        measure={(post, rowWidth) =>
+          measurePostRowHeight(
+            decorate?.(post) ?? post,
+            rowWidth,
+            revealed.has(post.id),
+            expanded.has(post.id),
+            plain,
+          )
+        }
+        renderItem={(post, state) => (
+          <PostRow
+            post={decorate?.(post) ?? post}
+            selected={state.selected}
+            revealed={revealed.has(post.id)}
+            expanded={expanded.has(post.id)}
+            width={Math.max(10, state.width)}
+          />
+        )}
+        onKey={(input, key, post) => {
+          if (key.return) {
+            if (post !== undefined) onOpenPost?.(post);
+            return true;
+          }
+          return handleKey(input, key, post);
+        }}
+      />
       {loading ? <Loading label="Loading more" /> : <Text> </Text>}
     </Box>
   );

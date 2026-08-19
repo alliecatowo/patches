@@ -9,6 +9,9 @@ import {
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
+import { stripSgr } from '../../test/ansi.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
+import { measurePostRowHeight } from './post-height.js';
 import { PostRow } from './PostRow.js';
 
 function post(overrides: Partial<Post> = {}): Post {
@@ -194,5 +197,50 @@ describe('PostRow bounded body preview (P12-017)', () => {
     const expanded = render(<PostRow post={post({ body: long })} width={40} expanded />);
     expect(expanded.lastFrame()).toContain('line 19');
     expect(expanded.lastFrame()).not.toContain('press v to expand');
+  });
+});
+
+describe('PostRow row rhythm (P12-104)', () => {
+  it('marks the selected row with bold + accent in rich mode, no gutter character', () => {
+    const { lastFrame } = render(<PostRow post={post()} selected />);
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('> @alice');
+    expect(frame).toContain('@alice');
+  });
+
+  it('marks the selected row with a `> ` gutter in plain mode instead of relying on colour', () => {
+    const selected = render(
+      <PlainModeProvider plain>
+        <PostRow post={post()} selected />
+      </PlainModeProvider>,
+    );
+    expect(stripSgr(selected.lastFrame() ?? '')).toContain('> @alice');
+    selected.unmount();
+
+    const unselected = render(
+      <PlainModeProvider plain>
+        <PostRow post={post()} />
+      </PlainModeProvider>,
+    );
+    expect(stripSgr(unselected.lastFrame() ?? '')).not.toContain('> @alice');
+  });
+
+  it('draws exactly the rows measurePostRowHeight predicts, in both rich and plain mode', () => {
+    const body = '[read the announcement](https://example.com/a/very/long/path/to/the/post)';
+    const target = post({ body });
+    const width = 40;
+
+    const rich = render(<PostRow post={target} width={width} />);
+    const richLines = (rich.lastFrame() ?? '').split('\n').length;
+    expect(richLines).toBe(measurePostRowHeight(target, width, false, false, false));
+    rich.unmount();
+
+    const plain = render(
+      <PlainModeProvider plain>
+        <PostRow post={target} width={width} />
+      </PlainModeProvider>,
+    );
+    const plainLines = (plain.lastFrame() ?? '').split('\n').length;
+    expect(plainLines).toBe(measurePostRowHeight(target, width, false, false, true));
   });
 });

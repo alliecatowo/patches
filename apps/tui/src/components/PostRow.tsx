@@ -7,9 +7,10 @@ import { formatRelativeTime } from '../format/relative-time.js';
 import { RichBody } from '../format/rich-text.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
+import { usePlainMode } from '../theme/plain-mode.js';
 import { MediaAttachments } from './MediaAttachments.js';
 import { Nameplate } from './Nameplate.js';
-import { measurePostBody } from './post-height.js';
+import { BODY_INDENT_COLS, measurePostBody } from './post-height.js';
 
 export interface PostRowProps {
   post: Post;
@@ -41,11 +42,13 @@ export function PostRow({
   width,
   expanded = false,
 }: PostRowProps): ReactElement {
+  const plain = usePlainMode();
   const createdAt = timestampToDate(post.createdAt);
   const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
   const hasWarning = !post.deleted && post.contentWarning !== '';
   const bodyText = post.body === '' ? post.linkUrl : post.body;
+  const bodyWidth = Math.max(1, (width ?? 40) - BODY_INDENT_COLS);
   const quoted = present(post.quotedPost) ? post.quotedPost : undefined;
   const repostHandles = post.repostedBy
     .map((actor) => actor.handle || actor.id)
@@ -55,7 +58,11 @@ export function PostRow({
     repostHandles.length === 0
       ? ''
       : `↻ ${repostHandles.map((value) => `@${value}`).join(', ')}${remainingReposters > 0 ? ` +${String(remainingReposters)}` : ''} reposted`;
-  const bodyMeasurement = measurePostBody(post, width ?? 40, expanded);
+  // The viewer's actual mode (P12-128): rich and quiet wrap identically (quiet only
+  // hides *other* actors' cosmetics, never the body's own layout), only plain mode
+  // reflows the source markers, so measuring anything but the mode about to draw is
+  // what reserves rows a decorated body never fills, or under-counts a plain one.
+  const bodyMeasurement = measurePostBody(post, width ?? 40, expanded, plain);
 
   return (
     <Box flexDirection="column" flexShrink={0} marginBottom={1} width={width} overflow="hidden">
@@ -65,6 +72,10 @@ export function PostRow({
         </Text>
       )}
       <Box overflow="hidden" flexShrink={0} height={1}>
+        {/* Rich mode marks the selected row with bold + accent alone; plain mode
+            can't rely on colour reaching the terminal, so it gets its own `> `
+            gutter instead (spec table §2.7) — never both, never neither. */}
+        {plain ? <Text>{selected ? '> ' : '  '}</Text> : null}
         <Nameplate
           handle={handle}
           nameplate={post.author?.nameplate ?? undefined}
@@ -94,9 +105,10 @@ export function PostRow({
             flexDirection="column"
             height={bodyMeasurement.rows}
             flexShrink={0}
+            marginLeft={BODY_INDENT_COLS}
             overflow="hidden"
           >
-            <RichBody text={bodyText} width={width ?? 40} maxRows={bodyMeasurement.rows} />
+            <RichBody text={bodyText} width={bodyWidth} maxRows={bodyMeasurement.rows} />
           </Box>
           {bodyMeasurement.folded ? <Text color={theme.muted}>… press v to expand</Text> : null}
           <MediaAttachments

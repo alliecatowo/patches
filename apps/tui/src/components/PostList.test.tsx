@@ -65,7 +65,9 @@ describe('PostList Amendment B row actions', () => {
       </ContentSizeProvider>,
     );
 
-    for (const key of ['R', 'Q', 'e', 'd', 'H', 'I']) stdin.write(key);
+    // `E` edits the selected post; lower-case `e` belongs to the profile and page
+    // screens (`KEYMAP`), and `PostList` used to shadow it.
+    for (const key of ['R', 'Q', 'E', 'd', 'H', 'I']) stdin.write(key);
 
     for (const callback of [onToggleRepost, onQuote, onEdit, onDelete, onHistory, onTogglePin]) {
       expect(callback).toHaveBeenCalledOnce();

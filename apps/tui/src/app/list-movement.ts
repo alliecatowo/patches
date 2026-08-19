@@ -14,7 +14,8 @@ import type { Key } from 'ink';
  * | `k` / `↑`               | one up           |
  * | `Ctrl+D` / `PageDown`   | half a page down |
  * | `Ctrl+U` / `PageUp`     | half a page up   |
- * | `G`                     | last item        |
+ * | `Home`                  | first item       |
+ * | `End` / `G`             | last item        |
  *
  * `g g` (first item) can't live here: `g` is the shell's own prefix, so `App`
  * handles it and hands the result down as a `ListJump` (see `PostList`).
@@ -52,7 +53,8 @@ export function movementTarget({
   if (input === 'k' || key.upArrow) return clamp(current - 1, total);
   if (key.pageDown || (key.ctrl && input === 'd')) return clamp(current + half, total);
   if (key.pageUp || (key.ctrl && input === 'u')) return clamp(current - half, total);
-  if (input === 'G') return total - 1;
+  if (key.home) return 0;
+  if (key.end || input === 'G') return total - 1;
   return undefined;
 }
 

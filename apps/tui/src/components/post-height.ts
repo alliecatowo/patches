@@ -8,6 +8,12 @@ import { measureMarkupHeight } from '../format/markup.js';
 const MEDIA_BOX_ROWS = 3;
 export const COLLAPSED_BODY_ROWS = 8;
 
+/** Columns the body is indented under the flush-left header/attribution/quote lines
+ * — the row's own rhythm (P12-104), not the thread-reply indent `VirtualList`
+ * applies via `indentOf`. Kept as one exported constant so `PostRow`'s JSX and this
+ * measurement agree on exactly how many columns the body actually gets. */
+export const BODY_INDENT_COLS = 2;
+
 export interface PostBodyMeasurement {
   rows: number;
   folded: boolean;
@@ -17,14 +23,24 @@ export interface PostBodyMeasurement {
  * Body-only row budget shared by render and viewport measurement, computed from the
  * shared markup grammar so it counts exactly the lines `RichBody` will draw.
  *
- * Measured in *plain* mode deliberately: plain reproduces the source markers
- * (`**bold**`, `[text](href)`), which can only ever be wider than the decorated form,
- * so this is an upper bound for both modes. Over-measuring costs at most a blank row;
- * under-measuring is what overflows the frame and smears Ink's line diff.
+ * `plain` must be the *viewer's actual* mode (P12-128) — rich and quiet both wrap
+ * through `layoutMarkup`'s non-plain branch and always measure identically to what
+ * `RichBody` draws (quiet only hides other actors' nameplate cosmetics, never the
+ * body's own layout), while plain mode reproduces the source markers (`**bold**`,
+ * `[text](href)`), which wrap differently. Measuring rich content as if it were
+ * plain reserved rows a decorated body was never going to draw; measuring plain
+ * content as rich would under-count and overflow the frame — either way the caller
+ * must pass the mode it is actually about to render.
  */
-export function measurePostBody(post: Post, width: number, expanded: boolean): PostBodyMeasurement {
+export function measurePostBody(
+  post: Post,
+  width: number,
+  expanded: boolean,
+  plain: boolean,
+): PostBodyMeasurement {
   const body = post.body === '' ? post.linkUrl : post.body;
-  const fullRows = measureMarkupHeight(body, Math.max(1, width), { plain: true });
+  const bodyWidth = Math.max(1, width - BODY_INDENT_COLS);
+  const fullRows = measureMarkupHeight(body, bodyWidth, { plain });
   if (expanded || fullRows <= COLLAPSED_BODY_ROWS) return { rows: fullRows, folded: false };
   return { rows: COLLAPSED_BODY_ROWS, folded: true };
 }
@@ -49,6 +65,7 @@ export function measurePostRowHeight(
   width: number,
   revealed: boolean,
   expanded = false,
+  plain = false,
 ): number {
   const usable = Math.max(1, width);
   let height = 1; // header
@@ -61,7 +78,7 @@ export function measurePostRowHeight(
     height += 1; // "⚠ … — press v to reveal"
   } else {
     if (hasWarning) height += 1;
-    const body = measurePostBody(post, usable, expanded);
+    const body = measurePostBody(post, usable, expanded, plain);
     height += body.rows + (body.folded ? 1 : 0);
     if (post.media.length > 0) height += 1 + MEDIA_BOX_ROWS * post.media.length;
     if (present(post.quotedPost)) height += 4; // marginTop + fixed three-row quote preview
