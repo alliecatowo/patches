@@ -285,7 +285,7 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] P14-024 — purge scope expansion: bookmarks/reposts/community memberships/tag mutes + cascade constraints (§204.1)
 - [ ] P14-025 — RegisterRequest explicit privacy-notice acknowledgement field (proto) + REQUIRE_PRIVACY_ACK enforcement (§197.1)
 - [ ] P14-026 — admin CLI to mark a vocabulary value `mandatory` for the node labeler (§203 mandatory-category enforcement)
-- [ ] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
+- [x] P14-027 — moderation_log_entries writes from admin user/report commands + audit trail linkage (§55 explanation never exposed)
 - [x] P14-028 — locked accounts + follow requests end-to-end (server + TUI + web), mutual-follow edge in follow list (§182.5)
 
 ## Phase 15 — passwordless auth (owner request 2026-08-19; ADR 0011 credential model, §165–§168)
@@ -384,7 +384,7 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [x] B-029 — federation: compose-based manual two-node lab (`mise run fed:lab`) mirroring the automated P8-008 test _(`infra/lab/fed-lab.sh` — builds server/worker/tui, migrates `patches_lab_a`/`patches_lab_b`, starts node A (grpc 50061/http 8081) + node B (grpc 50062/http 8082) + a worker each, `mise run fed:lab:down` kills the recorded PIDs; run end-to-end — register alice@A/bob@B, `ResolveActor` WebFinger discovery of `bob@127.0.0.1:8082`, `FollowActor` → async `Accept`, `CreatePost` on B → async delivery → visible in alice's `ListHomeFeed` on A, confirmed via `/federation/metrics` — transcript in `docs/operations/federation.md` "Manual two-node lab (B-029)")_
 - [x] B-030 — worker: expose `deliveries_succeeded/failed/dead` federation counters (periodic `federation_metrics` log line like the server, or a loopback HTTP snapshot) — today only per-job structured logs _(`JobRunner.run()` logs `DeliveryMetricsRegistry.snapshot()` as a `{"event":"federation_metrics",...}` line every 60s, same interval-gate pattern as `sweepStaleLeasesIfDue`, unconditional since the worker has no `FEDERATION_ENABLED` flag to gate on)_
 - [x] B-031 — deploy: R2 media credentials + Resend sending domain + verified email flow on the live node _(deployed 2026-08-18: live R2 upload/derivative path, Resend API key, verified `updates.allisons.dev` sender)_
-- [ ] B-032 — TUI: no client-side way to delete your own post — wire `DeletePost` to a `d` keybinding (confirm prompt) on own posts in PostList/Thread; server RPC already exists
+- [x] B-032 — TUI: no client-side way to delete your own post — wire `DeletePost` to a `d` keybinding (confirm prompt) on own posts in PostList/Thread; server RPC already exists
 
 - [x] B-001 — Decide MinIO vs R2 dev bucket for local media dev (spec §96 says either)
 - [x] B-002 — `apps/server` uses `@patches/config` env schemas instead of its self-contained one; `PUBLIC_ORIGIN` requires http(s) protocol
