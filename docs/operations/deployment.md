@@ -8,9 +8,10 @@ notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile
 workflow itself is still gated behind `vars.FLY_DEPLOY_ENABLED` (unset) — the live deploy so
 far was done by hand with `flyctl`, not yet through CI. Media uploads and verification email
 are **not** working on this node yet (dashboard-only R2/Resend credentials — see "Secrets"
-below and `tasks.md` B-031); federation is off by design. Sections describing genuinely
-not-yet-exercised steps (custom domain, autoscaling, log drain, Neon) still say
-`Status: planned`.
+below and `tasks.md` B-031); federation is off by design. As of 2026-08-18 (A-041),
+production `DATABASE_URL` points at **Neon**, not the original Fly Postgres cluster — see
+"Production database" below. Sections describing genuinely not-yet-exercised steps (custom
+domain, autoscaling, log drain) still say `Status: planned`.
 
 Per `INITIAL_VISION.md` §§84–91, §122, §141.
 
@@ -219,7 +220,8 @@ land in `flyctl logs`, not an inbox; Resend needs a verified sending domain), fe
       unset; this deploy was done by hand).
 - [ ] Custom domain `patches.social` (**planned** — node currently only reachable at
       `patches-social.fly.dev`).
-- [ ] Fly Managed Postgres or Neon switch (**planned** — see "Production database" above).
+- [x] Neon switch (production `DATABASE_URL` migrated off Fly Postgres 2026-08-18, A-041 —
+      see "Production database" above).
 - [ ] Autoscaling / `[[vm]]` sizing tuned for real traffic (**planned** — default single
       Machine per process group so far).
 - [ ] Log drain wired up (**planned** — `fly logs`/dashboard live-tail only today).
@@ -301,39 +303,49 @@ a different, additional thing from either Fly check above.
 
 ## Production database
 
-Per `docs/research/fly-io.md` §6 (verified 2026-08-18): Fly now steers new provisioning
-toward **Fly Managed Postgres** (`fly mpg create`/`fly mpg attach`) rather than the older
-self-managed "Fly Postgres" (`fly postgres create`), which Fly's own docs now describe as
-unsupported for new projects. `docs/decisions/0003-typeorm-postgres.md` specifies Fly Managed
-Postgres as the intended target.
-
-**What actually happened on the first deploy (2026-08-18)**: the live node runs on a **Fly
-Postgres cluster** (`patches-social-db`), not Fly Managed Postgres — `flyctl postgres attach`
-was used and set the `DATABASE_URL` secret automatically. The original plan was to use Neon
-instead (or Fly Managed Postgres), but `neonctl` isn't authenticated in this environment, so
-Fly Postgres was the pragmatic choice to get a working node live. Switching to Fly Managed
-Postgres or Neon later is a planned follow-up, not required for the node to function today.
+**Status: implemented 2026-08-18 (A-041).** Production `DATABASE_URL` on `patches-social`
+now points at **Neon** — project `patches` (id `shy-recipe-96135980`, org
+`org-plain-leaf-04797948`, region `aws-us-east-2`), default branch `production`
+(`br-twilight-dew-axkmolfo`), database `neondb`, role `neondb_owner`, `sslmode=require`. Get
+the current connection string (never print it in a log or commit it):
 
 ```bash
-# what was actually run:
-flyctl postgres create ...            # cluster patches-social-db
-flyctl postgres attach -a patches-social patches-social-db   # sets DATABASE_URL secret
+neonctl connection-string --project-id shy-recipe-96135980 --api-key "$NEON_API_KEY" \
+  | sed 's/&channel_binding=require//'
 ```
 
-**Status: planned** (Fly Managed Postgres path below — not what the live node uses):
+(`--api-key` reads `NEON_API_KEY`, kept in the repo-root `.env`, gitignored — not committed.
+The `sed` strips `channel_binding=require`, which TypeORM's `pg` driver in this codebase
+doesn't need and which has caused connection issues with some pg client stacks; verified
+working without it.)
+
+**History**: the first deploy (2026-08-18, see "First deploy" above) ran on a self-managed
+**Fly Postgres cluster** (`patches-social-db`, `flyctl postgres attach`) because `neonctl`
+wasn't authenticated in this environment at the time. Once it was, the data was migrated to
+Neon and `DATABASE_URL`/`DATABASE_SSL` secrets were repointed. The Fly Postgres cluster is
+now **stopped** and kept as a cold fallback (not actively serving traffic); its volume
+(`vol_r1j3on1n5m85wpwr`) has scheduled daily snapshots with 14-day retention (`flyctl volumes
+update vol_r1j3on1n5m85wpwr --snapshot-retention 14`) so it isn't itself an unbacked-up
+liability while it's kept around.
+
+**Cutting production over to a restored/branched database** (e.g. after a Neon branch
+restore — see `docs/operations/backups.md`):
 
 ```bash
-fly mpg create --name patches-db --org <org> --region iad --plan Basic
-fly mpg attach <cluster-id> -a <app-name>   # sets DATABASE_URL automatically
+flyctl secrets set -a patches-social DATABASE_URL=<connection string> DATABASE_SSL=true
+# rolls patches-social's Fly Machines onto the new DATABASE_URL
 ```
 
-`fly mpg attach` sets a pooled (PgBouncer) `DATABASE_URL` by default; a direct
-(non-pooled) URL is also available if a session-scoped connection is ever needed (long-lived
-LISTEN/NOTIFY, an advisory lock, etc. — nothing in this codebase currently needs one).
-Backup/PITR specifics (exact retention window, point-in-time recovery granularity) are
-**not** stated in Fly's fetched marketing/overview docs as of the research pass — get the
-exact numbers from the Fly dashboard or support before writing a firm RPO/RTO into
-`docs/operations/backups.md`.
+Neon provides both point-in-time recovery and instant branching
+(`neonctl branches create --project-id shy-recipe-96135980 --parent production`) as backup/
+restore primitives — see `docs/operations/backups.md` for the full backup/restore runbook,
+including a restore drill actually run against this project on 2026-08-18.
+
+**Not used**: Fly Managed Postgres (`fly mpg`) was considered per `docs/research/fly-io.md`
+§6 and `docs/decisions/0003-typeorm-postgres.md`, but Neon was chosen instead for the actual
+migration — that ADR predates this decision and is not updated by this change (ADRs are
+`architect`'s territory; see `tasks.md` A-041 for the open question of whether it needs a
+formal update or a new ADR).
 
 ## Secrets
 

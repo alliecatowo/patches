@@ -5,6 +5,8 @@ pnpm = "11.22.0"
 docker-compose = "5.4.0"
 actionlint = "1.7.12"
 lefthook = "2.1.10"
+vhs = "latest"
+ttyd = "latest"
 
 [env]
 # Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
@@ -129,3 +131,11 @@ run = "cd \"$MISE_PROJECT_ROOT\" && flyctl ssh console --config infra/fly/fly.to
 [tasks."fly:logs"]
 description = "Tail production logs. Status: planned, never run from this environment."
 run = "cd \"$MISE_PROJECT_ROOT\" && flyctl logs --config infra/fly/fly.toml"
+
+[tasks."db:dump"]
+description = "Logical backup of the Neon production database (or DATABASE_URL, if set) to backups/patches-<UTC timestamp>.sql.gz via podman pg_dump — see docs/operations/backups.md (A-042)"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/db-dump.sh"
+
+[tasks."db:restore"]
+description = "Restore a dump produced by `mise run db:dump` into a target database: `mise run db:restore -- <dump.sql.gz> <target DATABASE_URL> [--yes] [--i-know-this-is-production]` — see docs/operations/backups.md (A-042)"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/db-restore.sh \"$@\""
