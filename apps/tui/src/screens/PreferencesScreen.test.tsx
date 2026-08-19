@@ -85,6 +85,39 @@ describe('PreferencesScreen', () => {
     expect(frame).toContain('Images:');
   });
 
+  it('lists Privacy, Filters, Filter lists, and Labelers rows (§205 reachability, A-056)', () => {
+    const { lastFrame } = renderScreen(baseProps());
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toContain('Privacy:');
+    expect(frame).toContain('Filters:');
+    expect(frame).toContain('Filter lists:');
+    expect(frame).toContain('Labelers:');
+  });
+
+  it('Enter on the Filters/Filter lists/Labelers rows opens the matching screen instead of saving', async () => {
+    const onSave = vi.fn();
+    const onOpenFilters = vi.fn();
+    const onOpenFilterLists = vi.fn();
+    const onOpenLabelers = vi.fn();
+    const { stack } = renderScreen(
+      baseProps({ onSave, onOpenFilters, onOpenFilterLists, onOpenLabelers }),
+    );
+    // theme -> glyphs -> plain -> quiet -> images -> privacy -> filters
+    for (let index = 0; index < 6; index += 1) await dispatch(stack, 'j');
+    await dispatch(stack, '', key({ return: true }));
+    expect(onOpenFilters).toHaveBeenCalledOnce();
+
+    await dispatch(stack, 'j'); // filterLists
+    await dispatch(stack, '', key({ return: true }));
+    expect(onOpenFilterLists).toHaveBeenCalledOnce();
+
+    await dispatch(stack, 'j'); // labelers
+    await dispatch(stack, '', key({ return: true }));
+    expect(onOpenLabelers).toHaveBeenCalledOnce();
+
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('cycles the theme with h/l and calls onPreviewTheme live', async () => {
     const onPreviewTheme = vi.fn();
     const { stack } = renderScreen(baseProps({ onPreviewTheme }));

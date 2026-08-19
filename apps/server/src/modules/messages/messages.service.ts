@@ -18,7 +18,13 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { toActorSummary } from '../auth/auth.dto.js';
+import { applyActorHidePushdown, MAX_FILTER_ROUNDS } from '../feeds/feed.service.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
+import {
+  evaluateCandidate,
+  loadEffectiveFilterRules,
+  type FilterMatchCandidate,
+} from '../filters/filter-matching.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import { DmRateLimitService } from './dm-rate-limit.service.js';
 import type {
@@ -596,52 +602,86 @@ export class MessagesService {
     });
   }
 
-  /** The caller's own pending message requests (received), most-recent first. */
+  /**
+   * The caller's own pending message requests (received), most-recent first.
+   *
+   * A-051 (spec §198.3): `MESSAGE_REQUESTS`-scope `hide` rules omit a request from a matching
+   * sender/body server-side — "`message_requests` filters the request — sender, and the one
+   * message a request may carry — because a message request is unsolicited contact". Same
+   * bounded-over-fetch chokepoint as `FeedService`/`NotificationsService.listNotifications`
+   * (`FeedService.MAX_FILTER_ROUNDS`): a `hide` match must never leave the page short, but the
+   * re-fetching MUST stay bounded. Only `hide` is enforced — `collapse`/`warn` have no
+   * request-inbox UI, documented on `FilterScope.MESSAGE_REQUESTS` in `filter-enums.ts`.
+   */
   async listMessageRequests(
     actorId: string,
     cursorRaw: string,
     limit: number,
   ): Promise<ListPage<MessageRequestView>> {
-    const cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
+    let cursor = decodeCursor(cursorRaw);
 
-    const qb = this.dataSource
-      .getRepository(MessageRequest)
-      .createQueryBuilder('request')
-      .innerJoinAndSelect('request.senderActor', 'senderActor')
-      .innerJoinAndSelect('request.recipientActor', 'recipientActor')
-      .where('request.recipientActorId = :actorId', { actorId })
-      .andWhere(`request.status = 'PENDING'`)
-      .andWhere(
-        `NOT EXISTS (
-          SELECT 1 FROM blocks block
-          WHERE (block.blocker_actor_id = request.sender_actor_id
-                 AND block.blocked_actor_id = request.recipient_actor_id)
-             OR (block.blocker_actor_id = request.recipient_actor_id
-                 AND block.blocked_actor_id = request.sender_actor_id)
-        )`,
-      )
-      .orderBy('request.createdAt', 'DESC')
-      .addOrderBy('request.id', 'DESC')
-      .take(take + 1);
+    const rules = await loadEffectiveFilterRules(this.dataSource, actorId, 'MESSAGE_REQUESTS');
 
-    if (cursor !== undefined) {
-      qb.andWhere('(request.createdAt, request.id) < (:cursorCreatedAt, :cursorId)', {
-        cursorCreatedAt: cursor.createdAt,
-        cursorId: cursor.id,
-      });
+    const collected: Array<MessageRequest & { senderActor: Actor; recipientActor: Actor }> = [];
+    let roundHasMore = false;
+    for (let round = 0; round < MAX_FILTER_ROUNDS && collected.length < take; round += 1) {
+      const remaining = take - collected.length;
+      const qb = this.dataSource
+        .getRepository(MessageRequest)
+        .createQueryBuilder('request')
+        .innerJoinAndSelect('request.senderActor', 'senderActor')
+        .innerJoinAndSelect('request.recipientActor', 'recipientActor')
+        .where('request.recipientActorId = :actorId', { actorId })
+        .andWhere(`request.status = 'PENDING'`)
+        .andWhere(
+          `NOT EXISTS (
+            SELECT 1 FROM blocks block
+            WHERE (block.blocker_actor_id = request.sender_actor_id
+                   AND block.blocked_actor_id = request.recipient_actor_id)
+               OR (block.blocker_actor_id = request.recipient_actor_id
+                   AND block.blocked_actor_id = request.sender_actor_id)
+          )`,
+        )
+        .orderBy('request.createdAt', 'DESC')
+        .addOrderBy('request.id', 'DESC');
+      // Performance-only pushdown, mirroring the P14-021 pattern — `evaluateCandidate` below
+      // still re-checks every row, including body-content (`SUBSTRING`/`WORD`/`DOMAIN`) kinds
+      // this predicate does not cover.
+      applyActorHidePushdown(qb, rules, '"request"."sender_actor_id"', 'requestHideActorIds');
+      if (cursor !== undefined) {
+        qb.andWhere('(request.createdAt, request.id) < (:cursorCreatedAt, :cursorId)', {
+          cursorCreatedAt: cursor.createdAt,
+          cursorId: cursor.id,
+        });
+      }
+      qb.take(remaining + 1);
+
+      const rows = await qb.getMany();
+      roundHasMore = rows.length > remaining;
+      const roundRows = roundHasMore ? rows.slice(0, remaining) : rows;
+      if (roundRows.length === 0) break;
+
+      for (const row of roundRows) {
+        if (rules.length > 0) {
+          const match = evaluateCandidate(rules, toMessageRequestFilterCandidate(row));
+          if (match?.action === 'HIDE') continue;
+        }
+        collected.push(row);
+      }
+
+      const last = roundRows.at(-1);
+      if (last !== undefined) cursor = { createdAt: last.createdAt, id: last.id };
+      if (!roundHasMore) break;
     }
 
-    const rows = await qb.getMany();
-    const hasMore = rows.length > take;
-    const page = hasMore ? rows.slice(0, take) : rows;
-
+    const page = collected.slice(0, take);
     const items = page.map((row) => this.toMessageRequestView(row));
-    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+    const { nextCursor } = pageInfoFor(page, roundHasMore, (row) => ({
       createdAt: row.createdAt,
       id: row.id,
     }));
-    return { items, nextCursor, hasMore };
+    return { items, nextCursor, hasMore: roundHasMore };
   }
 
   /**
@@ -1114,6 +1154,22 @@ export class MessagesService {
       createdAt: row.createdAt,
     };
   }
+}
+
+/** A-051: `MessageRequest` has no tags/media, so most `FilterMatchCandidate` fields are
+ * always empty — only `authorActorId` (the sender) and `body` are ever populated. */
+function toMessageRequestFilterCandidate(request: MessageRequest): FilterMatchCandidate {
+  return {
+    id: request.id,
+    authorActorId: request.senderActorId,
+    quotedAuthorActorId: null,
+    reposterActorIds: [],
+    body: request.body,
+    contentWarning: null,
+    altTexts: [],
+    linkUrl: null,
+    tagNames: [],
+  };
 }
 
 function conversationNotFound(): AppError {

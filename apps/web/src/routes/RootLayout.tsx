@@ -3,6 +3,7 @@ import { useRef, type JSX } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { api, signOut } from '../api/client.js';
+import { PrivacyNoticeBanner } from '../components/PrivacyNoticeBanner.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
 import styles from './RootLayout.module.css';
@@ -91,6 +92,7 @@ export function RootLayout(): JSX.Element {
         )}
       </nav>
       <main className={styles['main']}>
+        <PrivacyNoticeBanner />
         <Outlet />
       </main>
       <footer className={styles['footer']}>

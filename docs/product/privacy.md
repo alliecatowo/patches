@@ -194,17 +194,19 @@ Honest current state:
   implied "a separate, more permanent retention policy" existed, it did
   not.
 
-**Status: implemented** (§197.3, §197.4, P14-010). `PrivacyService.ExportAccount` requests a
-background job that produces a single self-describing JSON archive (not yet the fuller
-directory-tree-plus-media-files layout §197.3 describes — a documented v0 simplification, see
-the archive's own embedded `readme` field), downloadable via `GetExportStatus` for 7 days
-before it expires; export is never paywalled. `RequestAccountDeletion` moves the account to
-"pending deletion" — it disappears from feeds/search/the local timeline immediately — and after
-a grace period (30 days by default, node-configurable) a `PURGE_ACCOUNT` job actually erases
-it; `CancelAccountDeletion` restores the account intact within the grace period. The purge
-job's scope today is posts and bodies, media objects, follows, likes, DMs sent, sessions,
-credentials, and the notice acknowledgement — **not yet** bookmarks, reposts, community
-memberships, muted tags, or filter/list/labeler subscriptions.
+**Status: implemented** (§197.3, §197.4, P14-010, P14-023, P14-024). `PrivacyService.ExportAccount`
+requests a background job that produces a gzipped tar archive (`.tar.gz`) — `account.json`,
+`posts.json`, `follows.json`, `messages.json`, your uploaded media originals under
+`media/<id>.<ext>`, and a `manifest.json` listing every file with its sha256, plus an embedded
+`readme` field describing the layout — matching the directory-tree-plus-media-files shape
+§197.3 describes, downloadable via `GetExportStatus` for 7 days before it expires; export is
+never paywalled. `RequestAccountDeletion` moves the account to "pending deletion" — it
+disappears from feeds/search/the local timeline immediately — and after a grace period (30 days
+by default, node-configurable) a `PURGE_ACCOUNT` job actually erases it; `CancelAccountDeletion`
+restores the account intact within the grace period. The purge job's scope is posts and bodies,
+media objects, follows (including pending follow requests), likes, bookmarks, reposts, community
+memberships, muted tags, filter-list and labeler subscriptions, DMs sent, sessions, credentials,
+export archives, and the notice acknowledgement.
 
 **Status: planned.** A published, enforced retention schedule for uploaded originals, evidence
 snapshots, tombstones, and general logs still does not exist — there is no DM retention sweep,
@@ -253,17 +255,22 @@ posts mean what people assume they mean. See
 
 ## Operator transparency
 
-**Status: implemented** (§197.6, P14-012). `NodeService.GetNodePolicy` (unauthenticated,
+**Status: implemented** (§197.6, P14-012, A-052). `NodeService.GetNodePolicy` (unauthenticated,
 cacheable, separate from `GetNodeInfo`) publishes the node's `domain_policies` (each blocked
 domain plus a bounded reason category), the label vocabulary, federation stance, account
 deletion grace period and appeal window, and any operator-supplied `NODE_POLICY_URL`/
-`NODE_MODERATORS`/`DATA_LOCATION`/`PRIVACY_NOTICE_VERSION`. Fields with no configuration
-surface yet — `privacy_notice_summary`, `terms_url`, `appeal_instructions`,
-`operator_identity` — and three retention windows with no sweep job behind them
-(`evidence_snapshot_retention_days`, `uploaded_original_retention_days`,
-`log_retention_days`) render honestly empty/zero rather than invented values; an unset field
-means "this node publishes no policy" for that field, not "there is no policy." See
-[`api.md`](../architecture/api.md)'s `NodeService` section for the full field list.
+`NODE_MODERATORS`/`DATA_LOCATION`/`PRIVACY_NOTICE_VERSION`. The privacy notice's short
+structured summary, the terms/community-guidelines URL, how appeals are filed, and who runs
+the node are configurable too — `PRIVACY_NOTICE_SUMMARY` (or `PRIVACY_NOTICE_FILE`, which wins
+when both are set, for a longer notice read from a mounted file), `TERMS_URL`,
+`APPEAL_INSTRUCTIONS`, and `OPERATOR_CONTACT` populate `privacy_notice_summary`, `terms_url`,
+`appeal_instructions`, and `operator_identity` respectively; all four are operator-supplied
+plain text, never markup, scripts, or remote media (§197.6). Three retention windows still
+have no sweep job behind them (`evidence_snapshot_retention_days`,
+`uploaded_original_retention_days`, `log_retention_days`) and render honestly zero rather than
+an invented value; an unset field means "this node publishes no policy" for that field, not
+"there is no policy." See [`api.md`](../architecture/api.md)'s `NodeService` section for the
+full field list.
 
 `GetNodeInfo` continues to publish the node's domain, software version, registration mode, and
 input limits — the two RPCs are deliberately separate (§197.6).

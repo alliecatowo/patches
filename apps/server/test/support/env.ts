@@ -30,6 +30,14 @@ export async function prepareServerEnv(): Promise<void> {
   // Exercise the capability-gated Phase 11 community creation surface in integration tests.
   // Production retains the schema default (`false`) unless an operator opts in.
   process.env.CAN_CREATE_COMMUNITY ??= 'true';
+  // A-052 (spec §197.6): exercise the operator-configured `NodePolicy` fields end-to-end —
+  // `system.integration.test.ts`'s `GetNodePolicy` suite asserts these render verbatim.
+  // Production leaves all four at the schema default (`''`) unless an operator sets them.
+  process.env.PRIVACY_NOTICE_SUMMARY ??=
+    'This node stores your posts and direct messages; DMs are readable by this node’s operators.';
+  process.env.TERMS_URL ??= 'https://patches.test/terms';
+  process.env.APPEAL_INSTRUCTIONS ??= 'Email appeals@patches.test with your handle and notice ID.';
+  process.env.OPERATOR_CONTACT ??= 'Operated by the Patches test node maintainers.';
 
   if (process.env.JWT_PRIVATE_KEY === undefined || process.env.JWT_PRIVATE_KEY.length === 0) {
     const { publicKey, privateKey } = await generateKeyPair('EdDSA', {

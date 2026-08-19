@@ -1,7 +1,7 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { describe, expect, it } from 'vitest';
 
-import { describeGrpcError, isSignInRequired } from './errors.js';
+import { describeGrpcError, isPrivacyAckRequired, isSignInRequired } from './errors.js';
 
 const TARGET = 'patches.local:50051';
 
@@ -100,5 +100,23 @@ describe('describeGrpcError (spec §81)', () => {
   it('keeps the session-expired message for UNAUTHENTICATED outside a credentials context', () => {
     const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET);
     expect(friendly.title).toBe('Your session is no longer valid.');
+  });
+
+  // A-053 (spec §197.1, §197.5, §197.6): REQUIRE_PRIVACY_ACK's RequirePrivacyAckGuard
+  // rejection routes the viewer toward :privacy instead of just repeating the server's raw
+  // "must acknowledge" message — every caller of `describeGrpcError` only ever renders
+  // `.title` (toasts, screen error rows), so the instruction has to live there.
+  it('recognises PRIVACY_NOTICE_NOT_ACKNOWLEDGED via the x-patches-error-code metadata and points at :privacy', () => {
+    const error = grpcErrorWithCode(
+      GrpcStatus.FAILED_PRECONDITION,
+      'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
+    );
+    expect(isPrivacyAckRequired(error)).toBe(true);
+    expect(isPrivacyAckRequired(grpcError(GrpcStatus.FAILED_PRECONDITION))).toBe(false);
+
+    const friendly = describeGrpcError(error, TARGET);
+    expect(friendly.retryable).toBe(false);
+    expect(friendly.title).toMatch(/:privacy/);
+    expect(friendly.title).not.toMatch(/^\s*$/);
   });
 });

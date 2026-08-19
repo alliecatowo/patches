@@ -137,6 +137,18 @@ function nodeInfo(postBodyMaxChars: number): GetNodeInfoResponse {
       websiteUrlMaxChars: 2048,
       altTextMaxChars: 1000,
       searchQueryMaxChars: 100,
+      // A-054 (spec §204): not exercised by anything in this file — dummy nonzero values
+      // just to satisfy `NodeLimits`'s shape.
+      maxFiltersPerActor: 50,
+      maxFilterTermsPerFilter: 20,
+      maxFilterListsPublishedPerActor: 10,
+      maxFilterListEntries: 500,
+      maxFilterListSubscriptions: 50,
+      maxFilterListExceptionsPerList: 100,
+      maxLabelerSubscriptionsPerActor: 20,
+      maxLabelVocabularyEntries: 50,
+      maxAppealStatementChars: 2000,
+      accountExportMaxReadyArchives: 1,
     },
     capabilities: [],
     socialCapabilities: undefined,

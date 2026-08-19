@@ -49,8 +49,14 @@ export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 export const AUTH_CODE_PURPOSES = ['VERIFY_EMAIL', 'RESET_PASSWORD'] as const;
 export type AuthCodePurpose = (typeof AUTH_CODE_PURPOSES)[number];
 
-/** Notification row types (`INITIAL_VISION.md` §56, §113, §187). `MODERATION` is reserved —
- * no RPC creates one yet (moderator-initiated notices land with the admin CLI, spec §65).
+/** Notification row types (`INITIAL_VISION.md` §56, §113, §187, §201.2). `MODERATION` (A-049,
+ * A-050) is written directly by the admin CLI — `patches-admin user suspend|delete`, `report
+ * resolve --action remove-post|suspend`, and `appeal resolve` (`apps/admin/src/commands/
+ * {user,report,appeal}.ts`) — never by an RPC, since every node enforcement action originates
+ * there (spec §65). It carries no actor/post/conversation/community reference: the row is a
+ * content-free bell pointing the recipient at `ModerationService.ListMyModerationNotices`,
+ * which reads the actual notice from `admin_audit_log` (§201.2's "read projection ... not a
+ * second source of truth" — see `notice-projection.ts`), not from anything stored here.
  * `MESSAGE` (P11-004, §183.4) is written by `DirectMessageService.SendMessage`/
  * `CreateConversation` — never carries the message body, only `conversation_id` (see
  * `notification.entity.ts`). `REPOST`/`QUOTE` (P11-006, §187) are written by

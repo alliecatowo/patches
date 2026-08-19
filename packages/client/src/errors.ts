@@ -44,6 +44,20 @@ export function isSignInRequired(error: unknown): boolean {
   return ConnectError.from(error).metadata.get('x-patches-error-code') === 'SIGN_IN_REQUIRED';
 }
 
+/**
+ * A-053 (spec §197.1, §197.5): true when a write RPC (`CreatePost`, `SendMessage`,
+ * `FollowActor`, …) was rejected because this node has `REQUIRE_PRIVACY_ACK=true` and this
+ * actor hasn't acknowledged the node's *current* `privacy_notice_version` yet — including an
+ * actor who acknowledged an older version, since a version bump means the text changed
+ * (`RequirePrivacyAckGuard`, spec §197.6). Same shape as `isSignInRequired` above.
+ */
+export function isPrivacyAckRequired(error: unknown): boolean {
+  return (
+    ConnectError.from(error).metadata.get('x-patches-error-code') ===
+    'PRIVACY_NOTICE_NOT_ACKNOWLEDGED'
+  );
+}
+
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: ConnectError): string | undefined {
   const trimmed = error.rawMessage.trim();
@@ -111,6 +125,20 @@ export function describeError(error: unknown, options?: DescribeErrorOptions): D
         code,
       };
     case Code.FailedPrecondition:
+      // A-053: gets its own copy — the actionable step (go acknowledge the notice) is
+      // more useful than the server's raw "must acknowledge this node's current privacy
+      // notice" message, and it needs to name the settings route since there's no
+      // generic "hint" surface every caller renders.
+      if (isPrivacyAckRequired(connectError)) {
+        return {
+          message: combine(
+            "This node's privacy notice changed — review and acknowledge it.",
+            'Go to Settings → Privacy.',
+          ),
+          retryable: false,
+          code,
+        };
+      }
       // The server writes actionable text here on purpose — the §83 client version
       // gate is the main source of it.
       return {

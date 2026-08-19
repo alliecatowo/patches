@@ -3,13 +3,17 @@ import { randomUUID } from 'node:crypto';
 import { credentials as grpcCredentials } from '@grpc/grpc-js';
 import {
   createAuthClient,
+  createFilterClient,
   createModerationClient,
   createNotificationClient,
   createPostClient,
   createReactionClient,
   type AuthGrpcClient,
+  type CreateFilterRequest,
+  type CreateFilterResponse,
   type CreatePostRequest,
   type CreatePostResponse,
+  type FilterGrpcClient,
   type GetUnreadCountRequest,
   type GetUnreadCountResponse,
   type LikePostRequest,
@@ -25,7 +29,14 @@ import {
   type PostGrpcClient,
   type ReactionGrpcClient,
 } from '@patches/proto';
-import { NotificationType, PostVisibility, QuotePolicy } from '@patches/proto/nest';
+import {
+  FilterAction,
+  FilterScope,
+  FilterTermKind,
+  NotificationType,
+  PostVisibility,
+  QuotePolicy,
+} from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -61,6 +72,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let reactions: ReactionGrpcClient;
     let notifications: NotificationGrpcClient;
     let moderation: ModerationGrpcClient;
+    let filters: FilterGrpcClient;
     let inviterUserId: string;
     let alice: TestActor;
     let bob: TestActor;
@@ -78,6 +90,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       reactions = createReactionClient(server.url, grpcCredentials.createInsecure());
       notifications = createNotificationClient(server.url, grpcCredentials.createInsecure());
       moderation = createModerationClient(server.url, grpcCredentials.createInsecure());
+      filters = createFilterClient(server.url, grpcCredentials.createInsecure());
 
       alice = await registerTestActor(auth, dataSource, inviterUserId);
       bob = await registerTestActor(auth, dataSource, inviterUserId);
@@ -89,6 +102,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       reactions.close();
       notifications.close();
       moderation.close();
+      filters.close();
       await server.close();
       await dataSource.destroy();
     });
@@ -234,5 +248,83 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       );
       expect(after.count).toBe(0);
     });
+
+    it(
+      'A-051: a NOTIFICATIONS-scope hide rule on the actor omits a like-notification from ' +
+        'them, but leaves a HOME-scope filter on the same actor without effect here',
+      async () => {
+        const dave = await registerTestActor(auth, dataSource, inviterUserId);
+        const postId = await createPost(dave, `notif filter target ${testSuffix()}`);
+
+        await callUnary<CreateFilterRequest, CreateFilterResponse>(
+          filters.createFilter.bind(filters),
+          {
+            name: `hide-bob-notifications-${testSuffix()}`,
+            terms: [{ kind: FilterTermKind.FILTER_TERM_KIND_ACTOR, value: bob.actorId }],
+            scopes: [FilterScope.FILTER_SCOPE_NOTIFICATIONS],
+            action: FilterAction.FILTER_ACTION_HIDE,
+            expiresAt: undefined,
+          },
+          { accessToken: dave.accessToken },
+        );
+
+        await callUnary<LikePostRequest, LikePostResponse>(
+          reactions.likePost.bind(reactions),
+          { postId },
+          { accessToken: bob.accessToken },
+        );
+
+        const list = await callUnary<ListNotificationsRequest, ListNotificationsResponse>(
+          notifications.listNotifications.bind(notifications),
+          { cursor: '', limit: 20 },
+          { accessToken: dave.accessToken },
+        );
+        expect(
+          list.notifications.some(
+            (row) =>
+              row.type === NotificationType.NOTIFICATION_TYPE_LIKE &&
+              row.postId === postId &&
+              row.actor?.id === bob.actorId,
+          ),
+        ).toBe(false);
+
+        // A HOME-scope filter on the same actor must not leak into notification filtering
+        // (spec §198.3 — scopes are independent).
+        const eve = await registerTestActor(auth, dataSource, inviterUserId);
+        await callUnary<CreateFilterRequest, CreateFilterResponse>(
+          filters.createFilter.bind(filters),
+          {
+            name: `hide-eve-home-${testSuffix()}`,
+            terms: [{ kind: FilterTermKind.FILTER_TERM_KIND_ACTOR, value: eve.actorId }],
+            scopes: [FilterScope.FILTER_SCOPE_HOME],
+            action: FilterAction.FILTER_ACTION_HIDE,
+            expiresAt: undefined,
+          },
+          { accessToken: dave.accessToken },
+        );
+        const secondPostId = await createPost(dave, `eve like target ${testSuffix()}`);
+        await callUnary<LikePostRequest, LikePostResponse>(
+          reactions.likePost.bind(reactions),
+          { postId: secondPostId },
+          { accessToken: eve.accessToken },
+        );
+        const listAfterHomeScope = await callUnary<
+          ListNotificationsRequest,
+          ListNotificationsResponse
+        >(
+          notifications.listNotifications.bind(notifications),
+          { cursor: '', limit: 20 },
+          { accessToken: dave.accessToken },
+        );
+        expect(
+          listAfterHomeScope.notifications.some(
+            (row) =>
+              row.type === NotificationType.NOTIFICATION_TYPE_LIKE &&
+              row.postId === secondPostId &&
+              row.actor?.id === eve.actorId,
+          ),
+        ).toBe(true);
+      },
+    );
   },
 );

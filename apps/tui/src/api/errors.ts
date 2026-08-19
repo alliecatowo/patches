@@ -65,6 +65,19 @@ export function isSignInRequired(error: unknown): boolean {
   return appErrorCodeOf(error) === 'SIGN_IN_REQUIRED';
 }
 
+/**
+ * A-053 (spec §197.1, §197.5): true when a write RPC (`CreatePost`, `SendMessage`,
+ * `FollowActor`, …) was rejected because this node has `REQUIRE_PRIVACY_ACK=true` and this
+ * actor hasn't acknowledged the node's *current* `privacy_notice_version` yet — including an
+ * actor who acknowledged an older version, since a version bump means the text changed
+ * (`RequirePrivacyAckGuard`, spec §197.6). Exposed the same way `isSignInRequired` is, so a
+ * caller that needs to branch on this specifically (rather than just showing
+ * `describeGrpcError`'s title) can.
+ */
+export function isPrivacyAckRequired(error: unknown): boolean {
+  return appErrorCodeOf(error) === 'PRIVACY_NOTICE_NOT_ACKNOWLEDGED';
+}
+
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -148,6 +161,20 @@ export function describeGrpcError(
         code,
       };
     case GrpcStatus.FAILED_PRECONDITION:
+      // A-053: this one gets its own copy rather than the server's raw message — the
+      // actionable step (go acknowledge the notice) is more useful than repeating
+      // "must acknowledge this node's current privacy notice", and every caller of
+      // `describeGrpcError` renders `.title` alone (toasts, screen error rows), so the
+      // instruction has to live there, not just in `.hint`.
+      if (isPrivacyAckRequired(error)) {
+        return {
+          title:
+            'This node’s privacy notice changed — press :privacy to review and acknowledge it.',
+          hint: 'Acknowledging only records that you saw the text; it grants nothing else.',
+          retryable: false,
+          code,
+        };
+      }
       // The server writes actionable text here on purpose — the §83 client
       // version gate is the main source of it.
       return {

@@ -381,6 +381,39 @@ export function App({
     };
   }, [api]);
 
+  // A-053 (spec §197.1: "every client MUST show the new summary at next session start"):
+  // best-effort, non-blocking session-start check — compare this actor's last-acknowledged
+  // `privacy_notice_version` against the node's *current* one and nudge toward `:privacy`
+  // when they've drifted (the node published a material change since the actor last saw it).
+  // Fires once per real session start (login or a restored session), not on every render —
+  // `session` only changes identity at those points. A failure here is silently ignored, same
+  // as `dmRetentionDays` above; this is a hint, not a gate (nothing on `:privacy` is ever
+  // gated on acknowledgement, spec §197.1).
+  useEffect(() => {
+    if (session === undefined) return;
+    let cancelled = false;
+    void Promise.all([
+      ensureAccessToken().then((accessToken) => api.getPrivacyPrefs({}, accessToken)),
+      api.getNodePolicy(),
+    ]).then(
+      ([prefsResponse, policyResponse]) => {
+        if (cancelled) return;
+        const acknowledgedVersion = prefsResponse.prefs?.privacyNoticeVersion ?? 0;
+        const currentVersion = policyResponse.policy?.privacyNoticeVersion ?? 0;
+        if (currentVersion > acknowledgedVersion) {
+          setToast({
+            message: 'This node’s privacy notice changed — press :privacy to review it.',
+            kind: 'info',
+          });
+        }
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [session, api, ensureAccessToken]);
+
   // Optimistic like/bookmark overlay (P4-004, spec §79), keyed by post id — applied at
   // render time (`decoratePost`) over whatever `viewerState`/`counts` a given screen's
   // own paginated list last fetched, so a like registers immediately no matter which
@@ -1340,6 +1373,7 @@ export function App({
         requireSession({ screen: 'followRequests' });
         return;
       case 'filters':
+      case 'filter':
         requireSession({ screen: 'filters' });
         return;
       case 'lists':
@@ -1658,6 +1692,9 @@ export function App({
             onCancel={cancelPreferences}
             canPersist={session !== undefined}
             onOpenPrivacy={() => requireSession({ screen: 'privacy' })}
+            onOpenFilters={() => requireSession({ screen: 'filters' })}
+            onOpenFilterLists={() => requireSession({ screen: 'filterLists' })}
+            onOpenLabelers={() => requireSession({ screen: 'labelers' })}
           />
         );
       case 'privacy':

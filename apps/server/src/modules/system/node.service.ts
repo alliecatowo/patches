@@ -1,7 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DomainBlock, Labeler } from '@patches/database';
-import { ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS } from '@patches/domain';
+import {
+  ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS,
+  ACCOUNT_EXPORT_MAX_READY_ARCHIVES,
+  MAX_APPEAL_STATEMENT_CHARS,
+  MAX_FILTER_LIST_ENTRIES,
+  MAX_FILTER_LIST_EXCEPTIONS_PER_LIST,
+  MAX_FILTER_LIST_SUBSCRIPTIONS,
+  MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR,
+  MAX_FILTER_TERMS_PER_FILTER,
+  MAX_FILTERS_PER_ACTOR,
+  MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR,
+} from '@patches/domain';
 import {
   DomainPolicyAction,
   FederationStance,
@@ -22,7 +33,10 @@ import {
 } from '../actors/validation.js';
 import { HANDLE_MAX_LENGTH } from '../auth/validation.js';
 import { toProtoVocabularyEntry } from '../labels/label.mapper.js';
-import { parseStoredVocabulary } from '../labels/label-validation.js';
+import {
+  MAX_LABELER_VOCABULARY_ENTRIES,
+  parseStoredVocabulary,
+} from '../labels/label-validation.js';
 import { toProtoReasonCategory } from '../moderation/moderation.mapper.js';
 import { SERVER_VERSION } from './server-version.provider.js';
 
@@ -66,6 +80,19 @@ export class NodeService {
         websiteUrlMaxChars: WEBSITE_URL_MAX_LENGTH,
         altTextMaxChars: ALT_TEXT_MAX_LENGTH,
         searchQueryMaxChars: SEARCH_QUERY_MAX_LENGTH,
+        // A-054 (spec §204): every one of these mirrors a `@patches/domain`/module constant
+        // that already enforces it server-side — see `node.proto`'s `NodeLimits` doc for the
+        // "single source" convention.
+        maxFiltersPerActor: MAX_FILTERS_PER_ACTOR,
+        maxFilterTermsPerFilter: MAX_FILTER_TERMS_PER_FILTER,
+        maxFilterListsPublishedPerActor: MAX_FILTER_LISTS_PUBLISHED_PER_ACTOR,
+        maxFilterListEntries: MAX_FILTER_LIST_ENTRIES,
+        maxFilterListSubscriptions: MAX_FILTER_LIST_SUBSCRIPTIONS,
+        maxFilterListExceptionsPerList: MAX_FILTER_LIST_EXCEPTIONS_PER_LIST,
+        maxLabelerSubscriptionsPerActor: MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR,
+        maxLabelVocabularyEntries: MAX_LABELER_VOCABULARY_ENTRIES,
+        maxAppealStatementChars: MAX_APPEAL_STATEMENT_CHARS,
+        accountExportMaxReadyArchives: ACCOUNT_EXPORT_MAX_READY_ARCHIVES,
       },
       capabilities: [...CAPABILITIES],
       socialCapabilities: {
@@ -80,12 +107,13 @@ export class NodeService {
   }
 
   /**
-   * P14-012 (spec §197.6) — the operator transparency document, populated from `AppConfigService`
-   * env vars plus a live read of `domain_blocks` (§201.5's published domain policy). Fields with
-   * no configuration surface yet (`privacy_notice_summary`, `terms_url`, `appeal_instructions`,
-   * `operator_identity`) stay empty strings — an honest "not configured" rather than invented
-   * text; the proto's own doc says an all-empty `NodePolicy` renders as "this node publishes no
-   * policy" (§197.6), and that reasoning applies per-field just as well as to the whole message.
+   * P14-012/A-052 (spec §197.6) — the operator transparency document, populated from
+   * `AppConfigService` env vars plus a live read of `domain_blocks` (§201.5's published domain
+   * policy). `privacy_notice_summary`, `terms_url`, `appeal_instructions`, and
+   * `operator_identity` are all operator-supplied text — empty is the honest "not configured"
+   * answer for an operator who hasn't set one, not a placeholder; the proto's own doc says an
+   * all-empty `NodePolicy` renders as "this node publishes no policy" (§197.6), and that
+   * reasoning applies per-field just as well as to the whole message.
    */
   async getNodePolicy(): Promise<GetNodePolicyResponse> {
     const domainBlocks = await this.dataSource
@@ -105,12 +133,12 @@ export class NodeService {
 
     return {
       policy: {
-        privacyNoticeSummary: '',
+        privacyNoticeSummary: this.config.privacyNoticeSummary,
         privacyNoticeVersion: this.config.privacyNoticeVersion,
         privacyNoticeUrl: this.config.nodePolicyUrl,
-        termsUrl: '',
+        termsUrl: this.config.termsUrl,
         moderatorContact: this.config.nodeModerators.join(', '),
-        appealInstructions: '',
+        appealInstructions: this.config.appealInstructions,
         federationStance: this.resolveFederationStance(),
         domainPolicies: domainBlocks.map((block) => ({
           domain: block.domain,
@@ -128,7 +156,7 @@ export class NodeService {
           logRetentionDays: 0,
           exportArchiveRetentionDays: ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS,
         },
-        operatorIdentity: '',
+        operatorIdentity: this.config.operatorIdentity,
         labelVocabulary:
           nodeLabeler === null
             ? []

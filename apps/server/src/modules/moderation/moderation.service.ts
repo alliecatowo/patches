@@ -290,13 +290,9 @@ export class ModerationService {
 
   /**
    * The public, anonymized transparency log (spec §201.4) — unauthenticated, keyset-paginated
-   * over `moderation_log_entries`. Today only `patches-admin domain block` (P14-012, this
-   * task's owned `apps/admin/src/commands/domain.ts`) writes rows here; `user`/`report`-driven
-   * account/post entries are a follow-up for whoever next touches `apps/admin/src/commands/
-   * {user,report}.ts` (out of this task's file scope — see this task's report). This is an
-   * honest partial implementation (spec §176), not a stub: every row that exists is real and
-   * correctly anonymized, `NOT_IMPLEMENTED` is gone, and the table/RPC are ready for those
-   * commands to start writing to as soon as they do.
+   * over `moderation_log_entries`. `patches-admin domain block` (P14-012), `user suspend|delete`,
+   * and `report resolve --action remove-post|suspend` (P14-027, `apps/admin/src/commands/
+   * {domain,user,report}.ts`) all write rows here today.
    */
   async listModerationLog(cursorRaw: string, limit: number): Promise<ListModerationLogResponse> {
     const cursor = decodeCursor(cursorRaw);

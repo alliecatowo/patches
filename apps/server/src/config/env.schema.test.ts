@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { ConfigError } from '@patches/config';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { validateEnv } from './env.schema.js';
 
@@ -189,5 +193,76 @@ describe('validateEnv', () => {
 
   it('ignores unrelated environment variables', () => {
     expect(() => validateEnv({ PATH: '/usr/bin', HOME: '/home/somebody' })).not.toThrow();
+  });
+
+  describe('operator transparency (A-052, spec §197.1, §197.6)', () => {
+    let tempDir: string | undefined;
+
+    afterEach(() => {
+      if (tempDir !== undefined) {
+        rmSync(tempDir, { recursive: true, force: true });
+        tempDir = undefined;
+      }
+    });
+
+    it('defaults the privacy notice summary, terms URL, appeal instructions, and operator identity to empty', () => {
+      expect(validateEnv({})).toMatchObject({
+        PRIVACY_NOTICE_SUMMARY: '',
+        TERMS_URL: '',
+        APPEAL_INSTRUCTIONS: '',
+        OPERATOR_CONTACT: '',
+      });
+    });
+
+    it('publishes an operator-supplied summary, terms URL, appeal instructions, and operator identity', () => {
+      const env = validateEnv({
+        PRIVACY_NOTICE_SUMMARY: 'We store your posts and DMs.',
+        TERMS_URL: 'https://patches.example/terms',
+        APPEAL_INSTRUCTIONS: 'Email appeals@patches.example.',
+        OPERATOR_CONTACT: 'Operated by Jane Doe.',
+      });
+      expect(env.PRIVACY_NOTICE_SUMMARY).toBe('We store your posts and DMs.');
+      expect(env.TERMS_URL).toBe('https://patches.example/terms');
+      expect(env.APPEAL_INSTRUCTIONS).toBe('Email appeals@patches.example.');
+      expect(env.OPERATOR_CONTACT).toBe('Operated by Jane Doe.');
+    });
+
+    it('rejects a non-URL TERMS_URL', () => {
+      expect(() => validateEnv({ TERMS_URL: 'not a url' })).toThrow(ConfigError);
+    });
+
+    it('reads PRIVACY_NOTICE_FILE at validation time and uses it as the summary', () => {
+      tempDir = mkdtempSync(join(tmpdir(), 'patches-privacy-notice-'));
+      const filePath = join(tempDir, 'privacy-notice.txt');
+      writeFileSync(filePath, '  We store your posts and DMs; DMs are readable by us.  \n');
+
+      const env = validateEnv({ PRIVACY_NOTICE_FILE: filePath });
+      expect(env.PRIVACY_NOTICE_SUMMARY).toBe(
+        'We store your posts and DMs; DMs are readable by us.',
+      );
+    });
+
+    it('prefers PRIVACY_NOTICE_FILE over PRIVACY_NOTICE_SUMMARY when both are set', () => {
+      tempDir = mkdtempSync(join(tmpdir(), 'patches-privacy-notice-'));
+      const filePath = join(tempDir, 'privacy-notice.txt');
+      writeFileSync(filePath, 'from the file');
+
+      const env = validateEnv({
+        PRIVACY_NOTICE_FILE: filePath,
+        PRIVACY_NOTICE_SUMMARY: 'from the env var',
+      });
+      expect(env.PRIVACY_NOTICE_SUMMARY).toBe('from the file');
+    });
+
+    it('refuses to boot when PRIVACY_NOTICE_FILE cannot be read', () => {
+      try {
+        validateEnv({ PRIVACY_NOTICE_FILE: '/nonexistent/patches-privacy-notice.txt' });
+        expect.unreachable('expected validateEnv to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ConfigError);
+        const paths = (error as ConfigError).issues.map((issue) => issue.path);
+        expect(paths).toContain('PRIVACY_NOTICE_FILE');
+      }
+    });
   });
 });

@@ -316,6 +316,9 @@ marked mandatory can't be changed. A label is only ever visible to viewers who s
 subscribing never affects anyone else. Headless: `patches labelers list|subscribe|unsubscribe|
 action`.
 
+`:filters`, `:lists`, and `:labelers` are each also reachable from `,` (Preferences) as their
+own row, the same way `:privacy` is.
+
 If your account is locked, `:followrequests` lists pending requests to follow you; `A` accepts,
 `D` declines.
 

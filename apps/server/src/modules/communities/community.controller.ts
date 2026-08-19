@@ -6,7 +6,6 @@ import {
   type BanFromCommunityResponse,
   type Community as ProtoCommunity,
   type CommunityMember as ProtoCommunityMember,
-  CommunityRole,
   type CommunityServiceController,
   CommunityServiceControllerMethods,
   type CreateCommunityRequest,
@@ -32,7 +31,6 @@ import {
   type UpdateCommunityRequest,
   type UpdateCommunityResponse,
 } from '@patches/proto/nest';
-import type { CommunityRole as DbCommunityRole } from '@patches/database';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
@@ -41,6 +39,7 @@ import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims, TokenService } from '../auth/token.service.js';
 import type { CommunityListPage, CommunityMemberListPage } from './community.dto.js';
 import {
+  roleFromProto,
   toProtoCommunity,
   toProtoCommunityInvite,
   toProtoCommunityMember,
@@ -262,12 +261,6 @@ function toMemberListResponse(page: CommunityMemberListPage): {
     members: page.members.map(toProtoCommunityMember),
     page: { nextCursor: page.nextCursor, hasMore: page.hasMore },
   };
-}
-
-export function roleFromProto(role: CommunityRole): DbCommunityRole {
-  if (role === CommunityRole.COMMUNITY_ROLE_MEMBER) return 'MEMBER';
-  if (role === CommunityRole.COMMUNITY_ROLE_MODERATOR) return 'MODERATOR';
-  throw AppError.validation('role must be MEMBER or MODERATOR.');
 }
 
 function fieldMaskPaths(mask: unknown): string[] {

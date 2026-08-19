@@ -833,7 +833,7 @@ export const KEYMAP: readonly Binding[] = [
     session: true,
     helpOnly: true,
     region: 'shell',
-    commands: [{ name: 'filters' }],
+    commands: [{ name: 'filters' }, { name: 'filter' }],
   },
   {
     keys: ':lists',
