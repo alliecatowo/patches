@@ -18,6 +18,7 @@ import { Phase14FilterLists1787135204977 } from './1787135204977-Phase14FilterLi
 import { Phase14Labelers1787135294583 } from './1787135294583-Phase14Labelers.js';
 import { Phase14ModerationAppeals1787135453592 } from './1787135453592-Phase14ModerationAppeals.js';
 import { Phase14AccountLifecycle1787135493158 } from './1787135493158-Phase14AccountLifecycle.js';
+import { Phase14FollowRequests1787153689257 } from './1787153689257-Phase14FollowRequests.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -52,4 +53,5 @@ export const ALL_MIGRATIONS = [
   Phase14Labelers1787135294583,
   Phase14ModerationAppeals1787135453592,
   Phase14AccountLifecycle1787135493158,
+  Phase14FollowRequests1787153689257,
 ];

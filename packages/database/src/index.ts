@@ -29,6 +29,7 @@ export { Media } from './entities/media.entity.js';
 export { Post } from './entities/post.entity.js';
 export { PostMedia, MAX_POST_MEDIA } from './entities/post-media.entity.js';
 export { Follow } from './entities/follow.entity.js';
+export { FollowRequest } from './entities/follow-request.entity.js';
 export { Block } from './entities/block.entity.js';
 export { Mute } from './entities/mute.entity.js';
 export { Like } from './entities/like.entity.js';
@@ -172,6 +173,7 @@ export { Phase14FilterLists1787135204977 } from './migrations/1787135204977-Phas
 export { Phase14Labelers1787135294583 } from './migrations/1787135294583-Phase14Labelers.js';
 export { Phase14ModerationAppeals1787135453592 } from './migrations/1787135453592-Phase14ModerationAppeals.js';
 export { Phase14AccountLifecycle1787135493158 } from './migrations/1787135493158-Phase14AccountLifecycle.js';
+export { Phase14FollowRequests1787153689257 } from './migrations/1787153689257-Phase14FollowRequests.js';
 
 export {
   claimOutboxJobs,

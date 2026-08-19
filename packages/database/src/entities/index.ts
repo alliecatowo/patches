@@ -35,6 +35,7 @@ import { FilterListSubscription } from './filter-list-subscription.entity.js';
 import { FilterScope } from './filter-scope.entity.js';
 import { FilterTerm } from './filter-term.entity.js';
 import { Follow } from './follow.entity.js';
+import { FollowRequest } from './follow-request.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { InboxActivity } from './inbox-activity.entity.js';
 import { Invite } from './invite.entity.js';
@@ -96,6 +97,7 @@ export const ALL_ENTITIES = [
   Post,
   PostMedia,
   Follow,
+  FollowRequest,
   Block,
   Mute,
   Like,

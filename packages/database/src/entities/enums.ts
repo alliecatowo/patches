@@ -56,6 +56,11 @@ export const NOTIFICATION_TYPES = [
   'REPOST',
   'QUOTE',
   'COMMUNITY_INVITE',
+  /** A follow request awaiting the recipient's approval, because the recipient's account is
+   * locked (`INITIAL_VISION.md` §197.5, P14-010's follow-up). Distinct from `FOLLOW`, which is
+   * only ever written once a follow (request or otherwise) is actually accepted — see
+   * `follow-request.entity.ts`. */
+  'FOLLOW_REQUEST',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
