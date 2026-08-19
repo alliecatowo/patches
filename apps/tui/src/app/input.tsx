@@ -74,6 +74,24 @@ export function isPaletteShortcut(input: string, key: Key): boolean {
   return input === ':' || isCtrlKey(input, key, 'p');
 }
 
+/**
+ * True when `input` is several ordinary characters that arrived in one stdin read.
+ *
+ * Ink parses each chunk into exactly *one* keypress (`use-input.js` calls
+ * `parseKeypress(data)` per data event), so two keys typed faster than the terminal
+ * flushes appear as a single multi-character `input`. A two-key sequence like `g h`
+ * would then never be recognised — the shell would look for `g` and be handed `gh`.
+ * Splitting such a run back into its keys is what makes fast typing behave like slow
+ * typing. Iterated by code point so an emoji stays one key.
+ */
+export function isCoalescedKeyRun(input: string, key: Key): boolean {
+  if (!isPrintableInput(input, key)) return false;
+  if (key.return || key.escape || key.tab || key.backspace || key.delete) return false;
+  if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return false;
+  if (key.pageUp || key.pageDown || key.home || key.end) return false;
+  return [...input].length > 1;
+}
+
 export function isPrintableInput(input: string, key: Key): boolean {
   return input.length > 0 && !key.ctrl && !key.meta && !key.super && !key.hyper;
 }

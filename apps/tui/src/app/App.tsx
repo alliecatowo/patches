@@ -42,6 +42,7 @@ import { isTruthy } from '../env.js';
 import { CommandHistory } from './commands.js';
 import {
   createKeyLayerStack,
+  isCoalescedKeyRun,
   isCtrlKey,
   isPaletteShortcut,
   KeyLayerProvider,
@@ -182,8 +183,17 @@ export function App({
   const [feedNonce, setFeedNonce] = useState(0);
 
   const [toast, setToast] = useState<Toast | undefined>(undefined);
-  const [pendingGo, setPendingGo] = useState(false);
+  // Mirrored in a ref, and the ref is what the input handler reads. Ink delivers every
+  // key in one stdin chunk through the *same* handler closure, so a `g` and an `h`
+  // typed fast enough to arrive together would both see the pre-`g` state value and the
+  // jump would silently do nothing (reproduced under tmux, QA 2026-08-19).
+  const [pendingGo, setPendingGoState] = useState(false);
+  const pendingGoRef = useRef(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  function setPendingGo(next: boolean): void {
+    pendingGoRef.current = next;
+    setPendingGoState(next);
+  }
   // Spec §173's required "plain mode that strips all decoration" — starts from
   // `PATCHES_PLAIN`/`--plain` (`env` is normalized by `cli.tsx`) and is toggleable at
   // runtime with `P` (below).
@@ -870,6 +880,12 @@ export function App({
   // are represented by a compatibility layer until they adopt `useKeyLayer`;
   // this consumes printable keys without disabling Ctrl+C or Ctrl+P.
   function handleShellInput(input: string, key: Key): void {
+    // Keys typed fast enough to land in one stdin read reach Ink as a single
+    // multi-character keypress; replay them one at a time so `g h` works at speed.
+    if (isCoalescedKeyRun(input, key)) {
+      for (const character of input) handleShellInput(character, key);
+      return;
+    }
     if (isCtrlKey(input, key, 'c')) {
       exit();
       return;
@@ -894,7 +910,7 @@ export function App({
       openCommandPalette();
       return;
     }
-    if (pendingGo) {
+    if (pendingGoRef.current) {
       setPendingGo(false);
       if (input === 'p') openOwnProfile();
       else if (input === 'l') goTo({ screen: 'local' });
@@ -992,9 +1008,15 @@ export function App({
                   overflow="hidden"
                 >
                   <Box flexDirection="column" flexShrink={0}>
+                    {/* An open overlay hides the screen with `display="none"`, not with a
+                        zero height: Yoga skips a `DISPLAY_NONE` subtree during layout *and*
+                        Ink skips it while painting, whereas a zero-height box still emits its
+                        text into the same rows as the overlay — the timeline bled through the
+                        help screen mid-line (QA 2026-08-19). The screen stays mounted, so a
+                        sub-mode's in-progress state survives opening the palette. */}
                     <Box
                       flexDirection="column"
-                      height={modals.top === undefined ? undefined : 0}
+                      display={modals.top === undefined ? 'flex' : 'none'}
                       flexShrink={0}
                       overflow="hidden"
                     >

@@ -163,4 +163,25 @@ describe('g x works from every screen', () => {
     expect(lastFrame()).toContain('Home');
     unmount();
   });
+  it('accepts `g h` arriving as one keystroke chunk, as a fast typist sends it', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    fake.addPost(alice.id, 'Alice post');
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await expectFrame(lastFrame, 'Local');
+    await loginAs(press, lastFrame, 'alice', 'x');
+    await flush(80);
+
+    press('gl');
+    await expectFrame(lastFrame, 'Local');
+    await flush(80);
+
+    // One write, so Ink runs the handler twice against the *same* closure. Reading the
+    // `g` prefix from state instead of a ref silently dropped the second key here.
+    press('gh');
+    await flush(120);
+    expect(lastFrame()).toContain('Home');
+    unmount();
+  });
 });
