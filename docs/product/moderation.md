@@ -180,17 +180,25 @@ that's a problem with the action, not the log.
 
 ## Appeals
 
-**Status: implemented** (§201.2–§201.3, P14-011). Every enforcement action against you
+**Status: implemented** (§201.2–§201.3, P14-011, A-049, A-050). Every enforcement action
+against you — `user suspend|delete` and `report resolve --action remove-post|suspend` —
 generates an in-product moderation notice, readable via `ModerationService.
 ListMyModerationNotices` — reachable even from a suspended or pending-deletion account, since
-those are precisely the actions being appealed (`SuspensionTolerantAuthGuard`). File an appeal
+those are precisely the actions being appealed (`SuspensionTolerantAuthGuard`) — and _delivered_
+as a `MODERATION`-type notification the moment the admin CLI takes the action, not only
+discoverable by polling. The notification itself carries no detail (no actor, post, or text of
+its own — it just points you at `ListMyModerationNotices`, which reads the real explanation
+from `admin_audit_log` live, so there is never a second copy of it to go stale). File an appeal
 against a notice with `AppealService.CreateAppeal` (one per notice, rate-limited 5/day, rejected
 once the node's appeal window has closed); `GetAppeal`/`ListMyAppeals` are visible only to the
 appellant, never the reporter or the public. Admin-side resolution is CLI-only
 (`patches-admin appeal list|inspect|resolve`, mirroring `report list|inspect|resolve`) — there
 is deliberately no gRPC resolve RPC, and resolving an appeal never automatically reverses the
 underlying enforcement action (an admin who overturns a suspension still runs `user unsuspend`
-separately).
+separately). Resolution is itself delivered as a moderation notice and notification, addressed
+to the appellant: `ListMyModerationNotices` shows the outcome (upheld/overturned/modified) and
+the resolving admin's reason, describing what the _original_ enforcement action was — but that
+notice is not itself appealable, so an appeal outcome can't spawn an appeal of its own.
 
 ## Node moderation is the floor, not the whole system
 
