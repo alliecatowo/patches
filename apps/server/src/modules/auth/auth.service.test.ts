@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AppError } from '../../common/errors/app-error.js';
+import { type AppError } from '../../common/errors/app-error.js';
 import { type AppConfigService } from '../../config/app-config.service.js';
 import { AuthService } from './auth.service.js';
 import { type RateLimitService } from './rate-limit.service.js';

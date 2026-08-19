@@ -83,7 +83,7 @@ export class AuthController implements AuthServiceController {
     private readonly tokens: TokenService,
   ) {}
 
-  async getAuthPolicy(@Payload() _request: GetAuthPolicyRequest): Promise<GetAuthPolicyResponse> {
+  getAuthPolicy(@Payload() _request: GetAuthPolicyRequest): GetAuthPolicyResponse {
     const policy = this.auth.getAuthPolicy();
     return { passwordAuth: toProtoPasswordAuthMode(policy.passwordAuthMode) };
   }
