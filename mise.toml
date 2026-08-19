@@ -64,6 +64,10 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/server dev"
 description = "Run the full-screen TUI against the local server (extra args pass through, e.g. -- --server host:port)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/tui build >/dev/null && node apps/tui/dist/cli.js --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure \"$@\""
 
+[tasks.demos]
+description = "Render every VHS tape in infra/demos/tapes/ (TUI screenshots + GIFs for README/site) — see infra/demos/render.sh for required session env vars. Not idempotent: re-running posts/follows for real against the live node (P9-002)."
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/demos/render.sh"
+
 [tasks.admin]
 description = "Run the patches-admin moderation CLI (built) against the local Postgres database — extra args pass through, e.g. `mise run admin -- user list`"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/admin build >/dev/null && node apps/admin/dist/main.js \"$@\""
