@@ -305,6 +305,10 @@ export class FakeApiHandle {
       ping: (nonce: string) => Promise.resolve({ nonce, serverTime: dateToTimestamp(new Date()) }),
       register: (request: RegisterRequest) => this.register(request),
       login: (request: LoginRequest) => this.login(request),
+      // P15-002: always resolves 'optional' — no test currently exercises
+      // PASSWORD_AUTH=off, so the default that preserves every existing password-
+      // login test's behavior is the right one here.
+      getAuthPolicy: () => Promise.resolve({ passwordAuth: 'PASSWORD_AUTH_MODE_OPTIONAL' }),
       refreshSession: (request: RefreshSessionRequest) => this.refreshSession(request),
       logout: () => Promise.resolve({}),
       verifyEmail: (request: VerifyEmailRequest) => this.verifyEmail(request),
