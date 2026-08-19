@@ -191,8 +191,7 @@ export function ProfileScreen({
     if (followUi.status !== 'ready' || onConfirm === undefined) return;
     const { blocking, muting } = followUi.relationship;
     const active = action === 'block' ? blocking : muting;
-    const verb =
-      action === 'block' ? (active ? 'Unblock' : 'Block') : active ? 'Unmute' : 'Mute';
+    const verb = action === 'block' ? (active ? 'Unblock' : 'Block') : active ? 'Unmute' : 'Mute';
     const handle = sanitizeForTerminal(
       actorState.status === 'ready' ? actorState.actor.handle : '',
     );
@@ -327,6 +326,11 @@ export function ProfileScreen({
         ) : null}
         {actorId === viewerActorId && onEditProfile !== undefined ? (
           <Text color={theme.muted}>e edit profile</Text>
+        ) : null}
+        {actorId === viewerActorId ? (
+          <Text color={theme.muted}>
+            :followrequests pending follow requests · :privacy account privacy
+          </Text>
         ) : null}
         {followUi.status === 'ready' ? (
           <Text color={theme.muted}>
