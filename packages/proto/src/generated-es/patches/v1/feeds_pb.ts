@@ -16,7 +16,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_feeds: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChZwYXRjaGVzL3YxL2ZlZWRzLnByb3RvEgpwYXRjaGVzLnYxIjQKE0xpc3RIb21lRmVlZFJlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNIlsKFExpc3RIb21lRmVlZFJlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIjUKFExpc3RMb2NhbEZlZWRSZXF1ZXN0Eg4KBmN1cnNvchgBIAEoCRINCgVsaW1pdBgCIAEoDSJcChVMaXN0TG9jYWxGZWVkUmVzcG9uc2USHwoFcG9zdHMYASADKAsyEC5wYXRjaGVzLnYxLlBvc3QSIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iSAoVTGlzdEFjdG9yUG9zdHNSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJdChZMaXN0QWN0b3JQb3N0c1Jlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvMo8CCgtGZWVkU2VydmljZRJRCgxMaXN0SG9tZUZlZWQSHy5wYXRjaGVzLnYxLkxpc3RIb21lRmVlZFJlcXVlc3QaIC5wYXRjaGVzLnYxLkxpc3RIb21lRmVlZFJlc3BvbnNlElQKDUxpc3RMb2NhbEZlZWQSIC5wYXRjaGVzLnYxLkxpc3RMb2NhbEZlZWRSZXF1ZXN0GiEucGF0Y2hlcy52MS5MaXN0TG9jYWxGZWVkUmVzcG9uc2USVwoOTGlzdEFjdG9yUG9zdHMSIS5wYXRjaGVzLnYxLkxpc3RBY3RvclBvc3RzUmVxdWVzdBoiLnBhdGNoZXMudjEuTGlzdEFjdG9yUG9zdHNSZXNwb25zZWIGcHJvdG8z',
+    'ChZwYXRjaGVzL3YxL2ZlZWRzLnByb3RvEgpwYXRjaGVzLnYxIjQKE0xpc3RIb21lRmVlZFJlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNIlsKFExpc3RIb21lRmVlZFJlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIjUKFExpc3RMb2NhbEZlZWRSZXF1ZXN0Eg4KBmN1cnNvchgBIAEoCRINCgVsaW1pdBgCIAEoDSJcChVMaXN0TG9jYWxGZWVkUmVzcG9uc2USHwoFcG9zdHMYASADKAsyEC5wYXRjaGVzLnYxLlBvc3QSIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iSAoVTGlzdEFjdG9yUG9zdHNSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJdChZMaXN0QWN0b3JQb3N0c1Jlc3BvbnNlEh8KBXBvc3RzGAEgAygLMhAucGF0Y2hlcy52MS5Qb3N0EiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIkAKEkxpc3RUYWdGZWVkUmVxdWVzdBILCgN0YWcYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNIloKE0xpc3RUYWdGZWVkUmVzcG9uc2USHwoFcG9zdHMYASADKAsyEC5wYXRjaGVzLnYxLlBvc3QSIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iTwoYTGlzdENvbW11bml0eUZlZWRSZXF1ZXN0EhQKDGNvbW11bml0eV9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iYAoZTGlzdENvbW11bml0eUZlZWRSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbzLBAwoLRmVlZFNlcnZpY2USUQoMTGlzdEhvbWVGZWVkEh8ucGF0Y2hlcy52MS5MaXN0SG9tZUZlZWRSZXF1ZXN0GiAucGF0Y2hlcy52MS5MaXN0SG9tZUZlZWRSZXNwb25zZRJUCg1MaXN0TG9jYWxGZWVkEiAucGF0Y2hlcy52MS5MaXN0TG9jYWxGZWVkUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdExvY2FsRmVlZFJlc3BvbnNlElcKDkxpc3RBY3RvclBvc3RzEiEucGF0Y2hlcy52MS5MaXN0QWN0b3JQb3N0c1JlcXVlc3QaIi5wYXRjaGVzLnYxLkxpc3RBY3RvclBvc3RzUmVzcG9uc2USTgoLTGlzdFRhZ0ZlZWQSHi5wYXRjaGVzLnYxLkxpc3RUYWdGZWVkUmVxdWVzdBofLnBhdGNoZXMudjEuTGlzdFRhZ0ZlZWRSZXNwb25zZRJgChFMaXN0Q29tbXVuaXR5RmVlZBIkLnBhdGNoZXMudjEuTGlzdENvbW11bml0eUZlZWRSZXF1ZXN0GiUucGF0Y2hlcy52MS5MaXN0Q29tbXVuaXR5RmVlZFJlc3BvbnNlYgZwcm90bzM',
     [file_patches_v1_common, file_patches_v1_posts],
   );
 
@@ -164,6 +164,110 @@ export const ListActorPostsResponseSchema: GenMessage<ListActorPostsResponse> =
   messageDesc(file_patches_v1_feeds, 5);
 
 /**
+ * @generated from message patches.v1.ListTagFeedRequest
+ */
+export type ListTagFeedRequest = Message<'patches.v1.ListTagFeedRequest'> & {
+  /**
+   * Tag name — matched against the canonical (NFKC-normalized, casefolded) form.
+   *
+   * @generated from field: string tag = 1;
+   */
+  tag: string;
+
+  /**
+   * @generated from field: string cursor = 2;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 3;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListTagFeedRequest.
+ * Use `create(ListTagFeedRequestSchema)` to create a new message.
+ */
+export const ListTagFeedRequestSchema: GenMessage<ListTagFeedRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_feeds, 6);
+
+/**
+ * @generated from message patches.v1.ListTagFeedResponse
+ */
+export type ListTagFeedResponse = Message<'patches.v1.ListTagFeedResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.Post posts = 1;
+   */
+  posts: Post[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListTagFeedResponse.
+ * Use `create(ListTagFeedResponseSchema)` to create a new message.
+ */
+export const ListTagFeedResponseSchema: GenMessage<ListTagFeedResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_feeds, 7);
+
+/**
+ * @generated from message patches.v1.ListCommunityFeedRequest
+ */
+export type ListCommunityFeedRequest = Message<'patches.v1.ListCommunityFeedRequest'> & {
+  /**
+   * @generated from field: string community_id = 1;
+   */
+  communityId: string;
+
+  /**
+   * @generated from field: string cursor = 2;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 3;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListCommunityFeedRequest.
+ * Use `create(ListCommunityFeedRequestSchema)` to create a new message.
+ */
+export const ListCommunityFeedRequestSchema: GenMessage<ListCommunityFeedRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_feeds, 8);
+
+/**
+ * @generated from message patches.v1.ListCommunityFeedResponse
+ */
+export type ListCommunityFeedResponse = Message<'patches.v1.ListCommunityFeedResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.Post posts = 1;
+   */
+  posts: Post[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListCommunityFeedResponse.
+ * Use `create(ListCommunityFeedResponseSchema)` to create a new message.
+ */
+export const ListCommunityFeedResponseSchema: GenMessage<ListCommunityFeedResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_feeds, 9);
+
+/**
  * Chronological, fan-out-on-read feeds (spec §52, §59). Never `GetRecommendedFeed`/
  * `GetForYouFeed` — there is no engagement-ranked feed in this product (spec §153).
  *
@@ -199,5 +303,26 @@ export const FeedService: GenService<{
     methodKind: 'unary';
     input: typeof ListActorPostsRequestSchema;
     output: typeof ListActorPostsResponseSchema;
+  };
+  /**
+   * All public posts carrying a given tag, chronological. No ordering parameter — same
+   * chronological-only rule as every other feed (spec §182.2).
+   *
+   * @generated from rpc patches.v1.FeedService.ListTagFeed
+   */
+  listTagFeed: {
+    methodKind: 'unary';
+    input: typeof ListTagFeedRequestSchema;
+    output: typeof ListTagFeedResponseSchema;
+  };
+  /**
+   * A community's posts, chronological. No ordering parameter (spec §182.2).
+   *
+   * @generated from rpc patches.v1.FeedService.ListCommunityFeed
+   */
+  listCommunityFeed: {
+    methodKind: 'unary';
+    input: typeof ListCommunityFeedRequestSchema;
+    output: typeof ListCommunityFeedResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_feeds, 0);

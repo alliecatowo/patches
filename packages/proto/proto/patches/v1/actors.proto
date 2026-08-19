@@ -84,6 +84,17 @@ message Nameplate {
   string profile_border = 6;
 }
 
+// Free-form, allow-listed self-presentation, distinct from `Nameplate` (spec §189, §192):
+// allow-list only, no images/uploads, control and escape sequences stripped at render. Max
+// 1 KiB serialized (spec §188).
+message ActorFlair {
+  // Arbitrary JSON document, shape owned by the client renderer; the server only validates
+  // size and strips unsafe bytes (spec §192) — it does not interpret the document's keys.
+  string document = 1;
+
+  google.protobuf.Timestamp updated_at = 2;
+}
+
 // A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
 // summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
 // `ActorCounts` comment for what's guaranteed in each case.
@@ -118,6 +129,12 @@ message Actor {
 
   // Unset when the actor has never customized their presentation (spec §173).
   Nameplate nameplate = 11;
+
+  // Unset when the actor has never set flair (spec §189, §192).
+  ActorFlair flair = 12;
+
+  // Up to 3, in display order (spec §188).
+  repeated string pinned_post_ids = 13;
 }
 
 message GetActorRequest {
@@ -151,6 +168,9 @@ message UpdateProfileRequest {
   // `badges` is ignored server-side even when `"nameplate"` is in `update_mask` — badges are
   // server-attested only (spec §173).
   Nameplate nameplate = 6;
+
+  // Applied when `"flair"` is in `update_mask` (spec §189, §190).
+  ActorFlair flair = 7;
 }
 
 message UpdateProfileResponse {

@@ -1,4 +1,10 @@
-import { dateToTimestamp, POST_TYPE, POST_VISIBILITY, type Post } from '@patches/proto';
+import {
+  dateToTimestamp,
+  POST_TYPE,
+  POST_VISIBILITY,
+  QUOTE_POLICY,
+  type Post,
+} from '@patches/proto';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
@@ -19,6 +25,8 @@ function post(overrides: Partial<Post> = {}): Post {
       joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
       counts: undefined,
       nameplate: undefined,
+      flair: undefined,
+      pinnedPostIds: [],
     },
     body: 'hello world',
     postType: POST_TYPE.NOTE,
@@ -33,6 +41,9 @@ function post(overrides: Partial<Post> = {}): Post {
     counts: undefined,
     viewerState: undefined,
     contentWarning: '',
+    quotedPost: undefined,
+    community: undefined,
+    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
     ...overrides,
   };
 }

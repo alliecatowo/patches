@@ -20,6 +20,7 @@ export * from './generated-es/patches/v1/common_pb.js';
 export * from './generated-es/patches/v1/system_pb.js';
 export * from './generated-es/patches/v1/auth_pb.js';
 export * from './generated-es/patches/v1/actors_pb.js';
+export * from './generated-es/patches/v1/communities_pb.js';
 export * from './generated-es/patches/v1/posts_pb.js';
 export * from './generated-es/patches/v1/feeds_pb.js';
 export * from './generated-es/patches/v1/social_graph_pb.js';
@@ -29,12 +30,16 @@ export * from './generated-es/patches/v1/notifications_pb.js';
 export * from './generated-es/patches/v1/moderation_pb.js';
 export * from './generated-es/patches/v1/media_pb.js';
 export * from './generated-es/patches/v1/pages_pb.js';
+export * from './generated-es/patches/v1/messages_pb.js';
+export * from './generated-es/patches/v1/tags_pb.js';
 
 import { file_patches_v1_actors } from './generated-es/patches/v1/actors_pb.js';
 import { file_patches_v1_auth } from './generated-es/patches/v1/auth_pb.js';
 import { file_patches_v1_common } from './generated-es/patches/v1/common_pb.js';
+import { file_patches_v1_communities } from './generated-es/patches/v1/communities_pb.js';
 import { file_patches_v1_feeds } from './generated-es/patches/v1/feeds_pb.js';
 import { file_patches_v1_media } from './generated-es/patches/v1/media_pb.js';
+import { file_patches_v1_messages } from './generated-es/patches/v1/messages_pb.js';
 import { file_patches_v1_moderation } from './generated-es/patches/v1/moderation_pb.js';
 import { file_patches_v1_node } from './generated-es/patches/v1/node_pb.js';
 import { file_patches_v1_notifications } from './generated-es/patches/v1/notifications_pb.js';
@@ -43,6 +48,7 @@ import { file_patches_v1_posts } from './generated-es/patches/v1/posts_pb.js';
 import { file_patches_v1_reactions } from './generated-es/patches/v1/reactions_pb.js';
 import { file_patches_v1_social_graph } from './generated-es/patches/v1/social_graph_pb.js';
 import { file_patches_v1_system } from './generated-es/patches/v1/system_pb.js';
+import { file_patches_v1_tags } from './generated-es/patches/v1/tags_pb.js';
 import { type GenFile } from '@bufbuild/protobuf/codegenv2';
 
 /**
@@ -60,6 +66,7 @@ export const PATCHES_V1_FILES: readonly GenFile[] = Object.freeze([
   file_patches_v1_system,
   file_patches_v1_auth,
   file_patches_v1_actors,
+  file_patches_v1_communities,
   file_patches_v1_posts,
   file_patches_v1_feeds,
   file_patches_v1_social_graph,
@@ -69,4 +76,6 @@ export const PATCHES_V1_FILES: readonly GenFile[] = Object.freeze([
   file_patches_v1_moderation,
   file_patches_v1_media,
   file_patches_v1_pages,
+  file_patches_v1_messages,
+  file_patches_v1_tags,
 ]);

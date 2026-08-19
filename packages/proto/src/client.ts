@@ -10,6 +10,8 @@ import { PATCHES_PACKAGE_NAME, PROTO_LOADER_OPTIONS, SERVICE_NAMES } from './con
 import type {
   ActorGrpcClient,
   AuthGrpcClient,
+  CommunityGrpcClient,
+  DirectMessageGrpcClient,
   FeedGrpcClient,
   MediaGrpcClient,
   ModerationGrpcClient,
@@ -20,6 +22,7 @@ import type {
   ReactionGrpcClient,
   SocialGraphGrpcClient,
   SystemGrpcClient,
+  TagGrpcClient,
 } from './constants.js';
 import { getProtoFiles } from './proto-path.js';
 
@@ -181,4 +184,38 @@ export function createPageClient(
   options?: ChannelOptions,
 ): PageGrpcClient {
   return buildClient<PageGrpcClient>(SERVICE_NAMES.page, target, credentials, options);
+}
+
+/** Build a `patches.v1.CommunityService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createCommunityClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): CommunityGrpcClient {
+  return buildClient<CommunityGrpcClient>(SERVICE_NAMES.community, target, credentials, options);
+}
+
+/** Build a `patches.v1.DirectMessageService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createDirectMessageClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): DirectMessageGrpcClient {
+  return buildClient<DirectMessageGrpcClient>(
+    SERVICE_NAMES.directMessage,
+    target,
+    credentials,
+    options,
+  );
+}
+
+/** Build a `patches.v1.TagService` client. See {@link createSystemClient} for the pattern. */
+export function createTagClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): TagGrpcClient {
+  return buildClient<TagGrpcClient>(SERVICE_NAMES.tag, target, credentials, options);
 }

@@ -18,7 +18,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_reactions: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChpwYXRjaGVzL3YxL3JlYWN0aW9ucy5wcm90bxIKcGF0Y2hlcy52MSIiCg9MaWtlUG9zdFJlcXVlc3QSDwoHcG9zdF9pZBgBIAEoCSJtChBMaWtlUG9zdFJlc3BvbnNlEiYKBmNvdW50cxgBIAEoCzIWLnBhdGNoZXMudjEuUG9zdENvdW50cxIxCgx2aWV3ZXJfc3RhdGUYAiABKAsyGy5wYXRjaGVzLnYxLlBvc3RWaWV3ZXJTdGF0ZSIkChFVbmxpa2VQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIm8KElVubGlrZVBvc3RSZXNwb25zZRImCgZjb3VudHMYASABKAsyFi5wYXRjaGVzLnYxLlBvc3RDb3VudHMSMQoMdmlld2VyX3N0YXRlGAIgASgLMhsucGF0Y2hlcy52MS5Qb3N0Vmlld2VyU3RhdGUiJgoTQm9va21hcmtQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIkkKFEJvb2ttYXJrUG9zdFJlc3BvbnNlEjEKDHZpZXdlcl9zdGF0ZRgBIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlIigKFVVuYm9va21hcmtQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIksKFlVuYm9va21hcmtQb3N0UmVzcG9uc2USMQoMdmlld2VyX3N0YXRlGAEgASgLMhsucGF0Y2hlcy52MS5Qb3N0Vmlld2VyU3RhdGUiNQoUTGlzdEJvb2ttYXJrc1JlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNIlwKFUxpc3RCb29rbWFya3NSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChVMaXN0UG9zdExpa2Vyc1JlcXVlc3QSDwoHcG9zdF9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXwoWTGlzdFBvc3RMaWtlcnNSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvMoAECg9SZWFjdGlvblNlcnZpY2USRQoITGlrZVBvc3QSGy5wYXRjaGVzLnYxLkxpa2VQb3N0UmVxdWVzdBocLnBhdGNoZXMudjEuTGlrZVBvc3RSZXNwb25zZRJLCgpVbmxpa2VQb3N0Eh0ucGF0Y2hlcy52MS5Vbmxpa2VQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuVW5saWtlUG9zdFJlc3BvbnNlElEKDEJvb2ttYXJrUG9zdBIfLnBhdGNoZXMudjEuQm9va21hcmtQb3N0UmVxdWVzdBogLnBhdGNoZXMudjEuQm9va21hcmtQb3N0UmVzcG9uc2USVwoOVW5ib29rbWFya1Bvc3QSIS5wYXRjaGVzLnYxLlVuYm9va21hcmtQb3N0UmVxdWVzdBoiLnBhdGNoZXMudjEuVW5ib29rbWFya1Bvc3RSZXNwb25zZRJUCg1MaXN0Qm9va21hcmtzEiAucGF0Y2hlcy52MS5MaXN0Qm9va21hcmtzUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdEJvb2ttYXJrc1Jlc3BvbnNlElcKDkxpc3RQb3N0TGlrZXJzEiEucGF0Y2hlcy52MS5MaXN0UG9zdExpa2Vyc1JlcXVlc3QaIi5wYXRjaGVzLnYxLkxpc3RQb3N0TGlrZXJzUmVzcG9uc2ViBnByb3RvMw',
+    'ChpwYXRjaGVzL3YxL3JlYWN0aW9ucy5wcm90bxIKcGF0Y2hlcy52MSIiCg9MaWtlUG9zdFJlcXVlc3QSDwoHcG9zdF9pZBgBIAEoCSJtChBMaWtlUG9zdFJlc3BvbnNlEiYKBmNvdW50cxgBIAEoCzIWLnBhdGNoZXMudjEuUG9zdENvdW50cxIxCgx2aWV3ZXJfc3RhdGUYAiABKAsyGy5wYXRjaGVzLnYxLlBvc3RWaWV3ZXJTdGF0ZSIkChFVbmxpa2VQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIm8KElVubGlrZVBvc3RSZXNwb25zZRImCgZjb3VudHMYASABKAsyFi5wYXRjaGVzLnYxLlBvc3RDb3VudHMSMQoMdmlld2VyX3N0YXRlGAIgASgLMhsucGF0Y2hlcy52MS5Qb3N0Vmlld2VyU3RhdGUiJgoTQm9va21hcmtQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIkkKFEJvb2ttYXJrUG9zdFJlc3BvbnNlEjEKDHZpZXdlcl9zdGF0ZRgBIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlIigKFVVuYm9va21hcmtQb3N0UmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJIksKFlVuYm9va21hcmtQb3N0UmVzcG9uc2USMQoMdmlld2VyX3N0YXRlGAEgASgLMhsucGF0Y2hlcy52MS5Qb3N0Vmlld2VyU3RhdGUiNQoUTGlzdEJvb2ttYXJrc1JlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNIlwKFUxpc3RCb29rbWFya3NSZXNwb25zZRIfCgVwb3N0cxgBIAMoCzIQLnBhdGNoZXMudjEuUG9zdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChVMaXN0UG9zdExpa2Vyc1JlcXVlc3QSDwoHcG9zdF9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXwoWTGlzdFBvc3RMaWtlcnNSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIiQKEVJlcG9zdFBvc3RSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkibwoSUmVwb3N0UG9zdFJlc3BvbnNlEiYKBmNvdW50cxgBIAEoCzIWLnBhdGNoZXMudjEuUG9zdENvdW50cxIxCgx2aWV3ZXJfc3RhdGUYAiABKAsyGy5wYXRjaGVzLnYxLlBvc3RWaWV3ZXJTdGF0ZSImChNVbnJlcG9zdFBvc3RSZXF1ZXN0Eg8KB3Bvc3RfaWQYASABKAkicQoUVW5yZXBvc3RQb3N0UmVzcG9uc2USJgoGY291bnRzGAEgASgLMhYucGF0Y2hlcy52MS5Qb3N0Q291bnRzEjEKDHZpZXdlcl9zdGF0ZRgCIAEoCzIbLnBhdGNoZXMudjEuUG9zdFZpZXdlclN0YXRlIkoKGExpc3RQb3N0UmVwb3N0ZXJzUmVxdWVzdBIPCgdwb3N0X2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJiChlMaXN0UG9zdFJlcG9zdGVyc1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8yggYKD1JlYWN0aW9uU2VydmljZRJFCghMaWtlUG9zdBIbLnBhdGNoZXMudjEuTGlrZVBvc3RSZXF1ZXN0GhwucGF0Y2hlcy52MS5MaWtlUG9zdFJlc3BvbnNlEksKClVubGlrZVBvc3QSHS5wYXRjaGVzLnYxLlVubGlrZVBvc3RSZXF1ZXN0Gh4ucGF0Y2hlcy52MS5Vbmxpa2VQb3N0UmVzcG9uc2USUQoMQm9va21hcmtQb3N0Eh8ucGF0Y2hlcy52MS5Cb29rbWFya1Bvc3RSZXF1ZXN0GiAucGF0Y2hlcy52MS5Cb29rbWFya1Bvc3RSZXNwb25zZRJXCg5VbmJvb2ttYXJrUG9zdBIhLnBhdGNoZXMudjEuVW5ib29rbWFya1Bvc3RSZXF1ZXN0GiIucGF0Y2hlcy52MS5VbmJvb2ttYXJrUG9zdFJlc3BvbnNlElQKDUxpc3RCb29rbWFya3MSIC5wYXRjaGVzLnYxLkxpc3RCb29rbWFya3NSZXF1ZXN0GiEucGF0Y2hlcy52MS5MaXN0Qm9va21hcmtzUmVzcG9uc2USVwoOTGlzdFBvc3RMaWtlcnMSIS5wYXRjaGVzLnYxLkxpc3RQb3N0TGlrZXJzUmVxdWVzdBoiLnBhdGNoZXMudjEuTGlzdFBvc3RMaWtlcnNSZXNwb25zZRJLCgpSZXBvc3RQb3N0Eh0ucGF0Y2hlcy52MS5SZXBvc3RQb3N0UmVxdWVzdBoeLnBhdGNoZXMudjEuUmVwb3N0UG9zdFJlc3BvbnNlElEKDFVucmVwb3N0UG9zdBIfLnBhdGNoZXMudjEuVW5yZXBvc3RQb3N0UmVxdWVzdBogLnBhdGNoZXMudjEuVW5yZXBvc3RQb3N0UmVzcG9uc2USYAoRTGlzdFBvc3RSZXBvc3RlcnMSJC5wYXRjaGVzLnYxLkxpc3RQb3N0UmVwb3N0ZXJzUmVxdWVzdBolLnBhdGNoZXMudjEuTGlzdFBvc3RSZXBvc3RlcnNSZXNwb25zZWIGcHJvdG8z',
     [file_patches_v1_actors, file_patches_v1_common, file_patches_v1_posts],
   );
 
@@ -274,6 +274,139 @@ export const ListPostLikersResponseSchema: GenMessage<ListPostLikersResponse> =
   messageDesc(file_patches_v1_reactions, 11);
 
 /**
+ * @generated from message patches.v1.RepostPostRequest
+ */
+export type RepostPostRequest = Message<'patches.v1.RepostPostRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+};
+
+/**
+ * Describes the message patches.v1.RepostPostRequest.
+ * Use `create(RepostPostRequestSchema)` to create a new message.
+ */
+export const RepostPostRequestSchema: GenMessage<RepostPostRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 12);
+
+/**
+ * @generated from message patches.v1.RepostPostResponse
+ */
+export type RepostPostResponse = Message<'patches.v1.RepostPostResponse'> & {
+  /**
+   * @generated from field: patches.v1.PostCounts counts = 1;
+   */
+  counts?: PostCounts | undefined;
+
+  /**
+   * @generated from field: patches.v1.PostViewerState viewer_state = 2;
+   */
+  viewerState?: PostViewerState | undefined;
+};
+
+/**
+ * Describes the message patches.v1.RepostPostResponse.
+ * Use `create(RepostPostResponseSchema)` to create a new message.
+ */
+export const RepostPostResponseSchema: GenMessage<RepostPostResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 13);
+
+/**
+ * @generated from message patches.v1.UnrepostPostRequest
+ */
+export type UnrepostPostRequest = Message<'patches.v1.UnrepostPostRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+};
+
+/**
+ * Describes the message patches.v1.UnrepostPostRequest.
+ * Use `create(UnrepostPostRequestSchema)` to create a new message.
+ */
+export const UnrepostPostRequestSchema: GenMessage<UnrepostPostRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 14);
+
+/**
+ * @generated from message patches.v1.UnrepostPostResponse
+ */
+export type UnrepostPostResponse = Message<'patches.v1.UnrepostPostResponse'> & {
+  /**
+   * @generated from field: patches.v1.PostCounts counts = 1;
+   */
+  counts?: PostCounts | undefined;
+
+  /**
+   * @generated from field: patches.v1.PostViewerState viewer_state = 2;
+   */
+  viewerState?: PostViewerState | undefined;
+};
+
+/**
+ * Describes the message patches.v1.UnrepostPostResponse.
+ * Use `create(UnrepostPostResponseSchema)` to create a new message.
+ */
+export const UnrepostPostResponseSchema: GenMessage<UnrepostPostResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 15);
+
+/**
+ * @generated from message patches.v1.ListPostRepostersRequest
+ */
+export type ListPostRepostersRequest = Message<'patches.v1.ListPostRepostersRequest'> & {
+  /**
+   * @generated from field: string post_id = 1;
+   */
+  postId: string;
+
+  /**
+   * @generated from field: string cursor = 2;
+   */
+  cursor: string;
+
+  /**
+   * @generated from field: uint32 limit = 3;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message patches.v1.ListPostRepostersRequest.
+ * Use `create(ListPostRepostersRequestSchema)` to create a new message.
+ */
+export const ListPostRepostersRequestSchema: GenMessage<ListPostRepostersRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 16);
+
+/**
+ * @generated from message patches.v1.ListPostRepostersResponse
+ */
+export type ListPostRepostersResponse = Message<'patches.v1.ListPostRepostersResponse'> & {
+  /**
+   * @generated from field: repeated patches.v1.Actor actors = 1;
+   */
+  actors: Actor[];
+
+  /**
+   * @generated from field: patches.v1.PageInfo page = 2;
+   */
+  page?: PageInfo | undefined;
+};
+
+/**
+ * Describes the message patches.v1.ListPostRepostersResponse.
+ * Use `create(ListPostRepostersResponseSchema)` to create a new message.
+ */
+export const ListPostRepostersResponseSchema: GenMessage<ListPostRepostersResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_reactions, 17);
+
+/**
  * Likes and bookmarks (spec §53). Bookmarks are private — never exposed on another actor's
  * view; `ListBookmarks` only ever returns the caller's own.
  *
@@ -336,5 +469,36 @@ export const ReactionService: GenService<{
     methodKind: 'unary';
     input: typeof ListPostLikersRequestSchema;
     output: typeof ListPostLikersResponseSchema;
+  };
+  /**
+   * A repost is a pointer row like a like or a bookmark (spec §190) — it never duplicates the
+   * post's content.
+   *
+   * @generated from rpc patches.v1.ReactionService.RepostPost
+   */
+  repostPost: {
+    methodKind: 'unary';
+    input: typeof RepostPostRequestSchema;
+    output: typeof RepostPostResponseSchema;
+  };
+  /**
+   * Idempotent: unreposting a post the caller hasn't reposted is not an error.
+   *
+   * @generated from rpc patches.v1.ReactionService.UnrepostPost
+   */
+  unrepostPost: {
+    methodKind: 'unary';
+    input: typeof UnrepostPostRequestSchema;
+    output: typeof UnrepostPostResponseSchema;
+  };
+  /**
+   * Actors who reposted a post, most-recent first.
+   *
+   * @generated from rpc patches.v1.ReactionService.ListPostReposters
+   */
+  listPostReposters: {
+    methodKind: 'unary';
+    input: typeof ListPostRepostersRequestSchema;
+    output: typeof ListPostRepostersResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_reactions, 0);

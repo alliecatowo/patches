@@ -322,13 +322,14 @@ export function App({
   function decoratePost(post: Post): Post {
     const override = reactionOverrides.get(post.id);
     if (override === undefined) return post;
-    const viewerState = post.viewerState ?? { liked: false, bookmarked: false };
-    const counts = post.counts ?? { replies: 0, likes: 0 };
+    const viewerState = post.viewerState ?? { liked: false, bookmarked: false, reposted: false };
+    const counts = post.counts ?? { replies: 0, likes: 0, reposts: 0, quotes: 0 };
     return {
       ...post,
       viewerState: {
         liked: override.liked ?? viewerState.liked,
         bookmarked: override.bookmarked ?? viewerState.bookmarked,
+        reposted: viewerState.reposted,
       },
       counts: { ...counts, likes: override.likes ?? counts.likes },
     };

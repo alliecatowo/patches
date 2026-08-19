@@ -23,7 +23,7 @@ import {
   type UnlikePostRequest,
   type UnlikePostResponse,
 } from '@patches/proto';
-import { PostVisibility } from '@patches/proto/nest';
+import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -98,6 +98,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           contentWarning: '',
           inReplyToId: '',
           mediaIds: [],
+          quotedPostId: '',
+          communityId: '',
+          quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
         },
         { accessToken: author.accessToken },
       );

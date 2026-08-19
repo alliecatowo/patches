@@ -25,6 +25,16 @@ service ReactionService {
 
   // Actors who liked a post, most-recent first.
   rpc ListPostLikers(ListPostLikersRequest) returns (ListPostLikersResponse);
+
+  // A repost is a pointer row like a like or a bookmark (spec §190) — it never duplicates the
+  // post's content.
+  rpc RepostPost(RepostPostRequest) returns (RepostPostResponse);
+
+  // Idempotent: unreposting a post the caller hasn't reposted is not an error.
+  rpc UnrepostPost(UnrepostPostRequest) returns (UnrepostPostResponse);
+
+  // Actors who reposted a post, most-recent first.
+  rpc ListPostReposters(ListPostRepostersRequest) returns (ListPostRepostersResponse);
 }
 
 message LikePostRequest {
@@ -78,6 +88,35 @@ message ListPostLikersRequest {
 }
 
 message ListPostLikersResponse {
+  repeated Actor actors = 1;
+  PageInfo page = 2;
+}
+
+message RepostPostRequest {
+  string post_id = 1;
+}
+
+message RepostPostResponse {
+  PostCounts counts = 1;
+  PostViewerState viewer_state = 2;
+}
+
+message UnrepostPostRequest {
+  string post_id = 1;
+}
+
+message UnrepostPostResponse {
+  PostCounts counts = 1;
+  PostViewerState viewer_state = 2;
+}
+
+message ListPostRepostersRequest {
+  string post_id = 1;
+  string cursor = 2;
+  uint32 limit = 3;
+}
+
+message ListPostRepostersResponse {
   repeated Actor actors = 1;
   PageInfo page = 2;
 }

@@ -33,6 +33,29 @@ export interface NodeLimits {
   searchQueryMaxChars: number;
 }
 
+/**
+ * Amendment B capabilities (spec §190) that carry a value rather than being a bare named flag
+ * — unlike `GetNodeInfoResponse.capabilities`, which stays a `repeated string` allow-list of
+ * on/off features.
+ */
+export interface SocialCapabilities {
+  /**
+   * Allow-listed single-codepoint glyphs a custom reaction/nameplate may use (spec §192). An
+   * empty list means this node has no custom reaction glyphs enabled.
+   */
+  likeGlyphAllowList: string[];
+  /**
+   * The post body ceiling this node currently enforces; may be raised up to 10,000 characters
+   * from the 5,000 default (spec §188). Mirrors `NodeLimits.post_body_max_chars` — kept here
+   * too so a client reading only the new capabilities message still gets the current value.
+   */
+  maxPostChars: number;
+  canCreateCommunity: boolean;
+  dmEnabled: boolean;
+  /** 0 means "no retention limit is enforced". */
+  dmRetentionDays: number;
+}
+
 export interface GetNodeInfoRequest {}
 
 export interface GetNodeInfoResponse {
@@ -52,6 +75,8 @@ export interface GetNodeInfoResponse {
    * capabilities only. Clients must tolerate unknown entries.
    */
   capabilities: string[];
+  /** Value-carrying capabilities added by Amendment B (spec §188, §190). */
+  socialCapabilities: SocialCapabilities | undefined;
 }
 
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';

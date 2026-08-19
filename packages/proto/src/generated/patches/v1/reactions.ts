@@ -69,6 +69,35 @@ export interface ListPostLikersResponse {
   page: PageInfo | undefined;
 }
 
+export interface RepostPostRequest {
+  postId: string;
+}
+
+export interface RepostPostResponse {
+  counts: PostCounts | undefined;
+  viewerState: PostViewerState | undefined;
+}
+
+export interface UnrepostPostRequest {
+  postId: string;
+}
+
+export interface UnrepostPostResponse {
+  counts: PostCounts | undefined;
+  viewerState: PostViewerState | undefined;
+}
+
+export interface ListPostRepostersRequest {
+  postId: string;
+  cursor: string;
+  limit: number;
+}
+
+export interface ListPostRepostersResponse {
+  actors: Actor[];
+  page: PageInfo | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -108,6 +137,24 @@ export interface ReactionServiceClient {
     request: ListPostLikersRequest,
     metadata?: Metadata,
   ): Observable<ListPostLikersResponse>;
+
+  /**
+   * A repost is a pointer row like a like or a bookmark (spec §190) — it never duplicates the
+   * post's content.
+   */
+
+  repostPost(request: RepostPostRequest, metadata?: Metadata): Observable<RepostPostResponse>;
+
+  /** Idempotent: unreposting a post the caller hasn't reposted is not an error. */
+
+  unrepostPost(request: UnrepostPostRequest, metadata?: Metadata): Observable<UnrepostPostResponse>;
+
+  /** Actors who reposted a post, most-recent first. */
+
+  listPostReposters(
+    request: ListPostRepostersRequest,
+    metadata?: Metadata,
+  ): Observable<ListPostRepostersResponse>;
 }
 
 /**
@@ -156,6 +203,33 @@ export interface ReactionServiceController {
     request: ListPostLikersRequest,
     metadata?: Metadata,
   ): Promise<ListPostLikersResponse> | Observable<ListPostLikersResponse> | ListPostLikersResponse;
+
+  /**
+   * A repost is a pointer row like a like or a bookmark (spec §190) — it never duplicates the
+   * post's content.
+   */
+
+  repostPost(
+    request: RepostPostRequest,
+    metadata?: Metadata,
+  ): Promise<RepostPostResponse> | Observable<RepostPostResponse> | RepostPostResponse;
+
+  /** Idempotent: unreposting a post the caller hasn't reposted is not an error. */
+
+  unrepostPost(
+    request: UnrepostPostRequest,
+    metadata?: Metadata,
+  ): Promise<UnrepostPostResponse> | Observable<UnrepostPostResponse> | UnrepostPostResponse;
+
+  /** Actors who reposted a post, most-recent first. */
+
+  listPostReposters(
+    request: ListPostRepostersRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListPostRepostersResponse>
+    | Observable<ListPostRepostersResponse>
+    | ListPostRepostersResponse;
 }
 
 export function ReactionServiceControllerMethods() {
@@ -167,6 +241,9 @@ export function ReactionServiceControllerMethods() {
       'unbookmarkPost',
       'listBookmarks',
       'listPostLikers',
+      'repostPost',
+      'unrepostPost',
+      'listPostReposters',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

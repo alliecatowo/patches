@@ -18,7 +18,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_notifications: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'Ch5wYXRjaGVzL3YxL25vdGlmaWNhdGlvbnMucHJvdG8SCnBhdGNoZXMudjEi1gEKDE5vdGlmaWNhdGlvbhIKCgJpZBgBIAEoCRIqCgR0eXBlGAIgASgOMhwucGF0Y2hlcy52MS5Ob3RpZmljYXRpb25UeXBlEiAKBWFjdG9yGAMgASgLMhEucGF0Y2hlcy52MS5BY3RvchIPCgdwb3N0X2lkGAQgASgJEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEisKB3JlYWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIjkKGExpc3ROb3RpZmljYXRpb25zUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0icAoZTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRIvCg1ub3RpZmljYXRpb25zGAEgAygLMhgucGF0Y2hlcy52MS5Ob3RpZmljYXRpb24SIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iRAocTWFya05vdGlmaWNhdGlvbnNSZWFkUmVxdWVzdBISCgp0aHJvdWdoX2lkGAEgASgJEhAKCG1hcmtfYWxsGAIgASgIIjUKHU1hcmtOb3RpZmljYXRpb25zUmVhZFJlc3BvbnNlEhQKDG1hcmtlZF9jb3VudBgBIAEoDSIXChVHZXRVbnJlYWRDb3VudFJlcXVlc3QiJwoWR2V0VW5yZWFkQ291bnRSZXNwb25zZRINCgVjb3VudBgBIAEoDSrNAQoQTm90aWZpY2F0aW9uVHlwZRIhCh1OT1RJRklDQVRJT05fVFlQRV9VTlNQRUNJRklFRBAAEhwKGE5PVElGSUNBVElPTl9UWVBFX0ZPTExPVxABEhoKFk5PVElGSUNBVElPTl9UWVBFX0xJS0UQAhIbChdOT1RJRklDQVRJT05fVFlQRV9SRVBMWRADEh0KGU5PVElGSUNBVElPTl9UWVBFX01FTlRJT04QBBIgChxOT1RJRklDQVRJT05fVFlQRV9NT0RFUkFUSU9OEAUyvgIKE05vdGlmaWNhdGlvblNlcnZpY2USYAoRTGlzdE5vdGlmaWNhdGlvbnMSJC5wYXRjaGVzLnYxLkxpc3ROb3RpZmljYXRpb25zUmVxdWVzdBolLnBhdGNoZXMudjEuTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRJsChVNYXJrTm90aWZpY2F0aW9uc1JlYWQSKC5wYXRjaGVzLnYxLk1hcmtOb3RpZmljYXRpb25zUmVhZFJlcXVlc3QaKS5wYXRjaGVzLnYxLk1hcmtOb3RpZmljYXRpb25zUmVhZFJlc3BvbnNlElcKDkdldFVucmVhZENvdW50EiEucGF0Y2hlcy52MS5HZXRVbnJlYWRDb3VudFJlcXVlc3QaIi5wYXRjaGVzLnYxLkdldFVucmVhZENvdW50UmVzcG9uc2ViBnByb3RvMw',
+    'Ch5wYXRjaGVzL3YxL25vdGlmaWNhdGlvbnMucHJvdG8SCnBhdGNoZXMudjEihQIKDE5vdGlmaWNhdGlvbhIKCgJpZBgBIAEoCRIqCgR0eXBlGAIgASgOMhwucGF0Y2hlcy52MS5Ob3RpZmljYXRpb25UeXBlEiAKBWFjdG9yGAMgASgLMhEucGF0Y2hlcy52MS5BY3RvchIPCgdwb3N0X2lkGAQgASgJEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEisKB3JlYWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhcKD2NvbnZlcnNhdGlvbl9pZBgHIAEoCRIUCgxjb21tdW5pdHlfaWQYCCABKAkiOQoYTGlzdE5vdGlmaWNhdGlvbnNSZXF1ZXN0Eg4KBmN1cnNvchgBIAEoCRINCgVsaW1pdBgCIAEoDSJwChlMaXN0Tm90aWZpY2F0aW9uc1Jlc3BvbnNlEi8KDW5vdGlmaWNhdGlvbnMYASADKAsyGC5wYXRjaGVzLnYxLk5vdGlmaWNhdGlvbhIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJEChxNYXJrTm90aWZpY2F0aW9uc1JlYWRSZXF1ZXN0EhIKCnRocm91Z2hfaWQYASABKAkSEAoIbWFya19hbGwYAiABKAgiNQodTWFya05vdGlmaWNhdGlvbnNSZWFkUmVzcG9uc2USFAoMbWFya2VkX2NvdW50GAEgASgNIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgNKs8CChBOb3RpZmljYXRpb25UeXBlEiEKHU5PVElGSUNBVElPTl9UWVBFX1VOU1BFQ0lGSUVEEAASHAoYTk9USUZJQ0FUSU9OX1RZUEVfRk9MTE9XEAESGgoWTk9USUZJQ0FUSU9OX1RZUEVfTElLRRACEhsKF05PVElGSUNBVElPTl9UWVBFX1JFUExZEAMSHQoZTk9USUZJQ0FUSU9OX1RZUEVfTUVOVElPThAEEiAKHE5PVElGSUNBVElPTl9UWVBFX01PREVSQVRJT04QBRIcChhOT1RJRklDQVRJT05fVFlQRV9SRVBPU1QQBhIbChdOT1RJRklDQVRJT05fVFlQRV9RVU9URRAHEh0KGU5PVElGSUNBVElPTl9UWVBFX01FU1NBR0UQCBImCiJOT1RJRklDQVRJT05fVFlQRV9DT01NVU5JVFlfSU5WSVRFEAkyvgIKE05vdGlmaWNhdGlvblNlcnZpY2USYAoRTGlzdE5vdGlmaWNhdGlvbnMSJC5wYXRjaGVzLnYxLkxpc3ROb3RpZmljYXRpb25zUmVxdWVzdBolLnBhdGNoZXMudjEuTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRJsChVNYXJrTm90aWZpY2F0aW9uc1JlYWQSKC5wYXRjaGVzLnYxLk1hcmtOb3RpZmljYXRpb25zUmVhZFJlcXVlc3QaKS5wYXRjaGVzLnYxLk1hcmtOb3RpZmljYXRpb25zUmVhZFJlc3BvbnNlElcKDkdldFVucmVhZENvdW50EiEucGF0Y2hlcy52MS5HZXRVbnJlYWRDb3VudFJlcXVlc3QaIi5wYXRjaGVzLnYxLkdldFVucmVhZENvdW50UmVzcG9uc2ViBnByb3RvMw',
     [file_google_protobuf_timestamp, file_patches_v1_actors, file_patches_v1_common],
   );
 
@@ -62,6 +62,21 @@ export type Notification = Message<'patches.v1.Notification'> & {
    * @generated from field: google.protobuf.Timestamp read_at = 6;
    */
   readAt?: Timestamp | undefined;
+
+  /**
+   * Set for MESSAGE; empty otherwise. Never resolves to a message body — the caller must call
+   * `DirectMessageService.ListMessages` for that.
+   *
+   * @generated from field: string conversation_id = 7;
+   */
+  conversationId: string;
+
+  /**
+   * Set for COMMUNITY_INVITE; empty otherwise.
+   *
+   * @generated from field: string community_id = 8;
+   */
+  communityId: string;
 };
 
 /**
@@ -229,6 +244,35 @@ export enum NotificationType {
    * @generated from enum value: NOTIFICATION_TYPE_MODERATION = 5;
    */
   MODERATION = 5,
+
+  /**
+   * A repost of one of the caller's posts (spec §190).
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_REPOST = 6;
+   */
+  REPOST = 6,
+
+  /**
+   * A quote of one of the caller's posts.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_QUOTE = 7;
+   */
+  QUOTE = 7,
+
+  /**
+   * A new direct message or message request landed. Never carries the message body — see
+   * `Notification.conversation_id`.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_MESSAGE = 8;
+   */
+  MESSAGE = 8,
+
+  /**
+   * An invite to join a community.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_COMMUNITY_INVITE = 9;
+   */
+  COMMUNITY_INVITE = 9,
 }
 
 /**

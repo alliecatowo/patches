@@ -25,6 +25,17 @@ export enum NotificationType {
    * these yet — `ModerationService`'s admin-facing actions land with the admin CLI, spec §65.
    */
   NOTIFICATION_TYPE_MODERATION = 'NOTIFICATION_TYPE_MODERATION',
+  /** NOTIFICATION_TYPE_REPOST - A repost of one of the caller's posts (spec §190). */
+  NOTIFICATION_TYPE_REPOST = 'NOTIFICATION_TYPE_REPOST',
+  /** NOTIFICATION_TYPE_QUOTE - A quote of one of the caller's posts. */
+  NOTIFICATION_TYPE_QUOTE = 'NOTIFICATION_TYPE_QUOTE',
+  /**
+   * NOTIFICATION_TYPE_MESSAGE - A new direct message or message request landed. Never carries the message body — see
+   * `Notification.conversation_id`.
+   */
+  NOTIFICATION_TYPE_MESSAGE = 'NOTIFICATION_TYPE_MESSAGE',
+  /** NOTIFICATION_TYPE_COMMUNITY_INVITE - An invite to join a community. */
+  NOTIFICATION_TYPE_COMMUNITY_INVITE = 'NOTIFICATION_TYPE_COMMUNITY_INVITE',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -41,6 +52,13 @@ export interface Notification {
   createdAt: Timestamp | undefined;
   /** Unset (zero value) while unread. */
   readAt: Timestamp | undefined;
+  /**
+   * Set for MESSAGE; empty otherwise. Never resolves to a message body — the caller must call
+   * `DirectMessageService.ListMessages` for that.
+   */
+  conversationId: string;
+  /** Set for COMMUNITY_INVITE; empty otherwise. */
+  communityId: string;
 }
 
 export interface ListNotificationsRequest {

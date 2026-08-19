@@ -6,12 +6,20 @@ import {
   type CreatePostResponse,
   type DeletePostRequest,
   type DeletePostResponse,
+  type EditPostRequest,
+  type EditPostResponse,
   type GetPostRequest,
   type GetPostResponse,
+  type ListPostEditsRequest,
+  type ListPostEditsResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
+  type PinPostRequest,
+  type PinPostResponse,
   type PostServiceController,
   PostServiceControllerMethods,
+  type UnpinPostRequest,
+  type UnpinPostResponse,
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
@@ -94,6 +102,29 @@ export class PostController implements PostServiceController {
       posts: result.posts.map(toProtoPost),
       page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
     };
+  }
+
+  /**
+   * `PostService`'s application layer has no edit/pin logic yet — `post_edits`/
+   * `pinned_posts` and `EditPost`/`ListPostEdits`/`PinPost`/`UnpinPost` land with a later
+   * Amendment B slice (P11-00x); this contract-only wave (P11-001) only needs the controller
+   * to satisfy `PostServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a
+   * silent no-op.
+   */
+  editPost(@Payload() _request: EditPostRequest): Promise<EditPostResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'EditPost is not implemented yet.');
+  }
+
+  listPostEdits(@Payload() _request: ListPostEditsRequest): Promise<ListPostEditsResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'ListPostEdits is not implemented yet.');
+  }
+
+  pinPost(@Payload() _request: PinPostRequest): Promise<PinPostResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'PinPost is not implemented yet.');
+  }
+
+  unpinPost(@Payload() _request: UnpinPostRequest): Promise<UnpinPostResponse> {
+    throw new AppError('NOT_IMPLEMENTED', 'UnpinPost is not implemented yet.');
   }
 
   /**
