@@ -29,6 +29,7 @@ kill_timeout = "20s"
   PUBLIC_ORIGIN = "https://patches-social.fly.dev"
   NODE_DOMAIN = "patches-social.fly.dev"
   INVITE_ONLY = "true"
+  PUBLIC_READ = "false"
   # ADR 0016 §6: bare `scheme://host[:port]` origins allowed to call the Connect edge
   # cross-origin (apps/web, Cloudflare Pages — docs/operations/web.md). Not yet redeployed
   # here — see that doc for the caveat.
