@@ -40,7 +40,7 @@ jobs:
     steps:
       # Deploy the exact commit CI just validated, not whatever `main` has drifted to by
       # the time this job starts.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
