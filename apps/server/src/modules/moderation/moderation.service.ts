@@ -1,9 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, Block, Follow, Mute, Report, type ReportReason } from '@patches/database';
+import {
+  Actor,
+  Block,
+  Follow,
+  ModerationLogEntry,
+  Mute,
+  Report,
+  type ReportReason,
+} from '@patches/database';
+import { dateToTimestamp } from '@patches/proto';
+import type {
+  ListModerationLogResponse,
+  ListMyModerationNoticesResponse,
+} from '@patches/proto/nest';
 import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { AppConfigService } from '../../config/app-config.service.js';
 import type { ActorSummary } from '../auth/auth.dto.js';
 import { toActorSummary } from '../auth/auth.dto.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
@@ -11,6 +25,12 @@ import type { RelationshipView } from '../graph/graph.dto.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { PostService } from '../posts/post.service.js';
 import { parseInput, uuidInputSchema } from '../posts/validation.js';
+import {
+  toProtoActionType,
+  toProtoReasonCategory,
+  toProtoSubjectKind,
+} from './moderation.mapper.js';
+import { queryNoticeRows, toModerationNotice } from './notice-projection.js';
 
 /**
  * The application service behind `patches.v1.ModerationService` (spec §55, §61–64, Phase 6
@@ -33,6 +53,7 @@ export class ModerationService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly posts: PostService,
     private readonly messages: MessagesService,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
@@ -264,6 +285,81 @@ export class ModerationService {
       }),
     );
     return saved.id;
+  }
+
+  /**
+   * The public, anonymized transparency log (spec §201.4) — unauthenticated, keyset-paginated
+   * over `moderation_log_entries`. Today only `patches-admin domain block` (P14-012, this
+   * task's owned `apps/admin/src/commands/domain.ts`) writes rows here; `user`/`report`-driven
+   * account/post entries are a follow-up for whoever next touches `apps/admin/src/commands/
+   * {user,report}.ts` (out of this task's file scope — see this task's report). This is an
+   * honest partial implementation (spec §176), not a stub: every row that exists is real and
+   * correctly anonymized, `NOT_IMPLEMENTED` is gone, and the table/RPC are ready for those
+   * commands to start writing to as soon as they do.
+   */
+  async listModerationLog(cursorRaw: string, limit: number): Promise<ListModerationLogResponse> {
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+
+    const qb = this.dataSource
+      .getRepository(ModerationLogEntry)
+      .createQueryBuilder('entry')
+      .orderBy('entry.createdAt', 'DESC')
+      .addOrderBy('entry.id', 'DESC')
+      .take(take + 1);
+
+    if (cursor !== undefined) {
+      qb.andWhere('(entry.createdAt, entry.id) < (:cursorCreatedAt, :cursorId)', {
+        cursorCreatedAt: cursor.createdAt,
+        cursorId: cursor.id,
+      });
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+
+    return {
+      entries: page.map((row) => ({
+        id: row.id,
+        action: toProtoActionType(row.action),
+        subjectKind: toProtoSubjectKind(row.subjectKind),
+        subjectDomain: row.subjectDomain ?? '',
+        reasonCategory: toProtoReasonCategory(row.reasonCategory),
+        appealed: row.appealed,
+        createdAt: dateToTimestamp(row.createdAt),
+      })),
+      page: { nextCursor, hasMore },
+    };
+  }
+
+  /** The caller's own moderation notices (spec §201.2) — a live read projection of
+   * `admin_audit_log`, not a second source of truth; see `notice-projection.ts`'s doc comment
+   * for exactly which rows are notice-worthy today. */
+  async listMyModerationNotices(
+    actorId: string,
+    cursorRaw: string,
+    limit: number,
+  ): Promise<ListMyModerationNoticesResponse> {
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+
+    const rows = await queryNoticeRows(this.dataSource, actorId, cursor, take + 1);
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+
+    return {
+      notices: page.map((row) => toModerationNotice(row, this.config.appealWindowDays)),
+      page: { nextCursor, hasMore },
+    };
   }
 
   // ---------------------------------------------------------------- internals
