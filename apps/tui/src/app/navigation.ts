@@ -18,9 +18,10 @@ import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
  * Pure functions, no React — unit-tested in `navigation.test.ts`.
  */
 export type NavEntry =
-  | { screen: Exclude<Screen, 'profile' | 'thread' | 'page' | 'report'> }
+  | { screen: Exclude<Screen, 'profile' | 'thread' | 'page' | 'report' | 'postHistory'> }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
   | { screen: 'thread'; postId: string }
+  | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }
   | { screen: 'report'; target: ReportTarget };
 

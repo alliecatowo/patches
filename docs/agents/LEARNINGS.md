@@ -462,3 +462,55 @@ first; only fall through to the sanitized generic 500 for everything else. Globa
 filters added for one narrow surface (an HTTP surface that only ever throws AppErrors) silently
 assume nothing else will ever route through them — re-verify that assumption before adding a
 second HTTP surface to the same app.
+
+## 2026-08-19 — Phase 12 TUI wave: uncommitted WIP, host-dependent tests, and two bugs only tmux found
+
+**Learning 1 — commit per green slice, not per session.** A previous wave built most of the
+Phase 12 interaction model (input layers, modal stack, palette, theme engine, pickers, split
+pane, media viewer — ~60 files) and was killed by a session limit with **all of it
+uncommitted**. Nothing was lost this time, but recovering it cost a full session of working out
+what was finished vs. half-done: a `HelpScreen` key handler stubbed to `onClose(); return true;`
+with the real logic commented out below it, a `setLegacySubmodeActive` helper wired to nothing,
+three `FilePicker` tests that had never passed. None of that is discoverable from a diff — only
+from running it. The rule the harness already states ("commit early, commit often") is not about
+tidiness, it is about not losing the *distinction between done and in-progress*. A slice that
+typechecks and has green tests should be committed before starting the next one, even mid-task.
+
+**Learning 2 — `FORCE_COLOR` in a developer's shell silently rewrites every Ink frame
+assertion.** Nine tests "failed" on this machine and passed in CI. Chalk (inside Ink) decides
+colour from the *host* environment, so `ink-testing-library` frames carry SGR sequences for
+anyone whose shell exports `FORCE_COLOR` (this agent's did) and none for anyone else. Two
+distinct breakages follow: `expect(frame).toContain('Extension .txt is not allowed')` fails
+because colour codes sit inside the phrase, and — subtler — a themed phrase spans several
+`<Text>` nodes, so `waitForFrame(lastFrame, 'Enter run · Tab complete')` times out on a frame
+that plainly shows those words. Fix: pin `env: { FORCE_COLOR: '3' }` in the vitest project (the
+mode the real TUI runs in, so tests exercise the styled path everywhere) and strip SGR in the
+shared frame matcher (`test/ansi.ts`). Sanitisation tests then assert `hasNonSgrEscape` rather
+than "no escapes at all", which still catches a hostile string smuggling a cursor move while
+ignoring the theme's own colour. Any assertion over a raw Ink frame is environment-dependent
+until proven otherwise.
+
+**Learning 3 — Ink parses one stdin chunk into one keypress, so fast typing breaks multi-key
+sequences.** `useInput` calls `parseKeypress(data)` **once per stdin data event**. Two keys typed
+faster than the terminal flushes arrive in the same read and reach the app as a single
+`input: 'gh'` — the `g` prefix is never seen, and `g h` silently does nothing. The faster the
+user types, the less works, which is why it survived a full unit-test suite (`press('g')` and
+`press('h')` are two writes) and only showed up driving the real binary under tmux. Fix: detect a
+coalesced printable run and replay it one key at a time. Related: multi-key prefix state must
+live in a **ref**, since the same handler closure serves every key in a chunk.
+
+**Learning 4 — hiding an overlay's background with `height={0}` does not stop Ink painting it.**
+The help/palette overlay collapsed the screen behind it to zero height with `overflow="hidden"`.
+That removes it from *layout* but Ink still emits its text into the same rows as the overlay, so
+the live timeline bled through the help screen mid-line (`Here — Homehours ago`). `display="none"`
+is the correct tool — Yoga skips a `DISPLAY_NONE` subtree and Ink's renderer skips painting it —
+and it keeps the subtree mounted, so an in-progress sub-mode survives opening the palette.
+Neither the unit tests nor `frame-fits` caught this: both assert on line count and width, and the
+garbled frame was exactly 36 lines of ≤120 cells. **Run the real binary under tmux and read the
+frame** before calling a layout change done.
+
+**Learning 5 — measurement and rendering must be one computation, not two that agree.** The new
+markup renderer wraps text to exact cells (`layoutMarkup`) and the viewport counts the lines that
+produced (`measureMarkupHeight`), instead of measuring with one function and rendering with Ink's
+independent soft wrap. The old split silently under-counted any body containing markup, and an
+under-count is what smears Ink's line diff.

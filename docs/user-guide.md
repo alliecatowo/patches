@@ -162,7 +162,6 @@ full-screen client. Screens and global keys (see
 | `b`          | bookmark/unbookmark the selected post                                  |
 | `R`          | repost/unrepost the selected post                                      |
 | `Q`          | quote the selected post in a new post                                  |
-| `E`          | edit your own selected post                                            |
 | `d`          | delete your own selected post (confirm `y`/`n`)                        |
 | `H`          | view the selected post's edit history                                  |
 | `#`          | open the selected post's first tag timeline                            |

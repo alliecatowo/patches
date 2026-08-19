@@ -25,6 +25,7 @@ import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
 import { HelpScreen } from '../screens/HelpScreen.js';
+import { PostHistoryScreen } from '../screens/PostHistoryScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
@@ -664,7 +665,7 @@ export function App({
     onQuote: openQuote,
     onEdit: () => notify('Post editing route is not connected yet.', 'error'),
     onDelete: confirmDelete,
-    onHistory: () => notify('Post history route is not connected yet.', 'error'),
+    onHistory: (post) => goTo({ screen: 'postHistory', postId: post.id }),
     onTogglePin: (post) => void togglePin(post),
     onReport: reportPost,
     onOpenMedia: openMedia,
@@ -1032,6 +1033,14 @@ export function App({
                           contextScreen={stack[stack.length - 2]?.screen ?? 'local'}
                           isActive
                           onClose={back}
+                        />
+                      )}
+                      {entry.screen === 'postHistory' && (
+                        <PostHistoryScreen
+                          api={api}
+                          postId={entry.postId}
+                          isActive={screenIsActive}
+                          ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
                         />
                       )}
                       {entry.screen === 'local' && (
