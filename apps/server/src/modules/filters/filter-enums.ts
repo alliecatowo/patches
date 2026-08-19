@@ -40,6 +40,19 @@ export function filterTermKindFromProto(value: FilterTermKind): DbFilterTermKind
   return kind;
 }
 
+/**
+ * A-051 (spec §198.3): `NOTIFICATIONS` (enforced by `NotificationsService.listNotifications`)
+ * and `MESSAGE_REQUESTS` (enforced by `MessagesService.listMessageRequests`) are the two scopes
+ * with no list-item UI to attach a `filtered_by` hint to — neither RPC's response shape carries
+ * one. A filter/list-subscription action of `collapse` or `warn` is accepted and stored for
+ * these scopes exactly like any other, but only ever behaves as `hide` there; `collapse`/`warn`
+ * are a silent no-op, matching every other client-presentation action that never fails
+ * validation server-side. This is intentional, not a gap: rejecting `collapse`/`warn` at write
+ * time would need the write path to know which scopes were selected on the same filter as a
+ * scope requiring `hide`-only semantics, which single-`action`-per-filter (`filters.proto`)
+ * does not support without duplicating filters. See both services' `listNotifications`/
+ * `listMessageRequests` doc comments for the enforcement side.
+ */
 const SCOPE_TO_PROTO: Readonly<Record<DbFilterScope, FilterScope>> = Object.freeze({
   HOME: FilterScope.FILTER_SCOPE_HOME,
   LOCAL: FilterScope.FILTER_SCOPE_LOCAL,

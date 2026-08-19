@@ -3,17 +3,21 @@ import { randomUUID } from 'node:crypto';
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import {
   createAuthClient,
+  createDirectMessageClient,
   createFeedClient,
   createFilterClient,
   createFilterListClient,
   createPostClient,
   type AuthGrpcClient,
+  type CreateConversationRequest,
+  type CreateConversationResponse,
   type CreateFilterRequest,
   type CreateFilterResponse,
   type CreatePostRequest,
   type CreatePostResponse,
   type DeleteFilterRequest,
   type DeleteFilterResponse,
+  type DirectMessageGrpcClient,
   type ExportFiltersRequest,
   type ExportFiltersResponse,
   type FeedGrpcClient,
@@ -33,6 +37,8 @@ import {
   type ListFiltersResponse,
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
+  type ListMessageRequestsRequest,
+  type ListMessageRequestsResponse,
   type PostGrpcClient,
   type PublishFilterListRequest,
   type PublishFilterListResponse,
@@ -83,6 +89,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let filterLists: FilterListGrpcClient;
     let posts: PostGrpcClient;
     let feeds: FeedGrpcClient;
+    let dms: DirectMessageGrpcClient;
     let inviterUserId: string;
     let viewer: TestActor;
 
@@ -100,6 +107,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       filterLists = createFilterListClient(server.url, creds);
       posts = createPostClient(server.url, creds);
       feeds = createFeedClient(server.url, creds);
+      dms = createDirectMessageClient(server.url, creds);
 
       viewer = await registerTestActor(auth, dataSource, inviterUserId);
     }, 60_000);
@@ -110,6 +118,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       filterLists.close();
       posts.close();
       feeds.close();
+      dms.close();
       await server.close();
       await dataSource.destroy();
     });
@@ -680,6 +689,70 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { accessToken: subscriber.accessToken },
         );
         expect(searched.posts.map((post) => post.id)).not.toContain(postId);
+      },
+    );
+
+    it(
+      'A-051: a MESSAGE_REQUESTS-scope hide rule on the sender omits their request, and ' +
+        'other scopes are unaffected',
+      async () => {
+        const recipient = await registerTestActor(auth, dataSource, inviterUserId);
+        const sender = await registerTestActor(auth, dataSource, inviterUserId);
+        const suffix = testSuffix();
+
+        await callUnary<CreateFilterRequest, CreateFilterResponse>(
+          filters.createFilter.bind(filters),
+          {
+            name: `hide-sender-requests-${suffix}`,
+            terms: [{ kind: FilterTermKind.FILTER_TERM_KIND_ACTOR, value: sender.actorId }],
+            scopes: [FilterScope.FILTER_SCOPE_MESSAGE_REQUESTS],
+            action: FilterAction.FILTER_ACTION_HIDE,
+            expiresAt: undefined,
+          },
+          { accessToken: recipient.accessToken },
+        );
+
+        await callUnary<CreateConversationRequest, CreateConversationResponse>(
+          dms.createConversation.bind(dms),
+          {
+            clientRequestId: randomUUID(),
+            recipientActorIds: [recipient.actorId],
+            initialBody: `filtered request ${suffix}`,
+          },
+          { accessToken: sender.accessToken },
+        );
+
+        const requests = await callUnary<ListMessageRequestsRequest, ListMessageRequestsResponse>(
+          dms.listMessageRequests.bind(dms),
+          { cursor: '', limit: 20 },
+          { accessToken: recipient.accessToken },
+        );
+        expect(requests.requests.some((row) => row.sender?.id === sender.actorId)).toBe(false);
+
+        // A different actor's request (no matching rule) must still arrive.
+        const otherSender = await registerTestActor(auth, dataSource, inviterUserId);
+        await callUnary<CreateConversationRequest, CreateConversationResponse>(
+          dms.createConversation.bind(dms),
+          {
+            clientRequestId: randomUUID(),
+            recipientActorIds: [recipient.actorId],
+            initialBody: `unfiltered request ${suffix}`,
+          },
+          { accessToken: otherSender.accessToken },
+        );
+        const requestsAfter = await callUnary<
+          ListMessageRequestsRequest,
+          ListMessageRequestsResponse
+        >(
+          dms.listMessageRequests.bind(dms),
+          { cursor: '', limit: 20 },
+          {
+            accessToken: recipient.accessToken,
+          },
+        );
+        expect(requestsAfter.requests.some((row) => row.sender?.id === otherSender.actorId)).toBe(
+          true,
+        );
       },
     );
   },
