@@ -306,6 +306,20 @@ never shell string interpolation of untrusted paths.
 to open externally`). `PostRow` always renders it; there is no path where an attachment
   is silently dropped.
 
+### Render mode precedence (P12-113)
+
+`createRenderer`'s `mode` (`auto`/`kitty`/`pixel`/`ascii`/`box`/`off`) is picked once,
+in `cli.tsx`, before Ink's `render()`: `PATCHES_IMAGES` env var > the saved
+per-node/actor `imagePolicy` preference (`preferences/store.ts`) > `'auto'` —
+`media/image-mode.ts`'s `resolveEffectiveImageRenderMode`. The saved preference is read
+via a local-only `credentialStore.get()` lookup (no network — it does not duplicate
+`SessionManager.restore()`'s refresh-token exchange just to learn the actor id).
+
+`PreferencesScreen`'s "Images" row edits `imagePolicy` (lifted into `App.tsx` state
+alongside theme/plain/quiet) but does **not** apply live: swapping the renderer's kind
+mid-session would need safely tearing down any in-flight Kitty placements first, which
+is out of scope. Saving a changed value toasts "restart patches to apply" instead.
+
 ## 7b. Post body markup (P12-017) {#markup}
 
 A post body is displayed as rich text. Two input dialects are accepted and both are
@@ -376,6 +390,12 @@ never created referencing a still-processing or failed upload. Not implemented: 
 auto-detection from body text, and a per-attachment alt-text prompt — both are
 follow-ups, not a silent gap (alt text has no UI to set it yet on either `CreatePost` or
 `Post.media`).
+
+Each attachment also gets a small (≤6 rows, ≤24 cols) terminal-art thumbnail via
+`@patches/terminal-media`'s `renderArtPreview`, fired once as a best-effort side effect
+right after that attach succeeds (a session-local render cache keyed by `mediaId`, not
+part of the persisted draft). Skipped in plain mode and when the session has no media
+renderer or it resolved to the `box` fallback.
 
 ## 9. State (§78–80)
 
@@ -567,6 +587,21 @@ on the selected `PostList` row toggles per-post reveal state (never persisted).
 `format/sanitize.ts` strips C0/C1 control characters from every rendered user string
 (handle, display name, bio, body, content warning, nameplate glyph) so a hostile value
 can't smuggle terminal escapes into the render tree (spec §153/§104).
+
+`Post.filtered_by` (spec §198.3/§199.3 — set only for `collapse`/`warn`, since a `hide`
+match never reaches the client) renders via `format/filtered-by.ts`'s
+`describeFilteredBy`: `collapse` folds the body behind one muted "filtered: <name> (via
+@owner) — press v to expand" line, sharing `PostRow`'s existing per-row `v` fold toggle;
+`warn` shows the same line above the untouched body. `Post.labels` (spec §200.3/§203)
+render as compact `[value]` chips inline on the attribution row.
+
+**Follow requests (§197.5)**: `Relationship.requested`/`requested_by` surface on
+`ProfileScreen` — `requested` shows "follow requested" in place of the normal follow
+state (`f` cancels it via `UnfollowActor`, which also deletes the outstanding
+`FollowRequest`); `requested_by` shows "wants to follow you — a accept · x reject",
+wired to `AcceptFollowRequest`/`RejectFollowRequest`. `NotificationsScreen` renders
+`NOTIFICATION_TYPE_FOLLOW_REQUEST` rows with a hint to `:followrequests`, where they are
+actually resolved (`FollowRequestsScreen`'s own `A`/`D`).
 
 **Thread screen and reply (P4-004)**: `screens/ThreadScreen.tsx` is `Enter` on any
 `PostList` row (home, local, profile, and thread replies themselves — drilling in is
