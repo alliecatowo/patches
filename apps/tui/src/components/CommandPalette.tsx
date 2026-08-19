@@ -4,9 +4,11 @@ import type { ReactElement } from 'react';
 
 import {
   completeCommand,
+  filterCommands,
   filterPaletteBindings,
   paletteBindings,
   parseCommand,
+  type Command,
   type CommandHistory,
   type CommandInvocation,
 } from '../app/commands.js';
@@ -27,13 +29,22 @@ export interface CommandPaletteProps {
   onError: (message: string) => void;
   onClose: () => void;
   initialQuery?: string;
+  /** Row verbs and mention/tag/link commands for whatever post the palette was opened
+   * over (`app/commands.js`'s `contextualCommands`, P12-116) — shown ahead of the
+   * static `KEYMAP` bindings and fuzzy-filtered by the same query. Omitted (or empty)
+   * when the palette wasn't opened over a selection; nothing about the merged list
+   * changes in that case. */
+  contextualCommands?: readonly Command[];
 }
+
+type PaletteItem = { kind: 'command'; command: Command } | { kind: 'binding'; binding: Binding };
 
 function isUnknownCommand(error: string): boolean {
   return error.startsWith('Unknown command:');
 }
 
-/** `:` command line and fuzzy command palette, both backed directly by `KEYMAP`. */
+/** `:` command line and fuzzy command palette, backed by `KEYMAP` plus (when opened
+ * over a post) the contextual commands parsed from it. */
 export function CommandPalette({
   screen,
   authenticated,
@@ -42,6 +53,7 @@ export function CommandPalette({
   onError,
   onClose,
   initialQuery = '',
+  contextualCommands: contextual = [],
 }: CommandPaletteProps): ReactElement {
   const content = useContentSize();
   const available = useMemo(() => paletteBindings(screen, authenticated), [authenticated, screen]);
@@ -52,10 +64,15 @@ export function CommandPalette({
   const selectedRef = useRef(0);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>(undefined);
   const commandWord = query.trimStart().split(/\s/u)[0] ?? '';
-  const filtered = filterPaletteBindings(commandWord, available);
-  const effectiveSelected = Math.min(selected, Math.max(0, filtered.length - 1));
+  const filteredCommands = filterCommands(commandWord, contextual);
+  const filteredBindings = filterPaletteBindings(commandWord, available);
+  const items: PaletteItem[] = [
+    ...filteredCommands.map((command): PaletteItem => ({ kind: 'command', command })),
+    ...filteredBindings.map((binding): PaletteItem => ({ kind: 'binding', binding })),
+  ];
+  const effectiveSelected = Math.min(selected, Math.max(0, items.length - 1));
   const visibleRows = Math.max(1, Math.min(8, content.rows - 3));
-  const visible = filtered.slice(0, visibleRows);
+  const visible = items.slice(0, visibleRows);
 
   function setQuery(next: string | ((current: string) => string)): void {
     const value = typeof next === 'string' ? next : next(queryRef.current);
@@ -86,7 +103,8 @@ export function CommandPalette({
   function invoke(): void {
     const trimmed = queryRef.current.trim();
     const currentWord = trimmed.split(/\s/u)[0] ?? '';
-    const currentFiltered = filterPaletteBindings(currentWord, available);
+    const currentCommands = filterCommands(currentWord, contextual);
+    const currentBindings = filterPaletteBindings(currentWord, available);
     if (trimmed !== '') {
       const parsed = parseCommand(trimmed);
       if (parsed.ok) {
@@ -100,7 +118,18 @@ export function CommandPalette({
         return;
       }
     }
-    const binding = currentFiltered[selectedRef.current];
+    const index = selectedRef.current;
+    if (index < currentCommands.length) {
+      const command = currentCommands[index];
+      if (command === undefined) {
+        onError('No command is selected.');
+        return;
+      }
+      onClose();
+      command.run();
+      return;
+    }
+    const binding = currentBindings[index - currentCommands.length];
     if (binding === undefined) {
       onError(trimmed === '' ? 'No command is selected.' : `No command matches “${trimmed}”.`);
       return;
@@ -125,7 +154,7 @@ export function CommandPalette({
         return true;
       }
       if (query === '' && input === 'j') {
-        select((current) => Math.min(current + 1, Math.max(0, filtered.length - 1)));
+        select((current) => Math.min(current + 1, Math.max(0, items.length - 1)));
         return true;
       }
       if (query === '' && input === 'k') {
@@ -162,18 +191,29 @@ export function CommandPalette({
       <Text color={theme.accent} bold wrap="truncate-end">
         :{sanitizeForTerminal(query)}█
       </Text>
-      {visible.map((binding, index) => (
-        <Box key={`${binding.keys}:${binding.hint}`} height={1} flexShrink={0} overflow="hidden">
-          <Text
-            color={index === effectiveSelected ? theme.accent : theme.muted}
-            wrap="truncate-end"
-          >
-            {index === effectiveSelected ? '› ' : '  '}
-            {binding.description ?? binding.hint}
-            <Text color={theme.warn}> ({binding.keys})</Text>
-          </Text>
-        </Box>
-      ))}
+      {visible.map((item, index) => {
+        const key =
+          item.kind === 'command'
+            ? `command:${item.command.id}`
+            : `binding:${item.binding.keys}:${item.binding.hint}`;
+        const label =
+          item.kind === 'command'
+            ? item.command.label
+            : (item.binding.description ?? item.binding.hint);
+        const hint = item.kind === 'command' ? item.command.hint : item.binding.keys;
+        return (
+          <Box key={key} height={1} flexShrink={0} overflow="hidden">
+            <Text
+              color={index === effectiveSelected ? theme.accent : theme.muted}
+              wrap="truncate-end"
+            >
+              {index === effectiveSelected ? '› ' : '  '}
+              {label}
+              {hint === '' ? null : <Text color={theme.warn}> ({hint})</Text>}
+            </Text>
+          </Box>
+        );
+      })}
       <Text color={theme.muted} wrap="truncate-end">
         Enter run · Tab complete · ↑/↓ history · Esc close
       </Text>

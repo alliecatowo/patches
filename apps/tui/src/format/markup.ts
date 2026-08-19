@@ -217,6 +217,20 @@ export function extractTags(text: string): string[] {
   return tags;
 }
 
+/** Every distinct link href in a body — markdown `[text](url)` or a bare autolink — in
+ * first-appearance order. Delegates to `parseInline` itself (rather than a third regex)
+ * so this can never disagree with what actually renders as a link: same allow-listed
+ * http/https/mailto grammar, same `safeHref` validation. */
+export function extractLinks(text: string): string[] {
+  const hrefs: string[] = [];
+  for (const node of parseInline(sanitizeForTerminal(text))) {
+    if (node.role === 'link' && node.href !== undefined && !hrefs.includes(node.href)) {
+      hrefs.push(node.href);
+    }
+  }
+  return hrefs;
+}
+
 // --- HTML subset -------------------------------------------------------------
 
 const INLINE_TAGS = new Set(['b', 'strong', 'i', 'em', 'code', 'a']);
