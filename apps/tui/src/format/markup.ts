@@ -204,6 +204,19 @@ export function extractMentions(text: string): string[] {
   return handles;
 }
 
+/** Every distinct `#tag` in a body, lowercased and without the `#`, in first-appearance
+ * order — same grammar `parseInline` uses for the `tag` role (never all-digits). */
+export function extractTags(text: string): string[] {
+  const tags: string[] = [];
+  for (const match of sanitizeForTerminal(text).matchAll(TAG_PATTERN)) {
+    const raw = match[1] ?? '';
+    if (raw === '' || /^\d+$/u.test(raw)) continue;
+    const tag = raw.toLowerCase();
+    if (!tags.includes(tag)) tags.push(tag);
+  }
+  return tags;
+}
+
 // --- HTML subset -------------------------------------------------------------
 
 const INLINE_TAGS = new Set(['b', 'strong', 'i', 'em', 'code', 'a']);
