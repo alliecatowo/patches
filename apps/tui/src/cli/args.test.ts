@@ -106,6 +106,18 @@ describe('parseArgs', () => {
     expect(args.rest).toEqual(['add', '--ssh-key', 'SHA256:abc', '--yes']);
   });
 
+  it('forwards community and tag subcommands for their own parsers', () => {
+    expect(parseArgs(['community', 'post', 'community-1', '--body', 'hello'])).toMatchObject({
+      command: 'community',
+      rest: ['post', 'community-1', '--body', 'hello'],
+    });
+    expect(parseArgs(['tag', 'feed', '#typescript', '--limit', '5'])).toMatchObject({
+      command: 'tag',
+      rest: ['feed', '#typescript', '--limit', '5'],
+    });
+    expect(parseArgs(['tag', '--help'])).toMatchObject({ command: 'tag', rest: ['--help'] });
+  });
+
   it('collects unrecognised flags after an auth subcommand into rest, instead of erroring', () => {
     const args = parseArgs(['register', '--handle', 'alice', '--email', 'alice@example.com']);
     expect(args.command).toBe('register');

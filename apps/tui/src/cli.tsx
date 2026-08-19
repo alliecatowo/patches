@@ -11,6 +11,7 @@ import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
 import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
+import { runCommunity } from './cli/community.js';
 import { runDm } from './cli/dm.js';
 import { createNodeIo } from './cli/io.js';
 import { runKeys } from './cli/keys.js';
@@ -19,6 +20,7 @@ import { runLogout } from './cli/logout.js';
 import { runPing } from './cli/ping.js';
 import { runProfile } from './cli/profile.js';
 import { runRegister } from './cli/register.js';
+import { runTag } from './cli/tag.js';
 import { runVerify } from './cli/verify.js';
 import { runWhoami } from './cli/whoami.js';
 import { App } from './app/App.js';
@@ -63,6 +65,9 @@ async function main(): Promise<number> {
   if (args.command === 'profile')
     return runProfile(rest, { io, env: process.env, target, insecure });
   if (args.command === 'dm') return runDm(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'community')
+    return runCommunity(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'tag') return runTag(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

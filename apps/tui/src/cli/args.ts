@@ -13,7 +13,9 @@ export type Command =
   | 'keys'
   | 'verify'
   | 'profile'
-  | 'dm';
+  | 'dm'
+  | 'community'
+  | 'tag';
 
 const SUBCOMMANDS: readonly Command[] = [
   'register',
@@ -25,6 +27,8 @@ const SUBCOMMANDS: readonly Command[] = [
   'verify',
   'profile',
   'dm',
+  'community',
+  'tag',
 ];
 
 export interface ParsedArgs {
@@ -126,6 +130,8 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'verify':
       case 'profile':
       case 'dm':
+      case 'community':
+      case 'tag':
         result.command = argument;
         break;
       case '--insecure':
@@ -186,6 +192,8 @@ Usage:
   patches verify --resend      ask the server to resend the verification email
   patches profile edit [opts]  edit your display name/bio/location/website
   patches dm <command>         list, read, send, or manage message requests
+  patches community <command>  list, join, leave, or post to communities
+  patches tag <command>        search or read/mute a tag
   patches --version            print the client version
 
 Options:
@@ -197,5 +205,6 @@ Options:
   -v, --version                  show the client version
 
 Run \`patches register --help\` / \`patches login --help\` / \`patches keys --help\` /
-\`patches profile edit --help\` / \`patches dm --help\` for subcommand-specific options.
+\`patches profile edit --help\` / \`patches dm --help\` / \`patches community --help\` /
+\`patches tag --help\` for subcommand-specific options.
 `;
