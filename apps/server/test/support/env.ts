@@ -27,6 +27,9 @@ export async function prepareServerEnv(): Promise<void> {
   process.env.NODE_DOMAIN ??= TEST_NODE_DOMAIN;
   // The reference node's alpha policy (§33), and the behaviour the suite asserts.
   process.env.INVITE_ONLY ??= 'true';
+  // Exercise the capability-gated Phase 11 community creation surface in integration tests.
+  // Production retains the schema default (`false`) unless an operator opts in.
+  process.env.CAN_CREATE_COMMUNITY ??= 'true';
 
   if (process.env.JWT_PRIVATE_KEY === undefined || process.env.JWT_PRIVATE_KEY.length === 0) {
     const { publicKey, privateKey } = await generateKeyPair('EdDSA', {

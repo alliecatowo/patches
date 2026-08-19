@@ -26,7 +26,12 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims, TokenService } from '../auth/token.service.js';
-import { postVisibilityFromProto, toProtoPost } from './post.mapper.js';
+import {
+  postVisibilityFromProto,
+  quotePolicyFromProto,
+  toProtoPost,
+  toProtoPostEdit,
+} from './post.mapper.js';
 import { PostService } from './post.service.js';
 
 const AUTHORIZATION_METADATA_KEY = 'authorization';
@@ -63,6 +68,9 @@ export class PostController implements PostServiceController {
       ...optional('contentWarning', request.contentWarning),
       ...optional('inReplyToId', request.inReplyToId),
       mediaIds: request.mediaIds,
+      ...optional('quotedPostId', request.quotedPostId),
+      ...optional('communityId', request.communityId),
+      quotePolicy: quotePolicyFromProto(request.quotePolicy),
     });
     return { post: toProtoPost(post) };
   }
@@ -104,27 +112,59 @@ export class PostController implements PostServiceController {
     };
   }
 
-  /**
-   * `PostService`'s application layer has no edit/pin logic yet — `post_edits`/
-   * `pinned_posts` and `EditPost`/`ListPostEdits`/`PinPost`/`UnpinPost` land with a later
-   * Amendment B slice (P11-00x); this contract-only wave (P11-001) only needs the controller
-   * to satisfy `PostServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a
-   * silent no-op.
-   */
-  editPost(@Payload() _request: EditPostRequest): Promise<EditPostResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'EditPost is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async editPost(
+    @Payload() request: EditPostRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<EditPostResponse> {
+    const post = await this.posts.editPost(requireSession(session).actorId, request.id, {
+      body: request.body,
+      contentWarning: request.contentWarning,
+      mediaIds: request.mediaIds,
+    });
+    return { post: toProtoPost(post) };
   }
 
-  listPostEdits(@Payload() _request: ListPostEditsRequest): Promise<ListPostEditsResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'ListPostEdits is not implemented yet.');
+  async listPostEdits(
+    @Payload() request: ListPostEditsRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<ListPostEditsResponse> {
+    const viewerActorId = await this.optionalViewerActorId(metadata);
+    const result = await this.posts.listPostEdits(
+      request.postId,
+      request.cursor,
+      request.limit,
+      viewerActorId,
+    );
+    return {
+      edits: result.edits.map(toProtoPostEdit),
+      page: { nextCursor: result.nextCursor, hasMore: result.hasMore },
+    };
   }
 
-  pinPost(@Payload() _request: PinPostRequest): Promise<PinPostResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'PinPost is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async pinPost(
+    @Payload() request: PinPostRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<PinPostResponse> {
+    const post = await this.posts.pinPost(
+      requireSession(session).actorId,
+      request.postId,
+      request.position,
+    );
+    return { post: toProtoPost(post) };
   }
 
-  unpinPost(@Payload() _request: UnpinPostRequest): Promise<UnpinPostResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'UnpinPost is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async unpinPost(
+    @Payload() request: UnpinPostRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<UnpinPostResponse> {
+    const post = await this.posts.unpinPost(requireSession(session).actorId, request.postId);
+    return { post: toProtoPost(post) };
   }
 
   /**

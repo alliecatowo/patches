@@ -8,9 +8,9 @@ import {
   LOCATION_TEXT_MAX_LENGTH,
   SEARCH_QUERY_MAX_LENGTH,
   WEBSITE_URL_MAX_LENGTH,
+  isWidthOneGlyph,
 } from '../actors/validation.js';
 import { HANDLE_MAX_LENGTH } from '../auth/validation.js';
-import { POST_BODY_MAX_LENGTH } from '../posts/validation.js';
 import { SERVER_VERSION } from './server-version.provider.js';
 
 /** Alt text has no owning validation module yet — `MediaService` lands in Phase 5. The limit
@@ -44,7 +44,7 @@ export class NodeService {
         ? RegistrationMode.REGISTRATION_MODE_INVITE_ONLY
         : RegistrationMode.REGISTRATION_MODE_OPEN,
       limits: {
-        postBodyMaxChars: POST_BODY_MAX_LENGTH,
+        postBodyMaxChars: this.config.maxPostChars,
         bioMaxChars: BIO_MAX_LENGTH,
         displayNameMaxChars: DISPLAY_NAME_MAX_LENGTH,
         handleMaxChars: HANDLE_MAX_LENGTH,
@@ -54,16 +54,12 @@ export class NodeService {
         searchQueryMaxChars: SEARCH_QUERY_MAX_LENGTH,
       },
       capabilities: [...CAPABILITIES],
-      // Amendment B value-carrying capabilities (spec §188, §190) — `CommunityService`/
-      // `DirectMessageService` have no application logic yet (P11-001 is schema/contract
-      // only), so `canCreateCommunity`/`dmEnabled` are honestly `false` rather than a guess,
-      // same reasoning as `CAPABILITIES` being empty above.
       socialCapabilities: {
-        likeGlyphAllowList: [],
-        maxPostChars: POST_BODY_MAX_LENGTH,
-        canCreateCommunity: false,
-        dmEnabled: false,
-        dmRetentionDays: 0,
+        likeGlyphAllowList: this.config.likeGlyphAllowList.filter(isWidthOneGlyph),
+        maxPostChars: this.config.maxPostChars,
+        canCreateCommunity: this.config.canCreateCommunity,
+        dmEnabled: this.config.dmEnabled,
+        dmRetentionDays: this.config.dmRetentionDays,
       },
     };
   }

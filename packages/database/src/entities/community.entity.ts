@@ -17,6 +17,7 @@ import { Actor } from './actor.entity.js';
  */
 @Entity({ name: 'communities' })
 @Index(['name'], { unique: true })
+@Index(['createdByActorId', 'clientRequestId'], { unique: true })
 @Check('chk_communities_name', `"name" ~ '^[a-z0-9_]{3,32}$'`)
 export class Community {
   @PrimaryGeneratedColumn('uuid')
@@ -46,6 +47,10 @@ export class Community {
   @ManyToOne(() => Actor, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'created_by_actor_id' })
   declare createdByActor: Actor;
+
+  /** CreateCommunity idempotency key (§45); nullable only for rows predating Amendment B. */
+  @Column({ type: 'uuid', nullable: true })
+  declare clientRequestId: string | null;
 
   @Column({ type: 'boolean', default: true })
   declare isPublic: boolean;

@@ -3,6 +3,7 @@ import type {
   Post as PostEntity,
   PostType as DbPostType,
   PostVisibility as DbPostVisibility,
+  QuotePolicy as DbQuotePolicy,
 } from '@patches/database';
 
 import { toActorSummary, type ActorSummary } from '../auth/auth.dto.js';
@@ -26,13 +27,36 @@ export interface PostMediaSummary {
 export interface PostCountsView {
   replyCount: number;
   likeCount: number;
+  /** Pointer rows in `reposts` (spec §180.1) — never affected by editing/pinning/quoting. */
+  repostCount: number;
+  /** `posts` rows with `quotedPostId` pointing at this post, excluding tombstoned quotes
+   * (spec §180.2). */
+  quoteCount: number;
 }
 
-/** Only meaningful for an authenticated viewer — both `false` for an anonymous read, same as
- * `PostViewerState` on the wire (spec §53). */
+/** Only meaningful for an authenticated viewer — every field `false` for an anonymous read,
+ * same as `PostViewerState` on the wire (spec §53, §180.1). */
 export interface PostViewerStateView {
   liked: boolean;
   bookmarked: boolean;
+  reposted: boolean;
+}
+
+/**
+ * Embedded community reference for `Post.community` (spec §189, §190) — deliberately
+ * counts-less/creator-less, same "not loaded here" reasoning `auth.mapper.ts#toProtoActor`
+ * documents for `Post.author`: this is a lightweight badge on a post, not
+ * `CommunityService.GetCommunity`'s full projection.
+ */
+export interface CommunitySummaryView {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  rules: string;
+  isPublic: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PostView {
@@ -54,17 +78,42 @@ export interface PostView {
   deleted: boolean;
   counts: PostCountsView;
   viewerState: PostViewerStateView;
+  /** Unset unless this post quotes another (spec §180.2, §189). */
+  quotedPostId: string | null;
+  /**
+   * Unset unless this post quotes another *and* the quoted post is populated. Only one level
+   * deep — this nested view's own `quotedPost` is always `null` (spec §180.2's "quoted-post
+   * nesting renders one level"; the caller is responsible for never populating a second
+   * level, see `post.service.ts#quotedPostViewOf`/`feeds/post-batch.ts`).
+   */
+  quotedPost: PostView | null;
+  /** Unset for a post not posted into a community (spec §189). Immutable after creation. */
+  community: CommunitySummaryView | null;
+  quotePolicy: DbQuotePolicy;
+  /** Feed-only repost attribution; ordinary post reads leave this empty. */
+  repostedBy: ActorSummary[];
+  repostedByTotal: number;
+}
+
+export interface ToPostViewExtras {
+  quotedPost?: PostView | null;
+  community?: CommunitySummaryView | null;
+  repostedBy?: readonly ActorSummary[];
+  repostedByTotal?: number;
 }
 
 /**
  * `post.authorActor` must already be loaded by the caller (`relations` or an explicit join) —
- * this never issues a query of its own.
+ * this never issues a query of its own. Same for `extras.quotedPost`/`extras.community`
+ * (spec §189) — both are resolved by the caller (`PostService`/`feeds/post-batch.ts`) so this
+ * function stays a pure mapper, never a query issuer.
  */
 export function toPostView(
   post: PostEntity & { authorActor: ActorEntity },
   media: readonly PostMediaSummary[],
   counts: PostCountsView,
   viewerState: PostViewerStateView,
+  extras: ToPostViewExtras = {},
 ): PostView {
   const deleted = post.deletedAt !== null;
   return {
@@ -82,8 +131,27 @@ export function toPostView(
     editedAt: post.editedAt,
     deleted,
     counts,
-    // A deleted post's like/bookmark state is meaningless to show — zeroed like every other
-    // deleted-post field above, not left to whatever the last real value happened to be.
-    viewerState: deleted ? { liked: false, bookmarked: false } : viewerState,
+    // A deleted post's like/bookmark/reposted state is meaningless to show — zeroed like
+    // every other deleted-post field above, not left to whatever the last real value
+    // happened to be.
+    viewerState: deleted ? { liked: false, bookmarked: false, reposted: false } : viewerState,
+    quotedPostId: deleted ? null : post.quotedPostId,
+    quotedPost: deleted ? null : (extras.quotedPost ?? null),
+    community: deleted ? null : (extras.community ?? null),
+    quotePolicy: post.quotePolicy,
+    repostedBy: [...(extras.repostedBy ?? [])].slice(0, 3),
+    repostedByTotal: extras.repostedByTotal ?? 0,
   };
+}
+
+/** One immutable `post_edits` snapshot (spec §186.1, §189) — the state a post carried
+ * immediately *before* the `EditPost` call that wrote this row. */
+export interface PostEditView {
+  id: string;
+  postId: string;
+  previousBody: string | null;
+  previousContentWarning: string | null;
+  previousMedia: PostMediaSummary[];
+  editedByActorId: string | null;
+  createdAt: Date;
 }

@@ -77,6 +77,9 @@ export class ActorController implements ActorServiceController {
               profileBorder: request.nameplate.profileBorder,
             },
           }),
+      ...(request.flair === undefined || request.flair === null
+        ? {}
+        : { flairDocument: request.flair.document }),
       updateMask: fieldMaskPaths(request.updateMask),
     });
     return { actor: toProtoActor(profile) };

@@ -24,8 +24,8 @@ import {
   type UnmuteActorResponse,
 } from '@patches/proto/nest';
 
-import { AppError } from '../../common/errors/app-error.js';
 import { getRequestContext } from '../../common/context/request-context.js';
+import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
@@ -166,15 +166,20 @@ export class ModerationController implements ModerationServiceController {
     return { reportId };
   }
 
-  /**
-   * `ModerationService`'s application layer has no message-report path yet — snapshot-backed
-   * `ReportMessage` (spec §183.4) lands with `DirectMessageService`'s slice of Amendment B
-   * (P11-00x); this contract-only wave (P11-001) only needs the controller to satisfy
-   * `ModerationServiceController`. Honest `NOT_IMPLEMENTED` (spec §176) rather than a silent
-   * no-op report.
-   */
-  reportMessage(@Payload() _request: ReportMessageRequest): Promise<ReportMessageResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'ReportMessage is not implemented yet.');
+  @UseGuards(AuthGuard)
+  async reportMessage(
+    @Payload() request: ReportMessageRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ReportMessageResponse> {
+    this.reportRateLimit.consume(getRequestContext()?.peer);
+    const reportId = await this.moderation.reportMessage(
+      requireSession(session).actorId,
+      request.messageId,
+      reportReasonFromProto(request.reason),
+      request.details,
+    );
+    return { reportId };
   }
 }
 

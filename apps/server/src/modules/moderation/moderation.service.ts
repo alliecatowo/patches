@@ -8,6 +8,7 @@ import type { ActorSummary } from '../auth/auth.dto.js';
 import { toActorSummary } from '../auth/auth.dto.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import type { RelationshipView } from '../graph/graph.dto.js';
+import { MessagesService } from '../messages/messages.service.js';
 import { PostService } from '../posts/post.service.js';
 import { parseInput, uuidInputSchema } from '../posts/validation.js';
 
@@ -31,6 +32,7 @@ export class ModerationService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly posts: PostService,
+    private readonly messages: MessagesService,
   ) {}
 
   /**
@@ -229,6 +231,34 @@ export class ModerationService {
         reporterActorId,
         subjectType: 'ACTOR',
         subjectActorId: targetActorId,
+        reason,
+        details: normalizeDetails(details),
+      }),
+    );
+    return saved.id;
+  }
+
+  /**
+   * Captures bounded, point-in-time evidence for a DM report (spec §183.4). A missing
+   * message and a message outside one of the caller's active conversations are deliberately
+   * indistinguishable, preserving the same no-oracle rule as the DM read paths.
+   */
+  async reportMessage(
+    reporterActorId: string,
+    messageIdRaw: string,
+    reason: ReportReason,
+    details: string,
+  ): Promise<string> {
+    const messageId = parseInput(uuidInputSchema, messageIdRaw);
+
+    const evidence = await this.messages.snapshotMessageForReport(reporterActorId, messageId);
+    const reports = this.dataSource.getRepository(Report);
+    const saved = await reports.save(
+      reports.create({
+        reporterActorId,
+        subjectType: 'MESSAGE',
+        subjectMessageId: evidence.messageId,
+        messageSnapshot: evidence.snapshot,
         reason,
         details: normalizeDetails(details),
       }),

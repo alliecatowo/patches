@@ -80,21 +80,32 @@ export class FeedController implements FeedServiceController {
     );
   }
 
-  /**
-   * `FeedService` has no tag/community feed application logic yet — `ListTagFeed`'s
-   * `post_tags`/`tags` join and `ListCommunityFeed`'s `posts.community_id` filter land with
-   * the tags/communities slice of Amendment B (P11-00x); this contract-only wave (P11-001)
-   * only needs the controller to satisfy `FeedServiceController`. Honest `NOT_IMPLEMENTED`
-   * (spec §176) rather than a silent empty page.
-   */
-  listTagFeed(@Payload() _request: ListTagFeedRequest): Promise<ListTagFeedResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'ListTagFeed is not implemented yet.');
+  async listTagFeed(
+    @Payload() request: ListTagFeedRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<ListTagFeedResponse> {
+    return toResponse(
+      await this.feeds.listTagFeed(
+        request.tag,
+        request.cursor,
+        request.limit,
+        await this.optionalViewerActorId(metadata),
+      ),
+    );
   }
 
-  listCommunityFeed(
-    @Payload() _request: ListCommunityFeedRequest,
+  async listCommunityFeed(
+    @Payload() request: ListCommunityFeedRequest,
+    @Ctx() metadata?: Metadata,
   ): Promise<ListCommunityFeedResponse> {
-    throw new AppError('NOT_IMPLEMENTED', 'ListCommunityFeed is not implemented yet.');
+    return toResponse(
+      await this.feeds.listCommunityFeed(
+        request.communityId,
+        request.cursor,
+        request.limit,
+        await this.optionalViewerActorId(metadata),
+      ),
+    );
   }
 
   /**

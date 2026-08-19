@@ -6,23 +6,42 @@ import {
   Actor,
   Block,
   Bookmark,
+  Community,
+  CommunityMember,
+  Follow,
   Like,
   Media,
+  PinnedPost,
   Post,
+  PostEdit,
   PostMedia,
+  Repost,
   type PostVisibility as DbPostVisibility,
+  type QuotePolicy as DbQuotePolicy,
 } from '@patches/database';
+import { MAX_PINNED_POSTS, MAX_POST_EDITS_PER_POST, RATE_LIMITS } from '@patches/domain';
 import { DataSource, In, IsNull, type EntityManager, type SelectQueryBuilder } from 'typeorm';
 
+import { enforceWindowRateLimit } from '../../common/rate-limit/window-rate-limiter.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { AppConfigService } from '../../config/app-config.service.js';
+import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federation-gateway.js';
 import { clampLimit, decodeCursor, pageInfoFor, type Cursor } from '../feeds/pagination.js';
 import { NotificationsService } from '../notifications/notification.service.js';
-import { toPostView, type PostMediaSummary, type PostView } from './post.dto.js';
-import { createPostInputSchema, parseInput, uuidInputSchema } from './validation.js';
+import { TagExtractionService, parseTags } from '../tags/tag-extraction.service.js';
+import { communitySummaryOf } from './community-summary.js';
+import { toPostView, type PostEditView, type PostMediaSummary, type PostView } from './post.dto.js';
+import {
+  createPostInputSchema,
+  editPostInputSchema,
+  parseInput,
+  uuidInputSchema,
+} from './validation.js';
 
 /**
- * The application service behind `patches.v1.PostService` (spec §23–26, §45, §51).
+ * The application service behind `patches.v1.PostService` (spec §23–26, §45, §51, §180,
+ * §186, §188).
  *
  * Idempotency, tombstoning, and the "text/link/image" constraint (§23) all live here, not in
  * the controller or the database — the unique index and the `link_url` CHECK are backstops,
@@ -43,10 +62,29 @@ export interface CreatePostInput {
   contentWarning?: string;
   inReplyToId?: string;
   mediaIds: string[];
+  /** Empty unless this post quotes another (spec §180.2). */
+  quotedPostId?: string;
+  /** Empty unless this post is being created into a community; immutable after insert
+   * (spec §189) — there is no edit path for it. */
+  communityId?: string;
+  /** Defaults to `ANYONE` — see `post.mapper.ts#quotePolicyFromProto`. */
+  quotePolicy: DbQuotePolicy;
+}
+
+export interface EditPostInput {
+  body: string;
+  contentWarning: string;
+  mediaIds: string[];
 }
 
 export interface ListRepliesResult {
   posts: PostView[];
+  nextCursor: string;
+  hasMore: boolean;
+}
+
+export interface ListPostEditsResult {
+  edits: PostEditView[];
   nextCursor: string;
   hasMore: boolean;
 }
@@ -70,6 +108,8 @@ const MAX_REPLY_DEPTH = 6;
  * `max_depth` (a wide-but-shallow thread is bounded the same way a deep one is). */
 const MAX_THREAD_NODES = 500;
 
+const HOUR_MS = 60 * 60_000;
+
 function clampDepth(requested: number): number {
   if (!Number.isFinite(requested) || requested <= 0) return DEFAULT_REPLY_DEPTH;
   return Math.min(Math.trunc(requested), MAX_REPLY_DEPTH);
@@ -80,6 +120,9 @@ export class PostService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly notifications: NotificationsService,
+    private readonly config: AppConfigService,
+    private readonly dbRateLimit: DbRateLimitStore,
+    private readonly tagExtraction: TagExtractionService,
     @Inject(FEDERATION_GATEWAY) private readonly federation: FederationGateway,
   ) {}
 
@@ -90,10 +133,21 @@ export class PostService {
    *
    * Replying to a blocked-either-direction actor's post is treated the same as replying to a
    * deleted/missing one (`POST_NOT_FOUND`, spec §62) — never `PERMISSION_DENIED`, which would
-   * confirm the post's existence to a blocked caller.
+   * confirm the post's existence to a blocked caller. Quoting (spec §180.2) is checked the
+   * same way for existence/blocks, but a denial from `quote_policy` itself is
+   * `POST_FORBIDDEN` — quote policy is not a secret. Posting into a community (spec §189)
+   * requires the author already be a member; `community_id` is immutable after insert (there
+   * is no edit path for it, spec §186.1).
    */
   async createPost(input: CreatePostInput): Promise<PostView> {
     const parsed = parseInput(createPostInputSchema, input);
+    parseTags(parsed.body ?? '');
+    if (parsed.body !== undefined && parsed.body.length > this.config.maxPostChars) {
+      throw new AppError(
+        'POST_TOO_LONG',
+        `Post body must be at most ${String(this.config.maxPostChars)} characters on this node.`,
+      );
+    }
 
     const result = await this.dataSource.transaction(async (manager) => {
       const posts = manager.getRepository(Post);
@@ -107,6 +161,7 @@ export class PostService {
           view: await this.viewOf(manager, existing, input.authorActorId),
           replyRecipientActorId: null,
           mentionActorIds: [] as string[],
+          quotedPostAuthorId: null,
         };
       }
 
@@ -123,6 +178,54 @@ export class PostService {
         replyRecipientActorId = parent.authorActorId;
       }
 
+      if (parsed.communityId !== undefined) {
+        const community = await manager
+          .getRepository(Community)
+          .findOne({ where: { id: parsed.communityId } });
+        if (community === null) {
+          throw AppError.validation('That community does not exist.');
+        }
+        const membership = await manager
+          .getRepository(CommunityMember)
+          .findOne({ where: { communityId: parsed.communityId, actorId: input.authorActorId } });
+        if (membership === null) {
+          throw AppError.validation('You must be a member of a community to post in it.');
+        }
+      }
+
+      let quotedPostAuthorId: string | null = null;
+      if (parsed.quotedPostId !== undefined) {
+        const quoted = await posts.findOne({
+          where: { id: parsed.quotedPostId },
+          relations: { authorActor: true },
+        });
+        if (quoted === null || quoted.deletedAt !== null) throw postNotFound();
+        if (await this.blockedEitherDirection(manager, input.authorActorId, quoted.authorActorId)) {
+          throw postNotFound();
+        }
+        if (quoted.quotePolicy === 'NOBODY' && quoted.authorActorId !== input.authorActorId) {
+          throw quoteDenied();
+        }
+        if (quoted.quotePolicy === 'FOLLOWERS' && quoted.authorActorId !== input.authorActorId) {
+          const follow = await manager.getRepository(Follow).findOne({
+            where: {
+              followerActorId: input.authorActorId,
+              followeeActorId: quoted.authorActorId,
+              status: 'FOLLOWING',
+            },
+          });
+          if (follow === null) throw quoteDenied();
+        }
+        await enforceWindowRateLimit(
+          this.dbRateLimit,
+          'quote',
+          input.authorActorId,
+          RATE_LIMITS.quotePerHour,
+          HOUR_MS,
+        );
+        quotedPostAuthorId = quoted.authorActorId;
+      }
+
       const media = await this.attachableMedia(manager, input.authorActorId, parsed.mediaIds);
 
       const created = posts.create({
@@ -137,6 +240,9 @@ export class PostService {
         rootPostId,
         isLocal: true,
         clientRequestId: parsed.clientRequestId,
+        quotedPostId: parsed.quotedPostId ?? null,
+        communityId: parsed.communityId ?? null,
+        quotePolicy: parsed.quotePolicy,
       });
 
       let saved: Post;
@@ -157,6 +263,7 @@ export class PostService {
           view: await this.viewOf(manager, winner, input.authorActorId),
           replyRecipientActorId: null,
           mentionActorIds: [] as string[],
+          quotedPostAuthorId: null,
         };
       }
 
@@ -175,6 +282,8 @@ export class PostService {
       // `PUBLIC`.
       await this.federation.publishPost(manager, id);
 
+      await this.tagExtraction.extractAndAttach(manager, id, parsed.body ?? '');
+
       const mentionActorIds =
         parsed.body === undefined
           ? []
@@ -188,11 +297,12 @@ export class PostService {
         view: toPostView(
           withAuthor,
           media,
-          { replyCount: 0, likeCount: 0 },
-          { liked: false, bookmarked: false },
+          { replyCount: 0, likeCount: 0, repostCount: 0, quoteCount: 0 },
+          { liked: false, bookmarked: false, reposted: false },
         ),
         replyRecipientActorId,
         mentionActorIds,
+        quotedPostAuthorId,
       };
     });
 
@@ -210,6 +320,13 @@ export class PostService {
     }
     for (const mentionedActorId of result.mentionActorIds) {
       await this.notifications.notifyMention(mentionedActorId, input.authorActorId, result.view.id);
+    }
+    if (result.quotedPostAuthorId !== null && result.quotedPostAuthorId !== input.authorActorId) {
+      await this.notifications.notifyQuote(
+        result.quotedPostAuthorId,
+        input.authorActorId,
+        result.view.id,
+      );
     }
 
     return result.view;
@@ -240,7 +357,11 @@ export class PostService {
   }
 
   /** Soft delete/tombstone (spec §25) — owner only. Idempotent: deleting an already-tombstoned
-   * post just returns it rather than erroring on a client's retried `DeletePost`. */
+   * post just returns it rather than erroring on a client's retried `DeletePost`. Tombstones
+   * every repost of it (spec §180.1 — a repost is a pointer, so this needs no extra write:
+   * rendering a repost always resolves through the underlying, now-tombstoned post) and its
+   * edit history (spec §186.1 — `ListPostEdits` stops serving rows once `deletedAt` is set,
+   * see that method). */
   async deletePost(actorId: string, postId: string): Promise<PostView> {
     const id = parseInput(uuidInputSchema, postId);
 
@@ -263,6 +384,199 @@ export class PostService {
       });
       return this.viewOf(manager, tombstoned, actorId);
     });
+  }
+
+  /**
+   * In-place edit (spec §186.1, §189): may change `body`/`content_warning`/media set/order.
+   * Cannot change `post_type`/`visibility`/`in_reply_to_id`/`community_id`/`quoted_post_id`/
+   * `created_at` — `EditPostRequest` simply carries no such fields, so those are immutable by
+   * construction, not by an extra check here. Every call snapshots the post's *previous*
+   * state into `post_edits` before applying the new one (up to `MAX_POST_EDITS_PER_POST`,
+   * spec §188), sets `edited_at`, and never touches `created_at` — an edit's feed position is
+   * therefore always its original `created_at` (explicit test in the integration suite).
+   */
+  async editPost(actorId: string, postIdRaw: string, input: EditPostInput): Promise<PostView> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    const parsed = parseInput(editPostInputSchema, input);
+    parseTags(parsed.body);
+    if (parsed.body.length > this.config.maxPostChars) {
+      throw new AppError(
+        'POST_TOO_LONG',
+        `Post body must be at most ${String(this.config.maxPostChars)} characters on this node.`,
+      );
+    }
+
+    await enforceWindowRateLimit(
+      this.dbRateLimit,
+      'post_edit',
+      actorId,
+      RATE_LIMITS.postEditPerHour,
+      HOUR_MS,
+    );
+
+    return this.dataSource.transaction(async (manager) => {
+      const posts = manager.getRepository(Post);
+      const post = await posts.findOne({ where: { id: postId }, relations: { authorActor: true } });
+      if (post === null) throw postNotFound();
+      if (post.authorActorId !== actorId) throw postForbidden();
+      if (post.deletedAt !== null) throw postNotFound();
+
+      if (parsed.body.length === 0 && parsed.mediaIds.length === 0 && post.postType !== 'LINK') {
+        throw AppError.validation('a post needs text or at least one image (spec §23).');
+      }
+
+      const editCount = await manager.getRepository(PostEdit).countBy({ postId });
+      if (editCount >= MAX_POST_EDITS_PER_POST) {
+        throw AppError.validation(
+          `this post has reached its ${String(MAX_POST_EDITS_PER_POST)}-edit history limit (spec §188).`,
+        );
+      }
+
+      const previousMedia = await this.mediaFor(manager, postId);
+      const postEdits = manager.getRepository(PostEdit);
+      await postEdits.save(
+        postEdits.create({
+          postId,
+          previousBody: post.body,
+          previousContentWarning: post.contentWarning,
+          previousMediaManifest: previousMedia.length > 0 ? previousMedia : null,
+          editedByActorId: actorId,
+        }),
+      );
+
+      const media = await this.attachableMedia(manager, actorId, parsed.mediaIds);
+      await manager.getRepository(PostMedia).delete({ postId });
+      if (media.length > 0) {
+        const postMediaRepo = manager.getRepository(PostMedia);
+        await postMediaRepo.save(
+          media.map((row, position) =>
+            postMediaRepo.create({ postId, mediaId: row.mediaId, position }),
+          ),
+        );
+      }
+
+      await posts.update(
+        { id: postId },
+        {
+          body: parsed.body.length === 0 ? null : parsed.body,
+          contentWarning: parsed.contentWarning.length === 0 ? null : parsed.contentWarning,
+          editedAt: new Date(),
+        },
+      );
+
+      await this.tagExtraction.extractAndAttach(manager, postId, parsed.body);
+
+      const updated = await posts.findOneOrFail({
+        where: { id: postId },
+        relations: { authorActor: true },
+      });
+      return this.viewOf(manager, updated, actorId);
+    });
+  }
+
+  /**
+   * The edit history of a post, most-recent first (spec §186.1). Readable by anyone who can
+   * read the post (same `getPost` block/existence check), but returns nothing once the post
+   * itself is tombstoned — "deleting the post tombstones its edit history with it" (spec
+   * §186.1). The `post_edits` rows themselves are never deleted (nothing here issues a
+   * `DELETE`); they are simply never served again once `post.deletedAt` is set, the same
+   * "hidden, not erased" treatment `toPostView` already gives a tombstoned post's `body`.
+   */
+  async listPostEdits(
+    postIdRaw: string,
+    cursorRaw: string,
+    limit: number,
+    viewerActorId?: string,
+  ): Promise<ListPostEditsResult> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    const post = await this.getPost(postId, viewerActorId);
+    if (post.deleted) {
+      return { edits: [], nextCursor: '', hasMore: false };
+    }
+
+    const cursor = decodeCursor(cursorRaw);
+    const take = clampLimit(limit);
+
+    const qb = this.dataSource
+      .getRepository(PostEdit)
+      .createQueryBuilder('edit')
+      .where('edit.postId = :postId', { postId })
+      .orderBy('edit.createdAt', 'DESC')
+      .addOrderBy('edit.id', 'DESC')
+      .take(take + 1);
+
+    if (cursor !== undefined) {
+      qb.andWhere('(edit.createdAt, edit.id) < (:cursorCreatedAt, :cursorId)', {
+        cursorCreatedAt: cursor.createdAt,
+        cursorId: cursor.id,
+      });
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const edits = page.map(toPostEditView);
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
+      createdAt: row.createdAt,
+      id: row.id,
+    }));
+    return { edits, nextCursor, hasMore };
+  }
+
+  /**
+   * Pins one of the caller's own posts to their profile (spec §184.1, §188): up to
+   * `MAX_PINNED_POSTS`, own `PUBLIC`/`UNLISTED` posts only (a `FOLLOWERS` post pinned to a
+   * public profile would leak past its intended audience). Pinning a post already pinned just
+   * moves it to the requested `position`; pinning a *different* post into an occupied
+   * position vacates the one that was there. Pinning never affects any feed's ordering (spec
+   * §184.1) — this only ever touches `pinned_posts`.
+   */
+  async pinPost(actorId: string, postIdRaw: string, position: number): Promise<PostView> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    if (!Number.isInteger(position) || position < 0 || position >= MAX_PINNED_POSTS) {
+      throw AppError.validation(`position must be between 0 and ${String(MAX_PINNED_POSTS - 1)}.`);
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const posts = manager.getRepository(Post);
+      const post = await posts.findOne({ where: { id: postId }, relations: { authorActor: true } });
+      if (post === null || post.deletedAt !== null) throw postNotFound();
+      if (post.authorActorId !== actorId) throw postForbidden();
+      if (post.visibility !== 'PUBLIC' && post.visibility !== 'UNLISTED') {
+        throw AppError.validation('only PUBLIC or UNLISTED posts can be pinned (spec §184.1).');
+      }
+
+      const pins = manager.getRepository(PinnedPost);
+      const existing = await pins.find({ where: { actorId } });
+      const alreadyPinned = existing.find((row) => row.postId === postId);
+      if (alreadyPinned === undefined && existing.length >= MAX_PINNED_POSTS) {
+        throw AppError.validation(`you can only pin up to ${String(MAX_PINNED_POSTS)} posts.`);
+      }
+
+      const occupying = existing.find((row) => row.position === position && row.postId !== postId);
+      if (occupying !== undefined) {
+        await pins.delete({ actorId, postId: occupying.postId });
+      }
+      if (alreadyPinned !== undefined) {
+        await pins.update({ actorId, postId }, { position });
+      } else {
+        await pins.save(pins.create({ actorId, postId, position }));
+      }
+
+      return this.viewOf(manager, post, actorId);
+    });
+  }
+
+  /** Idempotent: unpinning a post that isn't pinned is not an error (spec §189). */
+  async unpinPost(actorId: string, postIdRaw: string): Promise<PostView> {
+    const postId = parseInput(uuidInputSchema, postIdRaw);
+    const post = await this.dataSource
+      .getRepository(Post)
+      .findOne({ where: { id: postId }, relations: { authorActor: true } });
+    if (post === null) throw postNotFound();
+
+    await this.dataSource.getRepository(PinnedPost).delete({ actorId, postId });
+    return this.viewOf(this.dataSource.manager, post, actorId);
   }
 
   /**
@@ -340,26 +654,80 @@ export class PostService {
     viewerActorId?: string,
   ): Promise<PostView> {
     const media = post.deletedAt !== null ? [] : await this.mediaFor(manager, post.id);
-    const [replyCount, likeCount, likedRow, bookmarkedRow] = await Promise.all([
-      manager.getRepository(Post).countBy({ inReplyToId: post.id, deletedAt: IsNull() }),
-      manager.getRepository(Like).countBy({ postId: post.id }),
-      viewerActorId === undefined
-        ? Promise.resolve(null)
-        : manager
-            .getRepository(Like)
-            .findOne({ where: { postId: post.id, actorId: viewerActorId } }),
-      viewerActorId === undefined
-        ? Promise.resolve(null)
-        : manager
-            .getRepository(Bookmark)
-            .findOne({ where: { postId: post.id, actorId: viewerActorId } }),
-    ]);
-    return toPostView(
-      post,
-      media,
-      { replyCount, likeCount },
-      { liked: likedRow !== null, bookmarked: bookmarkedRow !== null },
+    const { counts, viewerState } = await this.countsAndViewerState(
+      manager,
+      post.id,
+      viewerActorId,
     );
+    const quotedPost =
+      post.deletedAt !== null || post.quotedPostId === null
+        ? null
+        : await this.quotedPostViewOf(manager, post.quotedPostId, viewerActorId);
+    const community =
+      post.deletedAt !== null || post.communityId === null
+        ? null
+        : await communitySummaryOf(manager, post.communityId);
+    return toPostView(post, media, counts, viewerState, { quotedPost, community });
+  }
+
+  /** One level of quote nesting only (spec §180.2, §188) — the returned `PostView`'s own
+   * `quotedPost` is always `null` by construction (`toPostView`'s `extras` here never passes
+   * one through), regardless of whether the quoted post itself quotes another. */
+  private async quotedPostViewOf(
+    manager: EntityManager,
+    quotedPostId: string,
+    viewerActorId?: string,
+  ): Promise<PostView | null> {
+    const quoted = await manager
+      .getRepository(Post)
+      .findOne({ where: { id: quotedPostId }, relations: { authorActor: true } });
+    if (quoted === null) return null;
+
+    const media = quoted.deletedAt !== null ? [] : await this.mediaFor(manager, quoted.id);
+    const { counts, viewerState } = await this.countsAndViewerState(
+      manager,
+      quoted.id,
+      viewerActorId,
+    );
+    const community =
+      quoted.deletedAt !== null || quoted.communityId === null
+        ? null
+        : await communitySummaryOf(manager, quoted.communityId);
+    return toPostView(quoted, media, counts, viewerState, { quotedPost: null, community });
+  }
+
+  private async countsAndViewerState(
+    manager: EntityManager,
+    postId: string,
+    viewerActorId?: string,
+  ): Promise<{
+    counts: { replyCount: number; likeCount: number; repostCount: number; quoteCount: number };
+    viewerState: { liked: boolean; bookmarked: boolean; reposted: boolean };
+  }> {
+    const [replyCount, likeCount, repostCount, quoteCount, likedRow, bookmarkedRow, repostedRow] =
+      await Promise.all([
+        manager.getRepository(Post).countBy({ inReplyToId: postId, deletedAt: IsNull() }),
+        manager.getRepository(Like).countBy({ postId }),
+        manager.getRepository(Repost).countBy({ postId }),
+        manager.getRepository(Post).countBy({ quotedPostId: postId, deletedAt: IsNull() }),
+        viewerActorId === undefined
+          ? Promise.resolve(null)
+          : manager.getRepository(Like).findOne({ where: { postId, actorId: viewerActorId } }),
+        viewerActorId === undefined
+          ? Promise.resolve(null)
+          : manager.getRepository(Bookmark).findOne({ where: { postId, actorId: viewerActorId } }),
+        viewerActorId === undefined
+          ? Promise.resolve(null)
+          : manager.getRepository(Repost).findOne({ where: { postId, actorId: viewerActorId } }),
+      ]);
+    return {
+      counts: { replyCount, likeCount, repostCount, quoteCount },
+      viewerState: {
+        liked: likedRow !== null,
+        bookmarked: bookmarkedRow !== null,
+        reposted: repostedRow !== null,
+      },
+    };
   }
 
   private async mediaFor(manager: EntityManager, postId: string): Promise<PostMediaSummary[]> {
@@ -459,6 +827,12 @@ function postForbidden(): AppError {
   return new AppError('POST_FORBIDDEN', 'You can only delete your own posts.');
 }
 
+/** `quote_policy` denial (spec §180.2, §192) — a known concept, not a secret like block-hiding
+ * is, so this is `POST_FORBIDDEN` (→ `PERMISSION_DENIED`) rather than `POST_NOT_FOUND`. */
+function quoteDenied(): AppError {
+  return new AppError('POST_FORBIDDEN', "This post's quote policy does not permit quoting it.");
+}
+
 /** PostgreSQL's `unique_violation` SQLSTATE, surfaced by `pg` as a plain `{ code: string }`. */
 function isUniqueViolation(error: unknown): boolean {
   return (
@@ -493,4 +867,35 @@ function applyBlockFilter(qb: SelectQueryBuilder<Post>, viewerActorId: string): 
     )`,
     { viewerActorId },
   );
+}
+
+/** Best-effort read of a `post_edits.previous_media_manifest` `jsonb` array back into
+ * `PostMediaSummary[]` — never throws for an unexpected shape, same "degrade a field, don't
+ * 500" reasoning as `actor.dto.ts#toNameplateSummary`. */
+function toPostMediaSummaryLenient(raw: unknown): PostMediaSummary {
+  const record = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+  const string = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+  const number = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+  return {
+    mediaId: typeof record.mediaId === 'string' ? record.mediaId : '',
+    altText: string(record.altText),
+    width: number(record.width),
+    height: number(record.height),
+    mimeType: string(record.mimeType),
+    position: typeof record.position === 'number' ? record.position : 0,
+  };
+}
+
+function toPostEditView(row: PostEdit): PostEditView {
+  return {
+    id: row.id,
+    postId: row.postId,
+    previousBody: row.previousBody,
+    previousContentWarning: row.previousContentWarning,
+    previousMedia: Array.isArray(row.previousMediaManifest)
+      ? row.previousMediaManifest.map(toPostMediaSummaryLenient)
+      : [],
+    editedByActorId: row.editedByActorId,
+    createdAt: row.createdAt,
+  };
 }
