@@ -21,6 +21,7 @@ export const KEY = {
   backspace: '',
   ctrlS: '',
   ctrlA: '',
+  ctrlU: '',
   /** CSI arrow keys, as a real terminal sends them. */
   up: '[A',
   down: '[B',
