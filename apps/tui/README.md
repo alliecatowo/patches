@@ -4,43 +4,67 @@ The Ink 7 / React 19 terminal client for Patches — the `patches` command.
 
 ## Status
 
-**Not yet published to npm.** `npm view patches` (checked 2026-08-18) shows the bare
-`patches` package name is already taken by an unrelated package, so this project publishes
-as the scoped name `@patches/tui` instead (confirmed free: `npm view @patches/tui` returns
-404 as of the same date). The `patches-social` name is also free, noted here in case
-`@patches/tui` needs to change later.
+**Status: planned until first publish.** This package builds a self-contained, publishable
+npm package under the name **`patches-social`** (checked 2026-08-18: `npm view patches`
+shows the bare `patches` name is taken by an unrelated package; `patches-social` is free).
+The npm-facing package name is set via `publishConfig.name` in `package.json` — added in
+pnpm 11.18 (this repo pins pnpm 11.22.0, see `mise.toml`) specifically for this case: a
+project whose published name is already taken by a sibling can publish under a different
+name without renaming its workspace-local `package.json` `name`. That means every
+`pnpm --filter @patches/tui ...` / turbo `--filter=@patches/tui` command elsewhere in this
+repo (root `package.json`, `mise.toml`, CI workflows) is unaffected by this and keeps
+working unchanged; only the packed/published tarball's `package.json` says
+`"name": "patches-social"`.
 
-**A real `npm i -g @patches/tui` will not work yet even once this package itself is
-published**, because it depends on two other workspace packages that are still private and
-unpublished:
+`npm i -g patches-social` is not runnable yet because publishing itself (`npm login` +
+`pnpm publish`) hasn't happened — that's the package owner's manual step, see
+`docs/operations/deployment.md`'s "Publishing the TUI" section. Building and packing the
+tarball locally and installing it into a scratch prefix, however, is fully verified below and
+proves the eventual `npm i -g patches-social` will work once published.
 
-```
-@patches/proto            (packages/proto)
-@patches/terminal-media   (packages/terminal-media)
-```
+### Self-contained build (P9-003 / A-046)
 
-`pnpm pack`/`pnpm publish` rewrite `workspace:*` to the exact local version (e.g.
-`@patches/proto: 0.1.0`) rather than bundling those packages in — so an install from the
-public registry 404s on them (`ERR_PNPM_FETCH_404` / npm's equivalent). Verified locally:
-packing all three (`pnpm --filter <pkg> pack`) and installing the `@patches/tui` tarball
-into a scratch project with `pnpm-workspace.yaml` `overrides` pointing `@patches/proto`
-and `@patches/terminal-media` at the other two tarballs succeeds and `patches --version`
-runs correctly — but that override is exactly the thing a real `npm install -g` from the
-registry can't do. **Follow-up needed before a real publish**: either publish
-`@patches/proto`/`@patches/terminal-media` too (making them public, versioned packages in
-their own right), or bundle `apps/tui`'s dependencies at build time (e.g. via `tsup`/
-`esbuild`) so the published tarball is self-contained. Not decided yet — see
-`docs/operations/deployment.md`'s npm packaging section.
+`apps/tui/tsup.config.ts` bundles `src/cli.tsx` into a single `dist/cli.js` (ESM, targeting
+`node24`) via `noExternal: [/^@patches\//]`, which inlines the three workspace packages this
+client depends on — `@patches/domain`, `@patches/proto`, `@patches/terminal-media` — directly
+into the bundle. Those three stay `private: true` in their own `package.json`s and are never
+published on their own; a real `npm install -g` from the registry can't resolve them as
+separate dependencies, so bundling them is what makes a plain `npm install -g patches-social`
+actually work. Everything else — native addons (`sharp`, `@napi-rs/keyring`) and packages
+that must stay a single shared instance (`ink`, `react`) — stays a real, external npm
+dependency with a concrete semver range (resolved from `pnpm-workspace.yaml`'s `catalog:` at
+pack/publish time; verified by inspecting the packed `package.json`, not just trusted).
+
+`@patches/proto` ships its `.proto` files as a directory sibling to its own `dist/` at
+runtime (`packages/proto/src/proto-path.ts`'s `getProtoDir()`). Once `@patches/proto`'s code
+is inlined into `apps/tui/dist/cli.js`, that lookup runs from `apps/tui/dist/` instead of
+`packages/proto/dist/`, so the build also copies `packages/proto/proto/**` to
+`apps/tui/dist/proto/` (`apps/tui/scripts/copy-proto.mjs`, run as part of `pnpm build`), and
+`getProtoDir()` now checks a `proto/` directory next to itself before falling back to the
+original one-level-up hop — see the comment on `getProtoDir()` for the full resolution order.
 
 ## Local install (proves the tarball itself works)
+
+Verified end-to-end (2026-08-18) from a shell where the repo's own `node_modules` is not on
+`PATH`, and against the live node (`patches-social.fly.dev:443`):
 
 ```bash
 pnpm --filter @patches/tui build
 pnpm --filter @patches/tui pack --pack-destination /tmp/patches-tui-pack
-# installs the built tarball into a scratch project, exercising the real `bin` wiring —
-# see docs/operations/deployment.md for the full repro including the workspace override
-# needed to satisfy @patches/proto/@patches/terminal-media locally.
+# packed tarball is patches-social-<version>.tgz — the pnpm workspace-local
+# package.json "name" (@patches/tui) is rewritten to "patches-social" by
+# publishConfig.name at pack time.
+
+# install into a scratch global prefix and run it with no repo checkout on PATH:
+mkdir -p /tmp/pfx/bin
+PATH="/tmp/pfx/bin:$PATH" PNPM_HOME=/tmp/pfx pnpm add -g /tmp/patches-tui-pack/patches-social-*.tgz
+cd /tmp && /tmp/pfx/bin/patches --version
+cd /tmp && /tmp/pfx/bin/patches ping --server patches-social.fly.dev:443
 ```
+
+(`pnpm add -g <tarball>` is used above as the reproducible local proof; a real npm user runs
+`npm install -g patches-social` once it's published — both resolve the same npm-registry
+semver ranges in the packed `package.json`, so this is an equivalent proof of installability.)
 
 ## Running against a server
 
@@ -62,4 +86,6 @@ See the repo root [`README.md`](../../README.md) and
 [`docs/operations/local-development.md`](../../docs/operations/local-development.md).
 Package-local commands: `pnpm --filter @patches/tui dev` (tsx, watch mode — run outside
 Turbo, see `docs/operations/local-development.md`'s note on why), `pnpm --filter
-@patches/tui test`, `pnpm --filter @patches/tui typecheck`.
+@patches/tui test`, `pnpm --filter @patches/tui typecheck`. `pnpm --filter @patches/tui
+build` now runs `tsup` (bundling) rather than `tsc`, see "Self-contained build" above —
+`tsc --noEmit` (the `typecheck` script) is unaffected and still type-checks `src/` directly.

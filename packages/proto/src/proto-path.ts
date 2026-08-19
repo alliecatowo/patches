@@ -27,14 +27,37 @@ let cachedProtoDir: string | undefined;
  * The layout puts `proto/` one level above both `src/` and `dist/`, so the same relative hop
  * resolves whether this module is loaded from TypeScript source (vitest, `tsx`) or from the
  * built `dist/`.
+ *
+ * Three ways to point this at the right directory, checked in order (P9-003/A-046):
+ *
+ * 1. `PATCHES_PROTO_DIR` env override — for anything unusual (containers, tests) that wants
+ *    to say exactly where the `.proto` tree lives without touching code.
+ * 2. A `proto/` directory *next to this module* (`<moduleDir>/proto`). This is the case when
+ *    `@patches/proto`'s own source is bundled straight into a consumer's single-file build —
+ *    `apps/tui`'s tsup config inlines this module into `dist/cli.js` via `noExternal`, so
+ *    `import.meta.url` resolves to `apps/tui/dist/cli.js`'s own location, not
+ *    `packages/proto/dist/`. The consumer's build then copies `packages/proto/proto/**` to
+ *    `<its-own-dist>/proto/` (see `apps/tui/scripts/copy-proto.mjs`) to satisfy this.
+ * 3. The original `<moduleDir>/../proto` hop — `@patches/proto` used unbundled, exactly as
+ *    published (`dist/` and `proto/` as siblings under the package root).
  */
 export function getProtoDir(): string {
   if (cachedProtoDir === undefined) {
-    const candidate = resolve(moduleDir, '..', 'proto');
+    const override = process.env.PATCHES_PROTO_DIR;
+    if (override !== undefined && override !== '' && existsSync(override)) {
+      cachedProtoDir = resolve(override);
+      return cachedProtoDir;
+    }
+
+    const bundledSibling = resolve(moduleDir, 'proto');
+    const unbundledParent = resolve(moduleDir, '..', 'proto');
+    const candidate = existsSync(bundledSibling) ? bundledSibling : unbundledParent;
     if (!existsSync(candidate)) {
       throw new Error(
-        `@patches/proto: could not locate the proto/ directory (looked in ${candidate}). ` +
-          'The package must ship proto/ alongside dist/ — check the "files" field.',
+        `@patches/proto: could not locate the proto/ directory (looked in ${bundledSibling} ` +
+          `and ${unbundledParent}). The package must ship proto/ alongside dist/ (or a bundling ` +
+          'consumer must copy it next to its own output) — check the "files" field, or set ' +
+          'PATCHES_PROTO_DIR.',
       );
     }
     cachedProtoDir = candidate;

@@ -6,9 +6,9 @@
     "types": ["node"],
     "noEmit": true
   },
-  // `vitest.config.ts` and `test/` are included so typescript-eslint's project
-  // service can type-check them; without a tsconfig that owns them, ESLint
-  // reports a parsing error. Emitting is done from tsconfig.build.json, which
-  // only ever includes `src`.
-  "include": ["src", "test", "vitest.config.ts"]
+  // `vitest.config.ts`, `tsup.config.ts` and `test/` are included so
+  // typescript-eslint's project service can type-check them; without a
+  // tsconfig that owns them, ESLint reports a parsing error. Emitting is done
+  // from tsconfig.build.json, which only ever includes `src`.
+  "include": ["src", "test", "vitest.config.ts", "tsup.config.ts"]
 }
