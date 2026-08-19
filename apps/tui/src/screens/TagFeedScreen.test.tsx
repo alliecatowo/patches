@@ -47,6 +47,8 @@ function post(body: string, id = 'post-1'): Post {
     quotePolicy: QUOTE_POLICY.UNSPECIFIED,
     repostedBy: [],
     repostedByTotal: 0,
+    filteredBy: undefined,
+    labels: [],
   };
 }
 

@@ -33,6 +33,8 @@ function selectedPost(): Post {
     quotePolicy: QUOTE_POLICY.ANYONE,
     repostedBy: [],
     repostedByTotal: 0,
+    filteredBy: undefined,
+    labels: [],
   };
 }
 

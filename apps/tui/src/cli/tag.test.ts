@@ -61,6 +61,8 @@ function post(): Post {
     quotePolicy: QUOTE_POLICY.UNSPECIFIED,
     repostedBy: [],
     repostedByTotal: 0,
+    filteredBy: undefined,
+    labels: [],
   };
 }
 

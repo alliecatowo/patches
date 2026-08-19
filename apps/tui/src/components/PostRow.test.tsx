@@ -47,6 +47,8 @@ function post(overrides: Partial<Post> = {}): Post {
     quotePolicy: QUOTE_POLICY.UNSPECIFIED,
     repostedBy: [],
     repostedByTotal: 0,
+    filteredBy: undefined,
+    labels: [],
     ...overrides,
   };
 }

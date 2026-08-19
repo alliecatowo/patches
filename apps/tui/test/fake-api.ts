@@ -615,6 +615,8 @@ export class FakeApiHandle {
       quotePolicy: QUOTE_POLICY.UNSPECIFIED,
       repostedBy: [],
       repostedByTotal: 0,
+      filteredBy: undefined,
+      labels: [],
     };
   }
 
