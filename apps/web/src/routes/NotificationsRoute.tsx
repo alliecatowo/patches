@@ -1,5 +1,5 @@
 import { NotificationType, type Notification } from '@patches/proto/es';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -35,6 +35,7 @@ function describe(notification: Notification): string {
 }
 
 function targetPath(notification: Notification): string {
+  if (notification.type === NotificationType.MODERATION) return '/appeals';
   if (notification.postId !== '') return `/p/${notification.postId}`;
   if (notification.conversationId !== '') return `/messages/${notification.conversationId}`;
   if (notification.communityId !== '') return `/c/${notification.communityId}`;
@@ -42,7 +43,9 @@ function targetPath(notification: Notification): string {
   return '/notifications';
 }
 
-/** `/notifications` — chronological, never engagement-ranked (Amendment B §194). */
+/** `/notifications` — chronological, never engagement-ranked (Amendment B §194). Also
+ * surfaces pending follow requests (spec §197.5, locked accounts) inline, since they
+ * need action rather than just reading. */
 export function NotificationsRoute(): JSX.Element {
   const onError = useErrorToast();
   const queryClient = useQueryClient();
@@ -53,6 +56,23 @@ export function NotificationsRoute(): JSX.Element {
       api.notifications.listNotifications({ cursor: pageParam, limit: 30 }),
     initialPageParam: '',
     getNextPageParam: (lastPage) => (lastPage.page?.hasMore ? lastPage.page.nextCursor : undefined),
+  });
+
+  const followRequestsQuery = useQuery({
+    queryKey: ['follow-requests'],
+    queryFn: () => api.socialGraph.listFollowRequests({ cursor: '', limit: 50 }),
+  });
+  const invalidateFollowRequests = (): void =>
+    void queryClient.invalidateQueries({ queryKey: ['follow-requests'] });
+  const acceptRequest = useMutation({
+    mutationFn: (actorId: string) => api.socialGraph.acceptFollowRequest({ actorId }),
+    onSuccess: invalidateFollowRequests,
+    onError,
+  });
+  const rejectRequest = useMutation({
+    mutationFn: (actorId: string) => api.socialGraph.rejectFollowRequest({ actorId }),
+    onSuccess: invalidateFollowRequests,
+    onError,
   });
 
   const markAllRead = useMutation({
@@ -74,6 +94,33 @@ export function NotificationsRoute(): JSX.Element {
           Mark all read
         </button>
       </div>
+      {followRequestsQuery.data && followRequestsQuery.data.requests.length > 0 ? (
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)' }}>
+          <h2 style={{ fontSize: '0.95rem' }}>Follow requests</h2>
+          {followRequestsQuery.data.requests.map((request) => (
+            <div
+              key={request.actor?.id}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0' }}
+            >
+              <Link to={`/@${request.actor?.handle ?? ''}`}>@{request.actor?.handle}</Link>
+              <button
+                type="button"
+                onClick={() => request.actor && acceptRequest.mutate(request.actor.id)}
+                disabled={acceptRequest.isPending}
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                onClick={() => request.actor && rejectRequest.mutate(request.actor.id)}
+                disabled={rejectRequest.isPending}
+              >
+                Reject
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
       {notifications.length === 0 && !query.isPending ? (
         <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No notifications yet.</p>

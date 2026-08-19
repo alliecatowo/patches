@@ -1,4 +1,5 @@
-import type { Post } from '@patches/proto/es';
+import { FilterAction, type Post } from '@patches/proto/es';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -6,7 +7,7 @@ import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
-import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { formatAbsoluteTime, formatCount, formatRelativeTime } from '../lib/format.js';
 import { MediaImage } from './MediaImage.js';
 import { Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
@@ -26,8 +27,13 @@ export interface PostCardProps {
 export function PostCard({ post, focused = false }: PostCardProps): JSX.Element {
   const session = useSession();
   const onError = useErrorToast();
+  const queryClient = useQueryClient();
   const [viewerState, setViewerState] = useState(post.viewerState);
   const [counts, setCounts] = useState(post.counts);
+  const isOwn = session?.actor.id === post.author?.id;
+  const [pinned, setPinned] = useState(post.author?.pinnedPostIds.includes(post.id) ?? false);
+  const [deleted, setDeleted] = useState(post.deleted);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const requireAuth = (): boolean => {
     if (session === null) {
@@ -88,9 +94,49 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     }
   };
 
+  const togglePin = async (): Promise<void> => {
+    const wasPinned = pinned;
+    setPinned(!wasPinned);
+    try {
+      if (wasPinned) await api.posts.unpinPost({ postId: post.id });
+      else await api.posts.pinPost({ postId: post.id, position: 0 });
+    } catch (error) {
+      setPinned(wasPinned);
+      onError(error);
+    }
+  };
+
+  const deletePost = async (): Promise<void> => {
+    if (!window.confirm('Delete this post? This cannot be undone.')) return;
+    try {
+      await api.posts.deletePost({ id: post.id });
+      setDeleted(true);
+    } catch (error) {
+      onError(error);
+    }
+  };
+
   useKeyboardShortcuts({ l: () => void toggleLike() }, focused);
 
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
+  const filteredBy = post.filteredBy;
+  const [filterExpanded, setFilterExpanded] = useState(false);
+
+  const editsQuery = useQuery({
+    queryKey: ['post-edits', post.id],
+    queryFn: () => api.posts.listPostEdits({ postId: post.id, cursor: '', limit: 20 }),
+    enabled: historyOpen,
+  });
+
+  if (deleted) {
+    return (
+      <article className={styles['card']} data-post-id={post.id}>
+        <div className={styles['body']}>
+          <p style={{ color: 'var(--fg-muted)' }}>This post was deleted.</p>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -116,6 +162,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
             ))}
           </div>
         ) : null}
+        {pinned ? <div className={styles['repostedBy']}>Pinned</div> : null}
         <div className={styles['headerRow']}>
           <Link to={`/@${post.author?.handle ?? ''}`} className={styles['displayName']}>
             {post.author?.displayName || post.author?.handle}
@@ -128,30 +175,62 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
             {post.editedAt ? ' · edited' : ''}
           </Link>
         </div>
-        {post.contentWarning !== '' && !cwOpen ? (
-          <button type="button" className={styles['cwButton']} onClick={() => setCwOpen(true)}>
-            Content warning: {post.contentWarning} — click to show
+        {post.labels.length > 0 ? (
+          <div className={styles['repostedBy']}>
+            {post.labels.map((label) => (
+              <span key={label.id} className={styles['cwButton']} style={{ marginRight: '0.4rem' }}>
+                {label.value}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {filteredBy && filteredBy.action === FilterAction.COLLAPSE && !filterExpanded ? (
+          <button
+            type="button"
+            className={styles['cwButton']}
+            onClick={() => setFilterExpanded(true)}
+          >
+            Filtered: {filteredBy.name}
+            {filteredBy.listOwner ? ` (via @${filteredBy.listOwner.handle})` : ''} — click to show
           </button>
         ) : (
           <>
-            <div className={styles['text']}>
-              <RichBody source={post.body} />
-            </div>
-            {post.media.length > 0 ? (
-              <div className={styles['mediaGrid']}>
-                {post.media.map((media) => (
-                  <MediaImage key={media.mediaId} mediaId={media.mediaId} altText={media.altText} />
-                ))}
+            {filteredBy && filteredBy.action === FilterAction.WARN ? (
+              <div className={styles['repostedBy']}>
+                Filtered: {filteredBy.name}
+                {filteredBy.listOwner ? ` (via @${filteredBy.listOwner.handle})` : ''}
               </div>
             ) : null}
-            {post.quotedPost ? (
-              <div className={styles['quoted']}>
-                <strong>@{post.quotedPost.author?.handle}</strong>
+            {post.contentWarning !== '' && !cwOpen ? (
+              <button type="button" className={styles['cwButton']} onClick={() => setCwOpen(true)}>
+                Content warning: {post.contentWarning} — click to show
+              </button>
+            ) : (
+              <>
                 <div className={styles['text']}>
-                  <RichBody source={post.quotedPost.body} />
+                  <RichBody source={post.body} />
                 </div>
-              </div>
-            ) : null}
+                {post.media.length > 0 ? (
+                  <div className={styles['mediaGrid']}>
+                    {post.media.map((media) => (
+                      <MediaImage
+                        key={media.mediaId}
+                        mediaId={media.mediaId}
+                        altText={media.altText}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {post.quotedPost ? (
+                  <div className={styles['quoted']}>
+                    <strong>@{post.quotedPost.author?.handle}</strong>
+                    <div className={styles['text']}>
+                      <RichBody source={post.quotedPost.body} />
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </>
         )}
         <div className={styles['actions']}>
@@ -165,6 +244,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
           >
             {formatCount(counts?.reposts ?? 0)} repost
           </button>
+          <Link to={`/compose?quote=${post.id}`} className={styles['actionButton']}>
+            quote
+          </Link>
           <button
             type="button"
             className={`${styles['actionButton']} ${viewerState?.liked ? styles['on'] : ''}`}
@@ -179,7 +261,54 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
           >
             bookmark
           </button>
+          {isOwn ? (
+            <>
+              <Link to={`/compose?edit=${post.id}`} className={styles['actionButton']}>
+                edit
+              </Link>
+              <button
+                type="button"
+                className={styles['actionButton']}
+                onClick={() => void togglePin()}
+              >
+                {pinned ? 'unpin' : 'pin'}
+              </button>
+              <button
+                type="button"
+                className={styles['actionButton']}
+                onClick={() => {
+                  setHistoryOpen((v) => !v);
+                  if (!historyOpen)
+                    void queryClient.invalidateQueries({ queryKey: ['post-edits', post.id] });
+                }}
+              >
+                history
+              </button>
+              <button
+                type="button"
+                className={styles['actionButton']}
+                onClick={() => void deletePost()}
+              >
+                delete
+              </button>
+            </>
+          ) : null}
         </div>
+        {historyOpen ? (
+          <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+            {editsQuery.isPending ? <p>Loading edit history…</p> : null}
+            {editsQuery.data?.edits.length === 0 ? <p>No edits.</p> : null}
+            {editsQuery.data?.edits.map((edit) => (
+              <div
+                key={edit.id}
+                style={{ padding: '0.3rem 0', borderTop: '1px solid var(--border)' }}
+              >
+                <div>{formatAbsoluteTime(edit.createdAt)} — previous body:</div>
+                <div>{edit.previousBody}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </article>
   );
