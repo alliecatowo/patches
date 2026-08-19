@@ -224,6 +224,41 @@ export class AppConfigService {
   get labelVocabulary(): readonly string[] {
     return this.get('LABEL_VOCABULARY');
   }
+
+  /** `NodePolicy.privacy_notice_url` (spec §197.6). Empty means unpublished. */
+  get nodePolicyUrl(): string {
+    return this.get('NODE_POLICY_URL');
+  }
+
+  /** Moderator handles this node publishes (spec §197.6). Empty means unpublished. */
+  get nodeModerators(): readonly string[] {
+    return this.get('NODE_MODERATORS');
+  }
+
+  /** Undefined means the operator has not set a stance explicitly — `NodeService` derives one
+   * from `federationEnabled` instead (spec §197.6, §201.5). */
+  get federationStance(): Env['FEDERATION_STANCE'] {
+    return this.get('FEDERATION_STANCE');
+  }
+
+  /** Operator-declared jurisdiction/provider (spec §197.6). Empty means unpublished. */
+  get dataLocation(): string {
+    return this.get('DATA_LOCATION');
+  }
+
+  get privacyNoticeVersion(): number {
+    return this.get('PRIVACY_NOTICE_VERSION');
+  }
+
+  /** Node-configurable appeal window in days (spec §201.3, §204). */
+  get appealWindowDays(): number {
+    return this.get('APPEAL_WINDOW_DAYS');
+  }
+
+  /** Node-configurable account-deletion grace period in days (spec §197.4, §204). */
+  get accountDeletionGracePeriodDays(): number {
+    return this.get('ACCOUNT_DELETION_GRACE_PERIOD_DAYS');
+  }
 }
 
 function decodePem(value: string | undefined): string | undefined {

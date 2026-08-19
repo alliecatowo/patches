@@ -1,10 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DomainBlock } from '@patches/database';
+import { ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS } from '@patches/domain';
 import {
+  DomainPolicyAction,
   FederationStance,
   type GetNodeInfoResponse,
   type GetNodePolicyResponse,
+  LabelAction,
   RegistrationMode,
 } from '@patches/proto/nest';
+import type { DataSource } from 'typeorm';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import {
@@ -16,6 +22,7 @@ import {
   isWidthOneGlyph,
 } from '../actors/validation.js';
 import { HANDLE_MAX_LENGTH } from '../auth/validation.js';
+import { toProtoReasonCategory } from '../moderation/moderation.mapper.js';
 import { SERVER_VERSION } from './server-version.provider.js';
 
 /** Alt text has no owning validation module yet — `MediaService` lands in Phase 5. The limit
@@ -39,6 +46,7 @@ export class NodeService {
   constructor(
     private readonly config: AppConfigService,
     @Inject(SERVER_VERSION) private readonly serverVersion: string,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   getNodeInfo(): GetNodeInfoResponse {
@@ -70,38 +78,72 @@ export class NodeService {
   }
 
   /**
-   * P14-001 lands the `patches.v1.NodeService.GetNodePolicy` contract only (spec §197.6) —
-   * populating it from real operator-supplied settings (privacy notice text, moderator
-   * contact, domain policies, retention windows) is a follow-up task. An all-empty
-   * `NodePolicy` is the honest answer in the meantime: the proto's own doc says a node that
-   * publishes nothing here has said so, and clients render that as "this node publishes no
-   * policy" rather than hiding the screen — so this is a real, spec-sanctioned response, not
-   * a stub error.
+   * P14-012 (spec §197.6) — the operator transparency document, populated from `AppConfigService`
+   * env vars plus a live read of `domain_blocks` (§201.5's published domain policy). Fields with
+   * no configuration surface yet (`privacy_notice_summary`, `terms_url`, `appeal_instructions`,
+   * `operator_identity`) stay empty strings — an honest "not configured" rather than invented
+   * text; the proto's own doc says an all-empty `NodePolicy` renders as "this node publishes no
+   * policy" (§197.6), and that reasoning applies per-field just as well as to the whole message.
    */
-  getNodePolicy(): GetNodePolicyResponse {
+  async getNodePolicy(): Promise<GetNodePolicyResponse> {
+    const domainBlocks = await this.dataSource
+      .getRepository(DomainBlock)
+      .createQueryBuilder('block')
+      .orderBy('block.domain', 'ASC')
+      .getMany();
+
     return {
       policy: {
         privacyNoticeSummary: '',
-        privacyNoticeVersion: 0,
-        privacyNoticeUrl: '',
+        privacyNoticeVersion: this.config.privacyNoticeVersion,
+        privacyNoticeUrl: this.config.nodePolicyUrl,
         termsUrl: '',
-        moderatorContact: '',
+        moderatorContact: this.config.nodeModerators.join(', '),
         appealInstructions: '',
-        federationStance: FederationStance.FEDERATION_STANCE_UNSPECIFIED,
-        domainPolicies: [],
-        dataLocation: '',
+        federationStance: this.resolveFederationStance(),
+        domainPolicies: domainBlocks.map((block) => ({
+          domain: block.domain,
+          action: DomainPolicyAction.DOMAIN_POLICY_ACTION_BLOCK,
+          reasonCategory: toProtoReasonCategory(block.reasonCategory),
+        })),
+        dataLocation: this.config.dataLocation,
         retention: {
-          dmRetentionDays: 0,
+          dmRetentionDays: this.config.dmRetentionDays,
+          // No retention sweep exists yet for these three (spec §176's "no such job" is the
+          // honest reason, not a placeholder) — 0 means "no retention limit is enforced", the
+          // same convention `dm_retention_days`/`SocialCapabilities.dm_retention_days` use.
           evidenceSnapshotRetentionDays: 0,
           uploadedOriginalRetentionDays: 0,
           logRetentionDays: 0,
-          exportArchiveRetentionDays: 0,
+          exportArchiveRetentionDays: ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS,
         },
         operatorIdentity: '',
-        labelVocabulary: [],
-        accountDeletionGracePeriodDays: 0,
-        appealWindowDays: 0,
+        labelVocabulary: this.config.labelVocabulary.map((value) => ({
+          value,
+          description: '',
+          defaultAction: LabelAction.LABEL_ACTION_WARN,
+          mandatory: false,
+        })),
+        accountDeletionGracePeriodDays: this.config.accountDeletionGracePeriodDays,
+        appealWindowDays: this.config.appealWindowDays,
       },
     };
+  }
+
+  /** An operator may set `FEDERATION_STANCE` explicitly; unset derives from
+   * `FEDERATION_ENABLED` so the two flags can't silently disagree (§197.6, §201.5). */
+  private resolveFederationStance(): FederationStance {
+    switch (this.config.federationStance) {
+      case 'disabled':
+        return FederationStance.FEDERATION_STANCE_DISABLED;
+      case 'allowlist':
+        return FederationStance.FEDERATION_STANCE_ALLOWLIST;
+      case 'open-with-blocklist':
+        return FederationStance.FEDERATION_STANCE_OPEN_WITH_BLOCKLIST;
+      default:
+        return this.config.federationEnabled
+          ? FederationStance.FEDERATION_STANCE_OPEN_WITH_BLOCKLIST
+          : FederationStance.FEDERATION_STANCE_DISABLED;
+    }
   }
 }

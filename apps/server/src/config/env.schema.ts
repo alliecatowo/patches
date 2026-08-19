@@ -1,4 +1,9 @@
-import { MAX_POST_CHARS, MAX_POST_CHARS_NODE_CEILING } from '@patches/domain';
+import {
+  ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT,
+  APPEAL_WINDOW_DAYS_DEFAULT,
+  MAX_POST_CHARS,
+  MAX_POST_CHARS_NODE_CEILING,
+} from '@patches/domain';
 import { z } from 'zod';
 
 import {
@@ -191,6 +196,51 @@ const envObjectSchema = z.object({
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0),
     ),
+
+  /**
+   * Amendment C operator transparency (P14-012, spec §197.6): `NodeService.GetNodePolicy`'s
+   * `privacy_notice_url`. Empty means this node has not published one — the proto's own
+   * contract says an all-empty `NodePolicy` renders as "this node publishes no policy" rather
+   * than a stub error, so an unset value here is a real, honest answer, not a placeholder.
+   */
+  NODE_POLICY_URL: z.union([z.url(), z.literal('')]).default(''),
+  /** Moderator handles, comma-separated (spec §197.6's "who runs this node"/moderator
+   * contact) — joined into `NodePolicy.moderator_contact`. Same comma-list convention as
+   * `LIKE_GLYPH_ALLOW_LIST`/`LABEL_VOCABULARY` above. */
+  NODE_MODERATORS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  /**
+   * Amendment C (P14-012, spec §197.6, §201.5): this node's federation posture, published via
+   * `NodePolicy.federation_stance`. Left unset by default so `NodeService` can derive an
+   * honest value from `FEDERATION_ENABLED` (disabled when federation itself is off) rather
+   * than an operator having to keep two flags in sync.
+   */
+  FEDERATION_STANCE: z.enum(['disabled', 'allowlist', 'open-with-blocklist']).optional(),
+  /** Operator-declared jurisdiction/provider, free text (spec §197.6). Empty means unpublished. */
+  DATA_LOCATION: z.string().max(500).default(''),
+  /** `NodePolicy.privacy_notice_version` (spec §197.5, §197.6) — bumped by the operator when
+   * the privacy notice text changes; 0 means no notice has been published/versioned yet. */
+  PRIVACY_NOTICE_VERSION: z.coerce.number().int().min(0).default(0),
+  /** Node-configurable appeal window, in days, from the moderation notice (spec §201.3,
+   * §204) — read by `AppealService.CreateAppeal`'s window check and published via
+   * `NodePolicy.appeal_window_days`. */
+  APPEAL_WINDOW_DAYS: z.coerce.number().int().positive().default(APPEAL_WINDOW_DAYS_DEFAULT),
+  /** Node-configurable account-deletion grace period, in days (spec §197.4, §204) — published
+   * via `NodePolicy.account_deletion_grace_period_days`. No deletion sweep reads this yet
+   * (`account_deletion_requests` lands with `PrivacyService`, out of this task's scope); this
+   * only feeds the advertised policy value in v0, same as `DM_RETENTION_DAYS` above. */
+  ACCOUNT_DELETION_GRACE_PERIOD_DAYS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {
