@@ -68,6 +68,9 @@ function turnsIn(path) {
     if (typeof message !== 'object' || message === null) continue;
     const usage = message.usage;
     if (typeof usage !== 'object' || usage === null) continue;
+    // Per-entry, not per-file: a session appended to today still holds last week's requests,
+    // so filtering by mtime would report an old baseline as if it were the new batch.
+    if (since > 0 && !(Date.parse(entry.timestamp ?? '') >= since)) continue;
     const id = typeof message.id === 'string' ? message.id : `anon:${anonymous++}`;
     const content = Array.isArray(message.content) ? message.content : [];
     let turn = byId.get(id);
