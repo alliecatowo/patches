@@ -654,3 +654,32 @@ the `tools:` frontmatter of `implementer`, `reviewer`, `architect`, `spec-audito
 and a "Symbolic search" note to `HARNESS.md` and the two most read-heavy agents (`implementer`,
 `reviewer`). Removed the "read `.claude/rules/*.md` manually" bullet from `implementer.md` — every
 rule file already has a working `paths:` glob and auto-injects on a matching touched file.
+
+## 2026-08-19 — Mid-run coordinator messages get refused, and LSP goes blind mid-rebuild
+
+**Context:** An orchestrator sent a running subagent a genuine mid-task course correction via
+`SendMessage`; the agent refused it because Claude Code wraps delivered messages in a
+`system-reminder` and the platform's own safety layer warns such directives may be injected. The
+agent then finished the task against a brief the orchestrator had already superseded — a real
+coordination failure, not a security save. Separately, agents using `LSP` for cross-package type
+lookups (`findReferences`, `goToDefinition`) got phantom "could not find a declaration file" /
+"has no exported member" errors while a different agent concurrently rebuilt the referenced
+workspace package — `LSP`'s cross-package resolution reads each package's built `dist/*.d.ts`,
+so it is briefly blind mid-rebuild. Same root cause as the earlier learning about a rebuild
+yanking `dist/` out from under a running TUI.
+
+**Learning:** The platform's injection warning on `system-reminder`-wrapped messages is correct
+in general but too blunt for this harness's own orchestrator-to-subagent channel — a genuine
+coordinator message is the most authoritative instruction an agent has, since it reflects what
+the orchestrator learned after briefing. Refusal should be reserved for content that would weaken
+a hard rule, exfiltrate data, or expand scope without naming new files — not scope narrowing/
+widening, dropped claims, corrected facts, or changed acceptance criteria arriving mid-run. And a
+transient `LSP` cross-package error during a concurrent rebuild is not a real finding — it's a
+timing artifact that clears once the build finishes.
+
+**Action taken:** Added an identical "Mid-run messages from the orchestrator" section to all 8
+`.claude/agents/*.md` files (`implementer`, `reviewer`, `architect`, `verifier`, `researcher`,
+`docs-writer`, `spec-auditor`, `harness-tuner`) defining when to follow vs. refuse a mid-run
+message and to report the outcome either way. Extended the existing `LSP` guidance in
+`implementer.md` and `reviewer.md` with the dist-rebuild caveat and the fix (re-run the query, or
+confirm with `pnpm --filter <workspace> typecheck`).
