@@ -258,10 +258,12 @@ Consequences that make this worth doing:
 - Left/right split defaults to 60/40 with a 48-column floor on the detail pane; below the floor the
   tier degrades to `standard`.
 
-**Panes are regions** in the focus model (§4.5): `Tab`/`Shift+Tab` cycles pane → pane's regions;
-`Ctrl+W` then `h`/`l` is a vim alias outside text layers. The focused pane draws
+**Panes are regions** in the focus model (§4.5): `Tab` moves shell focus between the primary and
+secondary pane **[v, shipped B-046]** — action keys dispatch only to the focused pane's screen
+(`App.tsx`'s `renderEntry` gates each pane's own `useInput` on `focusedPane`); the `Ctrl+W`
+`h`/`l` vim alias proposed here was not what shipped. The focused pane draws
 `borderStyle="round"` with `theme.borderFocus`; unfocused uses `theme.border`. In plain mode
-**neither pane has a border** — the focused pane's title takes a `> ` prefix instead (§3.5's
+**neither pane has a border** — the focused pane's title takes a bold `> ` prefix instead (§3.5's
 height rule below).
 
 ### 3.3 Overlays — verified compositing technique
@@ -378,7 +380,9 @@ export type Route =
 
 Root is `home` signed in, `local` otherwise **[v]**. Drill-down pushes. `g x` chords `jump()`: a
 root screen resets the stack, a screen already on the stack unwinds to it rather than duplicating
-**[v]**. `replace()` is for "content changed, history shouldn't deepen" — a posted reply replaces
+**[v]**. **[v, shipped B-042]** Plain `g <key>` always replaces the current screen — it never
+auto-splits; `Ctrl+g <key>` is the explicit way to open the destination in the second pane
+(`goTo(next, { split: true })` in `App.tsx`). `replace()` is for "content changed, history shouldn't deepen" — a posted reply replaces
 `compose` with the thread it answers **[v]**.
 
 ### 4.2 `Esc` pops the innermost layer, always
@@ -502,10 +506,12 @@ correct the guide.
 ### 5.4 The table
 
 **Global** (any screen, outside a text layer): `Esc` back one layer · `q` back/quit at root ·
-`Ctrl+C` quit · `?` help · `:` / `Ctrl+P` palette **[p]** · `/` search · **`c` quick post** (into the
+`Ctrl+C` quit · `?` help · `:` / `Ctrl+P` palette **[v]** (a true overlay over a frozen
+`renderToString` snapshot, `VirtualList`-backed so arrow-key selection stays visible — B-043) ·
+`/` search · **`c` quick post** (into the
 focused community when there is one, §191) · **`C` full compose** · **`N` notifications drawer** · **`Ctrl+R` refresh (moved from `R`)** · `L` account ·
 `P` plain mode · **`~` quiet feed** · **`,` preferences** · `g h`/`g l`/`g p`/`g e`/`g b`/`g n`/`g v`/`g s` ·
-**`g d` messages** · **`g c` communities** · `g g` top · **`Tab`/`Shift+Tab` next/prev region (pane, then the pane's regions)** · **`Ctrl+W` then `h`/`l` pane left/right (vim alias)**.
+**`g d` messages** · **`g c` communities** · `g g` top · **`Tab` next region (pane, then the pane's regions) [v, shipped B-046]** · **`Ctrl+g <key>` opens the destination in the second pane; plain `g <key>` never auto-splits [v, shipped B-042]**.
 
 **List regions:** `j`/`↓` next · `k`/`↑` prev · `G` last · `Home`/`End` **[p]** ·
 `Ctrl+D`/`PgDn`, `Ctrl+U`/`PgUp` half page · `n`/`space` load more · `Enter` thread · `p` author ·

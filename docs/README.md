@@ -20,7 +20,9 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/jobs.md`](./architecture/jobs.md)
   - [`architecture/federation.md`](./architecture/federation.md)
   - [`architecture/e2ee.md`](./architecture/e2ee.md)
-  - [`architecture/tui.md`](./architecture/tui.md)
+  - [`architecture/tui.md`](./architecture/tui.md) — what's built
+  - [`architecture/tui-interaction-model.md`](./architecture/tui-interaction-model.md) — what
+    the TUI's frame/navigation/layout is becoming, and why (target design, ADR 0018)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
   [`decisions/README.md`](./decisions/README.md) for the index and template.
