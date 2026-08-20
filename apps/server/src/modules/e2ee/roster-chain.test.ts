@@ -200,8 +200,6 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
       },
     ];
     const manager = fakeManager(null);
-    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toBeInstanceOf(
-      AppError,
-    );
+    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toBeInstanceOf(AppError);
   });
 });
