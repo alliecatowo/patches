@@ -18,6 +18,9 @@ export function SettingsLayout(): JSX.Element {
         <NavLink to="/settings/profile" className={LINK_CLASS} end>
           Profile
         </NavLink>
+        <NavLink to="/settings/appearance" className={LINK_CLASS}>
+          Appearance
+        </NavLink>
         <NavLink to="/settings/privacy" className={LINK_CLASS}>
           Privacy
         </NavLink>

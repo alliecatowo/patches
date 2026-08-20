@@ -105,6 +105,13 @@ export const router = createBrowserRouter([
               })),
           },
           {
+            path: 'appearance',
+            lazy: () =>
+              import('./routes/settings/AppearanceSettingsRoute.js').then((m) => ({
+                Component: m.AppearanceSettingsRoute,
+              })),
+          },
+          {
             path: 'privacy',
             lazy: () =>
               import('./routes/settings/PrivacySettingsRoute.js').then((m) => ({

@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Patches</title>
+    <script>
+      // Resolve the stored theme preference before first paint so there is no flash of the
+      // wrong theme — `src/lib/theme.ts` owns the storage key/shape and stays the source of
+      // truth; this inline copy only needs to agree with it on the key name and valid values.
+      // Runs synchronously (no `type="module"`, no `defer`) so it blocks rendering until the
+      // `data-theme` attribute is set on `<html>`, which `src/index.css` keys off of.
+      (function () {
+        var STORAGE_KEY = 'patches.web.theme.v1';
+        var theme = 'system';
+        try {
+          var stored = window.localStorage.getItem(STORAGE_KEY);
+          if (stored === 'light' || stored === 'dark' || stored === 'system') {
+            theme = stored;
+          }
+        } catch (_err) {
+          // Storage inaccessible (private browsing, disabled cookies) — fall back to 'system'.
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
