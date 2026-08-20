@@ -5,29 +5,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { getAmbientAccessToken, setAmbientAccessToken } from '../api/ambient-token.js';
 import { MemoryCredentialStore } from './credential-store.js';
 import { SessionExpiredError, SessionManager, type SessionAuthApi } from './session.js';
+import { makeActor, makeSession } from '../test/wire-fixtures.js';
 
 const NODE = 'patches.example:443';
 
 function actor(id: string, handle: string): Actor {
-  return {
+  return makeActor({
     id,
     handle,
     displayName: handle,
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
     joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-  };
+  });
 }
 
 function session(overrides: Partial<Session> = {}): Session {
-  return {
+  return makeSession({
     accessToken: 'access-1',
     accessExpiresAt: fromDate(new Date(Date.now() + 15 * 60 * 1000)),
     refreshToken: 'refresh-1',
@@ -36,7 +28,7 @@ function session(overrides: Partial<Session> = {}): Session {
     emailVerified: false,
     node: NODE,
     ...overrides,
-  };
+  });
 }
 
 function fakeApi(overrides: Partial<SessionAuthApi> = {}): SessionAuthApi {

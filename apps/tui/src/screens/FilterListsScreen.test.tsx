@@ -5,22 +5,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { FilterListsScreen } from './FilterListsScreen.js';
+import { makeActor, makeFilterList } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
-  return { id: 'a1', handle } as Actor;
+  return makeActor({ id: 'a1', handle });
 }
 
 function list(): FilterList {
-  return {
-    id: 'list-1',
-    ownerActor: actor('alice'),
-    ownerCommunity: undefined,
-    name: 'curated',
-    displayName: 'Curated blocklist',
-    description: '',
-    createdAt: undefined,
-    updatedAt: undefined,
-  };
+  return makeFilterList({ ownerActor: actor('alice') });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PatchesApi } from '../api/client.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { EditProfileScreen } from './EditProfileScreen.js';
+import { makeActor, makeNameplate } from '../test/wire-fixtures.js';
 
 const KEY = {
   tab: '\t',
@@ -15,29 +16,12 @@ const KEY = {
 } as const;
 
 function actor(overrides: Partial<Actor> = {}): Actor {
-  return {
-    id: 'actor-1',
-    handle: 'alice',
+  return makeActor({
     displayName: 'Alice',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
     joinedAt: fromDate(new Date()),
-    counts: undefined,
-    nameplate: {
-      nameColor: '#ff0000',
-      glyph: '',
-      badges: [],
-      avatarFrame: '',
-      statusLine: '',
-      profileBorder: '',
-    },
-    flair: undefined,
-    pinnedPostIds: [],
+    nameplate: makeNameplate({ nameColor: '#ff0000' }),
     ...overrides,
-  };
+  });
 }
 
 function baseApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

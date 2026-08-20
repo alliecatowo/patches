@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { runDm, type DmCommandApi, type DmCommandSession } from './dm.js';
 import type { CliIo } from './io.js';
-import { makeActor, makeConversation, makeMessage, makeMessageRequest } from '../test/wire-fixtures.js';
+import {
+  makeActor,
+  makeConversation,
+  makeMessage,
+  makeMessageRequest,
+} from '../test/wire-fixtures.js';
 
 function actor(id: string, handle: string, displayName: string): Actor {
   return makeActor({ id, handle, displayName });

@@ -1,25 +1,17 @@
-import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
 import type { Actor, Notification } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { NotificationsScreen } from './NotificationsScreen.js';
+import { makeActor, makeNotification } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
-  return { id: `id-${handle}`, handle } as Actor;
+  return makeActor({ id: `id-${handle}`, handle });
 }
 
 function notification(overrides: Partial<Notification> = {}): Notification {
-  return {
-    id: 'notif-1',
-    type: NOTIFICATION_TYPE.FOLLOW_REQUEST,
-    actor: actor('carol'),
-    postId: '',
-    createdAt: undefined,
-    readAt: undefined,
-    ...overrides,
-  } as unknown as Notification;
+  return makeNotification({ actor: actor('carol'), ...overrides });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

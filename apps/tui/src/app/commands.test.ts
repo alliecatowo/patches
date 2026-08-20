@@ -1,4 +1,3 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Actor, Post } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +13,7 @@ import {
   tokenizeCommand,
 } from './commands.js';
 import { KEYMAP, validateKeymap, type Binding } from './keymap.js';
+import { makeActor, makePost } from '../test/wire-fixtures.js';
 
 describe('Vim command parser', () => {
   it('resolves every required alias back to a KEYMAP binding', () => {
@@ -116,49 +116,11 @@ describe('KEYMAP validation and fuzzy palette source', () => {
 });
 
 function actor(id: string, handle: string): Actor {
-  return {
-    id,
-    handle,
-    displayName: '',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
-    joinedAt: undefined,
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-  };
+  return makeActor({ id, handle });
 }
 
 function post(overrides: Partial<Post> = {}): Post {
-  return {
-    id: 'post-1',
-    author: actor('actor-1', 'alice'),
-    body: 'hello world',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
-    createdAt: undefined,
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-    ...overrides,
-  };
+  return makePost({ author: actor('actor-1', 'alice'), ...overrides });
 }
 
 describe('contextualCommands (P12-116)', () => {

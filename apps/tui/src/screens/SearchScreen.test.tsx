@@ -1,4 +1,3 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Actor, Post, Tag } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +6,7 @@ import type { PatchesApi } from '../api/client.js';
 import { MemoryRecentQueriesStore } from '../search/recent-queries.js';
 import { stripSgr } from '../../test/ansi.js';
 import { SearchScreen } from './SearchScreen.js';
+import { makeActor, makePost, makeTag } from '../test/wire-fixtures.js';
 
 const KEY = {
   enter: '\r',
@@ -17,52 +17,15 @@ const KEY = {
 } as const;
 
 function actor(id: string, handle: string): Actor {
-  return {
-    id,
-    handle,
-    displayName: '',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
-    joinedAt: undefined,
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-  };
+  return makeActor({ id, handle });
 }
 
 function tag(id: string, name: string): Tag {
-  return { id, name, displayName: name, createdAt: undefined };
+  return makeTag({ id, name, displayName: name });
 }
 
 function post(body: string, id = 'post-1'): Post {
-  return {
-    id,
-    author: actor('actor-1', 'alice'),
-    body,
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: id,
-    media: [],
-    createdAt: undefined,
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-  };
+  return makePost({ id, author: actor('actor-1', 'alice'), body, rootPostId: id });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

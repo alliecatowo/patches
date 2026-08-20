@@ -4,13 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { FollowRequestsScreen } from './FollowRequestsScreen.js';
+import { makeActor, makeFollowRequest } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
-  return { id: `id-${handle}`, handle } as Actor;
+  return makeActor({ id: `id-${handle}`, handle });
 }
 
 function request(handle: string): FollowRequest {
-  return { actor: actor(handle), createdAt: undefined };
+  return makeFollowRequest({ actor: actor(handle) });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

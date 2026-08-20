@@ -12,17 +12,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { PrivacyScreen } from './PrivacyScreen.js';
+import { makePrivacyPrefs } from '../test/wire-fixtures.js';
 
 function prefs(overrides: Partial<PrivacyPrefs> = {}): PrivacyPrefs {
-  return {
-    discoverable: true,
-    indexable: true,
-    showInLocalFeed: true,
-    locked: false,
-    privacyNoticeVersion: 0,
-    privacyNoticeAcknowledgedAt: undefined,
-    ...overrides,
-  };
+  return makePrivacyPrefs(overrides);
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

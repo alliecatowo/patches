@@ -296,7 +296,13 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
 }
 
 export function makeTag(overrides: Partial<Tag> = {}): Tag {
-  return { id: 'tag-1', name: 'patches', displayName: 'patches', createdAt: undefined, ...overrides };
+  return {
+    id: 'tag-1',
+    name: 'patches',
+    displayName: 'patches',
+    createdAt: undefined,
+    ...overrides,
+  };
 }
 
 /** Every v0 conversation the TUI renders is server-visible (ADR 0017) - a
@@ -310,7 +316,13 @@ export function makeConversation(overrides: Partial<Conversation> = {}): Convers
     securityMode: 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE' as ConversationSecurityMode,
     createdBy,
     members: [
-      { actor: createdBy, joinedAt: undefined, leftAt: undefined, lastReadMessageId: '', muted: false },
+      {
+        actor: createdBy,
+        joinedAt: undefined,
+        leftAt: undefined,
+        lastReadMessageId: '',
+        muted: false,
+      },
     ],
     createdAt: undefined,
     lastMessageAt: undefined,

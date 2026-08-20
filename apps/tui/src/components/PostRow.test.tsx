@@ -233,21 +233,7 @@ describe('PostRow filtered_by provenance (§198.3/§199.3)', () => {
       filteredBy: {
         provenance: FILTERED_BY_PROVENANCE.FILTER_LIST,
         name: 'Curated blocklist',
-        listOwner: {
-          id: 'actor-2',
-          handle: 'moderator',
-          displayName: '',
-          bio: '',
-          locationText: '',
-          websiteUrl: '',
-          avatar: undefined,
-          isLocal: true,
-          joinedAt: undefined,
-          counts: undefined,
-          nameplate: undefined,
-          flair: undefined,
-          pinnedPostIds: [],
-        },
+        listOwner: makeActor({ id: 'actor-2', handle: 'moderator' }),
         action: FILTER_ACTION.COLLAPSE,
       },
     });

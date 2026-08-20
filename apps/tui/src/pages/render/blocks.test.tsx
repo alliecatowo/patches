@@ -1,5 +1,4 @@
 import type { RenderablePageBlock } from '@patches/domain';
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../../api/wire/enums.js';
 import type {
   GetActorByHandleResponse,
   ListActorPostsResponse,
@@ -11,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PatchesApi } from '../../api/client.js';
 import { collectLinks, PageBlocksView, type PageRenderContext } from './blocks.js';
+import { makeActor, makePost } from '../../test/wire-fixtures.js';
 
 /** A minimal `PatchesApi` stand-in covering only the calls `PageBlocksView`'s async
  * blocks (`Posts`/`TopEight`/`Guestbook`) make — this is a renderer unit test, not an
@@ -147,32 +147,7 @@ describe('PageBlocksView (P45-004/005)', () => {
     const api = fakeApi({
       listActorPosts: () =>
         Promise.resolve({
-          posts: [
-            {
-              id: 'p1',
-              author: { id: 'actor-1', handle: 'alice' } as never,
-              body: 'a recent post',
-              postType: POST_TYPE.NOTE,
-              linkUrl: '',
-              visibility: POST_VISIBILITY.PUBLIC,
-              inReplyToId: '',
-              rootPostId: 'p1',
-              media: [],
-              createdAt: undefined,
-              editedAt: undefined,
-              deleted: false,
-              counts: undefined,
-              viewerState: undefined,
-              contentWarning: '',
-              quotedPost: undefined,
-              community: undefined,
-              quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-              repostedBy: [],
-              repostedByTotal: 0,
-              filteredBy: undefined,
-              labels: [],
-            },
-          ],
+          posts: [makePost({ id: 'p1', body: 'a recent post', rootPostId: 'p1' })],
           page: { nextCursor: '', hasMore: false },
         }),
     });
@@ -189,21 +164,7 @@ describe('PageBlocksView (P45-004/005)', () => {
       getActorByHandle: ({ handle }) =>
         handle === 'bob'
           ? Promise.resolve<GetActorByHandleResponse>({
-              actor: {
-                id: 'actor-bob',
-                handle: 'bob',
-                displayName: '',
-                bio: '',
-                locationText: '',
-                websiteUrl: '',
-                avatar: undefined,
-                isLocal: true,
-                joinedAt: undefined,
-                counts: undefined,
-                nameplate: undefined,
-                flair: undefined,
-                pinnedPostIds: [],
-              },
+              actor: makeActor({ id: 'actor-bob', handle: 'bob' }),
             })
           : Promise.reject(new Error('not found')),
     });
@@ -260,23 +221,7 @@ describe('PageBlocksView (P45-004/005)', () => {
       listMutualFollows: ({ actorId }) =>
         actorId === 'actor-1'
           ? Promise.resolve<ListMutualFollowsResponse>({
-              actors: [
-                {
-                  id: 'actor-bob',
-                  handle: 'bob',
-                  displayName: '',
-                  bio: '',
-                  locationText: '',
-                  websiteUrl: '',
-                  avatar: undefined,
-                  isLocal: true,
-                  joinedAt: undefined,
-                  counts: undefined,
-                  nameplate: undefined,
-                  flair: undefined,
-                  pinnedPostIds: [],
-                },
-              ],
+              actors: [makeActor({ id: 'actor-bob', handle: 'bob' })],
               page: { nextCursor: '', hasMore: false },
             })
           : Promise.reject(new Error('unexpected actorId')),

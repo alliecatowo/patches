@@ -5,23 +5,20 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { LabelersScreen } from './LabelersScreen.js';
+import { makeActor, makeLabeler } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
-  return { id: 'a1', handle } as Actor;
+  return makeActor({ id: 'a1', handle });
 }
 
 function labeler(): Labeler {
-  return {
-    id: 'labeler-1',
+  return makeLabeler({
     actor: actor('modbot'),
-    community: undefined,
-    isNodeLabeler: false,
     vocabulary: [
       { value: 'spam', description: '', defaultAction: LABEL_ACTION.WARN, mandatory: false },
       { value: 'nsfw', description: '', defaultAction: LABEL_ACTION.COLLAPSE, mandatory: true },
     ],
-    createdAt: undefined,
-  };
+  });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
