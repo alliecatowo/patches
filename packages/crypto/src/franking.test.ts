@@ -8,6 +8,8 @@ import {
   verifyFrankingCommitment,
   verifyFrankingReport,
   verifyNodeReportTag,
+  verifyNodeReportTagOverEncodedTranscript,
+  type FrankingCommitmentContext,
   type FrankingReportEvidence,
   type FrankingReportTranscript,
 } from './franking.js';
@@ -19,8 +21,17 @@ function digest(label: string): Uint8Array {
   return sha256Hash(encoder.encode(label));
 }
 
+const CONTEXT: FrankingCommitmentContext = {
+  frankingProfile: 'patches-franking-v1',
+  conversationId: 'conversation-1',
+  membershipEpoch: 1,
+  senderActorId: 'alice',
+  senderDeviceId: 'alice-device',
+};
+
 function baseTranscript(commitment: Uint8Array): FrankingReportTranscript {
   return {
+    frankingProfile: CONTEXT.frankingProfile,
     frankingKeyEra: 3,
     conversationId: 'conversation-1',
     membershipEpoch: 1,
@@ -38,32 +49,36 @@ describe('franking commitment', () => {
   it('binds a commitment to its exact plaintext and opening key', () => {
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('hello bob');
-    const commitment = commitFranking(opening, plaintext);
-    expect(verifyFrankingCommitment(opening, plaintext, commitment)).toBe(true);
+    const commitment = commitFranking(opening, CONTEXT, plaintext);
+    expect(verifyFrankingCommitment(opening, CONTEXT, plaintext, commitment)).toBe(true);
   });
 
   it('rejects a commitment check against different plaintext (forged evidence)', () => {
     const opening = createFrankingOpeningKey();
-    const commitment = commitFranking(opening, encoder.encode('original'));
-    expect(verifyFrankingCommitment(opening, encoder.encode('forged'), commitment)).toBe(false);
+    const commitment = commitFranking(opening, CONTEXT, encoder.encode('original'));
+    expect(verifyFrankingCommitment(opening, CONTEXT, encoder.encode('forged'), commitment)).toBe(
+      false,
+    );
   });
 
   it('rejects a commitment check under the wrong opening key', () => {
     const plaintext = encoder.encode('hello bob');
-    const commitment = commitFranking(createFrankingOpeningKey(), plaintext);
-    expect(verifyFrankingCommitment(createFrankingOpeningKey(), plaintext, commitment)).toBe(false);
+    const commitment = commitFranking(createFrankingOpeningKey(), CONTEXT, plaintext);
+    expect(
+      verifyFrankingCommitment(createFrankingOpeningKey(), CONTEXT, plaintext, commitment),
+    ).toBe(false);
   });
 
   it('rejects a truncated opening key or commitment', () => {
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('hi');
-    const commitment = commitFranking(opening, plaintext);
-    expect(() => commitFranking(opening.slice(0, 10), plaintext)).toThrow(
+    const commitment = commitFranking(opening, CONTEXT, plaintext);
+    expect(() => commitFranking(opening.slice(0, 10), CONTEXT, plaintext)).toThrow(
       'Franking opening key has an invalid length.',
     );
-    expect(() => verifyFrankingCommitment(opening, plaintext, commitment.slice(0, 4))).toThrow(
-      'Franking commitment has an invalid length.',
-    );
+    expect(() =>
+      verifyFrankingCommitment(opening, CONTEXT, plaintext, commitment.slice(0, 4)),
+    ).toThrow('Franking commitment has an invalid length.');
   });
 });
 
@@ -72,7 +87,7 @@ describe('node report tag', () => {
     const nodeKey = digest('node-franking-key-era-3');
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('reported content');
-    const commitment = commitFranking(opening, plaintext);
+    const commitment = commitFranking(opening, CONTEXT, plaintext);
     const transcript = baseTranscript(commitment);
     const tag = createNodeReportTag(nodeKey, transcript);
     expect(verifyNodeReportTag(nodeKey, transcript, tag)).toBe(true);
@@ -183,7 +198,7 @@ describe('full report evidence verification', () => {
     const nodeKey = digest('node-key');
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('evidence body');
-    const commitment = commitFranking(opening, plaintext);
+    const commitment = commitFranking(opening, CONTEXT, plaintext);
     const transcript = baseTranscript(commitment);
     const nodeReportTag = createNodeReportTag(nodeKey, transcript);
     return {
@@ -239,5 +254,90 @@ describe('full report evidence verification', () => {
     expect(() =>
       verifyFrankingReport(nodeKey, { ...evidence, transcript: replayedTranscript }),
     ).toThrow('accepted transcript');
+  });
+});
+
+describe('commitment context binding (ADR 0025 §1)', () => {
+  const plaintext = encoder.encode('the reported message');
+
+  function commitmentUnder(context: FrankingCommitmentContext, opening: Uint8Array): Uint8Array {
+    return commitFranking(opening, context, plaintext);
+  }
+
+  it.each([
+    ['franking profile', { frankingProfile: 'patches-franking-v2' }],
+    ['conversation', { conversationId: 'conversation-2' }],
+    ['membership epoch', { membershipEpoch: 2 }],
+    ['sender actor', { senderActorId: 'mallory' }],
+    ['sender device', { senderDeviceId: 'alice-other-device' }],
+  ])('does not verify when the %s differs from the one committed to', (_label, override) => {
+    const opening = createFrankingOpeningKey();
+    const commitment = commitmentUnder(CONTEXT, opening);
+    const elsewhere: FrankingCommitmentContext = { ...CONTEXT, ...override };
+    expect(verifyFrankingCommitment(opening, elsewhere, plaintext, commitment)).toBe(false);
+    expect(verifyFrankingCommitment(opening, CONTEXT, plaintext, commitment)).toBe(true);
+  });
+
+  /**
+   * ADR 0024's B-052: `franking_profile` used not to be bound anywhere, so a future
+   * `patches-franking-v2` with a similar layout would have been cross-acceptable with v1. The
+   * profile is now the first field after the domain separator, so it cannot be.
+   */
+  it('gives a v2 profile a different commitment for identical content', () => {
+    const opening = createFrankingOpeningKey();
+    expect(bytesToHex(commitmentUnder(CONTEXT, opening))).not.toEqual(
+      bytesToHex(commitmentUnder({ ...CONTEXT, frankingProfile: 'patches-franking-v2' }, opening)),
+    );
+  });
+
+  it('gives distinct commitments to context field splits that concatenate identically', () => {
+    const opening = createFrankingOpeningKey();
+    const left = commitmentUnder({ ...CONTEXT, senderActorId: 'ab', senderDeviceId: 'c' }, opening);
+    const right = commitmentUnder(
+      { ...CONTEXT, senderActorId: 'a', senderDeviceId: 'bc' },
+      opening,
+    );
+    expect(bytesToHex(left)).not.toEqual(bytesToHex(right));
+  });
+
+  /**
+   * The load-bearing anti-Grubbs/Lu/Ristenpart invariant, pinned as a test rather than left to a
+   * comment: RFC 2104 reduces any key longer than the 64-byte block with `SHA256(K)`, so a
+   * 65-byte opening and its digest would open the same commitment. Widening `requireKeyBytes` is
+   * the change that silently reopens that attack, and this fails the moment someone does.
+   */
+  it.each([16, 31, 33, 64, 65])('refuses a %d-byte opening key outright', (length) => {
+    expect(() => commitFranking(new Uint8Array(length), CONTEXT, plaintext)).toThrow(
+      'Franking opening key has an invalid length.',
+    );
+  });
+});
+
+describe('verifyNodeReportTagOverEncodedTranscript (ADR 0024 B-050)', () => {
+  const nodeKey = digest('node-key');
+
+  it('accepts the same bytes verifyNodeReportTag accepts', () => {
+    const transcript = baseTranscript(digest('commitment'));
+    const tag = createNodeReportTag(nodeKey, transcript);
+    expect(
+      verifyNodeReportTagOverEncodedTranscript(nodeKey, encodeReportTranscript(transcript), tag),
+    ).toBe(true);
+  });
+
+  /**
+   * The defect this replaces was a raw `hmacSha256` under the node's long-term franking key over
+   * untyped bytes — an equality oracle that would happily MAC a commitment transcript, a fanout
+   * transcript, or anything else a caller handed it. Requiring the report domain separator means
+   * the only strings this key ever MACs are report transcripts.
+   */
+  it('refuses bytes that are not a canonical report transcript', () => {
+    const transcript = baseTranscript(digest('commitment'));
+    const encoded = encodeReportTranscript(transcript);
+    const tag = createNodeReportTag(nodeKey, transcript);
+    const reDomained = encoded.slice();
+    reDomained[8] = (reDomained[8] ?? 0) ^ 0xff;
+    expect(verifyNodeReportTagOverEncodedTranscript(nodeKey, reDomained, tag)).toBe(false);
+    expect(verifyNodeReportTagOverEncodedTranscript(nodeKey, new Uint8Array(4), tag)).toBe(false);
+    expect(verifyNodeReportTagOverEncodedTranscript(nodeKey, new Uint8Array(0), tag)).toBe(false);
   });
 });

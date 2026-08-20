@@ -17,8 +17,14 @@ import {
   ratchetEncrypt,
 } from '../src/double-ratchet.js';
 import {
+  encodeDeviceEnvelopeAssociatedData,
+  openDeviceEnvelope,
+  sealDeviceEnvelope,
+} from '../src/device-envelope.js';
+import {
   commitFranking,
   createNodeReportTag,
+  type FrankingCommitmentContext,
   type FrankingReportTranscript,
 } from '../src/franking.js';
 import { sha256Hash } from '../src/primitives.js';
@@ -121,8 +127,16 @@ function generateFrankingVector(): void {
   const openingKey = sha256Hash(encoder.encode('vector-franking-opening-key'));
   const nodeFrankingKey = sha256Hash(encoder.encode('vector-node-franking-key-era-1'));
   const plaintext = encoder.encode('vector reported message body');
-  const commitment = commitFranking(openingKey, plaintext);
+  const context: FrankingCommitmentContext = {
+    frankingProfile: 'patches-franking-v1',
+    conversationId: 'vector-conversation',
+    membershipEpoch: 1,
+    senderActorId: 'alice',
+    senderDeviceId: 'alice-device',
+  };
+  const commitment = commitFranking(openingKey, context, plaintext);
   const transcript: FrankingReportTranscript = {
+    frankingProfile: context.frankingProfile,
     frankingKeyEra: 1,
     conversationId: 'vector-conversation',
     membershipEpoch: 1,
@@ -146,7 +160,15 @@ function generateFrankingVector(): void {
     openingKeyHex: toHex(openingKey),
     nodeFrankingKeyHex: toHex(nodeFrankingKey),
     plaintextUtf8: 'vector reported message body',
+    context,
     commitmentHex: toHex(commitment),
+    envelopeAssociatedDataHex: toHex(
+      encodeDeviceEnvelopeAssociatedData(
+        context,
+        { recipientActorId: 'bob', recipientDeviceId: 'bob-device' },
+        commitment,
+      ),
+    ),
     transcript: {
       ...transcript,
       commitmentHex: toHex(transcript.commitment),
@@ -160,7 +182,60 @@ function generateFrankingVector(): void {
   });
 }
 
+/**
+ * A full seal/open round trip through the ADR 0025 envelope construction, so a second
+ * implementation can confirm it produces byte-identical associated data, inner plaintext, and
+ * ciphertext rather than merely "a ciphertext the reference implementation also accepts".
+ */
+function generateDeviceEnvelopeVector(): void {
+  const seed = 303;
+  const { aliceState, bobState } = establishedRatchetPair(seed);
+  const context: FrankingCommitmentContext = {
+    frankingProfile: 'patches-franking-v1',
+    conversationId: 'vector-conversation',
+    membershipEpoch: 1,
+    senderActorId: 'alice',
+    senderDeviceId: 'alice-device',
+  };
+  const recipient = { recipientActorId: 'bob', recipientDeviceId: 'bob-device' };
+  const openingKey = sha256Hash(encoder.encode('vector-envelope-opening-key'));
+  const plaintext = encoder.encode('vector sealed envelope body');
+  const commitment = commitFranking(openingKey, context, plaintext);
+  const sealed = sealDeviceEnvelope(
+    aliceState,
+    { context, recipient, plaintext, openingKey, commitment },
+    deterministicSource(seed),
+  );
+  const opened = openDeviceEnvelope(
+    bobState,
+    { context, recipient, message: sealed.output, commitment },
+    deterministicSource(seed + 1),
+  );
+  if (toHex(opened.output.openingKey) !== toHex(openingKey)) {
+    throw new Error('Device-envelope vector did not round-trip its opening key.');
+  }
+
+  writeJson('device-envelope.json', {
+    description:
+      'ADR 0025 device envelope: the franking opening travels in the inner authenticated ' +
+      'plaintext and the commitment is the body AEAD associated data. Replayed by ' +
+      'src/vectors.test.ts.',
+    seed,
+    context,
+    recipient,
+    openingKeyHex: toHex(openingKey),
+    plaintextUtf8: 'vector sealed envelope body',
+    commitmentHex: toHex(commitment),
+    associatedDataHex: toHex(encodeDeviceEnvelopeAssociatedData(context, recipient, commitment)),
+    encryptedHeaderHex: toHex(sealed.output.encryptedHeader),
+    ciphertextHex: toHex(sealed.output.ciphertext),
+  });
+}
+
 generateX3dhVector();
 generateDoubleRatchetVector();
 generateFrankingVector();
-process.stdout.write('Wrote src/vectors/{x3dh-handshake,double-ratchet-session,franking}.json\n');
+generateDeviceEnvelopeVector();
+process.stdout.write(
+  'Wrote src/vectors/{x3dh-handshake,double-ratchet-session,franking,device-envelope}.json\n',
+);

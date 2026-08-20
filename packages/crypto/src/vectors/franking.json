@@ -3,8 +3,17 @@
   "openingKeyHex": "5d4f067bc3c55b4c87aa997bb1e6e16111d0db6abfab18cb96bc590c369d9903",
   "nodeFrankingKeyHex": "4caecfc6dd06a0a751a9fa4bdefcf4632529621def77165acd0b8835c4c754cc",
   "plaintextUtf8": "vector reported message body",
-  "commitmentHex": "df153e24e5c99b03aa41bf9c84c1f0dd75d5787dd7ba635809863d53223f6219",
+  "context": {
+    "frankingProfile": "patches-franking-v1",
+    "conversationId": "vector-conversation",
+    "membershipEpoch": 1,
+    "senderActorId": "alice",
+    "senderDeviceId": "alice-device"
+  },
+  "commitmentHex": "7d2064ed136716a1bf603b9c2f5e5ced0d68df6ec4fd082faf37bede59c6d1ed",
+  "envelopeAssociatedDataHex": "00000024706174636865732d653265652d76312f6672616e6b696e672f656e76656c6f70652d616400000013706174636865732d6672616e6b696e672d76310000000f706174636865732d653265652d76310100000013766563746f722d636f6e766572736174696f6e000000000000000100000005616c6963650000000c616c6963652d64657669636500000003626f620000000a626f622d6465766963657d2064ed136716a1bf603b9c2f5e5ced0d68df6ec4fd082faf37bede59c6d1ed",
   "transcript": {
+    "frankingProfile": "patches-franking-v1",
     "frankingKeyEra": 1,
     "conversationId": "vector-conversation",
     "membershipEpoch": 1,
@@ -12,12 +21,12 @@
     "senderActorId": "alice",
     "senderDeviceId": "alice-device",
     "acceptedAtMs": 1700000000000,
-    "commitmentHex": "df153e24e5c99b03aa41bf9c84c1f0dd75d5787dd7ba635809863d53223f6219",
+    "commitmentHex": "7d2064ed136716a1bf603b9c2f5e5ced0d68df6ec4fd082faf37bede59c6d1ed",
     "recipientFanoutDigestHex": "8aaf8c6ffdc745806fd0b93b0f9807042ddfff9e2530a0302bad988c23143460",
     "ciphertextDigestsHex": [
       "20487b63c00ecc51d407fa70d301160b7b7c67b797da40e8eab25deb8cd03eed",
       "fd54effea5a468ebdbf9c19f9cc4b07fda86754cca8322c1e9f8cca8245dbdec"
     ]
   },
-  "nodeReportTagHex": "873e80550ef04c9b7bcdd57751d38ec83a95f1993fc18cb9a1a021eda5da657f"
+  "nodeReportTagHex": "ddbaee61a687954c10b137d2f30045aac95a197a2221f938117e5b124db2ff6e"
 }

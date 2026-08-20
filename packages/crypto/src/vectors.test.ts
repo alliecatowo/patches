@@ -7,13 +7,24 @@ import {
   ratchetDecrypt,
   ratchetEncrypt,
 } from './double-ratchet.js';
-import { commitFranking, createNodeReportTag, type FrankingReportTranscript } from './franking.js';
+import {
+  encodeDeviceEnvelopeAssociatedData,
+  openDeviceEnvelope,
+  sealDeviceEnvelope,
+} from './device-envelope.js';
+import {
+  commitFranking,
+  createNodeReportTag,
+  type FrankingCommitmentContext,
+  type FrankingReportTranscript,
+} from './franking.js';
 import {
   deterministicSource,
   establishedFixture,
   establishedRatchetPair,
 } from './testing/fixtures.js';
 import type { DoubleRatchetState, EncryptedRatchetMessage } from './types.js';
+import deviceEnvelopeVector from './vectors/device-envelope.json' with { type: 'json' };
 import doubleRatchetVector from './vectors/double-ratchet-session.json' with { type: 'json' };
 import frankingVector from './vectors/franking.json' with { type: 'json' };
 import x3dhVector from './vectors/x3dh-handshake.json' with { type: 'json' };
@@ -89,10 +100,21 @@ describe('vector replay: franking commitment and node report tag', () => {
     const openingKey = fromHex(frankingVector.openingKeyHex);
     const nodeFrankingKey = fromHex(frankingVector.nodeFrankingKeyHex);
     const plaintext = encoder.encode(frankingVector.plaintextUtf8);
-    const commitment = commitFranking(openingKey, plaintext);
+    const context: FrankingCommitmentContext = frankingVector.context;
+    const commitment = commitFranking(openingKey, context, plaintext);
     expect(toHex(commitment)).toBe(frankingVector.commitmentHex);
+    expect(
+      toHex(
+        encodeDeviceEnvelopeAssociatedData(
+          context,
+          { recipientActorId: 'bob', recipientDeviceId: 'bob-device' },
+          commitment,
+        ),
+      ),
+    ).toBe(frankingVector.envelopeAssociatedDataHex);
 
     const transcript: FrankingReportTranscript = {
+      frankingProfile: frankingVector.transcript.frankingProfile,
       frankingKeyEra: frankingVector.transcript.frankingKeyEra,
       conversationId: frankingVector.transcript.conversationId,
       membershipEpoch: frankingVector.transcript.membershipEpoch,
@@ -106,5 +128,36 @@ describe('vector replay: franking commitment and node report tag', () => {
     };
     const tag = createNodeReportTag(nodeFrankingKey, transcript);
     expect(toHex(tag)).toBe(frankingVector.nodeReportTagHex);
+  });
+});
+
+describe('vector replay: ADR 0025 device envelope', () => {
+  it('reproduces the recorded sealed envelope and opens it back to the same opening', () => {
+    const { aliceState, bobState } = establishedRatchetPair(deviceEnvelopeVector.seed);
+    const context: FrankingCommitmentContext = deviceEnvelopeVector.context;
+    const recipient = deviceEnvelopeVector.recipient;
+    const openingKey = fromHex(deviceEnvelopeVector.openingKeyHex);
+    const plaintext = encoder.encode(deviceEnvelopeVector.plaintextUtf8);
+    const commitment = commitFranking(openingKey, context, plaintext);
+    expect(toHex(commitment)).toBe(deviceEnvelopeVector.commitmentHex);
+    expect(toHex(encodeDeviceEnvelopeAssociatedData(context, recipient, commitment))).toBe(
+      deviceEnvelopeVector.associatedDataHex,
+    );
+
+    const sealed = sealDeviceEnvelope(
+      aliceState,
+      { context, recipient, plaintext, openingKey, commitment },
+      deterministicSource(deviceEnvelopeVector.seed),
+    );
+    expect(toHex(sealed.output.encryptedHeader)).toBe(deviceEnvelopeVector.encryptedHeaderHex);
+    expect(toHex(sealed.output.ciphertext)).toBe(deviceEnvelopeVector.ciphertextHex);
+
+    const opened = openDeviceEnvelope(
+      bobState,
+      { context, recipient, message: sealed.output, commitment },
+      deterministicSource(deviceEnvelopeVector.seed + 1),
+    );
+    expect(opened.output.plaintext).toEqual(plaintext);
+    expect(toHex(opened.output.openingKey)).toBe(deviceEnvelopeVector.openingKeyHex);
   });
 });
