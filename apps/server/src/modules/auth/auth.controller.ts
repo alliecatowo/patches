@@ -5,8 +5,12 @@ import { dateToTimestamp } from '@patches/proto';
 import {
   type AddCredentialRequest,
   type AddCredentialResponse,
+  type ApproveDeviceLinkRequest,
+  type ApproveDeviceLinkResponse,
   AuthServiceControllerMethods,
   type AuthServiceController,
+  type BeginDeviceLinkRequest,
+  type BeginDeviceLinkResponse,
   type BeginGitHubLoginRequest,
   type BeginGitHubLoginResponse,
   type BeginOidcLoginRequest,
@@ -40,6 +44,8 @@ import {
   type LogoutAllSessionsResponse,
   type LogoutRequest,
   type LogoutResponse,
+  type PollDeviceLinkRequest,
+  type PollDeviceLinkResponse,
   type PollGitHubLoginRequest,
   type PollGitHubLoginResponse,
   type PollOidcLoginRequest,
@@ -68,6 +74,7 @@ import {
   credentialTypeFromProto,
   toProtoActor,
   toProtoCredential,
+  toProtoDeviceLinkStatus,
   toProtoGitHubLoginStatus,
   toProtoOidcLoginStatus,
   toProtoOidcProviders,
@@ -308,6 +315,42 @@ export class AuthController implements AuthServiceController {
     } catch {
       return undefined;
     }
+  }
+
+  /** No `@UseGuards(AuthGuard)`: `BeginDeviceLink` is always anonymous — any browser tab may
+   * start one. Unlike `beginGitHubLogin`/`beginOidcLogin`, it carries no caller identity at all;
+   * the account it ends up bound to is decided entirely by `approveDeviceLink` below. */
+  async beginDeviceLink(
+    @Payload() _request: BeginDeviceLinkRequest,
+  ): Promise<BeginDeviceLinkResponse> {
+    const begun = await this.auth.beginDeviceLink();
+    return {
+      deviceCode: begun.deviceCode,
+      userCode: begun.userCode,
+      interval: begun.interval,
+      expiresAt: dateToTimestamp(begun.expiresAt),
+    };
+  }
+
+  async pollDeviceLink(@Payload() request: PollDeviceLinkRequest): Promise<PollDeviceLinkResponse> {
+    const result = await this.auth.pollDeviceLink(request.deviceCode);
+    return {
+      status: toProtoDeviceLinkStatus(result.status),
+      session: result.status === 'COMPLETE' ? toProtoSession(result.session) : undefined,
+    };
+  }
+
+  /** Authenticated: `ApproveDeviceLink` binds the pending link to *this* caller's own account
+   * (spec §167's "linking ... MUST require an authenticated Patches session", applied to a
+   * browser session — see `AuthService.approveDeviceLink`'s doc comment). */
+  @UseGuards(AuthGuard)
+  async approveDeviceLink(
+    @Payload() request: ApproveDeviceLinkRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ApproveDeviceLinkResponse> {
+    await this.auth.approveDeviceLink(requireSession(session), request.userCode);
+    return {};
   }
 
   @UseGuards(AuthGuard)

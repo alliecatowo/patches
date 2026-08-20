@@ -37,6 +37,7 @@ function buildAuthService(config: AppConfigService): AuthService {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 }
 

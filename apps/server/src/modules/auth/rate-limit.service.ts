@@ -30,6 +30,18 @@ export type RateLimitAction =
   | 'oidc_begin_login'
   /** `PollOidcLogin` — same reasoning as `github_poll_login`. */
   | 'oidc_poll_login'
+  /** `BeginDeviceLink` (P15-005): each call is a new device-link attempt held in memory —
+   * bounded per caller the same way `github_begin_login` bounds GitHub device-flow attempts. */
+  | 'device_link_begin'
+  /** `PollDeviceLink` — `AuthService` also honors its own per-link `interval`, but this bounds
+   * the number of distinct device codes one peer can poll, same as `github_poll_login`. */
+  | 'device_link_poll'
+  /** `ApproveDeviceLink` (P15-005): unlike `device_link_begin`/`_poll`, the caller is
+   * authenticated, so `user_id` is a trustworthy subject — this is what actually bounds
+   * brute-forcing another browser's short, human-typeable `user_code` (the code's own short TTL
+   * and single-use consumption are the other two legs of that defense; see the RPC's doc
+   * comment in `auth.proto`). */
+  | 'device_link_approve'
   /** `PrivacyService.ExportAccount` (P14-010, spec §204: `exportRequestedPerDay`) — bounds how
    * many background export jobs one actor can enqueue. */
   | 'export_account'
@@ -74,6 +86,12 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
   github_poll_login: { limit: 120, windowMs: 5 * 60_000 },
   oidc_begin_login: { limit: 20, windowMs: 5 * 60_000 },
   oidc_poll_login: { limit: 120, windowMs: 5 * 60_000 },
+  device_link_begin: { limit: 20, windowMs: 5 * 60_000 },
+  device_link_poll: { limit: 120, windowMs: 5 * 60_000 },
+  // Deliberately tight: unlike `login`'s handle/email subject (which a legitimate caller varies
+  // constantly across accounts), `user_id` here is the *approver's own* identity — a real user
+  // approves at most a small handful of device links in any five-minute window.
+  device_link_approve: { limit: 10, windowMs: 5 * 60_000 },
   // Daily windows, straight from `packages/domain`'s §204 table — the single source of truth
   // every layer (proto docs, this limiter, the future database constraint) reads from, same
   // rule the `filters`/`labels` rate limits already follow.
@@ -107,6 +125,9 @@ const PEER_WINDOWS: Readonly<Partial<Record<RateLimitAction, Window>>> = Object.
   github_poll_login: { limit: 240, windowMs: 5 * 60_000 },
   oidc_begin_login: { limit: 40, windowMs: 5 * 60_000 },
   oidc_poll_login: { limit: 240, windowMs: 5 * 60_000 },
+  device_link_begin: { limit: 40, windowMs: 5 * 60_000 },
+  device_link_poll: { limit: 240, windowMs: 5 * 60_000 },
+  device_link_approve: { limit: 30, windowMs: 5 * 60_000 },
   recovery_login: { limit: 60, windowMs: 5 * 60_000 },
   passkey_challenge: { limit: 60, windowMs: 5 * 60_000 },
   passkey_complete: { limit: 60, windowMs: 5 * 60_000 },
@@ -138,6 +159,10 @@ export const DB_BACKED_RATE_LIMIT_ACTIONS: ReadonlySet<RateLimitAction> = new Se
   'recovery_login',
   'passkey_challenge',
   'passkey_complete',
+  // A short, human-typeable `user_code` is the whole guessing surface `ApproveDeviceLink`
+  // defends (see the `device_link_approve` doc comment above) — the same "must not be divided
+  // by process count" reasoning `ssh_challenge`/`recovery_login` already apply.
+  'device_link_approve',
   // 24-hour windows especially cannot be process-local only: a single server restart (or a
   // second process) must not silently double an actor's daily export/deletion budget.
   'export_account',
