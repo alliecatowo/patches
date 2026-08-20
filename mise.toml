@@ -155,6 +155,22 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
 description = "format + lint + typecheck + unit tests (the pre-commit gate)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
 
+[tasks.check]
+description = "Scoped check for one workspace: typecheck + tests + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains."
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+name="${1:?usage: mise run check <workspace>   e.g. tui, web, server, @patches/tui}"
+case "$name" in @patches/*) pkg="$name" ;; *) pkg="@patches/$name" ;; esac
+dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(execSync("pnpm ls -r --depth -1 --json",{encoding:"utf8"}));const m=l.find(p=>p.name===process.argv[1]);if(!m){console.error("unknown workspace: "+process.argv[1]);process.exit(1)}process.stdout.write(m.path)' "$pkg")"
+echo "→ $pkg  ($dir)"
+pnpm --filter "$pkg" typecheck
+pnpm --filter "$pkg" test --reporter=dot
+pnpm exec prettier --check "$dir"
+echo "✓ $pkg is green"
+"""
+
 [tasks.test]
 description = "All tests including integration (needs the compose stack)"
 run = "cd \"$MISE_PROJECT_ROOT\" && TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" pnpm test"

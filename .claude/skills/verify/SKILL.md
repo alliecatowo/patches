@@ -23,16 +23,28 @@ pnpm db:show          # only if a Postgres instance is reachable (see below) and
 
 `pnpm verify` = `format:check && lint && typecheck && test` in one shot — use it as the fast default; run the proto/db steps separately when relevant.
 
-## Scoped variant
+## Scoped variant — use this while working
+
+```
+mise run check <name>        # tui | web | server | database | … (or the full @patches/<name>)
+```
+
+One command: typecheck + tests (dot reporter) + prettier for that workspace, run under the
+**pinned** Node. Use it instead of hand-rolling `pnpm --filter X typecheck && … && …` chains,
+and instead of wrapping anything in `zsh -i -c` or `mise exec --` — those only ever existed to
+work around a stale `node` on `PATH`, and `mise run` already resolves the pinned toolchain.
+
+If you need the pieces separately:
 
 ```
 pnpm --filter @patches/<name> typecheck
-pnpm --filter @patches/<name> test
-pnpm format:check -- <paths>   # prettier --check accepts path args
-pnpm lint -- <paths>           # eslint accepts path args
+pnpm --filter @patches/<name> test --reporter=dot
+pnpm exec prettier --check <dir>
 ```
 
-Full-repo `lint`/`format:check` are cheap enough to just run unscoped unless you specifically need speed.
+Full-repo `lint`/`format:check` are cheap enough to run unscoped unless you specifically need
+speed. Note `pnpm lint` runs a full type-aware ESLint pass over the repo (~40s) and does not
+accept `-f unix` — that formatter was removed from core ESLint and fails _after_ the whole run.
 
 ## Postgres reachability for db:show
 
