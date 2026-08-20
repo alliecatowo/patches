@@ -132,6 +132,13 @@ export const router = createBrowserRouter([
                 Component: m.LabelersSettingsRoute,
               })),
           },
+          {
+            path: 'credentials',
+            lazy: () =>
+              import('./routes/settings/CredentialsRoute.js').then((m) => ({
+                Component: m.CredentialsRoute,
+              })),
+          },
         ],
       },
       {

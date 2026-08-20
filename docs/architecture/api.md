@@ -153,18 +153,22 @@ session envelope**, so client session handling is identical regardless of creden
 `UNIMPLEMENTED` when the node has no `GITHUB_CLIENT_ID` configured (`docs/architecture/
 auth.md` §5) rather than pretending the flow works.
 
-| RPC                     | Notes                                                                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `BeginSshLogin`         | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
-| `CompleteSshLogin`      | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
-| `BeginSshEnrollment`    | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
-| `BeginGitHubLogin`      | device flow: returns user code, verification URI, polling interval                                                                |
-| `PollGitHubLogin`       | polls GitHub; returns pending or a session envelope                                                                               |
-| `ListCredentials`       | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
-| `AddCredential`         | requires an authenticated session                                                                                                 |
-| `RevokeCredential`      | fails if it would revoke the last active credential                                                                               |
-| `GenerateRecoveryCodes` | authenticated; mints 10 single-use codes (P15-003), revoking any generated previously                                             |
-| `RecoveryLogin`         | unauthenticated; redeems one code for a session, generic failure only                                                             |
+| RPC                           | Notes                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `BeginSshLogin`               | issues a single-use, TTL-bounded challenge; returned regardless of enrollment                                                     |
+| `CompleteSshLogin`            | verifies the agent signature over the reconstructed blob; generic failure only                                                    |
+| `BeginSshEnrollment`          | authenticated; issues a challenge to add a new SSH key to the caller's own account, verified by `AddCredential`'s signature check |
+| `BeginGitHubLogin`            | device flow: returns user code, verification URI, polling interval                                                                |
+| `PollGitHubLogin`             | polls GitHub; returns pending or a session envelope                                                                               |
+| `ListCredentials`             | type, label, identifier, `created_at`, `last_used_at` — **never `secret_hash`**                                                   |
+| `AddCredential`               | requires an authenticated session                                                                                                 |
+| `RevokeCredential`            | fails if it would revoke the last active credential                                                                               |
+| `GenerateRecoveryCodes`       | authenticated; mints 10 single-use codes (P15-003), revoking any generated previously                                             |
+| `RecoveryLogin`               | unauthenticated; redeems one code for a session, generic failure only                                                             |
+| `BeginPasskeyRegistration`    | authenticated (P15-004, ADR 0022); web-client-only, issues a WebAuthn registration challenge as opaque JSON                       |
+| `CompletePasskeyRegistration` | authenticated; verifies the ceremony response, enrolls a `PASSKEY` credential                                                     |
+| `BeginPasskeyLogin`           | unauthenticated, discoverable-credential (no handle/email field); issues a WebAuthn login challenge                               |
+| `CompletePasskeyLogin`        | unauthenticated; verifies the ceremony response, generic failure only, same uniform posture as `CompleteSshLogin`                 |
 
 Notes:
 

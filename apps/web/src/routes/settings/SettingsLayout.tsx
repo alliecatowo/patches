@@ -30,6 +30,9 @@ export function SettingsLayout(): JSX.Element {
         <NavLink to="/settings/labelers" className={LINK_CLASS}>
           Labelers
         </NavLink>
+        <NavLink to="/settings/credentials" className={LINK_CLASS}>
+          Sign-in methods
+        </NavLink>
       </nav>
       <div className={styles['content']}>
         <Outlet />
