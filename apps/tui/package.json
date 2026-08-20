@@ -20,7 +20,7 @@
     "patches"
   ],
   "engines": {
-    "node": ">=24"
+    "node": ">=24 <25"
   },
   "publishConfig": {
     "access": "public",
