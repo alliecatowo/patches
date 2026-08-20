@@ -82,6 +82,7 @@ export {
 export type { E2eeDeviceRosterView, E2eeRosterEntryView } from './roster.js';
 
 export {
+  assertCiphertextDigestsMatchCiphertexts,
   assertEnvelopeShape,
   assertFanoutCovers,
   assertFanoutDigest,

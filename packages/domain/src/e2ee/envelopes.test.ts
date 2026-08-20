@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertCiphertextDigestsMatchCiphertexts,
   assertEnvelopeShape,
   assertFanoutCovers,
   assertFanoutDigest,
@@ -123,6 +124,25 @@ describe('fanout transcript and digest', () => {
     expect(() =>
       assertFanoutDigest({ ...message, fanoutDigest: seededBytes(31, 1) }, { digest: fakeDigest }),
     ).toThrow('must be 32 bytes');
+  });
+
+  it('recomputes each ciphertext digest and rejects a sender-asserted one that disagrees (ADR 0024 B-053)', () => {
+    const envelopes = [envelope('actor-a', 'd1', 1), envelope('actor-b', 'd1', 2)];
+    const message = logical(envelopes);
+    expect(() =>
+      assertCiphertextDigestsMatchCiphertexts(message, { digest: fakeDigest }),
+    ).not.toThrow();
+
+    // A sender claims a digest that does not match the ciphertext it actually sent in the same
+    // envelope — this is exactly the case the old comment (before ADR 0024 B-053) said was never
+    // checked anywhere in the server.
+    const lying = [envelopes[0]!, { ...envelopes[1]!, ciphertextDigest: seededBytes(32, 999) }];
+    expect(() =>
+      assertCiphertextDigestsMatchCiphertexts(
+        { ...message, deviceEnvelopes: lying },
+        { digest: fakeDigest },
+      ),
+    ).toThrow('does not match its ciphertext');
   });
 
   it('sorts targets deterministically', () => {

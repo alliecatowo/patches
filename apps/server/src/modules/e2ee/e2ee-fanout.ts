@@ -8,6 +8,7 @@ import {
   E2eeMailboxEnvelope as E2eeMailboxEnvelopeEntity,
 } from '@patches/database';
 import {
+  assertCiphertextDigestsMatchCiphertexts,
   assertFanoutCovers,
   assertFanoutDigest,
   assertGroupFanoutBounds,
@@ -356,6 +357,9 @@ export async function acceptE2eeLogicalMessage(
   try {
     assertFanoutCovers(view, expectedTargets);
     assertFanoutDigest(view, { digest: e2eeDigest });
+    // ADR 0024 B-053: reject a send whose declared `ciphertextDigest` does not match the
+    // `ciphertext` bytes in the same envelope, rather than trusting the sender's assertion.
+    assertCiphertextDigestsMatchCiphertexts(view, { digest: e2eeDigest });
   } catch (error) {
     wrapFanoutError(error);
   }

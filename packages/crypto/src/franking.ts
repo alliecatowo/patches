@@ -145,9 +145,14 @@ export function verifyFrankingCommitment(
  * Canonical fields the node binds into its report tag (ADR 0020 §9).
  *
  * `ciphertextDigests` is one SHA-256 digest per recipient-device payload accepted in the fanout.
- * Note that these digests are **sender-asserted** and are not recomputed from the stored
- * ciphertext anywhere (B-053, open): the tag therefore commits to the digests the node accepted,
- * not to the bytes it stored.
+ * `@patches/domain`'s `assertCiphertextDigestsMatchCiphertexts` (ADR 0024 B-053, closed) makes the
+ * node recompute each digest from the `ciphertext` bytes in the same envelope and reject the
+ * fanout if they disagree, so a stored digest is guaranteed to be `sha256(ciphertext)` for the
+ * `ciphertext` stored alongside it — this file's own tag, therefore, does commit to the bytes the
+ * node stored, not merely to what the sender claimed to have sent. This does not defend against a
+ * party with write access to the database independently rewriting a stored `ciphertext` after
+ * acceptance; no part of franking defends against a compromised node (ADR 0020 §9 treats the node
+ * as trusted by necessity for deniability to work at all).
  *
  * `frankingProfile` is bound here as well as in the commitment (ADR 0024's B-052): it selects the
  * construction, `verifyReportEvidence` branches on it, and unauthenticated data that a verifier
