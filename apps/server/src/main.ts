@@ -126,7 +126,7 @@ async function bootstrap(): Promise<void> {
   // S-001 (`docs/operations/capacity.md`): raw Node `http.Server` tuning for the always-on
   // HTTP listener — the only edge with a directly internet-facing socket (gRPC sits behind
   // Fly's TCP proxy). Must be set before `app.listen()` below to take effect.
-  const httpServer = app.getHttpServer() as HttpServer;
+  const httpServer: HttpServer = app.getHttpServer();
   httpServer.maxConnections = env.HTTP_MAX_CONNECTIONS;
   httpServer.requestTimeout = env.HTTP_REQUEST_TIMEOUT_MS;
   httpServer.headersTimeout = env.HTTP_HEADERS_TIMEOUT_MS;
