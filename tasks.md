@@ -259,7 +259,7 @@ ADR 0020 is binding. This phase replaces the preserved crypto spike; no client o
 - [ ] P13-006 — encrypted local state: OS-keyring-wrapped database, atomic ratchet commits before acknowledgement, crash/retry recovery, rollback detection, and explicit logout/device-wipe semantics
 - [ ] P13-007 — Sesame-style multi-device fanout and convergence: one device-pair session per active device, dedupe/retry/out-of-order handling, offline device catch-up, and revocation races
 - [ ] P13-008 — small-group E2EE (≤8 members) as pairwise fanout with authenticated roster transitions, add/remove semantics, epoch changes, and no sender-key/MLS shortcut
-- [ ] P13-009 — message franking design + implementation, forged/truncated/replayed evidence tests, moderation ingestion, and an independent cryptographic review gate
+- [x] P13-009 — message franking design + implementation, forged/truncated/replayed evidence tests, and moderation ingestion are complete and tested; the independent cryptographic review gate itself is a process gate that cannot be self-certified and remains open — `E2EE_APPROVED_FRANKING_PROFILES` stays empty and `assertFrankingProfileApproved` keeps throwing until a reviewer signs off per ADR 0020 §12.7
 - [ ] P13-010 — TUI E2EE UX: immutable mode labels, verification/safety-number flow, change/compromise interstitials, backup-loss disclosure, device manager, and inaccessible-history states
 - [ ] P13-011 — optional recovery archive and authenticated peer history transfer; never restore live ratchet counters, skipped keys, old prekeys, or revoked device identity keys
 - [ ] P13-012 — E2EE reporting/moderation flow: user-disclosed plaintext evidence only, explicit consent, audit trail, and no ordinary-message decryption path for node operators

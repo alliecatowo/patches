@@ -4,6 +4,7 @@ import {
   commitFranking,
   createFrankingOpeningKey,
   createNodeReportTag,
+  encodeReportTranscript,
   verifyFrankingCommitment,
   verifyFrankingReport,
   verifyNodeReportTag,
@@ -107,7 +108,75 @@ describe('node report tag', () => {
       createNodeReportTag(nodeKey, { ...baseTranscript(digest('c')), ciphertextDigests: [] }),
     ).toThrow('at least one ciphertext digest');
   });
+
+  describe('canonicalization (field-boundary confusion)', () => {
+    /**
+     * Every string/variable-length field the transcript encoder writes is length-prefixed
+     * (`ByteWriter#string`/`bytes`). If it were naive concatenation instead, two different
+     * (conversationId, logicalMessageId) splits that concatenate to the same characters would
+     * produce the same tag — letting a forger "borrow" a real tag for content the node never
+     * actually accepted under those exact ids. This proves that attack is closed.
+     */
+    it('gives distinct transcripts to two different field splits that concatenate identically', () => {
+      const nodeKey = digest('node-key');
+      const shared = { conversationId: 'ab', logicalMessageId: 'c' } as const;
+      const swapped = { conversationId: 'a', logicalMessageId: 'bc' } as const;
+      const transcriptA = { ...baseTranscript(digest('commitment')), ...shared };
+      const transcriptB = { ...baseTranscript(digest('commitment')), ...swapped };
+      expect(encodeReportTranscript(transcriptA)).not.toEqual(encodeReportTranscript(transcriptB));
+      const tagA = createNodeReportTag(nodeKey, transcriptA);
+      const tagB = createNodeReportTag(nodeKey, transcriptB);
+      expect(bytesToHex(tagA)).not.toEqual(bytesToHex(tagB));
+      expect(verifyNodeReportTag(nodeKey, transcriptB, tagA)).toBe(false);
+    });
+
+    it('gives distinct transcripts when senderActorId/senderDeviceId are split differently', () => {
+      const nodeKey = digest('node-key');
+      const transcriptA = {
+        ...baseTranscript(digest('commitment')),
+        senderActorId: 'alice-dev',
+        senderDeviceId: 'ice-1',
+      };
+      const transcriptB = {
+        ...baseTranscript(digest('commitment')),
+        senderActorId: 'alice-dev-i',
+        senderDeviceId: 'ce-1',
+      };
+      expect(encodeReportTranscript(transcriptA)).not.toEqual(encodeReportTranscript(transcriptB));
+      const tag = createNodeReportTag(nodeKey, transcriptA);
+      expect(verifyNodeReportTag(nodeKey, transcriptB, tag)).toBe(false);
+    });
+
+    it('rejects a merged ciphertext digest that tries to fake a two-digest transcript as one field', () => {
+      // A naive unprefixed concatenation of two 32-byte digests is indistinguishable from one
+      // 64-byte field; `requireKeyBytes` (fixed 32-byte width) closes that off structurally
+      // rather than relying on the count prefix alone.
+      const nodeKey = digest('node-key');
+      const merged = new Uint8Array([...digest('device-1'), ...digest('device-2')]);
+      expect(() =>
+        createNodeReportTag(nodeKey, {
+          ...baseTranscript(digest('commitment')),
+          ciphertextDigests: [merged],
+        }),
+      ).toThrow('Ciphertext digest has an invalid length.');
+    });
+
+    it('gives distinct tags for two orderings of the same ciphertext digests', () => {
+      // ciphertextDigests order is part of the transcript (not sorted here) — a report tag
+      // for one accepted order must not verify against a reshuffled replay.
+      const nodeKey = digest('node-key');
+      const [d1, d2] = [digest('device-1'), digest('device-2')];
+      const forward = { ...baseTranscript(digest('commitment')), ciphertextDigests: [d1, d2] };
+      const reversed = { ...baseTranscript(digest('commitment')), ciphertextDigests: [d2, d1] };
+      const tag = createNodeReportTag(nodeKey, forward);
+      expect(verifyNodeReportTag(nodeKey, reversed, tag)).toBe(false);
+    });
+  });
 });
+
+function bytesToHex(value: Uint8Array): string {
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 describe('full report evidence verification', () => {
   function acceptedEvidence(): { nodeKey: Uint8Array; evidence: FrankingReportEvidence } {
