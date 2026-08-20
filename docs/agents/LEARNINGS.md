@@ -226,3 +226,25 @@ read-heavy agents.
 A `system-reminder`-wrapped orchestrator message is the most authoritative instruction an agent
 has and shouldn't be refused by default; a transient `LSP` cross-package error during a concurrent
 rebuild is a timing artifact, not a finding. **Action taken:** encoded in every `.claude/agents/*.md`'s "mid-run message" note and the `LSP` dist-rebuild caveat in `implementer.md`/`reviewer.md`.
+
+## 2026-08-19 — WorktreeCreate hook: must echo path to stdout, isolation is opt-in per call
+
+The harness `WorktreeCreate` hook (`.claude/hooks/worktree-setup.sh`) must CREATE the worktree and
+echo its absolute path on stdout. The original version only ran `pnpm install` and printed nothing,
+so every `isolation: worktree` agent aborted immediately with "hook succeeded but returned no
+worktree path" — three implementer spawns died before doing any work.
+
+Two further things were learned the hard way once the hook did create worktrees:
+
+- **Nothing may prune worktrees while agents are live.** A cleanup agent running `git worktree
+remove --force` on its own test worktrees deleted three _running_ agents' trees out from under
+  them; all three lost their research and reported "worktree removed, cannot proceed".
+- **A hook cannot opt out of isolation by echoing the main checkout** — the harness rejects it with
+  "cannot be confirmed as a separate isolation worktree". Isolation is turned off by removing
+  `isolation: worktree` from the agent definition, and a definition edited mid-session does not take
+  effect for that session; spawn a different `subagent_type` instead.
+
+**Action taken:** hook rewritten to create a detached worktree, `flock`-install, and echo the path;
+`isolation: worktree` removed from `implementer.md` frontmatter — isolation stays opt-in per `Agent`
+call, since disjoint file sets per brief already keep parallel agents safe and merging N worktrees
+back is friction we do not want. Both cautions are recorded in the hook's header comment.
