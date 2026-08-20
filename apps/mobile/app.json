@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Patches",
+    "slug": "patches-mobile",
+    "scheme": "patches",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "social.patches.mobile"
+    },
+    "android": {
+      "package": "social.patches.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
