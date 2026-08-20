@@ -155,6 +155,29 @@ export const ERROR_CODES = [
    * this process is already running `RPC_WRITE_CONCURRENCY_LIMIT` write-class RPCs — the
    * request is shed immediately, before touching the database, so reads stay unaffected. */
   'NODE_OVERLOADED',
+  /** `E2eeService` (P13-004, ADR 0020 §2): `GetIdentityRoot`/`EnrollDevice`/`RevokeDevice`/
+   * `PublishDeviceRoster` on an actor with no published messaging identity root. */
+  'E2EE_IDENTITY_ROOT_NOT_FOUND',
+  /** `E2eeService.GetDeviceRoster`/`ListDeviceRosters` on an actor with no published device
+   * roster (identity root published but `EnrollDevice` never called). */
+  'E2EE_ROSTER_NOT_FOUND',
+  /** `E2eeService.RevokeDevice`/`UploadPrekeys`/`GetPrekeyInventory`/`ClaimPrekeyBundles` on a
+   * `device_id` that does not resolve to an active device certified for the relevant actor —
+   * uniform for "doesn't exist" and "isn't yours"/"isn't active", same §62 no-oracle reason as
+   * `CONVERSATION_NOT_FOUND`. */
+  'E2EE_DEVICE_NOT_FOUND',
+  /** `E2eeService` (ADR 0020 §2–§3, §14.14.2): an identity root self-signature, device
+   * certificate root-signature, or prekey-bundle device-signature does not verify, or a decoded
+   * convenience field disagrees with its signed canonical transcript. */
+  'E2EE_CERTIFICATE_INVALID',
+  /** `E2eeService.PublishDeviceRoster`/`EnrollDevice`/`RevokeDevice` (ADR 0020 §2, §14.14.4): a
+   * submitted roster does not extend the actor's current roster by exactly one signed,
+   * chained, monotonic step. */
+  'E2EE_ROSTER_CONFLICT',
+  /** `E2eeService.ClaimPrekeyBundles` (ADR 0020 §5): a caller exceeded this node's one-time
+   * prekey drain rate limit for a device; the caller must retry the fallback-only bundle
+   * rather than re-request one-time-prekey forward secrecy immediately. */
+  'E2EE_PREKEY_LIMIT_EXCEEDED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -218,6 +241,12 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   PASSWORD_AUTH_DISABLED: GrpcStatus.FAILED_PRECONDITION,
   RPC_TIMEOUT: GrpcStatus.DEADLINE_EXCEEDED,
   NODE_OVERLOADED: GrpcStatus.UNAVAILABLE,
+  E2EE_IDENTITY_ROOT_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  E2EE_ROSTER_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  E2EE_DEVICE_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  E2EE_CERTIFICATE_INVALID: GrpcStatus.INVALID_ARGUMENT,
+  E2EE_ROSTER_CONFLICT: GrpcStatus.FAILED_PRECONDITION,
+  E2EE_PREKEY_LIMIT_EXCEEDED: GrpcStatus.RESOURCE_EXHAUSTED,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

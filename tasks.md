@@ -254,8 +254,8 @@ ADR 0020 is binding. This phase replaces the preserved crypto spike; no client o
 - [x] P13-001 — protocol/domain contract: immutable conversation modes, account-root/device certificates, monotonic rosters, prekey bundles, per-device envelopes, capability negotiation, and E2EE report evidence
 - [x] P13-002 — database schema/migrations: device roster/prekey/envelope/mailbox/report tables and constraints; no plaintext body, message key, ratchet state, or recovery secret may enter node persistence
 - [x] P13-003 — replace the crypto spike with reviewed primitives, X3DH transcript binding, and a full revision-4 Double Ratchet with encrypted headers, bounded skipped keys, deterministic vectors, fuzz/property tests, and zeroization boundaries
-- [ ] P13-004 — account-root and certified-device lifecycle: enrollment, safety numbers, signed monotonic roster changes, device change warnings, revocation, and compromise recovery
-- [ ] P13-005 — prekey service: signed-prekey rotation, atomic one-time-prekey consume/replenish, exhaustion fallback disclosure, anti-replay, concurrency tests, and abuse limits
+- [x] P13-004 — account-root and certified-device lifecycle: enrollment, safety numbers, signed monotonic roster changes, device change warnings, revocation, and compromise recovery
+- [x] P13-005 — prekey service: signed-prekey rotation, atomic one-time-prekey consume/replenish, exhaustion fallback disclosure, anti-replay, concurrency tests, and abuse limits
 - [ ] P13-006 — encrypted local state: OS-keyring-wrapped database, atomic ratchet commits before acknowledgement, crash/retry recovery, rollback detection, and explicit logout/device-wipe semantics
 - [ ] P13-007 — Sesame-style multi-device fanout and convergence: one device-pair session per active device, dedupe/retry/out-of-order handling, offline device catch-up, and revocation races
 - [ ] P13-008 — small-group E2EE (≤8 members) as pairwise fanout with authenticated roster transitions, add/remove semantics, epoch changes, and no sender-key/MLS shortcut

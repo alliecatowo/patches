@@ -13,6 +13,7 @@ import { ActorModule } from './modules/actors/actor.module.js';
 import { AppealModule } from './modules/appeals/appeal.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CommunitiesModule } from './modules/communities/communities.module.js';
+import { E2eeModule } from './modules/e2ee/e2ee.module.js';
 import { FederationHttpModule } from './modules/federation/federation-http.module.js';
 import { FederationModule } from './modules/federation/federation.module.js';
 import { FeedModule } from './modules/feeds/feed.module.js';
@@ -68,6 +69,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     AppealModule,
     MediaModule,
     MessagesModule,
+    E2eeModule,
     PagesModule,
     TagsModule,
     FiltersModule,
