@@ -1,0 +1,42 @@
+{
+  "name": "@patches/mobile",
+  "version": "0.1.0",
+  "description": "Patches — terminal-native social media. React Native client (Expo).",
+  "license": "MIT",
+  "private": true,
+  "main": "index.ts",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf .expo dist .turbo"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "catalog:",
+    "@connectrpc/connect-web": "catalog:",
+    "@patches/client": "workspace:*",
+    "@patches/domain": "workspace:*",
+    "@patches/proto": "workspace:*",
+    "expo": "57.0.14",
+    "expo-crypto": "~57.0.1",
+    "expo-secure-store": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "babel-preset-expo": "~57.0.7",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

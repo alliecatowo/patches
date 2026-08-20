@@ -1,0 +1,12 @@
+# Expo/Metro
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Native build artifacts if this is ever ejected/prebuilt (bare-minimum workflow)
+android/
+ios/
+
+# Expo local env / secrets
+.env*.local
