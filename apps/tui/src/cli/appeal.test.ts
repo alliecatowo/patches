@@ -1,9 +1,9 @@
-import { APPEAL_STATUS } from '../api/wire/enums.js';
 import type { Appeal } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runAppeal, type AppealCommandApi } from './appeal.js';
+import { makeAppeal } from '../test/wire-fixtures.js';
 
 function makeIo(overrides: Partial<CliIo> = {}): CliIo & { out: string[]; err: string[] } {
   return {
@@ -24,15 +24,7 @@ function makeIo(overrides: Partial<CliIo> = {}): CliIo & { out: string[]; err: s
 }
 
 function appeal(): Appeal {
-  return {
-    id: 'appeal-1',
-    moderationNoticeId: 'notice-1',
-    statement: 'I was not warned first.',
-    status: APPEAL_STATUS.OPEN,
-    createdAt: undefined,
-    resolvedAt: undefined,
-    resolutionReason: '',
-  };
+  return makeAppeal();
 }
 
 function fakeApi(): AppealCommandApi {

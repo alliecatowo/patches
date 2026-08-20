@@ -3,17 +3,10 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
 import { Nameplate } from './Nameplate.js';
+import { makeNameplate } from '../test/wire-fixtures.js';
 
 function nameplate(overrides: Partial<NameplateT> = {}): NameplateT {
-  return {
-    nameColor: '',
-    glyph: '',
-    badges: [],
-    avatarFrame: '',
-    statusLine: '',
-    profileBorder: '',
-    ...overrides,
-  };
+  return makeNameplate(overrides);
 }
 
 describe('Nameplate', () => {

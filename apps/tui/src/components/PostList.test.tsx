@@ -1,4 +1,4 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
+import { QUOTE_POLICY } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
@@ -6,32 +6,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ContentSizeProvider } from '../app/layout.js';
 import { PostList } from './PostList.js';
+import { makePost } from '../test/wire-fixtures.js';
 
 function selectedPost(): Post {
-  return {
-    id: 'post-1',
+  return makePost({
     author: undefined,
     body: 'hello',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
     createdAt: fromDate(new Date()),
-    editedAt: undefined,
-    deleted: false,
     counts: { replies: 0, likes: 0, reposts: 0, quotes: 0 },
     viewerState: { liked: false, bookmarked: false, reposted: false },
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
     quotePolicy: QUOTE_POLICY.ANYONE,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-  };
+  });
 }
 
 describe('PostList Amendment B row actions', () => {

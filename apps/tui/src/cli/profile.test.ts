@@ -3,6 +3,7 @@ import type { Nameplate, Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
+import { makeActor, makeSession } from '../test/wire-fixtures.js';
 
 const updateProfile = vi.fn();
 const refreshSession = vi.fn();
@@ -39,31 +40,23 @@ vi.mock('./auth-shared.js', () => ({
 
 const { runProfile } = await import('./profile.js');
 
-function makeSession(nameplate?: Nameplate): Session {
+function session(nameplate?: Nameplate): Session {
   const now = Date.now();
-  return {
-    actor: {
+  return makeSession({
+    actor: makeActor({
       id: 'u1',
-      handle: 'alice',
       displayName: 'Alice',
-      bio: '',
-      locationText: '',
-      websiteUrl: '',
-      avatar: undefined,
-      isLocal: true,
       joinedAt: fromDate(new Date()),
       counts: { followers: 0, following: 0, posts: 0 },
       nameplate,
-      flair: undefined,
-      pinnedPostIds: [],
-    },
+    }),
     accessToken: 'access-token',
     accessExpiresAt: fromDate(new Date(now + 3_600_000)),
     refreshToken: 'refresh-token',
     refreshExpiresAt: fromDate(new Date(now + 30 * 24 * 3_600_000)),
     emailVerified: true,
     node: '127.0.0.1:50051',
-  };
+  });
 }
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
@@ -108,7 +101,7 @@ describe('runProfile edit', () => {
 
   it('requires at least one field to change', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
-    refreshSession.mockResolvedValue({ session: makeSession() });
+    refreshSession.mockResolvedValue({ session: session() });
     const io = makeIo();
 
     const exitCode = await runProfile(['edit'], { io, ...DEPS });
@@ -120,9 +113,9 @@ describe('runProfile edit', () => {
 
   it('sends only the fields given, and prints the updated handle/display name', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
-    refreshSession.mockResolvedValue({ session: makeSession() });
+    refreshSession.mockResolvedValue({ session: session() });
     updateProfile.mockResolvedValue({
-      actor: { ...makeSession().actor, bio: 'new bio', displayName: 'Alice A' },
+      actor: { ...session().actor, bio: 'new bio', displayName: 'Alice A' },
     });
     const io = makeIo();
 
@@ -138,8 +131,8 @@ describe('runProfile edit', () => {
 
   it('builds updateMask from every field given', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
-    refreshSession.mockResolvedValue({ session: makeSession() });
-    updateProfile.mockResolvedValue({ actor: makeSession().actor });
+    refreshSession.mockResolvedValue({ session: session() });
+    updateProfile.mockResolvedValue({ actor: session().actor });
     const io = makeIo();
 
     await runProfile(
@@ -160,8 +153,8 @@ describe('runProfile edit', () => {
 
   it('sends the whole nameplate submessage under a single "nameplate" mask path (A-037)', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
-    refreshSession.mockResolvedValue({ session: makeSession() });
-    updateProfile.mockResolvedValue({ actor: makeSession().actor });
+    refreshSession.mockResolvedValue({ session: session() });
+    updateProfile.mockResolvedValue({ actor: session().actor });
     const io = makeIo();
 
     await runProfile(['edit', '--name-color', '#7C3AED', '--glyph', '*', '--status-line', 'brb'], {
@@ -188,7 +181,7 @@ describe('runProfile edit', () => {
   it('merges an unspecified nameplate field from the current session actor rather than blanking it', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
     refreshSession.mockResolvedValue({
-      session: makeSession({
+      session: session({
         nameColor: '#111111',
         glyph: '',
         badges: ['moderator'],
@@ -197,7 +190,7 @@ describe('runProfile edit', () => {
         profileBorder: 'round',
       }),
     });
-    updateProfile.mockResolvedValue({ actor: makeSession().actor });
+    updateProfile.mockResolvedValue({ actor: session().actor });
     const io = makeIo();
 
     // Only --glyph is given — name_color, status_line, and profile_border must keep

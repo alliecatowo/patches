@@ -3,6 +3,7 @@ import type { Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
+import { makeActor, makeSession } from '../test/wire-fixtures.js';
 
 const verifyEmail = vi.fn();
 const resendVerification = vi.fn();
@@ -46,31 +47,22 @@ vi.mock('./auth-shared.js', () => ({
 
 const { runVerify } = await import('./verify.js');
 
-function makeSession(): Session {
+function session(): Session {
   const now = Date.now();
-  return {
-    actor: {
+  return makeSession({
+    actor: makeActor({
       id: 'u1',
-      handle: 'alice',
       displayName: 'Alice',
-      bio: '',
-      locationText: '',
-      websiteUrl: '',
-      avatar: undefined,
-      isLocal: true,
       joinedAt: fromDate(new Date()),
       counts: { followers: 0, following: 0, posts: 0 },
-      nameplate: undefined,
-      flair: undefined,
-      pinnedPostIds: [],
-    },
+    }),
     accessToken: 'access-token',
     accessExpiresAt: fromDate(new Date(now + 3_600_000)),
     refreshToken: 'refresh-token',
     refreshExpiresAt: fromDate(new Date(now + 30 * 24 * 3_600_000)),
     emailVerified: false,
     node: '127.0.0.1:50051',
-  };
+  });
 }
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
@@ -158,7 +150,7 @@ describe('runVerify --resend', () => {
 
   it('resends and prints confirmation when signed in', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
-    refreshSession.mockResolvedValue({ session: makeSession() });
+    refreshSession.mockResolvedValue({ session: session() });
     resendVerification.mockResolvedValue({});
     const io = makeIo();
 

@@ -1,42 +1,13 @@
-import {
-  FILTER_ACTION,
-  FILTERED_BY_PROVENANCE,
-  POST_TYPE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-} from '../api/wire/enums.js';
+import { FILTER_ACTION, FILTERED_BY_PROVENANCE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 
 import { BODY_INDENT_COLS, measurePostBody, measurePostRowHeight } from './post-height.js';
+import { makePost } from '../test/wire-fixtures.js';
 
 function post(overrides: Partial<Post> = {}): Post {
-  return {
-    id: 'post-1',
-    author: undefined,
-    body: 'hello world',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
-    createdAt: fromDate(new Date()),
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-    ...overrides,
-  };
+  return makePost({ author: undefined, createdAt: fromDate(new Date()), ...overrides });
 }
 
 describe('measurePostBody mode parity (P12-128)', () => {

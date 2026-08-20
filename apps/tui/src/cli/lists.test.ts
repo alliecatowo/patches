@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runLists, type FilterListCommandApi } from './lists.js';
+import { makeFilterList, makeFilterListSubscription } from '../test/wire-fixtures.js';
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
   return {
@@ -23,20 +24,11 @@ function makeIo(): CliIo & { out: string[]; err: string[] } {
 }
 
 function list(): FilterList {
-  return {
-    id: 'list-1',
-    ownerActor: { id: 'a1', handle: 'alice' } as FilterList['ownerActor'],
-    ownerCommunity: undefined,
-    name: 'curated',
-    displayName: 'Curated blocklist',
-    description: '',
-    createdAt: undefined,
-    updatedAt: undefined,
-  };
+  return makeFilterList();
 }
 
 function subscription(): FilterListSubscription {
-  return { filterList: list(), action: FILTER_ACTION.COLLAPSE, scopes: [], createdAt: undefined };
+  return makeFilterListSubscription({ filterList: list() });
 }
 
 function fakeApi(): FilterListCommandApi {

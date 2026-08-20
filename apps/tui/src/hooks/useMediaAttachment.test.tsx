@@ -12,15 +12,13 @@ import type { PatchesApi } from '../api/client.js';
 import { MediaAttachments } from '../components/MediaAttachments.js';
 import type { MediaCache } from '../media/cache.js';
 import { MediaSessionProvider } from '../media/media-session.js';
+import { makeMediaAttachment } from '../test/wire-fixtures.js';
 
-const attachment: MediaAttachment = {
-  mediaId: 'media-1',
+const attachment: MediaAttachment = makeMediaAttachment({
   altText: 'a test image',
   width: 40,
   height: 20,
-  mimeType: 'image/png',
-  position: 0,
-};
+});
 
 describe('useMediaAttachment terminal ownership', () => {
   it('deletes a prepared Kitty placement when its React owner unmounts', async () => {

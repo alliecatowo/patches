@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runLabelers, type LabelerCommandApi } from './labelers.js';
+import { makeLabeler } from '../test/wire-fixtures.js';
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
   return {
@@ -23,16 +24,7 @@ function makeIo(): CliIo & { out: string[]; err: string[] } {
 }
 
 function labeler(): Labeler {
-  return {
-    id: 'labeler-1',
-    actor: { id: 'a1', handle: 'modbot' } as Labeler['actor'],
-    community: undefined,
-    isNodeLabeler: false,
-    vocabulary: [
-      { value: 'spam', description: '', defaultAction: LABEL_ACTION.WARN, mandatory: false },
-    ],
-    createdAt: undefined,
-  };
+  return makeLabeler();
 }
 
 function fakeApi(): LabelerCommandApi {
