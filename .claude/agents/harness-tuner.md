@@ -3,6 +3,7 @@ name: harness-tuner
 description: Reads docs/agents/LEARNINGS.md and recent git history, then proposes and applies improvements to agent prompts, rules, hooks, and skills. Delegate periodically (after a batch of tasks, or when /retro entries pile up) to keep the harness itself improving, or when an agent's behavior in practice didn't match its prompt. Never weakens the hard rules.
 model: sonnet
 effort: medium
+maxThinkingTokens: 4096
 tools: Read, Grep, Glob, Write, Edit, Bash
 disallowedTools: mcp__*
 maxTurns: 100

@@ -2,7 +2,8 @@
 name: implementer
 description: Implements one scoped task from tasks.md end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently.
 model: sonnet
-effort: high
+effort: medium
+maxThinkingTokens: 8192
 memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent, LSP
 disallowedTools: mcp__*

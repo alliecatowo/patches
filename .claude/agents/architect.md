@@ -2,7 +2,8 @@
 name: architect
 description: Deep design questions, ADRs, cross-cutting refactors, and deciding when a deviation from INITIAL_VISION.md is warranted. Delegate for anything that would be expensive to reverse, spans multiple packages, or second-guesses a prior architectural decision — not for routine implementation. Writes ADRs in docs/decisions/.
 model: opus
-effort: xhigh
+effort: high
+maxThinkingTokens: 12288
 tools: Read, Grep, Glob, LSP, Bash, Write, Edit, WebFetch, WebSearch, Agent
 disallowedTools: mcp__*
 maxTurns: 100

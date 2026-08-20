@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# PostToolUse (all tools): warn a subagent as it approaches its `maxTurns` cap.
+# PostToolUse: warn a subagent before its `maxTurns` cap aborts it.
 #
-# Why this exists: hitting `maxTurns` is an ABORT, not a graceful wind-down — the binary's own
-# message is "hit max turns, aborting". The agent is cut off wherever it happens to be, which is
-# usually mid-thought, and the orchestrator gets a fragment instead of a handoff. An agent can
-# only write a handoff packet if it knows the cap is coming, so tell it while it can still act.
+# Hitting the cap is an abort, not a graceful stop — the agent is cut off mid-sentence and the
+# orchestrator gets a fragment instead of a handoff. Three agents lost work this way before this
+# existed. Warn while there is still room to commit and write the packet.
 #
-# Counts real API requests (distinct `message.id` in the agent's own transcript), not tool calls —
-# a well-batched agent issues several tool calls per request, and counting calls would warn it
-# absurdly early precisely for doing the right thing.
-#
-# Adds context only; never modifies or suppresses tool output. Fails open (exit 0, silent).
+# Counts API requests (distinct message.id), not tool calls, so batching isn't penalised.
+# Adds context only; never alters tool output. Silent for the orchestrator. Fails open.
 set -uo pipefail
 input="$(cat)" || exit 0
 
@@ -21,157 +17,52 @@ process.stdin.on("end", () => {
   try {
     const payload = JSON.parse(s);
     const transcript = payload.transcript_path;
-    if (typeof transcript !== "string") process.exit(0);
-
-    // The real payload (verified against a live subagent run, see LEARNINGS.md) has no
-    // `agent_id`/`agentId` field at all — only `agent_type`/`session_id`. The original check
-    // required agent_id AND agent_type AND transcript_path, so it exited silently on every
-    // single call. `session_id` is the per-agent identifier now; `agent_type` is present and
-    // correctly named already.
     const sessionId = payload.session_id ?? payload.sessionId;
-    if (typeof sessionId !== "string") process.exit(0);
+    // The live payload carries agent_type + session_id but no agent_id.
+    if (typeof transcript !== "string" || typeof sessionId !== "string") process.exit(0);
 
-    // Mirrors the `maxTurns:` frontmatter in .claude/agents/*.md. Keep the two in sync.
-    const CAPS = {
-      verifier: 40,
-      researcher: 100,
-      reviewer: 100,
-      "docs-writer": 100,
-      "harness-tuner": 100,
-      architect: 100,
-      "spec-auditor": 100,
-      implementer: 100,
-    };
+    // Mirrors `maxTurns:` in .claude/agents/*.md — keep in sync.
+    const CAPS = { verifier: 40 };
     const agentType = payload.agent_type ?? payload.agentType;
-    let cap = agentType ? CAPS[agentType] : undefined;
-    if (cap === undefined) {
-      if (agentType) process.exit(0); // a real, known-but-uncapped agent type — nothing to warn
-      // No agent_type at all: usually the main orchestrator (no cap, exempt by design). But a
-      // subagent transcript is identifiable by its path shape even without agent_type, so fall
-      // back to the most common cap rather than staying silent — a slightly-wrong warning beats
-      // no warning for a subagent that would otherwise run unbounded.
-      const looksLikeSubagentTranscript = /\/tasks\/[^/]+\.output$/.test(transcript);
-      if (!looksLikeSubagentTranscript) process.exit(0);
-      cap = 40;
-    }
+    if (!agentType) process.exit(0);          // main orchestrator: no cap, exempt by design
+    const cap = CAPS[agentType] ?? 100;
 
     const fs = require("fs");
-    let stat;
-    try {
-      stat = fs.statSync(transcript);
-    } catch {
-      process.exit(0);
-    }
-    if (stat.size > 64 * 1024 * 1024) process.exit(0);
+    if (fs.statSync(transcript).size > 64 * 1024 * 1024) process.exit(0);
 
-    // Tool calls per request, in order. One entry per API request; several JSONL lines can
-    // share a message.id (thinking, then tool_use), so accumulate rather than overwrite.
-    const perRequest = new Map();
-    const order = [];
+    const ids = new Set();
     for (const line of fs.readFileSync(transcript, "utf8").split("\n")) {
-      if (line === "") continue;
-      let entry;
+      if (!line) continue;
       try {
-        entry = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      const message = entry?.message;
-      if (typeof message?.id !== "string" || !message?.usage) continue;
-      if (!perRequest.has(message.id)) {
-        perRequest.set(message.id, []);
-        order.push(message.id);
-      }
-      const content = Array.isArray(message.content) ? message.content : [];
-      for (const block of content) {
-        if (block?.type === "tool_use" && typeof block.name === "string") {
-          perRequest.get(message.id).push(block.name);
-        }
-      }
+        const m = JSON.parse(line)?.message;
+        if (typeof m?.id === "string" && m?.usage) ids.add(m.id);
+      } catch {}
     }
 
-    const used = order.length;
+    const left = cap - ids.size;
+    const first = Math.max(6, Math.round(cap * 0.15));
+    const last = Math.max(3, Math.round(cap * 0.05));
+    if (left !== first && left !== last) process.exit(0);
 
-    // Depth-instead-of-width nudge. Cost is the sum of context size over requests, so N
-    // already-decided edits issued one per request cost N context re-reads instead of one.
-    // Prose in the brief demonstrably does not change this, so say it at the moment it is
-    // happening. Fires once per run, only on a clear run of single-call requests, and only
-    // for tool types that are usually independent of each other.
-    const WIDE = new Set(["Read", "Edit", "Write", "Grep", "Glob", "LSP"]);
-    const recent = order.slice(-5).map((id) => perRequest.get(id));
-    const singles = recent.filter((t) => t.length === 1 && WIDE.has(t[0]));
-    if (recent.length === 5 && singles.length === 5) {
-      const nudgeLatch = require("path").join(
-        require("os").tmpdir(),
-        `claude-batchnudge-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, "")}`,
-      );
-      let firstTime = false;
-      try {
-        fs.writeFileSync(nudgeLatch, "", { flag: "wx" });
-        firstTime = true;
-      } catch {
-        /* already nudged this run */
-      }
-      if (firstTime) {
-        const names = singles.map((t) => t[0]).join(", ");
-        process.stdout.write(
-          JSON.stringify({
-            hookSpecificOutput: {
-              hookEventName: "PostToolUse",
-              additionalContext:
-                `BATCHING: your last 5 requests were one tool call each (${names}). Each one ` +
-                `re-read your entire context — five times the cost of issuing them together, ` +
-                `for the same work. You batch by emitting the next tool_use block instead of ` +
-                `ending your message: after a tool call, do not stop — write the next one. If ` +
-                `you have already decided the remaining edits, emit them all in your next ` +
-                `message (several edits to the same file are fine). Only a genuine data ` +
-                `dependency — you need result A to know what B should be — justifies a ` +
-                `separate request.`,
-            },
-          }),
-        );
-        process.exit(0);
-      }
-    }
-
-    const left = cap - used;
-    // Two warnings only: one with room to finish the work, one to stop and write the packet.
-    // Proportional to the cap: a fixed "6 remaining" is ample at cap 40 and far too late at
-    // cap 100, where an agent needs room to land a commit before the abort.
-    const firstWarn = Math.max(6, Math.round(cap * 0.15));
-    const lastWarn = Math.max(3, Math.round(cap * 0.05));
-    if (left !== firstWarn && left !== lastWarn) process.exit(0);
-
-    // A batched request fires PostToolUse once per tool call, all at the same request count —
-    // latch each threshold so a well-batched agent is warned once, not four times.
-    const os = require("os");
-    const path = require("path");
-    const latch = path.join(
-      os.tmpdir(),
-      `claude-turnbudget-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, "")}-${left}`,
+    // Latch per threshold: a batched request fires PostToolUse once per call.
+    const latch = require("path").join(
+      require("os").tmpdir(),
+      `claude-turnbudget-${sessionId.replace(/[^A-Za-z0-9_-]/g, "")}-${left}`,
     );
     try {
       fs.writeFileSync(latch, "", { flag: "wx" });
     } catch {
-      process.exit(0); // already warned at this threshold
+      process.exit(0);
     }
 
     const text =
-      left === firstWarn
-        ? `TURN BUDGET: ${used}/${cap} requests used, ${left} left. Hitting the cap is an abort, ` +
-          `not a graceful stop — you will be cut off mid-sentence and your caller gets a fragment. ` +
-          `Land what is already green now: commit the paths you own, then keep going only if the ` +
-          `remaining work genuinely fits.`
-        : `TURN BUDGET: ${used}/${cap} requests used, ${left} left. STOP starting new work. Commit ` +
-          `what is green, then make your very next message the handoff packet: done / left / paths ` +
-          `you own / the single next concrete step. A fresh agent continues from it.`;
+      left === first
+        ? `${left} of ${cap} requests left. The cap aborts you mid-sentence — commit what is green now.`
+        : `${left} of ${cap} requests left. Stop starting work. Next message: done / left / paths you own / next step.`;
 
     process.stdout.write(
       JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "PostToolUse",
-          additionalContext: text,
-        },
+        hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: `TURN BUDGET: ${text}` },
       }),
     );
   } catch {

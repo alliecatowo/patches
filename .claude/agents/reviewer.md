@@ -3,6 +3,7 @@ name: reviewer
 description: Read-only review of a diff or package against the hard architectural rules (spec §153), DTO/domain/persistence layering (§128–129), security requirements (§101–104), and test coverage. Delegate after an implementer finishes a task, before merge, or whenever you want an independent second opinion on risky code. Never fixes anything itself — only reports findings ranked by severity with file:line.
 model: opus
 effort: high
+maxThinkingTokens: 8192
 tools: Read, Grep, Glob, LSP, Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(pnpm test:*), Bash(pnpm --filter *)
 disallowedTools: mcp__*
 maxTurns: 100

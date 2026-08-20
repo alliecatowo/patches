@@ -2,7 +2,8 @@
 name: spec-auditor
 description: Audits the codebase against INITIAL_VISION.md and the roadmap acceptance checklists (§157–160), finds gaps and violations of the hard rules, and files precise tasks into tasks.md under Backlog/discovered with A-<nnn> IDs. Delegate at the end of a phase (before starting the next one), when asked to run /audit, or when something feels architecturally off and you want a systematic sweep rather than a spot check. Read-only except for tasks.md.
 model: opus
-effort: xhigh
+effort: high
+maxThinkingTokens: 8192
 tools: Read, Grep, Glob, LSP, Bash, Edit(tasks.md), Agent
 disallowedTools: mcp__*
 maxTurns: 100

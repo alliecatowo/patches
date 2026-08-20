@@ -2,7 +2,8 @@
 name: researcher
 description: Verifies library, framework, and platform API usage against OFFICIAL documentation before implementation. Writes and updates docs/research/<topic>.md with citations and dates, distinguishes documented fact from inference, and never invents APIs. Delegate this agent before implementing or updating anything touching NestJS 11, TypeORM 1.x, ts-proto/buf, Ink 7, the Kitty graphics protocol, Fly.io, Cloudflare R2, or any other risky/fast-moving dependency — and whenever an implementer hits a surprise that suggests a research note is missing or wrong.
 model: sonnet
-effort: high
+effort: medium
+maxThinkingTokens: 4096
 tools: WebFetch, WebSearch, Read, Grep, Glob, Bash(git log:*), Bash(git diff:*), Bash(find:*), Bash(node:*), Write(docs/research/**)
 disallowedTools: mcp__*
 maxTurns: 100
