@@ -17,7 +17,12 @@ import type { ComposeDraft } from '../compose/draft-store.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { ComposeScreen, POST_BODY_LIMIT, type ComposeScreenProps } from './ComposeScreen.js';
 import { readLocalImage } from '../media/validate.js';
-import { makeActor, makePost } from '../test/wire-fixtures.js';
+import {
+  makeActor,
+  makeGetNodeInfoResponse,
+  makeNodeLimits,
+  makePost,
+} from '../test/wire-fixtures.js';
 
 vi.mock('../media/validate.js', () => ({
   InvalidAttachmentError: class InvalidAttachmentError extends Error {},
@@ -89,11 +94,11 @@ function actor(overrides: Partial<Actor> = {}): Actor {
 }
 
 function nodeInfo(postBodyMaxChars: number): GetNodeInfoResponse {
-  return {
+  return makeGetNodeInfoResponse({
     domain: 'patches.test',
     softwareVersion: '0.1.0',
     registrationMode: REGISTRATION_MODE.UNSPECIFIED,
-    limits: {
+    limits: makeNodeLimits({
       postBodyMaxChars,
       bioMaxChars: 500,
       displayNameMaxChars: 80,
@@ -114,11 +119,11 @@ function nodeInfo(postBodyMaxChars: number): GetNodeInfoResponse {
       maxLabelVocabularyEntries: 50,
       maxAppealStatementChars: 2000,
       accountExportMaxReadyArchives: 1,
-    },
+    }),
     capabilities: [],
     socialCapabilities: undefined,
     publicRead: true,
-  };
+  });
 }
 
 function baseApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

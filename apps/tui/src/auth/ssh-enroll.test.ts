@@ -8,6 +8,11 @@ import { create } from '@bufbuild/protobuf';
 import { AddCredentialResponseSchema, BeginSshEnrollmentResponseSchema } from '@patches/proto/es';
 import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
+import {
+  makeAddCredentialResponse,
+  makeBeginSshEnrollmentResponse,
+  makeCredential,
+} from '../test/wire-fixtures.js';
 import type { BeginSshEnrollmentResponse } from '../api/wire/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -156,11 +161,11 @@ describe('enrollSshCredential (B-021)', () => {
     const [identity] = describeIdentities([{ keyBlob: KEY_BLOB, comment: 'alice@laptop' }]);
     if (identity === undefined) throw new Error('unreachable');
 
-    const beginResponse: BeginSshEnrollmentResponse = {
+    const beginResponse: BeginSshEnrollmentResponse = makeBeginSshEnrollmentResponse({
       challengeId: 'enroll-chal-1',
       nonce: Buffer.from([9, 9, 9, 9]),
       expiresAt: fromDate(new Date(Date.now() + 60_000)),
-    };
+    });
 
     let seenBeginRequest: unknown;
     let seenAddRequest: unknown;
@@ -174,16 +179,15 @@ describe('enrollSshCredential (B-021)', () => {
       addCredential: (request: unknown, accessToken: string) => {
         seenAddRequest = request;
         seenAccessToken = accessToken;
-        return Promise.resolve({
-          credential: {
-            id: 'cred-1',
-            type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
-            label: 'laptop',
-            identifier: identity.fingerprint,
-            createdAt: undefined,
-            lastUsedAt: undefined,
-          },
-        });
+        return Promise.resolve(
+          makeAddCredentialResponse({
+            credential: makeCredential({
+              identifier: identity.fingerprint,
+              createdAt: undefined,
+              lastUsedAt: undefined,
+            }),
+          }),
+        );
       },
     };
 
@@ -231,11 +235,13 @@ describe('enrollSshCredential (B-021)', () => {
     let addCalled = false;
     const api = {
       beginSshEnrollment: () =>
-        Promise.resolve<BeginSshEnrollmentResponse>({
-          challengeId: 'enroll-chal-2',
-          nonce: Buffer.from([1, 1, 1, 1]),
-          expiresAt: fromDate(new Date(Date.now() + 60_000)),
-        }),
+        Promise.resolve<BeginSshEnrollmentResponse>(
+          makeBeginSshEnrollmentResponse({
+            challengeId: 'enroll-chal-2',
+            nonce: Buffer.from([1, 1, 1, 1]),
+            expiresAt: fromDate(new Date(Date.now() + 60_000)),
+          }),
+        ),
       addCredential: () => {
         addCalled = true;
         return Promise.reject(new Error('should not be called'));

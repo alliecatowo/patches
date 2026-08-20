@@ -3,7 +3,7 @@ import type { Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
-import { makeActor, makeSession } from '../test/wire-fixtures.js';
+import { makeActor, makeActorCounts, makeSession } from '../test/wire-fixtures.js';
 
 const verifyEmail = vi.fn();
 const resendVerification = vi.fn();
@@ -54,7 +54,7 @@ function session(): Session {
       id: 'u1',
       displayName: 'Alice',
       joinedAt: fromDate(new Date()),
-      counts: { followers: 0, following: 0, posts: 0 },
+      counts: makeActorCounts({ followers: 0, following: 0, posts: 0 }),
     }),
     accessToken: 'access-token',
     accessExpiresAt: fromDate(new Date(now + 3_600_000)),

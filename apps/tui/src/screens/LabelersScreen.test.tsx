@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { LabelersScreen } from './LabelersScreen.js';
-import { makeActor, makeLabeler } from '../test/wire-fixtures.js';
+import { makeActor, makeLabeler, makeLabelVocabularyEntry } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
   return makeActor({ id: 'a1', handle });
@@ -15,8 +15,18 @@ function labeler(): Labeler {
   return makeLabeler({
     actor: actor('modbot'),
     vocabulary: [
-      { value: 'spam', description: '', defaultAction: LABEL_ACTION.WARN, mandatory: false },
-      { value: 'nsfw', description: '', defaultAction: LABEL_ACTION.COLLAPSE, mandatory: true },
+      makeLabelVocabularyEntry({
+        value: 'spam',
+        description: '',
+        defaultAction: LABEL_ACTION.WARN,
+        mandatory: false,
+      }),
+      makeLabelVocabularyEntry({
+        value: 'nsfw',
+        description: '',
+        defaultAction: LABEL_ACTION.COLLAPSE,
+        mandatory: true,
+      }),
     ],
   });
 }

@@ -43,6 +43,8 @@ import {
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
+  CREDENTIAL_TYPE,
+  REGISTRATION_MODE,
 } from '../api/wire/enums.js';
 import type {
   Actor,
@@ -78,6 +80,16 @@ import type {
   Relationship,
   Session,
   Tag,
+  BeginSshEnrollmentResponse,
+  BeginSshLoginResponse,
+  CompleteSshLoginResponse,
+  AddCredentialResponse,
+  Credential,
+  GetNodeInfoResponse,
+  UpdatePageResponse,
+  GetAppealResponse,
+  ListCommunitiesResponse,
+  ListCommunityMembersResponse,
 } from '../api/wire/types.js';
 
 export function makeActor(overrides: Partial<Actor> = {}): Actor {
@@ -571,4 +583,92 @@ export function makePostEdit(overrides: Partial<PostEdit> = {}): PostEdit {
     createdAt: undefined,
     ...overrides,
   };
+}
+
+export function makeBeginSshLoginResponse(
+  overrides: Partial<BeginSshLoginResponse> = {},
+): BeginSshLoginResponse {
+  return {
+    $typeName: 'patches.v1.BeginSshLoginResponse',
+    challengeId: 'challenge-1',
+    nonce: new Uint8Array([1, 2, 3, 4]),
+    ...overrides,
+  };
+}
+
+export function makeBeginSshEnrollmentResponse(
+  overrides: Partial<BeginSshEnrollmentResponse> = {},
+): BeginSshEnrollmentResponse {
+  return {
+    $typeName: 'patches.v1.BeginSshEnrollmentResponse',
+    challengeId: 'challenge-1',
+    nonce: new Uint8Array([1, 2, 3, 4]),
+    ...overrides,
+  };
+}
+
+export function makeGetAppealResponse(
+  overrides: Partial<GetAppealResponse> = {},
+): GetAppealResponse {
+  return { $typeName: 'patches.v1.GetAppealResponse', ...overrides };
+}
+
+export function makeListCommunitiesResponse(
+  overrides: Partial<ListCommunitiesResponse> = {},
+): ListCommunitiesResponse {
+  return { $typeName: 'patches.v1.ListCommunitiesResponse', communities: [], ...overrides };
+}
+
+export function makeListCommunityMembersResponse(
+  overrides: Partial<ListCommunityMembersResponse> = {},
+): ListCommunityMembersResponse {
+  return { $typeName: 'patches.v1.ListCommunityMembersResponse', members: [], ...overrides };
+}
+
+export function makeCompleteSshLoginResponse(
+  overrides: Partial<CompleteSshLoginResponse> = {},
+): CompleteSshLoginResponse {
+  return { $typeName: 'patches.v1.CompleteSshLoginResponse', ...overrides };
+}
+
+export function makeGetNodeInfoResponse(
+  overrides: Partial<GetNodeInfoResponse> = {},
+): GetNodeInfoResponse {
+  return {
+    $typeName: 'patches.v1.GetNodeInfoResponse',
+    domain: 'patches.example',
+    softwareVersion: '0.0.0',
+    registrationMode: REGISTRATION_MODE.UNSPECIFIED,
+    capabilities: [],
+    publicRead: true,
+    ...overrides,
+  };
+}
+
+export function makeUpdatePageResponse(
+  overrides: Partial<UpdatePageResponse> = {},
+): UpdatePageResponse {
+  return {
+    $typeName: 'patches.v1.UpdatePageResponse',
+    document: new Uint8Array(),
+    revisionId: 'rev-1',
+    ...overrides,
+  };
+}
+
+export function makeCredential(overrides: Partial<Credential> = {}): Credential {
+  return {
+    $typeName: 'patches.v1.Credential',
+    id: 'cred-1',
+    type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
+    label: 'laptop',
+    identifier: 'SHA256:fingerprint',
+    ...overrides,
+  };
+}
+
+export function makeAddCredentialResponse(
+  overrides: Partial<AddCredentialResponse> = {},
+): AddCredentialResponse {
+  return { $typeName: 'patches.v1.AddCredentialResponse', ...overrides };
 }

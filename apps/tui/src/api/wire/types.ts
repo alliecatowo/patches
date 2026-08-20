@@ -452,7 +452,8 @@ export type SetCommunityRoleRequest = WireInit<Proto.SetCommunityRoleRequest>;
 export type SetCommunityRoleResponse = Proto.SetCommunityRoleResponse;
 export type SetFilterListEntryExceptionRequest = WireInit<Proto.SetFilterListEntryExceptionRequest>;
 export type SetFilterListEntryExceptionResponse = Proto.SetFilterListEntryExceptionResponse;
-export type SetLabelerSubscriptionActionRequest = WireInit<Proto.SetLabelerSubscriptionActionRequest>;
+export type SetLabelerSubscriptionActionRequest =
+  WireInit<Proto.SetLabelerSubscriptionActionRequest>;
 export type SetLabelerSubscriptionActionResponse = Proto.SetLabelerSubscriptionActionResponse;
 export type SignGuestbookRequest = WireInit<Proto.SignGuestbookRequest>;
 export type SignGuestbookResponse = Proto.SignGuestbookResponse;

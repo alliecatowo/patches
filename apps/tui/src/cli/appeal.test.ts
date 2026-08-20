@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runAppeal, type AppealCommandApi } from './appeal.js';
-import { makeAppeal } from '../test/wire-fixtures.js';
+import { makeAppeal, makeGetAppealResponse } from '../test/wire-fixtures.js';
 
 function makeIo(overrides: Partial<CliIo> = {}): CliIo & { out: string[]; err: string[] } {
   return {
@@ -80,9 +80,9 @@ describe('runAppeal', () => {
   it('shows an appeal, including its statement and resolution', async () => {
     const io = makeIo();
     const api = fakeApi();
-    vi.mocked(api.getAppeal).mockResolvedValue({
-      appeal: { ...appeal(), resolutionReason: 'Notice upheld.' },
-    });
+    vi.mocked(api.getAppeal).mockResolvedValue(
+      makeGetAppealResponse({ appeal: { ...appeal(), resolutionReason: 'Notice upheld.' } }),
+    );
     const code = await runAppeal(['show', 'appeal-1'], {
       io,
       api,

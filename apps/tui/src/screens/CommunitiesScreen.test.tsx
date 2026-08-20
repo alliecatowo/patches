@@ -8,7 +8,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { hasNonSgrEscape, stripSgr } from '../../test/ansi.js';
 import { CommunitiesScreen, type CommunitiesScreenApi } from './CommunitiesScreen.js';
-import { makeActor, makeCommunity } from '../test/wire-fixtures.js';
+import {
+  makeActor,
+  makeCommunity,
+  makeCommunityInvite,
+  makeCommunityMember,
+  makeListCommunityMembersResponse,
+} from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r', escape: '\x1b' } as const;
 
@@ -125,16 +131,18 @@ describe('CommunitiesScreen', () => {
       rules: 'No bells\x07 here',
     };
     const api = fakeApi([modCommunity]);
-    api.listCommunityMembers.mockResolvedValue({
-      members: [
-        {
-          actor: actor('member-1', 'mallory\x1b[H'),
-          role: COMMUNITY_ROLE.MEMBER,
-          joinedAt: undefined,
-        },
-      ],
-      page: undefined,
-    });
+    api.listCommunityMembers.mockResolvedValue(
+      makeListCommunityMembersResponse({
+        members: [
+          makeCommunityMember({
+            actor: actor('member-1', 'mallory\x1b[H'),
+            role: COMMUNITY_ROLE.MEMBER,
+            joinedAt: undefined,
+          }),
+        ],
+        page: undefined,
+      }),
+    );
     const { lastFrame, stdin } = renderScreen(api);
     await waitForFrame(lastFrame, '+safe[2J');
     stdin.write(KEY.enter);
@@ -164,14 +172,14 @@ describe('CommunitiesScreen', () => {
   it('accepts and declines invites only through explicit keys', async () => {
     const api = fakeApi([community('c1', 'alpha')]);
     const invites = [
-      {
+      makeCommunityInvite({
         id: 'invite-1',
         communityId: 'c1',
         inviter: actor('actor-1', 'alice'),
         invitee: actor('actor-2', 'bob'),
         status: COMMUNITY_INVITE_STATUS.PENDING,
         createdAt: undefined,
-      },
+      }),
     ];
     const { lastFrame, stdin } = renderScreen(api, { invites });
     await waitForFrame(lastFrame, '+alpha');
