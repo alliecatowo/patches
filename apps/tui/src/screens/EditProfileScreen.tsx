@@ -1,4 +1,4 @@
-import type { Actor } from '@patches/proto';
+import type { Actor } from '../api/wire/types.js';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

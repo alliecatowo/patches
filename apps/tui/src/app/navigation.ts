@@ -1,4 +1,4 @@
-import type { Actor, MediaAttachment, Tag } from '@patches/proto';
+import type { Actor, MediaAttachment, Tag } from '../api/wire/types.js';
 
 import type { ReportTarget } from '../screens/ReportScreen.js';
 import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
@@ -17,7 +17,7 @@ import { isRootScreen, type RootScreen, type Screen } from './keymap.js';
  *
  * Pure functions, no React — unit-tested in `navigation.test.ts`.
  */
-export type NavEntry =
+type NavEntryVariant =
   | {
       screen: Exclude<
         Screen,
@@ -43,6 +43,15 @@ export type NavEntry =
   /** `E` on one of your own posts (P12-125) — compose in edit mode, seeded with the
    * body as it stands now. */
   | { screen: 'postEdit'; postId: string; body: string };
+
+/**
+ * `split` (B-042, owner report: "split-pane opens unexpectedly on navigation") —
+ * `undefined`/`true` keeps the ordinary "pair a `detail` screen with the nearest
+ * `list` beneath it" rule (`routes.ts#wantsSplit`); `false` marks an entry pushed by a
+ * plain `g <key>`/`:` jump so it never combines into a split the viewer never asked
+ * for. Only the explicit "open beside" path (`Ctrl+G`) leaves it unset.
+ */
+export type NavEntry = NavEntryVariant & { split?: boolean };
 
 export type NavStack = readonly [NavEntry, ...NavEntry[]];
 
@@ -92,15 +101,20 @@ export function push(stack: NavStack, entry: NavEntry): NavStack {
  * always lands you at the bottom, with nothing stale underneath); jumping to a screen
  * already somewhere on the stack unwinds to it instead of stacking a second copy —
  * otherwise `g b`, `g n`, `g b`, `g n` … would need four `Esc`s to escape.
+ *
+ * `options.split` (B-042) — omitted keeps today's list+detail pairing; `{ split:
+ * false }` (the plain `g`/`:` path) marks the pushed entry so it never combines with a
+ * list further down the stack into a split the viewer never asked for.
  */
-export function jump(stack: NavStack, entry: NavEntry): NavStack {
+export function jump(stack: NavStack, entry: NavEntry, options?: { split?: boolean }): NavStack {
   if (isRootScreen(entry.screen)) return [entry];
   const existing = stack.findIndex((candidate) => sameEntry(candidate, entry));
   if (existing >= 0) {
     const unwound = stack.slice(0, existing + 1);
     return unwound as unknown as NavStack;
   }
-  return [...stack, entry];
+  const next: NavEntry = options?.split === false ? { ...entry, split: false } : entry;
+  return [...stack, next];
 }
 
 /** `Esc` — exactly one level, never off the bottom. */

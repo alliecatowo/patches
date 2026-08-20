@@ -113,6 +113,24 @@ export const refreshTokenInputSchema = z.object({
 
 export const uuidInputSchema = z.uuid('must be a valid id');
 
+/** A serialized `RegistrationResponseJSON`/`AuthenticationResponseJSON` (P15-004): comfortably
+ * bounds even a `'direct'`-attestation payload without constraining the normal `'none'`-
+ * attestation case (`docs/research/simplewebauthn.md`) this node actually requests. */
+export const webauthnCredentialJsonSchema = z
+  .string()
+  .trim()
+  .min(1, 'credential response is required')
+  .max(16_384, 'credential response is too large');
+
+export const completePasskeyRegistrationInputSchema = z.object({
+  credentialJson: webauthnCredentialJsonSchema,
+  label: labelSchema.optional(),
+});
+
+export const completePasskeyLoginInputSchema = z.object({
+  credentialJson: webauthnCredentialJsonSchema,
+});
+
 /** `null`/empty proto scalars mean "absent"; protobuf has no way to distinguish the two. */
 export function optionalText(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;

@@ -96,6 +96,77 @@ const envObjectSchema = z.object({
   GITHUB_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
 
   /**
+   * P15-006: this node's configured generic-OIDC-device-flow providers (GitLab, Codeberg, any
+   * other provider that implements RFC 8628 device authorization) — a JSON array, e.g.
+   * `[{"id":"gitlab","displayName":"GitLab","deviceAuthorizationUrl":"https://gitlab.com/oauth
+   * /authorize_device","tokenUrl":"https://gitlab.com/oauth/token","userinfoUrl":
+   * "https://gitlab.com/oauth/userinfo","clientId":"...","clientSecret":"..."}]`. Empty array
+   * (the default) means no OIDC provider is configured — same "honest empty" convention as
+   * `GITHUB_CLIENT_ID` being unset, except GitHub gets its own dedicated flag/RPC pair and
+   * this covers every *other* provider. `id` is what a client passes as `BeginOidcLoginRequest
+   * .provider` and is namespaced into `credentials.identifier` (`"<id>:<subject>"`), so it
+   * must be unique within the array. Secrets live here, in env, never in a config literal
+   * committed to the repo.
+   */
+  OIDC_PROVIDERS: z
+    .string()
+    .trim()
+    .default('[]')
+    .transform((value, ctx) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch (error) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `OIDC_PROVIDERS is not valid JSON: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+        return z.NEVER;
+      }
+      return parsed;
+    })
+    .pipe(
+      z
+        .array(
+          z.object({
+            id: z
+              .string()
+              .trim()
+              .min(1)
+              .max(40)
+              .regex(
+                /^[a-z0-9_-]+$/,
+                'OIDC provider id must be lowercase ASCII letters, digits, "_" or "-"',
+              ),
+            displayName: z.string().trim().min(1).max(80),
+            deviceAuthorizationUrl: z.url(),
+            tokenUrl: z.url(),
+            userinfoUrl: z.url(),
+            clientId: z.string().trim().min(1),
+            clientSecret: z.string().trim().min(1),
+          }),
+        )
+        .superRefine((providers, ctx) => {
+          const seen = new Set<string>();
+          for (const [index, provider] of providers.entries()) {
+            if (seen.has(provider.id)) {
+              ctx.addIssue({
+                code: 'custom',
+                path: [index, 'id'],
+                message: `duplicate OIDC provider id "${provider.id}"`,
+              });
+            }
+            seen.add(provider.id);
+          }
+        }),
+    ),
+  /** Same reasoning as `GITHUB_HTTP_TIMEOUT_MS` — bounds every outbound call the OIDC device
+   * flow makes, to any configured provider. */
+  OIDC_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+
+  /**
    * Phase 8 two-node federation lab (P8-001..P8-008, `docs/architecture/federation.md`).
    * **Default off** (spec §108 Stage F1, §176's "self-hosted node ships with federation
    * disabled by default"): when false, `FederationHttpModule` (the webfinger/actor/inbox/
@@ -310,6 +381,74 @@ const envObjectSchema = z.object({
    * opts out.
    */
   PASSWORD_AUTH: z.enum(['off', 'optional', 'required']).default('optional'),
+
+  /**
+   * S-001 (capacity/concurrency plan, `docs/operations/capacity.md`): per-connection gRPC
+   * channel limits, passed straight through to grpc-js's `Server`/`Client` `ChannelOptions`
+   * (`grpc-options.ts`, `transport/connect/grpc-proxy.ts`) — real gRPC-core channel args, not
+   * Patches inventions. Defaults are sized for a single small Fly machine (shared-cpu-1x,
+   * `DATABASE_POOL_MAX=10`), not a fleet — see the doc for the full rationale per number.
+   */
+  GRPC_MAX_CONCURRENT_STREAMS: z.coerce.number().int().positive().default(100),
+  GRPC_MAX_CONNECTION_AGE_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30 * 60_000),
+  GRPC_MAX_CONNECTION_IDLE_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60_000),
+  GRPC_KEEPALIVE_TIME_MS: z.coerce.number().int().positive().default(60_000),
+  GRPC_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  /** Applied to both the public gRPC server and the internal Connect-edge loopback proxy
+   * client (`grpc-proxy.ts`), so a message can't bypass the cap by going through Connect. */
+  GRPC_MAX_MESSAGE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(4 * 1024 * 1024),
+
+  /**
+   * S-001: Node `http.Server` tuning for the always-on HTTP listener (`/healthz`, the Connect
+   * edge) — the only edge with a raw internet-facing socket (gRPC sits behind Fly's TCP
+   * proxy). `HTTP_HEADERS_TIMEOUT_MS` must stay below `HTTP_REQUEST_TIMEOUT_MS` (Node throws
+   * at listen time otherwise); the default gap follows Node's own stock ordering.
+   */
+  HTTP_MAX_CONNECTIONS: z.coerce.number().int().positive().default(512),
+  HTTP_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  HTTP_HEADERS_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  HTTP_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+
+  /** S-001: per-unary-RPC server-side deadline, enforced by `RpcBudgetInterceptor` — no
+   * handler may hold a worker/DB connection open indefinitely regardless of client behaviour. */
+  RPC_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  /** S-001/S-002: fixed-window budget shared by every RPC classified `read` (`Get*`/`List*`/
+   * `Stream*`, `RpcBudgetInterceptor`'s `classifyRpc`), keyed per authenticated actor and,
+   * independently, per network peer — process-local (no Redis in v0, spec §153). */
+  RPC_READ_BUDGET_PER_ACTOR_PER_MIN: z.coerce.number().int().positive().default(300),
+  RPC_READ_BUDGET_PER_PEER_PER_MIN: z.coerce.number().int().positive().default(600),
+  /** Every mutating RPC (anything not `Get*`/`List*`/`Stream*`/`SearchPosts`). */
+  RPC_WRITE_BUDGET_PER_ACTOR_PER_MIN: z.coerce.number().int().positive().default(60),
+  RPC_WRITE_BUDGET_PER_PEER_PER_MIN: z.coerce.number().int().positive().default(120),
+  /** `PostService.SearchPosts` alone: an `ILIKE` scan is the single most expensive read this
+   * node serves, so it gets its own, tighter budget rather than sharing `read`'s. */
+  RPC_SEARCH_BUDGET_PER_ACTOR_PER_MIN: z.coerce.number().int().positive().default(20),
+  RPC_SEARCH_BUDGET_PER_PEER_PER_MIN: z.coerce.number().int().positive().default(40),
+  /**
+   * S-002: the load-shedding gate — the maximum number of `write`-class RPCs this process
+   * will run concurrently; the next one over the limit is rejected immediately with
+   * `NODE_OVERLOADED` rather than queuing behind an already-saturated DB pool. `read`/`search`
+   * RPCs are never gated by this, which is the actual "reads keep working" property. Default
+   * leaves headroom under `DATABASE_POOL_MAX` (10) for reads to keep a connection available.
+   */
+  RPC_WRITE_CONCURRENCY_LIMIT: z.coerce.number().int().positive().default(8),
+
+  /** S-002: `PostService.createPost`'s mention-notification fan-out cap (spec: a pathological
+   * wall of `@x`s must not fan out into hundreds of notification writes from one post). Same
+   * default as the value this replaces (`post.service.ts`'s former hardcoded constant). */
+  MENTION_FANOUT_MAX: z.coerce.number().int().positive().default(50),
 });
 
 export const envSchema = envObjectSchema

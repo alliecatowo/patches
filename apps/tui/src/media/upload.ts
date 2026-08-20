@@ -1,4 +1,5 @@
-import { MEDIA_STATUS, type GetMediaDownloadResponse } from '@patches/proto';
+import { MEDIA_STATUS } from '@patches/proto';
+import type { GetMediaDownloadResponse } from '../api/wire/types.js';
 
 import type { PatchesApi } from '../api/client.js';
 import type { LocalImage } from './validate.js';

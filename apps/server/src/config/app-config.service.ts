@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 import { type Env } from './env.schema.js';
 
+/** One entry of `Env['OIDC_PROVIDERS']` (P15-006) — id, display name, the three device-flow
+ * URLs, and the confidential client credentials, all validated at boot by `env.schema.ts`. */
+export type OidcProviderConfig = Env['OIDC_PROVIDERS'][number];
+
 /**
  * Typed accessor over the validated environment.
  *
@@ -170,6 +174,18 @@ export class AppConfigService {
     return this.get('GITHUB_HTTP_TIMEOUT_MS');
   }
 
+  /** P15-006: this node's configured generic-OIDC-device-flow providers. Empty means none are
+   * configured — `AuthService` answers `BeginOidcLogin`/`PollOidcLogin` with `NOT_IMPLEMENTED`
+   * for any `provider` id, same as `githubClientId` being unset. */
+  get oidcProviders(): Env['OIDC_PROVIDERS'] {
+    return this.get('OIDC_PROVIDERS');
+  }
+
+  /** Bounds every outbound call the OIDC device flow makes. */
+  get oidcHttpTimeoutMs(): number {
+    return this.get('OIDC_HTTP_TIMEOUT_MS');
+  }
+
   /** Whether the Phase 8 federation HTTP surface is enabled on this node (default off). */
   get federationEnabled(): boolean {
     return this.get('FEDERATION_ENABLED');
@@ -301,6 +317,85 @@ export class AppConfigService {
    * `AuthService.GetAuthPolicy`. */
   get passwordAuthMode(): 'off' | 'optional' | 'required' {
     return this.get('PASSWORD_AUTH');
+  }
+
+  // ---------------------------------------------------------- S-001/S-002 capacity & abuse
+
+  get grpcMaxConcurrentStreams(): number {
+    return this.get('GRPC_MAX_CONCURRENT_STREAMS');
+  }
+
+  get grpcMaxConnectionAgeMs(): number {
+    return this.get('GRPC_MAX_CONNECTION_AGE_MS');
+  }
+
+  get grpcMaxConnectionIdleMs(): number {
+    return this.get('GRPC_MAX_CONNECTION_IDLE_MS');
+  }
+
+  get grpcKeepaliveTimeMs(): number {
+    return this.get('GRPC_KEEPALIVE_TIME_MS');
+  }
+
+  get grpcKeepaliveTimeoutMs(): number {
+    return this.get('GRPC_KEEPALIVE_TIMEOUT_MS');
+  }
+
+  get grpcMaxMessageBytes(): number {
+    return this.get('GRPC_MAX_MESSAGE_BYTES');
+  }
+
+  get httpMaxConnections(): number {
+    return this.get('HTTP_MAX_CONNECTIONS');
+  }
+
+  get httpRequestTimeoutMs(): number {
+    return this.get('HTTP_REQUEST_TIMEOUT_MS');
+  }
+
+  get httpHeadersTimeoutMs(): number {
+    return this.get('HTTP_HEADERS_TIMEOUT_MS');
+  }
+
+  get httpKeepaliveTimeoutMs(): number {
+    return this.get('HTTP_KEEPALIVE_TIMEOUT_MS');
+  }
+
+  get rpcTimeoutMs(): number {
+    return this.get('RPC_TIMEOUT_MS');
+  }
+
+  get rpcReadBudgetPerActorPerMin(): number {
+    return this.get('RPC_READ_BUDGET_PER_ACTOR_PER_MIN');
+  }
+
+  get rpcReadBudgetPerPeerPerMin(): number {
+    return this.get('RPC_READ_BUDGET_PER_PEER_PER_MIN');
+  }
+
+  get rpcWriteBudgetPerActorPerMin(): number {
+    return this.get('RPC_WRITE_BUDGET_PER_ACTOR_PER_MIN');
+  }
+
+  get rpcWriteBudgetPerPeerPerMin(): number {
+    return this.get('RPC_WRITE_BUDGET_PER_PEER_PER_MIN');
+  }
+
+  get rpcSearchBudgetPerActorPerMin(): number {
+    return this.get('RPC_SEARCH_BUDGET_PER_ACTOR_PER_MIN');
+  }
+
+  get rpcSearchBudgetPerPeerPerMin(): number {
+    return this.get('RPC_SEARCH_BUDGET_PER_PEER_PER_MIN');
+  }
+
+  get rpcWriteConcurrencyLimit(): number {
+    return this.get('RPC_WRITE_CONCURRENCY_LIMIT');
+  }
+
+  /** S-002: `PostService.createPost`'s mention-notification fan-out cap. */
+  get mentionFanoutMax(): number {
+    return this.get('MENTION_FANOUT_MAX');
   }
 }
 

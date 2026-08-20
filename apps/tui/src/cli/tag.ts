@@ -1,27 +1,18 @@
-import { randomUUID } from 'node:crypto';
-
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  createFeedClient,
-  createTagClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
-  type FeedGrpcClient,
-  type ListTagFeedRequest,
-  type ListTagFeedResponse,
-  type MuteTagRequest,
-  type MuteTagResponse,
-  type SearchTagsRequest,
-  type SearchTagsResponse,
-  type TagGrpcClient,
-  type UnmuteTagRequest,
-  type UnmuteTagResponse,
-} from '@patches/proto';
+import type {
+  ListTagFeedRequest,
+  ListTagFeedResponse,
+  MuteTagRequest,
+  MuteTagResponse,
+  SearchTagsRequest,
+  SearchTagsResponse,
+  UnmuteTagRequest,
+  UnmuteTagResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
+import { type PatchesApi } from '../api/client.js';
 import { SessionManager } from '../auth/session.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
@@ -200,16 +191,13 @@ function injectedContext(deps: TagCliDeps): CommandContext {
 }
 
 function createContext(deps: TagCliDeps, rest: readonly string[]): CommandContext {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const tag = createTagClient(deps.target, channelCredentials);
-  const feed = createFeedClient(deps.target, channelCredentials);
-  const authApi = createApi(deps.target, deps.insecure);
+  const api = createApi(deps.target, deps.insecure);
   let manager: SessionManager | undefined;
 
   async function ensureAccessToken(): Promise<string> {
     if (manager === undefined) {
       const store = await openCredentialStore(deps.io, deps.env, rest);
-      manager = new SessionManager({ api: authApi, store, nodeOrigin: deps.target });
+      manager = new SessionManager({ api, store, nodeOrigin: deps.target });
       const session = await manager.restore();
       if (session === undefined)
         throw new Error(`Not signed in on ${deps.target}. Run \`patches login\`.`);
@@ -218,57 +206,19 @@ function createContext(deps: TagCliDeps, rest: readonly string[]): CommandContex
   }
 
   return {
-    api: grpcApi(tag, feed),
+    api: apiFromClient(api),
     ensureAccessToken,
     close: () => {
-      tag.close();
-      feed.close();
-      authApi.close();
+      api.close();
     },
   };
 }
 
-function grpcApi(tag: TagGrpcClient, feed: FeedGrpcClient): TagCommandApi {
+function apiFromClient(api: PatchesApi): TagCommandApi {
   return {
-    searchTags: (request) => unary(tag.searchTags.bind(tag), request),
-    listTagFeed: (request) => unary(feed.listTagFeed.bind(feed), request),
-    muteTag: (request, token) => unary(tag.muteTag.bind(tag), request, token),
-    unmuteTag: (request, token) => unary(tag.unmuteTag.bind(tag), request, token),
+    searchTags: (request) => api.searchTags(request),
+    listTagFeed: (request) => api.listTagFeed(request),
+    muteTag: (request, token) => api.muteTag(request, token),
+    unmuteTag: (request, token) => api.unmuteTag(request, token),
   };
-}
-
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-  accessToken?: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(accessToken?: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
 }

@@ -18,3 +18,7 @@ See `docs/research/typeorm-postgres.md` before touching anything here — TypeOR
 - **Indexes**: every index required by spec §60 must exist before the migration ships; verify feed queries with `EXPLAIN` when in doubt.
 - **Review every generated migration by hand** before running it — TypeORM's diff can propose destructive changes (dropped/renamed columns it doesn't distinguish) that need to become an expand/contract pair instead.
 - **Test isolation**: integration tests use `TEST_DATABASE_URL`, never the dev DB (spec §119).
+- **`TRUNCATE ... CASCADE` ignores `onDelete`** — it truncates every table with an FK pointing at
+  the target table, not just rows that actually reference a doomed row. A nullable FK with
+  `onDelete: 'SET NULL'` still gets its whole table wiped. Prefer a plain `DELETE FROM` in test
+  `beforeEach` unless you specifically want the cascade.

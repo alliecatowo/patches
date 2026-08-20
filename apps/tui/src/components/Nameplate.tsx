@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import type { Nameplate as NameplateT } from '@patches/proto';
+import type { Nameplate as NameplateT } from '../api/wire/types.js';
 import { Text } from 'ink';
 import type { ReactElement } from 'react';
 

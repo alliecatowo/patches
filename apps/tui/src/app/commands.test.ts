@@ -1,4 +1,5 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY, type Actor, type Post } from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type { Actor, Post } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PostRowActions } from '../components/PostList.js';

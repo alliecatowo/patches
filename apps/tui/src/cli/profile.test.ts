@@ -1,4 +1,5 @@
-import { dateToTimestamp, type Nameplate, type Session } from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type { Nameplate, Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';

@@ -1,4 +1,4 @@
-import type { Post } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 
 import type { PostRowActions } from '../components/PostList.js';
 import { extractLinks, extractMentions, extractTags } from '../format/markup.js';

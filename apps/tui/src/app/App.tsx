@@ -10,7 +10,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { FOLLOW_STATE, type Actor, type MediaAttachment, type Post } from '@patches/proto';
+import { FOLLOW_STATE } from '@patches/proto';
+import type { Actor, MediaAttachment, Post } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';
@@ -25,6 +26,7 @@ import { LinearModeProvider } from '../hooks/useLinearMode.js';
 import { NowProvider } from '../hooks/useNow.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { ToastLine, type Toast, type ToastKind } from '../components/Toast.js';
+import { clearListCache } from '../hooks/usePaginatedPosts.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
 import { useUnreadCount } from '../hooks/useUnreadCount.js';
 import { MediaCache } from '../media/cache.js';
@@ -73,6 +75,8 @@ import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js
 import { ActiveThemeProvider } from './theme-context.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
+import { resolveGlyphSet } from '../theme/glyphs.js';
+import type { GlyphSetName } from '../theme/themes/types.js';
 import { isTruthy } from '../env.js';
 import { CommandHistory, contextualCommands, type ContextualSelection } from './commands.js';
 import {
@@ -82,6 +86,7 @@ import {
   isPaletteShortcut,
   KeyLayerProvider,
   legacyInputConsumes,
+  splitCoalescedKeyRun,
 } from './input.js';
 import { hintsFor, SCREEN_TITLES, type Binding, type Screen } from './keymap.js';
 import { chromeSplit, ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
@@ -248,6 +253,17 @@ export function App({
   const [pendingGo, setPendingGoState] = useState(false);
   const pendingGoRef = useRef(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  // Set by `Ctrl+G` (vs. plain `g`) before the prefix's second key lands — B-042's
+  // explicit "open beside" request. Read once by the one destination that cares (`v`)
+  // and cleared on every fresh prefix press.
+  const pendingGoAllowSplitRef = useRef(false);
+  // Set by `Ctrl+W` before its second key (`h`/`l`) lands — B-048's directional alias
+  // to `Tab` (`h` focuses primary, `l` focuses secondary). Same coalesced-chunk hazard
+  // as `g <key>`/`Ctrl+G` above, so it gets its own ref+timer pair rather than reusing
+  // `pendingGoRef`; `splitCoalescedKeyRun` (`input.tsx`) is what makes a fast-typed
+  // `Ctrl+W`+`h` chunk still recognise the ctrl chord.
+  const pendingPaneRef = useRef(false);
+  const pendingPaneTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
@@ -271,6 +287,14 @@ export function App({
   // means safely tearing down any in-flight Kitty placements first. The Preferences row
   // edits this as a plain preference: it is what the *next* launch picks up.
   const [imagePolicy, setImagePolicy] = useState<ImagePolicy>('auto');
+  // Glyph set (P12-103) — `PATCHES_GLYPHS` > saved preference > auto (unicode unless the
+  // locale isn't UTF-8). Never auto-selects `nerd` (design vision §3.5). Was previously
+  // resolved nowhere: the Preferences row cycled a value that never left the screen it was
+  // opened from and no renderer ever read it (B-047) — `MessagesScreen`'s one glyph call
+  // site below is threaded from this state the same way `plain`/`quiet` already are.
+  const [glyphSet, setGlyphSet] = useState<GlyphSetName>(() =>
+    resolveGlyphSet({ envGlyphSet: env.PATCHES_GLYPHS, locale: env.LC_ALL ?? env.LANG }),
+  );
 
   // --- theme engine (P12-101/P12-127) --------------------------------------
   // Precedence is resolved once, purely, in `theme/themes/resolution.ts`:
@@ -293,7 +317,14 @@ export function App({
   );
   /** What `Esc` on the preferences screen restores (P12-112). */
   const revertPreferences = useRef<
-    | { theme: BuiltInThemeName; plain: boolean; quiet: boolean; imagePolicy: ImagePolicy }
+    | {
+        theme: BuiltInThemeName;
+        plain: boolean;
+        quiet: boolean;
+        imagePolicy: ImagePolicy;
+        glyphSet: GlyphSetName;
+        linearMode: boolean;
+      }
     | undefined
   >(undefined);
 
@@ -305,8 +336,12 @@ export function App({
   // shell subtracts from the content region; two drawers open at once was never a
   // presentation this layout budgeted for).
   const [dmDrawerRequested, setDmDrawerRequested] = useState(false);
-  // `Tab` in a split moves focus between the list pane and the detail pane. Purely
-  // presentational — it never touches the navigation stack.
+  // `Tab` moves shell focus between the primary and secondary pane of a split
+  // (B-046 — keymap.ts's `Tab` binding, user-guide.md's keymap table). Action keys
+  // (`E`, `l`, `r`, …) dispatch only to whichever pane is focused — `renderEntry`
+  // below gates each pane's own `useInput` on exactly this — and the focused pane's
+  // title is marked `>` (`SplitPane`) so which one is live is visible without
+  // guessing. Purely presentational — it never touches the navigation stack.
   const [paneFocusSecondary, setPaneFocusSecondary] = useState(false);
   // A manual refresh's bounded ribbon spinner (P12-117) — always cleared by its own
   // timer, never left spinning by whatever the refresh itself resolves to.
@@ -477,6 +512,11 @@ export function App({
         if (saved.imagePolicy !== undefined) setImagePolicy(saved.imagePolicy);
         if (saved.linearMode !== undefined && !isTruthy(env.PATCHES_LINEAR))
           setLinearMode(saved.linearMode);
+        if (
+          saved.glyphSet !== undefined &&
+          (env.PATCHES_GLYPHS === undefined || env.PATCHES_GLYPHS.trim() === '')
+        )
+          setGlyphSet(saved.glyphSet);
       },
       // Unreadable preferences are not an error worth a toast — the defaults are fine.
       () => undefined,
@@ -486,6 +526,7 @@ export function App({
     };
   }, [
     api.target,
+    env.PATCHES_GLYPHS,
     env.PATCHES_LINEAR,
     env.PATCHES_PLAIN,
     env.PATCHES_THEME,
@@ -538,8 +579,13 @@ export function App({
   const splitActive = presentation.mode === 'split';
   const focusedPane: 'primary' | 'secondary' =
     splitActive && paneFocusSecondary ? 'secondary' : 'primary';
-  const listIsActive =
-    !pendingGo && screenIsActive && !anyDrawerOpen && (!splitActive || focusedPane === 'primary');
+  // B-046: this used to also require `focusedPane === 'primary'`, which meant a
+  // list-kind screen (page/thread/profile/…) sitting in the *secondary* pane could
+  // never process its own action keys even once focus moved there — `renderEntry`
+  // below already multiplies this by the pane-specific `active` flag (which is
+  // exactly which pane has focus), so baking primary-only focus in here a second
+  // time forced every list-kind secondary screen off regardless of `Tab`.
+  const listIsActive = !pendingGo && screenIsActive && !anyDrawerOpen;
   // The ribbon replaces the bottom status line at row 0 in the `full` height tier
   // (design vision §2.1, P12-102) — budget-neutral, `layout.ts#chromeSplit`.
   const showRibbon = layoutPlan.heightDensity === 'full';
@@ -564,12 +610,15 @@ export function App({
     setStack((current) => push(current, next));
   }
 
-  /** A `g x`-style jump — see `navigation.jump`. */
-  function goTo(next: NavEntry): void {
+  /** A `g x`-style jump — see `navigation.jump`. `options.split` threads through
+   * (B-042): omitted keeps today's list+detail pairing, `{ split: false }` (the plain
+   * `g`/`:` path) forces a single-pane replace even when a list sits beneath the
+   * destination. */
+  function goTo(next: NavEntry, options?: { split?: boolean }): void {
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
-    setStack((current) => jump(current, next));
+    setStack((current) => jump(current, next, options));
   }
 
   /** `Esc` (and `q` away from the root) — exactly one level, from every screen. */
@@ -647,7 +696,10 @@ export function App({
     navigate({ screen: 'page', handle, slug });
   }
 
-  function openOwnPage(): void {
+  /** `g v`/`:page` (own page). A plain jump never auto-splits (B-042, owner report:
+   * "split-pane opens unexpectedly on navigation") — only `Ctrl+G v`'s explicit "open
+   * beside" request (`allowSplit`) leaves the ordinary list+detail pairing in place. */
+  function openOwnPage(options: { allowSplit?: boolean } = {}): void {
     if (session === undefined) {
       notify('Log in first — press L.');
       return;
@@ -657,7 +709,10 @@ export function App({
       notify("Your profile hasn't loaded yet — try again in a moment.");
       return;
     }
-    goTo({ screen: 'page', handle, slug: '' });
+    goTo(
+      { screen: 'page', handle, slug: '' },
+      options.allowSplit === true ? undefined : { split: false },
+    );
   }
 
   /** `p` on a selected post row (B-017) — profile viewing needs no session. */
@@ -943,6 +998,11 @@ export function App({
     await sessionManager.logout();
     setSession(undefined);
     setReactionOverrides(new Map());
+    // B-043's background-snapshot cache is shared across mounts by design — clear it
+    // here for the same reason `reactionOverrides` is cleared above: a signed-out
+    // viewer, or the next account on this node, must never render a page cached under
+    // the previous session.
+    clearListCache();
     // A "Signed in as @alice" toast outliving the sign-out would be actively wrong.
     setToast(undefined);
     setStack(reset(rootEntry(false)));
@@ -997,7 +1057,14 @@ export function App({
 
   /** `,` — records what `Esc` restores, then opens the settings screen (P12-112). */
   function openPreferences(): void {
-    revertPreferences.current = { theme: themeName, plain, quiet, imagePolicy };
+    revertPreferences.current = {
+      theme: themeName,
+      plain,
+      quiet,
+      imagePolicy,
+      glyphSet,
+      linearMode,
+    };
     goTo({ screen: 'preferences' });
   }
 
@@ -1016,7 +1083,14 @@ export function App({
     void preferences
       .set(
         { nodeOrigin: api.target, actorId: session.userId },
-        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy, linearMode },
+        {
+          theme: themeName,
+          plainMode: plain,
+          quietFeed: quiet,
+          imagePolicy,
+          linearMode,
+          glyphSet,
+        },
       )
       .then(
         () =>
@@ -1040,6 +1114,8 @@ export function App({
       setPlain(previous.plain);
       setQuiet(previous.quiet);
       setImagePolicy(previous.imagePolicy);
+      setGlyphSet(previous.glyphSet);
+      setLinearMode(previous.linearMode);
     }
     back();
   }
@@ -1510,7 +1586,8 @@ export function App({
     // Keys typed fast enough to land in one stdin read reach Ink as a single
     // multi-character keypress; replay them one at a time so `g h` works at speed.
     if (isCoalescedKeyRun(input, key)) {
-      for (const character of input) handleShellInput(character, key);
+      for (const split of splitCoalescedKeyRun(input, key))
+        handleShellInput(split.input, split.key);
       return;
     }
     if (isCtrlKey(input, key, 'c')) {
@@ -1541,19 +1618,33 @@ export function App({
     }
     if (pendingGoRef.current) {
       setPendingGo(false);
+      const allowSplit = pendingGoAllowSplitRef.current;
+      pendingGoAllowSplitRef.current = false;
       if (input === 'p') openOwnProfile();
       else if (input === 'l') goTo({ screen: 'local' });
       else if (input === 'h') requireSession({ screen: 'home' });
       else if (input === 's') goTo({ screen: 'search' });
       else if (input === 'b') requireSession({ screen: 'bookmarks' });
       else if (input === 'n') requireSession({ screen: 'notifications' });
-      else if (input === 'v') openOwnPage();
+      else if (input === 'v') openOwnPage({ allowSplit });
       else if (input === 'e') requireSession({ screen: 'editProfile' });
       else if (input === 'd') requireSession({ screen: 'messages' });
       else if (input === 'c') {
         notify(`g ${input} is registered but its screen is not connected yet.`, 'error');
       } else if (input === 'g') {
         setListJump((current) => ({ edge: 'top', nonce: (current?.nonce ?? 0) + 1 }));
+      }
+      return;
+    }
+    // `Ctrl+W h` / `Ctrl+W l` — B-048's directional alias to `Tab`: `h` focuses the
+    // primary pane, `l` the secondary, matching the owner's tmux/vim muscle memory.
+    // A no-op (still consumes the key) when the screen isn't split, same as `Tab`
+    // above.
+    if (pendingPaneRef.current) {
+      pendingPaneRef.current = false;
+      if (splitActive) {
+        if (input === 'h') setPaneFocusSecondary(false);
+        else if (input === 'l') setPaneFocusSecondary(true);
       }
       return;
     }
@@ -1592,6 +1683,32 @@ export function App({
       toggleMessagesDrawer();
       return;
     }
+    // `Ctrl+G` — the same `g <key>` prefix, but B-042's explicit "open beside"
+    // request: a detail destination that would normally replace the screen
+    // (`openOwnPage`) keeps its ordinary split pairing instead. Bare `g` below always
+    // clears this flag first, so it never leaks into a later plain jump.
+    if (isCtrlKey(input, key, 'g')) {
+      pendingGoAllowSplitRef.current = true;
+      setPendingGo(true);
+      clearTimeout(pendingGoTimer.current);
+      pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
+      return;
+    }
+    // `Ctrl+W` — opens the two-key `h`/`l` pane-focus prefix above. `Tab` stays the
+    // fast toggle for the common two-pane case; this is the directional alias that
+    // stays correct if a third pane ever exists. Guarded off legacy text-entry
+    // screens (`ComposeScreen`'s `TextEditor` binds its own `Ctrl+W` to kill-word-back,
+    // line 105 of `components/input/TextEditor.tsx`) — Ink has no stop-propagation, so
+    // both listeners would otherwise see the same keypress, and this prefix would eat
+    // the very next character typed after a word-delete.
+    if (isCtrlKey(input, key, 'w') && !legacyTextScreen && !legacySubmodeActiveRef.current) {
+      pendingPaneRef.current = true;
+      clearTimeout(pendingPaneTimer.current);
+      pendingPaneTimer.current = setTimeout(() => {
+        pendingPaneRef.current = false;
+      }, 600);
+      return;
+    }
     if (input === 'L') {
       goTo({ screen: session === undefined ? 'login' : 'accounts' });
       return;
@@ -1625,6 +1742,7 @@ export function App({
       return;
     }
     if (input === 'g') {
+      pendingGoAllowSplitRef.current = false;
       setPendingGo(true);
       clearTimeout(pendingGoTimer.current);
       pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
@@ -1686,6 +1804,10 @@ export function App({
             onPlainChange={setPlain}
             quiet={quiet}
             onQuietChange={setQuiet}
+            linear={linearMode}
+            onLinearChange={setLinearMode}
+            glyphSet={glyphSet}
+            onGlyphSetChange={setGlyphSet}
             imagePolicy={imagePolicy}
             onImagePolicyChange={setImagePolicy}
             onSave={savePreferences}
@@ -1869,6 +1991,7 @@ export function App({
             isActive={active}
             viewerActorId={session.userId}
             dmRetentionDays={dmRetentionDays}
+            glyphSet={glyphSet}
             onBack={back}
           />
         );
@@ -2225,6 +2348,7 @@ export function App({
                                   isActive={screenIsActive && !pendingGo}
                                   viewerActorId={session.userId}
                                   dmRetentionDays={dmRetentionDays}
+                                  glyphSet={glyphSet}
                                   // The screen owns backing out of its own thread/requests
                                   // sub-views on `Esc` (`backToList`) — this only fires once
                                   // it has nothing left to back out of, so the shell's own

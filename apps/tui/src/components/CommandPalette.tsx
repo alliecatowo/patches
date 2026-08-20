@@ -17,6 +17,7 @@ import type { Binding, Screen } from '../app/keymap.js';
 import { useContentSize } from '../app/layout.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { theme } from '../theme/index.js';
+import { computeViewport, resolveTopIndex } from './list-viewport.js';
 
 export type PaletteInvocation =
   CommandInvocation | { source: 'palette'; binding: Binding; args: readonly string[] };
@@ -60,8 +61,15 @@ export function CommandPalette({
   const initial = initialQuery.replace(/^:/u, '');
   const [query, setQueryState] = useState(initial);
   const queryRef = useRef(initial);
-  const [selected, setSelected] = useState(0);
-  const selectedRef = useRef(0);
+  // `{ index, top }` mirrors `VirtualList`'s own selection shape (B-043: the palette
+  // list must scroll to keep the selection visible, the same as every other measured
+  // list) — `top` is the window's last position, derived forward each render by
+  // `resolveTopIndex` rather than written back from an effect.
+  const [selection, setSelectionState] = useState<{ index: number; top: number }>({
+    index: 0,
+    top: 0,
+  });
+  const selectionRef = useRef(selection);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>(undefined);
   const commandWord = query.trimStart().split(/\s/u)[0] ?? '';
   const filteredCommands = filterCommands(commandWord, contextual);
@@ -70,9 +78,14 @@ export function CommandPalette({
     ...filteredCommands.map((command): PaletteItem => ({ kind: 'command', command })),
     ...filteredBindings.map((binding): PaletteItem => ({ kind: 'binding', binding })),
   ];
-  const effectiveSelected = Math.min(selected, Math.max(0, items.length - 1));
+  const effectiveSelected = Math.min(selection.index, Math.max(0, items.length - 1));
   const visibleRows = Math.max(1, Math.min(8, content.rows - 3));
-  const visible = items.slice(0, visibleRows);
+  // Every row is exactly one line — `list-viewport.ts` still owns the scrolling
+  // arithmetic so there is one viewport algorithm in the app, not a second ad-hoc one.
+  const heights = items.map(() => 1);
+  const topIndex = resolveTopIndex(selection.top, effectiveSelected, heights, visibleRows);
+  const viewport = computeViewport(topIndex, heights, visibleRows);
+  const visible = items.slice(viewport.start, viewport.end);
 
   function setQuery(next: string | ((current: string) => string)): void {
     const value = typeof next === 'string' ? next : next(queryRef.current);
@@ -81,9 +94,10 @@ export function CommandPalette({
   }
 
   function select(next: number | ((current: number) => number)): void {
-    const value = typeof next === 'number' ? next : next(selectedRef.current);
-    selectedRef.current = value;
-    setSelected(value);
+    const index = typeof next === 'number' ? next : next(selectionRef.current.index);
+    const value = { index, top: topIndex };
+    selectionRef.current = value;
+    setSelectionState(value);
   }
 
   function recallHistory(direction: -1 | 1): void {
@@ -118,7 +132,7 @@ export function CommandPalette({
         return;
       }
     }
-    const index = selectedRef.current;
+    const index = selectionRef.current.index;
     if (index < currentCommands.length) {
       const command = currentCommands[index];
       if (command === undefined) {
@@ -191,7 +205,8 @@ export function CommandPalette({
       <Text color={theme.accent} bold wrap="truncate-end">
         :{sanitizeForTerminal(query)}█
       </Text>
-      {visible.map((item, index) => {
+      {visible.map((item, offset) => {
+        const index = viewport.start + offset;
         const key =
           item.kind === 'command'
             ? `command:${item.command.id}`

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { MEDIA_STATUS, type GetMediaDownloadResponse, type MediaAttachment } from '@patches/proto';
+import { MEDIA_STATUS } from '@patches/proto';
+import type { GetMediaDownloadResponse, MediaAttachment } from '../api/wire/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';

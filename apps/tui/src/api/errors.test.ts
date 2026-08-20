@@ -120,3 +120,83 @@ describe('describeGrpcError (spec §81)', () => {
     expect(friendly.title).not.toMatch(/^\s*$/);
   });
 });
+
+/**
+ * ADR 0023 slice 2 (P10-008): `describeGrpcError`/`isSignInRequired`/`isPrivacyAckRequired` must
+ * also accept a connect-es `ConnectError` — `.rawMessage` (no `[code]` prefix, preferred over
+ * `.message`), numeric `.code` (gRPC `Status` and Connect `Code` are numerically identical for
+ * 1–16, `docs/research/connect-es.md` §7), and a `Headers`-shaped `.metadata` whose `.get()`
+ * returns a single string (or `null`), unlike grpc-js `Metadata.get()`'s array. No nominal
+ * `ConnectError` import — these fakes are structurally shaped like one.
+ */
+function connectError(code: number, rawMessage = ''): unknown {
+  return {
+    name: 'ConnectError',
+    code,
+    rawMessage,
+    message: rawMessage ? `[${code}] ${rawMessage}` : `[${code}]`,
+  };
+}
+
+/** A minimal `Headers`-shaped fake, exactly as `ConnectError.metadata` carries
+ * `x-patches-error-code` (`docs/research/connect-es.md` §9). */
+function connectErrorWithCode(code: number, appErrorCode: string): unknown {
+  const headers = new Headers();
+  headers.set('x-patches-error-code', appErrorCode);
+  return {
+    name: 'ConnectError',
+    code,
+    rawMessage: '',
+    message: `[${code}]`,
+    metadata: headers,
+  };
+}
+
+describe('describeGrpcError accepts a ConnectError (ADR 0023 slice 2)', () => {
+  it('names the unreachable server for a ConnectError UNAVAILABLE', () => {
+    const friendly = describeGrpcError(connectError(GrpcStatus.UNAVAILABLE), TARGET);
+
+    expect(friendly.title).toContain(TARGET);
+    expect(friendly.title).toContain("Can't reach");
+    expect(friendly.retryable).toBe(true);
+  });
+
+  it('reports a ConnectError DEADLINE_EXCEEDED as a timeout', () => {
+    const friendly = describeGrpcError(connectError(GrpcStatus.DEADLINE_EXCEEDED), TARGET);
+    expect(friendly.title).toContain('too long');
+    expect(friendly.retryable).toBe(true);
+  });
+
+  it('recognises SIGN_IN_REQUIRED via a ConnectError Headers-shaped metadata', () => {
+    const error = connectErrorWithCode(GrpcStatus.UNAUTHENTICATED, 'SIGN_IN_REQUIRED');
+    expect(isSignInRequired(error)).toBe(true);
+    expect(isSignInRequired(connectError(GrpcStatus.UNAUTHENTICATED))).toBe(false);
+
+    const friendly = describeGrpcError(error, TARGET);
+    expect(friendly.retryable).toBe(false);
+    expect(friendly.title).toMatch(/requires sign-in to read/i);
+    expect(friendly.hint).toMatch(/press l/i);
+  });
+
+  it('recognises PRIVACY_NOTICE_NOT_ACKNOWLEDGED via a ConnectError Headers-shaped metadata', () => {
+    const error = connectErrorWithCode(
+      GrpcStatus.FAILED_PRECONDITION,
+      'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
+    );
+    expect(isPrivacyAckRequired(error)).toBe(true);
+    expect(isPrivacyAckRequired(connectError(GrpcStatus.FAILED_PRECONDITION))).toBe(false);
+
+    const friendly = describeGrpcError(error, TARGET);
+    expect(friendly.retryable).toBe(false);
+    expect(friendly.title).toMatch(/:privacy/);
+  });
+
+  it('prefers rawMessage over the [code]-prefixed message for a ConnectError', () => {
+    const friendly = describeGrpcError(
+      connectError(GrpcStatus.ALREADY_EXISTS, 'That handle is taken.'),
+      TARGET,
+    );
+    expect(friendly.title).toBe('That handle is taken.');
+    expect(friendly.retryable).toBe(false);
+  });
+});

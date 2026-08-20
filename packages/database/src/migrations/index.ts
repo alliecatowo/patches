@@ -22,6 +22,8 @@ import { Phase14FollowRequests1787153689257 } from './1787153689257-Phase14Follo
 import { FilterListSubscriptionScopes1787159166765 } from './1787159166765-FilterListSubscriptionScopes.js';
 import { AdminAuditLabelerSubjectType1787159300000 } from './1787159300000-AdminAuditLabelerSubjectType.js';
 import { Phase15AuthPolicy1787170000000 } from './1787170000000-Phase15AuthPolicy.js';
+import { Phase15Passkeys1787180000000 } from './1787180000000-Phase15Passkeys.js';
+import { AddOidcCredentialType1787220000000 } from './1787220000000-AddOidcCredentialType.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -60,4 +62,6 @@ export const ALL_MIGRATIONS = [
   FilterListSubscriptionScopes1787159166765,
   AdminAuditLabelerSubjectType1787159300000,
   Phase15AuthPolicy1787170000000,
+  Phase15Passkeys1787180000000,
+  AddOidcCredentialType1787220000000,
 ];

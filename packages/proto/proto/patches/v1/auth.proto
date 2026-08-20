@@ -76,6 +76,16 @@ service AuthService {
   rpc BeginGitHubLogin(BeginGitHubLoginRequest) returns (BeginGitHubLoginResponse);
   rpc PollGitHubLogin(PollGitHubLoginRequest) returns (PollGitHubLoginResponse);
 
+  // Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
+  // not just GitHub") — GitLab, Codeberg, or any other node-configured provider. `provider`
+  // selects one of `GetAuthPolicyResponse.oidc_providers` by id; an unknown or unconfigured id
+  // fails the same way an unconfigured GitHub client id does. Exactly the same credential-not-
+  // identity contract as `BeginGitHubLogin`/`PollGitHubLogin`: no profile field is ever
+  // populated from it automatically, and `identifier` is namespaced per provider so two
+  // providers' subjects can never collide.
+  rpc BeginOidcLogin(BeginOidcLoginRequest) returns (BeginOidcLoginResponse);
+  rpc PollOidcLogin(PollOidcLoginRequest) returns (PollOidcLoginResponse);
+
   // Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
   // other secret material — type, label, identifier, timestamps only.
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
@@ -111,6 +121,27 @@ service AuthService {
   // the account's other unused codes remain valid. Always issues the same generic-failure
   // error as `Login` on a bad handle/code combination, for the same no-enumeration reason.
   rpc RecoveryLogin(RecoveryLoginRequest) returns (RecoveryLoginResponse);
+
+  // Passkeys/WebAuthn (P15-004, ADR 0022, `docs/architecture/auth.md`). Web-client-only — the
+  // TUI has no browser relying party and none is planned (ADR 0011, ADR 0022). Every payload
+  // here is the corresponding `@simplewebauthn/*` JSON type carried verbatim as an opaque
+  // `string`, rather than a field-by-field proto mirror of the WebAuthn spec's own options/
+  // response objects — see `docs/research/simplewebauthn.md` for why. Authenticated: issues a
+  // single-use, short-TTL challenge bound to the caller's own account, mirroring
+  // `BeginSshEnrollment`/`AddCredential(SSH_PUBLIC_KEY)`'s possession-proof shape.
+  rpc BeginPasskeyRegistration(BeginPasskeyRegistrationRequest) returns (BeginPasskeyRegistrationResponse);
+  rpc CompletePasskeyRegistration(CompletePasskeyRegistrationRequest) returns (CompletePasskeyRegistrationResponse);
+
+  // Unauthenticated, discoverable-credential login (no username/handle is ever supplied or
+  // required) — the credential response itself identifies the account via its WebAuthn
+  // credential id. `BeginPasskeyLogin` always issues a challenge (mirrors `BeginSshLogin`'s
+  // no-enumeration rule, though there is nothing to enumerate here since no identifier is ever
+  // supplied); `CompletePasskeyLogin` verifies the assertion and returns a session. A sign-count
+  // regression is treated as a possible credential clone: rejected with the same uniform
+  // `AUTH_INVALID_CREDENTIALS` every other auth failure here uses, and a `SECURITY`
+  // notification is written (mirrors `RecoveryLogin`'s convention).
+  rpc BeginPasskeyLogin(BeginPasskeyLoginRequest) returns (BeginPasskeyLoginResponse);
+  rpc CompletePasskeyLogin(CompletePasskeyLoginRequest) returns (CompletePasskeyLoginResponse);
 }
 
 // Issued by every login/registration RPC. `access_token` is a short-lived bearer JWT (spec
@@ -332,6 +363,46 @@ message PollGitHubLoginResponse {
   Session session = 2;
 }
 
+// P15-006: generic OIDC device flow, mirroring `BeginGitHubLoginRequest`/`Response` but
+// parameterized by which of this node's configured providers to use.
+message BeginOidcLoginRequest {
+  // Must match the `id` of one of `GetAuthPolicyResponse.oidc_providers`.
+  string provider = 1;
+}
+
+message BeginOidcLoginResponse {
+  string device_code = 1;
+  string user_code = 2;
+  string verification_uri = 3;
+
+  // Minimum seconds between poll attempts (the provider's own device-flow `interval`).
+  uint32 interval = 4;
+
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message PollOidcLoginRequest {
+  // Must match the `provider` originally passed to `BeginOidcLogin` for this `device_code`.
+  string provider = 1;
+  string device_code = 2;
+}
+
+enum OidcLoginStatus {
+  OIDC_LOGIN_STATUS_UNSPECIFIED = 0;
+  OIDC_LOGIN_STATUS_PENDING = 1;
+  OIDC_LOGIN_STATUS_SLOW_DOWN = 2;
+  OIDC_LOGIN_STATUS_EXPIRED = 3;
+  OIDC_LOGIN_STATUS_DENIED = 4;
+  OIDC_LOGIN_STATUS_COMPLETE = 5;
+}
+
+message PollOidcLoginResponse {
+  OidcLoginStatus status = 1;
+
+  // Set only when status == OIDC_LOGIN_STATUS_COMPLETE.
+  Session session = 2;
+}
+
 // P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
 // password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
 // `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED` — clients must hide password UI entirely
@@ -349,9 +420,25 @@ message GetAuthPolicyRequest {}
 
 message GetAuthPolicyResponse {
   PasswordAuthMode password_auth = 1;
+
+  // P15-006: whether `BeginGitHubLogin`/`PollGitHubLogin` are usable on this node (i.e.
+  // `GITHUB_CLIENT_ID` is configured) — a client hides the "sign in with GitHub" button
+  // rather than let the user hit `NOT_IMPLEMENTED`.
+  bool github_auth = 2;
+
+  // P15-006: this node's configured generic-OIDC providers (GitLab, Codeberg, any other
+  // OIDC-device-flow provider), id and display name only — never the client id, client
+  // secret, or provider URLs, which stay server-side config. A client renders one "sign in
+  // with <display_name>" button per entry and passes the matching `id` as `BeginOidcLoginRequest
+  // .provider`.
+  repeated OidcProviderInfo oidc_providers = 3;
 }
 
-// PASSKEY is spec-reserved (§165) but not a v0 value — do not add it until it ships.
+message OidcProviderInfo {
+  string id = 1;
+  string display_name = 2;
+}
+
 enum CredentialType {
   CREDENTIAL_TYPE_UNSPECIFIED = 0;
   CREDENTIAL_TYPE_PASSWORD = 1;
@@ -363,6 +450,16 @@ enum CredentialType {
   // `GenerateRecoveryCodes`) — each redeemed code is immediately revoked, so
   // `ListCredentials` naturally shows only the still-unused ones.
   CREDENTIAL_TYPE_RECOVERY_CODE = 4;
+
+  // A WebAuthn/passkey credential (P15-004, ADR 0022, spec §165). `identifier` holds the
+  // WebAuthn credential id, `public_material` the COSE public key — never any private key
+  // material, which never leaves the authenticator.
+  CREDENTIAL_TYPE_PASSKEY = 5;
+
+  // A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
+  // provider) — same "credential, never an identity" contract as GITHUB. `identifier` holds
+  // "<provider_id>:<subject>", namespaced so two providers' subjects can never collide.
+  CREDENTIAL_TYPE_OIDC = 6;
 }
 
 // Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —
@@ -446,5 +543,58 @@ message RecoveryLoginRequest {
 }
 
 message RecoveryLoginResponse {
+  Session session = 1;
+}
+
+// Authenticated: the caller's identity comes from the `authorization` metadata, same as
+// `BeginSshEnrollmentRequest`. Carries no request fields — the RP id/name and the caller's
+// existing credential ids (for `excludeCredentials`) are all server-side state.
+message BeginPasskeyRegistrationRequest {}
+
+message BeginPasskeyRegistrationResponse {
+  // JSON-serialized `PublicKeyCredentialCreationOptionsJSON`
+  // (`@simplewebauthn/server`'s `generateRegistrationOptions()` return value), passed to the
+  // browser's `@simplewebauthn/browser` `startRegistration()` verbatim. Carried as an opaque
+  // JSON string rather than a field-by-field proto mirror of the WebAuthn spec (see
+  // `docs/research/simplewebauthn.md`): that spec's options/response shapes are large,
+  // evolve on their own schedule independent of this proto, and are only ever produced and
+  // consumed by the same `@simplewebauthn/*` library pair on both ends — proto-izing them
+  // would just be a lossy hand-maintained transcription of a JSON schema we don't own.
+  string options_json = 1;
+}
+
+message CompletePasskeyRegistrationRequest {
+  // JSON-serialized `RegistrationResponseJSON` — the browser's `startRegistration()` return
+  // value, forwarded verbatim.
+  string credential_json = 1;
+
+  // Caller-chosen label shown in `ListCredentials` (mirrors `AddCredentialRequest.label`).
+  string label = 2;
+}
+
+message CompletePasskeyRegistrationResponse {
+  Credential credential = 1;
+}
+
+// Unauthenticated, discoverable-credential login: no username/handle field exists anywhere in
+// this pair — the credential response identifies the account.
+message BeginPasskeyLoginRequest {}
+
+message BeginPasskeyLoginResponse {
+  // JSON-serialized `PublicKeyCredentialRequestOptionsJSON`
+  // (`generateAuthenticationOptions()`, with no `allowCredentials`, i.e. a discoverable-
+  // credential/"usernameless" ceremony), passed to `startAuthentication()` verbatim.
+  string options_json = 1;
+}
+
+message CompletePasskeyLoginRequest {
+  // JSON-serialized `AuthenticationResponseJSON` — `startAuthentication()`'s return value,
+  // forwarded verbatim. The account and matching challenge are both resolved server-side from
+  // this payload (credential id identifies the account; the embedded `clientDataJSON.challenge`
+  // identifies the challenge row).
+  string credential_json = 1;
+}
+
+message CompletePasskeyLoginResponse {
   Session session = 1;
 }

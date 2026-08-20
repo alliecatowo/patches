@@ -1,13 +1,11 @@
 import type { RenderablePageBlock } from '@patches/domain';
-import {
-  POST_TYPE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-  type GetActorByHandleResponse,
-  type ListActorPostsResponse,
-  type ListGuestbookResponse,
-  type ListMutualFollowsResponse,
-} from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type {
+  GetActorByHandleResponse,
+  ListActorPostsResponse,
+  ListGuestbookResponse,
+  ListMutualFollowsResponse,
+} from '../../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 

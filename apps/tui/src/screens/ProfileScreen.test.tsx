@@ -1,4 +1,5 @@
-import { FOLLOW_STATE, type Actor, type Relationship } from '@patches/proto';
+import { FOLLOW_STATE } from '@patches/proto';
+import type { Actor, Relationship } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

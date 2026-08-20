@@ -16,7 +16,7 @@ to pre-change content by a concurrent commit/rebase interaction, and had to be r
 from the working tree's actual (still-correct) state.
 
 **Why this matters:** This is not the "give each fanned-out agent a disjoint file set"
-scenario `docs/agents/HARNESS.md` describes — that assumes isolated worktrees/clones. Here,
+scenario CLAUDE.md's delegation section describes — that assumes isolated worktrees/clones. Here,
 multiple agents (at least one TUI-focused agent) were operating against the literal same
 checkout at the same time, so `git status`/`git diff`/`HEAD` are not stable between one tool
 call and the next, and staging with explicit paths (never `-A`) is necessary but not

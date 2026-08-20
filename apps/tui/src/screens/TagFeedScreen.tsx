@@ -8,7 +8,7 @@ import type {
   Tag,
   UnmuteTagRequest,
   UnmuteTagResponse,
-} from '@patches/proto';
+} from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

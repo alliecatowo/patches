@@ -1,32 +1,23 @@
 import { randomUUID } from 'node:crypto';
 
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  COMMUNITY_ROLE,
-  createCommunityClient,
-  createPostClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-  type CommunityGrpcClient,
-  type CreatePostRequest,
-  type CreatePostResponse,
-  type JoinCommunityRequest,
-  type JoinCommunityResponse,
-  type LeaveCommunityRequest,
-  type LeaveCommunityResponse,
-  type ListCommunitiesRequest,
-  type ListCommunitiesResponse,
-  type PostGrpcClient,
-} from '@patches/proto';
+import { COMMUNITY_ROLE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type {
+  CreatePostRequest,
+  CreatePostResponse,
+  JoinCommunityRequest,
+  JoinCommunityResponse,
+  LeaveCommunityRequest,
+  LeaveCommunityResponse,
+  ListCommunitiesRequest,
+  ListCommunitiesResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
+import { type PatchesApi } from '../api/client.js';
 import { SessionManager } from '../auth/session.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 
 const USAGE = `Usage: patches community <list|join|leave|post> [options]
 
@@ -244,16 +235,13 @@ function injectedContext(deps: CommunityCliDeps): CommandContext {
 }
 
 function createContext(deps: CommunityCliDeps, rest: readonly string[]): CommandContext {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const community = createCommunityClient(deps.target, channelCredentials);
-  const post = createPostClient(deps.target, channelCredentials);
-  const authApi = createApi(deps.target, deps.insecure);
+  const api = createApi(deps.target, deps.insecure);
   let manager: SessionManager | undefined;
 
   async function ensureAccessToken(): Promise<string> {
     if (manager === undefined) {
       const store = await openCredentialStore(deps.io, deps.env, rest);
-      manager = new SessionManager({ api: authApi, store, nodeOrigin: deps.target });
+      manager = new SessionManager({ api, store, nodeOrigin: deps.target });
       const session = await manager.restore();
       if (session === undefined)
         throw new Error(`Not signed in on ${deps.target}. Run \`patches login\`.`);
@@ -262,59 +250,19 @@ function createContext(deps: CommunityCliDeps, rest: readonly string[]): Command
   }
 
   return {
-    api: grpcApi(community, post),
+    api: apiFromClient(api),
     ensureAccessToken,
     close: () => {
-      community.close();
-      post.close();
-      authApi.close();
+      api.close();
     },
   };
 }
 
-function grpcApi(community: CommunityGrpcClient, post: PostGrpcClient): CommunityCommandApi {
+function apiFromClient(api: PatchesApi): CommunityCommandApi {
   return {
-    listCommunities: (request) => unary(community.listCommunities.bind(community), request),
-    joinCommunity: (request, token) =>
-      unary(community.joinCommunity.bind(community), request, token),
-    leaveCommunity: (request, token) =>
-      unary(community.leaveCommunity.bind(community), request, token),
-    createPost: (request, token) => unary(post.createPost.bind(post), request, token),
+    listCommunities: (request) => api.listCommunities(request),
+    joinCommunity: (request, token) => api.joinCommunity(request, token),
+    leaveCommunity: (request, token) => api.leaveCommunity(request, token),
+    createPost: (request, token) => api.createPost(request, token),
   };
-}
-
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-  accessToken?: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(accessToken?: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
 }

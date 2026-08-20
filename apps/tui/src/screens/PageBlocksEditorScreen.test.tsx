@@ -1,4 +1,4 @@
-import type { UpdatePageResponse } from '@patches/proto';
+import type { UpdatePageResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { Box } from 'ink';
 import stringWidth from 'string-width';

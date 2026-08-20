@@ -1,12 +1,10 @@
-import {
-  ACCOUNT_EXPORT_STATUS,
-  FEDERATION_STANCE,
-  timestampToDate,
-  type AccountDeletionStatus,
-  type AccountExport,
-  type NodePolicy,
-  type PrivacyPrefs,
-} from '@patches/proto';
+import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE, timestampToDate } from '@patches/proto';
+import type {
+  AccountDeletionStatus,
+  AccountExport,
+  NodePolicy,
+  PrivacyPrefs,
+} from '../api/wire/types.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

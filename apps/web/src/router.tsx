@@ -105,6 +105,13 @@ export const router = createBrowserRouter([
               })),
           },
           {
+            path: 'appearance',
+            lazy: () =>
+              import('./routes/settings/AppearanceSettingsRoute.js').then((m) => ({
+                Component: m.AppearanceSettingsRoute,
+              })),
+          },
+          {
             path: 'privacy',
             lazy: () =>
               import('./routes/settings/PrivacySettingsRoute.js').then((m) => ({
@@ -130,6 +137,13 @@ export const router = createBrowserRouter([
             lazy: () =>
               import('./routes/settings/LabelersSettingsRoute.js').then((m) => ({
                 Component: m.LabelersSettingsRoute,
+              })),
+          },
+          {
+            path: 'credentials',
+            lazy: () =>
+              import('./routes/settings/CredentialsRoute.js').then((m) => ({
+                Component: m.CredentialsRoute,
               })),
           },
         ],

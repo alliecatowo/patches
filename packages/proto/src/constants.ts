@@ -22,10 +22,18 @@ import type {
   AddCredentialResponse,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
+  BeginPasskeyLoginRequest,
+  BeginPasskeyLoginResponse,
+  BeginPasskeyRegistrationRequest,
+  BeginPasskeyRegistrationResponse,
   BeginSshEnrollmentRequest,
   BeginSshEnrollmentResponse,
   BeginSshLoginRequest,
   BeginSshLoginResponse,
+  CompletePasskeyLoginRequest,
+  CompletePasskeyLoginResponse,
+  CompletePasskeyRegistrationRequest,
+  CompletePasskeyRegistrationResponse,
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
   GenerateRecoveryCodesRequest,
@@ -475,6 +483,16 @@ export interface AuthGrpcClient extends Client {
   revokeCredential: GrpcUnaryCall<RevokeCredentialRequest, RevokeCredentialResponse>;
   generateRecoveryCodes: GrpcUnaryCall<GenerateRecoveryCodesRequest, GenerateRecoveryCodesResponse>;
   recoveryLogin: GrpcUnaryCall<RecoveryLoginRequest, RecoveryLoginResponse>;
+  beginPasskeyRegistration: GrpcUnaryCall<
+    BeginPasskeyRegistrationRequest,
+    BeginPasskeyRegistrationResponse
+  >;
+  completePasskeyRegistration: GrpcUnaryCall<
+    CompletePasskeyRegistrationRequest,
+    CompletePasskeyRegistrationResponse
+  >;
+  beginPasskeyLogin: GrpcUnaryCall<BeginPasskeyLoginRequest, BeginPasskeyLoginResponse>;
+  completePasskeyLogin: GrpcUnaryCall<CompletePasskeyLoginRequest, CompletePasskeyLoginResponse>;
 }
 
 /** `patches.v1.ActorService` as seen by a raw grpc-js client. */

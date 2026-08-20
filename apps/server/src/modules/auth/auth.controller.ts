@@ -9,10 +9,20 @@ import {
   type AuthServiceController,
   type BeginGitHubLoginRequest,
   type BeginGitHubLoginResponse,
+  type BeginOidcLoginRequest,
+  type BeginOidcLoginResponse,
+  type BeginPasskeyLoginRequest,
+  type BeginPasskeyLoginResponse,
+  type BeginPasskeyRegistrationRequest,
+  type BeginPasskeyRegistrationResponse,
   type BeginSshEnrollmentRequest,
   type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
+  type CompletePasskeyLoginRequest,
+  type CompletePasskeyLoginResponse,
+  type CompletePasskeyRegistrationRequest,
+  type CompletePasskeyRegistrationResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
   CredentialType,
@@ -32,6 +42,8 @@ import {
   type LogoutResponse,
   type PollGitHubLoginRequest,
   type PollGitHubLoginResponse,
+  type PollOidcLoginRequest,
+  type PollOidcLoginResponse,
   type RecoveryLoginRequest,
   type RecoveryLoginResponse,
   type RefreshSessionRequest,
@@ -57,6 +69,8 @@ import {
   toProtoActor,
   toProtoCredential,
   toProtoGitHubLoginStatus,
+  toProtoOidcLoginStatus,
+  toProtoOidcProviders,
   toProtoPasswordAuthMode,
   toProtoSession,
 } from './auth.mapper.js';
@@ -85,7 +99,11 @@ export class AuthController implements AuthServiceController {
 
   getAuthPolicy(@Payload() _request: GetAuthPolicyRequest): GetAuthPolicyResponse {
     const policy = this.auth.getAuthPolicy();
-    return { passwordAuth: toProtoPasswordAuthMode(policy.passwordAuthMode) };
+    return {
+      passwordAuth: toProtoPasswordAuthMode(policy.passwordAuthMode),
+      githubAuth: policy.githubAuth,
+      oidcProviders: toProtoOidcProviders(policy.oidcProviders),
+    };
   }
 
   async register(@Payload() request: RegisterRequest): Promise<RegisterResponse> {
@@ -253,6 +271,31 @@ export class AuthController implements AuthServiceController {
     };
   }
 
+  /** Same no-guard reasoning as `beginGitHubLogin` above, generalized to any configured OIDC
+   * provider (P15-006). */
+  async beginOidcLogin(
+    @Payload() request: BeginOidcLoginRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<BeginOidcLoginResponse> {
+    const callerUserId = await this.optionalCallerUserId(metadata);
+    const begun = await this.auth.beginOidcLogin(request.provider, callerUserId);
+    return {
+      deviceCode: begun.deviceCode,
+      userCode: begun.userCode,
+      verificationUri: begun.verificationUri,
+      interval: begun.interval,
+      expiresAt: dateToTimestamp(begun.expiresAt),
+    };
+  }
+
+  async pollOidcLogin(@Payload() request: PollOidcLoginRequest): Promise<PollOidcLoginResponse> {
+    const result = await this.auth.pollOidcLogin(request.provider, request.deviceCode);
+    return {
+      status: toProtoOidcLoginStatus(result.status),
+      session: result.status === 'COMPLETE' ? toProtoSession(result.session) : undefined,
+    };
+  }
+
   /** `undefined` for no token, an invalid token, or a token whose account is gone/suspended —
    * every one of those cases just means "treat this `BeginGitHubLogin` call as anonymous",
    * not "reject the call" (see the method's own doc comment above). */
@@ -265,6 +308,45 @@ export class AuthController implements AuthServiceController {
     } catch {
       return undefined;
     }
+  }
+
+  @UseGuards(AuthGuard)
+  async beginPasskeyRegistration(
+    @Payload() _request: BeginPasskeyRegistrationRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<BeginPasskeyRegistrationResponse> {
+    const { optionsJson } = await this.auth.beginPasskeyRegistration(requireSession(session));
+    return { optionsJson };
+  }
+
+  @UseGuards(AuthGuard)
+  async completePasskeyRegistration(
+    @Payload() request: CompletePasskeyRegistrationRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<CompletePasskeyRegistrationResponse> {
+    const credential = await this.auth.completePasskeyRegistration(requireSession(session), {
+      credentialJson: request.credentialJson,
+      ...optional('label', request.label),
+    });
+    return { credential: toProtoCredential(credential) };
+  }
+
+  async beginPasskeyLogin(
+    @Payload() _request: BeginPasskeyLoginRequest,
+  ): Promise<BeginPasskeyLoginResponse> {
+    const { optionsJson } = await this.auth.beginPasskeyLogin();
+    return { optionsJson };
+  }
+
+  async completePasskeyLogin(
+    @Payload() request: CompletePasskeyLoginRequest,
+  ): Promise<CompletePasskeyLoginResponse> {
+    const session = await this.auth.completePasskeyLogin({
+      credentialJson: request.credentialJson,
+    });
+    return { session: toProtoSession(session) };
   }
 
   @UseGuards(AuthGuard)
@@ -285,11 +367,7 @@ export class AuthController implements AuthServiceController {
   ): Promise<AddCredentialResponse> {
     const type = credentialTypeFromProto(request.type);
     if (type === undefined || type === 'GITHUB') {
-      throw AppError.validation(
-        request.type === CredentialType.CREDENTIAL_TYPE_GITHUB
-          ? 'Link a GitHub account through the GitHub login flow, not AddCredential.'
-          : 'Specify a credential type of PASSWORD or SSH_PUBLIC_KEY.',
-      );
+      throw AppError.validation(addCredentialRejectionMessage(request.type));
     }
 
     const credential = await this.auth.addCredential(requireSession(session), {
@@ -330,6 +408,19 @@ export class AuthController implements AuthServiceController {
     const result = await this.auth.generateRecoveryCodes(requireSession(session));
     return { codes: [...result.codes], generatedAt: dateToTimestamp(result.generatedAt) };
   }
+}
+
+/** `AddCredential`'s rejection message for a credential type that must instead be linked
+ * through its own dedicated login flow (GITHUB, OIDC) vs. one that simply isn't PASSWORD/
+ * SSH_PUBLIC_KEY. */
+function addCredentialRejectionMessage(type: CredentialType): string {
+  if (type === CredentialType.CREDENTIAL_TYPE_GITHUB) {
+    return 'Link a GitHub account through the GitHub login flow, not AddCredential.';
+  }
+  if (type === CredentialType.CREDENTIAL_TYPE_OIDC) {
+    return 'Link that account through its sign-in flow, not AddCredential.';
+  }
+  return 'Specify a credential type of PASSWORD or SSH_PUBLIC_KEY.';
 }
 
 /** `''` is protobuf's only representation of an unset scalar; the service wants `undefined`. */

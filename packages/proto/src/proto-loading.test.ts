@@ -64,14 +64,19 @@ describe('proto files', () => {
     );
   });
 
-  it('declares the full AuthService RPC surface, including the credential/SSH/GitHub RPCs', () => {
+  it('declares the full AuthService RPC surface, including the credential/SSH/GitHub/OIDC/passkey RPCs', () => {
     const methods = serviceMethodNames(loadPatchesPackage(), SERVICE_NAMES.auth);
     expect(methods).toEqual(
       [
         'AddCredential',
         'BeginGitHubLogin',
+        'BeginOidcLogin',
+        'BeginPasskeyLogin',
+        'BeginPasskeyRegistration',
         'BeginSshEnrollment',
         'BeginSshLogin',
+        'CompletePasskeyLogin',
+        'CompletePasskeyRegistration',
         'CompleteSshLogin',
         'GenerateRecoveryCodes',
         'GetAuthPolicy',
@@ -81,6 +86,7 @@ describe('proto files', () => {
         'Logout',
         'LogoutAllSessions',
         'PollGitHubLogin',
+        'PollOidcLogin',
         'RecoveryLogin',
         'RefreshSession',
         'Register',

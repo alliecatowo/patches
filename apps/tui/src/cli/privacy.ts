@@ -1,30 +1,21 @@
-import { randomUUID } from 'node:crypto';
-
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  createNodeClient,
-  createPrivacyClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
-  type AcknowledgePrivacyNoticeRequest,
-  type AcknowledgePrivacyNoticeResponse,
-  type CancelAccountDeletionResponse,
-  type ExportAccountResponse,
-  type GetDeletionStatusResponse,
-  type GetExportStatusResponse,
-  type GetNodePolicyResponse,
-  type GetPrivacyPrefsResponse,
-  type NodeGrpcClient,
-  type PrivacyGrpcClient,
-  type RequestAccountDeletionResponse,
-  type UpdatePrivacyPrefsRequest,
-  type UpdatePrivacyPrefsResponse,
-} from '@patches/proto';
+import type {
+  AcknowledgePrivacyNoticeRequest,
+  AcknowledgePrivacyNoticeResponse,
+  CancelAccountDeletionResponse,
+  ExportAccountResponse,
+  GetDeletionStatusResponse,
+  GetExportStatusResponse,
+  GetNodePolicyResponse,
+  GetPrivacyPrefsResponse,
+  RequestAccountDeletionResponse,
+  UpdatePrivacyPrefsRequest,
+  UpdatePrivacyPrefsResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
+import { type PatchesApi } from '../api/client.js';
 import { SessionManager } from '../auth/session.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
@@ -264,16 +255,13 @@ function injectedContext(deps: PrivacyCliDeps): CommandContext {
 }
 
 function createContext(deps: PrivacyCliDeps, rest: readonly string[]): CommandContext {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const privacy = createPrivacyClient(deps.target, channelCredentials);
-  const node = createNodeClient(deps.target, channelCredentials);
-  const authApi = createApi(deps.target, deps.insecure);
+  const api = createApi(deps.target, deps.insecure);
   let manager: SessionManager | undefined;
 
   async function ensureAccessToken(): Promise<string> {
     if (manager === undefined) {
       const store = await openCredentialStore(deps.io, deps.env, rest);
-      manager = new SessionManager({ api: authApi, store, nodeOrigin: deps.target });
+      manager = new SessionManager({ api, store, nodeOrigin: deps.target });
       const session = await manager.restore();
       if (session === undefined)
         throw new Error(`Not signed in on ${deps.target}. Run \`patches login\`.`);
@@ -282,65 +270,24 @@ function createContext(deps: PrivacyCliDeps, rest: readonly string[]): CommandCo
   }
 
   return {
-    api: grpcApi(privacy, node),
+    api: apiFromClient(api),
     ensureAccessToken,
     close: () => {
-      privacy.close();
-      node.close();
-      authApi.close();
+      api.close();
     },
   };
 }
 
-function grpcApi(privacy: PrivacyGrpcClient, node: NodeGrpcClient): PrivacyCommandApi {
+function apiFromClient(api: PatchesApi): PrivacyCommandApi {
   return {
-    getNodePolicy: () => unary(node.getNodePolicy.bind(node), {}),
-    getPrivacyPrefs: (token) => unary(privacy.getPrivacyPrefs.bind(privacy), {}, token),
-    acknowledgePrivacyNotice: (request, token) =>
-      unary(privacy.acknowledgePrivacyNotice.bind(privacy), request, token),
-    updatePrivacyPrefs: (request, token) =>
-      unary(privacy.updatePrivacyPrefs.bind(privacy), request, token),
-    exportAccount: (token) => unary(privacy.exportAccount.bind(privacy), {}, token),
-    getExportStatus: (token) => unary(privacy.getExportStatus.bind(privacy), {}, token),
-    requestAccountDeletion: (token) =>
-      unary(privacy.requestAccountDeletion.bind(privacy), {}, token),
-    cancelAccountDeletion: (token) => unary(privacy.cancelAccountDeletion.bind(privacy), {}, token),
-    getDeletionStatus: (token) => unary(privacy.getDeletionStatus.bind(privacy), {}, token),
+    getNodePolicy: () => api.getNodePolicy(),
+    getPrivacyPrefs: (token) => api.getPrivacyPrefs({}, token),
+    acknowledgePrivacyNotice: (request, token) => api.acknowledgePrivacyNotice(request, token),
+    updatePrivacyPrefs: (request, token) => api.updatePrivacyPrefs(request, token),
+    exportAccount: (token) => api.exportAccount({}, token),
+    getExportStatus: (token) => api.getExportStatus({}, token),
+    requestAccountDeletion: (token) => api.requestAccountDeletion({}, token),
+    cancelAccountDeletion: (token) => api.cancelAccountDeletion({}, token),
+    getDeletionStatus: (token) => api.getDeletionStatus({}, token),
   };
-}
-
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-  accessToken?: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(accessToken?: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
 }

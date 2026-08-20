@@ -1,4 +1,5 @@
-import { NOTIFICATION_TYPE, type Actor, type Notification } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '@patches/proto';
+import type { Actor, Notification } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

@@ -210,6 +210,53 @@ export const KEYMAP: readonly Binding[] = [
     commands: [{ name: 'search', argument: 'required', usage: 'search <query>' }],
   },
   {
+    // B-042: plain `g <key>` always replaces the screen — this is the explicit
+    // "open beside" request for the one `g`-reachable destination (`v`, your Patches
+    // Page) that would otherwise combine with a list beneath it into a split pane.
+    keys: 'Ctrl+G',
+    hint: 'go to (split)',
+    description:
+      'Like g <key>, but opens the destination in the second pane instead of replacing the screen',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
+    // B-046: purely presentational — it never touches the navigation stack, just
+    // which pane (`SplitPane`'s `>` marker) the rest of the shell's action keys
+    // dispatch to. Free at `global:shell` — the other `Tab` bindings below are all
+    // scoped to one screen's own `editor`/`screen` region, so this doesn't collide.
+    keys: 'Tab',
+    hint: 'switch pane',
+    description: 'Move focus between the primary and secondary pane when the screen is split',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
+    // B-048: directional alias to `Tab` for the tmux/vim-muscle-memory reader —
+    // `Tab` is still the fast path for the common two-pane case, this stays correct
+    // if a third pane ever exists. No-op when the screen isn't split.
+    keys: 'Ctrl+W h',
+    hint: 'focus primary pane',
+    description: 'Move shell focus to the primary (left) pane when the screen is split',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
+    keys: 'Ctrl+W l',
+    hint: 'focus secondary pane',
+    description: 'Move shell focus to the secondary (right) pane when the screen is split',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
     keys: 'Esc',
     hint: 'back',
     description: 'Back one screen — always exactly one level, from every screen',

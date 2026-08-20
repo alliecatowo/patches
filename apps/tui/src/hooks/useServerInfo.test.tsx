@@ -1,4 +1,4 @@
-import type { GetServerInfoResponse } from '@patches/proto';
+import type { GetServerInfoResponse } from '../api/wire/types.js';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
 import type { ReactElement } from 'react';

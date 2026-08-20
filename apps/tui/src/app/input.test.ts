@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createKeyLayerStack,
+  isCoalescedKeyRun,
   isPaletteShortcut,
   legacyInputConsumes,
+  splitCoalescedKeyRun,
   type KeyLayer,
 } from './input.js';
 
@@ -60,5 +62,47 @@ describe('key-layer stack', () => {
     expect(legacyInputConsumes('c', key({ ctrl: true }), true)).toBe(false);
     expect(legacyInputConsumes('p', key({ ctrl: true }), true)).toBe(false);
     expect(isPaletteShortcut('p', key({ ctrl: true }))).toBe(true);
+  });
+});
+
+describe('isCoalescedKeyRun (B-042: a fast-typed `g h` arriving as one stdin chunk)', () => {
+  it('is true only for several ordinary characters landing in one keypress', () => {
+    expect(isCoalescedKeyRun('gh', key())).toBe(true);
+    expect(isCoalescedKeyRun('g', key())).toBe(false);
+    expect(isCoalescedKeyRun('', key())).toBe(false);
+  });
+
+  it('never fires for a control key, even one whose `input` happens to be multi-char', () => {
+    expect(isCoalescedKeyRun('AB', key({ ctrl: true }))).toBe(false);
+    expect(isCoalescedKeyRun('gh', key({ escape: true }))).toBe(false);
+    expect(isCoalescedKeyRun('gh', key({ upArrow: true }))).toBe(false);
+  });
+
+  it('counts by code point, so a multi-byte emoji stays one key', () => {
+    expect(isCoalescedKeyRun('😀', key())).toBe(false);
+    expect(isCoalescedKeyRun('😀g', key())).toBe(true);
+  });
+});
+
+describe('splitCoalescedKeyRun (B-048: a fast-typed `Ctrl+W h` arriving as one stdin chunk)', () => {
+  it('leaves plain letters alone, same as the naive per-character split', () => {
+    expect(splitCoalescedKeyRun('gh', key())).toEqual([
+      { input: 'g', key: key() },
+      { input: 'h', key: key() },
+    ]);
+  });
+
+  it('reconstructs a raw control byte into its ctrl+letter key, the way Ink parses it alone', () => {
+    // `\x17` is Ctrl+W's raw byte (23 === 'w'.charCodeAt(0) - 96) — Ink's own
+    // `parseKeypress` only recognises it as `{ctrl:true, name:'w'}` when the byte is
+    // the *entire* chunk; coalesced with the next key it arrives as literal `\x17h`.
+    const [first, second] = splitCoalescedKeyRun('\x17h', key());
+    expect(first).toEqual({ input: 'w', key: key({ ctrl: true }) });
+    expect(second).toEqual({ input: 'h', key: key() });
+  });
+
+  it('preserves the rest of the original key flags on a reconstructed ctrl split', () => {
+    const [first] = splitCoalescedKeyRun('\x17l', key({ shift: true }));
+    expect(first).toEqual({ input: 'w', key: key({ ctrl: true, shift: true }) });
   });
 });

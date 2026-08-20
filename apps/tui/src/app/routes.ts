@@ -68,6 +68,9 @@ export function nearestListBeneath(stack: NavStack): NavEntry | undefined {
 export function wantsSplit(stack: NavStack): boolean {
   const top = currentEntry(stack);
   if (routeKind(top.screen) !== 'detail') return false;
+  // B-042: a plain `g <key>`/`:` jump marks its entry `split: false` so it never
+  // combines with a list further down the stack into a split nobody asked for.
+  if (top.split === false) return false;
   return nearestListBeneath(stack) !== undefined;
 }
 

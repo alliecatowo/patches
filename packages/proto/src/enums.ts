@@ -20,6 +20,7 @@ import type { AppealStatus as AppealStatusT } from './generated/patches/v1/appea
 import type {
   CredentialType as CredentialTypeT,
   GitHubLoginStatus as GitHubLoginStatusT,
+  OidcLoginStatus as OidcLoginStatusT,
   PasswordAuthMode as PasswordAuthModeT,
 } from './generated/patches/v1/auth.js';
 import type {
@@ -77,6 +78,8 @@ export const CREDENTIAL_TYPE = {
   SSH_PUBLIC_KEY: 'CREDENTIAL_TYPE_SSH_PUBLIC_KEY' as CredentialTypeT,
   GITHUB: 'CREDENTIAL_TYPE_GITHUB' as CredentialTypeT,
   RECOVERY_CODE: 'CREDENTIAL_TYPE_RECOVERY_CODE' as CredentialTypeT,
+  PASSKEY: 'CREDENTIAL_TYPE_PASSKEY' as CredentialTypeT,
+  OIDC: 'CREDENTIAL_TYPE_OIDC' as CredentialTypeT,
 } as const;
 
 export const GITHUB_LOGIN_STATUS = {
@@ -86,6 +89,15 @@ export const GITHUB_LOGIN_STATUS = {
   EXPIRED: 'GIT_HUB_LOGIN_STATUS_EXPIRED' as GitHubLoginStatusT,
   DENIED: 'GIT_HUB_LOGIN_STATUS_DENIED' as GitHubLoginStatusT,
   COMPLETE: 'GIT_HUB_LOGIN_STATUS_COMPLETE' as GitHubLoginStatusT,
+} as const;
+
+export const OIDC_LOGIN_STATUS = {
+  UNSPECIFIED: 'OIDC_LOGIN_STATUS_UNSPECIFIED' as OidcLoginStatusT,
+  PENDING: 'OIDC_LOGIN_STATUS_PENDING' as OidcLoginStatusT,
+  SLOW_DOWN: 'OIDC_LOGIN_STATUS_SLOW_DOWN' as OidcLoginStatusT,
+  EXPIRED: 'OIDC_LOGIN_STATUS_EXPIRED' as OidcLoginStatusT,
+  DENIED: 'OIDC_LOGIN_STATUS_DENIED' as OidcLoginStatusT,
+  COMPLETE: 'OIDC_LOGIN_STATUS_COMPLETE' as OidcLoginStatusT,
 } as const;
 
 export const FOLLOW_STATE = {

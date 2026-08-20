@@ -1,4 +1,5 @@
-import { FILTER_ACTION, type Actor, type FilterList } from '@patches/proto';
+import { FILTER_ACTION } from '@patches/proto';
+import type { Actor, FilterList } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

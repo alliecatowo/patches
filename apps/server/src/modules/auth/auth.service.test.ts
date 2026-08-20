@@ -33,6 +33,10 @@ function buildAuthService(config: AppConfigService): AuthService {
     fakeRateLimit(),
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
   );
 }
 

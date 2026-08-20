@@ -25,8 +25,13 @@ interface GrpcLikeError {
   code?: unknown;
   details?: unknown;
   message?: unknown;
-  /** grpc-js `ServiceError.metadata` — the trailer `RpcExceptionsFilter` sets
-   * `x-patches-error-code`/`x-request-id` on. */
+  /** `ConnectError.rawMessage` (connect-es) — the message with no `[code]` prefix. Preferred
+   * over `.message`/`.details` when present, since a `ConnectError`'s `.message` is
+   * `"[code] rawMessage"` (`docs/research/connect-es.md` §9). */
+  rawMessage?: unknown;
+  /** grpc-js `ServiceError.metadata` (a `Metadata`, `.get()` → array) or `ConnectError.metadata`
+   * (a `Headers`, `.get()` → string | null) — the trailer `RpcExceptionsFilter` sets
+   * `x-patches-error-code`/`x-request-id` on. Both shapes satisfy `GrpcMetadataLike`. */
   metadata?: unknown;
 }
 
@@ -50,6 +55,9 @@ function appErrorCodeOf(error: unknown): string | undefined {
   const { get } = metadata as GrpcMetadataLike;
   if (typeof get !== 'function') return undefined;
   const values: unknown = get.call(metadata, 'x-patches-error-code');
+  // `Headers.get` (ConnectError.metadata) returns a single string (or null) directly;
+  // grpc-js `Metadata.get` (ServiceError.metadata) returns an array of values.
+  if (typeof values === 'string') return values.length > 0 ? values : undefined;
   const value = Array.isArray(values) ? (values[0] as unknown) : undefined;
   if (typeof value === 'string') return value;
   if (value instanceof Buffer) return value.toString('utf8');
@@ -81,8 +89,13 @@ export function isPrivacyAckRequired(error: unknown): boolean {
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const { details, message } = error as GrpcLikeError;
-  const text = typeof details === 'string' && details.length > 0 ? details : message;
+  const { rawMessage, details, message } = error as GrpcLikeError;
+  const text =
+    typeof rawMessage === 'string' && rawMessage.length > 0
+      ? rawMessage
+      : typeof details === 'string' && details.length > 0
+        ? details
+        : message;
   if (typeof text !== 'string') return undefined;
   const trimmed = text.trim();
   // Guard against anything that looks like a stack trace leaking through.

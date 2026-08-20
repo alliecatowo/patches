@@ -241,13 +241,68 @@ Scheduled for **Phase 6**, not Phase 1: it is the first outbound HTTP call to a 
 built alongside suspension and audit logging, and no item in the v0 acceptance checklist
 (§158) depends on it.
 
-## 6. Passkeys (deferred)
+## 6. Passkeys (P15-004, ADR 0022)
 
-Not in v0. WebAuthn is browser/relying-party mediated by specification
-(https://www.w3.org/TR/webauthn-2/); a CLI would have to speak CTAP2 directly to an
-authenticator, which is plausible given CTAP2's transport-level design but is not a
-documented first-class scenario. `PASSKEY` is reserved in the credential type enum so adding
-it later is a new verifier, not a migration.
+**Status: implemented, web-client-only.** `apps/tui` still has no WebAuthn support — 0011's
+original CTAP2 objection (a CLI would have to speak CTAP2 directly to an authenticator) is
+unchanged for that surface — but 0016/P15 shipped `apps/web`, a real in-browser relying party,
+which is what unblocked this. See ADR 0022 for the full reasoning and
+`docs/research/simplewebauthn.md` for the exact `@simplewebauthn/*` API this is built against.
+
+### Flow
+
+Registration is authenticated (adds a passkey to the caller's own account); login is
+unauthenticated and **discoverable-credential ("usernameless")** — no handle/email field exists
+anywhere in the pair, the credential response itself identifies the account:
+
+```
+(authenticated) BeginPasskeyRegistration()  →  options_json (PublicKeyCredentialCreationOptionsJSON)
+                 browser: startRegistration({ optionsJSON })  →  credential_json
+(authenticated) CompletePasskeyRegistration(credential_json, label)  →  Credential
+
+(anonymous)     BeginPasskeyLogin()  →  options_json (PublicKeyCredentialRequestOptionsJSON, no allowCredentials)
+                 browser: startAuthentication({ optionsJSON })  →  credential_json
+(anonymous)     CompletePasskeyLogin(credential_json)  →  Session
+```
+
+Both ceremony payloads travel as opaque JSON `string` fields (`options_json`/`credential_json`),
+not a field-by-field proto mirror of the WebAuthn spec — see `BeginPasskeyRegistrationResponse`'s
+doc comment in `auth.proto` for why.
+
+### Server-side pieces
+
+- **`PasskeyChallengeService`** issues/consumes `webauthn_challenges` rows — single-use via the
+  same conditional-`UPDATE` pattern `SshChallengeService.consume` uses, keyed on the challenge's
+  own value (a completion carries no server-chosen id, only the credential response, whose
+  `clientDataJSON` embeds the challenge it was signed over). TTL is 5 minutes (vs. SSH's 120
+  seconds — a passkey ceremony waits on a human biometric/PIN prompt).
+- **`PasskeyVerifierService`** wraps `@simplewebauthn/server`'s four ceremony functions plus two
+  decode helpers (`decodeClientDataChallenge`, `readAuthenticatorCounter`) behind one DI-injected
+  seam, so integration tests can stub cryptographic verification without a real
+  browser/authenticator.
+- **No new `credentials` columns** (ADR 0011's shape absorbs it): `identifier` holds the WebAuthn
+  credential id, `publicMaterial` the base64-encoded COSE public key, `metadata` the sign
+  counter/transports/device-type/backed-up flag.
+- **Sign-count regression → `SECURITY` notification.** `storedCounter > 0 && newCounter <=
+storedCounter` (many platform authenticators report `0` unconditionally and never increment,
+  which is normal, not a regression) rejects the login with the same uniform
+  `AUTH_INVALID_CREDENTIALS` every other login failure here uses, and writes a self-addressed
+  `SECURITY` notification — the same convention `RecoveryLogin` (§11) established. The
+  notification write happens in its own committed transaction, separate from the one that then
+  refuses the login, so a real clone attempt still leaves a record even though the login itself
+  rolls back.
+- **RP id/origin come from `PUBLIC_ORIGIN`**, not `NODE_DOMAIN` — the same reasoning
+  `federation-identity-is-public-origin-not-node-domain` (LEARNINGS.md) already established for
+  WebFinger/actor resolution: `rpID` is `new URL(PUBLIC_ORIGIN).hostname`, `expectedOrigin` is the
+  full `PUBLIC_ORIGIN` string.
+- The last-credential guard (§ "credentials" above) applies uniformly — revoking a passkey down
+  to zero remaining credentials is refused exactly like any other type.
+
+### Web client
+
+`/settings/credentials` lists every credential (including passkeys, with no key material) and
+lets a signed-in user add one; `LoginRoute` offers "Sign in with a passkey" alongside
+password/recovery-code sign-in via `PasskeyLoginButton`.
 
 ## 7. Per-node sessions in the client
 

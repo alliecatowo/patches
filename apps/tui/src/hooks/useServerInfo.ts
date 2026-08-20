@@ -1,4 +1,4 @@
-import type { GetServerInfoResponse } from '@patches/proto';
+import type { GetServerInfoResponse } from '../api/wire/types.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { PatchesApi } from '../api/client.js';

@@ -1,11 +1,5 @@
-import {
-  POST_TYPE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-  type Actor,
-  type Post,
-  type Tag,
-} from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type { Actor, Post, Tag } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

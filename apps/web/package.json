@@ -25,6 +25,7 @@
     "@patches/domain": "workspace:*",
     "@patches/markup": "workspace:*",
     "@patches/proto": "workspace:*",
+    "@simplewebauthn/browser": "catalog:",
     "@tanstack/react-query": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

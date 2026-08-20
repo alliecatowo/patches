@@ -1,4 +1,4 @@
-import type { MediaAttachment } from '@patches/proto';
+import type { MediaAttachment } from '../api/wire/types.js';
 import { buildFallbackBox, InlineImage, useOptionalMediaRenderer } from '@patches/terminal-media';
 import type { PreparedImage, TerminalMediaRenderer } from '@patches/terminal-media';
 import { Box, Text, useInput } from 'ink';

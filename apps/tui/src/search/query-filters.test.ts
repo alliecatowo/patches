@@ -1,4 +1,4 @@
-import type { Post } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 import { dateToTimestamp } from '@patches/proto';
 import { describe, expect, it } from 'vitest';
 

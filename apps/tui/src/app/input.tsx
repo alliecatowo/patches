@@ -97,6 +97,31 @@ export function isPrintableInput(input: string, key: Key): boolean {
 }
 
 /**
+ * Splits a coalesced chunk (see `isCoalescedKeyRun`) back into per-key `{input, key}`
+ * pairs, replaying Ink's own single-byte ctrl-key parsing for any raw control byte
+ * (`\x01`-`\x1a`) found inside the run.
+ *
+ * Ink's `parseKeypress` only recognises a ctrl+letter chord (`key.ctrl = true`,
+ * `key.name = 'w'`) when the byte arrives *alone* (`s.length === 1 && s <= '\x1a'`,
+ * `ink/build/parse-keypress.js`). A `Ctrl+W` typed fast enough to land in the same
+ * stdin chunk as its follow-up key (`Ctrl+W` then `h`) instead reaches `useInput` as
+ * the two-character string `'\x17h'` with `key.ctrl` already `false` on the whole
+ * event — naively replaying each character with that one shared `key` object loses
+ * the ctrl flag entirely, so a prefix chord like `Ctrl+W h` would silently never
+ * fire under fast typing. This reconstructs the per-character key exactly as a
+ * standalone press would have parsed it.
+ */
+export function splitCoalescedKeyRun(input: string, key: Key): Array<{ input: string; key: Key }> {
+  return [...input].map((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    if (code >= 1 && code <= 26) {
+      return { input: String.fromCharCode(code + 96), key: { ...key, ctrl: true } };
+    }
+    return { input: character, key };
+  });
+}
+
+/**
  * Compatibility layer for screens that still own a legacy `useInput`. It
  * consumes shell-visible text and Esc while letting the legacy hook process the
  * same event. Ctrl+C and Ctrl+P deliberately fall through to shell safety.

@@ -1,24 +1,17 @@
-import { randomUUID } from 'node:crypto';
-
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  createLabelClient,
-  DEADLINES_MS,
-  LABEL_ACTION,
-  METADATA_KEYS,
-  type LabelAction,
-  type LabelGrpcClient,
-  type Labeler,
-  type ListLabelersResponse,
-  type SetLabelerSubscriptionActionResponse,
-  type SubscribeLabelerResponse,
-  type UnsubscribeLabelerResponse,
-} from '@patches/proto';
+import { LABEL_ACTION } from '@patches/proto';
+import type {
+  LabelAction,
+  Labeler,
+  ListLabelersResponse,
+  SetLabelerSubscriptionActionResponse,
+  SubscribeLabelerResponse,
+  UnsubscribeLabelerResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
+import { type PatchesApi } from '../api/client.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { SessionManager } from '../auth/session.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
@@ -210,15 +203,13 @@ function injectedContext(deps: LabelerCliDeps): CommandContext {
 }
 
 function createContext(deps: LabelerCliDeps, rest: readonly string[]): CommandContext {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const label = createLabelClient(deps.target, channelCredentials);
-  const authApi = createApi(deps.target, deps.insecure);
+  const api = createApi(deps.target, deps.insecure);
   let manager: SessionManager | undefined;
 
   async function ensureAccessToken(): Promise<string> {
     if (manager === undefined) {
       const store = await openCredentialStore(deps.io, deps.env, rest);
-      manager = new SessionManager({ api: authApi, store, nodeOrigin: deps.target });
+      manager = new SessionManager({ api, store, nodeOrigin: deps.target });
       const session = await manager.restore();
       if (session === undefined)
         throw new Error(`Not signed in on ${deps.target}. Run \`patches login\`.`);
@@ -227,59 +218,20 @@ function createContext(deps: LabelerCliDeps, rest: readonly string[]): CommandCo
   }
 
   return {
-    api: grpcApi(label),
+    api: apiFromClient(api),
     ensureAccessToken,
     close: () => {
-      label.close();
-      authApi.close();
+      api.close();
     },
   };
 }
 
-function grpcApi(label: LabelGrpcClient): LabelerCommandApi {
+function apiFromClient(api: PatchesApi): LabelerCommandApi {
   return {
-    listLabelers: (cursor, limit) => unary(label.listLabelers.bind(label), { cursor, limit }),
-    subscribeLabeler: (labelerId, token) =>
-      unary(label.subscribeLabeler.bind(label), { labelerId }, token),
-    unsubscribeLabeler: (labelerId, token) =>
-      unary(label.unsubscribeLabeler.bind(label), { labelerId }, token),
+    listLabelers: (cursor, limit) => api.listLabelers({ cursor, limit }),
+    subscribeLabeler: (labelerId, token) => api.subscribeLabeler({ labelerId }, token),
+    unsubscribeLabeler: (labelerId, token) => api.unsubscribeLabeler({ labelerId }, token),
     setLabelerSubscriptionAction: (labelerId, value, action, token) =>
-      unary(label.setLabelerSubscriptionAction.bind(label), { labelerId, value, action }, token),
+      api.setLabelerSubscriptionAction({ labelerId, value, action }, token),
   };
-}
-
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-  accessToken?: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(accessToken?: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
 }

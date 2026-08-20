@@ -1,23 +1,8 @@
-# Lefthook (installed via `mise.toml`'s `[tools]` — see docs/research/monorepo-toolchain.md
-# "Git hooks — recommend lefthook"). Deliberately narrow: staged-file prettier + eslint only,
-# not a full `pnpm verify` (build/typecheck/test) — see B-008 in tasks.md. A pre-commit hook
-# that ran the full verify sequence on every commit would be slow enough that people (and
-# agents committing frequently, per docs/agents/HARNESS.md's "commit early, commit often")
-# would routinely reach for `--no-verify`, which defeats the point. `pnpm verify`/`/verify`
-# remains the actual required gate (CI, CLAUDE.md working agreement #4).
-#
-# Not auto-installed by `pnpm install` (lefthook isn't an npm devDependency here — it's a
-# mise-managed binary, see B-008), so hooks only take effect after running
-# `mise run setup` or `mise run hooks:install` by hand. That is intentional: this is a
-# shared checkout other automated agents also commit into, and unexpectedly gating every
-# `git commit` behind a new hook is exactly the kind of surprise docs/agents/LEARNINGS.md
-# warns about — a human opts in.
-#
-# Overlaps on purpose with `.claude/hooks/format-file.sh` (which runs Prettier per-file as
-# Claude Code agents write/edit) rather than trying to dedupe against it: that hook only
-# fires on the harness's own Write/Edit tool calls, so a file touched via plain `sed`/a
-# script, or by a human, never gets formatted until this hook (or `pnpm verify`) runs. Both
-# are idempotent, so running both is harmless, just occasionally redundant.
+# Lefthook (mise-managed, see docs/research/monorepo-toolchain.md). Deliberately narrow — staged-file
+# prettier + eslint only, not a full `pnpm verify` (B-008): a full-verify pre-commit hook would be slow
+# enough that people reach for `--no-verify`, defeating the point. `pnpm verify`/`/verify` is the gate.
+# Not auto-installed by `pnpm install` — run `mise run setup`/`mise run hooks:install` to opt in; this
+# is a shared checkout other agents also commit into, so gating every commit is an explicit human choice.
 pre-commit:
   parallel: true
   commands:
@@ -28,3 +13,9 @@ pre-commit:
     eslint:
       glob: '*.{ts,tsx,mts,cts,js,mjs,cjs}'
       run: pnpm exec eslint {staged_files}
+
+# Pushes are the test gate; commits stay cheap.
+pre-push:
+  commands:
+    verify:
+      run: pnpm verify

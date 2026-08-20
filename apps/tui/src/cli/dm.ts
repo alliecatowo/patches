@@ -1,33 +1,27 @@
 import { randomUUID } from 'node:crypto';
 
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  createDirectMessageClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
-  type DirectMessageGrpcClient,
-  type GetConversationRequest,
-  type GetConversationResponse,
-  type GrpcUnaryCall,
-  type ListConversationsRequest,
-  type ListConversationsResponse,
-  type ListMessageRequestsRequest,
-  type ListMessageRequestsResponse,
-  type ListMessagesRequest,
-  type ListMessagesResponse,
-  type MarkConversationReadRequest,
-  type MarkConversationReadResponse,
-  type RespondToMessageRequestRequest,
-  type RespondToMessageRequestResponse,
-  type SendMessageRequest,
-  type SendMessageResponse,
-} from '@patches/proto';
+import type {
+  GetConversationRequest,
+  GetConversationResponse,
+  ListConversationsRequest,
+  ListConversationsResponse,
+  ListMessageRequestsRequest,
+  ListMessageRequestsResponse,
+  ListMessagesRequest,
+  ListMessagesResponse,
+  MarkConversationReadRequest,
+  MarkConversationReadResponse,
+  RespondToMessageRequestRequest,
+  RespondToMessageRequestResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { describeGrpcError } from '../api/errors.js';
+import { type PatchesApi } from '../api/client.js';
 import { SessionManager } from '../auth/session.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { createApi, openCredentialStore } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
@@ -109,53 +103,15 @@ function parsePageFlags(rest: readonly string[]): PageFlags | { error: string } 
   return flags;
 }
 
-function metadata(accessToken: string): Metadata {
-  const result = new Metadata();
-  result.set(METADATA_KEYS.requestId, randomUUID());
-  result.set(METADATA_KEYS.client, CLIENT_NAME);
-  result.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  result.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return result;
-}
-
-function unary<Request, Response>(
-  method: GrpcUnaryCall<Request, Response>,
-  request: Request,
-  accessToken: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      metadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error: ServiceError | null, response?: Response) => {
-        if (error !== null) {
-          reject(error);
-          return;
-        }
-        if (response === undefined) {
-          reject(new Error('The server replied with nothing at all.'));
-          return;
-        }
-        resolve(response);
-      },
-    );
-  });
-}
-
-function commandApi(client: DirectMessageGrpcClient, accessToken: string): DmCommandApi {
+function commandApi(api: PatchesApi, accessToken: string): DmCommandApi {
   return {
-    listConversations: (request) =>
-      unary(client.listConversations.bind(client), request, accessToken),
-    getConversation: (request) => unary(client.getConversation.bind(client), request, accessToken),
-    listMessages: (request) => unary(client.listMessages.bind(client), request, accessToken),
-    sendMessage: (request) => unary(client.sendMessage.bind(client), request, accessToken),
-    markConversationRead: (request) =>
-      unary(client.markConversationRead.bind(client), request, accessToken),
-    listMessageRequests: (request) =>
-      unary(client.listMessageRequests.bind(client), request, accessToken),
-    respondToMessageRequest: (request) =>
-      unary(client.respondToMessageRequest.bind(client), request, accessToken),
+    listConversations: (request) => api.listConversations(request, accessToken),
+    getConversation: (request) => api.getConversation(request, accessToken),
+    listMessages: (request) => api.listMessages(request, accessToken),
+    sendMessage: (request) => api.sendMessage(request, accessToken),
+    markConversationRead: (request) => api.markConversationRead(request, accessToken),
+    listMessageRequests: (request) => api.listMessageRequests(request, accessToken),
+    respondToMessageRequest: (request) => api.respondToMessageRequest(request, accessToken),
   };
 }
 
@@ -173,14 +129,9 @@ async function openCurrentSession(deps: DmDeps): Promise<DmCommandSession | unde
       return undefined;
     }
     const accessToken = await manager.ensureAccessToken();
-    const channelCredentials = deps.insecure
-      ? credentials.createInsecure()
-      : credentials.createSsl();
-    const client = createDirectMessageClient(deps.target, channelCredentials);
     return {
-      api: commandApi(client, accessToken),
+      api: commandApi(sessionApi, accessToken),
       close: () => {
-        client.close();
         sessionApi.close();
       },
     };

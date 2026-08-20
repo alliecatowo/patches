@@ -3,14 +3,14 @@
  > Local                                                             │  Thread
  Local                                                               │⠋ Loading thread…
                                                                      │
- ⠋ Loading…                                                          │
+ 1/2 · — end of the timeline —                                       │
+ @bob · 2 minutes ago                                                │
+   A reply from bob, seeded for the thread golden frame.             │
+ ♡ 0 · 0 replies                                                     │
                                                                      │
-                                                                     │
-                                                                     │
-                                                                     │
-                                                                     │
-                                                                     │
-                                                                     │
+ @alice · 5 minutes ago                                              │
+   Golden frame fixture post from alice.                             │
+ ♡ 0 · 1 reply                                                       │
                                                                      │
                                                                      │
                                                                      │

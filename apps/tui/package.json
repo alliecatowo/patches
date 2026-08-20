@@ -42,10 +42,14 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "catalog:",
+    "@connectrpc/connect-node": "catalog:",
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
     "@inkjs/ui": "catalog:",
     "@napi-rs/keyring": "catalog:",
+    "@patches/client": "workspace:*",
     "ink": "catalog:",
     "ink-spinner": "catalog:",
     "react": "catalog:",

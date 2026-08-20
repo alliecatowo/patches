@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 import { App, type AppProps } from '../src/app/App.js';
 import { MemoryCredentialStore, type CredentialStore } from '../src/auth/credential-store.js';
 import { MemoryDraftStore, type DraftStore } from '../src/compose/draft-store.js';
+import { clearListCache } from '../src/hooks/usePaginatedPosts.js';
 import { MemoryPageDraftStore } from '../src/pages/draft-store.js';
 import { MemoryPreferenceStore } from '../src/preferences/store.js';
 import { createFakeApi, type FakeApiHandle, type FakeApiOptions } from './fake-api.js';
@@ -137,6 +138,11 @@ export function renderAppInWindow(
   rows: number,
   options: WindowAppOptions = {},
 ): WindowAppResult {
+  // B-043's background-snapshot cache (`hooks/usePaginatedPosts.ts`) is module-level
+  // and keyed on `api.target`, which repeats across fakes (`patches.test:50051`) —
+  // without this, one test's seeded feed leaks into the next test's fresh app, the
+  // same reasoning `test/harness.tsx`'s `renderApp()` already applies.
+  clearListCache();
   const fake = options.fake ?? createFakeApi(options.fakeOptions);
   const stdout = new TestStdout(columns, rows);
   const stdin = new TestStdin();

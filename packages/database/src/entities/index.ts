@@ -67,6 +67,7 @@ import { Tag } from './tag.entity.js';
 import { TagMute } from './tag-mute.entity.js';
 import { RefreshToken } from './refresh-token.entity.js';
 import { User } from './user.entity.js';
+import { WebauthnChallenge } from './webauthn-challenge.entity.js';
 
 /**
  * Every entity in the schema, imported explicitly (not globbed) so the same array works
@@ -91,6 +92,7 @@ export const ALL_ENTITIES = [
   Credential,
   AuthCode,
   SshLoginChallenge,
+  WebauthnChallenge,
   Invite,
   OutboxJob,
   Media,

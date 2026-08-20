@@ -265,4 +265,88 @@ describe('validateEnv', () => {
       }
     });
   });
+
+  describe('OIDC_PROVIDERS (P15-006)', () => {
+    const validProvider = {
+      id: 'gitlab',
+      displayName: 'GitLab',
+      deviceAuthorizationUrl: 'https://gitlab.example/oauth/authorize_device',
+      tokenUrl: 'https://gitlab.example/oauth/token',
+      userinfoUrl: 'https://gitlab.example/oauth/userinfo',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+    };
+
+    it('defaults to an empty array — no OIDC provider configured', () => {
+      expect(validateEnv({}).OIDC_PROVIDERS).toEqual([]);
+    });
+
+    it('accepts a well-formed provider array', () => {
+      const env = validateEnv({ OIDC_PROVIDERS: JSON.stringify([validProvider]) });
+      expect(env.OIDC_PROVIDERS).toEqual([validProvider]);
+    });
+
+    it('refuses to boot on invalid JSON', () => {
+      expect(() => validateEnv({ OIDC_PROVIDERS: '{not json' })).toThrow(ConfigError);
+    });
+
+    it('refuses a provider missing a required field', () => {
+      const { clientSecret: _clientSecret, ...withoutSecret } = validProvider;
+      expect(() => validateEnv({ OIDC_PROVIDERS: JSON.stringify([withoutSecret]) })).toThrow(
+        ConfigError,
+      );
+    });
+
+    it('refuses a non-URL device authorization/token/userinfo URL (never trusts an unvalidated third-party endpoint)', () => {
+      expect(() =>
+        validateEnv({
+          OIDC_PROVIDERS: JSON.stringify([
+            { ...validProvider, deviceAuthorizationUrl: 'not a url' },
+          ]),
+        }),
+      ).toThrow(ConfigError);
+      expect(() =>
+        validateEnv({
+          OIDC_PROVIDERS: JSON.stringify([{ ...validProvider, tokenUrl: 'not a url' }]),
+        }),
+      ).toThrow(ConfigError);
+      expect(() =>
+        validateEnv({
+          OIDC_PROVIDERS: JSON.stringify([{ ...validProvider, userinfoUrl: 'not a url' }]),
+        }),
+      ).toThrow(ConfigError);
+    });
+
+    it('refuses an id with characters outside lowercase ASCII/digits/underscore/hyphen', () => {
+      expect(() =>
+        validateEnv({
+          OIDC_PROVIDERS: JSON.stringify([{ ...validProvider, id: 'GitLab!' }]),
+        }),
+      ).toThrow(ConfigError);
+    });
+
+    it('refuses two providers with the same id', () => {
+      expect(() =>
+        validateEnv({
+          OIDC_PROVIDERS: JSON.stringify([
+            validProvider,
+            { ...validProvider, displayName: 'GitLab (mirror)' },
+          ]),
+        }),
+      ).toThrow(ConfigError);
+    });
+
+    it('accepts multiple providers with distinct ids', () => {
+      const codeberg = {
+        ...validProvider,
+        id: 'codeberg',
+        displayName: 'Codeberg',
+        deviceAuthorizationUrl: 'https://codeberg.example/login/oauth/device',
+      };
+      const env = validateEnv({
+        OIDC_PROVIDERS: JSON.stringify([validProvider, codeberg]),
+      });
+      expect(env.OIDC_PROVIDERS.map((p) => p.id)).toEqual(['gitlab', 'codeberg']);
+    });
+  });
 });

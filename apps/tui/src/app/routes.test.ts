@@ -70,6 +70,27 @@ describe('split presentation', () => {
     });
   });
 
+  it('B-042: a plain `g <key>` jump never auto-splits, even with a list beneath it', () => {
+    // Same shape `jump(..., { split: false })` produces for the own-page jump ('g v')
+    // — the owner's exact repro: a list beneath a plain-jumped-to detail screen.
+    const plainJump: NavStack = [
+      { screen: 'home' },
+      { screen: 'page', handle: 'alice', slug: '', split: false },
+    ];
+    // `wantsSplit` is the sole authority App.tsx consults before ever asking
+    // `presentationFor` to grant a split (`wantsSplit(stack) && !linearMode`), so this
+    // is what actually keeps a plain jump single-pane in the running app.
+    expect(wantsSplit(plainJump)).toBe(false);
+
+    // The explicit `Ctrl+G` "open beside" request omits the flag — the ordinary
+    // list+detail pairing still applies.
+    const requestedSplit: NavStack = [
+      { screen: 'home' },
+      { screen: 'page', handle: 'alice', slug: '' },
+    ];
+    expect(wantsSplit(requestedSplit)).toBe(true);
+  });
+
   it('is a pure function of the stack: presentation changes, history does not', () => {
     const wide = presentationFor(homeThread, true);
     const narrow = presentationFor(homeThread, false);

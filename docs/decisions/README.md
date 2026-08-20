@@ -42,6 +42,8 @@ deliberately does **not** authorize without owner sign-off.
 | [0019](./0019-user-side-filters-and-decentralized-moderation.md) | Server-evaluated user filters, opt-in non-ranking lists/labelers, and appealable node moderation  | Accepted |
 | [0020](./0020-e2ee-direct-messages.md)                           | End-to-end encrypted direct messages                                                              | Accepted |
 | [0021](./0021-filter-list-subscription-scopes.md)                | Filter-list subscription scopes are a `text[]` on the subscription row, defaulting to every scope | Accepted |
+| [0022](./0022-passkeys.md)                                       | Passkeys as a fifth credential type, web-client-only, now that a browser relying party exists     | Accepted |
+| [0023](./0023-tui-protobuf-es-migration.md)                      | The TUI migrates to protobuf-es via a temporary wire seam, not a permanent adapter                | Accepted |
 
 ## Template
 

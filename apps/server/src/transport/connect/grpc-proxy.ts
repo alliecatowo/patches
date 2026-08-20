@@ -37,13 +37,30 @@ export const PEER_IP_CONTEXT_KEY = createContextKey<string | undefined>(undefine
 /** One raw grpc-js client dialing the in-process gRPC server over loopback, insecure — this
  * never leaves localhost (see `grpc-options.ts`'s `url`, always `127.0.0.1:GRPC_PORT` or
  * `GRPC_HOST:GRPC_PORT` when not `0.0.0.0`), so plaintext credentials are safe here the same
- * way they're safe for `test-server.ts`'s in-process gRPC client. */
-export function createGrpcProxyClient(url: string): Client {
+ * way they're safe for `test-server.ts`'s in-process gRPC client.
+ *
+ * `maxMessageBytes` (S-001) mirrors whatever `grpc-options.ts` set on the public server itself
+ * (`GRPC_MAX_MESSAGE_BYTES`) — without it, a message forwarded through the Connect edge would
+ * bypass the server's own size cap on this internal hop.
+ */
+export function createGrpcProxyClient(url: string, maxMessageBytes?: number): Client {
   // grpc-js's `Client` base class is normally subclassed by generated code
   // (`makeGenericClientConstructor`); a bare `new Client(...)` is the documented way to get
   // an unopinionated client that only exposes the generic `makeUnaryRequest` this proxy uses
   // (docs/research/connect-es.md's `client.makeUnaryRequest` design, matching the ADR).
-  return new Client(url, credentials.createInsecure());
+  // Omit the keys entirely when unset: under `exactOptionalPropertyTypes`, `ClientOptions`
+  // won't take an explicit `undefined`, and passing one would also override grpc-js's own
+  // default rather than leaving it alone.
+  return new Client(
+    url,
+    credentials.createInsecure(),
+    maxMessageBytes === undefined
+      ? {}
+      : {
+          'grpc.max_send_message_length': maxMessageBytes,
+          'grpc.max_receive_message_length': maxMessageBytes,
+        },
+  );
 }
 
 function buildMetadata(context: HandlerContext): Metadata {

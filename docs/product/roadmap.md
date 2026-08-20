@@ -15,7 +15,10 @@ also implemented, with a handful of documented follow-ups (see
 [Board Phase 14](#board-phase-14--privacy-filters-decentralized-moderation-amendment-c) below).
 Board Phase 10 (web client) resumed per owner direction 2026-08-18 and has landed
 (`apps/web`); React Native (P10-002) and migrating the TUI onto `@patches/client` (P10-005)
-remain open. See [Owner-directed board phases](#owner-directed-board-phases) below, and note
+remain open. Board Phase 15 — passwordless auth (passkeys, recovery codes, node
+password-auth policy) — started 2026-08-19 and has landed its server/database/web pieces
+(P15-002/003/004); GitHub device-flow-on-prod and TUI/web credential-manager parity remain
+open. See [Owner-directed board phases](#owner-directed-board-phases) below, and note
 that §176's release-phase numbers and `tasks.md`'s board-phase numbers are different sequences
 (§179).
 
@@ -296,6 +299,26 @@ acknowledgement field on `RegisterRequest` (P14-025), and marking a vocabulary v
 search/feed queries — see [`docs/product/privacy.md`](privacy.md) for the honest statement of
 that gap. See [`docs/architecture/api.md`](../architecture/api.md) §3a for the full RPC-level
 status of each service.
+
+### Board Phase 15 — passwordless auth
+
+**Status: in progress (owner request, 2026-08-19).** ADR [0011](../decisions/0011-credentials-separate-from-identity.md)'s
+credential model, spec §165–§168, amended by ADR [0022](../decisions/0022-passkeys.md). Adds
+more ways in without weakening the credential-is-not-identity split.
+
+- **P15-002** (done) — node policy switch `PASSWORD_AUTH=off|optional|required`
+  (`AuthService.GetAuthPolicy`); clients hide password UI when off.
+- **P15-003** (done) — recovery-code credential type (`RECOVERY_CODE`, 10 one-time codes,
+  `RecoveryLogin`), so an SSH/passkey-only account can recover without email or a password.
+- **P15-004** (done) — passkeys/WebAuthn: a `PASSKEY` credential type, `BeginPasskeyRegistration`/
+  `CompletePasskeyRegistration`/`BeginPasskeyLogin`/`CompletePasskeyLogin`, web-client-only
+  (`apps/web`'s `/settings/credentials` and `LoginRoute`) — see
+  [`docs/architecture/auth.md`](../architecture/auth.md) §6 and ADR 0022. `apps/tui` still has no
+  WebAuthn support; 0011's original CTAP2 objection is unchanged for a terminal client.
+- **P15-001, P15-005, P15-006, P15-007** (open) — enabling GitHub device-flow login on the
+  production node, a web "approve this login from your terminal" device-link flow, a generic
+  OIDC-device-flow provider, and TUI/web credential-manager parity. See `tasks.md` for the
+  current task list.
 
 ---
 

@@ -5,8 +5,8 @@ import {
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
-  type Post,
 } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 
 import { BODY_INDENT_COLS, measurePostBody, measurePostRowHeight } from './post-height.js';
