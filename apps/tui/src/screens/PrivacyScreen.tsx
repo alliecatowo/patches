@@ -1,3 +1,6 @@
+import { create } from '@bufbuild/protobuf';
+import { NodePolicySchema } from '@patches/proto/es';
+
 import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE } from '../api/wire/enums.js';
 import { toDate } from '../api/wire/time.js';
 import type {
@@ -93,22 +96,24 @@ export function PrivacyScreen({
       (response) =>
         setPolicy({
           status: 'ready',
-          value: response.policy ?? {
-            privacyNoticeSummary: '',
-            privacyNoticeVersion: 0,
-            privacyNoticeUrl: '',
-            termsUrl: '',
-            moderatorContact: '',
-            appealInstructions: '',
-            federationStance: FEDERATION_STANCE.UNSPECIFIED,
-            domainPolicies: [],
-            dataLocation: '',
-            retention: undefined,
-            operatorIdentity: '',
-            labelVocabulary: [],
-            accountDeletionGracePeriodDays: 0,
-            appealWindowDays: 0,
-          },
+          value:
+            response.policy ??
+            create(NodePolicySchema, {
+              privacyNoticeSummary: '',
+              privacyNoticeVersion: 0,
+              privacyNoticeUrl: '',
+              termsUrl: '',
+              moderatorContact: '',
+              appealInstructions: '',
+              federationStance: FEDERATION_STANCE.UNSPECIFIED,
+              domainPolicies: [],
+              dataLocation: '',
+              retention: undefined,
+              operatorIdentity: '',
+              labelVocabulary: [],
+              accountDeletionGracePeriodDays: 0,
+              appealWindowDays: 0,
+            }),
         }),
       (error: unknown) =>
         setPolicy({ status: 'error', error: describeGrpcError(error, api.target) }),
