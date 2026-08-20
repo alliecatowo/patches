@@ -222,6 +222,7 @@ async function replayFromStoredMessage(
  * than the full `E2eeLogicalMessageEntity`) so the not-yet-persisted accept path can build the
  * same transcript from in-flight values without constructing a fake entity row. */
 interface ReportTranscriptSource {
+  readonly frankingProfile: string;
   readonly frankingKeyEra: number;
   readonly conversationId: string;
   readonly epoch: string;
@@ -238,6 +239,7 @@ function reportTranscriptFor(
   ciphertextDigests: readonly Uint8Array[],
 ): FrankingReportTranscript {
   return {
+    frankingProfile: message.frankingProfile,
     frankingKeyEra: message.frankingKeyEra,
     conversationId: message.conversationId,
     membershipEpoch: Number(message.epoch),
@@ -397,6 +399,7 @@ export async function acceptE2eeLogicalMessage(
       fanoutDigest: Buffer.from(view.fanoutDigest),
       acceptedAt,
       frankingCommitment: Buffer.from(view.frankingCommitment),
+      frankingProfile: view.frankingProfile,
       frankingKeyEra: era,
     },
     sortedEnvelopes.map((envelope) => envelope.ciphertextDigest),

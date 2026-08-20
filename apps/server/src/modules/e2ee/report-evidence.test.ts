@@ -3,6 +3,7 @@ import {
   createFrankingOpeningKey,
   createNodeReportTag,
   sha256Hash,
+  type FrankingCommitmentContext,
   type FrankingReportTranscript,
 } from '@patches/crypto';
 import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
@@ -126,6 +127,7 @@ function acceptedMessage(input: {
   const ciphertextDigests = [digest(`${input.id}-device-1`), digest(`${input.id}-device-2`)];
   const fanoutDigest = digest(`${input.id}-fanout`);
   const transcript: FrankingReportTranscript = {
+    frankingProfile: E2EE_FRANKING_PROFILE_V1,
     frankingKeyEra: 1,
     conversationId: input.conversationId,
     membershipEpoch: 1,
@@ -172,11 +174,26 @@ function reportEvidenceItem(overrides: Partial<Row> = {}): Row {
 
 const REPORT_ROW: Row = { id: 'report-1', reporterActorId: 'reporter-actor' };
 
+/** The commitment context an accepted row implies (ADR 0025 §6). Matches `acceptedMessage`. */
+function contextFor(
+  conversationId: string,
+  senderActorId = 'alice',
+  senderDeviceId = 'alice-device',
+): FrankingCommitmentContext {
+  return {
+    frankingProfile: E2EE_FRANKING_PROFILE_V1,
+    conversationId,
+    membershipEpoch: 1,
+    senderActorId,
+    senderDeviceId,
+  };
+}
+
 describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
   it('verifies genuine, unmodified evidence end to end', async () => {
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('the actual message body');
-    const commitment = commitFranking(opening, plaintext);
+    const commitment = commitFranking(opening, contextFor('conv-1'), plaintext);
     const { messageRow, envelopeRows } = acceptedMessage({
       id: 'msg-1',
       conversationId: 'conv-1',
@@ -219,7 +236,7 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
   it('rejects forged evidence: a plaintext that does not open the accepted commitment', async () => {
     const opening = createFrankingOpeningKey();
     const realPlaintext = encoder.encode('what alice actually sent');
-    const commitment = commitFranking(opening, realPlaintext);
+    const commitment = commitFranking(opening, contextFor('conv-1'), realPlaintext);
     const { messageRow, envelopeRows } = acceptedMessage({
       id: 'msg-1',
       conversationId: 'conv-1',
@@ -258,7 +275,7 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
   it('rejects truncated evidence: a node tag shortened by the disclosing client', async () => {
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('reported content');
-    const commitment = commitFranking(opening, plaintext);
+    const commitment = commitFranking(opening, contextFor('conv-1'), plaintext);
     const { messageRow, envelopeRows } = acceptedMessage({
       id: 'msg-1',
       conversationId: 'conv-1',
@@ -298,12 +315,12 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
   it('rejects a replayed tag: evidence for one logical message presented under another', async () => {
     const openingA = createFrankingOpeningKey();
     const plaintextA = encoder.encode('message A');
-    const commitmentA = commitFranking(openingA, plaintextA);
+    const commitmentA = commitFranking(openingA, contextFor('conv-1'), plaintextA);
     const a = acceptedMessage({ id: 'msg-a', conversationId: 'conv-1', commitment: commitmentA });
 
     const openingB = createFrankingOpeningKey();
     const plaintextB = encoder.encode('message B');
-    const commitmentB = commitFranking(openingB, plaintextB);
+    const commitmentB = commitFranking(openingB, contextFor('conv-1'), plaintextB);
     const b = acceptedMessage({ id: 'msg-b', conversationId: 'conv-1', commitment: commitmentB });
 
     const { manager } = fakeManager({
@@ -376,7 +393,7 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
   it('detects post-acceptance tampering with mailbox envelope digests', async () => {
     const opening = createFrankingOpeningKey();
     const plaintext = encoder.encode('reported content');
-    const commitment = commitFranking(opening, plaintext);
+    const commitment = commitFranking(opening, contextFor('conv-1'), plaintext);
     const { messageRow, envelopeRows } = acceptedMessage({
       id: 'msg-1',
       conversationId: 'conv-1',

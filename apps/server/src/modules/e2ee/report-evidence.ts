@@ -1,8 +1,8 @@
 import {
-  bytesEqual,
+  commitmentContextFor,
   encodeReportTranscript,
-  hmacSha256,
   verifyFrankingCommitment,
+  verifyNodeReportTagOverEncodedTranscript,
   type FrankingReportTranscript,
 } from '@patches/crypto';
 import {
@@ -121,19 +121,24 @@ export class EnvNodeFrankingKeyRing implements NodeFrankingKeyRing {
 /**
  * Wires `@patches/crypto`'s franking primitives into `@patches/domain`'s injected
  * `FrankingVerifier` interface (ADR 0020 §14.14.2's "one validator, three processes" rule).
- * `verifyCommitment` delegates straight to `verifyFrankingCommitment` — the exact function
- * `commitFranking`'s own binding check uses — rather than re-deriving the commitment encoding
- * here, so there is exactly one implementation of "does this opening bind this plaintext to this
- * commitment" in the whole codebase. `verifyNodeTag` re-derives the tag over `transcript`, which
- * by construction (see `attachReportEvidence` below) is always `encodeReportTranscript`'s
- * canonical bytes for the same `FrankingReportTranscript` `createNodeReportTag` MACs — the same
- * encoder, just consumed on the `Bytes`-in side of the interface `@patches/domain` requires.
+ * `verifyCommitment` delegates straight to `verifyFrankingCommitment` — the exact function the
+ * *recipient* already ran on decrypt (`@patches/crypto`'s `openDeviceEnvelope`, ADR 0025 §4) —
+ * rather than re-deriving the commitment encoding here, so there is exactly one implementation of
+ * "does this opening bind this plaintext to this commitment under this context" in the codebase.
+ *
+ * `verifyNodeTag` goes through `verifyNodeReportTagOverEncodedTranscript`, which checks the report
+ * domain separator before MACing. It used to call raw `hmacSha256` under the node's long-term
+ * franking key over untyped `Bytes` — an unseparated equality oracle whose signature promised
+ * nothing about where the bytes came from (ADR 0024's B-050). The bytes are still by construction
+ * `encodeReportTranscript`'s output for the transcript `createNodeReportTag` MACs (see
+ * `attachReportEvidence` below); the difference is that this is now enforced rather than
+ * documented.
  */
 export function e2eeReportFrankingVerifier(keys: NodeFrankingKeyRing): FrankingVerifier {
   return {
-    verifyCommitment({ commitment, opening, plaintext }) {
+    verifyCommitment({ commitment, opening, plaintext, context }) {
       try {
-        return verifyFrankingCommitment(opening, plaintext, commitment);
+        return verifyFrankingCommitment(opening, context, plaintext, commitment);
       } catch {
         // FrankingVerifier's contract requires `false` on malformed input, never a throw — a
         // hostile disclosure must not be able to turn a bad commitment into a different code
@@ -145,7 +150,7 @@ export function e2eeReportFrankingVerifier(keys: NodeFrankingKeyRing): FrankingV
       const key = keys.keyForEra(tag.keyEra);
       if (key === undefined) return false;
       try {
-        return bytesEqual(hmacSha256(key, transcript), tag.tag);
+        return verifyNodeReportTagOverEncodedTranscript(key, transcript, tag.tag);
       } catch {
         return false;
       }
@@ -268,6 +273,16 @@ export async function attachReportEvidence(
         disclosedPlaintext: new Uint8Array(raw.disclosedPlaintext),
         opening: new Uint8Array(raw.opening),
         commitment: new Uint8Array(32),
+        // Structurally valid so `assertReportEvidenceShape` still runs, and deliberately not
+        // built from the request: an item with no accepted row has no context this node can
+        // vouch for, and `UNRESOLVED_MESSAGE_KEY_ERA` fails it before the commitment is reached.
+        commitmentContext: {
+          frankingProfile: E2EE_FRANKING_PROFILE_V1,
+          conversationId: request.conversationId,
+          membershipEpoch: 0,
+          senderActorId: '',
+          senderDeviceId: '',
+        },
         envelopeTranscript: new Uint8Array(raw.envelopeTranscript),
         frankingTag: tag,
         participantTranscript: new Uint8Array(raw.participantTranscript),
@@ -290,6 +305,7 @@ export async function attachReportEvidence(
       .getRepository(E2eeMailboxEnvelopeEntity)
       .find({ where: { logicalMessageId: logicalMessage.id } });
     const transcript: FrankingReportTranscript = {
+      frankingProfile: logicalMessage.frankingProfile,
       frankingKeyEra: logicalMessage.frankingKeyEra,
       conversationId: logicalMessage.conversationId,
       membershipEpoch: Number(logicalMessage.epoch),
@@ -309,6 +325,8 @@ export async function attachReportEvidence(
       disclosedPlaintext: new Uint8Array(raw.disclosedPlaintext),
       opening: new Uint8Array(raw.opening),
       commitment: new Uint8Array(logicalMessage.frankingCommitment),
+      // ADR 0025 §6: every field comes from the row this node accepted, never from the request.
+      commitmentContext: commitmentContextFor(transcript),
       envelopeTranscript: encodedTranscript,
       frankingTag: {
         profile: logicalMessage.frankingProfile,

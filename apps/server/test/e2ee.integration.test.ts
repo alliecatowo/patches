@@ -41,7 +41,8 @@ interface TestEnvelope {
 
 /** Builds one opaque per-device envelope. Every `bytes` field is opaque to the node (ADR 0020
  * §8) — random bytes are indistinguishable from real Double Ratchet output for everything this
- * test suite checks. */
+ * test suite checks. `openingCiphertext` is empty because ADR 0025 §3 moved the franking opening
+ * into the inner authenticated plaintext; a v1 envelope that fills it is rejected. */
 function buildEnvelope(recipientActorId: string, recipientDeviceId: string): TestEnvelope {
   const ciphertext = randomBytes(64);
   return {
@@ -49,32 +50,44 @@ function buildEnvelope(recipientActorId: string, recipientDeviceId: string): Tes
     recipientDeviceId,
     encryptedHeader: randomBytes(32),
     ciphertext,
-    openingCiphertext: randomBytes(32),
+    openingCiphertext: Buffer.alloc(0),
     ciphertextDigest: Buffer.from(sha256Hash(ciphertext)),
   };
 }
 
-/** Builds a correctly-signed-shape `E2eeLogicalMessage` proto covering exactly `envelopes` —
- * real `fanoutDigest`, valid franking profile/commitment length, current membership epoch. */
-function buildLogicalMessage(envelopes: readonly TestEnvelope[]) {
+/**
+ * Builds a correctly-shaped `E2eeLogicalMessage` proto covering exactly `envelopes` — real
+ * `fanoutDigest`, valid franking profile/commitment length, current membership epoch.
+ *
+ * The node cannot verify a franking commitment: it has no plaintext and never will (ADR 0025,
+ * "What the node can and cannot conclude"). What it *can* check, and what this helper therefore
+ * has to get right, is that the declared `fanout_digest` covers the profile and commitment the
+ * same send declares. `commitmentOverride` lets a test declare one commitment while the digest
+ * covers another, which is the adversarial case below.
+ */
+function buildLogicalMessage(
+  envelopes: readonly TestEnvelope[],
+  options: { commitment?: Buffer; commitmentOverride?: Buffer } = {},
+) {
+  const commitment = options.commitment ?? Buffer.from(sha256Hash(randomBytes(16)));
   const view = envelopes.map((envelope) => ({
     recipientActorId: envelope.recipientActorId,
     recipientDeviceId: envelope.recipientDeviceId,
+    encryptedHeader: new Uint8Array(0),
+    ciphertext: new Uint8Array(0),
+    openingCiphertext: new Uint8Array(envelope.openingCiphertext),
     ciphertextDigest: new Uint8Array(envelope.ciphertextDigest),
   }));
   const fanoutDigest = sha256Hash(
-    canonicalFanoutTranscript(
-      view.map((entry) => ({
-        ...entry,
-        encryptedHeader: new Uint8Array(0),
-        ciphertext: new Uint8Array(0),
-        openingCiphertext: new Uint8Array(0),
-      })),
-    ),
+    canonicalFanoutTranscript({
+      frankingProfile: E2EE_FRANKING_PROFILE_V1,
+      frankingCommitment: new Uint8Array(commitment),
+      deviceEnvelopes: view,
+    }),
   );
   return {
     membershipEpoch: '1',
-    frankingCommitment: Buffer.from(sha256Hash(randomBytes(16))),
+    frankingCommitment: options.commitmentOverride ?? commitment,
     frankingProfile: E2EE_FRANKING_PROFILE_V1,
     fanoutDigest: Buffer.from(fanoutDigest),
     deviceEnvelopes: [...envelopes],
@@ -624,6 +637,60 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         });
         // Not two envelopes: the retry did not create a second session/delivery.
         expect(mailbox.envelopes).toHaveLength(1);
+      });
+
+      /**
+       * ADR 0024 B-045/B-046, ADR 0025 §5. The node cannot verify a franking commitment — it has
+       * no plaintext — but it can refuse a send that is internally inconsistent about which
+       * commitment it is making. Before ADR 0025 the commitment was outside every transcript in
+       * the system, so this send was accepted and franked; the *existing* happy path of this
+       * suite used to declare a commitment unrelated to anything and succeed.
+       */
+      it('rejects a send whose fanout digest does not cover the franking commitment it declares', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice } = await enrollFirstDevice(sender, 0);
+        const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+
+        const envelope = buildEnvelope(recipient.actorId, recipientDevice.deviceId);
+        await expect(
+          conversations.createE2eeConversation(sender.actorId, {
+            clientRequestId: randomUUID(),
+            recipientActorIds: [recipient.actorId],
+            senderDeviceId: senderDevice.deviceId,
+            // The digest covers one commitment; the send declares another. A sender that wants a
+            // free-floating commitment it never has to honour has to produce this shape.
+            message: buildLogicalMessage([envelope], {
+              commitmentOverride: Buffer.from(sha256Hash(randomBytes(16))),
+            }),
+          }),
+        ).rejects.toThrow(/fanout|digest/i);
+      });
+
+      /**
+       * ADR 0025 §3: under `patches-franking-v1` the franking opening travels inside the inner
+       * authenticated plaintext, where the body AEAD tag covers it. An envelope that also ships a
+       * separate sealed opening is rejected rather than quietly stored — an opening the node can
+       * separate from the ciphertext it opens is one the node can drop.
+       */
+      it('rejects a v1 envelope that carries a separate sealed franking opening', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice } = await enrollFirstDevice(sender, 0);
+        const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+
+        const envelope = {
+          ...buildEnvelope(recipient.actorId, recipientDevice.deviceId),
+          openingCiphertext: randomBytes(32),
+        };
+        await expect(
+          conversations.createE2eeConversation(sender.actorId, {
+            clientRequestId: randomUUID(),
+            recipientActorIds: [recipient.actorId],
+            senderDeviceId: senderDevice.deviceId,
+            message: buildLogicalMessage([envelope]),
+          }),
+        ).rejects.toThrow(/franking opening travels inside the ciphertext/);
       });
 
       it('rejects a fanout that omits a device enrolled after the sender last read the roster, rather than silently excluding it', async () => {
