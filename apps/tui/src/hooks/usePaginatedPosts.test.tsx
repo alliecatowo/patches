@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { usePaginatedPosts, type PostPage } from './usePaginatedPosts.js';
+import { makePageInfo } from '../test/wire-fixtures.js';
 
 function Harness({
   fetch,
@@ -18,7 +19,7 @@ function Harness({
 
 function page(): Promise<PostPage> {
   // A real `Post` isn't needed — only the count and the `loading` flag are asserted.
-  return Promise.resolve({ posts: [{}, {}] as never[], page: { nextCursor: '', hasMore: false } });
+  return Promise.resolve({ posts: [{}, {}] as never[], page: makePageInfo() });
 }
 
 describe('usePaginatedPosts background-snapshot cache (B-043)', () => {
