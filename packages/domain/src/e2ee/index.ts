@@ -123,6 +123,14 @@ export type {
   E2eeReadReceiptControl,
   E2eeTypingControl,
 } from './control.js';
+  assertGroupMembershipBounds,
+  assertMembershipChain,
+  assertMembershipEventShape,
+  assertMembershipSucceeds,
+  membershipGenesisPreviousDigest,
+  verifyMembershipEventSignature,
+} from './membership.js';
+export type { E2eeMembershipAction, E2eeMembershipEventView } from './membership.js';
 
 export {
   assertCiphertextDigestsMatchCiphertexts,
