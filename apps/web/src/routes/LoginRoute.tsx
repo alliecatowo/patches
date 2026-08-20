@@ -5,6 +5,7 @@ import { useState, type FormEvent, type JSX } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
+import { DeviceLinkButton } from '../components/DeviceLinkButton.js';
 import { GitHubLoginButton } from '../components/GitHubLoginButton.js';
 import { PasskeyLoginButton } from '../components/PasskeyLoginButton.js';
 import styles from './AuthForm.module.css';
@@ -110,6 +111,7 @@ export function LoginRoute(): JSX.Element {
       <PasskeyLoginButton />
       {/* TODO(P15-006): gate on GetAuthPolicyResponse.githubAuth once that field lands. */}
       <GitHubLoginButton />
+      <DeviceLinkButton />
       {!passwordAuthOff ? (
         <p className={styles['switchLink']}>
           <button

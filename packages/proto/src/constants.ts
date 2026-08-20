@@ -20,6 +20,10 @@ import type {
 import type {
   AddCredentialRequest,
   AddCredentialResponse,
+  ApproveDeviceLinkRequest,
+  ApproveDeviceLinkResponse,
+  BeginDeviceLinkRequest,
+  BeginDeviceLinkResponse,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
   BeginPasskeyLoginRequest,
@@ -50,6 +54,8 @@ import type {
   LogoutAllSessionsResponse,
   LogoutRequest,
   LogoutResponse,
+  PollDeviceLinkRequest,
+  PollDeviceLinkResponse,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
   RecoveryLoginRequest,
@@ -478,6 +484,9 @@ export interface AuthGrpcClient extends Client {
   beginSshEnrollment: GrpcUnaryCall<BeginSshEnrollmentRequest, BeginSshEnrollmentResponse>;
   beginGitHubLogin: GrpcUnaryCall<BeginGitHubLoginRequest, BeginGitHubLoginResponse>;
   pollGitHubLogin: GrpcUnaryCall<PollGitHubLoginRequest, PollGitHubLoginResponse>;
+  beginDeviceLink: GrpcUnaryCall<BeginDeviceLinkRequest, BeginDeviceLinkResponse>;
+  pollDeviceLink: GrpcUnaryCall<PollDeviceLinkRequest, PollDeviceLinkResponse>;
+  approveDeviceLink: GrpcUnaryCall<ApproveDeviceLinkRequest, ApproveDeviceLinkResponse>;
   listCredentials: GrpcUnaryCall<ListCredentialsRequest, ListCredentialsResponse>;
   addCredential: GrpcUnaryCall<AddCredentialRequest, AddCredentialResponse>;
   revokeCredential: GrpcUnaryCall<RevokeCredentialRequest, RevokeCredentialResponse>;

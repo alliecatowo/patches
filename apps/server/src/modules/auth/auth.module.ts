@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { DbRateLimitStore } from './db-rate-limit-store.service.js';
+import { DeviceLinkAttemptsService } from './device-link-attempts.service.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
 import { OidcDeviceFlowService } from './oidc-device-flow.service.js';
@@ -41,6 +42,7 @@ import { TokenService } from './token.service.js';
     GitHubLoginAttemptsService,
     OidcDeviceFlowService,
     OidcLoginAttemptsService,
+    DeviceLinkAttemptsService,
     PasskeyChallengeService,
     PasskeyVerifierService,
   ],

@@ -3,6 +3,7 @@ import { dateToTimestamp } from '@patches/proto';
 import type { Actor, Credential, OidcProviderInfo, Session } from '@patches/proto';
 import {
   CredentialType,
+  DeviceLinkStatus,
   GitHubLoginStatus,
   OidcLoginStatus,
   PasswordAuthMode,
@@ -10,6 +11,7 @@ import {
 
 import type { ActorSummary, CredentialSummary, SessionEnvelope } from './auth.dto.js';
 import type {
+  DeviceLinkPollResult,
   GitHubLoginPollResult,
   OidcLoginPollResult,
   OidcProviderPolicy,
@@ -128,6 +130,19 @@ const OIDC_LOGIN_STATUS_TO_PROTO: Readonly<Record<OidcLoginPollResult['status'],
 
 export function toProtoOidcLoginStatus(status: OidcLoginPollResult['status']): OidcLoginStatus {
   return OIDC_LOGIN_STATUS_TO_PROTO[status];
+}
+
+const DEVICE_LINK_STATUS_TO_PROTO: Readonly<
+  Record<DeviceLinkPollResult['status'], DeviceLinkStatus>
+> = Object.freeze({
+  PENDING: DeviceLinkStatus.DEVICE_LINK_STATUS_PENDING,
+  SLOW_DOWN: DeviceLinkStatus.DEVICE_LINK_STATUS_SLOW_DOWN,
+  EXPIRED: DeviceLinkStatus.DEVICE_LINK_STATUS_EXPIRED,
+  COMPLETE: DeviceLinkStatus.DEVICE_LINK_STATUS_COMPLETE,
+});
+
+export function toProtoDeviceLinkStatus(status: DeviceLinkPollResult['status']): DeviceLinkStatus {
+  return DEVICE_LINK_STATUS_TO_PROTO[status];
 }
 
 /** P15-006: `AuthPolicy.oidcProviders` → the wire `repeated OidcProviderInfo` — id and display

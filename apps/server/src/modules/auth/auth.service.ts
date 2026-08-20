@@ -32,6 +32,7 @@ import {
   toActorSummary,
   toCredentialSummary,
 } from './auth.dto.js';
+import { DeviceLinkAttemptsService } from './device-link-attempts.service.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
 import { OidcDeviceFlowService } from './oidc-device-flow.service.js';
@@ -94,6 +95,66 @@ const AUTH_CODE_BYTES = 32;
 /** P15-003: 10 codes minted together by `GenerateRecoveryCodes`, matching the proto RPC's own
  * documented count. */
 const RECOVERY_CODE_COUNT = 10;
+
+/**
+ * P15-005 device link: `device_code` is a bearer secret exactly like `GitHubDeviceFlowService`'s
+ * (32 CSPRNG bytes, base64url); `user_code` is the short code a human reads off the browser and
+ * types into an already-signed-in terminal.
+ *
+ * 10 minutes, not the SSH challenge's 120 seconds (`SSH_CHALLENGE_TTL_MS`): this code has to
+ * survive a human switching from the browser to a terminal, possibly on a different machine,
+ * before it's typed — the SSH challenge blob is signed automatically by an agent with no such
+ * gap.
+ */
+const DEVICE_LINK_TTL_MS = 10 * 60_000;
+const DEVICE_LINK_CODE_BYTES = 32;
+/** Server-suggested minimum seconds between `PollDeviceLink` calls — matches
+ * `GitHubDeviceFlowService`'s typical device-flow interval. */
+const DEVICE_LINK_POLL_INTERVAL_S = 3;
+
+/**
+ * Crockford base32 (excludes the visually ambiguous `I`, `L`, `O`, `U`), same alphabet family
+ * `generateRecoveryCode` below uses — chosen for the same reason: a human has to read and
+ * transcribe this without a computer's help. 8 symbols (40 bits) from 5 random bytes exactly —
+ * short enough to type in one glance; {@link DEVICE_LINK_TTL_MS}'s short expiry and
+ * `ApproveDeviceLink`'s own rate limit (`device_link_approve`, `rate-limit.service.ts`) are the
+ * other two legs of the defense against guessing it (spec §102's "short-TTL, single-use,
+ * rate-limited" — no single leg is load-bearing alone).
+ */
+const DEVICE_LINK_USER_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const DEVICE_LINK_USER_CODE_LENGTH = 8;
+const DEVICE_LINK_USER_CODE_ENTROPY_BYTES = 5;
+
+/** The canonical (no separator) form is what `DeviceLinkAttemptsService` keys on; the wire
+ * `user_code` adds a `-` at the midpoint purely for human readability (mirrors GitHub's own
+ * "ABCD-1234" device-flow codes). */
+function generateDeviceLinkUserCode(): string {
+  const bytes = randomBytes(DEVICE_LINK_USER_CODE_ENTROPY_BYTES);
+  let bits = 0n;
+  for (const byte of bytes) bits = (bits << 8n) | BigInt(byte);
+
+  let chars = '';
+  for (let i = 0; i < DEVICE_LINK_USER_CODE_LENGTH; i += 1) {
+    chars = DEVICE_LINK_USER_CODE_ALPHABET[Number(bits & 0x1fn)] + chars;
+    bits >>= 5n;
+  }
+  return chars;
+}
+
+function formatDeviceLinkUserCode(canonical: string): string {
+  const half = DEVICE_LINK_USER_CODE_LENGTH / 2;
+  return `${canonical.slice(0, half)}-${canonical.slice(half)}`;
+}
+
+/** Undoes {@link formatDeviceLinkUserCode} and tolerates whatever a human actually types
+ * (stray spaces, lowercase, a missing/extra hyphen) — never itself a source of "wrong code"
+ * rejections that a real, correctly-read code would otherwise pass. */
+function normalizeDeviceLinkUserCode(raw: string): string {
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '');
+}
 
 /** 20 base32 characters (Crockford alphabet, no padding) = 100 bits of entropy, grouped
  * `XXXXX-XXXXX-XXXXX-XXXXX` for human transcription — plenty under Argon2id verification
@@ -194,6 +255,21 @@ export type OidcLoginPollResult =
   | { status: 'DENIED' }
   | { status: 'COMPLETE'; session: SessionEnvelope };
 
+/** P15-005: what `BeginDeviceLink` hands the *browser*. `userCode` is already formatted with
+ * its separator (`ABCD-1234`); the approving terminal normalizes it back before comparing. */
+export interface BeginDeviceLinkResult {
+  deviceCode: string;
+  userCode: string;
+  interval: number;
+  expiresAt: Date;
+}
+
+export type DeviceLinkPollResult =
+  | { status: 'PENDING' }
+  | { status: 'SLOW_DOWN' }
+  | { status: 'EXPIRED' }
+  | { status: 'COMPLETE'; session: SessionEnvelope };
+
 /** Possession proof from a prior `beginSshEnrollment` call (B-021). Required when `type ===
  * 'SSH_PUBLIC_KEY'`; ignored for `PASSWORD`. */
 export interface SshEnrollmentProofInput {
@@ -261,6 +337,7 @@ export class AuthService {
     private readonly githubAttempts: GitHubLoginAttemptsService,
     private readonly oidcFlow: OidcDeviceFlowService,
     private readonly oidcAttempts: OidcLoginAttemptsService,
+    private readonly deviceLinks: DeviceLinkAttemptsService,
     private readonly passkeyChallenges: PasskeyChallengeService,
     private readonly passkeyVerifier: PasskeyVerifierService,
   ) {}
@@ -1120,6 +1197,94 @@ export class AuthService {
     return provider;
   }
 
+  // ---------------------------------------------------------------- device link
+
+  /**
+   * Starts a web↔terminal device link (P15-005): always unauthenticated (any browser tab may
+   * call this) and, unlike `beginGitHubLogin`/`beginOidcLogin`, never takes a `callerUserId` —
+   * the account this link ends up bound to is decided entirely by whichever authenticated
+   * session later calls {@link approveDeviceLink} with the matching `user_code`, never by
+   * anything the browser itself supplies.
+   */
+  beginDeviceLink(): BeginDeviceLinkResult {
+    this.rateLimit.consumePeer('device_link_begin', getRequestContext()?.peer);
+
+    const deviceCode = randomBytes(DEVICE_LINK_CODE_BYTES).toString('base64url');
+    const userCode = generateDeviceLinkUserCode();
+    const expiresAt = new Date(Date.now() + DEVICE_LINK_TTL_MS);
+    const intervalMs = DEVICE_LINK_POLL_INTERVAL_S * 1000;
+
+    this.deviceLinks.begin({ deviceCode, userCode, expiresAt, intervalMs });
+
+    return {
+      deviceCode,
+      userCode: formatDeviceLinkUserCode(userCode),
+      interval: DEVICE_LINK_POLL_INTERVAL_S,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Polls a device link for approval (P15-005). Honors this link's own poll `interval` (tracked
+   * in {@link DeviceLinkAttemptsService}) and this node's per-peer poll budget, the same shape
+   * as {@link pollGitHubLogin}. The session returned on `COMPLETE` belongs to whichever account
+   * called {@link approveDeviceLink} — the browser calling this never supplies or chooses that
+   * account itself.
+   */
+  async pollDeviceLink(rawDeviceCode: string): Promise<DeviceLinkPollResult> {
+    this.rateLimit.consumePeer('device_link_poll', getRequestContext()?.peer);
+
+    const deviceCode = parseInput(opaqueCodeSchema, rawDeviceCode);
+    const attempt = this.deviceLinks.get(deviceCode);
+    if (attempt === undefined) return { status: 'EXPIRED' };
+
+    if (!this.deviceLinks.tryConsumePoll(deviceCode)) return { status: 'SLOW_DOWN' };
+    if (attempt.approvedUserId === null) return { status: 'PENDING' };
+
+    // Single-use from here regardless of what happens below: a device code that has already
+    // been approved must never be resolved into a second session.
+    this.deviceLinks.consume(deviceCode);
+    const approvedUserId = attempt.approvedUserId;
+
+    return this.dataSource.transaction(async (manager) => {
+      const user = await manager.getRepository(User).findOne({ where: { id: approvedUserId } });
+      if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+        throw sessionGone();
+      }
+      const actor = await requireActor(manager, user.actorId);
+      const tokens = await this.tokens.issueSession(manager, {
+        userId: user.id,
+        actorId: actor.id,
+      });
+      return {
+        status: 'COMPLETE',
+        session: this.envelope(tokens, actor, user.emailVerifiedAt !== null),
+      };
+    });
+  }
+
+  /**
+   * Binds a pending device link to the caller's own account (P15-005). Authenticated —
+   * `claims` comes from a bearer token the guard has already verified — so the code's
+   * `AuthGuard` requirement, not this method, is what stops an unauthenticated caller from ever
+   * reaching here (spec §167's "linking ... MUST require an authenticated Patches session",
+   * applied to a browser session instead of a credential type).
+   *
+   * Every failure — unknown code, expired code, already-approved code — is the same uniform
+   * {@link deviceLinkCodeInvalid}; there is nothing here worth distinguishing for the caller
+   * (unlike SSH/passkey login, this endpoint is not defending against account enumeration, but
+   * a code that already belongs to someone else's approval must not be probeable either).
+   */
+  async approveDeviceLink(claims: AccessTokenClaims, rawUserCode: string): Promise<void> {
+    this.rateLimit.consumePeer('device_link_approve', getRequestContext()?.peer);
+    this.rateLimit.consume('device_link_approve', claims.userId);
+    await this.rateLimit.consumeDistributed('device_link_approve', claims.userId);
+
+    const userCode = normalizeDeviceLinkUserCode(parseInput(opaqueCodeSchema, rawUserCode));
+    const approved = this.deviceLinks.approve(userCode, claims.userId);
+    if (!approved) throw deviceLinkCodeInvalid();
+  }
+
   // ---------------------------------------------------------------- passkeys
 
   /**
@@ -1929,6 +2094,12 @@ function oidcProviderNotConfigured(): AppError {
  * IS NULL` unique index (ADR 0011: identity stays separate from credential). */
 function oidcCredentialIdentifier(providerId: string, subject: string): string {
   return `${providerId}:${subject}`;
+}
+
+/** P15-005: the single response every `ApproveDeviceLink` failure produces — see the method's
+ * own doc comment for why nothing here is worth distinguishing further. */
+function deviceLinkCodeInvalid(): AppError {
+  return AppError.validation('That code is invalid, expired, or has already been used.');
 }
 
 function invalidCode(): AppError {

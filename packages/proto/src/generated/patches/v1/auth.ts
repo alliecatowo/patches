@@ -33,6 +33,15 @@ export enum OidcLoginStatus {
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
+export enum DeviceLinkStatus {
+  DEVICE_LINK_STATUS_UNSPECIFIED = 'DEVICE_LINK_STATUS_UNSPECIFIED',
+  DEVICE_LINK_STATUS_PENDING = 'DEVICE_LINK_STATUS_PENDING',
+  DEVICE_LINK_STATUS_SLOW_DOWN = 'DEVICE_LINK_STATUS_SLOW_DOWN',
+  DEVICE_LINK_STATUS_EXPIRED = 'DEVICE_LINK_STATUS_EXPIRED',
+  DEVICE_LINK_STATUS_COMPLETE = 'DEVICE_LINK_STATUS_COMPLETE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
 /**
  * P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
  * password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
@@ -329,6 +338,56 @@ export interface PollOidcLoginResponse {
   /** Set only when status == OIDC_LOGIN_STATUS_COMPLETE. */
   session: Session | undefined;
 }
+
+export interface BeginDeviceLinkRequest {}
+
+export interface BeginDeviceLinkResponse {
+  /**
+   * Secret; used by the browser's own `PollDeviceLink` calls only — never shown to the user and
+   * never typed anywhere (mirrors `BeginGitHubLoginResponse.device_code`).
+   */
+  deviceCode: string;
+  /**
+   * Short, human-typeable code the browser displays and the account holder types into an
+   * already-signed-in terminal (`patches approve <user_code>`). Never itself sufficient to sign
+   * in anywhere — only a subsequent, authenticated `ApproveDeviceLink` call can bind it to an
+   * account.
+   */
+  userCode: string;
+  /** Minimum seconds between `PollDeviceLink` attempts. */
+  interval: number;
+  /** Short TTL by design (spec §102's "short-TTL, single-use" applied to a human-typeable code). */
+  expiresAt: Timestamp | undefined;
+}
+
+export interface PollDeviceLinkRequest {
+  deviceCode: string;
+}
+
+export interface PollDeviceLinkResponse {
+  status: DeviceLinkStatus;
+  /**
+   * Set only when status == DEVICE_LINK_STATUS_COMPLETE — the session belongs to whichever
+   * account called `ApproveDeviceLink` with this link's `user_code`, never to the browser that
+   * called `BeginDeviceLink`.
+   */
+  session: Session | undefined;
+}
+
+/**
+ * Authenticated: the account being linked to the browser comes from the `authorization`
+ * metadata, not this message — same rule `AddCredential`'s GitHub/OIDC linking case follows
+ * (spec §167). An unauthenticated caller must never reach this RPC at all.
+ */
+export interface ApproveDeviceLinkRequest {
+  /**
+   * As displayed by the browser calling `BeginDeviceLink`, e.g. "ABCD-1234". Hyphens/case are
+   * normalized server-side before lookup.
+   */
+  userCode: string;
+}
+
+export interface ApproveDeviceLinkResponse {}
 
 export interface GetAuthPolicyRequest {}
 
@@ -667,6 +726,46 @@ export interface AuthServiceClient {
   ): Observable<PollOidcLoginResponse>;
 
   /**
+   * P15-005: a browser cannot prove possession of an SSH key, but the terminal it is already
+   * signed in from can. `BeginDeviceLink` is unauthenticated (any browser tab may start one) and
+   * returns two codes: `device_code`, a long secret the browser alone holds and polls with, and
+   * `user_code`, a short code it displays for a human to read and type. There is no third party
+   * and no central SSO anywhere in this flow — it is one node mediating between two of the same
+   * user's own devices.
+   *
+   * The account holder runs `patches approve <user_code>` from a terminal session that is
+   * *already signed in* — `ApproveDeviceLink` requires the `authorization` metadata a signed-in
+   * CLI already carries, exactly like `AddCredential`'s "linking requires an authenticated
+   * session" rule (spec §167). It binds the pending link to that caller's account and nothing
+   * else; the browser never learns which account approved it except by receiving that account's
+   * own session once it does. A missing, unknown, expired, or already-approved `user_code` is
+   * rejected uniformly — the code is single-use.
+   *
+   * `PollDeviceLink` is the unauthenticated browser-side poll on `device_code`, mirroring
+   * `PollGitHubLogin`/`PollOidcLogin`'s shape (`PENDING`/`SLOW_DOWN`/`EXPIRED`/`COMPLETE`).
+   * Because `user_code` is short enough for a human to type, it MUST be short-TTL, single-use,
+   * and rate-limited on both `BeginDeviceLink` and `ApproveDeviceLink` server-side — the CLI
+   * additionally shows the code back to the user and asks them to confirm before calling
+   * `ApproveDeviceLink`, since nothing server-side can distinguish an account holder approving
+   * their own login from one talked into approving someone else's by social engineering.
+   */
+
+  beginDeviceLink(
+    request: BeginDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<BeginDeviceLinkResponse>;
+
+  pollDeviceLink(
+    request: PollDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<PollDeviceLinkResponse>;
+
+  approveDeviceLink(
+    request: ApproveDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<ApproveDeviceLinkResponse>;
+
+  /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
    * other secret material — type, label, identifier, timestamps only.
    */
@@ -974,6 +1073,52 @@ export interface AuthServiceController {
   ): Promise<PollOidcLoginResponse> | Observable<PollOidcLoginResponse> | PollOidcLoginResponse;
 
   /**
+   * P15-005: a browser cannot prove possession of an SSH key, but the terminal it is already
+   * signed in from can. `BeginDeviceLink` is unauthenticated (any browser tab may start one) and
+   * returns two codes: `device_code`, a long secret the browser alone holds and polls with, and
+   * `user_code`, a short code it displays for a human to read and type. There is no third party
+   * and no central SSO anywhere in this flow — it is one node mediating between two of the same
+   * user's own devices.
+   *
+   * The account holder runs `patches approve <user_code>` from a terminal session that is
+   * *already signed in* — `ApproveDeviceLink` requires the `authorization` metadata a signed-in
+   * CLI already carries, exactly like `AddCredential`'s "linking requires an authenticated
+   * session" rule (spec §167). It binds the pending link to that caller's account and nothing
+   * else; the browser never learns which account approved it except by receiving that account's
+   * own session once it does. A missing, unknown, expired, or already-approved `user_code` is
+   * rejected uniformly — the code is single-use.
+   *
+   * `PollDeviceLink` is the unauthenticated browser-side poll on `device_code`, mirroring
+   * `PollGitHubLogin`/`PollOidcLogin`'s shape (`PENDING`/`SLOW_DOWN`/`EXPIRED`/`COMPLETE`).
+   * Because `user_code` is short enough for a human to type, it MUST be short-TTL, single-use,
+   * and rate-limited on both `BeginDeviceLink` and `ApproveDeviceLink` server-side — the CLI
+   * additionally shows the code back to the user and asks them to confirm before calling
+   * `ApproveDeviceLink`, since nothing server-side can distinguish an account holder approving
+   * their own login from one talked into approving someone else's by social engineering.
+   */
+
+  beginDeviceLink(
+    request: BeginDeviceLinkRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<BeginDeviceLinkResponse>
+    | Observable<BeginDeviceLinkResponse>
+    | BeginDeviceLinkResponse;
+
+  pollDeviceLink(
+    request: PollDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Promise<PollDeviceLinkResponse> | Observable<PollDeviceLinkResponse> | PollDeviceLinkResponse;
+
+  approveDeviceLink(
+    request: ApproveDeviceLinkRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ApproveDeviceLinkResponse>
+    | Observable<ApproveDeviceLinkResponse>
+    | ApproveDeviceLinkResponse;
+
+  /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
    * other secret material — type, label, identifier, timestamps only.
    */
@@ -1131,6 +1276,9 @@ export function AuthServiceControllerMethods() {
       'pollGitHubLogin',
       'beginOidcLogin',
       'pollOidcLogin',
+      'beginDeviceLink',
+      'pollDeviceLink',
+      'approveDeviceLink',
       'listCredentials',
       'beginSshEnrollment',
       'addCredential',

@@ -46,8 +46,12 @@ export type {
 export type {
   AddCredentialRequest,
   AddCredentialResponse,
+  ApproveDeviceLinkRequest,
+  ApproveDeviceLinkResponse,
   AuthServiceClient,
   AuthServiceController,
+  BeginDeviceLinkRequest,
+  BeginDeviceLinkResponse,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
   BeginPasskeyLoginRequest,
@@ -80,6 +84,8 @@ export type {
   LogoutRequest,
   LogoutResponse,
   OidcProviderInfo,
+  PollDeviceLinkRequest,
+  PollDeviceLinkResponse,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
   PollOidcLoginRequest,
@@ -107,6 +113,7 @@ export type {
 // (see `enums.ts` for why the runtime values come from a hand-mirrored module instead).
 export type {
   CredentialType,
+  DeviceLinkStatus,
   GitHubLoginStatus,
   OidcLoginStatus,
   PasswordAuthMode,
@@ -551,6 +558,7 @@ export {
   COMMUNITY_ROLE,
   CONVERSATION_KIND,
   CREDENTIAL_TYPE,
+  DEVICE_LINK_STATUS,
   DOMAIN_POLICY_ACTION,
   FEDERATION_STANCE,
   FILTER_ACTION,
