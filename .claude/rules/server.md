@@ -22,3 +22,23 @@ paths:
 ## Request context
 
 - `AsyncLocalStorage` request context must be established around the _subscription_ (`next.handle().subscribe(...)` or `defer`), not around `next.handle()` — the handler runs lazily on subscribe.
+
+## Gotchas
+
+- **`app.connectMicroservice(options)` skips global filters/interceptors/guards/pipes** unless
+  passed `{ inheritAppConfig: true }` — a test bootstrap must mirror `main.ts`'s real transport
+  setup exactly or it never exercises them.
+- **`@nestjs/config` reads `<cwd>/.env`** at module-evaluation time unless `ignoreEnvFile: true`;
+  load `.env` explicitly in `main.ts` instead. Integration tests must set env in a Vitest
+  `setupFiles` entry (not `beforeAll`) and pass `abortOnError: false` in the test bootstrap, or a
+  failed boot shows up only as "Worker exited unexpectedly".
+- **A module can't be conditionally dropped from `AppModule.imports`** if another always-on module
+  also imports it — Nest dedupes a multi-imported module into one instance. Split gateway/service
+  (always imported) from controllers-only (the actually-conditional module).
+- **A global exception filter for one HTTP surface must not blanket-500 everything** — branch on
+  `exception instanceof HttpException` and use its own status/message first, or a second HTTP
+  surface's normal 404s become 500s.
+- **`startTestServer()` without `{ http: true }` never calls `app.init()`**, so no
+  `OnModuleInit`/`onApplicationBootstrap` hook fires anywhere in the module graph (regular DI
+  construction still works, silently masking the gap). Pass `{ http: true }` for any test
+  asserting on boot-time seeded state.

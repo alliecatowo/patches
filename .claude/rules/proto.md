@@ -20,3 +20,14 @@ Full change procedure: `/proto-change`. This file is the standing conventions; t
 
 - ts-proto is generated with `useDate=false,forceLong=string` because `@grpc/proto-loader` (the runtime serializer, `longs: String`) never produces `Date`; convert with the `dateToTimestamp`/`timestampToDate` helpers in `@patches/proto`. Don't flip `useDate` without changing the loader.
 - `pnpm proto:breaking` wraps `scripts/breaking.sh` (handles cwd-relative `.git#` refs and empty base branches). Don't call `buf breaking` by hand from the package dir.
+- **`protoc-gen-es` needs `import_extension=js`** in `buf.gen.yaml`'s `opt:` for the Connect/web
+  edge — without it generated `_pb.ts` files import each other with no extension and `tsc` rejects
+  it (TS2835) under this repo's NodeNext resolution.
+- **Message-typed fields stay `T | undefined`** even with `useOptionals=none` (that flag only
+  affects scalars). Don't destructure a nested message field back out of a `toProtoXxx()` mapper's
+  return value and assume it's non-optional — build the response from the DTO's own always-present
+  fields instead.
+- **Adding a `repeated` field is wire-additive but source-breaking**: ts-proto emits non-optional
+  arrays, so every existing object literal for that message in every consuming app needs the new
+  field by hand. `grep -rln` the RPC name repo-wide before calling a proto change done — a green
+  `@patches/proto` build does not mean the monorepo typechecks.

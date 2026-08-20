@@ -39,7 +39,7 @@ Shared package `package.json` shape:
 
 `tsup.config.ts`: `entry: ['src/index.ts']`, `format: ['esm','cjs']`, `dts: true`, `sourcemap: true`, `clean: true`, `target: 'node24'`. Native or framework deps go in `external`.
 
-`tsconfig.json` extends `../../tsconfig.base.json` with `rootDir: "src"`, `outDir: "dist"`, `include: ["src"]`; add `"jsx": "react-jsx"` for Ink packages, `"experimentalDecorators": true, "emitDecoratorMetadata": true` for Nest/TypeORM packages.
+`tsconfig.json` extends `../../tsconfig.base.json` with `rootDir: "src"`, `outDir: "dist"`, `include: ["src"]`; add `"jsx": "react-jsx"` for Ink packages, `"experimentalDecorators": true, "emitDecoratorMetadata": true` for Nest/TypeORM packages. `tsconfig.base.json` sets `incremental: false` — tsup's `.d.ts` worker fails with `TS5074` if a package inherits `incremental: true`; opt in locally per-app if you want it.
 
 ## Scripts every workspace must expose
 
@@ -54,7 +54,7 @@ Shared package `package.json` shape:
 
 ## Tests
 
-Vitest 4 `projects` at the root pick up every `**/vitest.config.ts`. Unit tests sit next to code as `*.test.ts`. Integration tests that need Postgres read `TEST_DATABASE_URL` (see `.env.example`) and go in `test/` with the project name suffixed `-integration` so CI can run them separately. Never point tests at the dev DB.
+Vitest 4 `projects` at the root pick up every `**/vitest.config.ts`. Unit tests sit next to code as `*.test.ts`. Integration tests that need Postgres read `TEST_DATABASE_URL` (see `.env.example`) and go in `test/` with the project name suffixed `-integration` so CI can run them separately. Never point tests at the dev DB. Scope `test.include` to `src/**`/`test/**` — an unscoped project also collects compiled `dist/**/*.test.js` after a build and runs everything twice.
 
 ## Layering (spec §128–129)
 

@@ -1,4 +1,4 @@
-# Patches
+# Patches — agent operating manual
 
 Terminal-native, chronological, open-source social network. TypeScript monorepo: NestJS 11 gRPC server + worker, Ink 7 TUI, React web, TypeORM 1.x + PostgreSQL, Protobuf/Buf, Cloudflare R2, Fly.io.
 
@@ -29,8 +29,7 @@ protobuf request → controller (transport adapter) → application service → 
 2. `tasks.md` is the live board. Pick from it, tick what you finish, file what you discover (`/task`).
 3. Read `docs/research/<tech>.md` before using a risky API; if the note is missing or wrong, fix it.
 4. Every change leaves the repo green (`mise run verify`).
-5. Update docs in the same change as the code. Never document a command you haven't run.
-6. Record non-obvious learnings via `/retro`.
+5. Update docs in the same change as the code; never document a command you haven't run. Record non-obvious learnings via `/retro`.
 
 ## Tool use
 
@@ -42,7 +41,7 @@ protobuf request → controller (transport adapter) → application service → 
 
 ## Delegation
 
-The main session orchestrates; subagents in `.claude/agents/` do the work. **sonnet** for implementation, **haiku** for mechanical checks, **opus** for review/architecture/tricky debugging, **fable** only for the hardest problems — never more than one at a time. Fan out in parallel with a **disjoint file set** per agent, stated explicitly. Briefs are self-contained — paste the snippets the agent needs rather than listing files to read first. Nesting allowed to depth 3. Escalate to opus after a sonnet agent fails the same way twice — don't retry a third time at the same model. A reviewer must be a stronger model than the implementer it's reviewing. Never downgrade implementation work to haiku.
+The main session orchestrates; subagents in `.codex/agents/` do the work. **sonnet** for implementation, **haiku** for mechanical checks, **opus** for review/architecture/tricky debugging, **fable** only for the hardest problems — never more than one at a time. Fan out in parallel with a **disjoint file set** per agent, stated explicitly. Briefs are self-contained — paste the snippets the agent needs rather than listing files to read first. Nesting allowed to depth 3. Escalate to opus after a sonnet agent fails the same way twice — don't retry a third time at the same model. A reviewer must be a stronger model than the implementer it's reviewing. Never downgrade implementation work to haiku.
 
 ## Repository map
 

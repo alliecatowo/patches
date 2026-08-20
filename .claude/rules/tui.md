@@ -49,6 +49,11 @@ paths:
   sequences silently stop working under fast typing.
 - **Multi-key prefix state lives in a ref**, not `useState` — the same handler closure serves every
   key in a chunk, so state written by one key is stale for the next.
+- **Index/mode state advanced by `useInput` must use the functional `setState` form**
+  (`setMode((current) => ...)`), never the render closure's captured value — a tight loop of key
+  presses with no `await` between them (a test, or fast real typing) fires every keystroke before
+  React commits the first update, so a closure-based update only ever moves by one regardless of
+  how many keys fired.
 
 ## Post bodies
 
@@ -59,7 +64,35 @@ paths:
 ## Non-TTY safety and verification
 
 - `useInput` throws when stdin isn't a TTY: gate interactive hooks on `useStdin().isRawModeSupported` and keep the non-interactive subcommands (`patches ping`, `--version`) working — CI and agents use them.
-- To verify the full-screen app from a non-TTY shell, drive it in tmux (`tmux new-session -d -x 100 -y 28 "<cmd>"`, `tmux send-keys`, `tmux capture-pane -p`). See LEARNINGS "Verifying a TTY app from a non-TTY agent shell".
+- To verify the full-screen app from a non-TTY shell, drive it in tmux (`tmux new-session -d -x 100 -y 28 "<cmd>"`, `tmux send-keys`, `tmux capture-pane -p`) and read the actual frame — several layout bugs (a `height={0}` overlay bleeding text, a coalesced-keystroke bug) only ever showed up under tmux, never in unit tests. To drive a _real_ terminal (Kitty support etc.) use `ghostty -e wrapper.sh` with Python's `pty.spawn` logging (redirecting stdout to a file makes the app see "not a TTY"; `script` isn't installed on Fedora by default). GNOME denies `org.gnome.Shell.Screenshot` to arbitrary callers, so pixel screenshots need a human.
+
+## Testing
+
+- **`FORCE_COLOR` in the shell silently rewrites every Ink frame assertion.** Chalk decides color
+  from the host env, so `ink-testing-library` frames carry SGR codes for anyone with `FORCE_COLOR`
+  set and none for anyone else — `toContain('some phrase')` and `waitForFrame` both break when a
+  styled phrase has color codes inside/between it. Fix: pin `env: { FORCE_COLOR: '3' }` in
+  `apps/tui/vitest.config.ts` (matches how the real TUI runs) and strip SGR in the shared frame
+  matcher (`test/ansi.ts`); assert `hasNonSgrEscape`, not "no escapes at all".
+- **`waitForFrame`/`expectFrame` (poll `lastFrame()` on a condition) trade a flake for two subtler
+  bugs**: (1) a substring that's already true in a _persistent_ or list-visible string (e.g.
+  `'following'` matching `'not following'`, or text already present before navigating to the
+  screen meant to show it fresh) resolves instantly on the wrong state — pick a target unique to
+  the _settled_ state, not the first substring that becomes true; (2) resolving the instant a
+  condition is true removes the incidental "settle" grace period a fixed sleep used to provide —
+  a `press()` right after a resolved wait can be dropped if it depends on a `useInput` handler that
+  hasn't re-subscribed with the just-committed closure yet (screen transitions, post-login global
+  keys). Keep one small `await flush()` between a resolved wait and the next `press()` in those
+  cases — a deliberate exception, not a leftover fixed sleep.
+- **`apps/tui`'s Ink-render tests need `fileParallelism: false`** (set in
+  `apps/tui/vitest.config.ts`) — under default parallelism, enough CPU contention across 15+
+  concurrent Ink-tree test files makes `flush()` occasionally resolve before a promise-driven React
+  state update actually committed. No other package drives Ink, so this is `tui`-only.
+- **Test a renderer by comparing against its own output, not a regex.** `AsciiRenderer` and
+  `HalfBlockRenderer` use different glyph sets chosen by color-support detection — assert against
+  the exact first row from calling the renderer directly (with a real `sharp`-generated fixture
+  image), not a "looks like art" character-class regex that silently passes/fails depending on
+  which renderer got constructed.
 
 ## Proto message fields arrive as `null`
 
