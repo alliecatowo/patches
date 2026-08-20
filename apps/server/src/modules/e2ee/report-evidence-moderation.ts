@@ -62,7 +62,7 @@ export async function loadReportEvidenceForModeration(
   moderatorUserId: string,
 ): Promise<E2eeModerationEvidenceView> {
   const report = await manager.getRepository(Report).findOne({ where: { id: reportId } });
-  if (report === null) throw AppError.validation('Report not found.');
+  if (report === null) throw new AppError('REPORT_NOT_FOUND', 'Report not found.');
 
   const evidence = await manager
     .getRepository(E2eeReportEvidenceEntity)

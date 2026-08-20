@@ -86,9 +86,9 @@ describe('loadReportEvidenceForModeration (ADR 0020 §9, P13-012)', () => {
   it('rejects an unknown report id without writing an audit row', async () => {
     const { manager, auditSaves } = fakeManager({ report: null, evidence: null, items: [] });
 
-    await expect(loadReportEvidenceForModeration(manager, 'nope', 'moderator-1')).rejects.toThrow(
-      AppError,
-    );
+    await expect(
+      loadReportEvidenceForModeration(manager, 'nope', 'moderator-1'),
+    ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' });
     expect(auditSaves).toHaveLength(0);
   });
 

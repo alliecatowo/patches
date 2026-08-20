@@ -178,6 +178,12 @@ export const ERROR_CODES = [
    * prekey drain rate limit for a device; the caller must retry the fallback-only bundle
    * rather than re-request one-time-prekey forward secrecy immediately. */
   'E2EE_PREKEY_LIMIT_EXCEEDED',
+  /** P13-017: `attachReportEvidence`/`loadReportEvidenceForModeration`
+   * (`modules/e2ee/report-evidence.ts`, `report-evidence-moderation.ts`) on a report id that
+   * does not exist or (for `attachReportEvidence`) is not the caller's own report — uniform for
+   * "doesn't exist" and "isn't yours", same §62 no-oracle reason as `CONVERSATION_NOT_FOUND`.
+   * Replaces a stopgap `VALIDATION_ERROR` those two call sites used before this code existed. */
+  'REPORT_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -247,6 +253,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   E2EE_CERTIFICATE_INVALID: GrpcStatus.INVALID_ARGUMENT,
   E2EE_ROSTER_CONFLICT: GrpcStatus.FAILED_PRECONDITION,
   E2EE_PREKEY_LIMIT_EXCEEDED: GrpcStatus.RESOURCE_EXHAUSTED,
+  REPORT_NOT_FOUND: GrpcStatus.NOT_FOUND,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {
