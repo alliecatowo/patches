@@ -8,6 +8,7 @@ memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent, LSP
 disallowedTools: mcp__*
 maxTurns: 100
+isolation: worktree
 color: green
 ---
 

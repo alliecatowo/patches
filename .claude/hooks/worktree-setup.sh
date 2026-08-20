@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# WorktreeCreate: the harness requires this hook to CREATE the isolation worktree and echo
-# its absolute path on stdout. The original version only ran `pnpm install` and printed
-# nothing, so every isolated agent aborted with "hook succeeded but returned no worktree
-# path". Fails open (echoes nothing), which the harness reports rather than silently
-# running the agent in the main checkout.
+# WorktreeCreate: create the isolation worktree, make it BUILDABLE, and echo its absolute
+# path on stdout. The harness requires the path on stdout — a hook that prints nothing
+# aborts the agent with "hook succeeded but returned no worktree path".
 #
-# CAUTION: nothing else in a session may run `git worktree prune`/`remove` while agents are
-# live — doing so deletes a running agent's tree out from under it and loses its work.
-# Isolation is opt-in per Agent call; no agent definition should carry `isolation: worktree`
-# as a default, since disjoint file sets per brief are how parallel agents are kept safe.
+# Three things a fresh worktree needs before an agent can work in it:
+#   1. node_modules — pnpm's is a symlink farm bound to one checkout, never shareable.
+#   2. dist/ — gitignored, so a fresh checkout has NO built workspace packages and every
+#      cross-package import resolves to an untyped .js ("Could not find a declaration file
+#      for module '@patches/proto'"). turbo build fixes this; a shared cache dir keeps it
+#      cheap after the first worktree.
+#   3. A named branch, not a detached HEAD, so the orchestrator can merge the work back.
+#      Collect with .claude/scripts/worktree-collect.sh.
+#
+# CAUTION: never run `git worktree prune`/`remove` while agents are live — it deletes a
+# running agent's tree out from under it and loses its work.
 set -uo pipefail
 
 input="$(cat)"
@@ -18,15 +23,22 @@ repo="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 # The payload may already suggest a path; honour it when present.
 dir="$(printf '%s' "$input" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(j.worktree_path??j.worktreePath??j.path??"")}catch{}})' 2>/dev/null || true)"
 
-if [ -z "$dir" ]; then
-  dir="${TMPDIR:-/tmp}/patches-wt/$(date +%s)-$$"
-fi
+slug="$(date +%s)-$$"
+[ -n "$dir" ] || dir="${TMPDIR:-/tmp}/patches-wt/${slug}"
+branch="agent/wt-${slug}"
 
 mkdir -p "$(dirname "$dir")" || exit 0
-git -C "$repo" worktree add --detach "$dir" HEAD >/dev/null 2>&1 || exit 0
+git -C "$repo" worktree add -b "$branch" "$dir" HEAD >/dev/null 2>&1 || exit 0
 
-# node_modules is a pnpm symlink farm and cannot be shared across checkouts.
-( cd "$dir" && flock /tmp/patches-pnpm.lock pnpm install --prefer-offline --silent ) >/dev/null 2>&1 || true
+# Shared turbo cache across worktrees: the first build pays full cost, the rest replay it.
+cache="${TMPDIR:-/tmp}/patches-wt/.turbo-cache"
+mkdir -p "$cache"
+
+{
+  cd "$dir" || exit 0
+  flock /tmp/patches-pnpm.lock pnpm install --prefer-offline --silent
+  pnpm exec turbo run build --cache-dir="$cache" --output-logs=errors-only
+} >/dev/null 2>&1
 
 printf '%s\n' "$dir"
 exit 0
