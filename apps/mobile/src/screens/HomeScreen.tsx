@@ -14,12 +14,24 @@ import { PostRow } from '../components/PostRow.js';
 
 type Tab = 'home' | 'local';
 
+export interface HomeScreenProps {
+  viewerActorId?: string;
+  onReply: (post: Post) => void;
+  onQuote: (post: Post) => void;
+  onEdit: (post: Post) => void;
+}
+
 /**
  * Home (follows) + local (every public post on this node) timelines. Both strictly
  * chronological, cursor-paginated (Amendment B §194 — never offset, never re-sorted) via
  * `FeedService.ListHomeFeed`/`ListLocalFeed`.
  */
-export function HomeScreen(): JSX.Element {
+export function HomeScreen({
+  viewerActorId,
+  onReply,
+  onQuote,
+  onEdit,
+}: HomeScreenProps): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
   const [posts, setPosts] = useState<Post[]>([]);
   const [cursor, setCursor] = useState('');
@@ -76,7 +88,15 @@ export function HomeScreen(): JSX.Element {
       <FlatList
         data={posts}
         keyExtractor={(post) => post.id}
-        renderItem={({ item }) => <PostRow post={item} />}
+        renderItem={({ item }) => (
+          <PostRow
+            post={item}
+            {...(viewerActorId === undefined ? {} : { viewerActorId })}
+            onReply={onReply}
+            onQuote={onQuote}
+            onEdit={onEdit}
+          />
+        )}
         onEndReached={() => {
           if (hasMore && !loading) void load(cursor, false);
         }}

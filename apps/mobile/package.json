@@ -28,6 +28,8 @@
     "@patches/proto": "workspace:*",
     "expo": "57.0.14",
     "expo-crypto": "~57.0.1",
+    "expo-file-system": "catalog:",
+    "expo-image-picker": "catalog:",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
