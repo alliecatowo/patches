@@ -149,6 +149,9 @@ describe('RateLimitService', () => {
       expect(() => {
         limiter.consume('verify_email', 'brand-new-key', T0);
       }).toThrow(AppError);
-    });
+      // 20,000 real bucket insertions. Fast on an idle machine, but it overran vitest's 5s
+      // default whenever the machine was also building another workspace, which made
+      // `pnpm verify` fail intermittently for reasons unrelated to the code.
+    }, 30_000);
   });
 });

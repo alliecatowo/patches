@@ -68,7 +68,10 @@ describe('Double Ratchet property: ping-pong under random drop/reorder within MA
       ),
       { numRuns: 50 },
     );
-  });
+    // 50 fuzz iterations of real X25519/AEAD work. Comfortably under a second idle, but it
+    // overran vitest's 5s default whenever the machine was also building another workspace,
+    // which made `pnpm verify` fail intermittently for reasons unrelated to the code.
+  }, 30_000);
 });
 
 describe('Double Ratchet fuzz: mutated ciphertext/header never leaks plaintext', () => {
@@ -101,5 +104,6 @@ describe('Double Ratchet fuzz: mutated ciphertext/header never leaks plaintext',
       ),
       { numRuns: 100 },
     );
-  });
+    // Same reason as above, with twice the iterations.
+  }, 30_000);
 });
