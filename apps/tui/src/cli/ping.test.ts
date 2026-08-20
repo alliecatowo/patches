@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const getServerInfo = vi.fn();
@@ -25,7 +25,7 @@ describe('runPing', () => {
       protocolVersion: 1,
       minClientVersion: '0.1.0',
       instanceName: 'patches-dev',
-      serverTime: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
+      serverTime: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       features: ['system.ping'],
     });
 
@@ -46,7 +46,7 @@ describe('runPing', () => {
       protocolVersion: 1,
       minClientVersion: '0.1.0',
       instanceName: 'patches-dev',
-      serverTime: dateToTimestamp(new Date()),
+      serverTime: fromDate(new Date()),
       features: [],
     });
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type {
   BeginSshLoginRequest,
   BeginSshLoginResponse,
@@ -130,7 +130,7 @@ export async function performSshLogin(
     publicKeyOpenssh: options.publicKeyOpenssh,
     fingerprint: options.identity.fingerprint,
   });
-  const expiresAt = timestampToDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
+  const expiresAt = toDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
 
   const blob = buildSshChallengeBlob({
     domainSeparator: SSH_LOGIN_DOMAIN_SEPARATOR,

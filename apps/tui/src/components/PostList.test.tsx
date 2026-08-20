@@ -1,5 +1,5 @@
 import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -18,7 +18,7 @@ function selectedPost(): Post {
     inReplyToId: '',
     rootPostId: 'post-1',
     media: [],
-    createdAt: dateToTimestamp(new Date()),
+    createdAt: fromDate(new Date()),
     editedAt: undefined,
     deleted: false,
     counts: { replies: 0, likes: 0, reposts: 0, quotes: 0 },

@@ -6,7 +6,7 @@ import {
   POST_VISIBILITY,
   QUOTE_POLICY,
 } from '../api/wire/enums.js';
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
@@ -28,7 +28,7 @@ function post(overrides: Partial<Post> = {}): Post {
       websiteUrl: '',
       avatar: undefined,
       isLocal: true,
-      joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
+      joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       counts: undefined,
       nameplate: undefined,
       flair: undefined,
@@ -41,7 +41,7 @@ function post(overrides: Partial<Post> = {}): Post {
     inReplyToId: '',
     rootPostId: 'post-1',
     media: [],
-    createdAt: dateToTimestamp(new Date()),
+    createdAt: fromDate(new Date()),
     editedAt: undefined,
     deleted: false,
     counts: undefined,
@@ -164,7 +164,7 @@ describe('PostRow social-depth presentation (P11-009/P12-104)', () => {
     const { lastFrame } = render(
       <PostRow
         post={post({
-          editedAt: dateToTimestamp(new Date()),
+          editedAt: fromDate(new Date()),
           community: {
             id: 'community-1',
             name: 'computers',

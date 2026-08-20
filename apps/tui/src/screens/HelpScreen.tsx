@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import { Box, Text, type Key } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
@@ -155,7 +155,7 @@ function ServerSummary({ state }: { state: ServerInfoState }): ReactElement {
   if (state.status === 'error') {
     return <Text color={theme.error}>offline — {state.error.title}</Text>;
   }
-  const serverTime = timestampToDate(state.info.serverTime);
+  const serverTime = toDate(state.info.serverTime);
   return (
     <Text color={theme.ok}>
       {state.info.instanceName} · {state.info.serverVersion} (protocol v

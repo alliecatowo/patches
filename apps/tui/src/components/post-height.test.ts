@@ -5,7 +5,7 @@ import {
   POST_VISIBILITY,
   QUOTE_POLICY,
 } from '../api/wire/enums.js';
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 
@@ -22,7 +22,7 @@ function post(overrides: Partial<Post> = {}): Post {
     inReplyToId: '',
     rootPostId: 'post-1',
     media: [],
-    createdAt: dateToTimestamp(new Date()),
+    createdAt: fromDate(new Date()),
     editedAt: undefined,
     deleted: false,
     counts: undefined,

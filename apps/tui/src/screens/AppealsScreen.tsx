@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type { Appeal, ModerationNotice } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -181,7 +181,7 @@ export function AppealsScreen({
           ) : (
             notices.items.map((item, index) => {
               const appealed = item.appealed || filedNoticeIds.has(item.id);
-              const deadline = timestampToDate(item.appealDeadline);
+              const deadline = toDate(item.appealDeadline);
               return (
                 <Text
                   key={item.id}

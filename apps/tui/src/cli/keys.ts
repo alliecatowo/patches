@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type { Credential } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
@@ -232,7 +232,7 @@ async function runKeysList(rest: readonly string[], deps: KeysDeps): Promise<num
 }
 
 function describeCredentialRow(credential: Credential): string {
-  const createdAt = timestampToDate(credential.createdAt);
+  const createdAt = toDate(credential.createdAt);
   const label = credential.label === '' ? '(no label)' : credential.label;
   const identifier = credential.identifier === '' ? '' : `  ${credential.identifier}`;
   return `${credential.type}  ${label}${identifier}  since ${createdAt?.toISOString() ?? 'unknown'}`;

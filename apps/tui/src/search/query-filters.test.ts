@@ -1,5 +1,5 @@
 import type { Post } from '../api/wire/types.js';
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import { describe, expect, it } from 'vitest';
 
 import { filterPostsLocally, hasLocalOnlyFilter, parseSearchQuery } from './query-filters.js';
@@ -15,7 +15,7 @@ function post(id: string, body: string, createdAt: Date): Post {
     inReplyToId: '',
     rootPostId: id,
     media: [],
-    createdAt: dateToTimestamp(createdAt),
+    createdAt: fromDate(createdAt),
     editedAt: undefined,
     deleted: false,
     counts: undefined,
