@@ -77,6 +77,7 @@ export const CREDENTIAL_TYPE = {
   SSH_PUBLIC_KEY: 'CREDENTIAL_TYPE_SSH_PUBLIC_KEY' as CredentialTypeT,
   GITHUB: 'CREDENTIAL_TYPE_GITHUB' as CredentialTypeT,
   RECOVERY_CODE: 'CREDENTIAL_TYPE_RECOVERY_CODE' as CredentialTypeT,
+  PASSKEY: 'CREDENTIAL_TYPE_PASSKEY' as CredentialTypeT,
 } as const;
 
 export const GITHUB_LOGIN_STATUS = {

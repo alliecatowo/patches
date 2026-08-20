@@ -39,7 +39,6 @@ export enum PasswordAuthMode {
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
-/** PASSKEY is spec-reserved (§165) but not a v0 value — do not add it until it ships. */
 export enum CredentialType {
   CREDENTIAL_TYPE_UNSPECIFIED = 'CREDENTIAL_TYPE_UNSPECIFIED',
   CREDENTIAL_TYPE_PASSWORD = 'CREDENTIAL_TYPE_PASSWORD',
@@ -52,6 +51,12 @@ export enum CredentialType {
    * `ListCredentials` naturally shows only the still-unused ones.
    */
   CREDENTIAL_TYPE_RECOVERY_CODE = 'CREDENTIAL_TYPE_RECOVERY_CODE',
+  /**
+   * CREDENTIAL_TYPE_PASSKEY - A WebAuthn/passkey credential (P15-004, ADR 0022, spec §165). `identifier` holds the
+   * WebAuthn credential id, `public_material` the COSE public key — never any private key
+   * material, which never leaves the authenticator.
+   */
+  CREDENTIAL_TYPE_PASSKEY = 'CREDENTIAL_TYPE_PASSKEY',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -370,6 +375,70 @@ export interface RecoveryLoginResponse {
   session: Session | undefined;
 }
 
+/**
+ * Authenticated: the caller's identity comes from the `authorization` metadata, same as
+ * `BeginSshEnrollmentRequest`. Carries no request fields — the RP id/name and the caller's
+ * existing credential ids (for `excludeCredentials`) are all server-side state.
+ */
+export interface BeginPasskeyRegistrationRequest {}
+
+export interface BeginPasskeyRegistrationResponse {
+  /**
+   * JSON-serialized `PublicKeyCredentialCreationOptionsJSON`
+   * (`@simplewebauthn/server`'s `generateRegistrationOptions()` return value), passed to the
+   * browser's `@simplewebauthn/browser` `startRegistration()` verbatim. Carried as an opaque
+   * JSON string rather than a field-by-field proto mirror of the WebAuthn spec (see
+   * `docs/research/simplewebauthn.md`): that spec's options/response shapes are large,
+   * evolve on their own schedule independent of this proto, and are only ever produced and
+   * consumed by the same `@simplewebauthn/*` library pair on both ends — proto-izing them
+   * would just be a lossy hand-maintained transcription of a JSON schema we don't own.
+   */
+  optionsJson: string;
+}
+
+export interface CompletePasskeyRegistrationRequest {
+  /**
+   * JSON-serialized `RegistrationResponseJSON` — the browser's `startRegistration()` return
+   * value, forwarded verbatim.
+   */
+  credentialJson: string;
+  /** Caller-chosen label shown in `ListCredentials` (mirrors `AddCredentialRequest.label`). */
+  label: string;
+}
+
+export interface CompletePasskeyRegistrationResponse {
+  credential: Credential | undefined;
+}
+
+/**
+ * Unauthenticated, discoverable-credential login: no username/handle field exists anywhere in
+ * this pair — the credential response identifies the account.
+ */
+export interface BeginPasskeyLoginRequest {}
+
+export interface BeginPasskeyLoginResponse {
+  /**
+   * JSON-serialized `PublicKeyCredentialRequestOptionsJSON`
+   * (`generateAuthenticationOptions()`, with no `allowCredentials`, i.e. a discoverable-
+   * credential/"usernameless" ceremony), passed to `startAuthentication()` verbatim.
+   */
+  optionsJson: string;
+}
+
+export interface CompletePasskeyLoginRequest {
+  /**
+   * JSON-serialized `AuthenticationResponseJSON` — `startAuthentication()`'s return value,
+   * forwarded verbatim. The account and matching challenge are both resolved server-side from
+   * this payload (credential id identifies the account; the embedded `clientDataJSON.challenge`
+   * identifies the challenge row).
+   */
+  credentialJson: string;
+}
+
+export interface CompletePasskeyLoginResponse {
+  session: Session | undefined;
+}
+
 export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
@@ -583,6 +652,47 @@ export interface AuthServiceClient {
     request: RecoveryLoginRequest,
     metadata?: Metadata,
   ): Observable<RecoveryLoginResponse>;
+
+  /**
+   * Passkeys/WebAuthn (P15-004, ADR 0022, `docs/architecture/auth.md`). Web-client-only — the
+   * TUI has no browser relying party and none is planned (ADR 0011, ADR 0022). Every payload
+   * here is the corresponding `@simplewebauthn/*` JSON type carried verbatim as an opaque
+   * `string`, rather than a field-by-field proto mirror of the WebAuthn spec's own options/
+   * response objects — see `docs/research/simplewebauthn.md` for why. Authenticated: issues a
+   * single-use, short-TTL challenge bound to the caller's own account, mirroring
+   * `BeginSshEnrollment`/`AddCredential(SSH_PUBLIC_KEY)`'s possession-proof shape.
+   */
+
+  beginPasskeyRegistration(
+    request: BeginPasskeyRegistrationRequest,
+    metadata?: Metadata,
+  ): Observable<BeginPasskeyRegistrationResponse>;
+
+  completePasskeyRegistration(
+    request: CompletePasskeyRegistrationRequest,
+    metadata?: Metadata,
+  ): Observable<CompletePasskeyRegistrationResponse>;
+
+  /**
+   * Unauthenticated, discoverable-credential login (no username/handle is ever supplied or
+   * required) — the credential response itself identifies the account via its WebAuthn
+   * credential id. `BeginPasskeyLogin` always issues a challenge (mirrors `BeginSshLogin`'s
+   * no-enumeration rule, though there is nothing to enumerate here since no identifier is ever
+   * supplied); `CompletePasskeyLogin` verifies the assertion and returns a session. A sign-count
+   * regression is treated as a possible credential clone: rejected with the same uniform
+   * `AUTH_INVALID_CREDENTIALS` every other auth failure here uses, and a `SECURITY`
+   * notification is written (mirrors `RecoveryLogin`'s convention).
+   */
+
+  beginPasskeyLogin(
+    request: BeginPasskeyLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginPasskeyLoginResponse>;
+
+  completePasskeyLogin(
+    request: CompletePasskeyLoginRequest,
+    metadata?: Metadata,
+  ): Observable<CompletePasskeyLoginResponse>;
 }
 
 /**
@@ -841,6 +951,59 @@ export interface AuthServiceController {
     request: RecoveryLoginRequest,
     metadata?: Metadata,
   ): Promise<RecoveryLoginResponse> | Observable<RecoveryLoginResponse> | RecoveryLoginResponse;
+
+  /**
+   * Passkeys/WebAuthn (P15-004, ADR 0022, `docs/architecture/auth.md`). Web-client-only — the
+   * TUI has no browser relying party and none is planned (ADR 0011, ADR 0022). Every payload
+   * here is the corresponding `@simplewebauthn/*` JSON type carried verbatim as an opaque
+   * `string`, rather than a field-by-field proto mirror of the WebAuthn spec's own options/
+   * response objects — see `docs/research/simplewebauthn.md` for why. Authenticated: issues a
+   * single-use, short-TTL challenge bound to the caller's own account, mirroring
+   * `BeginSshEnrollment`/`AddCredential(SSH_PUBLIC_KEY)`'s possession-proof shape.
+   */
+
+  beginPasskeyRegistration(
+    request: BeginPasskeyRegistrationRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<BeginPasskeyRegistrationResponse>
+    | Observable<BeginPasskeyRegistrationResponse>
+    | BeginPasskeyRegistrationResponse;
+
+  completePasskeyRegistration(
+    request: CompletePasskeyRegistrationRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<CompletePasskeyRegistrationResponse>
+    | Observable<CompletePasskeyRegistrationResponse>
+    | CompletePasskeyRegistrationResponse;
+
+  /**
+   * Unauthenticated, discoverable-credential login (no username/handle is ever supplied or
+   * required) — the credential response itself identifies the account via its WebAuthn
+   * credential id. `BeginPasskeyLogin` always issues a challenge (mirrors `BeginSshLogin`'s
+   * no-enumeration rule, though there is nothing to enumerate here since no identifier is ever
+   * supplied); `CompletePasskeyLogin` verifies the assertion and returns a session. A sign-count
+   * regression is treated as a possible credential clone: rejected with the same uniform
+   * `AUTH_INVALID_CREDENTIALS` every other auth failure here uses, and a `SECURITY`
+   * notification is written (mirrors `RecoveryLogin`'s convention).
+   */
+
+  beginPasskeyLogin(
+    request: BeginPasskeyLoginRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<BeginPasskeyLoginResponse>
+    | Observable<BeginPasskeyLoginResponse>
+    | BeginPasskeyLoginResponse;
+
+  completePasskeyLogin(
+    request: CompletePasskeyLoginRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<CompletePasskeyLoginResponse>
+    | Observable<CompletePasskeyLoginResponse>
+    | CompletePasskeyLoginResponse;
 }
 
 export function AuthServiceControllerMethods() {
@@ -867,6 +1030,10 @@ export function AuthServiceControllerMethods() {
       'revokeCredential',
       'generateRecoveryCodes',
       'recoveryLogin',
+      'beginPasskeyRegistration',
+      'completePasskeyRegistration',
+      'beginPasskeyLogin',
+      'completePasskeyLogin',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
