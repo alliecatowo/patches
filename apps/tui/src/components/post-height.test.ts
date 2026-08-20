@@ -1,10 +1,10 @@
-import { FILTER_ACTION, FILTERED_BY_PROVENANCE } from '../api/wire/enums.js';
+import { FILTER_ACTION } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 
 import { BODY_INDENT_COLS, measurePostBody, measurePostRowHeight } from './post-height.js';
-import { makePost } from '../test/wire-fixtures.js';
+import { makeFilteredByHint, makePost } from '../test/wire-fixtures.js';
 
 function post(overrides: Partial<Post> = {}): Post {
   return makePost({ author: undefined, createdAt: fromDate(new Date()), ...overrides });
@@ -54,12 +54,7 @@ describe('measurePostRowHeight filtered_by provenance (§198.3/§199.3)', () => 
   it('folds a collapse-action match to exactly one row in place of the body', () => {
     const filtered = post({
       body: 'a long body that would otherwise measure several rows across three lines',
-      filteredBy: {
-        provenance: FILTERED_BY_PROVENANCE.FILTER,
-        name: 'Spoilers',
-        listOwner: undefined,
-        action: FILTER_ACTION.COLLAPSE,
-      },
+      filteredBy: makeFilteredByHint({ name: 'Spoilers' }),
     });
     const width = 30;
     const collapsedHeight = measurePostRowHeight(filtered, width, false, false, false);
@@ -73,12 +68,7 @@ describe('measurePostRowHeight filtered_by provenance (§198.3/§199.3)', () => 
 
   it('adds exactly one row back once a collapse-action match is expanded', () => {
     const filtered = post({
-      filteredBy: {
-        provenance: FILTERED_BY_PROVENANCE.FILTER,
-        name: 'Spoilers',
-        listOwner: undefined,
-        action: FILTER_ACTION.COLLAPSE,
-      },
+      filteredBy: makeFilteredByHint({ name: 'Spoilers' }),
     });
     const width = 30;
     const collapsed = measurePostRowHeight(filtered, width, false, false, false);
@@ -96,12 +86,7 @@ describe('measurePostRowHeight filtered_by provenance (§198.3/§199.3)', () => 
 
   it('adds exactly one row for a warn-action match, on top of the untouched body', () => {
     const filtered = post({
-      filteredBy: {
-        provenance: FILTERED_BY_PROVENANCE.FILTER,
-        name: 'Politics',
-        listOwner: undefined,
-        action: FILTER_ACTION.WARN,
-      },
+      filteredBy: makeFilteredByHint({ name: 'Politics', action: FILTER_ACTION.WARN }),
     });
     const width = 30;
     const warned = measurePostRowHeight(filtered, width, false, false, false);
