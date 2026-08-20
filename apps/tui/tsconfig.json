@@ -4,12 +4,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "types": ["node"],
-    "noEmit": true,
-    // `client.ts` now builds `@connectrpc/connect`'s `CallOptions.headers`
-    // (`HeadersInit`) directly (ADR 0023 slice 7) — `@types/node`'s web-global
-    // declarations defer to "DOM" when present, so this doesn't duplicate the Node
-    // globals also in scope (see `packages/client/tsconfig.json`'s identical note).
-    "lib": ["ES2023", "DOM"]
+    "noEmit": true
   },
   // `vitest.config.ts`, `tsup.config.ts` and `test/` are included so
   // typescript-eslint's project service can type-check them; without a

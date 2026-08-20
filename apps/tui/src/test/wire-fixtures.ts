@@ -48,7 +48,6 @@ import type {
   Appeal,
   Community,
   Conversation,
-  ConversationSecurityMode,
   Filter,
   FilterList,
   FilterListSubscription,
@@ -120,6 +119,7 @@ export function makePost(overrides: Partial<Post> = {}): Post {
 
 export function makeRelationship(overrides: Partial<Relationship> = {}): Relationship {
   return {
+    $typeName: 'patches.v1.Relationship',
     state: FOLLOW_STATE.NONE,
     followedBy: false,
     blocking: false,
@@ -132,6 +132,7 @@ export function makeRelationship(overrides: Partial<Relationship> = {}): Relatio
 
 export function makeCommunity(overrides: Partial<Community> = {}): Community {
   return {
+    $typeName: 'patches.v1.Community',
     id: 'community-1',
     name: 'terminal',
     displayName: 'Terminal people',
@@ -149,9 +150,17 @@ export function makeCommunity(overrides: Partial<Community> = {}): Community {
 
 export function makeFilter(overrides: Partial<Filter> = {}): Filter {
   return {
+    $typeName: 'patches.v1.Filter',
     id: 'filter-1',
     name: 'Spoilers',
-    terms: [{ id: 't1', kind: FILTER_TERM_KIND.WORD, value: 'spoiler' }],
+    terms: [
+      {
+        $typeName: 'patches.v1.FilterTerm',
+        id: 't1',
+        kind: FILTER_TERM_KIND.WORD,
+        value: 'spoiler',
+      },
+    ],
     scopes: [],
     action: FILTER_ACTION.COLLAPSE,
     expiresAt: undefined,
@@ -163,6 +172,7 @@ export function makeFilter(overrides: Partial<Filter> = {}): Filter {
 
 export function makeFilterList(overrides: Partial<FilterList> = {}): FilterList {
   return {
+    $typeName: 'patches.v1.FilterList',
     id: 'list-1',
     ownerActor: makeActor({ id: 'a1', handle: 'alice' }),
     ownerCommunity: undefined,
@@ -179,6 +189,7 @@ export function makeFilterListSubscription(
   overrides: Partial<FilterListSubscription> = {},
 ): FilterListSubscription {
   return {
+    $typeName: 'patches.v1.FilterListSubscription',
     filterList: makeFilterList(),
     action: FILTER_ACTION.COLLAPSE,
     scopes: [],
@@ -189,12 +200,19 @@ export function makeFilterListSubscription(
 
 export function makeLabeler(overrides: Partial<Labeler> = {}): Labeler {
   return {
+    $typeName: 'patches.v1.Labeler',
     id: 'labeler-1',
     actor: makeActor({ id: 'a1', handle: 'modbot' }),
     community: undefined,
     isNodeLabeler: false,
     vocabulary: [
-      { value: 'spam', description: '', defaultAction: LABEL_ACTION.WARN, mandatory: false },
+      {
+        $typeName: 'patches.v1.LabelVocabularyEntry',
+        value: 'spam',
+        description: '',
+        defaultAction: LABEL_ACTION.WARN,
+        mandatory: false,
+      },
     ],
     createdAt: undefined,
     ...overrides,
@@ -205,6 +223,7 @@ export function makeModerationLogEntry(
   overrides: Partial<ModerationLogEntry> = {},
 ): ModerationLogEntry {
   return {
+    $typeName: 'patches.v1.ModerationLogEntry',
     id: 'log-1',
     action: MODERATION_ACTION_TYPE.DOMAIN_BLOCK,
     subjectKind: MODERATION_LOG_SUBJECT_KIND.DOMAIN,
@@ -218,6 +237,7 @@ export function makeModerationLogEntry(
 
 export function makeModerationNotice(overrides: Partial<ModerationNotice> = {}): ModerationNotice {
   return {
+    $typeName: 'patches.v1.ModerationNotice',
     id: 'notice-1',
     action: MODERATION_ACTION_TYPE.WARN,
     postId: '',
@@ -232,6 +252,7 @@ export function makeModerationNotice(overrides: Partial<ModerationNotice> = {}):
 
 export function makeAppeal(overrides: Partial<Appeal> = {}): Appeal {
   return {
+    $typeName: 'patches.v1.Appeal',
     id: 'appeal-1',
     moderationNoticeId: 'notice-1',
     statement: 'I was not warned first.',
@@ -245,6 +266,7 @@ export function makeAppeal(overrides: Partial<Appeal> = {}): Appeal {
 
 export function makeNotification(overrides: Partial<Notification> = {}): Notification {
   return {
+    $typeName: 'patches.v1.Notification',
     id: 'notif-1',
     type: NOTIFICATION_TYPE.FOLLOW_REQUEST,
     actor: makeActor({ id: 'id-carol', handle: 'carol' }),
@@ -259,6 +281,7 @@ export function makeNotification(overrides: Partial<Notification> = {}): Notific
 
 export function makeMediaAttachment(overrides: Partial<MediaAttachment> = {}): MediaAttachment {
   return {
+    $typeName: 'patches.v1.MediaAttachment',
     mediaId: 'media-1',
     altText: '',
     width: 10,
@@ -271,6 +294,7 @@ export function makeMediaAttachment(overrides: Partial<MediaAttachment> = {}): M
 
 export function makeFollowRequest(overrides: Partial<FollowRequest> = {}): FollowRequest {
   return {
+    $typeName: 'patches.v1.FollowRequest',
     actor: makeActor({ id: 'id-bob', handle: 'bob' }),
     createdAt: undefined,
     ...overrides,
@@ -279,6 +303,7 @@ export function makeFollowRequest(overrides: Partial<FollowRequest> = {}): Follo
 
 export function makeNameplate(overrides: Partial<Nameplate> = {}): Nameplate {
   return {
+    $typeName: 'patches.v1.Nameplate',
     nameColor: '',
     glyph: '',
     badges: [],
@@ -291,6 +316,7 @@ export function makeNameplate(overrides: Partial<Nameplate> = {}): Nameplate {
 
 export function makeSession(overrides: Partial<Session> = {}): Session {
   return {
+    $typeName: 'patches.v1.Session',
     actor: makeActor({ id: 'user-1' }),
     accessToken: 'access-1',
     accessExpiresAt: undefined,
@@ -304,6 +330,7 @@ export function makeSession(overrides: Partial<Session> = {}): Session {
 
 export function makeTag(overrides: Partial<Tag> = {}): Tag {
   return {
+    $typeName: 'patches.v1.Tag',
     id: 'tag-1',
     name: 'patches',
     displayName: 'patches',
@@ -318,12 +345,14 @@ export function makeTag(overrides: Partial<Tag> = {}): Tag {
 export function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
   const createdBy = overrides.createdBy ?? makeActor();
   return {
+    $typeName: 'patches.v1.Conversation',
     id: 'conversation-1',
     kind: CONVERSATION_KIND.DIRECT,
-    securityMode: 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE' as ConversationSecurityMode,
+    securityMode: CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE,
     createdBy,
     members: [
       {
+        $typeName: 'patches.v1.ConversationMember',
         actor: createdBy,
         joinedAt: undefined,
         leftAt: undefined,
@@ -340,6 +369,7 @@ export function makeConversation(overrides: Partial<Conversation> = {}): Convers
 
 export function makeMessage(overrides: Partial<Message> = {}): Message {
   return {
+    $typeName: 'patches.v1.Message',
     id: 'message-1',
     conversationId: 'conversation-1',
     sender: makeActor(),
@@ -352,6 +382,7 @@ export function makeMessage(overrides: Partial<Message> = {}): Message {
 
 export function makeMessageRequest(overrides: Partial<MessageRequest> = {}): MessageRequest {
   return {
+    $typeName: 'patches.v1.MessageRequest',
     id: 'request-1',
     sender: makeActor(),
     recipient: undefined,
@@ -364,6 +395,7 @@ export function makeMessageRequest(overrides: Partial<MessageRequest> = {}): Mes
 
 export function makeFilteredByHint(overrides: Partial<FilteredByHint> = {}): FilteredByHint {
   return {
+    $typeName: 'patches.v1.FilteredByHint',
     provenance: FILTERED_BY_PROVENANCE.FILTER,
     name: 'Spoilers',
     listOwner: undefined,
@@ -374,6 +406,7 @@ export function makeFilteredByHint(overrides: Partial<FilteredByHint> = {}): Fil
 
 export function makePrivacyPrefs(overrides: Partial<PrivacyPrefs> = {}): PrivacyPrefs {
   return {
+    $typeName: 'patches.v1.PrivacyPrefs',
     discoverable: true,
     indexable: true,
     showInLocalFeed: true,

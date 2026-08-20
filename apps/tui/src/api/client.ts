@@ -34,12 +34,13 @@ export interface ClientOptions {
  *
  * React components never touch this directly; they go through `hooks/`/`auth/` (spec §68).
  */
+/* eslint-disable @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging --
+   `PatchesApi` must stay a `class` (all three call sites do `new PatchesApi(...)`, ADR 0023
+   P10-013); this interface merges `buildMethods`'s inferred return type onto its instances so
+   every RPC's request/response types are derived once, in `buildMethods`, instead of repeated
+   here as a hand-written member list. */
 export interface PatchesApi extends ReturnType<typeof buildMethods> {}
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- `PatchesApi`
-// must stay a `class` (all three call sites do `new PatchesApi(...)`, ADR 0023 P10-013); the
-// interface above merges `buildMethods`'s inferred return type onto its instances so every
-// RPC's request/response types are derived once, in `buildMethods`, instead of repeated here.
 export class PatchesApi {
   readonly target: string;
 
@@ -64,6 +65,7 @@ export class PatchesApi {
     // Intentionally empty — see doc comment above.
   }
 }
+/* eslint-enable @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging */
 
 type Rpc<I, O> = (request: I, options?: CallOptions) => Promise<O>;
 
