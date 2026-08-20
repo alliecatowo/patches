@@ -4,8 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import { create } from '@bufbuild/protobuf';
-import { AddCredentialResponseSchema, BeginSshEnrollmentResponseSchema } from '@patches/proto/es';
 import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import {

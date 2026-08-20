@@ -165,7 +165,7 @@ describe('PrivacyScreen', () => {
           indexable: true,
           showInLocalFeed: true,
           locked: false,
-          updateMask: ['discoverable'],
+          updateMask: { paths: ['discoverable'] },
         },
         'token',
       ),

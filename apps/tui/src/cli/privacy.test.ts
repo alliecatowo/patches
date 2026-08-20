@@ -84,7 +84,7 @@ describe('runPrivacy', () => {
         indexable: true,
         showInLocalFeed: true,
         locked: true,
-        updateMask: ['locked'],
+        updateMask: { paths: ['locked'] },
       },
       'token',
     );

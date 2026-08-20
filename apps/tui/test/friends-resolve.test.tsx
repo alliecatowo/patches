@@ -86,6 +86,7 @@ describe('Resolve a remote actor by acct (B-028)', () => {
     const fake = createFakeApi();
     fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
     fake.addRemoteActor('bob@remote.example', {
+      $typeName: 'patches.v1.Actor',
       id: 'actor-remote-bob',
       handle: 'bob@remote.example',
       displayName: 'Remote Bob',

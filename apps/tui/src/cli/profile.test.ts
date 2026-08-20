@@ -123,7 +123,7 @@ describe('runProfile edit', () => {
 
     expect(exitCode).toBe(0);
     expect(updateProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ bio: 'new bio', updateMask: ['bio'] }),
+      expect.objectContaining({ bio: 'new bio', updateMask: { paths: ['bio'] } }),
       'access-token',
     );
     expect(io.out.join('')).toContain('@alice · Alice A');
@@ -145,7 +145,7 @@ describe('runProfile edit', () => {
         displayName: 'A',
         locationText: 'Earth',
         websiteUrl: 'https://a.example',
-        updateMask: ['display_name', 'location_text', 'website_url'],
+        updateMask: { paths: ['display_name', 'location_text', 'website_url'] },
       }),
       'access-token',
     );
@@ -164,7 +164,7 @@ describe('runProfile edit', () => {
 
     expect(updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        updateMask: ['nameplate'],
+        updateMask: { paths: ['nameplate'] },
         nameplate: {
           nameColor: '#7C3AED',
           glyph: '*',
@@ -203,7 +203,7 @@ describe('runProfile edit', () => {
 
     expect(updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        updateMask: ['nameplate'],
+        updateMask: { paths: ['nameplate'] },
         nameplate: {
           nameColor: '#111111',
           glyph: '★',

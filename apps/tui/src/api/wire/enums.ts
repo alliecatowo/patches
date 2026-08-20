@@ -70,5 +70,6 @@ export function enumWireName(schema: DescEnum, value: number): string {
 
 export {
   AppealStatusSchema as APPEAL_STATUS_SCHEMA,
+  CredentialTypeSchema as CREDENTIAL_TYPE_SCHEMA,
   FilterActionSchema as FILTER_ACTION_SCHEMA,
 } from '@patches/proto/es';
