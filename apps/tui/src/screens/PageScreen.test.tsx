@@ -1,3 +1,10 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  GetPageResponseSchema,
+  ListActorPostsResponseSchema,
+  ListGuestbookResponseSchema,
+  ListMutualFollowsResponseSchema,
+} from '@patches/proto/es';
 import type { GetPageResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { Box } from 'ink';
@@ -8,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import type { PatchesApi } from '../api/client.js';
 import { ContentSizeProvider } from '../app/layout.js';
 import { PageScreen } from './PageScreen.js';
+import { makePageInfo } from '../test/wire-fixtures.js';
 
 /** `App.tsx` always mounts a screen inside a `<Box width={columns}>` root — an
  * un-constrained child Box otherwise grows to Ink's *real* terminal width (100,
@@ -29,10 +37,12 @@ function fakeApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
   const base: Partial<PatchesApi> = {
     getActor: () => Promise.reject(new Error('no pinned posts in this test')),
     getActorByHandle: () => Promise.reject(new Error('no such actor in this test')),
-    listActorPosts: () => Promise.resolve({ posts: [], page: { nextCursor: '', hasMore: false } }),
-    listGuestbook: () => Promise.resolve({ entries: [], page: { nextCursor: '', hasMore: false } }),
+    listActorPosts: () =>
+      Promise.resolve(create(ListActorPostsResponseSchema, { page: makePageInfo() })),
+    listGuestbook: () =>
+      Promise.resolve(create(ListGuestbookResponseSchema, { page: makePageInfo() })),
     listMutualFollows: () =>
-      Promise.resolve({ actors: [], page: { nextCursor: '', hasMore: false } }),
+      Promise.resolve(create(ListMutualFollowsResponseSchema, { page: makePageInfo() })),
   };
   return { ...base, ...overrides } as unknown as PatchesApi;
 }
@@ -42,10 +52,9 @@ function fakeApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
  * `Gallery` (its own internal grid), and an `AsciiArt` block long enough that its
  * string-width clipping actually has to clip something. */
 function wideDocument(): GetPageResponse {
-  return {
+  return create(GetPageResponseSchema, {
     ownerActorId: 'actor-1',
     activeSlug: 'index',
-    theme: undefined,
     document: Buffer.from(
       JSON.stringify({
         version: 1,
@@ -86,8 +95,7 @@ function wideDocument(): GetPageResponse {
       'utf8',
     ),
     revisionId: 'rev-1',
-    updatedAt: undefined,
-  };
+  });
 }
 
 async function waitForFrame(
