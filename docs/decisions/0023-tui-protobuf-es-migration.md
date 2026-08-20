@@ -181,6 +181,31 @@ to hold a boundary that the type graph says is not there.
   TUI's manager owns multi-account keyring credentials and the ambient-token fallback, none of which
   is transport-related, and swapping it would put behavior change inside a no-behavior-change task.
 
+## Addendum, 2026-08-20 — the enum premise was half right, and it is user-visible
+
+This ADR justified the enum seam (slice 4, P10-010) on the finding that `packages/proto/src/enums.ts`'s
+mirrors are prefix-stripped and so share member _names_ with protoc-gen-es: `POST_TYPE.NOTE` and
+`PostType.NOTE`. That is true, and it did hold — no member reference needed editing in P10-010.
+
+What it missed is that the two families disagree on the **runtime value** behind that name. ts-proto
+(as generated here) yields the string `'APPEAL_STATUS_OPEN'`; protoc-gen-es yields the number `1`.
+Anywhere the TUI interpolates an enum rather than switching on it, the rendered output changes. The
+flip surfaced this only at runtime — it typechecks clean, because both sides are the enum type.
+
+Concretely, `apps/tui/src/cli/appeal.ts` builds a row as
+`` `${appeal.id}\t${appeal.status}\t${appeal.moderationNoticeId}` ``, which printed
+`appeal-1  APPEAL_STATUS_OPEN  notice-1` before the flip and `appeal-1  1  notice-1` after. The same
+class of change hit `patches lists` (`FILTER_ACTION_COLLAPSE` → a number) and the notifications
+screen, where a lookup keyed by the old string values silently fell through to a default glyph.
+
+That is a behavior change in a task whose defining constraint was "no behavior change", so it is a
+defect, not an accepted consequence. The fix belongs in the wire seam that already exists for exactly
+this kind of family difference: a conversion from enum value to its proto wire name, applied at the
+render and print sites. Tracked as **P10-020**.
+
+The general lesson for the remaining slices: "the names match" is not the same claim as "the values
+match", and only the second one keeps rendered output stable.
+
 ## Notes for the index
 
 This ADR's row is **not** yet added to `docs/decisions/README.md` (concurrent editors held that
