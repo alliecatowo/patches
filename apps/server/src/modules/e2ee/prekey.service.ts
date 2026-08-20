@@ -331,7 +331,14 @@ export class E2eePrekeyService {
     );
     if ((recentClaims[0]?.count ?? 0) >= PREKEY_CLAIM_RATE_LIMIT) return null;
 
-    const rows = await this.dataSource.query<{ key_id: string; public_key: Buffer }[]>(
+    // TypeORM's postgres driver returns `[rows, rowCount]` from `DataSource.query()` for an
+    // UPDATE/DELETE statement — unlike a SELECT, which returns the rows array directly
+    // (`PostgresQueryRunner.query()`: `result.raw = [raw.rows, raw.rowCount]` only for the
+    // `UPDATE`/`DELETE` command branch). Destructuring is required here, not optional: treating
+    // the tuple as the rows array itself doesn't throw — `rows[0]` is just the real rows array,
+    // which is always "defined" even when empty, silently turning every claim into a false
+    // "not exhausted" once the row list itself is emptied.
+    const [rows] = await this.dataSource.query<[{ key_id: string; public_key: Buffer }[], number]>(
       `UPDATE e2ee_one_time_prekeys
        SET consumed_at = now()
        WHERE id = (
