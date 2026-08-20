@@ -34,13 +34,38 @@ export interface E2eeFrankingTagView {
 }
 
 /**
+ * The metadata a franking commitment binds alongside the plaintext (ADR 0025 §1).
+ *
+ * The node must build this from the `E2eeLogicalMessage` row **it** accepted, never from the
+ * report request. Everything a reporter sends is a human-auditable copy; the cryptographic check
+ * is against what the node stored, which is what makes it meaningful against a forged or replayed
+ * disclosure.
+ */
+export interface E2eeFrankingCommitmentContext {
+  readonly frankingProfile: string;
+  readonly conversationId: string;
+  readonly membershipEpoch: number;
+  readonly senderActorId: string;
+  readonly senderDeviceId: string;
+}
+
+/**
  * The committing half, injected.
  *
- * `verifyCommitment` MUST be the *binding* check of a committing AEAD — given a commitment, an
- * opening, and a plaintext, it answers whether that plaintext is the one the sender committed
- * to. An implementation that merely re-derived a MAC over the plaintext with the opening as the
- * key would accept a second plaintext for the same commitment, which is precisely the attack
- * franking exists to stop.
+ * `verifyCommitment` MUST be the *binding* check of a committing scheme — given a commitment, an
+ * opening, a plaintext, and the context the commitment was made under, it answers whether that
+ * plaintext is the one the sender committed to. "Binding" is the whole requirement: an
+ * implementation for which a second `(opening, plaintext)` pair could satisfy the same commitment
+ * would accept fabricated evidence, which is precisely the attack franking exists to stop.
+ *
+ * This contract used to say "MUST be the binding check of a committing AEAD", and the shipped
+ * implementation was a plain keyed MAC over the plaintext — the thing the sentence went on to
+ * forbid (ADR 0024). What actually failed was not the primitive but the protocol around it: the
+ * commitment was sender-chosen, unbound to any ciphertext, and verified by nobody. ADR 0025 fixes
+ * that in `@patches/crypto` (`device-envelope.ts`), where the commitment is AEAD associated data
+ * and the only plaintext-returning function checks it. A verifier plugged in here is doing the
+ * *node's* half — re-checking a reporter's disclosure — and inherits its binding from the same
+ * fixed-width-key HMAC the recipient already checked.
  *
  * `verifyNodeTag` is node-side only; a client has no franking key and must never be handed one.
  * Both return `false` on malformed input rather than throwing.
@@ -50,6 +75,7 @@ export interface FrankingVerifier {
     readonly commitment: Bytes;
     readonly opening: Bytes;
     readonly plaintext: Bytes;
+    readonly context: E2eeFrankingCommitmentContext;
   }): boolean;
 
   verifyNodeTag(input: { readonly tag: E2eeFrankingTagView; readonly transcript: Bytes }): boolean;
@@ -80,6 +106,8 @@ export interface E2eeReportEvidenceItemView {
   readonly disclosedPlaintext: Bytes;
   readonly opening: Bytes;
   readonly commitment: Bytes;
+  /** Built from the node's own accepted row, never from the request (ADR 0025 §6). */
+  readonly commitmentContext: E2eeFrankingCommitmentContext;
   readonly envelopeTranscript: Bytes;
   readonly frankingTag: E2eeFrankingTagView;
   readonly participantTranscript: Bytes;
@@ -231,6 +259,7 @@ export function verifyReportEvidence(
         commitment: item.commitment,
         opening: item.opening,
         plaintext: item.disclosedPlaintext,
+        context: item.commitmentContext,
       })
     ) {
       failure ??= 'COMMITMENT_MISMATCH';

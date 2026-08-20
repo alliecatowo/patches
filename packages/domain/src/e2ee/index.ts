@@ -96,6 +96,7 @@ export {
 export type {
   E2eeDeviceEnvelopeView,
   E2eeFanoutTarget,
+  E2eeFanoutTranscriptInput,
   E2eeLogicalMessageView,
   E2eeMailboxKey,
 } from './envelopes.js';
@@ -113,6 +114,7 @@ export type {
   E2eeEvidenceFailureCode,
   E2eeEvidenceVerification,
   E2eeEvidenceVerificationStatus,
+  E2eeFrankingCommitmentContext,
   E2eeFrankingTagView,
   E2eeReportEvidenceItemView,
   FrankingVerifier,

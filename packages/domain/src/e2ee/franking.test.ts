@@ -7,6 +7,7 @@ import {
   E2EE_FRANKING_MODERATOR_DISCLOSURE,
   E2EE_REPORT_MAX_EVIDENCE_ITEMS,
   verifyReportEvidence,
+  type E2eeFrankingCommitmentContext,
   type E2eeFrankingTagView,
   type E2eeReportEvidenceItemView,
   type FrankingVerifier,
@@ -22,21 +23,32 @@ import { bytesEqual, E2EE_DIGEST_BYTES, type Bytes } from './types.js';
 const TEST_PROFILE = 'test-franking';
 const TEST_ERA = 3;
 
+const CONTEXT: E2eeFrankingCommitmentContext = {
+  frankingProfile: TEST_PROFILE,
+  conversationId: 'conversation-1',
+  membershipEpoch: 1,
+  senderActorId: 'alice',
+  senderDeviceId: 'alice-device',
+};
+
 /**
- * A binding fake: the commitment is the digest of `opening || plaintext`, so a second plaintext
- * cannot open the same commitment. Not cryptography — just enough structure that the binding
- * property is what the tests actually exercise.
+ * A binding fake: the commitment is the digest of `opening || context || plaintext`, so neither a
+ * second plaintext nor a different metadata context can open the same commitment. Not
+ * cryptography — just enough structure that the binding property (and ADR 0025's context binding)
+ * is what the tests actually exercise rather than a stub that returns `true`.
  */
-function commit(opening: Bytes, plaintext: Bytes): Bytes {
-  const combined = new Uint8Array(opening.length + plaintext.length);
+function commit(opening: Bytes, context: E2eeFrankingCommitmentContext, plaintext: Bytes): Bytes {
+  const encodedContext = new TextEncoder().encode(JSON.stringify(context));
+  const combined = new Uint8Array(opening.length + encodedContext.length + plaintext.length);
   combined.set(opening, 0);
-  combined.set(plaintext, opening.length);
+  combined.set(encodedContext, opening.length);
+  combined.set(plaintext, opening.length + encodedContext.length);
   return fakeDigest(combined);
 }
 
 const verifier: FrankingVerifier = {
-  verifyCommitment: ({ commitment, opening, plaintext }) =>
-    bytesEqual(commitment, commit(opening, plaintext)),
+  verifyCommitment: ({ commitment, opening, plaintext, context }) =>
+    bytesEqual(commitment, commit(opening, context, plaintext)),
   verifyNodeTag: ({ tag, transcript }) => bytesEqual(tag.tag, fakeDigest(transcript)),
 };
 
@@ -70,7 +82,8 @@ function item(
     logicalMessageId: `msg-${String(position)}`,
     disclosedPlaintext: plaintext,
     opening,
-    commitment: commit(opening, plaintext),
+    commitment: commit(opening, CONTEXT, plaintext),
+    commitmentContext: CONTEXT,
     envelopeTranscript: seededBytes(64, 5),
     frankingTag: tag(),
     participantTranscript: seededBytes(96, 6),
@@ -272,5 +285,34 @@ describe('evidence verification', () => {
       ),
       { numRuns: 200 },
     );
+  });
+});
+
+describe('commitment context binding (ADR 0025 §6)', () => {
+  /**
+   * The node checks a disclosed commitment against metadata **it** accepted. An item whose
+   * context does not match the one the commitment was made under is unverifiable — not verified,
+   * and not discarded either.
+   */
+  it('marks evidence unverifiable when the commitment was made under a different context', () => {
+    const result = verifyReportEvidence(
+      {
+        reporterConsented: true,
+        items: [
+          item(0, 'the reported message', {
+            commitmentContext: { ...CONTEXT, conversationId: 'somewhere-else' },
+          }),
+        ],
+      },
+      deps,
+    );
+    expect(result.status).toBe('UNVERIFIABLE');
+    expect(result.failureCode).toBe('COMMITMENT_MISMATCH');
+    expect(result.verifiedItemCount).toBe(0);
+  });
+
+  it('verifies the same evidence under the context it was actually committed under', () => {
+    const result = verifyReportEvidence({ reporterConsented: true, items: [item(0)] }, deps);
+    expect(result.status).toBe('VERIFIED');
   });
 });

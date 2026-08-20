@@ -18,6 +18,14 @@ import {
 import { E2EE_MAX_ENVELOPE_BYTES } from './modes.js';
 import { fakeDigest, seededBytes } from './testing.js';
 
+function transcript(envelopes: readonly E2eeDeviceEnvelopeView[]): Uint8Array {
+  return canonicalFanoutTranscript({
+    frankingProfile: 'patches-franking-v1',
+    frankingCommitment: seededBytes(32, 900),
+    deviceEnvelopes: envelopes,
+  });
+}
+
 function envelope(
   actorId: string,
   deviceId: string,
@@ -30,7 +38,7 @@ function envelope(
     recipientDeviceId: deviceId,
     encryptedHeader: seededBytes(48, seed + 1000),
     ciphertext,
-    openingCiphertext: seededBytes(64, seed + 2000),
+    openingCiphertext: new Uint8Array(0),
     ciphertextDigest: fakeDigest(ciphertext),
     ...overrides,
   };
@@ -44,7 +52,13 @@ function logical(
     membershipEpoch: 1n,
     frankingCommitment: seededBytes(32, 900),
     frankingProfile: 'patches-franking-v1',
-    fanoutDigest: fakeDigest(canonicalFanoutTranscript(envelopes)),
+    fanoutDigest: fakeDigest(
+      canonicalFanoutTranscript({
+        frankingProfile: 'patches-franking-v1',
+        frankingCommitment: seededBytes(32, 900),
+        deviceEnvelopes: envelopes,
+      }),
+    ),
     deviceEnvelopes: envelopes,
     ...overrides,
   };
@@ -55,16 +69,13 @@ describe('envelope shape', () => {
     expect(() => assertEnvelopeShape(envelope('a', 'd1', 1))).not.toThrow();
   });
 
-  it('rejects a missing header, ciphertext, sealed opening, or recipient', () => {
+  it('rejects a missing header, ciphertext, or recipient', () => {
     expect(() =>
       assertEnvelopeShape(envelope('a', 'd1', 1, { encryptedHeader: new Uint8Array(0) })),
     ).toThrow('no encrypted header');
     expect(() =>
       assertEnvelopeShape(envelope('a', 'd1', 1, { ciphertext: new Uint8Array(0) })),
     ).toThrow('no ciphertext');
-    expect(() =>
-      assertEnvelopeShape(envelope('a', 'd1', 1, { openingCiphertext: new Uint8Array(0) })),
-    ).toThrow('no sealed franking opening');
     expect(() => assertEnvelopeShape(envelope('a', '', 1))).toThrow('missing a recipient');
     expect(() =>
       assertEnvelopeShape(envelope('a', 'd1', 1, { ciphertextDigest: seededBytes(31, 3) })),
@@ -84,19 +95,19 @@ describe('fanout transcript and digest', () => {
     const a = envelope('actor-a', 'd1', 1);
     const b = envelope('actor-a', 'd2', 2);
     const c = envelope('actor-b', 'd1', 3);
-    expect(canonicalFanoutTranscript([a, b, c])).toEqual(canonicalFanoutTranscript([c, a, b]));
+    expect(transcript([a, b, c])).toEqual(transcript([c, a, b]));
   });
 
   it('distinguishes the same device id under a different actor', () => {
-    const underA = canonicalFanoutTranscript([envelope('actor-a', 'd1', 1)]);
-    const underB = canonicalFanoutTranscript([envelope('actor-b', 'd1', 1)]);
+    const underA = transcript([envelope('actor-a', 'd1', 1)]);
+    const underB = transcript([envelope('actor-b', 'd1', 1)]);
     expect(underA).not.toEqual(underB);
   });
 
   it('is unambiguous across field boundaries (length-prefixed, not concatenated)', () => {
     // "ab" + "c" and "a" + "bc" would collide under naive concatenation.
-    const left = canonicalFanoutTranscript([envelope('ab', 'c', 1)]);
-    const right = canonicalFanoutTranscript([envelope('a', 'bc', 1)]);
+    const left = transcript([envelope('ab', 'c', 1)]);
+    const right = transcript([envelope('a', 'bc', 1)]);
     expect(left).not.toEqual(right);
   });
 
@@ -259,5 +270,57 @@ describe('mailbox keyset ordering', () => {
       ),
       { numRuns: 200 },
     );
+  });
+});
+
+describe('ADR 0025 fanout-transcript and envelope bindings', () => {
+  /**
+   * B-046. The franking commitment used to sit outside every transcript in the system: the node
+   * length-checked it, stored it, and nothing tied it to the message it belonged to. Covering it
+   * here is the one commitment-related check a node without plaintext can actually make — a send
+   * whose declared `fanout_digest` does not cover the commitment it declares is now rejected.
+   */
+  it('changes the fanout digest when the franking commitment changes', () => {
+    const envelopes = [envelope('actor-a', 'd1', 1)];
+    const message = logical(envelopes);
+    expect(() => assertFanoutDigest(message, { digest: fakeDigest })).not.toThrow();
+    expect(() =>
+      assertFanoutDigest(
+        { ...message, frankingCommitment: seededBytes(32, 901) },
+        { digest: fakeDigest },
+      ),
+    ).toThrow('does not match the envelopes');
+  });
+
+  it('changes the fanout digest when the franking profile changes', () => {
+    const message = logical([envelope('actor-a', 'd1', 1)]);
+    expect(() =>
+      assertFanoutDigest(
+        { ...message, frankingProfile: 'patches-franking-v2' },
+        {
+          digest: fakeDigest,
+        },
+      ),
+    ).toThrow('does not match the envelopes');
+  });
+
+  /**
+   * ADR 0025 §3: the opening lives in the inner authenticated plaintext, so an envelope that also
+   * ships a separate sealed opening under v1 is rejected rather than quietly ignored.
+   */
+  it('rejects a v1 envelope that carries a separate sealed opening', () => {
+    const withOpening = envelope('actor-a', 'd1', 1, {
+      openingCiphertext: seededBytes(64, 42),
+    });
+    expect(() => assertEnvelopeShape(withOpening)).toThrow(
+      'the franking opening travels inside the ciphertext',
+    );
+    expect(() => assertEnvelopeShape(withOpening, 'some-future-profile')).not.toThrow();
+  });
+
+  it('changes the fanout digest when an opening ciphertext changes under a future profile', () => {
+    const base = envelope('actor-a', 'd1', 1);
+    const filled = { ...base, openingCiphertext: seededBytes(64, 43) };
+    expect(transcript([base])).not.toEqual(transcript([filled]));
   });
 });
