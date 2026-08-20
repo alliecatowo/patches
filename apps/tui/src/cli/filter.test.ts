@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runFilter, type FilterCommandApi } from './filter.js';
+import { makeFilter } from '../test/wire-fixtures.js';
 
 function makeIo(overrides: Partial<CliIo> = {}): CliIo & { out: string[]; err: string[] } {
   return {
@@ -24,16 +25,7 @@ function makeIo(overrides: Partial<CliIo> = {}): CliIo & { out: string[]; err: s
 }
 
 function filter(): Filter {
-  return {
-    id: 'filter-1',
-    name: 'Spoilers',
-    terms: [{ id: 't1', kind: FILTER_TERM_KIND.WORD, value: 'spoiler' }],
-    scopes: [FILTER_SCOPE.HOME],
-    action: FILTER_ACTION.COLLAPSE,
-    expiresAt: undefined,
-    createdAt: undefined,
-    updatedAt: undefined,
-  };
+  return makeFilter({ scopes: [FILTER_SCOPE.HOME] });
 }
 
 function fakeApi(): FilterCommandApi {

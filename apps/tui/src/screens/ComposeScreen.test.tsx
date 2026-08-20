@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY, REGISTRATION_MODE } from '../api/wire/enums.js';
+import { REGISTRATION_MODE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Actor, GetNodeInfoResponse, Post } from '../api/wire/types.js';
 import { AsciiRenderer, MediaRendererProvider, renderArtPreview } from '@patches/terminal-media';
@@ -17,6 +17,7 @@ import type { ComposeDraft } from '../compose/draft-store.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { ComposeScreen, POST_BODY_LIMIT, type ComposeScreenProps } from './ComposeScreen.js';
 import { readLocalImage } from '../media/validate.js';
+import { makeActor, makePost } from '../test/wire-fixtures.js';
 
 vi.mock('../media/validate.js', () => ({
   InvalidAttachmentError: class InvalidAttachmentError extends Error {},
@@ -70,50 +71,21 @@ function draft(overrides: Partial<ComposeDraft> = {}): ComposeDraft {
 }
 
 function post(overrides: Partial<Post> = {}): Post {
-  return {
-    id: 'post-1',
+  return makePost({
     author: undefined,
     body: 'hello',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
     createdAt: fromDate(new Date()),
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
     ...overrides,
-  };
+  });
 }
 
 function actor(overrides: Partial<Actor> = {}): Actor {
-  return {
-    id: 'actor-1',
+  return makeActor({
     handle: 'bob',
     displayName: 'Bob Ross',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
     joinedAt: fromDate(new Date()),
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
     ...overrides,
-  };
+  });
 }
 
 function nodeInfo(postBodyMaxChars: number): GetNodeInfoResponse {

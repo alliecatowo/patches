@@ -1,77 +1,38 @@
-import { CONVERSATION_KIND, MESSAGE_REQUEST_STATUS } from '../api/wire/enums.js';
-import type {
-  Actor,
-  Conversation,
-  ConversationSecurityMode,
-  Message,
-  MessageRequest,
-} from '../api/wire/types.js';
+import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { runDm, type DmCommandApi, type DmCommandSession } from './dm.js';
 import type { CliIo } from './io.js';
+import {
+  makeActor,
+  makeConversation,
+  makeMessage,
+  makeMessageRequest,
+} from '../test/wire-fixtures.js';
 
 function actor(id: string, handle: string, displayName: string): Actor {
-  return {
-    id,
-    handle,
-    displayName,
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
-    joinedAt: undefined,
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-  };
+  return makeActor({ id, handle, displayName });
 }
 
 const alice = actor('actor-alice', 'alice', 'Alice');
 
 function conversation(id = 'conversation-1'): Conversation {
-  return {
+  return makeConversation({
     id,
-    kind: CONVERSATION_KIND.DIRECT,
-    securityMode: 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE' as ConversationSecurityMode,
     createdBy: alice,
     members: [
-      {
-        actor: alice,
-        joinedAt: undefined,
-        leftAt: undefined,
-        lastReadMessageId: '',
-        muted: false,
-      },
+      { actor: alice, joinedAt: undefined, leftAt: undefined, lastReadMessageId: '', muted: false },
     ],
-    createdAt: undefined,
-    lastMessageAt: undefined,
     unreadCount: 2,
-  };
+  });
 }
 
 function message(id: string, body: string): Message {
-  return {
-    id,
-    conversationId: 'conversation-1',
-    sender: alice,
-    body,
-    createdAt: undefined,
-    deletedAt: undefined,
-  };
+  return makeMessage({ id, sender: alice, body });
 }
 
 function request(id: string, body: string): MessageRequest {
-  return {
-    id,
-    sender: alice,
-    recipient: undefined,
-    body,
-    status: MESSAGE_REQUEST_STATUS.PENDING,
-    createdAt: undefined,
-  };
+  return makeMessageRequest({ id, sender: alice, body });
 }
 
 interface FakeApi extends DmCommandApi {

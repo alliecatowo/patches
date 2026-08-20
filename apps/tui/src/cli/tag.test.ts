@@ -1,9 +1,9 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Post, Tag } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runTag, type TagCommandApi } from './tag.js';
+import { makeActor, makePost, makeTag } from '../test/wire-fixtures.js';
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
   return {
@@ -23,48 +23,14 @@ function makeIo(): CliIo & { out: string[]; err: string[] } {
 }
 
 function tag(id: string, name: string): Tag {
-  return { id, name, displayName: name, createdAt: undefined };
+  return makeTag({ id, name, displayName: name });
 }
 
 function post(): Post {
-  return {
-    id: 'post-1',
-    author: {
-      id: 'actor-1',
-      handle: 'alice\x1b[H',
-      displayName: '',
-      bio: '',
-      locationText: '',
-      websiteUrl: '',
-      avatar: undefined,
-      isLocal: true,
-      joinedAt: undefined,
-      counts: undefined,
-      nameplate: undefined,
-      flair: undefined,
-      pinnedPostIds: [],
-    },
+  return makePost({
+    author: makeActor({ handle: 'alice\x1b[H' }),
     body: 'hello\x07 tag',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
-    createdAt: undefined,
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-  };
+  });
 }
 
 function fakeApi(): TagCommandApi {

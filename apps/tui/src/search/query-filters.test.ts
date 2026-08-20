@@ -3,26 +3,10 @@ import { fromDate } from '../api/wire/time.js';
 import { describe, expect, it } from 'vitest';
 
 import { filterPostsLocally, hasLocalOnlyFilter, parseSearchQuery } from './query-filters.js';
+import { makePost } from '../test/wire-fixtures.js';
 
 function post(id: string, body: string, createdAt: Date): Post {
-  return {
-    id,
-    author: undefined,
-    body,
-    postType: 0,
-    linkUrl: '',
-    visibility: 0,
-    inReplyToId: '',
-    rootPostId: id,
-    media: [],
-    createdAt: fromDate(createdAt),
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-  } as unknown as Post;
+  return makePost({ id, author: undefined, body, rootPostId: id, createdAt: fromDate(createdAt) });
 }
 
 describe('parseSearchQuery', () => {

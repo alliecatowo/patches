@@ -13,9 +13,10 @@ import { ContentSizeProvider } from '../app/layout.js';
 import type { MediaCache } from '../media/cache.js';
 import { MediaSessionProvider } from '../media/media-session.js';
 import { MediaViewerScreen } from './MediaViewerScreen.js';
+import { makeMediaAttachment } from '../test/wire-fixtures.js';
 
 function attachment(id: string, altText: string): MediaAttachment {
-  return { mediaId: id, altText, width: 640, height: 480, mimeType: 'image/png', position: 0 };
+  return makeMediaAttachment({ mediaId: id, altText, width: 640, height: 480 });
 }
 
 describe('MediaViewerScreen', () => {

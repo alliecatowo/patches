@@ -4,21 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { runCommunity, type CommunityCommandApi } from './community.js';
 import type { CliIo } from './io.js';
+import { makeCommunity } from '../test/wire-fixtures.js';
 
 function community(viewerRole: Community['viewerRole'] = COMMUNITY_ROLE.UNSPECIFIED): Community {
-  return {
-    id: 'community-1',
-    name: 'terminal',
-    displayName: 'Terminal\x1b[2J people',
-    description: '',
-    rules: '',
-    createdBy: undefined,
-    isPublic: true,
-    createdAt: undefined,
-    updatedAt: undefined,
-    counts: undefined,
-    viewerRole,
-  };
+  return makeCommunity({ displayName: 'Terminal\x1b[2J people', viewerRole });
 }
 
 function makeIo(stdin = 'from stdin'): CliIo & { out: string[]; err: string[] } {

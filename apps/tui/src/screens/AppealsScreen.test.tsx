@@ -1,39 +1,17 @@
-import {
-  APPEAL_STATUS,
-  MODERATION_ACTION_TYPE,
-  MODERATION_REASON_CATEGORY,
-} from '../api/wire/enums.js';
 import type { Appeal, ModerationNotice } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { AppealsScreen } from './AppealsScreen.js';
+import { makeAppeal, makeModerationNotice } from '../test/wire-fixtures.js';
 
 function notice(overrides: Partial<ModerationNotice> = {}): ModerationNotice {
-  return {
-    id: 'notice-1',
-    action: MODERATION_ACTION_TYPE.WARN,
-    postId: '',
-    reasonCategory: MODERATION_REASON_CATEGORY.SPAM,
-    explanation: 'Repeated posting of the same link.',
-    createdAt: undefined,
-    appealDeadline: undefined,
-    appealed: false,
-    ...overrides,
-  };
+  return makeModerationNotice(overrides);
 }
 
 function appeal(): Appeal {
-  return {
-    id: 'appeal-1',
-    moderationNoticeId: 'notice-1',
-    statement: 'It was not the same link.',
-    status: APPEAL_STATUS.OPEN,
-    createdAt: undefined,
-    resolvedAt: undefined,
-    resolutionReason: '',
-  };
+  return makeAppeal({ statement: 'It was not the same link.' });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

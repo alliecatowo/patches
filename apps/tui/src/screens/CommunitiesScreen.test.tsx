@@ -8,25 +8,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { hasNonSgrEscape, stripSgr } from '../../test/ansi.js';
 import { CommunitiesScreen, type CommunitiesScreenApi } from './CommunitiesScreen.js';
+import { makeActor, makeCommunity } from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r', escape: '\x1b' } as const;
 
 function actor(id: string, handle: string): Actor {
-  return {
-    id,
-    handle,
-    displayName: '',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
-    joinedAt: undefined,
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-  };
+  return makeActor({ id, handle });
 }
 
 function community(
@@ -34,19 +21,15 @@ function community(
   name: string,
   viewerRole: Community['viewerRole'] = COMMUNITY_ROLE.UNSPECIFIED,
 ): Community {
-  return {
+  return makeCommunity({
     id,
     name,
     displayName: name,
     description: 'A public place',
     rules: 'Be kind.',
     createdBy: actor('creator', 'creator'),
-    isPublic: true,
-    createdAt: undefined,
-    updatedAt: undefined,
-    counts: undefined,
     viewerRole,
-  };
+  });
 }
 
 interface FakeApi extends CommunitiesScreenApi {

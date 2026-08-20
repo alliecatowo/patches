@@ -9,17 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PatchesApi } from '../api/client.js';
 import { hasUnsafeLeadingDash, openMediaExternally } from './open-external.js';
 import { MediaCache } from './cache.js';
+import { makeMediaAttachment } from '../test/wire-fixtures.js';
 
 function attachment(overrides: Partial<MediaAttachment> = {}): MediaAttachment {
-  return {
-    mediaId: 'media-1',
-    altText: '',
-    width: 10,
-    height: 10,
-    mimeType: 'image/png',
-    position: 0,
-    ...overrides,
-  };
+  return makeMediaAttachment(overrides);
 }
 
 describe('openMediaExternally (B-004/P5-003, spec §76)', () => {

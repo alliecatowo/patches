@@ -1,56 +1,19 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Post, Tag } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from '../../test/ansi.js';
 import { TagFeedScreen, type TagFeedScreenApi } from './TagFeedScreen.js';
+import { makePost, makeTag } from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r' } as const;
 
 function tag(id: string, name: string): Tag {
-  return { id, name, displayName: name, createdAt: undefined };
+  return makeTag({ id, name, displayName: name });
 }
 
 function post(body: string, id = 'post-1'): Post {
-  return {
-    id,
-    author: {
-      id: 'actor-1',
-      handle: 'alice',
-      displayName: '',
-      bio: '',
-      locationText: '',
-      websiteUrl: '',
-      avatar: undefined,
-      isLocal: true,
-      joinedAt: undefined,
-      counts: undefined,
-      nameplate: undefined,
-      flair: undefined,
-      pinnedPostIds: [],
-    },
-    body,
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: id,
-    media: [],
-    createdAt: undefined,
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
-  };
+  return makePost({ id, body, rootPostId: id });
 }
 
 interface FakeApi extends TagFeedScreenApi {

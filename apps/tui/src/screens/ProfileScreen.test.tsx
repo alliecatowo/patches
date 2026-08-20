@@ -1,40 +1,17 @@
-import { FOLLOW_STATE } from '../api/wire/enums.js';
 import type { Actor, Relationship } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { ProfileScreen } from './ProfileScreen.js';
+import { makeActor, makeRelationship } from '../test/wire-fixtures.js';
 
 function actor(overrides: Partial<Actor> = {}): Actor {
-  return {
-    id: 'actor-2',
-    handle: 'bob',
-    displayName: '',
-    bio: '',
-    locationText: '',
-    websiteUrl: '',
-    avatar: undefined,
-    isLocal: true,
-    joinedAt: undefined,
-    counts: undefined,
-    nameplate: undefined,
-    flair: undefined,
-    pinnedPostIds: [],
-    ...overrides,
-  };
+  return makeActor({ id: 'actor-2', handle: 'bob', ...overrides });
 }
 
 function relationship(overrides: Partial<Relationship> = {}): Relationship {
-  return {
-    state: FOLLOW_STATE.NONE,
-    followedBy: false,
-    blocking: false,
-    muting: false,
-    requested: false,
-    requestedBy: false,
-    ...overrides,
-  };
+  return makeRelationship(overrides);
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

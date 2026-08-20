@@ -5,19 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { FiltersScreen } from './FiltersScreen.js';
+import { makeFilter } from '../test/wire-fixtures.js';
 
 function filter(overrides: Partial<Filter> = {}): Filter {
-  return {
-    id: 'filter-1',
-    name: 'Spoilers',
-    terms: [{ id: 't1', kind: FILTER_TERM_KIND.WORD, value: 'spoiler' }],
-    scopes: [],
-    action: FILTER_ACTION.COLLAPSE,
-    expiresAt: undefined,
-    createdAt: undefined,
-    updatedAt: undefined,
-    ...overrides,
-  };
+  return makeFilter(overrides);
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

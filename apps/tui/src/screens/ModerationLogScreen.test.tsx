@@ -9,29 +9,21 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
 import { ModerationLogScreen } from './ModerationLogScreen.js';
+import { makeModerationLogEntry } from '../test/wire-fixtures.js';
 
 function domainEntry(): ModerationLogEntry {
-  return {
-    id: 'log-1',
-    action: MODERATION_ACTION_TYPE.DOMAIN_BLOCK,
-    subjectKind: MODERATION_LOG_SUBJECT_KIND.DOMAIN,
-    subjectDomain: 'spam.example',
-    reasonCategory: MODERATION_REASON_CATEGORY.SPAM,
-    appealed: false,
-    createdAt: undefined,
-  };
+  return makeModerationLogEntry();
 }
 
 function accountEntry(): ModerationLogEntry {
-  return {
+  return makeModerationLogEntry({
     id: 'log-2',
     action: MODERATION_ACTION_TYPE.SUSPEND,
     subjectKind: MODERATION_LOG_SUBJECT_KIND.ACCOUNT,
     subjectDomain: '',
     reasonCategory: MODERATION_REASON_CATEGORY.HARASSMENT,
     appealed: true,
-    createdAt: undefined,
-  };
+  });
 }
 
 function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {

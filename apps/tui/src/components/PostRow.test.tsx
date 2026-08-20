@@ -1,11 +1,4 @@
-import {
-  COMMUNITY_ROLE,
-  FILTER_ACTION,
-  FILTERED_BY_PROVENANCE,
-  POST_TYPE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-} from '../api/wire/enums.js';
+import { COMMUNITY_ROLE, FILTER_ACTION, FILTERED_BY_PROVENANCE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
@@ -15,47 +8,14 @@ import { stripSgr } from '../../test/ansi.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
 import { measurePostRowHeight } from './post-height.js';
 import { PostRow } from './PostRow.js';
+import { makeActor, makePost } from '../test/wire-fixtures.js';
 
 function post(overrides: Partial<Post> = {}): Post {
-  return {
-    id: 'post-1',
-    author: {
-      id: 'actor-1',
-      handle: 'alice',
-      displayName: '',
-      bio: '',
-      locationText: '',
-      websiteUrl: '',
-      avatar: undefined,
-      isLocal: true,
-      joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
-      counts: undefined,
-      nameplate: undefined,
-      flair: undefined,
-      pinnedPostIds: [],
-    },
-    body: 'hello world',
-    postType: POST_TYPE.NOTE,
-    linkUrl: '',
-    visibility: POST_VISIBILITY.PUBLIC,
-    inReplyToId: '',
-    rootPostId: 'post-1',
-    media: [],
+  return makePost({
+    author: makeActor({ joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')) }),
     createdAt: fromDate(new Date()),
-    editedAt: undefined,
-    deleted: false,
-    counts: undefined,
-    viewerState: undefined,
-    contentWarning: '',
-    quotedPost: undefined,
-    community: undefined,
-    quotePolicy: QUOTE_POLICY.UNSPECIFIED,
-    repostedBy: [],
-    repostedByTotal: 0,
-    filteredBy: undefined,
-    labels: [],
     ...overrides,
-  };
+  });
 }
 
 describe('PostRow content warnings (P3-003)', () => {
@@ -273,21 +233,7 @@ describe('PostRow filtered_by provenance (§198.3/§199.3)', () => {
       filteredBy: {
         provenance: FILTERED_BY_PROVENANCE.FILTER_LIST,
         name: 'Curated blocklist',
-        listOwner: {
-          id: 'actor-2',
-          handle: 'moderator',
-          displayName: '',
-          bio: '',
-          locationText: '',
-          websiteUrl: '',
-          avatar: undefined,
-          isLocal: true,
-          joinedAt: undefined,
-          counts: undefined,
-          nameplate: undefined,
-          flair: undefined,
-          pinnedPostIds: [],
-        },
+        listOwner: makeActor({ id: 'actor-2', handle: 'moderator' }),
         action: FILTER_ACTION.COLLAPSE,
       },
     });
