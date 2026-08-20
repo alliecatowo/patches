@@ -59,6 +59,11 @@ export { CommunityBan } from './entities/community-ban.entity.js';
 export { CommunityInvite } from './entities/community-invite.entity.js';
 export { Conversation } from './entities/conversation.entity.js';
 export { ConversationMember } from './entities/conversation-member.entity.js';
+export {
+  E2eeConversationMembershipEvent,
+  E2EE_MEMBERSHIP_ACTIONS,
+  type E2eeMembershipAction as E2eeMembershipActionDb,
+} from './entities/e2ee-conversation-membership-event.entity.js';
 export { E2eeIdentityRoot } from './entities/e2ee-identity-root.entity.js';
 export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
 export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';

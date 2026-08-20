@@ -92,6 +92,7 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'e2ee_%' ORDER BY table_name`,
     );
     expect(rows.map((row) => row.table_name)).toEqual([
+      'e2ee_conversation_membership_events',
       'e2ee_device_identities',
       'e2ee_device_rosters',
       'e2ee_group_control_events',
