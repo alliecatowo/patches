@@ -40,7 +40,12 @@ const verifier: FrankingVerifier = {
   verifyNodeTag: ({ tag, transcript }) => bytesEqual(tag.tag, fakeDigest(transcript)),
 };
 
-const deps = { verifier, acceptedProfiles: [TEST_PROFILE], knownKeyEras: [TEST_ERA] };
+const deps = {
+  verifier,
+  acceptedProfiles: [TEST_PROFILE],
+  knownKeyEras: [TEST_ERA],
+  digest: fakeDigest,
+};
 
 function tag(overrides: Partial<E2eeFrankingTagView> = {}): E2eeFrankingTagView {
   const transcript = seededBytes(64, 5);
@@ -165,6 +170,15 @@ describe('evidence verification', () => {
     const result = verifyReportEvidence({ reporterConsented: true, items: [forged] }, deps);
     expect(result.status).toBe('UNVERIFIABLE');
     expect(result.failureCode).toBe('COMMITMENT_MISMATCH');
+  });
+
+  it('marks a transcript that does not match its declared digest unverifiable, before spending a MAC check on it', () => {
+    const mismatched = item(0, 'x', {
+      frankingTag: tag({ transcriptDigest: seededBytes(32, 249) }),
+    });
+    const result = verifyReportEvidence({ reporterConsented: true, items: [mismatched] }, deps);
+    expect(result.status).toBe('UNVERIFIABLE');
+    expect(result.failureCode).toBe('TRANSCRIPT_MISMATCH');
   });
 
   it('marks a forged node tag unverifiable', () => {
