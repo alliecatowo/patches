@@ -63,39 +63,34 @@ Path-scoped, loaded automatically when matching files are touched: `server.md`
 
 ## Token discipline (cache reads are the big cost)
 
-Every model turn re-reads the agent's whole context, so **cost ≈ Σ(context size) over turns** —
-not "tokens read from disk". Measured on the 2026-08-19 session (6.8B cache reads; method and
-full numbers in `docs/agents/CONTEXT_ECONOMY.md`): subagents were 93% of it, 40% went to turns
-that called **no tool at all**, 51% was read above a 100k context, and the top 25 of 147 agents
-were 55% of the spend. The rules below are ranked by that measurement.
+Every model turn re-reads the agent's whole context, so **cost ≈ Σ(context size) over
+requests**. Measured 2026-08-19 across all sessions, grouped correctly by `message.id` (method,
+full numbers, and the double-count bug this replaces, in `docs/agents/CONTEXT_ECONOMY.md`):
+7.62B cache reads total (orchestrator 53%, subagents 47%), 1.13 tool calls/request, only 1% of
+requests call no tool at all, 53%/22% of tokens read above a 100k/200k context — subagent
+workers average 196k context over 18,676 requests, worst 5 burn 156M–96M tokens each. Ranked:
 
-1. **Act, don't narrate.** 39% of subagent turns issued zero tool calls — pure prose between
-   actions, each costing a full context re-read. Think, then act. Never announce what you are
-   about to do as its own turn, never re-read a file to confirm an `Edit` applied (the tool
-   errors if it didn't), never summarize progress mid-task.
-2. **Batch every independent call into one turn.** The same session issued **zero** turns with
-   more than one tool call. Reads that don't depend on each other go in one turn; edits you have
-   already decided go in one turn. One combined verify command per package
-   (`pnpm --filter X build && … typecheck && … test`), not four turns.
-3. **Stay small, then hand off.** Cost is ~quadratic in an agent's lifetime. At roughly 40 turns
-   or 120k context, stop: write a compact handoff (done / left / owned paths / next concrete
-   step) and return it. The orchestrator re-briefs a fresh agent from that packet. Three short
-   agents beat one marathon — this reverses the old "prefer one well-briefed agent" advice,
-   which the measurement disproved.
-4. **Make commands emit the right thing; never blind-truncate.** `| tail -3` that hides the
-   failing test costs two more turns (~250k each here) to recover 3k of output. Use the tool's
-   own reporter instead: `vitest run --reporter=dot`, `tsc --noEmit` (already errors-only),
-   `eslint -f unix`, `pnpm -s`, `git --no-pager diff --stat`.
-5. **Briefs are self-contained.** The orchestrator pastes the exact snippets the agent needs
-   (signatures, entity fields, proto shapes, paths, the verify command); agents start
-   implementing on turn 1. No "read first: A, B, C" lists. Research docs and the spec are
-   reference, not required reading.
-6. No exploratory repo tours: `Grep` for a symbol, read the one file, act. Reviewers review a
-   **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
-7. Use haiku for mechanical checks; opus/fable only where judgment matters — and keep their
-   leashes shortest, since their context costs several times sonnet's per token.
-8. Don't paste large file contents into reports; report paths + one-line facts. Every report you
-   return sits in the orchestrator's context for the rest of the session.
+1. **Cap worker lifetime/context — the #1 lever (53%/22% of tokens above 100k/200k).** At ~40
+   turns or 120k context a subagent writes a compact handoff (done/left/owned paths/next step)
+   and stops; the orchestrator re-briefs a fresh one. `maxTurns` enforces this. **Workers only**
+   — the orchestrator may run long; it decides what work exists, and re-briefing it costs more.
+2. **Batch independent calls into one request — a real ~2x lever.** 1.13 tool calls/request means
+   most requests do one thing when they could do two or three; combine independent reads/edits
+   and chain verify steps. Target > 1.5.
+3. **Narration is not a real problem — only 1% of requests call no tool.** Still think-then-act,
+   but the old "39% pure narration" figure was a measurement bug (double-counted JSONL lines) —
+   retired, don't over-invest here.
+4. **Never blind-truncate output.** `| tail -3` hiding a failure costs extra requests to recover
+   it. Use the tool's own reporter: `vitest run --reporter=dot`, `tsc --noEmit`, `eslint -f unix`,
+   `pnpm -s`, `git --no-pager diff --stat`.
+5. **Briefs are self-contained.** Paste the exact snippets needed; no "read first: A, B, C" lists.
+6. **Use `LSP` for symbol questions** (where defined, who calls it, what implements this), not
+   `Grep` + a whole-file `Read` — `findReferences`/`incomingCalls` replace "grep then read every
+   hit", `workspaceSymbol` finds by name anywhere. Keep `Grep` for non-symbol text (strings,
+   config keys, comments) and `Glob` for filenames. If `LSP` errors "Executable not found …
+   typescript-language-server", run `mise install`. Reviewers review a **diff**, never the tree.
+7. Use haiku for mechanical checks; opus/fable only where judgment matters, shortest leash.
+8. Don't paste large file contents into reports; report paths + one-line facts.
 
 ## The self-improvement loop
 

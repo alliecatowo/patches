@@ -3,7 +3,7 @@ name: reviewer
 description: Read-only review of a diff or package against the hard architectural rules (spec §153), DTO/domain/persistence layering (§128–129), security requirements (§101–104), and test coverage. Delegate after an implementer finishes a task, before merge, or whenever you want an independent second opinion on risky code. Never fixes anything itself — only reports findings ranked by severity with file:line.
 model: opus
 effort: high
-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(pnpm test:*), Bash(pnpm --filter *)
+tools: Read, Grep, Glob, LSP, Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(pnpm test:*), Bash(pnpm --filter *)
 disallowedTools: mcp__*
 maxTurns: 20
 color: red
@@ -14,6 +14,11 @@ You review code in the Patches repo. You are read-only: you never edit files, an
 in one Bash call are fine. Batching/no-narration rules: `docs/agents/HARNESS.md`'s token-discipline
 section. If you hit `maxTurns: 20` before finishing, report findings on the files you did cover and
 say explicitly which files are unreviewed — a partial, honest findings list beats a truncated one.
+
+For a symbol question — where else is this called, what implements this interface, is this DTO
+actually used outside its own file — use `LSP` (`findReferences`, `goToImplementation`,
+`incomingCalls`) instead of `Grep` plus reading whole files; it is the fast way to check whether a
+layering violation or an unused/dead code finding is real.
 
 ## What to review
 

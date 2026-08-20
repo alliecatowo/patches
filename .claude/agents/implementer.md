@@ -4,7 +4,7 @@ description: Implements one scoped task from tasks.md end-to-end in a disjoint f
 model: sonnet
 effort: high
 memory: project
-tools: Read, Grep, Glob, Write, Edit, Bash, Agent
+tools: Read, Grep, Glob, Write, Edit, Bash, Agent, LSP
 disallowedTools: mcp__*
 maxTurns: 40
 color: green
@@ -19,15 +19,22 @@ You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VI
 
 ## Execution rhythm (this is the expensive part — read it first)
 
-Cost is `Σ(context size)` over your turns, so turns are the currency, not files. Measured across
-34,882 subagent turns on 2026-08-19: 39% of turns called **no tool at all**, and **not one** turn
-issued more than a single tool call. Both are pure waste.
+Cost is `Σ(context size)` over your requests, so requests are the currency, not files. Measured
+across all sessions on 2026-08-19 (grouped correctly by `message.id` — see
+`docs/agents/CONTEXT_ECONOMY.md`): subagent workers average a 196k context over 18,676 requests,
+and 53%/22% of all tokens are read above a 100k/200k context — that's the dominant cost, not
+narration (only 1% of requests call no tool) or batching (1.13 tool calls/request already).
 
-- **Act, don't narrate.** No "now I'll look at X" turns. Think, then call. Never re-read a file to
-  confirm an `Edit` landed — `Edit` fails loudly if it didn't.
-- **One turn, many calls.** Every read that doesn't depend on another read goes in the _same_
-  turn. Every edit you've already decided goes in the _same_ turn. Verify with one chained
-  command, not four.
+- **Cap your lifetime.** This is the #1 lever — see the handoff rule below.
+- **One request, many calls.** Every read that doesn't depend on another read goes in the _same_
+  request. Every edit you've already decided goes in the _same_ request. Verify with one chained
+  command, not four. Target > 1.5 tool calls/request.
+- **Use `LSP` for symbol questions** (where's this defined, who calls it, what implements this) —
+  `findReferences`/`goToDefinition`/`workspaceSymbol`/`incomingCalls` replace "grep the name then
+  read every hit"; a `findReferences` call can return in ~80 tokens what a `Grep` + whole-file
+  `Read` would cost thousands for. Keep `Grep` for non-symbol text (strings, config keys,
+  comments, proto field names) and `Glob` for filenames. If `LSP` errors "Executable not found …
+  typescript-language-server", run `mise install`.
 - **Right-sized output, never blind truncation.** `| tail -3` that hides the failing test costs
   you two more turns to recover 3k of text. Use `vitest run --reporter=dot`, `tsc --noEmit`,
   `eslint -f unix`, `pnpm -s`, `git --no-pager diff --stat`.
@@ -41,9 +48,9 @@ issued more than a single tool call. Both are pure waste.
 ## Before writing any code
 
 Your brief is meant to be self-contained — start on turn 1. Pull the following **only when the
-task actually touches them**, not as a warm-up ritual:
+task actually touches them**, not as a warm-up ritual (`.claude/rules/*.md` don't need manual
+reading — they auto-inject when a matching path is touched):
 
-- `.claude/rules/*.md` that path-match the files you'll edit (server/database/proto/tui/docs).
 - `docs/research/<tech>.md` before using a risky/fast-moving API (TypeORM 1.x, Ink 7, ts-proto,
   buf, Kitty graphics, Fly, R2). If the note is missing or wrong, spawn a `researcher` rather
   than implementing from memory — and fix the note as part of your change.

@@ -627,3 +627,30 @@ agent's specific "use Read/Edit/Write/Grep, not sed/heredocs" note since silent-
 rewrites are a distinct, separate failure mode from the token-cost problem. See
 `docs/agents/CONTEXT_ECONOMY.md`'s new "Enforced by configuration" section for the full list and
 rationale.
+
+## 2026-08-19 — The H-010 context-economy numbers were inflated ~40% by a double-count bug; LSP tool wired in
+
+**Context:** Re-measuring `docs/agents/CONTEXT_ECONOMY.md`'s numbers with a corrected script
+(`infra/scripts/usage-report.mjs`, `mise run usage`).
+
+**Learning:** Claude Code writes one API request as several JSONL lines (a `thinking` line, then
+one or more `tool_use` lines), and every line in that group repeats the identical `message.usage`
+object. Summing `usage` per line instead of per unique `message.id` inflates every total by
+~40% and invents a large fake population of "zero-tool turns" that were really the thinking half
+of a request that did call a tool — that's where the old "39% of turns call no tool" and "not one
+turn issued two tool calls" claims came from; both are false. Corrected, all-sessions numbers
+(`message.id`-grouped, walking every session + subagent `.output` under the full tree, not just
+the current session): 7.62B cache reads (orchestrator 53%/subagents 47%), 1.13 tool calls/
+request, only 1% of requests call no tool, 53%/22% of tokens read above a 100k/200k context.
+Context/lifetime size is the dominant lever, not narration. Separately: the `LSP` tool
+(`typescript-language-server` via mise) does symbolic lookups — `findReferences` on a symbol
+returned 11 call sites across 4 files in ~80 tokens, vs. `Grep` + reading an 1800-line file.
+
+**Action taken:** Rewrote `docs/agents/CONTEXT_ECONOMY.md` (added "The double-count trap"
+section) and `docs/agents/HARNESS.md`'s token-discipline section with the corrected numbers and
+re-ranked guidance (lifetime cap #1, batching #2, narration explicitly demoted since it's only
+1% of requests); scoped the lifetime clamp to workers only, not the orchestrator. Added `LSP` to
+the `tools:` frontmatter of `implementer`, `reviewer`, `architect`, `spec-auditor`, `docs-writer`
+and a "Symbolic search" note to `HARNESS.md` and the two most read-heavy agents (`implementer`,
+`reviewer`). Removed the "read `.claude/rules/*.md` manually" bullet from `implementer.md` — every
+rule file already has a working `paths:` glob and auto-injects on a matching touched file.

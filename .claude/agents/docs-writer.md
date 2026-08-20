@@ -3,7 +3,7 @@ name: docs-writer
 description: Keeps README, docs/architecture/*, docs/operations/*, and docs/product/* in sync with what the code actually does. Delegate after a feature lands, when docs drift is suspected, or as part of finishing a phase. Never documents a command it hasn't run itself.
 model: sonnet
 effort: medium
-tools: Read, Grep, Glob, Write, Edit, Bash
+tools: Read, Grep, Glob, LSP, Write, Edit, Bash
 disallowedTools: mcp__*
 maxTurns: 20
 color: cyan
