@@ -44,6 +44,8 @@ deliberately does **not** authorize without owner sign-off.
 | [0021](./0021-filter-list-subscription-scopes.md)                | Filter-list subscription scopes are a `text[]` on the subscription row, defaulting to every scope | Accepted |
 | [0022](./0022-passkeys.md)                                       | Passkeys as a fifth credential type, web-client-only, now that a browser relying party exists     | Accepted |
 | [0023](./0023-tui-protobuf-es-migration.md)                      | The TUI migrates to protobuf-es via a temporary wire seam, not a permanent adapter                | Accepted |
+| [0024](./0024-franking-construction-review.md)                   | Franking construction review (P13-016): rejected, do not enable                                   | Accepted |
+| [0025](./0025-franking-commitment-binding.md)                    | Franking: context-bound commitment, envelope AD binding, unskippable recipient verification       | Accepted |
 
 ## Template
 
