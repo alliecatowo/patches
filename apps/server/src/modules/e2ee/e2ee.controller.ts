@@ -45,6 +45,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
+import { E2eeConversationService } from './e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
 import { E2eePrekeyService } from './prekey.service.js';
@@ -56,28 +57,18 @@ function requireSession(session: AccessTokenClaims | undefined): AccessTokenClai
   return session;
 }
 
-function notImplemented(rpc: string): never {
-  throw new AppError('NOT_IMPLEMENTED', `${rpc} is not implemented on this node yet.`);
-}
-
 /**
- * Transport adapter for `patches.v1.E2eeService` (ADR 0020, P13-004/P13-005). Only the
- * account-root/certified-device lifecycle and the prekey service are implemented here — the
- * conversation/envelope/report RPCs (`CreateE2eeConversation`, `GetE2eeConversationState`,
- * `SendEnvelopes`, `ListMailboxEnvelopes`, `AcknowledgeEnvelopes`, `AttachReportEvidence`) are
- * separate, not-yet-implemented tasks and report `NOT_IMPLEMENTED`, exactly as the proto's own
- * "Status: schema-only" doc comment describes for a node that hasn't reached them yet.
+ * Transport adapter for `patches.v1.E2eeService` (ADR 0020, P13-004/005/007/009). The
+ * account-root/certified-device lifecycle, prekeys, conversation/envelope fanout, and report
+ * evidence are all implemented — every RPC in the schema now has a node behind it.
  *
  * `GetE2eeCapability` always reports `E2EE_CAPABILITY_STATE_DISABLED`: enabling `E2EE_V1` is
  * gated on ADR 0020 §12's ship gates (including P13-014's independent-review gate) and must stay
- * off regardless of which lifecycle RPCs this node happens to implement.
- *
- * `AttachReportEvidence` (ADR 0020 §9, P13-009) is implemented alongside them for the same
- * reason: ADR 0020 §11's migration stage 3 ("node protocol behind a disabled capability") calls
- * for report ingestion and opaque storage to exist before any capability is enabled, not after.
- * Implementing it does not enable or advertise `E2EE_V1` — `getE2EeCapability` above is
- * unaffected, and `assertFrankingProfileApproved` (`@patches/domain`) still throws for every
- * profile, so no production conversation can ever generate real evidence for it to ingest.
+ * off regardless of which RPCs this node implements. Nothing below enables or advertises the
+ * capability — `SendEnvelopes`/`CreateE2eeConversation` still fail closed the moment they try to
+ * sign an acceptance receipt, because `assertFrankingProfileApproved` (`@patches/domain`) throws
+ * for every profile and `EnvNodeFrankingKeyRing.currentEra()` returns `undefined` on every node
+ * that has not set `E2EE_NODE_FRANKING_KEYS` — which is every node today.
  */
 @Controller()
 @UseGuards(AuthGuard)
@@ -87,6 +78,7 @@ export class E2eeController implements E2eeServiceController {
     private readonly identityRoots: E2eeIdentityRootService,
     private readonly deviceRosters: E2eeDeviceRosterService,
     private readonly prekeys: E2eePrekeyService,
+    private readonly conversations: E2eeConversationService,
     private readonly reportEvidence: E2eeReportEvidenceService,
   ) {}
 
@@ -185,32 +177,44 @@ export class E2eeController implements E2eeServiceController {
     return this.prekeys.claimPrekeyBundles(requireSession(session).actorId, request);
   }
 
-  createE2EeConversation(
-    @Payload() _request: CreateE2eeConversationRequest,
+  async createE2EeConversation(
+    @Payload() request: CreateE2eeConversationRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
   ): Promise<CreateE2eeConversationResponse> {
-    notImplemented('CreateE2eeConversation');
+    return this.conversations.createE2eeConversation(requireSession(session).actorId, request);
   }
 
-  getE2EeConversationState(
-    @Payload() _request: GetE2eeConversationStateRequest,
+  async getE2EeConversationState(
+    @Payload() request: GetE2eeConversationStateRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
   ): Promise<GetE2eeConversationStateResponse> {
-    notImplemented('GetE2eeConversationState');
+    return this.conversations.getE2eeConversationState(requireSession(session).actorId, request);
   }
 
-  sendEnvelopes(@Payload() _request: SendEnvelopesRequest): Promise<SendEnvelopesResponse> {
-    notImplemented('SendEnvelopes');
+  async sendEnvelopes(
+    @Payload() request: SendEnvelopesRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<SendEnvelopesResponse> {
+    return this.conversations.sendEnvelopes(requireSession(session).actorId, request);
   }
 
-  listMailboxEnvelopes(
-    @Payload() _request: ListMailboxEnvelopesRequest,
+  async listMailboxEnvelopes(
+    @Payload() request: ListMailboxEnvelopesRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
   ): Promise<ListMailboxEnvelopesResponse> {
-    notImplemented('ListMailboxEnvelopes');
+    return this.conversations.listMailboxEnvelopes(requireSession(session).actorId, request);
   }
 
-  acknowledgeEnvelopes(
-    @Payload() _request: AcknowledgeEnvelopesRequest,
+  async acknowledgeEnvelopes(
+    @Payload() request: AcknowledgeEnvelopesRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
   ): Promise<AcknowledgeEnvelopesResponse> {
-    notImplemented('AcknowledgeEnvelopes');
+    return this.conversations.acknowledgeEnvelopes(requireSession(session).actorId, request);
   }
 
   async attachReportEvidence(

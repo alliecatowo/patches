@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
+import { E2eeConversationService } from './e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeController } from './e2ee.controller.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
@@ -19,6 +20,7 @@ import { E2eeReportEvidenceService } from './report-evidence.service.js';
     E2eeIdentityRootService,
     E2eeDeviceRosterService,
     E2eePrekeyService,
+    E2eeConversationService,
     E2eeReportEvidenceService,
   ],
 })

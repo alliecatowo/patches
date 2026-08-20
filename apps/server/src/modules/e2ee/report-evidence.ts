@@ -43,6 +43,14 @@ import { AppError } from '../../common/errors/app-error.js';
 export interface NodeFrankingKeyRing {
   keyForEra(era: number): Uint8Array | undefined;
   knownEras(): readonly number[];
+  /**
+   * Which era `SendEnvelopes`/`CreateE2eeConversation` (`e2ee-fanout.ts`) sign new tags under.
+   * `undefined` means this node has no franking key to sign with at all, which the fanout path
+   * treats as "cannot accept a send" rather than silently issuing an unkeyed or wrong-era tag —
+   * consistent with `E2EE_APPROVED_FRANKING_PROFILES` being empty today (ADR 0020 §12.7): no
+   * node actually reaches this method with `E2EE_V1` enabled yet.
+   */
+  currentEra(): number | undefined;
 }
 
 /**
@@ -95,6 +103,13 @@ export class EnvNodeFrankingKeyRing implements NodeFrankingKeyRing {
 
   knownEras(): readonly number[] {
     return [...this.#keys.keys()];
+  }
+
+  /** The highest configured era: eras are meant to only increase as keys rotate, so the newest
+   * one a node holds is the one it signs new content under. `undefined` when no key is
+   * configured at all, which is every node today (see the interface doc comment). */
+  currentEra(): number | undefined {
+    return this.#keys.size === 0 ? undefined : Math.max(...this.#keys.keys());
   }
 }
 
