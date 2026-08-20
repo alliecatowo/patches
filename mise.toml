@@ -156,7 +156,7 @@ description = "format + lint + typecheck + unit tests (the pre-commit gate)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
 
 [tasks.check]
-description = "Scoped check for one workspace: typecheck + tests + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains."
+description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains."
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -167,6 +167,10 @@ dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(exec
 echo "→ $pkg  ($dir)"
 pnpm --filter "$pkg" typecheck
 pnpm --filter "$pkg" test --reporter=dot
+# eslint was missing here until 2026-08-20, so agents kept reporting a workspace green
+# and then tripping lefthook's eslint at commit time (import-type, no-misused-promises,
+# no-empty-object-type). The pre-commit hook must never be the first place lint runs.
+pnpm exec eslint "$dir" --cache --cache-location node_modules/.cache/eslint/
 pnpm exec prettier --check "$dir"
 echo "✓ $pkg is green"
 """
