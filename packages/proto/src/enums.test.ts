@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AppealStatus } from './generated/patches/v1/appeals.js';
 import {
   CredentialType,
+  DeviceLinkStatus,
   GitHubLoginStatus,
   OidcLoginStatus,
   PasswordAuthMode,
@@ -39,6 +40,7 @@ import {
   COMMUNITY_ROLE,
   CONVERSATION_KIND,
   CREDENTIAL_TYPE,
+  DEVICE_LINK_STATUS,
   DOMAIN_POLICY_ACTION,
   FEDERATION_STANCE,
   FILTER_ACTION,
@@ -90,6 +92,10 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('GITHUB_LOGIN_STATUS matches GitHubLoginStatus', () => {
     expect(Object.values(GITHUB_LOGIN_STATUS).sort()).toEqual(generatedValues(GitHubLoginStatus));
+  });
+
+  it('DEVICE_LINK_STATUS matches DeviceLinkStatus', () => {
+    expect(Object.values(DEVICE_LINK_STATUS).sort()).toEqual(generatedValues(DeviceLinkStatus));
   });
 
   it('OIDC_LOGIN_STATUS matches OidcLoginStatus', () => {

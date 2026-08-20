@@ -16,7 +16,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_auth: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChVwYXRjaGVzL3YxL2F1dGgucHJvdG8SCnBhdGNoZXMudjEi7QEKB1Nlc3Npb24SFAoMYWNjZXNzX3Rva2VuGAEgASgJEjUKEWFjY2Vzc19leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEjYKEnJlZnJlc2hfZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASIAoFYWN0b3IYBSABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhYKDmVtYWlsX3ZlcmlmaWVkGAYgASgIEgwKBG5vZGUYByABKAkizQEKD1JlZ2lzdGVyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhAKCHBhc3N3b3JkGAQgASgJEhMKC2ludml0ZV9jb2RlGAUgASgJEhkKEWNsaWVudF9yZXF1ZXN0X2lkGAYgASgJEhYKDnNzaF9wdWJsaWNfa2V5GAcgASgJEisKI3ByaXZhY3lfbm90aWNlX3ZlcnNpb25fYWNrbm93bGVkZ2VkGAggASgNIjgKEFJlZ2lzdGVyUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIiChJWZXJpZnlFbWFpbFJlcXVlc3QSDAoEY29kZRgBIAEoCSItChNWZXJpZnlFbWFpbFJlc3BvbnNlEhYKDmVtYWlsX3ZlcmlmaWVkGAEgASgIIhsKGVJlc2VuZFZlcmlmaWNhdGlvblJlcXVlc3QiHAoaUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2UiOQoMTG9naW5SZXF1ZXN0EhcKD2VtYWlsX29yX2hhbmRsZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSI1Cg1Mb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iLgoVUmVmcmVzaFNlc3Npb25SZXF1ZXN0EhUKDXJlZnJlc2hfdG9rZW4YASABKAkiPgoWUmVmcmVzaFNlc3Npb25SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIiYKDUxvZ291dFJlcXVlc3QSFQoNcmVmcmVzaF90b2tlbhgBIAEoCSIQCg5Mb2dvdXRSZXNwb25zZSIaChhMb2dvdXRBbGxTZXNzaW9uc1JlcXVlc3QiGwoZTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZSIsChtSZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QSDQoFZW1haWwYASABKAkiHgocUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZSI6ChRSZXNldFBhc3N3b3JkUmVxdWVzdBIMCgRjb2RlGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIXChVSZXNldFBhc3N3b3JkUmVzcG9uc2UiGgoYR2V0Q3VycmVudFNlc3Npb25SZXF1ZXN0IrgBChlHZXRDdXJyZW50U2Vzc2lvblJlc3BvbnNlEg8KB3VzZXJfaWQYASABKAkSIAoFYWN0b3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhIKCnNlc3Npb25faWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFgoOZW1haWxfdmVyaWZpZWQYBSABKAgSDAoEbm9kZRgGIAEoCSJHChRCZWdpblNzaExvZ2luUmVxdWVzdBIaChJwdWJsaWNfa2V5X29wZW5zc2gYASABKAkSEwoLZmluZ2VycHJpbnQYAiABKAkibAoVQmVnaW5Tc2hMb2dpblJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ4ChdDb21wbGV0ZVNzaExvZ2luUmVxdWVzdBIUCgxjaGFsbGVuZ2VfaWQYASABKAkSGgoScHVibGljX2tleV9vcGVuc3NoGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAQgASgJIkAKGENvbXBsZXRlU3NoTG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIjcKGUJlZ2luU3NoRW5yb2xsbWVudFJlcXVlc3QSGgoScHVibGljX2tleV9vcGVuc3NoGAEgASgJInEKGkJlZ2luU3NoRW5yb2xsbWVudFJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIZChdCZWdpbkdpdEh1YkxvZ2luUmVxdWVzdCKeAQoYQmVnaW5HaXRIdWJMb2dpblJlc3BvbnNlEhMKC2RldmljZV9jb2RlGAEgASgJEhEKCXVzZXJfY29kZRgCIAEoCRIYChB2ZXJpZmljYXRpb25fdXJpGAMgASgJEhAKCGludGVydmFsGAQgASgNEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIi0KFlBvbGxHaXRIdWJMb2dpblJlcXVlc3QSEwoLZGV2aWNlX2NvZGUYASABKAkibgoXUG9sbEdpdEh1YkxvZ2luUmVzcG9uc2USLQoGc3RhdHVzGAEgASgOMh0ucGF0Y2hlcy52MS5HaXRIdWJMb2dpblN0YXR1cxIkCgdzZXNzaW9uGAIgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIikKFUJlZ2luT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCSKcAQoWQmVnaW5PaWRjTG9naW5SZXNwb25zZRITCgtkZXZpY2VfY29kZRgBIAEoCRIRCgl1c2VyX2NvZGUYAiABKAkSGAoQdmVyaWZpY2F0aW9uX3VyaRgDIAEoCRIQCghpbnRlcnZhbBgEIAEoDRIuCgpleHBpcmVzX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI9ChRQb2xsT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCRITCgtkZXZpY2VfY29kZRgCIAEoCSJqChVQb2xsT2lkY0xvZ2luUmVzcG9uc2USKwoGc3RhdHVzGAEgASgOMhsucGF0Y2hlcy52MS5PaWRjTG9naW5TdGF0dXMSJAoHc2Vzc2lvbhgCIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIWChRHZXRBdXRoUG9saWN5UmVxdWVzdCKXAQoVR2V0QXV0aFBvbGljeVJlc3BvbnNlEjMKDXBhc3N3b3JkX2F1dGgYASABKA4yHC5wYXRjaGVzLnYxLlBhc3N3b3JkQXV0aE1vZGUSEwoLZ2l0aHViX2F1dGgYAiABKAgSNAoOb2lkY19wcm92aWRlcnMYAyADKAsyHC5wYXRjaGVzLnYxLk9pZGNQcm92aWRlckluZm8iNAoQT2lkY1Byb3ZpZGVySW5mbxIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkixwEKCkNyZWRlbnRpYWwSCgoCaWQYASABKAkSKAoEdHlwZRgCIAEoDjIaLnBhdGNoZXMudjEuQ3JlZGVudGlhbFR5cGUSDQoFbGFiZWwYAyABKAkSEgoKaWRlbnRpZmllchgEIAEoCRIuCgpjcmVhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIwCgxsYXN0X3VzZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFkxpc3RDcmVkZW50aWFsc1JlcXVlc3QiRgoXTGlzdENyZWRlbnRpYWxzUmVzcG9uc2USKwoLY3JlZGVudGlhbHMYASADKAsyFi5wYXRjaGVzLnYxLkNyZWRlbnRpYWwikgEKFEFkZENyZWRlbnRpYWxSZXF1ZXN0EigKBHR5cGUYASABKA4yGi5wYXRjaGVzLnYxLkNyZWRlbnRpYWxUeXBlEg4KBnNlY3JldBgCIAEoCRINCgVsYWJlbBgDIAEoCRIxCglzc2hfcHJvb2YYBCABKAsyHi5wYXRjaGVzLnYxLlNzaEVucm9sbG1lbnRQcm9vZiJXChJTc2hFbnJvbGxtZW50UHJvb2YSFAoMY2hhbGxlbmdlX2lkGAEgASgJEhEKCXNpZ25hdHVyZRgCIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAMgASgJIkMKFUFkZENyZWRlbnRpYWxSZXNwb25zZRIqCgpjcmVkZW50aWFsGAEgASgLMhYucGF0Y2hlcy52MS5DcmVkZW50aWFsIiUKF1Jldm9rZUNyZWRlbnRpYWxSZXF1ZXN0EgoKAmlkGAEgASgJIhoKGFJldm9rZUNyZWRlbnRpYWxSZXNwb25zZSIeChxHZW5lcmF0ZVJlY292ZXJ5Q29kZXNSZXF1ZXN0ImAKHUdlbmVyYXRlUmVjb3ZlcnlDb2Rlc1Jlc3BvbnNlEg0KBWNvZGVzGAEgAygJEjAKDGdlbmVyYXRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiPQoUUmVjb3ZlcnlMb2dpblJlcXVlc3QSFwoPZW1haWxfb3JfaGFuZGxlGAEgASgJEgwKBGNvZGUYAiABKAkiPQoVUmVjb3ZlcnlMb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iIQofQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdCI4CiBCZWdpblBhc3NrZXlSZWdpc3RyYXRpb25SZXNwb25zZRIUCgxvcHRpb25zX2pzb24YASABKAkiTAoiQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdBIXCg9jcmVkZW50aWFsX2pzb24YASABKAkSDQoFbGFiZWwYAiABKAkiUQojQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USKgoKY3JlZGVudGlhbBgBIAEoCzIWLnBhdGNoZXMudjEuQ3JlZGVudGlhbCIaChhCZWdpblBhc3NrZXlMb2dpblJlcXVlc3QiMQoZQmVnaW5QYXNza2V5TG9naW5SZXNwb25zZRIUCgxvcHRpb25zX2pzb24YASABKAkiNgobQ29tcGxldGVQYXNza2V5TG9naW5SZXF1ZXN0EhcKD2NyZWRlbnRpYWxfanNvbhgBIAEoCSJEChxDb21wbGV0ZVBhc3NrZXlMb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24q5QEKEUdpdEh1YkxvZ2luU3RhdHVzEiQKIEdJVF9IVUJfTE9HSU5fU1RBVFVTX1VOU1BFQ0lGSUVEEAASIAocR0lUX0hVQl9MT0dJTl9TVEFUVVNfUEVORElORxABEiIKHkdJVF9IVUJfTE9HSU5fU1RBVFVTX1NMT1dfRE9XThACEiAKHEdJVF9IVUJfTE9HSU5fU1RBVFVTX0VYUElSRUQQAxIfChtHSVRfSFVCX0xPR0lOX1NUQVRVU19ERU5JRUQQBBIhCh1HSVRfSFVCX0xPR0lOX1NUQVRVU19DT01QTEVURRAFKtEBCg9PaWRjTG9naW5TdGF0dXMSIQodT0lEQ19MT0dJTl9TVEFUVVNfVU5TUEVDSUZJRUQQABIdChlPSURDX0xPR0lOX1NUQVRVU19QRU5ESU5HEAESHwobT0lEQ19MT0dJTl9TVEFUVVNfU0xPV19ET1dOEAISHQoZT0lEQ19MT0dJTl9TVEFUVVNfRVhQSVJFRBADEhwKGE9JRENfTE9HSU5fU1RBVFVTX0RFTklFRBAEEh4KGk9JRENfTE9HSU5fU1RBVFVTX0NPTVBMRVRFEAUqlAEKEFBhc3N3b3JkQXV0aE1vZGUSIgoeUEFTU1dPUkRfQVVUSF9NT0RFX1VOU1BFQ0lGSUVEEAASGgoWUEFTU1dPUkRfQVVUSF9NT0RFX09GRhABEh8KG1BBU1NXT1JEX0FVVEhfTU9ERV9PUFRJT05BTBACEh8KG1BBU1NXT1JEX0FVVEhfTU9ERV9SRVFVSVJFRBADKukBCg5DcmVkZW50aWFsVHlwZRIfChtDUkVERU5USUFMX1RZUEVfVU5TUEVDSUZJRUQQABIcChhDUkVERU5USUFMX1RZUEVfUEFTU1dPUkQQARIiCh5DUkVERU5USUFMX1RZUEVfU1NIX1BVQkxJQ19LRVkQAhIaChZDUkVERU5USUFMX1RZUEVfR0lUSFVCEAMSIQodQ1JFREVOVElBTF9UWVBFX1JFQ09WRVJZX0NPREUQBBIbChdDUkVERU5USUFMX1RZUEVfUEFTU0tFWRAFEhgKFENSRURFTlRJQUxfVFlQRV9PSURDEAYy2RMKC0F1dGhTZXJ2aWNlElQKDUdldEF1dGhQb2xpY3kSIC5wYXRjaGVzLnYxLkdldEF1dGhQb2xpY3lSZXF1ZXN0GiEucGF0Y2hlcy52MS5HZXRBdXRoUG9saWN5UmVzcG9uc2USRQoIUmVnaXN0ZXISGy5wYXRjaGVzLnYxLlJlZ2lzdGVyUmVxdWVzdBocLnBhdGNoZXMudjEuUmVnaXN0ZXJSZXNwb25zZRJOCgtWZXJpZnlFbWFpbBIeLnBhdGNoZXMudjEuVmVyaWZ5RW1haWxSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5WZXJpZnlFbWFpbFJlc3BvbnNlEmMKElJlc2VuZFZlcmlmaWNhdGlvbhIlLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVxdWVzdBomLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2USPAoFTG9naW4SGC5wYXRjaGVzLnYxLkxvZ2luUmVxdWVzdBoZLnBhdGNoZXMudjEuTG9naW5SZXNwb25zZRJXCg5SZWZyZXNoU2Vzc2lvbhIhLnBhdGNoZXMudjEuUmVmcmVzaFNlc3Npb25SZXF1ZXN0GiIucGF0Y2hlcy52MS5SZWZyZXNoU2Vzc2lvblJlc3BvbnNlEj8KBkxvZ291dBIZLnBhdGNoZXMudjEuTG9nb3V0UmVxdWVzdBoaLnBhdGNoZXMudjEuTG9nb3V0UmVzcG9uc2USYAoRTG9nb3V0QWxsU2Vzc2lvbnMSJC5wYXRjaGVzLnYxLkxvZ291dEFsbFNlc3Npb25zUmVxdWVzdBolLnBhdGNoZXMudjEuTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZRJpChRSZXF1ZXN0UGFzc3dvcmRSZXNldBInLnBhdGNoZXMudjEuUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXF1ZXN0GigucGF0Y2hlcy52MS5SZXF1ZXN0UGFzc3dvcmRSZXNldFJlc3BvbnNlElQKDVJlc2V0UGFzc3dvcmQSIC5wYXRjaGVzLnYxLlJlc2V0UGFzc3dvcmRSZXF1ZXN0GiEucGF0Y2hlcy52MS5SZXNldFBhc3N3b3JkUmVzcG9uc2USYAoRR2V0Q3VycmVudFNlc3Npb24SJC5wYXRjaGVzLnYxLkdldEN1cnJlbnRTZXNzaW9uUmVxdWVzdBolLnBhdGNoZXMudjEuR2V0Q3VycmVudFNlc3Npb25SZXNwb25zZRJUCg1CZWdpblNzaExvZ2luEiAucGF0Y2hlcy52MS5CZWdpblNzaExvZ2luUmVxdWVzdBohLnBhdGNoZXMudjEuQmVnaW5Tc2hMb2dpblJlc3BvbnNlEl0KEENvbXBsZXRlU3NoTG9naW4SIy5wYXRjaGVzLnYxLkNvbXBsZXRlU3NoTG9naW5SZXF1ZXN0GiQucGF0Y2hlcy52MS5Db21wbGV0ZVNzaExvZ2luUmVzcG9uc2USXQoQQmVnaW5HaXRIdWJMb2dpbhIjLnBhdGNoZXMudjEuQmVnaW5HaXRIdWJMb2dpblJlcXVlc3QaJC5wYXRjaGVzLnYxLkJlZ2luR2l0SHViTG9naW5SZXNwb25zZRJaCg9Qb2xsR2l0SHViTG9naW4SIi5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlcXVlc3QaIy5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlc3BvbnNlElcKDkJlZ2luT2lkY0xvZ2luEiEucGF0Y2hlcy52MS5CZWdpbk9pZGNMb2dpblJlcXVlc3QaIi5wYXRjaGVzLnYxLkJlZ2luT2lkY0xvZ2luUmVzcG9uc2USVAoNUG9sbE9pZGNMb2dpbhIgLnBhdGNoZXMudjEuUG9sbE9pZGNMb2dpblJlcXVlc3QaIS5wYXRjaGVzLnYxLlBvbGxPaWRjTG9naW5SZXNwb25zZRJaCg9MaXN0Q3JlZGVudGlhbHMSIi5wYXRjaGVzLnYxLkxpc3RDcmVkZW50aWFsc1JlcXVlc3QaIy5wYXRjaGVzLnYxLkxpc3RDcmVkZW50aWFsc1Jlc3BvbnNlEmMKEkJlZ2luU3NoRW5yb2xsbWVudBIlLnBhdGNoZXMudjEuQmVnaW5Tc2hFbnJvbGxtZW50UmVxdWVzdBomLnBhdGNoZXMudjEuQmVnaW5Tc2hFbnJvbGxtZW50UmVzcG9uc2USVAoNQWRkQ3JlZGVudGlhbBIgLnBhdGNoZXMudjEuQWRkQ3JlZGVudGlhbFJlcXVlc3QaIS5wYXRjaGVzLnYxLkFkZENyZWRlbnRpYWxSZXNwb25zZRJdChBSZXZva2VDcmVkZW50aWFsEiMucGF0Y2hlcy52MS5SZXZva2VDcmVkZW50aWFsUmVxdWVzdBokLnBhdGNoZXMudjEuUmV2b2tlQ3JlZGVudGlhbFJlc3BvbnNlEmwKFUdlbmVyYXRlUmVjb3ZlcnlDb2RlcxIoLnBhdGNoZXMudjEuR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVxdWVzdBopLnBhdGNoZXMudjEuR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVzcG9uc2USVAoNUmVjb3ZlcnlMb2dpbhIgLnBhdGNoZXMudjEuUmVjb3ZlcnlMb2dpblJlcXVlc3QaIS5wYXRjaGVzLnYxLlJlY292ZXJ5TG9naW5SZXNwb25zZRJ1ChhCZWdpblBhc3NrZXlSZWdpc3RyYXRpb24SKy5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlcXVlc3QaLC5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlc3BvbnNlEn4KG0NvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvbhIuLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdBovLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USYAoRQmVnaW5QYXNza2V5TG9naW4SJC5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleUxvZ2luUmVxdWVzdBolLnBhdGNoZXMudjEuQmVnaW5QYXNza2V5TG9naW5SZXNwb25zZRJpChRDb21wbGV0ZVBhc3NrZXlMb2dpbhInLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5TG9naW5SZXF1ZXN0GigucGF0Y2hlcy52MS5Db21wbGV0ZVBhc3NrZXlMb2dpblJlc3BvbnNlYgZwcm90bzM',
+    'ChVwYXRjaGVzL3YxL2F1dGgucHJvdG8SCnBhdGNoZXMudjEi7QEKB1Nlc3Npb24SFAoMYWNjZXNzX3Rva2VuGAEgASgJEjUKEWFjY2Vzc19leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEjYKEnJlZnJlc2hfZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASIAoFYWN0b3IYBSABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhYKDmVtYWlsX3ZlcmlmaWVkGAYgASgIEgwKBG5vZGUYByABKAkizQEKD1JlZ2lzdGVyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhAKCHBhc3N3b3JkGAQgASgJEhMKC2ludml0ZV9jb2RlGAUgASgJEhkKEWNsaWVudF9yZXF1ZXN0X2lkGAYgASgJEhYKDnNzaF9wdWJsaWNfa2V5GAcgASgJEisKI3ByaXZhY3lfbm90aWNlX3ZlcnNpb25fYWNrbm93bGVkZ2VkGAggASgNIjgKEFJlZ2lzdGVyUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIiChJWZXJpZnlFbWFpbFJlcXVlc3QSDAoEY29kZRgBIAEoCSItChNWZXJpZnlFbWFpbFJlc3BvbnNlEhYKDmVtYWlsX3ZlcmlmaWVkGAEgASgIIhsKGVJlc2VuZFZlcmlmaWNhdGlvblJlcXVlc3QiHAoaUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2UiOQoMTG9naW5SZXF1ZXN0EhcKD2VtYWlsX29yX2hhbmRsZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSI1Cg1Mb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iLgoVUmVmcmVzaFNlc3Npb25SZXF1ZXN0EhUKDXJlZnJlc2hfdG9rZW4YASABKAkiPgoWUmVmcmVzaFNlc3Npb25SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIiYKDUxvZ291dFJlcXVlc3QSFQoNcmVmcmVzaF90b2tlbhgBIAEoCSIQCg5Mb2dvdXRSZXNwb25zZSIaChhMb2dvdXRBbGxTZXNzaW9uc1JlcXVlc3QiGwoZTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZSIsChtSZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QSDQoFZW1haWwYASABKAkiHgocUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZSI6ChRSZXNldFBhc3N3b3JkUmVxdWVzdBIMCgRjb2RlGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIXChVSZXNldFBhc3N3b3JkUmVzcG9uc2UiGgoYR2V0Q3VycmVudFNlc3Npb25SZXF1ZXN0IrgBChlHZXRDdXJyZW50U2Vzc2lvblJlc3BvbnNlEg8KB3VzZXJfaWQYASABKAkSIAoFYWN0b3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhIKCnNlc3Npb25faWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFgoOZW1haWxfdmVyaWZpZWQYBSABKAgSDAoEbm9kZRgGIAEoCSJHChRCZWdpblNzaExvZ2luUmVxdWVzdBIaChJwdWJsaWNfa2V5X29wZW5zc2gYASABKAkSEwoLZmluZ2VycHJpbnQYAiABKAkibAoVQmVnaW5Tc2hMb2dpblJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ4ChdDb21wbGV0ZVNzaExvZ2luUmVxdWVzdBIUCgxjaGFsbGVuZ2VfaWQYASABKAkSGgoScHVibGljX2tleV9vcGVuc3NoGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAQgASgJIkAKGENvbXBsZXRlU3NoTG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIjcKGUJlZ2luU3NoRW5yb2xsbWVudFJlcXVlc3QSGgoScHVibGljX2tleV9vcGVuc3NoGAEgASgJInEKGkJlZ2luU3NoRW5yb2xsbWVudFJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIZChdCZWdpbkdpdEh1YkxvZ2luUmVxdWVzdCKeAQoYQmVnaW5HaXRIdWJMb2dpblJlc3BvbnNlEhMKC2RldmljZV9jb2RlGAEgASgJEhEKCXVzZXJfY29kZRgCIAEoCRIYChB2ZXJpZmljYXRpb25fdXJpGAMgASgJEhAKCGludGVydmFsGAQgASgNEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIi0KFlBvbGxHaXRIdWJMb2dpblJlcXVlc3QSEwoLZGV2aWNlX2NvZGUYASABKAkibgoXUG9sbEdpdEh1YkxvZ2luUmVzcG9uc2USLQoGc3RhdHVzGAEgASgOMh0ucGF0Y2hlcy52MS5HaXRIdWJMb2dpblN0YXR1cxIkCgdzZXNzaW9uGAIgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIikKFUJlZ2luT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCSKcAQoWQmVnaW5PaWRjTG9naW5SZXNwb25zZRITCgtkZXZpY2VfY29kZRgBIAEoCRIRCgl1c2VyX2NvZGUYAiABKAkSGAoQdmVyaWZpY2F0aW9uX3VyaRgDIAEoCRIQCghpbnRlcnZhbBgEIAEoDRIuCgpleHBpcmVzX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI9ChRQb2xsT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCRITCgtkZXZpY2VfY29kZRgCIAEoCSJqChVQb2xsT2lkY0xvZ2luUmVzcG9uc2USKwoGc3RhdHVzGAEgASgOMhsucGF0Y2hlcy52MS5PaWRjTG9naW5TdGF0dXMSJAoHc2Vzc2lvbhgCIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIYChZCZWdpbkRldmljZUxpbmtSZXF1ZXN0IoMBChdCZWdpbkRldmljZUxpbmtSZXNwb25zZRITCgtkZXZpY2VfY29kZRgBIAEoCRIRCgl1c2VyX2NvZGUYAiABKAkSEAoIaW50ZXJ2YWwYAyABKA0SLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiLAoVUG9sbERldmljZUxpbmtSZXF1ZXN0EhMKC2RldmljZV9jb2RlGAEgASgJImwKFlBvbGxEZXZpY2VMaW5rUmVzcG9uc2USLAoGc3RhdHVzGAEgASgOMhwucGF0Y2hlcy52MS5EZXZpY2VMaW5rU3RhdHVzEiQKB3Nlc3Npb24YAiABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iLQoYQXBwcm92ZURldmljZUxpbmtSZXF1ZXN0EhEKCXVzZXJfY29kZRgBIAEoCSIbChlBcHByb3ZlRGV2aWNlTGlua1Jlc3BvbnNlIhYKFEdldEF1dGhQb2xpY3lSZXF1ZXN0IpcBChVHZXRBdXRoUG9saWN5UmVzcG9uc2USMwoNcGFzc3dvcmRfYXV0aBgBIAEoDjIcLnBhdGNoZXMudjEuUGFzc3dvcmRBdXRoTW9kZRITCgtnaXRodWJfYXV0aBgCIAEoCBI0Cg5vaWRjX3Byb3ZpZGVycxgDIAMoCzIcLnBhdGNoZXMudjEuT2lkY1Byb3ZpZGVySW5mbyI0ChBPaWRjUHJvdmlkZXJJbmZvEgoKAmlkGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCSLHAQoKQ3JlZGVudGlhbBIKCgJpZBgBIAEoCRIoCgR0eXBlGAIgASgOMhoucGF0Y2hlcy52MS5DcmVkZW50aWFsVHlwZRINCgVsYWJlbBgDIAEoCRISCgppZGVudGlmaWVyGAQgASgJEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKDGxhc3RfdXNlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiGAoWTGlzdENyZWRlbnRpYWxzUmVxdWVzdCJGChdMaXN0Q3JlZGVudGlhbHNSZXNwb25zZRIrCgtjcmVkZW50aWFscxgBIAMoCzIWLnBhdGNoZXMudjEuQ3JlZGVudGlhbCKSAQoUQWRkQ3JlZGVudGlhbFJlcXVlc3QSKAoEdHlwZRgBIAEoDjIaLnBhdGNoZXMudjEuQ3JlZGVudGlhbFR5cGUSDgoGc2VjcmV0GAIgASgJEg0KBWxhYmVsGAMgASgJEjEKCXNzaF9wcm9vZhgEIAEoCzIeLnBhdGNoZXMudjEuU3NoRW5yb2xsbWVudFByb29mIlcKElNzaEVucm9sbG1lbnRQcm9vZhIUCgxjaGFsbGVuZ2VfaWQYASABKAkSEQoJc2lnbmF0dXJlGAIgASgMEhgKEHNpZ25hdHVyZV9mb3JtYXQYAyABKAkiQwoVQWRkQ3JlZGVudGlhbFJlc3BvbnNlEioKCmNyZWRlbnRpYWwYASABKAsyFi5wYXRjaGVzLnYxLkNyZWRlbnRpYWwiJQoXUmV2b2tlQ3JlZGVudGlhbFJlcXVlc3QSCgoCaWQYASABKAkiGgoYUmV2b2tlQ3JlZGVudGlhbFJlc3BvbnNlIh4KHEdlbmVyYXRlUmVjb3ZlcnlDb2Rlc1JlcXVlc3QiYAodR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVzcG9uc2USDQoFY29kZXMYASADKAkSMAoMZ2VuZXJhdGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI9ChRSZWNvdmVyeUxvZ2luUmVxdWVzdBIXCg9lbWFpbF9vcl9oYW5kbGUYASABKAkSDAoEY29kZRgCIAEoCSI9ChVSZWNvdmVyeUxvZ2luUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIhCh9CZWdpblBhc3NrZXlSZWdpc3RyYXRpb25SZXF1ZXN0IjgKIEJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlc3BvbnNlEhQKDG9wdGlvbnNfanNvbhgBIAEoCSJMCiJDb21wbGV0ZVBhc3NrZXlSZWdpc3RyYXRpb25SZXF1ZXN0EhcKD2NyZWRlbnRpYWxfanNvbhgBIAEoCRINCgVsYWJlbBgCIAEoCSJRCiNDb21wbGV0ZVBhc3NrZXlSZWdpc3RyYXRpb25SZXNwb25zZRIqCgpjcmVkZW50aWFsGAEgASgLMhYucGF0Y2hlcy52MS5DcmVkZW50aWFsIhoKGEJlZ2luUGFzc2tleUxvZ2luUmVxdWVzdCIxChlCZWdpblBhc3NrZXlMb2dpblJlc3BvbnNlEhQKDG9wdGlvbnNfanNvbhgBIAEoCSI2ChtDb21wbGV0ZVBhc3NrZXlMb2dpblJlcXVlc3QSFwoPY3JlZGVudGlhbF9qc29uGAEgASgJIkQKHENvbXBsZXRlUGFzc2tleUxvZ2luUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbirlAQoRR2l0SHViTG9naW5TdGF0dXMSJAogR0lUX0hVQl9MT0dJTl9TVEFUVVNfVU5TUEVDSUZJRUQQABIgChxHSVRfSFVCX0xPR0lOX1NUQVRVU19QRU5ESU5HEAESIgoeR0lUX0hVQl9MT0dJTl9TVEFUVVNfU0xPV19ET1dOEAISIAocR0lUX0hVQl9MT0dJTl9TVEFUVVNfRVhQSVJFRBADEh8KG0dJVF9IVUJfTE9HSU5fU1RBVFVTX0RFTklFRBAEEiEKHUdJVF9IVUJfTE9HSU5fU1RBVFVTX0NPTVBMRVRFEAUq0QEKD09pZGNMb2dpblN0YXR1cxIhCh1PSURDX0xPR0lOX1NUQVRVU19VTlNQRUNJRklFRBAAEh0KGU9JRENfTE9HSU5fU1RBVFVTX1BFTkRJTkcQARIfChtPSURDX0xPR0lOX1NUQVRVU19TTE9XX0RPV04QAhIdChlPSURDX0xPR0lOX1NUQVRVU19FWFBJUkVEEAMSHAoYT0lEQ19MT0dJTl9TVEFUVVNfREVOSUVEEAQSHgoaT0lEQ19MT0dJTl9TVEFUVVNfQ09NUExFVEUQBSq5AQoQRGV2aWNlTGlua1N0YXR1cxIiCh5ERVZJQ0VfTElOS19TVEFUVVNfVU5TUEVDSUZJRUQQABIeChpERVZJQ0VfTElOS19TVEFUVVNfUEVORElORxABEiAKHERFVklDRV9MSU5LX1NUQVRVU19TTE9XX0RPV04QAhIeChpERVZJQ0VfTElOS19TVEFUVVNfRVhQSVJFRBADEh8KG0RFVklDRV9MSU5LX1NUQVRVU19DT01QTEVURRAEKpQBChBQYXNzd29yZEF1dGhNb2RlEiIKHlBBU1NXT1JEX0FVVEhfTU9ERV9VTlNQRUNJRklFRBAAEhoKFlBBU1NXT1JEX0FVVEhfTU9ERV9PRkYQARIfChtQQVNTV09SRF9BVVRIX01PREVfT1BUSU9OQUwQAhIfChtQQVNTV09SRF9BVVRIX01PREVfUkVRVUlSRUQQAyrpAQoOQ3JlZGVudGlhbFR5cGUSHwobQ1JFREVOVElBTF9UWVBFX1VOU1BFQ0lGSUVEEAASHAoYQ1JFREVOVElBTF9UWVBFX1BBU1NXT1JEEAESIgoeQ1JFREVOVElBTF9UWVBFX1NTSF9QVUJMSUNfS0VZEAISGgoWQ1JFREVOVElBTF9UWVBFX0dJVEhVQhADEiEKHUNSRURFTlRJQUxfVFlQRV9SRUNPVkVSWV9DT0RFEAQSGwoXQ1JFREVOVElBTF9UWVBFX1BBU1NLRVkQBRIYChRDUkVERU5USUFMX1RZUEVfT0lEQxAGMvAVCgtBdXRoU2VydmljZRJUCg1HZXRBdXRoUG9saWN5EiAucGF0Y2hlcy52MS5HZXRBdXRoUG9saWN5UmVxdWVzdBohLnBhdGNoZXMudjEuR2V0QXV0aFBvbGljeVJlc3BvbnNlEkUKCFJlZ2lzdGVyEhsucGF0Y2hlcy52MS5SZWdpc3RlclJlcXVlc3QaHC5wYXRjaGVzLnYxLlJlZ2lzdGVyUmVzcG9uc2USTgoLVmVyaWZ5RW1haWwSHi5wYXRjaGVzLnYxLlZlcmlmeUVtYWlsUmVxdWVzdBofLnBhdGNoZXMudjEuVmVyaWZ5RW1haWxSZXNwb25zZRJjChJSZXNlbmRWZXJpZmljYXRpb24SJS5wYXRjaGVzLnYxLlJlc2VuZFZlcmlmaWNhdGlvblJlcXVlc3QaJi5wYXRjaGVzLnYxLlJlc2VuZFZlcmlmaWNhdGlvblJlc3BvbnNlEjwKBUxvZ2luEhgucGF0Y2hlcy52MS5Mb2dpblJlcXVlc3QaGS5wYXRjaGVzLnYxLkxvZ2luUmVzcG9uc2USVwoOUmVmcmVzaFNlc3Npb24SIS5wYXRjaGVzLnYxLlJlZnJlc2hTZXNzaW9uUmVxdWVzdBoiLnBhdGNoZXMudjEuUmVmcmVzaFNlc3Npb25SZXNwb25zZRI/CgZMb2dvdXQSGS5wYXRjaGVzLnYxLkxvZ291dFJlcXVlc3QaGi5wYXRjaGVzLnYxLkxvZ291dFJlc3BvbnNlEmAKEUxvZ291dEFsbFNlc3Npb25zEiQucGF0Y2hlcy52MS5Mb2dvdXRBbGxTZXNzaW9uc1JlcXVlc3QaJS5wYXRjaGVzLnYxLkxvZ291dEFsbFNlc3Npb25zUmVzcG9uc2USaQoUUmVxdWVzdFBhc3N3b3JkUmVzZXQSJy5wYXRjaGVzLnYxLlJlcXVlc3RQYXNzd29yZFJlc2V0UmVxdWVzdBooLnBhdGNoZXMudjEuUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZRJUCg1SZXNldFBhc3N3b3JkEiAucGF0Y2hlcy52MS5SZXNldFBhc3N3b3JkUmVxdWVzdBohLnBhdGNoZXMudjEuUmVzZXRQYXNzd29yZFJlc3BvbnNlEmAKEUdldEN1cnJlbnRTZXNzaW9uEiQucGF0Y2hlcy52MS5HZXRDdXJyZW50U2Vzc2lvblJlcXVlc3QaJS5wYXRjaGVzLnYxLkdldEN1cnJlbnRTZXNzaW9uUmVzcG9uc2USVAoNQmVnaW5Tc2hMb2dpbhIgLnBhdGNoZXMudjEuQmVnaW5Tc2hMb2dpblJlcXVlc3QaIS5wYXRjaGVzLnYxLkJlZ2luU3NoTG9naW5SZXNwb25zZRJdChBDb21wbGV0ZVNzaExvZ2luEiMucGF0Y2hlcy52MS5Db21wbGV0ZVNzaExvZ2luUmVxdWVzdBokLnBhdGNoZXMudjEuQ29tcGxldGVTc2hMb2dpblJlc3BvbnNlEl0KEEJlZ2luR2l0SHViTG9naW4SIy5wYXRjaGVzLnYxLkJlZ2luR2l0SHViTG9naW5SZXF1ZXN0GiQucGF0Y2hlcy52MS5CZWdpbkdpdEh1YkxvZ2luUmVzcG9uc2USWgoPUG9sbEdpdEh1YkxvZ2luEiIucGF0Y2hlcy52MS5Qb2xsR2l0SHViTG9naW5SZXF1ZXN0GiMucGF0Y2hlcy52MS5Qb2xsR2l0SHViTG9naW5SZXNwb25zZRJXCg5CZWdpbk9pZGNMb2dpbhIhLnBhdGNoZXMudjEuQmVnaW5PaWRjTG9naW5SZXF1ZXN0GiIucGF0Y2hlcy52MS5CZWdpbk9pZGNMb2dpblJlc3BvbnNlElQKDVBvbGxPaWRjTG9naW4SIC5wYXRjaGVzLnYxLlBvbGxPaWRjTG9naW5SZXF1ZXN0GiEucGF0Y2hlcy52MS5Qb2xsT2lkY0xvZ2luUmVzcG9uc2USWgoPQmVnaW5EZXZpY2VMaW5rEiIucGF0Y2hlcy52MS5CZWdpbkRldmljZUxpbmtSZXF1ZXN0GiMucGF0Y2hlcy52MS5CZWdpbkRldmljZUxpbmtSZXNwb25zZRJXCg5Qb2xsRGV2aWNlTGluaxIhLnBhdGNoZXMudjEuUG9sbERldmljZUxpbmtSZXF1ZXN0GiIucGF0Y2hlcy52MS5Qb2xsRGV2aWNlTGlua1Jlc3BvbnNlEmAKEUFwcHJvdmVEZXZpY2VMaW5rEiQucGF0Y2hlcy52MS5BcHByb3ZlRGV2aWNlTGlua1JlcXVlc3QaJS5wYXRjaGVzLnYxLkFwcHJvdmVEZXZpY2VMaW5rUmVzcG9uc2USWgoPTGlzdENyZWRlbnRpYWxzEiIucGF0Y2hlcy52MS5MaXN0Q3JlZGVudGlhbHNSZXF1ZXN0GiMucGF0Y2hlcy52MS5MaXN0Q3JlZGVudGlhbHNSZXNwb25zZRJjChJCZWdpblNzaEVucm9sbG1lbnQSJS5wYXRjaGVzLnYxLkJlZ2luU3NoRW5yb2xsbWVudFJlcXVlc3QaJi5wYXRjaGVzLnYxLkJlZ2luU3NoRW5yb2xsbWVudFJlc3BvbnNlElQKDUFkZENyZWRlbnRpYWwSIC5wYXRjaGVzLnYxLkFkZENyZWRlbnRpYWxSZXF1ZXN0GiEucGF0Y2hlcy52MS5BZGRDcmVkZW50aWFsUmVzcG9uc2USXQoQUmV2b2tlQ3JlZGVudGlhbBIjLnBhdGNoZXMudjEuUmV2b2tlQ3JlZGVudGlhbFJlcXVlc3QaJC5wYXRjaGVzLnYxLlJldm9rZUNyZWRlbnRpYWxSZXNwb25zZRJsChVHZW5lcmF0ZVJlY292ZXJ5Q29kZXMSKC5wYXRjaGVzLnYxLkdlbmVyYXRlUmVjb3ZlcnlDb2Rlc1JlcXVlc3QaKS5wYXRjaGVzLnYxLkdlbmVyYXRlUmVjb3ZlcnlDb2Rlc1Jlc3BvbnNlElQKDVJlY292ZXJ5TG9naW4SIC5wYXRjaGVzLnYxLlJlY292ZXJ5TG9naW5SZXF1ZXN0GiEucGF0Y2hlcy52MS5SZWNvdmVyeUxvZ2luUmVzcG9uc2USdQoYQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uEisucGF0Y2hlcy52MS5CZWdpblBhc3NrZXlSZWdpc3RyYXRpb25SZXF1ZXN0GiwucGF0Y2hlcy52MS5CZWdpblBhc3NrZXlSZWdpc3RyYXRpb25SZXNwb25zZRJ+ChtDb21wbGV0ZVBhc3NrZXlSZWdpc3RyYXRpb24SLi5wYXRjaGVzLnYxLkNvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvblJlcXVlc3QaLy5wYXRjaGVzLnYxLkNvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvblJlc3BvbnNlEmAKEUJlZ2luUGFzc2tleUxvZ2luEiQucGF0Y2hlcy52MS5CZWdpblBhc3NrZXlMb2dpblJlcXVlc3QaJS5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleUxvZ2luUmVzcG9uc2USaQoUQ29tcGxldGVQYXNza2V5TG9naW4SJy5wYXRjaGVzLnYxLkNvbXBsZXRlUGFzc2tleUxvZ2luUmVxdWVzdBooLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5TG9naW5SZXNwb25zZWIGcHJvdG8z',
     [file_google_protobuf_timestamp, file_patches_v1_actors],
   );
 
@@ -888,6 +888,147 @@ export const PollOidcLoginResponseSchema: GenMessage<PollOidcLoginResponse> =
   messageDesc(file_patches_v1_auth, 34);
 
 /**
+ * @generated from message patches.v1.BeginDeviceLinkRequest
+ */
+export type BeginDeviceLinkRequest = Message<'patches.v1.BeginDeviceLinkRequest'> & {};
+
+/**
+ * Describes the message patches.v1.BeginDeviceLinkRequest.
+ * Use `create(BeginDeviceLinkRequestSchema)` to create a new message.
+ */
+export const BeginDeviceLinkRequestSchema: GenMessage<BeginDeviceLinkRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 35);
+
+/**
+ * @generated from message patches.v1.BeginDeviceLinkResponse
+ */
+export type BeginDeviceLinkResponse = Message<'patches.v1.BeginDeviceLinkResponse'> & {
+  /**
+   * Secret; used by the browser's own `PollDeviceLink` calls only — never shown to the user and
+   * never typed anywhere (mirrors `BeginGitHubLoginResponse.device_code`).
+   *
+   * @generated from field: string device_code = 1;
+   */
+  deviceCode: string;
+
+  /**
+   * Short, human-typeable code the browser displays and the account holder types into an
+   * already-signed-in terminal (`patches approve <user_code>`). Never itself sufficient to sign
+   * in anywhere — only a subsequent, authenticated `ApproveDeviceLink` call can bind it to an
+   * account.
+   *
+   * @generated from field: string user_code = 2;
+   */
+  userCode: string;
+
+  /**
+   * Minimum seconds between `PollDeviceLink` attempts.
+   *
+   * @generated from field: uint32 interval = 3;
+   */
+  interval: number;
+
+  /**
+   * Short TTL by design (spec §102's "short-TTL, single-use" applied to a human-typeable code).
+   *
+   * @generated from field: google.protobuf.Timestamp expires_at = 4;
+   */
+  expiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.BeginDeviceLinkResponse.
+ * Use `create(BeginDeviceLinkResponseSchema)` to create a new message.
+ */
+export const BeginDeviceLinkResponseSchema: GenMessage<BeginDeviceLinkResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 36);
+
+/**
+ * @generated from message patches.v1.PollDeviceLinkRequest
+ */
+export type PollDeviceLinkRequest = Message<'patches.v1.PollDeviceLinkRequest'> & {
+  /**
+   * @generated from field: string device_code = 1;
+   */
+  deviceCode: string;
+};
+
+/**
+ * Describes the message patches.v1.PollDeviceLinkRequest.
+ * Use `create(PollDeviceLinkRequestSchema)` to create a new message.
+ */
+export const PollDeviceLinkRequestSchema: GenMessage<PollDeviceLinkRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 37);
+
+/**
+ * @generated from message patches.v1.PollDeviceLinkResponse
+ */
+export type PollDeviceLinkResponse = Message<'patches.v1.PollDeviceLinkResponse'> & {
+  /**
+   * @generated from field: patches.v1.DeviceLinkStatus status = 1;
+   */
+  status: DeviceLinkStatus;
+
+  /**
+   * Set only when status == DEVICE_LINK_STATUS_COMPLETE — the session belongs to whichever
+   * account called `ApproveDeviceLink` with this link's `user_code`, never to the browser that
+   * called `BeginDeviceLink`.
+   *
+   * @generated from field: patches.v1.Session session = 2;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message patches.v1.PollDeviceLinkResponse.
+ * Use `create(PollDeviceLinkResponseSchema)` to create a new message.
+ */
+export const PollDeviceLinkResponseSchema: GenMessage<PollDeviceLinkResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 38);
+
+/**
+ * Authenticated: the account being linked to the browser comes from the `authorization`
+ * metadata, not this message — same rule `AddCredential`'s GitHub/OIDC linking case follows
+ * (spec §167). An unauthenticated caller must never reach this RPC at all.
+ *
+ * @generated from message patches.v1.ApproveDeviceLinkRequest
+ */
+export type ApproveDeviceLinkRequest = Message<'patches.v1.ApproveDeviceLinkRequest'> & {
+  /**
+   * As displayed by the browser calling `BeginDeviceLink`, e.g. "ABCD-1234". Hyphens/case are
+   * normalized server-side before lookup.
+   *
+   * @generated from field: string user_code = 1;
+   */
+  userCode: string;
+};
+
+/**
+ * Describes the message patches.v1.ApproveDeviceLinkRequest.
+ * Use `create(ApproveDeviceLinkRequestSchema)` to create a new message.
+ */
+export const ApproveDeviceLinkRequestSchema: GenMessage<ApproveDeviceLinkRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 39);
+
+/**
+ * @generated from message patches.v1.ApproveDeviceLinkResponse
+ */
+export type ApproveDeviceLinkResponse = Message<'patches.v1.ApproveDeviceLinkResponse'> & {};
+
+/**
+ * Describes the message patches.v1.ApproveDeviceLinkResponse.
+ * Use `create(ApproveDeviceLinkResponseSchema)` to create a new message.
+ */
+export const ApproveDeviceLinkResponseSchema: GenMessage<ApproveDeviceLinkResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 40);
+
+/**
  * @generated from message patches.v1.GetAuthPolicyRequest
  */
 export type GetAuthPolicyRequest = Message<'patches.v1.GetAuthPolicyRequest'> & {};
@@ -898,7 +1039,7 @@ export type GetAuthPolicyRequest = Message<'patches.v1.GetAuthPolicyRequest'> & 
  */
 export const GetAuthPolicyRequestSchema: GenMessage<GetAuthPolicyRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 35);
+  messageDesc(file_patches_v1_auth, 41);
 
 /**
  * @generated from message patches.v1.GetAuthPolicyResponse
@@ -936,7 +1077,7 @@ export type GetAuthPolicyResponse = Message<'patches.v1.GetAuthPolicyResponse'> 
  */
 export const GetAuthPolicyResponseSchema: GenMessage<GetAuthPolicyResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 36);
+  messageDesc(file_patches_v1_auth, 42);
 
 /**
  * @generated from message patches.v1.OidcProviderInfo
@@ -959,7 +1100,7 @@ export type OidcProviderInfo = Message<'patches.v1.OidcProviderInfo'> & {
  */
 export const OidcProviderInfoSchema: GenMessage<OidcProviderInfo> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 37);
+  messageDesc(file_patches_v1_auth, 43);
 
 /**
  * Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —
@@ -1012,7 +1153,7 @@ export type Credential = Message<'patches.v1.Credential'> & {
  */
 export const CredentialSchema: GenMessage<Credential> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 38);
+  messageDesc(file_patches_v1_auth, 44);
 
 /**
  * @generated from message patches.v1.ListCredentialsRequest
@@ -1025,7 +1166,7 @@ export type ListCredentialsRequest = Message<'patches.v1.ListCredentialsRequest'
  */
 export const ListCredentialsRequestSchema: GenMessage<ListCredentialsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 39);
+  messageDesc(file_patches_v1_auth, 45);
 
 /**
  * @generated from message patches.v1.ListCredentialsResponse
@@ -1043,7 +1184,7 @@ export type ListCredentialsResponse = Message<'patches.v1.ListCredentialsRespons
  */
 export const ListCredentialsResponseSchema: GenMessage<ListCredentialsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 40);
+  messageDesc(file_patches_v1_auth, 46);
 
 /**
  * @generated from message patches.v1.AddCredentialRequest
@@ -1083,7 +1224,7 @@ export type AddCredentialRequest = Message<'patches.v1.AddCredentialRequest'> & 
  */
 export const AddCredentialRequestSchema: GenMessage<AddCredentialRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 41);
+  messageDesc(file_patches_v1_auth, 47);
 
 /**
  * Proves possession of the private key for the SSH public key being enrolled (B-021),
@@ -1120,7 +1261,7 @@ export type SshEnrollmentProof = Message<'patches.v1.SshEnrollmentProof'> & {
  */
 export const SshEnrollmentProofSchema: GenMessage<SshEnrollmentProof> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 42);
+  messageDesc(file_patches_v1_auth, 48);
 
 /**
  * @generated from message patches.v1.AddCredentialResponse
@@ -1138,7 +1279,7 @@ export type AddCredentialResponse = Message<'patches.v1.AddCredentialResponse'> 
  */
 export const AddCredentialResponseSchema: GenMessage<AddCredentialResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 43);
+  messageDesc(file_patches_v1_auth, 49);
 
 /**
  * @generated from message patches.v1.RevokeCredentialRequest
@@ -1156,7 +1297,7 @@ export type RevokeCredentialRequest = Message<'patches.v1.RevokeCredentialReques
  */
 export const RevokeCredentialRequestSchema: GenMessage<RevokeCredentialRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 44);
+  messageDesc(file_patches_v1_auth, 50);
 
 /**
  * @generated from message patches.v1.RevokeCredentialResponse
@@ -1169,7 +1310,7 @@ export type RevokeCredentialResponse = Message<'patches.v1.RevokeCredentialRespo
  */
 export const RevokeCredentialResponseSchema: GenMessage<RevokeCredentialResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 45);
+  messageDesc(file_patches_v1_auth, 51);
 
 /**
  * @generated from message patches.v1.GenerateRecoveryCodesRequest
@@ -1182,7 +1323,7 @@ export type GenerateRecoveryCodesRequest = Message<'patches.v1.GenerateRecoveryC
  */
 export const GenerateRecoveryCodesRequestSchema: GenMessage<GenerateRecoveryCodesRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 46);
+  messageDesc(file_patches_v1_auth, 52);
 
 /**
  * @generated from message patches.v1.GenerateRecoveryCodesResponse
@@ -1208,7 +1349,7 @@ export type GenerateRecoveryCodesResponse = Message<'patches.v1.GenerateRecovery
  */
 export const GenerateRecoveryCodesResponseSchema: GenMessage<GenerateRecoveryCodesResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 47);
+  messageDesc(file_patches_v1_auth, 53);
 
 /**
  * @generated from message patches.v1.RecoveryLoginRequest
@@ -1233,7 +1374,7 @@ export type RecoveryLoginRequest = Message<'patches.v1.RecoveryLoginRequest'> & 
  */
 export const RecoveryLoginRequestSchema: GenMessage<RecoveryLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 48);
+  messageDesc(file_patches_v1_auth, 54);
 
 /**
  * @generated from message patches.v1.RecoveryLoginResponse
@@ -1251,7 +1392,7 @@ export type RecoveryLoginResponse = Message<'patches.v1.RecoveryLoginResponse'> 
  */
 export const RecoveryLoginResponseSchema: GenMessage<RecoveryLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 49);
+  messageDesc(file_patches_v1_auth, 55);
 
 /**
  * Authenticated: the caller's identity comes from the `authorization` metadata, same as
@@ -1269,7 +1410,7 @@ export type BeginPasskeyRegistrationRequest =
  */
 export const BeginPasskeyRegistrationRequestSchema: GenMessage<BeginPasskeyRegistrationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 50);
+  messageDesc(file_patches_v1_auth, 56);
 
 /**
  * @generated from message patches.v1.BeginPasskeyRegistrationResponse
@@ -1297,7 +1438,7 @@ export type BeginPasskeyRegistrationResponse =
  */
 export const BeginPasskeyRegistrationResponseSchema: GenMessage<BeginPasskeyRegistrationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 51);
+  messageDesc(file_patches_v1_auth, 57);
 
 /**
  * @generated from message patches.v1.CompletePasskeyRegistrationRequest
@@ -1326,7 +1467,7 @@ export type CompletePasskeyRegistrationRequest =
  */
 export const CompletePasskeyRegistrationRequestSchema: GenMessage<CompletePasskeyRegistrationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 52);
+  messageDesc(file_patches_v1_auth, 58);
 
 /**
  * @generated from message patches.v1.CompletePasskeyRegistrationResponse
@@ -1345,7 +1486,7 @@ export type CompletePasskeyRegistrationResponse =
  */
 export const CompletePasskeyRegistrationResponseSchema: GenMessage<CompletePasskeyRegistrationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 53);
+  messageDesc(file_patches_v1_auth, 59);
 
 /**
  * Unauthenticated, discoverable-credential login: no username/handle field exists anywhere in
@@ -1361,7 +1502,7 @@ export type BeginPasskeyLoginRequest = Message<'patches.v1.BeginPasskeyLoginRequ
  */
 export const BeginPasskeyLoginRequestSchema: GenMessage<BeginPasskeyLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 54);
+  messageDesc(file_patches_v1_auth, 60);
 
 /**
  * @generated from message patches.v1.BeginPasskeyLoginResponse
@@ -1383,7 +1524,7 @@ export type BeginPasskeyLoginResponse = Message<'patches.v1.BeginPasskeyLoginRes
  */
 export const BeginPasskeyLoginResponseSchema: GenMessage<BeginPasskeyLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 55);
+  messageDesc(file_patches_v1_auth, 61);
 
 /**
  * @generated from message patches.v1.CompletePasskeyLoginRequest
@@ -1406,7 +1547,7 @@ export type CompletePasskeyLoginRequest = Message<'patches.v1.CompletePasskeyLog
  */
 export const CompletePasskeyLoginRequestSchema: GenMessage<CompletePasskeyLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 56);
+  messageDesc(file_patches_v1_auth, 62);
 
 /**
  * @generated from message patches.v1.CompletePasskeyLoginResponse
@@ -1424,7 +1565,7 @@ export type CompletePasskeyLoginResponse = Message<'patches.v1.CompletePasskeyLo
  */
 export const CompletePasskeyLoginResponseSchema: GenMessage<CompletePasskeyLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 57);
+  messageDesc(file_patches_v1_auth, 63);
 
 /**
  * @generated from enum patches.v1.GitHubLoginStatus
@@ -1511,6 +1652,43 @@ export const OidcLoginStatusSchema: GenEnum<OidcLoginStatus> =
   enumDesc(file_patches_v1_auth, 1);
 
 /**
+ * @generated from enum patches.v1.DeviceLinkStatus
+ */
+export enum DeviceLinkStatus {
+  /**
+   * @generated from enum value: DEVICE_LINK_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DEVICE_LINK_STATUS_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: DEVICE_LINK_STATUS_SLOW_DOWN = 2;
+   */
+  SLOW_DOWN = 2,
+
+  /**
+   * @generated from enum value: DEVICE_LINK_STATUS_EXPIRED = 3;
+   */
+  EXPIRED = 3,
+
+  /**
+   * @generated from enum value: DEVICE_LINK_STATUS_COMPLETE = 4;
+   */
+  COMPLETE = 4,
+}
+
+/**
+ * Describes the enum patches.v1.DeviceLinkStatus.
+ */
+export const DeviceLinkStatusSchema: GenEnum<DeviceLinkStatus> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_auth, 2);
+
+/**
  * P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
  * password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
  * `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED` — clients must hide password UI entirely
@@ -1547,7 +1725,7 @@ export enum PasswordAuthMode {
  */
 export const PasswordAuthModeSchema: GenEnum<PasswordAuthMode> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_auth, 2);
+  enumDesc(file_patches_v1_auth, 3);
 
 /**
  * @generated from enum patches.v1.CredentialType
@@ -1607,7 +1785,7 @@ export enum CredentialType {
  */
 export const CredentialTypeSchema: GenEnum<CredentialType> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_auth, 3);
+  enumDesc(file_patches_v1_auth, 4);
 
 /**
  * Local account authentication and credential management (spec §33–39, §48, and Amendment A
@@ -1812,6 +1990,53 @@ export const AuthService: GenService<{
     methodKind: 'unary';
     input: typeof PollOidcLoginRequestSchema;
     output: typeof PollOidcLoginResponseSchema;
+  };
+  /**
+   * P15-005: a browser cannot prove possession of an SSH key, but the terminal it is already
+   * signed in from can. `BeginDeviceLink` is unauthenticated (any browser tab may start one) and
+   * returns two codes: `device_code`, a long secret the browser alone holds and polls with, and
+   * `user_code`, a short code it displays for a human to read and type. There is no third party
+   * and no central SSO anywhere in this flow — it is one node mediating between two of the same
+   * user's own devices.
+   *
+   * The account holder runs `patches approve <user_code>` from a terminal session that is
+   * *already signed in* — `ApproveDeviceLink` requires the `authorization` metadata a signed-in
+   * CLI already carries, exactly like `AddCredential`'s "linking requires an authenticated
+   * session" rule (spec §167). It binds the pending link to that caller's account and nothing
+   * else; the browser never learns which account approved it except by receiving that account's
+   * own session once it does. A missing, unknown, expired, or already-approved `user_code` is
+   * rejected uniformly — the code is single-use.
+   *
+   * `PollDeviceLink` is the unauthenticated browser-side poll on `device_code`, mirroring
+   * `PollGitHubLogin`/`PollOidcLogin`'s shape (`PENDING`/`SLOW_DOWN`/`EXPIRED`/`COMPLETE`).
+   * Because `user_code` is short enough for a human to type, it MUST be short-TTL, single-use,
+   * and rate-limited on both `BeginDeviceLink` and `ApproveDeviceLink` server-side — the CLI
+   * additionally shows the code back to the user and asks them to confirm before calling
+   * `ApproveDeviceLink`, since nothing server-side can distinguish an account holder approving
+   * their own login from one talked into approving someone else's by social engineering.
+   *
+   * @generated from rpc patches.v1.AuthService.BeginDeviceLink
+   */
+  beginDeviceLink: {
+    methodKind: 'unary';
+    input: typeof BeginDeviceLinkRequestSchema;
+    output: typeof BeginDeviceLinkResponseSchema;
+  };
+  /**
+   * @generated from rpc patches.v1.AuthService.PollDeviceLink
+   */
+  pollDeviceLink: {
+    methodKind: 'unary';
+    input: typeof PollDeviceLinkRequestSchema;
+    output: typeof PollDeviceLinkResponseSchema;
+  };
+  /**
+   * @generated from rpc patches.v1.AuthService.ApproveDeviceLink
+   */
+  approveDeviceLink: {
+    methodKind: 'unary';
+    input: typeof ApproveDeviceLinkRequestSchema;
+    output: typeof ApproveDeviceLinkResponseSchema;
   };
   /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any

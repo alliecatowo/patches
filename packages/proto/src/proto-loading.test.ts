@@ -69,6 +69,8 @@ describe('proto files', () => {
     expect(methods).toEqual(
       [
         'AddCredential',
+        'ApproveDeviceLink',
+        'BeginDeviceLink',
         'BeginGitHubLogin',
         'BeginOidcLogin',
         'BeginPasskeyLogin',
@@ -85,6 +87,7 @@ describe('proto files', () => {
         'Login',
         'Logout',
         'LogoutAllSessions',
+        'PollDeviceLink',
         'PollGitHubLogin',
         'PollOidcLogin',
         'RecoveryLogin',

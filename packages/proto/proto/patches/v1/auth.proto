@@ -86,6 +86,32 @@ service AuthService {
   rpc BeginOidcLogin(BeginOidcLoginRequest) returns (BeginOidcLoginResponse);
   rpc PollOidcLogin(PollOidcLoginRequest) returns (PollOidcLoginResponse);
 
+  // P15-005: a browser cannot prove possession of an SSH key, but the terminal it is already
+  // signed in from can. `BeginDeviceLink` is unauthenticated (any browser tab may start one) and
+  // returns two codes: `device_code`, a long secret the browser alone holds and polls with, and
+  // `user_code`, a short code it displays for a human to read and type. There is no third party
+  // and no central SSO anywhere in this flow — it is one node mediating between two of the same
+  // user's own devices.
+  //
+  // The account holder runs `patches approve <user_code>` from a terminal session that is
+  // *already signed in* — `ApproveDeviceLink` requires the `authorization` metadata a signed-in
+  // CLI already carries, exactly like `AddCredential`'s "linking requires an authenticated
+  // session" rule (spec §167). It binds the pending link to that caller's account and nothing
+  // else; the browser never learns which account approved it except by receiving that account's
+  // own session once it does. A missing, unknown, expired, or already-approved `user_code` is
+  // rejected uniformly — the code is single-use.
+  //
+  // `PollDeviceLink` is the unauthenticated browser-side poll on `device_code`, mirroring
+  // `PollGitHubLogin`/`PollOidcLogin`'s shape (`PENDING`/`SLOW_DOWN`/`EXPIRED`/`COMPLETE`).
+  // Because `user_code` is short enough for a human to type, it MUST be short-TTL, single-use,
+  // and rate-limited on both `BeginDeviceLink` and `ApproveDeviceLink` server-side — the CLI
+  // additionally shows the code back to the user and asks them to confirm before calling
+  // `ApproveDeviceLink`, since nothing server-side can distinguish an account holder approving
+  // their own login from one talked into approving someone else's by social engineering.
+  rpc BeginDeviceLink(BeginDeviceLinkRequest) returns (BeginDeviceLinkResponse);
+  rpc PollDeviceLink(PollDeviceLinkRequest) returns (PollDeviceLinkResponse);
+  rpc ApproveDeviceLink(ApproveDeviceLinkRequest) returns (ApproveDeviceLinkResponse);
+
   // Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
   // other secret material — type, label, identifier, timestamps only.
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
@@ -402,6 +428,58 @@ message PollOidcLoginResponse {
   // Set only when status == OIDC_LOGIN_STATUS_COMPLETE.
   Session session = 2;
 }
+
+message BeginDeviceLinkRequest {}
+
+message BeginDeviceLinkResponse {
+  // Secret; used by the browser's own `PollDeviceLink` calls only — never shown to the user and
+  // never typed anywhere (mirrors `BeginGitHubLoginResponse.device_code`).
+  string device_code = 1;
+
+  // Short, human-typeable code the browser displays and the account holder types into an
+  // already-signed-in terminal (`patches approve <user_code>`). Never itself sufficient to sign
+  // in anywhere — only a subsequent, authenticated `ApproveDeviceLink` call can bind it to an
+  // account.
+  string user_code = 2;
+
+  // Minimum seconds between `PollDeviceLink` attempts.
+  uint32 interval = 3;
+
+  // Short TTL by design (spec §102's "short-TTL, single-use" applied to a human-typeable code).
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message PollDeviceLinkRequest {
+  string device_code = 1;
+}
+
+enum DeviceLinkStatus {
+  DEVICE_LINK_STATUS_UNSPECIFIED = 0;
+  DEVICE_LINK_STATUS_PENDING = 1;
+  DEVICE_LINK_STATUS_SLOW_DOWN = 2;
+  DEVICE_LINK_STATUS_EXPIRED = 3;
+  DEVICE_LINK_STATUS_COMPLETE = 4;
+}
+
+message PollDeviceLinkResponse {
+  DeviceLinkStatus status = 1;
+
+  // Set only when status == DEVICE_LINK_STATUS_COMPLETE — the session belongs to whichever
+  // account called `ApproveDeviceLink` with this link's `user_code`, never to the browser that
+  // called `BeginDeviceLink`.
+  Session session = 2;
+}
+
+// Authenticated: the account being linked to the browser comes from the `authorization`
+// metadata, not this message — same rule `AddCredential`'s GitHub/OIDC linking case follows
+// (spec §167). An unauthenticated caller must never reach this RPC at all.
+message ApproveDeviceLinkRequest {
+  // As displayed by the browser calling `BeginDeviceLink`, e.g. "ABCD-1234". Hyphens/case are
+  // normalized server-side before lookup.
+  string user_code = 1;
+}
+
+message ApproveDeviceLinkResponse {}
 
 // P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
 // password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with

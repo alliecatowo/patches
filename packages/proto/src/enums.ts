@@ -19,6 +19,7 @@
 import type { AppealStatus as AppealStatusT } from './generated/patches/v1/appeals.js';
 import type {
   CredentialType as CredentialTypeT,
+  DeviceLinkStatus as DeviceLinkStatusT,
   GitHubLoginStatus as GitHubLoginStatusT,
   OidcLoginStatus as OidcLoginStatusT,
   PasswordAuthMode as PasswordAuthModeT,
@@ -89,6 +90,14 @@ export const GITHUB_LOGIN_STATUS = {
   EXPIRED: 'GIT_HUB_LOGIN_STATUS_EXPIRED' as GitHubLoginStatusT,
   DENIED: 'GIT_HUB_LOGIN_STATUS_DENIED' as GitHubLoginStatusT,
   COMPLETE: 'GIT_HUB_LOGIN_STATUS_COMPLETE' as GitHubLoginStatusT,
+} as const;
+
+export const DEVICE_LINK_STATUS = {
+  UNSPECIFIED: 'DEVICE_LINK_STATUS_UNSPECIFIED' as DeviceLinkStatusT,
+  PENDING: 'DEVICE_LINK_STATUS_PENDING' as DeviceLinkStatusT,
+  SLOW_DOWN: 'DEVICE_LINK_STATUS_SLOW_DOWN' as DeviceLinkStatusT,
+  EXPIRED: 'DEVICE_LINK_STATUS_EXPIRED' as DeviceLinkStatusT,
+  COMPLETE: 'DEVICE_LINK_STATUS_COMPLETE' as DeviceLinkStatusT,
 } as const;
 
 export const OIDC_LOGIN_STATUS = {
