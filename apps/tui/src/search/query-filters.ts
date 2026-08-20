@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 
 import { extractTags } from '../format/markup.js';
@@ -73,7 +73,7 @@ export function hasLocalOnlyFilter(parsed: ParsedSearchQuery): boolean {
 export function filterPostsLocally(posts: readonly Post[], parsed: ParsedSearchQuery): Post[] {
   return posts.filter((post) => {
     if (parsed.since !== undefined) {
-      const createdAt = timestampToDate(post.createdAt);
+      const createdAt = toDate(post.createdAt);
       if (createdAt === undefined || createdAt < parsed.since) return false;
     }
     if (parsed.tag !== undefined && !extractTags(post.body).includes(parsed.tag)) return false;

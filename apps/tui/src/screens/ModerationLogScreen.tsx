@@ -1,4 +1,5 @@
-import { MODERATION_LOG_SUBJECT_KIND, timestampToDate } from '@patches/proto';
+import { MODERATION_LOG_SUBJECT_KIND } from '../api/wire/enums.js';
+import { toDate } from '../api/wire/time.js';
 import type { ModerationLogEntry } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -96,7 +97,7 @@ export function ModerationLogScreen({
           )
         ) : (
           items.map((entry, rowIndex) => {
-            const createdAt = timestampToDate(entry.createdAt);
+            const createdAt = toDate(entry.createdAt);
             const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
             return (
               <Text

@@ -1,5 +1,6 @@
 import { present } from '../api/present.js';
-import { FILTER_ACTION, timestampToDate } from '@patches/proto';
+import { FILTER_ACTION } from '../api/wire/enums.js';
+import { toDate } from '../api/wire/time.js';
 import type { Post } from '../api/wire/types.js';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
@@ -45,7 +46,7 @@ export function PostRow({
   expanded = false,
 }: PostRowProps): ReactElement {
   const plain = usePlainMode();
-  const createdAt = timestampToDate(post.createdAt);
+  const createdAt = toDate(post.createdAt);
   const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
   const hasWarning = !post.deleted && post.contentWarning !== '';

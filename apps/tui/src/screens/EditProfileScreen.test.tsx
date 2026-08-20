@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Actor } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -24,7 +24,7 @@ function actor(overrides: Partial<Actor> = {}): Actor {
     websiteUrl: '',
     avatar: undefined,
     isLocal: true,
-    joinedAt: dateToTimestamp(new Date()),
+    joinedAt: fromDate(new Date()),
     counts: undefined,
     nameplate: {
       nameColor: '#ff0000',

@@ -1,4 +1,4 @@
-import { FILTER_ACTION, FILTER_TERM_KIND } from '@patches/proto';
+import { FILTER_ACTION, FILTER_TERM_KIND } from '../api/wire/enums.js';
 import type {
   FilterAction,
   FilterList,

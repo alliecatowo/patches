@@ -2,13 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  dateToTimestamp,
-  POST_TYPE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-  REGISTRATION_MODE,
-} from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY, REGISTRATION_MODE } from '../api/wire/enums.js';
+import { fromDate } from '../api/wire/time.js';
 import type { Actor, GetNodeInfoResponse, Post } from '../api/wire/types.js';
 import { AsciiRenderer, MediaRendererProvider, renderArtPreview } from '@patches/terminal-media';
 import { render } from 'ink-testing-library';
@@ -85,7 +80,7 @@ function post(overrides: Partial<Post> = {}): Post {
     inReplyToId: '',
     rootPostId: 'post-1',
     media: [],
-    createdAt: dateToTimestamp(new Date()),
+    createdAt: fromDate(new Date()),
     editedAt: undefined,
     deleted: false,
     counts: undefined,
@@ -112,7 +107,7 @@ function actor(overrides: Partial<Actor> = {}): Actor {
     websiteUrl: '',
     avatar: undefined,
     isLocal: true,
-    joinedAt: dateToTimestamp(new Date()),
+    joinedAt: fromDate(new Date()),
     counts: undefined,
     nameplate: undefined,
     flair: undefined,

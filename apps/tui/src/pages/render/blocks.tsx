@@ -1,6 +1,6 @@
 import { present } from '../../api/present.js';
 import type { PageBlock, RenderablePageBlock } from '@patches/domain';
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../../api/wire/time.js';
 import type { Actor, GuestbookEntry, MediaAttachment, Post } from '../../api/wire/types.js';
 import { Fragment, useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
@@ -585,6 +585,6 @@ function GuestbookBlockView({
 }
 
 function guestbookWhen(entry: GuestbookEntry): string {
-  const createdAt = timestampToDate(entry.createdAt);
+  const createdAt = toDate(entry.createdAt);
   return present(createdAt) ? formatRelativeTime(createdAt) : '';
 }

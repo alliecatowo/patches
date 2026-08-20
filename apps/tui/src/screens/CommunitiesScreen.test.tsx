@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { COMMUNITY_INVITE_STATUS, COMMUNITY_ROLE } from '@patches/proto';
+import { COMMUNITY_INVITE_STATUS, COMMUNITY_ROLE } from '../api/wire/enums.js';
 import type { Actor, Community } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import type { ComponentProps } from 'react';

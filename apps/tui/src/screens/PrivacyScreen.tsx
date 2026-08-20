@@ -1,4 +1,5 @@
-import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE, timestampToDate } from '@patches/proto';
+import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE } from '../api/wire/enums.js';
+import { toDate } from '../api/wire/time.js';
 import type {
   AccountDeletionStatus,
   AccountExport,
@@ -54,14 +55,14 @@ function exportStatusLabel(exportInfo: AccountExport | undefined): string {
   if (exportInfo.status === ACCOUNT_EXPORT_STATUS.EXPIRED) {
     return 'Export expired — press x to request a new one.';
   }
-  const expiresAt = timestampToDate(exportInfo.expiresAt);
+  const expiresAt = toDate(exportInfo.expiresAt);
   const expires = present(expiresAt) ? ` (link expires ${expiresAt.toISOString()})` : '';
   return `Export ready: ${sanitizeForTerminal(exportInfo.downloadUrl)}${expires}`;
 }
 
 function deletionStatusLabel(deletion: AccountDeletionStatus | undefined): string {
   if (deletion === undefined || !deletion.pending) return 'Not scheduled for deletion.';
-  const purgeAfter = timestampToDate(deletion.purgeAfter);
+  const purgeAfter = toDate(deletion.purgeAfter);
   const when = present(purgeAfter) ? purgeAfter.toISOString() : 'the grace period ends';
   return `Pending deletion — purges after ${when}. Press u to cancel.`;
 }

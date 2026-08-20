@@ -1,6 +1,7 @@
 import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
-import { NOTIFICATION_TYPE, timestampToDate } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
+import { toDate } from '../api/wire/time.js';
 import type { Actor, Notification } from '../api/wire/types.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -41,8 +42,8 @@ export function groupNotifications(
   for (const notification of notifications) {
     const last = groups.at(-1);
     const lastItem = last?.notifications.at(-1);
-    const lastCreatedAt = present(lastItem) ? timestampToDate(lastItem.createdAt) : undefined;
-    const createdAt = timestampToDate(notification.createdAt);
+    const lastCreatedAt = present(lastItem) ? toDate(lastItem.createdAt) : undefined;
+    const createdAt = toDate(notification.createdAt);
     const withinWindow =
       last !== undefined &&
       last.type === notification.type &&
@@ -296,7 +297,7 @@ export function NotificationsScreen({
               const isRead = group.notifications.every(
                 (notification) => present(notification.readAt) || readOverride.has(notification.id),
               );
-              const createdAt = present(primary) ? timestampToDate(primary.createdAt) : undefined;
+              const createdAt = present(primary) ? toDate(primary.createdAt) : undefined;
               const when = present(createdAt) ? formatRelativeTime(createdAt, now) : '';
               const othersCount = group.notifications.length - 1;
               return (

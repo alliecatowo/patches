@@ -1,4 +1,4 @@
-import { REPORT_REASON } from '@patches/proto';
+import { REPORT_REASON } from '../api/wire/enums.js';
 import type { ReportReason } from '../api/wire/types.js';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';

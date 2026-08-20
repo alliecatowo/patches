@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import { CREDENTIAL_TYPE, dateToTimestamp } from '@patches/proto';
+import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
+import { fromDate } from '../api/wire/time.js';
 import type { BeginSshEnrollmentResponse } from '../api/wire/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -156,7 +157,7 @@ describe('enrollSshCredential (B-021)', () => {
     const beginResponse: BeginSshEnrollmentResponse = {
       challengeId: 'enroll-chal-1',
       nonce: Buffer.from([9, 9, 9, 9]),
-      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+      expiresAt: fromDate(new Date(Date.now() + 60_000)),
     };
 
     let seenBeginRequest: unknown;
@@ -231,7 +232,7 @@ describe('enrollSshCredential (B-021)', () => {
         Promise.resolve<BeginSshEnrollmentResponse>({
           challengeId: 'enroll-chal-2',
           nonce: Buffer.from([1, 1, 1, 1]),
-          expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+          expiresAt: fromDate(new Date(Date.now() + 60_000)),
         }),
       addCredential: () => {
         addCalled = true;

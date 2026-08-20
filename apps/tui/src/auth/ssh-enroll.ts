@@ -3,7 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { buildSshChallengeBlob, SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import { CREDENTIAL_TYPE, timestampToDate } from '@patches/proto';
+import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
+import { toDate } from '../api/wire/time.js';
 import type {
   AddCredentialRequest,
   AddCredentialResponse,
@@ -130,7 +131,7 @@ export async function enrollSshCredential(
   );
 
   const begin = await options.api.beginSshEnrollment({ publicKeyOpenssh }, options.accessToken);
-  const expiresAt = timestampToDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
+  const expiresAt = toDate(begin.expiresAt) ?? new Date(Date.now() + 120_000);
 
   const blob = buildSshChallengeBlob({
     domainSeparator: SSH_ENROLL_DOMAIN_SEPARATOR,

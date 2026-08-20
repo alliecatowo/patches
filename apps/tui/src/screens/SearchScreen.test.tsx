@@ -1,4 +1,4 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Actor, Post, Tag } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';

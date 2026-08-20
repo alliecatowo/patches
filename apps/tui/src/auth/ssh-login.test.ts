@@ -1,5 +1,5 @@
 import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { BeginSshLoginResponse, CompleteSshLoginResponse } from '../api/wire/types.js';
 import { createServer, type Server, type Socket } from 'node:net';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -200,14 +200,14 @@ describe('performSshLogin', () => {
     const beginResponse: BeginSshLoginResponse = {
       challengeId: 'chal-42',
       nonce,
-      expiresAt: dateToTimestamp(expiresAt),
+      expiresAt: fromDate(expiresAt),
     };
     const completeResponse: CompleteSshLoginResponse = {
       session: {
         accessToken: 'access',
-        accessExpiresAt: dateToTimestamp(new Date()),
+        accessExpiresAt: fromDate(new Date()),
         refreshToken: 'refresh',
-        refreshExpiresAt: dateToTimestamp(new Date()),
+        refreshExpiresAt: fromDate(new Date()),
         actor: undefined,
         emailVerified: true,
         node: 'patches.example',

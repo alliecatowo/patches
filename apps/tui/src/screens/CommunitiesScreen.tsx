@@ -1,4 +1,4 @@
-import { COMMUNITY_INVITE_STATUS, COMMUNITY_ROLE } from '@patches/proto';
+import { COMMUNITY_INVITE_STATUS, COMMUNITY_ROLE } from '../api/wire/enums.js';
 import type {
   BanFromCommunityRequest,
   BanFromCommunityResponse,

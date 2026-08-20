@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Nameplate, Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -51,16 +51,16 @@ function makeSession(nameplate?: Nameplate): Session {
       websiteUrl: '',
       avatar: undefined,
       isLocal: true,
-      joinedAt: dateToTimestamp(new Date()),
+      joinedAt: fromDate(new Date()),
       counts: { followers: 0, following: 0, posts: 0 },
       nameplate,
       flair: undefined,
       pinnedPostIds: [],
     },
     accessToken: 'access-token',
-    accessExpiresAt: dateToTimestamp(new Date(now + 3_600_000)),
+    accessExpiresAt: fromDate(new Date(now + 3_600_000)),
     refreshToken: 'refresh-token',
-    refreshExpiresAt: dateToTimestamp(new Date(now + 30 * 24 * 3_600_000)),
+    refreshExpiresAt: fromDate(new Date(now + 30 * 24 * 3_600_000)),
     emailVerified: true,
     node: '127.0.0.1:50051',
   };

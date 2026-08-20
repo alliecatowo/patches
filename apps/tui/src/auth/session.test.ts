@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { Actor, Session } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -18,7 +18,7 @@ function actor(id: string, handle: string): Actor {
     websiteUrl: '',
     avatar: undefined,
     isLocal: true,
-    joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
+    joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
     counts: undefined,
     nameplate: undefined,
     flair: undefined,
@@ -29,9 +29,9 @@ function actor(id: string, handle: string): Actor {
 function session(overrides: Partial<Session> = {}): Session {
   return {
     accessToken: 'access-1',
-    accessExpiresAt: dateToTimestamp(new Date(Date.now() + 15 * 60 * 1000)),
+    accessExpiresAt: fromDate(new Date(Date.now() + 15 * 60 * 1000)),
     refreshToken: 'refresh-1',
-    refreshExpiresAt: dateToTimestamp(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+    refreshExpiresAt: fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
     actor: actor('user-1', 'alice'),
     emailVerified: false,
     node: NODE,
@@ -170,11 +170,11 @@ describe('SessionManager.ensureAccessToken / auto-refresh', () => {
   it('refreshes proactively when within the skew window of expiry', async () => {
     const store = new MemoryCredentialStore();
     const almostExpired = session({
-      accessExpiresAt: dateToTimestamp(new Date(Date.now() + 5_000)),
+      accessExpiresAt: fromDate(new Date(Date.now() + 5_000)),
     });
     const refreshed = session({
       accessToken: 'access-2',
-      accessExpiresAt: dateToTimestamp(new Date(Date.now() + 15 * 60 * 1000)),
+      accessExpiresAt: fromDate(new Date(Date.now() + 15 * 60 * 1000)),
     });
     const login = vi.fn().mockResolvedValue({ session: almostExpired });
     const refreshSession = vi.fn().mockResolvedValue({ session: refreshed });

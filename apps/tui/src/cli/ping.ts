@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 
 import { PatchesApi } from '../api/client.js';
 import { describeGrpcError } from '../api/errors.js';
@@ -37,7 +37,7 @@ export async function runPing(options: { target: string; insecure: boolean }): P
           protocolVersion: info.protocolVersion,
           minClientVersion: info.minClientVersion,
           instanceName: info.instanceName,
-          serverTime: timestampToDate(info.serverTime)?.toISOString() ?? null,
+          serverTime: toDate(info.serverTime)?.toISOString() ?? null,
           features: info.features,
         },
       }),

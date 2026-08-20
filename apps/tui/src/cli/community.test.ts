@@ -1,4 +1,4 @@
-import { COMMUNITY_ROLE } from '@patches/proto';
+import { COMMUNITY_ROLE } from '../api/wire/enums.js';
 import type { Community, Post } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 

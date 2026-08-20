@@ -1,5 +1,5 @@
 import type { RenderablePageBlock } from '@patches/domain';
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '../../api/wire/enums.js';
 import type {
   GetActorByHandleResponse,
   ListActorPostsResponse,

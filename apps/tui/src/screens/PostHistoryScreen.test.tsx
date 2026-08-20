@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type { ListPostEditsResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -16,7 +16,7 @@ function response(): ListPostEditsResponse {
         previousContentWarning: 'spoiler',
         previousMedia: [],
         editedByActorId: 'actor-1',
-        createdAt: dateToTimestamp(new Date()),
+        createdAt: fromDate(new Date()),
       },
     ],
     page: { nextCursor: '', hasMore: false },

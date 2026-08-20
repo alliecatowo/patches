@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import { FOLLOW_STATE } from '@patches/proto';
+import { FOLLOW_STATE } from '../api/wire/enums.js';
 import type { Actor, Relationship } from '../api/wire/types.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
