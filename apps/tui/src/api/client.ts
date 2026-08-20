@@ -318,6 +318,7 @@ import {
 } from '@patches/proto';
 
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
+import { getAmbientAccessToken } from './ambient-token.js';
 
 export interface ClientOptions {
   /** `host:port` of the Patches server. */
@@ -1823,8 +1824,12 @@ function callMetadata(accessToken?: string): Metadata {
   metadata.set(METADATA_KEYS.requestId, randomUUID());
   metadata.set(METADATA_KEYS.client, CLIENT_NAME);
   metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) {
-    metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
+  // B-040: fall back to the signed-in session's token so reads that were written as
+  // anonymous-legal still carry auth on a node with `PUBLIC_READ=false`. An explicit
+  // per-call token wins; signed out, neither exists and no header is sent.
+  const token = accessToken ?? getAmbientAccessToken();
+  if (token !== undefined) {
+    metadata.set(METADATA_KEYS.authorization, `Bearer ${token}`);
   }
   return metadata;
 }

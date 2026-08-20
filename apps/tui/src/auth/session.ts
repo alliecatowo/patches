@@ -18,6 +18,8 @@ import {
   type Session,
 } from '@patches/proto';
 
+import { setAmbientAccessToken } from '../api/ambient-token.js';
+
 import { grpcStatusCode } from '../api/errors.js';
 import { type CredentialStore, type StoredCredential } from './credential-store.js';
 
@@ -168,6 +170,7 @@ export class SessionManager {
     } finally {
       await this.store.delete(this.nodeOrigin, userId);
       this.current = undefined;
+      setAmbientAccessToken(undefined);
     }
   }
 
@@ -204,6 +207,7 @@ export class SessionManager {
         refreshed = await this.refresh();
       } catch {
         this.current = undefined;
+        setAmbientAccessToken(undefined);
         throw new SessionExpiredError();
       }
       return call(refreshed.accessToken);
@@ -302,6 +306,9 @@ export class SessionManager {
       emailVerified: session.emailVerified,
     };
     this.current = active;
+    // B-040: every RPC without an explicit token now falls back to this one, so reads made
+    // by a signed-in user are authenticated even on a node that forbids anonymous reads.
+    setAmbientAccessToken(active.accessToken);
 
     const stored: StoredCredential = {
       nodeOrigin: this.nodeOrigin,

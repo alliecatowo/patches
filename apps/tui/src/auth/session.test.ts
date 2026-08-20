@@ -1,6 +1,7 @@
 import { dateToTimestamp, type Actor, type Session } from '@patches/proto';
 import { describe, expect, it, vi } from 'vitest';
 
+import { getAmbientAccessToken, setAmbientAccessToken } from '../api/ambient-token.js';
 import { MemoryCredentialStore } from './credential-store.js';
 import { SessionExpiredError, SessionManager, type SessionAuthApi } from './session.js';
 
@@ -392,5 +393,21 @@ describe('SessionManager.withSession (P12-011 inline re-auth)', () => {
 
     const call = vi.fn().mockRejectedValue(new Error('boom'));
     await expect(manager.withSession(call)).rejects.toThrow('boom');
+  });
+});
+
+describe('ambient access token publication (B-040)', () => {
+  it('publishes the token on login and clears it on logout', async () => {
+    setAmbientAccessToken(undefined);
+    const store = new MemoryCredentialStore();
+    const manager = new SessionManager({ api: fakeApi({}), store, nodeOrigin: NODE });
+
+    await manager.loginWithPassword('alice', 'x');
+    // Every read RPC that takes no explicit token now carries this one, so a signed-in user
+    // is not treated as anonymous by a node with PUBLIC_READ=false.
+    expect(getAmbientAccessToken()).toBe('access-1');
+
+    await manager.logout();
+    expect(getAmbientAccessToken()).toBeUndefined();
   });
 });
