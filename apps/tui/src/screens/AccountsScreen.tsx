@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import type { Credential } from '@patches/proto';
+import type { Credential } from '../api/wire/types.js';
 import { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

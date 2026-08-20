@@ -1,4 +1,5 @@
-import { timestampToDate, type Appeal, type ModerationNotice } from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type { Appeal, ModerationNotice } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

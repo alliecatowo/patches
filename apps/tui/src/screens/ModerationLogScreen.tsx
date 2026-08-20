@@ -1,8 +1,5 @@
-import {
-  MODERATION_LOG_SUBJECT_KIND,
-  timestampToDate,
-  type ModerationLogEntry,
-} from '@patches/proto';
+import { MODERATION_LOG_SUBJECT_KIND, timestampToDate } from '@patches/proto';
+import type { ModerationLogEntry } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

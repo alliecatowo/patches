@@ -1,4 +1,5 @@
-import { LABEL_ACTION, type LabelAction, type Labeler } from '@patches/proto';
+import { LABEL_ACTION } from '@patches/proto';
+import type { LabelAction, Labeler } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

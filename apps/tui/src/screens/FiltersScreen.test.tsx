@@ -1,4 +1,5 @@
-import { FILTER_ACTION, FILTER_TERM_KIND, type Filter } from '@patches/proto';
+import { FILTER_ACTION, FILTER_TERM_KIND } from '@patches/proto';
+import type { Filter } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

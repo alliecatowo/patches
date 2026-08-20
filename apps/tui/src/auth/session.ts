@@ -1,22 +1,22 @@
-import {
-  timestampToDate,
-  type Actor,
-  type BeginSshLoginRequest,
-  type BeginSshLoginResponse,
-  type CompleteSshLoginRequest,
-  type CompleteSshLoginResponse,
-  type LoginRequest,
-  type LoginResponse,
-  type LogoutRequest,
-  type LogoutResponse,
-  type RecoveryLoginRequest,
-  type RecoveryLoginResponse,
-  type RefreshSessionRequest,
-  type RefreshSessionResponse,
-  type RegisterRequest,
-  type RegisterResponse,
-  type Session,
-} from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type {
+  Actor,
+  BeginSshLoginRequest,
+  BeginSshLoginResponse,
+  CompleteSshLoginRequest,
+  CompleteSshLoginResponse,
+  LoginRequest,
+  LoginResponse,
+  LogoutRequest,
+  LogoutResponse,
+  RecoveryLoginRequest,
+  RecoveryLoginResponse,
+  RefreshSessionRequest,
+  RefreshSessionResponse,
+  RegisterRequest,
+  RegisterResponse,
+  Session,
+} from '../api/wire/types.js';
 
 import { setAmbientAccessToken } from '../api/ambient-token.js';
 

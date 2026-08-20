@@ -1,4 +1,5 @@
-import { dateToTimestamp, type ListPostEditsResponse } from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type { ListPostEditsResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

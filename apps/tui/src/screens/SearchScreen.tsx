@@ -1,5 +1,5 @@
 import { status as GrpcStatus } from '@grpc/grpc-js';
-import type { Actor, Post, Tag } from '@patches/proto';
+import type { Actor, Post, Tag } from '../api/wire/types.js';
 import { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

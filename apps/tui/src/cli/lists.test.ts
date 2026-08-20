@@ -1,9 +1,5 @@
-import {
-  FILTER_ACTION,
-  FILTER_TERM_KIND,
-  type FilterList,
-  type FilterListSubscription,
-} from '@patches/proto';
+import { FILTER_ACTION, FILTER_TERM_KIND } from '@patches/proto';
+import type { FilterList, FilterListSubscription } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';

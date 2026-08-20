@@ -1,10 +1,5 @@
-import {
-  FILTER_ACTION,
-  FILTER_TERM_KIND,
-  type Filter,
-  type FilterAction,
-  type FilterTermKind,
-} from '@patches/proto';
+import { FILTER_ACTION, FILTER_TERM_KIND } from '@patches/proto';
+import type { Filter, FilterAction, FilterTermKind } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

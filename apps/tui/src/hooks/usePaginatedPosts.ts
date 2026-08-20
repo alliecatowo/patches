@@ -1,4 +1,4 @@
-import type { PageInfo, Post } from '@patches/proto';
+import type { PageInfo, Post } from '../api/wire/types.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';

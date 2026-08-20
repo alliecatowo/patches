@@ -1,4 +1,5 @@
-import { FILTERED_BY_PROVENANCE, type FilteredByHint } from '@patches/proto';
+import { FILTERED_BY_PROVENANCE } from '@patches/proto';
+import type { FilteredByHint } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { sanitizeForTerminal } from './sanitize.js';

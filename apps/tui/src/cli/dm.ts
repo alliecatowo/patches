@@ -1,21 +1,21 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  type GetConversationRequest,
-  type GetConversationResponse,
-  type ListConversationsRequest,
-  type ListConversationsResponse,
-  type ListMessageRequestsRequest,
-  type ListMessageRequestsResponse,
-  type ListMessagesRequest,
-  type ListMessagesResponse,
-  type MarkConversationReadRequest,
-  type MarkConversationReadResponse,
-  type RespondToMessageRequestRequest,
-  type RespondToMessageRequestResponse,
-  type SendMessageRequest,
-  type SendMessageResponse,
-} from '@patches/proto';
+import type {
+  GetConversationRequest,
+  GetConversationResponse,
+  ListConversationsRequest,
+  ListConversationsResponse,
+  ListMessageRequestsRequest,
+  ListMessageRequestsResponse,
+  ListMessagesRequest,
+  ListMessagesResponse,
+  MarkConversationReadRequest,
+  MarkConversationReadResponse,
+  RespondToMessageRequestRequest,
+  RespondToMessageRequestResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { describeGrpcError } from '../api/errors.js';

@@ -1,4 +1,5 @@
-import { timestampToDate, type Post } from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 
 import { extractTags } from '../format/markup.js';
 

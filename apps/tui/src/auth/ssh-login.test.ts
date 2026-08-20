@@ -1,9 +1,6 @@
 import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
-import {
-  dateToTimestamp,
-  type BeginSshLoginResponse,
-  type CompleteSshLoginResponse,
-} from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type { BeginSshLoginResponse, CompleteSshLoginResponse } from '../api/wire/types.js';
 import { createServer, type Server, type Socket } from 'node:net';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

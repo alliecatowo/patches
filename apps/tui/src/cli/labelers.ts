@@ -1,12 +1,12 @@
-import {
-  LABEL_ACTION,
-  type LabelAction,
-  type Labeler,
-  type ListLabelersResponse,
-  type SetLabelerSubscriptionActionResponse,
-  type SubscribeLabelerResponse,
-  type UnsubscribeLabelerResponse,
-} from '@patches/proto';
+import { LABEL_ACTION } from '@patches/proto';
+import type {
+  LabelAction,
+  Labeler,
+  ListLabelersResponse,
+  SetLabelerSubscriptionActionResponse,
+  SubscribeLabelerResponse,
+  UnsubscribeLabelerResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { type PatchesApi } from '../api/client.js';

@@ -1,4 +1,5 @@
-import { dateToTimestamp, type Actor, type Session } from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type { Actor, Session } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { getAmbientAccessToken, setAmbientAccessToken } from '../api/ambient-token.js';

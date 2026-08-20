@@ -1,4 +1,5 @@
-import { COMMUNITY_ROLE, type Community, type Post } from '@patches/proto';
+import { COMMUNITY_ROLE } from '@patches/proto';
+import type { Community, Post } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { runCommunity, type CommunityCommandApi } from './community.js';

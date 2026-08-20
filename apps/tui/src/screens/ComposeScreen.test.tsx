@@ -8,10 +8,8 @@ import {
   POST_VISIBILITY,
   QUOTE_POLICY,
   REGISTRATION_MODE,
-  type Actor,
-  type GetNodeInfoResponse,
-  type Post,
 } from '@patches/proto';
+import type { Actor, GetNodeInfoResponse, Post } from '../api/wire/types.js';
 import { AsciiRenderer, MediaRendererProvider, renderArtPreview } from '@patches/terminal-media';
 import { render } from 'ink-testing-library';
 import sharp from 'sharp';

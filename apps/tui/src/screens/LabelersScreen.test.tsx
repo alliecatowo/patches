@@ -1,4 +1,5 @@
-import { LABEL_ACTION, type Actor, type Labeler } from '@patches/proto';
+import { LABEL_ACTION } from '@patches/proto';
+import type { Actor, Labeler } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

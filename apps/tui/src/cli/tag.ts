@@ -1,13 +1,13 @@
-import {
-  type ListTagFeedRequest,
-  type ListTagFeedResponse,
-  type MuteTagRequest,
-  type MuteTagResponse,
-  type SearchTagsRequest,
-  type SearchTagsResponse,
-  type UnmuteTagRequest,
-  type UnmuteTagResponse,
-} from '@patches/proto';
+import type {
+  ListTagFeedRequest,
+  ListTagFeedResponse,
+  MuteTagRequest,
+  MuteTagResponse,
+  SearchTagsRequest,
+  SearchTagsResponse,
+  UnmuteTagRequest,
+  UnmuteTagResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { type PatchesApi } from '../api/client.js';

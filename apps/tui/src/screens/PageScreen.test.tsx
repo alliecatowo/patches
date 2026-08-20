@@ -1,4 +1,4 @@
-import type { GetPageResponse } from '@patches/proto';
+import type { GetPageResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { Box } from 'ink';
 import type { ReactElement, ReactNode } from 'react';

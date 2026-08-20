@@ -10,7 +10,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { FOLLOW_STATE, type Actor, type MediaAttachment, type Post } from '@patches/proto';
+import { FOLLOW_STATE } from '@patches/proto';
+import type { Actor, MediaAttachment, Post } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import type { PatchesApi } from '../api/client.js';

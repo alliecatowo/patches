@@ -1,4 +1,4 @@
-import type { Nameplate as NameplateT } from '@patches/proto';
+import type { Nameplate as NameplateT } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 

@@ -1,4 +1,5 @@
-import { timestampToDate, type Credential } from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type { Credential } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { sshAuthSock } from '../auth/ssh-agent.js';

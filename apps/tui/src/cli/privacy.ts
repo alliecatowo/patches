@@ -1,16 +1,16 @@
-import {
-  type AcknowledgePrivacyNoticeRequest,
-  type AcknowledgePrivacyNoticeResponse,
-  type CancelAccountDeletionResponse,
-  type ExportAccountResponse,
-  type GetDeletionStatusResponse,
-  type GetExportStatusResponse,
-  type GetNodePolicyResponse,
-  type GetPrivacyPrefsResponse,
-  type RequestAccountDeletionResponse,
-  type UpdatePrivacyPrefsRequest,
-  type UpdatePrivacyPrefsResponse,
-} from '@patches/proto';
+import type {
+  AcknowledgePrivacyNoticeRequest,
+  AcknowledgePrivacyNoticeResponse,
+  CancelAccountDeletionResponse,
+  ExportAccountResponse,
+  GetDeletionStatusResponse,
+  GetExportStatusResponse,
+  GetNodePolicyResponse,
+  GetPrivacyPrefsResponse,
+  RequestAccountDeletionResponse,
+  UpdatePrivacyPrefsRequest,
+  UpdatePrivacyPrefsResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { type PatchesApi } from '../api/client.js';

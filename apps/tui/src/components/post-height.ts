@@ -1,4 +1,5 @@
-import { FILTER_ACTION, type Post } from '@patches/proto';
+import { FILTER_ACTION } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { describeFilteredBy } from '../format/filtered-by.js';

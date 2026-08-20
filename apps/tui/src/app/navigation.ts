@@ -1,4 +1,4 @@
-import type { Actor, MediaAttachment, Tag } from '@patches/proto';
+import type { Actor, MediaAttachment, Tag } from '../api/wire/types.js';
 
 import type { ReportTarget } from '../screens/ReportScreen.js';
 import { isRootScreen, type RootScreen, type Screen } from './keymap.js';

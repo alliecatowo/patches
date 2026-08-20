@@ -2,8 +2,8 @@ import {
   MODERATION_ACTION_TYPE,
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
-  type ModerationLogEntry,
 } from '@patches/proto';
+import type { ModerationLogEntry } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
