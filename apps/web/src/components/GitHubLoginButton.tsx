@@ -16,6 +16,20 @@ interface DeviceLink {
 
 type TerminalReason = 'expired' | 'denied';
 
+export interface GitHubLoginButtonProps {
+  /**
+   * `'login'` (default): an anonymous viewer signs in with an already-linked GitHub
+   * credential and is navigated away on success. `'link'`: a signed-in caller links
+   * GitHub to their own account (spec §167 — the same `BeginGitHubLogin`/`PollGitHubLogin`
+   * RPC pair serves both; the server tells the two apart by whether the request carries a
+   * bearer token at all, see `AuthController.optionalCallerUserId`). In `'link'` mode this
+   * never navigates — it re-establishes the (rotated) session in place and calls `onLinked`
+   * so the caller can refresh its own credential list.
+   */
+  mode?: 'login' | 'link';
+  onLinked?: () => void;
+}
+
 /**
  * "Sign in with GitHub" (P15-005, ADR 0011) — GitHub is a *credential*, never an identity
  * provider here: this only proves control of a GitHub account to authenticate an existing
@@ -27,10 +41,14 @@ type TerminalReason = 'expired' | 'denied';
  * terminal status. `SLOW_DOWN` backs the interval off by +5s, matching GitHub's own device
  * flow convention.
  *
- * Visibility is gated by the caller (`LoginRoute`) on `GetAuthPolicyResponse.github_auth`
- * (P15-006) — this component itself renders unconditionally.
+ * Visibility is gated by the caller (`LoginRoute`/`CredentialsRoute`) on
+ * `GetAuthPolicyResponse.github_auth` (P15-006) — this component itself renders
+ * unconditionally.
  */
-export function GitHubLoginButton(): JSX.Element {
+export function GitHubLoginButton({
+  mode = 'login',
+  onLinked,
+}: GitHubLoginButtonProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [link, setLink] = useState<DeviceLink | null>(null);
@@ -108,8 +126,13 @@ export function GitHubLoginButton(): JSX.Element {
         default:
           if (result.session) {
             await establishSession(result.session);
-            const from = (location.state as { from?: string } | null)?.from ?? '/';
-            void navigate(from, { replace: true });
+            if (mode === 'link') {
+              setLink(null);
+              onLinked?.();
+            } else {
+              const from = (location.state as { from?: string } | null)?.from ?? '/';
+              void navigate(from, { replace: true });
+            }
           }
           return;
       }
@@ -186,7 +209,11 @@ export function GitHubLoginButton(): JSX.Element {
         onClick={() => beginMutation.mutate()}
         disabled={beginMutation.isPending}
       >
-        {beginMutation.isPending ? 'Starting…' : 'Sign in with GitHub'}
+        {beginMutation.isPending
+          ? 'Starting…'
+          : mode === 'link'
+            ? 'Link a GitHub account'
+            : 'Sign in with GitHub'}
       </button>
     </div>
   );

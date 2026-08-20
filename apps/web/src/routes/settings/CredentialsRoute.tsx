@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 
 import { api } from '../../api/client.js';
+import { GitHubLoginButton } from '../../components/GitHubLoginButton.js';
+import { OidcLoginButton } from '../../components/OidcLoginButton.js';
 import { humanizeEnumValue } from '../../lib/enumLabels.js';
 import { formatAbsoluteTime } from '../../lib/format.js';
 import styles from '../AuthForm.module.css';
@@ -16,6 +18,11 @@ import styles from '../AuthForm.module.css';
  * Passkeys are enrolled through their own `BeginPasskeyRegistration`/`CompletePasskeyRegistration`
  * pair, never through the generic add-credential flow the other types use — there is no add
  * form for `PASSKEY` here by design.
+ *
+ * GitHub/OIDC linking (P15-007) reuses `GitHubLoginButton`/`OidcLoginButton` in `mode="link"`:
+ * the exact same `BeginGitHubLogin`/`BeginOidcLogin` RPCs the login screen uses, distinguished
+ * server-side only by whether the call carries a bearer token (spec §167). Gated on
+ * `GetAuthPolicyResponse.github_auth`/`oidc_providers`, same as `LoginRoute`.
  */
 export function CredentialsRoute(): JSX.Element {
   const queryClient = useQueryClient();
@@ -24,6 +31,12 @@ export function CredentialsRoute(): JSX.Element {
   const credentialsQuery = useQuery({
     queryKey: ['credentials'],
     queryFn: () => api.auth.listCredentials({}),
+  });
+
+  const authPolicyQuery = useQuery({
+    queryKey: ['auth-policy'],
+    queryFn: () => api.auth.getAuthPolicy({}),
+    staleTime: 60_000,
   });
 
   const invalidate = (): void => void queryClient.invalidateQueries({ queryKey: ['credentials'] });
@@ -114,6 +127,27 @@ export function CredentialsRoute(): JSX.Element {
           {registerPasskeyMutation.isPending ? 'Waiting for your device…' : 'Add a passkey'}
         </button>
       </section>
+
+      {authPolicyQuery.data?.githubAuth || (authPolicyQuery.data?.oidcProviders.length ?? 0) > 0 ? (
+        <section style={{ marginTop: '1.5rem' }}>
+          <h2>Link another account</h2>
+          <p>
+            Link GitHub or another sign-in provider as an additional way into this Patches account.
+            Neither imports a profile — it is only a credential, never an identity (spec §167).
+          </p>
+          {authPolicyQuery.data?.githubAuth ? (
+            <GitHubLoginButton mode="link" onLinked={invalidate} />
+          ) : null}
+          {authPolicyQuery.data?.oidcProviders.map((provider) => (
+            <OidcLoginButton
+              key={provider.id}
+              provider={provider}
+              mode="link"
+              onLinked={invalidate}
+            />
+          ))}
+        </section>
+      ) : null}
 
       <section style={{ marginTop: '1.5rem' }}>
         <h2>Recovery codes</h2>

@@ -18,6 +18,10 @@ type TerminalReason = 'expired' | 'denied';
 
 export interface OidcLoginButtonProps {
   provider: OidcProviderInfo;
+  /** Same `'login'`/`'link'` distinction as `GitHubLoginButtonProps.mode` — see there for
+   * the full explanation of how the server tells the two apart. */
+  mode?: 'login' | 'link';
+  onLinked?: () => void;
 }
 
 /**
@@ -27,7 +31,11 @@ export interface OidcLoginButtonProps {
  * `setTimeout` loop, back off +5s on `SLOW_DOWN`, never `setInterval`) — the only difference
  * is which RPC pair it calls and that `provider` is threaded through every request.
  */
-export function OidcLoginButton({ provider }: OidcLoginButtonProps): JSX.Element {
+export function OidcLoginButton({
+  provider,
+  mode = 'login',
+  onLinked,
+}: OidcLoginButtonProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [link, setLink] = useState<DeviceLink | null>(null);
@@ -108,8 +116,13 @@ export function OidcLoginButton({ provider }: OidcLoginButtonProps): JSX.Element
         default:
           if (result.session) {
             await establishSession(result.session);
-            const from = (location.state as { from?: string } | null)?.from ?? '/';
-            void navigate(from, { replace: true });
+            if (mode === 'link') {
+              setLink(null);
+              onLinked?.();
+            } else {
+              const from = (location.state as { from?: string } | null)?.from ?? '/';
+              void navigate(from, { replace: true });
+            }
           }
           return;
       }
@@ -183,7 +196,11 @@ export function OidcLoginButton({ provider }: OidcLoginButtonProps): JSX.Element
         onClick={() => beginMutation.mutate()}
         disabled={beginMutation.isPending}
       >
-        {beginMutation.isPending ? 'Starting…' : `Sign in with ${provider.displayName}`}
+        {beginMutation.isPending
+          ? 'Starting…'
+          : mode === 'link'
+            ? `Link ${provider.displayName}`
+            : `Sign in with ${provider.displayName}`}
       </button>
     </div>
   );
