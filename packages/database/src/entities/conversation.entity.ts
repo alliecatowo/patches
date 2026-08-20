@@ -52,4 +52,12 @@ export class Conversation {
    * by `DirectMessageService` on every `SendMessage`. */
   @Column({ type: 'timestamptz' })
   declare lastMessageAt: Date;
+
+  /** `E2EE_V1` only (ADR 0020 §7, ADR 0026, P13-008); always `'1'` for `LEGACY_SERVER_VISIBLE`.
+   * Denormalized from `E2eeConversationMembershipEvent`'s newest row so a fanout accept can lock
+   * and read it with one row lock on `conversations` rather than a separate lock on the event
+   * table — see `e2ee-fanout.ts`'s and `e2ee-membership.ts`'s module doc comments for the race
+   * this row lock resolves. PostgreSQL bigint is returned as a string by pg. */
+  @Column({ type: 'bigint', default: '1' })
+  declare membershipEpoch: string;
 }
