@@ -1,4 +1,4 @@
-import { FOLLOW_STATE } from '@patches/proto';
+import { FOLLOW_STATE } from '../api/wire/enums.js';
 import type { Actor, Relationship } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';

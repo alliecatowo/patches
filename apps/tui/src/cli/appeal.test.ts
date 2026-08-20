@@ -1,4 +1,4 @@
-import { APPEAL_STATUS } from '@patches/proto';
+import { APPEAL_STATUS } from '../api/wire/enums.js';
 import type { Appeal } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 

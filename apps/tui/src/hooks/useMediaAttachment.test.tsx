@@ -1,4 +1,4 @@
-import { MEDIA_STATUS } from '@patches/proto';
+import { MEDIA_STATUS } from '../api/wire/enums.js';
 import type { MediaAttachment } from '../api/wire/types.js';
 import {
   MediaRendererProvider,

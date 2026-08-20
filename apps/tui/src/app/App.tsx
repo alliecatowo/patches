@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { FOLLOW_STATE } from '@patches/proto';
+import { FOLLOW_STATE } from '../api/wire/enums.js';
 import type { Actor, MediaAttachment, Post } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import { CREDENTIAL_TYPE, dateToTimestamp } from '@patches/proto';
+import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
+import { dateToTimestamp } from '@patches/proto';
 import type { BeginSshEnrollmentResponse } from '../api/wire/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

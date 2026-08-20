@@ -1,4 +1,4 @@
-import { MODERATION_LOG_SUBJECT_KIND } from '@patches/proto';
+import { MODERATION_LOG_SUBJECT_KIND } from '../api/wire/enums.js';
 import type { ListModerationLogResponse, ModerationLogEntry } from '../api/wire/types.js';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';

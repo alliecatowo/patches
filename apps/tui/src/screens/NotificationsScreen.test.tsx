@@ -1,4 +1,4 @@
-import { NOTIFICATION_TYPE } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
 import type { Actor, Notification } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';

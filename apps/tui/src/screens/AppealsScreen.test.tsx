@@ -1,4 +1,8 @@
-import { APPEAL_STATUS, MODERATION_ACTION_TYPE, MODERATION_REASON_CATEGORY } from '@patches/proto';
+import {
+  APPEAL_STATUS,
+  MODERATION_ACTION_TYPE,
+  MODERATION_REASON_CATEGORY,
+} from '../api/wire/enums.js';
 import type { Appeal, ModerationNotice } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';

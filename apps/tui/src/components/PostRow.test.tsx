@@ -1,12 +1,12 @@
 import {
   COMMUNITY_ROLE,
-  dateToTimestamp,
   FILTER_ACTION,
   FILTERED_BY_PROVENANCE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
-} from '@patches/proto';
+} from '../api/wire/enums.js';
+import { dateToTimestamp } from '@patches/proto';
 import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';

@@ -1,4 +1,5 @@
-import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE, timestampToDate } from '@patches/proto';
+import { ACCOUNT_EXPORT_STATUS, FEDERATION_STANCE } from '../api/wire/enums.js';
+import { timestampToDate } from '@patches/proto';
 import type {
   AccountDeletionStatus,
   AccountExport,

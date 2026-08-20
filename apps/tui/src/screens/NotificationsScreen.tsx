@@ -1,6 +1,7 @@
 import { useContentSize } from '../app/layout.js';
 import { present } from '../api/present.js';
-import { NOTIFICATION_TYPE, timestampToDate } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
+import { timestampToDate } from '@patches/proto';
 import type { Actor, Notification } from '../api/wire/types.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';

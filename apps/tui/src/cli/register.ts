@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { PASSWORD_AUTH_MODE } from '@patches/proto';
+import { PASSWORD_AUTH_MODE } from '../api/wire/enums.js';
 
 import { SessionManager } from '../auth/session.js';
 import {

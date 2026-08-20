@@ -3,7 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { buildSshChallengeBlob, SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import { CREDENTIAL_TYPE, timestampToDate } from '@patches/proto';
+import { CREDENTIAL_TYPE } from '../api/wire/enums.js';
+import { timestampToDate } from '@patches/proto';
 import type {
   AddCredentialRequest,
   AddCredentialResponse,

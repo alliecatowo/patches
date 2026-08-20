@@ -1,4 +1,4 @@
-import { FILTER_ACTION, FILTERED_BY_PROVENANCE } from '@patches/proto';
+import { FILTER_ACTION, FILTERED_BY_PROVENANCE } from '../api/wire/enums.js';
 import type { Actor, FilteredByHint } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 

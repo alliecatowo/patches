@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { COMMUNITY_ROLE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import { COMMUNITY_ROLE, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type {
   CreatePostRequest,
   CreatePostResponse,

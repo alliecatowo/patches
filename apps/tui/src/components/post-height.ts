@@ -1,4 +1,4 @@
-import { FILTER_ACTION } from '@patches/proto';
+import { FILTER_ACTION } from '../api/wire/enums.js';
 import type { Post } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
