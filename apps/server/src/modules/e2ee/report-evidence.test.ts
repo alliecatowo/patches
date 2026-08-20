@@ -30,6 +30,7 @@ function fakeKeyRing(): NodeFrankingKeyRing {
   return {
     keyForEra: (era) => (era === 1 ? NODE_KEY_ERA_1 : undefined),
     knownEras: () => [1],
+    currentEra: () => 1,
   };
 }
 
