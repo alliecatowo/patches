@@ -208,15 +208,15 @@ fi
 """
 
 [tasks."fly:deploy"]
-description = "Deploy to Fly.io (needs `flyctl` authenticated + infra/fly/fly.toml's app name set — see docs/operations/deployment.md). Status: planned, never run from this environment (no Fly account)."
+description = "Deploy to Fly.io (needs `flyctl` authenticated + infra/fly/fly.toml's app name set — see docs/operations/deployment.md). Runs from this environment against app `patches-social` (Fly + Fly Postgres, region iad)."
 run = "cd \"$MISE_PROJECT_ROOT\" && flyctl deploy --config infra/fly/fly.toml --remote-only"
 
 [tasks."fly:migrate"]
-description = "Run the release-command migration step manually against whatever DATABASE_URL/secrets flyctl currently resolves (infra/fly/fly.toml's release_command does this automatically on every deploy; this task is for a manual out-of-band run). Status: planned, never run from this environment."
+description = "Run the release-command migration step manually against whatever DATABASE_URL/secrets flyctl currently resolves (infra/fly/fly.toml's release_command does this automatically on every deploy; this task is for a manual out-of-band run)."
 run = "cd \"$MISE_PROJECT_ROOT\" && flyctl ssh console --config infra/fly/fly.toml --command 'node server/migrate.mjs'"
 
 [tasks."fly:logs"]
-description = "Tail production logs. Status: planned, never run from this environment."
+description = "Tail production logs for app `patches-social`."
 run = "cd \"$MISE_PROJECT_ROOT\" && flyctl logs --config infra/fly/fly.toml"
 
 [tasks."db:dump"]
