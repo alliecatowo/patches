@@ -1,3 +1,4 @@
+import type { Post } from '@patches/proto/es';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type JSX } from 'react';
 import {
@@ -10,7 +11,7 @@ import {
 } from 'react-native';
 
 import { restoreSession, signOut } from './api/session.js';
-import { ComposeScreen } from './screens/ComposeScreen.js';
+import { ComposeScreen, type ComposeTarget } from './screens/ComposeScreen.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NotificationsScreen } from './screens/NotificationsScreen.js';
@@ -30,6 +31,12 @@ export default function App(): JSX.Element {
   const [booting, setBooting] = useState(true);
   const [tab, setTab] = useState<Tab>('home');
   const [authView, setAuthView] = useState<AuthView>('login');
+  const [composeTarget, setComposeTarget] = useState<ComposeTarget>({ kind: 'post' });
+
+  const openCompose = (nextTarget: ComposeTarget): void => {
+    setComposeTarget(nextTarget);
+    setTab('compose');
+  };
 
   useEffect(() => {
     void restoreSession().finally(() => setBooting(false));
@@ -69,13 +76,36 @@ export default function App(): JSX.Element {
         </TouchableOpacity>
       </View>
       <View style={styles.content}>
-        {tab === 'home' ? <HomeScreen /> : null}
-        {tab === 'compose' ? <ComposeScreen onPosted={() => setTab('home')} /> : null}
+        {tab === 'home' ? (
+          <HomeScreen
+            viewerActorId={actor.id}
+            onReply={(post: Post) => openCompose({ kind: 'reply', replyTo: post })}
+            onQuote={(post: Post) => openCompose({ kind: 'quote', quote: post })}
+            onEdit={(post: Post) => openCompose({ kind: 'edit', editing: post })}
+          />
+        ) : null}
+        {tab === 'compose' ? (
+          <ComposeScreen
+            target={composeTarget}
+            onCancel={() => {
+              setComposeTarget({ kind: 'post' });
+              setTab('home');
+            }}
+            onPosted={() => {
+              setComposeTarget({ kind: 'post' });
+              setTab('home');
+            }}
+          />
+        ) : null}
         {tab === 'notifications' ? <NotificationsScreen /> : null}
       </View>
       <View style={styles.tabBar}>
         <TabButton label="Home" active={tab === 'home'} onPress={() => setTab('home')} />
-        <TabButton label="Post" active={tab === 'compose'} onPress={() => setTab('compose')} />
+        <TabButton
+          label="Post"
+          active={tab === 'compose'}
+          onPress={() => openCompose({ kind: 'post' })}
+        />
         <TabButton
           label="Alerts"
           active={tab === 'notifications'}

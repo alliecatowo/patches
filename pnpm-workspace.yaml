@@ -95,6 +95,8 @@ catalog:
   fast-check: ^4.9.0
   '@simplewebauthn/server': ^13.3.2
   '@simplewebauthn/browser': ^13.3.0
+  expo-image-picker: ~57.0.12
+  expo-file-system: ~57.0.5
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:
@@ -106,3 +108,7 @@ allowBuilds:
   protobufjs: true
   unrs-resolver: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - expo-file-system@57.0.5
+  - expo-image-picker@57.0.12
