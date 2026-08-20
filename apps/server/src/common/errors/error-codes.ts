@@ -147,6 +147,14 @@ export const ERROR_CODES = [
    * particular account or password. Clients must hide password UI rather than let a caller
    * reach this (`AuthService.GetAuthPolicy`). */
   'PASSWORD_AUTH_DISABLED',
+  /** S-001 (`RpcBudgetInterceptor`, `docs/operations/capacity.md`): a unary RPC exceeded
+   * `RPC_TIMEOUT_MS` — the handler is abandoned server-side (the client sees this error; any
+   * in-flight DB work is not cancelled, same caveat every gRPC deadline has). */
+  'RPC_TIMEOUT',
+  /** S-002 (`RpcBudgetInterceptor`'s write-concurrency gate, `docs/operations/capacity.md`):
+   * this process is already running `RPC_WRITE_CONCURRENCY_LIMIT` write-class RPCs — the
+   * request is shed immediately, before touching the database, so reads stay unaffected. */
+  'NODE_OVERLOADED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -208,6 +216,8 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   FOLLOW_REQUEST_NOT_FOUND: GrpcStatus.NOT_FOUND,
   SIGN_IN_REQUIRED: GrpcStatus.UNAUTHENTICATED,
   PASSWORD_AUTH_DISABLED: GrpcStatus.FAILED_PRECONDITION,
+  RPC_TIMEOUT: GrpcStatus.DEADLINE_EXCEEDED,
+  NODE_OVERLOADED: GrpcStatus.UNAVAILABLE,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

@@ -13,6 +13,8 @@ export interface ConnectEdgeOptions {
   grpcUrl: string;
   /** ADR 0016 §6 CORS allow-list. Empty means same-origin only. */
   webOrigins: readonly string[];
+  /** S-001: forwarded to {@link createGrpcProxyClient} — see its doc comment. */
+  grpcMaxMessageBytes?: number;
 }
 
 export interface ConnectEdge {
@@ -29,7 +31,7 @@ export interface ConnectEdge {
  * so `req.ip` (read via {@link PEER_IP_CONTEXT_KEY}) already reflects `TRUST_PROXY_HEADERS`.
  */
 export function mountConnectEdge(app: INestApplication, options: ConnectEdgeOptions): ConnectEdge {
-  const client = createGrpcProxyClient(options.grpcUrl);
+  const client = createGrpcProxyClient(options.grpcUrl, options.grpcMaxMessageBytes);
   const expressApp = app.getHttpAdapter().getInstance() as Express;
 
   expressApp.use(connectCorsMiddleware(options.webOrigins));

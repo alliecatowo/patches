@@ -4,6 +4,7 @@ import { createDataSource } from '../src/data-source.js';
 import { OutboxJob } from '../src/entities/outbox-job.entity.js';
 import {
   claimOutboxJobs,
+  countPendingOutboxJobs,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
 } from '../src/repositories/outbox.js';
@@ -157,5 +158,35 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
     expect(dead.status).toBe('DEAD');
     // Dead jobs are retained for operator inspection/replay, never deleted (jobs.md §6).
     expect(dead.attempts).toBe(2);
+  });
+
+  // S-002 (`OutboxCircuitBreaker`, `docs/operations/abuse-protection.md`).
+  it('excludeTypes skips a due job of that type while still claiming other due types', async () => {
+    await enqueue({ type: 'SEND_VERIFICATION_EMAIL' });
+    await enqueue({ type: 'CLEAN_EXPIRED_TOKENS' });
+
+    const claimed = await dataSource.transaction((manager) =>
+      claimOutboxJobs(manager, {
+        workerId: 'worker',
+        limit: 10,
+        excludeTypes: ['SEND_VERIFICATION_EMAIL'],
+      }),
+    );
+
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]!.type).toBe('CLEAN_EXPIRED_TOKENS');
+
+    const stillPending = await dataSource
+      .getRepository(OutboxJob)
+      .findOneByOrFail({ type: 'SEND_VERIFICATION_EMAIL' });
+    expect(stillPending.status).toBe('PENDING');
+  });
+
+  it('countPendingOutboxJobs counts only PENDING rows', async () => {
+    await enqueue();
+    await enqueue({ status: 'COMPLETED' });
+    await enqueue({ status: 'DEAD' });
+
+    expect(await countPendingOutboxJobs(dataSource.manager)).toBe(1);
   });
 });

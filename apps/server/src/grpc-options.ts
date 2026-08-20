@@ -1,4 +1,4 @@
-import { type Server } from '@grpc/grpc-js';
+import { type ChannelOptions, type Server } from '@grpc/grpc-js';
 import { type PackageDefinition } from '@grpc/proto-loader';
 import { ReflectionService } from '@grpc/reflection';
 import { type GrpcOptions, Transport } from '@nestjs/microservices';
@@ -31,13 +31,20 @@ export interface GrpcMicroserviceSetup {
  * service the same way, gated behind `GRPC_REFLECTION` (default off — see
  * `env.schema.ts`'s doc comment for why). This is what lets `grpcurl -plaintext <host>
  * list`/`describe` work against a running server without shipping it any `.proto` files.
+ *
+ * `channelOptions` (S-001, `docs/operations/capacity.md`) is forwarded verbatim into
+ * `@nestjs/microservices`' grpc-js server strategy, which merges it straight into `new
+ * grpc.Server(options)` (`server-grpc.js`'s `createClient()` — the same merge point NestJS
+ * uses for its own `maxSendMessageLength`/`maxReceiveMessageLength` shortcuts, verified
+ * against the installed package). These are real gRPC-core channel args (`grpc.
+ * max_concurrent_streams`, `grpc.max_connection_age_ms`, …), not a Patches invention.
  */
 export function createGrpcMicroservice(
   url: string,
-  options: { reflection?: boolean } = {},
+  options: { reflection?: boolean; channelOptions?: ChannelOptions } = {},
 ): GrpcMicroserviceSetup {
   const health = new HealthImplementation({ '': 'NOT_SERVING' });
-  const { reflection = false } = options;
+  const { reflection = false, channelOptions } = options;
 
   return {
     options: {
@@ -47,6 +54,10 @@ export function createGrpcMicroservice(
         package: [...GRPC_PACKAGES],
         protoPath: [...getProtoFiles()],
         loader: PROTO_LOADER_OPTIONS,
+        // Spread rather than assign: under `exactOptionalPropertyTypes` an explicit
+        // `channelOptions: undefined` is not the same as an absent key, and the strategy's
+        // type only accepts the latter.
+        ...(channelOptions === undefined ? {} : { channelOptions }),
         onLoadPackageDefinition: (pkg: PackageDefinition, server: Server) => {
           health.addToServer(server);
           if (reflection) {

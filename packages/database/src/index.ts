@@ -182,6 +182,7 @@ export { Phase14FollowRequests1787153689257 } from './migrations/1787153689257-P
 
 export {
   claimOutboxJobs,
+  countPendingOutboxJobs,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   outboxBackoffDelayMs,

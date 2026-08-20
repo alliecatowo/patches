@@ -36,6 +36,15 @@ export interface ClaimOutboxJobsOptions {
   now?: Date;
   /** Injectable randomness for jitter; defaults to `Math.random`. */
   random?: () => number;
+  /**
+   * S-002 (`OutboxCircuitBreaker`, `apps/worker/src/jobs/outbox-circuit-breaker.ts`,
+   * `docs/operations/abuse-protection.md`): job types to skip claiming this pass — a type whose
+   * circuit is open (repeatedly failing, usually a downstream outage like federation delivery
+   * to an unreachable peer) stays `PENDING` and its backlog is allowed to grow, rather than the
+   * worker burning its whole `concurrency` budget retrying a type that keeps failing while
+   * healthy types starve behind it in the `ORDER BY id ASC` queue.
+   */
+  excludeTypes?: readonly string[];
 }
 
 /**
@@ -55,9 +64,9 @@ export async function claimOutboxJobs(
   manager: EntityManager,
   options: ClaimOutboxJobsOptions,
 ): Promise<OutboxJob[]> {
-  const { workerId, limit = 10, now = new Date() } = options;
+  const { workerId, limit = 10, now = new Date(), excludeTypes = [] } = options;
 
-  const candidates = await manager
+  const qb = manager
     .createQueryBuilder(OutboxJob, 'job')
     .where('job.status = :status', { status: 'PENDING' })
     .andWhere('job.availableAt <= :now', { now })
@@ -66,8 +75,13 @@ export async function claimOutboxJobs(
     // lock cannot be applied to. There are no joins here, so the two are otherwise identical.
     .limit(limit)
     .setLock('pessimistic_write')
-    .setOnLocked('skip_locked')
-    .getMany();
+    .setOnLocked('skip_locked');
+
+  if (excludeTypes.length > 0) {
+    qb.andWhere('job.type NOT IN (:...excludeTypes)', { excludeTypes });
+  }
+
+  const candidates = await qb.getMany();
 
   if (candidates.length === 0) return [];
 
@@ -193,6 +207,15 @@ export async function replayOutboxJob(
     .andWhere('status = :status', { status: 'DEAD' })
     .execute();
   return (result.affected ?? 0) === 1;
+}
+
+/**
+ * S-002 (`docs/operations/abuse-protection.md`): total `PENDING` row count, regardless of
+ * `available_at` — used by `JobRunner`'s periodic backlog log, not the claim loop itself (that
+ * stays a plain `SELECT`, no lock, so it never contends with a concurrent claim's `FOR UPDATE`).
+ */
+export async function countPendingOutboxJobs(manager: EntityManager): Promise<number> {
+  return manager.getRepository(OutboxJob).count({ where: { status: 'PENDING' } });
 }
 
 /**

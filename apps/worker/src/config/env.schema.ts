@@ -81,6 +81,27 @@ const envObjectSchema = z.object({
    * claimed with no way to decrypt its signer's key.
    */
   FEDERATION_KEY_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
+
+  /**
+   * S-002 (`OutboxCircuitBreaker`, `docs/operations/abuse-protection.md`): consecutive
+   * failures of the *same job type* before its circuit opens — deliberately higher than a
+   * single job's own `max_attempts` (`docs/architecture/jobs.md` §5–6), since one job
+   * exhausting its own retries and dead-lettering is normal and must not, by itself, stop
+   * every other pending job of that type from being tried.
+   */
+  WORKER_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
+  /** How long a tripped circuit stays open before the next claim pass gets one half-open
+   * trial job of that type. */
+  WORKER_CIRCUIT_COOLDOWN_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 60_000),
+  /** S-002: `JobRunner` logs a `outbox_backlog` warning at most once per this interval when
+   * the total `PENDING` row count exceeds `WORKER_BACKLOG_WARN_THRESHOLD` — observability for
+   * the load-shedding this task is about, not itself a limit. */
+  WORKER_BACKLOG_WARN_THRESHOLD: z.coerce.number().int().positive().default(1_000),
+  WORKER_BACKLOG_LOG_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

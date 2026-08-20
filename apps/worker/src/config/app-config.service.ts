@@ -137,4 +137,20 @@ export class AppConfigService {
   get federationKeyEncryptionKey(): string | undefined {
     return this.get('FEDERATION_KEY_ENCRYPTION_KEY');
   }
+
+  get circuitFailureThreshold(): number {
+    return this.get('WORKER_CIRCUIT_FAILURE_THRESHOLD');
+  }
+
+  get circuitCooldownMs(): number {
+    return this.get('WORKER_CIRCUIT_COOLDOWN_MS');
+  }
+
+  get backlogWarnThreshold(): number {
+    return this.get('WORKER_BACKLOG_WARN_THRESHOLD');
+  }
+
+  get backlogLogIntervalMs(): number {
+    return this.get('WORKER_BACKLOG_LOG_INTERVAL_MS');
+  }
 }

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import { existsSync } from 'node:fs';
+import { type Server as HttpServer } from 'node:http';
 import { dirname, join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
@@ -67,7 +68,20 @@ async function bootstrap(): Promise<void> {
   const logger = createLogger(env);
 
   const url = `${env.GRPC_HOST}:${String(env.GRPC_PORT)}`;
-  const { options, health } = createGrpcMicroservice(url, { reflection: env.GRPC_REFLECTION });
+  // S-001 (`docs/operations/capacity.md`): per-connection gRPC limits — real grpc-core channel
+  // args, config-driven so an operator can retune without a code change.
+  const { options, health } = createGrpcMicroservice(url, {
+    reflection: env.GRPC_REFLECTION,
+    channelOptions: {
+      'grpc.max_concurrent_streams': env.GRPC_MAX_CONCURRENT_STREAMS,
+      'grpc.max_connection_age_ms': env.GRPC_MAX_CONNECTION_AGE_MS,
+      'grpc.max_connection_idle_ms': env.GRPC_MAX_CONNECTION_IDLE_MS,
+      'grpc.keepalive_time_ms': env.GRPC_KEEPALIVE_TIME_MS,
+      'grpc.keepalive_timeout_ms': env.GRPC_KEEPALIVE_TIMEOUT_MS,
+      'grpc.max_send_message_length': env.GRPC_MAX_MESSAGE_BYTES,
+      'grpc.max_receive_message_length': env.GRPC_MAX_MESSAGE_BYTES,
+    },
+  });
 
   // A full Nest HTTP application (the NestJS "hybrid app" pattern, `docs/research/
   // nestjs-grpc-protobuf.md` §"Hybrid app"), not `NestFactory.createMicroservice` — gRPC is
@@ -106,7 +120,17 @@ async function bootstrap(): Promise<void> {
   const connectEdge = mountConnectEdge(app, {
     grpcUrl: grpcLoopbackUrl(env.GRPC_HOST, env.GRPC_PORT),
     webOrigins: env.WEB_ORIGINS,
+    grpcMaxMessageBytes: env.GRPC_MAX_MESSAGE_BYTES,
   });
+
+  // S-001 (`docs/operations/capacity.md`): raw Node `http.Server` tuning for the always-on
+  // HTTP listener — the only edge with a directly internet-facing socket (gRPC sits behind
+  // Fly's TCP proxy). Must be set before `app.listen()` below to take effect.
+  const httpServer = app.getHttpServer() as HttpServer;
+  httpServer.maxConnections = env.HTTP_MAX_CONNECTIONS;
+  httpServer.requestTimeout = env.HTTP_REQUEST_TIMEOUT_MS;
+  httpServer.headersTimeout = env.HTTP_HEADERS_TIMEOUT_MS;
+  httpServer.keepAliveTimeout = env.HTTP_KEEPALIVE_TIMEOUT_MS;
 
   // `ReadinessState` (A-043) mirrors the gRPC health status into Nest's DI graph so
   // `HealthService` — resolved by `HealthController`, now always reachable at

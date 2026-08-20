@@ -119,9 +119,23 @@ export interface SearchPostsResult {
  * a federated `@handle@node` form; cross-node mentions are a federation-era concern. */
 const MENTION_PATTERN = /@([a-zA-Z0-9_]{3,30})\b/g;
 
-/** Bounds how many distinct actors one post can mention-notify — a pathological wall of `@x`s
- * must not fan out into hundreds of notification writes from a single `CreatePost` call. */
-const MAX_MENTIONS_PER_POST = 50;
+/**
+ * Extracts distinct, lowercased `@handle` mentions from a post body, stopping once `max`
+ * distinct handles are found (S-002: `config.mentionFanoutMax`, `docs/operations/capacity.md`)
+ * — a pathological wall of `@x`s must not fan out into hundreds of notification writes from a
+ * single `CreatePost` call. A pure, exported function (not a `PostService` method) so the cap
+ * itself is unit-testable without a database.
+ */
+export function extractMentionHandles(body: string, max: number): Set<string> {
+  const handles = new Set<string>();
+  for (const match of body.matchAll(MENTION_PATTERN)) {
+    const handle = match[1];
+    if (handle === undefined) continue;
+    handles.add(handle.toLowerCase());
+    if (handles.size >= max) break;
+  }
+  return handles;
+}
 
 /** Server-side clamp for `ListRepliesRequest.max_depth` (spec §24 — "do not load an
  * arbitrarily large thread in one request"). */
@@ -953,19 +967,15 @@ export class PostService {
 
   /** Parses `@handle` mentions (spec §22 handle syntax) out of a post body and resolves them
    * to local actor ids, excluding the author (never self-mention-notify) and capped at
-   * {@link MAX_MENTIONS_PER_POST}. */
+   * `config.mentionFanoutMax` (S-002: a pathological wall of `@x`s must not fan out into
+   * hundreds of notification writes from a single `CreatePost` call — `docs/operations/
+   * capacity.md`). */
   private async resolveMentions(
     manager: EntityManager,
     body: string,
     authorActorId: string,
   ): Promise<string[]> {
-    const handles = new Set<string>();
-    for (const match of body.matchAll(MENTION_PATTERN)) {
-      const handle = match[1];
-      if (handle === undefined) continue;
-      handles.add(handle.toLowerCase());
-      if (handles.size >= MAX_MENTIONS_PER_POST) break;
-    }
+    const handles = extractMentionHandles(body, this.config.mentionFanoutMax);
     if (handles.size === 0) return [];
 
     const actors = await manager

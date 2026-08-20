@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   claimOutboxJobs,
+  countPendingOutboxJobs,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   type OutboxJob,
@@ -11,6 +12,7 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { DATA_SOURCE } from '../database/database.module.js';
 import { deliveryMetrics } from '../federation/delivery-metrics.js';
 import { JobDispatcher } from './job-dispatcher.js';
+import { OutboxCircuitBreaker } from './outbox-circuit-breaker.js';
 import { releaseUnhandledJob } from './release-claim.js';
 import { sweepStaleLeases } from './stale-lease-sweep.js';
 
@@ -54,12 +56,23 @@ export class JobRunner {
   private lastSweepAtMs = 0;
   /** Same "`0` so the first pass always fires" reasoning as `lastSweepAtMs` (B-030). */
   private lastMetricsLogAtMs = 0;
+  /** Same "`0` so the first pass always fires" reasoning, for the S-002 backlog log. */
+  private lastBacklogLogAtMs = 0;
+  /** S-002 (`docs/operations/abuse-protection.md`): per-job-type circuit breaker — see its
+   * own doc comment. Constructed here (not injected) since its two parameters are read once
+   * from config at process boot, same as `RateLimitService`'s static `WINDOWS`. */
+  private readonly circuitBreaker: OutboxCircuitBreaker;
 
   constructor(
     @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
     private readonly dispatcher: JobDispatcher,
     private readonly config: AppConfigService,
-  ) {}
+  ) {
+    this.circuitBreaker = new OutboxCircuitBreaker(
+      config.circuitFailureThreshold,
+      config.circuitCooldownMs,
+    );
+  }
 
   requestStop(): void {
     this.stopping = true;
@@ -73,9 +86,11 @@ export class JobRunner {
     while (!this.stopping) {
       await this.sweepStaleLeasesIfDue();
       this.logFederationMetricsIfDue();
+      await this.logBacklogIfDue();
 
+      const excludeTypes = this.circuitBreaker.excludedTypes();
       const claimed = await this.dataSource.transaction((manager) =>
-        claimOutboxJobs(manager, { workerId, limit: concurrency }),
+        claimOutboxJobs(manager, { workerId, limit: concurrency, excludeTypes }),
       );
 
       if (claimed.length === 0) {
@@ -118,6 +133,21 @@ export class JobRunner {
     this.logger.log(JSON.stringify({ event: 'federation_metrics', ...deliveryMetrics.snapshot() }));
   }
 
+  /** S-002 (`docs/operations/abuse-protection.md`): logs a structured `outbox_backlog`
+   * warning at most once per `backlogLogIntervalMs` whenever the total `PENDING` count exceeds
+   * `backlogWarnThreshold` — purely observational, the circuit breaker above is what actually
+   * protects this process; this is what tells an operator *why* it's protecting itself. */
+  private async logBacklogIfDue(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastBacklogLogAtMs < this.config.backlogLogIntervalMs) return;
+    this.lastBacklogLogAtMs = now;
+
+    const pending = await countPendingOutboxJobs(this.dataSource.manager);
+    if (pending > this.config.backlogWarnThreshold) {
+      this.logger.warn(JSON.stringify({ event: 'outbox_backlog', pending }));
+    }
+  }
+
   /** Interruptible sleep: `requestStop()` wakes it immediately instead of waiting it out. */
   private async sleep(ms: number): Promise<void> {
     if (this.stopping) return;
@@ -149,6 +179,7 @@ export class JobRunner {
     try {
       await handler.handle(job.payload, { jobId: job.id, attempt: job.attempts });
       await markOutboxJobSucceeded(this.dataSource.manager, job.id);
+      this.circuitBreaker.recordSuccess(job.type);
       this.logger.log(
         JSON.stringify({
           jobId: job.id,
@@ -164,6 +195,13 @@ export class JobRunner {
       const outcome = await markOutboxJobFailed(this.dataSource.manager, job.id, {
         error: message,
       });
+      const wasOpen = this.circuitBreaker.isOpen(job.type);
+      this.circuitBreaker.recordFailure(job.type);
+      if (!wasOpen && this.circuitBreaker.isOpen(job.type)) {
+        this.logger.warn(
+          JSON.stringify({ event: 'outbox_circuit_open', type: job.type, error: message }),
+        );
+      }
       this.logger.warn(
         JSON.stringify({
           jobId: job.id,

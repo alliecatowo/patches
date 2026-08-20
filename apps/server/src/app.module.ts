@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RpcExceptionsFilter } from './common/errors/rpc-exception.filter.js';
 import { PublicReadGuard } from './common/guards/public-read.guard.js';
 import { RequestContextInterceptor } from './common/interceptors/request-context.interceptor.js';
+import { RpcBudgetInterceptor } from './common/interceptors/rpc-budget.interceptor.js';
 import { LoggingInterceptor } from './common/logging/logging.interceptor.js';
 import { AppConfigModule } from './config/config.module.js';
 import { validateEnv } from './config/env.schema.js';
@@ -77,10 +78,15 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],
   providers: [
-    // Order matters: RequestContextInterceptor establishes the request id that
-    // LoggingInterceptor and RpcExceptionsFilter both read.
+    // Order matters: RequestContextInterceptor establishes the request id (and the
+    // rpc/peer pair RpcBudgetInterceptor reads via getRequestContext()) that every
+    // interceptor after it depends on — see RpcBudgetInterceptor's own doc comment for why
+    // it must stay after this one specifically.
     { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    // S-001/S-002 (`docs/operations/capacity.md`): per-RPC-class cost budgets, the
+    // write-concurrency load-shedding gate, and the server-side call deadline.
+    { provide: APP_INTERCEPTOR, useClass: RpcBudgetInterceptor },
     { provide: APP_FILTER, useClass: RpcExceptionsFilter },
     // PUBLIC_READ=false's global gate (owner decision 2026-08-19) — see
     // common/guards/public-read.guard.ts for the allow-list and reasoning. Depends on
