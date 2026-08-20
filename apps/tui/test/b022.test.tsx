@@ -1,6 +1,7 @@
 import { CREDENTIAL_TYPE } from '../src/api/wire/enums.js';
 import { describe, expect, it } from 'vitest';
 
+import { makeNameplate } from '../src/test/wire-fixtures.js';
 import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
@@ -47,14 +48,14 @@ describe('Nameplate decoration (B-022)', () => {
       password: 'x',
       displayName: 'Alice',
       bio: '',
-      nameplate: {
+      nameplate: makeNameplate({
         nameColor: '#7C3AED',
         glyph: '★',
         badges: ['verified'],
         avatarFrame: 'gold',
         statusLine: 'building patches',
         profileBorder: 'round',
-      },
+      }),
     });
 
     const { press, lastFrame, unmount } = renderApp({ fake });
@@ -84,14 +85,14 @@ describe('Plain mode (B-022, spec §173)', () => {
       password: 'x',
       displayName: 'Alice',
       bio: '',
-      nameplate: {
+      nameplate: makeNameplate({
         nameColor: '#7C3AED',
         glyph: '★',
         badges: ['verified'],
         avatarFrame: 'gold',
         statusLine: 'building patches',
         profileBorder: 'round',
-      },
+      }),
     });
 
     const { press, lastFrame, unmount } = renderApp({
@@ -123,14 +124,14 @@ describe('Plain mode (B-022, spec §173)', () => {
       password: 'x',
       displayName: '',
       bio: '',
-      nameplate: {
+      nameplate: makeNameplate({
         nameColor: '#7C3AED',
         glyph: '★',
         badges: [],
         avatarFrame: '',
         statusLine: '',
         profileBorder: '',
-      },
+      }),
     });
     fake.addPost(alice.id, 'hello world');
 
