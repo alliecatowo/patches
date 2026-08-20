@@ -1,4 +1,4 @@
-import { FILTER_ACTION } from '@patches/proto';
+import { FILTER_ACTION } from '../api/wire/enums.js';
 import type { Actor, FilterList } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';

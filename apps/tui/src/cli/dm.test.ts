@@ -1,4 +1,4 @@
-import { CONVERSATION_KIND, MESSAGE_REQUEST_STATUS } from '@patches/proto';
+import { CONVERSATION_KIND, MESSAGE_REQUEST_STATUS } from '../api/wire/enums.js';
 import type {
   Actor,
   Conversation,

@@ -1,4 +1,4 @@
-import { FILTERED_BY_PROVENANCE } from '@patches/proto';
+import { FILTERED_BY_PROVENANCE } from '../api/wire/enums.js';
 import type { FilteredByHint } from '../api/wire/types.js';
 
 import { present } from '../api/present.js';

@@ -1,4 +1,4 @@
-import { MEDIA_STATUS } from '@patches/proto';
+import { MEDIA_STATUS } from '../api/wire/enums.js';
 import type { GetMediaDownloadResponse } from '../api/wire/types.js';
 
 import type { PatchesApi } from '../api/client.js';

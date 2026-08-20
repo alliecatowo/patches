@@ -1,4 +1,4 @@
-import { LABEL_ACTION } from '@patches/proto';
+import { LABEL_ACTION } from '../api/wire/enums.js';
 import type { Labeler } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 

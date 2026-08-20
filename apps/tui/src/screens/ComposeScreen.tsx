@@ -9,7 +9,7 @@ import {
   type ImageRenderMode,
   type TerminalMediaRenderer,
 } from '@patches/terminal-media';
-import { MEDIA_STATUS, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import { MEDIA_STATUS, POST_VISIBILITY, QUOTE_POLICY } from '../api/wire/enums.js';
 import type { Post } from '../api/wire/types.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';

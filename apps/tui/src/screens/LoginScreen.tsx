@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
-import { PASSWORD_AUTH_MODE } from '@patches/proto';
+import { PASSWORD_AUTH_MODE } from '../api/wire/enums.js';
 
 import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError, type FriendlyError } from '../api/errors.js';

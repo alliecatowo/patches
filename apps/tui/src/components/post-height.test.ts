@@ -1,11 +1,11 @@
 import {
-  dateToTimestamp,
   FILTER_ACTION,
   FILTERED_BY_PROVENANCE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
-} from '@patches/proto';
+} from '../api/wire/enums.js';
+import { dateToTimestamp } from '@patches/proto';
 import type { Post } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 

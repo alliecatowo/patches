@@ -1,4 +1,4 @@
-import { LABEL_ACTION } from '@patches/proto';
+import { LABEL_ACTION } from '../api/wire/enums.js';
 import type { LabelAction, Labeler } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';

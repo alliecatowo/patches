@@ -1,5 +1,6 @@
 import { present } from '../api/present.js';
-import { FILTER_ACTION, timestampToDate } from '@patches/proto';
+import { FILTER_ACTION } from '../api/wire/enums.js';
+import { timestampToDate } from '@patches/proto';
 import type { Post } from '../api/wire/types.js';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
