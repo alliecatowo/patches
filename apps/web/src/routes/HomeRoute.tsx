@@ -1,4 +1,3 @@
-import { isSignInRequired } from '@patches/client';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
@@ -11,43 +10,60 @@ import styles from './HomeRoute.module.css';
 type Tab = 'home' | 'local';
 
 /**
- * `/` — the local timeline is public; the home timeline (follows) requires a
- * session. Both are strictly chronological (Amendment B §194: no sort/rank
- * parameter exists on either RPC, so there's nothing here to expose).
+ * `/` — the "Everyone here" timeline (every public post on this node, chronological) is
+ * public by default; the home timeline (follows) requires a session. Both are strictly
+ * chronological (Amendment B §194: no sort/rank parameter exists on either RPC, so
+ * there's nothing here to expose).
  *
  * A node may opt into `PUBLIC_READ=false` (owner decision, 2026-08-19): invite-only gates
- * posting, not reading, by default, but an operator can close reads entirely. This route
- * detects that with a tiny probe query (`limit: 1`, only enabled while signed out — a signed-in
- * caller always has a session to read with) sharing `PostTimeline`'s own `queryFn`/cache
- * shape, and shows a sign-in prompt in place of the timeline rather than `PostTimeline`'s
- * generic "couldn't load" message.
+ * posting, not reading, by default, but an operator can close reads entirely. `NodeService
+ * .GetNodeInfo` is exempt from the auth requirement — it's how a signed-out client
+ * discovers the read policy in the first place — so this route reads `publicRead` from it
+ * directly (B-044) instead of inferring closure from a failed probe request the way an
+ * earlier version did. A signed-out visitor on a closed node now sees a designed
+ * "invite-only" panel instead of `PostTimeline`'s generic "couldn't load" error, and the
+ * "Everyone here" tab is hidden entirely rather than shown and then failing to load.
  */
 export function HomeRoute(): JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>(session ? 'home' : 'local');
 
-  const publicReadProbe = useQuery({
-    queryKey: ['feed', 'local', 'public-read-probe'],
-    queryFn: () => api.feeds.listLocalFeed({ cursor: '', limit: 1 }),
+  const nodeInfoQuery = useQuery({
+    queryKey: ['node-info', 'home-route'],
+    queryFn: () => api.node.getNodeInfo({}),
     enabled: session === null,
-    retry: false,
+    staleTime: 60_000,
   });
 
-  if (
-    session === null &&
-    publicReadProbe.error !== null &&
-    isSignInRequired(publicReadProbe.error)
-  ) {
+  // Signed in: reads are always allowed, `nodeInfoQuery` isn't even enabled. Signed out:
+  // wait for the (fast, auth-exempt) node-info probe before deciding anything — firing the
+  // local-feed request ahead of knowing the node's read policy would send a request that's
+  // certain to fail on a closed node, the exact "error surface instead of a designed state"
+  // this fix exists to remove.
+  if (session === null && nodeInfoQuery.isPending) {
+    return <></>;
+  }
+
+  const publicReadClosed = session === null && nodeInfoQuery.data?.publicRead === false;
+
+  if (publicReadClosed) {
     return (
-      <div className={styles['signInRequired']}>
-        <p>This node requires sign-in to read its public content.</p>
+      <div className={styles['inviteOnly']}>
+        <h2>This node is invite-only</h2>
         <p>
-          <Link to="/login">Sign in</Link> or <Link to="/register">create an account</Link> to
-          continue.
+          The person who runs this node has closed reading to signed-out visitors. Sign in if you
+          already have an account, or create one with an invite code if someone here has sent you
+          one.
+        </p>
+        <p>
+          <Link to="/login">Sign in</Link> or{' '}
+          <Link to="/register">create an account with an invite</Link>.
         </p>
       </div>
     );
   }
+
+  const showLocalTab = session !== null || nodeInfoQuery.data?.publicRead === true;
 
   return (
     <div>
@@ -61,27 +77,32 @@ export function HomeRoute(): JSX.Element {
             Home
           </button>
         ) : null}
-        <button
-          type="button"
-          className={`${styles['tab']} ${tab === 'local' ? styles['active'] : ''}`}
-          onClick={() => setTab('local')}
-        >
-          Local
-        </button>
+        {showLocalTab ? (
+          <button
+            type="button"
+            className={`${styles['tab']} ${tab === 'local' ? styles['active'] : ''}`}
+            onClick={() => setTab('local')}
+          >
+            Everyone here
+          </button>
+        ) : null}
       </div>
+      {tab === 'local' && showLocalTab ? (
+        <p className={styles['tabExplainer']}>Every public post on this node, newest first.</p>
+      ) : null}
       {tab === 'home' && session ? (
         <PostTimeline
           queryKey={['feed', 'home']}
           fetchPage={(cursor) => api.feeds.listHomeFeed({ cursor, limit: 30 })}
           emptyMessage="No posts yet. Follow people to fill your home timeline."
         />
-      ) : (
+      ) : showLocalTab ? (
         <PostTimeline
           queryKey={['feed', 'local']}
           fetchPage={(cursor) => api.feeds.listLocalFeed({ cursor, limit: 30 })}
           emptyMessage="No posts on this node yet."
         />
-      )}
+      ) : null}
     </div>
   );
 }
