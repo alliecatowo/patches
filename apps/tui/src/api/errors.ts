@@ -1,10 +1,22 @@
-import { status as GrpcStatus } from '@grpc/grpc-js';
+import { Code, ConnectError } from '@connectrpc/connect';
+import {
+  describeError,
+  type DescribeErrorCopyOverrides,
+  isPrivacyAckRequired as clientIsPrivacyAckRequired,
+  isSignInRequired as clientIsSignInRequired,
+} from '@patches/client';
 
 /**
  * A network failure translated into something a person can act on (spec §81).
  *
  * The TUI must never crash to a Node stack trace, and must never print one
  * either — `title` and `hint` are the only things a user ever sees.
+ *
+ * This is a thin terminal-specific adapter over `@patches/client`'s
+ * `describeError` (ADR 0023 slice 9) — the copy itself lives in one place so
+ * every client (TUI, web, RN) shows the same words for the same failure
+ * (ADR 0016 §9). Only the handful of cases that name a terminal affordance
+ * ("press L", "press :privacy") are overridden here via `DescribeErrorCopyOverrides`.
  */
 export interface FriendlyError {
   /** One short line: what went wrong. */
@@ -13,7 +25,7 @@ export interface FriendlyError {
   hint: string;
   /** Whether retrying the same call could plausibly succeed. */
   retryable: boolean;
-  /** gRPC status code, shown only in the help/diagnostics view. */
+  /** gRPC/Connect status code, shown only in the help/diagnostics view. */
   code: number;
 }
 
@@ -64,13 +76,45 @@ function appErrorCodeOf(error: unknown): string | undefined {
   return undefined;
 }
 
+/** The server's raw message text, preferring `rawMessage` (connect-es) over `details`/`message`
+ * (grpc-js) — no stack-trace guard here, `@patches/client`'s `describeError` already applies one
+ * to whatever ends up as `ConnectError.rawMessage`. */
+function extractMessage(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return '';
+  const { rawMessage, details, message } = error as GrpcLikeError;
+  if (typeof rawMessage === 'string' && rawMessage.length > 0) return rawMessage;
+  if (typeof details === 'string' && details.length > 0) return details;
+  return typeof message === 'string' ? message : '';
+}
+
+/**
+ * Normalise anything `describeGrpcError` might see — a real `ConnectError`, or a
+ * grpc-js-shaped `ServiceError` still reachable while P10-015 finishes removing
+ * `@grpc/grpc-js` from the rest of the TUI — into a real `ConnectError`, so
+ * `@patches/client`'s `describeError` (which only understands `ConnectError`) sees a
+ * consistent shape. A value that's already a `ConnectError` (connect-es's own
+ * structural `instanceof`) passes through untouched.
+ */
+function toConnectError(error: unknown): ConnectError {
+  if (error instanceof ConnectError) return error;
+  const code = statusOf(error);
+  const appErrorCode = appErrorCodeOf(error);
+  return new ConnectError(
+    extractMessage(error),
+    code ?? Code.Unknown,
+    appErrorCode === undefined ? undefined : { 'x-patches-error-code': appErrorCode },
+    undefined,
+    error,
+  );
+}
+
 /**
  * True when the server's `PUBLIC_READ=false` gate (owner decision, 2026-08-19: an
  * invite-only node gates posting, not reading, unless an operator opts into a fully closed
  * node) is what rejected this call — distinct from every other `UNAUTHENTICATED` failure.
  */
 export function isSignInRequired(error: unknown): boolean {
-  return appErrorCodeOf(error) === 'SIGN_IN_REQUIRED';
+  return clientIsSignInRequired(toConnectError(error));
 }
 
 /**
@@ -83,25 +127,24 @@ export function isSignInRequired(error: unknown): boolean {
  * `describeGrpcError`'s title) can.
  */
 export function isPrivacyAckRequired(error: unknown): boolean {
-  return appErrorCodeOf(error) === 'PRIVACY_NOTICE_NOT_ACKNOWLEDGED';
+  return clientIsPrivacyAckRequired(toConnectError(error));
 }
 
-/** The server's own message, when it sent one worth showing. */
-function serverMessage(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const { rawMessage, details, message } = error as GrpcLikeError;
-  const text =
-    typeof rawMessage === 'string' && rawMessage.length > 0
-      ? rawMessage
-      : typeof details === 'string' && details.length > 0
-        ? details
-        : message;
-  if (typeof text !== 'string') return undefined;
-  const trimmed = text.trim();
-  // Guard against anything that looks like a stack trace leaking through.
-  if (trimmed.length === 0 || trimmed.includes('\n    at ')) return undefined;
-  return trimmed;
-}
+/**
+ * The terminal-specific copy — every other case's copy is shared verbatim with every other
+ * client via `@patches/client`'s `describeError` (ADR 0016 §9). "Press L" and "press :privacy"
+ * name TUI-only affordances a web/RN client doesn't have.
+ */
+const TUI_COPY: DescribeErrorCopyOverrides = {
+  unavailableHint: 'Check that it is running and that --server points at it.',
+  signInRequiredHint: 'Press L to log in.',
+  // A-053: every caller of `describeGrpcError` renders `.title` alone (toasts, screen error
+  // rows) — verified against every call site in `apps/tui/src` — so the actionable instruction
+  // has to live in `title`, not `hint`, unlike the generic default copy.
+  privacyAckTitle:
+    'This node’s privacy notice changed — press :privacy to review and acknowledge it.',
+  privacyAckHint: 'Acknowledging only records that you saw the text; it grants nothing else.',
+};
 
 export interface DescribeGrpcErrorOptions {
   /**
@@ -125,123 +168,15 @@ export function describeGrpcError(
   target: string,
   options?: DescribeGrpcErrorOptions,
 ): FriendlyError {
-  const code = statusOf(error);
-  const fromServer = serverMessage(error);
-
-  switch (code) {
-    case GrpcStatus.UNAVAILABLE:
-      return {
-        title: `Can't reach the Patches server at ${target}.`,
-        hint: 'Check that it is running and that --server points at it.',
-        retryable: true,
-        code,
-      };
-    case GrpcStatus.DEADLINE_EXCEEDED:
-      return {
-        title: `${target} took too long to answer.`,
-        hint: 'The server may be overloaded. Try again in a moment.',
-        retryable: true,
-        code,
-      };
-    case GrpcStatus.UNAUTHENTICATED:
-      if (isSignInRequired(error)) {
-        return {
-          title: 'This node requires sign-in to read.',
-          hint: 'Press L to log in.',
-          retryable: false,
-          code,
-        };
-      }
-      if (options?.context === 'credentials') {
-        return {
-          title: 'Wrong handle/email or password.',
-          hint: '',
-          retryable: false,
-          code,
-        };
-      }
-      return {
-        title: 'Your session is no longer valid.',
-        hint: 'Sign in again to continue.',
-        retryable: false,
-        code,
-      };
-    case GrpcStatus.PERMISSION_DENIED:
-      return {
-        title: fromServer ?? 'You do not have permission to do that.',
-        hint: '',
-        retryable: false,
-        code,
-      };
-    case GrpcStatus.FAILED_PRECONDITION:
-      // A-053: this one gets its own copy rather than the server's raw message — the
-      // actionable step (go acknowledge the notice) is more useful than repeating
-      // "must acknowledge this node's current privacy notice", and every caller of
-      // `describeGrpcError` renders `.title` alone (toasts, screen error rows), so the
-      // instruction has to live there, not just in `.hint`.
-      if (isPrivacyAckRequired(error)) {
-        return {
-          title:
-            'This node’s privacy notice changed — press :privacy to review and acknowledge it.',
-          hint: 'Acknowledging only records that you saw the text; it grants nothing else.',
-          retryable: false,
-          code,
-        };
-      }
-      // The server writes actionable text here on purpose — the §83 client
-      // version gate is the main source of it.
-      return {
-        title: fromServer ?? 'The server refused this request in its current state.',
-        hint: '',
-        retryable: false,
-        code,
-      };
-    case GrpcStatus.RESOURCE_EXHAUSTED:
-      return {
-        title: 'You are going a bit fast for the server.',
-        hint: 'Wait a few seconds and try again.',
-        retryable: true,
-        code,
-      };
-    case GrpcStatus.INVALID_ARGUMENT:
-      return {
-        title: fromServer ?? 'The server rejected that request.',
-        hint: '',
-        retryable: false,
-        code,
-      };
-    case GrpcStatus.NOT_FOUND:
-      return { title: fromServer ?? 'That no longer exists.', hint: '', retryable: false, code };
-    case GrpcStatus.ALREADY_EXISTS:
-      // e.g. HANDLE_TAKEN — the server's message names the field, so it wins over a generic one.
-      return { title: fromServer ?? 'That is already taken.', hint: '', retryable: false, code };
-    case GrpcStatus.UNIMPLEMENTED:
-      return {
-        title: `${target} does not support this feature.`,
-        hint: 'It may be running an older version of Patches.',
-        retryable: false,
-        code,
-      };
-    case GrpcStatus.CANCELLED:
-      return { title: 'Request cancelled.', hint: '', retryable: true, code };
-    case GrpcStatus.INTERNAL:
-    case GrpcStatus.UNKNOWN:
-      return {
-        title: 'The server hit an unexpected problem.',
-        hint: fromServer ?? 'Try again; if it keeps happening, report it.',
-        retryable: true,
-        code,
-      };
-    default:
-      break;
-  }
-
-  // Not a gRPC error at all: DNS failures, TLS handshake failures and bugs land
-  // here. Still no stack trace.
+  const described = describeError(toConnectError(error), {
+    context: options?.context,
+    target,
+    copy: TUI_COPY,
+  });
   return {
-    title: `Could not talk to ${target}.`,
-    hint: fromServer ?? 'Check the address and your network connection.',
-    retryable: true,
-    code: code ?? GrpcStatus.UNKNOWN,
+    title: described.title,
+    hint: described.hint,
+    retryable: described.retryable,
+    code: described.code,
   };
 }

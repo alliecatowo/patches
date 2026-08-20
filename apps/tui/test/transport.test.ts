@@ -18,7 +18,7 @@ import { getProtoFiles, PROTO_LOADER_OPTIONS } from '@patches/proto';
 import { SystemService } from '@patches/proto/es';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
-import { createGrpcTransport } from './transport.js';
+import { createGrpcTransport } from '../src/api/transport.js';
 
 /**
  * `PingRequest`/`PingResponse` as decoded by `@grpc/proto-loader` with

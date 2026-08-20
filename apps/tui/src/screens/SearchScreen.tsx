@@ -1,4 +1,4 @@
-import { status as GrpcStatus } from '@grpc/grpc-js';
+import { Code as GrpcStatus } from '@connectrpc/connect';
 import type { Actor, Post, Tag } from '../api/wire/types.js';
 import { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -163,7 +163,7 @@ export function SearchScreen({
           title: 'Sign in to look up a remote account.',
           hint: '',
           retryable: false,
-          code: GrpcStatus.UNAUTHENTICATED,
+          code: GrpcStatus.Unauthenticated,
         },
       });
       return;
@@ -176,14 +176,14 @@ export function SearchScreen({
       setStatus({ status: 'ready', actors: present(response.actor) ? [response.actor] : [] });
       setResultsNonce((nonce) => nonce + 1);
     } catch (error) {
-      if (grpcStatusCode(error) === GrpcStatus.UNIMPLEMENTED) {
+      if (grpcStatusCode(error) === GrpcStatus.Unimplemented) {
         setStatus({
           status: 'error',
           error: {
             title: 'This node has federation disabled.',
             hint: '',
             retryable: false,
-            code: GrpcStatus.UNIMPLEMENTED,
+            code: GrpcStatus.Unimplemented,
           },
         });
         return;

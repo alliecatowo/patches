@@ -1,13 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createPatchesApi } from '@patches/client';
 
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
-import {
-  createAuthClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
-  type ApproveDeviceLinkRequest,
-  type ApproveDeviceLinkResponse,
-} from '@patches/proto';
+import { CLIENT_NAME, TUI_VERSION } from '../version.js';
+import { createGrpcTransport } from '../api/transport.js';
 
 import {
   createApi,
@@ -42,11 +36,13 @@ export interface ApproveDeps {
 /**
  * `patches approve <code>` (P15-005).
  *
- * Deliberately does not go through `PatchesApi` (`apps/tui/src/api/client.ts`): that class has
- * no `approveDeviceLink` method, and another concurrent change owns every edit under
- * `apps/tui/src/api/` — see this task's report for the follow-up to fold this in once that
- * lands. Until then this builds its own minimal raw grpc-js call, the same shape
- * `PatchesApi`'s own `unary()` helper uses internally.
+ * Deliberately does not go through `PatchesApi` (`apps/tui/src/api/client.ts`): that class's
+ * method table (`buildMethods`) has no `approveDeviceLink` entry, and that file is owned by a
+ * different task (ADR 0023 P10-013) — see this task's report for the follow-up to fold this
+ * in once that table gets one. Until then this builds its own `@patches/client` SDK instance
+ * (the same `createGrpcTransport` `PatchesApi` uses) and calls `sdk.auth.approveDeviceLink`
+ * directly — a full Connect client for `AuthService` already has every RPC the proto defines,
+ * `buildMethods` just doesn't expose this one as a `PatchesApi` convenience method yet.
  */
 export async function runApprove(rest: readonly string[], deps: ApproveDeps): Promise<number> {
   const { io, env, target, insecure } = deps;
@@ -109,38 +105,19 @@ export async function runApprove(rest: readonly string[], deps: ApproveDeps): Pr
   }
 }
 
-function callMetadata(accessToken: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
-}
-
 async function approveDeviceLink(
   target: string,
   insecure: boolean,
   userCode: string,
   accessToken: string,
 ): Promise<void> {
-  const channelCredentials = insecure ? credentials.createInsecure() : credentials.createSsl();
-  const client = createAuthClient(target, channelCredentials);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const deadline = new Date(Date.now() + DEADLINES_MS.auth);
-      client.approveDeviceLink(
-        { userCode } satisfies ApproveDeviceLinkRequest,
-        callMetadata(accessToken),
-        { deadline },
-        (error: ServiceError | null, _response?: ApproveDeviceLinkResponse) => {
-          if (error !== null) {
-            reject(error);
-            return;
-          }
-          resolve();
-        },
-      );
-    });
-  } finally {
-    client.close();
-  }
+  const sdk = createPatchesApi({
+    transport: createGrpcTransport({ target, insecure }),
+    clientName: CLIENT_NAME,
+    clientVersion: TUI_VERSION,
+  });
+  await sdk.auth.approveDeviceLink(
+    { userCode },
+    { headers: { authorization: `Bearer ${accessToken}` } },
+  );
 }

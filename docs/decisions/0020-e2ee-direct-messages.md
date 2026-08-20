@@ -426,3 +426,9 @@ is unauthorized: the named owner authorization now exists, subject to every gate
 
 No fable escalation is required. Signal's primary specifications provide clear precedent, and the
 unresolved cryptographic construction is made an external-review ship gate rather than guessed here.
+
+> **Reviewed 2026-08-20 (P13-016) — construction rejected.** `commitFranking` is a keyed MAC, not a
+> committing AEAD, and the commitment is sender-chosen, unbound to any device envelope, and verified
+> by no recipient — so a sender repudiates any message by supplying an unrelated commitment. See
+> [ADR 0024](0024-franking-construction-review.md). `E2EE_APPROVED_FRANKING_PROFILES` stays empty and
+> P13-014 stays blocked.

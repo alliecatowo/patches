@@ -27,15 +27,5 @@ export default defineConfig({
   // @napi-rs/keyring) and packages that must stay a single shared instance
   // (ink, react) — stays external and ships as a real npm dependency instead.
   noExternal: [/^@patches\//],
-  external: [
-    'ink',
-    'react',
-    'react/jsx-runtime',
-    '@grpc/grpc-js',
-    '@grpc/proto-loader',
-    '@inkjs/ui',
-    '@napi-rs/keyring',
-    'sharp',
-    'zod',
-  ],
+  external: ['ink', 'react', 'react/jsx-runtime', '@inkjs/ui', '@napi-rs/keyring', 'sharp', 'zod'],
 });

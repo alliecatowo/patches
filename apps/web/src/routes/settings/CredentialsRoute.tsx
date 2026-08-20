@@ -49,6 +49,11 @@ export function CredentialsRoute(): JSX.Element {
     onSuccess: invalidate,
   });
 
+  const recoveryCodesMutation = useMutation({
+    mutationFn: () => api.auth.generateRecoveryCodes({}),
+    onSuccess: invalidate,
+  });
+
   return (
     <div className={styles['wrap']} style={{ margin: 0, maxWidth: 'none' }}>
       <h1>Sign-in methods</h1>
@@ -56,6 +61,9 @@ export function CredentialsRoute(): JSX.Element {
       <section>
         <h2>Your credentials</h2>
         {credentialsQuery.isPending ? <p>Loading…</p> : null}
+        {revokeMutation.isError ? (
+          <p className={styles['error']}>{describeError(revokeMutation.error).message}</p>
+        ) : null}
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {credentialsQuery.data?.credentials.map((credential) => (
             <li
@@ -104,6 +112,49 @@ export function CredentialsRoute(): JSX.Element {
           disabled={registerPasskeyMutation.isPending}
         >
           {registerPasskeyMutation.isPending ? 'Waiting for your device…' : 'Add a passkey'}
+        </button>
+      </section>
+
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2>Recovery codes</h2>
+        <p>
+          Ten single-use codes for signing in if you lose every other credential (an SSH-only or
+          GitHub-only account, for example). Generating a new set immediately invalidates any codes
+          from a previous batch — this node shows them to you exactly once, right here.
+        </p>
+        {recoveryCodesMutation.isError ? (
+          <p className={styles['error']}>{describeError(recoveryCodesMutation.error).message}</p>
+        ) : null}
+        {recoveryCodesMutation.data ? (
+          <ul>
+            {recoveryCodesMutation.data.codes.map((code) => (
+              <li key={code}>
+                <code>{code}</code>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <button
+          type="button"
+          className={styles['submit']}
+          style={{ width: 'auto' }}
+          onClick={() => {
+            if (
+              recoveryCodesMutation.data === undefined ||
+              window.confirm(
+                'This replaces any recovery codes you generated before — they will stop working. Continue?',
+              )
+            ) {
+              recoveryCodesMutation.mutate();
+            }
+          }}
+          disabled={recoveryCodesMutation.isPending}
+        >
+          {recoveryCodesMutation.isPending
+            ? 'Generating…'
+            : recoveryCodesMutation.data
+              ? 'Generate a new set'
+              : 'Generate recovery codes'}
         </button>
       </section>
     </div>
