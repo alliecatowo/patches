@@ -1,16 +1,9 @@
-import { randomUUID } from 'node:crypto';
-
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import {
-  createFilterListClient,
-  DEADLINES_MS,
   FILTER_ACTION,
   FILTER_TERM_KIND,
-  METADATA_KEYS,
   type FilterAction,
   type FilterList,
   type FilterListEntry,
-  type FilterListGrpcClient,
   type FilterListSubscription,
   type FilterTermInput,
   type FilterTermKind,
@@ -24,9 +17,9 @@ import {
 } from '@patches/proto';
 
 import { present } from '../api/present.js';
+import { type PatchesApi } from '../api/client.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { SessionManager } from '../auth/session.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
@@ -400,15 +393,13 @@ function injectedContext(deps: FilterListCliDeps): CommandContext {
 }
 
 function createContext(deps: FilterListCliDeps, rest: readonly string[]): CommandContext {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const filterList = createFilterListClient(deps.target, channelCredentials);
-  const authApi = createApi(deps.target, deps.insecure);
+  const api = createApi(deps.target, deps.insecure);
   let manager: SessionManager | undefined;
 
   async function ensureAccessToken(): Promise<string> {
     if (manager === undefined) {
       const store = await openCredentialStore(deps.io, deps.env, rest);
-      manager = new SessionManager({ api: authApi, store, nodeOrigin: deps.target });
+      manager = new SessionManager({ api, store, nodeOrigin: deps.target });
       const session = await manager.restore();
       if (session === undefined)
         throw new Error(`Not signed in on ${deps.target}. Run \`patches login\`.`);
@@ -417,75 +408,29 @@ function createContext(deps: FilterListCliDeps, rest: readonly string[]): Comman
   }
 
   return {
-    api: grpcApi(filterList),
+    api: apiFromClient(api),
     ensureAccessToken,
     close: () => {
-      filterList.close();
-      authApi.close();
+      api.close();
     },
   };
 }
 
-function grpcApi(filterList: FilterListGrpcClient): FilterListCommandApi {
+function apiFromClient(api: PatchesApi): FilterListCommandApi {
   return {
     listFilterLists: (ownerActorId, cursor, limit) =>
-      unary(filterList.listFilterLists.bind(filterList), { ownerActorId, cursor, limit }),
+      api.listFilterLists({ ownerActorId, cursor, limit }),
     listFilterListSubscriptions: (cursor, limit, token) =>
-      unary(filterList.listFilterListSubscriptions.bind(filterList), { cursor, limit }, token),
+      api.listFilterListSubscriptions({ cursor, limit }, token),
     listFilterListEntries: (filterListId, cursor, limit) =>
-      unary(filterList.listFilterListEntries.bind(filterList), { filterListId, cursor, limit }),
-    publishFilterList: (request, token) =>
-      unary(filterList.publishFilterList.bind(filterList), request, token),
+      api.listFilterListEntries({ filterListId, cursor, limit }),
+    publishFilterList: (request, token) => api.publishFilterList(request, token),
     subscribeFilterList: (filterListId, action, token) =>
-      unary(
-        filterList.subscribeFilterList.bind(filterList),
-        // Empty `scopes` defaults to every scope (P14-022) — the CLI has no per-scope UI yet.
-        { filterListId, action, scopes: [] },
-        token,
-      ),
+      // Empty `scopes` defaults to every scope (P14-022) — the CLI has no per-scope UI yet.
+      api.subscribeFilterList({ filterListId, action, scopes: [] }, token),
     unsubscribeFilterList: (filterListId, token) =>
-      unary(filterList.unsubscribeFilterList.bind(filterList), { filterListId }, token),
+      api.unsubscribeFilterList({ filterListId }, token),
     setFilterListEntryException: (filterListId, filterListEntryId, excepted, token) =>
-      unary(
-        filterList.setFilterListEntryException.bind(filterList),
-        { filterListId, filterListEntryId, excepted },
-        token,
-      ),
+      api.setFilterListEntryException({ filterListId, filterListEntryId, excepted }, token),
   };
-}
-
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-  accessToken?: string,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(accessToken),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(accessToken?: string): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  if (accessToken !== undefined) metadata.set(METADATA_KEYS.authorization, `Bearer ${accessToken}`);
-  return metadata;
 }

@@ -1,17 +1,12 @@
-import { randomUUID } from 'node:crypto';
-
-import { credentials, Metadata, type ServiceError } from '@grpc/grpc-js';
 import {
-  createModerationClient,
-  DEADLINES_MS,
-  METADATA_KEYS,
   MODERATION_LOG_SUBJECT_KIND,
   type ListModerationLogResponse,
   type ModerationLogEntry,
 } from '@patches/proto';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { CLIENT_NAME, TUI_VERSION } from '../version.js';
+import { type PatchesApi } from '../api/client.js';
+import { createApi } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
 const USAGE = `Usage: patches modlog [--cursor <cursor>] [--limit <n>]
@@ -67,9 +62,10 @@ export async function runModlog(
     }
   }
 
-  const api = deps.api ?? createGrpcApi(deps);
+  const context =
+    deps.api === undefined ? createContext(deps) : { api: deps.api, close: () => undefined };
   try {
-    const response = await api.listModerationLog(cursor, limit);
+    const response = await context.api.listModerationLog(cursor, limit);
     for (const entry of response.entries) deps.io.stdout(describeEntry(entry));
     if (response.page?.hasMore === true) {
       deps.io.stdout(`next-cursor\t${sanitizeForTerminal(response.page.nextCursor)}\n`);
@@ -78,48 +74,26 @@ export async function runModlog(
   } catch (error) {
     deps.io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
+  } finally {
+    context.close();
   }
 }
 
-function createGrpcApi(deps: ModerationLogCliDeps): ModerationLogCommandApi {
-  const channelCredentials = deps.insecure ? credentials.createInsecure() : credentials.createSsl();
-  const moderation = createModerationClient(deps.target, channelCredentials);
+function createContext(deps: ModerationLogCliDeps): {
+  api: ModerationLogCommandApi;
+  close: () => void;
+} {
+  const api = createApi(deps.target, deps.insecure);
   return {
-    listModerationLog: (cursor, limit) =>
-      unary(moderation.listModerationLog.bind(moderation), { cursor, limit }),
+    api: apiFromClient(api),
+    close: () => {
+      api.close();
+    },
   };
 }
 
-type UnaryMethod<Request, Response> = (
-  request: Request,
-  metadata: Metadata,
-  options: { deadline: Date },
-  callback: (error: ServiceError | null, response?: Response) => void,
-) => unknown;
-
-function unary<Request, Response>(
-  method: UnaryMethod<Request, Response>,
-  request: Request,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    method(
-      request,
-      callMetadata(),
-      { deadline: new Date(Date.now() + DEADLINES_MS.unary) },
-      (error, response) => {
-        if (error !== null) reject(error);
-        else if (response === undefined)
-          reject(new Error('The server replied with nothing at all.'));
-        else resolve(response);
-      },
-    );
-  });
-}
-
-function callMetadata(): Metadata {
-  const metadata = new Metadata();
-  metadata.set(METADATA_KEYS.requestId, randomUUID());
-  metadata.set(METADATA_KEYS.client, CLIENT_NAME);
-  metadata.set(METADATA_KEYS.clientVersion, TUI_VERSION);
-  return metadata;
+function apiFromClient(api: PatchesApi): ModerationLogCommandApi {
+  return {
+    listModerationLog: (cursor, limit) => api.listModerationLog({ cursor, limit }),
+  };
 }
