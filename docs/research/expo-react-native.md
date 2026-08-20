@@ -141,7 +141,34 @@ from 'expo-crypto'; const id = Crypto.randomUUID();`. This is the **officially d
   repo's blanket Vitest convention (`docs/agents/PACKAGE_CONVENTIONS.md`: "Tests: Vitest 4
   `projects`... `vitest.config.ts` with `defineProject`").
 
-**Discrepancy with repo convention — flag for architect / ADR:**
+**Resolved 2026-08-20 (P10-019): no second test runner. `apps/mobile` stays Vitest-only.**
+
+The decision this section was flagged for has been made, and it is the one this note recommends
+below. `apps/mobile` does **not** get `jest-expo` + React Native Testing Library, and its `.tsx`
+screens stay uncovered by unit tests.
+
+Three reasons, in order of weight:
+
+1. **A second runner is a permanent tax on every workspace, paid by one.** `mise run check` and the
+   root `turbo`-driven `test` assume one runner and one config shape. Adding Jest to a single app
+   means two mental models, two upgrade cadences, and a `check` task that behaves differently in
+   one directory — for an app whose entire component surface today is `App.tsx` and `PostRow.tsx`.
+2. **Expo's own guidance is lukewarm on the thing the second runner would buy.** Its docs recommend
+   end-to-end tests over snapshot unit tests for RN components, so the officially-supported path
+   would deliver coverage Expo itself does not think is the high-value kind.
+3. **The code that can break silently is already covered.** The Connect transport wiring, the
+   `SecureStore` credential store, session restore/refresh, and formatting all live in RN-free
+   `.ts` modules with Vitest tests (`src/api/*.test.ts`, `src/lib/format.test.ts`). That is where
+   mobile regressions would actually originate.
+
+The cost is real and accepted: zero automated coverage on the screens themselves. The mitigation is
+the discipline described below — keep screens thin over tested logic.
+
+**Revisit when** either the component layer grows past roughly a dozen screens, or a UI regression
+actually ships to a user. At that point Jest + `jest-expo` (not Vitest) is the supported path and
+mixing runners in this monorepo needs an ADR with human sign-off, not a research-note update.
+
+**Original discrepancy this section flagged (now resolved above):**
 
 - PACKAGE_CONVENTIONS.md mandates Vitest workspace-wide with a `vitest.config.ts` per package
   feeding root `turbo`-driven `test`. Official Expo guidance is Jest (`jest-expo`) + RNTL, not
