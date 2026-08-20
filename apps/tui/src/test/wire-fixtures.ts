@@ -14,7 +14,7 @@
  * top-level field never requires re-specifying an unrelated nested one.
  *
  * Unset message-typed fields default to `undefined`, matching every existing fixture
- * in the test suite - not the `null` `@grpc/proto-loader` (`defaults: true`) actually
+ * in the test suite - not the `null` the wire's proto-loader (`defaults: true`) actually
  * decodes an unset field to at runtime. That is deliberate: these are hand-built test
  * inputs to render/business logic, not decoded wire responses, and changing the
  * convention here would edit what dozens of already-passing assertions receive.

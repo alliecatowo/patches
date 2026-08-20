@@ -36,13 +36,13 @@ that must stay a single shared instance (`ink`, `react`) — stays a real, exter
 dependency with a concrete semver range (resolved from `pnpm-workspace.yaml`'s `catalog:` at
 pack/publish time; verified by inspecting the packed `package.json`, not just trusted).
 
-`@patches/proto` ships its `.proto` files as a directory sibling to its own `dist/` at
-runtime (`packages/proto/src/proto-path.ts`'s `getProtoDir()`). Once `@patches/proto`'s code
-is inlined into `apps/tui/dist/cli.js`, that lookup runs from `apps/tui/dist/` instead of
-`packages/proto/dist/`, so the build also copies `packages/proto/proto/**` to
-`apps/tui/dist/proto/` (`apps/tui/scripts/copy-proto.mjs`, run as part of `pnpm build`), and
-`getProtoDir()` now checks a `proto/` directory next to itself before falling back to the
-original one-level-up hop — see the comment on `getProtoDir()` for the full resolution order.
+ADR 0023 (P10-013) moved the TUI's runtime off `@grpc/grpc-js`/`@grpc/proto-loader` onto
+`@patches/client` + protobuf-es over a Connect transport, so the published package no longer
+parses `.proto` files at startup and needs none copied into it. Slice 8 (P10-015) dropped the
+`.proto`-copying build step (`scripts/copy-proto.mjs`) and both `@grpc/*` packages as runtime
+dependencies — `dist/` in the packed tarball is `cli.js` alone, no `dist/proto/`. `@grpc/*`
+remain devDependencies only, exercised by `test/transport.test.ts` against a real grpc-js
+server to verify the Connect gRPC transport's wire behavior.
 
 ## Local install (proves the tarball itself works)
 

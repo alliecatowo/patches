@@ -34,7 +34,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup && node scripts/copy-proto.mjs && chmod +x dist/cli.js",
+    "build": "tsup && chmod +x dist/cli.js",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.tsx",
     "typecheck": "tsc --noEmit",
@@ -45,8 +45,6 @@
     "@bufbuild/protobuf": "catalog:",
     "@connectrpc/connect": "catalog:",
     "@connectrpc/connect-node": "catalog:",
-    "@grpc/grpc-js": "catalog:",
-    "@grpc/proto-loader": "catalog:",
     "@napi-rs/keyring": "catalog:",
     "@patches/client": "workspace:*",
     "ink": "catalog:",
@@ -58,6 +56,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@grpc/grpc-js": "catalog:",
+    "@grpc/proto-loader": "catalog:",
     "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
     "@patches/terminal-media": "workspace:*",

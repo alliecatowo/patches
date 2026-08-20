@@ -129,8 +129,9 @@ interface Suggestion {
 }
 
 /** A synthetic `FriendlyError` for a client-side check that never reaches the network —
- * `code` mirrors `@grpc/grpc-js`'s `INVALID_ARGUMENT` (3) purely for shape consistency
- * with `describeGrpcError`'s output; nothing here talks to a socket. */
+ * `code` mirrors gRPC's `INVALID_ARGUMENT` (3, same numeric value as Connect's
+ * `Code.InvalidArgument`) purely for shape consistency with `describeGrpcError`'s output;
+ * nothing here talks to a socket. */
 const OVER_LIMIT_ERROR: FriendlyError = {
   title: 'Over the character limit.',
   hint: 'Trim the body before sending.',

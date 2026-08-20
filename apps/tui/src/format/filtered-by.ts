@@ -7,7 +7,7 @@ import { sanitizeForTerminal } from './sanitize.js';
 /**
  * "filtered: <name>" provenance line for a collapsed/warned post (spec §198.3, §199.3 —
  * "a viewer must always be able to answer 'why did this disappear, and who decided
- * that?'"). `Post.filtered_by` arrives as `null` when unset over `@grpc/proto-loader`
+ * that?'"). `Post.filtered_by` arrives as `null` when unset over the wire
  * (see `present()`), never as `undefined` — check both the same way every other
  * optional message field on the wire is checked.
  *

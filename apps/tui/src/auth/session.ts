@@ -74,8 +74,8 @@ interface PendingReauth {
 }
 
 function isUnauthenticated(error: unknown): boolean {
-  // 16 == grpc.status.UNAUTHENTICATED — imported by number to avoid pulling
-  // @grpc/grpc-js's `status` enum into this file just for one comparison.
+  // 16 == gRPC's UNAUTHENTICATED status — imported by number to avoid pulling
+  // an entire status-code enum into this file just for one comparison.
   return grpcStatusCode(error) === 16;
 }
 

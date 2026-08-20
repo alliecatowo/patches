@@ -509,12 +509,6 @@ importers:
       '@connectrpc/connect-node':
         specifier: 'catalog:'
         version: 2.1.2(@bufbuild/protobuf@2.14.0)(@connectrpc/connect@2.1.2(@bufbuild/protobuf@2.14.0))
-      '@grpc/grpc-js':
-        specifier: 'catalog:'
-        version: 1.14.4
-      '@grpc/proto-loader':
-        specifier: 'catalog:'
-        version: 0.8.1
       '@napi-rs/keyring':
         specifier: 'catalog:'
         version: 1.3.0
@@ -543,6 +537,12 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@grpc/grpc-js':
+        specifier: 'catalog:'
+        version: 1.14.4
+      '@grpc/proto-loader':
+        specifier: 'catalog:'
+        version: 0.8.1
       '@patches/domain':
         specifier: workspace:*
         version: link:../../packages/domain
