@@ -190,15 +190,52 @@ which is exactly what `model: haiku` on a forked skill buys.
 — and diff `mise run usage --since <ts>`. One task, two runs, no new infrastructure. If the fork variant
 doesn't move total cache reads by >10%, drop the idea and spend the effort on items 2 and 4.
 
-## The `pnpm verify` loop
+## The `pnpm verify` loop — measured (ranks between items 2 and 3)
 
-Turbo's `test` task is `dependsOn: ["^build"]` with `outputs: ["coverage/**"]` and is cacheable, so a
-warm re-run should be near-free — the cost concentrates in a session's first run and in the _reporting_,
-which item 4 addresses. `.claude/skills/verify/SKILL.md` documents a scoped variant already; the gap is
-that it isn't the default and no per-package minimal command is written down, so every agent re-derives
-one. A per-workspace table of the shortest correct command belongs in that skill. Wall-clock timings
-were commissioned in this pass and hadn't landed when this file was written — fill in the per-package
-table before acting on the scoped-verify item.
+Measured this pass. A fully-warm `pnpm verify` is **163 s**, and a second identical run costs the same.
+
+```
+format:check 11.8s | turbo build 14.0s → 0.56s warm | turbo typecheck 13.9s → 0.64s warm
+eslint .     42.2s → 44.0s (NO CACHE) | vitest run 106.2s → 108.1s (NO CACHE)
+apps/tui alone = 91.6s of that 106s (fileParallelism:false, 122 files, deliberate — Ink flush() flake)
+scoped: turbo run typecheck test --filter=@patches/domain → 2.98s cold, 0.57s warm
+251 test files / 2,443 tests. No database needed: integration suites self-skip without TEST_DATABASE_URL.
+```
+
+Five findings, in value-per-effort order:
+
+1. **`eslint -f unix` — recommended by `HARNESS.md` token-discipline rule 4 and repeated in
+   `CONTEXT_ECONOMY.md` — does not work in this repo.** The formatter was removed from core ESLint;
+   the command exits rc=2 _after_ the full 42 s lint, printing no findings. This is the worst possible
+   shape for an agent, and it violates `CLAUDE.md` rule 7 ("never document a command that doesn't work").
+   Fix: drop the flag or add `eslint-formatter-unix`. ~5 min. **Both files are owned by other agents in
+   this wave — hand this one to whoever holds them.**
+2. **ESLint runs with no cache at all** — no `--cache`, no `.eslintcache`, type-aware `projectService`
+   over the whole repo, 42–44 s identically every run. Adding `--cache` is the cheapest win in the loop.
+3. **Two of verify's four steps are structurally uncacheable because the root scripts bypass turbo.**
+   `turbo.json` declares a cacheable `test`, but root `test` is `turbo run build && vitest run` (one root
+   vitest over all projects) and `lint` is `turbo run build && eslint .`. So ~150 s of the 163 s gets zero
+   cache benefit. Routing both through per-package `turbo run test` / `turbo run lint` makes an unchanged
+   verify ≈12 s. ~1–2 h, and it is the difference between "re-verify is free" and "re-verify costs 3 min".
+4. **A type error is reported as a test failure.** `turbo run build` gates both lint and test, so with a
+   broken tree `pnpm lint` and `pnpm test` exit in ~4.7 s having run zero rules and zero tests. An agent
+   reading "test failed" burns a turn discovering it was the build. Fix: surface the build failure
+   distinctly in the `/verify` skill's interpretation table.
+5. **`apps/tui` is 86% of test wall-clock.** Every agent that touches one server file pays 90 s of TUI
+   tests. A `--project` filter or a `test:fast` excluding tui cuts the loop to ~15 s.
+
+**Minimal correct per-package command — one uniform form**, since no tsconfig uses `composite`/
+`references` (siblings resolve through built `dist/*.d.ts`, so `^build` is genuinely required) and turbo
+supplies it and caches both tasks:
+
+```
+pnpm exec turbo run typecheck test --filter=@patches/<name>
+```
+
+Valid for all 14 test-bearing workspaces (`site` has no tests: `pnpm --filter @patches/site run build`).
+`pnpm --filter X run typecheck && … run test` is equally correct for the 7 leaf packages but uncached and
+~3× slower on repeat. This table belongs in `.claude/skills/verify/SKILL.md`, whose scoped variant is
+documented but not the default — which is why every agent re-derives a command instead of copying one.
 
 ## Needs owner decision
 
