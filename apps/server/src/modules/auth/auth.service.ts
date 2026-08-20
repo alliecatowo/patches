@@ -24,7 +24,7 @@ import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
 
 import { getRequestContext } from '../../common/context/request-context.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { AppConfigService } from '../../config/app-config.service.js';
+import { AppConfigService, type OidcProviderConfig } from '../../config/app-config.service.js';
 import {
   type CredentialSummary,
   type CurrentSessionSummary,
@@ -34,6 +34,8 @@ import {
 } from './auth.dto.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
+import { OidcDeviceFlowService } from './oidc-device-flow.service.js';
+import { OidcLoginAttemptsService } from './oidc-login-attempts.service.js';
 import { PasskeyChallengeService } from './passkey-challenge.service.js';
 import { PasskeyVerifierService } from './passkey-verifier.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
@@ -177,6 +179,21 @@ export type GitHubLoginPollResult =
   | { status: 'DENIED' }
   | { status: 'COMPLETE'; session: SessionEnvelope };
 
+export interface BeginOidcLoginResult {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+  expiresAt: Date;
+}
+
+export type OidcLoginPollResult =
+  | { status: 'PENDING' }
+  | { status: 'SLOW_DOWN' }
+  | { status: 'EXPIRED' }
+  | { status: 'DENIED' }
+  | { status: 'COMPLETE'; session: SessionEnvelope };
+
 /** Possession proof from a prior `beginSshEnrollment` call (B-021). Required when `type ===
  * 'SSH_PUBLIC_KEY'`; ignored for `PASSWORD`. */
 export interface SshEnrollmentProofInput {
@@ -192,9 +209,18 @@ export interface AddCredentialInput {
   sshProof?: SshEnrollmentProofInput;
 }
 
-/** P15-002: what `AuthService.GetAuthPolicy` (proto) publishes. */
+/** Id and display name only (P15-006) — never the client id, client secret, or provider URLs,
+ * which stay server-side config (`AppConfigService.oidcProviders`). */
+export interface OidcProviderPolicy {
+  id: string;
+  displayName: string;
+}
+
+/** P15-002/P15-006: what `AuthService.GetAuthPolicy` (proto) publishes. */
 export interface AuthPolicy {
   passwordAuthMode: 'off' | 'optional' | 'required';
+  githubAuth: boolean;
+  oidcProviders: readonly OidcProviderPolicy[];
 }
 
 /** P15-003: the plaintext codes are returned exactly once, here — nothing after this call ever
@@ -233,6 +259,8 @@ export class AuthService {
     private readonly rateLimit: RateLimitService,
     private readonly githubFlow: GitHubDeviceFlowService,
     private readonly githubAttempts: GitHubLoginAttemptsService,
+    private readonly oidcFlow: OidcDeviceFlowService,
+    private readonly oidcAttempts: OidcLoginAttemptsService,
     private readonly passkeyChallenges: PasskeyChallengeService,
     private readonly passkeyVerifier: PasskeyVerifierService,
   ) {}
@@ -242,7 +270,14 @@ export class AuthService {
   /** Always unauthenticated, always cheap (P15-002) — see the RPC's own doc comment in
    * `auth.proto` for why clients must call this before rendering password UI. */
   getAuthPolicy(): AuthPolicy {
-    return { passwordAuthMode: this.config.passwordAuthMode };
+    return {
+      passwordAuthMode: this.config.passwordAuthMode,
+      githubAuth: this.config.githubClientId !== undefined,
+      oidcProviders: this.config.oidcProviders.map((provider) => ({
+        id: provider.id,
+        displayName: provider.displayName,
+      })),
+    };
   }
 
   // ---------------------------------------------------------------- registration
@@ -933,6 +968,156 @@ export class AuthService {
       });
       return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
     });
+  }
+
+  // ---------------------------------------------------------------- generic OIDC device flow
+
+  /**
+   * Starts a generic OIDC device flow (P15-006) against one of this node's configured
+   * providers (`AppConfigService.oidcProviders`). Same shape as {@link beginGitHubLogin}:
+   * `callerUserId` is set only when the request carried a valid access token — an authenticated
+   * caller is *linking* this provider to their own account; an anonymous caller can only log in
+   * with an already-linked one (see {@link completeOidcLogin}).
+   */
+  async beginOidcLogin(
+    providerId: string,
+    callerUserId: string | undefined,
+  ): Promise<BeginOidcLoginResult> {
+    this.rateLimit.consumePeer('oidc_begin_login', getRequestContext()?.peer);
+    const provider = this.requireOidcProvider(providerId);
+
+    const issued = await this.oidcFlow.beginDeviceFlow(provider);
+    this.oidcAttempts.begin({
+      providerId: provider.id,
+      deviceCode: issued.deviceCode,
+      expiresAt: issued.expiresAt,
+      intervalMs: issued.intervalSeconds * 1000,
+      callerUserId: callerUserId ?? null,
+    });
+
+    return {
+      deviceCode: issued.deviceCode,
+      userCode: issued.userCode,
+      verificationUri: issued.verificationUri,
+      interval: issued.intervalSeconds,
+      expiresAt: issued.expiresAt,
+    };
+  }
+
+  /**
+   * Polls a configured OIDC provider for a completed device-flow login. Honors both the
+   * provider's own `interval` (tracked in {@link OidcLoginAttemptsService}, extended further on
+   * a `slow_down` response) and this node's per-peer poll budget — same shape as
+   * {@link pollGitHubLogin}.
+   */
+  async pollOidcLogin(providerId: string, rawDeviceCode: string): Promise<OidcLoginPollResult> {
+    this.rateLimit.consumePeer('oidc_poll_login', getRequestContext()?.peer);
+    const provider = this.requireOidcProvider(providerId);
+
+    const deviceCode = parseInput(opaqueCodeSchema, rawDeviceCode);
+    const attempt = this.oidcAttempts.get(provider.id, deviceCode);
+    if (attempt === undefined) return { status: 'EXPIRED' };
+
+    if (!this.oidcAttempts.tryConsumePoll(provider.id, deviceCode)) return { status: 'SLOW_DOWN' };
+
+    const result = await this.oidcFlow.pollAccessToken(provider, deviceCode);
+    switch (result.kind) {
+      case 'PENDING':
+        return { status: 'PENDING' };
+      case 'SLOW_DOWN':
+        // Same convention as GitHub: back off by another 5 seconds on every slow_down.
+        this.oidcAttempts.extendInterval(provider.id, deviceCode, 5_000);
+        return { status: 'SLOW_DOWN' };
+      case 'EXPIRED':
+        this.oidcAttempts.consume(provider.id, deviceCode);
+        return { status: 'EXPIRED' };
+      case 'DENIED':
+        this.oidcAttempts.consume(provider.id, deviceCode);
+        return { status: 'DENIED' };
+      case 'SUCCESS': {
+        this.oidcAttempts.consume(provider.id, deviceCode);
+        // The access token is read exactly once, right here, and never stored (same rule as
+        // GitHub, spec §167 extended to any OIDC provider).
+        const subject = await this.oidcFlow.fetchSubject(provider, result.accessToken);
+        const session = await this.completeOidcLogin(provider.id, subject, attempt.callerUserId);
+        return { status: 'COMPLETE', session };
+      }
+    }
+  }
+
+  /**
+   * Links or logs in an OIDC credential by `"<provider_id>:<subject>"` (ADR 0011: identity
+   * stays separate from credential — this never populates a profile field). Mirrors
+   * {@link completeGitHubLogin} exactly, generalized to any configured provider.
+   */
+  private async completeOidcLogin(
+    providerId: string,
+    subject: string,
+    callerUserId: string | null,
+  ): Promise<SessionEnvelope> {
+    const identifier = oidcCredentialIdentifier(providerId, subject);
+    return this.dataSource.transaction(async (manager) => {
+      const credentials = manager.getRepository(Credential);
+      const existing = await credentials.findOne({
+        where: { type: 'OIDC', identifier, revokedAt: IsNull() },
+      });
+
+      let userId: string;
+      if (callerUserId !== null) {
+        // AddCredential semantics, same as GitHub (spec §167's "linking ... MUST require an
+        // authenticated Patches session"): link to the caller's own account, unless this OIDC
+        // identity is already linked to a *different* one.
+        if (existing !== null && existing.userId !== callerUserId) {
+          throw AppError.validation(
+            'This account is already linked to a different Patches account.',
+          );
+        }
+        if (existing === null) {
+          await credentials.save(
+            credentials.create({
+              userId: callerUserId,
+              type: 'OIDC',
+              identifier,
+            }),
+          );
+        } else {
+          await credentials.update({ id: existing.id }, { lastUsedAt: new Date() });
+        }
+        userId = callerUserId;
+      } else {
+        // Anonymous poll: log in with an already-linked OIDC credential. The provider alone
+        // never creates a new Patches account (same rule as GitHub).
+        if (existing === null) {
+          throw AppError.validation(
+            'No Patches account is linked to this account. Sign in and link it from your ' +
+              'account settings first.',
+          );
+        }
+        await credentials.update({ id: existing.id }, { lastUsedAt: new Date() });
+        userId = existing.userId;
+      }
+
+      const user = await manager.getRepository(User).findOne({ where: { id: userId } });
+      if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+        throw invalidCredentials();
+      }
+
+      const actor = await requireActor(manager, user.actorId);
+      const tokens = await this.tokens.issueSession(manager, {
+        userId: user.id,
+        actorId: actor.id,
+      });
+      return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
+    });
+  }
+
+  /** `undefined`/unknown `providerId` answers `NOT_IMPLEMENTED`, mirroring
+   * {@link beginGitHubLogin}'s unconfigured-client-id case — never a fake pending status a
+   * client would poll forever. */
+  private requireOidcProvider(providerId: string): OidcProviderConfig {
+    const provider = this.config.oidcProviders.find((candidate) => candidate.id === providerId);
+    if (provider === undefined) throw oidcProviderNotConfigured();
+    return provider;
   }
 
   // ---------------------------------------------------------------- passkeys
@@ -1731,6 +1916,19 @@ function passwordAuthDisabled(): AppError {
  * a fake pending status a client would poll forever. */
 function gitHubNotConfigured(): AppError {
   return new AppError('NOT_IMPLEMENTED', 'GitHub login is not available on this node yet.');
+}
+
+/** P15-006: OIDC login RPCs answer this for an unknown/unconfigured `provider` id — same
+ * "honest NOT_IMPLEMENTED" rule as {@link gitHubNotConfigured}. */
+function oidcProviderNotConfigured(): AppError {
+  return new AppError('NOT_IMPLEMENTED', 'That sign-in provider is not available on this node.');
+}
+
+/** P15-006: `credentials.identifier` for an OIDC credential — namespaced by provider id so two
+ * providers' subjects can never collide under the shared `(type, identifier) WHERE revoked_at
+ * IS NULL` unique index (ADR 0011: identity stays separate from credential). */
+function oidcCredentialIdentifier(providerId: string, subject: string): string {
+  return `${providerId}:${subject}`;
 }
 
 function invalidCode(): AppError {

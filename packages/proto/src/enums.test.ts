@@ -4,6 +4,7 @@ import { AppealStatus } from './generated/patches/v1/appeals.js';
 import {
   CredentialType,
   GitHubLoginStatus,
+  OidcLoginStatus,
   PasswordAuthMode,
 } from './generated/patches/v1/auth.js';
 import { CommunityInviteStatus, CommunityRole } from './generated/patches/v1/communities.js';
@@ -53,6 +54,7 @@ import {
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
   NOTIFICATION_TYPE,
+  OIDC_LOGIN_STATUS,
   PASSWORD_AUTH_MODE,
   POST_TYPE,
   POST_VISIBILITY,
@@ -88,6 +90,10 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('GITHUB_LOGIN_STATUS matches GitHubLoginStatus', () => {
     expect(Object.values(GITHUB_LOGIN_STATUS).sort()).toEqual(generatedValues(GitHubLoginStatus));
+  });
+
+  it('OIDC_LOGIN_STATUS matches OidcLoginStatus', () => {
+    expect(Object.values(OIDC_LOGIN_STATUS).sort()).toEqual(generatedValues(OidcLoginStatus));
   });
 
   it('FOLLOW_STATE matches FollowState', () => {

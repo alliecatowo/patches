@@ -49,6 +49,8 @@ export type {
   AuthServiceController,
   BeginGitHubLoginRequest,
   BeginGitHubLoginResponse,
+  BeginOidcLoginRequest,
+  BeginOidcLoginResponse,
   BeginPasskeyLoginRequest,
   BeginPasskeyLoginResponse,
   BeginPasskeyRegistrationRequest,
@@ -78,8 +80,11 @@ export type {
   LogoutAllSessionsResponse,
   LogoutRequest,
   LogoutResponse,
+  OidcProviderInfo,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
+  PollOidcLoginRequest,
+  PollOidcLoginResponse,
   RecoveryLoginRequest,
   RecoveryLoginResponse,
   RefreshSessionRequest,
@@ -104,6 +109,7 @@ export {
   AuthServiceControllerMethods,
   CredentialType,
   GitHubLoginStatus,
+  OidcLoginStatus,
   PasswordAuthMode,
 } from './generated/patches/v1/auth.js';
 

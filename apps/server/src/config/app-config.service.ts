@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 import { type Env } from './env.schema.js';
 
+/** One entry of `Env['OIDC_PROVIDERS']` (P15-006) — id, display name, the three device-flow
+ * URLs, and the confidential client credentials, all validated at boot by `env.schema.ts`. */
+export type OidcProviderConfig = Env['OIDC_PROVIDERS'][number];
+
 /**
  * Typed accessor over the validated environment.
  *
@@ -168,6 +172,18 @@ export class AppConfigService {
 
   get githubHttpTimeoutMs(): number {
     return this.get('GITHUB_HTTP_TIMEOUT_MS');
+  }
+
+  /** P15-006: this node's configured generic-OIDC-device-flow providers. Empty means none are
+   * configured — `AuthService` answers `BeginOidcLogin`/`PollOidcLogin` with `NOT_IMPLEMENTED`
+   * for any `provider` id, same as `githubClientId` being unset. */
+  get oidcProviders(): Env['OIDC_PROVIDERS'] {
+    return this.get('OIDC_PROVIDERS');
+  }
+
+  /** Bounds every outbound call the OIDC device flow makes. */
+  get oidcHttpTimeoutMs(): number {
+    return this.get('OIDC_HTTP_TIMEOUT_MS');
   }
 
   /** Whether the Phase 8 federation HTTP surface is enabled on this node (default off). */

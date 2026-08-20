@@ -43,6 +43,11 @@ export const CREDENTIAL_TYPES = [
    * Unlike the other types, an account can hold several live rows of this type at once (up to
    * 10, minted together) — each redeemed code is revoked immediately on use. */
   'RECOVERY_CODE',
+  /** A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
+   * provider). Same "credential, never an identity" contract as GITHUB — `identifier` holds
+   * `"<provider_id>:<subject>"`, namespaced so two providers' subjects can never collide under
+   * the existing `(type, identifier) WHERE revoked_at IS NULL` unique index. */
+  'OIDC',
 ] as const;
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 

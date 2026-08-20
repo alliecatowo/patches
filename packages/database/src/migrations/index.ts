@@ -23,6 +23,7 @@ import { FilterListSubscriptionScopes1787159166765 } from './1787159166765-Filte
 import { AdminAuditLabelerSubjectType1787159300000 } from './1787159300000-AdminAuditLabelerSubjectType.js';
 import { Phase15AuthPolicy1787170000000 } from './1787170000000-Phase15AuthPolicy.js';
 import { Phase15Passkeys1787180000000 } from './1787180000000-Phase15Passkeys.js';
+import { AddOidcCredentialType1787220000000 } from './1787220000000-AddOidcCredentialType.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -62,4 +63,5 @@ export const ALL_MIGRATIONS = [
   AdminAuditLabelerSubjectType1787159300000,
   Phase15AuthPolicy1787170000000,
   Phase15Passkeys1787180000000,
+  AddOidcCredentialType1787220000000,
 ];

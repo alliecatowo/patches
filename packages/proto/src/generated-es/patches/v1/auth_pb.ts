@@ -16,7 +16,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_auth: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChVwYXRjaGVzL3YxL2F1dGgucHJvdG8SCnBhdGNoZXMudjEi7QEKB1Nlc3Npb24SFAoMYWNjZXNzX3Rva2VuGAEgASgJEjUKEWFjY2Vzc19leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEjYKEnJlZnJlc2hfZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASIAoFYWN0b3IYBSABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhYKDmVtYWlsX3ZlcmlmaWVkGAYgASgIEgwKBG5vZGUYByABKAkizQEKD1JlZ2lzdGVyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhAKCHBhc3N3b3JkGAQgASgJEhMKC2ludml0ZV9jb2RlGAUgASgJEhkKEWNsaWVudF9yZXF1ZXN0X2lkGAYgASgJEhYKDnNzaF9wdWJsaWNfa2V5GAcgASgJEisKI3ByaXZhY3lfbm90aWNlX3ZlcnNpb25fYWNrbm93bGVkZ2VkGAggASgNIjgKEFJlZ2lzdGVyUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIiChJWZXJpZnlFbWFpbFJlcXVlc3QSDAoEY29kZRgBIAEoCSItChNWZXJpZnlFbWFpbFJlc3BvbnNlEhYKDmVtYWlsX3ZlcmlmaWVkGAEgASgIIhsKGVJlc2VuZFZlcmlmaWNhdGlvblJlcXVlc3QiHAoaUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2UiOQoMTG9naW5SZXF1ZXN0EhcKD2VtYWlsX29yX2hhbmRsZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSI1Cg1Mb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iLgoVUmVmcmVzaFNlc3Npb25SZXF1ZXN0EhUKDXJlZnJlc2hfdG9rZW4YASABKAkiPgoWUmVmcmVzaFNlc3Npb25SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIiYKDUxvZ291dFJlcXVlc3QSFQoNcmVmcmVzaF90b2tlbhgBIAEoCSIQCg5Mb2dvdXRSZXNwb25zZSIaChhMb2dvdXRBbGxTZXNzaW9uc1JlcXVlc3QiGwoZTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZSIsChtSZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QSDQoFZW1haWwYASABKAkiHgocUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZSI6ChRSZXNldFBhc3N3b3JkUmVxdWVzdBIMCgRjb2RlGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIXChVSZXNldFBhc3N3b3JkUmVzcG9uc2UiGgoYR2V0Q3VycmVudFNlc3Npb25SZXF1ZXN0IrgBChlHZXRDdXJyZW50U2Vzc2lvblJlc3BvbnNlEg8KB3VzZXJfaWQYASABKAkSIAoFYWN0b3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhIKCnNlc3Npb25faWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFgoOZW1haWxfdmVyaWZpZWQYBSABKAgSDAoEbm9kZRgGIAEoCSJHChRCZWdpblNzaExvZ2luUmVxdWVzdBIaChJwdWJsaWNfa2V5X29wZW5zc2gYASABKAkSEwoLZmluZ2VycHJpbnQYAiABKAkibAoVQmVnaW5Tc2hMb2dpblJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ4ChdDb21wbGV0ZVNzaExvZ2luUmVxdWVzdBIUCgxjaGFsbGVuZ2VfaWQYASABKAkSGgoScHVibGljX2tleV9vcGVuc3NoGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAQgASgJIkAKGENvbXBsZXRlU3NoTG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIjcKGUJlZ2luU3NoRW5yb2xsbWVudFJlcXVlc3QSGgoScHVibGljX2tleV9vcGVuc3NoGAEgASgJInEKGkJlZ2luU3NoRW5yb2xsbWVudFJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIZChdCZWdpbkdpdEh1YkxvZ2luUmVxdWVzdCKeAQoYQmVnaW5HaXRIdWJMb2dpblJlc3BvbnNlEhMKC2RldmljZV9jb2RlGAEgASgJEhEKCXVzZXJfY29kZRgCIAEoCRIYChB2ZXJpZmljYXRpb25fdXJpGAMgASgJEhAKCGludGVydmFsGAQgASgNEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIi0KFlBvbGxHaXRIdWJMb2dpblJlcXVlc3QSEwoLZGV2aWNlX2NvZGUYASABKAkibgoXUG9sbEdpdEh1YkxvZ2luUmVzcG9uc2USLQoGc3RhdHVzGAEgASgOMh0ucGF0Y2hlcy52MS5HaXRIdWJMb2dpblN0YXR1cxIkCgdzZXNzaW9uGAIgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIhYKFEdldEF1dGhQb2xpY3lSZXF1ZXN0IkwKFUdldEF1dGhQb2xpY3lSZXNwb25zZRIzCg1wYXNzd29yZF9hdXRoGAEgASgOMhwucGF0Y2hlcy52MS5QYXNzd29yZEF1dGhNb2RlIscBCgpDcmVkZW50aWFsEgoKAmlkGAEgASgJEigKBHR5cGUYAiABKA4yGi5wYXRjaGVzLnYxLkNyZWRlbnRpYWxUeXBlEg0KBWxhYmVsGAMgASgJEhIKCmlkZW50aWZpZXIYBCABKAkSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMAoMbGFzdF91c2VkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIYChZMaXN0Q3JlZGVudGlhbHNSZXF1ZXN0IkYKF0xpc3RDcmVkZW50aWFsc1Jlc3BvbnNlEisKC2NyZWRlbnRpYWxzGAEgAygLMhYucGF0Y2hlcy52MS5DcmVkZW50aWFsIpIBChRBZGRDcmVkZW50aWFsUmVxdWVzdBIoCgR0eXBlGAEgASgOMhoucGF0Y2hlcy52MS5DcmVkZW50aWFsVHlwZRIOCgZzZWNyZXQYAiABKAkSDQoFbGFiZWwYAyABKAkSMQoJc3NoX3Byb29mGAQgASgLMh4ucGF0Y2hlcy52MS5Tc2hFbnJvbGxtZW50UHJvb2YiVwoSU3NoRW5yb2xsbWVudFByb29mEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRIRCglzaWduYXR1cmUYAiABKAwSGAoQc2lnbmF0dXJlX2Zvcm1hdBgDIAEoCSJDChVBZGRDcmVkZW50aWFsUmVzcG9uc2USKgoKY3JlZGVudGlhbBgBIAEoCzIWLnBhdGNoZXMudjEuQ3JlZGVudGlhbCIlChdSZXZva2VDcmVkZW50aWFsUmVxdWVzdBIKCgJpZBgBIAEoCSIaChhSZXZva2VDcmVkZW50aWFsUmVzcG9uc2UiHgocR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVxdWVzdCJgCh1HZW5lcmF0ZVJlY292ZXJ5Q29kZXNSZXNwb25zZRINCgVjb2RlcxgBIAMoCRIwCgxnZW5lcmF0ZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIj0KFFJlY292ZXJ5TG9naW5SZXF1ZXN0EhcKD2VtYWlsX29yX2hhbmRsZRgBIAEoCRIMCgRjb2RlGAIgASgJIj0KFVJlY292ZXJ5TG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIiEKH0JlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlcXVlc3QiOAogQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USFAoMb3B0aW9uc19qc29uGAEgASgJIkwKIkNvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvblJlcXVlc3QSFwoPY3JlZGVudGlhbF9qc29uGAEgASgJEg0KBWxhYmVsGAIgASgJIlEKI0NvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvblJlc3BvbnNlEioKCmNyZWRlbnRpYWwYASABKAsyFi5wYXRjaGVzLnYxLkNyZWRlbnRpYWwiGgoYQmVnaW5QYXNza2V5TG9naW5SZXF1ZXN0IjEKGUJlZ2luUGFzc2tleUxvZ2luUmVzcG9uc2USFAoMb3B0aW9uc19qc29uGAEgASgJIjYKG0NvbXBsZXRlUGFzc2tleUxvZ2luUmVxdWVzdBIXCg9jcmVkZW50aWFsX2pzb24YASABKAkiRAocQ29tcGxldGVQYXNza2V5TG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uKuUBChFHaXRIdWJMb2dpblN0YXR1cxIkCiBHSVRfSFVCX0xPR0lOX1NUQVRVU19VTlNQRUNJRklFRBAAEiAKHEdJVF9IVUJfTE9HSU5fU1RBVFVTX1BFTkRJTkcQARIiCh5HSVRfSFVCX0xPR0lOX1NUQVRVU19TTE9XX0RPV04QAhIgChxHSVRfSFVCX0xPR0lOX1NUQVRVU19FWFBJUkVEEAMSHwobR0lUX0hVQl9MT0dJTl9TVEFUVVNfREVOSUVEEAQSIQodR0lUX0hVQl9MT0dJTl9TVEFUVVNfQ09NUExFVEUQBSqUAQoQUGFzc3dvcmRBdXRoTW9kZRIiCh5QQVNTV09SRF9BVVRIX01PREVfVU5TUEVDSUZJRUQQABIaChZQQVNTV09SRF9BVVRIX01PREVfT0ZGEAESHwobUEFTU1dPUkRfQVVUSF9NT0RFX09QVElPTkFMEAISHwobUEFTU1dPUkRfQVVUSF9NT0RFX1JFUVVJUkVEEAMqzwEKDkNyZWRlbnRpYWxUeXBlEh8KG0NSRURFTlRJQUxfVFlQRV9VTlNQRUNJRklFRBAAEhwKGENSRURFTlRJQUxfVFlQRV9QQVNTV09SRBABEiIKHkNSRURFTlRJQUxfVFlQRV9TU0hfUFVCTElDX0tFWRACEhoKFkNSRURFTlRJQUxfVFlQRV9HSVRIVUIQAxIhCh1DUkVERU5USUFMX1RZUEVfUkVDT1ZFUllfQ09ERRAEEhsKF0NSRURFTlRJQUxfVFlQRV9QQVNTS0VZEAUyqhIKC0F1dGhTZXJ2aWNlElQKDUdldEF1dGhQb2xpY3kSIC5wYXRjaGVzLnYxLkdldEF1dGhQb2xpY3lSZXF1ZXN0GiEucGF0Y2hlcy52MS5HZXRBdXRoUG9saWN5UmVzcG9uc2USRQoIUmVnaXN0ZXISGy5wYXRjaGVzLnYxLlJlZ2lzdGVyUmVxdWVzdBocLnBhdGNoZXMudjEuUmVnaXN0ZXJSZXNwb25zZRJOCgtWZXJpZnlFbWFpbBIeLnBhdGNoZXMudjEuVmVyaWZ5RW1haWxSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5WZXJpZnlFbWFpbFJlc3BvbnNlEmMKElJlc2VuZFZlcmlmaWNhdGlvbhIlLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVxdWVzdBomLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2USPAoFTG9naW4SGC5wYXRjaGVzLnYxLkxvZ2luUmVxdWVzdBoZLnBhdGNoZXMudjEuTG9naW5SZXNwb25zZRJXCg5SZWZyZXNoU2Vzc2lvbhIhLnBhdGNoZXMudjEuUmVmcmVzaFNlc3Npb25SZXF1ZXN0GiIucGF0Y2hlcy52MS5SZWZyZXNoU2Vzc2lvblJlc3BvbnNlEj8KBkxvZ291dBIZLnBhdGNoZXMudjEuTG9nb3V0UmVxdWVzdBoaLnBhdGNoZXMudjEuTG9nb3V0UmVzcG9uc2USYAoRTG9nb3V0QWxsU2Vzc2lvbnMSJC5wYXRjaGVzLnYxLkxvZ291dEFsbFNlc3Npb25zUmVxdWVzdBolLnBhdGNoZXMudjEuTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZRJpChRSZXF1ZXN0UGFzc3dvcmRSZXNldBInLnBhdGNoZXMudjEuUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXF1ZXN0GigucGF0Y2hlcy52MS5SZXF1ZXN0UGFzc3dvcmRSZXNldFJlc3BvbnNlElQKDVJlc2V0UGFzc3dvcmQSIC5wYXRjaGVzLnYxLlJlc2V0UGFzc3dvcmRSZXF1ZXN0GiEucGF0Y2hlcy52MS5SZXNldFBhc3N3b3JkUmVzcG9uc2USYAoRR2V0Q3VycmVudFNlc3Npb24SJC5wYXRjaGVzLnYxLkdldEN1cnJlbnRTZXNzaW9uUmVxdWVzdBolLnBhdGNoZXMudjEuR2V0Q3VycmVudFNlc3Npb25SZXNwb25zZRJUCg1CZWdpblNzaExvZ2luEiAucGF0Y2hlcy52MS5CZWdpblNzaExvZ2luUmVxdWVzdBohLnBhdGNoZXMudjEuQmVnaW5Tc2hMb2dpblJlc3BvbnNlEl0KEENvbXBsZXRlU3NoTG9naW4SIy5wYXRjaGVzLnYxLkNvbXBsZXRlU3NoTG9naW5SZXF1ZXN0GiQucGF0Y2hlcy52MS5Db21wbGV0ZVNzaExvZ2luUmVzcG9uc2USXQoQQmVnaW5HaXRIdWJMb2dpbhIjLnBhdGNoZXMudjEuQmVnaW5HaXRIdWJMb2dpblJlcXVlc3QaJC5wYXRjaGVzLnYxLkJlZ2luR2l0SHViTG9naW5SZXNwb25zZRJaCg9Qb2xsR2l0SHViTG9naW4SIi5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlcXVlc3QaIy5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlc3BvbnNlEloKD0xpc3RDcmVkZW50aWFscxIiLnBhdGNoZXMudjEuTGlzdENyZWRlbnRpYWxzUmVxdWVzdBojLnBhdGNoZXMudjEuTGlzdENyZWRlbnRpYWxzUmVzcG9uc2USYwoSQmVnaW5Tc2hFbnJvbGxtZW50EiUucGF0Y2hlcy52MS5CZWdpblNzaEVucm9sbG1lbnRSZXF1ZXN0GiYucGF0Y2hlcy52MS5CZWdpblNzaEVucm9sbG1lbnRSZXNwb25zZRJUCg1BZGRDcmVkZW50aWFsEiAucGF0Y2hlcy52MS5BZGRDcmVkZW50aWFsUmVxdWVzdBohLnBhdGNoZXMudjEuQWRkQ3JlZGVudGlhbFJlc3BvbnNlEl0KEFJldm9rZUNyZWRlbnRpYWwSIy5wYXRjaGVzLnYxLlJldm9rZUNyZWRlbnRpYWxSZXF1ZXN0GiQucGF0Y2hlcy52MS5SZXZva2VDcmVkZW50aWFsUmVzcG9uc2USbAoVR2VuZXJhdGVSZWNvdmVyeUNvZGVzEigucGF0Y2hlcy52MS5HZW5lcmF0ZVJlY292ZXJ5Q29kZXNSZXF1ZXN0GikucGF0Y2hlcy52MS5HZW5lcmF0ZVJlY292ZXJ5Q29kZXNSZXNwb25zZRJUCg1SZWNvdmVyeUxvZ2luEiAucGF0Y2hlcy52MS5SZWNvdmVyeUxvZ2luUmVxdWVzdBohLnBhdGNoZXMudjEuUmVjb3ZlcnlMb2dpblJlc3BvbnNlEnUKGEJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvbhIrLnBhdGNoZXMudjEuQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdBosLnBhdGNoZXMudjEuQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USfgobQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uEi4ucGF0Y2hlcy52MS5Db21wbGV0ZVBhc3NrZXlSZWdpc3RyYXRpb25SZXF1ZXN0Gi8ucGF0Y2hlcy52MS5Db21wbGV0ZVBhc3NrZXlSZWdpc3RyYXRpb25SZXNwb25zZRJgChFCZWdpblBhc3NrZXlMb2dpbhIkLnBhdGNoZXMudjEuQmVnaW5QYXNza2V5TG9naW5SZXF1ZXN0GiUucGF0Y2hlcy52MS5CZWdpblBhc3NrZXlMb2dpblJlc3BvbnNlEmkKFENvbXBsZXRlUGFzc2tleUxvZ2luEicucGF0Y2hlcy52MS5Db21wbGV0ZVBhc3NrZXlMb2dpblJlcXVlc3QaKC5wYXRjaGVzLnYxLkNvbXBsZXRlUGFzc2tleUxvZ2luUmVzcG9uc2ViBnByb3RvMw',
+    'ChVwYXRjaGVzL3YxL2F1dGgucHJvdG8SCnBhdGNoZXMudjEi7QEKB1Nlc3Npb24SFAoMYWNjZXNzX3Rva2VuGAEgASgJEjUKEWFjY2Vzc19leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEjYKEnJlZnJlc2hfZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASIAoFYWN0b3IYBSABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhYKDmVtYWlsX3ZlcmlmaWVkGAYgASgIEgwKBG5vZGUYByABKAkizQEKD1JlZ2lzdGVyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhAKCHBhc3N3b3JkGAQgASgJEhMKC2ludml0ZV9jb2RlGAUgASgJEhkKEWNsaWVudF9yZXF1ZXN0X2lkGAYgASgJEhYKDnNzaF9wdWJsaWNfa2V5GAcgASgJEisKI3ByaXZhY3lfbm90aWNlX3ZlcnNpb25fYWNrbm93bGVkZ2VkGAggASgNIjgKEFJlZ2lzdGVyUmVzcG9uc2USJAoHc2Vzc2lvbhgBIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIiChJWZXJpZnlFbWFpbFJlcXVlc3QSDAoEY29kZRgBIAEoCSItChNWZXJpZnlFbWFpbFJlc3BvbnNlEhYKDmVtYWlsX3ZlcmlmaWVkGAEgASgIIhsKGVJlc2VuZFZlcmlmaWNhdGlvblJlcXVlc3QiHAoaUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2UiOQoMTG9naW5SZXF1ZXN0EhcKD2VtYWlsX29yX2hhbmRsZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSI1Cg1Mb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iLgoVUmVmcmVzaFNlc3Npb25SZXF1ZXN0EhUKDXJlZnJlc2hfdG9rZW4YASABKAkiPgoWUmVmcmVzaFNlc3Npb25SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIiYKDUxvZ291dFJlcXVlc3QSFQoNcmVmcmVzaF90b2tlbhgBIAEoCSIQCg5Mb2dvdXRSZXNwb25zZSIaChhMb2dvdXRBbGxTZXNzaW9uc1JlcXVlc3QiGwoZTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZSIsChtSZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QSDQoFZW1haWwYASABKAkiHgocUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZSI6ChRSZXNldFBhc3N3b3JkUmVxdWVzdBIMCgRjb2RlGAEgASgJEhQKDG5ld19wYXNzd29yZBgCIAEoCSIXChVSZXNldFBhc3N3b3JkUmVzcG9uc2UiGgoYR2V0Q3VycmVudFNlc3Npb25SZXF1ZXN0IrgBChlHZXRDdXJyZW50U2Vzc2lvblJlc3BvbnNlEg8KB3VzZXJfaWQYASABKAkSIAoFYWN0b3IYAiABKAsyES5wYXRjaGVzLnYxLkFjdG9yEhIKCnNlc3Npb25faWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFgoOZW1haWxfdmVyaWZpZWQYBSABKAgSDAoEbm9kZRgGIAEoCSJHChRCZWdpblNzaExvZ2luUmVxdWVzdBIaChJwdWJsaWNfa2V5X29wZW5zc2gYASABKAkSEwoLZmluZ2VycHJpbnQYAiABKAkibAoVQmVnaW5Tc2hMb2dpblJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ4ChdDb21wbGV0ZVNzaExvZ2luUmVxdWVzdBIUCgxjaGFsbGVuZ2VfaWQYASABKAkSGgoScHVibGljX2tleV9vcGVuc3NoGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAQgASgJIkAKGENvbXBsZXRlU3NoTG9naW5SZXNwb25zZRIkCgdzZXNzaW9uGAEgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIjcKGUJlZ2luU3NoRW5yb2xsbWVudFJlcXVlc3QSGgoScHVibGljX2tleV9vcGVuc3NoGAEgASgJInEKGkJlZ2luU3NoRW5yb2xsbWVudFJlc3BvbnNlEhQKDGNoYWxsZW5nZV9pZBgBIAEoCRINCgVub25jZRgCIAEoDBIuCgpleHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIZChdCZWdpbkdpdEh1YkxvZ2luUmVxdWVzdCKeAQoYQmVnaW5HaXRIdWJMb2dpblJlc3BvbnNlEhMKC2RldmljZV9jb2RlGAEgASgJEhEKCXVzZXJfY29kZRgCIAEoCRIYChB2ZXJpZmljYXRpb25fdXJpGAMgASgJEhAKCGludGVydmFsGAQgASgNEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIi0KFlBvbGxHaXRIdWJMb2dpblJlcXVlc3QSEwoLZGV2aWNlX2NvZGUYASABKAkibgoXUG9sbEdpdEh1YkxvZ2luUmVzcG9uc2USLQoGc3RhdHVzGAEgASgOMh0ucGF0Y2hlcy52MS5HaXRIdWJMb2dpblN0YXR1cxIkCgdzZXNzaW9uGAIgASgLMhMucGF0Y2hlcy52MS5TZXNzaW9uIikKFUJlZ2luT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCSKcAQoWQmVnaW5PaWRjTG9naW5SZXNwb25zZRITCgtkZXZpY2VfY29kZRgBIAEoCRIRCgl1c2VyX2NvZGUYAiABKAkSGAoQdmVyaWZpY2F0aW9uX3VyaRgDIAEoCRIQCghpbnRlcnZhbBgEIAEoDRIuCgpleHBpcmVzX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI9ChRQb2xsT2lkY0xvZ2luUmVxdWVzdBIQCghwcm92aWRlchgBIAEoCRITCgtkZXZpY2VfY29kZRgCIAEoCSJqChVQb2xsT2lkY0xvZ2luUmVzcG9uc2USKwoGc3RhdHVzGAEgASgOMhsucGF0Y2hlcy52MS5PaWRjTG9naW5TdGF0dXMSJAoHc2Vzc2lvbhgCIAEoCzITLnBhdGNoZXMudjEuU2Vzc2lvbiIWChRHZXRBdXRoUG9saWN5UmVxdWVzdCKXAQoVR2V0QXV0aFBvbGljeVJlc3BvbnNlEjMKDXBhc3N3b3JkX2F1dGgYASABKA4yHC5wYXRjaGVzLnYxLlBhc3N3b3JkQXV0aE1vZGUSEwoLZ2l0aHViX2F1dGgYAiABKAgSNAoOb2lkY19wcm92aWRlcnMYAyADKAsyHC5wYXRjaGVzLnYxLk9pZGNQcm92aWRlckluZm8iNAoQT2lkY1Byb3ZpZGVySW5mbxIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkixwEKCkNyZWRlbnRpYWwSCgoCaWQYASABKAkSKAoEdHlwZRgCIAEoDjIaLnBhdGNoZXMudjEuQ3JlZGVudGlhbFR5cGUSDQoFbGFiZWwYAyABKAkSEgoKaWRlbnRpZmllchgEIAEoCRIuCgpjcmVhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIwCgxsYXN0X3VzZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFkxpc3RDcmVkZW50aWFsc1JlcXVlc3QiRgoXTGlzdENyZWRlbnRpYWxzUmVzcG9uc2USKwoLY3JlZGVudGlhbHMYASADKAsyFi5wYXRjaGVzLnYxLkNyZWRlbnRpYWwikgEKFEFkZENyZWRlbnRpYWxSZXF1ZXN0EigKBHR5cGUYASABKA4yGi5wYXRjaGVzLnYxLkNyZWRlbnRpYWxUeXBlEg4KBnNlY3JldBgCIAEoCRINCgVsYWJlbBgDIAEoCRIxCglzc2hfcHJvb2YYBCABKAsyHi5wYXRjaGVzLnYxLlNzaEVucm9sbG1lbnRQcm9vZiJXChJTc2hFbnJvbGxtZW50UHJvb2YSFAoMY2hhbGxlbmdlX2lkGAEgASgJEhEKCXNpZ25hdHVyZRgCIAEoDBIYChBzaWduYXR1cmVfZm9ybWF0GAMgASgJIkMKFUFkZENyZWRlbnRpYWxSZXNwb25zZRIqCgpjcmVkZW50aWFsGAEgASgLMhYucGF0Y2hlcy52MS5DcmVkZW50aWFsIiUKF1Jldm9rZUNyZWRlbnRpYWxSZXF1ZXN0EgoKAmlkGAEgASgJIhoKGFJldm9rZUNyZWRlbnRpYWxSZXNwb25zZSIeChxHZW5lcmF0ZVJlY292ZXJ5Q29kZXNSZXF1ZXN0ImAKHUdlbmVyYXRlUmVjb3ZlcnlDb2Rlc1Jlc3BvbnNlEg0KBWNvZGVzGAEgAygJEjAKDGdlbmVyYXRlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiPQoUUmVjb3ZlcnlMb2dpblJlcXVlc3QSFwoPZW1haWxfb3JfaGFuZGxlGAEgASgJEgwKBGNvZGUYAiABKAkiPQoVUmVjb3ZlcnlMb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24iIQofQmVnaW5QYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdCI4CiBCZWdpblBhc3NrZXlSZWdpc3RyYXRpb25SZXNwb25zZRIUCgxvcHRpb25zX2pzb24YASABKAkiTAoiQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdBIXCg9jcmVkZW50aWFsX2pzb24YASABKAkSDQoFbGFiZWwYAiABKAkiUQojQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USKgoKY3JlZGVudGlhbBgBIAEoCzIWLnBhdGNoZXMudjEuQ3JlZGVudGlhbCIaChhCZWdpblBhc3NrZXlMb2dpblJlcXVlc3QiMQoZQmVnaW5QYXNza2V5TG9naW5SZXNwb25zZRIUCgxvcHRpb25zX2pzb24YASABKAkiNgobQ29tcGxldGVQYXNza2V5TG9naW5SZXF1ZXN0EhcKD2NyZWRlbnRpYWxfanNvbhgBIAEoCSJEChxDb21wbGV0ZVBhc3NrZXlMb2dpblJlc3BvbnNlEiQKB3Nlc3Npb24YASABKAsyEy5wYXRjaGVzLnYxLlNlc3Npb24q5QEKEUdpdEh1YkxvZ2luU3RhdHVzEiQKIEdJVF9IVUJfTE9HSU5fU1RBVFVTX1VOU1BFQ0lGSUVEEAASIAocR0lUX0hVQl9MT0dJTl9TVEFUVVNfUEVORElORxABEiIKHkdJVF9IVUJfTE9HSU5fU1RBVFVTX1NMT1dfRE9XThACEiAKHEdJVF9IVUJfTE9HSU5fU1RBVFVTX0VYUElSRUQQAxIfChtHSVRfSFVCX0xPR0lOX1NUQVRVU19ERU5JRUQQBBIhCh1HSVRfSFVCX0xPR0lOX1NUQVRVU19DT01QTEVURRAFKtEBCg9PaWRjTG9naW5TdGF0dXMSIQodT0lEQ19MT0dJTl9TVEFUVVNfVU5TUEVDSUZJRUQQABIdChlPSURDX0xPR0lOX1NUQVRVU19QRU5ESU5HEAESHwobT0lEQ19MT0dJTl9TVEFUVVNfU0xPV19ET1dOEAISHQoZT0lEQ19MT0dJTl9TVEFUVVNfRVhQSVJFRBADEhwKGE9JRENfTE9HSU5fU1RBVFVTX0RFTklFRBAEEh4KGk9JRENfTE9HSU5fU1RBVFVTX0NPTVBMRVRFEAUqlAEKEFBhc3N3b3JkQXV0aE1vZGUSIgoeUEFTU1dPUkRfQVVUSF9NT0RFX1VOU1BFQ0lGSUVEEAASGgoWUEFTU1dPUkRfQVVUSF9NT0RFX09GRhABEh8KG1BBU1NXT1JEX0FVVEhfTU9ERV9PUFRJT05BTBACEh8KG1BBU1NXT1JEX0FVVEhfTU9ERV9SRVFVSVJFRBADKukBCg5DcmVkZW50aWFsVHlwZRIfChtDUkVERU5USUFMX1RZUEVfVU5TUEVDSUZJRUQQABIcChhDUkVERU5USUFMX1RZUEVfUEFTU1dPUkQQARIiCh5DUkVERU5USUFMX1RZUEVfU1NIX1BVQkxJQ19LRVkQAhIaChZDUkVERU5USUFMX1RZUEVfR0lUSFVCEAMSIQodQ1JFREVOVElBTF9UWVBFX1JFQ09WRVJZX0NPREUQBBIbChdDUkVERU5USUFMX1RZUEVfUEFTU0tFWRAFEhgKFENSRURFTlRJQUxfVFlQRV9PSURDEAYy2RMKC0F1dGhTZXJ2aWNlElQKDUdldEF1dGhQb2xpY3kSIC5wYXRjaGVzLnYxLkdldEF1dGhQb2xpY3lSZXF1ZXN0GiEucGF0Y2hlcy52MS5HZXRBdXRoUG9saWN5UmVzcG9uc2USRQoIUmVnaXN0ZXISGy5wYXRjaGVzLnYxLlJlZ2lzdGVyUmVxdWVzdBocLnBhdGNoZXMudjEuUmVnaXN0ZXJSZXNwb25zZRJOCgtWZXJpZnlFbWFpbBIeLnBhdGNoZXMudjEuVmVyaWZ5RW1haWxSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5WZXJpZnlFbWFpbFJlc3BvbnNlEmMKElJlc2VuZFZlcmlmaWNhdGlvbhIlLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVxdWVzdBomLnBhdGNoZXMudjEuUmVzZW5kVmVyaWZpY2F0aW9uUmVzcG9uc2USPAoFTG9naW4SGC5wYXRjaGVzLnYxLkxvZ2luUmVxdWVzdBoZLnBhdGNoZXMudjEuTG9naW5SZXNwb25zZRJXCg5SZWZyZXNoU2Vzc2lvbhIhLnBhdGNoZXMudjEuUmVmcmVzaFNlc3Npb25SZXF1ZXN0GiIucGF0Y2hlcy52MS5SZWZyZXNoU2Vzc2lvblJlc3BvbnNlEj8KBkxvZ291dBIZLnBhdGNoZXMudjEuTG9nb3V0UmVxdWVzdBoaLnBhdGNoZXMudjEuTG9nb3V0UmVzcG9uc2USYAoRTG9nb3V0QWxsU2Vzc2lvbnMSJC5wYXRjaGVzLnYxLkxvZ291dEFsbFNlc3Npb25zUmVxdWVzdBolLnBhdGNoZXMudjEuTG9nb3V0QWxsU2Vzc2lvbnNSZXNwb25zZRJpChRSZXF1ZXN0UGFzc3dvcmRSZXNldBInLnBhdGNoZXMudjEuUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXF1ZXN0GigucGF0Y2hlcy52MS5SZXF1ZXN0UGFzc3dvcmRSZXNldFJlc3BvbnNlElQKDVJlc2V0UGFzc3dvcmQSIC5wYXRjaGVzLnYxLlJlc2V0UGFzc3dvcmRSZXF1ZXN0GiEucGF0Y2hlcy52MS5SZXNldFBhc3N3b3JkUmVzcG9uc2USYAoRR2V0Q3VycmVudFNlc3Npb24SJC5wYXRjaGVzLnYxLkdldEN1cnJlbnRTZXNzaW9uUmVxdWVzdBolLnBhdGNoZXMudjEuR2V0Q3VycmVudFNlc3Npb25SZXNwb25zZRJUCg1CZWdpblNzaExvZ2luEiAucGF0Y2hlcy52MS5CZWdpblNzaExvZ2luUmVxdWVzdBohLnBhdGNoZXMudjEuQmVnaW5Tc2hMb2dpblJlc3BvbnNlEl0KEENvbXBsZXRlU3NoTG9naW4SIy5wYXRjaGVzLnYxLkNvbXBsZXRlU3NoTG9naW5SZXF1ZXN0GiQucGF0Y2hlcy52MS5Db21wbGV0ZVNzaExvZ2luUmVzcG9uc2USXQoQQmVnaW5HaXRIdWJMb2dpbhIjLnBhdGNoZXMudjEuQmVnaW5HaXRIdWJMb2dpblJlcXVlc3QaJC5wYXRjaGVzLnYxLkJlZ2luR2l0SHViTG9naW5SZXNwb25zZRJaCg9Qb2xsR2l0SHViTG9naW4SIi5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlcXVlc3QaIy5wYXRjaGVzLnYxLlBvbGxHaXRIdWJMb2dpblJlc3BvbnNlElcKDkJlZ2luT2lkY0xvZ2luEiEucGF0Y2hlcy52MS5CZWdpbk9pZGNMb2dpblJlcXVlc3QaIi5wYXRjaGVzLnYxLkJlZ2luT2lkY0xvZ2luUmVzcG9uc2USVAoNUG9sbE9pZGNMb2dpbhIgLnBhdGNoZXMudjEuUG9sbE9pZGNMb2dpblJlcXVlc3QaIS5wYXRjaGVzLnYxLlBvbGxPaWRjTG9naW5SZXNwb25zZRJaCg9MaXN0Q3JlZGVudGlhbHMSIi5wYXRjaGVzLnYxLkxpc3RDcmVkZW50aWFsc1JlcXVlc3QaIy5wYXRjaGVzLnYxLkxpc3RDcmVkZW50aWFsc1Jlc3BvbnNlEmMKEkJlZ2luU3NoRW5yb2xsbWVudBIlLnBhdGNoZXMudjEuQmVnaW5Tc2hFbnJvbGxtZW50UmVxdWVzdBomLnBhdGNoZXMudjEuQmVnaW5Tc2hFbnJvbGxtZW50UmVzcG9uc2USVAoNQWRkQ3JlZGVudGlhbBIgLnBhdGNoZXMudjEuQWRkQ3JlZGVudGlhbFJlcXVlc3QaIS5wYXRjaGVzLnYxLkFkZENyZWRlbnRpYWxSZXNwb25zZRJdChBSZXZva2VDcmVkZW50aWFsEiMucGF0Y2hlcy52MS5SZXZva2VDcmVkZW50aWFsUmVxdWVzdBokLnBhdGNoZXMudjEuUmV2b2tlQ3JlZGVudGlhbFJlc3BvbnNlEmwKFUdlbmVyYXRlUmVjb3ZlcnlDb2RlcxIoLnBhdGNoZXMudjEuR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVxdWVzdBopLnBhdGNoZXMudjEuR2VuZXJhdGVSZWNvdmVyeUNvZGVzUmVzcG9uc2USVAoNUmVjb3ZlcnlMb2dpbhIgLnBhdGNoZXMudjEuUmVjb3ZlcnlMb2dpblJlcXVlc3QaIS5wYXRjaGVzLnYxLlJlY292ZXJ5TG9naW5SZXNwb25zZRJ1ChhCZWdpblBhc3NrZXlSZWdpc3RyYXRpb24SKy5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlcXVlc3QaLC5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleVJlZ2lzdHJhdGlvblJlc3BvbnNlEn4KG0NvbXBsZXRlUGFzc2tleVJlZ2lzdHJhdGlvbhIuLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVxdWVzdBovLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5UmVnaXN0cmF0aW9uUmVzcG9uc2USYAoRQmVnaW5QYXNza2V5TG9naW4SJC5wYXRjaGVzLnYxLkJlZ2luUGFzc2tleUxvZ2luUmVxdWVzdBolLnBhdGNoZXMudjEuQmVnaW5QYXNza2V5TG9naW5SZXNwb25zZRJpChRDb21wbGV0ZVBhc3NrZXlMb2dpbhInLnBhdGNoZXMudjEuQ29tcGxldGVQYXNza2V5TG9naW5SZXF1ZXN0GigucGF0Y2hlcy52MS5Db21wbGV0ZVBhc3NrZXlMb2dpblJlc3BvbnNlYgZwcm90bzM',
     [file_google_protobuf_timestamp, file_patches_v1_actors],
   );
 
@@ -775,6 +775,119 @@ export const PollGitHubLoginResponseSchema: GenMessage<PollGitHubLoginResponse> 
   messageDesc(file_patches_v1_auth, 30);
 
 /**
+ * P15-006: generic OIDC device flow, mirroring `BeginGitHubLoginRequest`/`Response` but
+ * parameterized by which of this node's configured providers to use.
+ *
+ * @generated from message patches.v1.BeginOidcLoginRequest
+ */
+export type BeginOidcLoginRequest = Message<'patches.v1.BeginOidcLoginRequest'> & {
+  /**
+   * Must match the `id` of one of `GetAuthPolicyResponse.oidc_providers`.
+   *
+   * @generated from field: string provider = 1;
+   */
+  provider: string;
+};
+
+/**
+ * Describes the message patches.v1.BeginOidcLoginRequest.
+ * Use `create(BeginOidcLoginRequestSchema)` to create a new message.
+ */
+export const BeginOidcLoginRequestSchema: GenMessage<BeginOidcLoginRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 31);
+
+/**
+ * @generated from message patches.v1.BeginOidcLoginResponse
+ */
+export type BeginOidcLoginResponse = Message<'patches.v1.BeginOidcLoginResponse'> & {
+  /**
+   * @generated from field: string device_code = 1;
+   */
+  deviceCode: string;
+
+  /**
+   * @generated from field: string user_code = 2;
+   */
+  userCode: string;
+
+  /**
+   * @generated from field: string verification_uri = 3;
+   */
+  verificationUri: string;
+
+  /**
+   * Minimum seconds between poll attempts (the provider's own device-flow `interval`).
+   *
+   * @generated from field: uint32 interval = 4;
+   */
+  interval: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expires_at = 5;
+   */
+  expiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message patches.v1.BeginOidcLoginResponse.
+ * Use `create(BeginOidcLoginResponseSchema)` to create a new message.
+ */
+export const BeginOidcLoginResponseSchema: GenMessage<BeginOidcLoginResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 32);
+
+/**
+ * @generated from message patches.v1.PollOidcLoginRequest
+ */
+export type PollOidcLoginRequest = Message<'patches.v1.PollOidcLoginRequest'> & {
+  /**
+   * Must match the `provider` originally passed to `BeginOidcLogin` for this `device_code`.
+   *
+   * @generated from field: string provider = 1;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string device_code = 2;
+   */
+  deviceCode: string;
+};
+
+/**
+ * Describes the message patches.v1.PollOidcLoginRequest.
+ * Use `create(PollOidcLoginRequestSchema)` to create a new message.
+ */
+export const PollOidcLoginRequestSchema: GenMessage<PollOidcLoginRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 33);
+
+/**
+ * @generated from message patches.v1.PollOidcLoginResponse
+ */
+export type PollOidcLoginResponse = Message<'patches.v1.PollOidcLoginResponse'> & {
+  /**
+   * @generated from field: patches.v1.OidcLoginStatus status = 1;
+   */
+  status: OidcLoginStatus;
+
+  /**
+   * Set only when status == OIDC_LOGIN_STATUS_COMPLETE.
+   *
+   * @generated from field: patches.v1.Session session = 2;
+   */
+  session?: Session | undefined;
+};
+
+/**
+ * Describes the message patches.v1.PollOidcLoginResponse.
+ * Use `create(PollOidcLoginResponseSchema)` to create a new message.
+ */
+export const PollOidcLoginResponseSchema: GenMessage<PollOidcLoginResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 34);
+
+/**
  * @generated from message patches.v1.GetAuthPolicyRequest
  */
 export type GetAuthPolicyRequest = Message<'patches.v1.GetAuthPolicyRequest'> & {};
@@ -785,7 +898,7 @@ export type GetAuthPolicyRequest = Message<'patches.v1.GetAuthPolicyRequest'> & 
  */
 export const GetAuthPolicyRequestSchema: GenMessage<GetAuthPolicyRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 31);
+  messageDesc(file_patches_v1_auth, 35);
 
 /**
  * @generated from message patches.v1.GetAuthPolicyResponse
@@ -795,6 +908,26 @@ export type GetAuthPolicyResponse = Message<'patches.v1.GetAuthPolicyResponse'> 
    * @generated from field: patches.v1.PasswordAuthMode password_auth = 1;
    */
   passwordAuth: PasswordAuthMode;
+
+  /**
+   * P15-006: whether `BeginGitHubLogin`/`PollGitHubLogin` are usable on this node (i.e.
+   * `GITHUB_CLIENT_ID` is configured) — a client hides the "sign in with GitHub" button
+   * rather than let the user hit `NOT_IMPLEMENTED`.
+   *
+   * @generated from field: bool github_auth = 2;
+   */
+  githubAuth: boolean;
+
+  /**
+   * P15-006: this node's configured generic-OIDC providers (GitLab, Codeberg, any other
+   * OIDC-device-flow provider), id and display name only — never the client id, client
+   * secret, or provider URLs, which stay server-side config. A client renders one "sign in
+   * with <display_name>" button per entry and passes the matching `id` as `BeginOidcLoginRequest
+   * .provider`.
+   *
+   * @generated from field: repeated patches.v1.OidcProviderInfo oidc_providers = 3;
+   */
+  oidcProviders: OidcProviderInfo[];
 };
 
 /**
@@ -803,7 +936,30 @@ export type GetAuthPolicyResponse = Message<'patches.v1.GetAuthPolicyResponse'> 
  */
 export const GetAuthPolicyResponseSchema: GenMessage<GetAuthPolicyResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 32);
+  messageDesc(file_patches_v1_auth, 36);
+
+/**
+ * @generated from message patches.v1.OidcProviderInfo
+ */
+export type OidcProviderInfo = Message<'patches.v1.OidcProviderInfo'> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+};
+
+/**
+ * Describes the message patches.v1.OidcProviderInfo.
+ * Use `create(OidcProviderInfoSchema)` to create a new message.
+ */
+export const OidcProviderInfoSchema: GenMessage<OidcProviderInfo> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 37);
 
 /**
  * Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —
@@ -856,7 +1012,7 @@ export type Credential = Message<'patches.v1.Credential'> & {
  */
 export const CredentialSchema: GenMessage<Credential> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 33);
+  messageDesc(file_patches_v1_auth, 38);
 
 /**
  * @generated from message patches.v1.ListCredentialsRequest
@@ -869,7 +1025,7 @@ export type ListCredentialsRequest = Message<'patches.v1.ListCredentialsRequest'
  */
 export const ListCredentialsRequestSchema: GenMessage<ListCredentialsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 34);
+  messageDesc(file_patches_v1_auth, 39);
 
 /**
  * @generated from message patches.v1.ListCredentialsResponse
@@ -887,7 +1043,7 @@ export type ListCredentialsResponse = Message<'patches.v1.ListCredentialsRespons
  */
 export const ListCredentialsResponseSchema: GenMessage<ListCredentialsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 35);
+  messageDesc(file_patches_v1_auth, 40);
 
 /**
  * @generated from message patches.v1.AddCredentialRequest
@@ -927,7 +1083,7 @@ export type AddCredentialRequest = Message<'patches.v1.AddCredentialRequest'> & 
  */
 export const AddCredentialRequestSchema: GenMessage<AddCredentialRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 36);
+  messageDesc(file_patches_v1_auth, 41);
 
 /**
  * Proves possession of the private key for the SSH public key being enrolled (B-021),
@@ -964,7 +1120,7 @@ export type SshEnrollmentProof = Message<'patches.v1.SshEnrollmentProof'> & {
  */
 export const SshEnrollmentProofSchema: GenMessage<SshEnrollmentProof> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 37);
+  messageDesc(file_patches_v1_auth, 42);
 
 /**
  * @generated from message patches.v1.AddCredentialResponse
@@ -982,7 +1138,7 @@ export type AddCredentialResponse = Message<'patches.v1.AddCredentialResponse'> 
  */
 export const AddCredentialResponseSchema: GenMessage<AddCredentialResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 38);
+  messageDesc(file_patches_v1_auth, 43);
 
 /**
  * @generated from message patches.v1.RevokeCredentialRequest
@@ -1000,7 +1156,7 @@ export type RevokeCredentialRequest = Message<'patches.v1.RevokeCredentialReques
  */
 export const RevokeCredentialRequestSchema: GenMessage<RevokeCredentialRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 39);
+  messageDesc(file_patches_v1_auth, 44);
 
 /**
  * @generated from message patches.v1.RevokeCredentialResponse
@@ -1013,7 +1169,7 @@ export type RevokeCredentialResponse = Message<'patches.v1.RevokeCredentialRespo
  */
 export const RevokeCredentialResponseSchema: GenMessage<RevokeCredentialResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 40);
+  messageDesc(file_patches_v1_auth, 45);
 
 /**
  * @generated from message patches.v1.GenerateRecoveryCodesRequest
@@ -1026,7 +1182,7 @@ export type GenerateRecoveryCodesRequest = Message<'patches.v1.GenerateRecoveryC
  */
 export const GenerateRecoveryCodesRequestSchema: GenMessage<GenerateRecoveryCodesRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 41);
+  messageDesc(file_patches_v1_auth, 46);
 
 /**
  * @generated from message patches.v1.GenerateRecoveryCodesResponse
@@ -1052,7 +1208,7 @@ export type GenerateRecoveryCodesResponse = Message<'patches.v1.GenerateRecovery
  */
 export const GenerateRecoveryCodesResponseSchema: GenMessage<GenerateRecoveryCodesResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 42);
+  messageDesc(file_patches_v1_auth, 47);
 
 /**
  * @generated from message patches.v1.RecoveryLoginRequest
@@ -1077,7 +1233,7 @@ export type RecoveryLoginRequest = Message<'patches.v1.RecoveryLoginRequest'> & 
  */
 export const RecoveryLoginRequestSchema: GenMessage<RecoveryLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 43);
+  messageDesc(file_patches_v1_auth, 48);
 
 /**
  * @generated from message patches.v1.RecoveryLoginResponse
@@ -1095,7 +1251,7 @@ export type RecoveryLoginResponse = Message<'patches.v1.RecoveryLoginResponse'> 
  */
 export const RecoveryLoginResponseSchema: GenMessage<RecoveryLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 44);
+  messageDesc(file_patches_v1_auth, 49);
 
 /**
  * Authenticated: the caller's identity comes from the `authorization` metadata, same as
@@ -1113,7 +1269,7 @@ export type BeginPasskeyRegistrationRequest =
  */
 export const BeginPasskeyRegistrationRequestSchema: GenMessage<BeginPasskeyRegistrationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 45);
+  messageDesc(file_patches_v1_auth, 50);
 
 /**
  * @generated from message patches.v1.BeginPasskeyRegistrationResponse
@@ -1141,7 +1297,7 @@ export type BeginPasskeyRegistrationResponse =
  */
 export const BeginPasskeyRegistrationResponseSchema: GenMessage<BeginPasskeyRegistrationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 46);
+  messageDesc(file_patches_v1_auth, 51);
 
 /**
  * @generated from message patches.v1.CompletePasskeyRegistrationRequest
@@ -1170,7 +1326,7 @@ export type CompletePasskeyRegistrationRequest =
  */
 export const CompletePasskeyRegistrationRequestSchema: GenMessage<CompletePasskeyRegistrationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 47);
+  messageDesc(file_patches_v1_auth, 52);
 
 /**
  * @generated from message patches.v1.CompletePasskeyRegistrationResponse
@@ -1189,7 +1345,7 @@ export type CompletePasskeyRegistrationResponse =
  */
 export const CompletePasskeyRegistrationResponseSchema: GenMessage<CompletePasskeyRegistrationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 48);
+  messageDesc(file_patches_v1_auth, 53);
 
 /**
  * Unauthenticated, discoverable-credential login: no username/handle field exists anywhere in
@@ -1205,7 +1361,7 @@ export type BeginPasskeyLoginRequest = Message<'patches.v1.BeginPasskeyLoginRequ
  */
 export const BeginPasskeyLoginRequestSchema: GenMessage<BeginPasskeyLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 49);
+  messageDesc(file_patches_v1_auth, 54);
 
 /**
  * @generated from message patches.v1.BeginPasskeyLoginResponse
@@ -1227,7 +1383,7 @@ export type BeginPasskeyLoginResponse = Message<'patches.v1.BeginPasskeyLoginRes
  */
 export const BeginPasskeyLoginResponseSchema: GenMessage<BeginPasskeyLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 50);
+  messageDesc(file_patches_v1_auth, 55);
 
 /**
  * @generated from message patches.v1.CompletePasskeyLoginRequest
@@ -1250,7 +1406,7 @@ export type CompletePasskeyLoginRequest = Message<'patches.v1.CompletePasskeyLog
  */
 export const CompletePasskeyLoginRequestSchema: GenMessage<CompletePasskeyLoginRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 51);
+  messageDesc(file_patches_v1_auth, 56);
 
 /**
  * @generated from message patches.v1.CompletePasskeyLoginResponse
@@ -1268,7 +1424,7 @@ export type CompletePasskeyLoginResponse = Message<'patches.v1.CompletePasskeyLo
  */
 export const CompletePasskeyLoginResponseSchema: GenMessage<CompletePasskeyLoginResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_auth, 52);
+  messageDesc(file_patches_v1_auth, 57);
 
 /**
  * @generated from enum patches.v1.GitHubLoginStatus
@@ -1313,6 +1469,48 @@ export const GitHubLoginStatusSchema: GenEnum<GitHubLoginStatus> =
   enumDesc(file_patches_v1_auth, 0);
 
 /**
+ * @generated from enum patches.v1.OidcLoginStatus
+ */
+export enum OidcLoginStatus {
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_SLOW_DOWN = 2;
+   */
+  SLOW_DOWN = 2,
+
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_EXPIRED = 3;
+   */
+  EXPIRED = 3,
+
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_DENIED = 4;
+   */
+  DENIED = 4,
+
+  /**
+   * @generated from enum value: OIDC_LOGIN_STATUS_COMPLETE = 5;
+   */
+  COMPLETE = 5,
+}
+
+/**
+ * Describes the enum patches.v1.OidcLoginStatus.
+ */
+export const OidcLoginStatusSchema: GenEnum<OidcLoginStatus> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_auth, 1);
+
+/**
  * P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
  * password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
  * `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED` — clients must hide password UI entirely
@@ -1349,7 +1547,7 @@ export enum PasswordAuthMode {
  */
 export const PasswordAuthModeSchema: GenEnum<PasswordAuthMode> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_auth, 1);
+  enumDesc(file_patches_v1_auth, 2);
 
 /**
  * @generated from enum patches.v1.CredentialType
@@ -1393,6 +1591,15 @@ export enum CredentialType {
    * @generated from enum value: CREDENTIAL_TYPE_PASSKEY = 5;
    */
   PASSKEY = 5,
+
+  /**
+   * A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
+   * provider) — same "credential, never an identity" contract as GITHUB. `identifier` holds
+   * "<provider_id>:<subject>", namespaced so two providers' subjects can never collide.
+   *
+   * @generated from enum value: CREDENTIAL_TYPE_OIDC = 6;
+   */
+  OIDC = 6,
 }
 
 /**
@@ -1400,7 +1607,7 @@ export enum CredentialType {
  */
 export const CredentialTypeSchema: GenEnum<CredentialType> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_auth, 2);
+  enumDesc(file_patches_v1_auth, 3);
 
 /**
  * Local account authentication and credential management (spec §33–39, §48, and Amendment A
@@ -1581,6 +1788,30 @@ export const AuthService: GenService<{
     methodKind: 'unary';
     input: typeof PollGitHubLoginRequestSchema;
     output: typeof PollGitHubLoginResponseSchema;
+  };
+  /**
+   * Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
+   * not just GitHub") — GitLab, Codeberg, or any other node-configured provider. `provider`
+   * selects one of `GetAuthPolicyResponse.oidc_providers` by id; an unknown or unconfigured id
+   * fails the same way an unconfigured GitHub client id does. Exactly the same credential-not-
+   * identity contract as `BeginGitHubLogin`/`PollGitHubLogin`: no profile field is ever
+   * populated from it automatically, and `identifier` is namespaced per provider so two
+   * providers' subjects can never collide.
+   *
+   * @generated from rpc patches.v1.AuthService.BeginOidcLogin
+   */
+  beginOidcLogin: {
+    methodKind: 'unary';
+    input: typeof BeginOidcLoginRequestSchema;
+    output: typeof BeginOidcLoginResponseSchema;
+  };
+  /**
+   * @generated from rpc patches.v1.AuthService.PollOidcLogin
+   */
+  pollOidcLogin: {
+    methodKind: 'unary';
+    input: typeof PollOidcLoginRequestSchema;
+    output: typeof PollOidcLoginResponseSchema;
   };
   /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any

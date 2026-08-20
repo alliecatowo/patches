@@ -79,8 +79,11 @@ export type {
   LogoutAllSessionsResponse,
   LogoutRequest,
   LogoutResponse,
+  OidcProviderInfo,
   PollGitHubLoginRequest,
   PollGitHubLoginResponse,
+  PollOidcLoginRequest,
+  PollOidcLoginResponse,
   RecoveryLoginRequest,
   RecoveryLoginResponse,
   RefreshSessionRequest,
@@ -105,6 +108,7 @@ export type {
 export type {
   CredentialType,
   GitHubLoginStatus,
+  OidcLoginStatus,
   PasswordAuthMode,
 } from './generated/patches/v1/auth.js';
 export type {
@@ -562,6 +566,7 @@ export {
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
   NOTIFICATION_TYPE,
+  OIDC_LOGIN_STATUS,
   PASSWORD_AUTH_MODE,
   POST_TYPE,
   POST_VISIBILITY,

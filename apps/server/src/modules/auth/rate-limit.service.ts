@@ -25,6 +25,11 @@ export type RateLimitAction =
   /** `PollGitHubLogin`: `AuthService` also honors GitHub's own `interval`/`slow_down` per
    * device code, but this bounds the *number of distinct device codes* one peer can poll. */
   | 'github_poll_login'
+  /** `BeginOidcLogin` (P15-006) — same reasoning as `github_begin_login`, generalized to any
+   * configured OIDC provider. */
+  | 'oidc_begin_login'
+  /** `PollOidcLogin` — same reasoning as `github_poll_login`. */
+  | 'oidc_poll_login'
   /** `PrivacyService.ExportAccount` (P14-010, spec §204: `exportRequestedPerDay`) — bounds how
    * many background export jobs one actor can enqueue. */
   | 'export_account'
@@ -67,6 +72,8 @@ const WINDOWS: Readonly<Record<RateLimitAction, Window>> = Object.freeze({
   media_begin_upload: { limit: 30, windowMs: 5 * 60_000 },
   github_begin_login: { limit: 20, windowMs: 5 * 60_000 },
   github_poll_login: { limit: 120, windowMs: 5 * 60_000 },
+  oidc_begin_login: { limit: 20, windowMs: 5 * 60_000 },
+  oidc_poll_login: { limit: 120, windowMs: 5 * 60_000 },
   // Daily windows, straight from `packages/domain`'s §204 table — the single source of truth
   // every layer (proto docs, this limiter, the future database constraint) reads from, same
   // rule the `filters`/`labels` rate limits already follow.
@@ -98,6 +105,8 @@ const PEER_WINDOWS: Readonly<Partial<Record<RateLimitAction, Window>>> = Object.
   ssh_complete: { limit: 60, windowMs: 5 * 60_000 },
   github_begin_login: { limit: 40, windowMs: 5 * 60_000 },
   github_poll_login: { limit: 240, windowMs: 5 * 60_000 },
+  oidc_begin_login: { limit: 40, windowMs: 5 * 60_000 },
+  oidc_poll_login: { limit: 240, windowMs: 5 * 60_000 },
   recovery_login: { limit: 60, windowMs: 5 * 60_000 },
   passkey_challenge: { limit: 60, windowMs: 5 * 60_000 },
   passkey_complete: { limit: 60, windowMs: 5 * 60_000 },

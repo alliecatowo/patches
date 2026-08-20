@@ -96,6 +96,77 @@ const envObjectSchema = z.object({
   GITHUB_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
 
   /**
+   * P15-006: this node's configured generic-OIDC-device-flow providers (GitLab, Codeberg, any
+   * other provider that implements RFC 8628 device authorization) — a JSON array, e.g.
+   * `[{"id":"gitlab","displayName":"GitLab","deviceAuthorizationUrl":"https://gitlab.com/oauth
+   * /authorize_device","tokenUrl":"https://gitlab.com/oauth/token","userinfoUrl":
+   * "https://gitlab.com/oauth/userinfo","clientId":"...","clientSecret":"..."}]`. Empty array
+   * (the default) means no OIDC provider is configured — same "honest empty" convention as
+   * `GITHUB_CLIENT_ID` being unset, except GitHub gets its own dedicated flag/RPC pair and
+   * this covers every *other* provider. `id` is what a client passes as `BeginOidcLoginRequest
+   * .provider` and is namespaced into `credentials.identifier` (`"<id>:<subject>"`), so it
+   * must be unique within the array. Secrets live here, in env, never in a config literal
+   * committed to the repo.
+   */
+  OIDC_PROVIDERS: z
+    .string()
+    .trim()
+    .default('[]')
+    .transform((value, ctx) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch (error) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `OIDC_PROVIDERS is not valid JSON: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+        return z.NEVER;
+      }
+      return parsed;
+    })
+    .pipe(
+      z
+        .array(
+          z.object({
+            id: z
+              .string()
+              .trim()
+              .min(1)
+              .max(40)
+              .regex(
+                /^[a-z0-9_-]+$/,
+                'OIDC provider id must be lowercase ASCII letters, digits, "_" or "-"',
+              ),
+            displayName: z.string().trim().min(1).max(80),
+            deviceAuthorizationUrl: z.url(),
+            tokenUrl: z.url(),
+            userinfoUrl: z.url(),
+            clientId: z.string().trim().min(1),
+            clientSecret: z.string().trim().min(1),
+          }),
+        )
+        .superRefine((providers, ctx) => {
+          const seen = new Set<string>();
+          for (const [index, provider] of providers.entries()) {
+            if (seen.has(provider.id)) {
+              ctx.addIssue({
+                code: 'custom',
+                path: [index, 'id'],
+                message: `duplicate OIDC provider id "${provider.id}"`,
+              });
+            }
+            seen.add(provider.id);
+          }
+        }),
+    ),
+  /** Same reasoning as `GITHUB_HTTP_TIMEOUT_MS` — bounds every outbound call the OIDC device
+   * flow makes, to any configured provider. */
+  OIDC_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+
+  /**
    * Phase 8 two-node federation lab (P8-001..P8-008, `docs/architecture/federation.md`).
    * **Default off** (spec §108 Stage F1, §176's "self-hosted node ships with federation
    * disabled by default"): when false, `FederationHttpModule` (the webfinger/actor/inbox/

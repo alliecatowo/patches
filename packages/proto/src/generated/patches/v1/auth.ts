@@ -23,6 +23,16 @@ export enum GitHubLoginStatus {
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
+export enum OidcLoginStatus {
+  OIDC_LOGIN_STATUS_UNSPECIFIED = 'OIDC_LOGIN_STATUS_UNSPECIFIED',
+  OIDC_LOGIN_STATUS_PENDING = 'OIDC_LOGIN_STATUS_PENDING',
+  OIDC_LOGIN_STATUS_SLOW_DOWN = 'OIDC_LOGIN_STATUS_SLOW_DOWN',
+  OIDC_LOGIN_STATUS_EXPIRED = 'OIDC_LOGIN_STATUS_EXPIRED',
+  OIDC_LOGIN_STATUS_DENIED = 'OIDC_LOGIN_STATUS_DENIED',
+  OIDC_LOGIN_STATUS_COMPLETE = 'OIDC_LOGIN_STATUS_COMPLETE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
 /**
  * P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
  * password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
@@ -57,6 +67,12 @@ export enum CredentialType {
    * material, which never leaves the authenticator.
    */
   CREDENTIAL_TYPE_PASSKEY = 'CREDENTIAL_TYPE_PASSKEY',
+  /**
+   * CREDENTIAL_TYPE_OIDC - A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
+   * provider) — same "credential, never an identity" contract as GITHUB. `identifier` holds
+   * "<provider_id>:<subject>", namespaced so two providers' subjects can never collide.
+   */
+  CREDENTIAL_TYPE_OIDC = 'CREDENTIAL_TYPE_OIDC',
   UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
@@ -284,10 +300,59 @@ export interface PollGitHubLoginResponse {
   session: Session | undefined;
 }
 
+/**
+ * P15-006: generic OIDC device flow, mirroring `BeginGitHubLoginRequest`/`Response` but
+ * parameterized by which of this node's configured providers to use.
+ */
+export interface BeginOidcLoginRequest {
+  /** Must match the `id` of one of `GetAuthPolicyResponse.oidc_providers`. */
+  provider: string;
+}
+
+export interface BeginOidcLoginResponse {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  /** Minimum seconds between poll attempts (the provider's own device-flow `interval`). */
+  interval: number;
+  expiresAt: Timestamp | undefined;
+}
+
+export interface PollOidcLoginRequest {
+  /** Must match the `provider` originally passed to `BeginOidcLogin` for this `device_code`. */
+  provider: string;
+  deviceCode: string;
+}
+
+export interface PollOidcLoginResponse {
+  status: OidcLoginStatus;
+  /** Set only when status == OIDC_LOGIN_STATUS_COMPLETE. */
+  session: Session | undefined;
+}
+
 export interface GetAuthPolicyRequest {}
 
 export interface GetAuthPolicyResponse {
   passwordAuth: PasswordAuthMode;
+  /**
+   * P15-006: whether `BeginGitHubLogin`/`PollGitHubLogin` are usable on this node (i.e.
+   * `GITHUB_CLIENT_ID` is configured) — a client hides the "sign in with GitHub" button
+   * rather than let the user hit `NOT_IMPLEMENTED`.
+   */
+  githubAuth: boolean;
+  /**
+   * P15-006: this node's configured generic-OIDC providers (GitLab, Codeberg, any other
+   * OIDC-device-flow provider), id and display name only — never the client id, client
+   * secret, or provider URLs, which stay server-side config. A client renders one "sign in
+   * with <display_name>" button per entry and passes the matching `id` as `BeginOidcLoginRequest
+   * .provider`.
+   */
+  oidcProviders: OidcProviderInfo[];
+}
+
+export interface OidcProviderInfo {
+  id: string;
+  displayName: string;
 }
 
 /**
@@ -582,6 +647,26 @@ export interface AuthServiceClient {
   ): Observable<PollGitHubLoginResponse>;
 
   /**
+   * Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
+   * not just GitHub") — GitLab, Codeberg, or any other node-configured provider. `provider`
+   * selects one of `GetAuthPolicyResponse.oidc_providers` by id; an unknown or unconfigured id
+   * fails the same way an unconfigured GitHub client id does. Exactly the same credential-not-
+   * identity contract as `BeginGitHubLogin`/`PollGitHubLogin`: no profile field is ever
+   * populated from it automatically, and `identifier` is namespaced per provider so two
+   * providers' subjects can never collide.
+   */
+
+  beginOidcLogin(
+    request: BeginOidcLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginOidcLoginResponse>;
+
+  pollOidcLogin(
+    request: PollOidcLoginRequest,
+    metadata?: Metadata,
+  ): Observable<PollOidcLoginResponse>;
+
+  /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
    * other secret material — type, label, identifier, timestamps only.
    */
@@ -869,6 +954,26 @@ export interface AuthServiceController {
     | PollGitHubLoginResponse;
 
   /**
+   * Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
+   * not just GitHub") — GitLab, Codeberg, or any other node-configured provider. `provider`
+   * selects one of `GetAuthPolicyResponse.oidc_providers` by id; an unknown or unconfigured id
+   * fails the same way an unconfigured GitHub client id does. Exactly the same credential-not-
+   * identity contract as `BeginGitHubLogin`/`PollGitHubLogin`: no profile field is ever
+   * populated from it automatically, and `identifier` is namespaced per provider so two
+   * providers' subjects can never collide.
+   */
+
+  beginOidcLogin(
+    request: BeginOidcLoginRequest,
+    metadata?: Metadata,
+  ): Promise<BeginOidcLoginResponse> | Observable<BeginOidcLoginResponse> | BeginOidcLoginResponse;
+
+  pollOidcLogin(
+    request: PollOidcLoginRequest,
+    metadata?: Metadata,
+  ): Promise<PollOidcLoginResponse> | Observable<PollOidcLoginResponse> | PollOidcLoginResponse;
+
+  /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
    * other secret material — type, label, identifier, timestamps only.
    */
@@ -1024,6 +1129,8 @@ export function AuthServiceControllerMethods() {
       'completeSshLogin',
       'beginGitHubLogin',
       'pollGitHubLogin',
+      'beginOidcLogin',
+      'pollOidcLogin',
       'listCredentials',
       'beginSshEnrollment',
       'addCredential',

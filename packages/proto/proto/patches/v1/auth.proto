@@ -76,6 +76,16 @@ service AuthService {
   rpc BeginGitHubLogin(BeginGitHubLoginRequest) returns (BeginGitHubLoginResponse);
   rpc PollGitHubLogin(PollGitHubLoginRequest) returns (PollGitHubLoginResponse);
 
+  // Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
+  // not just GitHub") — GitLab, Codeberg, or any other node-configured provider. `provider`
+  // selects one of `GetAuthPolicyResponse.oidc_providers` by id; an unknown or unconfigured id
+  // fails the same way an unconfigured GitHub client id does. Exactly the same credential-not-
+  // identity contract as `BeginGitHubLogin`/`PollGitHubLogin`: no profile field is ever
+  // populated from it automatically, and `identifier` is namespaced per provider so two
+  // providers' subjects can never collide.
+  rpc BeginOidcLogin(BeginOidcLoginRequest) returns (BeginOidcLoginResponse);
+  rpc PollOidcLogin(PollOidcLoginRequest) returns (PollOidcLoginResponse);
+
   // Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
   // other secret material — type, label, identifier, timestamps only.
   rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
@@ -353,6 +363,46 @@ message PollGitHubLoginResponse {
   Session session = 2;
 }
 
+// P15-006: generic OIDC device flow, mirroring `BeginGitHubLoginRequest`/`Response` but
+// parameterized by which of this node's configured providers to use.
+message BeginOidcLoginRequest {
+  // Must match the `id` of one of `GetAuthPolicyResponse.oidc_providers`.
+  string provider = 1;
+}
+
+message BeginOidcLoginResponse {
+  string device_code = 1;
+  string user_code = 2;
+  string verification_uri = 3;
+
+  // Minimum seconds between poll attempts (the provider's own device-flow `interval`).
+  uint32 interval = 4;
+
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message PollOidcLoginRequest {
+  // Must match the `provider` originally passed to `BeginOidcLogin` for this `device_code`.
+  string provider = 1;
+  string device_code = 2;
+}
+
+enum OidcLoginStatus {
+  OIDC_LOGIN_STATUS_UNSPECIFIED = 0;
+  OIDC_LOGIN_STATUS_PENDING = 1;
+  OIDC_LOGIN_STATUS_SLOW_DOWN = 2;
+  OIDC_LOGIN_STATUS_EXPIRED = 3;
+  OIDC_LOGIN_STATUS_DENIED = 4;
+  OIDC_LOGIN_STATUS_COMPLETE = 5;
+}
+
+message PollOidcLoginResponse {
+  OidcLoginStatus status = 1;
+
+  // Set only when status == OIDC_LOGIN_STATUS_COMPLETE.
+  Session session = 2;
+}
+
 // P15-002: whether this node accepts the PASSWORD credential at all. `OFF` means `Login`,
 // password-carrying `Register`, and `AddCredential(PASSWORD)` all reject with
 // `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED` — clients must hide password UI entirely
@@ -370,6 +420,23 @@ message GetAuthPolicyRequest {}
 
 message GetAuthPolicyResponse {
   PasswordAuthMode password_auth = 1;
+
+  // P15-006: whether `BeginGitHubLogin`/`PollGitHubLogin` are usable on this node (i.e.
+  // `GITHUB_CLIENT_ID` is configured) — a client hides the "sign in with GitHub" button
+  // rather than let the user hit `NOT_IMPLEMENTED`.
+  bool github_auth = 2;
+
+  // P15-006: this node's configured generic-OIDC providers (GitLab, Codeberg, any other
+  // OIDC-device-flow provider), id and display name only — never the client id, client
+  // secret, or provider URLs, which stay server-side config. A client renders one "sign in
+  // with <display_name>" button per entry and passes the matching `id` as `BeginOidcLoginRequest
+  // .provider`.
+  repeated OidcProviderInfo oidc_providers = 3;
+}
+
+message OidcProviderInfo {
+  string id = 1;
+  string display_name = 2;
 }
 
 enum CredentialType {
@@ -388,6 +455,11 @@ enum CredentialType {
   // WebAuthn credential id, `public_material` the COSE public key — never any private key
   // material, which never leaves the authenticator.
   CREDENTIAL_TYPE_PASSKEY = 5;
+
+  // A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
+  // provider) — same "credential, never an identity" contract as GITHUB. `identifier` holds
+  // "<provider_id>:<subject>", namespaced so two providers' subjects can never collide.
+  CREDENTIAL_TYPE_OIDC = 6;
 }
 
 // Never carries `secret_hash`, `public_material`, or provider `metadata` (spec §165, §177) —

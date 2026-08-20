@@ -6,6 +6,8 @@ import { AuthService } from './auth.service.js';
 import { DbRateLimitStore } from './db-rate-limit-store.service.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
+import { OidcDeviceFlowService } from './oidc-device-flow.service.js';
+import { OidcLoginAttemptsService } from './oidc-login-attempts.service.js';
 import { PasskeyChallengeService } from './passkey-challenge.service.js';
 import { PasskeyVerifierService } from './passkey-verifier.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
@@ -37,6 +39,8 @@ import { TokenService } from './token.service.js';
     TokenService,
     GitHubDeviceFlowService,
     GitHubLoginAttemptsService,
+    OidcDeviceFlowService,
+    OidcLoginAttemptsService,
     PasskeyChallengeService,
     PasskeyVerifierService,
   ],

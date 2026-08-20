@@ -1,10 +1,19 @@
 import type { CredentialType as DbCredentialType } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
-import type { Actor, Credential, Session } from '@patches/proto';
-import { CredentialType, GitHubLoginStatus, PasswordAuthMode } from '@patches/proto/nest';
+import type { Actor, Credential, OidcProviderInfo, Session } from '@patches/proto';
+import {
+  CredentialType,
+  GitHubLoginStatus,
+  OidcLoginStatus,
+  PasswordAuthMode,
+} from '@patches/proto/nest';
 
 import type { ActorSummary, CredentialSummary, SessionEnvelope } from './auth.dto.js';
-import type { GitHubLoginPollResult } from './auth.service.js';
+import type {
+  GitHubLoginPollResult,
+  OidcLoginPollResult,
+  OidcProviderPolicy,
+} from './auth.service.js';
 
 /**
  * Application DTO → protobuf message (spec §128).
@@ -19,6 +28,7 @@ const CREDENTIAL_TYPE_TO_PROTO: Readonly<Record<DbCredentialType, CredentialType
   GITHUB: CredentialType.CREDENTIAL_TYPE_GITHUB,
   PASSKEY: CredentialType.CREDENTIAL_TYPE_PASSKEY,
   RECOVERY_CODE: CredentialType.CREDENTIAL_TYPE_RECOVERY_CODE,
+  OIDC: CredentialType.CREDENTIAL_TYPE_OIDC,
 });
 
 /** P15-002: `AppConfigService.passwordAuthMode`'s three string values → the wire enum. */
@@ -105,6 +115,25 @@ export function toProtoGitHubLoginStatus(
   status: GitHubLoginPollResult['status'],
 ): GitHubLoginStatus {
   return GITHUB_LOGIN_STATUS_TO_PROTO[status];
+}
+
+const OIDC_LOGIN_STATUS_TO_PROTO: Readonly<Record<OidcLoginPollResult['status'], OidcLoginStatus>> =
+  Object.freeze({
+    PENDING: OidcLoginStatus.OIDC_LOGIN_STATUS_PENDING,
+    SLOW_DOWN: OidcLoginStatus.OIDC_LOGIN_STATUS_SLOW_DOWN,
+    EXPIRED: OidcLoginStatus.OIDC_LOGIN_STATUS_EXPIRED,
+    DENIED: OidcLoginStatus.OIDC_LOGIN_STATUS_DENIED,
+    COMPLETE: OidcLoginStatus.OIDC_LOGIN_STATUS_COMPLETE,
+  });
+
+export function toProtoOidcLoginStatus(status: OidcLoginPollResult['status']): OidcLoginStatus {
+  return OIDC_LOGIN_STATUS_TO_PROTO[status];
+}
+
+/** P15-006: `AuthPolicy.oidcProviders` → the wire `repeated OidcProviderInfo` — id and display
+ * name only, never the client id/secret/URLs (those never leave `AppConfigService`). */
+export function toProtoOidcProviders(providers: readonly OidcProviderPolicy[]): OidcProviderInfo[] {
+  return providers.map((provider) => ({ id: provider.id, displayName: provider.displayName }));
 }
 
 /** The single session envelope every login method returns (`docs/architecture/auth.md` §2). */
