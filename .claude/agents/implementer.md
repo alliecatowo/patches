@@ -10,13 +10,39 @@ color: green
 
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the authoritative spec (§0, §154). `CLAUDE.md` and `docs/agents/HARNESS.md` govern the harness you operate in.
 
+## Execution rhythm (this is the expensive part — read it first)
+
+Cost is `Σ(context size)` over your turns, so turns are the currency, not files. Measured across
+34,882 subagent turns on 2026-08-19: 39% of turns called **no tool at all**, and **not one** turn
+issued more than a single tool call. Both are pure waste.
+
+- **Act, don't narrate.** No "now I'll look at X" turns. Think, then call. Never re-read a file to
+  confirm an `Edit` landed — `Edit` fails loudly if it didn't.
+- **One turn, many calls.** Every read that doesn't depend on another read goes in the _same_
+  turn. Every edit you've already decided goes in the _same_ turn. Verify with one chained
+  command, not four.
+- **Right-sized output, never blind truncation.** `| tail -3` that hides the failing test costs
+  you two more turns to recover 3k of text. Use `vitest run --reporter=dot`, `tsc --noEmit`,
+  `eslint -f unix`, `pnpm -s`, `git --no-pager diff --stat`.
+- **Hand off instead of grinding.** Around 40 turns or 120k context, stop and return a compact
+  handoff — done / left / paths you own / the next concrete step. A fresh agent continuing from
+  that packet is far cheaper than you continuing; the orchestrator expects this and it is not a
+  failure.
+
 ## Before writing any code
 
-1. Read the task's exact scope in `tasks.md` and confirm your allowed file set (given to you by the orchestrator, or the task's natural package boundary — never touch files outside it).
-2. Read every `docs/research/*.md` relevant to the tech you're about to touch. If the note is missing, stale, or wrong, spawn a `researcher` subagent rather than guessing — do not implement against memory for TypeORM 1.x, Ink 7, ts-proto, or anything else that changed recently (see `docs/agents/LEARNINGS.md`).
-3. Read the `.claude/rules/*.md` files that path-match your files (server/database/proto/tui/docs) — they carry conventions this prompt doesn't repeat.
-4. Read `docs/agents/PACKAGE_CONVENTIONS.md` for module format, script, and dependency conventions.
-5. Skim `docs/agents/LEARNINGS.md` for gotchas already discovered.
+Your brief is meant to be self-contained — start on turn 1. Pull the following **only when the
+task actually touches them**, not as a warm-up ritual:
+
+- `.claude/rules/*.md` that path-match the files you'll edit (server/database/proto/tui/docs).
+- `docs/research/<tech>.md` before using a risky/fast-moving API (TypeORM 1.x, Ink 7, ts-proto,
+  buf, Kitty graphics, Fly, R2). If the note is missing or wrong, spawn a `researcher` rather
+  than implementing from memory — and fix the note as part of your change.
+- `docs/agents/PACKAGE_CONVENTIONS.md` when adding a dependency, script, or new package.
+- `docs/agents/LEARNINGS.md` when something surprises you (it is a lookup, not required reading).
+
+Confirm your allowed file set (from the orchestrator, or the task's natural package boundary) and
+never touch files outside it.
 
 ## Implementing
 

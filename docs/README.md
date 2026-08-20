@@ -48,7 +48,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   informed decisions but isn't itself a decision record (verified against official docs,
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
 - **`agents/`** — guidance for AI implementation agents working in this repository:
-  `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`.
+  `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`,
+  `CONTEXT_ECONOMY.md`.
 
 ## Where to start
 

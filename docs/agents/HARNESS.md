@@ -63,13 +63,39 @@ Path-scoped, loaded automatically when matching files are touched: `server.md`
 
 ## Token discipline (cache reads are the big cost)
 
-Every agent turn re-reads its whole context from cache, so cost ≈ context size × turns. Rules:
+Every model turn re-reads the agent's whole context, so **cost ≈ Σ(context size) over turns** —
+not "tokens read from disk". Measured on the 2026-08-19 session (6.8B cache reads; method and
+full numbers in `docs/agents/CONTEXT_ECONOMY.md`): subagents were 93% of it, 40% went to turns
+that called **no tool at all**, 51% was read above a 100k context, and the top 25 of 147 agents
+were 55% of the spend. The rules below are ranked by that measurement.
 
-- **Briefs are self-contained.** The orchestrator pastes the exact snippets the agent needs (signatures, entity fields, proto shapes, paths, the verify command) into the brief; agents should be able to start implementing on turn 1. No "read first: A, B, C" lists — those re-read the same files across every agent and are the dominant cached-read cost. Research docs and the spec are reference, not required reading.
-- No exploratory repo tours: `Glob`/`Grep` for a symbol, read one file, act. Reviewers review a **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
-- No turn caps — but every tool call re-reads the whole context, so batch: one combined verify command per package (`pnpm --filter X build && … typecheck && … test`), `sed -n` ranges instead of whole files, commit slices early.
-- Prefer one well-briefed sonnet agent over three narrow ones (each agent pays the CLAUDE.md + rules + system prompt load). Use haiku for mechanical checks. Opus/fable only where judgment matters.
-- Don't paste large file contents into reports; report paths + one-line facts.
+1. **Act, don't narrate.** 39% of subagent turns issued zero tool calls — pure prose between
+   actions, each costing a full context re-read. Think, then act. Never announce what you are
+   about to do as its own turn, never re-read a file to confirm an `Edit` applied (the tool
+   errors if it didn't), never summarize progress mid-task.
+2. **Batch every independent call into one turn.** The same session issued **zero** turns with
+   more than one tool call. Reads that don't depend on each other go in one turn; edits you have
+   already decided go in one turn. One combined verify command per package
+   (`pnpm --filter X build && … typecheck && … test`), not four turns.
+3. **Stay small, then hand off.** Cost is ~quadratic in an agent's lifetime. At roughly 40 turns
+   or 120k context, stop: write a compact handoff (done / left / owned paths / next concrete
+   step) and return it. The orchestrator re-briefs a fresh agent from that packet. Three short
+   agents beat one marathon — this reverses the old "prefer one well-briefed agent" advice,
+   which the measurement disproved.
+4. **Make commands emit the right thing; never blind-truncate.** `| tail -3` that hides the
+   failing test costs two more turns (~250k each here) to recover 3k of output. Use the tool's
+   own reporter instead: `vitest run --reporter=dot`, `tsc --noEmit` (already errors-only),
+   `eslint -f unix`, `pnpm -s`, `git --no-pager diff --stat`.
+5. **Briefs are self-contained.** The orchestrator pastes the exact snippets the agent needs
+   (signatures, entity fields, proto shapes, paths, the verify command); agents start
+   implementing on turn 1. No "read first: A, B, C" lists. Research docs and the spec are
+   reference, not required reading.
+6. No exploratory repo tours: `Grep` for a symbol, read the one file, act. Reviewers review a
+   **diff** (`git diff <base>..HEAD -- <paths>`), never the whole tree.
+7. Use haiku for mechanical checks; opus/fable only where judgment matters — and keep their
+   leashes shortest, since their context costs several times sonnet's per token.
+8. Don't paste large file contents into reports; report paths + one-line facts. Every report you
+   return sits in the orchestrator's context for the rest of the session.
 
 ## The self-improvement loop
 

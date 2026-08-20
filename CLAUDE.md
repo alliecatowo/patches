@@ -59,6 +59,8 @@ implementation, **haiku** for mechanical checks/verification/docs polishing, **o
 debugging, and architecture, **fable** only for the hardest problems or deep architectural audits.
 Fan out independent work in parallel; give each agent a disjoint file set; require them to run `pnpm verify`
 on what they touched. Nested agents are allowed (depth 3): implementers may spawn a researcher or a verifier.
+Keep agents short-lived and batch tool calls — cost is `Σ(context size)` over turns, and the measured
+breakdown plus the rules that follow from it are in `docs/agents/CONTEXT_ECONOMY.md`.
 
 ## Repository map
 
