@@ -1,4 +1,4 @@
-import { dateToTimestamp } from '@patches/proto';
+import { fromDate } from '../api/wire/time.js';
 import type {
   AccountDeletionStatus,
   GetDeletionStatusResponse,
@@ -88,7 +88,7 @@ describe('PrivacyScreen', () => {
     const acknowledgePrivacyNotice = vi.fn().mockResolvedValue({
       prefs: prefs({
         privacyNoticeVersion: 2,
-        privacyNoticeAcknowledgedAt: dateToTimestamp(new Date()),
+        privacyNoticeAcknowledgedAt: fromDate(new Date()),
       }),
     });
     const api = buildApi({ acknowledgePrivacyNotice });
@@ -119,7 +119,7 @@ describe('PrivacyScreen', () => {
       getPrivacyPrefs: vi.fn<() => Promise<GetPrivacyPrefsResponse>>().mockResolvedValue({
         prefs: prefs({
           privacyNoticeVersion: 1,
-          privacyNoticeAcknowledgedAt: dateToTimestamp(new Date('2026-01-01T00:00:00Z')),
+          privacyNoticeAcknowledgedAt: fromDate(new Date('2026-01-01T00:00:00Z')),
         }),
       }),
     });

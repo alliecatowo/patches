@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type { FollowRequest } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -120,7 +120,7 @@ export function FollowRequestsScreen({
           )
         ) : (
           requests.map((request, rowIndex) => {
-            const createdAt = timestampToDate(request.createdAt);
+            const createdAt = toDate(request.createdAt);
             const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
             return (
               <Box key={request.actor?.id ?? String(rowIndex)}>

@@ -1,4 +1,4 @@
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type {
   Actor,
   BeginSshLoginRequest,
@@ -80,7 +80,7 @@ function isUnauthenticated(error: unknown): boolean {
 }
 
 function requireDate(timestamp: Session['accessExpiresAt'], field: string): Date {
-  const date = timestampToDate(timestamp);
+  const date = toDate(timestamp);
   if (date === undefined) throw new Error(`Server session is missing ${field}.`);
   return date;
 }

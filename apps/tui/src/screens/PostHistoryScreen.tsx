@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import { timestampToDate } from '@patches/proto';
+import { toDate } from '../api/wire/time.js';
 import type { PostEdit } from '../api/wire/types.js';
 import { Box, Text, useInput } from 'ink';
 import { useCallback, useEffect, useState } from 'react';
@@ -141,7 +141,7 @@ export function PostHistoryScreen({
 }
 
 function HistoryRow({ edit, selected }: { edit: PostEdit; selected: boolean }): ReactElement {
-  const createdAt = timestampToDate(edit.createdAt);
+  const createdAt = toDate(edit.createdAt);
   const when = present(createdAt) ? formatRelativeTime(createdAt) : '';
   const body = edit.previousBody === '' ? '[media-only post]' : edit.previousBody;
   return (
