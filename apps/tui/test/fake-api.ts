@@ -398,8 +398,8 @@ export class FakeApiHandle {
         this.listMutualFollows(request, accessToken),
       addCredential: (request: AddCredentialRequest, accessToken: string) =>
         this.addCredential(request, accessToken),
-      revokeCredential: () =>
-        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
+      revokeCredential: (request: { id: string }, accessToken: string) =>
+        this.revokeCredential(request, accessToken),
       getNodeInfo: () =>
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       getNodePolicy: () =>
@@ -1479,6 +1479,33 @@ export class FakeApiHandle {
       $typeName: 'patches.v1.ListCredentialsResponse',
       credentials: [...this.credentialsFor(session.userId)],
     });
+  }
+
+  /** Mirrors `AuthService#revokeCredential`'s last-credential guard (spec §165) — an
+   * account must always retain at least one active credential. */
+  private revokeCredential(
+    request: { id: string },
+    accessToken: string,
+  ): Promise<Record<string, never>> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const list = this.credentialsFor(session.userId);
+    const index = list.findIndex((candidate) => candidate.id === request.id);
+    if (index === -1) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'No such credential on this account.'));
+    }
+    if (list.length <= 1) {
+      return Promise.reject(
+        grpcError(
+          GrpcStatus.INVALID_ARGUMENT,
+          'This is your only way to sign in. Add another credential before revoking this one.',
+        ),
+      );
+    }
+    list.splice(index, 1);
+    return Promise.resolve({});
   }
 
   private addCredential(

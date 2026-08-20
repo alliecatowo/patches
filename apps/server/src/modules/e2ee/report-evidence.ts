@@ -32,6 +32,7 @@ import {
 import type { EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { e2eeDigest } from './e2ee-crypto.adapter.js';
 
 /**
  * A node-held symmetric franking key, scoped to a rotation era (ADR 0020 §9). Injected rather
@@ -313,7 +314,7 @@ export async function attachReportEvidence(
         profile: logicalMessage.frankingProfile,
         keyEra: logicalMessage.frankingKeyEra,
         tag: new Uint8Array(logicalMessage.frankingTag),
-        transcriptDigest: encodedTranscript,
+        transcriptDigest: e2eeDigest(encodedTranscript),
       },
       participantTranscript: new Uint8Array(raw.participantTranscript),
       rosterDigest: new Uint8Array(raw.rosterDigest),
@@ -343,6 +344,7 @@ export async function attachReportEvidence(
         verifier: e2eeReportFrankingVerifier(keys),
         acceptedProfiles: [E2EE_FRANKING_PROFILE_V1],
         knownKeyEras: keys.knownEras(),
+        digest: e2eeDigest,
       },
     );
   } catch (error) {

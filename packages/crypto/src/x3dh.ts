@@ -46,24 +46,27 @@ function encodeUnsignedHandshake(handshake: UnsignedHandshake): Uint8Array {
   ) {
     throw new PreKeyError('One-time prekey id and key must be present together.');
   }
-  return new ByteWriter()
+  const writer = new ByteWriter()
     .string(TRANSCRIPT_CONTEXT)
     .string(handshake.protocol)
     .u8(handshake.version)
     .string(handshake.algorithm)
     .bytes(encodeCertifiedDevice(handshake.initiator))
     .bytes(encodeCertifiedDevice(handshake.responder))
-    .fixed(handshake.initiatorRosterDigest)
-    .fixed(handshake.responderRosterDigest)
-    .fixed(handshake.ephemeralPublicKey)
+    .fixed(handshake.initiatorRosterDigest, KEY_BYTES)
+    .fixed(handshake.responderRosterDigest, KEY_BYTES)
+    .fixed(handshake.ephemeralPublicKey, KEY_BYTES)
     .u32(handshake.signedPreKeyId)
-    .fixed(handshake.signedPreKeyPublicKey)
-    .u8(hasOneTimePreKey ? 1 : 0)
-    .fixed(
-      hasOneTimePreKey ? (handshake.oneTimePreKeyPublicKey ?? new Uint8Array()) : new Uint8Array(),
-    )
-    .u32(hasOneTimePreKey ? (handshake.oneTimePreKeyId ?? 0) : 0)
-    .finish();
+    .fixed(handshake.signedPreKeyPublicKey, KEY_BYTES)
+    .u8(hasOneTimePreKey ? 1 : 0);
+  // The presence flag above already distinguishes "no one-time prekey" from "one present"; a
+  // fixed-width write only happens when there is a key to write, so the field stays exactly
+  // `KEY_BYTES` whenever it appears rather than a variable-width write the flag would have to
+  // disambiguate a second time.
+  if (hasOneTimePreKey && handshake.oneTimePreKeyPublicKey !== undefined) {
+    writer.fixed(handshake.oneTimePreKeyPublicKey, KEY_BYTES);
+  }
+  return writer.u32(hasOneTimePreKey ? (handshake.oneTimePreKeyId ?? 0) : 0).finish();
 }
 
 function splitSecrets(material: Uint8Array): X3dhSecrets {
@@ -85,7 +88,7 @@ function deriveSecrets(
   const info = new ByteWriter()
     .string(KDF_CONTEXT)
     .string(E2EE_ALGORITHM)
-    .fixed(sha256Hash(transcript))
+    .fixed(sha256Hash(transcript), KEY_BYTES)
     .finish();
   const material = hkdfSha256(input, ZERO_SALT, info, 96);
   const secrets = splitSecrets(material);

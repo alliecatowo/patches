@@ -25,9 +25,11 @@ Manages the SSH-key credentials on the signed-in account (spec §165–166).
   patches keys list
     Lists every credential on the account (never a secret).
 
-  patches keys remove <fingerprint>
-    Revokes the credential with that fingerprint. The server refuses to
-    revoke an account's last remaining credential.
+  patches keys remove <fingerprint|id>
+    Revokes the credential with that fingerprint. A PASSWORD credential has
+    no fingerprint (\`identifier\` is empty), so it can also be matched by
+    its credential id, as shown by \`patches keys list\`. The server refuses
+    to revoke an account's last remaining credential.
 
 Options:
   --node, --server <host:port>  node to act against
@@ -235,14 +237,14 @@ function describeCredentialRow(credential: Credential): string {
   const createdAt = toDate(credential.createdAt);
   const label = credential.label === '' ? '(no label)' : credential.label;
   const identifier = credential.identifier === '' ? '' : `  ${credential.identifier}`;
-  return `${credential.type}  ${label}${identifier}  since ${createdAt?.toISOString() ?? 'unknown'}`;
+  return `${credential.type}  ${label}${identifier}  since ${createdAt?.toISOString() ?? 'unknown'}  id:${credential.id}`;
 }
 
 async function runKeysRemove(rest: readonly string[], deps: KeysDeps): Promise<number> {
   const { io } = deps;
-  const [fingerprint] = rest;
-  if (fingerprint === undefined || fingerprint.startsWith('-')) {
-    io.stderr(`A fingerprint is required: patches keys remove <fingerprint>\n`);
+  const [target] = rest;
+  if (target === undefined || target.startsWith('-')) {
+    io.stderr(`A fingerprint or credential id is required: patches keys remove <fingerprint|id>\n`);
     return 1;
   }
 
@@ -253,12 +255,17 @@ async function runKeysRemove(rest: readonly string[], deps: KeysDeps): Promise<n
   }
   try {
     const { credentials } = await session.api.listCredentials(session.accessToken);
+    // `identifier` is empty for a PASSWORD credential (spec §165 — a password has no
+    // fingerprint), so it can never be matched by identifier; fall back to matching the
+    // credential id itself, which `keys list` now prints for exactly this reason.
     const credential = credentials.find(
       (candidate) =>
-        candidate.identifier === fingerprint || candidate.identifier.endsWith(fingerprint),
+        (candidate.identifier !== '' &&
+          (candidate.identifier === target || candidate.identifier.endsWith(target))) ||
+        candidate.id === target,
     );
     if (credential === undefined) {
-      io.stderr(`No credential matches "${fingerprint}".\n`);
+      io.stderr(`No credential matches "${target}".\n`);
       return 1;
     }
     await session.api.revokeCredential({ id: credential.id }, session.accessToken);
