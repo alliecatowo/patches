@@ -101,13 +101,15 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
     const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcWriteConcurrencyLimit: 1 }));
     const context = rpcContext();
 
-    await withContext('patches.v1.PostService/CreatePost', 'peer-1', async () => {
+    await withContext('patches.v1.PostService/CreatePost', 'peer-1', () => {
       // Never subscribed — simulates one write RPC still in flight, holding the one slot.
       interceptor.intercept(context, handlerThatNeverCompletes());
 
       expect(() => interceptor.intercept(context, handlerThatEmits('ok'))).toThrow(
         expect.objectContaining({ code: 'NODE_OVERLOADED' }),
       );
+      // `withContext` wants a promise-returning callback; nothing here is actually async.
+      return Promise.resolve();
     });
   });
 
@@ -115,8 +117,9 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
     const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcWriteConcurrencyLimit: 1 }));
     const context = rpcContext();
 
-    await withContext('patches.v1.PostService/CreatePost', 'peer-1', async () => {
+    await withContext('patches.v1.PostService/CreatePost', 'peer-1', () => {
       interceptor.intercept(context, handlerThatNeverCompletes()); // holds the one write slot
+      return Promise.resolve();
     });
 
     await expect(

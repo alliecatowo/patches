@@ -64,7 +64,10 @@ process.stdin.on("end", () => {
     }
     if (stat.size > 64 * 1024 * 1024) process.exit(0);
 
-    const ids = new Set();
+    // Tool calls per request, in order. One entry per API request; several JSONL lines can
+    // share a message.id (thinking, then tool_use), so accumulate rather than overwrite.
+    const perRequest = new Map();
+    const order = [];
     for (const line of fs.readFileSync(transcript, "utf8").split("\n")) {
       if (line === "") continue;
       let entry;
@@ -74,10 +77,63 @@ process.stdin.on("end", () => {
         continue;
       }
       const message = entry?.message;
-      if (typeof message?.id === "string" && message?.usage) ids.add(message.id);
+      if (typeof message?.id !== "string" || !message?.usage) continue;
+      if (!perRequest.has(message.id)) {
+        perRequest.set(message.id, []);
+        order.push(message.id);
+      }
+      const content = Array.isArray(message.content) ? message.content : [];
+      for (const block of content) {
+        if (block?.type === "tool_use" && typeof block.name === "string") {
+          perRequest.get(message.id).push(block.name);
+        }
+      }
     }
 
-    const used = ids.size;
+    const used = order.length;
+
+    // Depth-instead-of-width nudge. Cost is the sum of context size over requests, so N
+    // already-decided edits issued one per request cost N context re-reads instead of one.
+    // Prose in the brief demonstrably does not change this, so say it at the moment it is
+    // happening. Fires once per run, only on a clear run of single-call requests, and only
+    // for tool types that are usually independent of each other.
+    const WIDE = new Set(["Read", "Edit", "Write", "Grep", "Glob", "LSP"]);
+    const recent = order.slice(-5).map((id) => perRequest.get(id));
+    const singles = recent.filter((t) => t.length === 1 && WIDE.has(t[0]));
+    if (recent.length === 5 && singles.length === 5) {
+      const nudgeLatch = require("path").join(
+        require("os").tmpdir(),
+        `claude-batchnudge-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, "")}`,
+      );
+      let firstTime = false;
+      try {
+        fs.writeFileSync(nudgeLatch, "", { flag: "wx" });
+        firstTime = true;
+      } catch {
+        /* already nudged this run */
+      }
+      if (firstTime) {
+        const names = singles.map((t) => t[0]).join(", ");
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "PostToolUse",
+              additionalContext:
+                `BATCHING: your last 5 requests were one tool call each (${names}). Each one ` +
+                `re-read your entire context — five times the cost of issuing them together, ` +
+                `for the same work. You batch by emitting the next tool_use block instead of ` +
+                `ending your message: after a tool call, do not stop — write the next one. If ` +
+                `you have already decided the remaining edits, emit them all in your next ` +
+                `message (several edits to the same file are fine). Only a genuine data ` +
+                `dependency — you need result A to know what B should be — justifies a ` +
+                `separate request.`,
+            },
+          }),
+        );
+        process.exit(0);
+      }
+    }
+
     const left = cap - used;
     // Two warnings only: one with room to finish the work, one to stop and write the packet.
     // Proportional to the cap: a fixed "6 remaining" is ample at cap 40 and far too late at
