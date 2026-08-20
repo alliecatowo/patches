@@ -5,6 +5,7 @@ type RenderResult = ReturnType<typeof render>;
 import { App, type AppProps } from '../src/app/App.js';
 import { MemoryCredentialStore, type CredentialStore } from '../src/auth/credential-store.js';
 import { MemoryDraftStore, type DraftStore } from '../src/compose/draft-store.js';
+import { clearListCache } from '../src/hooks/usePaginatedPosts.js';
 import { MemoryPageDraftStore } from '../src/pages/draft-store.js';
 import { stripSgr } from './ansi.js';
 import { createFakeApi, type FakeApiHandle, type FakeApiOptions } from './fake-api.js';
@@ -52,6 +53,10 @@ export interface RenderAppResult extends RenderResult {
  * hand-rolling a partial `PatchesApi` fake.
  */
 export function renderApp(options: RenderAppOptions = {}): RenderAppResult {
+  // B-043's background-snapshot cache (`hooks/usePaginatedPosts.ts`) is module-level
+  // and keyed on `api.target`, which repeats across fakes (`patches.test:50051`) —
+  // without this, one test's empty/seeded feed leaks into the next test's fresh app.
+  clearListCache();
   const fake = options.fake ?? createFakeApi(options.fakeOptions);
   const credentialStore = options.credentialStore ?? new MemoryCredentialStore();
   const draftStore = options.draftStore ?? new MemoryDraftStore();

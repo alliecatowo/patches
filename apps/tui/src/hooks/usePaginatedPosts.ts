@@ -36,6 +36,52 @@ export interface UsePaginatedListResult<T> {
   newCount: number;
 }
 
+// --- background-snapshot cache (B-043) ----------------------------------------------
+// A palette/help overlay freezes the screen behind it by mounting a *second*,
+// independent copy of it through `renderToString` (`components/Overlay.tsx`) — a fresh
+// component instance with no memory of what the live one already fetched. Left alone,
+// that copy starts from `loading: true`, and the frozen snapshot is captured before its
+// own request round-trips, so opening the palette showed "Loading" over a feed that had
+// been sitting on screen, fully loaded, for minutes (owner report, 2026-08-19). A
+// caller that supplies a stable `cacheKey` gets the most recent page seeded as this
+// hook's *initial* state, so a second mount with the same key renders the
+// already-loaded page on its very first pass and never re-fetches behind it.
+const listCache = new Map<
+  string,
+  { items: readonly unknown[]; cursor: string; hasMore: boolean }
+>();
+
+function readListCache<T>(
+  key: string,
+): { items: readonly T[]; cursor: string; hasMore: boolean } | undefined {
+  const cached = listCache.get(key);
+  // One assertion at the cache's generic boundary: each key is owned by exactly one
+  // caller (screens namespace their own keys), so a given key only ever stores one `T`.
+  return cached === undefined
+    ? undefined
+    : (cached as { items: readonly T[]; cursor: string; hasMore: boolean });
+}
+
+function writeListCache<T>(
+  key: string | undefined,
+  value: { items: readonly T[]; cursor: string; hasMore: boolean },
+): void {
+  if (key !== undefined) listCache.set(key, value);
+}
+
+/**
+ * Drops every cached page. The cache is deliberately module-level/shared (that is what
+ * lets a second, independent mount find it) so it must be cleared explicitly wherever a
+ * key could otherwise be read by a session it doesn't belong to: on sign-out (`App.tsx`
+ * clears it alongside the optimistic reaction overlay, the same "stale session data
+ * must not survive a session boundary" reasoning), and by tests — `test/harness.tsx`'s
+ * `renderApp()` calls this before every render so one test's fake API never seeds
+ * another's, since `target` strings repeat across fakes.
+ */
+export function clearListCache(): void {
+  listCache.clear();
+}
+
 /**
  * Drives one cursor-paginated list — posts (profile timeline, local/home feed,
  * thread replies, bookmarks) and notifications all use this (spec §68: shared
@@ -49,11 +95,16 @@ export function usePaginatedList<T>(
   /** Stable identity for an item, so `refresh()` can count what is genuinely new.
    * Omitted (no identity) means a refresh reports `newCount: 0`. */
   identify?: (item: T) => string,
+  /** B-043's background-snapshot cache key — omitted (the default) is byte-identical
+   * to the old always-fetch behaviour. Screens that can sit under an overlay pass one
+   * that changes whenever a real refetch is wanted (e.g. `home:${target}:${feedNonce}`). */
+  cacheKey?: string,
 ): UsePaginatedListResult<T> {
-  const [items, setItems] = useState<readonly T[]>([]);
-  const [cursor, setCursor] = useState('');
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const cached = cacheKey === undefined ? undefined : readListCache<T>(cacheKey);
+  const [items, setItems] = useState<readonly T[]>(() => cached?.items ?? []);
+  const [cursor, setCursor] = useState(() => cached?.cursor ?? '');
+  const [hasMore, setHasMore] = useState(() => cached?.hasMore ?? true);
+  const [loading, setLoading] = useState(() => cached === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<FriendlyError | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
@@ -63,6 +114,10 @@ export function usePaginatedList<T>(
   const fetchingRef = useRef(false);
 
   useEffect(() => {
+    // Already warm for this key — a second mount with the same `cacheKey` (the
+    // palette's frozen background snapshot) renders the cached page and never issues
+    // a second request behind it.
+    if (cacheKey !== undefined && listCache.has(cacheKey)) return;
     let cancelled = false;
     fetchingRef.current = true;
     fetch('')
@@ -71,6 +126,11 @@ export function usePaginatedList<T>(
         setItems(result.items);
         setCursor(result.page?.nextCursor ?? '');
         setHasMore(result.page?.hasMore ?? false);
+        writeListCache(cacheKey, {
+          items: result.items,
+          cursor: result.page?.nextCursor ?? '',
+          hasMore: result.page?.hasMore ?? false,
+        });
       })
       .catch((thrown: unknown) => {
         if (!cancelled) setError(describeGrpcError(thrown, target));
@@ -82,9 +142,9 @@ export function usePaginatedList<T>(
     return () => {
       cancelled = true;
     };
-    // Re-runs only when the caller passes a new `fetch` (a new feed/actor), not
-    // on every render — screens memoize `fetch` with `useCallback`.
-  }, [fetch, target]);
+    // Re-runs only when the caller passes a new `fetch` (a new feed/actor) or
+    // `cacheKey`, not on every render — screens memoize `fetch` with `useCallback`.
+  }, [fetch, target, cacheKey]);
 
   const loadMore = useCallback(() => {
     if (fetchingRef.current || !hasMore) return;
@@ -92,7 +152,15 @@ export function usePaginatedList<T>(
     setLoadingMore(true);
     fetch(cursor)
       .then((result) => {
-        setItems((previous) => [...previous, ...result.items]);
+        setItems((previous) => {
+          const next = [...previous, ...result.items];
+          writeListCache(cacheKey, {
+            items: next,
+            cursor: result.page?.nextCursor ?? '',
+            hasMore: result.page?.hasMore ?? false,
+          });
+          return next;
+        });
         setCursor(result.page?.nextCursor ?? '');
         setHasMore(result.page?.hasMore ?? false);
       })
@@ -103,7 +171,7 @@ export function usePaginatedList<T>(
         setLoadingMore(false);
         fetchingRef.current = false;
       });
-  }, [cursor, fetch, hasMore, target]);
+  }, [cacheKey, cursor, fetch, hasMore, target]);
 
   const refresh = useCallback(() => {
     if (fetchingRef.current) return;
@@ -121,6 +189,11 @@ export function usePaginatedList<T>(
         setCursor(result.page?.nextCursor ?? '');
         setHasMore(result.page?.hasMore ?? false);
         setError(undefined);
+        writeListCache(cacheKey, {
+          items: result.items,
+          cursor: result.page?.nextCursor ?? '',
+          hasMore: result.page?.hasMore ?? false,
+        });
       })
       .catch((thrown: unknown) => {
         setError(describeGrpcError(thrown, target));
@@ -129,7 +202,7 @@ export function usePaginatedList<T>(
         setRefreshing(false);
         fetchingRef.current = false;
       });
-  }, [fetch, identify, target]);
+  }, [cacheKey, fetch, identify, target]);
 
   return { items, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount };
 }
@@ -165,14 +238,19 @@ function postId(post: Post): string {
   return post.id;
 }
 
-export function usePaginatedPosts(target: string, fetch: FetchPostPage): UsePaginatedPostsResult {
+export function usePaginatedPosts(
+  target: string,
+  fetch: FetchPostPage,
+  /** B-043's background-snapshot cache key — see `usePaginatedList`. */
+  cacheKey?: string,
+): UsePaginatedPostsResult {
   const fetchItems = useCallback(
     (cursor: string): Promise<Page<Post>> =>
       fetch(cursor).then((result) => ({ items: result.posts, page: result.page })),
     [fetch],
   );
   const { items, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount } =
-    usePaginatedList<Post>(target, fetchItems, postId);
+    usePaginatedList<Post>(target, fetchItems, postId, cacheKey);
   return {
     posts: items,
     loading,
