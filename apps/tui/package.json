@@ -1,6 +1,6 @@
 {
   "name": "@patches/tui",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Patches — terminal-native social media. Ink/React TUI client.",
   "license": "MIT",
   "private": false,
