@@ -52,6 +52,31 @@ never imports server code.
 6. Update docs in the same change as the code (`docs/architecture/*`, `docs/operations/*`, README).
 7. Never document a command that doesn't work. Run it first.
 
+## Tool use: plan once, then fire in parallel
+
+Every model turn re-reads the whole context, so **one request doing five things costs a fifth of five
+requests doing one thing each** — for identical work. Measured 2026-08-20: 1.16 tool calls per request
+across the fleet, i.e. almost everything is being done one call at a time. That is the single largest
+avoidable cost in this repo.
+
+- **Decide the whole edit set before touching anything.** Read what you need, form the complete plan,
+  then emit **every independent call in one request**: all the reads together, then all the `Edit`s
+  together. Never "update this file → look → update that file" when the second edit was already decided.
+- Independent means "does not need the previous result". Only a genuine data dependency justifies a
+  second request.
+- One chained verify command per package, not four. Never re-read a file to confirm an `Edit` landed —
+  `Edit` fails loudly if it didn't.
+
+**Symbols go through `LSP`, not `Grep`.** `workspaceSymbol` finds a definition by name anywhere;
+`goToDefinition`/`hover` answer "what is this"; `findReferences` and `incomingCalls` give the true call
+set for a rename, a signature change, or a blast-radius check; `documentSymbol` maps a large file
+without reading it whole; `goToImplementation` finds what satisfies an interface. For a rename or a
+refactor this is the difference between an exact reference list and grepping a name that also appears in
+strings and comments. `Grep` stays correct for non-symbol text (UI strings, config keys, proto field
+names, prohibition sweeps) and `Glob` for filenames. Caveat: cross-package types resolve through built
+`dist/*.d.ts`, so `LSP` reports phantom "could not find a declaration file for `@patches/…`" errors
+while another agent is rebuilding — re-run rather than chasing them.
+
 ## Delegation (see `docs/agents/MODEL_ROUTING.md`)
 
 The main session orchestrates; subagents in `.claude/agents/` do the work. Default to **sonnet** for
