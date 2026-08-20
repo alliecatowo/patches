@@ -28,6 +28,8 @@ export const KEY = {
   down: '[B',
   pageUp: '[5~',
   pageDown: '[6~',
+  /** B-048's pane-focus prefix trigger. */
+  ctrlW: '\x17',
 } as const;
 
 export interface RenderAppOptions {

@@ -136,3 +136,98 @@ describe('Tab moves pane focus (B-046)', () => {
     app.unmount();
   });
 });
+
+/**
+ * B-048 — `Ctrl+W h` / `Ctrl+W l` are a directional alias to `Tab`: `h` always focuses
+ * the primary pane, `l` always the secondary, regardless of which pane currently has
+ * focus. The owner asked for this explicitly (tmux/vim muscle memory) after seeing it
+ * in the design doc as unbuilt.
+ */
+describe('Ctrl+W h/l moves pane focus directionally (B-048)', () => {
+  it('does nothing when the current screen is not split', async () => {
+    const app = renderAppInWindow(140, 40, { fake: seedWorld() });
+    await loginAs(app, 'alice', 'x');
+    await pressGo(app, 'l');
+    await expectFrame(app.lastFrame, 'alice newest post');
+    const before = stripSgr(app.lastFrame() ?? '');
+    expect(before).not.toContain('│');
+
+    app.press(KEY.ctrlW);
+    await flush(60);
+    app.press('l');
+    await flush(60);
+    const after = stripSgr(app.lastFrame() ?? '');
+    expect(after).not.toContain('│');
+    expect(after).toContain('alice newest post');
+    app.unmount();
+  });
+
+  it('Ctrl+W l focuses the secondary pane, Ctrl+W h focuses the primary pane', async () => {
+    const app = renderAppInWindow(140, 40, { fake: seedWorld(), env: { PATCHES_PLAIN: '1' } });
+    await loginAs(app, 'alice', 'x');
+    await pressGo(app, 'l');
+    await expectFrame(app.lastFrame, 'alice newest post');
+
+    await openOwnPageBeside(app);
+    const split = await waitForFrame(app.lastFrame, (frame) => frame.includes('alice page body'));
+    expect(paneIsFocused(split, 'Local')).toBe(true);
+    expect(paneIsFocused(split, 'Page')).toBe(false);
+
+    app.press(KEY.ctrlW);
+    await flush(60);
+    app.press('l');
+    const focusedSecondary = await waitForFrame(app.lastFrame, (frame) =>
+      paneIsFocused(frame, 'Page'),
+    );
+    expect(paneIsFocused(focusedSecondary, 'Local')).toBe(false);
+
+    app.press(KEY.ctrlW);
+    await flush(60);
+    app.press('h');
+    const focusedPrimary = await waitForFrame(app.lastFrame, (frame) =>
+      paneIsFocused(frame, 'Local'),
+    );
+    expect(paneIsFocused(focusedPrimary, 'Page')).toBe(false);
+    app.unmount();
+  });
+
+  it('a coalesced Ctrl+W+l chunk (fast typing landing in one stdin read) still focuses the secondary pane', async () => {
+    const app = renderAppInWindow(140, 40, { fake: seedWorld(), env: { PATCHES_PLAIN: '1' } });
+    await loginAs(app, 'alice', 'x');
+    await pressGo(app, 'l');
+    await expectFrame(app.lastFrame, 'alice newest post');
+
+    await openOwnPageBeside(app);
+    await waitForFrame(app.lastFrame, (frame) => frame.includes('alice page body'));
+
+    // Both bytes in a single stdin.write — the coalesced-chunk hazard this whole
+    // feature exists to survive (`splitCoalescedKeyRun` in `app/input.tsx`).
+    app.press(`${KEY.ctrlW}l`);
+    const focusedSecondary = await waitForFrame(app.lastFrame, (frame) =>
+      paneIsFocused(frame, 'Page'),
+    );
+    expect(paneIsFocused(focusedSecondary, 'Local')).toBe(false);
+    app.unmount();
+  });
+
+  it('routes an action key to the secondary pane after Ctrl+W l', async () => {
+    const app = renderAppInWindow(140, 40, { fake: seedWorld() });
+    await loginAs(app, 'alice', 'x');
+    await pressGo(app, 'l');
+    await expectFrame(app.lastFrame, 'alice newest post');
+
+    await openOwnPageBeside(app);
+    await waitForFrame(app.lastFrame, (frame) => frame.includes('alice page body'));
+
+    app.press(KEY.ctrlW);
+    await flush(60);
+    app.press('l');
+    await waitForFrame(app.lastFrame, (frame) => frame.includes('> Page'));
+
+    app.press('E');
+    const edited = await waitForFrame(app.lastFrame, (frame) => frame.includes('Edit blocks'));
+    expect(edited).toContain('Local');
+    expect(edited).not.toContain('Edit post');
+    app.unmount();
+  });
+});

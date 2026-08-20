@@ -85,6 +85,7 @@ import {
   isPaletteShortcut,
   KeyLayerProvider,
   legacyInputConsumes,
+  splitCoalescedKeyRun,
 } from './input.js';
 import { hintsFor, SCREEN_TITLES, type Binding, type Screen } from './keymap.js';
 import { chromeSplit, ContentSizeProvider, FOOTER_ROWS, InlineImagesProvider } from './layout.js';
@@ -255,6 +256,13 @@ export function App({
   // explicit "open beside" request. Read once by the one destination that cares (`v`)
   // and cleared on every fresh prefix press.
   const pendingGoAllowSplitRef = useRef(false);
+  // Set by `Ctrl+W` before its second key (`h`/`l`) lands — B-048's directional alias
+  // to `Tab` (`h` focuses primary, `l` focuses secondary). Same coalesced-chunk hazard
+  // as `g <key>`/`Ctrl+G` above, so it gets its own ref+timer pair rather than reusing
+  // `pendingGoRef`; `splitCoalescedKeyRun` (`input.tsx`) is what makes a fast-typed
+  // `Ctrl+W`+`h` chunk still recognise the ctrl chord.
+  const pendingPaneRef = useRef(false);
+  const pendingPaneTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
@@ -1577,7 +1585,8 @@ export function App({
     // Keys typed fast enough to land in one stdin read reach Ink as a single
     // multi-character keypress; replay them one at a time so `g h` works at speed.
     if (isCoalescedKeyRun(input, key)) {
-      for (const character of input) handleShellInput(character, key);
+      for (const split of splitCoalescedKeyRun(input, key))
+        handleShellInput(split.input, split.key);
       return;
     }
     if (isCtrlKey(input, key, 'c')) {
@@ -1626,6 +1635,18 @@ export function App({
       }
       return;
     }
+    // `Ctrl+W h` / `Ctrl+W l` — B-048's directional alias to `Tab`: `h` focuses the
+    // primary pane, `l` the secondary, matching the owner's tmux/vim muscle memory.
+    // A no-op (still consumes the key) when the screen isn't split, same as `Tab`
+    // above.
+    if (pendingPaneRef.current) {
+      pendingPaneRef.current = false;
+      if (splitActive) {
+        if (input === 'h') setPaneFocusSecondary(false);
+        else if (input === 'l') setPaneFocusSecondary(true);
+      }
+      return;
+    }
     if (key.tab && splitActive) {
       setPaneFocusSecondary((current) => !current);
       return;
@@ -1670,6 +1691,21 @@ export function App({
       setPendingGo(true);
       clearTimeout(pendingGoTimer.current);
       pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
+      return;
+    }
+    // `Ctrl+W` — opens the two-key `h`/`l` pane-focus prefix above. `Tab` stays the
+    // fast toggle for the common two-pane case; this is the directional alias that
+    // stays correct if a third pane ever exists. Guarded off legacy text-entry
+    // screens (`ComposeScreen`'s `TextEditor` binds its own `Ctrl+W` to kill-word-back,
+    // line 105 of `components/input/TextEditor.tsx`) — Ink has no stop-propagation, so
+    // both listeners would otherwise see the same keypress, and this prefix would eat
+    // the very next character typed after a word-delete.
+    if (isCtrlKey(input, key, 'w') && !legacyTextScreen && !legacySubmodeActiveRef.current) {
+      pendingPaneRef.current = true;
+      clearTimeout(pendingPaneTimer.current);
+      pendingPaneTimer.current = setTimeout(() => {
+        pendingPaneRef.current = false;
+      }, 600);
       return;
     }
     if (input === 'L') {

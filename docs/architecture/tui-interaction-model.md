@@ -260,8 +260,13 @@ Consequences that make this worth doing:
 
 **Panes are regions** in the focus model (§4.5): `Tab` moves shell focus between the primary and
 secondary pane **[v, shipped B-046]** — action keys dispatch only to the focused pane's screen
-(`App.tsx`'s `renderEntry` gates each pane's own `useInput` on `focusedPane`); the `Ctrl+W`
-`h`/`l` vim alias proposed here was not what shipped. The focused pane draws
+(`App.tsx`'s `renderEntry` gates each pane's own `useInput` on `focusedPane`). `Ctrl+W h` /
+`Ctrl+W l` are a directional alias to the same focus state **[v, shipped B-048]** — `h` focuses
+the primary (left) pane, `l` the secondary (right), a no-op when the screen isn't split. `Tab` is
+the fast toggle for the common two-pane case; the `Ctrl+W` alias is the tmux/vim muscle-memory
+path, and it stays correct if a third pane is ever added where "toggle" stops being well-defined.
+Both prefixes are guarded off legacy text-entry screens (`ComposeScreen`'s `TextEditor` owns its
+own `Ctrl+W` for kill-word-back — §5's text-editing bindings). The focused pane draws
 `borderStyle="round"` with `theme.borderFocus`; unfocused uses `theme.border`. In plain mode
 **neither pane has a border** — the focused pane's title takes a bold `> ` prefix instead (§3.5's
 height rule below).
@@ -511,7 +516,7 @@ correct the guide.
 `/` search · **`c` quick post** (into the
 focused community when there is one, §191) · **`C` full compose** · **`N` notifications drawer** · **`Ctrl+R` refresh (moved from `R`)** · `L` account ·
 `P` plain mode · **`~` quiet feed** · **`,` preferences** · `g h`/`g l`/`g p`/`g e`/`g b`/`g n`/`g v`/`g s` ·
-**`g d` messages** · **`g c` communities** · `g g` top · **`Tab` next region (pane, then the pane's regions) [v, shipped B-046]** · **`Ctrl+g <key>` opens the destination in the second pane; plain `g <key>` never auto-splits [v, shipped B-042]**.
+**`g d` messages** · **`g c` communities** · `g g` top · **`Tab` next region (pane, then the pane's regions) [v, shipped B-046]** · **`Ctrl+W h`/`Ctrl+W l` focus the primary/secondary pane directly [v, shipped B-048]** · **`Ctrl+g <key>` opens the destination in the second pane; plain `g <key>` never auto-splits [v, shipped B-042]**.
 
 **List regions:** `j`/`↓` next · `k`/`↑` prev · `G` last · `Home`/`End` **[p]** ·
 `Ctrl+D`/`PgDn`, `Ctrl+U`/`PgUp` half page · `n`/`space` load more · `Enter` thread · `p` author ·
