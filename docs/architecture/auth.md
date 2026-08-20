@@ -426,7 +426,61 @@ credential is lost.
   (redeem one). Neither is wired into the interactive TUI screens yet — the web client has no
   recovery-code UI beyond `LoginRoute`'s "use a recovery code instead" toggle.
 
-## 12. Security checklist for Phase 1 review
+## 12. Client credential-management parity (P15-007)
+
+Every credential type × client × operation, audited against the actual client code (not just
+the RPC surface):
+
+| Type             | Web: list / add / revoke                                                                                                           | TUI: list / add / revoke                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `PASSWORD`       | yes / no add UI (no `AddCredential(PASSWORD)` form) / yes                                                                          | yes / no add UI / yes (`AccountsScreen`, matches by credential id since a password credential has no `identifier`) |
+| `SSH_PUBLIC_KEY` | yes / N/A — a browser has no local SSH agent to prove possession with / yes                                                        | yes / yes (`BeginSshEnrollment` possession proof, agent + `~/.ssh/*.pub` discovery) / yes                          |
+| `PASSKEY`        | yes / yes (`BeginPasskeyRegistration`/`CompletePasskeyRegistration`, `CredentialsRoute`) / yes                                     | N/A — no browser relying party on a terminal, and none is planned (ADR 0011, ADR 0022)                             |
+| `RECOVERY_CODE`  | yes / yes (`GenerateRecoveryCodes`, shown once) / self-consuming, never a manual revoke                                            | yes / yes (`patches recovery-codes` CLI) / self-consuming                                                          |
+| `GITHUB`         | yes / yes — `CredentialsRoute`'s "Link another account" section reuses `GitHubLoginButton` in `mode="link"` (P15-007) / yes        | yes / no linking flow yet (`AccountsScreen`'s add flow only discovers SSH keys) / yes (`AccountsScreen`, P15-007)  |
+| `OIDC`           | yes / yes — same section, `OidcLoginButton` in `mode="link"`, one per `GetAuthPolicyResponse.oidc_providers` entry (P15-007) / yes | yes / no linking flow yet / yes (P15-007)                                                                          |
+
+Where a cell is N/A, the reason is architectural, not a gap: SSH-key adding on the web has no
+browser API that reaches a local SSH agent, and passkeys need a WebAuthn relying party a
+terminal doesn't have.
+
+**GitHub/OIDC linking (this task).** `BeginGitHubLogin`/`BeginOidcLogin` are one RPC pair
+serving two callers (§167, `auth.proto`'s own doc comment on `AuthService.BeginGitHubLogin`):
+an anonymous caller logging in with an already-linked credential, and a signed-in caller
+linking a new one. The server (`AuthController.optionalCallerUserId`) tells the two apart
+solely by whether the request carries a **valid bearer token** — an absent or invalid token is
+treated as anonymous, never rejected, since the same RPC must also serve the login case.
+
+Before this task, `apps/web/src/api/client.ts`'s `authInterceptor` skipped attaching a bearer
+token to **every** `AuthService` call, keyed on `req.service.typeName` alone. That was correct
+for `Login`/`Register`/`RefreshSession` (which must stay unauthenticated) but starved every
+other authenticated `AuthService` RPC of its token too — `ListCredentials`,
+`RevokeCredential`, `GenerateRecoveryCodes`, `BeginPasskeyRegistration`, and
+`BeginGitHubLogin`/`BeginOidcLogin` when a signed-in caller meant to link. The fix discriminates
+per-RPC (`ANONYMOUS_AUTH_METHODS`, keyed on `req.method.name`): only the RPCs that must always
+be anonymous by protocol design are excluded from the default "attach the token when signed
+in" path. `BeginGitHubLogin`/`BeginOidcLogin` are deliberately **not** in that exclusion set —
+attaching the token when one exists, and calling anonymously when one doesn't, is exactly the
+login-vs-link behavior §167 asks for, so no separate branch was needed for them.
+
+`GitHubLoginButton`/`OidcLoginButton` gained a `mode: 'login' | 'link'` prop (default
+`'login'`): the RPC pair and device-flow polling are identical either way, but `'link'` mode
+never navigates on completion — it just re-establishes the (rotated) session in place and
+invalidates the credentials query, since the caller is already on `/settings/credentials`, not
+mid-sign-in.
+
+**Not yet exercised live.** `GITHUB_CLIENT_ID` is unset on the production node (P15-001,
+blocked on a human creating the GitHub OAuth App), so `BeginGitHubLogin` on `patches-social.fly.dev`
+returns `gitHubNotConfigured()` regardless of caller — the linking flow above is covered by a
+unit test against a mocked transport (`apps/web/src/api/client.test.ts`) asserting the bearer
+token is attached to `BeginGitHubLogin`/`ListCredentials` when signed in and withheld from
+`Login`, but has not been exercised end-to-end against a live node.
+
+**TUI GitHub/OIDC linking remains unbuilt** (`AccountsScreen`'s add flow only discovers local
+SSH keys) — filed as its own follow-up rather than folded into this table's "done" column; see
+`tasks.md`.
+
+## 13. Security checklist for Phase 1 review
 
 - [ ] No plaintext secret of any type is stored; `secret_hash` never leaves the server.
 - [ ] Argon2id parameters benchmarked on deployment hardware (§34).
@@ -441,7 +495,7 @@ credential is lost.
 - [ ] Adding a credential requires an authenticated session.
 - [ ] No third-party OAuth token persisted anywhere.
 
-## 13. Related documents
+## 14. Related documents
 
 - [`data-model.md`](./data-model.md) — `users`, `credentials`, `ssh_login_challenges` schema
 - [`api.md`](./api.md) — `AuthService` / `NodeService` RPC list

@@ -53,16 +53,59 @@ export async function signOut(): Promise<void> {
 }
 
 /**
- * Attaches `authorization: Bearer <token>` to every non-`AuthService` call when signed
- * in, and retries once (via `sessionManager.withSession`'s single-flight refresh) on a
+ * `AuthService` RPCs that must never carry a bearer token, either because they are
+ * unauthenticated by protocol design (`Login`/`Register`/the various `Begin*Login`/
+ * `Poll*Login`/`Complete*Login` pairs — `auth.proto`'s own no-enumeration and
+ * credential-login contracts) or because attaching one would recurse
+ * (`RefreshSession`, called by `sessionManager` itself to mint a fresh token).
+ *
+ * Deliberately NOT in this set: `BeginGitHubLogin`/`BeginOidcLogin`. Both serve two
+ * callers under one RPC (`auth.proto`'s `AuthService.BeginGitHubLogin` doc) — an
+ * anonymous caller logging in with an already-linked credential, and a signed-in caller
+ * linking a new one, which per spec §167 "linking ... MUST require an authenticated
+ * Patches session". The server tells the two apart by whether a bearer token is present
+ * at all (`AuthController.optionalCallerUserId`), so the token must be attached
+ * whenever one exists — the fallthrough logic below already does exactly that (skips
+ * attaching only when signed out), which is why these two are absent from this set
+ * rather than routed through a bespoke third branch.
+ */
+const ANONYMOUS_AUTH_METHODS: ReadonlySet<string> = new Set([
+  'Login',
+  'Register',
+  'RefreshSession',
+  'GetAuthPolicy',
+  'VerifyEmail',
+  'RequestPasswordReset',
+  'ResetPassword',
+  'BeginSshLogin',
+  'CompleteSshLogin',
+  'PollGitHubLogin',
+  'PollOidcLogin',
+  'BeginDeviceLink',
+  'PollDeviceLink',
+  'BeginPasskeyLogin',
+  'CompletePasskeyLogin',
+  'RecoveryLogin',
+]);
+
+/**
+ * Attaches `authorization: Bearer <token>` to every call when signed in, and retries
+ * once (via `sessionManager.withSession`'s single-flight refresh) on a
  * `Code.Unauthenticated` failure — the same behaviour every RPC got before this app used
  * `@patches/client`, just built on the SDK's `SessionManager` instead of hand-rolled
- * refresh/mutex logic. `AuthService` itself is skipped both because `Login`/`Register`/
- * `RefreshSession` never need a bearer token and because attempting a refresh in response
- * to a failed `RefreshSession` call would recurse.
+ * refresh/mutex logic. Discriminates per-RPC, not per-service (`ANONYMOUS_AUTH_METHODS`
+ * above): most of `AuthService` (`ListCredentials`, `RevokeCredential`,
+ * `GenerateRecoveryCodes`, `BeginPasskeyRegistration`, credential-linking `BeginGitHubLogin`/
+ * `BeginOidcLogin`, etc.) requires exactly the same bearer token every other service's
+ * RPCs do.
  */
 const authInterceptor: Interceptor = (next) => async (req) => {
-  if (req.service.typeName === AuthService.typeName) return next(req);
+  if (
+    req.service.typeName === AuthService.typeName &&
+    ANONYMOUS_AUTH_METHODS.has(req.method.name)
+  ) {
+    return next(req);
+  }
   const token = await sessionManager.getAccessToken();
   if (token === undefined) return next(req);
   try {
