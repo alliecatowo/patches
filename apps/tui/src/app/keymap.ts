@@ -713,11 +713,28 @@ export const KEYMAP: readonly Binding[] = [
     on: ['notifications'],
   },
   {
+    keys: 'j / k',
+    hint: 'select',
+    description: 'Move between credentials on the account screen',
+    group: 'Screens',
+    on: ['accounts'],
+    helpOnly: true,
+  },
+  {
     keys: 'a',
     hint: 'add key',
     description: 'Enroll an SSH key on this account',
     group: 'Screens',
     on: ['accounts'],
+  },
+  {
+    keys: 'v',
+    hint: 'revoke',
+    description:
+      "Revoke the selected credential (behind a y/n confirm; the server refuses an account's last one)",
+    group: 'Screens',
+    on: ['accounts'],
+    destructive: true,
   },
   {
     keys: 'x',

@@ -209,4 +209,88 @@ describe('Accounts screen (B-022)', () => {
     await waitForFrame(lastFrame, (f) => !f.includes('@alice'));
     unmount();
   });
+
+  it('v revokes the selected credential behind a y/n confirm (P15-007)', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    fake.addCredentialFor(alice.id, {
+      type: CREDENTIAL_TYPE.PASSWORD,
+      label: '',
+      identifier: '',
+    });
+    fake.addCredentialFor(alice.id, {
+      type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
+      label: 'laptop',
+      identifier: 'SHA256:abc',
+    });
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+
+    press('L');
+    await expectFrame(lastFrame, 'laptop');
+    press('j'); // select the SSH key row
+    await flush();
+    press('v');
+    await expectFrame(lastFrame, 'Revoke');
+    press('y');
+
+    const frame = await expectFrame(lastFrame, 'Revoked');
+    expect(frame).toContain('Revoked CREDENTIAL_TYPE_SSH_PUBLIC_KEY');
+    expect(frame).not.toContain('› CREDENTIAL_TYPE_SSH_PUBLIC_KEY');
+    unmount();
+  });
+
+  it('n cancels a revoke confirm without calling the server', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    fake.addCredentialFor(alice.id, {
+      type: CREDENTIAL_TYPE.PASSWORD,
+      label: '',
+      identifier: '',
+    });
+    fake.addCredentialFor(alice.id, {
+      type: CREDENTIAL_TYPE.SSH_PUBLIC_KEY,
+      label: 'laptop',
+      identifier: 'SHA256:abc',
+    });
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+
+    press('L');
+    await expectFrame(lastFrame, 'laptop');
+    press('v');
+    await expectFrame(lastFrame, 'Revoke');
+    press('n');
+
+    const frame = await expectFrame(lastFrame, 'laptop');
+    expect(frame).not.toContain('Revoked');
+    unmount();
+  });
+
+  it('revoking the only credential surfaces the server’s last-credential guard, not a crash', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    fake.addCredentialFor(alice.id, {
+      type: CREDENTIAL_TYPE.PASSWORD,
+      label: '',
+      identifier: '',
+    });
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+
+    press('L');
+    await expectFrame(lastFrame, 'CREDENTIAL_TYPE_PASSWORD');
+    press('v');
+    await expectFrame(lastFrame, 'Revoke');
+    press('y');
+
+    await expectFrame(lastFrame, 'This is your only way to sign in');
+    unmount();
+  });
 });
