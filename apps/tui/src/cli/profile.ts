@@ -158,7 +158,9 @@ async function runProfileEdit(rest: readonly string[], deps: ProfileDeps): Promi
         bio: parsed.bio ?? '',
         locationText: parsed.location ?? '',
         websiteUrl: parsed.website ?? '',
-        updateMask,
+        // google.protobuf.FieldMask is a message ({ paths: string[] }), not a bare array
+        // (ADR 0023 — proto-loader decoded it that way; protobuf-es does not).
+        updateMask: { paths: updateMask },
         nameplate: nameplateProvided
           ? {
               nameColor: parsed.nameColor ?? currentNameplate?.nameColor ?? '',

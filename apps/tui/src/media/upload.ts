@@ -66,7 +66,9 @@ export async function uploadMediaFile(
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<UploadMediaResult> {
   const begin = await api.beginMediaUpload(
-    { mimeType: local.mimeType, byteSize: String(local.byteSize), sha256: local.sha256 },
+    // int64 on the wire: protobuf-es decodes/expects `bigint`, not ts-proto's
+    // `forceLong=string` `string` (ADR 0023 - every int64 field, not just Timestamp.seconds).
+    { mimeType: local.mimeType, byteSize: BigInt(local.byteSize), sha256: local.sha256 },
     accessToken,
   );
   await putToPresignedUrl(begin.uploadUrl, local, onProgress);

@@ -2,6 +2,7 @@ import type { UpdatePageResponse } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { Box } from 'ink';
 import stringWidth from 'string-width';
+import { makeUpdatePageResponse } from '../test/wire-fixtures.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
@@ -25,14 +26,16 @@ async function settle(ms = 30): Promise<void> {
 function fakeApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
   const base: Partial<PatchesApi> = {
     updatePage: () =>
-      Promise.resolve<UpdatePageResponse>({
-        document: Buffer.from(
-          JSON.stringify({ version: 1, pages: [{ slug: 'index', title: '', blocks: [] }] }),
-          'utf8',
-        ),
-        revisionId: 'rev-2',
-        updatedAt: undefined,
-      }),
+      Promise.resolve<UpdatePageResponse>(
+        makeUpdatePageResponse({
+          document: Buffer.from(
+            JSON.stringify({ version: 1, pages: [{ slug: 'index', title: '', blocks: [] }] }),
+            'utf8',
+          ),
+          revisionId: 'rev-2',
+          updatedAt: undefined,
+        }),
+      ),
   };
   return { ...base, ...overrides } as unknown as PatchesApi;
 }

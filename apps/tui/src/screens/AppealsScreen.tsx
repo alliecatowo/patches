@@ -1,3 +1,4 @@
+import { APPEAL_STATUS, MODERATION_ACTION_TYPE } from '../api/wire/enums.js';
 import { toDate } from '../api/wire/time.js';
 import type { Appeal, ModerationNotice } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
@@ -21,11 +22,13 @@ export interface AppealsScreenProps {
 
 type Tab = 'notices' | 'appeals';
 
-function actionLabel(action: string): string {
-  return action.replace('MODERATION_ACTION_TYPE_', '').toLowerCase();
+// protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023): indexing
+// the enum object by value is already the prefix-stripped member name.
+function actionLabel(action: MODERATION_ACTION_TYPE): string {
+  return MODERATION_ACTION_TYPE[action].toLowerCase();
 }
-function statusLabel(status: string): string {
-  return status.replace('APPEAL_STATUS_', '').toLowerCase();
+function statusLabel(status: APPEAL_STATUS): string {
+  return APPEAL_STATUS[status].toLowerCase();
 }
 
 /**

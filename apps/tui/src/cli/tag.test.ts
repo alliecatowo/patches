@@ -1,9 +1,11 @@
+import { create } from '@bufbuild/protobuf';
+import { ListTagFeedResponseSchema, SearchTagsResponseSchema } from '@patches/proto/es';
 import type { Post, Tag } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
 import { runTag, type TagCommandApi } from './tag.js';
-import { makeActor, makePost, makeTag } from '../test/wire-fixtures.js';
+import { makeActor, makePageInfo, makePost, makeTag } from '../test/wire-fixtures.js';
 
 function makeIo(): CliIo & { out: string[]; err: string[] } {
   return {
@@ -48,10 +50,9 @@ describe('runTag', () => {
   it('prints search results alphabetically even if the transport returns another order', async () => {
     const io = makeIo();
     const api = fakeApi();
-    vi.mocked(api.searchTags).mockResolvedValue({
-      tags: [tag('z', 'zebra'), tag('a', 'alpha\x1b[2J')],
-      page: undefined,
-    });
+    vi.mocked(api.searchTags).mockResolvedValue(
+      create(SearchTagsResponseSchema, { tags: [tag('z', 'zebra'), tag('a', 'alpha\x1b[2J')] }),
+    );
     const code = await runTag(['search', '#a', '--limit', '5'], { io, api, ...BASE });
     const output = io.out.join('');
 
@@ -63,10 +64,12 @@ describe('runTag', () => {
   it('reads a chronological feed page with an opaque cursor and sanitizes output', async () => {
     const io = makeIo();
     const api = fakeApi();
-    vi.mocked(api.listTagFeed).mockResolvedValue({
-      posts: [post()],
-      page: { nextCursor: 'next', hasMore: true },
-    });
+    vi.mocked(api.listTagFeed).mockResolvedValue(
+      create(ListTagFeedResponseSchema, {
+        posts: [post()],
+        page: makePageInfo({ nextCursor: 'next', hasMore: true }),
+      }),
+    );
     const code = await runTag(['feed', 'typescript', '--cursor', 'opaque'], {
       io,
       api,

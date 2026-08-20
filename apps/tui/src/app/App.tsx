@@ -10,6 +10,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { create } from '@bufbuild/protobuf';
+import { PostCountsSchema, PostViewerStateSchema } from '@patches/proto/es';
+
 import { FOLLOW_STATE } from '../api/wire/enums.js';
 import type { Actor, MediaAttachment, Post } from '../api/wire/types.js';
 
@@ -767,20 +770,23 @@ export function App({
   function decoratePost(post: Post): Post {
     const override = reactionOverrides.get(post.id);
     if (override === undefined) return post;
-    const viewerState = post.viewerState ?? { liked: false, bookmarked: false, reposted: false };
-    const counts = post.counts ?? { replies: 0, likes: 0, reposts: 0, quotes: 0 };
+    const viewerState =
+      post.viewerState ??
+      create(PostViewerStateSchema, { liked: false, bookmarked: false, reposted: false });
+    const counts =
+      post.counts ?? create(PostCountsSchema, { replies: 0, likes: 0, reposts: 0, quotes: 0 });
     return {
       ...post,
-      viewerState: {
+      viewerState: create(PostViewerStateSchema, {
         liked: override.liked ?? viewerState.liked,
         bookmarked: override.bookmarked ?? viewerState.bookmarked,
         reposted: override.reposted ?? viewerState.reposted,
-      },
-      counts: {
+      }),
+      counts: create(PostCountsSchema, {
         ...counts,
         likes: override.likes ?? counts.likes,
         reposts: override.reposts ?? counts.reposts,
-      },
+      }),
     };
   }
 

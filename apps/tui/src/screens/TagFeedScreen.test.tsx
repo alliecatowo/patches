@@ -1,10 +1,12 @@
+import { create } from '@bufbuild/protobuf';
+import { ListTagFeedResponseSchema, SearchTagsResponseSchema } from '@patches/proto/es';
 import type { Post, Tag } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from '../../test/ansi.js';
 import { TagFeedScreen, type TagFeedScreenApi } from './TagFeedScreen.js';
-import { makePost, makeTag } from '../test/wire-fixtures.js';
+import { makePageInfo, makePost, makeTag } from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r' } as const;
 
@@ -49,10 +51,9 @@ async function waitForFrame(lastFrame: () => string | undefined, text: string): 
 describe('TagFeedScreen', () => {
   it('sorts search results alphabetically and sanitizes remote names', async () => {
     const api = fakeApi();
-    api.searchTags.mockResolvedValue({
-      tags: [tag('z', 'zebra'), tag('a', 'alpha\x1b[2J')],
-      page: undefined,
-    });
+    api.searchTags.mockResolvedValue(
+      create(SearchTagsResponseSchema, { tags: [tag('z', 'zebra'), tag('a', 'alpha\x1b[2J')] }),
+    );
     const { lastFrame, stdin } = render(<TagFeedScreen api={api} isActive onCancel={vi.fn()} />);
     stdin.write('a');
     await waitForFrame(lastFrame, 'tag #a');
@@ -64,10 +65,12 @@ describe('TagFeedScreen', () => {
 
   it('keeps an explicitly opened feed visible after muting it', async () => {
     const api = fakeApi();
-    api.listTagFeed.mockResolvedValue({
-      posts: [post('A chronological post')],
-      page: { nextCursor: 'opaque-next', hasMore: true },
-    });
+    api.listTagFeed.mockResolvedValue(
+      create(ListTagFeedResponseSchema, {
+        posts: [post('A chronological post')],
+        page: makePageInfo({ nextCursor: 'opaque-next', hasMore: true }),
+      }),
+    );
     const opened = tag('tag-1', 'typescript');
     const { lastFrame, stdin } = render(
       <TagFeedScreen
@@ -97,14 +100,18 @@ describe('TagFeedScreen', () => {
   it('uses opaque feed cursors for chronological paging', async () => {
     const api = fakeApi();
     api.listTagFeed
-      .mockResolvedValueOnce({
-        posts: [post('first')],
-        page: { nextCursor: 'opaque', hasMore: true },
-      })
-      .mockResolvedValueOnce({
-        posts: [post('second', 'post-2')],
-        page: { nextCursor: '', hasMore: false },
-      });
+      .mockResolvedValueOnce(
+        create(ListTagFeedResponseSchema, {
+          posts: [post('first')],
+          page: makePageInfo({ nextCursor: 'opaque', hasMore: true }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        create(ListTagFeedResponseSchema, {
+          posts: [post('second', 'post-2')],
+          page: makePageInfo({ nextCursor: '', hasMore: false }),
+        }),
+      );
     const { lastFrame, stdin } = render(
       <TagFeedScreen api={api} isActive initialTag={tag('tag-1', 'alpha')} onCancel={vi.fn()} />,
     );

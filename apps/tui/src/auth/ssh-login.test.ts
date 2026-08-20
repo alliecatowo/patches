@@ -1,5 +1,10 @@
 import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
 import { fromDate } from '../api/wire/time.js';
+import {
+  makeBeginSshLoginResponse,
+  makeCompleteSshLoginResponse,
+  makeSession,
+} from '../test/wire-fixtures.js';
 import type { BeginSshLoginResponse, CompleteSshLoginResponse } from '../api/wire/types.js';
 import { createServer, type Server, type Socket } from 'node:net';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -197,13 +202,13 @@ describe('performSshLogin', () => {
   it('runs BeginSshLogin -> agent sign -> CompleteSshLogin and binds the signed blob to the challenge', async () => {
     const nonce = Buffer.from([7, 7, 7, 7]);
     const expiresAt = new Date(Date.now() + 60_000);
-    const beginResponse: BeginSshLoginResponse = {
+    const beginResponse: BeginSshLoginResponse = makeBeginSshLoginResponse({
       challengeId: 'chal-42',
       nonce,
       expiresAt: fromDate(expiresAt),
-    };
-    const completeResponse: CompleteSshLoginResponse = {
-      session: {
+    });
+    const completeResponse: CompleteSshLoginResponse = makeCompleteSshLoginResponse({
+      session: makeSession({
         accessToken: 'access',
         accessExpiresAt: fromDate(new Date()),
         refreshToken: 'refresh',
@@ -211,8 +216,8 @@ describe('performSshLogin', () => {
         actor: undefined,
         emailVerified: true,
         node: 'patches.example',
-      },
-    };
+      }),
+    });
 
     let signedData: Buffer | undefined;
     agent = startFakeAgent((messageType, payload) => {

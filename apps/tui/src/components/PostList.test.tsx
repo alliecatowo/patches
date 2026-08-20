@@ -6,15 +6,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ContentSizeProvider } from '../app/layout.js';
 import { PostList } from './PostList.js';
-import { makePost } from '../test/wire-fixtures.js';
+import { makePost, makePostCounts, makePostViewerState } from '../test/wire-fixtures.js';
 
 function selectedPost(): Post {
   return makePost({
     author: undefined,
     body: 'hello',
     createdAt: fromDate(new Date()),
-    counts: { replies: 0, likes: 0, reposts: 0, quotes: 0 },
-    viewerState: { liked: false, bookmarked: false, reposted: false },
+    counts: makePostCounts({ replies: 0, likes: 0, reposts: 0, quotes: 0 }),
+    viewerState: makePostViewerState({ liked: false, bookmarked: false, reposted: false }),
     quotePolicy: QUOTE_POLICY.ANYONE,
   });
 }

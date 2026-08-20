@@ -30,7 +30,9 @@ function describeEntry(entry: ModerationLogEntry): string {
   const subject =
     entry.subjectKind === MODERATION_LOG_SUBJECT_KIND.DOMAIN
       ? sanitizeForTerminal(entry.subjectDomain)
-      : entry.subjectKind.replace('MODERATION_LOG_SUBJECT_KIND_', '').toLowerCase();
+      : // protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023):
+        // `MODERATION_LOG_SUBJECT_KIND[N]` is already the prefix-stripped member name.
+        MODERATION_LOG_SUBJECT_KIND[entry.subjectKind].toLowerCase();
   return `${sanitizeForTerminal(entry.id)}\t${entry.action}\t${subject}\t${entry.reasonCategory}\t${String(entry.appealed)}\n`;
 }
 

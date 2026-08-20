@@ -13,7 +13,12 @@ import {
   tokenizeCommand,
 } from './commands.js';
 import { KEYMAP, validateKeymap, type Binding } from './keymap.js';
-import { makeActor, makePost } from '../test/wire-fixtures.js';
+import {
+  makeActor,
+  makeMediaAttachment,
+  makePost,
+  makePostViewerState,
+} from '../test/wire-fixtures.js';
 
 describe('Vim command parser', () => {
   it('resolves every required alias back to a KEYMAP binding', () => {
@@ -143,7 +148,9 @@ describe('contextualCommands (P12-116)', () => {
       onToggleBookmark: vi.fn(),
       onToggleRepost: vi.fn(),
     };
-    const liked = post({ viewerState: { liked: true, bookmarked: true, reposted: true } });
+    const liked = post({
+      viewerState: makePostViewerState({ liked: true, bookmarked: true, reposted: true }),
+    });
     const commands = contextualCommands({ post: liked, actions });
     const labels = Object.fromEntries(commands.map((command) => [command.id, command.label]));
     expect(labels['like']).toBe('Unlike');
@@ -156,7 +163,14 @@ describe('contextualCommands (P12-116)', () => {
     expect(contextualCommands({ post: post(), actions })).toEqual([]);
     const withMedia = post({
       media: [
-        { mediaId: 'm1', altText: '', width: 0, height: 0, mimeType: 'image/png', position: 0 },
+        makeMediaAttachment({
+          mediaId: 'm1',
+          altText: '',
+          width: 0,
+          height: 0,
+          mimeType: 'image/png',
+          position: 0,
+        }),
       ],
     });
     const commands = contextualCommands({ post: withMedia, actions });

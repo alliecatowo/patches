@@ -1,16 +1,17 @@
 import type { RenderablePageBlock } from '@patches/domain';
-import type {
-  GetActorByHandleResponse,
-  ListActorPostsResponse,
-  ListGuestbookResponse,
-  ListMutualFollowsResponse,
-} from '../../api/wire/types.js';
+import { create } from '@bufbuild/protobuf';
+import {
+  GetActorByHandleResponseSchema,
+  ListActorPostsResponseSchema,
+  ListGuestbookResponseSchema,
+  ListMutualFollowsResponseSchema,
+} from '@patches/proto/es';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
 import type { PatchesApi } from '../../api/client.js';
 import { collectLinks, PageBlocksView, type PageRenderContext } from './blocks.js';
-import { makeActor, makePost } from '../../test/wire-fixtures.js';
+import { makeActor, makePageInfo, makePost } from '../../test/wire-fixtures.js';
 
 /** A minimal `PatchesApi` stand-in covering only the calls `PageBlocksView`'s async
  * blocks (`Posts`/`TopEight`/`Guestbook`) make — this is a renderer unit test, not an
@@ -19,21 +20,12 @@ import { makeActor, makePost } from '../../test/wire-fixtures.js';
 function fakeApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
   const base: Partial<PatchesApi> = {
     listActorPosts: () =>
-      Promise.resolve<ListActorPostsResponse>({
-        posts: [],
-        page: { nextCursor: '', hasMore: false },
-      }),
+      Promise.resolve(create(ListActorPostsResponseSchema, { page: makePageInfo() })),
     getActorByHandle: () => Promise.reject(new Error('no such actor in this test')),
     listGuestbook: () =>
-      Promise.resolve<ListGuestbookResponse>({
-        entries: [],
-        page: { nextCursor: '', hasMore: false },
-      }),
+      Promise.resolve(create(ListGuestbookResponseSchema, { page: makePageInfo() })),
     listMutualFollows: () =>
-      Promise.resolve<ListMutualFollowsResponse>({
-        actors: [],
-        page: { nextCursor: '', hasMore: false },
-      }),
+      Promise.resolve(create(ListMutualFollowsResponseSchema, { page: makePageInfo() })),
   };
   return { ...base, ...overrides } as unknown as PatchesApi;
 }
@@ -146,10 +138,12 @@ describe('PageBlocksView (P45-004/005)', () => {
   it("renders Posts by fetching the owner's recent posts", async () => {
     const api = fakeApi({
       listActorPosts: () =>
-        Promise.resolve({
-          posts: [makePost({ id: 'p1', body: 'a recent post', rootPostId: 'p1' })],
-          page: { nextCursor: '', hasMore: false },
-        }),
+        Promise.resolve(
+          create(ListActorPostsResponseSchema, {
+            posts: [makePost({ id: 'p1', body: 'a recent post', rootPostId: 'p1' })],
+            page: makePageInfo(),
+          }),
+        ),
     });
     const blocks: RenderablePageBlock[] = [{ type: 'Posts', limit: 5 }];
     const { lastFrame } = render(
@@ -163,9 +157,11 @@ describe('PageBlocksView (P45-004/005)', () => {
     const api = fakeApi({
       getActorByHandle: ({ handle }) =>
         handle === 'bob'
-          ? Promise.resolve<GetActorByHandleResponse>({
-              actor: makeActor({ id: 'actor-bob', handle: 'bob' }),
-            })
+          ? Promise.resolve(
+              create(GetActorByHandleResponseSchema, {
+                actor: makeActor({ id: 'actor-bob', handle: 'bob' }),
+              }),
+            )
           : Promise.reject(new Error('not found')),
     });
     const blocks: RenderablePageBlock[] = [
@@ -181,17 +177,18 @@ describe('PageBlocksView (P45-004/005)', () => {
   it('renders Guestbook entries and an empty state', async () => {
     const api = fakeApi({
       listGuestbook: () =>
-        Promise.resolve({
-          entries: [
-            {
-              id: 'g1',
-              author: { id: 'actor-2', handle: 'carol' } as never,
-              body: 'lovely page!',
-              createdAt: undefined,
-            },
-          ],
-          page: { nextCursor: '', hasMore: false },
-        }),
+        Promise.resolve(
+          create(ListGuestbookResponseSchema, {
+            entries: [
+              {
+                id: 'g1',
+                author: { id: 'actor-2', handle: 'carol' } as never,
+                body: 'lovely page!',
+              },
+            ],
+            page: makePageInfo(),
+          }),
+        ),
     });
     const blocks: RenderablePageBlock[] = [{ type: 'Guestbook', limit: 20 }];
     const { lastFrame } = render(
@@ -220,10 +217,12 @@ describe('PageBlocksView (P45-004/005)', () => {
     const api = fakeApi({
       listMutualFollows: ({ actorId }) =>
         actorId === 'actor-1'
-          ? Promise.resolve<ListMutualFollowsResponse>({
-              actors: [makeActor({ id: 'actor-bob', handle: 'bob' })],
-              page: { nextCursor: '', hasMore: false },
-            })
+          ? Promise.resolve(
+              create(ListMutualFollowsResponseSchema, {
+                actors: [makeActor({ id: 'actor-bob', handle: 'bob' })],
+                page: makePageInfo(),
+              }),
+            )
           : Promise.reject(new Error('unexpected actorId')),
     });
     const blocks: RenderablePageBlock[] = [{ type: 'Friends', limit: 5 }];
