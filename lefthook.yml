@@ -13,3 +13,9 @@ pre-commit:
     eslint:
       glob: '*.{ts,tsx,mts,cts,js,mjs,cjs}'
       run: pnpm exec eslint {staged_files}
+
+# Pushes are the test gate; commits stay cheap.
+pre-push:
+  commands:
+    verify:
+      run: pnpm verify

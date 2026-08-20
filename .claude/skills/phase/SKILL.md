@@ -41,6 +41,9 @@ One `Agent` call per task, all in a single message so they run concurrently. Eac
 
 Only fan out tasks that are genuinely independent in this wave; sequence dependent ones into a later message after the first wave reports back.
 
+Implementers commit on their own worktree branches and report the branch name; the orchestrator
+merges the wave's branches into the feature branch, then runs one `verifier` pass.
+
 ## 5. After each wave
 
 1. `reviewer` on the diff (or the touched packages) — read its findings, decide blockers vs. follow-ups.

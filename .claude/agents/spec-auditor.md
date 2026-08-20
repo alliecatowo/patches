@@ -4,7 +4,7 @@ description: Audits the codebase against INITIAL_VISION.md and the roadmap accep
 model: opus
 effort: high
 maxThinkingTokens: 8192
-tools: Read, Grep, Glob, LSP, Bash, Edit(tasks.md), Agent
+tools: Read, Grep, Glob, LSP, Bash, Edit, Agent
 disallowedTools: mcp__*
 maxTurns: 100
 color: orange

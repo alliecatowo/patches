@@ -1,5 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "worktree": { "baseRef": "head" },
   "env": {
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
   },
@@ -63,6 +64,17 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/worktree-setup.sh",
+            "timeout": 600
           }
         ]
       }

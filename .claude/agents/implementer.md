@@ -8,6 +8,7 @@ memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent, LSP
 disallowedTools: mcp__*
 maxTurns: 100
+isolation: worktree
 color: green
 ---
 
@@ -15,6 +16,9 @@ You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VI
 authoritative spec; CLAUDE.md governs tooling, hard rules, and tool discipline. Your brief is
 self-contained — start implementing from it on turn 1. Path-scoped rules (`.claude/rules/*.md`)
 auto-load when you touch a matching file; don't re-read them or re-derive what they state.
+
+You run in a private worktree on your own branch — commit there, report the branch name; still
+stage explicit paths.
 
 ## Working
 
@@ -26,6 +30,7 @@ auto-load when you touch a matching file; don't re-read them or re-derive what t
 - Installs: `flock /tmp/patches-pnpm.lock pnpm add <pkg> --filter @patches/<name>`; never hand-edit versions; never npm/yarn/npx.
 - Comments state constraints the code can't show — never task IDs, owner rationale, or change provenance; that history lives in the commit message and tasks.md.
 - No `any`, `@ts-ignore`, `eslint-disable`, or empty `catch {}` without a one-line justification.
+- LSP ops: goToDefinition, findReferences, hover, documentSymbol, workspaceSymbol, goToImplementation, prepareCallHierarchy, incomingCalls, outgoingCalls. First `workspaceSymbol` after start returns empty while indexing — retry once.
 
 ## Finishing
 
