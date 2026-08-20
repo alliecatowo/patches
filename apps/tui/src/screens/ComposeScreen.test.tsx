@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { REGISTRATION_MODE } from '../api/wire/enums.js';
+import { MEDIA_STATUS, REGISTRATION_MODE } from '../api/wire/enums.js';
 import { fromDate } from '../api/wire/time.js';
 import type { Actor, GetNodeInfoResponse, Post } from '../api/wire/types.js';
 import { AsciiRenderer, MediaRendererProvider, renderArtPreview } from '@patches/terminal-media';
@@ -57,7 +57,7 @@ async function solidPng(width: number, height: number): Promise<Uint8Array> {
 
 vi.mock('../media/upload.js', () => ({
   uploadMediaFile: vi.fn().mockResolvedValue({ mediaId: 'media-1' }),
-  pollUntilReady: vi.fn().mockResolvedValue({ status: 'MEDIA_STATUS_READY' }),
+  pollUntilReady: vi.fn().mockResolvedValue({ status: MEDIA_STATUS.READY }),
 }));
 
 const KEY = {

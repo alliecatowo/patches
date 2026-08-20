@@ -15,6 +15,8 @@
  * see `wire/time.ts` and `wire/types.ts`.
  */
 
+import { enumToJson, type DescEnum } from '@bufbuild/protobuf';
+
 export {
   AccountExportStatus as ACCOUNT_EXPORT_STATUS,
   AppealStatus as APPEAL_STATUS,
@@ -45,4 +47,28 @@ export {
   QuotePolicy as QUOTE_POLICY,
   RegistrationMode as REGISTRATION_MODE,
   ReportReason as REPORT_REASON,
+} from '@patches/proto/es';
+
+/**
+ * Rendering an enum is the one place the two proto families are *not* interchangeable, and it is
+ * invisible to the typechecker because both sides have the same TS enum type.
+ *
+ * ts-proto's enums are string-valued, so `${appeal.status}` printed `APPEAL_STATUS_OPEN`.
+ * protoc-gen-es's are numeric, so the same interpolation prints `1`. Every call site that puts an
+ * enum in front of a user has to go through this helper instead (P10-020, ADR 0023 addendum).
+ *
+ * `enumToJson` reads the generated descriptor, so the name it returns is the proto wire name —
+ * byte-identical to what ts-proto used to interpolate.
+ */
+export function enumWireName(schema: DescEnum, value: number): string {
+  const name = enumToJson(schema, value);
+  // `enumToJson` returns the number back when the value is not in the descriptor, which happens
+  // for a field a newer server populated with an enum member this client was not built against.
+  // Printing the number is the honest fallback; it is what the wire actually carried.
+  return typeof name === 'string' ? name : String(value);
+}
+
+export {
+  AppealStatusSchema as APPEAL_STATUS_SCHEMA,
+  FilterActionSchema as FILTER_ACTION_SCHEMA,
 } from '@patches/proto/es';

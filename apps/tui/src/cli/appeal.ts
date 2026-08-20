@@ -4,6 +4,7 @@ import type {
   GetAppealResponse,
   ListMyAppealsResponse,
 } from '../api/wire/types.js';
+import { APPEAL_STATUS_SCHEMA, enumWireName } from '../api/wire/enums.js';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { SessionManager } from '../auth/session.js';
@@ -54,7 +55,7 @@ interface CommandContext {
 const SUBCOMMANDS = ['list', 'create', 'show'] as const;
 
 function describeAppeal(appeal: Appeal): string {
-  return `${sanitizeForTerminal(appeal.id)}\t${appeal.status}\t${sanitizeForTerminal(appeal.moderationNoticeId)}\n`;
+  return `${sanitizeForTerminal(appeal.id)}\t${enumWireName(APPEAL_STATUS_SCHEMA, appeal.status)}\t${sanitizeForTerminal(appeal.moderationNoticeId)}\n`;
 }
 
 export async function runAppeal(rest: readonly string[], deps: AppealCliDeps): Promise<number> {
