@@ -1,5 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
+import { create } from '@bufbuild/protobuf';
+import {
+  GetConversationResponseSchema,
+  ListConversationsResponseSchema,
+  ListMessageRequestsResponseSchema,
+  ListMessagesResponseSchema,
+} from '@patches/proto/es';
 import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,8 +16,10 @@ import { DM_DISCLOSURE, MessagesScreen, type MessagesScreenApi } from './Message
 import {
   makeActor,
   makeConversation,
+  makeConversationMember,
   makeMessage,
   makeMessageRequest,
+  makePageInfo,
 } from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r', escape: '\x1b' } as const;
@@ -29,9 +38,7 @@ function conversation(id: string, peer = alice): Conversation {
   return makeConversation({
     id,
     createdBy: alice,
-    members: [
-      { actor: peer, joinedAt: undefined, leftAt: undefined, lastReadMessageId: '', muted: false },
-    ],
+    members: [makeConversationMember({ actor: peer })],
   });
 }
 
@@ -106,19 +113,31 @@ describe('MessagesScreen', () => {
     api.listConversations.mockImplementation(({ cursor }) =>
       Promise.resolve(
         cursor === ''
-          ? { conversations: [first], page: { nextCursor: 'opaque-next', hasMore: true } }
-          : { conversations: [second], page: { nextCursor: '', hasMore: false } },
+          ? create(ListConversationsResponseSchema, {
+              conversations: [first],
+              page: makePageInfo({ nextCursor: 'opaque-next', hasMore: true }),
+            })
+          : create(ListConversationsResponseSchema, {
+              conversations: [second],
+              page: makePageInfo(),
+            }),
       ),
     );
-    api.getConversation.mockResolvedValue({ conversation: first });
-    api.listMessages.mockResolvedValue({
-      messages: [message('message-1', `hello\x1b[Hthere`, hostilePeer)],
-      page: { nextCursor: '', hasMore: false },
-    });
-    api.listMessageRequests.mockResolvedValue({
-      requests: [request('request-1', `please\x1b[2J reply`)],
-      page: { nextCursor: '', hasMore: false },
-    });
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: first }),
+    );
+    api.listMessages.mockResolvedValue(
+      create(ListMessagesResponseSchema, {
+        messages: [message('message-1', `hello\x1b[Hthere`, hostilePeer)],
+        page: makePageInfo(),
+      }),
+    );
+    api.listMessageRequests.mockResolvedValue(
+      create(ListMessageRequestsResponseSchema, {
+        requests: [request('request-1', `please\x1b[2J reply`)],
+        page: makePageInfo(),
+      }),
+    );
 
     const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
     await waitForFrame(lastFrame, '@mallory[2J');
@@ -148,8 +167,12 @@ describe('MessagesScreen', () => {
   it('renders an optimistic send and restores the draft when sending fails', async () => {
     const api = fakeApi();
     const existing = conversation('conversation-1');
-    api.listConversations.mockResolvedValue({ conversations: [existing], page: undefined });
-    api.getConversation.mockResolvedValue({ conversation: existing });
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [existing] }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
 
     let rejectSend: ((reason: Error) => void) | undefined;
     api.sendMessage.mockImplementation(
@@ -199,8 +222,12 @@ describe('MessagesScreen', () => {
   it('shows a pending glyph on an optimistic send', async () => {
     const api = fakeApi();
     const existing = conversation('conversation-1');
-    api.listConversations.mockResolvedValue({ conversations: [existing], page: undefined });
-    api.getConversation.mockResolvedValue({ conversation: existing });
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [existing] }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
     api.sendMessage.mockImplementation(() => new Promise(() => undefined));
 
     const { lastFrame, stdin } = render(
@@ -236,10 +263,11 @@ describe('MessagesScreen', () => {
 
   it('accepts and declines selected requests without exposing transport details', async () => {
     const api = fakeApi();
-    api.listMessageRequests.mockResolvedValue({
-      requests: [request('request-1', 'one'), request('request-2', 'two')],
-      page: undefined,
-    });
+    api.listMessageRequests.mockResolvedValue(
+      create(ListMessageRequestsResponseSchema, {
+        requests: [request('request-1', 'one'), request('request-2', 'two')],
+      }),
+    );
 
     const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
     await waitForFrame(lastFrame, 'No conversations yet.');
