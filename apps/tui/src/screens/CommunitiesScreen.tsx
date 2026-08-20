@@ -1,26 +1,25 @@
-import {
-  COMMUNITY_INVITE_STATUS,
-  COMMUNITY_ROLE,
-  type BanFromCommunityRequest,
-  type BanFromCommunityResponse,
-  type Community,
-  type CommunityInvite,
-  type CommunityMember,
-  type JoinCommunityRequest,
-  type JoinCommunityResponse,
-  type LeaveCommunityRequest,
-  type LeaveCommunityResponse,
-  type ListCommunitiesRequest,
-  type ListCommunitiesResponse,
-  type ListCommunityFeedRequest,
-  type ListCommunityFeedResponse,
-  type ListCommunityMembersRequest,
-  type ListCommunityMembersResponse,
-  type RespondToCommunityInviteRequest,
-  type RespondToCommunityInviteResponse,
-  type SetCommunityRoleRequest,
-  type SetCommunityRoleResponse,
-} from '@patches/proto';
+import { COMMUNITY_INVITE_STATUS, COMMUNITY_ROLE } from '@patches/proto';
+import type {
+  BanFromCommunityRequest,
+  BanFromCommunityResponse,
+  Community,
+  CommunityInvite,
+  CommunityMember,
+  JoinCommunityRequest,
+  JoinCommunityResponse,
+  LeaveCommunityRequest,
+  LeaveCommunityResponse,
+  ListCommunitiesRequest,
+  ListCommunitiesResponse,
+  ListCommunityFeedRequest,
+  ListCommunityFeedResponse,
+  ListCommunityMembersRequest,
+  ListCommunityMembersResponse,
+  RespondToCommunityInviteRequest,
+  RespondToCommunityInviteResponse,
+  SetCommunityRoleRequest,
+  SetCommunityRoleResponse,
+} from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

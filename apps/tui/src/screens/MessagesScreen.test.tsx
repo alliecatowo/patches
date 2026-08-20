@@ -1,14 +1,13 @@
 import { readFile } from 'node:fs/promises';
 
-import {
-  CONVERSATION_KIND,
-  MESSAGE_REQUEST_STATUS,
-  type Actor,
-  type Conversation,
-  type ConversationSecurityMode,
-  type Message,
-  type MessageRequest,
-} from '@patches/proto';
+import { CONVERSATION_KIND, MESSAGE_REQUEST_STATUS } from '@patches/proto';
+import type {
+  Actor,
+  Conversation,
+  ConversationSecurityMode,
+  Message,
+  MessageRequest,
+} from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

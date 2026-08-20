@@ -1,5 +1,5 @@
 import { isPageValidationError, parsePageStrict } from '@patches/domain';
-import type { UpdatePageResponse } from '@patches/proto';
+import type { UpdatePageResponse } from '../api/wire/types.js';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

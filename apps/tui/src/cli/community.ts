@@ -1,18 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  COMMUNITY_ROLE,
-  POST_VISIBILITY,
-  QUOTE_POLICY,
-  type CreatePostRequest,
-  type CreatePostResponse,
-  type JoinCommunityRequest,
-  type JoinCommunityResponse,
-  type LeaveCommunityRequest,
-  type LeaveCommunityResponse,
-  type ListCommunitiesRequest,
-  type ListCommunitiesResponse,
-} from '@patches/proto';
+import { COMMUNITY_ROLE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type {
+  CreatePostRequest,
+  CreatePostResponse,
+  JoinCommunityRequest,
+  JoinCommunityResponse,
+  LeaveCommunityRequest,
+  LeaveCommunityResponse,
+  ListCommunitiesRequest,
+  ListCommunitiesResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { type PatchesApi } from '../api/client.js';

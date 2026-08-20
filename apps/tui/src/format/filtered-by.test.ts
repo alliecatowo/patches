@@ -1,9 +1,5 @@
-import {
-  FILTER_ACTION,
-  FILTERED_BY_PROVENANCE,
-  type Actor,
-  type FilteredByHint,
-} from '@patches/proto';
+import { FILTER_ACTION, FILTERED_BY_PROVENANCE } from '@patches/proto';
+import type { Actor, FilteredByHint } from '../api/wire/types.js';
 import { describe, expect, it } from 'vitest';
 
 import { describeFilteredBy } from './filtered-by.js';

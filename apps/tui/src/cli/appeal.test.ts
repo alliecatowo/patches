@@ -1,4 +1,5 @@
-import { APPEAL_STATUS, type Appeal } from '@patches/proto';
+import { APPEAL_STATUS } from '@patches/proto';
+import type { Appeal } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';

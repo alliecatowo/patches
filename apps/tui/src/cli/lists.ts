@@ -1,20 +1,19 @@
-import {
-  FILTER_ACTION,
-  FILTER_TERM_KIND,
-  type FilterAction,
-  type FilterList,
-  type FilterListEntry,
-  type FilterListSubscription,
-  type FilterTermInput,
-  type FilterTermKind,
-  type ListFilterListEntriesResponse,
-  type ListFilterListsResponse,
-  type ListFilterListSubscriptionsResponse,
-  type PublishFilterListResponse,
-  type SetFilterListEntryExceptionResponse,
-  type SubscribeFilterListResponse,
-  type UnsubscribeFilterListResponse,
-} from '@patches/proto';
+import { FILTER_ACTION, FILTER_TERM_KIND } from '@patches/proto';
+import type {
+  FilterAction,
+  FilterList,
+  FilterListEntry,
+  FilterListSubscription,
+  FilterTermInput,
+  FilterTermKind,
+  ListFilterListEntriesResponse,
+  ListFilterListsResponse,
+  ListFilterListSubscriptionsResponse,
+  PublishFilterListResponse,
+  SetFilterListEntryExceptionResponse,
+  SubscribeFilterListResponse,
+  UnsubscribeFilterListResponse,
+} from '../api/wire/types.js';
 
 import { present } from '../api/present.js';
 import { type PatchesApi } from '../api/client.js';

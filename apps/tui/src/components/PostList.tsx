@@ -1,4 +1,4 @@
-import type { Post } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 import { Box, Text } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';

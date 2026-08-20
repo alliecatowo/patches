@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { buildSshChallengeBlob, SSH_LOGIN_DOMAIN_SEPARATOR } from '@patches/domain';
-import {
-  timestampToDate,
-  type BeginSshLoginRequest,
-  type BeginSshLoginResponse,
-  type CompleteSshLoginRequest,
-  type CompleteSshLoginResponse,
-} from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type {
+  BeginSshLoginRequest,
+  BeginSshLoginResponse,
+  CompleteSshLoginRequest,
+  CompleteSshLoginResponse,
+} from '../api/wire/types.js';
 
 import {
   listIdentities,

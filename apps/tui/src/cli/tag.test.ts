@@ -1,4 +1,5 @@
-import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY, type Post, type Tag } from '@patches/proto';
+import { POST_TYPE, POST_VISIBILITY, QUOTE_POLICY } from '@patches/proto';
+import type { Post, Tag } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';

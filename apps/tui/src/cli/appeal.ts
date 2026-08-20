@@ -1,9 +1,9 @@
-import {
-  type Appeal,
-  type CreateAppealResponse,
-  type GetAppealResponse,
-  type ListMyAppealsResponse,
-} from '@patches/proto';
+import type {
+  Appeal,
+  CreateAppealResponse,
+  GetAppealResponse,
+  ListMyAppealsResponse,
+} from '../api/wire/types.js';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { SessionManager } from '../auth/session.js';

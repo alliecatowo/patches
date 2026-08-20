@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import type { Actor } from '@patches/proto';
+import type { Actor } from '../api/wire/types.js';
 import { useEffect, useState } from 'react';
 
 import type { PatchesApi } from '../api/client.js';

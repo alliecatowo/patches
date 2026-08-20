@@ -1,4 +1,5 @@
-import { REPORT_REASON, type ReportReason } from '@patches/proto';
+import { REPORT_REASON } from '@patches/proto';
+import type { ReportReason } from '../api/wire/types.js';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';

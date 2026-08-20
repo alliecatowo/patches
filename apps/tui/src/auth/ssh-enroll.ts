@@ -3,14 +3,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { buildSshChallengeBlob, SSH_ENROLL_DOMAIN_SEPARATOR } from '@patches/domain';
-import {
-  CREDENTIAL_TYPE,
-  timestampToDate,
-  type AddCredentialRequest,
-  type AddCredentialResponse,
-  type BeginSshEnrollmentRequest,
-  type BeginSshEnrollmentResponse,
-} from '@patches/proto';
+import { CREDENTIAL_TYPE, timestampToDate } from '@patches/proto';
+import type {
+  AddCredentialRequest,
+  AddCredentialResponse,
+  BeginSshEnrollmentRequest,
+  BeginSshEnrollmentResponse,
+} from '../api/wire/types.js';
 
 import { listIdentities, signWithAgent } from './ssh-agent.js';
 import {

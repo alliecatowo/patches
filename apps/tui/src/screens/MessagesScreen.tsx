@@ -18,7 +18,7 @@ import type {
   RespondToMessageRequestResponse,
   SendMessageRequest,
   SendMessageResponse,
-} from '@patches/proto';
+} from '../api/wire/types.js';
 import { Box, Text, useInput, useStdin } from 'ink';
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';

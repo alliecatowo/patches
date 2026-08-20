@@ -6,8 +6,8 @@ import {
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
-  type Post,
 } from '@patches/proto';
+import type { Post } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 

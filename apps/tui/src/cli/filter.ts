@@ -1,18 +1,16 @@
-import {
-  FILTER_ACTION,
-  FILTER_SCOPE,
-  FILTER_TERM_KIND,
-  type CreateFilterResponse,
-  type DeleteFilterResponse,
-  type ExportFiltersResponse,
-  type Filter,
-  type FilterAction,
-  type FilterScope,
-  type FilterTermInput,
-  type FilterTermKind,
-  type ImportFiltersResponse,
-  type ListFiltersResponse,
-} from '@patches/proto';
+import { FILTER_ACTION, FILTER_SCOPE, FILTER_TERM_KIND } from '@patches/proto';
+import type {
+  CreateFilterResponse,
+  DeleteFilterResponse,
+  ExportFiltersResponse,
+  Filter,
+  FilterAction,
+  FilterScope,
+  FilterTermInput,
+  FilterTermKind,
+  ImportFiltersResponse,
+  ListFiltersResponse,
+} from '../api/wire/types.js';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { type PatchesApi } from '../api/client.js';

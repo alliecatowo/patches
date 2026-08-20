@@ -1,8 +1,5 @@
-import {
-  MODERATION_LOG_SUBJECT_KIND,
-  type ListModerationLogResponse,
-  type ModerationLogEntry,
-} from '@patches/proto';
+import { MODERATION_LOG_SUBJECT_KIND } from '@patches/proto';
+import type { ListModerationLogResponse, ModerationLogEntry } from '../api/wire/types.js';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { type PatchesApi } from '../api/client.js';

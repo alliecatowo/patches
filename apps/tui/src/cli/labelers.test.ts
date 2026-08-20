@@ -1,4 +1,5 @@
-import { LABEL_ACTION, type Labeler } from '@patches/proto';
+import { LABEL_ACTION } from '@patches/proto';
+import type { Labeler } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';

@@ -1,12 +1,7 @@
 import { present } from '../../api/present.js';
 import type { PageBlock, RenderablePageBlock } from '@patches/domain';
-import {
-  timestampToDate,
-  type Actor,
-  type GuestbookEntry,
-  type MediaAttachment,
-  type Post,
-} from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type { Actor, GuestbookEntry, MediaAttachment, Post } from '../../api/wire/types.js';
 import { Fragment, useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';

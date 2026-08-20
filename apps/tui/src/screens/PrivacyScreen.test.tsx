@@ -1,12 +1,12 @@
-import {
-  dateToTimestamp,
-  type AccountDeletionStatus,
-  type GetDeletionStatusResponse,
-  type GetExportStatusResponse,
-  type GetNodePolicyResponse,
-  type GetPrivacyPrefsResponse,
-  type PrivacyPrefs,
-} from '@patches/proto';
+import { dateToTimestamp } from '@patches/proto';
+import type {
+  AccountDeletionStatus,
+  GetDeletionStatusResponse,
+  GetExportStatusResponse,
+  GetNodePolicyResponse,
+  GetPrivacyPrefsResponse,
+  PrivacyPrefs,
+} from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 

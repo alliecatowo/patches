@@ -1,4 +1,5 @@
-import { MEDIA_STATUS, type MediaAttachment } from '@patches/proto';
+import { MEDIA_STATUS } from '@patches/proto';
+import type { MediaAttachment } from '../api/wire/types.js';
 import { useEffect, useState } from 'react';
 import type { PrepareOptions, PreparedImage, TerminalMediaRenderer } from '@patches/terminal-media';
 

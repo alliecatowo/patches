@@ -1,5 +1,6 @@
 import { present } from '../api/present.js';
-import { timestampToDate, type PostEdit } from '@patches/proto';
+import { timestampToDate } from '@patches/proto';
+import type { PostEdit } from '../api/wire/types.js';
 import { Box, Text, useInput } from 'ink';
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
