@@ -184,6 +184,11 @@ export const ERROR_CODES = [
    * "doesn't exist" and "isn't yours", same §62 no-oracle reason as `CONVERSATION_NOT_FOUND`.
    * Replaces a stopgap `VALIDATION_ERROR` those two call sites used before this code existed. */
   'REPORT_NOT_FOUND',
+  /** P13-019: `ModerationService.ReportE2eeMessage` on a `logical_message_id` that does not
+   * resolve to an `E2eeLogicalMessage`, or one whose conversation the caller is not (and never
+   * was) a member of — uniform for "doesn't exist" and "isn't yours to report", same §62
+   * no-oracle reason as `CONVERSATION_NOT_FOUND`/`MESSAGE_NOT_FOUND`. */
+  'E2EE_MESSAGE_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -254,6 +259,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   E2EE_ROSTER_CONFLICT: GrpcStatus.FAILED_PRECONDITION,
   E2EE_PREKEY_LIMIT_EXCEEDED: GrpcStatus.RESOURCE_EXHAUSTED,
   REPORT_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  E2EE_MESSAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

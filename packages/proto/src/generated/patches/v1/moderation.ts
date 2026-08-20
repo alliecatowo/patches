@@ -156,6 +156,25 @@ export interface ReportMessageResponse {
   reportId: string;
 }
 
+export interface ReportE2eeMessageRequest {
+  /**
+   * An `E2eeLogicalMessage.id` (client-generated logical id shared across every per-device
+   * envelope) — never a mailbox envelope id, which is per-device.
+   */
+  logicalMessageId: string;
+  reason: ReportReason;
+  /**
+   * Optional free text. Max 2,000 characters (spec §58-style bound). Never message plaintext —
+   * that is disclosed separately, and only with explicit consent, via
+   * `E2eeService.AttachReportEvidence` (ADR 0020 §9).
+   */
+  details: string;
+}
+
+export interface ReportE2eeMessageResponse {
+  reportId: string;
+}
+
 /**
  * A public, anonymized transparency record (spec §201.4). Account/post/media entries never
  * carry a handle, actor id, or post id — the acted-upon actor already has the full,
@@ -273,6 +292,19 @@ export interface ModerationServiceClient {
   ): Observable<ReportMessageResponse>;
 
   /**
+   * A fourth sibling of `ReportPost`/`ReportActor`/`ReportMessage`, not a generic report RPC
+   * (ADR 0020 §9): the node holds no plaintext for an E2EE logical message, so unlike
+   * `ReportMessage` this creates an evidence-free `Report` row keyed by
+   * `subject_e2ee_logical_message_id`. A follow-up `E2eeService.AttachReportEvidence` call
+   * supplies the reporter-disclosed plaintext/opening/franking material against this report id.
+   */
+
+  reportE2EeMessage(
+    request: ReportE2eeMessageRequest,
+    metadata?: Metadata,
+  ): Observable<ReportE2eeMessageResponse>;
+
+  /**
    * A public transparency instrument about the node's own conduct, not a public record of
    * any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
    * identified; account/post/media entries are anonymized by construction — no handle, actor
@@ -368,6 +400,22 @@ export interface ModerationServiceController {
   ): Promise<ReportMessageResponse> | Observable<ReportMessageResponse> | ReportMessageResponse;
 
   /**
+   * A fourth sibling of `ReportPost`/`ReportActor`/`ReportMessage`, not a generic report RPC
+   * (ADR 0020 §9): the node holds no plaintext for an E2EE logical message, so unlike
+   * `ReportMessage` this creates an evidence-free `Report` row keyed by
+   * `subject_e2ee_logical_message_id`. A follow-up `E2eeService.AttachReportEvidence` call
+   * supplies the reporter-disclosed plaintext/opening/franking material against this report id.
+   */
+
+  reportE2EeMessage(
+    request: ReportE2eeMessageRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ReportE2eeMessageResponse>
+    | Observable<ReportE2eeMessageResponse>
+    | ReportE2eeMessageResponse;
+
+  /**
    * A public transparency instrument about the node's own conduct, not a public record of
    * any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
    * identified; account/post/media entries are anonymized by construction — no handle, actor
@@ -408,6 +456,7 @@ export function ModerationServiceControllerMethods() {
       'reportPost',
       'reportActor',
       'reportMessage',
+      'reportE2EeMessage',
       'listModerationLog',
       'listMyModerationNotices',
     ];
