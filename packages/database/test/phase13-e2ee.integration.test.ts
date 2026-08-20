@@ -37,6 +37,7 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       'e2ee_identity_roots',
       'e2ee_logical_messages',
       'e2ee_mailbox_envelopes',
+      'e2ee_node_franking_keys',
       'e2ee_one_time_prekeys',
       'e2ee_report_evidence',
       'e2ee_report_evidence_items',

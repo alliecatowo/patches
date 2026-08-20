@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor as ActorEntity,
@@ -39,7 +39,8 @@ import {
   CURRENT_MEMBERSHIP_EPOCH,
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
-import { EnvNodeFrankingKeyRing, type NodeFrankingKeyRing } from './report-evidence.js';
+import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
+import { type NodeFrankingKeyRing } from './report-evidence.js';
 import { loadCurrentRosterRow } from './roster-chain.js';
 
 /**
@@ -56,10 +57,10 @@ export class E2eeConversationService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    // See `E2eeReportEvidenceService`'s identical `@Optional()` comment: `NodeFrankingKeyRing`
-    // is an interface, so without this Nest tries to resolve it as a provider token and the app
-    // fails to boot.
-    @Optional() keys: NodeFrankingKeyRing = new EnvNodeFrankingKeyRing(),
+    // See `E2eeReportEvidenceService`'s identical `@Inject(NODE_FRANKING_KEY_RING)` comment:
+    // `NodeFrankingKeyRing` is an interface, so a bare, undecorated parameter would make Nest
+    // try to resolve it as a provider token and fail to boot.
+    @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
   ) {
     this.#keys = keys;
   }

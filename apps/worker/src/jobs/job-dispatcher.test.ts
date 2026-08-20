@@ -9,6 +9,7 @@ import type { ExportAccountHandler } from './handlers/export-account.handler.js'
 import type { FederationDeliverHandler } from './handlers/federation-deliver.handler.js';
 import type { ProcessMediaHandler } from './handlers/process-media.handler.js';
 import type { PurgeAccountHandler } from './handlers/purge-account.handler.js';
+import type { RotateE2eeFrankingKeyHandler } from './handlers/rotate-e2ee-franking-key.handler.js';
 import type { SendPasswordResetEmailHandler } from './handlers/send-password-reset-email.handler.js';
 import type { SendVerificationEmailHandler } from './handlers/send-verification-email.handler.js';
 
@@ -29,6 +30,7 @@ describe('JobDispatcher', () => {
     const federationDeliver = fakeHandler('FEDERATION_DELIVER');
     const exportAccount = fakeHandler('EXPORT_ACCOUNT');
     const purgeAccount = fakeHandler('PURGE_ACCOUNT');
+    const rotateE2eeFrankingKey = fakeHandler('E2EE_ROTATE_FRANKING_KEY');
 
     const dispatcher = new JobDispatcher(
       sendVerificationEmail as SendVerificationEmailHandler,
@@ -39,6 +41,7 @@ describe('JobDispatcher', () => {
       federationDeliver as FederationDeliverHandler,
       exportAccount as ExportAccountHandler,
       purgeAccount as PurgeAccountHandler,
+      rotateE2eeFrankingKey as RotateE2eeFrankingKeyHandler,
     );
 
     expect(dispatcher.find('SEND_VERIFICATION_EMAIL')).toBe(sendVerificationEmail);
@@ -49,6 +52,7 @@ describe('JobDispatcher', () => {
     expect(dispatcher.find('FEDERATION_DELIVER')).toBe(federationDeliver);
     expect(dispatcher.find('EXPORT_ACCOUNT')).toBe(exportAccount);
     expect(dispatcher.find('PURGE_ACCOUNT')).toBe(purgeAccount);
+    expect(dispatcher.find('E2EE_ROTATE_FRANKING_KEY')).toBe(rotateE2eeFrankingKey);
   });
 
   it('returns undefined for a type unknown to the dispatcher', () => {
@@ -61,6 +65,7 @@ describe('JobDispatcher', () => {
       fakeHandler('FEDERATION_DELIVER') as FederationDeliverHandler,
       fakeHandler('EXPORT_ACCOUNT') as ExportAccountHandler,
       fakeHandler('PURGE_ACCOUNT') as PurgeAccountHandler,
+      fakeHandler('E2EE_ROTATE_FRANKING_KEY') as RotateE2eeFrankingKeyHandler,
     );
 
     expect(dispatcher.find('SOMETHING_UNKNOWN')).toBeUndefined();

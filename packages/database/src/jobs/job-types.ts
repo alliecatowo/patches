@@ -26,6 +26,12 @@ export const JOB_TYPES = [
    * crash mid-purge, or a delivery that races a `CancelAccountDeletion`, both have to be
    * no-ops (`docs/architecture/jobs.md` §7). */
   'PURGE_ACCOUNT',
+  /** P13-015 (ADR 0020 §9, §12.7): mints the next node franking-key era and reschedules itself,
+   * self-perpetuating the same way `PURGE_ACCOUNT`'s grace-period delay does — no separate
+   * cron/scheduler is needed because the outbox's own `available_at` delay *is* the rotation
+   * timer. Seeded once by the `Phase13NodeFrankingKeys` migration; see
+   * `apps/worker/src/jobs/handlers/rotate-e2ee-franking-key.handler.ts`. */
+  'E2EE_ROTATE_FRANKING_KEY',
 ] as const;
 
 export type JobType = (typeof JOB_TYPES)[number];

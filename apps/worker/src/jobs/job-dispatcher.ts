@@ -7,6 +7,7 @@ import { ExportAccountHandler } from './handlers/export-account.handler.js';
 import { FederationDeliverHandler } from './handlers/federation-deliver.handler.js';
 import { ProcessMediaHandler } from './handlers/process-media.handler.js';
 import { PurgeAccountHandler } from './handlers/purge-account.handler.js';
+import { RotateE2eeFrankingKeyHandler } from './handlers/rotate-e2ee-franking-key.handler.js';
 import { SendPasswordResetEmailHandler } from './handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from './handlers/send-verification-email.handler.js';
 import { type JobHandler } from './job-handler.js';
@@ -29,6 +30,7 @@ export class JobDispatcher {
     federationDeliver: FederationDeliverHandler,
     exportAccount: ExportAccountHandler,
     purgeAccount: PurgeAccountHandler,
+    rotateE2eeFrankingKey: RotateE2eeFrankingKeyHandler,
   ) {
     this.handlers = new Map<JobType, JobHandler>([
       [sendVerificationEmail.type, sendVerificationEmail],
@@ -39,6 +41,7 @@ export class JobDispatcher {
       [federationDeliver.type, federationDeliver],
       [exportAccount.type, exportAccount],
       [purgeAccount.type, purgeAccount],
+      [rotateE2eeFrankingKey.type, rotateE2eeFrankingKey],
     ]);
   }
 

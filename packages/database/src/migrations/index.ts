@@ -24,6 +24,7 @@ import { AdminAuditLabelerSubjectType1787159300000 } from './1787159300000-Admin
 import { Phase15AuthPolicy1787170000000 } from './1787170000000-Phase15AuthPolicy.js';
 import { Phase15Passkeys1787180000000 } from './1787180000000-Phase15Passkeys.js';
 import { AddOidcCredentialType1787220000000 } from './1787220000000-AddOidcCredentialType.js';
+import { Phase13NodeFrankingKeys1787235748738 } from './1787235748738-Phase13NodeFrankingKeys.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -64,4 +65,5 @@ export const ALL_MIGRATIONS = [
   Phase15AuthPolicy1787170000000,
   Phase15Passkeys1787180000000,
   AddOidcCredentialType1787220000000,
+  Phase13NodeFrankingKeys1787235748738,
 ];

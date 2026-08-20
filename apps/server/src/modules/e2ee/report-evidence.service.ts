@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   type AttachReportEvidenceRequest,
@@ -6,11 +6,8 @@ import {
 } from '@patches/proto/nest';
 import { DataSource } from 'typeorm';
 
-import {
-  attachReportEvidence,
-  EnvNodeFrankingKeyRing,
-  type NodeFrankingKeyRing,
-} from './report-evidence.js';
+import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
+import { attachReportEvidence, type NodeFrankingKeyRing } from './report-evidence.js';
 import {
   loadReportEvidenceForModeration,
   type E2eeModerationEvidenceView,
@@ -28,13 +25,16 @@ export class E2eeReportEvidenceService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    // `@Optional()` is load-bearing, not decoration. `NodeFrankingKeyRing` is an interface, so
-    // `emitDecoratorMetadata` records its param type as `Object`, and Nest tries to resolve
-    // that as a provider token regardless of the default value — it cannot, and the whole app
-    // fails to boot with "Nest can't resolve dependencies of the E2eeReportEvidenceService
-    // (DataSource, ?)". This took prod down once. `@Optional()` makes Nest pass `undefined`,
-    // which lets the default apply, while tests can still inject a fake positionally.
-    @Optional() keys: NodeFrankingKeyRing = new EnvNodeFrankingKeyRing(),
+    // `@Inject(NODE_FRANKING_KEY_RING)` is load-bearing, not decoration. `NodeFrankingKeyRing`
+    // is an interface, so `emitDecoratorMetadata` records its param type as `Object`, and Nest
+    // tries to resolve that as a provider token if this were a bare, undecorated parameter — it
+    // cannot, and the whole app fails to boot with "Nest can't resolve dependencies of the
+    // E2eeReportEvidenceService (DataSource, ?)". This took prod down once (P13-009's
+    // `@Optional()` default masked it instead of fixing it; P13-015 replaces that scaffolding
+    // with a real explicit-token provider — see `apps/server/src/di-graph.test.ts` and
+    // `node-franking-key-ring.ts`). Tests can still inject a fake positionally, bypassing Nest
+    // entirely.
+    @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
   ) {
     this.#keys = keys;
   }

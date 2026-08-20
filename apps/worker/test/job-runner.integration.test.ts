@@ -11,6 +11,7 @@ import { ExportAccountHandler } from '../src/jobs/handlers/export-account.handle
 import { FederationDeliverHandler } from '../src/jobs/handlers/federation-deliver.handler.js';
 import { ProcessMediaHandler } from '../src/jobs/handlers/process-media.handler.js';
 import { PurgeAccountHandler } from '../src/jobs/handlers/purge-account.handler.js';
+import { RotateE2eeFrankingKeyHandler } from '../src/jobs/handlers/rotate-e2ee-franking-key.handler.js';
 import { SendPasswordResetEmailHandler } from '../src/jobs/handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from '../src/jobs/handlers/send-verification-email.handler.js';
 import { JobDispatcher } from '../src/jobs/job-dispatcher.js';
@@ -92,6 +93,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       new FederationDeliverHandler(dataSource, config),
       new ExportAccountHandler(dataSource, storage),
       new PurgeAccountHandler(dataSource, storage),
+      new RotateE2eeFrankingKeyHandler(dataSource),
     );
     const runner = new JobRunner(dataSource, dispatcher, config);
     return { runner, emailProvider };

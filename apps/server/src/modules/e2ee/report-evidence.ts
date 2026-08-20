@@ -35,10 +35,13 @@ import { AppError } from '../../common/errors/app-error.js';
 
 /**
  * A node-held symmetric franking key, scoped to a rotation era (ADR 0020 §9). Injected rather
- * than read from disk/env directly in this file so the persisted key-custody design — which
- * does not exist as a `packages/database` entity yet — can be swapped in later without touching
- * the verification logic. See the module doc comment for why `EnvNodeFrankingKeyRing` below is
- * explicitly a stand-in, not the reviewed key-management design ADR 0020 §12.7 still requires.
+ * than read from disk/env directly in this file so the verification logic here never depends on
+ * how key material is sourced. The production implementation is
+ * `DatabaseNodeFrankingKeyRing` (`node-franking-key-ring.ts`, P13-015), backed by
+ * `e2ee_node_franking_keys` with era-based rotation; `EnvNodeFrankingKeyRing` below remains only
+ * as a lightweight fake for unit tests and the integration-test fixture
+ * (`apps/server/test/e2ee.integration.test.ts`'s `testFrankingKeyRing`), never wired into
+ * `E2eeModule`'s providers.
  */
 export interface NodeFrankingKeyRing {
   keyForEra(era: number): Uint8Array | undefined;
@@ -56,12 +59,13 @@ export interface NodeFrankingKeyRing {
 /**
  * Reads `E2EE_NODE_FRANKING_KEYS` (JSON: era string → base64 32-byte key) once at construction.
  *
- * This is scaffolding, not the reviewed key-management design ADR 0020 §12.7 requires: there is
- * no rotation schedule, no persisted key-era table, and no operational story for provisioning
- * this env var safely. It exists so `AttachReportEvidence` can be wired and adversarially tested
- * end-to-end now, while remaining inert (`knownEras()` is empty, so every item fails closed to
- * `UNKNOWN_KEY_ERA`) on every node that has not set the variable — which is every node today,
- * since `E2EE_APPROVED_FRANKING_PROFILES` is still empty and `E2EE_V1` stays disabled regardless.
+ * **Test/fixture only as of P13-015** — `DatabaseNodeFrankingKeyRing` is the production
+ * `NodeFrankingKeyRing` (`node-franking-key-ring.ts`), so this class is never registered in
+ * `E2eeModule`'s providers. It remains useful for unit tests and the fanout integration-test
+ * fixture that want a synchronous, no-database key ring with a fixed known key. `knownEras()` is
+ * empty when unset, so every item fails closed to `UNKNOWN_KEY_ERA` rather than silently
+ * verifying against nothing — not that this matters in production anymore, since
+ * `E2EE_APPROVED_FRANKING_PROFILES` is still empty and `E2EE_V1` stays disabled regardless.
  */
 export class EnvNodeFrankingKeyRing implements NodeFrankingKeyRing {
   readonly #keys: ReadonlyMap<number, Uint8Array>;

@@ -89,3 +89,8 @@ export const purgeAccountPayloadSchema = z.object({
   actorId: z.uuid(),
 });
 export type PurgeAccountPayload = z.infer<typeof purgeAccountPayloadSchema>;
+
+/** No input needed — the handler reads `e2ee_node_franking_keys` itself and reschedules its own
+ * next run (`docs/operations/e2ee-franking-key-rotation.md`). */
+export const rotateE2eeFrankingKeyPayloadSchema = z.object({}).strict();
+export type RotateE2eeFrankingKeyPayload = z.infer<typeof rotateE2eeFrankingKeyPayloadSchema>;

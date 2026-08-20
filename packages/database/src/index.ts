@@ -69,6 +69,7 @@ export { E2eeLogicalMessage } from './entities/e2ee-logical-message.entity.js';
 export { E2eeMailboxEnvelope } from './entities/e2ee-mailbox-envelope.entity.js';
 export { E2eeReportEvidence } from './entities/e2ee-report-evidence.entity.js';
 export { E2eeReportEvidenceItem } from './entities/e2ee-report-evidence-item.entity.js';
+export { E2eeNodeFrankingKey } from './entities/e2ee-node-franking-key.entity.js';
 export { PostEdit } from './entities/post-edit.entity.js';
 export { PinnedPost } from './entities/pinned-post.entity.js';
 export { ActorFlair } from './entities/actor-flair.entity.js';
@@ -194,6 +195,13 @@ export type { ClaimOutboxJobsOptions, OutboxBackoffOptions } from './repositorie
 export { appendAdminAuditLog } from './repositories/admin-audit.js';
 export type { AppendAdminAuditLogInput } from './repositories/admin-audit.js';
 
+export {
+  loadNodeFrankingKeys,
+  rotateNodeFrankingKey,
+  latestNodeFrankingKey,
+} from './repositories/e2ee-node-franking-keys.js';
+export type { NodeFrankingKeySnapshot } from './repositories/e2ee-node-franking-keys.js';
+
 export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
 
 export { JOB_TYPES, type JobType } from './jobs/job-types.js';
@@ -214,4 +222,6 @@ export {
   type ExportAccountPayload,
   purgeAccountPayloadSchema,
   type PurgeAccountPayload,
+  rotateE2eeFrankingKeyPayloadSchema,
+  type RotateE2eeFrankingKeyPayload,
 } from './jobs/payloads.js';

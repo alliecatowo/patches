@@ -19,9 +19,9 @@ import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js
 import { createServerTestDataSource } from './support/database.js';
 
 /** A fixed test-only franking key so `SendEnvelopes`/`CreateE2eeConversation` can actually issue
- * an acceptance tag. Distinct from `EnvNodeFrankingKeyRing`'s "no key configured" default, which
- * every production node keeps until P13-015 lands persisted key custody — this fake exists only
- * so the fanout-accept path under test has *something* to sign with. */
+ * an acceptance tag. Distinct from the production `DatabaseNodeFrankingKeyRing` (P13-015),
+ * backed by `e2ee_node_franking_keys` — these services are constructed directly here (not
+ * through Nest DI), so this fake is passed positionally instead. */
 const TEST_FRANKING_ERA = 1;
 const TEST_FRANKING_KEY = new Uint8Array(32).fill(9);
 const testFrankingKeyRing: NodeFrankingKeyRing = {

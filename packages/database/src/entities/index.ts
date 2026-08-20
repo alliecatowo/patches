@@ -22,6 +22,7 @@ import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
 import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
 import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
+import { E2eeNodeFrankingKey } from './e2ee-node-franking-key.entity.js';
 import { E2eeOneTimePrekey } from './e2ee-one-time-prekey.entity.js';
 import { E2eeReportEvidenceItem } from './e2ee-report-evidence-item.entity.js';
 import { E2eeReportEvidence } from './e2ee-report-evidence.entity.js';
@@ -136,6 +137,7 @@ export const ALL_ENTITIES = [
   E2eeMailboxEnvelope,
   E2eeReportEvidence,
   E2eeReportEvidenceItem,
+  E2eeNodeFrankingKey,
   PostEdit,
   PinnedPost,
   ActorFlair,
