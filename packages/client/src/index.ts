@@ -15,8 +15,10 @@ export {
 } from './session.js';
 export {
   describeError,
+  isPrivacyAckRequired,
   isSignInRequired,
   type DescribedError,
+  type DescribeErrorCopyOverrides,
   type DescribeErrorOptions,
 } from './errors.js';
 export {

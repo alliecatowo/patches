@@ -1,4 +1,4 @@
-import { status as GrpcStatus } from '@grpc/grpc-js';
+import { Code } from '@connectrpc/connect';
 import { describe, expect, it } from 'vitest';
 
 import { describeGrpcError, isPrivacyAckRequired, isSignInRequired } from './errors.js';
@@ -21,7 +21,7 @@ function grpcErrorWithCode(code: number, appErrorCode: string): unknown {
 
 describe('describeGrpcError (spec §81)', () => {
   it('names the unreachable server so the user knows what to fix', () => {
-    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAVAILABLE), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.Unavailable), TARGET);
 
     expect(friendly.title).toContain(TARGET);
     expect(friendly.title).toContain("Can't reach");
@@ -29,7 +29,7 @@ describe('describeGrpcError (spec §81)', () => {
   });
 
   it('reports a timeout as a timeout', () => {
-    const friendly = describeGrpcError(grpcError(GrpcStatus.DEADLINE_EXCEEDED), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.DeadlineExceeded), TARGET);
     expect(friendly.title).toContain('too long');
     expect(friendly.retryable).toBe(true);
   });
@@ -37,32 +37,33 @@ describe('describeGrpcError (spec §81)', () => {
   it('passes the server through for FAILED_PRECONDITION, where the message is the point', () => {
     const message =
       'This Patches client (0.0.1) is too old for this server, which requires 0.1.0 or newer.';
-    const friendly = describeGrpcError(grpcError(GrpcStatus.FAILED_PRECONDITION, message), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.FailedPrecondition, message), TARGET);
 
     expect(friendly.title).toBe(message);
     expect(friendly.retryable).toBe(false);
   });
 
   it('treats an expired session as non-retryable with a next step', () => {
-    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.Unauthenticated), TARGET);
     expect(friendly.retryable).toBe(false);
     expect(friendly.hint).toContain('Sign in');
   });
 
   it('recognises PUBLIC_READ=false rejections via the x-patches-error-code metadata (2026-08-19)', () => {
-    const error = grpcErrorWithCode(GrpcStatus.UNAUTHENTICATED, 'SIGN_IN_REQUIRED');
+    const error = grpcErrorWithCode(Code.Unauthenticated, 'SIGN_IN_REQUIRED');
     expect(isSignInRequired(error)).toBe(true);
-    expect(isSignInRequired(grpcError(GrpcStatus.UNAUTHENTICATED))).toBe(false);
+    expect(isSignInRequired(grpcError(Code.Unauthenticated))).toBe(false);
 
     const friendly = describeGrpcError(error, TARGET);
     expect(friendly.retryable).toBe(false);
     expect(friendly.title).toMatch(/requires sign-in to read/i);
+    // TUI-only copy override (a web/RN client has no "L" key to press).
     expect(friendly.hint).toMatch(/press l/i);
   });
 
   it('surfaces ALREADY_EXISTS with the server message (e.g. HANDLE_TAKEN)', () => {
     const friendly = describeGrpcError(
-      grpcError(GrpcStatus.ALREADY_EXISTS, 'That handle is taken.'),
+      grpcError(Code.AlreadyExists, 'That handle is taken.'),
       TARGET,
     );
     expect(friendly.title).toBe('That handle is taken.');
@@ -71,26 +72,29 @@ describe('describeGrpcError (spec §81)', () => {
 
   it('never surfaces a stack trace, even if the server sends one', () => {
     const leaky = 'boom\n    at Object.<anonymous> (/srv/app/main.js:1:1)';
-    const friendly = describeGrpcError(grpcError(GrpcStatus.INTERNAL, leaky), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.Internal, leaky), TARGET);
 
     expect(friendly.title).not.toContain('    at ');
     expect(friendly.hint).not.toContain('    at ');
   });
 
-  it('handles a plain Error (DNS or TLS failure) without a gRPC code', () => {
+  // Converged onto `@patches/client`'s `describeError` behaviour (ADR 0023 slice 9): a value
+  // with no numeric `.code` at all becomes `Code.Unknown`, same as every other client, rather
+  // than the TUI's old grpc-js-only "could not talk to the server" fallback copy.
+  it('handles a plain Error (DNS or TLS failure) without a gRPC code as an unknown-error', () => {
     const friendly = describeGrpcError(new Error('getaddrinfo ENOTFOUND patches.local'), TARGET);
 
-    expect(friendly.title).toContain(TARGET);
-    expect(friendly.code).toBe(GrpcStatus.UNKNOWN);
+    expect(friendly.code).toBe(Code.Unknown);
+    expect(friendly.retryable).toBe(true);
   });
 
   it('handles a thrown non-Error without crashing', () => {
     expect(() => describeGrpcError('nope', TARGET)).not.toThrow();
-    expect(describeGrpcError(undefined, TARGET).title).toContain(TARGET);
+    expect(describeGrpcError(undefined, TARGET).code).toBe(Code.Unknown);
   });
 
   it('maps UNAUTHENTICATED on a credentials-context call (login/register) to a wrong-password message (B-016)', () => {
-    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET, {
+    const friendly = describeGrpcError(grpcError(Code.Unauthenticated), TARGET, {
       context: 'credentials',
     });
     expect(friendly.title).toBe('Wrong handle/email or password.');
@@ -98,7 +102,7 @@ describe('describeGrpcError (spec §81)', () => {
   });
 
   it('keeps the session-expired message for UNAUTHENTICATED outside a credentials context', () => {
-    const friendly = describeGrpcError(grpcError(GrpcStatus.UNAUTHENTICATED), TARGET);
+    const friendly = describeGrpcError(grpcError(Code.Unauthenticated), TARGET);
     expect(friendly.title).toBe('Your session is no longer valid.');
   });
 
@@ -107,12 +111,9 @@ describe('describeGrpcError (spec §81)', () => {
   // "must acknowledge" message — every caller of `describeGrpcError` only ever renders
   // `.title` (toasts, screen error rows), so the instruction has to live there.
   it('recognises PRIVACY_NOTICE_NOT_ACKNOWLEDGED via the x-patches-error-code metadata and points at :privacy', () => {
-    const error = grpcErrorWithCode(
-      GrpcStatus.FAILED_PRECONDITION,
-      'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
-    );
+    const error = grpcErrorWithCode(Code.FailedPrecondition, 'PRIVACY_NOTICE_NOT_ACKNOWLEDGED');
     expect(isPrivacyAckRequired(error)).toBe(true);
-    expect(isPrivacyAckRequired(grpcError(GrpcStatus.FAILED_PRECONDITION))).toBe(false);
+    expect(isPrivacyAckRequired(grpcError(Code.FailedPrecondition))).toBe(false);
 
     const friendly = describeGrpcError(error, TARGET);
     expect(friendly.retryable).toBe(false);
@@ -154,7 +155,7 @@ function connectErrorWithCode(code: number, appErrorCode: string): unknown {
 
 describe('describeGrpcError accepts a ConnectError (ADR 0023 slice 2)', () => {
   it('names the unreachable server for a ConnectError UNAVAILABLE', () => {
-    const friendly = describeGrpcError(connectError(GrpcStatus.UNAVAILABLE), TARGET);
+    const friendly = describeGrpcError(connectError(Code.Unavailable), TARGET);
 
     expect(friendly.title).toContain(TARGET);
     expect(friendly.title).toContain("Can't reach");
@@ -162,15 +163,15 @@ describe('describeGrpcError accepts a ConnectError (ADR 0023 slice 2)', () => {
   });
 
   it('reports a ConnectError DEADLINE_EXCEEDED as a timeout', () => {
-    const friendly = describeGrpcError(connectError(GrpcStatus.DEADLINE_EXCEEDED), TARGET);
+    const friendly = describeGrpcError(connectError(Code.DeadlineExceeded), TARGET);
     expect(friendly.title).toContain('too long');
     expect(friendly.retryable).toBe(true);
   });
 
   it('recognises SIGN_IN_REQUIRED via a ConnectError Headers-shaped metadata', () => {
-    const error = connectErrorWithCode(GrpcStatus.UNAUTHENTICATED, 'SIGN_IN_REQUIRED');
+    const error = connectErrorWithCode(Code.Unauthenticated, 'SIGN_IN_REQUIRED');
     expect(isSignInRequired(error)).toBe(true);
-    expect(isSignInRequired(connectError(GrpcStatus.UNAUTHENTICATED))).toBe(false);
+    expect(isSignInRequired(connectError(Code.Unauthenticated))).toBe(false);
 
     const friendly = describeGrpcError(error, TARGET);
     expect(friendly.retryable).toBe(false);
@@ -179,12 +180,9 @@ describe('describeGrpcError accepts a ConnectError (ADR 0023 slice 2)', () => {
   });
 
   it('recognises PRIVACY_NOTICE_NOT_ACKNOWLEDGED via a ConnectError Headers-shaped metadata', () => {
-    const error = connectErrorWithCode(
-      GrpcStatus.FAILED_PRECONDITION,
-      'PRIVACY_NOTICE_NOT_ACKNOWLEDGED',
-    );
+    const error = connectErrorWithCode(Code.FailedPrecondition, 'PRIVACY_NOTICE_NOT_ACKNOWLEDGED');
     expect(isPrivacyAckRequired(error)).toBe(true);
-    expect(isPrivacyAckRequired(connectError(GrpcStatus.FAILED_PRECONDITION))).toBe(false);
+    expect(isPrivacyAckRequired(connectError(Code.FailedPrecondition))).toBe(false);
 
     const friendly = describeGrpcError(error, TARGET);
     expect(friendly.retryable).toBe(false);
@@ -193,10 +191,34 @@ describe('describeGrpcError accepts a ConnectError (ADR 0023 slice 2)', () => {
 
   it('prefers rawMessage over the [code]-prefixed message for a ConnectError', () => {
     const friendly = describeGrpcError(
-      connectError(GrpcStatus.ALREADY_EXISTS, 'That handle is taken.'),
+      connectError(Code.AlreadyExists, 'That handle is taken.'),
       TARGET,
     );
     expect(friendly.title).toBe('That handle is taken.');
     expect(friendly.retryable).toBe(false);
+  });
+});
+
+describe('describeGrpcError never uses forbidden DM copy (spec §183.1)', () => {
+  it('does not describe v0 DMs as encrypted, secure, or private', () => {
+    for (const code of [
+      Code.Unavailable,
+      Code.DeadlineExceeded,
+      Code.Unauthenticated,
+      Code.PermissionDenied,
+      Code.FailedPrecondition,
+      Code.ResourceExhausted,
+      Code.InvalidArgument,
+      Code.NotFound,
+      Code.AlreadyExists,
+      Code.Unimplemented,
+      Code.Canceled,
+      Code.Internal,
+      Code.Unknown,
+    ]) {
+      const friendly = describeGrpcError(grpcError(code), TARGET);
+      const text = `${friendly.title} ${friendly.hint}`.toLowerCase();
+      expect(text).not.toMatch(/encrypt|secure|private/);
+    }
   });
 });
