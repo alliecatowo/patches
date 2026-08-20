@@ -80,7 +80,18 @@ export interface FrankingReportTranscript {
   readonly ciphertextDigests: readonly Uint8Array[];
 }
 
-function encodeReportTranscript(transcript: FrankingReportTranscript): Uint8Array {
+/**
+ * The exact bytes {@link createNodeReportTag}/{@link verifyNodeReportTag} MAC.
+ *
+ * Exported (not just an internal helper) so a caller that stores or recomputes the transcript
+ * out of band — a node reconstructing it from its own persisted `E2eeLogicalMessage`/envelope
+ * rows for report ingestion, say — can produce the identical canonical bytes rather than
+ * re-deriving a second encoder that has to agree with this one by coincidence. Every field is
+ * length- or width-prefixed (`ByteWriter#string`/`u32`/`u64`/`fixed` with a fixed 32-byte
+ * digest), so no two distinct field splits — e.g. `conversationId="ab", logicalMessageId="c"`
+ * vs. `conversationId="a", logicalMessageId="bc"` — can ever encode to the same bytes.
+ */
+export function encodeReportTranscript(transcript: FrankingReportTranscript): Uint8Array {
   requireNonEmptyString(transcript.conversationId, 'Conversation id');
   requireNonEmptyString(transcript.logicalMessageId, 'Logical message id');
   requireNonEmptyString(transcript.senderActorId, 'Sender actor id');
