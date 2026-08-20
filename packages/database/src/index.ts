@@ -22,6 +22,11 @@ export {
   SSH_LOGIN_CHALLENGE_PURPOSES,
 } from './entities/ssh-login-challenge.entity.js';
 export type { SshLoginChallengePurpose } from './entities/ssh-login-challenge.entity.js';
+export {
+  WebauthnChallenge,
+  WEBAUTHN_CHALLENGE_PURPOSES,
+} from './entities/webauthn-challenge.entity.js';
+export type { WebauthnChallengePurpose } from './entities/webauthn-challenge.entity.js';
 export { Credential } from './entities/credential.entity.js';
 export { Invite } from './entities/invite.entity.js';
 export { OutboxJob } from './entities/outbox-job.entity.js';

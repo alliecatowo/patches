@@ -119,10 +119,8 @@ service AuthService {
   // response objects — see `docs/research/simplewebauthn.md` for why. Authenticated: issues a
   // single-use, short-TTL challenge bound to the caller's own account, mirroring
   // `BeginSshEnrollment`/`AddCredential(SSH_PUBLIC_KEY)`'s possession-proof shape.
-  rpc BeginPasskeyRegistration(BeginPasskeyRegistrationRequest)
-      returns (BeginPasskeyRegistrationResponse);
-  rpc CompletePasskeyRegistration(CompletePasskeyRegistrationRequest)
-      returns (CompletePasskeyRegistrationResponse);
+  rpc BeginPasskeyRegistration(BeginPasskeyRegistrationRequest) returns (BeginPasskeyRegistrationResponse);
+  rpc CompletePasskeyRegistration(CompletePasskeyRegistrationRequest) returns (CompletePasskeyRegistrationResponse);
 
   // Unauthenticated, discoverable-credential login (no username/handle is ever supplied or
   // required) — the credential response itself identifies the account via its WebAuthn
