@@ -1,4 +1,4 @@
-import { status as GrpcStatus } from '@grpc/grpc-js';
+import { Code as GrpcStatus } from '@connectrpc/connect';
 import {
   GUESTBOOK_ENTRY_MAX_CHARS,
   isPageValidationError,
@@ -138,7 +138,7 @@ export function PageScreen({
       .catch((error: unknown) => {
         if (cancelled) return;
         if (
-          grpcStatusCode(error) === GrpcStatus.NOT_FOUND &&
+          grpcStatusCode(error) === GrpcStatus.NotFound &&
           isOwnPage &&
           viewerActorId !== undefined
         ) {

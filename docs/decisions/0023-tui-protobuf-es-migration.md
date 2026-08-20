@@ -206,6 +206,17 @@ render and print sites. Tracked as **P10-020**.
 The general lesson for the remaining slices: "the names match" is not the same claim as "the values
 match", and only the second one keeps rendered output stable.
 
+## Addendum, 2026-08-20 — slice 8 (P10-015) landed
+
+`@grpc/grpc-js` and `@grpc/proto-loader` are out of the TUI's runtime `dependencies` (moved to
+`devDependencies`, exercised only by `apps/tui/test/transport.test.ts`, which stands up a real
+grpc-js server to verify the Connect gRPC transport's wire behavior) and out of `tsup.config.ts`'s
+`external`. `scripts/copy-proto.mjs` is deleted along with the `dist/proto/` it produced — the
+runtime no longer parses `.proto` files at startup (that ended at slice 7, P10-013; this slice
+just removed the now-dead build step and dependency). The one remaining `@grpc/` mention under
+`apps/tui/src/` is a comment in `src/api/wire/time.ts` describing the wire's `null`-for-unset
+decode behavior — left alone here since that file belongs to slice 7's owner, not this slice.
+
 ## Notes for the index
 
 This ADR's row is **not** yet added to `docs/decisions/README.md` (concurrent editors held that
