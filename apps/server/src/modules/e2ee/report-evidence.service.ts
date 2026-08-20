@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   type AttachReportEvidenceRequest,
@@ -24,7 +24,13 @@ export class E2eeReportEvidenceService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    keys: NodeFrankingKeyRing = new EnvNodeFrankingKeyRing(),
+    // `@Optional()` is load-bearing, not decoration. `NodeFrankingKeyRing` is an interface, so
+    // `emitDecoratorMetadata` records its param type as `Object`, and Nest tries to resolve
+    // that as a provider token regardless of the default value — it cannot, and the whole app
+    // fails to boot with "Nest can't resolve dependencies of the E2eeReportEvidenceService
+    // (DataSource, ?)". This took prod down once. `@Optional()` makes Nest pass `undefined`,
+    // which lets the default apply, while tests can still inject a fake positionally.
+    @Optional() keys: NodeFrankingKeyRing = new EnvNodeFrankingKeyRing(),
   ) {
     this.#keys = keys;
   }
