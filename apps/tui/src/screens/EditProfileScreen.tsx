@@ -199,7 +199,9 @@ export function EditProfileScreen({
           bio: fields.bio,
           locationText: fields.location,
           websiteUrl: fields.website,
-          updateMask,
+          // google.protobuf.FieldMask is a message ({ paths: string[] }), not a bare array
+          // (ADR 0023 — proto-loader decoded it that way; protobuf-es does not).
+          updateMask: { paths: updateMask },
           nameplate: nameplateChanged
             ? {
                 nameColor: fields.nameColor,

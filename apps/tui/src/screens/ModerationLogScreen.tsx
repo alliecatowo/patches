@@ -1,4 +1,8 @@
-import { MODERATION_LOG_SUBJECT_KIND } from '../api/wire/enums.js';
+import {
+  MODERATION_ACTION_TYPE,
+  MODERATION_LOG_SUBJECT_KIND,
+  MODERATION_REASON_CATEGORY,
+} from '../api/wire/enums.js';
 import { toDate } from '../api/wire/time.js';
 import type { ModerationLogEntry } from '../api/wire/types.js';
 import { useCallback, useState } from 'react';
@@ -20,18 +24,20 @@ export interface ModerationLogScreenProps {
   onBack: () => void;
 }
 
-function actionLabel(action: string): string {
-  return action.replace('MODERATION_ACTION_TYPE_', '').toLowerCase();
+// protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023): indexing
+// the enum object by value is already the prefix-stripped member name.
+function actionLabel(action: MODERATION_ACTION_TYPE): string {
+  return MODERATION_ACTION_TYPE[action].toLowerCase();
 }
-function reasonLabel(category: string): string {
-  return category.replace('MODERATION_REASON_CATEGORY_', '').toLowerCase();
+function reasonLabel(category: MODERATION_REASON_CATEGORY): string {
+  return MODERATION_REASON_CATEGORY[category].toLowerCase();
 }
 
 function subjectLabel(entry: ModerationLogEntry): string {
   if (entry.subjectKind === MODERATION_LOG_SUBJECT_KIND.DOMAIN) {
     return sanitizeForTerminal(entry.subjectDomain);
   }
-  return entry.subjectKind.replace('MODERATION_LOG_SUBJECT_KIND_', '').toLowerCase();
+  return MODERATION_LOG_SUBJECT_KIND[entry.subjectKind].toLowerCase();
 }
 
 /**

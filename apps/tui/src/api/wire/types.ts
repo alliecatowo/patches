@@ -53,7 +53,9 @@ type WireInit<T> = T extends { readonly $typeName: string }
 type WireInitField<F> = F extends Date | Uint8Array | bigint | boolean | string | number
   ? F
   : F extends ReadonlyArray<infer U>
-    ? ReadonlyArray<WireInitField<U>>
+    ? // Mutable, matching `@bufbuild/protobuf`'s own `FieldInit<F>` exactly — a `readonly`
+      // array here would reject the common `mediaIds: string[]` build-then-send pattern.
+      WireInitField<U>[]
     : F extends { readonly $typeName: string }
       ? WireInit<F>
       : F;
@@ -174,7 +176,10 @@ export type FilterListEntry = Proto.FilterListEntry;
 export type FilterListSubscription = Proto.FilterListSubscription;
 export type FilterScope = Proto.FilterScope;
 export type FilterTerm = Proto.FilterTerm;
-export type FilterTermInput = Proto.FilterTermInput;
+// Write-only: appears only nested inside CreateFilterRequest/UpdateFilterRequest, never in
+// a response — always hand-built by a caller, so it gets the same WireInit treatment as a
+// top-level RPC request (ADR 0023).
+export type FilterTermInput = WireInit<Proto.FilterTermInput>;
 export type FilterTermKind = Proto.FilterTermKind;
 export type FilteredByHint = Proto.FilteredByHint;
 export type FilteredByProvenance = Proto.FilteredByProvenance;

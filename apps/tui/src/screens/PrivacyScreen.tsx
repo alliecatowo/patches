@@ -169,7 +169,9 @@ export function PrivacyScreen({
           indexable: next.indexable,
           showInLocalFeed: next.showInLocalFeed,
           locked: next.locked,
-          updateMask: [PREF_FIELD_MASK[key]],
+          // google.protobuf.FieldMask is a message ({ paths: string[] }), not a bare array
+          // (ADR 0023 — proto-loader decoded it that way; protobuf-es does not).
+          updateMask: { paths: [PREF_FIELD_MASK[key]] },
         },
         accessToken,
       );
