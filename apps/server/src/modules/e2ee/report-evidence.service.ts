@@ -11,6 +11,10 @@ import {
   EnvNodeFrankingKeyRing,
   type NodeFrankingKeyRing,
 } from './report-evidence.js';
+import {
+  loadReportEvidenceForModeration,
+  type E2eeModerationEvidenceView,
+} from './report-evidence-moderation.js';
 
 /**
  * `E2eeService.AttachReportEvidence` (ADR 0020 §9, P13-009): moderation ingestion for
@@ -41,6 +45,17 @@ export class E2eeReportEvidenceService {
   ): Promise<AttachReportEvidenceResponse> {
     return this.dataSource.transaction((manager) =>
       attachReportEvidence(manager, actorId, request, this.#keys),
+    );
+  }
+
+  /** See `loadReportEvidenceForModeration`'s doc comment — moderator-only, not currently
+   * reachable from any RPC; the transaction boundary matches `attachReportEvidence` above. */
+  async getReportEvidenceForModeration(
+    reportId: string,
+    moderatorUserId: string,
+  ): Promise<E2eeModerationEvidenceView> {
+    return this.dataSource.transaction((manager) =>
+      loadReportEvidenceForModeration(manager, reportId, moderatorUserId),
     );
   }
 }
