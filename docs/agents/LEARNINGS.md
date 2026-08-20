@@ -297,3 +297,30 @@ module graph from `AppModule` asserting no unresolvable `Object` param lacks `@O
 `@Inject()` — no DB, milliseconds, runs in the fast suite. Verified it reports the real defect when
 run against the unfixed service. **After any deploy, check `flyctl status` and ping the node — a
 successful `flyctl deploy` exit does not mean the app booted.**
+
+## A proto family swap can change rendered output while typechecking clean (2026-08-20, P10-013/P10-020)
+
+ADR 0023's premise for the TUI's ts-proto → protobuf-es migration was that the enum seam
+absorbed the difference, because both generators name their members identically
+(`AppealStatus.OPEN` reads the same either way). That is true for _references_ and false for
+_values_: ts-proto's enums are string-valued (`'APPEAL_STATUS_OPEN'`), protoc-gen-es's are
+numeric (`1`). So `` `${appeal.status}` `` silently went from printing a name to printing a
+number in `patches appeal list`, `patches lists`, and the notifications screen.
+
+The typechecker cannot see this — both sides have the same TS enum type — and `mise run check`
+was green on typecheck for the whole flip. Only the runtime tests caught it, and only because
+they assert on literal output.
+
+Two rules fall out:
+
+1. When swapping code generators, the invariant to check is not "do the names match" but "does
+   every observable — rendered text, JSON shape, wire bytes — match". Names matching is what
+   makes the diff look safe; values not matching is what breaks it.
+2. A task whose defining constraint is "no behavior change" needs at least one assertion on real
+   output per surface, or the constraint is unenforced. `client.ts` shrank from 1864 lines to 302
+   with a clean typecheck and a user-visible regression in the same commit.
+
+The fix is `enumWireName(schema, value)` in `apps/tui/src/api/wire/enums.ts`, over protobuf-es's
+`enumToJson`, which reads the generated descriptor and returns the proto wire name — so it is
+byte-identical to what ts-proto used to interpolate, rather than a hand-maintained lookup table
+that would drift from the .proto.
