@@ -1,5 +1,5 @@
 import { describeError } from '@patches/client';
-import { GitHubLoginStatus } from '@patches/proto/es';
+import { OidcLoginStatus, type OidcProviderInfo } from '@patches/proto/es';
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -16,21 +16,18 @@ interface DeviceLink {
 
 type TerminalReason = 'expired' | 'denied';
 
+export interface OidcLoginButtonProps {
+  provider: OidcProviderInfo;
+}
+
 /**
- * "Sign in with GitHub" (P15-005, ADR 0011) — GitHub is a *credential*, never an identity
- * provider here: this only proves control of a GitHub account to authenticate an existing
- * or new Patches identity, it never imports a GitHub profile as the account's identity.
- *
- * Device flow: `BeginGitHubLogin` returns a user code + verification URL the viewer opens
- * in another tab/device, then this polls `PollGitHubLogin` on a `setTimeout` loop (never
- * `setInterval` — a slow poll RPC must not overlap the next one) until GitHub reports a
- * terminal status. `SLOW_DOWN` backs the interval off by +5s, matching GitHub's own device
- * flow convention.
- *
- * Visibility is gated by the caller (`LoginRoute`) on `GetAuthPolicyResponse.github_auth`
- * (P15-006) — this component itself renders unconditionally.
+ * "Sign in with <provider>" (P15-006) — one instance per entry of
+ * `GetAuthPolicyResponse.oidc_providers`, parameterized by `provider.id`. Same "credential,
+ * never an identity" contract and device-flow shape as `GitHubLoginButton` (poll on a
+ * `setTimeout` loop, back off +5s on `SLOW_DOWN`, never `setInterval`) — the only difference
+ * is which RPC pair it calls and that `provider` is threaded through every request.
  */
-export function GitHubLoginButton(): JSX.Element {
+export function OidcLoginButton({ provider }: OidcLoginButtonProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [link, setLink] = useState<DeviceLink | null>(null);
@@ -55,7 +52,7 @@ export function GitHubLoginButton(): JSX.Element {
   );
 
   const beginMutation = useMutation({
-    mutationFn: () => api.auth.beginGitHubLogin({}),
+    mutationFn: () => api.auth.beginOidcLogin({ provider: provider.id }),
     onSuccess: (response) => {
       setTerminal(null);
       setCopied(false);
@@ -80,13 +77,16 @@ export function GitHubLoginButton(): JSX.Element {
   async function pollOnce(deviceLink: DeviceLink): Promise<void> {
     if (cancelledRef.current) return;
     try {
-      const result = await api.auth.pollGitHubLogin({ deviceCode: deviceLink.deviceCode });
+      const result = await api.auth.pollOidcLogin({
+        provider: provider.id,
+        deviceCode: deviceLink.deviceCode,
+      });
       if (cancelledRef.current) return;
       switch (result.status) {
-        case GitHubLoginStatus.PENDING:
+        case OidcLoginStatus.PENDING:
           schedulePoll(deviceLink, deviceLink.intervalSeconds);
           return;
-        case GitHubLoginStatus.SLOW_DOWN: {
+        case OidcLoginStatus.SLOW_DOWN: {
           const backedOff: DeviceLink = {
             ...deviceLink,
             intervalSeconds: deviceLink.intervalSeconds + 5,
@@ -95,16 +95,16 @@ export function GitHubLoginButton(): JSX.Element {
           schedulePoll(backedOff, backedOff.intervalSeconds);
           return;
         }
-        case GitHubLoginStatus.EXPIRED:
+        case OidcLoginStatus.EXPIRED:
           setTerminal('expired');
           setLink(null);
           return;
-        case GitHubLoginStatus.DENIED:
+        case OidcLoginStatus.DENIED:
           setTerminal('denied');
           setLink(null);
           return;
-        case GitHubLoginStatus.COMPLETE:
-        case GitHubLoginStatus.UNSPECIFIED:
+        case OidcLoginStatus.COMPLETE:
+        case OidcLoginStatus.UNSPECIFIED:
         default:
           if (result.session) {
             await establishSession(result.session);
@@ -122,9 +122,6 @@ export function GitHubLoginButton(): JSX.Element {
   }
 
   const onCancel = (): void => {
-    // Stop any in-flight poll from scheduling another round (an already-sent fetch may
-    // still resolve after this), then clear the flag back so a later "Sign in with
-    // GitHub" click can poll again — cancellation is per device-code, not permanent.
     cancelledRef.current = true;
     clearScheduledPoll();
     cancelledRef.current = false;
@@ -174,7 +171,7 @@ export function GitHubLoginButton(): JSX.Element {
         <p className={styles['error']}>That code expired before it was used. Try again.</p>
       ) : null}
       {terminal === 'denied' ? (
-        <p className={styles['error']}>Sign-in was denied on GitHub. Try again.</p>
+        <p className={styles['error']}>Sign-in was denied. Try again.</p>
       ) : null}
       {beginMutation.isError ? (
         <p className={styles['error']}>
@@ -186,7 +183,7 @@ export function GitHubLoginButton(): JSX.Element {
         onClick={() => beginMutation.mutate()}
         disabled={beginMutation.isPending}
       >
-        {beginMutation.isPending ? 'Starting…' : 'Sign in with GitHub'}
+        {beginMutation.isPending ? 'Starting…' : `Sign in with ${provider.displayName}`}
       </button>
     </div>
   );
