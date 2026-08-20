@@ -101,7 +101,7 @@ function toConnectError(error: unknown): ConnectError {
   const appErrorCode = appErrorCodeOf(error);
   return new ConnectError(
     extractMessage(error),
-    (code ?? Code.Unknown) as Code,
+    code ?? Code.Unknown,
     appErrorCode === undefined ? undefined : { 'x-patches-error-code': appErrorCode },
     undefined,
     error,
