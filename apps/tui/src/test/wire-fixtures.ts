@@ -26,6 +26,7 @@
 
 import {
   APPEAL_STATUS,
+  COMMUNITY_INVITE_STATUS,
   COMMUNITY_ROLE,
   CONVERSATION_KIND,
   CONVERSATION_SECURITY_MODE,
@@ -45,23 +46,34 @@ import {
 } from '../api/wire/enums.js';
 import type {
   Actor,
+  ActorCounts,
   Appeal,
   Community,
+  CommunityInvite,
+  CommunityMember,
   Conversation,
+  ConversationMember,
   Filter,
   FilterList,
   FilterListSubscription,
   FilteredByHint,
   FollowRequest,
+  Label,
   Labeler,
+  LabelVocabularyEntry,
   MediaAttachment,
   Message,
   MessageRequest,
   ModerationLogEntry,
   ModerationNotice,
   Nameplate,
+  NodeLimits,
   Notification,
+  PageInfo,
   Post,
+  PostCounts,
+  PostEdit,
+  PostViewerState,
   PrivacyPrefs,
   Relationship,
   Session,
@@ -413,6 +425,150 @@ export function makePrivacyPrefs(overrides: Partial<PrivacyPrefs> = {}): Privacy
     locked: false,
     privacyNoticeVersion: 0,
     privacyNoticeAcknowledgedAt: undefined,
+    ...overrides,
+  };
+}
+
+export function makePageInfo(overrides: Partial<PageInfo> = {}): PageInfo {
+  return {
+    $typeName: 'patches.v1.PageInfo',
+    nextCursor: '',
+    hasMore: false,
+    ...overrides,
+  };
+}
+
+export function makePostCounts(overrides: Partial<PostCounts> = {}): PostCounts {
+  return {
+    $typeName: 'patches.v1.PostCounts',
+    replies: 0,
+    likes: 0,
+    reposts: 0,
+    quotes: 0,
+    ...overrides,
+  };
+}
+
+export function makePostViewerState(overrides: Partial<PostViewerState> = {}): PostViewerState {
+  return {
+    $typeName: 'patches.v1.PostViewerState',
+    liked: false,
+    bookmarked: false,
+    reposted: false,
+    ...overrides,
+  };
+}
+
+export function makeActorCounts(overrides: Partial<ActorCounts> = {}): ActorCounts {
+  return {
+    $typeName: 'patches.v1.ActorCounts',
+    followers: 0,
+    following: 0,
+    posts: 0,
+    ...overrides,
+  };
+}
+
+export function makeLabel(overrides: Partial<Label> = {}): Label {
+  return {
+    $typeName: 'patches.v1.Label',
+    id: 'label-1',
+    labelerId: 'labeler-1',
+    subjectActorId: '',
+    subjectPostId: '',
+    value: 'spam',
+    createdAt: undefined,
+    expiresAt: undefined,
+    retractedAt: undefined,
+    ...overrides,
+  };
+}
+
+export function makeLabelVocabularyEntry(
+  overrides: Partial<LabelVocabularyEntry> = {},
+): LabelVocabularyEntry {
+  return {
+    $typeName: 'patches.v1.LabelVocabularyEntry',
+    value: 'spam',
+    description: '',
+    defaultAction: LABEL_ACTION.WARN,
+    mandatory: false,
+    ...overrides,
+  };
+}
+
+export function makeConversationMember(
+  overrides: Partial<ConversationMember> = {},
+): ConversationMember {
+  return {
+    $typeName: 'patches.v1.ConversationMember',
+    actor: makeActor(),
+    joinedAt: undefined,
+    leftAt: undefined,
+    lastReadMessageId: '',
+    muted: false,
+    ...overrides,
+  };
+}
+
+export function makeCommunityMember(overrides: Partial<CommunityMember> = {}): CommunityMember {
+  return {
+    $typeName: 'patches.v1.CommunityMember',
+    actor: makeActor(),
+    role: COMMUNITY_ROLE.MEMBER,
+    joinedAt: undefined,
+    ...overrides,
+  };
+}
+
+export function makeCommunityInvite(overrides: Partial<CommunityInvite> = {}): CommunityInvite {
+  return {
+    $typeName: 'patches.v1.CommunityInvite',
+    id: 'invite-1',
+    communityId: 'community-1',
+    inviter: makeActor({ id: 'a1', handle: 'alice' }),
+    invitee: makeActor({ id: 'a2', handle: 'bob' }),
+    status: COMMUNITY_INVITE_STATUS.PENDING,
+    createdAt: undefined,
+    ...overrides,
+  };
+}
+
+export function makeNodeLimits(overrides: Partial<NodeLimits> = {}): NodeLimits {
+  return {
+    $typeName: 'patches.v1.NodeLimits',
+    postBodyMaxChars: 500,
+    bioMaxChars: 500,
+    displayNameMaxChars: 80,
+    handleMaxChars: 30,
+    locationTextMaxChars: 100,
+    websiteUrlMaxChars: 2048,
+    altTextMaxChars: 1000,
+    searchQueryMaxChars: 100,
+    maxFiltersPerActor: 50,
+    maxFilterTermsPerFilter: 20,
+    maxFilterListsPublishedPerActor: 10,
+    maxFilterListEntries: 500,
+    maxFilterListSubscriptions: 50,
+    maxFilterListExceptionsPerList: 100,
+    maxLabelerSubscriptionsPerActor: 20,
+    maxLabelVocabularyEntries: 50,
+    maxAppealStatementChars: 2000,
+    accountExportMaxReadyArchives: 1,
+    ...overrides,
+  };
+}
+
+export function makePostEdit(overrides: Partial<PostEdit> = {}): PostEdit {
+  return {
+    $typeName: 'patches.v1.PostEdit',
+    id: 'edit-1',
+    postId: 'post-1',
+    previousBody: '',
+    previousContentWarning: '',
+    previousMedia: [],
+    editedByActorId: 'actor-1',
+    createdAt: undefined,
     ...overrides,
   };
 }
