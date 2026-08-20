@@ -1206,7 +1206,7 @@ export class AuthService {
    * session later calls {@link approveDeviceLink} with the matching `user_code`, never by
    * anything the browser itself supplies.
    */
-  async beginDeviceLink(): Promise<BeginDeviceLinkResult> {
+  beginDeviceLink(): BeginDeviceLinkResult {
     this.rateLimit.consumePeer('device_link_begin', getRequestContext()?.peer);
 
     const deviceCode = randomBytes(DEVICE_LINK_CODE_BYTES).toString('base64url');
@@ -1256,7 +1256,10 @@ export class AuthService {
         userId: user.id,
         actorId: actor.id,
       });
-      return { status: 'COMPLETE', session: this.envelope(tokens, actor, user.emailVerifiedAt !== null) };
+      return {
+        status: 'COMPLETE',
+        session: this.envelope(tokens, actor, user.emailVerifiedAt !== null),
+      };
     });
   }
 

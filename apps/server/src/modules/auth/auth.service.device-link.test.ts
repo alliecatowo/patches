@@ -7,14 +7,36 @@ import { DeviceLinkAttemptsService } from './device-link-attempts.service.js';
 import { type RateLimitService } from './rate-limit.service.js';
 import { type TokenService } from './token.service.js';
 
-const CLAIMS = { userId: 'user-1', actorId: 'actor-1', sessionId: 'session-1', expiresAt: new Date() };
+const CLAIMS = {
+  userId: 'user-1',
+  actorId: 'actor-1',
+  sessionId: 'session-1',
+  expiresAt: new Date(),
+};
 
-function fakeRateLimit(): RateLimitService {
+/**
+ * Returns the mock functions themselves alongside the `RateLimitService`-shaped fake — tests
+ * assert against `consumePeer`/`consume`/`consumeDistributed` directly (never `service.xxx`),
+ * since reading a method off a value typed as the real class trips
+ * `@typescript-eslint/unbound-method` even inside `expect(...)`.
+ */
+interface MockRateLimit {
+  service: RateLimitService;
+  consumePeer: ReturnType<typeof vi.fn>;
+  consume: ReturnType<typeof vi.fn>;
+  consumeDistributed: ReturnType<typeof vi.fn>;
+}
+
+function fakeRateLimit(): MockRateLimit {
+  const consumePeer = vi.fn();
+  const consume = vi.fn();
+  const consumeDistributed = vi.fn().mockResolvedValue(undefined);
   return {
-    consumePeer: vi.fn(),
-    consume: vi.fn(),
-    consumeDistributed: vi.fn().mockResolvedValue(undefined),
-  } as unknown as RateLimitService;
+    service: { consumePeer, consume, consumeDistributed } as unknown as RateLimitService,
+    consumePeer,
+    consume,
+    consumeDistributed,
+  };
 }
 
 function fakeTokens(): TokenService {
@@ -44,7 +66,7 @@ function fakeDataSource(options: { user: Partial<User> | null; actor: Partial<Ac
 }
 
 function buildAuthService(options: {
-  rateLimit?: RateLimitService;
+  rateLimit?: MockRateLimit;
   tokens?: TokenService;
   dataSource?: { transaction: (fn: (manager: unknown) => unknown) => unknown };
   deviceLinks?: DeviceLinkAttemptsService;
@@ -53,9 +75,9 @@ function buildAuthService(options: {
     (options.dataSource ?? fakeDataSource({ user: null, actor: null })) as never,
     {} as never,
     {} as never,
-    (options.tokens ?? fakeTokens()) as never,
+    options.tokens ?? fakeTokens(),
     {} as never,
-    options.rateLimit ?? fakeRateLimit(),
+    (options.rateLimit ?? fakeRateLimit()).service,
     {} as never,
     {} as never,
     {} as never,
@@ -67,11 +89,11 @@ function buildAuthService(options: {
 }
 
 describe('AuthService device link (P15-005)', () => {
-  it('beginDeviceLink mints an XXXX-XXXX user_code and spends the peer budget', async () => {
+  it('beginDeviceLink mints an XXXX-XXXX user_code and spends the peer budget', () => {
     const rateLimit = fakeRateLimit();
     const auth = buildAuthService({ rateLimit });
 
-    const begun = await auth.beginDeviceLink();
+    const begun = auth.beginDeviceLink();
 
     expect(begun.userCode).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
     expect(begun.deviceCode.length).toBeGreaterThan(20);
@@ -185,7 +207,7 @@ describe('AuthService device link (P15-005)', () => {
       intervalMs: 0,
     });
     const rateLimit = fakeRateLimit();
-    (rateLimit.consume as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    rateLimit.consume.mockImplementation(() => {
       throw new AppError('RATE_LIMITED', 'Too many attempts.');
     });
     const auth = buildAuthService({ deviceLinks, rateLimit });

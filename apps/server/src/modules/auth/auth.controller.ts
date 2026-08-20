@@ -320,10 +320,8 @@ export class AuthController implements AuthServiceController {
   /** No `@UseGuards(AuthGuard)`: `BeginDeviceLink` is always anonymous — any browser tab may
    * start one. Unlike `beginGitHubLogin`/`beginOidcLogin`, it carries no caller identity at all;
    * the account it ends up bound to is decided entirely by `approveDeviceLink` below. */
-  async beginDeviceLink(
-    @Payload() _request: BeginDeviceLinkRequest,
-  ): Promise<BeginDeviceLinkResponse> {
-    const begun = await this.auth.beginDeviceLink();
+  beginDeviceLink(@Payload() _request: BeginDeviceLinkRequest): BeginDeviceLinkResponse {
+    const begun = this.auth.beginDeviceLink();
     return {
       deviceCode: begun.deviceCode,
       userCode: begun.userCode,
