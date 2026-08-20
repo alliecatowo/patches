@@ -195,7 +195,7 @@ export async function attachReportEvidence(
   // Uniform message for "no such report" and "not this caller's report" — same no-oracle
   // reasoning as every other `*_NOT_FOUND` code in this codebase (spec §62).
   if (report === null || report.reporterActorId !== actorId) {
-    throw AppError.validation('Report not found.');
+    throw new AppError('REPORT_NOT_FOUND', 'Report not found.');
   }
 
   const existing = await manager

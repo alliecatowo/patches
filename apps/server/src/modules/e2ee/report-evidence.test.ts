@@ -16,7 +16,6 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import type { EntityManager } from 'typeorm';
 
-import { AppError } from '../../common/errors/app-error.js';
 import {
   attachReportEvidence,
   EnvNodeFrankingKeyRing,
@@ -456,7 +455,7 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
         } as never,
         fakeKeyRing(),
       ),
-    ).rejects.toBeInstanceOf(AppError);
+    ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' });
   });
 
   it('refuses a second evidence submission for the same report', async () => {
