@@ -48,6 +48,7 @@ import { type AccessTokenClaims } from '../auth/token.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
 import { E2eePrekeyService } from './prekey.service.js';
+import { E2eeReportEvidenceService } from './report-evidence.service.js';
 
 function requireSession(session: AccessTokenClaims | undefined): AccessTokenClaims {
   if (session === undefined)
@@ -70,6 +71,13 @@ function notImplemented(rpc: string): never {
  * `GetE2eeCapability` always reports `E2EE_CAPABILITY_STATE_DISABLED`: enabling `E2EE_V1` is
  * gated on ADR 0020 §12's ship gates (including P13-014's independent-review gate) and must stay
  * off regardless of which lifecycle RPCs this node happens to implement.
+ *
+ * `AttachReportEvidence` (ADR 0020 §9, P13-009) is implemented alongside them for the same
+ * reason: ADR 0020 §11's migration stage 3 ("node protocol behind a disabled capability") calls
+ * for report ingestion and opaque storage to exist before any capability is enabled, not after.
+ * Implementing it does not enable or advertise `E2EE_V1` — `getE2EeCapability` above is
+ * unaffected, and `assertFrankingProfileApproved` (`@patches/domain`) still throws for every
+ * profile, so no production conversation can ever generate real evidence for it to ingest.
  */
 @Controller()
 @UseGuards(AuthGuard)
@@ -79,6 +87,7 @@ export class E2eeController implements E2eeServiceController {
     private readonly identityRoots: E2eeIdentityRootService,
     private readonly deviceRosters: E2eeDeviceRosterService,
     private readonly prekeys: E2eePrekeyService,
+    private readonly reportEvidence: E2eeReportEvidenceService,
   ) {}
 
   getE2EeCapability(
@@ -204,9 +213,11 @@ export class E2eeController implements E2eeServiceController {
     notImplemented('AcknowledgeEnvelopes');
   }
 
-  attachReportEvidence(
-    @Payload() _request: AttachReportEvidenceRequest,
+  async attachReportEvidence(
+    @Payload() request: AttachReportEvidenceRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
   ): Promise<AttachReportEvidenceResponse> {
-    notImplemented('AttachReportEvidence');
+    return this.reportEvidence.attachReportEvidence(requireSession(session).actorId, request);
   }
 }
