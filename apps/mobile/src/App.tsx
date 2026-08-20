@@ -14,9 +14,11 @@ import { ComposeScreen } from './screens/ComposeScreen.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NotificationsScreen } from './screens/NotificationsScreen.js';
+import { RegisterScreen } from './screens/RegisterScreen.js';
 import { useSession } from './hooks/useSession.js';
 
 type Tab = 'home' | 'compose' | 'notifications';
+type AuthView = 'login' | 'register';
 
 /**
  * Top-level shell: sign-in gate, then a manual tab switcher (no react-navigation/expo-router
@@ -27,6 +29,7 @@ export default function App(): JSX.Element {
   const actor = useSession();
   const [booting, setBooting] = useState(true);
   const [tab, setTab] = useState<Tab>('home');
+  const [authView, setAuthView] = useState<AuthView>('login');
 
   useEffect(() => {
     void restoreSession().finally(() => setBooting(false));
@@ -45,7 +48,11 @@ export default function App(): JSX.Element {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        <LoginScreen />
+        {authView === 'login' ? (
+          <LoginScreen onSwitchToRegister={() => setAuthView('register')} />
+        ) : (
+          <RegisterScreen onSwitchToLogin={() => setAuthView('login')} />
+        )}
       </SafeAreaView>
     );
   }

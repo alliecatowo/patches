@@ -188,4 +188,75 @@ the task/PR):**
   still use ordinary `pnpm add --filter @patches/mobile` per repo convention, since `expo install`
   has no opinion on those.
 
-<!-- No further sections; scope for this task is complete. -->
+## 6. Native passkeys (WebAuthn) on Expo/React Native (P10-017)
+
+**Verified:** 2026-08-20 (Apple Developer docs, npm registry live, GitHub source repo for
+`react-native-passkeys` and `expo-passkeys`).
+
+**Documented:**
+
+- Apple's native passkey APIs (`ASAuthorizationPlatformPublicKeyCredentialProvider`) require an
+  **Associated Domains entitlement** and a hosted `apple-app-site-association` file with a
+  `webcredentials` section listing the app's bundle identifier, served over HTTPS with
+  `Content-type: application/json`, publicly reachable, not behind a VPN
+  (`developer.apple.com/documentation/xcode/supporting-associated-domains`,
+  `developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.associated-domains`,
+  fetched 2026-08-20).
+- `react-native-passkeys` (npm `latest` **0.4.2**, peer deps `expo>=53.0.0`,
+  `react-native>=0.71.0` — checked live via `npm view`, so it is nominally SDK-57-compatible) is the
+  most credible third-party wrapper found. Its README/GitHub docs state:
+  - API surface is two functions, **`create`** (registration) and **`get`** (authentication) —
+    mirroring `navigator.credentials.create`/`.get`, with "automatic conversion of base64-url
+    encoded strings to buffer."
+  - Setup requires **"Prebuild and run your app"** for both iOS and Android, plus
+    `expo-build-properties` config-plugin entries (min iOS deployment target 15.0, min Android
+    `compileSdkVersion` 34) — i.e. a **custom dev client / EAS build, not Expo Go**.
+  - iOS: host AASA at `.well-known/apple-app-site-association`, add
+    `"associatedDomains": ["webcredentials:<domain>"]` to `app.json`.
+  - Android: host `.well-known/assetlinks.json` with both
+    `delegate_permission/common.handle_all_urls` and `delegate_permission/common.get_login_creds`
+    relations (Google's Digital Asset Links / Credential Manager pattern).
+- `expo-passkeys` (npm `latest` **0.1.11**) explicitly states in its own npm description: **"iOS
+  (in development)... this package will currently don't work inside other projects. Please wait for
+  complete implementation"** — i.e. self-declared not production-ready for consumers.
+- Neither `docs.expo.dev` nor Apple nor Google publish a first-party guide describing the exact
+  output JSON shape of these native ceremonies as matching WebAuthn's
+  `PublicKeyCredentialCreationOptionsJSON`/`RegistrationResponseJSON`/etc. — no page fetched (Apple
+  passkey docs, `react-native-passkeys` README) makes an explicit "this equals
+  `@simplewebauthn/server`'s expected JSON" claim.
+
+**Inferred / unverified — flagged:**
+
+- `react-native-passkeys`'s "aims to stay close to the standard `navigator.credentials`" plus
+  base64url auto-conversion **suggests** its output is close to WebAuthn JSON shape, and other
+  WebAuthn wrapper libraries in the ecosystem generally target that shape by convention — but this
+  is inference, not a documented guarantee from Apple, Google, Expo, or the library's own docs. A
+  byte-level compatibility check against `@simplewebauthn/server`'s `verifyRegistrationResponse`/
+  `verifyAuthenticationResponse` input types was not (and could not be, from docs alone) performed.
+  Would require a runtime spike, not a docs read.
+- No official Apple/Google doc addresses Expo Go compatibility directly (they don't know Expo
+  exists); "Expo Go doesn't support it" is inferred from Expo's own general rule (documented
+  elsewhere in this file, §2) that native modules requiring custom entitlements/build config need a
+  dev client, combined with `react-native-passkeys`'s "prebuild" instruction — not a direct Expo
+  statement about this specific library.
+
+**Discrepancy with spec/training assumptions:**
+
+- None with `INITIAL_VISION.md` directly, but this bears on the existing proto comment: the
+  ADR-0011/0022-cited rationale ("Web-client-only — the TUI has no browser relying party") does not
+  by itself rule out mobile, since native apps _can_ have a WebAuthn relying party via platform
+  authenticator APIs — this note establishes mobile is **technically distinct** from "browser," not
+  automatically excluded by that comment's stated reasoning.
+
+**Verdict:** No sound, low-risk v0-viable path today. A native passkey flow is _theoretically_
+buildable (Apple and Google both document the platform primitives, and `react-native-passkeys`
+0.4.2 is an actively maintained wrapper), but it requires: (a) exiting Expo Go for a custom dev
+client/EAS build, (b) hosting and maintaining AASA + `assetlinks.json` at a stable HTTPS origin tied
+to the app's real bundle ID/package name (infra Patches doesn't yet have configured for mobile), and
+(c) an unverified assumption that the wrapper's JSON output is byte-compatible with
+`@simplewebauthn/server` — nothing official confirms that, only inferred from "stays close to the
+standard." `expo-passkeys` is explicitly not production-ready per its own description. Recommend the
+sibling agent **write a "not viable yet" note / defer passkey login on mobile** rather than build
+the button now; if the product still wants this, it needs its own spike task (dev-client build +
+AASA hosting + a runtime compatibility check against the real server RPCs) before implementation,
+not a research-note-only green light.

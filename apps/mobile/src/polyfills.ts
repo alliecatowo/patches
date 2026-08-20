@@ -20,3 +20,14 @@ const target = globalThis as unknown as { crypto?: MinimalCrypto };
 if (typeof target.crypto?.randomUUID !== 'function') {
   target.crypto = { ...target.crypto, randomUUID: () => Crypto.randomUUID() };
 }
+
+/**
+ * Typed accessor for the `globalThis.crypto.randomUUID` installed above. `apps/mobile`'s
+ * `tsconfig.json` has no `"DOM"` lib (unlike `apps/web`/`@patches/client`, which need it for
+ * `HeadersInit`), so a bare `crypto.randomUUID()` call site doesn't typecheck here — screens
+ * that need a client-generated id (e.g. `RegisterRequest.client_request_id`) call this instead
+ * of reaching for the global directly.
+ */
+export function randomUUID(): string {
+  return Crypto.randomUUID();
+}
