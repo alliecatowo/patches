@@ -43,7 +43,8 @@ narration (only 1% of requests call no tool) or batching (1.13 tool calls/reques
   TUI.
 - **Right-sized output, never blind truncation.** `| tail -3` that hides the failing test costs
   you two more turns to recover 3k of text. Use `vitest run --reporter=dot`, `tsc --noEmit`,
-  `eslint -f unix`, `pnpm -s`, `git --no-pager diff --stat`.
+  `eslint` (default reporter — `-f unix` no longer exists and fails after the full lint),
+  `pnpm -s`, `git --no-pager diff --stat`.
 - **Hand off instead of grinding.** Around 40 turns or 120k context, stop and return a compact
   handoff — done / left / paths you own / the next concrete step. A fresh agent continuing from
   that packet is far cheaper than you continuing; the orchestrator expects this and it is not a

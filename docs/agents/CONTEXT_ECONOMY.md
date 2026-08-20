@@ -99,8 +99,9 @@ reads/edits/verify steps into one request.
    guidance so nobody "rediscovers" the old inflated 40% figure and re-prioritizes around it.
 4. **Right-size output at the source, never blind-truncate.** `| tail -3` that hides a failing
    test costs extra requests to recover a few KB of output — use the tool's own reporter instead:
-   `vitest run --reporter=dot`, `tsc --noEmit` (already errors-only), `eslint -f unix`, `pnpm -s`,
-   `git --no-pager diff --stat`.
+   `vitest run --reporter=dot`, `tsc --noEmit` (already errors-only), `eslint` with its default
+   reporter, `pnpm -s`, `git --no-pager diff --stat`. Not `eslint -f unix`: the unix formatter was
+   removed from core ESLint, so the flag errors out _after_ paying for the whole 42s lint run.
 5. **Keep reports short.** Every agent report stays in the orchestrator's context for the rest of
    the session and is re-read on every subsequent request.
 

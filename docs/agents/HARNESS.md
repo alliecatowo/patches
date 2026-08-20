@@ -81,8 +81,9 @@ workers average 196k context over 18,676 requests, worst 5 burn 156M–96M token
    but the old "39% pure narration" figure was a measurement bug (double-counted JSONL lines) —
    retired, don't over-invest here.
 4. **Never blind-truncate output.** `| tail -3` hiding a failure costs extra requests to recover
-   it. Use the tool's own reporter: `vitest run --reporter=dot`, `tsc --noEmit`, `eslint -f unix`,
-   `pnpm -s`, `git --no-pager diff --stat`.
+   it. Use the tool's own reporter: `vitest run --reporter=dot`, `tsc --noEmit`, `eslint` (its
+   default reporter — `-f unix` is NOT available, the formatter was dropped from core ESLint and
+   the flag fails after the full lint has already run), `pnpm -s`, `git --no-pager diff --stat`.
 5. **Briefs are self-contained.** Paste the exact snippets needed; no "read first: A, B, C" lists.
 6. **Use `LSP` for symbol questions** (where defined, who calls it, what implements this), not
    `Grep` + a whole-file `Read` — `findReferences`/`incomingCalls` replace "grep then read every
