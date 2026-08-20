@@ -12,8 +12,14 @@
  * `~/.claude/projects/<slug>/<session>.jsonl`, each subagent under
  * `${TMPDIR:-/tmp}/claude-<uid>/<slug>/<session>/tasks/<agent>.output`. An assistant entry
  * carries `message.usage` (input/cache_read/cache_creation/output) and `message.content[]`,
- * whose `tool_use` blocks give that turn's tool-call count. "Context size" for a turn is the
- * sum of the three input counters — that is what the turn actually re-read.
+ * whose `tool_use` blocks give that request's tool-call count. "Context size" is the sum of
+ * the three input counters — that is what the request actually re-read.
+ *
+ * TRAP: Claude Code writes ONE API request as SEVERAL JSONL lines (a `thinking` line, then a
+ * `tool_use` line, ...), each repeating the *identical* `usage` object. Summing per line
+ * inflates every total ~40% and invents a large population of "zero-tool turns" that are
+ * really the thinking half of a request that did call a tool. Group by `message.id` first.
+ * Everything below counts API requests, not JSONL lines.
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -39,9 +45,17 @@ function walk(dir, match, out = []) {
   return out;
 }
 
-/** One row per API request, which is the unit that pays for a context re-read. */
+/**
+ * One row per API request, which is the unit that pays for a context re-read.
+ *
+ * Several JSONL lines can share one `message.id` — they are fragments of a single request and
+ * repeat its `usage` verbatim. The first fragment wins for the token counters; `tool_use` blocks
+ * are summed across all fragments, so a request whose thinking and tool call were logged
+ * separately is correctly counted as one request that called one tool.
+ */
 function turnsIn(path) {
-  const turns = [];
+  const byId = new Map();
+  let anonymous = 0;
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     if (line === '') continue;
     let entry;
@@ -54,19 +68,25 @@ function turnsIn(path) {
     if (typeof message !== 'object' || message === null) continue;
     const usage = message.usage;
     if (typeof usage !== 'object' || usage === null) continue;
+    const id = typeof message.id === 'string' ? message.id : `anon:${anonymous++}`;
     const content = Array.isArray(message.content) ? message.content : [];
-    turns.push({
-      model: typeof message.model === 'string' ? message.model : 'unknown',
-      context:
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0),
-      cacheRead: usage.cache_read_input_tokens ?? 0,
-      output: usage.output_tokens ?? 0,
-      tools: content.filter((block) => block?.type === 'tool_use').length,
-    });
+    let turn = byId.get(id);
+    if (turn === undefined) {
+      turn = {
+        model: typeof message.model === 'string' ? message.model : 'unknown',
+        context:
+          (usage.input_tokens ?? 0) +
+          (usage.cache_read_input_tokens ?? 0) +
+          (usage.cache_creation_input_tokens ?? 0),
+        cacheRead: usage.cache_read_input_tokens ?? 0,
+        output: usage.output_tokens ?? 0,
+        tools: 0,
+      };
+      byId.set(id, turn);
+    }
+    turn.tools += content.filter((block) => block?.type === 'tool_use').length;
   }
-  return turns;
+  return [...byId.values()];
 }
 
 function collect(paths) {
@@ -95,6 +115,7 @@ function totals(contexts) {
     noToolTokens: turns.filter((t) => t.tools === 0).reduce((acc, t) => acc + t.context, 0),
     noToolTurns: turns.filter((t) => t.tools === 0).length,
     above100k: turns.reduce((acc, t) => acc + Math.max(0, t.context - 100_000), 0),
+    above200k: turns.reduce((acc, t) => acc + Math.max(0, t.context - 200_000), 0),
   };
 }
 
@@ -130,18 +151,24 @@ const lines = [
   ``,
   `  cache reads      ${B(all.cacheRead)}   (orchestrator ${pct(mainTotals.cacheRead, all.cacheRead)}, subagents ${pct(subTotals.cacheRead, all.cacheRead)})`,
   `  output           ${M(all.output)}   amplification ${Math.round(all.cacheRead / Math.max(all.output, 1))}:1`,
-  `  turns            ${all.turns} across ${all.contexts} contexts`,
-  `  tool calls/turn  ${(all.toolCalls / Math.max(all.turns, 1)).toFixed(2)}   ← batching; 1.0 means never batched`,
-  `  no-tool turns    ${pct(all.noToolTurns, all.turns)} of turns, ${pct(all.noToolTokens, all.contextTokens)} of tokens   ← narration`,
+  `  API requests     ${all.turns} across ${all.contexts} contexts`,
+  `  tool calls/req   ${(all.toolCalls / Math.max(all.turns, 1)).toFixed(2)}   ← batching; 1.0 means never batched`,
+  `  no-tool requests ${pct(all.noToolTurns, all.turns)} of requests, ${pct(all.noToolTokens, all.contextTokens)} of tokens   ← narration`,
   `  read above 100k  ${pct(all.above100k, all.contextTokens)} of tokens   ← agent lifetime`,
+  `  read above 200k  ${pct(all.above200k, all.contextTokens)} of tokens   ← agent lifetime, tail`,
   ``,
-  `  worst subagent contexts (cache read / turns / mean context):`,
+  `  workers only (subagents; the orchestrator is allowed a long context):`,
+  `    mean context   ${Math.round(subTotals.contextTokens / Math.max(subTotals.turns, 1) / 1000)}k over ${subTotals.turns} requests`,
+  `    above 100k     ${pct(subTotals.above100k, subTotals.contextTokens)} of tokens`,
+  `    above 200k     ${pct(subTotals.above200k, subTotals.contextTokens)} of tokens`,
+  ``,
+  `  worst subagent contexts (cache read / requests / mean context):`,
   ...report.worstAgents.map(
     (agent) =>
-      `    ${M(agent.cacheRead).padStart(8)}  ${String(agent.turns).padStart(4)} turns  ${Math.round(agent.meanContext / 1000)}k mean`,
+      `    ${M(agent.cacheRead).padStart(8)}  ${String(agent.turns).padStart(4)} req  ${Math.round(agent.meanContext / 1000)}k mean`,
   ),
   ``,
-  `  targets (docs/agents/CONTEXT_ECONOMY.md): tool calls/turn > 1.5, no-tool turns < 15%,`,
-  `  above-100k share < 25%. Compare runs with --json --since <date>.`,
+  `  targets (docs/agents/CONTEXT_ECONOMY.md): worker above-200k share < 10%, worker above-100k`,
+  `  share < 35%, tool calls/req > 1.5. Compare runs with --json --since <date>.`,
 ];
 process.stdout.write(`${lines.join('\n')}\n`);

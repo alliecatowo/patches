@@ -7,6 +7,10 @@ actionlint = "1.7.12"
 lefthook = "2.1.10"
 vhs = "latest"
 ttyd = "latest"
+# Powers Claude Code's `LSP` tool (go-to-definition / find-references / workspace symbols) via the
+# typescript-lsp plugin, which spawns `typescript-language-server --stdio` off $PATH.
+# See docs/agents/HARNESS.md "Symbolic search".
+"npm:typescript-language-server" = "5.3.0"
 
 [env]
 # Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
