@@ -606,3 +606,24 @@ column type, check `packages/database/src/index.ts` for an `X as XValue` pattern
 — `filters/filter-enums.ts` already gets this right and is the reference example. If a `tsc`
 error names a type that should be a string union but the message shape looks like an
 object/class, suspect this collision first.
+
+## 2026-08-19 — Context-economy rules stayed prose-only and weren't holding (H-010)
+
+**Context:** measurement of a large multi-agent session (`docs/agents/CONTEXT_ECONOMY.md`)
+showed the token-discipline section of `HARNESS.md` — batch calls, cap lifetime and hand off,
+never blind-truncate — wasn't changing agent behavior even though it was stated clearly. One
+agent alone ran to 785 turns with a 340k mean context.
+
+**Learning:** a rule that only exists as prose in a prompt an agent re-reads every turn competes
+with everything else in that same context and has no enforcement behind it; it needs a
+mechanical backstop, not a stronger sentence.
+
+**Action taken:** added `maxTurns` (12–40, sized per role) and `disallowedTools: mcp__*` to every
+`.claude/agents/*.md` frontmatter; each agent body now states what a handoff at the cap must
+contain. Added `CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000` to `.claude/settings.json`'s `env` block.
+Added `.claude/hooks/trim-output.sh` (`PostToolUse`/`Bash`) to strip lossless noise (ANSI, pnpm
+banners, repeated engine warnings) from tool output without touching diagnostics. Added each
+agent's specific "use Read/Edit/Write/Grep, not sed/heredocs" note since silent-wrong shell
+rewrites are a distinct, separate failure mode from the token-cost problem. See
+`docs/agents/CONTEXT_ECONOMY.md`'s new "Enforced by configuration" section for the full list and
+rationale.

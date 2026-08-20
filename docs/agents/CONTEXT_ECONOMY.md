@@ -82,6 +82,28 @@ prompts:
   turn. Revisit only if rules 1–3 stop paying.
 - **A dumber orchestrator.** It is 6.5% of spend and it is what decides which work exists.
 
+## Enforced by configuration
+
+Prose alone didn't hold, so the top findings above are now backstopped mechanically:
+
+- **`maxTurns`** in every `.claude/agents/*.md` frontmatter (12–40, sized to role: `verifier` 12,
+  `researcher`/`reviewer`/`docs-writer`/`harness-tuner` 20, `architect` 30, `spec-auditor` 35,
+  `implementer` 40) — a hard backstop against the 785-turn runaway case, not a target. Each
+  agent's body says what a handoff at the cap must contain (done / left / owned paths / next
+  step) so hitting it is a graceful stop, not a truncation.
+- **`disallowedTools: mcp__*`** on every agent — none use MCP; this keeps the tool-schema portion
+  of the fixed preamble (13% of subagent tokens) from growing as MCP servers are added later.
+- **`CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000`** in `.claude/settings.json`'s `env` block, targeting
+  the "tokens read above 100k context" finding directly — the `env` form is used instead of a
+  top-level `autoCompactWindow` key because it's a documented, stable knob regardless of the exact
+  settings schema this repo's `$schema` validates against, so a typo here can't silently break
+  session startup.
+- **`.claude/hooks/trim-output.sh`** (`PostToolUse`/`Bash`) strips ANSI escapes, pnpm/turbo
+  lifecycle banners, and repeated `[WARN] Unsupported engine` lines, and collapses long blank-line
+  runs — lossless only, fails open on any error. It does not touch diagnostics (test failures,
+  error output), per the "never blind-truncate" rule above; verified by diffing real captured
+  `pnpm test` output before/after.
+
 ### Open experiment
 
 `H-011` — a sonnet agent whose only tool is `Agent`, delegating read/edit/verify waves to haiku
