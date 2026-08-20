@@ -31,7 +31,12 @@ if ! git rev-parse --verify --quiet "${BASE_REF}" >/dev/null; then
   exit 0
 fi
 
-if [ -z "$(git ls-tree -r --name-only "${BASE_REF}" -- packages/proto/proto)" ]; then
+# `:/` anchors the pathspec to the repository root. `pnpm --filter` runs this from
+# `packages/proto`, and a bare `packages/proto/proto` pathspec is resolved *relative to the
+# current directory* — so it looked for `packages/proto/packages/proto/proto`, found nothing, and
+# took the "no schemas yet" exit below on every single run. The breaking check has therefore been
+# a no-op since the first protobuf commit, silently, while reporting success.
+if [ -z "$(git ls-tree -r --name-only "${BASE_REF}" -- ':/packages/proto/proto')" ]; then
   echo "buf breaking: '${BASE_REF}' has no protobuf schemas yet — nothing to compare against."
   exit 0
 fi
