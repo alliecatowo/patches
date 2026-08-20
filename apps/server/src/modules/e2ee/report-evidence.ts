@@ -23,6 +23,7 @@ import {
   type AttachReportEvidenceResponse,
 } from '@patches/proto/nest';
 import {
+  ConversationMember as ConversationMemberEntity,
   E2eeLogicalMessage as E2eeLogicalMessageEntity,
   E2eeMailboxEnvelope as E2eeMailboxEnvelopeEntity,
   E2eeReportEvidence as E2eeReportEvidenceEntity,
@@ -221,6 +222,23 @@ export async function attachReportEvidence(
   // reasoning as every other `*_NOT_FOUND` code in this codebase (spec §62).
   if (report === null || report.reporterActorId !== actorId) {
     throw new AppError('REPORT_NOT_FOUND', 'Report not found.');
+  }
+
+  // ADR 0020 §9 requires conversation authorization before evidence is marked verified: a
+  // reporter must actually have been a participant in `request.conversationId`, not merely own
+  // the report row (ADR 0024 B-054). `ConversationMember` rows are never deleted on leave — only
+  // `leftAt` is set (see the entity's own doc comment) — so a reporter who has since left still
+  // has a row here and can still report a conversation they were once part of. Same no-oracle
+  // reasoning as `REPORT_NOT_FOUND` above (spec §62): "no such conversation" and "you were never
+  // a member of it" get one indistinguishable error.
+  const membership = await manager
+    .getRepository(ConversationMemberEntity)
+    .findOne({ where: { conversationId: request.conversationId, actorId } });
+  if (membership === null) {
+    throw new AppError(
+      'E2EE_CONVERSATION_NOT_FOUND',
+      'No E2EE conversation with this id has you as a member.',
+    );
   }
 
   const existing = await manager

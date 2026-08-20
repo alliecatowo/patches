@@ -8,6 +8,7 @@ import {
 } from '@patches/crypto';
 import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 import {
+  ConversationMember,
   E2eeLogicalMessage,
   E2eeMailboxEnvelope,
   E2eeReportEvidence,
@@ -50,15 +51,28 @@ function fakeManager(tables: {
   existingEvidence: Row | null;
   logicalMessages: Map<string, Row>;
   envelopesByMessage: Map<string, Row[]>;
+  /** Defaults to "the caller is a member of conv-1" so every test not exercising B-054 keeps
+   * passing without having to know about membership rows. */
+  membership?: Row | null;
 }) {
   const evidenceSaves: Row[] = [];
   const itemSaves: Row[] = [];
+  const membershipRow =
+    tables.membership === undefined
+      ? { conversationId: 'conv-1', actorId: 'reporter-actor' }
+      : tables.membership;
 
   const repos = new Map<unknown, unknown>([
     [
       Report,
       {
         findOne: vi.fn().mockResolvedValue(tables.report),
+      },
+    ],
+    [
+      ConversationMember,
+      {
+        findOne: vi.fn().mockResolvedValue(membershipRow),
       },
     ],
     [
@@ -474,6 +488,30 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
         fakeKeyRing(),
       ),
     ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' });
+  });
+
+  it('refuses evidence for a conversation the reporter was never a member of (ADR 0024 B-054)', async () => {
+    const { manager } = fakeManager({
+      report: REPORT_ROW,
+      existingEvidence: null,
+      logicalMessages: new Map(),
+      envelopesByMessage: new Map(),
+      membership: null,
+    });
+
+    await expect(
+      attachReportEvidence(
+        manager,
+        'reporter-actor',
+        {
+          reportId: 'report-1',
+          conversationId: 'conv-1',
+          reporterConsented: true,
+          items: [reportEvidenceItem()],
+        } as never,
+        fakeKeyRing(),
+      ),
+    ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
   });
 
   it('refuses a second evidence submission for the same report', async () => {
