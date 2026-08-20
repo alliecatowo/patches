@@ -324,3 +324,23 @@ The fix is `enumWireName(schema, value)` in `apps/tui/src/api/wire/enums.ts`, ov
 `enumToJson`, which reads the generated descriptor and returns the proto wire name — so it is
 byte-identical to what ts-proto used to interpolate, rather than a hand-maintained lookup table
 that would drift from the .proto.
+
+## Agent worktrees exhaust `/tmp`'s inodes long before its disk (2026-08-20)
+
+Eleven accumulated agent worktrees under `/tmp/patches-wt` used **1,048,576 of 1,048,576 inodes
+(100%)** while `/tmp` still reported 4.8G of 7.5G free. Every command then failed with
+"no space left on device" on a path with plenty of bytes available — including the shell tool's
+own cwd file, which makes it look like the harness broke rather than the disk filling.
+
+pnpm's store is thousands of small files per workspace, so a worktree costs far more inodes than
+bytes. `df -h` will not show this coming; `df -i` is the check that matters.
+
+Two rules:
+
+1. **Run `.claude/scripts/worktree-collect.sh clean` between agent waves**, not just at the end of
+   a session. It removes only worktrees whose branches are fully merged, which is the safe subset.
+2. **Still never clean while agents are live** — that rule is unchanged and it is why this piled up
+   in the first place. The fix is cleaning promptly _after_ each wave lands, not cleaning during one.
+
+Recovery when it happens: `git rev-list --count main..<branch>` each worktree's branch, `rm -rf`
+only the ones at 0 (nothing unique in them), then `git worktree prune` and `git branch -D`.
