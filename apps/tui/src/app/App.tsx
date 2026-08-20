@@ -74,6 +74,8 @@ import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js
 import { ActiveThemeProvider } from './theme-context.js';
 import { MIN_TERMINAL_SIZE, theme } from '../theme/index.js';
 import { PlainModeProvider } from '../theme/plain-mode.js';
+import { resolveGlyphSet } from '../theme/glyphs.js';
+import type { GlyphSetName } from '../theme/themes/types.js';
 import { isTruthy } from '../env.js';
 import { CommandHistory, contextualCommands, type ContextualSelection } from './commands.js';
 import {
@@ -276,6 +278,14 @@ export function App({
   // means safely tearing down any in-flight Kitty placements first. The Preferences row
   // edits this as a plain preference: it is what the *next* launch picks up.
   const [imagePolicy, setImagePolicy] = useState<ImagePolicy>('auto');
+  // Glyph set (P12-103) — `PATCHES_GLYPHS` > saved preference > auto (unicode unless the
+  // locale isn't UTF-8). Never auto-selects `nerd` (design vision §3.5). Was previously
+  // resolved nowhere: the Preferences row cycled a value that never left the screen it was
+  // opened from and no renderer ever read it (B-047) — `MessagesScreen`'s one glyph call
+  // site below is threaded from this state the same way `plain`/`quiet` already are.
+  const [glyphSet, setGlyphSet] = useState<GlyphSetName>(() =>
+    resolveGlyphSet({ envGlyphSet: env.PATCHES_GLYPHS, locale: env.LC_ALL ?? env.LANG }),
+  );
 
   // --- theme engine (P12-101/P12-127) --------------------------------------
   // Precedence is resolved once, purely, in `theme/themes/resolution.ts`:
@@ -298,7 +308,14 @@ export function App({
   );
   /** What `Esc` on the preferences screen restores (P12-112). */
   const revertPreferences = useRef<
-    | { theme: BuiltInThemeName; plain: boolean; quiet: boolean; imagePolicy: ImagePolicy }
+    | {
+        theme: BuiltInThemeName;
+        plain: boolean;
+        quiet: boolean;
+        imagePolicy: ImagePolicy;
+        glyphSet: GlyphSetName;
+        linearMode: boolean;
+      }
     | undefined
   >(undefined);
 
@@ -486,6 +503,11 @@ export function App({
         if (saved.imagePolicy !== undefined) setImagePolicy(saved.imagePolicy);
         if (saved.linearMode !== undefined && !isTruthy(env.PATCHES_LINEAR))
           setLinearMode(saved.linearMode);
+        if (
+          saved.glyphSet !== undefined &&
+          (env.PATCHES_GLYPHS === undefined || env.PATCHES_GLYPHS.trim() === '')
+        )
+          setGlyphSet(saved.glyphSet);
       },
       // Unreadable preferences are not an error worth a toast — the defaults are fine.
       () => undefined,
@@ -495,6 +517,7 @@ export function App({
     };
   }, [
     api.target,
+    env.PATCHES_GLYPHS,
     env.PATCHES_LINEAR,
     env.PATCHES_PLAIN,
     env.PATCHES_THEME,
@@ -1025,7 +1048,14 @@ export function App({
 
   /** `,` — records what `Esc` restores, then opens the settings screen (P12-112). */
   function openPreferences(): void {
-    revertPreferences.current = { theme: themeName, plain, quiet, imagePolicy };
+    revertPreferences.current = {
+      theme: themeName,
+      plain,
+      quiet,
+      imagePolicy,
+      glyphSet,
+      linearMode,
+    };
     goTo({ screen: 'preferences' });
   }
 
@@ -1044,7 +1074,14 @@ export function App({
     void preferences
       .set(
         { nodeOrigin: api.target, actorId: session.userId },
-        { theme: themeName, plainMode: plain, quietFeed: quiet, imagePolicy, linearMode },
+        {
+          theme: themeName,
+          plainMode: plain,
+          quietFeed: quiet,
+          imagePolicy,
+          linearMode,
+          glyphSet,
+        },
       )
       .then(
         () =>
@@ -1068,6 +1105,8 @@ export function App({
       setPlain(previous.plain);
       setQuiet(previous.quiet);
       setImagePolicy(previous.imagePolicy);
+      setGlyphSet(previous.glyphSet);
+      setLinearMode(previous.linearMode);
     }
     back();
   }
@@ -1728,6 +1767,10 @@ export function App({
             onPlainChange={setPlain}
             quiet={quiet}
             onQuietChange={setQuiet}
+            linear={linearMode}
+            onLinearChange={setLinearMode}
+            glyphSet={glyphSet}
+            onGlyphSetChange={setGlyphSet}
             imagePolicy={imagePolicy}
             onImagePolicyChange={setImagePolicy}
             onSave={savePreferences}
@@ -1911,6 +1954,7 @@ export function App({
             isActive={active}
             viewerActorId={session.userId}
             dmRetentionDays={dmRetentionDays}
+            glyphSet={glyphSet}
             onBack={back}
           />
         );
@@ -2267,6 +2311,7 @@ export function App({
                                   isActive={screenIsActive && !pendingGo}
                                   viewerActorId={session.userId}
                                   dmRetentionDays={dmRetentionDays}
+                                  glyphSet={glyphSet}
                                   // The screen owns backing out of its own thread/requests
                                   // sub-views on `Esc` (`backToList`) — this only fires once
                                   // it has nothing left to back out of, so the shell's own

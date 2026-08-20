@@ -66,6 +66,12 @@ describe('MemoryPreferenceStore', () => {
     }
   });
 
+  it('round-trips linearMode', async () => {
+    const store = new MemoryPreferenceStore();
+    await store.set(ALICE, { linearMode: true });
+    await expect(store.get(ALICE)).resolves.toEqual({ linearMode: true });
+  });
+
   it('rejects an unrecognized glyphSet or imagePolicy value', () => {
     const store = new MemoryPreferenceStore();
     // Deliberately malformed input — simulates a hand-edited preferences.json, not a type

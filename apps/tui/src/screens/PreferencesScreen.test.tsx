@@ -55,6 +55,8 @@ function baseProps(overrides: Partial<PreferencesScreenProps> = {}): Preferences
     onPlainChange: vi.fn(),
     quiet: false,
     onQuietChange: vi.fn(),
+    linear: false,
+    onLinearChange: vi.fn(),
     onSave: vi.fn(),
     onCancel: vi.fn(),
     canPersist: true,
@@ -82,6 +84,7 @@ describe('PreferencesScreen', () => {
     expect(frame).toContain('Glyphs:');
     expect(frame).toContain('Plain mode:');
     expect(frame).toContain('Quiet feed:');
+    expect(frame).toContain('Linear mode:');
     expect(frame).toContain('Images:');
   });
 
@@ -102,8 +105,8 @@ describe('PreferencesScreen', () => {
     const { stack } = renderScreen(
       baseProps({ onSave, onOpenFilters, onOpenFilterLists, onOpenLabelers }),
     );
-    // theme -> glyphs -> plain -> quiet -> images -> privacy -> filters
-    for (let index = 0; index < 6; index += 1) await dispatch(stack, 'j');
+    // theme -> glyphs -> plain -> quiet -> linear -> images -> privacy -> filters
+    for (let index = 0; index < 7; index += 1) await dispatch(stack, 'j');
     await dispatch(stack, '', key({ return: true }));
     expect(onOpenFilters).toHaveBeenCalledOnce();
 
@@ -169,6 +172,7 @@ describe('PreferencesScreen', () => {
     await dispatch(stack, 'j'); // glyphs
     await dispatch(stack, 'j'); // plain
     await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // linear
     await dispatch(stack, 'j'); // images
     await dispatch(stack, 'l');
     expect(onImagePolicyChange).toHaveBeenCalledWith('pixel');
@@ -180,6 +184,7 @@ describe('PreferencesScreen', () => {
     await dispatch(stack, 'j'); // glyphs
     await dispatch(stack, 'j'); // plain
     await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // linear
     await dispatch(stack, 'j'); // images
     await dispatch(stack, 'h');
     expect(onImagePolicyChange).toHaveBeenCalledWith('off');
@@ -190,8 +195,20 @@ describe('PreferencesScreen', () => {
     await dispatch(stack, 'j'); // glyphs
     await dispatch(stack, 'j'); // plain
     await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // linear
     await dispatch(stack, 'j'); // images
     expect(stripSgr(lastFrame() ?? '')).toContain('Colourless dithered ascii art');
+  });
+
+  it('toggles linear mode on its row', async () => {
+    const onLinearChange = vi.fn();
+    const { stack } = renderScreen(baseProps({ onLinearChange }));
+    await dispatch(stack, 'j'); // glyphs
+    await dispatch(stack, 'j'); // plain
+    await dispatch(stack, 'j'); // quiet
+    await dispatch(stack, 'j'); // linear
+    await dispatch(stack, ' ');
+    expect(onLinearChange).toHaveBeenCalledWith(true);
   });
 
   it('shows a live AA contrast explanation for the previewed theme (P12-112)', () => {

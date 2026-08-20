@@ -28,6 +28,11 @@ export interface PreferencesScreenProps {
   onPlainChange: (next: boolean) => void;
   quiet: boolean;
   onQuietChange: (next: boolean) => void;
+  /** Linear/screen-reader mode (P12-118) — one column, no overlays/drawers, indexed rows,
+   * plain implied. `--linear`/`PATCHES_LINEAR`/`:linear` still win at launch and from the
+   * command line the same way `--theme`/`PATCHES_THEME` win over the theme row (B-047). */
+  linear: boolean;
+  onLinearChange: (next: boolean) => void;
   /**
    * Glyph set (P12-103). Optional and uncontrolled when omitted — the row still works and
    * previews live, it just can't outlive this screen until the shell lifts the state up next
@@ -62,6 +67,7 @@ type Row =
   | 'glyphs'
   | 'plain'
   | 'quiet'
+  | 'linear'
   | 'images'
   | 'privacy'
   | 'filters'
@@ -72,6 +78,7 @@ const ROWS: readonly Row[] = [
   'glyphs',
   'plain',
   'quiet',
+  'linear',
   'images',
   'privacy',
   'filters',
@@ -94,6 +101,7 @@ const ROW_LABELS: Readonly<Record<Row, string>> = {
   glyphs: 'Glyphs',
   plain: 'Plain mode',
   quiet: 'Quiet feed',
+  linear: 'Linear mode',
   images: 'Images',
   privacy: 'Privacy',
   filters: 'Filters',
@@ -106,6 +114,7 @@ const ROW_HELP: Readonly<Record<Row, string>> = {
   glyphs: 'unicode/nerd/ascii — never required: every control has a word alongside a glyph.',
   plain: 'Strips every colour, glyph and border — including your own (spec §173).',
   quiet: 'Hides other actors’ cosmetics; your own decoration stays (spec §185).',
+  linear: 'One column, no overlays or drawers, indexed rows — implies plain mode.',
   images: 'h/l cycles auto/pixel/ascii/box/off — see the line below for what each does.',
   privacy: 'Enter opens the privacy notice, discoverability, export and deletion (:privacy).',
   filters: 'Enter opens your bring-your-own filter rules (:filters, spec §198).',
@@ -143,6 +152,8 @@ export function PreferencesScreen({
   onPlainChange,
   quiet,
   onQuietChange,
+  linear,
+  onLinearChange,
   glyphSet: controlledGlyphSet,
   onGlyphSetChange,
   imagePolicy: controlledImagePolicy,
@@ -193,6 +204,10 @@ export function PreferencesScreen({
     }
     if (current === 'quiet') {
       onQuietChange(!quiet);
+      return;
+    }
+    if (current === 'linear') {
+      onLinearChange(!linear);
       return;
     }
     if (NAVIGATION_ROWS.has(current)) return;
@@ -259,8 +274,8 @@ export function PreferencesScreen({
       : `AA contrast ${themeContrast.ratio.toFixed(2)}:1 against background${
           themeContrast.readable ? '' : ` — below the ${READABLE_TEXT_CONTRAST.toFixed(2)}:1 floor`
         }.`;
-  // Title, source line, nine option rows, help line, hint line.
-  const chromeRows = 13;
+  // Title, source line, ten option rows, help line, hint line.
+  const chromeRows = 14;
   const showPreview = content.rows >= chromeRows + THEME_PREVIEW_DIMENSIONS.height;
 
   function rowValue(candidate: Row): string {
@@ -273,6 +288,8 @@ export function PreferencesScreen({
         return plain ? 'on' : 'off';
       case 'quiet':
         return quiet ? 'on' : 'off';
+      case 'linear':
+        return linear ? 'on' : 'off';
       case 'images':
         return imagePolicyValue;
       case 'privacy':

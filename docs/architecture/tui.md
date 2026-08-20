@@ -364,6 +364,75 @@ the safe-scheme allow-list and the escape stripping in particular are security
 behaviour, not formatting. If the module needs to move, promote it to a shared package
 (`packages/domain` or a new `packages/markup`) — do not fork it.
 
+## 7c. Theme engine and user configuration (P12-101/103/113/117/127, B-047)
+
+`theme/` (`theme/index.ts`, `theme/themes/*`, `theme/glyphs.ts`, `theme/color.ts`,
+`theme/plain-mode.tsx`) and `preferences/store.ts` together implement themes and persisted
+per-account configuration. `Status: implemented.`
+
+### Themes
+
+Six built-ins (`theme/themes/registry.ts`): `patches`, `paper`, `mono` (zero colour codes at
+all — design vision §4.1's "no colour: bold/dim/inverse only"), `hacker`, `pastel`, and
+`terminal` (`backgroundMode: 'terminal'`, delegates every token to the user's own palette). Each
+defines all 13 `SemanticColorToken`s (`theme/themes/types.ts`) plus a `preferredGlyphSet` and
+`backgroundMode`; `theme/themes/registry.ts`'s `validateThemeContrast` enforces the WCAG AA
+4.5:1 floor for every theme at build/test time, not just at authoring time.
+
+A user can also drop a JSON theme at `$XDG_CONFIG_HOME/patches/themes/<name>.json` (default
+`~/.config/patches/themes/<name>.json`, `theme/themes/load.ts` + `schema.ts`) — every one of the
+13 tokens is required (a theme that silently omits one is exactly the "quietly unreadable on
+some background" bug the validation exists to catch), each value a 6-digit hex colour or `null`
+(delegate to the terminal). An invalid file never crashes the app: `resolveThemeWithUserThemes`
+falls back to `patches` and returns a message the shell toasts once.
+
+Precedence (`theme/themes/resolution.ts`'s `resolveTheme`/`resolveThemeWithUserThemes`, pure and
+unit-tested independent of disk/env access): `--theme` > `PATCHES_THEME` > the saved local
+per-node+per-actor preference > `patches`. `App.tsx` resolves this once at mount from
+`PATCHES_THEME`, then again once the signed-in account's saved preference loads
+(`preferences.get`) — an env/CLI value never gets silently overridden by a saved one. The `,`
+Preferences screen's Theme row applies a preview live (`setActiveTheme`/`onPreviewTheme`) before
+the viewer commits; `Esc` reverts to whatever was active when the screen opened.
+
+**Colour degradation is Ink/chalk's job, not this engine's.** Every theme token is authored as a
+plain 6-digit hex string (or `null`); passing that straight to `<Text color>`/`<Box
+borderColor>` already downsamples truecolor → 256-colour → 16-colour → no colour based on what
+the terminal reports, and chalk (which Ink uses internally) honours `NO_COLOR`/`TERM=dumb`
+itself — nothing in `theme/` needs to special-case either. `theme/color.ts`'s explicit
+`resolveTerminalColor`/`terminalContrastRatio` (`TerminalColorTier`: `truecolor`/`ansi256`/
+`ansi16`/`text`) exist for the one place a tier must be _chosen and previewed on purpose_ rather
+than left to the terminal: `ColorPicker`'s swatch preview when picking a custom nameplate
+colour, so what you see while picking a colour is what you'll actually get.
+
+### Glyph sets (P12-103)
+
+`theme/glyphs.ts`'s `resolveGlyphSet({ envGlyphSet, preferredGlyphSet, locale })`: `PATCHES_GLYPHS`
+env > saved preference > auto (`unicode` unless the locale isn't UTF-8, in which case `ascii`).
+`nerd` (Nerd Font glyphs) is never auto-selected — opt-in only, per design vision §3.5. No control
+in the app is glyph-only: every glyph has a word alongside it or an ASCII-safe equivalent.
+`App.tsx` resolves this once at mount (`env.PATCHES_GLYPHS`/locale), reconciles it against the
+saved preference the same way theme/plain/linear are, and threads the result to `MessagesScreen`
+(currently the one glyph-rendering call site) — the Preferences screen's Glyphs row previews
+live and round-trips through this same state and the persisted `glyphSet` preference field.
+
+### Persisted configuration
+
+`preferences/store.ts`'s `FilePreferenceStore` persists `LocalPreferences` (theme, plain mode,
+quiet feed, glyph set, image policy, linear mode) to
+`$XDG_CONFIG_HOME/patches/preferences.json` (`~/.config/patches/preferences.json` by default),
+keyed per `(nodeOrigin, actorId)` — one file can hold preferences for several accounts/nodes
+without them clobbering each other. Writes are atomic (temp file + `rename`, `0600`/`0700`
+modes) and the whole document is schema-and-shape-validated on read
+(`isStoredEntry`/`isLocalPreferences`); a missing, corrupt, or partially-invalid file is treated
+as "no saved preferences" — the app falls back to CLI/env/auto defaults and keeps going, never
+throws. `MemoryPreferenceStore` is the equivalent for tests. Signed-out sessions never persist —
+`,`'s Enter shows "Preferences apply for this session — sign in to save them" instead of writing
+anything.
+
+The `,` Preferences screen is the interactive editor for this file; there is no separate raw-JSON
+editing UI by design (`theme/themes/*.json` files under `themes/` are the one place a user hand-
+authors JSON, for a custom theme — the top-level `preferences.json` itself is app-managed).
+
 ## 8. Compose experience (§77)
 
 `c` opens compose mode:

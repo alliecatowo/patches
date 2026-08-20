@@ -353,6 +353,44 @@ custom nameplate colour (`g e` to edit your profile) goes through the same picke
 floor — it degrades the swatch preview itself through truecolor → 256-colour → 16-colour → text
 depending on what your terminal reports, so what you see while picking is what you'll actually get.
 
+Six themes ship: `patches`, `paper`, `mono` (no colour at all — bold/dim/inverse only), `hacker`,
+`pastel`, and `terminal` (never paints a background, even in a colour-capable terminal — every
+colour comes from your own terminal palette). Select one with `--theme <name>`, the
+`PATCHES_THEME` environment variable, or the Preferences row above; precedence is
+`--theme` > `PATCHES_THEME` > your saved preference > `patches`.
+
+You can also author your own theme as JSON at `$XDG_CONFIG_HOME/patches/themes/<name>.json`
+(`~/.config/patches/themes/<name>.json` if `XDG_CONFIG_HOME` isn't set), then select it the same
+way (`--theme <name>`/`PATCHES_THEME=<name>`/the Theme row). Every one of the 13 colours the app
+uses is required in the file (a value can be a `"#rrggbb"` hex string or `null` to delegate that
+colour to your terminal) — an invalid or incomplete file never crashes the app, it falls back to
+`patches` and shows a one-line explanation. See `apps/tui/src/theme/README.md` for the exact
+field list and a worked example.
+
+Regardless of which theme is active, colour always degrades to what your terminal actually
+supports — truecolor down to 256-colour, 16-colour, or no colour at all — and Patches honours
+`NO_COLOR` and `TERM=dumb` automatically. You never need to pick a "low-colour theme"
+separately; every theme works everywhere, just with less colour precision on a less capable
+terminal.
+
+**Glyphs.** The **Glyphs** row on the same screen cycles `unicode` → `nerd` → `ascii`, with a
+live preview of what each looks like. No control anywhere in Patches requires a glyph to
+function — every one has a word next to it, and `ascii` never uses anything outside the base
+ASCII range. `nerd` (Nerd Font icons) is opt-in only and never auto-selected. `PATCHES_GLYPHS`
+(`unicode`/`nerd`/`ascii`) overrides both the saved preference and the automatic locale-based
+default for the current run.
+
+### Configuration file
+
+Preferences you save from `,` (theme, plain mode, quiet feed, glyph set, image policy, linear
+mode) are written to `$XDG_CONFIG_HOME/patches/preferences.json`
+(`~/.config/patches/preferences.json` by default), one entry per node+account so multiple
+accounts or nodes never share settings. You never need to edit this file by hand — the
+Preferences screen is the editor — but if you do, or if it becomes corrupted (e.g. truncated by
+a crash mid-write, or hand-edited incorrectly), Patches never fails to start: an unreadable or
+invalid file is treated as "nothing saved yet" and the app falls back to command-line flags,
+environment variables, and built-in defaults.
+
 ## Plain mode and accessibility
 
 Pass `--plain` (or set `PATCHES_PLAIN=1`), or press `P` at runtime, to strip nameplate
@@ -360,11 +398,13 @@ decoration (colored badges/frames) from the UI — useful for screen readers, lo
 terminals, or just personal preference. Plain mode always shows the plain placeholder box for
 images (see below) rather than any form of art.
 
-Pass `--linear` (or set `PATCHES_LINEAR=1`), or run `:linear` at runtime, for linear/
-screen-reader mode: one column regardless of terminal width (no split panes), no overlays or
-drawers (they open as a full-screen takeover instead), every list row prefixed with its
-1-based position (`[1]`, `[2]`, …) so you can refer to "item 3" without a persistent cursor,
-and plain mode is always implied.
+Pass `--linear` (or set `PATCHES_LINEAR=1`), run `:linear` at runtime, or toggle the **Linear
+mode** row on the Preferences screen (`,`), for linear/screen-reader mode: one column regardless
+of terminal width (no split panes), no overlays or drawers (they open as a full-screen takeover
+instead), every list row prefixed with its 1-based position (`[1]`, `[2]`, …) so you can refer
+to "item 3" without a persistent cursor, and plain mode is always implied. Like the other
+Preferences rows, toggling it there previews immediately and only persists once you press
+`Enter` to save.
 
 ### Image rendering: Kitty graphics, terminal art, or a plain box
 
