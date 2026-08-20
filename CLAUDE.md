@@ -59,11 +59,22 @@ requests doing one thing each** — for identical work. Measured 2026-08-20: 1.1
 across the fleet, i.e. almost everything is being done one call at a time. That is the single largest
 avoidable cost in this repo.
 
+- **The failure mode is stopping, not inability.** You batch by emitting the next `tool_use` block
+  _instead of ending your message_. Almost every un-batched turn is one where the model wrote one
+  call and stopped generating. So: after you write a tool call, do not end the message — write the
+  next one. Keep going until every independent call for this step is in that same message.
 - **Decide the whole edit set before touching anything.** Read what you need, form the complete plan,
-  then emit **every independent call in one request**: all the reads together, then all the `Edit`s
+  then emit **every independent call in one message**: all the reads together, then all the `Edit`s
   together. Never "update this file → look → update that file" when the second edit was already decided.
 - Independent means "does not need the previous result". Only a genuine data dependency justifies a
-  second request.
+  second message.
+- Several `Edit`s to the **same file** batch fine in one message — verified 2026-08-20, six edits
+  across three files (two per file) applied in a single request. "One edit per file per turn" is not
+  a real constraint.
+- Verified the same day: a plain subagent and this repo's `implementer` both issue 3 reads in one
+  request and 6 edits in the next when asked directly. The capability is not in question; only the
+  habit is. Do not fall back to `sed`/heredoc multi-file rewrites to fake batching — they fail
+  silently and produce wrong-but-green results.
 - One chained verify command per package, not four. Never re-read a file to confirm an `Edit` landed —
   `Edit` fails loudly if it didn't.
 
