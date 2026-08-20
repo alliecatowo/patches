@@ -77,7 +77,7 @@ function buildLogicalMessage(envelopes: readonly TestEnvelope[]) {
     frankingCommitment: Buffer.from(sha256Hash(randomBytes(16))),
     frankingProfile: E2EE_FRANKING_PROFILE_V1,
     fanoutDigest: Buffer.from(fanoutDigest),
-    deviceEnvelopes: envelopes,
+    deviceEnvelopes: [...envelopes],
   };
 }
 
@@ -492,6 +492,45 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(exhaustedFlags.filter((exhausted) => exhausted === true)).toHaveLength(1);
     });
 
+    /** Enrolls a second active device for `actor` by publishing the next roster with the new
+     * device appended and active — factored out of the "stale roster" fanout test below so the
+     * multi-device fanout test can reuse it without repeating the roster bookkeeping. */
+    async function enrollAdditionalDevice(actor: TestActorKeys): Promise<DeviceKeys> {
+      const device = newDevice();
+      const now = new Date();
+      const currentRoster = await deviceRosters.getDeviceRoster({ actorId: actor.actorId });
+      const certificate = signedCertificate(actor, device, now);
+      const entries = [
+        ...(currentRoster.roster?.entries ?? []).map((entry) => ({
+          deviceId: entry.deviceId,
+          certificateDigest: entry.certificateDigest,
+          active: entry.active,
+        })),
+        {
+          deviceId: device.deviceId,
+          certificateDigest: certificate.certificateDigest,
+          active: true,
+        },
+      ];
+      const roster = signedRoster(
+        actor,
+        BigInt(currentRoster.roster?.sequence ?? '0') + 1n,
+        currentRoster.roster?.digest as Buffer,
+        entries,
+        now,
+      );
+      const bundle = signedPrekeyBundle(actor, device, certificate.certificateDigest, 1n, now);
+      await deviceRosters.enrollDevice(actor.actorId, {
+        certificate,
+        roster,
+        signedPrekey: bundle.signedPrekey,
+        oneTimePrekeys: [],
+        prekeyBundleBytes: bundle.prekeyBundleBytes,
+        prekeyBundleSignature: bundle.prekeyBundleSignature,
+      } as never);
+      return device;
+    }
+
     /** Revokes `device` by publishing the next roster with it marked inactive — mirrors the
      * "revokes a device" test above, factored out so the fanout tests below can revoke
      * mid-scenario without repeating the roster bookkeeping. */
@@ -602,44 +641,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         // A second device becomes active for the recipient — enrolled *after* a hypothetical
         // sender read the roster used above.
-        const secondDevice = newDevice();
-        const now = new Date();
-        const currentRoster = await deviceRosters.getDeviceRoster({ actorId: recipient.actorId });
-        const certificate = signedCertificate(recipient, secondDevice, now);
-        const entries = [
-          ...(currentRoster.roster?.entries ?? []).map((entry) => ({
-            deviceId: entry.deviceId,
-            certificateDigest: entry.certificateDigest,
-            active: entry.active,
-          })),
-          {
-            deviceId: secondDevice.deviceId,
-            certificateDigest: certificate.certificateDigest,
-            active: true,
-          },
-        ];
-        const roster = signedRoster(
-          recipient,
-          BigInt(currentRoster.roster?.sequence ?? '0') + 1n,
-          currentRoster.roster?.digest as Buffer,
-          entries,
-          now,
-        );
-        const bundle = signedPrekeyBundle(
-          recipient,
-          secondDevice,
-          certificate.certificateDigest,
-          1n,
-          now,
-        );
-        await deviceRosters.enrollDevice(recipient.actorId, {
-          certificate,
-          roster,
-          signedPrekey: bundle.signedPrekey,
-          oneTimePrekeys: [],
-          prekeyBundleBytes: bundle.prekeyBundleBytes,
-          prekeyBundleSignature: bundle.prekeyBundleSignature,
-        } as never);
+        const secondDevice = await enrollAdditionalDevice(recipient);
 
         // Composed against the *old* device set — still addressed only to `firstDevice`.
         const staleMessage = buildLogicalMessage([
@@ -664,6 +666,61 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(
           firstMailbox.envelopes.filter((e) => e.logicalMessageId !== created.logicalMessageId),
         ).toHaveLength(0);
+        const secondMailbox = await conversations.listMailboxEnvelopes(recipient.actorId, {
+          deviceId: secondDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(secondMailbox.envelopes).toHaveLength(0);
+      });
+
+      it('delivers to every active device of the recipient and every other active device of the sender (Sesame per-device fanout, ADR 0020 §7)', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice1 } = await enrollFirstDevice(sender, 0);
+        const senderDevice2 = await enrollAdditionalDevice(sender);
+        const { device: recipientDevice1 } = await enrollFirstDevice(recipient, 0);
+        const recipientDevice2 = await enrollAdditionalDevice(recipient);
+
+        const created = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice1.deviceId,
+          message: buildLogicalMessage([
+            buildEnvelope(recipient.actorId, recipientDevice1.deviceId),
+            buildEnvelope(recipient.actorId, recipientDevice2.deviceId),
+            buildEnvelope(sender.actorId, senderDevice2.deviceId),
+          ]),
+        });
+
+        // Both of the recipient's active devices get their own session's copy.
+        for (const deviceId of [recipientDevice1.deviceId, recipientDevice2.deviceId]) {
+          const mailbox = await conversations.listMailboxEnvelopes(recipient.actorId, {
+            deviceId,
+            cursor: '',
+            limit: 0,
+          });
+          expect(mailbox.envelopes.map((e) => e.logicalMessageId)).toEqual([
+            created.logicalMessageId,
+          ]);
+        }
+
+        // The sender's *other* device converges too (sent history, ADR 0020 §7) — but never the
+        // literal sending device itself.
+        const senderDevice2Mailbox = await conversations.listMailboxEnvelopes(sender.actorId, {
+          deviceId: senderDevice2.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(senderDevice2Mailbox.envelopes.map((e) => e.logicalMessageId)).toEqual([
+          created.logicalMessageId,
+        ]);
+        const senderDevice1Mailbox = await conversations.listMailboxEnvelopes(sender.actorId, {
+          deviceId: senderDevice1.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(senderDevice1Mailbox.envelopes).toHaveLength(0);
       });
 
       it('revocation race, direction 1: a device revoked before the send commits never receives the envelope', async () => {
