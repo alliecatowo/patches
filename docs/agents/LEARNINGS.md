@@ -280,3 +280,20 @@ Two crypto fuzz tests (50 and 100 real X25519/AEAD iterations) and the rate-limi
 an agent was building another workspace concurrently — failing `pnpm verify` twice on timing rather
 than on code, and costing a push each time. **Action taken:** explicit 30s timeouts on those three.
 Give any test doing real crypto or five-figure loop counts an explicit timeout.
+
+## 2026-08-20 — A defaulted constructor param typed as an interface breaks Nest DI, and `verify` cannot see it
+
+`emitDecoratorMetadata` cannot emit an interface, so it records `design:paramtypes` as `Object`.
+Nest then tries to resolve `Object` as a provider token and fails — **the default value is
+ignored**. `E2eeReportEvidenceService(dataSource, keys: NodeFrankingKeyRing = new Env...())` boot-
+looped `patches-social` until the machine hit its restart cap. Once a machine exceeds that cap it
+stays `stopped` and a redeploy alone will not revive it: `flyctl machine start <id>` is required.
+
+The alarming part is what stayed green: typecheck, lint, and all 2560 unit tests. Unit tests
+construct services directly and never build the DI graph, and the integration suites that _do_ boot
+the app skip silently without `TEST_DATABASE_URL` — so `pnpm verify` never boots the app at all.
+**Action taken:** `@Optional()` on the param, and `apps/server/src/di-graph.test.ts` now walks the
+module graph from `AppModule` asserting no unresolvable `Object` param lacks `@Optional()`/
+`@Inject()` — no DB, milliseconds, runs in the fast suite. Verified it reports the real defect when
+run against the unfixed service. **After any deploy, check `flyctl status` and ping the node — a
+successful `flyctl deploy` exit does not mean the app booted.**
