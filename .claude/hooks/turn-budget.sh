@@ -20,25 +20,40 @@ process.stdin.on("data", (d) => (s += d));
 process.stdin.on("end", () => {
   try {
     const payload = JSON.parse(s);
-    // No agent id => this is the main orchestrator, which has no cap and is exempt by design.
-    const agentId = payload.agent_id ?? payload.agentId;
     const transcript = payload.transcript_path;
-    if (!agentId || typeof transcript !== "string") process.exit(0);
+    if (typeof transcript !== "string") process.exit(0);
+
+    // The real payload (verified against a live subagent run, see LEARNINGS.md) has no
+    // `agent_id`/`agentId` field at all — only `agent_type`/`session_id`. The original check
+    // required agent_id AND agent_type AND transcript_path, so it exited silently on every
+    // single call. `session_id` is the per-agent identifier now; `agent_type` is present and
+    // correctly named already.
+    const sessionId = payload.session_id ?? payload.sessionId;
+    if (typeof sessionId !== "string") process.exit(0);
 
     // Mirrors the `maxTurns:` frontmatter in .claude/agents/*.md. Keep the two in sync.
     const CAPS = {
-      verifier: 12,
-      researcher: 20,
-      reviewer: 20,
-      "docs-writer": 20,
-      "harness-tuner": 20,
-      architect: 30,
-      "spec-auditor": 35,
-      implementer: 40,
+      verifier: 40,
+      researcher: 100,
+      reviewer: 100,
+      "docs-writer": 100,
+      "harness-tuner": 100,
+      architect: 100,
+      "spec-auditor": 100,
+      implementer: 100,
     };
     const agentType = payload.agent_type ?? payload.agentType;
-    const cap = CAPS[agentType];
-    if (cap === undefined) process.exit(0);
+    let cap = agentType ? CAPS[agentType] : undefined;
+    if (cap === undefined) {
+      if (agentType) process.exit(0); // a real, known-but-uncapped agent type — nothing to warn
+      // No agent_type at all: usually the main orchestrator (no cap, exempt by design). But a
+      // subagent transcript is identifiable by its path shape even without agent_type, so fall
+      // back to the most common cap rather than staying silent — a slightly-wrong warning beats
+      // no warning for a subagent that would otherwise run unbounded.
+      const looksLikeSubagentTranscript = /\/tasks\/[^/]+\.output$/.test(transcript);
+      if (!looksLikeSubagentTranscript) process.exit(0);
+      cap = 40;
+    }
 
     const fs = require("fs");
     let stat;
@@ -65,7 +80,11 @@ process.stdin.on("end", () => {
     const used = ids.size;
     const left = cap - used;
     // Two warnings only: one with room to finish the work, one to stop and write the packet.
-    if (left !== 6 && left !== 3) process.exit(0);
+    // Proportional to the cap: a fixed "6 remaining" is ample at cap 40 and far too late at
+    // cap 100, where an agent needs room to land a commit before the abort.
+    const firstWarn = Math.max(6, Math.round(cap * 0.15));
+    const lastWarn = Math.max(3, Math.round(cap * 0.05));
+    if (left !== firstWarn && left !== lastWarn) process.exit(0);
 
     // A batched request fires PostToolUse once per tool call, all at the same request count —
     // latch each threshold so a well-batched agent is warned once, not four times.
@@ -73,7 +92,7 @@ process.stdin.on("end", () => {
     const path = require("path");
     const latch = path.join(
       os.tmpdir(),
-      `claude-turnbudget-${String(agentId).replace(/[^A-Za-z0-9_-]/g, "")}-${left}`,
+      `claude-turnbudget-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, "")}-${left}`,
     );
     try {
       fs.writeFileSync(latch, "", { flag: "wx" });
@@ -82,7 +101,7 @@ process.stdin.on("end", () => {
     }
 
     const text =
-      left === 6
+      left === firstWarn
         ? `TURN BUDGET: ${used}/${cap} requests used, ${left} left. Hitting the cap is an abort, ` +
           `not a graceful stop — you will be cut off mid-sentence and your caller gets a fragment. ` +
           `Land what is already green now: commit the paths you own, then keep going only if the ` +

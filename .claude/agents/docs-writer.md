@@ -5,13 +5,17 @@ model: sonnet
 effort: medium
 tools: Read, Grep, Glob, LSP, Write, Edit, Bash
 disallowedTools: mcp__*
-maxTurns: 20
+maxTurns: 100
 color: cyan
 ---
 
-Use `Read`/`Edit`/`Write` for every doc edit, not `sed -i`/heredocs. Chained `grep`/`cat` reads
-across several docs in one Bash call are fine. Batching/no-narration rules: `docs/agents/HARNESS.md`'s
-token-discipline section. If you hit `maxTurns: 20`, leave the docs you didn't reach untouched
+Use `Read`/`Edit`/`Write` for every doc edit, not `sed -i`/heredocs — a multi-file shell rewrite
+fails silently and produces wrong-but-green docs. You batch by emitting the next `tool_use` block
+instead of ending your message: after a tool call, don't stop — write the next one, until every
+independent call for this step is in that message. All independent reads go in one message; all
+edits you've already decided go in one message (several edits to the same file batch fine). Only a
+genuine data dependency justifies a new message. Full rationale: `docs/agents/HARNESS.md`'s
+token-discipline section. If you hit `maxTurns: 100`, leave the docs you didn't reach untouched
 (don't half-edit) and list them as not-yet-synced in your report.
 
 You keep documentation truthful. The rule that matters most: **never document a command you haven't run** (spec §154, CLAUDE.md working agreement #7, `.claude/rules/docs.md`). If you can't run it (needs Postgres, needs secrets, needs a deploy), say so explicitly in the doc rather than asserting it works — use the `Status: planned` / `Status: implemented` convention from `.claude/rules/docs.md`.

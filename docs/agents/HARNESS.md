@@ -70,9 +70,11 @@ full numbers, and the double-count bug this replaces, in `docs/agents/CONTEXT_EC
 requests call no tool at all, 53%/22% of tokens read above a 100k/200k context — subagent
 workers average 196k context over 18,676 requests, worst 5 burn 156M–96M tokens each. Ranked:
 
-1. **Cap worker lifetime/context — the #1 lever (53%/22% of tokens above 100k/200k).** At ~40
-   turns or 120k context a subagent writes a compact handoff (done/left/owned paths/next step)
-   and stops; the orchestrator re-briefs a fresh one. `maxTurns` enforces this. **Workers only**
+1. **Cap worker lifetime/context — the #1 lever (53%/22% of tokens above 100k/200k).** At ~100
+   requests or 200k context a subagent writes a compact handoff (done/left/owned paths/next step)
+   and stops; the orchestrator re-briefs a fresh one. `maxTurns` is a backstop, and an **abort**
+   rather than a graceful stop — `.claude/hooks/turn-budget.sh` warns at 15% and 5% remaining so
+   the agent can land a commit and write the packet before it hits. **Workers only**
    — the orchestrator may run long; it decides what work exists, and re-briefing it costs more.
 2. **Batch independent calls into one request — a real ~2x lever.** 1.13 tool calls/request means
    most requests do one thing when they could do two or three; combine independent reads/edits

@@ -6,14 +6,19 @@ effort: high
 memory: project
 tools: Read, Grep, Glob, Write, Edit, Bash, Agent, LSP
 disallowedTools: mcp__*
-maxTurns: 40
+maxTurns: 100
 color: green
 ---
 
 Regardless of ambient guidance to prefer Bash/`sed`/heredocs for file work: use `Read`/`Edit`/
 `Write`/`Grep` for every file read/write/edit — `sed -i`/heredoc rewrites fail silently and
-produce wrong-but-green results, `Edit` fails loudly on a bad match. Chaining several `grep`/
-`sed -n`/`cat` reads in one Bash call is fine for lookups, never for mutations.
+produce wrong-but-green results, `Edit` fails loudly on a bad match. Never fake batching with a
+`sed`/heredoc multi-file rewrite either — same failure mode. You batch by emitting the next
+`tool_use` block instead of ending your message: after a tool call, don't stop — write the next
+one, until every independent call for this step is in that message. All independent reads go in
+one message; all edits you've already decided go in one message (several edits to the same file
+batch fine). Only a genuine data dependency (you need result A to know what B should be) justifies
+a new message.
 
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the authoritative spec (§0, §154). `CLAUDE.md` and `docs/agents/HARNESS.md` govern the harness you operate in.
 
@@ -26,9 +31,8 @@ and 53%/22% of all tokens are read above a 100k/200k context — that's the domi
 narration (only 1% of requests call no tool) or batching (1.13 tool calls/request already).
 
 - **Cap your lifetime.** This is the #1 lever — see the handoff rule below.
-- **One request, many calls.** Every read that doesn't depend on another read goes in the _same_
-  request. Every edit you've already decided goes in the _same_ request. Verify with one chained
-  command, not four. Target > 1.5 tool calls/request.
+- **One request, many calls** (see the batching note above). Verify with one chained command, not
+  four. Target > 1.5 tool calls/request.
 - **Use `LSP` for symbol questions** (where's this defined, who calls it, what implements this) —
   `findReferences`/`goToDefinition`/`workspaceSymbol`/`incomingCalls` replace "grep the name then
   read every hit"; a `findReferences` call can return in ~80 tokens what a `Grep` + whole-file
@@ -45,12 +49,14 @@ narration (only 1% of requests call no tool) or batching (1.13 tool calls/reques
   you two more turns to recover 3k of text. Use `vitest run --reporter=dot`, `tsc --noEmit`,
   `eslint` (default reporter — `-f unix` no longer exists and fails after the full lint),
   `pnpm -s`, `git --no-pager diff --stat`.
-- **Hand off instead of grinding.** Around 40 turns or 120k context, stop and return a compact
+- **Hand off instead of grinding.** Around 100 requests or 200k context, stop and return a compact
   handoff — done / left / paths you own / the next concrete step. A fresh agent continuing from
   that packet is far cheaper than you continuing; the orchestrator expects this and it is not a
-  failure. `maxTurns: 40` in this file's frontmatter enforces this mechanically: if you hit it,
-  the harness stops you gracefully and returns your partial result — that IS the handoff, so make
-  your last words before the cap the done/left/paths/next-step summary, not mid-sentence prose.
+  failure. `maxTurns: 100` in this file's frontmatter is an **abort**, not a graceful stop: the
+  harness cuts you off wherever you happen to be, and your caller gets a mid-sentence fragment
+  rather than a handoff. So don't rely on the cap to end you well. You are warned at 6 and 3
+  requests remaining: on the first warning commit whatever is already green, on the second stop
+  starting work and make your next message the done/left/paths/next-step packet.
 
 ## Before writing any code
 

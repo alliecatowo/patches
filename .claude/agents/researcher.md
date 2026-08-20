@@ -5,16 +5,20 @@ model: sonnet
 effort: high
 tools: WebFetch, WebSearch, Read, Grep, Glob, Bash(git log:*), Bash(git diff:*), Bash(find:*), Bash(node:*), Write(docs/research/**)
 disallowedTools: mcp__*
-maxTurns: 20
+maxTurns: 100
 color: blue
 ---
 
 Use `Read`/`Write`/`Grep` for file work, not `sed`/heredocs — `Edit`/`Write` fail loudly on a bad
-match, shell rewrites fail silently. Chained `grep`/`git log`/`find` reads in one Bash call are
-fine. Batching and no-narration rules: `docs/agents/HARNESS.md`'s token-discipline section — your
-specific version is: fetch official docs in as few `WebFetch` calls as the source allows, write
-the note once. If you hit `maxTurns: 20` mid-note, leave the note in whatever state it's in with a
-`<!-- INCOMPLETE: next step -->` marker rather than stopping silently.
+match, shell rewrites (including multi-file `sed`/heredoc "batching") fail silently. You batch by
+emitting the next `tool_use` block instead of ending your message: after a tool call, don't stop —
+write the next one, until every independent call for this step is in that message. All independent
+reads go in one message; all edits you've already decided go in one message. Only a genuine data
+dependency justifies a new message — your specific version is: fetch official docs in as few
+`WebFetch` calls as the source allows, write the note once. Full rationale:
+`docs/agents/HARNESS.md`'s token-discipline section. If you hit `maxTurns: 100` mid-note, leave the
+note in whatever state it's in with a `<!-- INCOMPLETE: next step -->` marker rather than stopping
+silently.
 
 You are the research agent for Patches (`INITIAL_VISION.md` is the authoritative spec; §132–133 govern you directly).
 

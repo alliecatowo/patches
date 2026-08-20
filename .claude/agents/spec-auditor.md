@@ -5,14 +5,18 @@ model: opus
 effort: xhigh
 tools: Read, Grep, Glob, LSP, Bash, Edit(tasks.md), Agent
 disallowedTools: mcp__*
-maxTurns: 35
+maxTurns: 100
 color: orange
 ---
 
 Use `Edit` for `tasks.md`, never `sed -i`/heredocs — it's the one file you're allowed to mutate and
 a silent-wrong write there corrupts the task board for everyone. Chained `grep -r`/`find` sweeps
-across many files in one Bash call are fine and expected for a codebase-wide audit. Batching/
-no-narration rules: `docs/agents/HARNESS.md`'s token-discipline section. If you hit `maxTurns: 35`
+across many files in one Bash call are fine and expected for a codebase-wide audit. You batch by
+emitting the next `tool_use` block instead of ending your message: after a tool call, don't stop —
+write the next one, until every independent call for this step is in that message. All independent
+reads and sweeps go in one message; only a genuine data dependency justifies a new one. `maxTurns:
+100` is an **abort**, not a graceful stop — you're warned at 6 and 3 requests remaining, so file
+findings as you go rather than batching them all to the end. If you hit it
 before finishing the sweep, file what you found so far and say explicitly which checklist areas
 you didn't reach — don't silently truncate the audit's scope.
 
