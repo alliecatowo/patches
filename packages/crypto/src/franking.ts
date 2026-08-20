@@ -24,6 +24,16 @@ import { E2EE_ALGORITHM, E2EE_PROTOCOL, E2EE_VERSION, KEY_BYTES } from './types.
 const COMMITMENT_CONTEXT = 'patches-e2ee-v1/franking/commitment';
 const REPORT_CONTEXT = 'patches-e2ee-v1/franking/report';
 
+/**
+ * The anti-Grubbs/Lu/Ristenpart (CRYPTO 2017) invariant, not ordinary input validation: RFC 2104
+ * key reduction makes `HMAC(K, M) === HMAC(SHA256(K), M)` whenever `|K| > 64`, which lets a
+ * committer forge a second opening for the same commitment/tag once a key is long enough to be
+ * reduced. Forcing every key here to exactly `KEY_BYTES` (32) keeps every key in this module well
+ * below that 64-byte reduction boundary, which is the entire binding defense `commitFranking`/
+ * `verifyFrankingCommitment`/`createNodeReportTag`/`verifyNodeReportTag` rely on (ADR 0024). A
+ * future "widen this to accept a 64-byte key" change would look like an ordinary relaxation and
+ * silently reopen the attack — do not loosen this check without re-deriving the binding argument.
+ */
 function requireKeyBytes(value: Uint8Array, label: string): void {
   if (value.length !== KEY_BYTES) throw new FrankingError(`${label} has an invalid length.`);
 }
@@ -121,13 +131,13 @@ export function encodeReportTranscript(transcript: FrankingReportTranscript): Ui
     .string(transcript.logicalMessageId)
     .string(transcript.senderActorId)
     .string(transcript.senderDeviceId)
-    .fixed(transcript.recipientFanoutDigest)
+    .fixed(transcript.recipientFanoutDigest, KEY_BYTES)
     .u64(transcript.acceptedAtMs)
-    .fixed(transcript.commitment)
+    .fixed(transcript.commitment, KEY_BYTES)
     .u32(transcript.ciphertextDigests.length);
   for (const digest of transcript.ciphertextDigests) {
     requireKeyBytes(digest, 'Ciphertext digest');
-    writer.fixed(digest);
+    writer.fixed(digest, KEY_BYTES);
   }
   return writer.finish();
 }

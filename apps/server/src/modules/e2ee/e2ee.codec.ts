@@ -1,4 +1,4 @@
-import { ByteReader, ByteWriter } from '@patches/crypto';
+import { ByteReader, ByteWriter, KEY_BYTES } from '@patches/crypto';
 import { bytesEqual, type Bytes, type E2eeRosterEntryView } from '@patches/domain';
 import { timestampToDate } from '@patches/proto';
 
@@ -78,8 +78,8 @@ export function encodeCertificateTranscript(fields: CertificateTranscriptFields)
     .string(fields.deviceId)
     .u32(fields.rootGeneration)
     .u32(fields.certificateVersion)
-    .fixed(fields.signingPublicKey)
-    .fixed(fields.agreementPublicKey)
+    .fixed(fields.signingPublicKey, KEY_BYTES)
+    .fixed(fields.agreementPublicKey, KEY_BYTES)
     .u32(fields.supportedProtocolVersions.length);
   for (const version of fields.supportedProtocolVersions) writer.string(version);
   return writer
@@ -141,12 +141,12 @@ export function encodeRosterTranscript(fields: RosterTranscriptFields): Bytes {
     .string(fields.actorId)
     .u64(Number(fields.sequence))
     .u32(fields.rootGeneration)
-    .fixed(fields.previousDigest)
+    .fixed(fields.previousDigest, KEY_BYTES)
     .u32(fields.entries.length);
   for (const entry of fields.entries) {
     writer
       .string(entry.deviceId)
-      .fixed(entry.certificateDigest)
+      .fixed(entry.certificateDigest, KEY_BYTES)
       .u8(entry.active ? 1 : 0)
       .u64(msFromDate(entry.addedAt, 'Roster entry addedAt'));
     const revokedAt = entry.revokedAt;
@@ -215,15 +215,18 @@ export function encodePrekeyBundleTranscript(fields: PrekeyBundleTranscriptField
   if (fields.signedPrekeyId < 0n || fields.signedPrekeyId > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw AppError.validation('Signed prekey id is out of range.');
   }
+  // `ByteWriter#fixed`'s required width parameter is the only thing making this a signed
+  // transcript rather than one that is injective only because three unrelated `octet_length(...)
+  // = 32` CHECK constraints happen to also hold two layers away in the database (ADR 0024 B-051).
   return new ByteWriter()
     .string(PREKEY_BUNDLE_TRANSCRIPT_DOMAIN)
-    .fixed(fields.certificateDigest)
-    .fixed(fields.agreementPublicKey)
+    .fixed(fields.certificateDigest, KEY_BYTES)
+    .fixed(fields.agreementPublicKey, KEY_BYTES)
     .string(fields.protocolVersion)
     .string(fields.actorId)
     .string(fields.deviceId)
     .u64(Number(fields.signedPrekeyId))
-    .fixed(fields.signedPrekeyPublicKey)
+    .fixed(fields.signedPrekeyPublicKey, KEY_BYTES)
     .u64(msFromDate(fields.signedPrekeyCreatedAt, 'Signed prekey createdAt'))
     .u64(msFromDate(fields.signedPrekeyExpiresAt, 'Signed prekey expiresAt'))
     .finish();

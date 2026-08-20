@@ -22,7 +22,7 @@
  * plaintext.
  */
 import { E2eeContractError, E2EE_REPORT_MAX_SURROUNDING_MESSAGES } from './modes.js';
-import { E2EE_DIGEST_BYTES, type Bytes } from './types.js';
+import { bytesEqual, E2EE_DIGEST_BYTES, type Bytes, type DigestFunction } from './types.js';
 
 /** The node's symmetric tag over an accepted logical message. */
 export interface E2eeFrankingTagView {
@@ -194,6 +194,12 @@ export function verifyReportEvidence(
     readonly verifier: FrankingVerifier;
     readonly acceptedProfiles: readonly string[];
     readonly knownKeyEras: readonly number[];
+    /**
+     * Recomputes a digest for the {@link E2eeFrankingTagView.transcriptDigest} check below. The
+     * same injected-primitive pattern `certificates.ts`/`roster.ts` use, so this module still
+     * never imports `@patches/crypto` directly.
+     */
+    readonly digest: DigestFunction;
   },
 ): E2eeEvidenceVerification {
   assertReporterConsent(input.reporterConsented);
@@ -209,6 +215,15 @@ export function verifyReportEvidence(
     }
     if (!deps.knownKeyEras.includes(item.frankingTag.keyEra)) {
       failure ??= 'UNKNOWN_KEY_ERA';
+      continue;
+    }
+    // `transcriptDigest` is supposed to let a caller confirm the (potentially large)
+    // `envelopeTranscript` handed to `verifyNodeTag` below actually corresponds to the compact
+    // digest carried alongside the tag, before spending a MAC verification on it. Nothing
+    // checked this — `TRANSCRIPT_MISMATCH` was in the closed failure-code set but assigned by no
+    // code path (ADR 0024 B-056).
+    if (!bytesEqual(deps.digest(item.envelopeTranscript), item.frankingTag.transcriptDigest)) {
+      failure ??= 'TRANSCRIPT_MISMATCH';
       continue;
     }
     if (

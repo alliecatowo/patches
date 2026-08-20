@@ -108,4 +108,30 @@ describe('e2ee.codec prekey bundle transcript', () => {
     const b = encodePrekeyBundleTranscript({ ...base, signedPrekeyId: 2n });
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
   });
+
+  it('refuses a wrong-width digest or key rather than silently shifting every later field (ADR 0024 B-051)', () => {
+    const base = {
+      certificateDigest: bytes(6),
+      agreementPublicKey: bytes(7),
+      protocolVersion: 'patches-e2ee-v1',
+      actorId: 'actor-1',
+      deviceId: 'device-1',
+      signedPrekeyId: 1n,
+      signedPrekeyPublicKey: bytes(8),
+      signedPrekeyCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      signedPrekeyExpiresAt: new Date('2026-01-08T00:00:00.000Z'),
+    };
+    // Before B-051, these three `fixed()` fields were unvalidated in the encoder and injective
+    // only because three unrelated `octet_length(...) = 32` database CHECK constraints happened
+    // to hold for every persisted caller — a signed transcript should not depend on that.
+    expect(() =>
+      encodePrekeyBundleTranscript({ ...base, certificateDigest: bytes(6, 31) }),
+    ).toThrow();
+    expect(() =>
+      encodePrekeyBundleTranscript({ ...base, agreementPublicKey: bytes(7, 33) }),
+    ).toThrow();
+    expect(() =>
+      encodePrekeyBundleTranscript({ ...base, signedPrekeyPublicKey: bytes(8, 16) }),
+    ).toThrow();
+  });
 });

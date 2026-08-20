@@ -67,8 +67,8 @@ export function encodeDeviceCertificate(certificate: DeviceCertificate): Uint8Ar
     .string(E2EE_ALGORITHM)
     .string(certificate.userId)
     .string(certificate.deviceId)
-    .fixed(certificate.signingPublicKey)
-    .fixed(certificate.agreementPublicKey)
+    .fixed(certificate.signingPublicKey, KEY_BYTES)
+    .fixed(certificate.agreementPublicKey, KEY_BYTES)
     .u32(certificate.generation)
     .u64(certificate.createdAtMs)
     .u64(certificate.expiresAtMs)
@@ -103,7 +103,7 @@ export function encodeCertifiedDevice(device: CertifiedDevice): Uint8Array {
   requireSignature(device.rootSignature, 'Root signature');
   return new ByteWriter()
     .bytes(encodeDeviceCertificate(device.certificate))
-    .fixed(device.rootSignature)
+    .fixed(device.rootSignature, SIGNATURE_BYTES)
     .finish();
 }
 
@@ -128,9 +128,9 @@ export function encodeDeviceRoster(roster: DeviceRoster): Uint8Array {
     .u8(roster.version)
     .string(E2EE_ALGORITHM)
     .string(roster.userId)
-    .fixed(roster.rootPublicKey)
+    .fixed(roster.rootPublicKey, KEY_BYTES)
     .u32(roster.sequence)
-    .fixed(roster.previousDigest)
+    .fixed(roster.previousDigest, KEY_BYTES)
     .u64(roster.createdAtMs)
     .u32(devices.length);
   for (const device of devices) {
@@ -213,9 +213,9 @@ function encodeSignedPreKeyStatement(
     .u8(E2EE_VERSION)
     .string(E2EE_ALGORITHM)
     .bytes(encodeCertifiedDevice(certifiedDevice))
-    .fixed(rosterDigestValue)
+    .fixed(rosterDigestValue, KEY_BYTES)
     .u32(preKey.id)
-    .fixed(preKey.publicKey)
+    .fixed(preKey.publicKey, KEY_BYTES)
     .u64(preKey.createdAtMs)
     .u64(preKey.expiresAtMs)
     .finish();
@@ -303,9 +303,9 @@ export function safetyNumber(
     new ByteWriter()
       .string(SAFETY_NUMBER_CONTEXT)
       .string(first.id)
-      .fixed(first.key)
+      .fixed(first.key, KEY_BYTES)
       .string(second.id)
-      .fixed(second.key)
+      .fixed(second.key, KEY_BYTES)
       .finish(),
   );
   for (let iteration = 1; iteration < 5_200; iteration += 1) digest = sha256Hash(digest);

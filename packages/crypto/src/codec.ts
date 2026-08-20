@@ -33,7 +33,19 @@ export class ByteWriter {
     return this.#push(bytes);
   }
 
-  fixed(value: Uint8Array): this {
+  /**
+   * Writes `value` with no length prefix — the field's width must be a build-time constant both
+   * sides already agree on. `expectedBytes` is required (not inferred from `value.length`) so a
+   * caller cannot silently narrow or widen a "fixed" field: doing so would make the surrounding
+   * transcript non-injective, since a shorter/longer write here shifts every byte-offset a reader
+   * downstream assumes for every later field (ADR 0024 B-055).
+   */
+  fixed(value: Uint8Array, expectedBytes: number): this {
+    if (value.length !== expectedBytes) {
+      throw new MalformedInputError(
+        `Fixed field must be exactly ${String(expectedBytes)} bytes (got ${String(value.length)}).`,
+      );
+    }
     return this.#push(value);
   }
 
