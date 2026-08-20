@@ -1,3 +1,6 @@
+import { create } from '@bufbuild/protobuf';
+import { MediaAttachmentSchema } from '@patches/proto/es';
+
 import { present } from '../../api/present.js';
 import type { PageBlock, RenderablePageBlock } from '@patches/domain';
 import { toDate } from '../../api/wire/time.js';
@@ -302,7 +305,14 @@ function stubAttachment(mediaId: string, altText: string, position = 0): MediaAt
   // `imageBlockSchema`) — width/height/mime are resolved the same way `MediaAttachments`
   // already resolves a post attachment's, via `GetMediaDownload` (P5-003's
   // `useMediaAttachment`), so this stub only needs to carry the id through.
-  return { mediaId, altText, width: 0, height: 0, mimeType: '', position };
+  return create(MediaAttachmentSchema, {
+    mediaId,
+    altText,
+    width: 0,
+    height: 0,
+    mimeType: '',
+    position,
+  });
 }
 
 function LinksBlockView({
