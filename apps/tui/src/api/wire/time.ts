@@ -1,15 +1,17 @@
 /**
- * Wire timestamp seam (ADR 0023 slice 5).
+ * Wire timestamp seam (ADR 0023 slice 5, write side flipped in slice 7/P10-013).
  *
  * The single place `apps/tui/src` converts between `Date` and the wire timestamp shape.
- * ts-proto (`forceLong=string`) yields `{ seconds: string, nanos }`; protobuf-es yields
- * `{ $typeName, seconds: bigint, nanos }`. `toDate` accepts all three seconds
- * representations so a slice 7 flip to `@patches/proto/es` changes only this module's
- * write side (`fromDate`), never a call site.
+ * ts-proto (`forceLong=string`) yielded `{ seconds: string, nanos }`; protobuf-es yields
+ * `{ $typeName, seconds: bigint, nanos }`. `toDate` accepted all three seconds
+ * representations from the start, so the slice 7 flip to `@patches/proto/es` changed
+ * only this module's write side (`fromDate`), never a call site.
  *
  * Enum values and message/request/response types are not part of this file - see
  * `wire/enums.ts` and `wire/types.ts` (ADR 0023 slices 3 and 4).
  */
+
+import { timestampFromDate, type Timestamp } from '@bufbuild/protobuf/wkt';
 
 /** A wire timestamp's `seconds` field, in any of the three shapes the two proto families use. */
 export type WireSeconds = string | number | bigint;
@@ -35,9 +37,7 @@ export function toDate(timestamp: WireTimestampLike | null | undefined): Date | 
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-/** Convert a JS `Date` into the wire shape the current (ts-proto/proto-loader) family expects. */
-export function fromDate(date: Date): { seconds: string; nanos: number } {
-  const ms = date.getTime();
-  const seconds = Math.floor(ms / 1000);
-  return { seconds: String(seconds), nanos: (ms - seconds * 1000) * 1_000_000 };
+/** Convert a JS `Date` into the wire shape the current (protobuf-es) family expects. */
+export function fromDate(date: Date): Timestamp {
+  return timestampFromDate(date);
 }

@@ -18,12 +18,17 @@
  * decodes an unset field to at runtime. That is deliberate: these are hand-built test
  * inputs to render/business logic, not decoded wire responses, and changing the
  * convention here would edit what dozens of already-passing assertions receive.
+ *
+ * Every builder sets `$typeName` (ADR 0023 slice 7, P10-013) - a decoded protobuf-es
+ * message requires it on itself and on every nested message field, unlike the
+ * ts-proto shape this module targeted before the flip.
  */
 
 import {
   APPEAL_STATUS,
   COMMUNITY_ROLE,
   CONVERSATION_KIND,
+  CONVERSATION_SECURITY_MODE,
   FILTER_ACTION,
   FILTER_TERM_KIND,
   FILTERED_BY_PROVENANCE,
@@ -66,6 +71,7 @@ import type {
 
 export function makeActor(overrides: Partial<Actor> = {}): Actor {
   return {
+    $typeName: 'patches.v1.Actor',
     id: 'actor-1',
     handle: 'alice',
     displayName: '',
@@ -85,6 +91,7 @@ export function makeActor(overrides: Partial<Actor> = {}): Actor {
 
 export function makePost(overrides: Partial<Post> = {}): Post {
   return {
+    $typeName: 'patches.v1.Post',
     id: 'post-1',
     author: makeActor(),
     body: 'hello world',
