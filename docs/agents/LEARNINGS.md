@@ -253,3 +253,30 @@ remove --force` on its own test worktrees deleted three _running_ agents' trees 
 `isolation: worktree` removed from `implementer.md` frontmatter — isolation stays opt-in per `Agent`
 call, since disjoint file sets per brief already keep parallel agents safe and merging N worktrees
 back is friction we do not want. Both cautions are recorded in the hook's header comment.
+
+## 2026-08-20 — `@inkjs/ui`'s measure-then-setState components never converge under Ink 7 + React 19
+
+`@inkjs/ui`'s `ProgressBar` starts at width 0, calls `measureElement` on itself, then `setWidth`
+_during render_ to draw. That cycle never settled here: the bar stayed at width 0 forever, and
+because it was the widest child of a `flexDirection="column"` Box, the column collapsed and the
+sibling `<Text wrap="truncate-end">` label truncated to the empty string — so the whole component
+rendered as two blank rows, in tests **and** in a real terminal. Its own tests passed only because
+a neighbouring test file happened to run first under `fileParallelism: false`, and failed the
+moment file order changed. **Action taken:** replaced with a fixed-width bar (deterministic, no
+measurement pass, rich and plain identically sized) and dropped `@inkjs/ui` from `apps/tui`. Treat
+any self-measuring third-party Ink component as suspect; prefer a fixed width.
+
+## 2026-08-20 — Ink lays out at width 0 when `process.stdout.columns` is undefined
+
+Non-TTY shells (CI, every agent shell) leave `columns` undefined, so Ink's layout width is 0 and
+any `wrap="truncate-end"` text renders empty. Frame assertions then depend on how the suite was
+launched, exactly like the `FORCE_COLOR` problem above. **Action taken:** `apps/tui/test/setup-terminal.ts`
+pins 100x30 via `setupFiles` in `apps/tui/vitest.config.ts`.
+
+## 2026-08-20 — A slow-but-correct test with vitest's 5s default fails only under parallel load
+
+Two crypto fuzz tests (50 and 100 real X25519/AEAD iterations) and the rate-limit capacity test
+(20,000 bucket insertions) finish in well under a second idle, but overran the 5s default whenever
+an agent was building another workspace concurrently — failing `pnpm verify` twice on timing rather
+than on code, and costing a push each time. **Action taken:** explicit 30s timeouts on those three.
+Give any test doing real crypto or five-figure loop counts an explicit timeout.
