@@ -40,7 +40,9 @@ const CACHE_REFRESH_INTERVAL_MS = 5 * 60_000;
  * it was signed under, and rotation must never invalidate a previously issued tag.
  */
 @Injectable()
-export class DatabaseNodeFrankingKeyRing implements NodeFrankingKeyRing, OnModuleInit, OnModuleDestroy {
+export class DatabaseNodeFrankingKeyRing
+  implements NodeFrankingKeyRing, OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(DatabaseNodeFrankingKeyRing.name);
   #keys: ReadonlyMap<number, Uint8Array> = new Map();
   #currentEra: number | undefined;
