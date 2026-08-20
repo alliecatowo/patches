@@ -310,8 +310,12 @@ export function App({
   // shell subtracts from the content region; two drawers open at once was never a
   // presentation this layout budgeted for).
   const [dmDrawerRequested, setDmDrawerRequested] = useState(false);
-  // `Tab` in a split moves focus between the list pane and the detail pane. Purely
-  // presentational — it never touches the navigation stack.
+  // `Tab` moves shell focus between the primary and secondary pane of a split
+  // (B-046 — keymap.ts's `Tab` binding, user-guide.md's keymap table). Action keys
+  // (`E`, `l`, `r`, …) dispatch only to whichever pane is focused — `renderEntry`
+  // below gates each pane's own `useInput` on exactly this — and the focused pane's
+  // title is marked `>` (`SplitPane`) so which one is live is visible without
+  // guessing. Purely presentational — it never touches the navigation stack.
   const [paneFocusSecondary, setPaneFocusSecondary] = useState(false);
   // A manual refresh's bounded ribbon spinner (P12-117) — always cleared by its own
   // timer, never left spinning by whatever the refresh itself resolves to.
@@ -543,8 +547,13 @@ export function App({
   const splitActive = presentation.mode === 'split';
   const focusedPane: 'primary' | 'secondary' =
     splitActive && paneFocusSecondary ? 'secondary' : 'primary';
-  const listIsActive =
-    !pendingGo && screenIsActive && !anyDrawerOpen && (!splitActive || focusedPane === 'primary');
+  // B-046: this used to also require `focusedPane === 'primary'`, which meant a
+  // list-kind screen (page/thread/profile/…) sitting in the *secondary* pane could
+  // never process its own action keys even once focus moved there — `renderEntry`
+  // below already multiplies this by the pane-specific `active` flag (which is
+  // exactly which pane has focus), so baking primary-only focus in here a second
+  // time forced every list-kind secondary screen off regardless of `Tab`.
+  const listIsActive = !pendingGo && screenIsActive && !anyDrawerOpen;
   // The ribbon replaces the bottom status line at row 0 in the `full` height tier
   // (design vision §2.1, P12-102) — budget-neutral, `layout.ts#chromeSplit`.
   const showRibbon = layoutPlan.heightDensity === 'full';

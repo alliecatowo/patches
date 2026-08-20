@@ -138,7 +138,10 @@ Once signed in, running `patches` (with `--server`/`--insecure` as above) opens 
 full-screen client. Screens and global keys (see
 [`docs/architecture/tui.md`](./architecture/tui.md) for the authoritative table).
 Plain `g <key>` always replaces the current screen; `Ctrl+g <key>` opens the same
-destination beside it in the second pane instead, when there's room for one:
+destination beside it in the second pane instead, when there's room for one. Every
+action key (`E`, `l`, `r`, …) acts on whichever pane has focus — its title is marked
+with a leading `>` (and shown bold) so the focused pane is visible even in plain mode.
+`Tab` moves focus between the two panes:
 
 | Key               | Action                                                                                               |
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
@@ -153,6 +156,7 @@ destination beside it in the second pane instead, when there's room for one:
 | `g s` / `/`       | search                                                                                               |
 | `g v`             | go to your own Patches Page                                                                          |
 | `Ctrl+G`          | like `g <key>`, but opens the destination in the second pane instead of replacing the current screen |
+| `Tab`             | when the screen is split, move focus between the two panes (the focused one is marked `>`)           |
 | `: / Ctrl+P`      | command palette — every key above, by name                                                           |
 | `:privacy`        | privacy notice, discoverability, account export and deletion                                         |
 | `:followrequests` | pending requests to follow your locked account                                                       |

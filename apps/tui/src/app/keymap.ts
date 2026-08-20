@@ -223,6 +223,19 @@ export const KEYMAP: readonly Binding[] = [
     region: 'shell',
   },
   {
+    // B-046: purely presentational — it never touches the navigation stack, just
+    // which pane (`SplitPane`'s `>` marker) the rest of the shell's action keys
+    // dispatch to. Free at `global:shell` — the other `Tab` bindings below are all
+    // scoped to one screen's own `editor`/`screen` region, so this doesn't collide.
+    keys: 'Tab',
+    hint: 'switch pane',
+    description: 'Move focus between the primary and secondary pane when the screen is split',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
     keys: 'Esc',
     hint: 'back',
     description: 'Back one screen — always exactly one level, from every screen',
