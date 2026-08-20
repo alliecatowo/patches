@@ -24,5 +24,8 @@ export default defineProject({
     // exercise the styled render path everywhere. Assertions about *characters* must
     // strip SGR first: use `stripSgr` from `test/ansi.ts`.
     env: { FORCE_COLOR: '3' },
+    // Ink reads its layout width from the host terminal, which is `undefined` in any
+    // non-TTY shell and makes it lay out at width 0 — see test/setup-terminal.ts.
+    setupFiles: ['./test/setup-terminal.ts'],
   },
 });
