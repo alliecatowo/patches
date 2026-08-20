@@ -14,6 +14,12 @@ import {
   User,
   type AuthCodePurpose,
 } from '@patches/database';
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+  VerifiedAuthenticationResponse,
+  VerifiedRegistrationResponse,
+} from '@simplewebauthn/server';
 import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
 
 import { getRequestContext } from '../../common/context/request-context.js';
@@ -28,6 +34,8 @@ import {
 } from './auth.dto.js';
 import { GitHubDeviceFlowService } from './github-device-flow.service.js';
 import { GitHubLoginAttemptsService } from './github-login-attempts.service.js';
+import { PasskeyChallengeService } from './passkey-challenge.service.js';
+import { PasskeyVerifierService } from './passkey-verifier.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
 import { RateLimitService } from './rate-limit.service.js';
 import {
@@ -46,6 +54,8 @@ import {
 import {
   addCredentialInputSchema,
   codeInputSchema,
+  completePasskeyLoginInputSchema,
+  completePasskeyRegistrationInputSchema,
   loginInputSchema,
   normalizeEmail,
   normalizeHandle,
@@ -199,6 +209,17 @@ export interface RecoveryLoginInput {
   code: string;
 }
 
+/** P15-004: `CompletePasskeyRegistration`'s own vocabulary — `label` mirrors
+ * `AddCredentialInput.label`. */
+export interface CompletePasskeyRegistrationInput {
+  credentialJson: string;
+  label?: string;
+}
+
+export interface CompletePasskeyLoginInput {
+  credentialJson: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -212,6 +233,8 @@ export class AuthService {
     private readonly rateLimit: RateLimitService,
     private readonly githubFlow: GitHubDeviceFlowService,
     private readonly githubAttempts: GitHubLoginAttemptsService,
+    private readonly passkeyChallenges: PasskeyChallengeService,
+    private readonly passkeyVerifier: PasskeyVerifierService,
   ) {}
 
   // ---------------------------------------------------------------- policy
@@ -912,6 +935,309 @@ export class AuthService {
     });
   }
 
+  // ---------------------------------------------------------------- passkeys
+
+  /**
+   * Registration ceremony start (P15-004, ADR 0022): authenticated, so the caller's own
+   * existing passkeys can be listed in `excludeCredentials` (stops the platform silently
+   * re-registering one that's already enrolled). Rate-limited like `beginSshEnrollment`: peer
+   * plus the caller's own `userId`, which is trustworthy here (unlike the anonymous login half
+   * below).
+   */
+  async beginPasskeyRegistration(claims: AccessTokenClaims): Promise<{ optionsJson: string }> {
+    this.rateLimit.consumePeer('passkey_challenge', getRequestContext()?.peer);
+    await this.rateLimit.consumeDistributedPeer('passkey_challenge', getRequestContext()?.peer);
+    this.rateLimit.consume('passkey_challenge', `register:${claims.userId}`);
+    await this.rateLimit.consumeDistributed('passkey_challenge', `register:${claims.userId}`);
+
+    const actor = await requireActor(this.dataSource.manager, claims.actorId);
+    const existingPasskeys = await this.dataSource.getRepository(Credential).find({
+      where: { userId: claims.userId, type: 'PASSKEY', revokedAt: IsNull() },
+    });
+
+    const options = await this.passkeyVerifier.generateRegistrationOptions({
+      rpID: this.rpId(),
+      rpName: this.config.instanceName,
+      // An opaque byte encoding of `claims.userId`, not the UUID's binary form — the library
+      // never round-trips this value back into anything Patches reads, so its only requirement
+      // is "stable and unique per user" (§3 of `docs/research/simplewebauthn.md`).
+      userID: new TextEncoder().encode(claims.userId),
+      userName: actor.handle,
+      userDisplayName: actor.displayName ?? actor.handle,
+      excludeCredentials: existingPasskeys
+        .filter(
+          (credential): credential is Credential & { identifier: string } =>
+            credential.identifier !== null,
+        )
+        .map((credential) => ({ id: credential.identifier })),
+    });
+
+    await this.passkeyChallenges.issue(this.dataSource.manager, {
+      challenge: options.challenge,
+      purpose: 'REGISTRATION',
+      boundUserId: claims.userId,
+    });
+
+    return { optionsJson: JSON.stringify(options) };
+  }
+
+  /**
+   * Verifies the browser's registration ceremony response and enrolls a `PASSKEY` credential
+   * (P15-004, ADR 0022). Every failure — unparseable payload, unknown/expired/replayed
+   * challenge, a challenge bound to a *different* user, or a cryptographic verification
+   * failure — is the same {@link passkeyRegistrationInvalid}; this endpoint is authenticated,
+   * so unlike SSH enrollment's uniform posture the reason doesn't need hiding, but there also
+   * isn't a more specific failure worth distinguishing on the wire.
+   */
+  async completePasskeyRegistration(
+    claims: AccessTokenClaims,
+    input: CompletePasskeyRegistrationInput,
+  ): Promise<CredentialSummary> {
+    const parsed = parseInput(completePasskeyRegistrationInputSchema, {
+      credentialJson: input.credentialJson,
+      ...(input.label === undefined ? {} : { label: input.label }),
+    });
+
+    this.rateLimit.consumePeer('passkey_complete', getRequestContext()?.peer);
+    this.rateLimit.consume('passkey_complete', `register:${claims.userId}`);
+    await this.rateLimit.consumeDistributed('passkey_complete', `register:${claims.userId}`);
+
+    const response = parseWebAuthnJson<RegistrationResponseJSON>(
+      parsed.credentialJson,
+      passkeyRegistrationInvalid,
+    );
+
+    let challengeValue: string;
+    try {
+      challengeValue = this.passkeyVerifier.decodeClientDataChallenge(
+        response.response.clientDataJSON,
+      );
+    } catch (error) {
+      throw passkeyRegistrationInvalid(error);
+    }
+
+    // Consumed before verification, like `SshChallengeService.consume`/`completeSshLogin`: if
+    // verification then failed, a rollback that restored `consumed_at` would make the challenge
+    // replayable.
+    const challenge = await this.passkeyChallenges.consume(this.dataSource.manager, {
+      challenge: challengeValue,
+      purpose: 'REGISTRATION',
+    });
+    if (challenge === null || challenge.boundUserId !== claims.userId) {
+      throw passkeyRegistrationInvalid();
+    }
+
+    let verification: VerifiedRegistrationResponse;
+    try {
+      verification = await this.passkeyVerifier.verifyRegistrationResponse({
+        response,
+        expectedChallenge: challengeValue,
+        expectedOrigin: this.config.publicOrigin,
+        expectedRPID: this.rpId(),
+      });
+    } catch (error) {
+      throw passkeyRegistrationInvalid(error);
+    }
+    if (!verification.verified || verification.registrationInfo === undefined) {
+      throw passkeyRegistrationInvalid();
+    }
+
+    const {
+      credential: verified,
+      credentialDeviceType,
+      credentialBackedUp,
+    } = verification.registrationInfo;
+
+    return this.dataSource.transaction(async (manager) => {
+      const credentials = manager.getRepository(Credential);
+      const alreadyEnrolled = await credentials.existsBy({
+        type: 'PASSKEY',
+        identifier: verified.id,
+        revokedAt: IsNull(),
+      });
+      if (alreadyEnrolled) {
+        throw AppError.validation('That passkey is already enrolled.');
+      }
+
+      const saved = await credentials.save(
+        credentials.create({
+          userId: claims.userId,
+          type: 'PASSKEY',
+          identifier: verified.id,
+          // Raw COSE public key bytes; the library does not encode this for storage (§6 of
+          // `docs/research/simplewebauthn.md`).
+          publicMaterial: Buffer.from(verified.publicKey).toString('base64'),
+          label: parsed.label ?? null,
+          // An inline literal (not a `PasskeyCredentialMetadata`-typed variable) so it matches
+          // `Credential.metadata`'s `Record<string, unknown> | null` column type structurally,
+          // with no cast; {@link passkeyMetadata} reads it back with the named type.
+          metadata: {
+            counter: verified.counter,
+            transports: verified.transports,
+            deviceType: credentialDeviceType,
+            backedUp: credentialBackedUp,
+          },
+        }),
+      );
+      return toCredentialSummary(saved);
+    });
+  }
+
+  /**
+   * Discoverable-credential ("usernameless") login ceremony start (P15-004, ADR 0022): always
+   * issues a challenge with no `allowCredentials` — the credential response itself identifies
+   * the account at {@link completePasskeyLogin}. Rate-limited on peer only, same reasoning as
+   * `beginSshLogin`: there is no trustworthy subject to key a second bucket on yet.
+   */
+  async beginPasskeyLogin(): Promise<{ optionsJson: string }> {
+    this.rateLimit.consumePeer('passkey_challenge', getRequestContext()?.peer);
+    await this.rateLimit.consumeDistributedPeer('passkey_challenge', getRequestContext()?.peer);
+
+    const options = await this.passkeyVerifier.generateAuthenticationOptions({
+      rpID: this.rpId(),
+    });
+
+    await this.passkeyChallenges.issue(this.dataSource.manager, {
+      challenge: options.challenge,
+      purpose: 'LOGIN',
+      boundUserId: null,
+    });
+
+    return { optionsJson: JSON.stringify(options) };
+  }
+
+  /**
+   * Verifies the browser's authentication ceremony response and returns a session (P15-004,
+   * ADR 0022) — the passkey analogue of `completeSshLogin`. The authenticator's own reported
+   * use counter is decoded independently of cryptographic verification (see
+   * `PasskeyVerifierService.readAuthenticatorCounter`'s doc comment) so a sign-count regression
+   * — `storedCounter > 0 && newCounter <= storedCounter`, the exact condition
+   * `docs/research/simplewebauthn.md` §5 documents as this library's own compromise signal —
+   * can be flagged with a `SECURITY` notification even though the underlying verification call
+   * would reject it too, indistinguishably from any other failure.
+   *
+   * Every failure is the same {@link passkeyLoginFailed} (§166's no-enumeration rule, exactly
+   * as `completeSshLogin` applies it): unparseable payload, unknown/expired/replayed challenge,
+   * no matching credential, a regressed counter, or a cryptographic verification failure.
+   */
+  async completePasskeyLogin(input: CompletePasskeyLoginInput): Promise<SessionEnvelope> {
+    const parsed = parseInput(completePasskeyLoginInputSchema, input);
+    this.rateLimit.consumePeer('passkey_complete', getRequestContext()?.peer);
+
+    const response = parseWebAuthnJson<AuthenticationResponseJSON>(
+      parsed.credentialJson,
+      passkeyLoginFailed,
+    );
+
+    let challengeValue: string;
+    let newCounter: number;
+    try {
+      challengeValue = this.passkeyVerifier.decodeClientDataChallenge(
+        response.response.clientDataJSON,
+      );
+      newCounter = this.passkeyVerifier.readAuthenticatorCounter(
+        response.response.authenticatorData,
+      );
+    } catch (error) {
+      throw passkeyLoginFailed(error);
+    }
+
+    const challenge = await this.passkeyChallenges.consume(this.dataSource.manager, {
+      challenge: challengeValue,
+      purpose: 'LOGIN',
+    });
+    if (challenge === null) throw passkeyLoginFailed();
+
+    const credential = await this.dataSource.getRepository(Credential).findOne({
+      where: { type: 'PASSKEY', identifier: response.id, revokedAt: IsNull() },
+    });
+    if (credential === null || credential.publicMaterial === null) throw passkeyLoginFailed();
+
+    const credentialId = credential.id;
+    const userId = credential.userId;
+    const publicKeyBase64 = credential.publicMaterial;
+    const metadata = passkeyMetadata(credential.metadata);
+    const storedCounter = metadata.counter;
+
+    // A plain (non-transactional) read: nothing below needs it inside a transaction, and
+    // keeping it out of one is what lets the `SECURITY` notification below commit
+    // independently of the login it's reporting on failing.
+    const user = await this.dataSource.getRepository(User).findOne({ where: { id: userId } });
+    if (user === null || user.deletedAt !== null || user.status !== 'ACTIVE') {
+      throw passkeyLoginFailed();
+    }
+    const actor = await requireActor(this.dataSource.manager, user.actorId);
+
+    if (storedCounter > 0 && newCounter <= storedCounter) {
+      // Written in its own transaction, not the one issuing (or, here, refusing) the session:
+      // the caller must still see the *login* fail, but that failure throws past this method's
+      // return, which would otherwise roll back an insert made in the same transaction —
+      // exactly the outcome ADR 0022 does not want (a real clone attempt leaving no record).
+      await this.dataSource.transaction(async (manager) => {
+        const notifications = manager.getRepository(Notification);
+        await notifications.save(
+          notifications.create({
+            recipientActorId: actor.id,
+            type: 'SECURITY',
+            actorId: null,
+            postId: null,
+            conversationId: null,
+            communityId: null,
+          }),
+        );
+      });
+      throw passkeyLoginFailed();
+    }
+
+    let verification: VerifiedAuthenticationResponse;
+    try {
+      verification = await this.passkeyVerifier.verifyAuthenticationResponse({
+        response,
+        expectedChallenge: challengeValue,
+        expectedOrigin: this.config.publicOrigin,
+        expectedRPID: this.rpId(),
+        credential: {
+          id: response.id,
+          publicKey: new Uint8Array(Buffer.from(publicKeyBase64, 'base64')),
+          counter: storedCounter,
+          ...(metadata.transports === undefined ? {} : { transports: metadata.transports }),
+        },
+      });
+    } catch (error) {
+      throw passkeyLoginFailed(error);
+    }
+    if (!verification.verified) throw passkeyLoginFailed();
+
+    return this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(Credential).update(
+        { id: credentialId },
+        {
+          lastUsedAt: new Date(),
+          // Same "inline literal, not a named-type variable" reasoning as the registration
+          // write above.
+          metadata: {
+            counter: newCounter,
+            transports: metadata.transports,
+            deviceType: metadata.deviceType,
+            backedUp: metadata.backedUp,
+          },
+        },
+      );
+
+      const tokens = await this.tokens.issueSession(manager, {
+        userId: user.id,
+        actorId: actor.id,
+      });
+      return this.envelope(tokens, actor, user.emailVerifiedAt !== null);
+    });
+  }
+
+  /** Hostname-only RP id (ADR 0022): `PUBLIC_ORIGIN` minus scheme/port, matching what the
+   * browser's WebAuthn implementation itself derives from the page origin. */
+  private rpId(): string {
+    return new URL(this.config.publicOrigin).hostname;
+  }
+
   // ---------------------------------------------------------------- credentials
 
   async listCredentials(claims: AccessTokenClaims): Promise<CredentialSummary[]> {
@@ -1416,4 +1742,53 @@ function sessionGone(): AppError {
     'AUTH_SESSION_EXPIRED',
     'Your session is no longer valid. Please sign in again.',
   );
+}
+
+/** `credentials.metadata` for a `PASSKEY` row (P15-004) — non-secret WebAuthn bookkeeping, per
+ * the entity's own doc comment. `counter` is what {@link AuthService.completePasskeyLogin}'s
+ * sign-count-regression check compares against. */
+interface PasskeyCredentialMetadata {
+  counter: number;
+  transports?: string[] | undefined;
+  deviceType: 'singleDevice' | 'multiDevice';
+  backedUp: boolean;
+}
+
+/** Reads a `PASSKEY` credential's metadata defensively rather than casting the whole `jsonb`
+ * blob: a `counter` that is missing or not a number defaults to `0`, the same value a freshly
+ * registered, never-yet-authenticated passkey would have. */
+function passkeyMetadata(value: Record<string, unknown> | null): PasskeyCredentialMetadata {
+  const counter = typeof value?.counter === 'number' ? value.counter : 0;
+  const transports =
+    Array.isArray(value?.transports) &&
+    value.transports.every((transport): transport is string => typeof transport === 'string')
+      ? value.transports
+      : undefined;
+  const deviceType = value?.deviceType === 'multiDevice' ? 'multiDevice' : 'singleDevice';
+  const backedUp = value?.backedUp === true;
+  return { counter, transports, deviceType, backedUp };
+}
+
+/** Parses an opaque `credentialJson`/`optionsJson` payload (P15-004): both RPCs carry WebAuthn
+ * ceremony payloads as JSON strings rather than a field-by-field proto mirror (see
+ * `BeginPasskeyRegistrationResponse`'s doc comment in `auth.proto`), so a malformed one is
+ * exactly as uniform a failure as a bad signature. */
+function parseWebAuthnJson<T>(text: string, onError: (cause?: unknown) => AppError): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw onError(error);
+  }
+}
+
+/** Every `CompletePasskeyRegistration` failure — unparseable payload, unknown/expired/replayed
+ * challenge, a challenge bound to a different user, or a cryptographic verification failure. */
+function passkeyRegistrationInvalid(cause?: unknown): AppError {
+  return AppError.validation('Passkey registration could not be verified.', { cause });
+}
+
+/** The single response every `CompletePasskeyLogin` failure produces (§166's no-enumeration
+ * rule, exactly as {@link sshAuthenticationFailed} applies it to SSH login). */
+function passkeyLoginFailed(cause?: unknown): AppError {
+  return new AppError('AUTH_INVALID_CREDENTIALS', 'Passkey authentication failed.', { cause });
 }

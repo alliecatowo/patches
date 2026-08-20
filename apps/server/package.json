@@ -31,6 +31,7 @@
     "@patches/domain": "workspace:*",
     "@patches/media": "workspace:*",
     "@patches/proto": "workspace:*",
+    "@simplewebauthn/server": "catalog:",
     "grpc-health-check": "^2.1.0",
     "jose": "catalog:",
     "nodemailer": "catalog:",

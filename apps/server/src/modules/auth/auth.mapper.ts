@@ -13,13 +13,11 @@ import type { GitHubLoginPollResult } from './auth.service.js';
  * ends up on the wire the day someone adds one (§153).
  */
 
-/** `PASSKEY` is reserved in the database enum but is not a v0 protobuf value (§165), so it
- * maps to UNSPECIFIED rather than being invented on the wire. */
 const CREDENTIAL_TYPE_TO_PROTO: Readonly<Record<DbCredentialType, CredentialType>> = Object.freeze({
   PASSWORD: CredentialType.CREDENTIAL_TYPE_PASSWORD,
   SSH_PUBLIC_KEY: CredentialType.CREDENTIAL_TYPE_SSH_PUBLIC_KEY,
   GITHUB: CredentialType.CREDENTIAL_TYPE_GITHUB,
-  PASSKEY: CredentialType.CREDENTIAL_TYPE_UNSPECIFIED,
+  PASSKEY: CredentialType.CREDENTIAL_TYPE_PASSKEY,
   RECOVERY_CODE: CredentialType.CREDENTIAL_TYPE_RECOVERY_CODE,
 });
 
@@ -36,7 +34,10 @@ export function toProtoPasswordAuthMode(mode: 'off' | 'optional' | 'required'): 
   return PASSWORD_AUTH_MODE_TO_PROTO[mode];
 }
 
-/** Deliberately narrower than `DbCredentialType`: no protobuf value maps to `PASSKEY`. */
+/** Deliberately narrower than `DbCredentialType`: `PASSKEY` is enrolled through its own
+ * `BeginPasskeyRegistration`/`CompletePasskeyRegistration` pair (P15-004), never through the
+ * generic `AddCredential`, so it has no place in this map even though it now has a protobuf
+ * value ({@link CREDENTIAL_TYPE_TO_PROTO}). */
 export type AddableCredentialType = Extract<
   DbCredentialType,
   'PASSWORD' | 'SSH_PUBLIC_KEY' | 'GITHUB'

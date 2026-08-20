@@ -9,10 +9,18 @@ import {
   type AuthServiceController,
   type BeginGitHubLoginRequest,
   type BeginGitHubLoginResponse,
+  type BeginPasskeyLoginRequest,
+  type BeginPasskeyLoginResponse,
+  type BeginPasskeyRegistrationRequest,
+  type BeginPasskeyRegistrationResponse,
   type BeginSshEnrollmentRequest,
   type BeginSshEnrollmentResponse,
   type BeginSshLoginRequest,
   type BeginSshLoginResponse,
+  type CompletePasskeyLoginRequest,
+  type CompletePasskeyLoginResponse,
+  type CompletePasskeyRegistrationRequest,
+  type CompletePasskeyRegistrationResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
   CredentialType,
@@ -265,6 +273,45 @@ export class AuthController implements AuthServiceController {
     } catch {
       return undefined;
     }
+  }
+
+  @UseGuards(AuthGuard)
+  async beginPasskeyRegistration(
+    @Payload() _request: BeginPasskeyRegistrationRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<BeginPasskeyRegistrationResponse> {
+    const { optionsJson } = await this.auth.beginPasskeyRegistration(requireSession(session));
+    return { optionsJson };
+  }
+
+  @UseGuards(AuthGuard)
+  async completePasskeyRegistration(
+    @Payload() request: CompletePasskeyRegistrationRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<CompletePasskeyRegistrationResponse> {
+    const credential = await this.auth.completePasskeyRegistration(requireSession(session), {
+      credentialJson: request.credentialJson,
+      ...optional('label', request.label),
+    });
+    return { credential: toProtoCredential(credential) };
+  }
+
+  async beginPasskeyLogin(
+    @Payload() _request: BeginPasskeyLoginRequest,
+  ): Promise<BeginPasskeyLoginResponse> {
+    const { optionsJson } = await this.auth.beginPasskeyLogin();
+    return { optionsJson };
+  }
+
+  async completePasskeyLogin(
+    @Payload() request: CompletePasskeyLoginRequest,
+  ): Promise<CompletePasskeyLoginResponse> {
+    const session = await this.auth.completePasskeyLogin({
+      credentialJson: request.credentialJson,
+    });
+    return { session: toProtoSession(session) };
   }
 
   @UseGuards(AuthGuard)
