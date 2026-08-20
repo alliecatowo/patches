@@ -6,6 +6,8 @@ import {
   AdminAuditLog,
   Appeal,
   DomainBlock,
+  E2eeReportEvidence,
+  E2eeReportEvidenceItem,
   Invite,
   Labeler,
   ModerationLogEntry,
@@ -375,6 +377,119 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         // `none` resolves the report without an enforcement action — no new log entry.
         const countAfter = await dataSource.getRepository(ModerationLogEntry).count();
         expect(countAfter).toBe(countBefore);
+      });
+    });
+
+    describe('report show --reveal-evidence (P13-018, ADR 0020 §9)', () => {
+      it('discloses attached E2EE evidence and audits the view, attributed to the operator', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `mod${Date.now()}`,
+        });
+        const { actor: reporter } = await createTestUser(dataSource.manager, {
+          handle: `reporter5${Date.now()}`,
+        });
+        const report = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter.id,
+          subjectType: 'ACTOR',
+          subjectActorId: reporter.id,
+        });
+        const consentedAt = new Date('2026-08-19T00:00:00.000Z');
+        await dataSource.getRepository(E2eeReportEvidence).save({
+          reportId: report.id,
+          verificationStatus: 'VERIFIED',
+          consentedAt,
+          verifiedAt: consentedAt,
+          verificationFailureCode: null,
+        });
+        await dataSource.getRepository(E2eeReportEvidenceItem).save({
+          reportId: report.id,
+          position: 0,
+          logicalMessageId: '00000000-0000-0000-0000-000000000001',
+          disclosedPlaintext: Buffer.from('the disclosed body'),
+          opening: Buffer.alloc(4),
+          envelopeTranscript: Buffer.alloc(4),
+          frankingTag: Buffer.alloc(4),
+          participantTranscript: Buffer.alloc(4),
+          rosterDigest: Buffer.alloc(32),
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s = captureStdout();
+        await runReportCommand(
+          'show',
+          {
+            positionals: ['report', 'show', report.id],
+            options: { 'reveal-evidence': true, json: true },
+          },
+          ctx,
+        );
+        s.restore();
+
+        const printed = JSON.parse(s.text()) as {
+          evidence: { items: { disclosedPlaintext: string }[] };
+        };
+        expect(printed.evidence.items).toHaveLength(1);
+        expect(printed.evidence.items[0]?.disclosedPlaintext).toBe('the disclosed body');
+
+        const auditRow = await latestAuditLog('REPORT', report.id);
+        expect(auditRow.adminUserId).toBe(operatorActor.userId);
+        expect(auditRow.action).toBe('report.view_e2ee_evidence');
+        expect(auditRow.subjectId).toBe(report.id);
+        expect(JSON.stringify(auditRow.metadata)).not.toContain('the disclosed body');
+      });
+
+      it('never discloses evidence without the flag, even to an identified operator', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `mod2${Date.now()}`,
+        });
+        const { actor: reporter } = await createTestUser(dataSource.manager, {
+          handle: `reporter6${Date.now()}`,
+        });
+        const report = await createTestReport(dataSource.manager, {
+          reporterActorId: reporter.id,
+          subjectType: 'ACTOR',
+          subjectActorId: reporter.id,
+        });
+        await dataSource.getRepository(E2eeReportEvidence).save({
+          reportId: report.id,
+          verificationStatus: 'VERIFIED',
+          consentedAt: new Date(),
+          verifiedAt: new Date(),
+          verificationFailureCode: null,
+        });
+        await dataSource.getRepository(E2eeReportEvidenceItem).save({
+          reportId: report.id,
+          position: 0,
+          logicalMessageId: '00000000-0000-0000-0000-000000000002',
+          disclosedPlaintext: Buffer.from('must stay hidden'),
+          opening: Buffer.alloc(4),
+          envelopeTranscript: Buffer.alloc(4),
+          frankingTag: Buffer.alloc(4),
+          participantTranscript: Buffer.alloc(4),
+          rosterDigest: Buffer.alloc(32),
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s = captureStdout();
+        await runReportCommand(
+          'show',
+          { positionals: ['report', 'show', report.id], options: {} },
+          ctx,
+        );
+        s.restore();
+
+        expect(s.text()).not.toContain('must stay hidden');
+      });
+
+      it('rejects revealing evidence for an unknown report without an operator identified', async () => {
+        const noOperator = await context(undefined);
+        await expect(
+          runReportCommand(
+            'show',
+            { positionals: ['report', 'show', 'nope'], options: { 'reveal-evidence': true } },
+            noOperator,
+          ),
+        ).rejects.toThrow(/No operator identified/);
       });
     });
 

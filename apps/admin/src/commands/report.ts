@@ -1,6 +1,8 @@
 import {
   Actor,
   appendAdminAuditLog,
+  E2eeReportEvidence,
+  E2eeReportEvidenceItem,
   ModerationLogEntry,
   Notification,
   Post,
@@ -88,9 +90,24 @@ async function listReports(args: ParsedArgs, context: AdminContext): Promise<voi
 }
 
 async function showReport(args: ParsedArgs, context: AdminContext): Promise<void> {
-  const id = requirePositional(args.positionals, 2, 'Usage: report show <id>');
-  const report = await context.dataSource.getRepository(Report).findOne({ where: { id } });
-  if (report === null) throw new Error(`Report "${id}" not found.`);
+  const id = requirePositional(args.positionals, 2, 'Usage: report show <id> [--reveal-evidence]');
+  const revealEvidence = booleanOption(args.options, 'reveal-evidence');
+  const asJson = booleanOption(args.options, 'json');
+
+  // `--reveal-evidence` is a deliberate moderator disclosure of reporter-submitted E2EE
+  // plaintext (ADR 0020 §9), so it is attributed and audited exactly like `report resolve`
+  // — an operator must be identified even though a bare `report show` is a read anyone running
+  // this CLI can do.
+  const operatorUserId = revealEvidence ? await requireOperatorUserId(context) : undefined;
+
+  const { report, evidence } = await context.dataSource.transaction(async (manager) => {
+    const found = await manager.getRepository(Report).findOne({ where: { id } });
+    if (found === null) throw new Error(`Report "${id}" not found.`);
+    if (!revealEvidence || operatorUserId === undefined) return { report: found, evidence: null };
+
+    const view = await loadReportEvidenceForModeration(manager, id, operatorUserId);
+    return { report: found, evidence: view };
+  });
 
   const row: Row = {
     id: report.id,
@@ -106,11 +123,102 @@ async function showReport(args: ParsedArgs, context: AdminContext): Promise<void
     resolvedAt: report.resolvedAt,
   };
 
-  if (booleanOption(args.options, 'json')) {
-    printJson(row);
+  if (evidence === null) {
+    if (asJson) {
+      printJson(row);
+    } else {
+      printTable([row]);
+    }
+    return;
+  }
+
+  const itemRows: Row[] = evidence.items.map((item) => ({
+    position: item.position,
+    logicalMessageId: item.logicalMessageId,
+    disclosedPlaintext: Buffer.from(item.disclosedPlaintext).toString('utf8'),
+  }));
+
+  if (asJson) {
+    printJson({
+      ...row,
+      evidence: {
+        verificationStatus: evidence.verificationStatus,
+        verificationFailureCode: evidence.verificationFailureCode,
+        consentedAt: evidence.consentedAt,
+        verifiedAt: evidence.verifiedAt,
+        items: itemRows,
+      },
+    });
   } else {
     printTable([row]);
+    printTable([
+      {
+        verificationStatus: evidence.verificationStatus,
+        verificationFailureCode: evidence.verificationFailureCode,
+        consentedAt: evidence.consentedAt,
+        verifiedAt: evidence.verifiedAt,
+      },
+    ]);
+    printTable(itemRows);
   }
+}
+
+/**
+ * Moderator-only read of reporter-disclosed E2EE evidence (ADR 0020 §9, spec §65: moderator
+ * actions belong in the admin CLI, never a user-facing gRPC RPC). Mirrors
+ * `apps/server/src/modules/e2ee/report-evidence-moderation.ts`'s `loadReportEvidenceForModeration`
+ * exactly — same lookups, same content-free `admin_audit_log` row in the same transaction as the
+ * read — but duplicated rather than imported, since `apps/admin` never depends on `apps/server`
+ * (each app owns its own boundary reads of the same tables, the layering
+ * `docs/agents/PACKAGE_CONVENTIONS.md` draws between every app; see `labeler.ts`'s identical
+ * duplication of `label-validation.ts`'s schema for the same reasoning).
+ *
+ * Throws if the report or its attached evidence does not exist, before writing any audit row —
+ * "a moderator looked" is only ever recorded once they actually received data.
+ */
+async function loadReportEvidenceForModeration(
+  manager: EntityManager,
+  reportId: string,
+  moderatorUserId: string,
+): Promise<{
+  verificationStatus: string;
+  verificationFailureCode: string | null;
+  consentedAt: Date;
+  verifiedAt: Date | null;
+  items: { position: number; logicalMessageId: string; disclosedPlaintext: Uint8Array }[];
+}> {
+  const evidence = await manager.getRepository(E2eeReportEvidence).findOne({ where: { reportId } });
+  if (evidence === null) {
+    throw new Error(`Report "${reportId}" has no E2EE evidence attached.`);
+  }
+
+  const itemRows = await manager
+    .getRepository(E2eeReportEvidenceItem)
+    .find({ where: { reportId }, order: { position: 'ASC' } });
+
+  await appendAdminAuditLog(manager, {
+    adminUserId: moderatorUserId,
+    action: 'report.view_e2ee_evidence',
+    subjectType: 'REPORT',
+    subjectId: reportId,
+    metadata: {
+      itemCount: itemRows.length,
+      verificationStatus: evidence.verificationStatus,
+      verificationFailureCode: evidence.verificationFailureCode,
+    },
+  });
+
+  return {
+    verificationStatus: evidence.verificationStatus,
+    verificationFailureCode: evidence.verificationFailureCode,
+    consentedAt: evidence.consentedAt,
+    verifiedAt: evidence.verifiedAt,
+    items: itemRows.map((item) => ({
+      position: item.position,
+      logicalMessageId: item.logicalMessageId,
+      disclosedPlaintext: new Uint8Array(item.disclosedPlaintext),
+    })),
+  };
 }
 
 async function resolveReport(args: ParsedArgs, context: AdminContext): Promise<void> {
