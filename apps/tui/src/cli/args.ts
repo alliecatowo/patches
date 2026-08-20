@@ -12,6 +12,7 @@ export type Command =
   | 'whoami'
   | 'keys'
   | 'verify'
+  | 'approve'
   | 'profile'
   | 'dm'
   | 'community'
@@ -33,6 +34,7 @@ const SUBCOMMANDS: readonly Command[] = [
   'whoami',
   'keys',
   'verify',
+  'approve',
   'profile',
   'dm',
   'community',
@@ -158,6 +160,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'whoami':
       case 'keys':
       case 'verify':
+      case 'approve':
       case 'profile':
       case 'dm':
       case 'community':
@@ -247,6 +250,7 @@ Usage:
   patches keys <add|list|remove> manage SSH-key credentials on your account
   patches verify <code>        confirm your email with the code it was sent
   patches verify --resend      ask the server to resend the verification email
+  patches approve <code>       approve a "sign in from your browser" device link
   patches profile edit [opts]  edit your display name/bio/location/website
   patches dm <command>         list, read, send, or manage message requests
   patches community <command>  list, join, leave, or post to communities

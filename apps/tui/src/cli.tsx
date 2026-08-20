@@ -10,6 +10,7 @@ import {
 import { PatchesApi } from './api/client.js';
 import { runAccounts } from './cli/accounts.js';
 import { runAppeal } from './cli/appeal.js';
+import { runApprove } from './cli/approve.js';
 import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
 import { runCommunity } from './cli/community.js';
@@ -106,6 +107,8 @@ async function main(): Promise<number> {
   if (args.command === 'whoami') return runWhoami(rest, { io, env: process.env, target, insecure });
   if (args.command === 'keys') return runKeys(rest, { io, env: process.env, target, insecure });
   if (args.command === 'verify') return runVerify(rest, { io, env: process.env, target, insecure });
+  if (args.command === 'approve')
+    return runApprove(rest, { io, env: process.env, target, insecure });
   if (args.command === 'profile')
     return runProfile(rest, { io, env: process.env, target, insecure });
   if (args.command === 'dm') return runDm(rest, { io, env: process.env, target, insecure });
