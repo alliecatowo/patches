@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { runCommunity, type CommunityCommandApi } from './community.js';
 import type { CliIo } from './io.js';
-import { makeCommunity } from '../test/wire-fixtures.js';
+import { makeCommunity, makeListCommunitiesResponse, makePageInfo } from '../test/wire-fixtures.js';
 
 function community(viewerRole: Community['viewerRole'] = COMMUNITY_ROLE.UNSPECIFIED): Community {
   return makeCommunity({ displayName: 'Terminal\x1b[2J people', viewerRole });
@@ -42,10 +42,12 @@ describe('runCommunity', () => {
   it('lists a keyset page and sanitizes remote fields', async () => {
     const io = makeIo();
     const api = fakeApi();
-    vi.mocked(api.listCommunities).mockResolvedValue({
-      communities: [community()],
-      page: { nextCursor: 'opaque-next', hasMore: true },
-    });
+    vi.mocked(api.listCommunities).mockResolvedValue(
+      makeListCommunitiesResponse({
+        communities: [community()],
+        page: makePageInfo({ nextCursor: 'opaque-next', hasMore: true }),
+      }),
+    );
     const code = await runCommunity(['list', '--cursor', 'opaque', '--limit', '5'], {
       io,
       api,

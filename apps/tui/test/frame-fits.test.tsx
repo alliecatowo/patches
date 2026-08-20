@@ -3,6 +3,7 @@ import { render } from 'ink-testing-library';
 import stringWidth from 'string-width';
 import { describe, expect, it } from 'vitest';
 
+import { makeMediaAttachment } from '../src/test/wire-fixtures.js';
 import { createFakeApi, expectFrame, flush, KEY, renderApp } from './harness.js';
 
 /**
@@ -65,7 +66,7 @@ describe('the rendered frame always fits the terminal', () => {
     }
     // One post carrying media, so the §75 fallback box is in the measured budget too.
     fake.addPost(alice.id, 'post with an image 🖼', new Date(), undefined, [
-      { mediaId: 'm1', mimeType: 'image/png', width: 1200, height: 800, altText: '', position: 0 },
+      makeMediaAttachment({ mediaId: 'm1', mimeType: 'image/png', width: 1200, height: 800 }),
     ]);
 
     const { press, lastFrame, unmount } = renderApp({ fake });

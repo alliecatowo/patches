@@ -14,6 +14,7 @@ import {
 } from '../auth/ssh-enroll.js';
 import type { ActiveSession } from '../auth/session.js';
 import { theme } from '../theme/index.js';
+import { CREDENTIAL_TYPE_SCHEMA, enumWireName } from '../api/wire/enums.js';
 
 export interface AccountsScreenProps {
   api: PatchesApi;
@@ -51,7 +52,7 @@ function describeCandidate(candidate: EnrollmentCandidate): string {
 function describeCredentialRow(credential: Credential): string {
   const label = credential.label === '' ? '(no label)' : credential.label;
   const identifier = credential.identifier === '' ? '' : `  ${credential.identifier}`;
-  return `${credential.type}  ${label}${identifier}`;
+  return `${enumWireName(CREDENTIAL_TYPE_SCHEMA, credential.type)}  ${label}${identifier}`;
 }
 
 /**

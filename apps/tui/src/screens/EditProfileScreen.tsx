@@ -1,3 +1,6 @@
+import { create } from '@bufbuild/protobuf';
+import { NameplateSchema } from '@patches/proto/es';
+
 import type { Actor } from '../api/wire/types.js';
 import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -199,7 +202,9 @@ export function EditProfileScreen({
           bio: fields.bio,
           locationText: fields.location,
           websiteUrl: fields.website,
-          updateMask,
+          // google.protobuf.FieldMask is a message ({ paths: string[] }), not a bare array
+          // (ADR 0023 — proto-loader decoded it that way; protobuf-es does not).
+          updateMask: { paths: updateMask },
           nameplate: nameplateChanged
             ? {
                 nameColor: fields.nameColor,
@@ -347,14 +352,14 @@ export function EditProfileScreen({
         <Text color={theme.muted}>Preview: </Text>
         <Nameplate
           handle={actor.handle}
-          nameplate={{
+          nameplate={create(NameplateSchema, {
             nameColor: fields.nameColor,
             glyph: fields.glyph,
             badges: [],
             avatarFrame: fields.avatarFrame,
             statusLine: fields.statusLine,
             profileBorder: fields.profileBorder,
-          }}
+          })}
         />
       </Box>
       <Box flexDirection="column">

@@ -61,9 +61,10 @@ describe('toDate', () => {
 });
 
 describe('fromDate', () => {
-  it('produces the ts-proto/proto-loader wire shape', () => {
+  it('produces the protobuf-es wire shape', () => {
     expect(fromDate(new Date('2025-01-01T00:00:00.500Z'))).toEqual({
-      seconds: '1735689600',
+      $typeName: 'google.protobuf.Timestamp',
+      seconds: 1735689600n,
       nanos: 500_000_000,
     });
   });

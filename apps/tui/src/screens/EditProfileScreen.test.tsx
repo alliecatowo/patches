@@ -98,10 +98,10 @@ describe('EditProfileScreen nameplate colour (P12-015 wiring)', () => {
     stdin.write(KEY.ctrlS);
     await vi.waitFor(() => expect(updateProfile).toHaveBeenCalledOnce());
     const [request, token] = updateProfile.mock.calls[0] as [
-      { updateMask: string[]; nameplate?: { nameColor: string } },
+      { updateMask: { paths: string[] }; nameplate?: { nameColor: string } },
       string,
     ];
-    expect(request.updateMask).toEqual(['nameplate']);
+    expect(request.updateMask).toEqual({ paths: ['nameplate'] });
     expect(request.nameplate?.nameColor).toBe('#00ff00');
     expect(token).toBe('token');
   });

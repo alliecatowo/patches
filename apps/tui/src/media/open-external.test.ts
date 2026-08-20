@@ -2,6 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { create } from '@bufbuild/protobuf';
+import { GetMediaDownloadResponseSchema } from '@patches/proto/es';
 import { MEDIA_STATUS } from '../api/wire/enums.js';
 import type { GetMediaDownloadResponse, MediaAttachment } from '../api/wire/types.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,7 +49,7 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
 
   it('downloads, caches, and spawns the OS opener with argument-array only (never a shell string)', async () => {
     const spawnFn = vi.fn();
-    const download: GetMediaDownloadResponse = {
+    const download: GetMediaDownloadResponse = create(GetMediaDownloadResponseSchema, {
       mediaId: 'media-1',
       status: MEDIA_STATUS.READY,
       mimeType: 'image/png',
@@ -55,8 +57,7 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
       height: 10,
       downloadUrl: 'https://example.test/media-1',
       thumbnailUrl: '',
-      expiresAt: undefined,
-    };
+    });
     const api = {
       getMediaDownload: vi.fn().mockResolvedValue(download),
     } as unknown as PatchesApi;
@@ -74,16 +75,10 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
   });
 
   it('throws a human-readable error when the media is still processing', async () => {
-    const download: GetMediaDownloadResponse = {
+    const download: GetMediaDownloadResponse = create(GetMediaDownloadResponseSchema, {
       mediaId: 'media-1',
       status: MEDIA_STATUS.PROCESSING,
-      mimeType: '',
-      width: 0,
-      height: 0,
-      downloadUrl: '',
-      thumbnailUrl: '',
-      expiresAt: undefined,
-    };
+    });
     const api = {
       getMediaDownload: vi.fn().mockResolvedValue(download),
     } as unknown as PatchesApi;
@@ -97,7 +92,7 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
   });
 
   it('refuses to spawn a cached path that starts with "-" (A-045 argument-injection defense)', async () => {
-    const download: GetMediaDownloadResponse = {
+    const download: GetMediaDownloadResponse = create(GetMediaDownloadResponseSchema, {
       mediaId: 'media-1',
       status: MEDIA_STATUS.READY,
       mimeType: 'image/png',
@@ -105,8 +100,7 @@ describe('openMediaExternally (B-004/P5-003, spec §76)', () => {
       height: 10,
       downloadUrl: 'https://example.test/media-1',
       thumbnailUrl: '',
-      expiresAt: undefined,
-    };
+    });
     const api = {
       getMediaDownload: vi.fn().mockResolvedValue(download),
     } as unknown as PatchesApi;

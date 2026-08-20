@@ -35,8 +35,10 @@ const KIND_CYCLE: readonly FilterTermKind[] = [
   FILTER_TERM_KIND.DOMAIN,
 ];
 
+// protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023): indexing
+// the enum object by value is already the prefix-stripped member name.
 function kindLabel(kind: FilterTermKind): string {
-  return kind.replace('FILTER_TERM_KIND_', '').toLowerCase();
+  return FILTER_TERM_KIND[kind].toLowerCase();
 }
 
 type PublishField = 'name' | 'displayName' | 'kind' | 'value';
@@ -222,7 +224,11 @@ export function FilterListsScreen({
         if (publish.field !== 'kind' && (key.backspace || key.delete)) {
           setPublish((current) => ({
             ...current,
-            [current.field]: current[current.field].slice(0, -1),
+            // The guard above (`field !== 'kind'`) makes this always a string at runtime; TS
+            // doesn't correlate a computed-key union across name/displayName/kind/value the
+            // way ts-proto's string enums accidentally let `.slice()` typecheck on every
+            // branch before (ADR 0023 — protobuf-es enums are numbers, not strings).
+            [current.field]: (current[current.field] as string).slice(0, -1),
           }));
           return;
         }

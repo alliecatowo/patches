@@ -33,8 +33,10 @@ function ownerLabel(labeler: Labeler): string {
   return 'unknown';
 }
 
+// protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023): indexing
+// the enum object by value is already the prefix-stripped member name.
 function actionLabel(action: LabelAction): string {
-  return action.replace('LABEL_ACTION_', '').toLowerCase();
+  return LABEL_ACTION[action].toLowerCase();
 }
 
 /**

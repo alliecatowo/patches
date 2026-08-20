@@ -1,3 +1,10 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  ListConversationsResponseSchema,
+  ListMessageRequestsResponseSchema,
+  ListMessagesResponseSchema,
+  SendMessageResponseSchema,
+} from '@patches/proto/es';
 import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -6,8 +13,10 @@ import type { CliIo } from './io.js';
 import {
   makeActor,
   makeConversation,
+  makeConversationMember,
   makeMessage,
   makeMessageRequest,
+  makePageInfo,
 } from '../test/wire-fixtures.js';
 
 function actor(id: string, handle: string, displayName: string): Actor {
@@ -20,9 +29,7 @@ function conversation(id = 'conversation-1'): Conversation {
   return makeConversation({
     id,
     createdBy: alice,
-    members: [
-      { actor: alice, joinedAt: undefined, leftAt: undefined, lastReadMessageId: '', muted: false },
-    ],
+    members: [makeConversationMember({ actor: alice })],
     unreadCount: 2,
   });
 }
@@ -95,10 +102,12 @@ describe('runDm', () => {
     const hostile = actor('actor-hostile', `mallory\x1b[2J`, 'Mal\x07lory');
     const row = conversation();
     row.members[0] = { ...row.members[0]!, actor: hostile };
-    api.listConversations.mockResolvedValue({
-      conversations: [row],
-      page: { nextCursor: `next\x1b[H`, hasMore: true },
-    });
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, {
+        conversations: [row],
+        page: makePageInfo({ nextCursor: `next\x1b[H`, hasMore: true }),
+      }),
+    );
 
     const exitCode = await runDm(
       ['list', '--cursor', 'opaque-cursor', '--limit', '7'],
@@ -118,7 +127,9 @@ describe('runDm', () => {
   it('sends a message with an idempotency id', async () => {
     const api = fakeApi();
     const output = io();
-    api.sendMessage.mockResolvedValue({ message: message('message-1', 'hello there') });
+    api.sendMessage.mockResolvedValue(
+      create(SendMessageResponseSchema, { message: message('message-1', 'hello there') }),
+    );
 
     const exitCode = await runDm(['send', 'conversation-1', 'hello', 'there'], deps(api, output));
 
@@ -144,10 +155,12 @@ describe('runDm', () => {
   it('reads a page chronologically and marks through its newest message', async () => {
     const api = fakeApi();
     const output = io();
-    api.listMessages.mockResolvedValue({
-      messages: [message('newest', `new\x1b[2J`), message('older', 'old')],
-      page: { nextCursor: 'older-cursor', hasMore: true },
-    });
+    api.listMessages.mockResolvedValue(
+      create(ListMessagesResponseSchema, {
+        messages: [message('newest', `new\x1b[2J`), message('older', 'old')],
+        page: makePageInfo({ nextCursor: 'older-cursor', hasMore: true }),
+      }),
+    );
 
     const exitCode = await runDm(['read', 'conversation-1', '--limit', '2'], deps(api, output));
 
@@ -169,10 +182,11 @@ describe('runDm', () => {
 
   it('lists, accepts, and declines requests', async () => {
     const api = fakeApi();
-    api.listMessageRequests.mockResolvedValue({
-      requests: [request('request-1', `hello\x1b[H`)],
-      page: undefined,
-    });
+    api.listMessageRequests.mockResolvedValue(
+      create(ListMessageRequestsResponseSchema, {
+        requests: [request('request-1', `hello\x1b[H`)],
+      }),
+    );
 
     const listed = io();
     expect(await runDm(['requests'], deps(api, listed))).toBe(0);

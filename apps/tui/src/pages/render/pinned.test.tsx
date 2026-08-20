@@ -1,4 +1,5 @@
-import type { GetActorResponse } from '../../api/wire/types.js';
+import { create } from '@bufbuild/protobuf';
+import { GetActorResponseSchema, GetPostResponseSchema } from '@patches/proto/es';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
 
@@ -34,7 +35,7 @@ async function waitForFrame(
 describe('PinnedPostsSection (P12-109)', () => {
   it('renders nothing when the owner has no pinned posts', async () => {
     const api = fakeApi({
-      getActor: () => Promise.resolve<GetActorResponse>({ actor: makeActor() }),
+      getActor: () => Promise.resolve(create(GetActorResponseSchema, { actor: makeActor() })),
     });
     const { lastFrame } = render(<PinnedPostsSection api={api} ownerActorId="actor-1" />);
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -44,17 +45,19 @@ describe('PinnedPostsSection (P12-109)', () => {
   it('fetches and renders each pinned post, in pinned order', async () => {
     const api = fakeApi({
       getActor: () =>
-        Promise.resolve<GetActorResponse>({
-          actor: makeActor({ pinnedPostIds: ['p1', 'p2'] }),
-        }),
+        Promise.resolve(
+          create(GetActorResponseSchema, { actor: makeActor({ pinnedPostIds: ['p1', 'p2'] }) }),
+        ),
       getPost: ({ id }) =>
-        Promise.resolve({
-          post: makePost({
-            id,
-            body: id === 'p1' ? 'first pinned post' : 'second pinned post',
-            rootPostId: id,
+        Promise.resolve(
+          create(GetPostResponseSchema, {
+            post: makePost({
+              id: id ?? '',
+              body: id === 'p1' ? 'first pinned post' : 'second pinned post',
+              rootPostId: id ?? '',
+            }),
           }),
-        }),
+        ),
     });
     const { lastFrame } = render(<PinnedPostsSection api={api} ownerActorId="actor-1" />);
     const frame = await waitForFrame(lastFrame, (f) => f.includes('second pinned post'));
@@ -66,7 +69,9 @@ describe('PinnedPostsSection (P12-109)', () => {
   it('drops a pin that no longer resolves instead of showing an error', async () => {
     const api = fakeApi({
       getActor: () =>
-        Promise.resolve<GetActorResponse>({ actor: makeActor({ pinnedPostIds: ['removed'] }) }),
+        Promise.resolve(
+          create(GetActorResponseSchema, { actor: makeActor({ pinnedPostIds: ['removed'] }) }),
+        ),
       getPost: () => Promise.reject(new Error('NOT_FOUND')),
     });
     const { lastFrame } = render(<PinnedPostsSection api={api} ownerActorId="actor-1" />);

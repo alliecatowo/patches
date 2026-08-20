@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { NOTIFICATION_TYPE } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '../src/api/wire/enums.js';
 import stringWidth from 'string-width';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

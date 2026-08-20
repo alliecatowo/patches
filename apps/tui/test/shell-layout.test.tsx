@@ -1,4 +1,4 @@
-import { NOTIFICATION_TYPE } from '@patches/proto';
+import { NOTIFICATION_TYPE } from '../src/api/wire/enums.js';
 import stringWidth from 'string-width';
 import { describe, expect, it } from 'vitest';
 

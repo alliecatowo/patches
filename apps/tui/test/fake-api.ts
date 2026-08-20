@@ -3,123 +3,178 @@ import { randomUUID } from 'node:crypto';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { parsePageStrict, type PatchesPage } from '@patches/domain';
 import {
-  dateToTimestamp,
   FOLLOW_STATE,
   MEDIA_STATUS,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
+} from '../src/api/wire/enums.js';
+import { fromDate } from '../src/api/wire/time.js';
+import {
   type Actor,
-  type AddCredentialRequest,
+  type AddCredentialRequest as AddCredentialRequestInit,
   type AddCredentialResponse,
-  type BeginMediaUploadRequest,
+  type BeginMediaUploadRequest as BeginMediaUploadRequestInit,
   type BeginMediaUploadResponse,
-  type BlockActorRequest,
+  type BlockActorRequest as BlockActorRequestInit,
   type BlockActorResponse,
-  type BookmarkPostRequest,
+  type BookmarkPostRequest as BookmarkPostRequestInit,
   type BookmarkPostResponse,
-  type CreatePostRequest,
+  type CreatePostRequest as CreatePostRequestInit,
   type CreatePostResponse,
   type Credential,
-  type FinalizeMediaUploadRequest,
+  type FinalizeMediaUploadRequest as FinalizeMediaUploadRequestInit,
   type FinalizeMediaUploadResponse,
-  type FollowActorRequest,
+  type FollowActorRequest as FollowActorRequestInit,
   type FollowActorResponse,
-  type GetActorByHandleRequest,
+  type GetActorByHandleRequest as GetActorByHandleRequestInit,
   type GetActorByHandleResponse,
-  type GetActorRequest,
+  type GetActorRequest as GetActorRequestInit,
   type GetActorResponse,
-  type GetMediaDownloadRequest,
+  type GetMediaDownloadRequest as GetMediaDownloadRequestInit,
   type GetMediaDownloadResponse,
-  type GetPageRequest,
+  type GetPageRequest as GetPageRequestInit,
   type GetPageResponse,
-  type GetPostRequest,
+  type GetPostRequest as GetPostRequestInit,
   type GetPostResponse,
-  type GetRelationshipRequest,
+  type GetRelationshipRequest as GetRelationshipRequestInit,
   type GetRelationshipResponse,
   type GetServerInfoResponse,
-  type GetUnreadCountRequest,
+  type GetUnreadCountRequest as GetUnreadCountRequestInit,
   type GetUnreadCountResponse,
   type GuestbookEntry,
-  type LikePostRequest,
+  type LikePostRequest as LikePostRequestInit,
   type LikePostResponse,
-  type ListActorPostsRequest,
+  type ListActorPostsRequest as ListActorPostsRequestInit,
   type ListActorPostsResponse,
-  type ListBlocksRequest,
+  type ListBlocksRequest as ListBlocksRequestInit,
   type ListBlocksResponse,
-  type ListBookmarksRequest,
+  type ListBookmarksRequest as ListBookmarksRequestInit,
   type ListBookmarksResponse,
-  type ListGuestbookRequest,
+  type ListGuestbookRequest as ListGuestbookRequestInit,
   type ListGuestbookResponse,
-  type ListHomeFeedRequest,
+  type ListHomeFeedRequest as ListHomeFeedRequestInit,
   type ListHomeFeedResponse,
   type ListCredentialsResponse,
-  type ListLocalFeedRequest,
+  type ListLocalFeedRequest as ListLocalFeedRequestInit,
   type ListLocalFeedResponse,
-  type ListMutualFollowsRequest,
+  type ListMutualFollowsRequest as ListMutualFollowsRequestInit,
   type ListMutualFollowsResponse,
-  type ListMutesRequest,
+  type ListMutesRequest as ListMutesRequestInit,
   type ListMutesResponse,
-  type ListNotificationsRequest,
+  type ListNotificationsRequest as ListNotificationsRequestInit,
   type ListNotificationsResponse,
-  type ListPageRevisionsRequest,
+  type ListPageRevisionsRequest as ListPageRevisionsRequestInit,
   type ListPageRevisionsResponse,
-  type ListPostLikersRequest,
+  type ListPostLikersRequest as ListPostLikersRequestInit,
   type ListPostLikersResponse,
-  type ListRepliesRequest,
+  type ListRepliesRequest as ListRepliesRequestInit,
   type ListRepliesResponse,
-  type LoginRequest,
+  type LoginRequest as LoginRequestInit,
   type LoginResponse,
-  type MarkNotificationsReadRequest,
+  type MarkNotificationsReadRequest as MarkNotificationsReadRequestInit,
   type MarkNotificationsReadResponse,
   type MediaAttachment,
-  type MuteActorRequest,
+  type MuteActorRequest as MuteActorRequestInit,
   type MuteActorResponse,
   type Nameplate,
   type Notification,
   type NotificationType,
   type PageInfo,
   type Post,
-  type RefreshSessionRequest,
+  type RefreshSessionRequest as RefreshSessionRequestInit,
   type RefreshSessionResponse,
-  type RegisterRequest,
+  type RegisterRequest as RegisterRequestInit,
   type RegisterResponse,
   type Relationship,
-  type RemoveGuestbookEntryRequest,
+  type RemoveGuestbookEntryRequest as RemoveGuestbookEntryRequestInit,
   type RemoveGuestbookEntryResponse,
-  type ReportActorRequest,
+  type ReportActorRequest as ReportActorRequestInit,
   type ReportActorResponse,
-  type ReportGuestbookEntryRequest,
+  type ReportGuestbookEntryRequest as ReportGuestbookEntryRequestInit,
   type ReportGuestbookEntryResponse,
-  type ReportPostRequest,
+  type ReportPostRequest as ReportPostRequestInit,
   type ReportPostResponse,
   type ResendVerificationResponse,
-  type ResolveActorRequest,
+  type ResolveActorRequest as ResolveActorRequestInit,
   type ResolveActorResponse,
-  type SearchActorsRequest,
+  type SearchActorsRequest as SearchActorsRequestInit,
   type SearchActorsResponse,
   type Session,
-  type SignGuestbookRequest,
+  type SignGuestbookRequest as SignGuestbookRequestInit,
   type SignGuestbookResponse,
-  type UnblockActorRequest,
+  type UnblockActorRequest as UnblockActorRequestInit,
   type UnblockActorResponse,
-  type UnbookmarkPostRequest,
+  type UnbookmarkPostRequest as UnbookmarkPostRequestInit,
   type UnbookmarkPostResponse,
-  type UnfollowActorRequest,
+  type UnfollowActorRequest as UnfollowActorRequestInit,
   type UnfollowActorResponse,
-  type UnlikePostRequest,
+  type UnlikePostRequest as UnlikePostRequestInit,
   type UnlikePostResponse,
-  type UnmuteActorRequest,
+  type UnmuteActorRequest as UnmuteActorRequestInit,
   type UnmuteActorResponse,
-  type UpdatePageRequest,
+  type UpdatePageRequest as UpdatePageRequestInit,
   type UpdatePageResponse,
-  type UpdateProfileRequest,
+  type UpdateProfileRequest as UpdateProfileRequestInit,
   type UpdateProfileResponse,
-  type VerifyEmailRequest,
+  type VerifyEmailRequest as VerifyEmailRequestInit,
   type VerifyEmailResponse,
-} from '@patches/proto';
+} from '../src/api/wire/types.js';
 
 import type { PatchesApi } from '../src/api/client.js';
+
+/** Narrows a `WireInit<T>` request type (`src/api/wire/types.ts`) down to the
+ * fully-decoded shape - the fake server always receives a complete, `$typeName`-bearing
+ * message, never the lenient partial-init shape callers are allowed to construct. */
+type Full<T> = Extract<T, { readonly $typeName: string }>;
+
+type AddCredentialRequest = Full<AddCredentialRequestInit>;
+type BeginMediaUploadRequest = Full<BeginMediaUploadRequestInit>;
+type BlockActorRequest = Full<BlockActorRequestInit>;
+type BookmarkPostRequest = Full<BookmarkPostRequestInit>;
+type CreatePostRequest = Full<CreatePostRequestInit>;
+type FinalizeMediaUploadRequest = Full<FinalizeMediaUploadRequestInit>;
+type FollowActorRequest = Full<FollowActorRequestInit>;
+type GetActorByHandleRequest = Full<GetActorByHandleRequestInit>;
+type GetActorRequest = Full<GetActorRequestInit>;
+type GetMediaDownloadRequest = Full<GetMediaDownloadRequestInit>;
+type GetPageRequest = Full<GetPageRequestInit>;
+type GetPostRequest = Full<GetPostRequestInit>;
+type GetRelationshipRequest = Full<GetRelationshipRequestInit>;
+type GetUnreadCountRequest = Full<GetUnreadCountRequestInit>;
+type LikePostRequest = Full<LikePostRequestInit>;
+type ListActorPostsRequest = Full<ListActorPostsRequestInit>;
+type ListBlocksRequest = Full<ListBlocksRequestInit>;
+type ListBookmarksRequest = Full<ListBookmarksRequestInit>;
+type ListGuestbookRequest = Full<ListGuestbookRequestInit>;
+type ListHomeFeedRequest = Full<ListHomeFeedRequestInit>;
+type ListLocalFeedRequest = Full<ListLocalFeedRequestInit>;
+type ListMutualFollowsRequest = Full<ListMutualFollowsRequestInit>;
+type ListMutesRequest = Full<ListMutesRequestInit>;
+type ListNotificationsRequest = Full<ListNotificationsRequestInit>;
+type ListPageRevisionsRequest = Full<ListPageRevisionsRequestInit>;
+type ListPostLikersRequest = Full<ListPostLikersRequestInit>;
+type ListRepliesRequest = Full<ListRepliesRequestInit>;
+type LoginRequest = Full<LoginRequestInit>;
+type MarkNotificationsReadRequest = Full<MarkNotificationsReadRequestInit>;
+type MuteActorRequest = Full<MuteActorRequestInit>;
+type RefreshSessionRequest = Full<RefreshSessionRequestInit>;
+type RegisterRequest = Full<RegisterRequestInit>;
+type RemoveGuestbookEntryRequest = Full<RemoveGuestbookEntryRequestInit>;
+type ReportActorRequest = Full<ReportActorRequestInit>;
+type ReportGuestbookEntryRequest = Full<ReportGuestbookEntryRequestInit>;
+type ReportPostRequest = Full<ReportPostRequestInit>;
+type ResolveActorRequest = Full<ResolveActorRequestInit>;
+type SearchActorsRequest = Full<SearchActorsRequestInit>;
+type SignGuestbookRequest = Full<SignGuestbookRequestInit>;
+type UnblockActorRequest = Full<UnblockActorRequestInit>;
+type UnbookmarkPostRequest = Full<UnbookmarkPostRequestInit>;
+type UnfollowActorRequest = Full<UnfollowActorRequestInit>;
+type UnlikePostRequest = Full<UnlikePostRequestInit>;
+type UnmuteActorRequest = Full<UnmuteActorRequestInit>;
+type UpdatePageRequest = Full<UpdatePageRequestInit>;
+type UpdateProfileRequest = Full<UpdateProfileRequestInit>;
+type VerifyEmailRequest = Full<VerifyEmailRequestInit>;
 
 /** URL prefixes the fake `fetch` override recognizes as its own "object storage" — anything
  * else passes through to the real global `fetch` untouched (spec §30's direct-to-R2 upload
@@ -287,10 +342,11 @@ export class FakeApiHandle {
     this.localDomain = options.localDomain ?? this.target.split(':')[0] ?? 'patches.test';
     this.federationEnabled = options.federationEnabled ?? true;
     this.serverInfo = {
+      $typeName: 'patches.v1.GetServerInfoResponse',
       serverVersion: '0.1.0',
       protocolVersion: 1,
       minClientVersion: '0.1.0',
-      serverTime: dateToTimestamp(new Date('2026-08-17T21:00:00.000Z')),
+      serverTime: fromDate(new Date('2026-08-17T21:00:00.000Z')),
       instanceName: 'patches-test',
       features: ['system.ping'],
       ...options.serverInfo,
@@ -302,7 +358,7 @@ export class FakeApiHandle {
     this.api = {
       target: this.target,
       getServerInfo: options.getServerInfoImpl ?? (() => Promise.resolve(this.serverInfo)),
-      ping: (nonce: string) => Promise.resolve({ nonce, serverTime: dateToTimestamp(new Date()) }),
+      ping: (nonce: string) => Promise.resolve({ nonce, serverTime: fromDate(new Date()) }),
       register: (request: RegisterRequest) => this.register(request),
       login: (request: LoginRequest) => this.login(request),
       // P15-002: always resolves 'optional' — no test currently exercises
@@ -483,10 +539,11 @@ export class FakeApiHandle {
     const user = this.users.get(authorId);
     if (user === undefined) throw new Error(`fake api: no such user ${authorId}`);
     const entry: GuestbookEntry = {
+      $typeName: 'patches.v1.GuestbookEntry',
       id: randomUUID(),
       author: this.toActor(user),
       body,
-      createdAt: dateToTimestamp(createdAt),
+      createdAt: fromDate(createdAt),
     };
     const key = pageKey(handle, slug);
     const list = this.guestbook.get(key) ?? [];
@@ -513,12 +570,13 @@ export class FakeApiHandle {
     const actorUser = options.actorId === undefined ? undefined : this.users.get(options.actorId);
     const createdAt = options.createdAt ?? new Date();
     const notification: Notification = {
+      $typeName: 'patches.v1.Notification',
       id: randomUUID(),
       type,
       actor: actorUser === undefined ? undefined : this.toActor(actorUser),
       postId: options.postId ?? '',
-      createdAt: dateToTimestamp(createdAt),
-      readAt: options.read === true ? dateToTimestamp(createdAt) : undefined,
+      createdAt: fromDate(createdAt),
+      readAt: options.read === true ? fromDate(createdAt) : undefined,
       // Amendment B fields (P11-001) — fake-api has no message/community-invite notification
       // writer yet.
       conversationId: '',
@@ -541,17 +599,18 @@ export class FakeApiHandle {
    * list-rendering tests (B-022). */
   addCredentialFor(
     userId: string,
-    credential: Omit<Credential, 'id' | 'createdAt' | 'lastUsedAt'> & {
+    credential: Omit<Credential, 'id' | 'createdAt' | 'lastUsedAt' | '$typeName' | '$unknown'> & {
       id?: string;
       createdAt?: Date;
     },
   ): Credential {
     const full: Credential = {
+      $typeName: 'patches.v1.Credential',
       id: credential.id ?? randomUUID(),
       type: credential.type,
       label: credential.label,
       identifier: credential.identifier,
-      createdAt: dateToTimestamp(credential.createdAt ?? new Date()),
+      createdAt: fromDate(credential.createdAt ?? new Date()),
       lastUsedAt: undefined,
     };
     this.credentialsFor(userId).push(full);
@@ -574,6 +633,7 @@ export class FakeApiHandle {
       following.has(user.id),
     ).length;
     return {
+      $typeName: 'patches.v1.Actor',
       id: user.id,
       handle: user.handle,
       displayName: user.displayName,
@@ -582,8 +642,13 @@ export class FakeApiHandle {
       websiteUrl: user.websiteUrl ?? '',
       avatar: undefined,
       isLocal: true,
-      joinedAt: dateToTimestamp(new Date('2026-01-01T00:00:00.000Z')),
-      counts: { followers: followerCount, following: followingCount, posts: postCount },
+      joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      counts: {
+        $typeName: 'patches.v1.ActorCounts',
+        followers: followerCount,
+        following: followingCount,
+        posts: postCount,
+      },
       nameplate: user.nameplate,
       // Amendment B fields (P11-001) — no fake-api writer produces flair/pinned posts yet.
       flair: undefined,
@@ -606,6 +671,7 @@ export class FakeApiHandle {
       throw new Error(`fake api: no such post ${inReplyToId}`);
     }
     return {
+      $typeName: 'patches.v1.Post',
       id,
       author: this.toActor(user),
       body,
@@ -615,11 +681,16 @@ export class FakeApiHandle {
       inReplyToId,
       rootPostId: parent?.rootPostId ?? id,
       media: [...media],
-      createdAt: dateToTimestamp(createdAt),
+      createdAt: fromDate(createdAt),
       editedAt: undefined,
       deleted: false,
-      counts: { replies: 0, likes: 0, reposts: 0, quotes: 0 },
-      viewerState: { liked: false, bookmarked: false, reposted: false },
+      counts: { $typeName: 'patches.v1.PostCounts', replies: 0, likes: 0, reposts: 0, quotes: 0 },
+      viewerState: {
+        $typeName: 'patches.v1.PostViewerState',
+        liked: false,
+        bookmarked: false,
+        reposted: false,
+      },
       contentWarning: '',
       // Amendment B fields (P11-001) — fake-api has no repost/quote/community writer yet.
       quotedPost: undefined,
@@ -640,11 +711,12 @@ export class FakeApiHandle {
     this.refreshTokens.set(refreshToken, fakeSession);
     const now = Date.now();
     return {
+      $typeName: 'patches.v1.Session',
       actor: this.toActor(user),
       accessToken,
-      accessExpiresAt: dateToTimestamp(new Date(now + 15 * 60 * 1000)),
+      accessExpiresAt: fromDate(new Date(now + 15 * 60 * 1000)),
       refreshToken,
-      refreshExpiresAt: dateToTimestamp(new Date(now + 30 * 24 * 60 * 60 * 1000)),
+      refreshExpiresAt: fromDate(new Date(now + 30 * 24 * 60 * 60 * 1000)),
       emailVerified: user.emailVerified ?? true,
       node: this.target,
     };
@@ -660,7 +732,10 @@ export class FakeApiHandle {
       displayName: request.displayName,
       bio: '',
     });
-    return Promise.resolve({ session: this.issueSession(user) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.RegisterResponse',
+      session: this.issueSession(user),
+    });
   }
 
   private login(request: LoginRequest): Promise<LoginResponse> {
@@ -670,7 +745,10 @@ export class FakeApiHandle {
     if (user === undefined || user.password !== request.password) {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'wrong credentials'));
     }
-    return Promise.resolve({ session: this.issueSession(user) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.LoginResponse',
+      session: this.issueSession(user),
+    });
   }
 
   private refreshSession(request: RefreshSessionRequest): Promise<RefreshSessionResponse> {
@@ -681,7 +759,10 @@ export class FakeApiHandle {
     }
     this.sessions.delete(found.accessToken);
     this.refreshTokens.delete(request.refreshToken);
-    return Promise.resolve({ session: this.issueSession(user) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.RefreshSessionResponse',
+      session: this.issueSession(user),
+    });
   }
 
   private requireSession(accessToken: string): FakeSession | undefined {
@@ -702,7 +783,7 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.INVALID_ARGUMENT, 'That code is invalid.'));
     }
     user.emailVerified = true;
-    return Promise.resolve({ emailVerified: true });
+    return Promise.resolve({ $typeName: 'patches.v1.VerifyEmailResponse', emailVerified: true });
   }
 
   private resendVerification(accessToken: string): Promise<ResendVerificationResponse> {
@@ -711,7 +792,7 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     this.resendVerificationCalls.push(session.userId);
-    return Promise.resolve({});
+    return Promise.resolve({ $typeName: 'patches.v1.ResendVerificationResponse' });
   }
 
   private getActor(request: GetActorRequest): Promise<GetActorResponse> {
@@ -719,7 +800,7 @@ export class FakeApiHandle {
     if (user === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That no longer exists.'));
     }
-    return Promise.resolve({ actor: this.toActor(user) });
+    return Promise.resolve({ $typeName: 'patches.v1.GetActorResponse', actor: this.toActor(user) });
   }
 
   private getActorByHandle(request: GetActorByHandleRequest): Promise<GetActorByHandleResponse> {
@@ -727,7 +808,10 @@ export class FakeApiHandle {
     if (user === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That no longer exists.'));
     }
-    return Promise.resolve({ actor: this.toActor(user) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.GetActorByHandleResponse',
+      actor: this.toActor(user),
+    });
   }
 
   /** Applies only the fields named in `updateMask` (spec: `actors.proto`'s
@@ -745,7 +829,7 @@ export class FakeApiHandle {
     if (user === undefined) {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
-    const mask = new Set(request.updateMask ?? []);
+    const mask = new Set(request.updateMask?.paths ?? []);
     if (mask.has('display_name')) user.displayName = request.displayName;
     if (mask.has('bio')) user.bio = request.bio;
     if (mask.has('location_text')) user.locationText = request.locationText;
@@ -753,7 +837,10 @@ export class FakeApiHandle {
     if (mask.has('nameplate') && request.nameplate !== undefined) {
       user.nameplate = request.nameplate;
     }
-    return Promise.resolve({ actor: this.toActor(user) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.UpdateProfileResponse',
+      actor: this.toActor(user),
+    });
   }
 
   /** `acct` must not be `localDomain` — mirrors the real `ActorService.resolveActor`'s
@@ -784,7 +871,7 @@ export class FakeApiHandle {
     if (actor === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That account could not be resolved.'));
     }
-    return Promise.resolve({ actor });
+    return Promise.resolve({ $typeName: 'patches.v1.ResolveActorResponse', actor });
   }
 
   /** Cursor pagination shared by every `ListXxx`/`SearchActors` RPC below. */
@@ -804,7 +891,11 @@ export class FakeApiHandle {
     const next = start + page.length;
     return {
       items: page,
-      page: { nextCursor: next < all.length ? String(next) : '', hasMore: next < all.length },
+      page: {
+        $typeName: 'patches.v1.PageInfo',
+        nextCursor: next < all.length ? String(next) : '',
+        hasMore: next < all.length,
+      },
     };
   }
 
@@ -815,6 +906,7 @@ export class FakeApiHandle {
     return {
       ...post,
       counts: {
+        $typeName: 'patches.v1.PostCounts',
         likes: post.counts?.likes ?? 0,
         replies,
         reposts: post.counts?.reposts ?? 0,
@@ -826,12 +918,20 @@ export class FakeApiHandle {
   private listActorPosts(request: ListActorPostsRequest): Promise<ListActorPostsResponse> {
     const forActor = this.posts.filter((post) => post.author?.id === request.actorId);
     const { items, page } = this.paginate(forActor, request.cursor, request.limit);
-    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListActorPostsResponse',
+      posts: items.map((post) => this.withFreshCounts(post)),
+      page,
+    });
   }
 
   private listLocalFeed(request: ListLocalFeedRequest): Promise<ListLocalFeedResponse> {
     const { items, page } = this.paginate(this.posts, request.cursor, request.limit);
-    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListLocalFeedResponse',
+      posts: items.map((post) => this.withFreshCounts(post)),
+      page,
+    });
   }
 
   /** The caller's own posts plus posts from actors they follow (spec §52, §137). */
@@ -848,7 +948,11 @@ export class FakeApiHandle {
       (post) => post.author?.id === session.userId || following.has(post.author?.id ?? ''),
     );
     const { items, page } = this.paginate(relevant, request.cursor, request.limit);
-    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListHomeFeedResponse',
+      posts: items.map((post) => this.withFreshCounts(post)),
+      page,
+    });
   }
 
   private getPost(request: GetPostRequest): Promise<GetPostResponse> {
@@ -856,7 +960,10 @@ export class FakeApiHandle {
     if (post === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
     }
-    return Promise.resolve({ post: this.withFreshCounts(post) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.GetPostResponse',
+      post: this.withFreshCounts(post),
+    });
   }
 
   /** Direct replies only, newest first — mirrors `PostService.listReplies` (see
@@ -865,7 +972,11 @@ export class FakeApiHandle {
   private listReplies(request: ListRepliesRequest): Promise<ListRepliesResponse> {
     const direct = this.posts.filter((post) => post.inReplyToId === request.postId);
     const { items, page } = this.paginate(direct, request.cursor, request.limit);
-    return Promise.resolve({ posts: items.map((post) => this.withFreshCounts(post)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListRepliesResponse',
+      posts: items.map((post) => this.withFreshCounts(post)),
+      page,
+    });
   }
 
   /** Handle-prefix + display-name substring match (spec §112) — no ranking, insertion order. */
@@ -880,11 +991,16 @@ export class FakeApiHandle {
               user.displayName.toLowerCase().includes(query),
           );
     const { items, page } = this.paginate(matches, request.cursor, request.limit);
-    return Promise.resolve({ actors: items.map((user) => this.toActor(user)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.SearchActorsResponse',
+      actors: items.map((user) => this.toActor(user)),
+      page,
+    });
   }
 
   private relationship(callerId: string, targetId: string): Relationship {
     return {
+      $typeName: 'patches.v1.Relationship',
       state:
         (this.follows.get(callerId)?.has(targetId) ?? false)
           ? FOLLOW_STATE.FOLLOWING
@@ -911,6 +1027,7 @@ export class FakeApiHandle {
     following.add(request.actorId);
     this.follows.set(session.userId, following);
     return Promise.resolve({
+      $typeName: 'patches.v1.FollowActorResponse',
       relationship: this.relationship(session.userId, request.actorId),
       requested: false,
     });
@@ -925,7 +1042,10 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     this.follows.get(session.userId)?.delete(request.actorId);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.UnfollowActorResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   private getRelationship(
@@ -936,7 +1056,10 @@ export class FakeApiHandle {
     if (session === undefined) {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.GetRelationshipResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   /** Actors `actorId` follows who follow back — a public read, `accessToken` unused
@@ -953,7 +1076,11 @@ export class FakeApiHandle {
       .map((id) => this.users.get(id))
       .filter((user): user is FakeUser => user !== undefined);
     const { items, page } = this.paginate(mutualUsers, request.cursor, request.limit);
-    return Promise.resolve({ actors: items.map((user) => this.toActor(user)), page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListMutualFollowsResponse',
+      actors: items.map((user) => this.toActor(user)),
+      page,
+    });
   }
 
   private createPost(request: CreatePostRequest, accessToken: string): Promise<CreatePostResponse> {
@@ -976,7 +1103,10 @@ export class FakeApiHandle {
       media,
     );
     this.posts.unshift(post);
-    return Promise.resolve({ post: this.withFreshCounts(post) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.CreatePostResponse',
+      post: this.withFreshCounts(post),
+    });
   }
 
   /** Only `READY` media ids resolve to an attachment (mirrors the real server rejecting
@@ -985,7 +1115,15 @@ export class FakeApiHandle {
   private toMediaAttachment(mediaId: string, position: number): MediaAttachment | undefined {
     const media = this.media.get(mediaId);
     if (media === undefined || media.status !== MEDIA_STATUS.READY) return undefined;
-    return { mediaId, altText: '', width: 100, height: 100, mimeType: media.mimeType, position };
+    return {
+      $typeName: 'patches.v1.MediaAttachment',
+      mediaId,
+      altText: '',
+      width: 100,
+      height: 100,
+      mimeType: media.mimeType,
+      position,
+    };
   }
 
   private findPost(id: string): Post | undefined {
@@ -1012,8 +1150,16 @@ export class FakeApiHandle {
     likers.add(session.userId);
     this.likes.set(request.postId, likers);
     return Promise.resolve({
-      counts: { replies: 0, likes: likers.size, reposts: 0, quotes: 0 },
+      $typeName: 'patches.v1.LikePostResponse',
+      counts: {
+        $typeName: 'patches.v1.PostCounts',
+        replies: 0,
+        likes: likers.size,
+        reposts: 0,
+        quotes: 0,
+      },
       viewerState: {
+        $typeName: 'patches.v1.PostViewerState',
         liked: true,
         bookmarked: this.isBookmarked(session.userId, request.postId),
         reposted: false,
@@ -1028,13 +1174,16 @@ export class FakeApiHandle {
     }
     this.likes.get(request.postId)?.delete(session.userId);
     return Promise.resolve({
+      $typeName: 'patches.v1.UnlikePostResponse',
       counts: {
+        $typeName: 'patches.v1.PostCounts',
         replies: 0,
         likes: this.likes.get(request.postId)?.size ?? 0,
         reposts: 0,
         quotes: 0,
       },
       viewerState: {
+        $typeName: 'patches.v1.PostViewerState',
         liked: false,
         bookmarked: this.isBookmarked(session.userId, request.postId),
         reposted: false,
@@ -1061,7 +1210,9 @@ export class FakeApiHandle {
     if (!mine.includes(request.postId)) mine.unshift(request.postId);
     this.bookmarks.set(session.userId, mine);
     return Promise.resolve({
+      $typeName: 'patches.v1.BookmarkPostResponse',
       viewerState: {
+        $typeName: 'patches.v1.PostViewerState',
         liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
         bookmarked: true,
         reposted: false,
@@ -1083,7 +1234,9 @@ export class FakeApiHandle {
       mine.filter((id) => id !== request.postId),
     );
     return Promise.resolve({
+      $typeName: 'patches.v1.UnbookmarkPostResponse',
       viewerState: {
+        $typeName: 'patches.v1.PostViewerState',
         liked: this.likes.get(request.postId)?.has(session.userId) ?? false,
         bookmarked: false,
         reposted: false,
@@ -1107,13 +1260,14 @@ export class FakeApiHandle {
       .map((post) => ({
         ...this.withFreshCounts(post),
         viewerState: {
+          $typeName: 'patches.v1.PostViewerState' as const,
           liked: this.likes.get(post.id)?.has(session.userId) ?? false,
           bookmarked: true,
           reposted: false,
         },
       }));
     const { items, page } = this.paginate(bookmarked, request.cursor, request.limit);
-    return Promise.resolve({ posts: items, page });
+    return Promise.resolve({ $typeName: 'patches.v1.ListBookmarksResponse', posts: items, page });
   }
 
   private listPostLikers(request: ListPostLikersRequest): Promise<ListPostLikersResponse> {
@@ -1123,7 +1277,11 @@ export class FakeApiHandle {
       .filter((user): user is FakeUser => user !== undefined)
       .map((user) => this.toActor(user));
     const { items, page } = this.paginate(actors, request.cursor, request.limit);
-    return Promise.resolve({ actors: items, page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListPostLikersResponse',
+      actors: items,
+      page,
+    });
   }
 
   // ---- NotificationService (spec §56, §113) ----
@@ -1141,7 +1299,11 @@ export class FakeApiHandle {
       request.cursor,
       request.limit,
     );
-    return Promise.resolve({ notifications: items, page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListNotificationsResponse',
+      notifications: items,
+      page,
+    });
   }
 
   private markNotificationsRead(
@@ -1153,7 +1315,7 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     const mine = this.notificationsFor(session.userId);
-    const now = dateToTimestamp(new Date());
+    const now = fromDate(new Date());
     let markedCount = 0;
     // `through_id` means "everything down to and including this one" in the
     // newest-first list, not "only this one" — the screen marks what has been on
@@ -1166,7 +1328,10 @@ export class FakeApiHandle {
       notification.readAt = now;
       markedCount += 1;
     }
-    return Promise.resolve({ markedCount });
+    return Promise.resolve({
+      $typeName: 'patches.v1.MarkNotificationsReadResponse',
+      markedCount,
+    });
   }
 
   private getUnreadCount(
@@ -1180,7 +1345,7 @@ export class FakeApiHandle {
     const count = this.notificationsFor(session.userId).filter(
       (notification) => notification.readAt === undefined,
     ).length;
-    return Promise.resolve({ count });
+    return Promise.resolve({ $typeName: 'patches.v1.GetUnreadCountResponse', count });
   }
 
   // ---- ModerationService (spec §55, §61–64) ----
@@ -1196,7 +1361,10 @@ export class FakeApiHandle {
     // Blocking removes any follow in either direction (spec §62).
     this.follows.get(session.userId)?.delete(request.actorId);
     this.follows.get(request.actorId)?.delete(session.userId);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.BlockActorResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   private unblockActor(
@@ -1208,7 +1376,10 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     this.blocks.get(session.userId)?.delete(request.actorId);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.UnblockActorResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   private muteActor(request: MuteActorRequest, accessToken: string): Promise<MuteActorResponse> {
@@ -1219,7 +1390,10 @@ export class FakeApiHandle {
     const muted = this.mutes.get(session.userId) ?? new Set<string>();
     muted.add(request.actorId);
     this.mutes.set(session.userId, muted);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.MuteActorResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   private unmuteActor(
@@ -1231,7 +1405,10 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
     this.mutes.get(session.userId)?.delete(request.actorId);
-    return Promise.resolve({ relationship: this.relationship(session.userId, request.actorId) });
+    return Promise.resolve({
+      $typeName: 'patches.v1.UnmuteActorResponse',
+      relationship: this.relationship(session.userId, request.actorId),
+    });
   }
 
   private listBlocks(request: ListBlocksRequest, accessToken: string): Promise<ListBlocksResponse> {
@@ -1244,7 +1421,7 @@ export class FakeApiHandle {
       .filter((user): user is FakeUser => user !== undefined)
       .map((user) => this.toActor(user));
     const { items, page } = this.paginate(actors, request.cursor, request.limit);
-    return Promise.resolve({ actors: items, page });
+    return Promise.resolve({ $typeName: 'patches.v1.ListBlocksResponse', actors: items, page });
   }
 
   private listMutes(request: ListMutesRequest, accessToken: string): Promise<ListMutesResponse> {
@@ -1257,7 +1434,7 @@ export class FakeApiHandle {
       .filter((user): user is FakeUser => user !== undefined)
       .map((user) => this.toActor(user));
     const { items, page } = this.paginate(actors, request.cursor, request.limit);
-    return Promise.resolve({ actors: items, page });
+    return Promise.resolve({ $typeName: 'patches.v1.ListMutesResponse', actors: items, page });
   }
 
   private reportPost(request: ReportPostRequest, accessToken: string): Promise<ReportPostResponse> {
@@ -1268,7 +1445,10 @@ export class FakeApiHandle {
     if (this.findPost(request.postId) === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That post no longer exists.'));
     }
-    return Promise.resolve({ reportId: randomUUID() });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ReportPostResponse',
+      reportId: randomUUID(),
+    });
   }
 
   private reportActor(
@@ -1282,7 +1462,10 @@ export class FakeApiHandle {
     if (this.users.get(request.actorId) === undefined) {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That actor no longer exists.'));
     }
-    return Promise.resolve({ reportId: randomUUID() });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ReportActorResponse',
+      reportId: randomUUID(),
+    });
   }
 
   // ---- AccountsScreen (B-022): AuthService.ListCredentials/AddCredential ----
@@ -1292,7 +1475,10 @@ export class FakeApiHandle {
     if (session === undefined) {
       return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
     }
-    return Promise.resolve({ credentials: [...this.credentialsFor(session.userId)] });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListCredentialsResponse',
+      credentials: [...this.credentialsFor(session.userId)],
+    });
   }
 
   private addCredential(
@@ -1310,7 +1496,7 @@ export class FakeApiHandle {
       // it just needs something identifier-shaped for the accounts list to show.
       identifier: request.secret.slice(0, 32),
     });
-    return Promise.resolve({ credential });
+    return Promise.resolve({ $typeName: 'patches.v1.AddCredentialResponse', credential });
   }
 
   // ---- MediaService (P5-003/B-004, spec §29–32) ----
@@ -1330,9 +1516,10 @@ export class FakeApiHandle {
       status: MEDIA_STATUS.PENDING,
     });
     return Promise.resolve({
+      $typeName: 'patches.v1.BeginMediaUploadResponse',
       mediaId,
       uploadUrl: `${FAKE_UPLOAD_PREFIX}${mediaId}`,
-      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+      expiresAt: fromDate(new Date(Date.now() + 60_000)),
     });
   }
 
@@ -1351,7 +1538,11 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That media no longer exists.'));
     }
     media.status = MEDIA_STATUS.READY;
-    return Promise.resolve({ mediaId: request.mediaId, status: media.status });
+    return Promise.resolve({
+      $typeName: 'patches.v1.FinalizeMediaUploadResponse',
+      mediaId: request.mediaId,
+      status: media.status,
+    });
   }
 
   private getMediaDownload(
@@ -1367,6 +1558,7 @@ export class FakeApiHandle {
       return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'That media no longer exists.'));
     }
     return Promise.resolve({
+      $typeName: 'patches.v1.GetMediaDownloadResponse',
       mediaId: request.mediaId,
       status: media.status,
       mimeType: media.mimeType,
@@ -1374,7 +1566,7 @@ export class FakeApiHandle {
       height: 100,
       downloadUrl: `${FAKE_DOWNLOAD_PREFIX}${request.mediaId}`,
       thumbnailUrl: `${FAKE_DOWNLOAD_PREFIX}${request.mediaId}`,
-      expiresAt: dateToTimestamp(new Date(Date.now() + 60_000)),
+      expiresAt: fromDate(new Date(Date.now() + 60_000)),
     });
   }
 
@@ -1414,18 +1606,20 @@ export class FakeApiHandle {
     const found = this.pages.get(pageKey(request.handle, activeSlug));
     const document = found?.document ?? emptyPageDocument(activeSlug);
     return Promise.resolve({
+      $typeName: 'patches.v1.GetPageResponse',
       ownerActorId: user.id,
       revisionId: found?.revisionId ?? '',
       document: Buffer.from(JSON.stringify(document), 'utf8'),
       activeSlug,
       theme: {
+        $typeName: 'patches.v1.PageTheme',
         accent: document.theme?.accent ?? '',
         background: document.theme?.background ?? '',
         foreground: document.theme?.foreground ?? '',
         border: document.theme?.border ?? '',
         avatarStyle: document.theme?.avatarStyle ?? '',
       },
-      updatedAt: dateToTimestamp(found?.updatedAt ?? new Date()),
+      updatedAt: fromDate(found?.updatedAt ?? new Date()),
     });
   }
 
@@ -1456,9 +1650,10 @@ export class FakeApiHandle {
       });
     }
     return Promise.resolve({
+      $typeName: 'patches.v1.UpdatePageResponse',
       revisionId,
       document: Buffer.from(JSON.stringify(parsed), 'utf8'),
-      updatedAt: dateToTimestamp(updatedAt),
+      updatedAt: fromDate(updatedAt),
     });
   }
 
@@ -1466,7 +1661,11 @@ export class FakeApiHandle {
     const activeSlug = request.slug === '' ? 'index' : request.slug;
     const entries = this.guestbook.get(pageKey(request.handle, activeSlug)) ?? [];
     const { items, page } = this.paginate(entries, request.cursor, request.limit);
-    return Promise.resolve({ entries: items, page });
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListGuestbookResponse',
+      entries: items,
+      page,
+    });
   }
 
   private signGuestbook(
@@ -1483,7 +1682,7 @@ export class FakeApiHandle {
       session.userId,
       request.body,
     );
-    return Promise.resolve({ entry });
+    return Promise.resolve({ $typeName: 'patches.v1.SignGuestbookResponse', entry });
   }
 }
 

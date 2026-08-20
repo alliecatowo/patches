@@ -180,7 +180,9 @@ async function runSet(
       indexable: typedKey === 'indexable' ? next : prefs.indexable,
       showInLocalFeed: typedKey === 'show-in-local-feed' ? next : prefs.showInLocalFeed,
       locked: typedKey === 'locked' ? next : prefs.locked,
-      updateMask: [FIELD_MASK[typedKey]],
+      // google.protobuf.FieldMask is a message ({ paths: string[] }), not a bare array
+      // (ADR 0023 — proto-loader decoded it that way; protobuf-es does not).
+      updateMask: { paths: [FIELD_MASK[typedKey]] },
     },
     accessToken,
   );

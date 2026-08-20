@@ -33,11 +33,13 @@ const ACTION_CYCLE: readonly FilterAction[] = [
   FILTER_ACTION.HIDE,
 ];
 
+// protobuf-es enums are numeric with an automatic reverse mapping (ADR 0023): indexing
+// the enum object by value is already the prefix-stripped member name.
 function kindLabel(kind: FilterTermKind): string {
-  return kind.replace('FILTER_TERM_KIND_', '').toLowerCase();
+  return FILTER_TERM_KIND[kind].toLowerCase();
 }
 function actionLabel(action: FilterAction): string {
-  return action.replace('FILTER_ACTION_', '').toLowerCase();
+  return FILTER_ACTION[action].toLowerCase();
 }
 
 function describeFilterRow(filter: Filter): string {
@@ -232,7 +234,11 @@ export function FiltersScreen({
         ) {
           setCreate((current) => ({
             ...current,
-            [current.field]: current[current.field].slice(0, -1),
+            // The guard above (`field === 'name' | 'value'`) makes this always a string at
+            // runtime; TS doesn't correlate a computed-key union across name/kind/action the
+            // way ts-proto's string enums accidentally let `.slice()` typecheck on every
+            // branch before (ADR 0023 — protobuf-es enums are numbers, not strings).
+            [current.field]: (current[current.field] as string).slice(0, -1),
           }));
           return;
         }

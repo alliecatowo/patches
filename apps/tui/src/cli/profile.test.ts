@@ -3,7 +3,7 @@ import type { Nameplate, Session } from '../api/wire/types.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CliIo } from './io.js';
-import { makeActor, makeSession } from '../test/wire-fixtures.js';
+import { makeActor, makeActorCounts, makeNameplate, makeSession } from '../test/wire-fixtures.js';
 
 const updateProfile = vi.fn();
 const refreshSession = vi.fn();
@@ -47,7 +47,7 @@ function session(nameplate?: Nameplate): Session {
       id: 'u1',
       displayName: 'Alice',
       joinedAt: fromDate(new Date()),
-      counts: { followers: 0, following: 0, posts: 0 },
+      counts: makeActorCounts({ followers: 0, following: 0, posts: 0 }),
       nameplate,
     }),
     accessToken: 'access-token',
@@ -123,7 +123,7 @@ describe('runProfile edit', () => {
 
     expect(exitCode).toBe(0);
     expect(updateProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ bio: 'new bio', updateMask: ['bio'] }),
+      expect.objectContaining({ bio: 'new bio', updateMask: { paths: ['bio'] } }),
       'access-token',
     );
     expect(io.out.join('')).toContain('@alice · Alice A');
@@ -145,7 +145,7 @@ describe('runProfile edit', () => {
         displayName: 'A',
         locationText: 'Earth',
         websiteUrl: 'https://a.example',
-        updateMask: ['display_name', 'location_text', 'website_url'],
+        updateMask: { paths: ['display_name', 'location_text', 'website_url'] },
       }),
       'access-token',
     );
@@ -164,7 +164,7 @@ describe('runProfile edit', () => {
 
     expect(updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        updateMask: ['nameplate'],
+        updateMask: { paths: ['nameplate'] },
         nameplate: {
           nameColor: '#7C3AED',
           glyph: '*',
@@ -181,14 +181,16 @@ describe('runProfile edit', () => {
   it('merges an unspecified nameplate field from the current session actor rather than blanking it', async () => {
     stored = { userId: 'u1', refreshToken: 'refresh-token' };
     refreshSession.mockResolvedValue({
-      session: session({
-        nameColor: '#111111',
-        glyph: '',
-        badges: ['moderator'],
-        avatarFrame: '',
-        statusLine: 'existing status',
-        profileBorder: 'round',
-      }),
+      session: session(
+        makeNameplate({
+          nameColor: '#111111',
+          glyph: '',
+          badges: ['moderator'],
+          avatarFrame: '',
+          statusLine: 'existing status',
+          profileBorder: 'round',
+        }),
+      ),
     });
     updateProfile.mockResolvedValue({ actor: session().actor });
     const io = makeIo();
@@ -201,7 +203,7 @@ describe('runProfile edit', () => {
 
     expect(updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        updateMask: ['nameplate'],
+        updateMask: { paths: ['nameplate'] },
         nameplate: {
           nameColor: '#111111',
           glyph: '★',

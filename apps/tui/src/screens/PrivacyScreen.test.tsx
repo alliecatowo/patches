@@ -1,3 +1,9 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  GetDeletionStatusResponseSchema,
+  GetExportStatusResponseSchema,
+  GetPrivacyPrefsResponseSchema,
+} from '@patches/proto/es';
 import { fromDate } from '../api/wire/time.js';
 import type {
   AccountDeletionStatus,
@@ -39,13 +45,15 @@ function buildApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
   } as unknown as GetNodePolicyResponse);
   const getPrivacyPrefs = vi
     .fn<() => Promise<GetPrivacyPrefsResponse>>()
-    .mockResolvedValue({ prefs: prefs() });
+    .mockResolvedValue(create(GetPrivacyPrefsResponseSchema, { prefs: prefs() }));
   const getExportStatus = vi
     .fn<() => Promise<GetExportStatusResponse>>()
-    .mockResolvedValue({ export: undefined });
-  const getDeletionStatus = vi
-    .fn<() => Promise<GetDeletionStatusResponse>>()
-    .mockResolvedValue({ deletion: { pending: false } as AccountDeletionStatus });
+    .mockResolvedValue(create(GetExportStatusResponseSchema, {}));
+  const getDeletionStatus = vi.fn<() => Promise<GetDeletionStatusResponse>>().mockResolvedValue(
+    create(GetDeletionStatusResponseSchema, {
+      deletion: { pending: false } as AccountDeletionStatus,
+    }),
+  );
 
   return {
     target: 'patches.test:50051',
@@ -109,12 +117,14 @@ describe('PrivacyScreen', () => {
   // timestamp — the version bump, not just the presence of a timestamp, is what matters.
   it('shows the notice as unacknowledged again when the actor acknowledged an older version', async () => {
     const api = buildApi({
-      getPrivacyPrefs: vi.fn<() => Promise<GetPrivacyPrefsResponse>>().mockResolvedValue({
-        prefs: prefs({
-          privacyNoticeVersion: 1,
-          privacyNoticeAcknowledgedAt: fromDate(new Date('2026-01-01T00:00:00Z')),
+      getPrivacyPrefs: vi.fn<() => Promise<GetPrivacyPrefsResponse>>().mockResolvedValue(
+        create(GetPrivacyPrefsResponseSchema, {
+          prefs: prefs({
+            privacyNoticeVersion: 1,
+            privacyNoticeAcknowledgedAt: fromDate(new Date('2026-01-01T00:00:00Z')),
+          }),
         }),
-      }),
+      ),
     });
     const { lastFrame } = render(
       <PrivacyScreen
@@ -155,7 +165,7 @@ describe('PrivacyScreen', () => {
           indexable: true,
           showInLocalFeed: true,
           locked: false,
-          updateMask: ['discoverable'],
+          updateMask: { paths: ['discoverable'] },
         },
         'token',
       ),

@@ -86,6 +86,7 @@ describe('Edit profile — nameplate (A-037)', () => {
       displayName: 'Dana',
       bio: '',
       nameplate: {
+        $typeName: 'patches.v1.Nameplate',
         nameColor: '#111111',
         glyph: '',
         badges: [],
