@@ -178,6 +178,26 @@ export const ERROR_CODES = [
    * prekey drain rate limit for a device; the caller must retry the fallback-only bundle
    * rather than re-request one-time-prekey forward secrecy immediately. */
   'E2EE_PREKEY_LIMIT_EXCEEDED',
+  /** `E2eeService.GetE2eeConversationState`/`SendEnvelopes` (P13-007): a `conversation_id` that
+   * doesn't exist, isn't `E2EE_V1`, or the caller isn't an active member of — uniform for the
+   * same §62 no-oracle reason `CONVERSATION_NOT_FOUND` is. Deliberately a distinct code from
+   * `CONVERSATION_NOT_FOUND` rather than reused: a legacy and an E2EE conversation id are never
+   * interchangeable (ADR 0020 §1.1), so a client must be able to tell which lookup failed. */
+  'E2EE_CONVERSATION_NOT_FOUND',
+  /**
+   * `E2eeService.SendEnvelopes`/`CreateE2eeConversation` (ADR 0020 §7, §14.14.5): the submitted
+   * fanout does not exactly cover every active device of every current member — it is missing a
+   * device, addresses one the roster does not certify, fails its digest, or was composed under a
+   * stale membership epoch. The caller must re-fetch `GetE2eeConversationState` and recompose;
+   * this is the fail-closed outcome of a revocation race, never a silent partial delivery.
+   */
+  'E2EE_FANOUT_REJECTED',
+  /** `E2eeService.SendEnvelopes`/`CreateE2eeConversation`: this node has no franking key to sign
+   * an acceptance tag under (`NodeFrankingKeyRing.currentEra()` returned `undefined`). Distinct
+   * from a fanout failure — the send was otherwise valid, but the node cannot issue the receipt
+   * ADR 0020 §9 requires. Unreachable in production while `E2EE_APPROVED_FRANKING_PROFILES` is
+   * empty (P13-015/P13-016 must land persisted key custody first). */
+  'E2EE_FRANKING_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -247,6 +267,9 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   E2EE_CERTIFICATE_INVALID: GrpcStatus.INVALID_ARGUMENT,
   E2EE_ROSTER_CONFLICT: GrpcStatus.FAILED_PRECONDITION,
   E2EE_PREKEY_LIMIT_EXCEEDED: GrpcStatus.RESOURCE_EXHAUSTED,
+  E2EE_CONVERSATION_NOT_FOUND: GrpcStatus.NOT_FOUND,
+  E2EE_FANOUT_REJECTED: GrpcStatus.FAILED_PRECONDITION,
+  E2EE_FRANKING_UNAVAILABLE: GrpcStatus.FAILED_PRECONDITION,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {
