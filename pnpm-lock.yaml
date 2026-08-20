@@ -375,6 +375,9 @@ importers:
       '@patches/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@patches/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@patches/database':
         specifier: workspace:*
         version: link:../../packages/database
