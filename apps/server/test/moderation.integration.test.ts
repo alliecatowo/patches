@@ -29,6 +29,8 @@ import {
   type PostGrpcClient,
   type ReportActorRequest,
   type ReportActorResponse,
+  type ReportE2eeMessageRequest,
+  type ReportE2eeMessageResponse,
   type ReportPostRequest,
   type ReportPostResponse,
   type SocialGraphGrpcClient,
@@ -40,6 +42,7 @@ import {
 } from '@patches/proto';
 import { PostVisibility, QuotePolicy, ReportReason } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
+import { Conversation, ConversationMember, E2eeLogicalMessage, Report } from '@patches/database';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -286,6 +289,104 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const error = await expectRejection<ReportPostRequest, ReportPostResponse>(
           moderation.reportPost.bind(moderation),
           { postId, reason: ReportReason.REPORT_REASON_SPAM, details: '' },
+        );
+        expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
+      });
+    });
+
+    describe('ReportE2eeMessage', () => {
+      /** Inserts a bare `E2eeLogicalMessage` row directly (P13-019): the node's own gRPC
+       * surface for authoring one (`E2eeService.SendEnvelopes`) stays behind the disabled
+       * `E2EE_V1` capability (ADR 0020 §11), so a report test builds the row the same way
+       * `report-evidence.test.ts` does rather than driving the full send path. */
+      async function createLogicalMessage(members: TestActor[]): Promise<string> {
+        const conversation = await dataSource.getRepository(Conversation).save(
+          dataSource.getRepository(Conversation).create({
+            kind: 'DIRECT',
+            securityMode: 'E2EE_V1',
+          }),
+        );
+        await dataSource.getRepository(ConversationMember).save(
+          members.map((member) =>
+            dataSource.getRepository(ConversationMember).create({
+              conversationId: conversation.id,
+              actorId: member.actorId,
+            }),
+          ),
+        );
+        const logicalMessage = await dataSource.getRepository(E2eeLogicalMessage).save(
+          dataSource.getRepository(E2eeLogicalMessage).create({
+            id: randomUUID(),
+            conversationId: conversation.id,
+            epoch: '1',
+            senderActorId: members[0]?.actorId ?? '',
+            senderDeviceId: randomUUID(),
+            clientRequestId: randomUUID(),
+            fanoutDigest: Buffer.alloc(32),
+            frankingCommitment: Buffer.alloc(32),
+            frankingProfile: 'FRANKING_V1',
+            frankingKeyEra: 1,
+            frankingTag: Buffer.alloc(32),
+          }),
+        );
+        return logicalMessage.id;
+      }
+
+      it('creates an E2EE_MESSAGE report with no message snapshot', async () => {
+        const alice = await newActor();
+        const frank = await newActor();
+        const logicalMessageId = await createLogicalMessage([alice, frank]);
+
+        const response = await callUnary<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
+          moderation.reportE2eeMessage.bind(moderation),
+          {
+            logicalMessageId,
+            reason: ReportReason.REPORT_REASON_HARASSMENT,
+            details: 'reported an E2EE message',
+          },
+          { accessToken: alice.accessToken },
+        );
+        expect(response.reportId.length).toBeGreaterThan(0);
+
+        const row = await dataSource
+          .getRepository(Report)
+          .findOne({ where: { id: response.reportId } });
+        expect(row?.subjectType).toBe('E2EE_MESSAGE');
+        expect(row?.subjectE2eeLogicalMessageId).toBe(logicalMessageId);
+        expect(row?.messageSnapshot).toBeNull();
+      });
+
+      it('rejects a logical message id from a conversation the caller never joined', async () => {
+        const frank = await newActor();
+        const george = await newActor();
+        const outsider = await newActor();
+        const logicalMessageId = await createLogicalMessage([frank, george]);
+
+        const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
+          moderation.reportE2eeMessage.bind(moderation),
+          { logicalMessageId, reason: ReportReason.REPORT_REASON_SPAM, details: '' },
+          { accessToken: outsider.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.NOT_FOUND);
+      });
+
+      it('rejects an unknown logical message id with NOT_FOUND', async () => {
+        const alice = await newActor();
+        const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
+          moderation.reportE2eeMessage.bind(moderation),
+          { logicalMessageId: randomUUID(), reason: ReportReason.REPORT_REASON_SPAM, details: '' },
+          { accessToken: alice.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.NOT_FOUND);
+      });
+
+      it('rejects an unauthenticated caller with UNAUTHENTICATED', async () => {
+        const alice = await newActor();
+        const frank = await newActor();
+        const logicalMessageId = await createLogicalMessage([alice, frank]);
+        const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
+          moderation.reportE2eeMessage.bind(moderation),
+          { logicalMessageId, reason: ReportReason.REPORT_REASON_SPAM, details: '' },
         );
         expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
       });

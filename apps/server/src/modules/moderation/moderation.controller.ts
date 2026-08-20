@@ -18,6 +18,8 @@ import {
   type MuteActorResponse,
   type ReportActorRequest,
   type ReportActorResponse,
+  type ReportE2eeMessageRequest,
+  type ReportE2eeMessageResponse,
   type ReportMessageRequest,
   type ReportMessageResponse,
   type ReportPostRequest,
@@ -181,6 +183,26 @@ export class ModerationController implements ModerationServiceController {
     const reportId = await this.moderation.reportMessage(
       requireSession(session).actorId,
       request.messageId,
+      reportReasonFromProto(request.reason),
+      request.details,
+    );
+    return { reportId };
+  }
+
+  // `reportE2EeMessage`, not `reportE2eeMessage`: ts-proto's camelCase conversion of the proto
+  // RPC name `ReportE2eeMessage` capitalizes the `E` after the digit (`E2Ee`, same pattern as
+  // `E2eeService`'s own `getE2EeCapability`) — this must match `ModerationServiceController`'s
+  // generated interface exactly or Nest's decorator wiring throws at boot.
+  @UseGuards(AuthGuard)
+  async reportE2EeMessage(
+    @Payload() request: ReportE2eeMessageRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ReportE2eeMessageResponse> {
+    this.reportRateLimit.consume(getRequestContext()?.peer);
+    const reportId = await this.moderation.reportE2eeMessage(
+      requireSession(session).actorId,
+      request.logicalMessageId,
       reportReasonFromProto(request.reason),
       request.details,
     );

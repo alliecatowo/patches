@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
   Block,
+  ConversationMember,
+  E2eeLogicalMessage,
   Follow,
   FollowRequest,
   ModerationLogEntry,
@@ -289,6 +291,48 @@ export class ModerationService {
   }
 
   /**
+   * A fourth sibling of `reportPost`/`reportActor`/`reportMessage`, not a generic report
+   * method (ADR 0020 §9, P13-019): unlike `reportMessage`, this cannot snapshot plaintext into
+   * `message_snapshot` — the node never has E2EE plaintext to snapshot. It only creates the
+   * `Report` row (`subject_type = 'E2EE_MESSAGE'`); a reporter who wants to substantiate the
+   * report discloses plaintext/opening/franking material separately, and only with explicit
+   * consent, via `E2eeService.AttachReportEvidence` against this returned `report_id`.
+   *
+   * A missing logical message and one whose conversation the caller isn't (or never was) a
+   * member of are uniformly `E2EE_MESSAGE_NOT_FOUND` — same no-oracle rule `reportMessage`'s
+   * `MESSAGE_NOT_FOUND` already follows.
+   */
+  async reportE2eeMessage(
+    reporterActorId: string,
+    logicalMessageIdRaw: string,
+    reason: ReportReason,
+    details: string,
+  ): Promise<string> {
+    const logicalMessageId = parseInput(uuidInputSchema, logicalMessageIdRaw);
+    const logicalMessage = await this.dataSource
+      .getRepository(E2eeLogicalMessage)
+      .findOne({ where: { id: logicalMessageId } });
+    if (logicalMessage === null) throw e2eeMessageNotFound();
+
+    const membership = await this.dataSource.getRepository(ConversationMember).findOne({
+      where: { conversationId: logicalMessage.conversationId, actorId: reporterActorId },
+    });
+    if (membership === null) throw e2eeMessageNotFound();
+
+    const reports = this.dataSource.getRepository(Report);
+    const saved = await reports.save(
+      reports.create({
+        reporterActorId,
+        subjectType: 'E2EE_MESSAGE',
+        subjectE2eeLogicalMessageId: logicalMessage.id,
+        reason,
+        details: normalizeDetails(details),
+      }),
+    );
+    return saved.id;
+  }
+
+  /**
    * The public, anonymized transparency log (spec §201.4) — unauthenticated, keyset-paginated
    * over `moderation_log_entries`. `patches-admin domain block` (P14-012), `user suspend|delete`,
    * and `report resolve --action remove-post|suspend` (P14-027, `apps/admin/src/commands/
@@ -412,6 +456,10 @@ function parseActorId(value: string): string {
 
 function actorNotFound(): AppError {
   return new AppError('ACTOR_NOT_FOUND', 'That actor does not exist.');
+}
+
+function e2eeMessageNotFound(): AppError {
+  return new AppError('E2EE_MESSAGE_NOT_FOUND', 'That message does not exist.');
 }
 
 function normalizeDetails(details: string): string | null {

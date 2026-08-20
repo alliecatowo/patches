@@ -236,6 +236,25 @@ committing-AE/commitment construction is selected only after independent cryptog
 sender binding, receiver binding, multi-opening security, domain separation, and key rotation. The
 spike's keyed-BLAKE2 construction is not approved by this ADR.
 
+**Report creation is `ReportE2eeMessage`, a fourth sibling RPC (P13-019, 2026-08-20).** A report on
+an E2EE message needs to exist before `AttachReportEvidence` has anything to attach evidence to —
+`Report.subject_type = 'E2EE_MESSAGE'`/`subject_e2ee_logical_message_id` were added by P13-009's
+migration for exactly this, but no RPC wrote them. The alternative considered was a generic
+`CreateReport` with a subject `oneof`, replacing `ReportPost`/`ReportActor`/`ReportMessage` too;
+rejected because those three RPCs' request shapes already carry real meaning (`ReportMessage`
+snapshots up to ten surrounding messages at write time, §183.4; a `CreateReport` oneof would either
+lose that per-subject behavior behind a generic handler or keep branching internally anyway), because
+collapsing three already-shipped, client-consumed RPCs into one is unrelated client churn this task
+does not need to cause, and because `ReportE2eeMessage` is a purely additive proto change with no
+compatibility cost. Unlike `ReportMessage`, `ReportE2eeMessage` cannot snapshot any content — the
+node never holds E2EE plaintext — so it only creates the bare `Report` row; the reporter discloses
+plaintext/opening/franking material afterward, and only with explicit consent, through the existing
+`AttachReportEvidence` flow described above, keyed by the returned `report_id`.
+
+`AttachReportEvidence` itself does not yet check that the report it is attaching evidence to has
+`subject_type = 'E2EE_MESSAGE'` — filed as a follow-up in `apps/server/src/modules/e2ee/
+report-evidence.ts` (out of this task's file ownership).
+
 ### 10. Backup, recovery, and lost devices
 
 Backup is optional and end-to-end encrypted under a generated high-entropy recovery key the node

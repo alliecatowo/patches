@@ -258,6 +258,8 @@ export type {
   MuteActorResponse,
   ReportActorRequest,
   ReportActorResponse,
+  ReportE2eeMessageRequest,
+  ReportE2eeMessageResponse,
   ReportMessageRequest,
   ReportMessageResponse,
   ReportPostRequest,

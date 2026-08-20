@@ -39,6 +39,13 @@ service ModerationService {
   // at write time so a later deletion by either party can't destroy the evidence.
   rpc ReportMessage(ReportMessageRequest) returns (ReportMessageResponse);
 
+  // A fourth sibling of `ReportPost`/`ReportActor`/`ReportMessage`, not a generic report RPC
+  // (ADR 0020 §9): the node holds no plaintext for an E2EE logical message, so unlike
+  // `ReportMessage` this creates an evidence-free `Report` row keyed by
+  // `subject_e2ee_logical_message_id`. A follow-up `E2eeService.AttachReportEvidence` call
+  // supplies the reporter-disclosed plaintext/opening/franking material against this report id.
+  rpc ReportE2eeMessage(ReportE2eeMessageRequest) returns (ReportE2eeMessageResponse);
+
   // A public transparency instrument about the node's own conduct, not a public record of
   // any individual's conduct (spec §201.4). Unauthenticated. Domain entries are fully
   // identified; account/post/media entries are anonymized by construction — no handle, actor
@@ -146,6 +153,22 @@ message ReportMessageRequest {
 }
 
 message ReportMessageResponse {
+  string report_id = 1;
+}
+
+message ReportE2eeMessageRequest {
+  // An `E2eeLogicalMessage.id` (client-generated logical id shared across every per-device
+  // envelope) — never a mailbox envelope id, which is per-device.
+  string logical_message_id = 1;
+  ReportReason reason = 2;
+
+  // Optional free text. Max 2,000 characters (spec §58-style bound). Never message plaintext —
+  // that is disclosed separately, and only with explicit consent, via
+  // `E2eeService.AttachReportEvidence` (ADR 0020 §9).
+  string details = 3;
+}
+
+message ReportE2eeMessageResponse {
   string report_id = 1;
 }
 

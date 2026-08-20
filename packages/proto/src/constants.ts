@@ -222,6 +222,8 @@ import type {
   MuteActorResponse,
   ReportActorRequest,
   ReportActorResponse,
+  ReportE2eeMessageRequest,
+  ReportE2eeMessageResponse,
   ReportMessageRequest,
   ReportMessageResponse,
   ReportPostRequest,
@@ -585,6 +587,7 @@ export interface ModerationGrpcClient extends Client {
   reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
   reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
   reportMessage: GrpcUnaryCall<ReportMessageRequest, ReportMessageResponse>;
+  reportE2eeMessage: GrpcUnaryCall<ReportE2eeMessageRequest, ReportE2eeMessageResponse>;
   listModerationLog: GrpcUnaryCall<ListModerationLogRequest, ListModerationLogResponse>;
   listMyModerationNotices: GrpcUnaryCall<
     ListMyModerationNoticesRequest,
