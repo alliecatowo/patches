@@ -146,7 +146,7 @@ function encodeHeader(header: Header): Uint8Array {
   }
   return new ByteWriter()
     .u8(E2EE_VERSION)
-    .fixed(header.ratchetPublicKey)
+    .fixed(header.ratchetPublicKey, KEY_BYTES)
     .u32(header.previousChainLength)
     .u32(header.messageNumber)
     .finish();
@@ -435,7 +435,7 @@ export function disposeRatchetState(state: DoubleRatchetState): void {
 
 function writeOptionalKey(writer: ByteWriter, value: Uint8Array | undefined): ByteWriter {
   writer.u8(value === undefined ? 0 : 1);
-  return value === undefined ? writer : writer.fixed(value);
+  return value === undefined ? writer : writer.fixed(value, KEY_BYTES);
 }
 
 function readOptionalKey(reader: ByteReader): Uint8Array | undefined {
@@ -456,23 +456,26 @@ export function encodeRatchetState(state: DoubleRatchetState): Uint8Array {
   }
   const writer = new ByteWriter()
     .u8(RATCHET_STATE_FORMAT_VERSION)
-    .fixed(state.rootKey)
-    .fixed(state.sendingRatchetKey.publicKey)
-    .fixed(state.sendingRatchetKey.privateKey);
+    .fixed(state.rootKey, KEY_BYTES)
+    .fixed(state.sendingRatchetKey.publicKey, KEY_BYTES)
+    .fixed(state.sendingRatchetKey.privateKey, KEY_BYTES);
   writeOptionalKey(writer, state.receivingRatchetPublicKey);
   writeOptionalKey(writer, state.sendingChainKey);
   writeOptionalKey(writer, state.receivingChainKey);
   writeOptionalKey(writer, state.sendingHeaderKey);
   writeOptionalKey(writer, state.receivingHeaderKey);
   writer
-    .fixed(state.nextSendingHeaderKey)
-    .fixed(state.nextReceivingHeaderKey)
+    .fixed(state.nextSendingHeaderKey, KEY_BYTES)
+    .fixed(state.nextReceivingHeaderKey, KEY_BYTES)
     .u32(state.sentCount)
     .u32(state.receivedCount)
     .u32(state.previousSendingChainLength)
     .u32(state.skippedMessageKeys.size);
   for (const skipped of state.skippedMessageKeys.values()) {
-    writer.fixed(skipped.headerKey).u32(skipped.messageNumber).fixed(skipped.messageKey);
+    writer
+      .fixed(skipped.headerKey, KEY_BYTES)
+      .u32(skipped.messageNumber)
+      .fixed(skipped.messageKey, KEY_BYTES);
   }
   return writer.finish();
 }
