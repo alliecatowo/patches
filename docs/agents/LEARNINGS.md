@@ -239,6 +239,11 @@ Two further things were learned the hard way once the hook did create worktrees:
 - **Nothing may prune worktrees while agents are live.** A cleanup agent running `git worktree
 remove --force` on its own test worktrees deleted three _running_ agents' trees out from under
   them; all three lost their research and reported "worktree removed, cannot proceed".
+- **A fresh worktree is not a working checkout until it is BUILT.** `dist/` is gitignored, so every
+  cross-package import in a new worktree resolves to an untyped `.js` — "Could not find a
+  declaration file for module '@patches/proto'" on essentially every file, which reads like a
+  broken agent rather than a missing build. `pnpm install` alone is not enough; the hook must also
+  run `turbo run build`. A `--cache-dir` shared across worktrees keeps this at ~44s.
 - **A hook cannot opt out of isolation by echoing the main checkout** — the harness rejects it with
   "cannot be confirmed as a separate isolation worktree". Isolation is turned off by removing
   `isolation: worktree` from the agent definition, and a definition edited mid-session does not take
