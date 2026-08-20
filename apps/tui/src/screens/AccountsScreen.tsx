@@ -44,6 +44,13 @@ type AddFlow =
   | { status: 'done'; message: string }
   | { status: 'error'; message: string };
 
+type RevokeFlow =
+  | { status: 'idle' }
+  | { status: 'confirming'; credential: Credential }
+  | { status: 'revoking'; credential: Credential }
+  | { status: 'done'; message: string }
+  | { status: 'error'; message: string };
+
 function describeCandidate(candidate: EnrollmentCandidate): string {
   const where = candidate.knownAt.length === 0 ? '' : ` (${candidate.knownAt.join(', ')})`;
   return `${candidate.fingerprint}  ${candidate.algorithm}${where}`;
@@ -57,10 +64,15 @@ function describeCredentialRow(credential: Credential): string {
 
 /**
  * `L` when already signed in (P1-013/B-022 follow-up — the CLI-only `patches keys
- * add|list` and `patches logout` finally get an in-app equivalent): lists credentials
- * (`AuthService.ListCredentials`), `a` enrolls an SSH key already loaded in the agent
- * (reuses `ssh-enroll.ts` exactly like `cli/keys.ts runKeysAdd` — never reads a private
- * key, agent signs a local possession proof), `x` logs out.
+ * add|list|remove` and `patches logout` finally get an in-app equivalent): lists
+ * credentials (`AuthService.ListCredentials`), `j`/`k` selects one, `a` enrolls an SSH
+ * key already loaded in the agent (reuses `ssh-enroll.ts` exactly like `cli/keys.ts
+ * runKeysAdd` — never reads a private key, agent signs a local possession proof), `v`
+ * revokes the selected credential behind a `y`/`n` confirm (P15-007 — the previous
+ * version had list/add but no revoke UI at all), `x` logs out. The server's
+ * `RevokeCredential` refuses to revoke an account's last remaining credential
+ * (`AuthService#revokeCredential`, spec §165) and its own error message is already
+ * comprehensible, so it renders through `describeGrpcError` unmodified.
  */
 export function AccountsScreen({
   api,
@@ -74,6 +86,8 @@ export function AccountsScreen({
 }: AccountsScreenProps): ReactElement {
   const [state, setState] = useState<CredentialsState>({ status: 'loading' });
   const [addFlow, setAddFlow] = useState<AddFlow>({ status: 'idle' });
+  const [revokeFlow, setRevokeFlow] = useState<RevokeFlow>({ status: 'idle' });
+  const [selectedCredential, setSelectedCredential] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,14 +160,52 @@ export function AccountsScreen({
     }
   }
 
+  async function revoke(credential: Credential): Promise<void> {
+    setRevokeFlow({ status: 'revoking', credential });
+    try {
+      const accessToken = await ensureAccessToken();
+      await api.revokeCredential({ id: credential.id }, accessToken);
+      setRevokeFlow({ status: 'done', message: `Revoked ${describeCredentialRow(credential)}.` });
+      const refreshed = await ensureAccessToken();
+      const response = await api.listCredentials(refreshed);
+      const credentials = [...response.credentials];
+      setState({ status: 'ready', credentials });
+      setSelectedCredential((index) => Math.min(index, Math.max(credentials.length - 1, 0)));
+    } catch (error) {
+      // The server's own last-credential-guard message (AuthService#RevokeCredential) is
+      // already human-readable ("This is your only way to sign in…"), so it needs no
+      // TUI-specific override the way `TUI_COPY` provides for other error codes.
+      setRevokeFlow({ status: 'error', message: describeGrpcError(error, api.target).title });
+    }
+  }
+
   useInput(
     (input, key) => {
       if (key.escape) {
+        if (revokeFlow.status === 'confirming') {
+          setRevokeFlow({ status: 'idle' });
+          return;
+        }
+        if (revokeFlow.status === 'done' || revokeFlow.status === 'error') {
+          setRevokeFlow({ status: 'idle' });
+          return;
+        }
         if (addFlow.status !== 'idle') {
           setAddFlow({ status: 'idle' });
           return;
         }
         onBack();
+        return;
+      }
+      if (revokeFlow.status === 'confirming') {
+        if (input === 'y' || key.return) void revoke(revokeFlow.credential);
+        else if (input === 'n') setRevokeFlow({ status: 'idle' });
+        return;
+      }
+      if (revokeFlow.status === 'revoking') return;
+      if (revokeFlow.status === 'done' || revokeFlow.status === 'error') {
+        // any key dismisses, Esc already handled above
+        setRevokeFlow({ status: 'idle' });
         return;
       }
       if (addFlow.status === 'picking') {
@@ -172,6 +224,21 @@ export function AccountsScreen({
         return;
       }
       if (addFlow.status === 'discovering' || addFlow.status === 'enrolling') return;
+      if (state.status === 'ready' && state.credentials.length > 0) {
+        if (input === 'j' || key.downArrow) {
+          setSelectedCredential((index) => Math.min(index + 1, state.credentials.length - 1));
+          return;
+        }
+        if (input === 'k' || key.upArrow) {
+          setSelectedCredential((index) => Math.max(index - 1, 0));
+          return;
+        }
+        if (input === 'v') {
+          const credential = state.credentials[selectedCredential];
+          if (credential !== undefined) setRevokeFlow({ status: 'confirming', credential });
+          return;
+        }
+      }
       if (input === 'a') {
         void beginAdd();
         return;
@@ -203,13 +270,28 @@ export function AccountsScreen({
           <Text color={theme.muted}>No credentials on this account.</Text>
         ) : null}
         {state.status === 'ready'
-          ? state.credentials.map((credential) => (
-              <Text key={credential.id} color={theme.muted}>
+          ? state.credentials.map((credential, index) => (
+              <Text
+                key={credential.id}
+                color={index === selectedCredential ? theme.accent : theme.muted}
+                bold={index === selectedCredential}
+              >
+                {index === selectedCredential ? '› ' : '  '}
                 {describeCredentialRow(credential)}
               </Text>
             ))
           : null}
       </Box>
+      {revokeFlow.status === 'confirming' ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text color={theme.warn}>
+            Revoke {describeCredentialRow(revokeFlow.credential)}? y confirm · n/Esc cancel
+          </Text>
+        </Box>
+      ) : null}
+      {revokeFlow.status === 'revoking' ? <Text color={theme.muted}>Revoking…</Text> : null}
+      {revokeFlow.status === 'done' ? <Text color={theme.ok}>{revokeFlow.message}</Text> : null}
+      {revokeFlow.status === 'error' ? <Text color={theme.error}>{revokeFlow.message}</Text> : null}
       {addFlow.status === 'discovering' ? (
         <Text color={theme.muted}>Looking for SSH identities…</Text>
       ) : null}
@@ -232,7 +314,9 @@ export function AccountsScreen({
       {addFlow.status === 'done' ? <Text color={theme.ok}>{addFlow.message}</Text> : null}
       {addFlow.status === 'error' ? <Text color={theme.error}>{addFlow.message}</Text> : null}
       <Box marginTop={1}>
-        <Text color={theme.muted}>a add SSH key · x log out · Esc back</Text>
+        <Text color={theme.muted}>
+          a add SSH key · v revoke selected · j/k select · x log out · Esc back
+        </Text>
       </Box>
     </Box>
   );
