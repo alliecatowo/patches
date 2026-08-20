@@ -1,4 +1,9 @@
-import { FILTER_ACTION, FILTER_TERM_KIND } from '../api/wire/enums.js';
+import {
+  enumWireName,
+  FILTER_ACTION,
+  FILTER_ACTION_SCHEMA,
+  FILTER_TERM_KIND,
+} from '../api/wire/enums.js';
 import type {
   FilterAction,
   FilterList,
@@ -132,7 +137,7 @@ function describeSubscription(subscription: FilterListSubscription): string {
   const list = subscription.filterList;
   const name = present(list) ? sanitizeForTerminal(list.displayName || list.name) : 'unknown';
   const id = present(list) ? sanitizeForTerminal(list.id) : '';
-  return `${id}\t${name}\t${subscription.action}\n`;
+  return `${id}\t${name}\t${enumWireName(FILTER_ACTION_SCHEMA, subscription.action)}\n`;
 }
 
 function describeEntry(entry: FilterListEntry): string {
@@ -336,7 +341,9 @@ async function runSubscribe(
   }
   const accessToken = await context.ensureAccessToken();
   await context.api.subscribeFilterList(id, action, accessToken);
-  deps.io.stdout(`Subscribed to ${sanitizeForTerminal(id)} (${action}).\n`);
+  deps.io.stdout(
+    `Subscribed to ${sanitizeForTerminal(id)} (${enumWireName(FILTER_ACTION_SCHEMA, action)}).\n`,
+  );
   return 0;
 }
 

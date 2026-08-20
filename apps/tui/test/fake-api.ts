@@ -117,7 +117,7 @@ import {
   type UpdateProfileResponse,
   type VerifyEmailRequest,
   type VerifyEmailResponse,
-} from '@patches/proto';
+} from '@patches/proto/es';
 
 import type { PatchesApi } from '../src/api/client.js';
 

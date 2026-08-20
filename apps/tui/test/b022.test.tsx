@@ -1,4 +1,4 @@
-import { CREDENTIAL_TYPE } from '@patches/proto';
+import { CREDENTIAL_TYPE } from '../src/api/wire/enums.js';
 import { describe, expect, it } from 'vitest';
 
 import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
