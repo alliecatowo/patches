@@ -117,6 +117,10 @@ run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${
 description = "Non-interactive connectivity check against the local server (JSON, exit 0/1)"
 run = "cd \"$MISE_PROJECT_ROOT\" && node apps/tui/dist/cli.js ping --server \"${PATCHES_SERVER:-127.0.0.1:50051}\" --insecure"
 
+[tasks.usage]
+description = "Report agent context economy (cache reads, batching, narration, agent lifetime) from the Claude Code transcripts — see docs/agents/CONTEXT_ECONOMY.md. `--json` for machine-readable, `--since <date>` to scope."
+run = "cd \"$MISE_PROJECT_ROOT\" && node infra/scripts/usage-report.mjs"
+
 [tasks.site]
 description = "Run the VitePress docs/marketing site in dev mode (site/) at http://localhost:5173"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm site:dev"
