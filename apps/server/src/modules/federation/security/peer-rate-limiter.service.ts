@@ -36,7 +36,15 @@ function consume(buckets: Map<string, Bucket>, key: string, now: Date): boolean 
   const nowMs = now.getTime();
   const existing = buckets.get(key);
   if (existing === undefined || existing.resetAt <= nowMs) {
-    if (existing === undefined && buckets.size >= MAX_BUCKETS) return false;
+    if (existing === undefined && buckets.size >= MAX_BUCKETS) {
+      // Capacity is a bound on *live* buckets, not historical peers. Reclaim expired entries
+      // before refusing a new peer so a one-time spray cannot permanently deny admission after
+      // its windows have elapsed.
+      for (const [bucketKey, bucket] of buckets) {
+        if (bucket.resetAt <= nowMs) buckets.delete(bucketKey);
+      }
+      if (buckets.size >= MAX_BUCKETS) return false;
+    }
     buckets.set(key, { count: 1, resetAt: nowMs + WINDOW_MS });
     return true;
   }

@@ -11,6 +11,7 @@ import {
   assertCiphertextDigestsMatchCiphertexts,
   assertFanoutCovers,
   assertFanoutDigest,
+  assertFrankingProfileApproved,
   assertGroupFanoutBounds,
   assertMembershipEpochCurrent,
   E2eeContractError,
@@ -270,6 +271,15 @@ export async function acceptE2eeLogicalMessage(
   }
   if (input.senderDeviceId.length === 0) {
     throw AppError.validation('A sender device id is required.');
+  }
+
+  // ADR 0020 §12.7 is a ship gate, not merely a capability-advertisement gate. Enforce it
+  // at the shared accept core before dedup lookup or any database write so create, send, and
+  // replay all remain closed even if a node operator configures signing keys prematurely.
+  try {
+    assertFrankingProfileApproved(input.message.frankingProfile);
+  } catch (error) {
+    wrapFanoutError(error);
   }
 
   const existing = await manager.getRepository(E2eeLogicalMessageEntity).findOne({

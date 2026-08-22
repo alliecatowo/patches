@@ -1,4 +1,5 @@
 import { type INestApplication } from '@nestjs/common';
+import { type NestExpressApplication } from '@nestjs/platform-express';
 import { createContextValues } from '@connectrpc/connect';
 import { expressConnectMiddleware } from '@connectrpc/connect-express';
 import { PATCHES_V1_FILES } from '@patches/proto/es';
@@ -21,6 +22,17 @@ export interface ConnectEdge {
   /** Closes the internal loopback gRPC client this edge dialed — call during shutdown
    * alongside the rest of `main.ts`'s drain sequence. */
   close(): void;
+}
+
+/**
+ * Applies the operator's proxy-header policy without ever enabling Express's unbounded
+ * `trust proxy = true` mode. A hop count of one trusts only the address appended by the
+ * single edge immediately in front of this process (Fly Proxy in production). If a caller
+ * supplies `X-Forwarded-For: spoofed, actual`, Express therefore selects `actual`, not the
+ * attacker-controlled left-most value. Direct/local nodes keep forwarded headers disabled.
+ */
+export function configureProxyTrust(app: NestExpressApplication, trustProxyHeaders: boolean): void {
+  app.set('trust proxy', trustProxyHeaders ? 1 : false);
 }
 
 /**

@@ -15,7 +15,7 @@ import { createLogger } from './common/logging/logger.factory.js';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
-import { mountConnectEdge } from './transport/connect/connect.middleware.js';
+import { configureProxyTrust, mountConnectEdge } from './transport/connect/connect.middleware.js';
 
 /**
  * Load `.env` from the repo root in development so a fresh clone works with just
@@ -116,7 +116,7 @@ async function bootstrap(): Promise<void> {
   // (`req.ip`), which the Connect edge forwards as `x-forwarded-for` for internal gRPC calls
   // (ADR 0016 §7) — set *before* `mountConnectEdge` so its `contextValues` hook reads the
   // already-trust-proxy-aware value.
-  app.set('trust proxy', env.TRUST_PROXY_HEADERS);
+  configureProxyTrust(app, env.TRUST_PROXY_HEADERS);
   const connectEdge = mountConnectEdge(app, {
     grpcUrl: grpcLoopbackUrl(env.GRPC_HOST, env.GRPC_PORT),
     webOrigins: env.WEB_ORIGINS,

@@ -1,10 +1,14 @@
 import type { ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 
+import { type NestExpressApplication } from '@nestjs/platform-express';
+import { Test } from '@nestjs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { FederationMetricsService } from '../federation-metrics.service.js';
-import type { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
-import type { InboxService } from '../services/inbox.service.js';
+import { configureProxyTrust } from '../../../transport/connect/connect.middleware.js';
+import { FederationMetricsService } from '../federation-metrics.service.js';
+import { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
+import { InboxService } from '../services/inbox.service.js';
 import { InboxController } from './inbox.controller.js';
 import type { RequestWithRawBody } from './raw-body.middleware.js';
 
@@ -80,5 +84,46 @@ describe('InboxController abuse budget', () => {
 
     expect(consumeTransportPeer).toHaveBeenCalledWith('203.0.113.8');
     expect(handle).not.toHaveBeenCalled();
+  });
+
+  it('cannot bypass the transport budget by rotating the spoofable left-most XFF over HTTP', async () => {
+    const handle = vi.fn().mockResolvedValue({ accepted: false, reason: 'MALFORMED_ACTIVITY' });
+    const increment = vi.fn();
+    const moduleRef = await Test.createTestingModule({
+      controllers: [InboxController],
+      providers: [
+        PeerRateLimiterService,
+        { provide: InboxService, useValue: { handle } },
+        { provide: FederationMetricsService, useValue: { increment } },
+      ],
+    }).compile();
+    const app = moduleRef.createNestApplication<NestExpressApplication>();
+    configureProxyTrust(app, true);
+    await app.listen(0, '127.0.0.1');
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const url = `http://127.0.0.1:${String(address.port)}/inbox`;
+      for (let requestNumber = 0; requestNumber < 120; requestNumber += 1) {
+        const result = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'x-forwarded-for': `198.51.100.${String(requestNumber + 1)}, 203.0.113.8`,
+          },
+        });
+        expect(result.status).toBe(400);
+      }
+
+      const blocked = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '192.0.2.250, 203.0.113.8' },
+      });
+
+      expect(blocked.status).toBe(429);
+      expect(handle).toHaveBeenCalledTimes(120);
+      expect(increment).toHaveBeenCalledWith('inbox_rejected_ratelimit');
+    } finally {
+      await app.close();
+    }
   });
 });
