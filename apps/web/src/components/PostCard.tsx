@@ -11,6 +11,7 @@ import { formatAbsoluteTime, formatCount, formatRelativeTime } from '../lib/form
 import { MediaImage } from './MediaImage.js';
 import { Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
+import { ReportPostControl } from './ReportPostControl.js';
 import { RichBody } from './RichBody.js';
 
 export interface PostCardProps {
@@ -144,12 +145,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
       data-post-id={post.id}
       aria-label={`Post by @${post.author?.handle ?? 'unknown'}`}
     >
-      <img
-        className={styles['avatar']}
-        src={post.author?.avatar?.url ?? ''}
-        alt=""
-        aria-hidden="true"
-      />
+      {post.author?.avatar?.url ? (
+        <img className={styles['avatar']} src={post.author.avatar.url} alt="" aria-hidden="true" />
+      ) : null}
       <div className={styles['body']}>
         {post.repostedByTotal > 0 ? (
           <div className={styles['repostedBy']}>
@@ -292,7 +290,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
                 delete
               </button>
             </>
-          ) : null}
+          ) : (
+            <ReportPostControl postId={post.id} className={styles['actionButton']} />
+          )}
         </div>
         {historyOpen ? (
           <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
