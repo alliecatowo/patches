@@ -13,8 +13,7 @@ service PrivacyService {
   // record that the text was shown — never a waiver of anything beyond what the text
   // describes, and it MUST NOT gate any safety, moderation, export, or deletion function
   // (spec §197.1).
-  rpc AcknowledgePrivacyNotice(AcknowledgePrivacyNoticeRequest)
-      returns (AcknowledgePrivacyNoticeResponse);
+  rpc AcknowledgePrivacyNotice(AcknowledgePrivacyNoticeRequest) returns (AcknowledgePrivacyNoticeResponse);
 
   rpc GetPrivacyPrefs(GetPrivacyPrefsRequest) returns (GetPrivacyPrefsResponse);
 
@@ -29,12 +28,10 @@ service PrivacyService {
 
   // Moves the account to `PENDING_DELETION`: it disappears from feeds, search, and the local
   // timeline immediately, and a grace period follows (spec §197.4).
-  rpc RequestAccountDeletion(RequestAccountDeletionRequest)
-      returns (RequestAccountDeletionResponse);
+  rpc RequestAccountDeletion(RequestAccountDeletionRequest) returns (RequestAccountDeletionResponse);
 
   // Restores the account intact — only while still within the grace period.
-  rpc CancelAccountDeletion(CancelAccountDeletionRequest)
-      returns (CancelAccountDeletionResponse);
+  rpc CancelAccountDeletion(CancelAccountDeletionRequest) returns (CancelAccountDeletionResponse);
 
   rpc GetDeletionStatus(GetDeletionStatusRequest) returns (GetDeletionStatusResponse);
 }

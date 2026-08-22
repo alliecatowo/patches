@@ -40,13 +40,11 @@ service FilterListService {
 
   // The caller's own subscriptions. Subscriber counts are never published anywhere (§199.3,
   // §208) — this is the caller's own list, not an aggregate.
-  rpc ListFilterListSubscriptions(ListFilterListSubscriptionsRequest)
-      returns (ListFilterListSubscriptionsResponse);
+  rpc ListFilterListSubscriptions(ListFilterListSubscriptionsRequest) returns (ListFilterListSubscriptionsResponse);
 
   // "This list is right about everything except my friend" — an exception without
   // unsubscribing and without telling the list author (spec §199.3).
-  rpc SetFilterListEntryException(SetFilterListEntryExceptionRequest)
-      returns (SetFilterListEntryExceptionResponse);
+  rpc SetFilterListEntryException(SetFilterListEntryExceptionRequest) returns (SetFilterListEntryExceptionResponse);
 }
 
 message FilterListEntry {

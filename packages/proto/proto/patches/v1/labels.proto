@@ -36,8 +36,7 @@ service LabelService {
   // Per-value action override for the caller's own subscription (spec §200.1's action map).
   // A viewer may set any value to `LABEL_ACTION_IGNORE` except a value the node has
   // designated legally mandatory (`LabelVocabularyEntry.mandatory`, spec §200.3).
-  rpc SetLabelerSubscriptionAction(SetLabelerSubscriptionActionRequest)
-      returns (SetLabelerSubscriptionActionResponse);
+  rpc SetLabelerSubscriptionAction(SetLabelerSubscriptionActionRequest) returns (SetLabelerSubscriptionActionResponse);
 
   // Pull-only self-inspection (spec §200.4) — an actor is never notified that they were
   // labeled; this is the only way to find out. A label with an enforcement consequence is

@@ -54,8 +54,7 @@ service ModerationService {
 
   // The caller's own moderation notices — the private, notified, appealable read projection
   // of `admin_audit_log` rows that acted on them (spec §201.2).
-  rpc ListMyModerationNotices(ListMyModerationNoticesRequest)
-      returns (ListMyModerationNoticesResponse);
+  rpc ListMyModerationNotices(ListMyModerationNoticesRequest) returns (ListMyModerationNoticesResponse);
 }
 
 enum ReportReason {
