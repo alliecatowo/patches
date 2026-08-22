@@ -39,9 +39,10 @@ export class InboxController {
   }
 
   private async process(req: RequestWithRawBody, res: ServerResponse): Promise<void> {
-    // The socket address is set by the HTTP transport, unlike forwarded headers and the
-    // activity body. Budget it before parsing JSON so actor-host rotation cannot buy fetches.
-    const transportPeer = req.socket.remoteAddress ?? '<unknown-peer>';
+    // Express derives `ip` from the socket unless the operator explicitly enables the trusted
+    // proxy policy. On Fly that policy prevents every caller collapsing into the edge proxy's
+    // single socket bucket; direct deployments still ignore spoofable forwarded headers.
+    const transportPeer = req.ip ?? req.socket.remoteAddress ?? '<unknown-peer>';
     if (!this.rateLimiter.consumeTransportPeer(transportPeer)) {
       // Never label this counter with an unverified address: hostile peers can rotate values
       // and turn the in-memory metric registry into another high-cardinality attack surface.

@@ -8,12 +8,13 @@ import type { InboxService } from '../services/inbox.service.js';
 import { InboxController } from './inbox.controller.js';
 import type { RequestWithRawBody } from './raw-body.middleware.js';
 
-function request(peer: string, rawBody: string): RequestWithRawBody {
+function request(peer: string, rawBody: string, proxyDerivedPeer?: string): RequestWithRawBody {
   return {
     headers: {},
     method: 'POST',
     url: '/inbox',
     rawBody: Buffer.from(rawBody),
+    ...(proxyDerivedPeer === undefined ? {} : { ip: proxyDerivedPeer }),
     socket: { remoteAddress: peer },
   } as unknown as RequestWithRawBody;
 }
@@ -64,5 +65,20 @@ describe('InboxController abuse budget', () => {
     expect(consumeTransportPeer).toHaveBeenNthCalledWith(2, '203.0.113.8');
     expect(handle).toHaveBeenCalledTimes(1);
     expect(second.raw.statusCode).toBe(429);
+  });
+
+  it('uses the Express proxy-derived peer when trusted proxy handling supplied one', async () => {
+    const handle = vi.fn();
+    const consumeTransportPeer = vi.fn().mockReturnValue(false);
+    const controller = new InboxController(
+      { handle } as unknown as InboxService,
+      { consumeTransportPeer } as unknown as PeerRateLimiterService,
+      { increment: vi.fn() } as unknown as FederationMetricsService,
+    );
+
+    await controller.shared(request('172.16.0.8', '{}', '203.0.113.8'), response().raw);
+
+    expect(consumeTransportPeer).toHaveBeenCalledWith('203.0.113.8');
+    expect(handle).not.toHaveBeenCalled();
   });
 });

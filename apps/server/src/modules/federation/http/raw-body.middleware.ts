@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export interface RequestWithRawBody extends IncomingMessage {
   rawBody?: Buffer;
+  /** Express-derived peer address; honours the app's narrowly configured trust-proxy policy. */
+  ip?: string;
 }
 
 /**
