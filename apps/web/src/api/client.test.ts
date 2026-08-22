@@ -77,4 +77,15 @@ describe('authInterceptor', () => {
     expect(headers).toHaveLength(1);
     expect(headers[0]?.get('authorization')).toBe('Bearer access-3');
   });
+
+  it('attaches the bearer token to profile reads on a closed node', async () => {
+    const { headers } = mockFetch();
+    const { api, sessionManager } = await import('./client.js');
+    await sessionManager.setSession({ accessToken: 'access-profile', refreshToken: 'refresh-4' });
+
+    await api.actors.getActorByHandle({ handle: 'allie' }).catch(() => undefined);
+
+    expect(headers).toHaveLength(1);
+    expect(headers[0]?.get('authorization')).toBe('Bearer access-profile');
+  });
 });

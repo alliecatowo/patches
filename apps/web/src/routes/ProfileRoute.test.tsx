@@ -1,0 +1,90 @@
+import { Code, ConnectError } from '@connectrpc/connect';
+import type { PatchesApi } from '@patches/client';
+import type { Actor } from '@patches/proto/es';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mockGetActorByHandle = vi.fn();
+
+vi.mock('../api/client.js', () => ({
+  api: {
+    actors: { getActorByHandle: mockGetActorByHandle },
+    pages: { getPage: vi.fn() },
+  } as unknown as PatchesApi,
+}));
+
+vi.mock('../components/FollowButton.js', () => ({ FollowButton: () => null }));
+vi.mock('../components/ModerationActions.js', () => ({ ModerationActions: () => null }));
+vi.mock('../components/PageBlocks.js', () => ({ PageBlocks: () => null }));
+vi.mock('../components/PostTimeline.js', () => ({ PostTimeline: () => null }));
+
+const { ProfileRoute } = await import('./ProfileRoute.js');
+
+function renderProfile(): ReturnType<typeof render> {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const tree: ReactElement = (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/profile/allie']}>
+        <Routes>
+          <Route path="/profile/:handle" element={<ProfileRoute />} />
+          <Route path="/login" element={<p>Login route</p>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+  return render(tree);
+}
+
+describe('ProfileRoute', () => {
+  afterEach(() => mockGetActorByHandle.mockReset());
+
+  it('renders a profile returned by the node', async () => {
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+      } as Actor,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
+    expect(mockGetActorByHandle).toHaveBeenCalledWith({ handle: 'allie' });
+  });
+
+  it('uses account-not-found copy only for a genuine NOT_FOUND response', async () => {
+    mockGetActorByHandle.mockRejectedValue(new ConnectError('Actor not found.', Code.NotFound));
+
+    renderProfile();
+
+    expect(await screen.findByText("This account doesn't exist.")).toBeInTheDocument();
+  });
+
+  it('shows an actionable sign-in prompt when a closed node rejects the read', async () => {
+    const error = new ConnectError('Sign-in required.', Code.Unauthenticated);
+    error.metadata.set('x-patches-error-code', 'SIGN_IN_REQUIRED');
+    mockGetActorByHandle.mockRejectedValue(error);
+
+    renderProfile();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This node requires sign-in');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+    expect(screen.queryByText(/account doesn.t exist/i)).not.toBeInTheDocument();
+  });
+
+  it('surfaces transport failures instead of pretending the account is missing', async () => {
+    mockGetActorByHandle.mockRejectedValue(new ConnectError('offline', Code.Unavailable));
+
+    renderProfile();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Can't reach the Patches server");
+    expect(screen.queryByText(/account doesn.t exist/i)).not.toBeInTheDocument();
+  });
+});

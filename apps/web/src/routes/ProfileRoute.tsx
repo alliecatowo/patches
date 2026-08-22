@@ -1,6 +1,8 @@
+import { Code, ConnectError } from '@connectrpc/connect';
+import { describeError, isSignInRequired } from '@patches/client';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { FollowButton } from '../components/FollowButton.js';
@@ -32,6 +34,21 @@ export function ProfileRoute(): JSX.Element {
   });
 
   if (actorQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
+  if (actorQuery.isError) {
+    const error = ConnectError.from(actorQuery.error);
+    if (error.code === Code.NotFound) {
+      return <p style={{ padding: '1rem' }}>This account doesn&apos;t exist.</p>;
+    }
+    const described = describeError(error, {
+      copy: { signInRequiredHint: 'Sign in or create an account to view profiles.' },
+    });
+    return (
+      <div role="alert" style={{ padding: '1rem' }}>
+        <p>{described.message}</p>
+        {isSignInRequired(error) ? <Link to="/login">Sign in</Link> : null}
+      </div>
+    );
+  }
   const actor = actorQuery.data?.actor;
   if (!actor) return <p style={{ padding: '1rem' }}>This account doesn&apos;t exist.</p>;
 
@@ -42,12 +59,9 @@ export function ProfileRoute(): JSX.Element {
     <div>
       <div className={styles['header']}>
         <div className={styles['topRow']}>
-          <img
-            className={styles['avatar']}
-            src={actor.avatar?.url ?? ''}
-            alt=""
-            aria-hidden="true"
-          />
+          {actor.avatar?.url ? (
+            <img className={styles['avatar']} src={actor.avatar.url} alt="" aria-hidden="true" />
+          ) : null}
           <FollowButton actorId={actor.id} />
         </div>
         <ModerationActions actorId={actor.id} />
