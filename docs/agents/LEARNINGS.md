@@ -344,3 +344,9 @@ Two rules:
 
 Recovery when it happens: `git rev-list --count main..<branch>` each worktree's branch, `rm -rf`
 only the ones at 0 (nothing unique in them), then `git worktree prune` and `git branch -D`.
+
+## 2026-08-22 — Delegation guidance named obsolete models
+
+**Learning:** The root kept implementing after an orchestration-only request, while model routing
+was obsolete and confused role-fixed effort with selectable overrides. **Action taken:** `AGENTS.md`
+now defines ownership, Luna/Terra/Sol review routing, fork economy, and effective-effort reporting.
