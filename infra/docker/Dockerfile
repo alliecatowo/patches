@@ -15,6 +15,7 @@
 # release_command, why there's no native gRPC health check).
 
 ARG NODE_IMAGE=node:24.19.0-slim
+ARG PATCHES_BUILD_SHA
 # Pinned to the same version as `mise.toml`'s `buf` tool — keep these in sync by hand;
 # there's no single source of truth shared between a `mise.toml` pin and a Dockerfile ARG.
 ARG BUF_VERSION=1.72.0
@@ -105,7 +106,9 @@ RUN pnpm --filter @patches/server deploy --prod --legacy /deploy/server && \
 # runtime: slim, non-root, no build toolchain, no devDependencies.
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
-ENV NODE_ENV=production
+ARG PATCHES_BUILD_SHA
+ENV NODE_ENV=production \
+    PATCHES_BUILD_SHA=${PATCHES_BUILD_SHA}
 WORKDIR /app
 
 # node:*-slim images already create a `node` user (uid/gid 1000) in every variant —
