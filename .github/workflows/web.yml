@@ -1,0 +1,45 @@
+# Builds the browser client from the exact main commit that passed CI and, once the
+# production environment is configured, publishes it to Cloudflare Pages.
+
+name: Web
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build + deploy (Cloudflare Pages)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: ./.github/actions/setup
+
+      - name: Build the web client
+        run: pnpm --filter @patches/web build
+        env:
+          VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
+
+      - name: Deploy to Cloudflare Pages
+        if: ${{ vars.WEB_DEPLOY_ENABLED == 'true' }}
+        run: pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

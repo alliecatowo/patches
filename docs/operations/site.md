@@ -114,8 +114,8 @@ on `main` (via `workflow_run`, same pattern as `deploy.yml`), plus `workflow_dis
 manual runs. The actual `wrangler pages deploy` step is gated behind `vars.SITE_DEPLOY_ENABLED`
 — unset today, so the workflow builds (and reports green) on every `main` push but does not
 deploy from CI yet. To turn it on: set the `SITE_DEPLOY_ENABLED` repository/environment
-variable to `true` and add `CLOUDFLARE_API_TOKEN` (Pages:Edit permission) +
-`CLOUDFLARE_ACCOUNT_ID` as repo secrets. Until then, Cloudflare deploys are manual
+variable to `true`, add a narrowly scoped `CLOUDFLARE_API_TOKEN` secret, and set the non-secret
+`CLOUDFLARE_ACCOUNT_ID` variable. Until then, Cloudflare deploys are manual
 (`pnpm site:deploy`). `.github/workflows/site-gh-pages.yml` (GitHub Pages) has no such gate —
 it deploys unconditionally on every qualifying `main` push, since `actions/deploy-pages` needs
 no external secrets.

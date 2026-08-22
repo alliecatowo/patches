@@ -11,8 +11,10 @@ their own scripts.
 
 - **`.github/workflows/ci.yml`** — runs on every pull request and on push to `main`.
   Required for branch protection (see below).
-- **`.github/workflows/deploy.yml`** — `workflow_dispatch`-only placeholder for Phase 7.
-  See `docs/operations/deployment.md`.
+- **`.github/workflows/deploy.yml`** — deploys Fly after a successful `main` CI run (or manual
+  dispatch), guarded by the production environment and `FLY_DEPLOY_ENABLED`.
+- **`.github/workflows/{web,site}.yml`** — build the Cloudflare Pages web app/site after a
+  successful `main` CI run; external publishing remains separately variable-gated.
 - **`.github/actions/setup/action.yml`** — the composite action every CI job (except
   `actionlint`) uses to install the toolchain and dependencies. It does **not** check
   out the repo itself: a local composite action (`uses: ./...`) can only be resolved

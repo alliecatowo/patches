@@ -63,12 +63,12 @@ jobs:
       # Smoke test: one real gRPC round trip (SystemService.GetServerInfo) against the
       # just-deployed server, reusing the TUI's existing non-interactive `ping` subcommand
       # (apps/tui/src/cli/ping.ts) rather than a second, parallel gRPC client — see
-      # docs/operations/deployment.md for why. `vars.FLY_GRPC_HOST` is the production gRPC
-      # hostname (e.g. `grpc.patches.social`), set once DNS/TLS are configured (P7-003).
+      # docs/operations/deployment.md for why. `vars.FLY_GRPC_HOST` is the complete production
+      # gRPC endpoint, including its port (e.g. `grpc.patches.social:443`).
       - name: Build TUI (for the smoke-test ping subcommand)
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
         run: pnpm --filter @patches/tui build
 
       - name: Smoke test (ping the deployed server over TLS)
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
-        run: node apps/tui/dist/cli.js ping --server "${{ vars.FLY_GRPC_HOST }}:443"
+        run: node apps/tui/dist/cli.js ping --server "${{ vars.FLY_GRPC_HOST }}"

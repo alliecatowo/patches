@@ -5,8 +5,8 @@
 end to end with two real accounts (register, login, post, follow, like, reply, thread,
 notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile`,
 `infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it; the deploy
-workflow itself is still gated behind `vars.FLY_DEPLOY_ENABLED` (unset) — the live deploy so
-far was done by hand with `flyctl`, not yet through CI. Media uploads use the production R2
+workflow is now enabled, though the live deploys so far were done by hand with `flyctl`, not
+yet through CI. Media uploads use the production R2
 bucket and verification email is sent through Resend from the verified
 `noreply@updates.allisons.dev` sender; federation is off by design. As of 2026-08-18 (A-041),
 production `DATABASE_URL` points at **Neon**, not the original Fly Postgres cluster — see
@@ -128,10 +128,9 @@ generate`), and the `tsup` builds for `@patches/config`/`@patches/media`/
   `processes = ["server"]`, `[deploy].release_command`) matches
   `docs/research/fly-io.md`'s verified Fly config syntax. **Never deployed** — no Fly
   account in this environment.
-- `.github/workflows/deploy.yml` — `actionlint` clean. **Never run through CI** — still gated
-  behind `vars.FLY_DEPLOY_ENABLED` (unset), so the workflow itself is a no-op even though the
-  node it would deploy is now live (deployed by hand with `flyctl` instead — see "First
-  deploy" below).
+- `.github/workflows/deploy.yml` — `actionlint` clean. **Never completed through CI** — the
+  required variable, endpoint, and token now exist, but the latest `main` CI run failed before
+  the deploy gate (the node itself was deployed by hand; see "First deploy" below).
 
 ## First deploy (2026-08-18)
 
@@ -224,8 +223,8 @@ node apps/tui/dist/cli.js ping
 - [x] End-to-end social loop verified with two real accounts.
 - [x] R2 media credentials set and a live upload/derivative flow verified.
 - [x] Resend API key and verified `updates.allisons.dev` sending domain configured.
-- [ ] Deploy workflow exercised through CI (**planned** — `vars.FLY_DEPLOY_ENABLED` still
-      unset; this deploy was done by hand).
+- [ ] Deploy workflow exercised through CI (**planned** — configuration is present, but the
+      latest `main` CI run failed before the deploy gate; prior deploys were manual).
 - [ ] Custom domain `patches.social` (**planned** — node currently only reachable at
       `patches-social.fly.dev`).
 - [x] Neon switch (production `DATABASE_URL` migrated off Fly Postgres 2026-08-18, A-041 —
@@ -479,9 +478,10 @@ Deploy workflow (workflow_run, triggered by CI's completion) -> flyctl deploy --
 smoke test (patches ping against the deployed host)
 ```
 
-`.github/workflows/deploy.yml` implements this, gated behind `vars.FLY_DEPLOY_ENABLED`
-(unset today — every deploy/smoke step no-ops until a human sets it once a real Fly app +
-`FLY_API_TOKEN` secret exist). Deploy credentials are never exposed to pull requests from
+`.github/workflows/deploy.yml` implements this. `vars.FLY_DEPLOY_ENABLED=true`, the complete
+`vars.FLY_GRPC_HOST` endpoint, and a `FLY_API_TOKEN` secret are configured; the path has not
+yet completed a real CI-triggered deploy because the latest `main` CI run failed before this
+gate. Deploy credentials are never exposed to pull requests from
 forks — the workflow only triggers off `workflow_run` (main-only) and manual dispatch, both
 of which run with the repo's own secrets, never a fork's.
 
@@ -490,7 +490,7 @@ of which run with the repo's own secrets, never a fork's.
 `.github/workflows/deploy.yml`'s final step reuses the TUI's existing non-interactive
 `patches ping` subcommand (`apps/tui/src/cli/ping.ts` — one real
 `SystemService.GetServerInfo` gRPC round trip, JSON output, exit 0/1) against
-`vars.FLY_GRPC_HOST:443` over TLS, rather than writing a second, parallel gRPC smoke-test
+the complete `vars.FLY_GRPC_HOST` endpoint over TLS, rather than writing a second, parallel gRPC smoke-test
 client. **Status: planned** — never run against a real deployment.
 
 ## Graceful shutdown

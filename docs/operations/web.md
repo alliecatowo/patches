@@ -67,10 +67,10 @@ PATCHES_DEV_UPSTREAM=http://127.0.0.1:8080 mise run web
 ## Deploying
 
 Deploys go through `wrangler` (Cloudflare's CLI), same pattern as `docs/operations/site.md`.
-Authenticated locally via OAuth (`pnpm exec wrangler whoami`) on this machine, or via
-`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` in CI (not wired up yet — there is no
-`web.yml` GitHub Actions workflow; every deploy so far has been manual, same caveat as
-`site.md`'s and `deployment.md`'s Fly deploy workflow).
+Authenticated locally via OAuth (`pnpm exec wrangler whoami`) on this machine, or in CI via a
+scoped `CLOUDFLARE_API_TOKEN` secret plus the non-secret `CLOUDFLARE_ACCOUNT_ID` variable.
+`.github/workflows/web.yml` now builds the exact `main` commit that passed CI and can deploy it;
+the CI deployment remains gated until `WEB_DEPLOY_ENABLED=true` and the token are configured.
 
 The Cloudflare Pages project was created once with:
 
@@ -146,5 +146,6 @@ Carried over from `apps/web/README.md` — see that file for the full, current l
 - `PinPost` always pins at `position: 0` — no UI yet for managing all three pin slots.
 - No TUI-palette theme picker on web yet (spec §185's plain/quiet-feed toggles are a TUI
   concept; the cosmetic parity item is a selectable colour theme, still open).
-- No CI deploy workflow for `apps/web` yet (unlike `site.yml`'s `workflow_run` +
-  `vars.SITE_DEPLOY_ENABLED` gate) — every deploy is `mise run web:deploy` by hand.
+- The new `web.yml` CI deployment path is implemented and its build/action syntax has been
+  checked locally, but has not yet performed a real Pages deployment. Manual deploys remain
+  available through `mise run web:deploy`.
