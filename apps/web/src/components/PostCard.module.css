@@ -21,6 +21,7 @@
 .body {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .headerRow {
@@ -61,7 +62,7 @@
 
 .mediaGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   margin: 0.4rem 0;
   border-radius: var(--radius);
@@ -77,7 +78,8 @@
 
 .actions {
   display: flex;
-  gap: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
   margin-top: 0.4rem;
   color: var(--fg-muted);
 }
@@ -90,8 +92,10 @@
   align-items: center;
   gap: 0.3rem;
   font-size: 0.85rem;
-  padding: 0.2rem 0.3rem;
+  min-height: 44px;
+  padding: 0.45rem 0.5rem;
   border-radius: var(--radius);
+  cursor: pointer;
 }
 
 .actionButton:hover {
@@ -103,8 +107,29 @@
 }
 
 .quoted {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.5rem 0.7rem;
   margin: 0.4rem 0;
+}
+
+@media (max-width: 420px) {
+  .card {
+    gap: 0.6rem;
+    padding: 0.75rem 0.65rem;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .mediaGrid img {
+    height: 120px;
+  }
+
+  .actions {
+    margin-inline: -0.25rem;
+  }
 }

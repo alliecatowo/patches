@@ -1,37 +1,24 @@
 .shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 640px);
-  justify-content: center;
-  gap: 0;
+  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  grid-template-areas:
+    'nav main'
+    'nav footer';
+  grid-template-rows: minmax(100vh, 1fr) auto;
+  width: min(100%, 1180px);
   min-height: 100%;
-}
-
-@media (max-width: 720px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .nav {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    flex-direction: row;
-    overflow-x: auto;
-  }
-  .brand,
-  .navLabel {
-    display: none;
-  }
+  margin: 0 auto;
 }
 
 .nav {
+  grid-area: nav;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   padding: 1rem 0.75rem;
   border-right: 1px solid var(--border);
   align-items: flex-start;
+  min-width: 0;
 }
 
 .brand {
@@ -54,6 +41,8 @@
   border: none;
   text-align: left;
   font-size: 0.95rem;
+  min-height: 44px;
+  cursor: pointer;
 }
 
 .navLink:hover,
@@ -62,9 +51,31 @@
 }
 
 .main {
+  grid-area: main;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
   min-height: 100vh;
+}
+
+.unreadBadge {
+  display: inline-grid;
+  min-width: 1.4rem;
+  min-height: 1.4rem;
+  place-items: center;
+  margin-left: auto;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.more {
+  display: none;
 }
 
 .helpKbd {
@@ -90,9 +101,136 @@
 }
 
 .footer {
+  grid-area: footer;
   margin-top: 2rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--border, #ddd);
   opacity: 0.7;
   font-size: 0.8rem;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    display: block;
+    min-height: 100%;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .nav {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    border-right: 0;
+    background: var(--bg);
+  }
+
+  .brand,
+  .desktopOnly {
+    display: none;
+  }
+
+  .navLink,
+  .moreButton {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 0.35rem 0.2rem;
+    text-align: center;
+    font-size: 0.76rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .homeLink {
+    order: 1;
+  }
+
+  .searchLink {
+    order: 2;
+  }
+
+  .composeLink {
+    order: 3;
+  }
+
+  .notificationsLink {
+    order: 4;
+  }
+
+  .unreadBadge {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    min-width: 1.15rem;
+    min-height: 1.15rem;
+    font-size: 0.65rem;
+  }
+
+  .notificationsLink {
+    position: relative;
+  }
+
+  .more {
+    position: relative;
+    order: 5;
+    display: block;
+  }
+
+  .moreButton {
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--fg);
+    cursor: pointer;
+  }
+
+  .moreButton:hover,
+  .moreButton[aria-expanded='true'] {
+    background: var(--bg-raised);
+  }
+
+  .moreMenu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.5rem);
+    display: grid;
+    width: min(18rem, calc(100vw - 1rem));
+    max-height: min(70vh, 32rem);
+    padding: 0.5rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    box-shadow: 0 -0.5rem 2rem rgba(0, 0, 0, 0.16);
+  }
+
+  .moreMenu .navLink {
+    justify-content: flex-start;
+    padding-inline: 0.75rem;
+    text-align: left;
+    font-size: 0.95rem;
+  }
+
+  .main {
+    min-height: calc(100vh - 64px - env(safe-area-inset-bottom));
+    border: 0;
+  }
+
+  .footer {
+    margin-top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navLink,
+  .moreButton {
+    scroll-behavior: auto;
+    transition: none;
+  }
 }
