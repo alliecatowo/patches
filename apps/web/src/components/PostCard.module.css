@@ -5,14 +5,16 @@
   border-bottom: 1px solid var(--border);
   transition: background-color 0.12s ease;
   position: relative;
+  cursor: pointer;
 }
 
 .card:hover {
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .card.focused {
   background: var(--bg-raised);
+  cursor: default;
 }
 
 .avatarLink {

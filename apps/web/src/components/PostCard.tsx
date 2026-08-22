@@ -212,6 +212,19 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     setLightboxOpen(true);
   };
 
+  const handleCardClick = (e: React.MouseEvent<HTMLElement>): void => {
+    if (focused) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [data-lightbox-trigger]')) {
+      return;
+    }
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) {
+      return;
+    }
+    void navigate(`/p/${post.id}`);
+  };
+
   if (deleted) {
     return (
       <article className={styles['card']} data-post-id={post.id}>
@@ -227,6 +240,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
       className={`${styles['card']} ${focused ? styles['focused'] : ''}`}
       data-post-id={post.id}
       aria-label={`Post by @${post.author?.handle ?? 'unknown'}`}
+      onClick={handleCardClick}
     >
       {post.author?.avatar?.url ? (
         <Link to={`/@${post.author.handle}`} className={styles['avatarLink']}>
@@ -336,9 +350,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
           </div>
         </div>
 
-        {post.labels.length > 0 ? (
+        {(post.labels?.length ?? 0) > 0 ? (
           <div className={styles['labelsRow']}>
-            {post.labels.map((label) => (
+            {post.labels?.map((label) => (
               <span key={label.id} className={styles['labelBadge']}>
                 {label.value}
               </span>
@@ -422,9 +436,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
 
         <div className={styles['actions']}>
           <Link
-            to={`/compose?replyTo=${post.id}`}
+            to={`/p/${post.id}`}
             className={styles['actionButton']}
-            aria-label={`Reply to post (${counts?.replies ?? 0} replies)`}
+            aria-label={`View thread and replies (${counts?.replies ?? 0} replies)`}
           >
             <MessageSquareIcon size={17} />
             <span>{formatCount(counts?.replies ?? 0)}</span>
