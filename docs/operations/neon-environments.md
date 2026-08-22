@@ -1,5 +1,10 @@
 # Neon database environments
 
+**Status: helpers implemented and locally tested; provider setup incomplete.** The helper's
+27 assertions pass, but no real dev mirror has been created. Neon's branch-protection API
+returned plan-limit HTTP 422 for the production branch, which therefore remains unprotected;
+the guarded helper checks do not substitute for that provider control.
+
 Patches has three database tiers. The default developer path remains local
 Compose Postgres with synthetic data; cloud credentials are never required for
 ordinary development.

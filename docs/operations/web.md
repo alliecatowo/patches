@@ -1,6 +1,6 @@
 # Web (`@patches/web`)
 
-**Status: deployed 2026-08-19, CORS live.** `apps/web/` is a real, text-forward browser GUI
+**Status: deployed 2026-08-19, CORS live; hosted build currently stale.** `apps/web/` is a real, text-forward browser GUI
 for Patches (spec §0, §154, Amendment B §179 — web is paused as a _general_ client target
 until board Phase 11, but this scoped GUI gives the node a proper web front door in the
 meantime). Vite + React 19, built on the shared `@patches/client` SDK (ADR 0016 §9 — the
@@ -10,6 +10,10 @@ node's CORS allow-list (`WEB_ORIGINS`) includes that origin —
 `curl -sI -H 'Origin: https://patches-web.pages.dev' -X OPTIONS -H 'Access-Control-Request-Method: POST' https://patches-social.fly.dev:8443/patches.v1.SystemService/GetServerInfo`
 returns `access-control-allow-origin: https://patches-web.pages.dev` — so the live page can
 successfully call the live node end to end.
+
+As observed 2026-08-22, the hosted footer still reports `0.1.0+29df763`. The repository's
+newer source fixes below pass locally, but no CI or manual Pages deployment of this revision has
+run, so they must not be described as live yet.
 
 ## What it is
 
@@ -149,3 +153,18 @@ Carried over from `apps/web/README.md` — see that file for the full, current l
 - The new `web.yml` CI deployment path is implemented and its build/action syntax has been
   checked locally, but has not yet performed a real Pages deployment. Manual deploys remain
   available through `mise run web:deploy`.
+
+## Auth, profile diagnostics, and revision identity
+
+The source now persists the protobuf `Actor` through protobuf JSON rather than applying bare
+`JSON.stringify` to its bigint-backed `Timestamp`; the regression test round-trips the timestamp
+and prevents the former web sign-in exception. `ProfileRoute` distinguishes genuine `NOT_FOUND`
+from `SIGN_IN_REQUIRED` and transport failures, offers an actionable sign-in link on a closed
+node, and has route tests for each state. The shared client interceptor attaches an available
+bearer token to reads, including `GetActorByHandle` when `PUBLIC_READ=false`.
+
+The server build accepts `PATCHES_BUILD_SHA` and exposes `<version>+<short-sha>` through
+`GetServerInfo`; the web build already exposes its own version in the footer and boot banner.
+These make source/deployment skew diagnosable after the next release. Local verification passed
+17 web test files / 66 tests. Live login/profile behavior is still **Status: planned until
+B-063 deploys and smoke-tests this revision**.

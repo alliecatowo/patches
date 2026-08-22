@@ -322,7 +322,12 @@ case "$COMMAND" in
     assert_managed_child "$branch"
     confirm_destructive reset "$branch"
     "$NEON_CLI" branches reset "$branch" --project-id "$NEON_PROJECT_ID" --parent --output json --no-color >/dev/null
-    json_event reset "$branch" "" "$NEON_DEV_MIRROR_BRANCH" ""
+    if [ "$MANAGED_SOURCE" = "production" ]; then
+      reset_parent="$PRODUCTION_ID"
+    else
+      reset_parent="$MIRROR_ID"
+    fi
+    json_event reset "$branch" "" "$reset_parent" ""
     ;;
   destroy)
     branch="$(resolve_branch)"

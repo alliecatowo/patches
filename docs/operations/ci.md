@@ -1,20 +1,25 @@
 # Continuous integration
 
 Describes the GitHub Actions setup in `.github/workflows/` per `INITIAL_VISION.md` §120
-(required PR checks) and §121 (dependency security). As of 2026-08-17 the project is in
-Phase 0; this CI configuration is new and has not yet observed a real run — see
-"Assumptions to reconcile" below for the spots most likely to need a follow-up fix once
-other in-flight packages (`proto`, `database`, `server`, `tui`, `terminal-media`) land
-their own scripts.
+(required PR checks) and §121 (dependency security). **Status: implemented and
+actionlint-clean.** The protobuf-format and platform-sensitive TUI portability failures from
+the latest `main` run have been fixed and the full local equivalent now passes. A new
+successful GitHub `main` run has not yet validated this revision, and none of its downstream
+publish workflows has run.
 
 ## Workflows
 
 - **`.github/workflows/ci.yml`** — runs on every pull request and on push to `main`.
   Required for branch protection (see below).
-- **`.github/workflows/deploy.yml`** — deploys Fly after a successful `main` CI run, guarded
-  by the production environment and `FLY_DEPLOY_ENABLED`.
-- **`.github/workflows/{web,site}.yml`** — build the Cloudflare Pages web app/site after a
-  successful `main` CI run; external publishing remains separately variable-gated.
+- **`.github/workflows/deploy.yml`** — deploys Fly after a successful push-triggered CI run
+  for this repository's `main`, guarded by the production environment and both
+  `FLY_DEPLOY_ENABLED` and `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE`. The first gate is the
+  operator's explicit switch for routine Fly deployment; the second confirms the one-time
+  auth-code-envelope rollout is complete. Both must be `true` for deploy and smoke-test
+  steps; either being unset or false leaves the workflow as a safe no-op.
+- **`.github/workflows/{web,site,site-gh-pages}.yml`** — build/publish the production web
+  and site artifacts only after a successful push-triggered CI run for this repository's
+  `main`; Cloudflare publishing remains separately variable-gated.
 - **`.github/actions/setup/action.yml`** — the composite action every CI job (except
   `actionlint`) uses to install the toolchain and dependencies. It does **not** check
   out the repo itself: a local composite action (`uses: ./...`) can only be resolved
@@ -154,6 +159,13 @@ if any of `quality`, `proto`, `build-test`, `integration`, or `actionlint` faile
 cancelled, or was skipped. Requiring `ci-ok` alone (rather than listing every job) means
 adding a new job to `ci.yml` later doesn't require updating the branch protection rule
 too, as long as the new job is added to `ci-ok`'s `needs:` list.
+
+The Fly deploy also requires the one-time encrypted-auth-envelope rollout to have completed:
+`AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=true` is deliberately separate from the routine
+`FLY_DEPLOY_ENABLED=true` switch. The migration and envelope-aware server/worker code pass
+locally, but the quiesced live rollout has not run, so the completion variable must remain
+unset/false and the workflow must remain a no-op. Cloudflare publish workflows are likewise
+implemented but have not published this revision.
 
 ## Reproducing CI locally
 

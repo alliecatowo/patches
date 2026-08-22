@@ -30,8 +30,13 @@ concurrency:
 jobs:
   deploy:
     name: deploy (Fly.io)
-    # A failed or cancelled CI run on main must never trigger a deploy.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Only a successful push CI run for this repository's main branch is trusted to deploy.
+    # A fork PR can otherwise report a workflow_run whose head branch is also named `main`.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment: production
     steps:

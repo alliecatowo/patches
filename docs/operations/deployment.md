@@ -4,9 +4,9 @@
 "personal", region `iad`), is live at `patches-social.fly.dev:443` and has been exercised
 end to end with two real accounts (register, login, post, follow, like, reply, thread,
 notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile`,
-`infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it; the deploy
-workflow is now enabled, though the live deploys so far were done by hand with `flyctl`, not
-yet through CI. Media uploads use the production R2
+`infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it. The current live
+revision was deployed by hand; the CI path is implemented but has never completed a deploy and
+is currently held closed until the one-time auth-envelope rollout succeeds. Media uploads use the production R2
 bucket and verification email is sent through Resend from the verified
 `noreply@updates.allisons.dev` sender; federation is off by design. As of 2026-08-18 (A-041),
 production `DATABASE_URL` points at **Neon**, not the original Fly Postgres cluster — see
@@ -32,7 +32,7 @@ Per `INITIAL_VISION.md` §§84–91, §122, §141.
              +----------+-----------+
              |                      |
              v                      v
-     Fly Managed Postgres      Cloudflare R2
+         Neon Postgres         Cloudflare R2
              |
         +----v-------+
         | worker     |  <- Fly process group "worker" (private, no public service)
@@ -163,10 +163,16 @@ set (media/email disabled until dashboard-only credentials are fetched — `task
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`,
 `RESEND_API_KEY`.
 
-Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production LOG_LEVEL=log
+Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production E2EE_UNREVIEWED_DEV_MODE=true LOG_LEVEL=log
 GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-social.fly.dev
 NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
 EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
+
+**ADR 0027 disposable-node E2EE opt-in** — this owner-authorized no-user node deliberately sets
+`E2EE_UNREVIEWED_DEV_MODE=true`. This permits only the isolated-test `patches-franking-v1` path;
+it does not add a globally approved profile or describe the protocol as reviewed or secure.
+`NODE_ENV=production` remains required for normal runtime behavior and is not a deployment trust
+classification. Remove the flag before the node handles non-disposable data or real users.
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
@@ -365,6 +371,8 @@ fly secrets set --config infra/fly/fly.toml \
   DATABASE_URL="postgres://..." \
   JWT_PRIVATE_KEY="$(base64 -w0 < jwt-private.pem)" \
   JWT_PUBLIC_KEY="$(base64 -w0 < jwt-public.pem)" \
+  AUTH_CODE_DELIVERY_ACTIVE_KEY_ID="prod-YYYY-MM" \
+  AUTH_CODE_DELIVERY_KEYS='{"prod-YYYY-MM":"<32-byte-base64-key>"}' \
   R2_ACCOUNT_ID="..." \
   R2_ACCESS_KEY_ID="..." \
   R2_SECRET_ACCESS_KEY="..." \
@@ -378,6 +386,50 @@ fly secrets set --config infra/fly/fly.toml \
 (`fly mpg attach` sets `DATABASE_URL` automatically — the line above is only needed if
 connecting an externally-provisioned Postgres instead.) `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`
 generation: `pnpm keys:generate` (see root `package.json`).
+
+`AUTH_CODE_DELIVERY_KEYS` is a JSON keyring shared by the server (encrypts verification and
+password-reset jobs) and worker (decrypts them); `AUTH_CODE_DELIVERY_ACTIVE_KEY_ID` selects
+the write key. It must be independent of the JWT keypair. Rotate additively: add the new key
+to both processes first, deploy, switch the active id, wait until every pre-rotation auth job
+is terminal, then remove the old key.
+
+### One-time auth-envelope rollout
+
+**Status: planned — not exercised against Fly.** The commands below are the reviewed operator
+sequence for the first rollout; do not treat them as a record of a completed deployment.
+
+Migration `1787420562003-AuthCodeDeliveryEnvelopes` adds a constraint that rejects the old
+plaintext auth-email job shape. Therefore the first rollout **must not use the automatic
+GitHub deploy workflow**: its normal rolling strategy could leave an old server producing
+plaintext jobs after the migration is applied. Use this one-time quiesced rollout, accepting
+a short sign-in/registration outage:
+
+1. Set the GitHub production environment variable `FLY_DEPLOY_ENABLED=false` and confirm no
+   deploy run is active. Record current counts with
+   `fly scale show --app patches-social --config infra/fly/fly.toml`.
+2. Put only the two `AUTH_CODE_DELIVERY_*` assignments above in a mode-0600 temporary file,
+   then stage them without restarting Machines:
+   `fly secrets import --stage --app patches-social < auth-envelope-secrets.env`. Remove that
+   temporary file immediately after the command succeeds.
+3. Build and push the reviewed commit while the old version is still serving:
+   `fly deploy --app patches-social --config infra/fly/fly.toml --build-only --push
+--build-arg PATCHES_BUILD_SHA=<full-reviewed-commit-sha>`. Record the exact registry image
+   reference printed by Fly.
+4. Quiesce every old producer and consumer:
+   `fly scale count 0 --app patches-social --process-group server --yes`, then
+   `fly scale count 0 --app patches-social --process-group worker --yes`. Confirm both are zero
+   with `fly scale show` before continuing.
+5. Deploy the already-built image (the release command applies the migration while no old
+   process can enqueue): `fly deploy --app patches-social --config infra/fly/fly.toml
+--image <recorded-registry-image> --strategy immediate`.
+6. Restore the exact server and worker counts recorded in step 1 with separate
+   `fly scale count <count> --process-group <group> --yes` commands. Run the deployment smoke
+   checks below and exercise verification and password reset. Finally set both
+   `FLY_DEPLOY_ENABLED=true` and `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=true` in the GitHub
+   production environment to enable routine later releases.
+
+If build or review fails, stop before step 4. Once step 5 applies the constraint, do not roll
+back to the plaintext-producing image; fix forward with the reviewed envelope-aware image.
 
 **R2 bucket + CORS (Status: deployed)**: the dedicated `patches-media` bucket and scoped S3
 credentials back the presigned-URL upload/derivative flow. Browser-origin CORS remains a
@@ -478,10 +530,11 @@ Deploy workflow (workflow_run, triggered by CI's completion) -> flyctl deploy --
 smoke test (patches ping against the deployed host)
 ```
 
-`.github/workflows/deploy.yml` implements this. `vars.FLY_DEPLOY_ENABLED=true`, the complete
-`vars.FLY_GRPC_HOST` endpoint, and a `FLY_API_TOKEN` secret are configured; the path has not
-yet completed a real CI-triggered deploy because the latest `main` CI run failed before this
-gate. Deploy credentials are never exposed to pull requests from
+`.github/workflows/deploy.yml` implements this. The complete `vars.FLY_GRPC_HOST` endpoint and
+a `FLY_API_TOKEN` secret are configured. Routine deployment requires both
+`vars.FLY_DEPLOY_ENABLED=true` and `vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=true`; the latter
+must remain false/unset until the one-time rollout above is exercised. The path has not completed
+a real CI-triggered deploy. Deploy credentials are never exposed to pull requests from
 forks — the workflow only triggers off `workflow_run` (main-only) and manual dispatch, both
 of which run with the repo's own secrets, never a fork's.
 
@@ -492,6 +545,11 @@ of which run with the repo's own secrets, never a fork's.
 `SystemService.GetServerInfo` gRPC round trip, JSON output, exit 0/1) against
 the complete `vars.FLY_GRPC_HOST` endpoint over TLS, rather than writing a second, parallel gRPC smoke-test
 client. **Status: planned** — never run against a real deployment.
+
+The workflow also passes the exact validated commit as `PATCHES_BUILD_SHA` at image build time.
+`GetServerInfo.server_version` consequently reports `<package-version>+<short-sha>` in deployed
+images, while local/unidentified builds retain the plain package version. This makes a smoke-test
+response directly comparable with the web footer's build identity.
 
 ## Graceful shutdown
 

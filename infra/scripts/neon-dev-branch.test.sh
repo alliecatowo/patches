@@ -89,7 +89,8 @@ if $SCRIPT test --branch br-unmanaged >/dev/null 2>&1; then
   exit 1
 fi
 
-$SCRIPT reset --yes >/dev/null
+mirror_reset_output="$($SCRIPT reset --yes)"
+printf '%s' "$mirror_reset_output" | grep -q '"parent":"br-mirror"'
 $SCRIPT destroy --yes >/dev/null
 [ ! -e "$NEON_DEV_STATE_FILE" ]
 
@@ -120,7 +121,8 @@ if $SCRIPT reset --yes >/dev/null 2>&1; then
   echo "--yes bypassed production-derived reset confirmation" >&2
   exit 1
 fi
-printf 'RESET PRODUCTION-DERIVED br-ephemeral-test\n' | $SCRIPT reset --yes >/dev/null
+production_reset_output="$(printf 'RESET PRODUCTION-DERIVED br-ephemeral-test\n' | $SCRIPT reset --yes)"
+printf '%s' "$production_reset_output" | grep -q '"parent":"br-production"'
 if $SCRIPT destroy --yes >/dev/null 2>&1; then
   echo "--yes bypassed production-derived deletion confirmation" >&2
   exit 1
@@ -140,4 +142,4 @@ if env -u NEON_PRODUCTION_BRANCH $SCRIPT status --branch br-other >/dev/null 2>&
   exit 1
 fi
 
-printf '{"ok":true,"tests":25}\n'
+printf '{"ok":true,"tests":27}\n'

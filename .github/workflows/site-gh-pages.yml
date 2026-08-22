@@ -6,37 +6,41 @@
 # build sets VITEPRESS_BASE=/patches/ (site/.vitepress/config.mts reads it, default `/`)
 # purely for this workflow — the Cloudflare build is untouched.
 #
-# One-time manual step (Status: planned until the repo owner clicks it): GitHub Pages must
+# One-time repository setup (Status: planned until the repo owner enables it): GitHub Pages must
 # have "Source: GitHub Actions" enabled in the repo's Settings → Pages before this workflow's
 # `actions/deploy-pages` step can publish anything — see docs/operations/site.md.
 
 name: Site (GitHub Pages)
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'site/**'
-      - 'docs/**'
-  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: site-gh-pages
+  group: site-gh-pages-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: build
+    # Only a successful push CI run for this repository's main branch is trusted to publish.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write
-      id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: ./.github/actions/setup
 

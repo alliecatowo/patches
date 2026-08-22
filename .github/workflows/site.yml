@@ -1,7 +1,7 @@
 # P9-001: builds the VitePress docs/marketing site (site/) and deploys it to Cloudflare
 # Pages via wrangler. Follows the same pattern as deploy.yml: triggers via `workflow_run`
-# after the `CI` workflow completes successfully on `main`, plus a manual
-# `workflow_dispatch` escape hatch. The actual `wrangler pages deploy` step stays guarded
+# after the `CI` workflow completes successfully on `main`. The actual
+# `wrangler pages deploy` step stays guarded
 # behind `vars.SITE_DEPLOY_ENABLED`, a repo/environment variable that stays unset until the
 # `patches-site` Cloudflare Pages project + `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`
 # secrets exist — so this workflow runs (and reports green, building the site) on every
@@ -15,27 +15,29 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: site-${{ github.ref }}
+  group: site-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: build + deploy (Cloudflare Pages)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+    # Only a successful push CI run for this repository's main branch is trusted to publish.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: ./.github/actions/setup
 

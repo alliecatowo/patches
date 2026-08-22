@@ -27,6 +27,10 @@ is the scoped browser GUI (`apps/web`), talking to `patches-social.fly.dev` over
 VitePress) — see [`docs/operations/web.md`](docs/operations/web.md) and
 [`docs/operations/site.md`](docs/operations/site.md) for hosting/deploy detail.
 
+The hosted web build is currently stale (`0.1.0+29df763`). The repository contains locally
+verified fixes for its BigInt-backed actor-session serialization, closed-node profile errors,
+and build identity, but those fixes are not live until B-063's gated deployment completes.
+
 <p>
   <img src="docs/media/home.png" alt="Home feed" width="32%" />
   <img src="docs/media/thread.png" alt="Thread view" width="32%" />
@@ -50,9 +54,9 @@ No `--server`/`--insecure` needed — the client's default target is
 `patches-social.fly.dev:443` over TLS. A published `npm install -g patches-social` is planned
 but not live yet (publishing itself is a manual owner step, see
 `docs/operations/deployment.md`); building from a source checkout, as above, is the
-supported path today. Two things don't work in
-production yet: image uploads and verification email (see
-[`docs/user-guide.md`](docs/user-guide.md#what-doesnt-work-yet-on-the-live-node)).
+supported path today. Production R2 media storage and Resend email are configured; current
+live caveats, including the stale hosted web revision, are tracked in
+[`docs/user-guide.md`](docs/user-guide.md#live-node-status-and-caveats).
 
 ## Using Patches
 
@@ -66,7 +70,7 @@ Prerequisites: [mise](https://mise.jdx.dev/) and Docker (or Podman) for the loca
 
 ```bash
 mise install        # Node 24, pnpm 11, buf, actionlint (from mise.toml)
-mise run setup      # pnpm install · .env · compose up (postgres+mailpit) · migrations · build
+mise run setup      # install · private .env + generated keys · compose · migrations · build
 ```
 
 Run it (two terminals):
@@ -82,7 +86,7 @@ mise run ping       # non-interactive check (JSON, exit 0/1)
 The same without mise tasks:
 
 ```bash
-pnpm install && cp .env.example .env
+pnpm install && cp .env.example .env && pnpm keys:generate >> .env
 mise run compose -- up -d           # docker compose, or podman compose fallback
 pnpm db:migrate && pnpm build
 pnpm --filter @patches/server start
