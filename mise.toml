@@ -38,14 +38,21 @@ fi
 """
 
 [tasks.setup]
-description = "First-run setup: install deps, git hooks, compose stack, migrations, build everything"
+description = "First-run setup: install deps, generate local secrets, git hooks, compose stack, migrations, build everything"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
 pnpm install
 mise run hooks:install
-[ -f .env ] || cp .env.example .env
+if [ ! -f .env ]; then
+  # Keep generated JWT and auth-envelope keys off the terminal and make the resulting local
+  # secret file owner-readable only. Later definitions intentionally replace the documented
+  # placeholders copied from .env.example.
+  umask 077
+  cp .env.example .env
+  pnpm keys:generate >> .env
+fi
 mise run compose -- up -d
 for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break; sleep 1; done
 pnpm db:migrate

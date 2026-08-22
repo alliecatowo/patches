@@ -1,4 +1,10 @@
-import { appendAdminAuditLog, OutboxJob, replayOutboxJob } from '@patches/database';
+import {
+  AUTH_CODE_DELIVERY_TOMBSTONE,
+  appendAdminAuditLog,
+  isAuthCodeEmailJobType,
+  OutboxJob,
+  replayOutboxJob,
+} from '@patches/database';
 
 import {
   booleanOption,
@@ -61,6 +67,9 @@ async function showJob(args: ParsedArgs, context: AdminContext): Promise<void> {
   const id = requirePositional(args.positionals, 2, 'Usage: jobs show <id>');
   const job = await context.dataSource.getRepository(OutboxJob).findOne({ where: { id } });
   if (job === null) throw new Error(`Job "${id}" not found.`);
+  const visiblePayload = isAuthCodeEmailJobType(job.type)
+    ? AUTH_CODE_DELIVERY_TOMBSTONE
+    : job.payload;
 
   if (booleanOption(args.options, 'json')) {
     printJson({
@@ -69,7 +78,7 @@ async function showJob(args: ParsedArgs, context: AdminContext): Promise<void> {
       status: job.status,
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
-      payload: job.payload,
+      payload: visiblePayload,
       availableAt: job.availableAt.toISOString(),
       lockedAt: job.lockedAt?.toISOString() ?? null,
       lockedBy: job.lockedBy,
@@ -91,11 +100,15 @@ async function showJob(args: ParsedArgs, context: AdminContext): Promise<void> {
       lastError: job.lastError,
     } satisfies Row,
   ]);
-  process.stdout.write(`payload: ${JSON.stringify(job.payload)}\n`);
+  process.stdout.write(`payload: ${JSON.stringify(visiblePayload)}\n`);
 }
 
 async function replayJob(args: ParsedArgs, context: AdminContext): Promise<void> {
   const id = requirePositional(args.positionals, 2, 'Usage: jobs replay <id>');
+  const job = await context.dataSource.getRepository(OutboxJob).findOne({ where: { id } });
+  if (job !== null && isAuthCodeEmailJobType(job.type)) {
+    throw new Error(`Job "${id}" contains a one-time auth credential and cannot be replayed.`);
+  }
   const operatorUserId = await requireOperatorUserId(context);
 
   const replayed = await context.dataSource.transaction(async (manager) => {

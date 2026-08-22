@@ -42,6 +42,14 @@ export class AppConfigService {
     return this.get('DATABASE_POOL_MAX');
   }
 
+  get authCodeDeliveryKeys(): Env['AUTH_CODE_DELIVERY_KEYS'] {
+    return this.get('AUTH_CODE_DELIVERY_KEYS');
+  }
+
+  get authCodeDeliveryActiveKeyId(): string {
+    return this.get('AUTH_CODE_DELIVERY_ACTIVE_KEY_ID');
+  }
+
   get emailProvider(): Env['EMAIL_PROVIDER'] {
     return this.get('EMAIL_PROVIDER');
   }

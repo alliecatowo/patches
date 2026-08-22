@@ -1,14 +1,13 @@
 import 'reflect-metadata';
 
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { readDotEnvFile } from '@patches/config';
 import type { DataSource } from 'typeorm';
 
-import { AppModule } from './app.module.js';
 import { createLogger } from './common/logger.factory.js';
 import { validateEnv } from './config/env.schema.js';
 import { DATA_SOURCE } from './database/database.module.js';
@@ -19,7 +18,7 @@ import { JobRunner } from './jobs/job-runner.js';
  * — never overrides a variable the shell/process manager already set, never runs in
  * production.
  */
-function loadDotEnv(): void {
+export function loadDotEnv(): void {
   if (process.env.NODE_ENV === 'production') return;
 
   const startDir = typeof __dirname === 'string' ? __dirname : process.cwd();
@@ -42,6 +41,11 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function bootstrap(): Promise<void> {
   loadDotEnv();
+
+  // Keep this import after dotenv loading. AppModule validates required configuration at
+  // module-evaluation time, so a static ESM import would make the documented repo-root `.env`
+  // invisible during fresh-clone worker startup.
+  const { AppModule } = await import('./app.module.js');
 
   // Validated before Nest exists: a malformed environment must abort the boot outright.
   const env = validateEnv(process.env);
@@ -107,10 +111,13 @@ async function bootstrap(): Promise<void> {
   logger.log('patches worker stopped', 'Bootstrap');
 }
 
-bootstrap().catch((error: unknown) => {
-  // The logger may not exist yet (config failures happen first), so this is the
-  // one place the worker writes directly to stderr.
-  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  new Logger('Bootstrap').error(message);
-  process.exitCode = 1;
-});
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && basename(invokedPath) === 'main.js') {
+  bootstrap().catch((error: unknown) => {
+    // The logger may not exist yet (config failures happen first), so this is the
+    // one place the worker writes directly to stderr.
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    new Logger('Bootstrap').error(message);
+    process.exitCode = 1;
+  });
+}

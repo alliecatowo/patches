@@ -63,6 +63,13 @@ Password reset (`RequestPasswordReset` / `ResetPassword`) requires a **verified 
 email**; an account without one has no reset channel by design and recovers by holding a
 second credential.
 
+Verification and reset codes are never durable plaintext job arguments. Issuance stores the
+code only as the existing SHA-256 verifier in `auth_codes`; the transactional outbox payload is
+a versioned AES-256-GCM envelope carrying recipient/code delivery data plus a non-secret
+`authCodeId`. Server and worker share a rotatable delivery keyring that is independent of the
+JWT keypair. Successful or terminal delivery scrubs the envelope, terminal auth-email jobs are
+not replayable, and the database rejects the former top-level `code`/`email`/`userId` job shape.
+
 ## 4. SSH-key login
 
 The terminal-native path: the key is already on the machine and the agent is already running.

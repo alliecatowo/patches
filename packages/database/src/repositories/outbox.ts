@@ -1,6 +1,9 @@
 import { In } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import { AuthCode } from '../entities/auth-code.entity.js';
 import { OutboxJob } from '../entities/outbox-job.entity.js';
+import { isAuthCodeEmailJobType } from '../jobs/auth-code-delivery.js';
+import { AUTH_CODE_DELIVERY_TOMBSTONE, authCodeDeliveryEnvelopeSchema } from '../jobs/payloads.js';
 
 /**
  * Claim/complete/fail helpers for the durable job queue (`INITIAL_VISION.md` §12–13,
@@ -112,18 +115,31 @@ export async function claimOutboxJobs(
 export async function markOutboxJobSucceeded(
   manager: EntityManager,
   jobId: string,
+  claim: { workerId: string; lockedAt: Date },
   now: Date = new Date(),
-): Promise<void> {
-  await manager.getRepository(OutboxJob).update(
-    { id: jobId },
-    {
+): Promise<boolean> {
+  const result = await manager
+    .getRepository(OutboxJob)
+    .createQueryBuilder()
+    .update(OutboxJob)
+    .set({
       status: 'COMPLETED',
       completedAt: now,
       lockedAt: null,
       lockedBy: null,
       lastError: null,
-    },
-  );
+      // Enforce auth-envelope scrubbing here rather than relying on every caller to remember
+      // a special option. The status and tombstone still land in this one atomic UPDATE.
+      payload: () =>
+        `CASE WHEN "type" IN ('SEND_VERIFICATION_EMAIL', 'SEND_PASSWORD_RESET_EMAIL') ` +
+        `THEN '{"v":1,"redacted":true}'::jsonb ELSE "payload" END`,
+    })
+    .where('id = :id', { id: jobId })
+    .andWhere('status = :status', { status: 'PROCESSING' })
+    .andWhere('locked_by = :workerId', { workerId: claim.workerId })
+    .andWhere('locked_at = :lockedAt', { lockedAt: claim.lockedAt })
+    .execute();
+  return (result.affected ?? 0) === 1;
 }
 
 /**
@@ -139,6 +155,7 @@ export async function markOutboxJobFailed(
   manager: EntityManager,
   jobId: string,
   options: {
+    claim: { workerId: string; lockedAt: Date };
     error: string;
     now?: Date;
     backoff?: OutboxBackoffOptions;
@@ -146,6 +163,7 @@ export async function markOutboxJobFailed(
   },
 ): Promise<'PENDING' | 'DEAD' | null> {
   const {
+    claim,
     error,
     now = new Date(),
     backoff = DEFAULT_OUTBOX_BACKOFF,
@@ -153,31 +171,74 @@ export async function markOutboxJobFailed(
   } = options;
 
   const repository = manager.getRepository(OutboxJob);
-  const job = await repository.findOne({ where: { id: jobId } });
+  const job = await repository.findOne({
+    where: {
+      id: jobId,
+      status: 'PROCESSING',
+      lockedBy: claim.workerId,
+      lockedAt: claim.lockedAt,
+    },
+  });
   if (!job) return null;
+  const safeError = isAuthCodeEmailJobType(job.type) ? 'AUTH_CODE_DELIVERY_FAILED' : error;
 
   // `attempts` was already incremented when the job was claimed, so it counts this attempt.
   const exhausted = job.attempts >= job.maxAttempts;
   if (exhausted) {
-    await repository.update(
-      { id: jobId },
-      { status: 'DEAD', lastError: error, lockedAt: null, lockedBy: null },
-    );
+    const result = await repository
+      .createQueryBuilder()
+      .update(OutboxJob)
+      .set({
+        status: 'DEAD',
+        lastError: safeError,
+        lockedAt: null,
+        lockedBy: null,
+        ...(isAuthCodeEmailJobType(job.type) ? { payload: AUTH_CODE_DELIVERY_TOMBSTONE } : {}),
+      })
+      .where('id = :id', { id: jobId })
+      .andWhere('status = :status', { status: 'PROCESSING' })
+      .andWhere('locked_by = :workerId', { workerId: claim.workerId })
+      .andWhere('locked_at = :lockedAt', { lockedAt: claim.lockedAt })
+      .execute();
+    if ((result.affected ?? 0) !== 1) return null;
+    if (isAuthCodeEmailJobType(job.type)) {
+      const envelope = authCodeDeliveryEnvelopeSchema.safeParse(job.payload);
+      const authCodeId = envelope.success
+        ? envelope.data.authCodeId
+        : extractAuthCodeId(job.payload);
+      if (authCodeId !== null) {
+        await manager.getRepository(AuthCode).delete({ id: authCodeId });
+      }
+    }
     return 'DEAD';
   }
 
   const delayMs = outboxBackoffDelayMs(job.attempts, backoff, random);
-  await repository.update(
-    { id: jobId },
-    {
+  const result = await repository
+    .createQueryBuilder()
+    .update(OutboxJob)
+    .set({
       status: 'PENDING',
-      lastError: error,
+      lastError: safeError,
       availableAt: new Date(now.getTime() + delayMs),
       lockedAt: null,
       lockedBy: null,
-    },
-  );
-  return 'PENDING';
+    })
+    .where('id = :id', { id: jobId })
+    .andWhere('status = :status', { status: 'PROCESSING' })
+    .andWhere('locked_by = :workerId', { workerId: claim.workerId })
+    .andWhere('locked_at = :lockedAt', { lockedAt: claim.lockedAt })
+    .execute();
+  return (result.affected ?? 0) === 1 ? 'PENDING' : null;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Best-effort identifier recovery for terminal malformed envelopes; never returns ciphertext. */
+function extractAuthCodeId(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+  const value = (payload as Record<string, unknown>).authCodeId;
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
 }
 
 /**
@@ -205,6 +266,7 @@ export async function replayOutboxJob(
     .set({ status: 'PENDING', availableAt: now, lockedAt: null, lockedBy: null })
     .where('id = :id', { id: jobId })
     .andWhere('status = :status', { status: 'DEAD' })
+    .andWhere("type NOT IN ('SEND_VERIFICATION_EMAIL', 'SEND_PASSWORD_RESET_EMAIL')")
     .execute();
   return (result.affected ?? 0) === 1;
 }

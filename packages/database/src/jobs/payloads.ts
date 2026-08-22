@@ -7,18 +7,76 @@ import { z } from 'zod';
  * place instead of drifting between the two sides of the queue.
  */
 
-export const sendVerificationEmailPayloadSchema = z.object({
-  userId: z.string().min(1),
-  email: z.string().min(1),
-  code: z.string().min(1),
-});
+const canonicalBase64Schema = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    const decoded = Buffer.from(value, 'base64');
+    return decoded.length > 0 && decoded.toString('base64') === value;
+  }, 'must be canonical base64');
+
+export const authCodeDeliveryKeyIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9._-]{1,64}$/, 'must be a 1-64 character delivery key id');
+
+export const authCodeDeliveryKeyringSchema = z.record(
+  authCodeDeliveryKeyIdSchema,
+  canonicalBase64Schema.refine(
+    (value) => Buffer.from(value, 'base64').length === 32,
+    'must decode to exactly 32 bytes',
+  ),
+);
+export type AuthCodeDeliveryKeyring = z.infer<typeof authCodeDeliveryKeyringSchema>;
+
+export const authCodeDeliveryKeyringJsonSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .transform((value, ctx): AuthCodeDeliveryKeyring => {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'must be a JSON object of delivery keys' });
+      return z.NEVER;
+    }
+    const parsedKeyring = authCodeDeliveryKeyringSchema.safeParse(parsedJson);
+    if (!parsedKeyring.success) {
+      // Deliberately collapse inner paths: a key id is operational secret metadata and must
+      // not be copied into a boot error or deployment log.
+      ctx.addIssue({ code: 'custom', message: 'must contain only valid 32-byte delivery keys' });
+      return z.NEVER;
+    }
+    return parsedKeyring.data;
+  });
+
+export const authCodeDeliveryEnvelopeSchema = z
+  .object({
+    v: z.literal(1),
+    kid: authCodeDeliveryKeyIdSchema,
+    authCodeId: z.uuid(),
+    iv: canonicalBase64Schema.refine(
+      (value) => Buffer.from(value, 'base64').length === 12,
+      'iv must decode to exactly 12 bytes',
+    ),
+    ciphertext: canonicalBase64Schema,
+    tag: canonicalBase64Schema.refine(
+      (value) => Buffer.from(value, 'base64').length === 16,
+      'tag must decode to exactly 16 bytes',
+    ),
+  })
+  .strict();
+export type AuthCodeDeliveryEnvelope = z.infer<typeof authCodeDeliveryEnvelopeSchema>;
+
+export const authCodeDeliveryTombstoneSchema = z
+  .object({ v: z.literal(1), redacted: z.literal(true) })
+  .strict();
+export const AUTH_CODE_DELIVERY_TOMBSTONE = { v: 1, redacted: true } as const;
+
+export const sendVerificationEmailPayloadSchema = authCodeDeliveryEnvelopeSchema;
 export type SendVerificationEmailPayload = z.infer<typeof sendVerificationEmailPayloadSchema>;
 
-export const sendPasswordResetEmailPayloadSchema = z.object({
-  userId: z.string().min(1),
-  email: z.string().min(1),
-  code: z.string().min(1),
-});
+export const sendPasswordResetEmailPayloadSchema = authCodeDeliveryEnvelopeSchema;
 export type SendPasswordResetEmailPayload = z.infer<typeof sendPasswordResetEmailPayloadSchema>;
 
 /**

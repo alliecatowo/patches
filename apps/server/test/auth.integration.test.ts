@@ -5,7 +5,16 @@ import {
   status as GrpcStatus,
   type ServiceError,
 } from '@grpc/grpc-js';
-import { Credential, OutboxJob, RefreshToken, SshLoginChallenge, User } from '@patches/database';
+import {
+  Credential,
+  OutboxJob,
+  RefreshToken,
+  SshLoginChallenge,
+  User,
+  authCodeDeliveryKeyringSchema,
+  decryptAuthCodeDelivery,
+  type AuthCodeEmailJobType,
+} from '@patches/database';
 import {
   buildSshChallengeBlob,
   encodeSshStrings,
@@ -143,17 +152,24 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     /** Reads the code out of the outbox job written in the same transaction as the account. */
-    async function latestEmailedCode(userId: string, type: string): Promise<string> {
+    async function latestEmailedCode(userId: string, type: AuthCodeEmailJobType): Promise<string> {
       const job = await dataSource
         .getRepository(OutboxJob)
         .createQueryBuilder('job')
         .where('job.type = :type', { type })
-        .andWhere("job.payload->>'userId' = :userId", { userId })
+        .andWhere(
+          `job.payload->>'authCodeId' IN (SELECT id::text FROM auth_codes WHERE user_id = :userId)`,
+          { userId },
+        )
         .orderBy('job.id', 'DESC')
         .getOne();
-      const code = job?.payload['code'];
-      if (typeof code !== 'string') throw new Error(`no ${type} job for user ${userId}`);
-      return code;
+      if (job === null) throw new Error(`no ${type} job for user ${userId}`);
+      const keyring: unknown = JSON.parse(process.env.AUTH_CODE_DELIVERY_KEYS ?? 'null');
+      return decryptAuthCodeDelivery(
+        type,
+        job.payload,
+        authCodeDeliveryKeyringSchema.parse(keyring),
+      ).plaintext.code;
     }
 
     async function userIdForHandle(handle: string): Promise<string> {

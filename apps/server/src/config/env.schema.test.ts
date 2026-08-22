@@ -5,7 +5,16 @@ import { join } from 'node:path';
 import { ConfigError } from '@patches/config';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { validateEnv } from './env.schema.js';
+import { validateEnv as validateRawEnv } from './env.schema.js';
+
+const AUTH_CODE_DELIVERY_ENV = {
+  AUTH_CODE_DELIVERY_KEYS: JSON.stringify({ test: Buffer.alloc(32, 7).toString('base64') }),
+  AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: 'test',
+};
+
+function validateEnv(raw: Record<string, string | undefined>) {
+  return validateRawEnv({ ...AUTH_CODE_DELIVERY_ENV, ...raw });
+}
 
 /**
  * Minimal valid keys for the production checks below. Real values come from
@@ -21,6 +30,22 @@ const JWT_KEYS = {
 };
 
 describe('validateEnv', () => {
+  it('requires a complete auth-code delivery keyring whose active id exists', () => {
+    expect(() => validateRawEnv({})).toThrow(ConfigError);
+    expect(() =>
+      validateRawEnv({
+        AUTH_CODE_DELIVERY_KEYS: JSON.stringify({ test: Buffer.alloc(31).toString('base64') }),
+        AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: 'test',
+      }),
+    ).toThrow(ConfigError);
+    expect(() =>
+      validateRawEnv({
+        AUTH_CODE_DELIVERY_KEYS: AUTH_CODE_DELIVERY_ENV.AUTH_CODE_DELIVERY_KEYS,
+        AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: 'missing',
+      }),
+    ).toThrow(ConfigError);
+  });
+
   it('applies development defaults when nothing is set', () => {
     const env = validateEnv({});
 
@@ -33,6 +58,7 @@ describe('validateEnv', () => {
       PUBLIC_ORIGIN: 'http://localhost:3000',
       INVITE_ONLY: true,
       GRPC_REFLECTION: false,
+      E2EE_UNREVIEWED_DEV_MODE: false,
     });
     expect(env.DATABASE_URL).toBeUndefined();
   });
@@ -89,6 +115,18 @@ describe('validateEnv', () => {
       ...JWT_KEYS,
     });
     expect(env.DATABASE_URL).toBe('postgres://patches:patches@127.0.0.1:5432/patches');
+  });
+
+  it('permits the explicit unreviewed E2EE switch with production runtime settings', () => {
+    expect(validateEnv({ E2EE_UNREVIEWED_DEV_MODE: 'true' }).E2EE_UNREVIEWED_DEV_MODE).toBe(true);
+    expect(
+      validateEnv({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://patches:patches@127.0.0.1:5432/patches',
+        E2EE_UNREVIEWED_DEV_MODE: 'true',
+        ...JWT_KEYS,
+      }).E2EE_UNREVIEWED_DEV_MODE,
+    ).toBe(true);
   });
 
   it('requires the JWT signing keys in production', () => {

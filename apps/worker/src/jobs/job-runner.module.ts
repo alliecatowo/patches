@@ -13,11 +13,13 @@ import { RotateE2eeFrankingKeyHandler } from './handlers/rotate-e2ee-franking-ke
 import { SendPasswordResetEmailHandler } from './handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from './handlers/send-verification-email.handler.js';
 import { JobDispatcher } from './job-dispatcher.js';
+import { AuthCodeEmailDeliveryService } from './auth-code-email-delivery.service.js';
 import { JobRunner } from './job-runner.js';
 
 @Module({
   imports: [DatabaseModule, EmailModule, StorageModule],
   providers: [
+    AuthCodeEmailDeliveryService,
     SendVerificationEmailHandler,
     SendPasswordResetEmailHandler,
     CleanExpiredTokensHandler,

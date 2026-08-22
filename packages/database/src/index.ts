@@ -180,6 +180,7 @@ export { Phase14Labelers1787135294583 } from './migrations/1787135294583-Phase14
 export { Phase14ModerationAppeals1787135453592 } from './migrations/1787135453592-Phase14ModerationAppeals.js';
 export { Phase14AccountLifecycle1787135493158 } from './migrations/1787135493158-Phase14AccountLifecycle.js';
 export { Phase14FollowRequests1787153689257 } from './migrations/1787153689257-Phase14FollowRequests.js';
+export { AuthCodeDeliveryEnvelopes1787420562003 } from './migrations/1787420562003-AuthCodeDeliveryEnvelopes.js';
 
 export {
   claimOutboxJobs,
@@ -206,6 +207,23 @@ export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
 
 export { JOB_TYPES, type JobType } from './jobs/job-types.js';
 export {
+  AUTH_CODE_EMAIL_JOB_TYPES,
+  AuthCodeDeliveryEnvelopeError,
+  decryptAuthCodeDelivery,
+  encryptAuthCodeDelivery,
+  isAuthCodeEmailJobType,
+  type AuthCodeDeliveryPlaintext,
+  type AuthCodeEmailJobType,
+} from './jobs/auth-code-delivery.js';
+export {
+  AUTH_CODE_DELIVERY_TOMBSTONE,
+  authCodeDeliveryEnvelopeSchema,
+  authCodeDeliveryKeyIdSchema,
+  authCodeDeliveryKeyringSchema,
+  authCodeDeliveryKeyringJsonSchema,
+  authCodeDeliveryTombstoneSchema,
+  type AuthCodeDeliveryEnvelope,
+  type AuthCodeDeliveryKeyring,
   sendVerificationEmailPayloadSchema,
   type SendVerificationEmailPayload,
   sendPasswordResetEmailPayloadSchema,

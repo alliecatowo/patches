@@ -1,11 +1,31 @@
 import { ConfigError } from '@patches/config';
 import { describe, expect, it } from 'vitest';
 
-import { validateEnv } from './env.schema.js';
+import { validateEnv as validateRawEnv } from './env.schema.js';
 
 const DATABASE_URL = 'postgres://patches:patches@127.0.0.1:5432/patches';
+const AUTH_CODE_DELIVERY_ENV = {
+  AUTH_CODE_DELIVERY_KEYS: JSON.stringify({ test: Buffer.alloc(32, 7).toString('base64') }),
+  AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: 'test',
+};
+
+function validateEnv(raw: Record<string, string | undefined>) {
+  return validateRawEnv({ ...AUTH_CODE_DELIVERY_ENV, ...raw });
+}
 
 describe('validateEnv', () => {
+  it('requires a complete auth-code delivery keyring whose active id exists', () => {
+    expect(() => validateRawEnv({ DATABASE_URL, EMAIL_FROM: 'a@b.c' })).toThrow(ConfigError);
+    expect(() =>
+      validateRawEnv({
+        DATABASE_URL,
+        EMAIL_FROM: 'a@b.c',
+        AUTH_CODE_DELIVERY_KEYS: AUTH_CODE_DELIVERY_ENV.AUTH_CODE_DELIVERY_KEYS,
+        AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: 'missing',
+      }),
+    ).toThrow(ConfigError);
+  });
+
   it('applies development defaults given a valid DATABASE_URL', () => {
     const env = validateEnv({ DATABASE_URL, EMAIL_FROM: 'Patches <no-reply@patches.local>' });
 

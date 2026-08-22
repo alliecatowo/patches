@@ -17,6 +17,10 @@ import { checkIn, OUTBOX_JOB_STATUSES, type OutboxJobStatus } from './enums.js';
 @Index(['idempotencyKey'], { unique: true })
 @Check('chk_outbox_jobs_status', checkIn('status', OUTBOX_JOB_STATUSES))
 @Check('chk_outbox_jobs_attempts', `"attempts" >= 0 AND "max_attempts" >= 1`)
+@Check(
+  'chk_outbox_jobs_auth_email_payload',
+  `"type" NOT IN ('SEND_VERIFICATION_EMAIL', 'SEND_PASSWORD_RESET_EMAIL') OR NOT ("payload" ?| ARRAY['code', 'email', 'userId'])`,
+)
 export class OutboxJob {
   /**
    * `bigint` rather than uuid: this is an internal queue record, never a public identifier

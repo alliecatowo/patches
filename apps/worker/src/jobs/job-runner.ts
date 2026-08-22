@@ -4,6 +4,7 @@ import {
   countPendingOutboxJobs,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
+  isAuthCodeEmailJobType,
   type OutboxJob,
 } from '@patches/database';
 import type { DataSource } from 'typeorm';
@@ -167,6 +168,7 @@ export class JobRunner {
   private async processJob(job: OutboxJob): Promise<void> {
     const start = Date.now();
     const handler = this.dispatcher.find(job.type);
+    const claim = { workerId: job.lockedBy!, lockedAt: job.lockedAt! };
 
     if (!handler) {
       await releaseUnhandledJob(this.dataSource.manager, job.id);
@@ -178,7 +180,13 @@ export class JobRunner {
 
     try {
       await handler.handle(job.payload, { jobId: job.id, attempt: job.attempts });
-      await markOutboxJobSucceeded(this.dataSource.manager, job.id);
+      const completed = await markOutboxJobSucceeded(this.dataSource.manager, job.id, claim);
+      if (!completed) {
+        this.logger.warn(
+          JSON.stringify({ jobId: job.id, type: job.type, outcome: 'STALE_CLAIM_IGNORED' }),
+        );
+        return;
+      }
       this.circuitBreaker.recordSuccess(job.type);
       this.logger.log(
         JSON.stringify({
@@ -191,10 +199,20 @@ export class JobRunner {
       );
     } catch (error) {
       // Never log `job.payload` here — verification/reset jobs carry a code (spec §101).
-      const message = error instanceof Error ? error.message : String(error);
-      const outcome = await markOutboxJobFailed(this.dataSource.manager, job.id, {
-        error: message,
-      });
+      const message = isAuthCodeEmailJobType(job.type)
+        ? 'AUTH_CODE_DELIVERY_FAILED'
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      const outcome = await this.dataSource.transaction((manager) =>
+        markOutboxJobFailed(manager, job.id, { claim, error: message }),
+      );
+      if (outcome === null) {
+        this.logger.warn(
+          JSON.stringify({ jobId: job.id, type: job.type, outcome: 'STALE_CLAIM_IGNORED' }),
+        );
+        return;
+      }
       const wasOpen = this.circuitBreaker.isOpen(job.type);
       this.circuitBreaker.recordFailure(job.type);
       if (!wasOpen && this.circuitBreaker.isOpen(job.type)) {
@@ -208,7 +226,7 @@ export class JobRunner {
           type: job.type,
           attempt: job.attempts,
           latencyMs: Date.now() - start,
-          outcome: outcome ?? 'MISSING',
+          outcome,
           error: message,
         }),
       );

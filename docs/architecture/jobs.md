@@ -103,8 +103,11 @@ the database (§12).
 
 Once `attempts >= max_attempts`, the job transitions to `status = 'DEAD'` instead of
 being rescheduled again. Dead jobs are retained (not deleted) for operator
-inspection/replay via the admin tooling. `max_attempts` is job-type-specific; a
-reasonable default is 5–10 attempts, adjustable per job type.
+inspection/replay via the admin tooling. Auth-email jobs are the deliberate exception:
+their payload is replaced with `{ "v": 1, "redacted": true }`, the corresponding
+`auth_codes` row is deleted, and replay is refused; the user requests a fresh code instead.
+`max_attempts` is job-type-specific; a reasonable default is 5–10 attempts, adjustable per
+job type.
 
 ## 7. Idempotency
 
@@ -113,8 +116,10 @@ partially executed, and then retried after a crash before `completed_at` is set.
 Concretely:
 
 - `SEND_VERIFICATION_EMAIL` / `SEND_PASSWORD_RESET_EMAIL`: keyed off the underlying
-  code row's `consumed_at`/expiry state so a duplicate send is at worst a duplicate
-  email, never a duplicate credential state.
+  code row's purpose, `consumed_at`, expiry, and SHA-256 hash so a duplicate send is at worst
+  a duplicate email, never a duplicate credential state. The durable payload is a versioned
+  AES-256-GCM envelope containing only encrypted recipient/code data and its `authCodeId`;
+  success scrubs the envelope in the same update that marks the job complete.
 - `PROCESS_MEDIA`: derives deterministic output object keys from the media ID so
   re-running overwrites the same derivatives rather than creating duplicates; only
   transitions `media.state` forward.

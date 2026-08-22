@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { existsSync } from 'node:fs';
 import { type Server as HttpServer } from 'node:http';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -10,7 +10,6 @@ import { type MicroserviceOptions } from '@nestjs/microservices';
 import { type NestExpressApplication } from '@nestjs/platform-express';
 import { readDotEnvFile } from '@patches/config';
 
-import { AppModule } from './app.module.js';
 import { createLogger } from './common/logging/logger.factory.js';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
@@ -29,7 +28,7 @@ import { configureProxyTrust, mountConnectEdge } from './transport/connect/conne
  * happen to sit at the same depth today, but searching is what actually makes
  * that not matter (same technique as `modules/system/server-build.ts`).
  */
-function loadDotEnv(): void {
+export function loadDotEnv(): void {
   if (process.env.NODE_ENV === 'production') return;
 
   const startDir = typeof __dirname === 'string' ? __dirname : process.cwd();
@@ -61,6 +60,12 @@ function grpcLoopbackUrl(grpcHost: string, grpcPort: number): string {
 
 async function bootstrap(): Promise<void> {
   loadDotEnv();
+
+  // This must stay a dynamic import after `loadDotEnv()`: `app.module.ts` validates
+  // FEDERATION_ENABLED at module-evaluation time, and ESM static imports run before any
+  // function body. A static AppModule import here would therefore make fresh-clone `.env`
+  // loading too late for both the federation flag and required auth-envelope secrets.
+  const { AppModule } = await import('./app.module.js');
 
   // Validated before Nest exists: the bind address is needed to construct the
   // microservice, and a malformed environment must abort the boot outright.
@@ -182,10 +187,13 @@ async function bootstrap(): Promise<void> {
   );
 }
 
-bootstrap().catch((error: unknown) => {
-  // The logger may not exist yet (config failures happen first), so this is the
-  // one place the server writes directly to stderr.
-  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  new Logger('Bootstrap').error(message);
-  process.exitCode = 1;
-});
+const invokedPath = process.argv[1];
+if (invokedPath !== undefined && basename(invokedPath) === 'main.js') {
+  bootstrap().catch((error: unknown) => {
+    // The logger may not exist yet (config failures happen first), so this is the
+    // one place the server writes directly to stderr.
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    new Logger('Bootstrap').error(message);
+    process.exitCode = 1;
+  });
+}

@@ -4,9 +4,8 @@ import { type EmailMessage, type EmailProvider } from './email-provider.js';
 
 /**
  * Local-dev default: never touches the network. Keeps every sent message in memory (`sent`)
- * so tests/tools can assert on what would have been sent, and logs only `to`/`subject` — the
- * body of a verification/reset email carries a code, which must never be logged (spec §98,
- * §101).
+ * so tests/tools can assert on what would have been sent. Logs only a fixed outcome: auth-code
+ * recipients and bodies are both credential-bearing delivery data and must never be logged.
  */
 @Injectable()
 export class ConsoleEmailProvider implements EmailProvider {
@@ -15,7 +14,7 @@ export class ConsoleEmailProvider implements EmailProvider {
 
   async send(message: EmailMessage): Promise<void> {
     this.sent.push(message);
-    this.logger.log(`email (console provider): to=${message.to} subject="${message.subject}"`);
+    this.logger.log('email (console provider): accepted');
     await Promise.resolve();
   }
 }

@@ -30,6 +30,10 @@ export async function prepareServerEnv(): Promise<void> {
   // Exercise the capability-gated Phase 11 community creation surface in integration tests.
   // Production retains the schema default (`false`) unless an operator opts in.
   process.env.CAN_CREATE_COMMUNITY ??= 'true';
+  process.env.AUTH_CODE_DELIVERY_KEYS ??= JSON.stringify({
+    test: Buffer.alloc(32, 7).toString('base64'),
+  });
+  process.env.AUTH_CODE_DELIVERY_ACTIVE_KEY_ID ??= 'test';
   // A-052 (spec §197.6): exercise the operator-configured `NodePolicy` fields end-to-end —
   // `system.integration.test.ts`'s `GetNodePolicy` suite asserts these render verbatim.
   // Production leaves all four at the schema default (`''`) unless an operator sets them.

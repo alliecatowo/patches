@@ -1,7 +1,13 @@
+import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
+import { Actor } from '../src/entities/actor.entity.js';
+import { AuthCode } from '../src/entities/auth-code.entity.js';
 import { OutboxJob } from '../src/entities/outbox-job.entity.js';
+import { User } from '../src/entities/user.entity.js';
+import { AuthCodeDeliveryEnvelopes1787420562003 } from '../src/migrations/1787420562003-AuthCodeDeliveryEnvelopes.js';
 import {
   claimOutboxJobs,
   countPendingOutboxJobs,
@@ -40,8 +46,8 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
     const repository = dataSource.getRepository(OutboxJob);
     return repository.save(
       repository.create({
-        type: 'SEND_VERIFICATION_EMAIL',
-        payload: { userId: 'test' },
+        type: 'CLEAN_EXPIRED_TOKENS',
+        payload: {},
         ...overrides,
       }),
     );
@@ -121,7 +127,10 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
     const job = await enqueue();
     await dataSource.transaction(async (manager) => {
       const [claimed] = await claimOutboxJobs(manager, { workerId: 'worker' });
-      await markOutboxJobSucceeded(manager, claimed!.id);
+      await markOutboxJobSucceeded(manager, claimed!.id, {
+        workerId: claimed!.lockedBy!,
+        lockedAt: claimed!.lockedAt!,
+      });
     });
 
     const stored = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
@@ -135,7 +144,10 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
 
     const first = await dataSource.transaction(async (manager) => {
       const [claimed] = await claimOutboxJobs(manager, { workerId: 'worker' });
-      return markOutboxJobFailed(manager, claimed!.id, { error: 'smtp unavailable' });
+      return markOutboxJobFailed(manager, claimed!.id, {
+        claim: { workerId: claimed!.lockedBy!, lockedAt: claimed!.lockedAt! },
+        error: 'smtp unavailable',
+      });
     });
     expect(first).toBe('PENDING');
 
@@ -150,7 +162,10 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
       .update({ id: job.id }, { availableAt: new Date(Date.now() - 1_000) });
     const second = await dataSource.transaction(async (manager) => {
       const [claimed] = await claimOutboxJobs(manager, { workerId: 'worker' });
-      return markOutboxJobFailed(manager, claimed!.id, { error: 'smtp unavailable' });
+      return markOutboxJobFailed(manager, claimed!.id, {
+        claim: { workerId: claimed!.lockedBy!, lockedAt: claimed!.lockedAt! },
+        error: 'smtp unavailable',
+      });
     });
     expect(second).toBe('DEAD');
 
@@ -162,7 +177,7 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
 
   // S-002 (`OutboxCircuitBreaker`, `docs/operations/abuse-protection.md`).
   it('excludeTypes skips a due job of that type while still claiming other due types', async () => {
-    await enqueue({ type: 'SEND_VERIFICATION_EMAIL' });
+    await enqueue({ type: 'SEND_VERIFICATION_EMAIL', payload: { v: 1 } });
     await enqueue({ type: 'CLEAN_EXPIRED_TOKENS' });
 
     const claimed = await dataSource.transaction((manager) =>
@@ -188,5 +203,232 @@ describe.skipIf(!testDatabaseUrl)('outbox claim/complete/fail (integration, real
     await enqueue({ status: 'DEAD' });
 
     expect(await countPendingOutboxJobs(dataSource.manager)).toBe(1);
+  });
+
+  it('ignores a stale success after the same worker id reclaims a newer lease', async () => {
+    const job = await enqueue();
+    const firstLockedAt = new Date('2030-08-22T18:00:00.000Z');
+    const secondLockedAt = new Date('2030-08-22T18:01:00.000Z');
+    const [firstClaim] = await dataSource.transaction((manager) =>
+      claimOutboxJobs(manager, { workerId: 'worker-a', now: firstLockedAt }),
+    );
+    await dataSource
+      .getRepository(OutboxJob)
+      .update({ id: job.id }, { status: 'PENDING', lockedAt: null, lockedBy: null });
+    const [secondClaim] = await dataSource.transaction((manager) =>
+      // A restarted process can keep the same configured worker id; locked_by alone is not
+      // a sufficient claim token, so this test makes locked_at the only differing field.
+      claimOutboxJobs(manager, { workerId: 'worker-a', now: secondLockedAt }),
+    );
+
+    expect(
+      await markOutboxJobSucceeded(dataSource.manager, job.id, {
+        workerId: firstClaim!.lockedBy!,
+        lockedAt: firstClaim!.lockedAt!,
+      }),
+    ).toBe(false);
+    expect(await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id })).toEqual(
+      expect.objectContaining({
+        status: 'PROCESSING',
+        lockedBy: 'worker-a',
+        lockedAt: secondClaim!.lockedAt,
+      }),
+    );
+  });
+
+  it('ignores a stale terminal failure without deleting its auth code', async () => {
+    const codeRepository = dataSource.getRepository(AuthCode);
+    const handle = `lease${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const actor = await dataSource.getRepository(Actor).save({
+      handle,
+      handleNormalized: handle,
+      displayName: handle,
+      isLocal: true,
+      userId: null,
+    });
+    const user = await dataSource.getRepository(User).save({
+      recoveryEmail: `${handle}@example.test`,
+      recoveryEmailNormalized: `${handle}@example.test`,
+      emailVerifiedAt: null,
+      status: 'ACTIVE',
+      actorId: actor.id,
+    });
+    await dataSource.getRepository(Actor).update({ id: actor.id }, { userId: user.id });
+    const authCode = await codeRepository.save({
+      userId: user.id,
+      purpose: 'VERIFY_EMAIL',
+      codeHash: 'lease-race-hash',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const job = await enqueue({
+      type: 'SEND_VERIFICATION_EMAIL',
+      maxAttempts: 1,
+      payload: { v: 1, authCodeId: authCode.id, malformed: true },
+    });
+    const [firstClaim] = await dataSource.transaction((manager) =>
+      claimOutboxJobs(manager, { workerId: 'worker-a' }),
+    );
+    await dataSource
+      .getRepository(OutboxJob)
+      .update({ id: job.id }, { status: 'PENDING', lockedAt: null, lockedBy: null });
+    await dataSource.transaction((manager) => claimOutboxJobs(manager, { workerId: 'worker-b' }));
+
+    expect(
+      await dataSource.transaction((manager) =>
+        markOutboxJobFailed(manager, job.id, {
+          claim: { workerId: firstClaim!.lockedBy!, lockedAt: firstClaim!.lockedAt! },
+          error: 'stale failure',
+        }),
+      ),
+    ).toBeNull();
+    expect(await codeRepository.findOneBy({ id: authCode.id })).not.toBeNull();
+  });
+
+  it('invalidates an extractable auth code when a malformed envelope dead-letters', async () => {
+    const handle = `badenv${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const actor = await dataSource.getRepository(Actor).save({
+      handle,
+      handleNormalized: handle,
+      displayName: handle,
+      isLocal: true,
+      userId: null,
+    });
+    const user = await dataSource.getRepository(User).save({
+      recoveryEmail: `${handle}@example.test`,
+      recoveryEmailNormalized: `${handle}@example.test`,
+      emailVerifiedAt: null,
+      status: 'ACTIVE',
+      actorId: actor.id,
+    });
+    await dataSource.getRepository(Actor).update({ id: actor.id }, { userId: user.id });
+    const authCode = await dataSource.getRepository(AuthCode).save({
+      userId: user.id,
+      purpose: 'VERIFY_EMAIL',
+      codeHash: 'malformed-envelope-hash',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const job = await enqueue({
+      type: 'SEND_VERIFICATION_EMAIL',
+      maxAttempts: 1,
+      payload: { v: 1, authCodeId: authCode.id, ciphertext: 'malformed' },
+    });
+    const [claimed] = await dataSource.transaction((manager) =>
+      claimOutboxJobs(manager, { workerId: 'worker' }),
+    );
+
+    expect(
+      await dataSource.transaction((manager) =>
+        markOutboxJobFailed(manager, job.id, {
+          claim: { workerId: claimed!.lockedBy!, lockedAt: claimed!.lockedAt! },
+          error: 'malformed envelope',
+        }),
+      ),
+    ).toBe('DEAD');
+    expect(await dataSource.getRepository(AuthCode).findOneBy({ id: authCode.id })).toBeNull();
+    const dead = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
+    expect(dead.payload).toEqual({ v: 1, redacted: true });
+    expect(dead.lastError).toBe('AUTH_CODE_DELIVERY_FAILED');
+  });
+
+  it('rejects legacy plaintext auth-email payload fields at the database boundary', async () => {
+    await expect(
+      dataSource.getRepository(OutboxJob).insert({
+        type: 'SEND_VERIFICATION_EMAIL',
+        payload: { userId: 'user-id', email: 'person@example.test', code: 'plaintext-secret' },
+      }),
+    ).rejects.toThrow(/chk_outbox_jobs_auth_email_payload/);
+  });
+
+  it('migration irreversibly scrubs legacy jobs and invalidates undelivered codes', async () => {
+    const migration = new AuthCodeDeliveryEnvelopes1787420562003();
+    const runner = dataSource.createQueryRunner();
+    let constraintRestored = true;
+    const actors = dataSource.getRepository(Actor);
+    const users = dataSource.getRepository(User);
+    const handle = `legacy${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const actor = await actors.save(
+      actors.create({
+        handle,
+        handleNormalized: handle,
+        displayName: handle,
+        isLocal: true,
+        userId: null,
+      }),
+    );
+    const user = await users.save(
+      users.create({
+        recoveryEmail: `${handle}@example.test`,
+        recoveryEmailNormalized: `${handle}@example.test`,
+        emailVerifiedAt: null,
+        status: 'ACTIVE',
+        actorId: actor.id,
+      }),
+    );
+    await actors.update({ id: actor.id }, { userId: user.id });
+    const codes = dataSource.getRepository(AuthCode);
+    const pendingCode = await codes.save(
+      codes.create({
+        userId: user.id,
+        purpose: 'VERIFY_EMAIL',
+        codeHash: 'pending-hash',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    const completedCode = await codes.save(
+      codes.create({
+        userId: user.id,
+        purpose: 'RESET_PASSWORD',
+        codeHash: 'completed-hash',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+
+    await runner.connect();
+    try {
+      await migration.down(runner);
+      constraintRestored = false;
+      await enqueue({
+        type: 'SEND_VERIFICATION_EMAIL',
+        payload: {
+          userId: user.id,
+          authCodeId: pendingCode.id,
+          email: `${handle}@example.test`,
+          code: 'pending-plaintext',
+        },
+      });
+      await enqueue({
+        type: 'SEND_PASSWORD_RESET_EMAIL',
+        status: 'COMPLETED',
+        payload: {
+          userId: user.id,
+          authCodeId: completedCode.id,
+          email: `${handle}@example.test`,
+          code: 'completed-plaintext',
+        },
+      });
+      await migration.up(runner);
+      constraintRestored = true;
+    } finally {
+      // Never poison later tests (or a developer's shared local test database) if fixture
+      // insertion or the migration assertion fails after the constraint was dropped.
+      if (!constraintRestored) await migration.up(runner);
+      await runner.release();
+    }
+
+    const migrated = await dataSource.getRepository(OutboxJob).find({ order: { id: 'ASC' } });
+    expect(migrated).toEqual([
+      expect.objectContaining({
+        status: 'DEAD',
+        payload: { v: 1, redacted: true },
+        lastError: 'AUTH_CODE_DELIVERY_LEGACY_REDACTED',
+      }),
+      expect.objectContaining({
+        status: 'COMPLETED',
+        payload: { v: 1, redacted: true },
+        lastError: null,
+      }),
+    ]);
+    expect(await codes.findOneBy({ id: pendingCode.id })).toBeNull();
+    expect(await codes.findOneBy({ id: completedCode.id })).not.toBeNull();
   });
 });

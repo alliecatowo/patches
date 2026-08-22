@@ -6,6 +6,7 @@ import {
   MAX_POST_CHARS,
   MAX_POST_CHARS_NODE_CEILING,
 } from '@patches/domain';
+import { authCodeDeliveryKeyIdSchema, authCodeDeliveryKeyringJsonSchema } from '@patches/database';
 import { z } from 'zod';
 
 import {
@@ -61,6 +62,11 @@ const envObjectSchema = z.object({
   DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL.optional(),
   PUBLIC_ORIGIN: serverEnvShape.PUBLIC_ORIGIN.default('http://localhost:3000'),
 
+  /** Rotatable AES-256-GCM keyring shared with the worker for auth-code delivery envelopes. */
+  AUTH_CODE_DELIVERY_KEYS: authCodeDeliveryKeyringJsonSchema,
+  /** Key id selected for newly issued verification and password-reset envelopes. */
+  AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: authCodeDeliveryKeyIdSchema,
+
   /** Human-readable instance name reported by SystemService.GetServerInfo. */
   INSTANCE_NAME: z.string().min(1).max(80).default('patches-dev'),
 
@@ -71,6 +77,12 @@ const envObjectSchema = z.object({
    * exposing its full schema to anything that can reach the port.
    */
   GRPC_REFLECTION: booleanish().default(false),
+  /**
+   * ADR 0027's explicit owner-authorized exception for disposable E2EE testing. It is never a
+   * substitute for independent cryptographic review; NODE_ENV controls runtime behavior, not
+   * whether this node is authorized to exercise the isolated-test capability.
+   */
+  E2EE_UNREVIEWED_DEV_MODE: booleanish().default(false),
   /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
@@ -453,6 +465,14 @@ const envObjectSchema = z.object({
 
 export const envSchema = envObjectSchema
   .superRefine((value, ctx) => {
+    if (value.AUTH_CODE_DELIVERY_KEYS[value.AUTH_CODE_DELIVERY_ACTIVE_KEY_ID] === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AUTH_CODE_DELIVERY_ACTIVE_KEY_ID'],
+        message: 'must identify a key present in AUTH_CODE_DELIVERY_KEYS',
+      });
+    }
+
     if (value.FEDERATION_ENABLED) {
       if (value.FEDERATION_KEY_ENCRYPTION_KEY === undefined) {
         ctx.addIssue({

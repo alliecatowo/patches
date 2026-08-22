@@ -12,7 +12,9 @@ import {
   OutboxJob,
   RefreshToken,
   User,
+  encryptAuthCodeDelivery,
   type AuthCodePurpose,
+  type AuthCodeEmailJobType,
 } from '@patches/database';
 import type {
   AuthenticationResponseJSON,
@@ -1861,16 +1863,18 @@ export class AuthService {
     );
 
     const jobs = manager.getRepository(OutboxJob);
+    const jobType: AuthCodeEmailJobType =
+      input.purpose === 'VERIFY_EMAIL' ? 'SEND_VERIFICATION_EMAIL' : 'SEND_PASSWORD_RESET_EMAIL';
     await jobs.save(
       jobs.create({
-        type:
-          input.purpose === 'VERIFY_EMAIL'
-            ? 'SEND_VERIFICATION_EMAIL'
-            : 'SEND_PASSWORD_RESET_EMAIL',
-        // The plaintext code lives here and nowhere else on the server — `auth_codes` stores
-        // only its hash, so the worker cannot recover it from there. The job row is the
-        // delivery vehicle; sweeping completed job payloads is `CLEAN_EXPIRED_TOKENS`' problem.
-        payload: { userId: input.userId, authCodeId: saved.id, email: input.email, code },
+        type: jobType,
+        payload: encryptAuthCodeDelivery(
+          jobType,
+          saved.id,
+          { email: input.email, code },
+          this.config.authCodeDeliveryActiveKeyId,
+          this.config.authCodeDeliveryKeys,
+        ),
         // One send per code row (`docs/architecture/jobs.md` §7).
         idempotencyKey: `${input.purpose}:${saved.id}`,
       }),

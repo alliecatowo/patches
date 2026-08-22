@@ -1,10 +1,14 @@
-import { createDataSource, OutboxJob } from '@patches/database';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+
+import { AuthCode, createDataSource, encryptAuthCodeDelivery, OutboxJob } from '@patches/database';
 import type { StorageClient } from '@patches/media';
+import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
+import { AuthCodeEmailDeliveryService } from '../src/jobs/auth-code-email-delivery.service.js';
 import { CleanExpiredTokensHandler } from '../src/jobs/handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from '../src/jobs/handlers/clean-expired-uploads.handler.js';
 import { ExportAccountHandler } from '../src/jobs/handlers/export-account.handler.js';
@@ -36,6 +40,8 @@ function unusedStorage(): StorageClient {
 }
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const AUTH_CODE_KEY_ID = 'test';
+const AUTH_CODE_KEYS = { [AUTH_CODE_KEY_ID]: randomBytes(32).toString('base64') };
 
 if (!testDatabaseUrl) {
   console.warn('[apps/worker] Skipping JobRunner integration tests: TEST_DATABASE_URL is not set.');
@@ -74,6 +80,8 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       // exercised separately below with a short-lived override.
       leaseTtlMs: 10 * 60_000,
       leaseSweepIntervalMs: 60_000,
+      authCodeDeliveryKeys: AUTH_CODE_KEYS,
+      authCodeDeliveryActiveKeyId: AUTH_CODE_KEY_ID,
       ...overrides,
     } as AppConfigService;
   }
@@ -84,9 +92,10 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
   ): { runner: JobRunner; emailProvider: ConsoleEmailProvider } {
     const config = fakeConfig(overrides);
     const storage = unusedStorage();
+    const authCodeDelivery = new AuthCodeEmailDeliveryService(dataSource, config, emailProvider);
     const dispatcher = new JobDispatcher(
-      new SendVerificationEmailHandler(emailProvider),
-      new SendPasswordResetEmailHandler(emailProvider),
+      new SendVerificationEmailHandler(authCodeDelivery),
+      new SendPasswordResetEmailHandler(authCodeDelivery),
       new CleanExpiredTokensHandler(dataSource),
       new ProcessMediaHandler(dataSource, storage, config),
       new CleanExpiredUploadsHandler(dataSource, storage, config),
@@ -108,13 +117,38 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     return repository.save(repository.create({ type, payload, ...overrides }));
   }
 
+  async function enqueueVerificationEmail(
+    email = 'user@example.com',
+    code = '123456',
+    overrides: Partial<OutboxJob> = {},
+    codeHash = createHash('sha256').update(code).digest('hex'),
+  ): Promise<{ job: OutboxJob; authCode: AuthCode }> {
+    const { user } = await createTestUser(dataSource.manager, {
+      handle: `worker${randomUUID().replaceAll('-', '').slice(0, 12)}`,
+      recoveryEmail: `${randomUUID()}@account.example.test`,
+    });
+    const repository = dataSource.getRepository(AuthCode);
+    const authCode = await repository.save(
+      repository.create({
+        userId: user.id,
+        purpose: 'VERIFY_EMAIL',
+        codeHash,
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    const payload = encryptAuthCodeDelivery(
+      'SEND_VERIFICATION_EMAIL',
+      authCode.id,
+      { email, code },
+      AUTH_CODE_KEY_ID,
+      AUTH_CODE_KEYS,
+    );
+    return { job: await enqueue('SEND_VERIFICATION_EMAIL', payload, overrides), authCode };
+  }
+
   it('processes a SEND_VERIFICATION_EMAIL job end-to-end via the console provider', async () => {
     const { runner, emailProvider } = buildRunner();
-    const job = await enqueue('SEND_VERIFICATION_EMAIL', {
-      userId: 'u1',
-      email: 'user@example.com',
-      code: '123456',
-    });
+    const { job } = await enqueueVerificationEmail();
 
     const runPromise = runner.run();
     await waitFor(async () => {
@@ -131,12 +165,12 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     const row = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
     expect(row.status).toBe('COMPLETED');
     expect(row.completedAt).not.toBeNull();
+    expect(row.payload).toEqual({ v: 1, redacted: true });
   });
 
   it('a job whose handler throws is retried with backoff, then dead-lettered', async () => {
     const { runner } = buildRunner();
-    // Missing `email`/`code` fails the handler's zod parse.
-    const job = await enqueue('SEND_VERIFICATION_EMAIL', { userId: 'u1' }, { maxAttempts: 2 });
+    const job = await enqueue('SEND_VERIFICATION_EMAIL', { v: 1 }, { maxAttempts: 2 });
 
     const firstRun = runner.run();
     await waitFor(async () => {
@@ -168,6 +202,29 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     const dead = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
     expect(dead.status).toBe('DEAD');
     expect(dead.attempts).toBe(2);
+    expect(dead.lastError).toBe('AUTH_CODE_DELIVERY_FAILED');
+    expect(dead.payload).toEqual({ v: 1, redacted: true });
+  });
+
+  it('atomically scrubs a terminal auth-email failure and deletes its auth-code row', async () => {
+    const { job, authCode } = await enqueueVerificationEmail(
+      'mismatch@example.com',
+      '123456',
+      { maxAttempts: 1 },
+      createHash('sha256').update('different').digest('hex'),
+    );
+    const { runner } = buildRunner();
+    const runPromise = runner.run();
+    await waitFor(async () => {
+      const row = await dataSource.getRepository(OutboxJob).findOneBy({ id: job.id });
+      return row?.status === 'DEAD';
+    });
+    runner.requestStop();
+    await runPromise;
+
+    const dead = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
+    expect(dead.payload).toEqual({ v: 1, redacted: true });
+    expect(await dataSource.getRepository(AuthCode).findOneBy({ id: authCode.id })).toBeNull();
   });
 
   it('two concurrent runners never double-process the same jobs', async () => {
@@ -178,11 +235,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
 
     const jobs = await Promise.all(
       Array.from({ length: 10 }, (_, index) =>
-        enqueue('SEND_VERIFICATION_EMAIL', {
-          userId: `u${String(index)}`,
-          email: `u${String(index)}@example.com`,
-          code: '000000',
-        }),
+        enqueueVerificationEmail(`u${String(index)}@example.com`, '000000').then(({ job }) => job),
       ),
     );
 
@@ -210,16 +263,12 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     // Simulates a worker that claimed the job, then died mid-handler (killed -9, OOM, host
     // failure) without ever reaching markOutboxJobSucceeded/Failed: `locked_at` stops
     // advancing and the row is left `PROCESSING` forever unless something notices.
-    const stale = await enqueue(
-      'SEND_VERIFICATION_EMAIL',
-      { userId: 'u1', email: 'user@example.com', code: '123456' },
-      {
-        status: 'PROCESSING',
-        lockedAt: new Date(Date.now() - 60_000),
-        lockedBy: 'dead-worker',
-        attempts: 1,
-      },
-    );
+    const { job: stale } = await enqueueVerificationEmail('stale@example.com', '123456', {
+      status: 'PROCESSING',
+      lockedAt: new Date(Date.now() - 60_000),
+      lockedBy: 'dead-worker',
+      attempts: 1,
+    });
 
     // A short TTL/interval so the sweep fires well within the test's timeout without
     // waiting on the real WORKER_LEASE_TTL_MS default (10 minutes).
@@ -244,7 +293,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
   it('leaves a PROCESSING job alone while its lease is still fresh', async () => {
     const fresh = await enqueue(
       'SEND_VERIFICATION_EMAIL',
-      { userId: 'u1', email: 'user@example.com', code: '123456' },
+      { v: 1 },
       { status: 'PROCESSING', lockedAt: new Date(), lockedBy: 'still-alive-worker' },
     );
 

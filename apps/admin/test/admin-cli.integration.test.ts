@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -529,8 +530,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const jobs = dataSource.getRepository(OutboxJob);
         const dead = await jobs.save(
           jobs.create({
-            type: 'SEND_VERIFICATION_EMAIL',
-            payload: { userId: 'x' },
+            type: 'CLEAN_EXPIRED_TOKENS',
+            payload: {},
             status: 'DEAD',
             attempts: 10,
             maxAttempts: 10,
@@ -566,7 +567,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         });
         const jobs = dataSource.getRepository(OutboxJob);
         const job = await jobs.save(
-          jobs.create({ type: 'SEND_VERIFICATION_EMAIL', payload: {}, status: 'PENDING' }),
+          jobs.create({
+            type: 'SEND_VERIFICATION_EMAIL',
+            payload: {
+              v: 1,
+              kid: 'must-never-be-shown',
+              authCodeId: randomUUID(),
+              iv: 'secret-iv',
+              ciphertext: 'secret-ciphertext',
+              tag: 'secret-tag',
+            },
+            status: 'PENDING',
+          }),
         );
         const ctx = await context(operatorActor.handle);
 
@@ -574,9 +586,26 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         await runJobsCommand('list', { positionals: ['jobs', 'list'], options: {} }, ctx);
         s1.restore();
 
-        const s2 = silence();
+        const s2 = captureStdout();
         await runJobsCommand('show', { positionals: ['jobs', 'show', job.id], options: {} }, ctx);
         s2.restore();
+        expect(s2.text()).toContain('"redacted":true');
+        expect(s2.text()).not.toContain('must-never-be-shown');
+        expect(s2.text()).not.toContain('secret-ciphertext');
+
+        const json = captureStdout();
+        await runJobsCommand(
+          'show',
+          { positionals: ['jobs', 'show', job.id], options: { json: true } },
+          ctx,
+        );
+        json.restore();
+        expect(json.text()).toContain('"redacted": true');
+        expect(json.text()).not.toContain('must-never-be-shown');
+
+        await expect(
+          runJobsCommand('replay', { positionals: ['jobs', 'replay', job.id], options: {} }, ctx),
+        ).rejects.toThrow(/cannot be replayed/);
       });
     });
 

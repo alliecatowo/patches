@@ -44,15 +44,22 @@ export async function drainFederationDeliveries(
       if (job.type !== 'FEDERATION_DELIVER') {
         // Not this relay's concern — release it back to PENDING immediately so nothing else
         // in the suite waits on it.
-        await markOutboxJobFailed(dataSource.manager, job.id, { error: 'not a federation job' });
+        await markOutboxJobFailed(dataSource.manager, job.id, {
+          claim: { workerId: job.lockedBy!, lockedAt: job.lockedAt! },
+          error: 'not a federation job',
+        });
         continue;
       }
       try {
         await deliverOne(dataSource, job.payload, requireEncryptionKey(federationKeyEncryptionKey));
-        await markOutboxJobSucceeded(dataSource.manager, job.id);
+        await markOutboxJobSucceeded(dataSource.manager, job.id, {
+          workerId: job.lockedBy!,
+          lockedAt: job.lockedAt!,
+        });
         delivered += 1;
       } catch (error) {
         await markOutboxJobFailed(dataSource.manager, job.id, {
+          claim: { workerId: job.lockedBy!, lockedAt: job.lockedAt! },
           error: error instanceof Error ? error.message : String(error),
         });
       }

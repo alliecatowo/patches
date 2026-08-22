@@ -51,6 +51,11 @@ export class AppConfigService {
     return this.get('GRPC_REFLECTION');
   }
 
+  /** ADR 0027's owner-authorized, explicitly unreviewed E2EE isolated-test exception. */
+  get e2eeUnreviewedDevMode(): boolean {
+    return this.get('E2EE_UNREVIEWED_DEV_MODE');
+  }
+
   /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
   get trustProxyHeaders(): boolean {
     return this.get('TRUST_PROXY_HEADERS');
@@ -66,6 +71,14 @@ export class AppConfigService {
 
   get databasePoolMax(): number {
     return this.get('DATABASE_POOL_MAX');
+  }
+
+  get authCodeDeliveryKeys(): Env['AUTH_CODE_DELIVERY_KEYS'] {
+    return this.get('AUTH_CODE_DELIVERY_KEYS');
+  }
+
+  get authCodeDeliveryActiveKeyId(): string {
+    return this.get('AUTH_CODE_DELIVERY_ACTIVE_KEY_ID');
   }
 
   get inviteOnly(): boolean {

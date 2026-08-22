@@ -10,6 +10,7 @@ import {
   loadEnv,
   storageEnvSchema,
 } from '@patches/config';
+import { authCodeDeliveryKeyIdSchema, authCodeDeliveryKeyringJsonSchema } from '@patches/database';
 
 export { ConfigError } from '@patches/config';
 export type { ConfigIssue } from '@patches/config';
@@ -35,6 +36,10 @@ const envObjectSchema = z.object({
   ...databaseEnvSchema.shape,
   ...emailEnvShape,
   ...storageEnvSchema.shape,
+
+  /** Same rotatable auth-code envelope keyring and active id configured on the server. */
+  AUTH_CODE_DELIVERY_KEYS: authCodeDeliveryKeyringJsonSchema,
+  AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: authCodeDeliveryKeyIdSchema,
 
   /** Worker instance identifier, recorded in `outbox_jobs.locked_by`. */
   WORKER_ID: z.string().min(1).default(DEFAULT_WORKER_ID),
@@ -110,6 +115,13 @@ export const envSchema = envObjectSchema.superRefine((value, ctx) => {
     for (const issue of emailResult.error.issues) {
       ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
     }
+  }
+  if (value.AUTH_CODE_DELIVERY_KEYS[value.AUTH_CODE_DELIVERY_ACTIVE_KEY_ID] === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['AUTH_CODE_DELIVERY_ACTIVE_KEY_ID'],
+      message: 'must identify a key present in AUTH_CODE_DELIVERY_KEYS',
+    });
   }
 });
 
