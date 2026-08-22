@@ -35,6 +35,8 @@ export type Screen =
   | 'page'
   | 'privacy'
   | 'followRequests'
+  | 'followers'
+  | 'following'
   | 'filters'
   | 'filterLists'
   | 'labelers'
@@ -1255,6 +1257,8 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   page: 'Page',
   privacy: 'Privacy',
   followRequests: 'Follow requests',
+  followers: 'Followers',
+  following: 'Following',
   filters: 'Filters',
   filterLists: 'Filter lists',
   labelers: 'Labelers',

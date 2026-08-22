@@ -24,6 +24,8 @@ export const ROUTE_KINDS: Readonly<Record<Screen, RouteKind>> = {
   communities: 'list',
   messages: 'list',
   followRequests: 'list',
+  followers: 'list',
+  following: 'list',
   // Details — one thing, opened from a list; the right pane in a split.
   thread: 'detail',
   page: 'detail',

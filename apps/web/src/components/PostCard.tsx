@@ -422,9 +422,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
 
         <div className={styles['actions']}>
           <Link
-            to={`/p/${post.id}`}
+            to={`/compose?replyTo=${post.id}`}
             className={styles['actionButton']}
-            aria-label={`${counts?.replies ?? 0} replies`}
+            aria-label={`Reply to post (${counts?.replies ?? 0} replies)`}
           >
             <MessageSquareIcon size={17} />
             <span>{formatCount(counts?.replies ?? 0)}</span>

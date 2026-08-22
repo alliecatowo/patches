@@ -276,6 +276,8 @@
   .shell {
     display: block;
     min-height: 100%;
+    padding-left: var(--sal);
+    padding-right: var(--sar);
     padding-bottom: 0;
   }
 
@@ -284,7 +286,8 @@
   }
 
   .main {
-    min-height: calc(100vh - 52px);
+    min-height: calc(100vh - 52px - var(--sat));
+    padding-bottom: max(5rem, calc(4rem + var(--sab)));
     border: 0;
   }
 

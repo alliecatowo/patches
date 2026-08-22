@@ -1,15 +1,32 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import type { JSX } from 'react';
-import { useParams } from 'react-router-dom';
+import { describeError } from '@patches/client';
+import { PostVisibility, QuotePolicy } from '@patches/proto/es';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, type JSX } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
+import { CloseIcon, ImageIcon } from '../components/icons/Icons.js';
 import { PostCard } from '../components/PostCard.js';
+import { useToast } from '../components/ToastProvider.js';
+import { useErrorToast } from '../hooks/useErrorToast.js';
+import { useSession } from '../hooks/useSession.js';
+import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ThreadRoute.module.css';
 
-/** `/p/:id` — the post plus one level of replies, with a manual "load more". */
+const MAX_MEDIA = 4;
+
+/** `/p/:id` — the post, inline quick reply composer, and one level of replies. */
 export function ThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const postId = id ?? '';
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const onError = useErrorToast();
+  const toast = useToast();
+
+  const [replyBody, setReplyBody] = useState('');
+  const [uploads, setUploads] = useState<MediaUploadHandle[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const postQuery = useQuery({
     queryKey: ['post', postId],
@@ -26,19 +43,193 @@ export function ThreadRoute(): JSX.Element {
     enabled: postId !== '',
   });
 
-  const replies = repliesQuery.data?.pages.flatMap((p) => p.posts) ?? [];
+  const nodeInfoQuery = useQuery({
+    queryKey: ['node-info'],
+    queryFn: () => api.node.getNodeInfo({}),
+    staleTime: Infinity,
+  });
+  const maxChars = nodeInfoQuery.data?.socialCapabilities?.maxPostChars || 500;
+  const charsRemaining = maxChars - replyBody.length;
 
-  if (postQuery.isPending) return <p>Loading…</p>;
-  if (postQuery.isError || !postQuery.data.post) return <p>This post is gone.</p>;
+  const onFilesSelected = (files: FileList | null): void => {
+    if (!files) return;
+    const remaining = MAX_MEDIA - uploads.length;
+    const selected = Array.from(files).slice(0, remaining);
+    for (const file of selected) {
+      const handle: MediaUploadHandle = { mediaId: '', file, progress: 0, status: 'uploading' };
+      setUploads((current) => [...current, handle]);
+      uploadMedia(file, (fraction) => {
+        setUploads((current) =>
+          current.map((u) => (u.file === file ? { ...u, progress: fraction } : u)),
+        );
+      })
+        .then((mediaId) => {
+          setUploads((current) =>
+            current.map((u) => (u.file === file ? { ...u, mediaId, status: 'ready' } : u)),
+          );
+        })
+        .catch((error: unknown) => {
+          setUploads((current) =>
+            current.map((u) =>
+              u.file === file ? { ...u, status: 'error', error: describeError(error).message } : u,
+            ),
+          );
+        });
+    }
+  };
+
+  const removeUpload = (index: number): void => {
+    setUploads((current) => current.filter((_, i) => i !== index));
+  };
+
+  const replyMutation = useMutation({
+    mutationFn: async () => {
+      const mediaIds = uploads.filter((u) => u.status === 'ready').map((u) => u.mediaId);
+      return await api.posts.createPost({
+        clientRequestId: crypto.randomUUID(),
+        body: replyBody.trim(),
+        linkUrl: '',
+        visibility: PostVisibility.PUBLIC,
+        inReplyToId: postId,
+        mediaIds,
+        contentWarning: '',
+        quotedPostId: '',
+        communityId: '',
+        quotePolicy: QuotePolicy.ANYONE,
+      });
+    },
+    onSuccess: async () => {
+      setReplyBody('');
+      setUploads([]);
+      toast.pushToast({ message: 'Reply posted', tone: 'info' });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['post', postId, 'replies'] }),
+        queryClient.invalidateQueries({ queryKey: ['post', postId] }),
+      ]);
+    },
+    onError: (error) => onError(error),
+  });
+
+  const handleReplySubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (!replyBody.trim() || replyMutation.isPending || charsRemaining < 0) return;
+    replyMutation.mutate();
+  };
+
+  const replies = repliesQuery.data?.pages.flatMap((p) => p.posts) ?? [];
+  const rootPost = postQuery.data?.post;
+
+  if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
+  if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
 
   return (
     <div>
       <div className={styles['root']}>
-        <PostCard post={postQuery.data.post} />
+        <PostCard post={rootPost} />
       </div>
+
+      {/* Inline Reply Composer */}
+      {session ? (
+        <div className={styles['replyBox']}>
+          {session.actor.avatar?.url ? (
+            <img src={session.actor.avatar.url} alt="" className={styles['avatar']} />
+          ) : (
+            <div className={styles['avatarPlaceholder']}>
+              {session.actor.handle.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+
+          <form className={styles['replyForm']} onSubmit={handleReplySubmit}>
+            <div className={styles['replyHeader']}>
+              Replying to @{rootPost.author?.handle ?? 'unknown'}
+            </div>
+
+            <textarea
+              className={styles['replyTextarea']}
+              placeholder="Post your reply…"
+              value={replyBody}
+              onChange={(e) => setReplyBody(e.target.value)}
+              rows={2}
+              aria-label="Write a reply"
+            />
+
+            {uploads.length > 0 ? (
+              <div className={styles['mediaPreviewList']}>
+                {uploads.map((upload, idx) => (
+                  <div key={idx} className={styles['mediaPreviewItem']}>
+                    <img
+                      src={URL.createObjectURL(upload.file)}
+                      alt="Attachment preview"
+                      className={styles['mediaPreviewImg']}
+                    />
+                    <button
+                      type="button"
+                      className={styles['removeMediaBtn']}
+                      onClick={() => removeUpload(idx)}
+                      aria-label="Remove image"
+                    >
+                      <CloseIcon size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className={styles['replyActions']}>
+              <button
+                type="button"
+                className={styles['mediaAttachBtn']}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploads.length >= MAX_MEDIA}
+                aria-label="Attach media"
+              >
+                <ImageIcon size={18} />
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                className={styles['hiddenFileInput']}
+                onChange={(e) => {
+                  onFilesSelected(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+
+              <div className={styles['submitArea']}>
+                <span
+                  className={`${styles['charCount']} ${
+                    charsRemaining < 0 ? styles['charCountOver'] : ''
+                  }`}
+                >
+                  {charsRemaining}
+                </span>
+
+                <button
+                  type="submit"
+                  className={styles['replySubmitBtn']}
+                  disabled={!replyBody.trim() || replyMutation.isPending || charsRemaining < 0}
+                >
+                  {replyMutation.isPending ? 'Posting…' : 'Reply'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <div className={styles['guestReplyPrompt']}>
+          Want to reply? <Link to="/login">Sign in</Link> or{' '}
+          <Link to="/register">create an account</Link>.
+        </div>
+      )}
+
+      {/* Replies Timeline */}
       {replies.map((reply) => (
         <PostCard key={reply.id} post={reply} />
       ))}
+
       {repliesQuery.hasNextPage ? (
         <button
           type="button"
@@ -49,6 +240,7 @@ export function ThreadRoute(): JSX.Element {
           {repliesQuery.isFetchingNextPage ? 'Loading…' : 'Load more replies'}
         </button>
       ) : null}
+
       {replies.length === 0 && !repliesQuery.isFetching ? (
         <p className={styles['loadMore']}>No replies yet.</p>
       ) : null}

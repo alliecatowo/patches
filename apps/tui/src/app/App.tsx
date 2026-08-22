@@ -37,6 +37,7 @@ import { MediaSessionProvider } from '../media/media-session.js';
 import { openMediaExternally, type OpenMediaOptions } from '../media/open-external.js';
 import { openLinkExternally } from '../pages/open-link.js';
 import { AccountsScreen } from '../screens/AccountsScreen.js';
+import { ActorListScreen } from '../screens/ActorListScreen.js';
 import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
@@ -1451,6 +1452,20 @@ export function App({
       case 'privacy':
         requireSession({ screen: 'privacy' });
         return;
+      case 'followers':
+        if (session?.actor) {
+          goTo({ screen: 'followers', actorId: session.userId, handle: session.actor.handle });
+        } else {
+          notify('Sign in to view your followers.', 'error');
+        }
+        return;
+      case 'following':
+        if (session?.actor) {
+          goTo({ screen: 'following', actorId: session.userId, handle: session.actor.handle });
+        } else {
+          notify('Sign in to view people you follow.', 'error');
+        }
+        return;
       case 'followrequests':
         requireSession({ screen: 'followRequests' });
         return;
@@ -1933,8 +1948,46 @@ export function App({
             onEditProfile={
               session === undefined ? undefined : () => navigate({ screen: 'editProfile' })
             }
+            onViewFollowers={(actor) =>
+              navigate({ screen: 'followers', actorId: actor.id, handle: actor.handle })
+            }
+            onViewFollowing={(actor) =>
+              navigate({ screen: 'following', actorId: actor.id, handle: actor.handle })
+            }
             refreshKey={feedNonce}
             onNotify={notify}
+          />
+        );
+      case 'followers':
+        return (
+          <ActorListScreen
+            api={api}
+            title={`@${target.handle}'s followers`}
+            fetchPage={async (cursor) => {
+              const res = await api.listFollowers({ actorId: target.actorId, cursor, limit: 30 });
+              return { items: res.actors, page: res.page };
+            }}
+            isActive={listActive}
+            onBack={back}
+            onOpenProfile={(actor) =>
+              navigate({ screen: 'profile', actorId: actor.id, knownActor: actor })
+            }
+          />
+        );
+      case 'following':
+        return (
+          <ActorListScreen
+            api={api}
+            title={`@${target.handle}'s following`}
+            fetchPage={async (cursor) => {
+              const res = await api.listFollowing({ actorId: target.actorId, cursor, limit: 30 });
+              return { items: res.actors, page: res.page };
+            }}
+            isActive={listActive}
+            onBack={back}
+            onOpenProfile={(actor) =>
+              navigate({ screen: 'profile', actorId: actor.id, knownActor: actor })
+            }
           />
         );
       case 'editProfile':

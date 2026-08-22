@@ -1,15 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { DmNotice } from '../components/DmNotice.js';
+import { PlusIcon } from '../components/icons/Icons.js';
+import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import styles from './MessagesRoute.module.css';
 
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -18,8 +21,21 @@ export function MessagesRoute(): JSX.Element {
 
   return (
     <div>
-      <h1 style={{ padding: '1rem 1rem 0' }}>Messages</h1>
+      <div className={styles['headerRow']}>
+        <h1>Messages</h1>
+        <button
+          type="button"
+          className={styles['newMsgBtn']}
+          onClick={() => setNewMessageOpen(true)}
+          aria-label="New direct message"
+        >
+          <PlusIcon size={16} />
+          <span>New Message</span>
+        </button>
+      </div>
+
       <DmNotice />
+
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
       {query.data?.conversations.length === 0 ? (
         <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No conversations yet.</p>
@@ -37,6 +53,8 @@ export function MessagesRoute(): JSX.Element {
           </Link>
         );
       })}
+
+      <NewMessageDialog isOpen={newMessageOpen} onClose={() => setNewMessageOpen(false)} />
     </div>
   );
 }

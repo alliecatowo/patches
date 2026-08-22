@@ -58,6 +58,10 @@ export interface ProfileScreenProps {
   /** `e` — only offered on the viewer's own profile (`actorId === viewerActorId`):
    * opens `EditProfileScreen` (A-027). */
   onEditProfile?: ((actor: Actor) => void) | undefined;
+  /** `F` — view this actor's followers list. */
+  onViewFollowers?: ((actor: Actor) => void) | undefined;
+  /** `G` — view this actor's following list. */
+  onViewFollowing?: ((actor: Actor) => void) | undefined;
   /**
    * Opens the shell's shared measured `ConfirmDialog` for a destructive action
    * (P12-126). Every destructive path in the app goes through one component; a screen
@@ -102,6 +106,8 @@ export function ProfileScreen({
   onVisitPage,
   onConfirm,
   onEditProfile,
+  onViewFollowers,
+  onViewFollowing,
   refreshKey = 0,
   onNotify,
 }: ProfileScreenProps): ReactElement {
@@ -283,6 +289,14 @@ export function ProfileScreen({
         onVisitPage?.(actorState.actor);
         return;
       }
+      if (input === 'F' && actorState.status === 'ready') {
+        onViewFollowers?.(actorState.actor);
+        return;
+      }
+      if (input === 'G' && actorState.status === 'ready') {
+        onViewFollowing?.(actorState.actor);
+        return;
+      }
       if (input === 'e' && actorState.status === 'ready' && actorId === viewerActorId) {
         onEditProfile?.(actorState.actor);
       }
@@ -379,6 +393,7 @@ export function ProfileScreen({
             {counts.posts} posts · {counts.followers} followers · {counts.following} following
           </Text>
         ) : null}
+        <Text color={theme.muted}>F followers · G following</Text>
         {actorId === viewerActorId && onEditProfile !== undefined ? (
           <Text color={theme.muted}>e edit profile</Text>
         ) : null}

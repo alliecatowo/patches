@@ -13,6 +13,32 @@
   margin-bottom: 0.5rem;
 }
 
+.actionButtonGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.messageBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.messageBtn:hover {
+  background: var(--bg-card);
+  border-color: var(--border-hover);
+}
+
 .avatar {
   width: 76px;
   height: 76px;
@@ -77,6 +103,35 @@
   color: var(--fg);
 }
 
+.countPillBtn {
+  background: var(--bg-raised);
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.12s ease;
+}
+
+.countPillBtn:hover {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.countPillBtn.activeCount {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.countPillBtn strong {
+  color: var(--fg);
+}
+
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
@@ -113,6 +168,33 @@
 
 .wall {
   padding: 1.25rem 1.5rem;
+}
+
+.wallHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.editWallBtn {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.12s ease;
+}
+
+.editWallBtn:hover {
+  background: var(--bg-card);
+  border-color: var(--border-hover);
 }
 
 .wallBlock {

@@ -107,6 +107,8 @@ function buildMethods(sdk: PatchesSdk) {
     getActor: noToken(sdk.actors.getActor),
     getActorByHandle: noToken(sdk.actors.getActorByHandle),
     searchActors: noToken(sdk.actors.searchActors),
+    listFollowers: optionalToken(sdk.actors.listFollowers),
+    listFollowing: optionalToken(sdk.actors.listFollowing),
     // Resolves a remote `user@domain` handle via WebFinger — requires a session (B-028).
     resolveActor: requiredToken(sdk.actors.resolveActor),
     updateProfile: requiredToken(sdk.actors.updateProfile),

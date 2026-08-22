@@ -51,6 +51,10 @@ import {
   type ListBlocksResponse,
   type ListBookmarksRequest as ListBookmarksRequestInit,
   type ListBookmarksResponse,
+  type ListFollowersRequest as ListFollowersRequestInit,
+  type ListFollowersResponse,
+  type ListFollowingRequest as ListFollowingRequestInit,
+  type ListFollowingResponse,
   type ListGuestbookRequest as ListGuestbookRequestInit,
   type ListGuestbookResponse,
   type ListHomeFeedRequest as ListHomeFeedRequestInit,
@@ -146,6 +150,8 @@ type LikePostRequest = Full<LikePostRequestInit>;
 type ListActorPostsRequest = Full<ListActorPostsRequestInit>;
 type ListBlocksRequest = Full<ListBlocksRequestInit>;
 type ListBookmarksRequest = Full<ListBookmarksRequestInit>;
+type ListFollowersRequest = Full<ListFollowersRequestInit>;
+type ListFollowingRequest = Full<ListFollowingRequestInit>;
 type ListGuestbookRequest = Full<ListGuestbookRequestInit>;
 type ListHomeFeedRequest = Full<ListHomeFeedRequestInit>;
 type ListLocalFeedRequest = Full<ListLocalFeedRequestInit>;
@@ -380,6 +386,8 @@ export class FakeApiHandle {
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
       searchActors: (request: SearchActorsRequest) => this.searchActors(request),
+      listFollowers: (request: ListFollowersRequest) => this.listFollowers(request),
+      listFollowing: (request: ListFollowingRequest) => this.listFollowing(request),
       resolveActor: (request: ResolveActorRequest, accessToken: string) =>
         this.resolveActor(request, accessToken),
       updateProfile: (request: UpdateProfileRequest, accessToken: string) =>
@@ -921,6 +929,30 @@ export class FakeApiHandle {
     return Promise.resolve({
       $typeName: 'patches.v1.ListActorPostsResponse',
       posts: items.map((post) => this.withFreshCounts(post)),
+      page,
+    });
+  }
+
+  private listFollowers(request: ListFollowersRequest): Promise<ListFollowersResponse> {
+    const followers = [...this.users.values()]
+      .filter((user) => user.id !== request.actorId)
+      .map((user) => this.toActor(user));
+    const { items, page } = this.paginate(followers, request.cursor, request.limit);
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListFollowersResponse',
+      actors: items,
+      page,
+    });
+  }
+
+  private listFollowing(request: ListFollowingRequest): Promise<ListFollowingResponse> {
+    const following = [...this.users.values()]
+      .filter((user) => user.id !== request.actorId)
+      .map((user) => this.toActor(user));
+    const { items, page } = this.paginate(following, request.cursor, request.limit);
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListFollowingResponse',
+      actors: items,
       page,
     });
   }

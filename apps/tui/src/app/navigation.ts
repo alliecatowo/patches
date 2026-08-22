@@ -21,10 +21,21 @@ type NavEntryVariant =
   | {
       screen: Exclude<
         Screen,
-        'profile' | 'thread' | 'page' | 'report' | 'postHistory' | 'media' | 'postEdit' | 'tagFeed'
+        | 'profile'
+        | 'thread'
+        | 'page'
+        | 'report'
+        | 'postHistory'
+        | 'media'
+        | 'postEdit'
+        | 'tagFeed'
+        | 'followers'
+        | 'following'
       >;
     }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
+  | { screen: 'followers'; actorId: string; handle: string }
+  | { screen: 'following'; actorId: string; handle: string }
   | { screen: 'thread'; postId: string }
   | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }

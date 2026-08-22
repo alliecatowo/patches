@@ -86,6 +86,12 @@ export function ComposeRoute(): JSX.Element {
     enabled: quoteId !== '',
   });
 
+  const replyToPostQuery = useQuery({
+    queryKey: ['post', replyTo],
+    queryFn: () => api.posts.getPost({ id: replyTo }),
+    enabled: replyTo !== '',
+  });
+
   const editingPostQuery = useQuery({
     queryKey: ['post', editId],
     queryFn: () => api.posts.getPost({ id: editId }),
@@ -246,6 +252,15 @@ export function ComposeRoute(): JSX.Element {
         <div className={styles['quotedPostBox']}>
           <strong>@{quotedPostQuery.data.post.author?.handle}</strong>
           <p>{quotedPostQuery.data.post.body}</p>
+        </div>
+      ) : null}
+
+      {replyTo !== '' && replyToPostQuery.data?.post ? (
+        <div className={styles['quotedPostBox']}>
+          <span>
+            Replying to <strong>@{replyToPostQuery.data.post.author?.handle}</strong>
+          </span>
+          <p>{replyToPostQuery.data.post.body}</p>
         </div>
       ) : null}
 
