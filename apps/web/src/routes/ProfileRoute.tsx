@@ -39,24 +39,44 @@ export function ProfileRoute(): JSX.Element {
   });
 
   if (profileHandle === undefined) return <NotFoundRoute />;
-  if (actorQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
+  if (actorQuery.isPending) {
+    return (
+      <div className={styles['header']}>
+        <div className={styles['topRow']}>
+          <div className={`${styles['avatarPlaceholder']} skeleton-shimmer`} />
+        </div>
+        <div className="skeleton-shimmer" style={{ height: 24, width: '40%', borderRadius: 4 }} />
+        <div
+          className="skeleton-shimmer"
+          style={{ height: 16, width: '70%', borderRadius: 4, marginTop: 8 }}
+        />
+      </div>
+    );
+  }
+
   if (actorQuery.isError) {
     const error = ConnectError.from(actorQuery.error);
     if (error.code === Code.NotFound) {
-      return <p style={{ padding: '1rem' }}>This account doesn&apos;t exist.</p>;
+      return (
+        <p style={{ padding: '1.5rem', textAlign: 'center' }}>This account doesn&apos;t exist.</p>
+      );
     }
     const described = describeError(error, {
       copy: { signInRequiredHint: 'Sign in or create an account to view profiles.' },
     });
     return (
-      <div role="alert" style={{ padding: '1rem' }}>
+      <div role="alert" style={{ padding: '1.5rem', textAlign: 'center' }}>
         <p>{described.message}</p>
         {isSignInRequired(error) ? <Link to="/login">Sign in</Link> : null}
       </div>
     );
   }
+
   const actor = actorQuery.data?.actor;
-  if (!actor) return <p style={{ padding: '1rem' }}>This account doesn&apos;t exist.</p>;
+  if (!actor)
+    return (
+      <p style={{ padding: '1.5rem', textAlign: 'center' }}>This account doesn&apos;t exist.</p>
+    );
 
   const pageView = pageQuery.data ? decodePageDocument(pageQuery.data.document) : null;
   const activeBlocks = pageView?.pages[0]?.blocks ?? [];
@@ -67,7 +87,11 @@ export function ProfileRoute(): JSX.Element {
         <div className={styles['topRow']}>
           {actor.avatar?.url ? (
             <img className={styles['avatar']} src={actor.avatar.url} alt="" aria-hidden="true" />
-          ) : null}
+          ) : (
+            <div className={styles['avatarPlaceholder']}>
+              {actor.handle.slice(0, 1).toUpperCase()}
+            </div>
+          )}
           <FollowButton actorId={actor.id} />
         </div>
         <ModerationActions actorId={actor.id} />
@@ -78,22 +102,25 @@ export function ProfileRoute(): JSX.Element {
             <RichBody source={actor.bio} />
           </div>
         ) : null}
-        {actor.locationText !== '' ? <p>{actor.locationText}</p> : null}
+        {actor.locationText !== '' ? (
+          <p className={styles['metaRow']}>📍 {actor.locationText}</p>
+        ) : null}
         {actor.websiteUrl !== '' ? (
-          <p>
+          <p className={styles['metaRow']}>
+            🔗{' '}
             <a href={actor.websiteUrl} target="_blank" rel="noopener noreferrer ugc">
               {actor.websiteUrl}
             </a>
           </p>
         ) : null}
         <div className={styles['counts']}>
-          <span>
+          <span className={styles['countPill']}>
             <strong>{actor.counts?.posts ?? 0}</strong> posts
           </span>
-          <span>
+          <span className={styles['countPill']}>
             <strong>{actor.counts?.followers ?? 0}</strong> followers
           </span>
-          <span>
+          <span className={styles['countPill']}>
             <strong>{actor.counts?.following ?? 0}</strong> following
           </span>
         </div>
@@ -125,7 +152,9 @@ export function ProfileRoute(): JSX.Element {
           {activeBlocks.length > 0 ? (
             <PageBlocks blocks={activeBlocks} />
           ) : (
-            <p style={{ color: 'var(--fg-muted)' }}>No wall content yet.</p>
+            <p style={{ color: 'var(--fg-muted)', textAlign: 'center', padding: '2rem' }}>
+              No wall content yet.
+            </p>
           )}
         </div>
       )}

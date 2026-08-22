@@ -1,51 +1,139 @@
 import type { JSX } from 'react';
 
+import { CheckIcon, DownloadIcon, SparklesIcon } from '../../components/icons/Icons.js';
 import { useSystemPrefersDark, useTheme } from '../../hooks/useTheme.js';
-import type { ThemePreference } from '../../lib/theme.js';
+import { THEME_CATALOG } from '../../lib/theme.js';
+import { usePwaInstall } from '../../pwa/usePwaInstall.js';
 import formStyles from '../AuthForm.module.css';
 import styles from './AppearanceSettingsRoute.module.css';
 
-const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'Follow system' },
-];
-
 /**
- * `/settings/appearance` (P15-008) — the settings surface for client-side cosmetic
- * preferences. Theme is the first (and today, only) one: stored locally via `lib/theme.ts`
- * and never sent to the server, since appearance is purely cosmetic and cosmetics never gate
- * function (spec §184.3). If more client-only preferences are added later, they belong here.
+ * `/settings/appearance` — theme customization & PWA installation settings.
+ * Supports the complete Patches theme catalog with live swatch cards.
  */
 export function AppearanceSettingsRoute(): JSX.Element {
   const { preference, setPreference } = useTheme();
   const systemPrefersDark = useSystemPrefersDark();
+  const { isInstallable, isStandalone, isIos, promptInstall } = usePwaInstall();
 
   return (
     <div className={formStyles['wrap']} style={{ margin: 0, maxWidth: 'none' }}>
       <h1>Appearance</h1>
 
       <section>
-        <h2>Theme</h2>
-        <div className={styles['options']} role="radiogroup" aria-label="Theme">
-          {THEME_OPTIONS.map((option) => (
-            <label key={option.value} className={styles['option']}>
-              <input
-                type="radio"
-                name="theme"
-                value={option.value}
-                checked={preference === option.value}
-                onChange={() => setPreference(option.value)}
-              />
-              {option.label}
-            </label>
-          ))}
+        <div className={styles['sectionTitleRow']}>
+          <SparklesIcon size={18} />
+          <h2>Theme</h2>
         </div>
+
+        <div className={styles['themeGrid']} role="radiogroup" aria-label="Theme">
+          {THEME_CATALOG.map((theme) => {
+            const isSelected = preference === theme.id;
+            return (
+              <label
+                key={theme.id}
+                className={`${styles['themeCard']} ${isSelected ? styles['themeCardSelected'] : ''}`}
+                style={{
+                  backgroundColor: theme.preview.bg,
+                  color: theme.preview.fg,
+                  borderColor: isSelected ? 'var(--accent)' : theme.preview.border,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="theme"
+                  value={theme.id}
+                  aria-label={theme.name}
+                  checked={isSelected}
+                  onChange={() => setPreference(theme.id)}
+                  className={styles['radioInput']}
+                />
+                <div className={styles['themeCardContent']}>
+                  <div className={styles['themeCardTop']}>
+                    <span className={styles['themeName']}>{theme.name}</span>
+                    {isSelected ? (
+                      <span className={styles['checkBadge']}>
+                        <CheckIcon size={14} />
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className={styles['themeDesc']} style={{ color: theme.preview.fg }}>
+                    {theme.description}
+                  </p>
+                  <div className={styles['swatchPreview']}>
+                    <span
+                      className={styles['swatchBox']}
+                      style={{ backgroundColor: theme.preview.accent }}
+                      title="Accent color"
+                    />
+                    <span
+                      className={styles['swatchBox']}
+                      style={{ backgroundColor: theme.preview.border }}
+                      title="Border color"
+                    />
+                    <span
+                      className={styles['swatchBox']}
+                      style={{ backgroundColor: theme.preview.fg }}
+                      title="Text color"
+                    />
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
         <p className={styles['hint']}>
           {preference === 'system'
             ? `Following your system setting — currently ${systemPrefersDark ? 'dark' : 'light'}.`
             : 'Saved on this device only; never sent to the server.'}
         </p>
+      </section>
+
+      <section style={{ marginTop: '2rem' }}>
+        <div className={styles['sectionTitleRow']}>
+          <DownloadIcon size={18} />
+          <h2>Progressive Web App</h2>
+        </div>
+
+        <div className={styles['pwaCard']}>
+          {isStandalone ? (
+            <div>
+              <strong style={{ color: 'var(--ok)' }}>✓ Patches is installed as a PWA</strong>
+              <p className={styles['pwaDesc']}>
+                Running in standalone mode with offline shell and app badging enabled.
+              </p>
+            </div>
+          ) : isInstallable ? (
+            <div>
+              <strong>Install Patches to your device</strong>
+              <p className={styles['pwaDesc']}>
+                Get native standalone window, offline caching, and faster load times.
+              </p>
+              <button
+                type="button"
+                className={styles['pwaInstallBtn']}
+                onClick={() => void promptInstall()}
+              >
+                Install Patches App
+              </button>
+            </div>
+          ) : isIos ? (
+            <div>
+              <strong>Install on iOS Safari</strong>
+              <p className={styles['pwaDesc']}>
+                Tap the Share button ⎋ in Safari, then select <strong>Add to Home Screen</strong>.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <strong>Web Client Ready</strong>
+              <p className={styles['pwaDesc']}>
+                Service worker caching and offline navigation are active in this browser.
+              </p>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

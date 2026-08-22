@@ -1,0 +1,111 @@
+.headerBar {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .headerBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    padding: 0 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .left {
+    display: flex;
+    align-items: center;
+    min-width: 44px;
+  }
+
+  .brand {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--fg);
+    letter-spacing: -0.5px;
+  }
+
+  .backButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-full);
+    color: var(--fg);
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  .backButton:active {
+    background: var(--bg-raised);
+  }
+
+  .center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 0.5rem;
+  }
+
+  .title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 44px;
+  }
+
+  .avatarLink {
+    display: flex;
+    align-items: center;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+
+  .avatarPlaceholder {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--accent-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .signInButton {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.35rem 0.65rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-raised);
+    color: var(--fg);
+    border: 1px solid var(--border);
+  }
+}

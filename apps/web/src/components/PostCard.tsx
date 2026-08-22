@@ -1,18 +1,34 @@
 import { FilterAction, type Post } from '@patches/proto/es';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
 import { formatAbsoluteTime, formatCount, formatRelativeTime } from '../lib/format.js';
+import {
+  AlertTriangleIcon,
+  BookmarkIcon,
+  CopyIcon,
+  EditIcon,
+  HeartIcon,
+  HistoryIcon,
+  MessageSquareIcon,
+  MoreHorizontalIcon,
+  PinIcon,
+  RepeatIcon,
+  ShareIcon,
+  TrashIcon,
+} from './icons/Icons.js';
 import { MediaImage } from './MediaImage.js';
+import { MediaLightbox, type LightboxImage } from './MediaLightbox.js';
 import { Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
 import { ReportPostControl } from './ReportPostControl.js';
 import { RichBody } from './RichBody.js';
+import { useToast } from './ToastProvider.js';
 
 export interface PostCardProps {
   post: Post;
@@ -20,21 +36,30 @@ export interface PostCardProps {
 }
 
 /**
- * One post in a timeline or thread. Likes/bookmarks/reposts are optimistic
- * (flip immediately, roll back on error) but — per Amendment B §194 — never
- * change this post's position in whatever list it's rendered in; that's
- * enforced by the parent list never re-sorting on mutation, not here.
+ * One post in a timeline or thread with rich icons, micro-interactions,
+ * Web Share API support, and full-screen image lightbox.
  */
 export function PostCard({ post, focused = false }: PostCardProps): JSX.Element {
   const session = useSession();
   const onError = useErrorToast();
+  const toast = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const [viewerState, setViewerState] = useState(post.viewerState);
   const [counts, setCounts] = useState(post.counts);
   const isOwn = session?.actor.id === post.author?.id;
   const [pinned, setPinned] = useState(post.author?.pinnedPostIds.includes(post.id) ?? false);
   const [deleted, setDeleted] = useState(post.deleted);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [likePopping, setLikePopping] = useState(false);
+  const [repostPopping, setRepostPopping] = useState(false);
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
 
   const requireAuth = (): boolean => {
     if (session === null) {
@@ -47,6 +72,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
   const toggleLike = async (): Promise<void> => {
     if (!requireAuth()) return;
     const wasLiked = viewerState?.liked ?? false;
+    setLikePopping(true);
+    setTimeout(() => setLikePopping(false), 300);
+
     setViewerState((v) => (v ? { ...v, liked: !wasLiked } : v));
     setCounts((c) => (c ? { ...c, likes: c.likes + (wasLiked ? -1 : 1) } : c));
     try {
@@ -71,6 +99,10 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
         ? await api.reactions.unbookmarkPost({ postId: post.id })
         : await api.reactions.bookmarkPost({ postId: post.id });
       if (response.viewerState) setViewerState(response.viewerState);
+      toast.pushToast({
+        message: wasBookmarked ? 'Removed from bookmarks' : 'Saved to bookmarks',
+        tone: 'info',
+      });
     } catch (error) {
       setViewerState((v) => (v ? { ...v, bookmarked: wasBookmarked } : v));
       onError(error);
@@ -80,6 +112,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
   const toggleRepost = async (): Promise<void> => {
     if (!requireAuth()) return;
     const wasReposted = viewerState?.reposted ?? false;
+    setRepostPopping(true);
+    setTimeout(() => setRepostPopping(false), 300);
+
     setViewerState((v) => (v ? { ...v, reposted: !wasReposted } : v));
     setCounts((c) => (c ? { ...c, reposts: c.reposts + (wasReposted ? -1 : 1) } : c));
     try {
@@ -98,20 +133,51 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
   const togglePin = async (): Promise<void> => {
     const wasPinned = pinned;
     setPinned(!wasPinned);
+    setMoreMenuOpen(false);
     try {
       if (wasPinned) await api.posts.unpinPost({ postId: post.id });
       else await api.posts.pinPost({ postId: post.id, position: 0 });
+      toast.pushToast({
+        message: wasPinned ? 'Post unpinned' : 'Post pinned to profile',
+        tone: 'info',
+      });
     } catch (error) {
       setPinned(wasPinned);
       onError(error);
     }
   };
 
+  const handleShare = async (): Promise<void> => {
+    const postUrl = `${window.location.origin}/p/${post.id}`;
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await navigator.share({
+          title: `Post by @${post.author?.handle ?? 'patches'}`,
+          text: post.body,
+          url: postUrl,
+        });
+        return;
+      } catch (err: unknown) {
+        if ((err as Error)?.name === 'AbortError') return;
+      }
+    }
+
+    // Fallback: Copy link to clipboard
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      toast.pushToast({ message: 'Post link copied to clipboard', tone: 'info' });
+    } catch {
+      toast.pushToast({ message: `Post URL: ${postUrl}`, tone: 'info' });
+    }
+  };
+
   const deletePost = async (): Promise<void> => {
+    setMoreMenuOpen(false);
     if (!window.confirm('Delete this post? This cannot be undone.')) return;
     try {
       await api.posts.deletePost({ id: post.id });
       setDeleted(true);
+      toast.pushToast({ message: 'Post deleted', tone: 'info' });
     } catch (error) {
       onError(error);
     }
@@ -128,6 +194,23 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     queryFn: () => api.posts.listPostEdits({ postId: post.id, cursor: '', limit: 20 }),
     enabled: historyOpen,
   });
+
+  const handleUrlResolved = (mediaId: string, url: string): void => {
+    setResolvedUrls((prev) => (prev[mediaId] === url ? prev : { ...prev, [mediaId]: url }));
+  };
+
+  const lightboxImages: LightboxImage[] = post.media
+    .filter((m) => Boolean(resolvedUrls[m.mediaId]))
+    .map((m) => ({
+      mediaId: m.mediaId,
+      url: resolvedUrls[m.mediaId] ?? '',
+      altText: m.altText,
+    }));
+
+  const openLightboxAt = (index: number): void => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
 
   if (deleted) {
     return (
@@ -146,50 +229,134 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
       aria-label={`Post by @${post.author?.handle ?? 'unknown'}`}
     >
       {post.author?.avatar?.url ? (
-        <img className={styles['avatar']} src={post.author.avatar.url} alt="" aria-hidden="true" />
-      ) : null}
+        <Link to={`/@${post.author.handle}`} className={styles['avatarLink']}>
+          <img
+            className={styles['avatar']}
+            src={post.author.avatar.url}
+            alt=""
+            aria-hidden="true"
+          />
+        </Link>
+      ) : (
+        <Link to={`/@${post.author?.handle ?? ''}`} className={styles['avatarLink']}>
+          <div className={styles['avatarPlaceholder']}>
+            {post.author?.handle.slice(0, 1).toUpperCase() ?? 'P'}
+          </div>
+        </Link>
+      )}
+
       <div className={styles['body']}>
         {post.repostedByTotal > 0 ? (
           <div className={styles['repostedBy']}>
-            Reposted by{' '}
-            {post.repostedBy.map((actor, index) => (
-              <span key={actor.id}>
-                {index > 0 ? ', ' : ''}
-                <Link to={`/@${actor.handle}`}>@{actor.handle}</Link>
-              </span>
-            ))}
+            <RepeatIcon size={14} className={styles['contextIcon']} />
+            <span>
+              Reposted by{' '}
+              {post.repostedBy.map((actor, index) => (
+                <span key={actor.id}>
+                  {index > 0 ? ', ' : ''}
+                  <Link to={`/@${actor.handle}`}>@{actor.handle}</Link>
+                </span>
+              ))}
+            </span>
           </div>
         ) : null}
-        {pinned ? <div className={styles['repostedBy']}>Pinned</div> : null}
+
+        {pinned ? (
+          <div className={styles['repostedBy']}>
+            <PinIcon size={14} className={styles['contextIcon']} />
+            <span>Pinned post</span>
+          </div>
+        ) : null}
+
         <div className={styles['headerRow']}>
           <Link to={`/@${post.author?.handle ?? ''}`} className={styles['displayName']}>
             {post.author?.displayName || post.author?.handle}
           </Link>
-          <Link to={`/@${post.author?.handle ?? ''}`}>
+          <Link to={`/@${post.author?.handle ?? ''}`} className={styles['nameplateLink']}>
             <Nameplate handle={post.author?.handle ?? ''} nameplate={post.author?.nameplate} />
           </Link>
           <Link to={`/p/${post.id}`} className={styles['time']}>
             {formatRelativeTime(post.createdAt)}
             {post.editedAt ? ' · edited' : ''}
           </Link>
+
+          <div className={styles['moreMenuWrap']}>
+            <button
+              type="button"
+              className={styles['moreMenuButton']}
+              onClick={() => setMoreMenuOpen((v) => !v)}
+              aria-label="More options"
+            >
+              <MoreHorizontalIcon size={16} />
+            </button>
+            {moreMenuOpen ? (
+              <div className={styles['moreDropdown']} onClick={() => setMoreMenuOpen(false)}>
+                <button type="button" onClick={() => void handleShare()}>
+                  <CopyIcon size={14} />
+                  <span>Copy post link</span>
+                </button>
+                {isOwn ? (
+                  <>
+                    <button type="button" onClick={() => void navigate(`/compose?edit=${post.id}`)}>
+                      <EditIcon size={14} />
+                      <span>Edit post</span>
+                    </button>
+                    <button type="button" onClick={() => void togglePin()}>
+                      <PinIcon size={14} />
+                      <span>{pinned ? 'Unpin from profile' : 'Pin to profile'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistoryOpen((v) => !v);
+                        if (!historyOpen) {
+                          void queryClient.invalidateQueries({
+                            queryKey: ['post-edits', post.id],
+                          });
+                        }
+                      }}
+                    >
+                      <HistoryIcon size={14} />
+                      <span>Edit history</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles['dangerAction']}
+                      onClick={() => void deletePost()}
+                    >
+                      <TrashIcon size={14} />
+                      <span>Delete post</span>
+                    </button>
+                  </>
+                ) : (
+                  <ReportPostControl postId={post.id} className={styles['dropdownReport']} />
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
+
         {post.labels.length > 0 ? (
-          <div className={styles['repostedBy']}>
+          <div className={styles['labelsRow']}>
             {post.labels.map((label) => (
-              <span key={label.id} className={styles['cwButton']} style={{ marginRight: '0.4rem' }}>
+              <span key={label.id} className={styles['labelBadge']}>
                 {label.value}
               </span>
             ))}
           </div>
         ) : null}
+
         {filteredBy && filteredBy.action === FilterAction.COLLAPSE && !filterExpanded ? (
           <button
             type="button"
             className={styles['cwButton']}
             onClick={() => setFilterExpanded(true)}
           >
-            Filtered: {filteredBy.name}
-            {filteredBy.listOwner ? ` (via @${filteredBy.listOwner.handle})` : ''} — click to show
+            <AlertTriangleIcon size={14} />
+            <span>
+              Filtered: {filteredBy.name}
+              {filteredBy.listOwner ? ` (via @${filteredBy.listOwner.handle})` : ''} — show
+            </span>
           </button>
         ) : (
           <>
@@ -199,29 +366,50 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
                 {filteredBy.listOwner ? ` (via @${filteredBy.listOwner.handle})` : ''}
               </div>
             ) : null}
+
             {post.contentWarning !== '' && !cwOpen ? (
               <button type="button" className={styles['cwButton']} onClick={() => setCwOpen(true)}>
-                Content warning: {post.contentWarning} — click to show
+                <AlertTriangleIcon size={14} />
+                <span>CW: {post.contentWarning} — show post</span>
               </button>
             ) : (
               <>
                 <div className={styles['text']}>
                   <RichBody source={post.body} />
                 </div>
+
                 {post.media.length > 0 ? (
-                  <div className={styles['mediaGrid']}>
-                    {post.media.map((media) => (
-                      <MediaImage
-                        key={media.mediaId}
-                        mediaId={media.mediaId}
-                        altText={media.altText}
-                      />
+                  <div
+                    className={`${styles['mediaGrid']} ${
+                      post.media.length === 1
+                        ? styles['singleMedia']
+                        : post.media.length === 3
+                          ? styles['threeMedia']
+                          : ''
+                    }`}
+                  >
+                    {post.media.map((media, index) => (
+                      <div className={styles['mediaCell']} key={media.mediaId}>
+                        <MediaImage
+                          mediaId={media.mediaId}
+                          altText={media.altText}
+                          className={styles['mediaImg']}
+                          onUrlResolved={(url) => handleUrlResolved(media.mediaId, url)}
+                          onClick={() => openLightboxAt(index)}
+                        />
+                      </div>
                     ))}
                   </div>
                 ) : null}
+
                 {post.quotedPost ? (
                   <div className={styles['quoted']}>
-                    <strong>@{post.quotedPost.author?.handle}</strong>
+                    <div className={styles['quotedHeader']}>
+                      <strong>
+                        {post.quotedPost.author?.displayName || post.quotedPost.author?.handle}
+                      </strong>
+                      <span className={styles['time']}>@{post.quotedPost.author?.handle}</span>
+                    </div>
                     <div className={styles['text']}>
                       <RichBody source={post.quotedPost.body} />
                     </div>
@@ -231,85 +419,94 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
             )}
           </>
         )}
+
         <div className={styles['actions']}>
-          <Link to={`/p/${post.id}`} className={styles['actionButton']}>
-            {formatCount(counts?.replies ?? 0)} replies
+          <Link
+            to={`/p/${post.id}`}
+            className={styles['actionButton']}
+            aria-label={`${counts?.replies ?? 0} replies`}
+          >
+            <MessageSquareIcon size={17} />
+            <span>{formatCount(counts?.replies ?? 0)}</span>
           </Link>
+
           <button
             type="button"
-            className={`${styles['actionButton']} ${viewerState?.reposted ? styles['on'] : ''}`}
+            className={`${styles['actionButton']} ${styles['repostBtn']} ${
+              viewerState?.reposted ? styles['onRepost'] : ''
+            } ${repostPopping ? styles['popping'] : ''}`}
             onClick={() => void toggleRepost()}
+            aria-label={viewerState?.reposted ? 'Undo repost' : 'Repost'}
           >
-            {formatCount(counts?.reposts ?? 0)} repost
+            <RepeatIcon size={17} />
+            <span>{formatCount(counts?.reposts ?? 0)}</span>
           </button>
-          <Link to={`/compose?quote=${post.id}`} className={styles['actionButton']}>
-            quote
-          </Link>
+
           <button
             type="button"
-            className={`${styles['actionButton']} ${viewerState?.liked ? styles['on'] : ''}`}
+            className={`${styles['actionButton']} ${styles['likeBtn']} ${
+              viewerState?.liked ? styles['onLike'] : ''
+            } ${likePopping ? styles['popping'] : ''}`}
             onClick={() => void toggleLike()}
+            aria-label={viewerState?.liked ? 'Unlike' : 'Like'}
           >
-            {formatCount(counts?.likes ?? 0)} like
+            <HeartIcon size={17} filled={viewerState?.liked ?? false} />
+            <span>{formatCount(counts?.likes ?? 0)}</span>
           </button>
+
           <button
             type="button"
-            className={`${styles['actionButton']} ${viewerState?.bookmarked ? styles['on'] : ''}`}
+            className={`${styles['actionButton']} ${
+              viewerState?.bookmarked ? styles['onBookmark'] : ''
+            }`}
             onClick={() => void toggleBookmark()}
+            aria-label={viewerState?.bookmarked ? 'Remove bookmark' : 'Bookmark'}
           >
-            bookmark
+            <BookmarkIcon size={17} />
           </button>
-          {isOwn ? (
-            <>
-              <Link to={`/compose?edit=${post.id}`} className={styles['actionButton']}>
-                edit
-              </Link>
-              <button
-                type="button"
-                className={styles['actionButton']}
-                onClick={() => void togglePin()}
-              >
-                {pinned ? 'unpin' : 'pin'}
-              </button>
-              <button
-                type="button"
-                className={styles['actionButton']}
-                onClick={() => {
-                  setHistoryOpen((v) => !v);
-                  if (!historyOpen)
-                    void queryClient.invalidateQueries({ queryKey: ['post-edits', post.id] });
-                }}
-              >
-                history
-              </button>
-              <button
-                type="button"
-                className={styles['actionButton']}
-                onClick={() => void deletePost()}
-              >
-                delete
-              </button>
-            </>
-          ) : (
-            <ReportPostControl postId={post.id} className={styles['actionButton']} />
-          )}
+
+          <Link
+            to={`/compose?quote=${post.id}`}
+            className={styles['actionButton']}
+            aria-label="Quote post"
+          >
+            <EditIcon size={16} />
+          </Link>
+
+          <button
+            type="button"
+            className={styles['actionButton']}
+            onClick={() => void handleShare()}
+            aria-label="Share post"
+          >
+            <ShareIcon size={17} />
+          </button>
         </div>
+
         {historyOpen ? (
-          <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-            {editsQuery.isPending ? <p>Loading edit history…</p> : null}
-            {editsQuery.data?.edits.length === 0 ? <p>No edits.</p> : null}
+          <div className={styles['editHistoryPanel']}>
+            <strong>Edit history</strong>
+            {editsQuery.isPending ? <p>Loading history…</p> : null}
+            {editsQuery.data?.edits.length === 0 ? <p>No previous edits.</p> : null}
             {editsQuery.data?.edits.map((edit) => (
-              <div
-                key={edit.id}
-                style={{ padding: '0.3rem 0', borderTop: '1px solid var(--border)' }}
-              >
-                <div>{formatAbsoluteTime(edit.createdAt)} — previous body:</div>
-                <div>{edit.previousBody}</div>
+              <div key={edit.id} className={styles['editHistoryItem']}>
+                <div className={styles['time']}>{formatAbsoluteTime(edit.createdAt)}:</div>
+                <div className={styles['text']}>{edit.previousBody}</div>
               </div>
             ))}
           </div>
         ) : null}
       </div>
+
+      {/* Lightbox for full screen photo viewer */}
+      {lightboxImages.length > 0 ? (
+        <MediaLightbox
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          isOpen={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+        />
+      ) : null}
     </article>
   );
 }

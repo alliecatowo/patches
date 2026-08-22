@@ -1,17 +1,128 @@
-.options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
-}
-
-.option {
+.sectionTitleRow {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.sectionTitleRow h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+.themeCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  cursor: pointer;
+  position: relative;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+  display: block;
+}
+
+.themeCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.themeCardSelected {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent) !important;
+}
+
+.radioInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.themeCardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.themeCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.themeName {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.checkBadge {
+  background: var(--accent);
+  color: var(--accent-fg);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.themeDesc {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+.swatchPreview {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.swatchBox {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .hint {
   font-size: 0.85rem;
   color: var(--fg-muted);
+  margin-top: 0.5rem;
+}
+
+.pwaCard {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.pwaDesc {
+  margin: 0.35rem 0 0;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.pwaInstallBtn {
+  margin-top: 0.75rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 0.5rem 1.2rem;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.pwaInstallBtn:hover {
+  filter: brightness(1.1);
 }

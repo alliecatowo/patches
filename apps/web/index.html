@@ -2,27 +2,55 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content="Terminal-native chronological social media." />
+    <meta name="theme-color" content="#160f24" id="meta-theme-color" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Patches" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Patches</title>
     <script>
       // Resolve the stored theme preference before first paint so there is no flash of the
       // wrong theme — `src/lib/theme.ts` owns the storage key/shape and stays the source of
       // truth; this inline copy only needs to agree with it on the key name and valid values.
-      // Runs synchronously (no `type="module"`, no `defer`) so it blocks rendering until the
-      // `data-theme` attribute is set on `<html>`, which `src/index.css` keys off of.
       (function () {
         var STORAGE_KEY = 'patches.web.theme.v1';
+        var VALID = ['system', 'patches', 'dark', 'light', 'paper', 'mono', 'hacker', 'pastel'];
+        var THEME_COLORS = {
+          patches: '#160f24',
+          dark: '#0d1117',
+          light: '#ffffff',
+          paper: '#f7f2e8',
+          mono: '#000000',
+          hacker: '#001400',
+          pastel: '#24203a',
+        };
         var theme = 'system';
         try {
           var stored = window.localStorage.getItem(STORAGE_KEY);
-          if (stored === 'light' || stored === 'dark' || stored === 'system') {
+          if (VALID.indexOf(stored) !== -1) {
             theme = stored;
           }
         } catch (_err) {
-          // Storage inaccessible (private browsing, disabled cookies) — fall back to 'system'.
+          // Storage inaccessible (private browsing) — fall back to 'system'.
         }
         document.documentElement.setAttribute('data-theme', theme);
+
+        var effectiveColor = '#160f24';
+        if (theme === 'system') {
+          var prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          effectiveColor = prefersDark ? '#0d1117' : '#ffffff';
+        } else if (THEME_COLORS[theme]) {
+          effectiveColor = THEME_COLORS[theme];
+        }
+        var meta = document.getElementById('meta-theme-color');
+        if (meta) meta.setAttribute('content', effectiveColor);
       })();
     </script>
   </head>

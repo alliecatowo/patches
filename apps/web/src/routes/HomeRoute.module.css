@@ -1,6 +1,16 @@
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+@media (max-width: 720px) {
+  .tabs {
+    top: calc(52px + var(--sat));
+  }
 }
 
 .tab {
@@ -8,29 +18,41 @@
   padding: 0.9rem;
   background: none;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.95rem;
   color: var(--fg-muted);
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.tab:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
 }
 
 .tab.active {
-  color: var(--fg);
+  color: var(--accent);
   border-bottom-color: var(--accent);
 }
 
 .tabExplainer {
-  margin: 0.75rem 1rem 0;
+  margin: 0.75rem 1.15rem 0;
   color: var(--fg-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .inviteOnly {
-  padding: 2.5rem 1rem;
+  padding: 3rem 1.5rem;
   text-align: center;
   color: var(--fg-muted);
+  max-width: 480px;
+  margin: 0 auto;
 }
 
 .inviteOnly h2 {
   color: var(--fg);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }

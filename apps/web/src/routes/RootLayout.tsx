@@ -3,9 +3,27 @@ import { useRef, useState, type JSX } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { api, signOut } from '../api/client.js';
+import { HeaderBar } from '../components/HeaderBar.js';
+import {
+  BellIcon,
+  BookmarkIcon,
+  ComposeIcon,
+  HomeIcon,
+  LogOutIcon,
+  MenuIcon,
+  MessageIcon,
+  ScaleIcon,
+  SearchIcon,
+  SettingsIcon,
+  ShieldIcon,
+  UserIcon,
+} from '../components/icons/Icons.js';
+import { MobileDrawer } from '../components/MobileDrawer.js';
+import { OfflineBanner } from '../components/OfflineBanner.js';
 import { PrivacyNoticeBanner } from '../components/PrivacyNoticeBanner.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
+import { useAppBadge } from '../pwa/useAppBadge.js';
 import styles from './RootLayout.module.css';
 
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
@@ -15,7 +33,7 @@ export function RootLayout(): JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
   const helpRef = useRef<HTMLDialogElement>(null);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const unreadQuery = useQuery({
     queryKey: ['notifications', 'unread-count'],
@@ -23,6 +41,11 @@ export function RootLayout(): JSX.Element {
     enabled: session !== null,
     refetchInterval: 30_000,
   });
+
+  const unreadCount = unreadQuery.data?.count ?? 0;
+
+  // Sync unread notification count with PWA App Badging API
+  useAppBadge(session ? unreadCount : 0);
 
   useKeyboardShortcuts({
     c: () => void navigate('/compose'),
@@ -32,51 +55,69 @@ export function RootLayout(): JSX.Element {
 
   return (
     <div className={styles['shell']}>
+      <OfflineBanner />
+      <HeaderBar />
+
       <nav className={styles['nav']} aria-label="Primary">
-        <span className={styles['brand']}>patches</span>
+        <div className={styles['brandRow']}>
+          <span className={styles['brand']}>patches</span>
+        </div>
+
         <NavLink
           to="/"
           end
           className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['homeLink']}`}
         >
+          <HomeIcon className={styles['navIcon']} />
           <span className={styles['navLabel']}>Home</span>
         </NavLink>
+
         <NavLink
           to="/search"
           className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['searchLink']}`}
         >
+          <SearchIcon className={styles['navIcon']} />
           <span className={styles['navLabel']}>Search</span>
         </NavLink>
+
         <NavLink
           to="/compose"
-          className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['composeLink']}`}
+          className={({ isActive }) =>
+            `${NAV_LINK_CLASS({ isActive })} ${styles['composeLink']} ${styles['composeMobileAction']}`
+          }
         >
+          <div className={styles['composeMobileCircle']}>
+            <ComposeIcon className={styles['navIcon']} />
+          </div>
           <span className={styles['navLabel']}>Compose</span>
         </NavLink>
+
         <NavLink
           to="/notifications"
           className={({ isActive }) =>
             `${NAV_LINK_CLASS({ isActive })} ${styles['notificationsLink']}`
           }
-          aria-label={
-            unreadQuery.data && unreadQuery.data.count > 0
-              ? `Notifications, ${unreadQuery.data.count} unread`
-              : 'Notifications'
-          }
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         >
+          <div className={styles['iconBadgeWrap']}>
+            <BellIcon className={styles['navIcon']} />
+            {unreadCount > 0 ? (
+              <span className={styles['unreadBadge']} aria-hidden="true">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            ) : null}
+          </div>
           <span className={styles['navLabel']}>Notifications</span>
-          {unreadQuery.data && unreadQuery.data.count > 0 ? (
-            <span className={styles['unreadBadge']} aria-hidden="true">
-              {unreadQuery.data.count}
-            </span>
-          ) : null}
         </NavLink>
+
         <NavLink
           to="/moderation/log"
           className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`}
         >
+          <ShieldIcon className={styles['navIcon']} />
           <span className={styles['navLabel']}>Mod log</span>
         </NavLink>
+
         {session ? (
           <>
             <NavLink
@@ -85,6 +126,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <ScaleIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Appeals</span>
             </NavLink>
             <NavLink
@@ -93,6 +135,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <BookmarkIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Bookmarks</span>
             </NavLink>
             <NavLink
@@ -101,6 +144,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <MessageIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Messages</span>
             </NavLink>
             <NavLink
@@ -109,6 +153,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <UserIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>@{session.actor.handle}</span>
             </NavLink>
             <NavLink
@@ -117,6 +162,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <SettingsIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Settings</span>
             </NavLink>
             <button
@@ -126,6 +172,7 @@ export function RootLayout(): JSX.Element {
                 void signOut().then(() => navigate('/'));
               }}
             >
+              <LogOutIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Sign out</span>
             </button>
           </>
@@ -137,6 +184,7 @@ export function RootLayout(): JSX.Element {
                 `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
               }
             >
+              <UserIcon className={styles['navIcon']} />
               <span className={styles['navLabel']}>Sign in</span>
             </NavLink>
             <NavLink
@@ -149,27 +197,30 @@ export function RootLayout(): JSX.Element {
             </NavLink>
           </>
         )}
+
         <div className={styles['more']}>
           <button
             type="button"
             className={styles['moreButton']}
-            aria-expanded={moreOpen}
+            aria-expanded={drawerOpen}
             aria-controls="mobile-more-menu"
-            onClick={() => setMoreOpen((open) => !open)}
+            aria-label="More"
+            onClick={() => setDrawerOpen((open) => !open)}
           >
-            More
+            <MenuIcon className={styles['navIcon']} />
+            <span className={styles['navLabel']}>More</span>
           </button>
-          {moreOpen ? (
+          {drawerOpen ? (
             <div
               id="mobile-more-menu"
-              className={styles['moreMenu']}
+              className={styles['moreMenuFallback']}
               role="group"
               aria-label="More destinations"
             >
               <NavLink
                 to="/moderation/log"
                 className={NAV_LINK_CLASS}
-                onClick={() => setMoreOpen(false)}
+                onClick={() => setDrawerOpen(false)}
               >
                 Mod log
               </NavLink>
@@ -178,35 +229,35 @@ export function RootLayout(): JSX.Element {
                   <NavLink
                     to="/bookmarks"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Bookmarks
                   </NavLink>
                   <NavLink
                     to="/messages"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Messages
                   </NavLink>
                   <NavLink
                     to={`/@${session.actor.handle}`}
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Profile
                   </NavLink>
                   <NavLink
                     to="/settings/profile"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Settings
                   </NavLink>
                   <NavLink
                     to="/appeals"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Appeals
                   </NavLink>
@@ -214,7 +265,7 @@ export function RootLayout(): JSX.Element {
                     type="button"
                     className={styles['navLink']}
                     onClick={() => {
-                      setMoreOpen(false);
+                      setDrawerOpen(false);
                       void signOut().then(() => navigate('/'));
                     }}
                   >
@@ -226,14 +277,14 @@ export function RootLayout(): JSX.Element {
                   <NavLink
                     to="/login"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Sign in
                   </NavLink>
                   <NavLink
                     to="/register"
                     className={NAV_LINK_CLASS}
-                    onClick={() => setMoreOpen(false)}
+                    onClick={() => setDrawerOpen(false)}
                   >
                     Register
                   </NavLink>
@@ -243,20 +294,33 @@ export function RootLayout(): JSX.Element {
           ) : null}
         </div>
       </nav>
+
+      <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
       <main className={styles['main']}>
         <PrivacyNoticeBanner />
         <Outlet />
       </main>
+
       <footer className={styles['footer']}>
         <small>
           patches web{' '}
           <code title={`built ${__PATCHES_WEB_BUILT_AT__}`}>{__PATCHES_WEB_VERSION__}</code>
           {' · '}
-          <a href="https://github.com/alliecatowo/patches">source</a>
+          <a
+            href="https://github.com/alliecatowo/patches"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            source
+          </a>
           {' · '}
-          <a href="https://patches-site.pages.dev">docs</a>
+          <a href="https://patches-site.pages.dev" target="_blank" rel="noopener noreferrer">
+            docs
+          </a>
         </small>
       </footer>
+
       <dialog
         ref={helpRef}
         className={styles['helpDialog']}
@@ -268,19 +332,29 @@ export function RootLayout(): JSX.Element {
           between posts
         </p>
         <p>
-          <kbd className={styles['helpKbd']}>l</kbd> like the focused post
+          <kbd className={styles['helpKbd']}>l</kbd> like focused post
         </p>
         <p>
-          <kbd className={styles['helpKbd']}>c</kbd> compose
+          <kbd className={styles['helpKbd']}>c</kbd> compose new post
         </p>
         <p>
           <kbd className={styles['helpKbd']}>/</kbd> search
         </p>
         <p>
-          <kbd className={styles['helpKbd']}>?</kbd> toggle this help
+          <kbd className={styles['helpKbd']}>?</kbd> toggle help
         </p>
-        <form method="dialog">
-          <button type="submit">Close</button>
+        <form method="dialog" style={{ marginTop: '1rem' }}>
+          <button
+            type="submit"
+            style={{
+              padding: '0.4rem 0.8rem',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            Close
+          </button>
         </form>
       </dialog>
     </div>

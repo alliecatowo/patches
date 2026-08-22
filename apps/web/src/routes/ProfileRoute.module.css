@@ -1,71 +1,122 @@
 .header {
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .topRow {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
 
 .avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full);
   background: var(--bg-raised);
   object-fit: cover;
-  margin-bottom: 0.6rem;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.avatarPlaceholder {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 2rem;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .displayName {
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
   margin: 0;
 }
 
 .bio {
   white-space: pre-wrap;
-  margin: 0.6rem 0;
+  margin: 0.25rem 0;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.metaRow {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
 }
 
 .counts {
   display: flex;
-  gap: 1.25rem;
+  gap: 0.75rem;
   color: var(--fg-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.counts strong {
+.countPill {
+  background: var(--bg-raised);
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+}
+
+.countPill strong {
   color: var(--fg);
 }
 
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: calc(52px + var(--sat));
+  z-index: 20;
 }
 
 .tab {
   flex: 1;
-  padding: 0.7rem;
+  padding: 0.85rem;
   background: none;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.95rem;
   color: var(--fg-muted);
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.tab:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
 }
 
 .tab.active {
-  color: var(--fg);
+  color: var(--accent);
   border-bottom-color: var(--accent);
 }
 
 .wall {
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
 }
 
 .wallBlock {
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .wallBlock img {

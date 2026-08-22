@@ -5,8 +5,11 @@ import { RouterProvider } from 'react-router-dom';
 
 import './index.css';
 import './lib/theme.js';
+import { registerServiceWorker } from './pwa/serviceWorkerRegistration.js';
 import { router } from './router.js';
 import { ToastProvider } from './components/ToastProvider.js';
+
+registerServiceWorker();
 
 // Build identity, readable from devtools (`window.__PATCHES_WEB__`) and printed once on boot so
 // "which web version am I on?" is answerable without reading the footer.

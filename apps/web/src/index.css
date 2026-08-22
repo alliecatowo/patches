@@ -1,48 +1,200 @@
 :root {
   --font-mono:
     ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    Helvetica, Arial, sans-serif;
 
-  /* Light theme (default). `data-theme` on <html> — set before first paint by the inline
-     script in index.html, then kept live by `src/lib/theme.ts` — selects the theme. */
+  /* Safe Area Insets for notched devices and edge-to-edge PWAs */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  /* Light theme (default baseline) */
   --bg: #ffffff;
   --bg-raised: #f6f6f7;
+  --bg-subtle: #f0f2f5;
   --fg: #16181c;
   --fg-muted: #57606a;
   --border: #d8dee4;
+  --border-subtle: #eaeef2;
   --accent: #6b46c1;
+  --accent-hover: #55359e;
   --accent-fg: #ffffff;
+  --ok: #28613c;
+  --warn: #7a4b00;
   --danger: #c0392b;
-  --radius: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
 
   color-scheme: light;
 }
 
-:root[data-theme='dark'] {
-  --bg: #0d1117;
-  --bg-raised: #161b22;
-  --fg: #e6edf3;
-  --fg-muted: #8b949e;
-  --border: #30363d;
-  --accent: #a78bfa;
-  --accent-fg: #16181c;
-  --danger: #ff6b6b;
+/* Patches Theme (Signature) */
+:root[data-theme='patches'] {
+  --bg: #160f24;
+  --bg-raised: #211636;
+  --bg-subtle: #2b1d47;
+  --fg: #f7f1ff;
+  --fg-muted: #b8a9c9;
+  --border: #3d2a5f;
+  --border-subtle: #2d1e47;
+  --accent: #d8a7ff;
+  --accent-hover: #e5c2ff;
+  --accent-fg: #160f24;
+  --ok: #7ee787;
+  --warn: #ffd166;
+  --danger: #ff8a8a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.65);
 
   color-scheme: dark;
 }
 
-/* "Follow system" (the default when no preference is stored, and the explicit `system` choice)
-   tracks the OS/browser setting live via the media query — no JS re-render needed. Scoped to
-   "not explicitly light or dark" so an explicit choice always wins over the OS setting. */
+/* Dark Theme */
+:root[data-theme='dark'] {
+  --bg: #0d1117;
+  --bg-raised: #161b22;
+  --bg-subtle: #21262d;
+  --fg: #e6edf3;
+  --fg-muted: #8b949e;
+  --border: #30363d;
+  --border-subtle: #21262d;
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-fg: #0d1117;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #ff6b6b;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+/* Light Theme */
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-raised: #f6f6f7;
+  --bg-subtle: #f0f2f5;
+  --fg: #16181c;
+  --fg-muted: #57606a;
+  --border: #d8dee4;
+  --border-subtle: #eaeef2;
+  --accent: #6b46c1;
+  --accent-hover: #55359e;
+  --accent-fg: #ffffff;
+  --ok: #28613c;
+  --warn: #7a4b00;
+  --danger: #c0392b;
+
+  color-scheme: light;
+}
+
+/* Paper Theme */
+:root[data-theme='paper'] {
+  --bg: #f7f2e8;
+  --bg-raised: #e9e2d3;
+  --bg-subtle: #dfd6c4;
+  --fg: #26231f;
+  --fg-muted: #6b6257;
+  --border: #c8bdab;
+  --border-subtle: #dbd0be;
+  --accent: #6a3dad;
+  --accent-hover: #542b91;
+  --accent-fg: #f7f2e8;
+  --ok: #28613c;
+  --warn: #7a4b00;
+  --danger: #a1262d;
+
+  color-scheme: light;
+}
+
+/* Mono Theme */
+:root[data-theme='mono'] {
+  --bg: #000000;
+  --bg-raised: #121212;
+  --bg-subtle: #1e1e1e;
+  --fg: #ffffff;
+  --fg-muted: #9e9e9e;
+  --border: #333333;
+  --border-subtle: #222222;
+  --accent: #ffffff;
+  --accent-hover: #e0e0e0;
+  --accent-fg: #000000;
+  --ok: #ffffff;
+  --warn: #ffffff;
+  --danger: #ff5555;
+  --radius: 0px;
+  --radius-lg: 0px;
+
+  color-scheme: dark;
+}
+
+/* Hacker Theme */
+:root[data-theme='hacker'] {
+  --bg: #001400;
+  --bg-raised: #002200;
+  --bg-subtle: #003300;
+  --fg: #d7ffd7;
+  --fg-muted: #66aa66;
+  --border: #005500;
+  --border-subtle: #003f00;
+  --accent: #00ff66;
+  --accent-hover: #33ff88;
+  --accent-fg: #001400;
+  --ok: #00ff66;
+  --warn: #ffe066;
+  --danger: #ff5555;
+  --radius: 2px;
+  --radius-lg: 4px;
+
+  color-scheme: dark;
+}
+
+/* Pastel Theme */
+:root[data-theme='pastel'] {
+  --bg: #24203a;
+  --bg-raised: #2f2a4a;
+  --bg-subtle: #3a345a;
+  --fg: #fff8ff;
+  --fg-muted: #c4badb;
+  --border: #4d4470;
+  --border-subtle: #3b3459;
+  --accent: #ffc2e2;
+  --accent-hover: #ffd1e9;
+  --accent-fg: #24203a;
+  --ok: #a8e6cf;
+  --warn: #ffe29a;
+  --danger: #ff9aa2;
+
+  color-scheme: dark;
+}
+
+/* Follow system fallback when no explicit theme is chosen */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='dark']) {
+  :root:not([data-theme='light']):not([data-theme='dark']):not([data-theme='patches']):not(
+      [data-theme='paper']
+    ):not([data-theme='mono']):not([data-theme='hacker']):not([data-theme='pastel']) {
     --bg: #0d1117;
     --bg-raised: #161b22;
+    --bg-subtle: #21262d;
     --fg: #e6edf3;
     --fg-muted: #8b949e;
     --border: #30363d;
+    --border-subtle: #21262d;
     --accent: #a78bfa;
-    --accent-fg: #16181c;
+    --accent-hover: #c4b5fd;
+    --accent-fg: #0d1117;
+    --ok: #3fb950;
+    --warn: #d29922;
     --danger: #ff6b6b;
 
     color-scheme: dark;
@@ -51,6 +203,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -66,6 +219,9 @@ body {
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.45;
+  touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -78,6 +234,11 @@ body {
 
 a {
   color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 button,
@@ -86,10 +247,13 @@ textarea,
 select {
   font: inherit;
   color: inherit;
+  touch-action: manipulation;
 }
 
 button {
   cursor: pointer;
+  border: none;
+  background: none;
 }
 
 code,
@@ -105,4 +269,41 @@ kbd,
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Micro-interaction animations */
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.anim-pop {
+  animation: pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-raised) 25%,
+    var(--bg-subtle) 37%,
+    var(--bg-raised) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
 }

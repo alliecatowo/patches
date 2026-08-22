@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="mask-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6b46c1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#160f24" />
+  <rect x="80" y="80" width="352" height="352" rx="88" fill="url(#mask-grad)" />
+  <text x="256" y="336" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="240" font-weight="900" fill="#ffffff" text-anchor="middle">P</text>
+  <circle cx="380" cy="132" r="28" fill="#7ee787" stroke="#160f24" stroke-width="6" />
+</svg>

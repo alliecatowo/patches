@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { JSX } from 'react';
+import { useEffect, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 
@@ -7,6 +7,8 @@ export interface MediaImageProps {
   mediaId: string;
   altText: string;
   className?: string | undefined;
+  onClick?: () => void;
+  onUrlResolved?: (url: string) => void;
 }
 
 /**
@@ -15,7 +17,13 @@ export interface MediaImageProps {
  * fetches image bytes straight from R2, never through this app's server
  * (spec §101: never proxy image uploads/downloads through Node).
  */
-export function MediaImage({ mediaId, altText, className }: MediaImageProps): JSX.Element | null {
+export function MediaImage({
+  mediaId,
+  altText,
+  className,
+  onClick,
+  onUrlResolved,
+}: MediaImageProps): JSX.Element | null {
   const query = useQuery({
     queryKey: ['media', mediaId],
     queryFn: () => api.media.getMediaDownload({ mediaId }),
@@ -23,6 +31,22 @@ export function MediaImage({ mediaId, altText, className }: MediaImageProps): JS
   });
 
   const url = query.data?.downloadUrl;
+
+  useEffect(() => {
+    if (url && onUrlResolved) {
+      onUrlResolved(url);
+    }
+  }, [url, onUrlResolved]);
+
   if (!url) return <div className={className} aria-hidden="true" />;
-  return <img className={className} src={url} alt={altText} loading="lazy" />;
+  return (
+    <img
+      className={className}
+      src={url}
+      alt={altText}
+      loading="lazy"
+      onClick={onClick}
+      style={{ cursor: onClick ? 'pointer' : undefined }}
+    />
+  );
 }

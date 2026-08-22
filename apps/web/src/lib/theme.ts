@@ -1,19 +1,140 @@
 /**
- * Client-side theme preference (P15-008): light, dark, or "follow system", persisted in
- * `localStorage` and mirrored onto `<html data-theme>` so `index.css` can select the right
- * CSS custom properties. Never sent to the server — appearance is a cosmetic preference, and
- * cosmetics never gate function (spec §184.3).
+ * Client-side theme preference (P15-008, PWA & UX overhaul):
+ * Supports the full Patches theme catalog: 'system', 'patches', 'dark', 'light',
+ * 'paper', 'mono', 'hacker', 'pastel'.
  *
- * The flash-of-wrong-theme problem is solved in two layers: an inline script in `index.html`
- * (which must agree with this module only on the storage key and the three valid values) sets
- * `data-theme` before first paint, and this module takes over from there so the rest of the app
- * can read/change the live preference through `useSyncExternalStore` (see `hooks/useTheme.ts`),
- * the same pattern `api/session.ts` uses for the signed-in actor.
+ * Persisted in `localStorage` and mirrored onto `<html data-theme>` and `<meta name="theme-color">`
+ * so `index.css` selects the right CSS custom properties and the browser header matches seamlessly.
+ * Never sent to the server — appearance is a cosmetic preference, and cosmetics never gate function (spec §184.3).
  */
-export type ThemePreference = 'light' | 'dark' | 'system';
+export type ThemePreference =
+  'system' | 'patches' | 'dark' | 'light' | 'paper' | 'mono' | 'hacker' | 'pastel';
+
+export interface ThemeInfo {
+  readonly id: ThemePreference;
+  readonly name: string;
+  readonly description: string;
+  readonly preview: {
+    readonly bg: string;
+    readonly fg: string;
+    readonly accent: string;
+    readonly border: string;
+  };
+}
+
+export const THEME_CATALOG: readonly ThemeInfo[] = [
+  {
+    id: 'system',
+    name: 'Follow system',
+    description: 'Matches your OS dark/light mode preference automatically.',
+    preview: {
+      bg: '#161b22',
+      fg: '#e6edf3',
+      accent: '#a78bfa',
+      border: '#30363d',
+    },
+  },
+  {
+    id: 'patches',
+    name: 'Patches',
+    description: 'Signature deep purple midnight with neon violet and cyan accents.',
+    preview: {
+      bg: '#160f24',
+      fg: '#f7f1ff',
+      accent: '#d8a7ff',
+      border: '#55336f',
+    },
+  },
+  {
+    id: 'dark',
+    name: 'Dark',
+    description: 'Clean modern slate dark with purple highlights.',
+    preview: {
+      bg: '#0d1117',
+      fg: '#e6edf3',
+      accent: '#a78bfa',
+      border: '#30363d',
+    },
+  },
+  {
+    id: 'light',
+    name: 'Light',
+    description: 'Clean crisp daylight theme with deep royal purple.',
+    preview: {
+      bg: '#ffffff',
+      fg: '#16181c',
+      accent: '#6b46c1',
+      border: '#d8dee4',
+    },
+  },
+  {
+    id: 'paper',
+    name: 'Paper',
+    description: 'Warm literary sepia parchment with rich espresso ink.',
+    preview: {
+      bg: '#f7f2e8',
+      fg: '#26231f',
+      accent: '#6a3dad',
+      border: '#d7cae9',
+    },
+  },
+  {
+    id: 'mono',
+    name: 'Mono',
+    description: 'High-contrast stark terminal monochrome.',
+    preview: {
+      bg: '#000000',
+      fg: '#ffffff',
+      accent: '#ffffff',
+      border: '#4a4a4a',
+    },
+  },
+  {
+    id: 'hacker',
+    name: 'Hacker',
+    description: 'Retro CRT phosphor green matrix terminal.',
+    preview: {
+      bg: '#001400',
+      fg: '#d7ffd7',
+      accent: '#00ff66',
+      border: '#00cc55',
+    },
+  },
+  {
+    id: 'pastel',
+    name: 'Pastel',
+    description: 'Soft cyberpunk dreamy lavender and mint.',
+    preview: {
+      bg: '#24203a',
+      fg: '#fff8ff',
+      accent: '#ffc2e2',
+      border: '#5a4b78',
+    },
+  },
+];
 
 const STORAGE_KEY = 'patches.web.theme.v1';
-const VALID_PREFERENCES: readonly ThemePreference[] = ['light', 'dark', 'system'];
+const VALID_PREFERENCES: readonly ThemePreference[] = [
+  'system',
+  'patches',
+  'dark',
+  'light',
+  'paper',
+  'mono',
+  'hacker',
+  'pastel',
+];
+
+const THEME_META_COLORS: Readonly<Record<ThemePreference, string>> = {
+  system: '#160f24',
+  patches: '#160f24',
+  dark: '#0d1117',
+  light: '#ffffff',
+  paper: '#f7f2e8',
+  mono: '#000000',
+  hacker: '#001400',
+  pastel: '#24203a',
+};
 
 type Listener = () => void;
 
@@ -27,8 +148,6 @@ function readFromStorage(): ThemePreference {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return isThemePreference(raw) ? raw : 'system';
   } catch {
-    // Storage inaccessible (private browsing, disabled cookies) — a cosmetic preference must
-    // never crash the app shell; fall back to the system default.
     return 'system';
   }
 }
@@ -36,13 +155,23 @@ function readFromStorage(): ThemePreference {
 function applyToDocument(preference: ThemePreference): void {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', preference);
+
+  // Sync meta theme-color for browser bar and PWA header
+  let color = THEME_META_COLORS[preference];
+  if (preference === 'system') {
+    const dark = getSystemPrefersDark();
+    color = dark ? THEME_META_COLORS.dark : THEME_META_COLORS.light;
+  }
+  const meta = document.getElementById('meta-theme-color');
+  if (meta) {
+    meta.setAttribute('content', color);
+  }
 }
 
 let current: ThemePreference = readFromStorage();
 const listeners = new Set<Listener>();
 
-// Idempotent with the inline `index.html` script's pre-paint write — this just keeps the DOM
-// attribute and this module's in-memory value from ever disagreeing.
+// Idempotent with inline pre-paint script
 applyToDocument(current);
 
 function notify(): void {
@@ -60,7 +189,7 @@ export function setThemePreference(preference: ThemePreference): void {
     try {
       window.localStorage.setItem(STORAGE_KEY, preference);
     } catch {
-      // Best-effort persistence only; an unwritable store must not crash a theme change.
+      // Best-effort persistence
     }
   }
   notify();
@@ -71,11 +200,6 @@ export function subscribeThemePreference(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-/**
- * Whether the OS/browser currently reports a dark preference. `index.css` already tracks this
- * live via `@media (prefers-color-scheme: dark)` with no JS involved — this is only for UI copy
- * that wants to say what "system" currently resolves to (e.g. "Following system (dark)").
- */
 export function getSystemPrefersDark(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -86,6 +210,12 @@ export function subscribeSystemColorScheme(listener: Listener): () => void {
     return () => {};
   }
   const media = window.matchMedia('(prefers-color-scheme: dark)');
-  media.addEventListener('change', listener);
-  return () => media.removeEventListener('change', listener);
+  const handler = (): void => {
+    if (current === 'system') {
+      applyToDocument('system');
+    }
+    listener();
+  };
+  media.addEventListener('change', handler);
+  return () => media.removeEventListener('change', handler);
 }

@@ -120,6 +120,10 @@ export default defineConfig([
     },
   },
   {
+    files: ['**/sw.js', '**/service-worker.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
     files: ['**/*.{js,mjs,cjs}'],
     extends: [js.configs.recommended],
     languageOptions: { globals: { ...globals.node } },

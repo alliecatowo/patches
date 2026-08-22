@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type JSX } from 'react';
 
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { PostCard } from './PostCard.js';
+import { PullToRefresh } from './PullToRefresh.js';
 import styles from './PostTimeline.module.css';
 
 export interface PostPage {
@@ -20,10 +21,13 @@ export interface PostTimelineProps {
 
 /**
  * Cursor-paginated, chronological post list (spec §46 — never offset
- * pagination, never re-sorted client-side). Infinite-scrolls via an
- * IntersectionObserver sentinel, shows a "new posts" pill when the feed's
- * first page changes without disturbing scroll position, and supports the
- * `j`/`k` timeline navigation keys (mirroring the TUI).
+ * pagination, never re-sorted client-side).
+ * Features:
+ * - Mobile pull-to-refresh
+ * - Infinite scroll via IntersectionObserver sentinel
+ * - New posts pill notification
+ * - Fluid theme-aware shimmer skeleton loading
+ * - j/k keyboard navigation
  */
 export function PostTimeline({
   queryKey,
@@ -43,8 +47,7 @@ export function PostTimeline({
   const [hasNewer, setHasNewer] = useState(false);
   const topId = query.data?.pages[0]?.posts[0]?.id;
 
-  // Poll the newest page's leading edge separately from the infinite query so
-  // scrolling further down never gets interrupted by a background refetch.
+  // Poll the newest page's leading edge separately from the infinite query
   useEffect(() => {
     if (topId === undefined) return;
     const interval = setInterval(() => {
@@ -77,16 +80,30 @@ export function PostTimeline({
     posts.length > 0,
   );
 
+  const handleRefresh = async (): Promise<void> => {
+    setHasNewer(false);
+    await query.refetch();
+  };
+
   if (query.isPending) {
     return (
-      <div>
-        {[0, 1, 2, 3].map((n) => (
+      <div className={styles['container']}>
+        {[0, 1, 2, 3, 4].map((n) => (
           <div className={styles['skeleton']} key={n}>
-            <div className={styles['skeletonAvatar']} />
+            <div className={`${styles['skeletonAvatar']} skeleton-shimmer`} />
             <div className={styles['skeletonLines']}>
-              <div className={styles['skeletonLine']} style={{ width: '40%' }} />
-              <div className={styles['skeletonLine']} />
-              <div className={styles['skeletonLine']} style={{ width: '60%' }} />
+              <div
+                className={`${styles['skeletonLine']} skeleton-shimmer`}
+                style={{ width: '35%' }}
+              />
+              <div
+                className={`${styles['skeletonLine']} skeleton-shimmer`}
+                style={{ width: '85%' }}
+              />
+              <div
+                className={`${styles['skeletonLine']} skeleton-shimmer`}
+                style={{ width: '60%' }}
+              />
             </div>
           </div>
         ))}
@@ -95,34 +112,60 @@ export function PostTimeline({
   }
 
   if (query.isError) {
-    return <div className={styles['empty']}>Couldn&apos;t load this timeline. Try refreshing.</div>;
+    return (
+      <div className={styles['empty']}>
+        <p>Couldn&apos;t load this timeline.</p>
+        <button
+          type="button"
+          className={styles['retryButton']}
+          onClick={() => void query.refetch()}
+        >
+          Try refreshing
+        </button>
+      </div>
+    );
   }
 
   if (posts.length === 0) {
-    return <div className={styles['empty']}>{emptyMessage}</div>;
+    return (
+      <PullToRefresh onRefresh={handleRefresh}>
+        <div className={styles['empty']}>{emptyMessage}</div>
+      </PullToRefresh>
+    );
   }
 
   return (
-    <div>
-      {hasNewer ? (
-        <div className={styles['pillWrap']}>
-          <button
-            type="button"
-            className={styles['pill']}
-            onClick={() => {
-              setHasNewer(false);
-              void query.refetch();
-            }}
-          >
-            New posts
-          </button>
-        </div>
-      ) : null}
-      {posts.map((post, index) => (
-        <PostCard key={post.id} post={post} focused={index === focusedIndex} />
-      ))}
-      <div ref={sentinelRef} className={styles['sentinel']} />
-      {query.isFetchingNextPage ? <div className={styles['empty']}>Loading more…</div> : null}
-    </div>
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className={styles['container']}>
+        {hasNewer ? (
+          <div className={styles['pillWrap']}>
+            <button
+              type="button"
+              className={styles['pill']}
+              onClick={() => {
+                setHasNewer(false);
+                void query.refetch();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              ↑ New posts
+            </button>
+          </div>
+        ) : null}
+
+        {posts.map((post, index) => (
+          <PostCard key={post.id} post={post} focused={index === focusedIndex} />
+        ))}
+
+        <div ref={sentinelRef} className={styles['sentinel']} />
+
+        {query.isFetchingNextPage ? (
+          <div className={styles['loadingMore']}>
+            <div className={styles['smallSpinner']} />
+            <span>Loading more…</span>
+          </div>
+        ) : null}
+      </div>
+    </PullToRefresh>
   );
 }
