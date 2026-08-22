@@ -69,12 +69,14 @@ export function ReportPostControl({
           </option>
         ))}
       </select>
-      <input
+      <textarea
         aria-label="Report details"
         value={details}
         maxLength={2_000}
         placeholder="Optional details"
         onChange={(event) => setDetails(event.target.value)}
+        rows={4}
+        style={{ flex: '1 1 18rem', minWidth: 0, resize: 'vertical' }}
       />
       <button type="submit" disabled={report.isPending}>
         Submit report

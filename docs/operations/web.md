@@ -138,8 +138,8 @@ Carried over from `apps/web/README.md` — see that file for the full, current l
   `Guestbook`/`Posts`/`Badges` blocks still show a "not supported here yet" placeholder
   (spec §171 requires a placeholder over a failed page, which this satisfies, but the
   blocks themselves are worth building out).
-- Block/mute/report are wired into the profile page only — not into `PostCard` (e.g.
-  "report this post" from a timeline) or a dedicated "my blocks/mutes" settings view
+- Block and mute are wired into the profile page, and post reports can be submitted directly
+  from `PostCard`. A dedicated "my blocks/mutes" settings view is still absent
   (`ModerationService.ListBlocks`/`ListMutes` are unused so far).
 - `LabelService` has no "list my labeler subscriptions" RPC yet — `/settings/labelers` can
   subscribe/unsubscribe/set-action but can't show current subscription state on load.

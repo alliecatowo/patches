@@ -164,15 +164,15 @@ depends on it. Phase 1's browserless paths (password, SSH) remain the primary on
 
 **Status: implemented and deployed (patches-social.fly.dev); media/email credentials pending**
 
-Deployed: Fly server + worker (`patches-social`), Postgres (Fly Postgres cluster
-`patches-social-db`; Fly Managed Postgres/Neon switch still planned — see
-`docs/operations/deployment.md`), secrets, TLS via Fly, structured logs, migrations on
+Deployed: Fly server + worker (`patches-social`), Neon Postgres (the stopped original Fly
+Postgres cluster is retained only as a fallback — see `docs/operations/deployment.md`),
+secrets, TLS via Fly, structured logs, migrations on
 release. Verified end to end with two real accounts (register, login, post, follow, like,
 reply, thread, notifications, home feed) and a passing smoke `patches ping`. Not yet live:
 R2 media credentials and a verified Resend sending domain (both dashboard-only to provision —
 `tasks.md` B-031), a production domain (`patches.social`, currently `patches-social.fly.dev`
-only), and running the deploy workflow through CI (still gated on
-`vars.FLY_DEPLOY_ENABLED`; this deploy was done by hand).
+only). The deploy workflow is configured and production-gated, but its first automated run
+is still pending.
 
 **Success criteria:** a user on another computer can run `npm install -g patches`, `patches`,
 and use the real network. **Partially met**: a user on another computer can build from a

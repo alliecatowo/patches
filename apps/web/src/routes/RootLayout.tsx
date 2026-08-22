@@ -257,8 +257,12 @@ export function RootLayout(): JSX.Element {
           <a href="https://patches-site.pages.dev">docs</a>
         </small>
       </footer>
-      <dialog ref={helpRef} className={styles['helpDialog']}>
-        <h2>Keyboard shortcuts</h2>
+      <dialog
+        ref={helpRef}
+        className={styles['helpDialog']}
+        aria-labelledby="keyboard-shortcuts-title"
+      >
+        <h2 id="keyboard-shortcuts-title">Keyboard shortcuts</h2>
         <p>
           <kbd className={styles['helpKbd']}>j</kbd>/<kbd className={styles['helpKbd']}>k</kbd> move
           between posts
