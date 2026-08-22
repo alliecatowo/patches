@@ -56,6 +56,9 @@ function isRunningFromSourceCheckout(path: string, exists: (path: string) => boo
 export interface InstallOptions {
   argv1?: string;
   env?: NodeJS.ProcessEnv;
+  /** Injectable source-checkout probe so install behavior tests never depend on the machine's
+   * real checkout path. Production uses `existsSync`. */
+  exists?: (path: string) => boolean;
   /** Called with each trimmed, non-empty line of the installer's stdout/stderr as it runs. */
   onOutput?: (line: string) => void;
   /** Injectable for tests — must never be called with anything but an argument array (no
@@ -75,7 +78,7 @@ export async function installUpgrade(
   const spawnFn = options.spawnFn ?? spawn;
   const onOutput = options.onOutput ?? ((): void => {});
 
-  const method = detectInstallMethod(argv1, env);
+  const method = detectInstallMethod(argv1, env, options.exists);
 
   if (method === 'source-checkout') {
     const manualCommand = 'git pull && pnpm build';

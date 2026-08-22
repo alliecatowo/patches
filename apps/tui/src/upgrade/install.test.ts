@@ -78,9 +78,12 @@ const upgrade = { assetUrl: 'https://example.test/releases/patches-social-0.1.0-
 describe('installUpgrade', () => {
   it('refuses to attempt an upgrade from a repo checkout', async () => {
     const spawnFn = vi.fn(fakeSpawn({ exitCode: 0 }));
+    const exists = (path: string): boolean =>
+      path === '/home/allie/develop/patches/pnpm-workspace.yaml';
     const result = await installUpgrade(upgrade, {
       argv1: '/home/allie/develop/patches/apps/tui/dist/cli.js',
       env: {},
+      exists,
       spawnFn: spawnFn as unknown as typeof spawn,
     });
     expect(result.ok).toBe(false);
