@@ -69,7 +69,7 @@ jobs:
       # gRPC endpoint, including its port (e.g. `grpc.patches.social:443`).
       - name: Build TUI (for the smoke-test ping subcommand)
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}
-        run: pnpm --filter @patches/tui build
+        run: pnpm --filter @patches/tui... build
 
       - name: Smoke test (ping the deployed server over TLS)
         if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}

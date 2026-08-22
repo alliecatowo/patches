@@ -37,6 +37,9 @@ jobs:
         with:
           fetch-depth: '0'
       - uses: ./.github/actions/setup
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
 
       - name: Fetch main (buf breaking diff target)
         if: github.event_name == 'pull_request'
