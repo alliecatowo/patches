@@ -1,8 +1,8 @@
 name: Setup toolchain
 description: >
-  Install Node + pnpm (pnpm/setup@v2), then `pnpm install --frozen-lockfile`.
-  Also restores the Turborepo local cache. Used by every CI/CD job that needs
-  the workspace installed.
+  Install Node + pnpm (pnpm/setup@v2), install buf (bufbuild/buf-action), then
+  `pnpm install --frozen-lockfile`. Also restores the Turborepo local cache.
+  Used by every CI/CD job that needs the workspace installed.
 
 runs:
   using: composite
@@ -12,6 +12,11 @@ runs:
       with:
         runtime: node@24.19.0
         cache: true
+
+    - name: Install buf
+      uses: bufbuild/buf-action@v1
+      with:
+        setup_only: true
 
     - name: Install dependencies
       shell: bash
