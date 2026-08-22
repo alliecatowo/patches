@@ -2,14 +2,17 @@
 
 Verified: 2026-08-18 against fly.io/docs (current, non-versioned — Fly's docs have no version
 selector; content reflects the platform as of this date) and `github.com/superfly/flyctl-actions`.
-Stack in this repo: one Docker image (`apps/server` + `apps/worker` built from the same
-monorepo), two Fly process groups (`server` = NestJS gRPC app, `worker` = NestJS standalone
-worker), Postgres via Fly Managed Postgres.
+CI authentication was re-verified on **2026-08-22** against Fly's access-token and flyctl
+integration docs; §9 supersedes its older `fly auth token` guidance.
+Current stack in this repo: one deployed Docker image (`apps/server` + `apps/worker` built from
+the same monorepo), two Fly process groups (`server` = NestJS gRPC app, `worker` = NestJS
+standalone worker), and production PostgreSQL on Neon. Fly Managed Postgres remains researched
+in §6 but is not the live provider. `infra/fly/fly.toml` exists and the `patches-social` app was
+deployed on 2026-08-18; see `docs/operations/deployment.md` for exercised application state.
 
-No `fly.toml` exists in this repo yet (`infra/fly/` is currently empty — only referenced in
-ADR 0008's directory sketch). Everything below is **documented** platform behavior unless
-marked "inferred" or "unverified"; none of it has been exercised against a real Fly org from
-this environment, so mark any first real deploy `Status: planned` until it's actually run.
+Everything below is **documented** platform behavior unless marked "inferred" or "unverified".
+The targeted 2026-08-22 re-verification covered CI authentication only; implementation claims
+elsewhere retain their original 2026-08-18 evidence level.
 
 ---
 
@@ -341,11 +344,25 @@ jobs:
   a plain `flyctl deploy` invocation, not a dedicated action step with deploy-specific inputs.
 - `--remote-only` builds the image on Fly's remote builder rather than requiring a local/CI
   Docker daemon — the documented reason to use it in CI.
-- `FLY_API_TOKEN` is read from the environment by `flyctl` itself; the documented way to
-  obtain a token is `flyctl auth token`, then store it as a GitHub Actions secret
-  (`secrets.FLY_API_TOKEN`) and inject it via the `env:` block on the deploy step (or job-level
-  `env:`).
-  (github.com/superfly/flyctl-actions README)
+- `FLY_API_TOKEN` is read from the environment by `flyctl` itself. Fly's current
+  [CI integration guide](https://fly.io/docs/flyctl/integrating/) says an app-scoped deploy
+  token is the default for CI: `fly tokens create deploy -a <app> -x <duration>`. It explicitly
+  says not to use `fly auth token` in CI because that is a full personal token.
+- The [access-token guide](https://fly.io/docs/security/tokens/) recommends the narrowest scope
+  and shortest workable expiry. App deploy tokens can manage only one app; org tokens are for
+  pipelines that must manage multiple apps. Tokens default to 20 years if expiry is omitted,
+  so expiry and rotation must be deliberate.
+- Store the deploy token as the GitHub `production` environment secret
+  `FLY_API_TOKEN`, inject it only into the deploy step, and keep the existing environment branch
+  protection/approval boundary. No official Fly GitHub OIDC exchange flow was found on
+  2026-08-22; this remains a rotatable provider token rather than GitHub-native federation.
+
+**Official-doc discrepancy:** Fly's older
+[GitHub Actions tutorial](https://fly.io/docs/launch/continuous-deployment-with-github-actions/)
+still suggests an extremely long `-x 999999h` deploy token and mentions the broader personal
+token as an alternative. The newer access-token and generic CI integration guides explicitly
+recommend short expiry, app scope, and never using `fly auth token` in CI. Follow the newer,
+security-specific guidance.
 
 **Inferred**: for the `server`/`worker` two-process-group setup in this repo, a single
 `flyctl deploy --remote-only` deploys the whole app (all process groups) from the one
@@ -369,21 +386,20 @@ turn out to be needed later (relevant to the `release_command` scoping question 
 - fly.io/docs/postgres/getting-started/what-you-should-know/ — unmanaged Postgres
   unsupported-status statement, pointer to Managed Postgres
 - fly.io/docs/flyctl/secrets-set/ — `fly secrets set` usage
+- fly.io/docs/security/tokens/ — app/org token scopes, expiry, listing, and revocation
+- fly.io/docs/flyctl/integrating/ — current generic CI integration and least-privilege token
+  guidance
 - github.com/superfly/flyctl-actions — README, `setup-flyctl` action, `FLY_API_TOKEN` usage
 - (flagged secondary, §8 only) community.fly.io threads on non-root `USER` + stdout/stderr
   pipe ownership — not authoritative, verify against a real deploy
 
 ## Suggested follow-up (not filed by this note — researcher scope is `docs/research/**` only)
 
-- **ADR needed**: confirm whether any existing infra ADR (`docs/decisions/`) or
-  `docs/research/typeorm-postgres.md` assumes unmanaged "Fly Postgres" rather than Fly Managed
-  Postgres; if so, that assumption is now against Fly's current guidance (§6) and should be
-  corrected via ADR, not silently reinterpreted.
-- **Task**: first real `fly.toml` for this repo (`infra/fly/fly.toml` or repo root) should be
-  written and deploy-tested against a real Fly org before any claim in §2/§3/§4/§8 above is
-  promoted from "documented" to "confirmed working for this app" — several of the interactions
-  here (h2_backend + NestJS hybrid app HTTP health port, release_command scope across two
-  process groups, non-root Dockerfile + stdout) are plausible-but-unexercised combinations.
-- **Rule/doc note**: once `infra/fly/fly.toml` exists, this research note should be
-  cross-linked from `docs/operations/` (deploy runbook) per CLAUDE.md rule #6 (docs updated in
-  the same change as the code).
+- **ADR needed:** the live database is Neon even though `INITIAL_VISION.md` and ADR 0003 name
+  Fly Managed Postgres. `docs/research/neon-branching.md` records this provider discrepancy.
+- **Task:** the app and `infra/fly/fly.toml` have been exercised manually, but the GitHub
+  Actions path is still gated. Create a short-lived app-scoped deploy token, configure the
+  production environment secret/protection rules, enable the deployment variable, run one
+  real CI deployment, and record the result in the operations runbook.
+- **Task:** rotate the Fly deploy token on a defined schedule and revoke the old token by ID;
+  do not inherit the older tutorial's effectively permanent expiry.

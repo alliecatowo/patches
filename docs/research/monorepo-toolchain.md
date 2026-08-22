@@ -3,6 +3,12 @@
 Facts below verified against official docs, not memory. Fedora Linux, podman
 5.8, **no** docker / docker-compose.
 
+Targeted re-verification on **2026-08-22**: mise MCP against the installed
+`mise 2026.7.6`, current mise docs/source, official Codex MCP docs, and official
+Claude Code MCP docs; GitHub Actions secrets/variables and Cloudflare Pages CI
+authentication against current GitHub and Cloudflare docs. Sections not named
+here retain their 2026-08-17 verification date.
+
 ## 1. pnpm 11
 
 Docs: pnpm.io/workspaces, /catalogs, /settings/build, /blog/releases/11.0, /continuous-integration
@@ -118,7 +124,8 @@ vs `main`→`HEAD` (override via `TURBO_SCM_BASE`/`TURBO_SCM_HEAD`); combine wit
 
 ## 3. mise
 
-Docs: mise.jdx.dev/configuration.html, /cli/use.html, /continuous-integration.html
+Docs: mise.jdx.dev/configuration.html, /cli/use.html, /continuous-integration.html,
+/cli/mcp.html
 
 ```toml
 # mise.toml
@@ -163,6 +170,89 @@ trusted_config_paths = ["~/develop"]
     install: true
     cache: true
 ```
+
+### 3.1 mise MCP for coding agents (re-verified 2026-08-22)
+
+**Exact version state in this repo:** `mise.toml` pins the tools mise manages,
+but it does not constrain the mise executable itself. The workstation binary is
+`mise 2026.7.6`. Do not enable the MCP integration with that binary: the official
+[GHSA-g74g-rg72-j2p3 advisory](https://github.com/jdx/mise/security/advisories/GHSA-g74g-rg72-j2p3)
+marks mise `<= 2026.7.13` vulnerable to command execution through settings in an
+untrusted local `.mise.toml`; `2026.7.14` is the first patched version. Mise's
+[security policy](https://github.com/jdx/mise/blob/main/SECURITY.md) says only
+the most recent release is supported. **Documented conclusion:** upgrade to the
+current release before connecting an agent, with `2026.7.14` as a security
+floor rather than a recommended pin.
+
+The current [`mise mcp` reference](https://mise.jdx.dev/cli/mcp.html) documents
+a stdio MCP server with these resources:
+
+- `mise://tools` (optionally including inactive tools), `mise://tasks`,
+  `mise://env`, and `mise://config`
+- `run_task`, which invokes a named mise task with optional arguments
+- `install_tool`, which is advertised but explicitly not implemented
+- `list_commands`, in current docs/source, which reports mise commands and their
+  declared read/write/destructive effects
+
+**Breaking/version-sensitive detail:** local initialization testing on
+2026-08-22 confirmed that 2026.7.6 starts the server successfully, but that tag
+does not expose the newer `list_commands` tool. Do not write agent instructions
+that assume `list_commands` until the upgraded binary's `tools/list` response
+has been verified.
+
+The MCP command is registered and runs in 2026.7.6 without
+`[settings] experimental = true`; current docs also show plain `mise mcp` and do
+not require the experimental setting. **Inferred:** do not enable mise's broad
+experimental feature switch solely for MCP. If some separately researched mise
+feature needs it, enable it for that feature and record that reason; it is not
+an MCP prerequisite.
+
+The official [Codex MCP configuration](https://developers.openai.com/codex/mcp)
+supports project-scoped `.codex/config.toml` files for trusted projects and
+stdio servers configured with `command`, `args`, optional `cwd`, tool allowlists,
+and approval policy. A conservative project entry is:
+
+```toml
+[mcp_servers.mise]
+command = "mise"
+args = ["mcp"]
+enabled_tools = ["run_task"]
+default_tools_approval_mode = "prompt"
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
+```
+
+**Inferred policy:** keep `run_task` prompt-gated. This repo's mise tasks range
+from read-only checks to deployments, database restores, and environment
+teardown, while mise exposes them through one generic tool. An MCP-level
+allowlist cannot distinguish safe and destructive task names.
+
+The official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp)
+documents a version-controlled, project-scoped `.mcp.json` and a one-time user
+approval before it is used. Its portable stdio form is:
+
+```json
+{
+  "mcpServers": {
+    "mise": {
+      "type": "stdio",
+      "command": "mise",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Claude resolves relative commands/arguments from the directory where it was
+launched, not from `.mcp.json`; `mise` therefore must be on `PATH`. The project
+config is appropriate for team sharing because it carries no credentials.
+
+**Security boundary verified from official mise source and the local server:**
+`mise://env` returns the resolved values from mise's `[env]` configuration. It
+currently contains only the two non-secret Podman variables in this repo, but
+would expose secrets if future config loaded `.env` or declared credentials.
+Never put secrets in project mise env configuration while this MCP server is
+enabled. MCP client tool allowlists do not remove the server's resources.
 
 ## 4. Podman compose (no Docker on this machine)
 
@@ -380,6 +470,86 @@ updates:
 permissions:
   contents: read
 ```
+
+### 7.1 Deployment secrets, variables, and environments (re-verified 2026-08-22)
+
+GitHub's official [secrets guide](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
+documents these boundaries:
+
+- secrets are addressed with `secrets.NAME`; an unset secret resolves to an
+  empty string
+- secrets cannot be referenced directly in an `if:` expression; promote only
+  the minimum needed value to job `env` if a conditional genuinely needs it
+- secrets are not sent to workflows from forks, and are not available to
+  Dependabot-triggered workflows
+- cloud OIDC should replace long-lived secrets when the provider supports it
+
+GitHub [deployment environments](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments)
+can restrict deploy branches, require approval, and withhold environment secrets
+until protection rules pass. **Inferred for this repo:** keep production Fly and
+Cloudflare credentials in the `production` environment already referenced by
+the deploy jobs, not as repository-wide secrets; allow only `main` and configure
+review protection where the repository plan supports it. Store non-secret
+toggles, hostnames, project IDs, and account IDs as environment/repository
+variables accessed through `vars`, not as secrets.
+
+The official GitHub CLI supports encrypted upload from stdin with
+[`gh secret set`](https://cli.github.com/manual/gh_secret_set) and non-secret
+configuration with `gh variable set`. It cannot recover secret values later;
+`gh secret list` reports names/metadata only. Provider credentials must first be
+created by an authorized Fly, Cloudflare, or Neon account holder. Safe setup
+shapes are:
+
+```bash
+gh secret set FLY_API_TOKEN --env production
+gh secret set CLOUDFLARE_API_TOKEN --env production
+gh variable set CLOUDFLARE_ACCOUNT_ID --env production --body "<account-id>"
+gh variable set FLY_DEPLOY_ENABLED --env production --body "true"
+```
+
+Omitting `--body` makes `gh secret set` read the value from stdin, avoiding a
+credential in shell history or process arguments.
+
+### 7.2 Cloudflare Pages direct upload from GitHub Actions
+
+Stack verified: this repo pins Wrangler `^4.123.0` and currently runs
+`wrangler pages deploy` directly. Cloudflare's current
+[Pages CI guide](https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/)
+documents `CLOUDFLARE_API_TOKEN` plus `CLOUDFLARE_ACCOUNT_ID` for non-interactive
+Wrangler deployment. The token needs Account → **Cloudflare Pages Edit**; the
+[permission reference](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
+describes that permission as create/edit/delete access to Pages projects.
+
+Cloudflare now documents
+[account-owned API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/)
+as durable service principals suited to CI/CD, unlike tokens tied to one user's
+lifecycle. **Inferred:** prefer an account-owned token, restricted to the one
+Cloudflare account and only Pages Edit. The official Pages permission is
+account-scoped; no project-scoped Pages token restriction was documented.
+
+Cloudflare's example stores both values as GitHub secrets. **Inferred:** the API
+token is a secret, but the account ID is an identifier and should be a GitHub
+variable. Wrangler still receives the documented environment names:
+
+```yaml
+- name: Deploy to Cloudflare Pages
+  run: pnpm exec wrangler pages deploy <output-dir> --project-name <project>
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+```
+
+Cloudflare documents `contents: read` and `deployments: write` when using
+`cloudflare/wrangler-action` with `GITHUB_TOKEN` to create GitHub deployment
+records. This repo invokes Wrangler directly and does not give it a GitHub token,
+so `contents: read` is sufficient unless the implementation intentionally adds
+deployment-record integration.
+
+**Unverified:** no official Cloudflare Pages or Fly.io deployment flow using
+GitHub OIDC was found on 2026-08-22. Their official external-CI guides require
+provider tokens. Do not add `id-token: write` without a documented provider
+exchange flow; it grants GitHub OIDC token minting but does not itself authenticate
+Wrangler or flyctl.
 
 ## 8. Prettier 3.9, EditorConfig, git hooks
 
