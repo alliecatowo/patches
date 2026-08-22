@@ -51,6 +51,11 @@ export class RpcBudgetLimiter {
 
   constructor(private readonly window: BudgetWindow) {}
 
+  /** Clear all buckets. Intended for resetting in-process test state between examples. */
+  clear(): void {
+    this.buckets.clear();
+  }
+
   /** Returns `true` if `key` is under budget for this window (and records the attempt),
    * `false` once the window's limit is spent. Never throws — the caller decides what a
    * rejection means (an `AppError`, a metric, both). */

@@ -304,6 +304,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           dataSource.getRepository(Conversation).create({
             kind: 'DIRECT',
             securityMode: 'E2EE_V1',
+            // `conversations.last_message_at` is non-null even for a direct fixture. The
+            // production send path replaces this with the actual accepted-message time.
+            lastMessageAt: new Date(),
           }),
         );
         await dataSource.getRepository(ConversationMember).save(
@@ -324,7 +327,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             clientRequestId: randomUUID(),
             fanoutDigest: Buffer.alloc(32),
             frankingCommitment: Buffer.alloc(32),
-            frankingProfile: 'FRANKING_V1',
+            frankingProfile: 'patches-franking-v1',
             frankingKeyEra: 1,
             frankingTag: Buffer.alloc(32),
           }),
@@ -338,7 +341,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const logicalMessageId = await createLogicalMessage([alice, frank]);
 
         const response = await callUnary<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
-          moderation.reportE2eeMessage.bind(moderation),
+          moderation.reportE2EeMessage.bind(moderation),
           {
             logicalMessageId,
             reason: ReportReason.REPORT_REASON_HARASSMENT,
@@ -363,7 +366,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const logicalMessageId = await createLogicalMessage([frank, george]);
 
         const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
-          moderation.reportE2eeMessage.bind(moderation),
+          moderation.reportE2EeMessage.bind(moderation),
           { logicalMessageId, reason: ReportReason.REPORT_REASON_SPAM, details: '' },
           { accessToken: outsider.accessToken },
         );
@@ -373,7 +376,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       it('rejects an unknown logical message id with NOT_FOUND', async () => {
         const alice = await newActor();
         const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
-          moderation.reportE2eeMessage.bind(moderation),
+          moderation.reportE2EeMessage.bind(moderation),
           { logicalMessageId: randomUUID(), reason: ReportReason.REPORT_REASON_SPAM, details: '' },
           { accessToken: alice.accessToken },
         );
@@ -385,7 +388,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const frank = await newActor();
         const logicalMessageId = await createLogicalMessage([alice, frank]);
         const error = await expectRejection<ReportE2eeMessageRequest, ReportE2eeMessageResponse>(
-          moderation.reportE2eeMessage.bind(moderation),
+          moderation.reportE2EeMessage.bind(moderation),
           { logicalMessageId, reason: ReportReason.REPORT_REASON_SPAM, details: '' },
         );
         expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);

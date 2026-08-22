@@ -56,6 +56,12 @@ export class RpcBudgetInterceptor implements NestInterceptor {
     this.rpcTimeoutMs = config.rpcTimeoutMs;
   }
 
+  /** Clear process-local budget buckets for an in-process test server. */
+  resetBudgets(): void {
+    for (const limiter of Object.values(this.peerLimiters)) limiter.clear();
+    for (const limiter of Object.values(this.actorLimiters)) limiter.clear();
+  }
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     // P8-001..008/A-039: the federation HTTP surface and `/healthz` share this global
     // interceptor with every gRPC RPC — same non-`rpc` bypass every other global interceptor

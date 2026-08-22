@@ -63,7 +63,7 @@ import {
 } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createServerTestDataSource } from './support/database.js';
 import { registerTestActor, testSuffix, type TestActor } from './support/fixtures.js';
@@ -121,6 +121,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       dms.close();
       await server.close();
       await dataSource.destroy();
+    });
+
+    beforeEach(() => {
+      server.resetRpcBudgets();
     });
 
     async function createLocalPost(author: TestActor, body: string): Promise<string> {

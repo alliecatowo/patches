@@ -97,6 +97,34 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
     ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
   });
 
+  it('resets both peer and actor budgets', async () => {
+    const interceptor = new RpcBudgetInterceptor(
+      fakeConfig({ rpcReadBudgetPerPeerPerMin: 1, rpcReadBudgetPerActorPerMin: 1 }),
+    );
+    const call: Record<string, unknown> = {};
+    setSessionClaims(call as never, CLAIMS('actor-1'));
+    const context = rpcContext(call);
+
+    await expect(
+      withContext('patches.v1.PostService/GetPost', 'peer-1', () =>
+        lastValueFrom(interceptor.intercept(context, handlerThatEmits('ok'))),
+      ),
+    ).resolves.toBe('ok');
+    await expect(
+      withContext('patches.v1.PostService/GetPost', 'peer-2', () =>
+        lastValueFrom(interceptor.intercept(context, handlerThatEmits('ok'))),
+      ),
+    ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+
+    interceptor.resetBudgets();
+
+    await expect(
+      withContext('patches.v1.PostService/GetPost', 'peer-2', () =>
+        lastValueFrom(interceptor.intercept(context, handlerThatEmits('ok'))),
+      ),
+    ).resolves.toBe('ok');
+  });
+
   it('sheds a write RPC immediately once the write-concurrency gate is full', async () => {
     const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcWriteConcurrencyLimit: 1 }));
     const context = rpcContext();

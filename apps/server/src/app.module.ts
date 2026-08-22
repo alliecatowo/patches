@@ -80,6 +80,10 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],
   providers: [
+    // Keep the budget interceptor addressable as the same singleton that Nest registers
+    // globally. The in-process integration harness uses this to reset process-local buckets
+    // between examples without changing production admission behavior.
+    RpcBudgetInterceptor,
     // Order matters: RequestContextInterceptor establishes the request id (and the
     // rpc/peer pair RpcBudgetInterceptor reads via getRequestContext()) that every
     // interceptor after it depends on — see RpcBudgetInterceptor's own doc comment for why
@@ -88,7 +92,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     // S-001/S-002 (`docs/operations/capacity.md`): per-RPC-class cost budgets, the
     // write-concurrency load-shedding gate, and the server-side call deadline.
-    { provide: APP_INTERCEPTOR, useClass: RpcBudgetInterceptor },
+    { provide: APP_INTERCEPTOR, useExisting: RpcBudgetInterceptor },
     { provide: APP_FILTER, useClass: RpcExceptionsFilter },
     // PUBLIC_READ=false's global gate (owner decision 2026-08-19) — see
     // common/guards/public-read.guard.ts for the allow-list and reasoning. Depends on

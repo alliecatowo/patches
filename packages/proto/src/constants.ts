@@ -587,7 +587,7 @@ export interface ModerationGrpcClient extends Client {
   reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
   reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
   reportMessage: GrpcUnaryCall<ReportMessageRequest, ReportMessageResponse>;
-  reportE2eeMessage: GrpcUnaryCall<ReportE2eeMessageRequest, ReportE2eeMessageResponse>;
+  reportE2EeMessage: GrpcUnaryCall<ReportE2eeMessageRequest, ReportE2eeMessageResponse>;
   listModerationLog: GrpcUnaryCall<ListModerationLogRequest, ListModerationLogResponse>;
   listMyModerationNotices: GrpcUnaryCall<
     ListMyModerationNoticesRequest,

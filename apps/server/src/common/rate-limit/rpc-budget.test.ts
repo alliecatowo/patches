@@ -55,6 +55,14 @@ describe('RpcBudgetLimiter (S-001)', () => {
     expect(limiter.tryConsume('peer-1', 500)).toBe(false);
     expect(limiter.tryConsume('peer-1', 1_001)).toBe(true);
   });
+
+  it('clears all keys immediately', () => {
+    const limiter = new RpcBudgetLimiter({ limit: 1, windowMs: 60_000 });
+    expect(limiter.tryConsume('peer-1', 1_000)).toBe(true);
+    expect(limiter.tryConsume('peer-1', 1_000)).toBe(false);
+    limiter.clear();
+    expect(limiter.tryConsume('peer-1', 1_000)).toBe(true);
+  });
 });
 
 describe('ConcurrencyGate (S-002 load-shedding)', () => {

@@ -13,9 +13,11 @@ import {
 } from '@patches/proto';
 
 import { AppModule } from '../../src/app.module.js';
+import { RpcBudgetInterceptor } from '../../src/common/interceptors/rpc-budget.interceptor.js';
 import { type HealthControl, createGrpcMicroservice } from '../../src/grpc-options.js';
 import { ReadinessState } from '../../src/modules/system/readiness-state.js';
 import {
+  configureProxyTrust,
   type ConnectEdge,
   mountConnectEdge,
 } from '../../src/transport/connect/connect.middleware.js';
@@ -33,6 +35,8 @@ export interface TestServer {
   /** Wraps `HealthControl.setStatus` so a test can flip the gRPC health status and have
    * `/healthz` (via `ReadinessState`) agree, exactly as `main.ts` does. */
   health: HealthControl;
+  /** Reset the in-process RPC budget buckets between integration examples. */
+  resetRpcBudgets(): void;
   close(): Promise<void>;
 }
 
@@ -85,6 +89,7 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
     // report as "Worker exited unexpectedly".
     abortOnError: false,
   });
+  const rpcBudgetInterceptor = app.get(RpcBudgetInterceptor);
   app.connectMicroservice<MicroserviceOptions>(grpcOptions, { inheritAppConfig: true });
 
   const readiness = app.get(ReadinessState);
@@ -104,7 +109,7 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
   let connectEdge: ConnectEdge | undefined;
   if (options.http === true) {
     const httpPort = await freePort();
-    app.set('trust proxy', process.env.TRUST_PROXY_HEADERS === 'true');
+    configureProxyTrust(app, process.env.TRUST_PROXY_HEADERS === 'true');
     connectEdge = mountConnectEdge(app, { grpcUrl: url, webOrigins: parseWebOrigins() });
     await app.listen(httpPort, '127.0.0.1');
     httpUrl = `http://127.0.0.1:${String(httpPort)}`;
@@ -115,6 +120,9 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
     client,
     ...(httpUrl !== undefined ? { httpUrl } : {}),
     health: healthControl,
+    resetRpcBudgets: () => {
+      rpcBudgetInterceptor.resetBudgets();
+    },
     close: async () => {
       client.close();
       connectEdge?.close();
