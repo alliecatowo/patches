@@ -12,6 +12,7 @@ const STATUS_BY_REJECTION: Readonly<Record<InboxRejectionReason, number>> = {
   DOMAIN_BLOCKED: 403,
   ACTOR_MISMATCH: 400,
   MALFORMED_ACTIVITY: 400,
+  RATE_LIMITED: 429,
 };
 
 /** `POST /users/:handle/inbox` and the shared `POST /inbox` (P8-002). Both funnel into the
@@ -38,23 +39,19 @@ export class InboxController {
   }
 
   private async process(req: RequestWithRawBody, res: ServerResponse): Promise<void> {
-    const rawBody = req.rawBody ?? Buffer.alloc(0);
-    let peerHost: string | undefined;
-    try {
-      const parsed = JSON.parse(rawBody.toString('utf8')) as { actor?: unknown };
-      if (typeof parsed.actor === 'string') peerHost = new URL(parsed.actor).host;
-    } catch {
-      // Falls through to InboxService.handle, which rejects the same malformed body with a
-      // proper `MALFORMED_ACTIVITY` response — rate limiting an unparseable body is skipped
-      // rather than guessed at.
-    }
-    if (peerHost !== undefined && !this.rateLimiter.consume(peerHost)) {
-      this.metrics.increment('inbox_rejected_ratelimit', { domain: peerHost });
+    // The socket address is set by the HTTP transport, unlike forwarded headers and the
+    // activity body. Budget it before parsing JSON so actor-host rotation cannot buy fetches.
+    const transportPeer = req.socket.remoteAddress ?? '<unknown-peer>';
+    if (!this.rateLimiter.consumeTransportPeer(transportPeer)) {
+      // Never label this counter with an unverified address: hostile peers can rotate values
+      // and turn the in-memory metric registry into another high-cardinality attack surface.
+      this.metrics.increment('inbox_rejected_ratelimit');
       res.statusCode = 429;
       res.end('Too many requests.');
       return;
     }
 
+    const rawBody = req.rawBody ?? Buffer.alloc(0);
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
       if (typeof value === 'string') headers[key] = value;

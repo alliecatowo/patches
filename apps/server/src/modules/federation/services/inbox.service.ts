@@ -14,8 +14,10 @@ import {
   parseLocalPostUri,
   stripFragment,
 } from '../activitystreams/uris.js';
-import { verifyRequestSignature } from '../signatures/http-signature.js';
 import { FederationMetricsService } from '../federation-metrics.service.js';
+import { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
+import { verifyDigestHeader } from '../signatures/digest.js';
+import { verifyRequestSignature } from '../signatures/http-signature.js';
 import { DeliveryService } from './delivery.service.js';
 import { DomainBlockService } from './domain-block.service.js';
 import { KeyService } from './key.service.js';
@@ -27,7 +29,7 @@ import { RemoteActorService } from './remote-actor.service.js';
 const AS2_ACTOR_TYPES = new Set(['Person', 'Service', 'Group', 'Organization', 'Application']);
 
 export type InboxRejectionReason =
-  'INVALID_SIGNATURE' | 'DOMAIN_BLOCKED' | 'ACTOR_MISMATCH' | 'MALFORMED_ACTIVITY';
+  'INVALID_SIGNATURE' | 'DOMAIN_BLOCKED' | 'ACTOR_MISMATCH' | 'MALFORMED_ACTIVITY' | 'RATE_LIMITED';
 
 export type InboxResult =
   { accepted: true; duplicate: boolean } | { accepted: false; reason: InboxRejectionReason };
@@ -59,10 +61,17 @@ export class InboxService {
     private readonly notifications: NotificationsService,
     private readonly keys: KeyService,
     private readonly metrics: FederationMetricsService,
+    private readonly rateLimiter: PeerRateLimiterService,
   ) {}
 
   async handle(ctx: InboxRequestContext): Promise<InboxResult> {
     this.metrics.increment('inbox_received');
+    const digestHeader = ctx.headers.digest;
+    if (digestHeader === undefined || !verifyDigestHeader(digestHeader, ctx.rawBody)) {
+      this.metrics.increment('inbox_rejected_signature');
+      return { accepted: false, reason: 'INVALID_SIGNATURE' };
+    }
+
     let activity: Record<string, unknown>;
     try {
       activity = JSON.parse(ctx.rawBody.toString('utf8')) as Record<string, unknown>;
@@ -86,6 +95,18 @@ export class InboxService {
       return { accepted: false, reason: 'INVALID_SIGNATURE' };
     }
     if (activityActor !== sender.canonicalUri) return { accepted: false, reason: 'ACTOR_MISMATCH' };
+
+    let senderOrigin: string;
+    try {
+      senderOrigin = new URL(sender.canonicalUri).origin;
+    } catch {
+      return { accepted: false, reason: 'INVALID_SIGNATURE' };
+    }
+    if (!this.rateLimiter.consumeVerifiedOrigin(senderOrigin)) {
+      // The aggregate counter is useful to operators without adding a per-origin registry key.
+      this.metrics.increment('inbox_rejected_ratelimit');
+      return { accepted: false, reason: 'RATE_LIMITED' };
+    }
 
     const senderDomain = sender.homeServer ?? '';
     const outcome = await this.dataSource.transaction(async (manager) => {

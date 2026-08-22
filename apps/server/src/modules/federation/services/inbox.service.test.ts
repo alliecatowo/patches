@@ -6,9 +6,10 @@ import type { DataSource } from 'typeorm';
 
 import type { AppConfigService } from '../../../config/app-config.service.js';
 import type { NotificationsService } from '../../notifications/notification.service.js';
+import { FederationMetricsService } from '../federation-metrics.service.js';
+import type { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
 import { computeDigestHeader } from '../signatures/digest.js';
 import { signRequest } from '../signatures/http-signature.js';
-import { FederationMetricsService } from '../federation-metrics.service.js';
 import type { DeliveryService } from './delivery.service.js';
 import type { DomainBlockService } from './domain-block.service.js';
 import { InboxService, type InboxRequestContext } from './inbox.service.js';
@@ -118,6 +119,9 @@ describe('InboxService — Update semantics (A-035)', () => {
   let inbox: InboxService;
   let sender: Actor;
   let signer: { keyId: string; privateKeyPem: string };
+  let rateLimiter: PeerRateLimiterService;
+  let getOrFetchByUri: ReturnType<typeof vi.fn>;
+  let consumeVerifiedOrigin: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     postRepo = { findOne: vi.fn(), update: vi.fn().mockResolvedValue({ affected: 1 }) };
@@ -130,9 +134,10 @@ describe('InboxService — Update semantics (A-035)', () => {
     sender = fakeSender(publicKeyPem);
     signer = { keyId: `${sender.canonicalUri}#main-key`, privateKeyPem };
 
+    getOrFetchByUri = vi.fn().mockResolvedValue(sender);
     remoteActors = {
       resolveByAcct: vi.fn(),
-      getOrFetchByUri: vi.fn().mockResolvedValue(sender),
+      getOrFetchByUri,
     } as unknown as RemoteActorService;
 
     const domainBlocks = {
@@ -146,6 +151,11 @@ describe('InboxService — Update semantics (A-035)', () => {
     const keys = { getOrCreateKeyPair: vi.fn() } as unknown as KeyService;
     const config = { publicOrigin: 'http://origin.test' } as AppConfigService;
     metrics = new FederationMetricsService({ federationEnabled: false } as AppConfigService);
+    consumeVerifiedOrigin = vi.fn().mockReturnValue(true);
+    rateLimiter = {
+      consumeTransportPeer: vi.fn().mockReturnValue(true),
+      consumeVerifiedOrigin,
+    } as unknown as PeerRateLimiterService;
 
     const manager = fakeManager(postRepo, inboxActivityRepo);
     const dataSource = {
@@ -161,7 +171,81 @@ describe('InboxService — Update semantics (A-035)', () => {
       notifications,
       keys,
       metrics,
+      rateLimiter,
     );
+  });
+
+  it('rejects when the signed digest does not match the exact received body', async () => {
+    const signedActivity = {
+      id: 'https://remote.test/activities/signed',
+      type: 'Update',
+      actor: sender.canonicalUri,
+      object: { id: 'https://remote.test/notes/1', type: 'Note', content: 'signed' },
+    };
+    const submittedActivity = {
+      ...signedActivity,
+      id: 'https://remote.test/activities/submitted',
+      object: { id: 'https://remote.test/notes/1', type: 'Note', content: 'swapped' },
+    };
+    const ctx = buildContext(signedActivity, signer);
+    ctx.rawBody = Buffer.from(JSON.stringify(submittedActivity));
+
+    await expect(inbox.handle(ctx)).resolves.toEqual({
+      accepted: false,
+      reason: 'INVALID_SIGNATURE',
+    });
+    expect(getOrFetchByUri).not.toHaveBeenCalled();
+    expect(consumeVerifiedOrigin).not.toHaveBeenCalled();
+  });
+
+  it('charges the verified canonical origin only after signature verification', async () => {
+    const activity = {
+      id: 'https://remote.test/activities/origin-budget',
+      type: 'Unknown',
+      actor: sender.canonicalUri,
+    };
+
+    await expect(inbox.handle(buildContext(activity, signer))).resolves.toEqual({
+      accepted: true,
+      duplicate: false,
+    });
+    expect(consumeVerifiedOrigin).toHaveBeenCalledWith('https://remote.test');
+  });
+
+  it('does not charge an actor-spoofed origin as though it were verified', async () => {
+    const spoofedActor = 'https://spoofed.invalid/users/alice';
+    const activity = {
+      id: 'https://spoofed.invalid/activities/spoofed',
+      type: 'Unknown',
+      actor: spoofedActor,
+    };
+
+    await expect(
+      inbox.handle(
+        buildContext(activity, {
+          ...signer,
+          keyId: `${spoofedActor}#main-key`,
+        }),
+      ),
+    ).resolves.toEqual({ accepted: false, reason: 'ACTOR_MISMATCH' });
+    expect(consumeVerifiedOrigin).not.toHaveBeenCalled();
+  });
+
+  it('rejects an exhausted verified-origin budget before dispatch', async () => {
+    consumeVerifiedOrigin.mockReturnValue(false);
+    const activity = {
+      id: 'https://remote.test/activities/rate-limited',
+      type: 'Update',
+      actor: sender.canonicalUri,
+      object: { id: 'https://remote.test/notes/1', type: 'Note', content: 'blocked' },
+    };
+
+    await expect(inbox.handle(buildContext(activity, signer))).resolves.toEqual({
+      accepted: false,
+      reason: 'RATE_LIMITED',
+    });
+    expect(inboxActivityRepo.save).not.toHaveBeenCalled();
+    expect(metrics.snapshot().inbox_rejected_ratelimit).toBe(1);
   });
 
   it('Update(Note) by the post’s own author edits the body and stamps editedAt', async () => {
