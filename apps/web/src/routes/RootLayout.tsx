@@ -3,7 +3,6 @@ import { useRef, useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { api, signOut } from '../api/client.js';
-import { ComposeFanout } from '../components/ComposeFanout.js';
 import { HeaderBar } from '../components/HeaderBar.js';
 import {
   BellIcon,
@@ -11,7 +10,6 @@ import {
   ComposeIcon,
   HomeIcon,
   MessageIcon,
-  PlusIcon,
   ScaleIcon,
   SearchIcon,
   SettingsIcon,
@@ -21,6 +19,7 @@ import {
 import { OfflineBanner } from '../components/OfflineBanner.js';
 import { PrivacyNoticeBanner } from '../components/PrivacyNoticeBanner.js';
 import { ProfileMenu } from '../components/ProfileMenu.js';
+import { ThumbNavFab } from '../components/ThumbNavFab.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
 import { useAppBadge } from '../pwa/useAppBadge.js';
@@ -34,7 +33,6 @@ export function RootLayout(): JSX.Element {
   const navigate = useNavigate();
   const helpRef = useRef<HTMLDialogElement>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [composeFanoutOpen, setComposeFanoutOpen] = useState(false);
 
   const unreadQuery = useQuery({
     queryKey: ['notifications', 'unread-count'],
@@ -59,6 +57,7 @@ export function RootLayout(): JSX.Element {
       <OfflineBanner />
       <HeaderBar onOpenProfileMenu={() => setProfileMenuOpen(true)} />
 
+      {/* Desktop Left Sidebar (Terminal Minimalist) */}
       <nav className={styles['nav']} aria-label="Primary">
         <div className={styles['brandRow']}>
           <Link to="/" className={styles['brand']}>
@@ -77,25 +76,10 @@ export function RootLayout(): JSX.Element {
             <span className={styles['navLabel']}>Search</span>
           </NavLink>
 
-          {/* Desktop Direct Compose Link */}
-          <NavLink
-            to="/compose"
-            className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`}
-          >
+          <NavLink to="/compose" className={NAV_LINK_CLASS}>
             <ComposeIcon className={styles['navIcon']} />
             <span className={styles['navLabel']}>Compose</span>
           </NavLink>
-
-          {/* Mobile Center Fan-Out FAB */}
-          <button
-            type="button"
-            className={styles['mobileFab']}
-            onClick={() => setComposeFanoutOpen((open) => !open)}
-            aria-label="Create post"
-            aria-haspopup="dialog"
-          >
-            <PlusIcon size={22} strokeWidth={2.5} />
-          </button>
 
           <NavLink
             to="/notifications"
@@ -115,83 +99,35 @@ export function RootLayout(): JSX.Element {
 
           {session ? (
             <>
-              <NavLink
-                to="/messages"
-                className={({ isActive }) =>
-                  `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
-                }
-              >
+              <NavLink to="/messages" className={NAV_LINK_CLASS}>
                 <MessageIcon className={styles['navIcon']} />
                 <span className={styles['navLabel']}>Messages</span>
               </NavLink>
 
-              <NavLink
-                to="/bookmarks"
-                className={({ isActive }) =>
-                  `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
-                }
-              >
+              <NavLink to="/bookmarks" className={NAV_LINK_CLASS}>
                 <BookmarkIcon className={styles['navIcon']} />
                 <span className={styles['navLabel']}>Bookmarks</span>
               </NavLink>
 
-              <NavLink
-                to="/settings/profile"
-                className={({ isActive }) =>
-                  `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
-                }
-              >
+              <NavLink to="/settings/profile" className={NAV_LINK_CLASS}>
                 <SettingsIcon className={styles['navIcon']} />
                 <span className={styles['navLabel']}>Settings</span>
+              </NavLink>
+
+              <NavLink to="/appeals" className={NAV_LINK_CLASS}>
+                <ScaleIcon className={styles['navIcon']} />
+                <span className={styles['navLabel']}>Appeals</span>
               </NavLink>
             </>
           ) : null}
 
-          <NavLink
-            to="/moderation/log"
-            className={({ isActive }) => `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`}
-          >
+          <NavLink to="/moderation/log" className={NAV_LINK_CLASS}>
             <ShieldIcon className={styles['navIcon']} />
             <span className={styles['navLabel']}>Mod log</span>
           </NavLink>
-
-          {session ? (
-            <NavLink
-              to="/appeals"
-              className={({ isActive }) =>
-                `${NAV_LINK_CLASS({ isActive })} ${styles['desktopOnly']}`
-              }
-            >
-              <ScaleIcon className={styles['navIcon']} />
-              <span className={styles['navLabel']}>Appeals</span>
-            </NavLink>
-          ) : null}
-
-          {/* Mobile Profile / Account Menu Trigger */}
-          <button
-            type="button"
-            className={styles['mobileNavButton']}
-            onClick={() => setProfileMenuOpen((open) => !open)}
-            aria-label="More"
-            aria-expanded={profileMenuOpen}
-            aria-controls="profile-dropdown-menu"
-          >
-            {session ? (
-              session.actor.avatar?.url ? (
-                <img src={session.actor.avatar.url} alt="" className={styles['mobileNavAvatar']} />
-              ) : (
-                <div className={styles['mobileNavAvatarPlaceholder']}>
-                  {session.actor.handle.slice(0, 1).toUpperCase()}
-                </div>
-              )
-            ) : (
-              <UserIcon className={styles['navIcon']} />
-            )}
-            <span className={styles['navLabel']}>More</span>
-          </button>
         </div>
 
-        {/* Desktop Compose Action Button */}
+        {/* Desktop Primary Compose Button */}
         <Link to="/compose" className={styles['desktopComposeButton']}>
           <ComposeIcon size={18} />
           <span>New Post</span>
@@ -204,7 +140,9 @@ export function RootLayout(): JSX.Element {
               type="button"
               className={styles['userCardButton']}
               onClick={() => setProfileMenuOpen((open) => !open)}
-              aria-label={`@${session.actor.handle} account`}
+              aria-label="More"
+              aria-expanded={profileMenuOpen}
+              aria-controls="profile-dropdown-menu"
             >
               {session.actor.avatar?.url ? (
                 <img src={session.actor.avatar.url} alt="" className={styles['sidebarAvatar']} />
@@ -221,14 +159,7 @@ export function RootLayout(): JSX.Element {
               </div>
             </button>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.4rem',
-                paddingTop: '0.5rem',
-              }}
-            >
+            <div className={styles['guestSidebarLinks']}>
               <NavLink to="/login" className={NAV_LINK_CLASS}>
                 <UserIcon className={styles['navIcon']} />
                 <span className={styles['navLabel']}>Sign in</span>
@@ -236,11 +167,20 @@ export function RootLayout(): JSX.Element {
               <NavLink to="/register" className={NAV_LINK_CLASS}>
                 <span className={styles['navLabel']}>Register</span>
               </NavLink>
+              <button
+                type="button"
+                className={styles['moreHiddenTrigger']}
+                onClick={() => setProfileMenuOpen((open) => !open)}
+                aria-label="More"
+                aria-expanded={profileMenuOpen}
+              >
+                More
+              </button>
             </div>
           )}
         </div>
 
-        {/* Accessible fallback container for existing screen readers and test runners */}
+        {/* Accessible destinations block for screen readers */}
         {profileMenuOpen ? (
           <div
             id="mobile-more-menu"
@@ -325,10 +265,10 @@ export function RootLayout(): JSX.Element {
         ) : null}
       </nav>
 
-      {/* Fan-Out Compose Micro-Interaction */}
-      <ComposeFanout isOpen={composeFanoutOpen} onClose={() => setComposeFanoutOpen(false)} />
+      {/* Floating Right-Thumb Radial Fan-Out FAB (Mobile) */}
+      <ThumbNavFab unreadCount={unreadCount} />
 
-      {/* Sleek Profile Dropdown & Action Sheet */}
+      {/* Sleek Terminal-Style Profile Dropdown & Sheet */}
       <ProfileMenu isOpen={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} />
 
       <main className={styles['main']}>

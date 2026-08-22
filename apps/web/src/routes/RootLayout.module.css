@@ -197,6 +197,17 @@
   font-family: var(--font-mono);
 }
 
+.guestSidebarLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+}
+
+.moreHiddenTrigger {
+  display: none;
+}
+
 .main {
   grid-area: main;
   min-width: 0;
@@ -256,141 +267,24 @@
   font-size: 0.8rem;
 }
 
-.mobileFab {
-  display: none;
-}
-
 .moreMenuFallback {
   display: none;
 }
 
-/* Mobile Minimalist Ergonomics */
+/* Mobile Terminal Layout - No bulky bottom bar, pure screen focus */
 @media (max-width: 720px) {
   .shell {
     display: block;
     min-height: 100%;
-    padding-bottom: calc(56px + var(--sab));
+    padding-bottom: 0;
   }
 
   .nav {
-    position: fixed;
-    inset: auto 0 0;
-    z-index: 40;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-around;
-    gap: 0;
-    padding: 0.25rem 0.5rem calc(0.25rem + var(--sab));
-    border-top: 1px solid var(--border);
-    border-right: 0;
-    background: var(--bg);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    height: calc(56px + var(--sab));
-  }
-
-  .brandRow,
-  .desktopOnly,
-  .bottomNavArea,
-  .desktopComposeButton {
     display: none;
-  }
-
-  .navGroup {
-    display: contents;
-  }
-
-  .navLink,
-  .mobileNavButton {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-    min-width: 48px;
-    padding: 0;
-    border-radius: var(--radius-full);
-    color: var(--fg-muted);
-    background: none;
-    border: none;
-    cursor: pointer;
-    transition:
-      color 0.15s ease,
-      transform 0.15s ease,
-      background-color 0.15s ease;
-  }
-
-  .navLink:hover,
-  .mobileNavButton:hover {
-    color: var(--fg);
-    background: var(--bg-raised);
-  }
-
-  .navLink.active {
-    background: none;
-    color: var(--accent);
-  }
-
-  .navLabel {
-    display: none;
-  }
-
-  .mobileFab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    border-radius: var(--radius-full);
-    background: var(--accent);
-    color: var(--accent-fg);
-    border: none;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition:
-      transform 0.15s ease,
-      opacity 0.15s ease;
-  }
-
-  .mobileFab:active {
-    transform: scale(0.92);
-  }
-
-  .mobileNavAvatar {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-full);
-    object-fit: cover;
-    border: 1.5px solid var(--border);
-  }
-
-  .mobileNavAvatarPlaceholder {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-full);
-    background: var(--accent);
-    color: var(--accent-fg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .unreadBadge {
-    position: absolute;
-    top: -4px;
-    right: -6px;
-    min-width: 1rem;
-    min-height: 1rem;
-    font-size: 0.62rem;
-    padding: 0 0.25rem;
   }
 
   .main {
-    min-height: calc(100vh - 52px - 56px - var(--sab));
+    min-height: calc(100vh - 52px);
     border: 0;
   }
 

@@ -1,0 +1,170 @@
+.fabContainer {
+  position: fixed;
+  bottom: max(1.5rem, calc(1rem + var(--sab)));
+  right: 1.25rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.fabBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 45;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.radialMenu {
+  position: absolute;
+  bottom: 64px;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+  pointer-events: auto;
+}
+
+.radialItem {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transform-origin: bottom right;
+  animation: popItem 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.radialLabel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+.radialIconBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+  position: relative;
+  transition:
+    transform 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.radialItem:hover .radialIconBtn {
+  transform: scale(1.08);
+  background: var(--bg-card);
+  border-color: var(--border-hover);
+  color: var(--accent);
+}
+
+.radialItem:active .radialIconBtn {
+  transform: scale(0.94);
+}
+
+.radialPostItem .radialIconBtn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.radialPostItem .radialLabel {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 1rem;
+  min-height: 1rem;
+  padding: 0 0.25rem;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mainFab {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  z-index: 50;
+  position: relative;
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.15s ease;
+}
+
+.mainFab:active {
+  transform: scale(0.92);
+}
+
+.mainFab.open {
+  transform: rotate(45deg);
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+@keyframes popItem {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Hide FAB on desktop where sidebar handles full navigation */
+@media (min-width: 721px) {
+  .fabContainer {
+    display: none;
+  }
+}
