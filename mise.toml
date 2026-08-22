@@ -7,6 +7,7 @@ actionlint = "1.7.12"
 lefthook = "2.1.10"
 vhs = "latest"
 ttyd = "latest"
+"npm:neon" = "3.6.0"
 # Powers Claude Code's `LSP` tool (go-to-definition / find-references / workspace symbols) via the
 # typescript-lsp plugin, which spawns `typescript-language-server --stdio` off $PATH.
 # See docs/agents/HARNESS.md "Symbolic search".
@@ -226,3 +227,31 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/db-dump.sh"
 [tasks."db:restore"]
 description = "Restore a dump produced by `mise run db:dump` into a target database: `mise run db:restore -- <dump.sql.gz> <target DATABASE_URL> [--yes] [--i-know-this-is-production]` — see docs/operations/backups.md (A-042)"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/db-restore.sh \"$@\""
+
+[tasks."neon:dev:create"]
+description = "Create an expiring Neon child of the configured anonymized dev mirror (never defaults to production)"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh create \"$@\""
+
+[tasks."neon:dev:status"]
+description = "Print JSON status for the current ephemeral Neon dev branch"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh status \"$@\""
+
+[tasks."neon:dev:connect"]
+description = "Connect psql to the current ephemeral Neon dev branch without printing its connection string"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh connect \"$@\""
+
+[tasks."neon:dev:migrate"]
+description = "Apply Patches migrations to the current ephemeral Neon dev branch"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh migrate \"$@\""
+
+[tasks."neon:dev:test"]
+description = "Run the integration suite against the current ephemeral Neon dev branch"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh test \"$@\""
+
+[tasks."neon:dev:reset"]
+description = "Destructively reset the current ephemeral Neon dev branch to its anonymized mirror parent"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\""
+
+[tasks."neon:dev:destroy"]
+description = "Permanently delete the current ephemeral Neon dev branch"
+run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
