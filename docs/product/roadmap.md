@@ -5,7 +5,7 @@ Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amend
 checklists in one place so status can be tracked without re-reading the full spec. Update the
 status line at the top of each phase as work lands — don't let this drift into fiction.
 
-**As of 2026-08-18: Phases 0–8 are implemented on the integration branch (see `tasks.md`); Phase 7 is implemented and deployed — the flagship node `patches-social.fly.dev` is live and verified end to end. Media/email credentials (R2, Resend) are still pending — see `tasks.md` B-031.**
+**As of 2026-08-22: Phases 0–8 are implemented (see `tasks.md`); Phase 7 is deployed and the flagship node `patches-social.fly.dev` is live. R2 media storage and Resend email are configured. The repository is ahead of the live web build and its next gated deployment remains B-063.**
 
 **As of this revision:** board Phase 11 — social depth (Amendment B, spec §178–§195: reposts
 and quotes, tags, communities, DMs, flair/pins, quiet feed, edit history) — is **implemented**
@@ -162,17 +162,17 @@ depends on it. Phase 1's browserless paths (password, SSH) remain the primary on
 
 ## Phase 7 — deploy public v0
 
-**Status: implemented and deployed (patches-social.fly.dev); media/email credentials pending**
+**Status: implemented and deployed (patches-social.fly.dev); next revision pending B-063**
 
 Deployed: Fly server + worker (`patches-social`), Neon Postgres (the stopped original Fly
 Postgres cluster is retained only as a fallback — see `docs/operations/deployment.md`),
 secrets, TLS via Fly, structured logs, migrations on
 release. Verified end to end with two real accounts (register, login, post, follow, like,
-reply, thread, notifications, home feed) and a passing smoke `patches ping`. Not yet live:
-R2 media credentials and a verified Resend sending domain (both dashboard-only to provision —
-`tasks.md` B-031), a production domain (`patches.social`, currently `patches-social.fly.dev`
-only). The deploy workflow is configured and production-gated, but its first automated run
-is still pending.
+reply, thread, notifications, home feed) and a passing smoke `patches ping`; R2 media storage
+and the verified Resend sender are also configured. Not yet live: a production domain
+(`patches.social`, currently `patches-social.fly.dev` only) and the repository's newer
+auth/profile/security revision. The deploy workflow is configured and production-gated, but
+its first automated run is still pending.
 
 **Success criteria:** a user on another computer can run `npm install -g patches`, `patches`,
 and use the real network. **Partially met**: a user on another computer can build from a
@@ -216,11 +216,11 @@ are _board_ phases — owner-requested work streams that continued the task-boar
 
 ### Board Phase 9 — site, media, packaging
 
-**Status: done except credentials.** The VitePress site is live
+**Status: implemented.** The VitePress site is live
 (`https://patches-site.pages.dev`), TUI screenshots/GIFs are recorded and embedded, and the
-TUI is packaged and install-verified from a tarball as `patches-social`. Outstanding: P9-004
-— a real Resend sending domain and real R2 credentials. That work is operational, not site
-work, and is **not** covered by the pause below.
+TUI is packaged and install-verified from a tarball as `patches-social`; P9-004's Resend sender
+and R2 credentials are configured. Publishing the package to npm remains an owner operation,
+tracked separately from the site/media phase.
 
 ### Board Phase 10 — web + React Native clients
 
@@ -272,9 +272,15 @@ visual-system work that Amendment B's features render through).
 
 ### Board Phase 13 — production E2EE direct messages
 
-**Status: schema only, not a reachable capability** (ADR 0020). Every E2EE table exists and is
-privacy-tested (`packages/database/src/entities/e2ee-privacy.test.ts`), but `E2EE_V1` is not
-enabled and every conversation created today is `LEGACY_SERVER_VISIBLE` — see
+**Status: implemented protocol behind an unclosed external-review gate; not a production
+capability** (ADRs 0020, 0025, and 0027). The default injected approval policy remains
+fail-closed because no franking profile has passed independent external review. An operator may
+explicitly set `E2EE_UNREVIEWED_DEV_MODE=true` only on an owner-authorized disposable test node
+with no real users; `NODE_ENV` is a runtime setting rather than a deployment trust
+classification. That permits exactly `patches-franking-v1`, reports an isolated-test capability
+rather than an enabled/reviewed state, and requires the persistent client warning **“Unreviewed
+development E2EE — for testing only; do not use for sensitive conversations.”** Ordinary
+conversations remain `LEGACY_SERVER_VISIBLE` — see
 [`docs/architecture/e2ee.md`](../architecture/e2ee.md) and
 [`docs/architecture/data-model.md`](../architecture/data-model.md)'s "Phase 13" section for the
 full detail; owned by a separate work stream from this document's Amendment B/C sync.

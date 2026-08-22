@@ -79,21 +79,16 @@ Sessions are stored **per node**: `patches accounts` lists every (node, account)
 stored session on this machine, and a token is never sent to a node other than the one that
 issued it.
 
-## What doesn't work yet on the live node
+## Live-node status and caveats
 
 Verified against `patches-social.fly.dev` on 2026-08-18: register, login, `whoami`, posting,
 search, follow, like, reply, thread view, notifications, and home feed all work end to end.
-Three things don't yet, because they depend on credentials that are dashboard-only to
-provision and haven't been fetched into this environment (tracked as `B-031`):
-
-- **Image uploads.** The R2 bucket (`patches-media`) exists, but the node has no R2 S3 access
-  keys configured, so `Ctrl+A`-attach in compose will fail server-side.
-- **Verification email.** The node runs with `EMAIL_PROVIDER=console` (no Resend sending
-  domain verified yet), so verification codes are written to the server's logs
-  (`flyctl logs`), not delivered to your inbox. If your account needs email verification,
-  ask a node administrator to read the code from the logs for you in the meantime.
-- **Federation.** Disabled by design for v0 (`FEDERATION_ENABLED=false`) — this node only
-  talks to itself.
+R2 image storage and the verified Resend sender were configured after that original smoke.
+No new end-to-end live smoke was run for this documentation update. Federation remains
+disabled by design for v0 (`FEDERATION_ENABLED=false`), so this node talks only to itself.
+The hosted web footer still reports the stale `0.1.0+29df763` revision; repository fixes for
+web sign-in BigInt serialization and profile diagnostics are not live until B-063 deploys and
+smoke-tests them.
 
 ## Creating an account and signing in
 
@@ -124,13 +119,11 @@ patches login --ssh --server <host:port>
   non-interactively); `patches keys list` lists your credentials (never a secret);
   `patches keys remove <fingerprint>` revokes one — the server refuses to revoke your last
   remaining credential, so you can never lock yourself out.
-- **Email verification**: the server has `VerifyEmail`/`ResendVerification` RPCs, but the
-  client-side `patches verify <code> [--resend]` command is being added and is not in this
-  build yet (**Status: planned**, tracked as `A-028`) — if your node requires email
-  verification, there is currently no client path to redeem a verification code.
-- **Editing your profile** (display name, bio, location, website): also being added
-  (`patches profile edit`, **Status: planned**, tracked as `A-027`) — today, display name and
-  bio can only be set once, at `patches register` time.
+- **Email verification**: use `patches verify <code>` to redeem a delivered code or
+  `patches verify --resend` while authenticated. The accounts screen also offers `r` to resend
+  while the current email remains unverified.
+- **Editing your profile**: use `patches profile edit` for the headless path, or press `e` on
+  your own profile in the TUI to edit display name, bio, location, website, and nameplate.
 
 ## Using the TUI
 
@@ -259,6 +252,13 @@ the compose field instead of silently vanishing, so you can just try again. The 
 plain-language retention note ("This node automatically deletes messages older than N days") for
 when a node exposes its message retention policy — _Status: planned_, the shell doesn't fetch and
 pass that policy through yet, so nothing shows there today.
+
+The separately gated E2EE protocol is not a reviewed capability. An owner-authorized disposable
+node may explicitly advertise ADR 0027's isolated-test mode, regardless of its runtime
+`NODE_ENV`; any client surface that lets you create or read one of those conversations must
+persistently show **“Unreviewed development E2EE — for testing only; do not use for sensitive
+conversations.”** Treat its data as disposable. That warning is not an external-review or
+security claim, and it does not replace the conversation's routing-metadata disclosure.
 
 ### Blocking, muting, and reporting
 
