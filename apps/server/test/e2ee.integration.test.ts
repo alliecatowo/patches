@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { generateSigningKeyPair, sha256Hash, sign } from '@patches/crypto';
+import {
+  Conversation as ConversationEntity,
+  ConversationMember as ConversationMemberEntity,
+} from '@patches/database';
 import { canonicalFanoutTranscript, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 import { createTestUser } from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +19,7 @@ import {
 } from '../src/modules/e2ee/e2ee.codec.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
+import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
 
@@ -29,6 +34,9 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   knownEras: () => [TEST_FRANKING_ERA],
   currentEra: () => TEST_FRANKING_ERA,
 };
+
+/** ADR 0027 test seam: this does not change the frozen production approval list. */
+const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy(true);
 
 interface TestEnvelope {
   recipientActorId: string;
@@ -284,7 +292,11 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       identityRoots = new E2eeIdentityRootService(dataSource);
       deviceRosters = new E2eeDeviceRosterService(dataSource);
       prekeys = new E2eePrekeyService(dataSource);
-      conversations = new E2eeConversationService(dataSource, testFrankingKeyRing);
+      conversations = new E2eeConversationService(
+        dataSource,
+        testFrankingKeyRing,
+        unreviewedTestPolicy,
+      );
     }, 60_000);
 
     afterAll(async () => {
@@ -566,6 +578,51 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     describe('SendEnvelopes/CreateE2eeConversation fanout (ADR 0020 §7, P13-007)', () => {
+      it('keeps the default runtime policy fail-closed before persisting an E2EE conversation', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice } = await enrollFirstDevice(sender, 0);
+        const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        const defaultPolicyConversations = new E2eeConversationService(
+          dataSource,
+          testFrankingKeyRing,
+          new E2eeRuntimeApprovalPolicy(false),
+        );
+        const conversationCountBefore = await dataSource
+          .getRepository(ConversationEntity)
+          .countBy({ createdByActorId: sender.actorId });
+        const membershipCountBefore = await dataSource
+          .getRepository(ConversationMemberEntity)
+          .countBy({ actorId: sender.actorId });
+
+        await expect(
+          defaultPolicyConversations.createE2eeConversation(sender.actorId, {
+            clientRequestId: randomUUID(),
+            recipientActorIds: [recipient.actorId],
+            senderDeviceId: senderDevice.deviceId,
+            message: buildLogicalMessage([
+              buildEnvelope(recipient.actorId, recipientDevice.deviceId),
+            ]),
+          }),
+        ).rejects.toThrow('independent review');
+
+        await expect(
+          dataSource
+            .getRepository(ConversationEntity)
+            .countBy({ createdByActorId: sender.actorId }),
+        ).resolves.toBe(conversationCountBefore);
+        await expect(
+          dataSource.getRepository(ConversationMemberEntity).countBy({ actorId: sender.actorId }),
+        ).resolves.toBe(membershipCountBefore);
+
+        const mailbox = await conversations.listMailboxEnvelopes(recipient.actorId, {
+          deviceId: recipientDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(mailbox.envelopes).toHaveLength(0);
+      });
+
       it('creates an E2EE conversation, delivering to the recipient device but never to the sender’s own sending device', async () => {
         const sender = await newActor();
         const recipient = await newActor();

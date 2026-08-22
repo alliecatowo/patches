@@ -899,8 +899,9 @@ transaction**.
 | `created_at`      | `timestamptz` | no       |                                                                |
 | `completed_at`    | `timestamptz` | yes      |                                                                |
 
-**Constraints**: `CHECK (attempts >= 0 AND max_attempts >= 1)`. `UNIQUE (idempotency_key)`
-(nullable-safe unique).
+**Constraints**: `CHECK (attempts >= 0 AND max_attempts >= 1)`. Auth-email payloads may not
+contain top-level `code`, `email`, or `userId` fields; those jobs use the authenticated
+envelope documented in `jobs.md`. `UNIQUE (idempotency_key)` (nullable-safe unique).
 
 **Indexes** (§60): `outbox_jobs(status, available_at, id)`.
 
@@ -1289,10 +1290,13 @@ Max 1 KiB serialized (§188) — enforced in the service layer.
 
 ## Phase 13: E2EE direct-message tables (ADR 0020)
 
-**Status: implemented (schema only).** These tables exist and are exercised by
-`packages/database`'s integration tests, but `E2EE_V1` is not a reachable product capability —
-per ADR 0020 §11 this is migration stage 3 ("node protocol behind a disabled capability"), and
-every conversation still created today is `LEGACY_SERVER_VISIBLE` (§1.1, enforced by a
+**Status: implemented protocol schema; production capability disabled.** These tables exist and
+are exercised by integration tests. The default injected runtime policy remains fail-closed
+because the externally reviewed franking-profile list is empty. ADR 0027 permits exactly
+`patches-franking-v1` only behind explicit `E2EE_UNREVIEWED_DEV_MODE=true` on owner-authorized,
+disposable test infrastructure with no real users; `NODE_ENV` is a runtime setting, not this
+deployment-trust boundary. This does not satisfy the external-review gate. Ordinary conversations remain
+`LEGACY_SERVER_VISIBLE` (§1.1, enforced by a
 `BEFORE UPDATE` trigger on `conversations.security_mode` that rejects any change). No plaintext
 body, private/session key, message key, or ratchet state is ever persisted here — see
 `packages/database/src/entities/e2ee-privacy.test.ts`, which asserts that by inspecting every

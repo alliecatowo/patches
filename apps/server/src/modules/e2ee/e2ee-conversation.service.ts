@@ -40,6 +40,10 @@ import {
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
+import {
+  E2EE_RUNTIME_APPROVAL_POLICY,
+  type E2eeRuntimeApprovalPolicy,
+} from './e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
 import { loadCurrentRosterRow } from './roster-chain.js';
 
@@ -61,6 +65,8 @@ export class E2eeConversationService {
     // `NodeFrankingKeyRing` is an interface, so a bare, undecorated parameter would make Nest
     // try to resolve it as a provider token and fail to boot.
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
+    @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
+    private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
   ) {
     this.#keys = keys;
   }
@@ -102,6 +108,7 @@ export class E2eeConversationService {
           clientRequestId: request.clientRequestId,
           message: request.message,
           keys: this.#keys,
+          approvalPolicy: this.approvalPolicy,
         });
         return this.#toCreateResponse(existing.conversationId, accepted);
       });
@@ -146,6 +153,7 @@ export class E2eeConversationService {
         clientRequestId: request.clientRequestId,
         message: request.message,
         keys: this.#keys,
+        approvalPolicy: this.approvalPolicy,
       });
 
       return this.#toCreateResponse(conversation.id, accepted);
@@ -255,6 +263,7 @@ export class E2eeConversationService {
         clientRequestId: request.clientRequestId,
         message: request.message,
         keys: this.#keys,
+        approvalPolicy: this.approvalPolicy,
       });
 
       return {

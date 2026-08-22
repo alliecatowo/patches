@@ -11,7 +11,6 @@ import {
   assertCiphertextDigestsMatchCiphertexts,
   assertFanoutCovers,
   assertFanoutDigest,
-  assertFrankingProfileApproved,
   assertGroupFanoutBounds,
   assertMembershipEpochCurrent,
   E2eeContractError,
@@ -35,6 +34,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { e2eeDigest } from './e2ee-crypto.adapter.js';
 import { toBytes } from './e2ee.codec.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
+import { type E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 
 /**
  * `SendEnvelopes`/`CreateE2eeConversation`'s shared fanout-accept core (ADR 0020 §7, §14.14.5,
@@ -107,6 +107,7 @@ export interface AcceptLogicalMessageInput {
   readonly clientRequestId: string;
   readonly message: E2eeLogicalMessageProto | undefined;
   readonly keys: NodeFrankingKeyRing;
+  readonly approvalPolicy: E2eeRuntimeApprovalPolicy;
 }
 
 function toDeviceEnvelopeView(proto: {
@@ -277,7 +278,7 @@ export async function acceptE2eeLogicalMessage(
   // at the shared accept core before dedup lookup or any database write so create, send, and
   // replay all remain closed even if a node operator configures signing keys prematurely.
   try {
-    assertFrankingProfileApproved(input.message.frankingProfile);
+    input.approvalPolicy.assertProfileApproved(input.message.frankingProfile);
   } catch (error) {
     wrapFanoutError(error);
   }

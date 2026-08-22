@@ -9,6 +9,7 @@ export default defineProject({
     name: 'server',
     environment: 'node',
     globals: false,
+    setupFiles: ['./test/support/unit-env.ts'],
     include: ['src/**/*.test.ts'],
   },
 });

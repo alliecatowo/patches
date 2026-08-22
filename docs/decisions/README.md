@@ -47,6 +47,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0024](./0024-franking-construction-review.md)                   | Franking construction review (P13-016): rejected, do not enable                                   | Accepted |
 | [0025](./0025-franking-commitment-binding.md)                    | Franking: context-bound commitment, envelope AD binding, unskippable recipient verification       | Accepted |
 | [0026](./0026-auth-code-delivery-envelopes.md)                   | Auth-code delivery uses authenticated, terminally scrubbed outbox envelopes                       | Accepted |
+| [0027](./0027-unreviewed-e2ee-development-mode.md)               | Unreviewed E2EE requires explicit owner authorization on a disposable node                        | Accepted |
 
 ## Template
 

@@ -2,7 +2,6 @@ import { type Metadata } from '@grpc/grpc-js';
 import { Controller, UseGuards } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import {
-  E2eeCapabilityState,
   E2eeServiceControllerMethods,
   type AcknowledgeEnvelopesRequest,
   type AcknowledgeEnvelopesResponse,
@@ -46,6 +45,7 @@ import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
+import { E2eeCapabilityService } from './e2ee-capability.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
 import { E2eePrekeyService } from './prekey.service.js';
@@ -62,13 +62,8 @@ function requireSession(session: AccessTokenClaims | undefined): AccessTokenClai
  * account-root/certified-device lifecycle, prekeys, conversation/envelope fanout, and report
  * evidence are all implemented — every RPC in the schema now has a node behind it.
  *
- * `GetE2eeCapability` always reports `E2EE_CAPABILITY_STATE_DISABLED`: enabling `E2EE_V1` is
- * gated on ADR 0020 §12's ship gates (including P13-014's independent-review gate) and must stay
- * off regardless of which RPCs this node implements. Nothing below enables or advertises the
- * capability — `SendEnvelopes`/`CreateE2eeConversation` still fail closed the moment they try to
- * sign an acceptance receipt, because `assertFrankingProfileApproved` (`@patches/domain`) throws
- * for every profile and `EnvNodeFrankingKeyRing.currentEra()` returns `undefined` on every node
- * that has not set `E2EE_NODE_FRANKING_KEYS` — which is every node today.
+ * `E2eeCapabilityService` makes the ADR 0027 rollout decision from the same policy the fanout
+ * accepts with; the controller only maps the gRPC call to that application service.
  */
 @Controller()
 @UseGuards(AuthGuard)
@@ -80,27 +75,13 @@ export class E2eeController implements E2eeServiceController {
     private readonly prekeys: E2eePrekeyService,
     private readonly conversations: E2eeConversationService,
     private readonly reportEvidence: E2eeReportEvidenceService,
+    private readonly capability: E2eeCapabilityService,
   ) {}
 
   getE2EeCapability(
     @Payload() _request: GetE2eeCapabilityRequest,
   ): Promise<GetE2eeCapabilityResponse> {
-    return Promise.resolve({
-      capability: {
-        state: E2eeCapabilityState.E2EE_CAPABILITY_STATE_DISABLED,
-        supportedProtocolVersions: [],
-        maxActiveDevicesPerActor: 0,
-        maxGroupMembers: 0,
-        oneTimePrekeyTarget: 0,
-        oneTimePrekeyReplenishThreshold: 0,
-        signedPrekeyRotationSeconds: 0,
-        mailboxMaxLatencySeconds: 0,
-        maxEnvelopeBytes: 0,
-        maxReportContextMessages: 0,
-        frankingProfile: '',
-        postQuantum: false,
-      },
-    });
+    return Promise.resolve(this.capability.getCapability());
   }
 
   async publishIdentityRoot(

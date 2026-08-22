@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { type EntityManager } from 'typeorm';
 
 import { acceptE2eeLogicalMessage } from './e2ee-fanout.js';
+import { E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 
 describe('acceptE2eeLogicalMessage franking review gate', () => {
   it('rejects every create/send/replay accept before database access while no profile is approved', async () => {
@@ -26,6 +27,7 @@ describe('acceptE2eeLogicalMessage franking review gate', () => {
         keyForEra: () => Buffer.alloc(32),
         knownEras: () => [1],
       },
+      approvalPolicy: new E2eeRuntimeApprovalPolicy(false),
     });
 
     await expect(result).rejects.toMatchObject({
