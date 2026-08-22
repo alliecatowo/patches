@@ -2,11 +2,12 @@
 #
 # Wired up for real (P7-002): triggers via `workflow_run` after the `CI` workflow
 # completes successfully on `main` (the standard way to gate on another workflow's result,
-# since a separate workflow file can't use `needs:` across workflows), plus a manual
-# `workflow_dispatch` escape hatch. Every actual deploy/smoke step stays guarded behind
-# `vars.FLY_DEPLOY_ENABLED == 'true'`, a repo/environment variable that stays unset until a
-# real Fly app + `FLY_API_TOKEN` exist — so this workflow runs (and reports green) on every
-# `main` build starting now, but is a safe no-op until someone flips that variable on. This
+# since a separate workflow file can't use `needs:` across workflows). Every actual
+# deploy/smoke step stays guarded behind
+# both `vars.FLY_DEPLOY_ENABLED` and `vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE`,
+# production-environment variables that default closed until the app is configured and the
+# one-time quiesced auth-envelope migration has completed. The workflow is therefore a safe
+# no-op until operators explicitly enable routine deployment. This
 # has never been exercised against a real Fly org from this environment (no Fly account
 # available here) — do not treat a green run of this workflow as proof the deploy path
 # works until FLY_DEPLOY_ENABLED is on and a real deploy has happened at least once.
@@ -18,23 +19,19 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: deploy (Fly.io)
-    # workflow_dispatch always runs; workflow_run only proceeds if CI actually succeeded
-    # (a failed/cancelled CI run on main must never trigger a deploy).
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+    # A failed or cancelled CI run on main must never trigger a deploy.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -42,21 +39,21 @@ jobs:
       # the time this job starts.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: ./.github/actions/setup
 
       - name: Set up flyctl
-        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
       # `--remote-only` builds on Fly's remote builder (infra/docker/Dockerfile via
       # infra/fly/fly.toml's [build] block) — no local Docker/Podman daemon needed on the
       # runner. `release_command` (packages/database migrations, see fly.toml) runs as
       # part of this same `flyctl deploy` before new Machines take traffic.
       - name: Deploy to Fly.io
-        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
-        run: flyctl deploy --config infra/fly/fly.toml --remote-only
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}
+        run: flyctl deploy --config infra/fly/fly.toml --remote-only --build-arg PATCHES_BUILD_SHA="${{ github.event.workflow_run.head_sha }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -66,9 +63,9 @@ jobs:
       # docs/operations/deployment.md for why. `vars.FLY_GRPC_HOST` is the complete production
       # gRPC endpoint, including its port (e.g. `grpc.patches.social:443`).
       - name: Build TUI (for the smoke-test ping subcommand)
-        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}
         run: pnpm --filter @patches/tui build
 
       - name: Smoke test (ping the deployed server over TLS)
-        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' }}
+        if: ${{ vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true' }}
         run: node apps/tui/dist/cli.js ping --server "${{ vars.FLY_GRPC_HOST }}"

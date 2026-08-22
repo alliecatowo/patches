@@ -8,27 +8,24 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: web-${{ github.ref }}
+  group: web-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: build + deploy (Cloudflare Pages)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: ./.github/actions/setup
 
@@ -36,6 +33,7 @@ jobs:
         run: pnpm --filter @patches/web build
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
 
       - name: Deploy to Cloudflare Pages
         if: ${{ vars.WEB_DEPLOY_ENABLED == 'true' }}
