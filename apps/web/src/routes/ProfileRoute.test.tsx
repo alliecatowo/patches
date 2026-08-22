@@ -8,11 +8,12 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetActorByHandle = vi.fn();
+const mockGetPage = vi.fn();
 
 vi.mock('../api/client.js', () => ({
   api: {
     actors: { getActorByHandle: mockGetActorByHandle },
-    pages: { getPage: vi.fn() },
+    pages: { getPage: mockGetPage },
   } as unknown as PatchesApi,
 }));
 
@@ -23,13 +24,13 @@ vi.mock('../components/PostTimeline.js', () => ({ PostTimeline: () => null }));
 
 const { ProfileRoute } = await import('./ProfileRoute.js');
 
-function renderProfile(): ReturnType<typeof render> {
+function renderProfile(initialEntry = '/@allie'): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/profile/allie']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/profile/:handle" element={<ProfileRoute />} />
+          <Route path="/:handle" element={<ProfileRoute />} />
           <Route path="/login" element={<p>Login route</p>} />
         </Routes>
       </MemoryRouter>
@@ -39,7 +40,10 @@ function renderProfile(): ReturnType<typeof render> {
 }
 
 describe('ProfileRoute', () => {
-  afterEach(() => mockGetActorByHandle.mockReset());
+  afterEach(() => {
+    mockGetActorByHandle.mockReset();
+    mockGetPage.mockReset();
+  });
 
   it('renders a profile returned by the node', async () => {
     mockGetActorByHandle.mockResolvedValue({
@@ -87,4 +91,15 @@ describe('ProfileRoute', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Can't reach the Patches server");
     expect(screen.queryByText(/account doesn.t exist/i)).not.toBeInTheDocument();
   });
+
+  it.each(['/allie', '/@', '/@@allie'])(
+    'renders not found without an RPC for invalid profile path %s',
+    (path) => {
+      renderProfile(path);
+
+      expect(screen.getByRole('heading', { name: 'Not found' })).toBeInTheDocument();
+      expect(mockGetActorByHandle).not.toHaveBeenCalled();
+      expect(mockGetPage).not.toHaveBeenCalled();
+    },
+  );
 });

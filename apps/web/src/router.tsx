@@ -41,7 +41,7 @@ export const router = createBrowserRouter([
         lazy: () => import('./routes/ThreadRoute.js').then((m) => ({ Component: m.ThreadRoute })),
       },
       {
-        path: '@:handle',
+        path: ':handle',
         lazy: () => import('./routes/ProfileRoute.js').then((m) => ({ Component: m.ProfileRoute })),
       },
       {

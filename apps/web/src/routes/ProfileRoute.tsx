@@ -12,6 +12,7 @@ import { PageBlocks } from '../components/PageBlocks.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
 import { decodePageDocument } from '../lib/page.js';
+import { NotFoundRoute } from './NotFoundRoute.js';
 import styles from './ProfileRoute.module.css';
 
 type Tab = 'posts' | 'wall';
@@ -20,19 +21,24 @@ type Tab = 'posts' | 'wall';
 export function ProfileRoute(): JSX.Element {
   const { handle } = useParams<{ handle: string }>();
   const [tab, setTab] = useState<Tab>('posts');
+  const profileHandle =
+    handle !== undefined && handle.startsWith('@') && handle.length > 1 && handle[1] !== '@'
+      ? handle.slice(1)
+      : undefined;
 
   const actorQuery = useQuery({
-    queryKey: ['actor', 'by-handle', handle],
-    queryFn: () => api.actors.getActorByHandle({ handle: handle ?? '' }),
-    enabled: !!handle,
+    queryKey: ['actor', 'by-handle', profileHandle],
+    queryFn: () => api.actors.getActorByHandle({ handle: profileHandle ?? '' }),
+    enabled: profileHandle !== undefined,
   });
 
   const pageQuery = useQuery({
-    queryKey: ['page', handle],
-    queryFn: () => api.pages.getPage({ handle: handle ?? '', slug: '' }),
-    enabled: tab === 'wall' && !!handle,
+    queryKey: ['page', profileHandle],
+    queryFn: () => api.pages.getPage({ handle: profileHandle ?? '', slug: '' }),
+    enabled: tab === 'wall' && profileHandle !== undefined,
   });
 
+  if (profileHandle === undefined) return <NotFoundRoute />;
   if (actorQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
   if (actorQuery.isError) {
     const error = ConnectError.from(actorQuery.error);
