@@ -119,6 +119,17 @@ describe('NodeService.getNodeInfo (owner decision 2026-08-19, PUBLIC_READ)', () 
     expect(closed.getNodeInfo().publicRead).toBe(false);
   });
 
+  it('publishes indefinite DM retention until a deletion sweep exists', async () => {
+    const service = new NodeService(
+      fakeConfig({ DM_RETENTION_DAYS: 30 }),
+      FIXED_VERSION,
+      fakeDataSource([]),
+    );
+
+    expect(service.getNodeInfo().socialCapabilities?.dmRetentionDays).toBe(0);
+    expect((await service.getNodePolicy()).policy?.retention?.dmRetentionDays).toBe(0);
+  });
+
   it('publishes the A-054 Amendment C size limits, matching the constants that enforce them', () => {
     const service = new NodeService(fakeConfig(), FIXED_VERSION, fakeDataSource([]));
     const limits = service.getNodeInfo().limits;

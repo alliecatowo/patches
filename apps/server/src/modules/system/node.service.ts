@@ -45,6 +45,11 @@ import { SERVER_VERSION } from './server-version.provider.js';
  * this is the value, not a placeholder. */
 const ALT_TEXT_MAX_LENGTH = 1000;
 
+/** No server-visible DM deletion sweep exists yet. Publishing any nonzero value would promise
+ * retention behavior the node cannot enforce; keep this defensive constant even though env
+ * validation currently rejects nonzero `DM_RETENTION_DAYS` too. */
+const SERVER_VISIBLE_DM_RETENTION_DAYS = 0;
+
 /**
  * Capability flags this node grants (spec §174) — deliberately empty: v0 has no capability
  * gating to advertise yet (no Pages, no custom domains, no paid storage tiers exist). An empty
@@ -100,7 +105,7 @@ export class NodeService {
         maxPostChars: this.config.maxPostChars,
         canCreateCommunity: this.config.canCreateCommunity,
         dmEnabled: this.config.dmEnabled,
-        dmRetentionDays: this.config.dmRetentionDays,
+        dmRetentionDays: SERVER_VISIBLE_DM_RETENTION_DAYS,
       },
       publicRead: this.config.publicRead,
     };
@@ -147,7 +152,7 @@ export class NodeService {
         })),
         dataLocation: this.config.dataLocation,
         retention: {
-          dmRetentionDays: this.config.dmRetentionDays,
+          dmRetentionDays: SERVER_VISIBLE_DM_RETENTION_DAYS,
           // No retention sweep exists yet for these three (spec §176's "no such job" is the
           // honest reason, not a placeholder) — 0 means "no retention limit is enforced", the
           // same convention `dm_retention_days`/`SocialCapabilities.dm_retention_days` use.

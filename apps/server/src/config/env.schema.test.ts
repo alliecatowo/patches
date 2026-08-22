@@ -135,18 +135,18 @@ describe('validateEnv', () => {
     expect(
       validateEnv({
         DM_ENABLED: 'false',
-        DM_RETENTION_DAYS: '30',
         MAX_POST_CHARS: '7500',
         CAN_CREATE_COMMUNITY: 'true',
         LIKE_GLYPH_ALLOW_LIST: '♥, ★',
       }),
     ).toMatchObject({
       DM_ENABLED: false,
-      DM_RETENTION_DAYS: 30,
+      DM_RETENTION_DAYS: 0,
       MAX_POST_CHARS: 7500,
       CAN_CREATE_COMMUNITY: true,
       LIKE_GLYPH_ALLOW_LIST: ['♥', '★'],
     });
+    expect(() => validateEnv({ DM_RETENTION_DAYS: '30' })).toThrow(ConfigError);
   });
 
   it('rejects a post limit above the node ceiling', () => {

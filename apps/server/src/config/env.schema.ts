@@ -200,10 +200,10 @@ const envObjectSchema = z.object({
    * the `DirectMessageService` write paths, so an operator opts *out* rather than in.
    */
   DM_ENABLED: booleanish().default(true),
-  /** 0 means "no retention limit is enforced" (`NodeService.GetNodeInfo`'s
-   * `social_capabilities.dm_retention_days` doc, spec §190). No DM retention sweep exists yet
-   * — this only ever feeds that advertised capability value in v0. */
-  DM_RETENTION_DAYS: z.coerce.number().int().min(0).default(0),
+  /** 0 means "retained indefinitely" (`NodeService.GetNodeInfo`'s
+   * `social_capabilities.dm_retention_days` doc, spec §190). A node must not advertise a
+   * deletion promise until the corresponding tested sweep exists. */
+  DM_RETENTION_DAYS: z.coerce.number().int().min(0).max(0).default(0),
 
   /**
    * Amendment B (P11-006/P11-008, spec §186.2, §188): the post body ceiling this node
