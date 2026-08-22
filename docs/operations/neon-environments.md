@@ -26,6 +26,7 @@ Configure these values in a private shell or `.mise.local.toml`:
 [env]
 NEON_PROJECT_ID = "your-project-id"
 NEON_DEV_MIRROR_BRANCH = "anonymized-dev-mirror-id"
+NEON_PRODUCTION_BRANCH = "production-branch-id"
 NEON_DEV_DATABASE = "neondb"
 NEON_DEV_ROLE = "neondb_owner"
 ```
@@ -36,9 +37,10 @@ masking inventory needs security review. At minimum, leakage checks must cover
 email and auth identifiers, profile data, DM bodies, IP/moderation audit data,
 and token/code material. Branch isolation alone does not anonymize copied rows.
 
-Keep the production branch protected in Neon. If it is useful as an extra local
-guard, set `NEON_PRODUCTION_BRANCH` to its ID; reset and destroy then refuse that
-ID as well as the configured dev mirror.
+Keep the production branch protected in Neon. `NEON_PRODUCTION_BRANCH` is
+required: the helper resolves both configured references before every command,
+refuses to run if the mirror resolves to production, and refuses to mutate either
+branch by name or ID.
 
 ## Local development
 
@@ -116,6 +118,12 @@ An explicit `--parent` on create is an exceptional production-parent override.
 It requires both `--i-know-this-is-production` and typing
 `USE PRODUCTION PARENT`; `--yes` does not bypass that prompt. A direct production
 child contains production data and must not be shared or used by ordinary CI.
+Its state records the canonical parent ID and production provenance. Reset or
+destroy requires typing `RESET PRODUCTION-DERIVED <branch>` or
+`DELETE PRODUCTION-DERIVED <branch>` respectively; `--yes` cannot bypass this
+second confirmation. Keep the state file until cleanup succeeds, because an
+explicit branch reference alone is intentionally insufficient to classify a
+production-derived child as managed.
 
 If a process dies before cleanup, Neon deletes the branch at its RFC 3339 expiry.
 Operators should periodically list branches in the Neon console/CLI and delete

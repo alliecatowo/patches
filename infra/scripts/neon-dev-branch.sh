@@ -28,6 +28,7 @@ commands:
 required environment:
   NEON_PROJECT_ID          Neon project containing the approved dev mirror
   NEON_DEV_MIRROR_BRANCH  anonymized dev-mirror branch ID or name
+  NEON_PRODUCTION_BRANCH  production branch ID or name
   NEON_API_KEY             Neon credential (or use an authenticated CLI profile)
 
 The current branch ID is stored under .mise/, which is gitignored. Override it
@@ -93,13 +94,13 @@ read_state() {
 }
 
 write_state() {
-  local branch_id="$1" branch_name="$2" parent="$3" expires_at="$4"
+  local branch_id="$1" branch_name="$2" parent_id="$3" source="$4" expires_at="$5"
   mkdir -p "$(dirname "$STATE_FILE")"
   node -e '
     const fs = require("node:fs");
-    const [path, branchId, branchName, parent, expiresAt] = process.argv.slice(1);
-    fs.writeFileSync(path, JSON.stringify({ branch_id: branchId, branch_name: branchName, parent, expires_at: expiresAt }) + "\n", { mode: 0o600 });
-  ' "$STATE_FILE" "$branch_id" "$branch_name" "$parent" "$expires_at"
+    const [path, branchId, branchName, parentId, source, expiresAt] = process.argv.slice(1);
+    fs.writeFileSync(path, JSON.stringify({ branch_id: branchId, branch_name: branchName, parent_id: parentId, source, expires_at: expiresAt }) + "\n", { mode: 0o600 });
+  ' "$STATE_FILE" "$branch_id" "$branch_name" "$parent_id" "$source" "$expires_at"
 }
 
 resolve_cli() {
@@ -123,7 +124,7 @@ resolve_branch() {
 
 assert_ephemeral_child() {
   local branch="$1"
-  if [ "$branch" = "$NEON_DEV_MIRROR_BRANCH" ] || { [ -n "${NEON_PRODUCTION_BRANCH:-}" ] && [ "$branch" = "$NEON_PRODUCTION_BRANCH" ]; }; then
+  if [ "$branch" = "$NEON_DEV_MIRROR_BRANCH" ] || [ "$branch" = "$NEON_PRODUCTION_BRANCH" ] || [ "$branch" = "$MIRROR_ID" ] || [ "$branch" = "$PRODUCTION_ID" ]; then
     fail "refusing to mutate the dev mirror or production branch"
   fi
 }
@@ -131,12 +132,21 @@ assert_ephemeral_child() {
 assert_managed_child() {
   local branch="$1"
   assert_ephemeral_child "$branch"
-  local branch_json mirror_json parent_id mirror_id
+  local branch_json parent_id state_branch state_source state_parent
   branch_json="$("$NEON_CLI" branches get "$branch" --project-id "$NEON_PROJECT_ID" --output json --no-color)"
-  mirror_json="$("$NEON_CLI" branches get "$NEON_DEV_MIRROR_BRANCH" --project-id "$NEON_PROJECT_ID" --output json --no-color)"
   parent_id="$(printf '%s' "$branch_json" | read_branch_field parent_id)" || fail "could not verify the selected branch parent"
-  mirror_id="$(printf '%s' "$mirror_json" | read_branch_field id)" || fail "could not resolve the configured dev mirror ID"
-  [ "$parent_id" = "$mirror_id" ] || fail "selected branch is not a direct child of the configured dev mirror"
+  if [ "$parent_id" = "$MIRROR_ID" ]; then
+    MANAGED_SOURCE="mirror"
+    return
+  fi
+  state_branch="$(read_state branch_id || true)"
+  state_source="$(read_state source || true)"
+  state_parent="$(read_state parent_id || true)"
+  if [ "$parent_id" = "$PRODUCTION_ID" ] && [ "$state_branch" = "$branch" ] && [ "$state_source" = "production" ] && [ "$state_parent" = "$PRODUCTION_ID" ]; then
+    MANAGED_SOURCE="production"
+    return
+  fi
+  fail "selected branch is not a verified managed child"
 }
 
 read_branch_field() {
@@ -171,6 +181,12 @@ print_branch_status() {
 
 confirm_destructive() {
   local action="$1" branch="$2"
+  if [ "${MANAGED_SOURCE:-}" = "production" ]; then
+    printf '%s permanently changes a production-derived branch. Type %s PRODUCTION-DERIVED %s to continue: ' "$action" "${action^^}" "$branch" >&2
+    read -r answer
+    [ "$answer" = "${action^^} PRODUCTION-DERIVED $branch" ] || fail "$action aborted"
+    return
+  fi
   if [ "$ASSUME_YES" -eq 1 ]; then
     return
   fi
@@ -224,9 +240,14 @@ done
 
 [ -n "${NEON_PROJECT_ID:-}" ] || fail "NEON_PROJECT_ID is required"
 [ -n "${NEON_DEV_MIRROR_BRANCH:-}" ] || fail "NEON_DEV_MIRROR_BRANCH is required"
+[ -n "${NEON_PRODUCTION_BRANCH:-}" ] || fail "NEON_PRODUCTION_BRANCH is required"
 validate_ref "$NEON_PROJECT_ID"
 validate_ref "$NEON_DEV_MIRROR_BRANCH"
+validate_ref "$NEON_PRODUCTION_BRANCH"
 NEON_CLI="$(resolve_cli)"
+MIRROR_ID="$("$NEON_CLI" branches get "$NEON_DEV_MIRROR_BRANCH" --project-id "$NEON_PROJECT_ID" --output json --no-color | read_branch_field id)" || fail "could not resolve the configured dev mirror ID"
+PRODUCTION_ID="$("$NEON_CLI" branches get "$NEON_PRODUCTION_BRANCH" --project-id "$NEON_PROJECT_ID" --output json --no-color | read_branch_field id)" || fail "could not resolve the production branch ID"
+[ "$MIRROR_ID" != "$PRODUCTION_ID" ] || fail "the configured dev mirror resolves to the production branch"
 
 case "$COMMAND" in
   create)
@@ -242,14 +263,19 @@ case "$COMMAND" in
     validate_name "$NAME"
 
     if [ -z "$PARENT" ]; then
-      PARENT="$NEON_DEV_MIRROR_BRANCH"
+      PARENT="$MIRROR_ID"
+      SOURCE="mirror"
     else
       validate_ref "$PARENT"
-      [ "$PARENT" != "$NEON_DEV_MIRROR_BRANCH" ] || fail "omit --parent when using the configured dev mirror"
+      parent_id="$("$NEON_CLI" branches get "$PARENT" --project-id "$NEON_PROJECT_ID" --output json --no-color | read_branch_field id)" || fail "could not resolve the requested parent ID"
+      [ "$parent_id" != "$MIRROR_ID" ] || fail "omit --parent when using the configured dev mirror"
+      [ "$parent_id" = "$PRODUCTION_ID" ] || fail "a parent override must resolve to the configured production branch"
       [ "$PRODUCTION_OVERRIDE" -eq 1 ] || fail "a parent override requires --i-know-this-is-production"
       printf 'A parent override can clone sensitive production data. Type USE PRODUCTION PARENT to continue: ' >&2
       read -r production_answer
       [ "$production_answer" = "USE PRODUCTION PARENT" ] || fail "production-parent override aborted"
+      PARENT="$PRODUCTION_ID"
+      SOURCE="production"
     fi
 
     expires_at="$(node -e 'const hours=Number(process.argv[1]); process.stdout.write(new Date(Date.now()+hours*3600000).toISOString())' "$TTL_HOURS")"
@@ -262,7 +288,7 @@ case "$COMMAND" in
       process.stdout.write(branch.id);
     ')" || fail "could not read the created branch ID from Neon JSON"
     validate_ref "$branch_id"
-    write_state "$branch_id" "$NAME" "$PARENT" "$expires_at"
+    write_state "$branch_id" "$NAME" "$PARENT" "$SOURCE" "$expires_at"
     json_event created "$branch_id" "$NAME" "$PARENT" "$expires_at"
     ;;
   status)
