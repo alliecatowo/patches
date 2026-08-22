@@ -25,7 +25,11 @@ function getHeaderTitle(pathname: string): { title: string; showBack: boolean } 
   return { title: 'patches', showBack: false };
 }
 
-export function HeaderBar(): JSX.Element {
+export interface HeaderBarProps {
+  onOpenProfileMenu?: () => void;
+}
+
+export function HeaderBar({ onOpenProfileMenu }: HeaderBarProps = {}): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const session = useSession();
@@ -45,7 +49,9 @@ export function HeaderBar(): JSX.Element {
             <ChevronLeftIcon size={22} />
           </button>
         ) : (
-          <span className={styles['brand']}>patches</span>
+          <Link to="/" className={styles['brand']}>
+            patches
+          </Link>
         )}
       </div>
 
@@ -55,24 +61,46 @@ export function HeaderBar(): JSX.Element {
 
       <div className={styles['right']}>
         {session ? (
-          <Link
-            to={`/@${session.actor.handle}`}
-            className={styles['avatarLink']}
-            aria-label={`@${session.actor.handle} profile`}
-          >
-            {session.actor.avatar?.url ? (
-              <img
-                src={session.actor.avatar.url}
-                alt=""
-                className={styles['avatar']}
-                aria-hidden="true"
-              />
-            ) : (
-              <div className={styles['avatarPlaceholder']}>
-                {session.actor.handle.slice(0, 1).toUpperCase()}
-              </div>
-            )}
-          </Link>
+          onOpenProfileMenu ? (
+            <button
+              type="button"
+              className={styles['avatarButton']}
+              onClick={onOpenProfileMenu}
+              aria-label="Account menu"
+            >
+              {session.actor.avatar?.url ? (
+                <img
+                  src={session.actor.avatar.url}
+                  alt=""
+                  className={styles['avatar']}
+                  aria-hidden="true"
+                />
+              ) : (
+                <div className={styles['avatarPlaceholder']}>
+                  {session.actor.handle.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+            </button>
+          ) : (
+            <Link
+              to={`/@${session.actor.handle}`}
+              className={styles['avatarLink']}
+              aria-label={`@${session.actor.handle} profile`}
+            >
+              {session.actor.avatar?.url ? (
+                <img
+                  src={session.actor.avatar.url}
+                  alt=""
+                  className={styles['avatar']}
+                  aria-hidden="true"
+                />
+              ) : (
+                <div className={styles['avatarPlaceholder']}>
+                  {session.actor.handle.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+            </Link>
+          )
         ) : (
           <Link to="/login" className={styles['signInButton']}>
             Sign in

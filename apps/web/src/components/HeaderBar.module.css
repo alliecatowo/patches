@@ -73,9 +73,19 @@
     min-width: 44px;
   }
 
-  .avatarLink {
+  .avatarLink,
+  .avatarButton {
     display: flex;
     align-items: center;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .avatarButton:active .avatar,
+  .avatarButton:active .avatarPlaceholder {
+    transform: scale(0.94);
   }
 
   .avatar {
