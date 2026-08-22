@@ -34,7 +34,7 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Build the web client
-        run: pnpm --filter @patches/web build
+        run: pnpm --filter @patches/web... build
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
