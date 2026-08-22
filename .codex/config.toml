@@ -1,0 +1,9 @@
+# Project-scoped task discovery/execution. Keep the generic run_task capability prompt-gated:
+# this repository intentionally includes deployment, restore, and teardown tasks.
+[mcp_servers.mise]
+command = "mise"
+args = ["mcp"]
+enabled_tools = ["list_commands", "run_task"]
+default_tools_approval_mode = "prompt"
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
