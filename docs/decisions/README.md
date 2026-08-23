@@ -49,6 +49,8 @@ deliberately does **not** authorize without owner sign-off.
 | [0026](./0026-auth-code-delivery-envelopes.md)                   | Auth-code delivery uses authenticated, terminally scrubbed outbox envelopes                           | Accepted |
 | [0027](./0027-unreviewed-e2ee-development-mode.md)               | Unreviewed E2EE requires explicit owner authorization on a disposable node                            | Accepted |
 | [0028](./0028-federating-social-depth.md)                        | Federating social depth: reposts → tags → quotes; additive AS2 extensions; deterministic Announce ids | Accepted |
+| [0029](./0029-scale-path-banned-tech-language.md)                | Scale path, banned-tech review, and language choice — measurement-gated escalation                    | Accepted |
+| [0030](./0030-pre-alpha-consolidation-policy.md)                 | Pre-alpha consolidation policy: no legacy grace periods before production (applies to legacy DMs now) | Accepted |
 
 ## Template
 
