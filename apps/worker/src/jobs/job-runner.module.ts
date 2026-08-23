@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module.js';
 import { EmailModule } from '../email/email.module.js';
 import { StorageModule } from '../storage/storage.module.js';
+import { CleanExpiredNotificationsHandler } from './handlers/clean-expired-notifications.handler.js';
 import { CleanExpiredTokensHandler } from './handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from './handlers/clean-expired-uploads.handler.js';
 import { ExportAccountHandler } from './handlers/export-account.handler.js';
@@ -23,6 +24,7 @@ import { JobRunner } from './job-runner.js';
     SendVerificationEmailHandler,
     SendPasswordResetEmailHandler,
     CleanExpiredTokensHandler,
+    CleanExpiredNotificationsHandler,
     ProcessMediaHandler,
     CleanExpiredUploadsHandler,
     FederationDeliverHandler,
