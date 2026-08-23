@@ -224,13 +224,19 @@ export function AccountsScreen({
     let oidcProviders: OidcProvider[] = [];
     try {
       const policy = await api.getAuthPolicy();
-      hasGitHub = policy.githubAuth;
+      hasGitHub = policy.githubAuth === true;
       oidcProviders = (policy.oidcProviders ?? []).map((p) => ({
         id: p.id,
         displayName: p.displayName,
       }));
     } catch {
       // Policy fetch failure → SSH only
+    }
+    // SSH is the only credential type this node offers → skip the picker so `a`
+    // keeps its pre-GitHub meaning: go straight to agent discovery.
+    if (!hasGitHub && oidcProviders.length === 0) {
+      await beginSshAdd();
+      return;
     }
     setAddFlow({ status: 'choosing_type', hasGitHub, oidcProviders });
   }
