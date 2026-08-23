@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { Actor, Follow, Post } from '@patches/database';
+import { Actor, Follow, Post, Repost } from '@patches/database';
 import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
+import { localRepostAnnounceUri } from '../activity-ids.js';
 import { buildActivity, buildNoteObject, buildTombstone } from '../activitystreams/documents.js';
 import type { FederationGateway } from '../federation-gateway.js';
 import { localActorFollowersUri, localActorUri, localPostUri } from '../activitystreams/uris.js';
@@ -21,11 +22,13 @@ import { KeyService } from './key.service.js';
  *
  * P14-013 (spec §201.5) closes the outbound recipient-resolution gap `DomainBlockService`'s
  * own doc comment used to flag: every recipient this gateway resolves — remote followers
- * (`remoteFollowerInboxes`), a `Follow`/`Undo Follow` target (`loadPair`), and a `Like`/`Undo
- * Like` target (`buildLikeUndoLike`) — is now checked against `domain_blocks` *before* an
- * inbox URL is ever handed to `DeliveryService.enqueue`, not only at `DeliveryService`'s own
- * pre-delivery check (`delivery.service.ts`'s `filterBlockedInboxes`, still kept as a second,
- * independent check — belt and suspenders, not a replacement for either half).
+ * (`remoteFollowerInboxes`), a `Follow`/`Undo Follow` target (`loadPair`), a `Like`/`Undo
+ * Like` target (`buildLikeUndoLike`), and a repost's `Announce`/`Undo(Announce)` target
+ * (`buildAnnounceUndoAnnounce`, ADR 0028 §4) — is now checked against `domain_blocks`
+ * *before* an inbox URL is ever handed to `DeliveryService.enqueue`, not only at
+ * `DeliveryService`'s own pre-delivery check (`delivery.service.ts`'s `filterBlockedInboxes`,
+ * still kept as a second, independent check — belt and suspenders, not a replacement for
+ * either half).
  */
 @Injectable()
 export class ActivityPubFederationGateway implements FederationGateway {
@@ -172,6 +175,37 @@ export class ActivityPubFederationGateway implements FederationGateway {
     await this.delivery.enqueue(manager, { actorId, activity: undo, inboxUrls: [built.inboxUrl] });
   }
 
+  async announceRemotePost(manager: EntityManager, repostId: string): Promise<void> {
+    const built = await this.buildAnnounceUndoAnnounce(manager, repostId);
+    if (built === undefined) return;
+    await this.delivery.enqueue(manager, {
+      actorId: built.actorId,
+      activity: built.activity,
+      inboxUrls: [built.inboxUrl],
+    });
+  }
+
+  async unannounceRemotePost(manager: EntityManager, repostId: string): Promise<void> {
+    const built = await this.buildAnnounceUndoAnnounce(manager, repostId);
+    if (built === undefined) return;
+    const origin = this.config.publicOrigin;
+    // The outer Undo wrapper's own id may be one-shot random — what must be stable (ADR 0028
+    // §4) is the *object*: exactly the deterministic Announce document, so a peer matches
+    // this undo to the announce it already recorded. Never a fresh inner-activity id (the
+    // B-079 flaw unfollow/unlike still carry).
+    const undo = buildActivity({
+      id: `${origin}/activities/${randomUUID()}`,
+      type: 'Undo',
+      actor: built.activity.actor as string,
+      object: built.activity,
+    });
+    await this.delivery.enqueue(manager, {
+      actorId: built.actorId,
+      activity: undo,
+      inboxUrls: [built.inboxUrl],
+    });
+  }
+
   // ---------------------------------------------------------------- internals
 
   private async buildLikeUndoLike(
@@ -200,6 +234,51 @@ export class ActivityPubFederationGateway implements FederationGateway {
       object: post.canonicalUri,
     });
     return { activity, inboxUrl: targetInbox };
+  }
+
+  /** Builds the deterministic `Announce` for one repost row — shared by `announceRemotePost`
+   * and `unannounceRemotePost` so the Undo names byte-for-byte the same document (same
+   * activity id included) the peer may already have seen. The id comes from
+   * `localRepostAnnounceUri` over `reposts.id`, never `randomUUID()` (ADR 0028 §4), so it is
+   * stable across delivery retries and identical on every reconstruction. Gates mirror the
+   * Like path plus `publishPost`'s visibility gate: the row must exist, the post must be a
+   * remote PUBLIC post with a canonical URI, its author reachable and not domain-blocked. */
+  private async buildAnnounceUndoAnnounce(
+    manager: EntityManager,
+    repostId: string,
+  ): Promise<
+    | {
+        activity: ReturnType<typeof buildActivity>;
+        inboxUrl: string;
+        actorId: string;
+      }
+    | undefined
+  > {
+    const repost = await manager.getRepository(Repost).findOne({
+      where: { id: repostId },
+      relations: { actor: true, post: { authorActor: true } },
+    });
+    if (repost === null) return undefined;
+    const post = repost.post;
+    // Remote-only (a local author has no remote inbox to deliver to — mirror the Like path),
+    // PUBLIC-only (mirror `publishPost`'s visibility gate), and only when the post has a
+    // federated identity to announce.
+    if (post.isLocal || post.visibility !== 'PUBLIC' || post.canonicalUri === null) {
+      return undefined;
+    }
+    const targetInbox = post.authorActor.sharedInboxUri ?? post.authorActor.inboxUri;
+    if (targetInbox === null) return undefined;
+    if (await this.isActorDomainBlocked(manager, post.authorActor)) return undefined;
+    await this.keys.getOrCreateKeyPair(manager, repost.actor.id);
+
+    const origin = this.config.publicOrigin;
+    const activity = buildActivity({
+      id: localRepostAnnounceUri(origin, repost.id),
+      type: 'Announce',
+      actor: localActorUri(origin, repost.actor.handleNormalized),
+      object: post.canonicalUri,
+    });
+    return { activity, inboxUrl: targetInbox, actorId: repost.actorId };
   }
 
   private async loadPair(

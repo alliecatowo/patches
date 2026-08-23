@@ -1,7 +1,8 @@
-import { Actor, Follow, Post } from '@patches/database';
+import { Actor, Follow, Post, Repost } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AppConfigService } from '../../../config/app-config.service.js';
+import { NoopFederationGateway, type FederationGateway } from '../federation-gateway.js';
 import { ActivityPubFederationGateway } from './activitypub-federation-gateway.service.js';
 import type { DeliveryService } from './delivery.service.js';
 import type { DomainBlockService } from './domain-block.service.js';
@@ -75,16 +76,19 @@ interface FollowRow {
 }
 
 /** Fakes just enough of `EntityManager` for the code paths under test: `getRepository(Actor)`'s
- * `findOneOrFail`/`findOne`, `getRepository(Follow)`'s chained query-builder, and
- * `getRepository(Post)`'s `findOne`. */
+ * `findOneOrFail`/`findOne`, `getRepository(Follow)`'s chained query-builder,
+ * `getRepository(Post)`'s `findOne`, and `getRepository(Repost)`'s `findOne` (with the
+ * relations the announce path needs pre-joined into the row). */
 function fakeManager(options: {
   actors?: Record<string, Actor>;
   follows?: FollowRow[];
   posts?: Record<string, Post>;
+  reposts?: Record<string, Repost>;
 }) {
   const actors = options.actors ?? {};
   const follows = options.follows ?? [];
   const posts = options.posts ?? {};
+  const reposts = options.reposts ?? {};
 
   const getRepository = (entity: unknown): unknown => {
     if (entity === Actor) {
@@ -115,6 +119,12 @@ function fakeManager(options: {
       return {
         findOne: ({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(posts[id] ?? null),
+      };
+    }
+    if (entity === Repost) {
+      return {
+        findOne: ({ where: { id } }: { where: { id: string } }) =>
+          Promise.resolve(reposts[id] ?? null),
       };
     }
     throw new Error(`unexpected entity in fakeManager.getRepository: ${String(entity)}`);
@@ -227,5 +237,151 @@ describe('ActivityPubFederationGateway (P14-013: outbound domain-block gap)', ()
     expect(enqueue).toHaveBeenCalledTimes(1);
     const call = enqueue.mock.calls[0]?.[1] as { inboxUrls: string[] };
     expect(call.inboxUrls).toEqual(['https://good.example/inbox']);
+  });
+});
+
+/** P18-003 (ADR 0028 §4): outbound repost federation — the Announce id is deterministically
+ * reconstructed from the repost row, and Undo(Announce) names exactly that id. */
+describe('ActivityPubFederationGateway (P18-003: outbound Announce/Undo)', () => {
+  const ANNOUNCE_ID = 'https://local.test/activities/announce/repost-1';
+
+  function gatewayWith(
+    enqueue: ReturnType<typeof vi.fn>,
+    blockedDomains: readonly string[] = [],
+  ): ActivityPubFederationGateway {
+    return new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks(blockedDomains),
+    );
+  }
+
+  function repostFixture(overrides: Partial<Repost> = {}): Repost {
+    const author = remoteActor({
+      id: 'remote-1',
+      homeServer: 'good.example',
+      canonicalUri: 'https://good.example/actors/remote',
+      inboxUri: 'https://good.example/inbox',
+      sharedInboxUri: null,
+    });
+    const post = {
+      id: 'post-1',
+      isLocal: false,
+      visibility: 'PUBLIC',
+      canonicalUri: 'https://good.example/posts/9',
+      authorActor: author,
+    } as Post;
+    return {
+      id: 'repost-1',
+      actorId: 'local-1',
+      actor: localActor({ id: 'local-1' }),
+      postId: 'post-1',
+      post,
+      remoteActivityUri: null,
+      createdAt: new Date(),
+      ...overrides,
+    };
+  }
+
+  function managerFor(repost: Repost | null) {
+    return fakeManager(
+      repost === null
+        ? {}
+        : { reposts: { [repost.id]: repost }, posts: { [repost.postId]: repost.post } },
+    );
+  }
+
+  it('announceRemotePost reconstructs the same activity id across repeated calls (retry stability)', async () => {
+    const repost = repostFixture();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const gateway = gatewayWith(enqueue);
+    const manager = managerFor(repost);
+
+    await gateway.announceRemotePost(manager as never, 'repost-1');
+    await gateway.announceRemotePost(manager as never, 'repost-1');
+
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    const first = enqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    const second = enqueue.mock.calls[1]?.[1] as { activity: Record<string, unknown> };
+    expect(first.activity.type).toBe('Announce');
+    expect(first.activity.id).toBe(ANNOUNCE_ID);
+    expect(first.activity.object).toBe('https://good.example/posts/9');
+    expect(second.activity.id).toBe(first.activity.id);
+  });
+
+  it('unannounceRemotePost delivers an Undo whose object is exactly the deterministic Announce', async () => {
+    const repost = repostFixture();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const gateway = gatewayWith(enqueue);
+
+    await gateway.unannounceRemotePost(managerFor(repost) as never, 'repost-1');
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const call = enqueue.mock.calls[0]?.[1] as {
+      activity: Record<string, unknown>;
+      actorId: string;
+      inboxUrls: string[];
+    };
+    expect(call.actorId).toBe('local-1');
+    expect(call.inboxUrls).toEqual(['https://good.example/inbox']);
+    expect(call.activity.type).toBe('Undo');
+    expect(call.activity.actor).toBe('https://local.test/users/local');
+    // ADR 0028 §4: never a fresh inner-activity id (B-079) — the object names the Announce.
+    const object = call.activity.object as Record<string, unknown>;
+    expect(object.type).toBe('Announce');
+    expect(object.id).toBe(ANNOUNCE_ID);
+  });
+
+  it('announceRemotePost is a no-op for a non-PUBLIC post', async () => {
+    const base = repostFixture();
+    for (const visibility of ['UNLISTED', 'FOLLOWERS'] as const) {
+      const repost = repostFixture({ post: { ...base.post, visibility } });
+      const enqueue = vi.fn().mockResolvedValue(undefined);
+      await gatewayWith(enqueue).announceRemotePost(managerFor(repost) as never, 'repost-1');
+      expect(enqueue).not.toHaveBeenCalled();
+    }
+  });
+
+  it('announceRemotePost is a no-op when the repost row or its post is local/missing', async () => {
+    const base = repostFixture();
+    const localPost = repostFixture({ post: { ...base.post, isLocal: true } });
+    const missingRow = managerFor(null);
+    const enqueueA = vi.fn().mockResolvedValue(undefined);
+    const enqueueB = vi.fn().mockResolvedValue(undefined);
+    await gatewayWith(enqueueA).announceRemotePost(managerFor(localPost) as never, 'repost-1');
+    await gatewayWith(enqueueB).announceRemotePost(missingRow as never, 'nope');
+    expect(enqueueA).not.toHaveBeenCalled();
+    expect(enqueueB).not.toHaveBeenCalled();
+  });
+
+  it('announceRemotePost never enqueues a delivery to a blocked-domain author', async () => {
+    const blockedAuthor = remoteActor({
+      id: 'remote-1',
+      homeServer: 'blocked.example',
+      inboxUri: 'https://blocked.example/inbox',
+    });
+    const base = repostFixture();
+    const repost = repostFixture({
+      post: {
+        ...base.post,
+        canonicalUri: 'https://blocked.example/posts/9',
+        authorActor: blockedAuthor,
+      },
+    });
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    await gatewayWith(enqueue, ['blocked.example']).announceRemotePost(
+      managerFor(repost) as never,
+      'repost-1',
+    );
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('NoopFederationGateway resolves announce/unannounce without effect (federation disabled)', async () => {
+    // Typed as the seam (the Noop class's own stubs declare zero parameters).
+    const noop: FederationGateway = new NoopFederationGateway();
+    const manager = fakeManager({});
+    await expect(noop.announceRemotePost(manager as never, 'repost-1')).resolves.toBeUndefined();
+    await expect(noop.unannounceRemotePost(manager as never, 'repost-1')).resolves.toBeUndefined();
   });
 });

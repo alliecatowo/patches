@@ -41,6 +41,17 @@ export interface FederationGateway {
 
   /** A local actor unliked a remote actor's post — deliver `Undo(Like)`. */
   unlikeRemotePost(manager: EntityManager, actorId: string, postId: string): Promise<void>;
+
+  /** A local actor reposted a post — deliver `Announce` to the (remote, PUBLIC-only) post's
+   * author. The Announce's activity id is deterministically reconstructed from the repost
+   * row (`reposts.id`), never minted fresh, so the matching `Undo(Announce)` can name it
+   * (ADR 0028 §4). No-op for a local or non-public post or a blocked-domain author. */
+  announceRemotePost(manager: EntityManager, repostId: string): Promise<void>;
+
+  /** A local actor removed a repost — deliver `Undo(Announce)` whose object is exactly the
+   * original deterministic `Announce` document, never a freshly minted inner activity
+   * (ADR 0028 §4; the Follow/Like paths' random inner Undo ids are flaw B-079). */
+  unannounceRemotePost(manager: EntityManager, repostId: string): Promise<void>;
 }
 
 export const FEDERATION_GATEWAY = Symbol('FEDERATION_GATEWAY');
@@ -64,6 +75,12 @@ export class NoopFederationGateway implements FederationGateway {
     // intentionally empty
   }
   async unlikeRemotePost(): Promise<void> {
+    // intentionally empty
+  }
+  async announceRemotePost(): Promise<void> {
+    // intentionally empty
+  }
+  async unannounceRemotePost(): Promise<void> {
     // intentionally empty
   }
 }

@@ -123,7 +123,10 @@ export class ReactionsService {
     return this.posts.getPost(postId, actorId);
   }
 
-  /** A repost is a pointer row. Eligibility is rechecked at write time (§180.1, §192). */
+  /** A repost is a pointer row. Eligibility is rechecked at write time (§180.1, §192). The
+   * same transaction enqueues an outbound `Announce` when the post is remote and PUBLIC —
+   * `FederationGateway.announceRemotePost` reconstructs the activity id from the saved row
+   * (ADR 0028 §4) and no-ops for local/non-public/blocked targets or federation off. */
   async repostPost(actorId: string, postIdRaw: string): Promise<PostView> {
     const postId = parseInput(uuidInputSchema, postIdRaw);
     await enforceWindowRateLimit(
@@ -146,8 +149,9 @@ export class ReactionsService {
       const reposts = manager.getRepository(Repost);
       if ((await reposts.findOne({ where: { actorId, postId } })) !== null) return;
       try {
-        await reposts.save(reposts.create({ actorId, postId }));
+        const saved = await reposts.save(reposts.create({ actorId, postId }));
         wasNew = true;
+        await this.federation.announceRemotePost(manager, saved.id);
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
       }
@@ -159,7 +163,9 @@ export class ReactionsService {
     return this.posts.getPost(postId, actorId);
   }
 
-  /** Idempotent, but still rate-limited: alternating repost/unrepost is itself an abuse path. */
+  /** Idempotent, but still rate-limited: alternating repost/unrepost is itself an abuse path.
+   * The same transaction enqueues `Undo(Announce)` naming exactly the original deterministic
+   * Announce id (ADR 0028 §4) — resolved from the row *before* it is deleted. */
   async unrepostPost(actorId: string, postIdRaw: string): Promise<PostView> {
     const postId = parseInput(uuidInputSchema, postIdRaw);
     await enforceWindowRateLimit(
@@ -170,7 +176,15 @@ export class ReactionsService {
       HOUR_MS,
     );
     await this.posts.getPost(postId, actorId);
-    await this.dataSource.getRepository(Repost).delete({ actorId, postId });
+    await this.dataSource.transaction(async (manager) => {
+      const reposts = manager.getRepository(Repost);
+      const existing = await reposts.findOne({ where: { actorId, postId } });
+      if (existing === null) return;
+      // Unannounce while the row still exists — the gateway reconstructs the Announce id
+      // from it — then delete; both commit (or roll back) atomically.
+      await this.federation.unannounceRemotePost(manager, existing.id);
+      await reposts.delete({ actorId, postId });
+    });
     return this.posts.getPost(postId, actorId);
   }
 

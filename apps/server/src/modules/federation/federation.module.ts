@@ -71,6 +71,12 @@ class LazyFederationGateway implements FederationGateway {
   unlikeRemotePost(manager: EntityManager, actorId: string, postId: string): Promise<void> {
     return this.target().unlikeRemotePost(manager, actorId, postId);
   }
+  announceRemotePost(manager: EntityManager, repostId: string): Promise<void> {
+    return this.target().announceRemotePost(manager, repostId);
+  }
+  unannounceRemotePost(manager: EntityManager, repostId: string): Promise<void> {
+    return this.target().unannounceRemotePost(manager, repostId);
+  }
 }
 
 /**
