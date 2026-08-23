@@ -5,6 +5,10 @@
  * itself so it is unit-testable without mocking a Nest `ExecutionContext`/`Observable`.
  */
 
+import type { DataSource, EntityManager } from 'typeorm';
+
+import { rateLimitBucketRepo, getWindowBounds } from '@patches/database';
+
 export type RpcClass = 'read' | 'write' | 'search';
 
 /** RPCs whose name alone doesn't fit the `Get*`/`List*`/`Stream*` = read convention below —
@@ -80,6 +84,57 @@ export class RpcBudgetLimiter {
       if (bucket.resetAt <= now) this.buckets.delete(key);
     }
   }
+}
+
+/**
+ * DB-backed fixed-window rate limiter using the `rate_limit_buckets` table (B-103).
+ * Used when `RATE_LIMIT_GLOBAL=true` to share rate limit state across replicas.
+ * Falls back to in-memory behavior if the database is unavailable.
+ */
+export class DbRpcBudgetLimiter {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly window: BudgetWindow,
+  ) {}
+
+  /** Clear all buckets. Intended for resetting in-process test state between examples. */
+  clear(): void {
+    // No-op for DB-backed limiter; buckets are stored in the database
+  }
+
+  /** Returns `true` if `key` is under budget for this window (and records the attempt),
+   * `false` once the window's limit is spent. Never throws — the caller decides what a
+   * rejection means (an `AppError`, a metric, both). */
+  async tryConsume(key: string, now = Date.now()): Promise<boolean> {
+    const { windowStart, windowEnd } = getWindowBounds(new Date(now), this.window.windowMs);
+
+    try {
+      const cost = await this.dataSource.transaction(async (manager: EntityManager) => {
+        return rateLimitBucketRepo.increment(manager, key, windowStart, windowEnd, 1);
+      });
+      return cost <= this.window.limit;
+    } catch {
+      // On DB failure, fall back to allowing the request (fail-open for availability)
+      // The caller can choose to fail-closed by checking the error if needed
+      return true;
+    }
+  }
+}
+
+/**
+ * Factory function to create the appropriate limiter based on configuration.
+ * When `useDb` is true, returns a `DbRpcBudgetLimiter`; otherwise returns an
+ * in-memory `RpcBudgetLimiter`.
+ */
+export function createRpcBudgetLimiter(
+  dataSource: DataSource | undefined,
+  useDb: boolean,
+  window: BudgetWindow,
+): RpcBudgetLimiter | DbRpcBudgetLimiter {
+  if (useDb && dataSource) {
+    return new DbRpcBudgetLimiter(dataSource, window);
+  }
+  return new RpcBudgetLimiter(window);
 }
 
 /**

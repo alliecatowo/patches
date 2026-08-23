@@ -19,6 +19,7 @@ export interface CreateDataSourceOptionsInput {
   sslCa?: string;
   poolMax?: number;
   logging?: boolean;
+  statementTimeout?: string;
 }
 
 /**
@@ -35,7 +36,14 @@ export interface CreateDataSourceOptionsInput {
  * release step, never something that races at app startup.
  */
 export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
-  const { url, ssl = false, sslCa, poolMax = 10, logging = false } = input;
+  const {
+    url,
+    ssl = false,
+    sslCa,
+    poolMax = 10,
+    logging = false,
+    statementTimeout = '10s',
+  } = input;
   return {
     type: 'postgres',
     url,
@@ -46,7 +54,7 @@ export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
     namingStrategy: new SnakeNamingStrategy(),
     entities: [...ALL_ENTITIES],
     migrations: [...ALL_MIGRATIONS],
-    extra: { max: poolMax },
+    extra: { max: poolMax, statement_timeout: statementTimeout },
   } satisfies DataSourceOptions;
 }
 

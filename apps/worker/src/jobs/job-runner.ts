@@ -11,7 +11,8 @@ import type { DataSource } from 'typeorm';
 
 import { AppConfigService } from '../config/app-config.service.js';
 import { DATA_SOURCE } from '../database/database.module.js';
-import { deliveryMetrics } from '../federation/delivery-metrics.js';
+import { deliveryMetrics, getQueueDepth } from '../federation/delivery-metrics.js';
+import { workerQueueDepth } from '@patches/observability';
 import { JobDispatcher } from './job-dispatcher.js';
 import { OutboxCircuitBreaker } from './outbox-circuit-breaker.js';
 import { releaseUnhandledJob } from './release-claim.js';
@@ -22,6 +23,18 @@ import { sweepStaleLeases } from './stale-lease-sweep.js';
  * .ts`'s `LOG_INTERVAL_MS`), **deliberately duplicated** rather than shared (no cross-app-`src`
  * import convention in this repo, same reasoning as this file's other federation primitives). */
 const FEDERATION_METRICS_LOG_INTERVAL_MS = 60_000;
+
+/** B-102: daily notification cleanup runs at 03:00 UTC. We check once per loop pass whether
+ * it's time to enqueue the job — the `available_at` mechanism handles the exact timing, but we
+ * enqueue a new job each day when the clock crosses 03:00 UTC. */
+function getNextCleanupAvailableAt(now: Date): Date {
+  const next = new Date(now);
+  next.setUTCHours(3, 0, 0, 0);
+  if (next <= now) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  return next;
+}
 
 /**
  * `min(currentMs * 2, maxMs)` — the idle-poll backoff step (`docs/architecture/jobs.md` §8).
@@ -59,6 +72,10 @@ export class JobRunner {
   private lastMetricsLogAtMs = 0;
   /** Same "`0` so the first pass always fires" reasoning, for the S-002 backlog log. */
   private lastBacklogLogAtMs = 0;
+  /** B-101: tracks when we last pushed the queue-depth gauge. */
+  private lastQueueDepthPushAtMs = 0;
+  /** B-102: tracks when we last enqueued the daily notification cleanup job. */
+  private lastCleanupEnqueueAtMs = 0;
   /** S-002 (`docs/operations/abuse-protection.md`): per-job-type circuit breaker — see its
    * own doc comment. Constructed here (not injected) since its two parameters are read once
    * from config at process boot, same as `RateLimitService`'s static `WINDOWS`. */
@@ -88,6 +105,8 @@ export class JobRunner {
       await this.sweepStaleLeasesIfDue();
       this.logFederationMetricsIfDue();
       await this.logBacklogIfDue();
+      await this.pushQueueDepthIfDue();
+      await this.enqueueDailyCleanupIfDue();
 
       const excludeTypes = this.circuitBreaker.excludedTypes();
       const claimed = await this.dataSource.transaction((manager) =>
@@ -147,6 +166,57 @@ export class JobRunner {
     if (pending > this.config.backlogWarnThreshold) {
       this.logger.warn(JSON.stringify({ event: 'outbox_backlog', pending }));
     }
+  }
+
+  /** B-101: periodically pushes the `workerQueueDepth` gauge so horizontal scaling
+   * decisions can be data-driven. The first pass fires immediately (`lastQueueDepthPushAtMs = 0`),
+   * then every `WORKER_QUEUE_DEPTH_INTERVAL_MS`. */
+  private async pushQueueDepthIfDue(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastQueueDepthPushAtMs < this.config.queueDepthIntervalMs) return;
+    this.lastQueueDepthPushAtMs = now;
+
+    const depth = await getQueueDepth(this.dataSource.manager);
+    workerQueueDepth.set({ queue: 'outbox' }, depth);
+  }
+
+  /** B-102: enqueues the daily `CLEAN_EXPIRED_NOTIFICATIONS` job at 03:00 UTC.
+   * Runs once per day when the loop crosses the 03:00 UTC boundary. Uses `available_at`
+   * to schedule the exact execution time, and an idempotency key to avoid duplicates if
+   * multiple workers are running. */
+  private async enqueueDailyCleanupIfDue(): Promise<void> {
+    const now = Date.now();
+    const nextCleanupAt = getNextCleanupAvailableAt(new Date(now));
+    const nextCleanupMs = nextCleanupAt.getTime();
+
+    // If we already enqueued for this cleanup window, skip.
+    if (this.lastCleanupEnqueueAtMs >= nextCleanupMs - 24 * 60 * 60 * 1000) return;
+
+    // If it's not yet time to enqueue (we're before 03:00 UTC of the target day), wait.
+    // We enqueue shortly after midnight so the job is ready by 03:00 UTC.
+    const enqueueAfterMs = nextCleanupMs - 3 * 60 * 60 * 1000; // 3 hours before = midnight UTC
+    if (now < enqueueAfterMs) return;
+
+    this.lastCleanupEnqueueAtMs = now;
+
+    // Check if a job for this day already exists (idempotency key based on date).
+    const idempotencyKey = `CLEAN_EXPIRED_NOTIFICATIONS:${nextCleanupAt.toISOString().split('T')[0]}`;
+    const existing = await this.dataSource.manager.getRepository('OutboxJob').findOne({
+      where: { idempotencyKey },
+    });
+    if (existing) return;
+
+    // Enqueue the job with available_at set to 03:00 UTC.
+    await this.dataSource.manager.getRepository('OutboxJob').save({
+      type: 'CLEAN_EXPIRED_NOTIFICATIONS',
+      payload: {},
+      availableAt: nextCleanupAt,
+      idempotencyKey,
+    });
+
+    this.logger.log(
+      JSON.stringify({ event: 'cleanup_job_enqueued', availableAt: nextCleanupAt.toISOString() }),
+    );
   }
 
   /** Interruptible sleep: `requestStop()` wakes it immediately instead of waiting it out. */

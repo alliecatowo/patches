@@ -10,11 +10,21 @@ import { type MicroserviceOptions } from '@nestjs/microservices';
 import { type NestExpressApplication } from '@nestjs/platform-express';
 import { readDotEnvFile } from '@patches/config';
 
-import { createLogger } from './common/logging/logger.factory.js';
+import { PinoLogger } from 'nestjs-pino';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
 import { configureProxyTrust, mountConnectEdge } from './transport/connect/connect.middleware.js';
+
+/**
+ * Initialize OpenTelemetry instrumentation if enabled.
+ * Must run before any other instrumented code is loaded.
+ */
+async function initializeTelemetryIfEnabled(): Promise<void> {
+  if (process.env.OTEL_ENABLED === 'true') {
+    await import('@patches/observability/instrumentation').then((m) => m.initializeTelemetry());
+  }
+}
 
 /**
  * Load `.env` from the repo root in development so a fresh clone works with just
@@ -59,6 +69,7 @@ function grpcLoopbackUrl(grpcHost: string, grpcPort: number): string {
 }
 
 async function bootstrap(): Promise<void> {
+  await initializeTelemetryIfEnabled();
   loadDotEnv();
 
   // This must stay a dynamic import after `loadDotEnv()`: `app.module.ts` validates
@@ -70,7 +81,6 @@ async function bootstrap(): Promise<void> {
   // Validated before Nest exists: the bind address is needed to construct the
   // microservice, and a malformed environment must abort the boot outright.
   const env = validateEnv(process.env);
-  const logger = createLogger(env);
 
   const url = `${env.GRPC_HOST}:${String(env.GRPC_PORT)}`;
   // S-001 (`docs/operations/capacity.md`): per-connection gRPC limits — real grpc-core channel
@@ -106,10 +116,10 @@ async function bootstrap(): Promise<void> {
   // body parser running ahead of its own raw body collector (`FederationHttpModule`), so
   // disabling it globally here just makes that reliance explicit instead of accidental.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger,
     bufferLogs: true,
     bodyParser: false,
   });
+  app.useLogger(app.get(PinoLogger));
   // `inheritAppConfig: true` is load-bearing: a hybrid app's connected microservices do NOT
   // get the `APP_FILTER`/`APP_INTERCEPTOR` providers (RpcExceptionsFilter, request-context
   // + logging interceptors) unless told to inherit them — without it every AppError surfaced
@@ -151,7 +161,7 @@ async function bootstrap(): Promise<void> {
   // waits for in-flight calls) and the HTTP server (spec §124). fly.toml's `kill_timeout`
   // must exceed this drain (see infra/fly/fly.toml).
   const stopServing = (signal: string): void => {
-    logger.log(`received ${signal}, draining`, 'Bootstrap');
+    app.get(PinoLogger).info(`received ${signal}, draining`);
     health.setStatus('NOT_SERVING');
     readiness.setServing(false);
   };
@@ -173,18 +183,23 @@ async function bootstrap(): Promise<void> {
   health.setStatus('SERVING');
   readiness.setServing(true);
 
-  logger.log(
+  const pinoLogger = app.get(PinoLogger);
+  pinoLogger.info(
     `patches gRPC server listening on ${url} (env=${env.NODE_ENV}, instance=${env.INSTANCE_NAME})`,
-    'Bootstrap',
   );
 
   await app.listen(env.HTTP_PORT);
-  logger.log(
+  pinoLogger.info(
     `patches HTTP listener on :${String(env.HTTP_PORT)} — /healthz, Connect edge` +
       (env.FEDERATION_ENABLED ? ', federation surface' : '') +
       ` (origin=${env.PUBLIC_ORIGIN})`,
-    'Bootstrap',
   );
+
+  if (env.METRICS_ENABLED === 'true') {
+    const { startMetricsServer } = await import('@patches/observability/metrics-server');
+    await startMetricsServer(env.METRICS_PORT);
+    pinoLogger.info(`metrics server listening on :${String(env.METRICS_PORT)}`);
+  }
 }
 
 const invokedPath = process.argv[1];

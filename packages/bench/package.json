@@ -1,0 +1,27 @@
+{
+  "name": "@patches/bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "tsx fixtures.ts && tsx feed-bench.ts && tsx worker-bench.ts && tsx pool-bench.ts",
+    "bench:feed": "tsx feed-bench.ts",
+    "bench:worker": "tsx worker-bench.ts",
+    "bench:pool": "tsx pool-bench.ts",
+    "setup": "tsx fixtures.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@patches/config": "workspace:*",
+    "@patches/database": "workspace:*",
+    "@patches/domain": "workspace:*",
+    "@patches/testkit": "workspace:*",
+    "pg": "catalog:",
+    "reflect-metadata": "catalog:",
+    "typeorm": "catalog:"
+  },
+  "devDependencies": {
+    "@types/pg": "catalog:",
+    "tsx": "catalog:"
+  }
+}

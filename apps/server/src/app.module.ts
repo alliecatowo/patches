@@ -5,6 +5,8 @@ import { RpcExceptionsFilter } from './common/errors/rpc-exception.filter.js';
 import { PublicReadGuard } from './common/guards/public-read.guard.js';
 import { RequestContextInterceptor } from './common/interceptors/request-context.interceptor.js';
 import { RpcBudgetInterceptor } from './common/interceptors/rpc-budget.interceptor.js';
+import { RpcMetricsInterceptor } from './common/interceptors/rpc-metrics.interceptor.js';
+import { HttpMetricsInterceptor } from './common/interceptors/http-metrics.interceptor.js';
 import { LoggingInterceptor } from './common/logging/logging.interceptor.js';
 import { AppConfigModule } from './config/config.module.js';
 import { validateEnv } from './config/env.schema.js';
@@ -31,6 +33,7 @@ import { PrivacyModule } from './modules/privacy/privacy.module.js';
 import { ReactionModule } from './modules/reactions/reaction.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { TagsModule } from './modules/tags/tags.module.js';
+import { PinoLoggerModule } from './logging/pino-logger.module.js';
 
 /**
  * Decides whether `FederationHttpModule` (webfinger/actor/inbox/outbox) is part of this
@@ -77,6 +80,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     LabelsModule,
     PrivacyModule,
     FederationModule,
+    PinoLoggerModule.forRoot(),
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],
   providers: [
@@ -90,6 +94,8 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     // it must stay after this one specifically.
     { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: RpcMetricsInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: HttpMetricsInterceptor },
     // S-001/S-002 (`docs/operations/capacity.md`): per-RPC-class cost budgets, the
     // write-concurrency load-shedding gate, and the server-side call deadline.
     { provide: APP_INTERCEPTOR, useExisting: RpcBudgetInterceptor },

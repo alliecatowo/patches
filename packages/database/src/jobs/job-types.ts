@@ -26,6 +26,10 @@ export const JOB_TYPES = [
    * crash mid-purge, or a delivery that races a `CancelAccountDeletion`, both have to be
    * no-ops (`docs/architecture/jobs.md` §7). */
   'PURGE_ACCOUNT',
+  /** B-102: deletes `Notification` rows older than `NOTIFICATION_TTL_DAYS`. Runs daily at
+   * 03:00 UTC via `JobRunner`'s scheduled job dispatch. Idempotent — deleting already-deleted
+   * rows is a no-op. */
+  'CLEAN_EXPIRED_NOTIFICATIONS',
   /** P13-015 (ADR 0020 §9, §12.7): mints the next node franking-key era and reschedules itself,
    * self-perpetuating the same way `PURGE_ACCOUNT`'s grace-period delay does — no separate
    * cron/scheduler is needed because the outbox's own `available_at` delay *is* the rotation
