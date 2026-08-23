@@ -1,0 +1,114 @@
+# Template for per-PR preview Fly apps (B-105). NOT deployable as-is.
+#
+# infra/preview/make-preview-config.mjs replaces every `__PR__` token with the PR
+# number and writes `fly-pr-<N>.toml` next to this file — the generated config MUST
+# stay in this directory so the `[build] dockerfile` path (`../docker/Dockerfile`)
+# keeps resolving the same way as infra/fly/fly.toml (paths are relative to the
+# config file, build context stays the repo root).
+#
+# Degraded vs infra/fly/fly.toml on purpose (docs/operations/preview-environments.md):
+#   - server process group only — no worker (no email delivery, no media derivatives)
+#   - no R2 secrets → media disabled; FEDERATION_ENABLED=false
+#   - PUBLIC_READ=true, INVITE_ONLY=true, EMAIL_PROVIDER=console
+#   - single shared-cpu-1x machine, autostop on both services, single region iad
+#   - no [mounts] (nothing writes to /tmp without media processing)
+#   - no release_command — migrations run on the CI runner against the Neon branch
+#     before `flyctl deploy` (see .github/workflows/preview.yml)
+app = "patches-pr-__PR__"
+primary_region = "iad"
+
+# Same drain window as production: longer than the server's in-flight gRPC drain.
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "../docker/Dockerfile"
+
+# Non-secret runtime env. Secrets (DATABASE_URL, DATABASE_SSL, JWT_*,
+# AUTH_CODE_DELIVERY_*) are set per-PR with `flyctl secrets set` by the workflow.
+[env]
+  NODE_ENV = "production"
+  # A-038: Nest's "normal" log level is literally `log` — `info` crashes the server.
+  LOG_LEVEL = "log"
+  INSTANCE_NAME = "patches preview pr-__PR__"
+  GRPC_HOST = "0.0.0.0"
+  GRPC_PORT = "50051"
+  HTTP_PORT = "8080"
+  METRICS_PORT = "9090"
+  PUBLIC_ORIGIN = "https://patches-pr-__PR__.fly.dev"
+  NODE_DOMAIN = "patches-pr-__PR__.fly.dev"
+  INVITE_ONLY = "true"
+  PUBLIC_READ = "true"
+  PASSWORD_AUTH = "optional"
+  FEDERATION_ENABLED = "false"
+  TRUST_PROXY_HEADERS = "true"
+  EMAIL_PROVIDER = "console"
+  EMAIL_FROM = "Patches Preview <noreply@preview.invalid>"
+  # Preview-honest operator-transparency values (A-052): the branch data is a copy
+  # of production, and DMs are server-visible on every Patches node (ADR 0017).
+  PRIVACY_NOTICE_SUMMARY = "Temporary preview node for pull request #__PR__, destroyed automatically when the PR closes. It serves a copy of the production database. Public posts and profiles are readable by anyone. Direct messages are NOT end-to-end encrypted — the node operator can read them."
+  DATA_LOCATION = "App: Fly.io (iad, US) preview machine. Database: Neon Postgres branch pr-__PR__ (aws-us-east-2, US). Media: disabled."
+
+[processes]
+  server = "node server/dist/main.js"
+
+# Public gRPC ingress (TUI connects to patches-pr-__PR__.fly.dev:443). Autostop keys
+# verified against the fly.toml reference (auto_stop_machines = "stop" | "suspend" |
+# "off"; with a single machine per region it stops when idle and restarts on the
+# first request — the main preview cost guard).
+[[services]]
+  internal_port = 50051
+  protocol = "tcp"
+  processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.ports.http_options]
+    h2_backend = true
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "15s"
+    timeout = "2s"
+
+# Public HTTP/Connect ingress on :80 and :8443 — NOT :443, which the gRPC service
+# above already claims (Fly allows only one service per external port; the live node
+# likewise serves its Connect edge on :8443).
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 8443
+
+# Real application-level health check (A-043): 200 only when the Neon branch answers
+# SELECT 1 and gRPC health is SERVING — so a deploy whose database is unreachable
+# fails visibly instead of serving errors.
+[checks]
+  [checks.healthz]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    processes = ["server"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
