@@ -366,6 +366,48 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] P18-009 — TUI/web: remote repost attribution + one-level remote quote embed render with remote-origin fixtures; plain-mode forms; no new keys (§191). Owns `apps/tui/src/components/{PostRow,PostList}.tsx` tests + fixtures
 - [ ] P18-010 — Docs sync: `federation.md` status/§5 checklist, `docs/operations/federation.md`, `docs/architecture/social.md` (still missing, P11-014). Acceptance: no shipped/planned drift; every documented command actually run
 
+## Phase 19 — observability, measurement & scale hardening
+
+> Owner-directed (2026-08-22) following the architecture/scale audit + ADR
+> [0029](docs/decisions/0029-scale-path-banned-tech-language.md) and
+> [`docs/architecture/tooling-recommendations.md`](docs/architecture/tooling-recommendations.md).
+> Complements (does not displace) the open follow-ups elsewhere (P14-021…026, P15-001/007/008,
+> P18-003…010, P10-005 TUI-on-SDK, RN paused, P12-119…121 blocked, E2EE gate). Phase 17 (S-001/S-002)
+> already set the capacity _budgets_ and a load-test _plan_; this phase **wires the live
+> instrumentation to measure them** and acts on the audit's structural findings.
+> Guiding rule: measure before optimizing (`INITIAL_VISION.md` §126); anything touching a §153
+> prohibition needs a spec revision + sign-off.
+
+### Instrumentation foundation (adopt near-term, no new architecture surface)
+
+- [ ] P19-001 — Structured logging with **pino** / `nestjs-pino`, replacing Nest's default `ConsoleLogger`; keep the JSON contract (`overview.md` §8); assert no secrets/tokens in logs. Owns `apps/server/src/main.ts` + logging module; mirrors current worker logging.
+- [ ] P19-002 — **OpenTelemetry** SDK + auto-instrumentation (`instrumentation-pg`, `-nestjs-core`, `-grpc`, `-http`) emitting OTLP to an operator-chosen collector (Tempo/Jaeger/OTel Collector); no SaaS lock-in. Owns a new `packages/observability` instrumentation entry + `apps/server`/`apps/worker` bootstrap. Ties to B-091.
+- [ ] P19-003 — **Metrics**: `prom-client` `/metrics` (or OTel metrics) for RPC latency, DB pool usage, worker queue depth, feed-query latency. Reuses the `packages/observability` surface A-036 started for federation.
+- [ ] P19-004 — Enable **`pg_stat_statements`** + set a default **`statement_timeout`** in `packages/database/src/data-source.ts`; document pool/timeout guidance in `docs/operations/neon-environments.md` (currently a gap).
+- [ ] P19-005 — **Elasticsearch/OpenSearch: explicitly NOT a dependency.** Emit structured logs + OTLP/metrics; centralized log/metric search (OpenSearch) is an _optional operator sink_, never imported by the app (`tooling-recommendations.md` §Observability).
+
+### Measurement gate (the §126 suite S-001 planned)
+
+- [ ] P19-006 — **Search**: replace `SearchPosts` `ILIKE` scan (flagged worst read in `capacity.md`) with native Postgres full-text (`tsvector`/`to_tsquery`) — zero new dependencies.
+- [ ] P19-007 — Benchmark harness: realistic fixture generator, `EXPLAIN ANALYZE` on the home-feed query across large follow graphs, worker throughput test, connection-pool saturation test. Produces the baseline numbers ADR 0029's escalation path references (S-001 planned this; land it).
+
+### Structural hardening (audit findings)
+
+- [ ] P19-008 — **Worker horizontal scale**: verify N worker replicas claim safely via `FOR UPDATE SKIP LOCKED` (already concurrency-safe); make `WORKER_CONCURRENCY` env-tunable (exists) + raise default; expose queue-depth metric (P19-003). Per-instance ceiling today is the audit's first break.
+- [ ] P19-009 — **Global rate limits**: the per-RPC-class budgets in `capacity.md` are in-process per instance. Make them DB-backed (extend `rate-limit-bucket`) so they are global across instances, or document the N÷instances division — decide after measuring.
+- [ ] P19-010 — **Notification cleanup**: add a worker TTL/cleanup job for `notification` rows (currently unbounded; `refresh_token` already has `CleanExpiredTokensHandler`).
+- [ ] P19-011 — **DM realtime decision**: today is unary-poll (60s unread). Either design streaming RPC(s) + non-streaming fallback (ADR 0016 §104) or consciously defer and document the polling SLA. Product decision, not just engineering.
+
+### Migrations hardening (scale concern)
+
+- [ ] P19-012 — Online-DDL discipline + evaluate **Atlas** / **Reshape** (declarative + drift detection + online DDL) to complement TypeORM migrations; add a Neon-branch migration test harness (`docs/research/neon-branching.md`) so every migration is validated on prod-sized data before apply.
+
+### Scale-path ports (measurement-gated, ADR 0029 — do NOT start until P19-007 baselines exist)
+
+- [ ] P19-013 — Introduce a **`JobQueue` port** (worker already exists behind it); enables a future BullMQ/NATS swap without service edits.
+- [ ] P19-014 — Introduce a **`Cache`/read-through port** (Valkey later, post-§153); deploy only when the benchmark shows read-latency/write-amplification breach.
+- [ ] P19-015 — **Feed materialization** (hybrid push/pull, chronological) behind a flag when P19-007 shows the breach; never a ranking surface (§153/Amendment B).
+
 ## Backlog / discovered
 
 <!-- Swarm wave 1, 2026-08-22 -->
@@ -373,7 +415,18 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] B-077 — `pnpm db:generate` emits phantom drift: unrelated `ALTER TABLE filter_list_subscriptions ... SET DEFAULT` (with a malformed `down`) from un-migrated entity drift in `filter-list-subscription.entity.ts`; stripped out of the P13-008 migration — needs its own reconciliation (entity fix or dedicated migration)
 - [ ] B-078 — `E2EE_GROUP_MAX_MEMBERS` (`packages/domain/src/e2ee/`) and `DM_GROUP_MAX` (`packages/domain/src/limits.ts`) are two constants for the same spec bound of 8 — unify on one
 - [ ] B-079 — federation: `unfollow`/`unlike` mint a fresh random UUID for the inner activity on `Undo` (`activitypub-federation-gateway.service.ts:134-149,162-173`) instead of naming the original Follow/Like activity id — latent interop hazard (peers can't match the Undo); P18-003 must not replicate the pattern, and Follow/Like deserve the same deterministic-id fix
-- [ ] B-080 — web Pages gaps: Gallery + Friends blocks unrendered (Friends is cheap — `api.socialGraph.listMutualFollows`, TUI reference `apps/tui/src/pages/render/blocks.tsx:461`), `PageTheme` (accent/background/border) unapplied, guestbook sign/report/remove web-less, pinned-posts section absent, Badges placeholder everywhere
+- [x] P13-010 — TUI E2EE UX: immutable mode labels, verification/safety-number flow, change/compromise interstitials, backup-loss disclosure, device manager, and inaccessible-history states _(landed 2026-08-22: recovered an interrupted agent's half-done slice — fixed its type errors, fake-api capability stubs, and shell wiring; screens render immutable mode labels + ADR 0027 dev-mode warning, safety-number verify (`v`, session-scoped verified set), roster-change/identity-change send pauses, vault-fault banners stating lost history as lost (`patches logout --wipe-e2ee` / device-manager wipe), group-control transcript view, and sends routed only through the vault stage→send→confirm pipeline; §194 source-scan test scoped to the LEGACY disclosure with ADR 0020 §11 carve-outs; `mise run check @patches/tui` green)_
+- [x] P18-003 — Outbound reposts: `announceRemotePost`/`unannounceRemotePost` on `FederationGateway` + ActivityPub impl + `reaction.service.ts` wiring. **Deterministic Announce ids reconstructed from the repost row** — never `randomUUID()` (the current follow/like Undo path mints fresh inner-activity ids, B-079; do not replicate). Owns `federation-gateway.ts`, `activitypub-federation-gateway.service.ts`(+test), `apps/server/src/modules/reactions/reaction.service.ts` _(landed 2026-08-22: `${PUBLIC_ORIGIN}/activities/announce/<repost-id>` via new `activity-ids.ts`; Undo embeds byte-identical deterministic Announce; PUBLIC-only, blocked-domain pre-check, transactional unrepost; +10 tests. Inbound Announce is P18-004)_
+- [x] B-080 — web Pages gaps: Gallery + Friends blocks unrendered (Friends is cheap — `api.socialGraph.listMutualFollows`, TUI reference `apps/tui/src/pages/render/blocks.tsx:461`), `PageTheme` (accent/background/border) unapplied, guestbook sign/report/remove web-less, pinned-posts section absent, Badges placeholder everywhere _(landed 2026-08-22: all five minus Badges — schema defines no badge fields yet; theme colors whitelist-validated into CSS vars; 120/120 web tests green)_
+
+<!-- Owner UI-direction tickets (2026-08-22): "tightening up the UI … should always be in the mix" -->
+
+- [ ] B-086 — **web media/file upload broken** (owner report 2026-08-22): reproduce against local compose (BeginMediaUpload → presigned PUT → FinalizeMediaUpload path in apps/web), find the break (CORS? presign URL? finalize wiring?), fix with regression coverage
+- [ ] B-087 — compose fan-out style option: keep today's stack-up fan-out, add a **radial** variant (owner preference), plus a **compact ⇄ cozy** density toggle; persisted like other client-only preferences (cosmetics never gate function, §184.3); design informed by `docs/research/web-minimal-design.md`
+- [ ] B-088 — density & action-ownership audit, TUI + web: sweep every screen for (a) excess padding/space with sparse content, (b) icon/action overload — too many visible actions at once, (c) overlapping affordances or unclear ownership of functionality, (d) poor element placement; produce per-surface findings with concrete fixes, then land them
+- [ ] B-089 — **thread view as flagship surface** (owner: "one of the star pieces of the show"): TUI ThreadScreen + web ThreadRoute get the full polish pass aligned with the simple throwback vision — hierarchy, focus, reply targeting, reading rhythm; no engagement ranking ever (§194)
+- [ ] B-090 — design research notes: `docs/research/tui-design-reference.md` (Ink/terminal UI craft) and `docs/research/web-minimal-design.md` (ultra-minimal web that reads crafted, not vibe-coded) — external sources cited + dated, findings mapped to our actual surfaces; feeds B-087/B-088/B-089
+- [ ] B-091 — BACKLOG (low): architecture-hardening pass over auth/e2ee/federation/pages seams — module boundary review, error-taxonomy consistency, observability coverage (owner: "more enterprise architecture at some point")
 - [ ] B-081 — TUI E2EE vault passphrase-KDF fallback tier (ADR 0020 §4): the guarded-file tier mirrors the credential store instead; needs a passphrase→KDF option for keyring-less environments, wired through a UI seam
 - [x] B-082 — mobile Pages viewer: `apps/mobile` has no way to view a user's Patches Page/wall (read-only blocks render like the TUI/web viewers; inert data only) _(landed 2026-08-22: `apps/mobile/src/pages/{document,href,view}.ts` + tests, `screens/PageScreen.tsx`, `components/PageBlocks.tsx` — Text/Markdown/AsciiArt/Hero/NowPlaying/Spacer/Links(http(s)-rechecked via RN Linking)/Image(GetMediaDownload + placeholder fallback)/Posts(read-only PostRow)/TopEight(local handles)/Guestbook read-only; entry via tappable author handle in PostRow and top-bar own handle; 44 new tests, `mise run check @patches/mobile` green)_
 - [ ] B-083 — **PARKED WIP (untracked in tree): `apps/server/test/e2ee-privacy-scan.integration.test.ts`** (~1,070 lines, P13-013 storage/log/federation-isolation scans). Typechecks clean; migration + client-creation + proto-loader method-name bugs fixed (`reportE2EeMessage` — capital `E` after the digit, same quirk as the controller comment at `moderation.controller.ts:192`). Remaining blocker: the `ReportE2eeMessage` call in the report-flow section returns `NOT_FOUND` ("That message does not exist") even though the just-written `e2ee_logical_messages` row is present in `patches_test_server` (verified via psql mid-run) — same DB confirmed for both the direct DataSource and the gRPC app. Eliminated: wrong DB, stale dist, wire-field naming, entity/table mapping. Next step: log the exact `logicalMessageId` string reaching `ModerationService.reportE2eeMessage` and diff against `sendEnvelopes`' returned id; suspect something between the service return mapping (`e2ee-conversation.service.ts:276`) and the controller payload.
