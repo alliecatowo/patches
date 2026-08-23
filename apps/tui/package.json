@@ -47,6 +47,7 @@
     "@connectrpc/connect-node": "catalog:",
     "@napi-rs/keyring": "catalog:",
     "@patches/client": "workspace:*",
+    "@patches/crypto": "workspace:*",
     "ink": "catalog:",
     "ink-spinner": "catalog:",
     "react": "catalog:",

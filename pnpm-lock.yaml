@@ -527,6 +527,9 @@ importers:
       '@patches/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@patches/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       ink:
         specifier: 'catalog:'
         version: 7.1.1(@types/react@19.2.18)(react-devtools-core@6.1.5)(react@19.2.8)

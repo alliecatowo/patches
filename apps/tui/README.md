@@ -93,6 +93,24 @@ patches ping --server 127.0.0.1:50051 --insecure   # non-interactive connectivit
 From a repo checkout without a global install: `pnpm --filter @patches/tui build && node
 apps/tui/dist/cli.js --server 127.0.0.1:50051 --insecure` (or `mise run tui`).
 
+## Encrypted E2EE session vault (P13-006)
+
+Local E2EE ratchet/session state lives in an encrypted vault under
+`$XDG_CONFIG_HOME/patches/e2ee/` (default `~/.config/patches/e2ee/`), one database file
+per `(node origin, user id)`. The vault is XChaCha20-Poly1305 encrypted under a data key
+derived from a random wrapping key stored in the OS keyring (service `patches-e2ee-vault`,
+keyed per node + user — the same tiering as the credential store): keyring first, an
+explicitly opted-in `0600` key file (`--allow-insecure-credential-file`) second, and with
+neither, sessions live in memory only and do not survive the run. Files are written with
+`0600` permissions via write-temp + fsync + rename; a send's ratchet advance is committed
+durably before bytes may go out, and recovery on next start adopts any crash-interrupted
+staged send so message keys/nonces are never reused. A vault file older than the newest
+generation this device committed (restored backup, synced-down file) or one that fails
+authentication is refused — the client fails closed rather than silently downgrading;
+recovery is `wipeE2eeState()` (src/e2ee/ratchet-vault.ts), the seam `patches logout` and
+device revocation will call to destroy the local state (database, key file, temps/lock,
+and keyring entry). Wiring that wipe prompt into the logout/device flows is P13-010.
+
 ## Development
 
 See the repo root [`README.md`](../../README.md) and
