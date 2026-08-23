@@ -61,6 +61,7 @@ import { Post } from './post.entity.js';
 import { PostEdit } from './post-edit.entity.js';
 import { PostMedia } from './post-media.entity.js';
 import { PostTag } from './post-tag.entity.js';
+import { QuoteAuthorization } from './quote-authorization.entity.js';
 import { RateLimitBucket } from './rate-limit-bucket.entity.js';
 import { Report } from './report.entity.js';
 import { Repost } from './repost.entity.js';
@@ -84,7 +85,9 @@ import { WebauthnChallenge } from './webauthn-challenge.entity.js';
  * `community_members`, `community_bans`, `community_invites`, `conversations`,
  * `conversation_members`, `messages`, `message_requests`, `post_edits`, `pinned_posts`,
  * `actor_flair`. Phase 13 adds only public E2EE identity/prekey material, opaque mailbox
- * envelopes, and explicitly consented report evidence.
+ * envelopes, and explicitly consented report evidence. Phase 18 adds
+ * `quote_authorizations` (ADR 0028 FEP-044f evidence lifecycle; `reposts` itself gains
+ * `remote_activity_uri` in place).
  */
 export const ALL_ENTITIES = [
   AppMeta,
@@ -118,6 +121,7 @@ export const ALL_ENTITIES = [
   InboxActivity,
   DomainBlock,
   Repost,
+  QuoteAuthorization,
   Tag,
   PostTag,
   TagMute,

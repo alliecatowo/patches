@@ -23,6 +23,7 @@ import { Post } from './post.entity.js';
 // `created_at`, and this table (unlike `Like`/`Bookmark`) has a surrogate id to use for it.
 @Index(['actorId', 'createdAt', 'id'])
 @Index(['postId', 'createdAt', 'id'])
+@Index(['remoteActivityUri'], { unique: true })
 export class Repost {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
@@ -40,6 +41,17 @@ export class Repost {
   @ManyToOne(() => Post, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'post_id' })
   declare post: Post;
+
+  /** **Inbound-only** (ADR 0028 §4, P18-002): the activity id of the *remote* `Announce`
+   * this repost arrived as. A remote `Undo(Announce)` names that URI; storing it here lets
+   * the undo find this pointer row by lookup, and the unique index guarantees one remote
+   * activity id can never claim two local repost rows. Null on locally-originated reposts —
+   * outbound `Announce` ids are deterministically *reconstructed* from this row, never
+   * stored (a stored outbound id would be a second source of truth for something already
+   * derivable), so this column never carries a value this node minted. Postgres unique
+   * indexes allow multiple NULLs, so local reposts do not collide here. */
+  @Column({ type: 'text', nullable: true })
+  declare remoteActivityUri: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;

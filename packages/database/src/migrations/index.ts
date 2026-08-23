@@ -27,6 +27,7 @@ import { AddOidcCredentialType1787220000000 } from './1787220000000-AddOidcCrede
 import { Phase13NodeFrankingKeys1787235748738 } from './1787235748738-Phase13NodeFrankingKeys.js';
 import { AuthCodeDeliveryEnvelopes1787420562003 } from './1787420562003-AuthCodeDeliveryEnvelopes.js';
 import { AddE2eeGroupControlEvents1787448705727 } from './1787448705727-AddE2eeGroupControlEvents.js';
+import { FederationSocialDepthSchema1787450799656 } from './1787450799656-FederationSocialDepthSchema.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -70,4 +71,5 @@ export const ALL_MIGRATIONS = [
   Phase13NodeFrankingKeys1787235748738,
   AuthCodeDeliveryEnvelopes1787420562003,
   AddE2eeGroupControlEvents1787448705727,
+  FederationSocialDepthSchema1787450799656,
 ];
