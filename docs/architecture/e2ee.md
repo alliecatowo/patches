@@ -1,12 +1,15 @@
 # End-to-end encrypted direct messages
 
-**Status: protocol core and wire/domain contract implemented; no node implementation; independent
-review pending; production capability `DISABLED`.**
+**Status: protocol core, wire/domain contract, and node implementation complete; independent review
+pending; production capability `DISABLED`.**
 
 [ADR 0020](../decisions/0020-e2ee-direct-messages.md) is binding. This document records the
-boundary and the contract, not a claim that E2EE is available. `E2eeService` is **schema-only**:
-`packages/proto/proto/patches/v1/e2ee.proto` defines every RPC, no `apps/server` controller
-implements one, and a node answers all of them `UNIMPLEMENTED`.
+boundary and the contract — it is still not a claim that E2EE is available. Every `E2eeService`
+RPC (`packages/proto/proto/patches/v1/e2ee.proto`) has a real `apps/server` implementation
+exercised by integration tests, but the node keeps the capability fail-closed: with the reviewed
+franking-profile list empty, sends are refused unless ADR 0027's explicit
+`E2EE_UNREVIEWED_DEV_MODE=true` test mode is set on isolated, owner-authorized infrastructure, and
+the rollout state stays `DISABLED`.
 
 Where to look:
 
@@ -134,17 +137,55 @@ Mailbox reads are keyset-paginated on `(received_at, envelope_id)` ascending, st
 cursor. There is no offset, no page number, and no `sort`/`order` parameter anywhere in the schema —
 spec §153 and Amendment B (§194). A mailbox has exactly one order: oldest first.
 
+### Group control: the membership transcript (ADR 0020 §7, P13-008)
+
+Groups stay pairwise — every sender device encrypts to every member device, bounded at eight
+members. There is deliberately **no sender key, no MLS, no group-key distribution** (§7's explicit
+"Alternatives considered"): the only group-level state the protocol needs is a **transcript**, an
+append-only log of membership transitions whose length _is_ the membership epoch.
+
+Each transition is one `E2eeGroupControlEvent`: canonical bytes
+(`canonicalGroupControlTranscript` in `packages/domain/src/e2ee/groups.ts`) signed by a member's
+_device_ key — membership is a conversation-level fact, so unlike the account-level device roster
+each link carries a device signature, not a root signature — and verified as a chain by
+`assertGroupControlSucceeds`. Links digest-chain from an all-zero genesis, every payload binds the
+epoch it establishes (`previous + 1`, epoch 1 being the creation membership), and rows live in
+`e2ee_group_control_events` under a unique `(conversation_id, epoch)` index: two racing transitions
+yield exactly one `E2EE_GROUP_CONTROL_CONFLICT` loser, never two events at one epoch.
+
+- `AddE2eeMember` / `RemoveE2eeMember` verify the device-signed event against an active member with
+  a certified active device, append it, and mutate the membership row the fanout recomputes its
+  expected device set from.
+- `ListE2eeGroupControlEvents` serves the transcript from the caller's last verified epoch forward,
+  so clients verify the hash chain themselves instead of trusting the node's current-epoch claim —
+  the conversation-level counterpart of `ListDeviceRosters`.
+
+Add/remove semantics:
+
+- An **added** member receives messages sent from their epoch forward only — nothing is re-encrypted
+  or replayed to them; a removed actor who rejoins has their membership row revived.
+- A **removed** member's devices are excluded from every later fanout (`leftAt` drops them from the
+  member set): a send addressing them fails as an unexpected target, a send composed under their
+  epoch is rejected stale, and their own sends fail the active-member check. Their view answers
+  `E2EE_CONVERSATION_NOT_FOUND` rather than confirming the removal — no block oracle.
+- Already-delivered mailbox envelopes stay readable. Removal stops future payloads; it is not a
+  remote wipe — the same line `RevokeDevice` holds.
+
+Concurrency: a fanout accept takes `FOR SHARE` locks on the conversation's member rows and reads
+the epoch only after locking, so a removal's `leftAt` update and an in-flight send serialize on the
+same membership rows exactly the way `RevokeDevice` and the fanout serialize on device rows.
+
 ## 4. What the node stores, and what it must never see
 
-| The node holds                                                | The node never receives                      |
-| ------------------------------------------------------------- | -------------------------------------------- |
-| Conversation membership, `security_mode`, membership epoch    | E2EE message plaintext (except §5 evidence)  |
-| Public identity roots, device certificates, roster log        | Message keys, chain keys, root keys          |
-| Public prekey bundles and inventory counts                    | Ratchet state, skipped-key stores            |
-| Opaque `encrypted_header`, `ciphertext`, `opening_ciphertext` | Device private keys                          |
-| Ciphertext and fanout digests, franking commitments           | Recovery keys or an escrowed decryption key  |
-| Its own franking tag and key era                              | The franking _opening_ for any message       |
-| Sender/recipient device ids, accepted/received timestamps     | Anything that would let it open a commitment |
+| The node holds                                                                          | The node never receives                      |
+| --------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Conversation membership, `security_mode`, membership epoch, signed group-control events | E2EE message plaintext (except §5 evidence)  |
+| Public identity roots, device certificates, roster log                                  | Message keys, chain keys, root keys          |
+| Public prekey bundles and inventory counts                                              | Ratchet state, skipped-key stores            |
+| Opaque `encrypted_header`, `ciphertext`, `opening_ciphertext`                           | Device private keys                          |
+| Ciphertext and fanout digests, franking commitments                                     | Recovery keys or an escrowed decryption key  |
+| Its own franking tag and key era                                                        | The franking _opening_ for any message       |
+| Sender/recipient device ids, accepted/received timestamps                               | Anything that would let it open a commitment |
 
 The node additionally learns coarse ciphertext size, prekey inventory movement, mailbox fetch
 patterns, and ordinary network/request metadata. Product copy must state that metadata exposure

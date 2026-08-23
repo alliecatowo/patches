@@ -106,7 +106,7 @@ service ModerationService
 service TagService
 service CommunityService
 service DirectMessageService
-service E2eeService  // schema-only, ADR 0020 — no controller implements it
+service E2eeService  // implemented node-side; production capability DISABLED (ADR 0020)
 service FilterService
 service FilterListService
 service LabelService
@@ -423,33 +423,38 @@ supports manual refresh.
 produces `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; there is no RPC in this service that
 converts a conversation between modes. Clients render the §183.1/§194 disclosure from that field.
 
-### E2eeService (§183, §194, §195.1) — **schema-only** in `e2ee.proto` (P13-001, ADR 0020)
+### E2eeService (§183, §194, §195.1) — implemented node-side, capability disabled (`e2ee.proto`, ADR 0020)
 
-**Status: schema-only. No `apps/server` controller implements any RPC below.** A node that loads
-the schema answers every method `UNIMPLEMENTED`, and `GetE2eeCapability` reports
-`E2EE_CAPABILITY_STATE_DISABLED`. Publishing the schema is not the capability. The rows below are
-the contract a future implementation has to satisfy, not a description of behaviour that exists —
-see [`e2ee.md`](./e2ee.md) for the boundary and the state machines.
+**Status: every RPC below has a real controller/service/repository path in `apps/server`
+(P13-002–P13-009) and integration coverage.** The production rollout state stays
+`E2EE_CAPABILITY_STATE_DISABLED` and the reviewed franking-profile list is still empty, so a
+default node fails E2EE sends closed; operating the one unreviewed profile is confined to ADR
+0027's explicit `E2EE_UNREVIEWED_DEV_MODE=true` test mode. Independent review (P13-014) remains
+the ship gate — this is behaviour that exists, not a generally available capability. See
+[`e2ee.md`](./e2ee.md) for the boundary and the state machines.
 
-| RPC                        | Status      | Notes                                                                                                                                                     |
-| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GetE2eeCapability`        | schema-only | Rollout state and the node's copy of the protocol constants. Callable before enrollment, so a client can discover E2EE is unavailable before offering it. |
-| `PublishIdentityRoot`      | schema-only | Publishes or rotates the caller's messaging identity root. The node stores and serves it; it never certifies it.                                          |
-| `GetIdentityRoot`          | schema-only | First-contact material, not proof — safety-number comparison is the authentication control.                                                               |
-| `EnrollDevice`             | schema-only | Certificate + roster `n+1` + initial prekeys, atomically. A half-enrolled device is not a state the schema allows.                                        |
-| `RevokeDevice`             | schema-only | Roster excluding the device; unused prekeys deleted. Never a remote wipe, and it cannot retract what the device holds.                                    |
-| `PublishDeviceRoster`      | schema-only | Appends roster `current.sequence + 1`, chained to the current digest. Rejected otherwise.                                                                 |
-| `GetDeviceRoster`          | schema-only | Newest roster plus the device certificates it references.                                                                                                 |
-| `ListDeviceRosters`        | schema-only | Keyset over the roster log, so a client verifies the hash chain itself instead of trusting a newest-roster claim.                                         |
-| `UploadPrekeys`            | schema-only | Rotate the signed prekey and/or top up one-time prekeys.                                                                                                  |
-| `GetPrekeyInventory`       | schema-only | The calling device's own counts only — another actor's remaining count is an availability oracle.                                                         |
-| `ClaimPrekeyBundles`       | schema-only | One bundle per active recipient device; consumes at most one one-time prekey per device per call; draining is rate-limited.                               |
-| `CreateE2eeConversation`   | schema-only | The only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`. Separate from `CreateConversation`, which takes a plaintext body.                           |
-| `GetE2eeConversationState` | schema-only | Membership epoch, members, rosters and active devices — everything a correct fanout needs.                                                                |
-| `SendEnvelopes`            | schema-only | One logical message as one atomic, exactly-covering per-device fanout; returns the node's franking tag.                                                   |
-| `ListMailboxEnvelopes`     | schema-only | Keyset on `(received_at, envelope_id)` ascending. Poll-based; no push, no stream, no sort parameter.                                                      |
-| `AcknowledgeEnvelopes`     | schema-only | Lets the node clean the mailbox. Never surfaced to the sender — that would be a read receipt (§183.3, §194).                                              |
-| `AttachReportEvidence`     | schema-only | Franking commitment + reporter-disclosed plaintext against an existing report. The node verifies; it never decrypts.                                      |
+| RPC                          | Status      | Notes                                                                                                                                                                                                                                                    |
+| ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GetE2eeCapability`          | implemented | Rollout state and the node's copy of the protocol constants. Callable before enrollment, so a client can discover E2EE is unavailable before offering it.                                                                                                |
+| `PublishIdentityRoot`        | implemented | Publishes or rotates the caller's messaging identity root. The node stores and serves it; it never certifies it.                                                                                                                                         |
+| `GetIdentityRoot`            | implemented | First-contact material, not proof — safety-number comparison is the authentication control.                                                                                                                                                              |
+| `EnrollDevice`               | implemented | Certificate + roster `n+1` + initial prekeys, atomically. A half-enrolled device is not a state the schema allows.                                                                                                                                       |
+| `RevokeDevice`               | implemented | Roster excluding the device; unused prekeys deleted. Never a remote wipe, and it cannot retract what the device holds.                                                                                                                                   |
+| `PublishDeviceRoster`        | implemented | Appends roster `current.sequence + 1`, chained to the current digest. Rejected otherwise.                                                                                                                                                                |
+| `GetDeviceRoster`            | implemented | Newest roster plus the device certificates it references.                                                                                                                                                                                                |
+| `ListDeviceRosters`          | implemented | Keyset over the roster log, so a client verifies the hash chain itself instead of trusting a newest-roster claim.                                                                                                                                        |
+| `UploadPrekeys`              | implemented | Rotate the signed prekey and/or top up one-time prekeys.                                                                                                                                                                                                 |
+| `GetPrekeyInventory`         | implemented | The calling device's own counts only — another actor's remaining count is an availability oracle.                                                                                                                                                        |
+| `ClaimPrekeyBundles`         | implemented | One bundle per active recipient device; consumes at most one one-time prekey per device per call; draining is rate-limited.                                                                                                                              |
+| `CreateE2eeConversation`     | implemented | The only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`. Separate from `CreateConversation`, which takes a plaintext body.                                                                                                                          |
+| `GetE2eeConversationState`   | implemented | Membership epoch, members, rosters and active devices — everything a correct fanout needs.                                                                                                                                                               |
+| `AddE2eeMember`              | implemented | Appends one device-signed group-control event establishing the next membership epoch and inserts (or revives) the member row. The added member receives future messages only; group size stays bounded at 8.                                             |
+| `RemoveE2eeMember`           | implemented | The same transcript append with `REMOVED`: the subject's devices drop out of every later fanout and stale-epoch sends are rejected whole. Already-delivered mail stays readable — never a remote wipe.                                                   |
+| `ListE2eeGroupControlEvents` | implemented | Keyset over the group-control transcript from the caller's last verified epoch forward, so clients verify the membership hash chain themselves instead of trusting the node's current-epoch claim (`ListDeviceRosters`' conversation-level counterpart). |
+| `SendEnvelopes`              | implemented | One logical message as one atomic, exactly-covering per-device fanout; returns the node's franking tag.                                                                                                                                                  |
+| `ListMailboxEnvelopes`       | implemented | Keyset on `(received_at, envelope_id)` ascending. Poll-based; no push, no stream, no sort parameter.                                                                                                                                                     |
+| `AcknowledgeEnvelopes`       | implemented | Lets the node clean the mailbox. Never surfaced to the sender — that would be a read receipt (§183.3, §194).                                                                                                                                             |
+| `AttachReportEvidence`       | implemented | Franking commitment + reporter-disclosed plaintext against an existing report. The node verifies; it never decrypts.                                                                                                                                     |
 
 `E2eeReportEvidenceItem.disclosed_plaintext` is the single intentional plaintext field in the whole
 schema. Everything else the node touches is opaque bytes.
