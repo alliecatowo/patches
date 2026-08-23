@@ -7,6 +7,7 @@ import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeController } from './e2ee.controller.js';
 import { E2eeGroupService } from './group-control.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { DatabaseNodeFrankingKeyRing, NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import { E2eePrekeyService } from './prekey.service.js';
 import { E2eeReportEvidenceService } from './report-evidence.service.js';
@@ -33,6 +34,7 @@ import { E2eeRuntimeApprovalModule } from './e2ee-runtime-approval.module.js';
     E2eeConversationService,
     E2eeGroupService,
     E2eeReportEvidenceService,
+    E2eeRateLimitService,
     { provide: NODE_FRANKING_KEY_RING, useClass: DatabaseNodeFrankingKeyRing },
   ],
 })

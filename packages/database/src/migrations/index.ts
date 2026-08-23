@@ -28,6 +28,7 @@ import { Phase13NodeFrankingKeys1787235748738 } from './1787235748738-Phase13Nod
 import { AuthCodeDeliveryEnvelopes1787420562003 } from './1787420562003-AuthCodeDeliveryEnvelopes.js';
 import { AddE2eeGroupControlEvents1787448705727 } from './1787448705727-AddE2eeGroupControlEvents.js';
 import { FederationSocialDepthSchema1787450799656 } from './1787450799656-FederationSocialDepthSchema.js';
+import { MessagesRequireLegacySecurityMode1787530000000 } from './1787530000000-MessagesRequireLegacySecurityMode.js';
 import { AddRateLimitBuckets1787190000002 } from './1787190000002-AddRateLimitBuckets.js';
 import { AddPgStatStatements1787190000000 } from './1787190000000-AddPgStatStatements.js';
 import { AddPostsFts1787190000001 } from './1787190000001-AddPostsFts.js';
@@ -78,4 +79,5 @@ export const ALL_MIGRATIONS = [
   AddPgStatStatements1787190000000,
   AddPostsFts1787190000001,
   AddRateLimitBuckets1787190000002,
+  MessagesRequireLegacySecurityMode1787530000000,
 ];

@@ -17,6 +17,7 @@ import type {
   SendMessageResponse,
 } from '../api/wire/types.js';
 
+import { CONVERSATION_SECURITY_MODE } from '../api/wire/enums.js';
 import { present } from '../api/present.js';
 import { describeGrpcError } from '../api/errors.js';
 import { type PatchesApi } from '../api/client.js';
@@ -26,6 +27,11 @@ import { createApi, openCredentialStore } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
 const DM_NOTICE = "Not end-to-end encrypted — this node's operators can read these messages.";
+
+const E2EE_REFUSAL =
+  'This conversation uses end-to-end encryption, whose keys `patches dm send` does not hold, ' +
+  'so it cannot write here. Use the interactive app instead — its DM screen composes these ' +
+  'messages.';
 
 const USAGE = `Usage: patches dm <list|send|read|requests> [options]
 
@@ -169,15 +175,17 @@ function conversationActors(
 
 async function withSession(
   deps: DmDeps,
-  operation: (session: DmCommandSession) => Promise<void>,
+  operation: (session: DmCommandSession) => Promise<void | number>,
 ): Promise<number> {
   let session: DmCommandSession | undefined;
   try {
     session = await openCurrentSession(deps);
     if (session === undefined) return 1;
     deps.io.stdout(`${DM_NOTICE}\n`);
-    await operation(session);
-    return 0;
+    // An operation may return its own exit code (e.g. a local pre-check refusal); absent
+    // one, completing normally is success.
+    const outcome = await operation(session);
+    return outcome ?? 0;
   } catch (error) {
     reportDmError(deps.io, error, deps.target);
     return 1;
@@ -228,6 +236,19 @@ async function runSend(rest: readonly string[], deps: DmDeps): Promise<number> {
     return 1;
   }
   return withSession(deps, async ({ api }) => {
+    // Client mirror of the server's plaintext-into-E2EE gate (audit P0-1c): fetch the
+    // conversation's mode first and refuse to send anything into an E2EE one. The server
+    // rejects such sends uniformly anyway; refusing here turns that opaque NOT_FOUND into
+    // actionable guidance instead. A missing conversation falls through so the server's own
+    // error surfaces unchanged.
+    const existing = await api.getConversation({ id: conversationId });
+    if (
+      present(existing.conversation) &&
+      existing.conversation.securityMode !== CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE
+    ) {
+      deps.io.stderr(`${E2EE_REFUSAL}\n`);
+      return 1;
+    }
     const response = await api.sendMessage({
       clientRequestId: deps.createRequestId?.() ?? randomUUID(),
       conversationId,
@@ -236,6 +257,7 @@ async function runSend(rest: readonly string[], deps: DmDeps): Promise<number> {
     deps.io.stdout(
       present(response.message) ? `Sent ${oneLine(response.message.id)}.\n` : 'Message sent.\n',
     );
+    return 0;
   });
 }
 

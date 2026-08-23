@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
+import { ByteWriter, concatBytes, toHex } from './codec.js';
 import {
   decodeRatchetState,
   encodeRatchetState,
+  initializeResponderRatchet,
   ratchetDecrypt,
   ratchetEncrypt,
 } from './double-ratchet.js';
-import { toHex } from './codec.js';
-import { deterministicSource, establishedRatchetPair } from './testing/fixtures.js';
-import { MAX_SKIP, type EncryptedRatchetMessage } from './types.js';
-import { respondX3dh } from './x3dh.js';
+import { deterministicSource, establishedRatchetPair, fixtureBytes } from './testing/fixtures.js';
+import { RatchetStateError, TooManySkippedMessagesError } from './errors.js';
+import {
+  MAX_SKIPPED_KEYS,
+  KEY_BYTES,
+  type EncryptedRatchetMessage,
+  type X3dhSecrets,
+} from './types.js';
+import { disposeX3dhSecrets, respondX3dh } from './x3dh.js';
 
 const encoder = new TextEncoder();
 
@@ -114,14 +121,102 @@ describe('revision-4 Double Ratchet with encrypted headers', () => {
 
     let sender = encrypted.state;
     let farMessage = encrypted.output;
-    for (let index = 0; index <= MAX_SKIP; index += 1) {
+    // `encrypted` is message number 0; this loop adds numbers 1..MAX_SKIPPED_KEYS, so the far
+    // delivery leaves a gap of exactly MAX_SKIPPED_KEYS — the largest the cache can absorb.
+    for (let index = 0; index < MAX_SKIPPED_KEYS; index += 1) {
       const next = ratchetEncrypt(sender, encoder.encode('x'), ad, source);
       sender = next.state;
       farMessage = next.output;
     }
-    expect(() => ratchetDecrypt(bobState, farMessage, ad, deterministicSource(70))).toThrow(
-      'Gap too large.',
+    // Regression (2026-08 audit): a first delivery one past the retired per-gap cap used to
+    // throw before storing anything, permanently bricking the chain. Within the cache bound the
+    // gap is now absorbed: the far message decrypts, everything skipped stays recoverable, and
+    // the session keeps working in both directions.
+    const opened = ratchetDecrypt(bobState, farMessage, ad, deterministicSource(70));
+    expect(new TextDecoder().decode(opened.output)).toBe('x');
+    expect(opened.state.skippedMessageKeys.size).toBe(MAX_SKIPPED_KEYS);
+
+    // The retained window still decrypts late deliveries out of order (via the skipped-key
+    // cache, ahead of the receive counter).
+    let sender2 = encrypted.state;
+    let midMessage = encrypted.output;
+    for (let index = 0; index < MAX_SKIPPED_KEYS / 2; index += 1) {
+      const next = ratchetEncrypt(sender2, encoder.encode(`mid-${String(index)}`), ad, source);
+      sender2 = next.state;
+      midMessage = next.output;
+    }
+    const openedMid = ratchetDecrypt(opened.state, midMessage, ad, deterministicSource(70));
+    expect(new TextDecoder().decode(openedMid.output)).toBe(
+      `mid-${String(MAX_SKIPPED_KEYS / 2 - 1)}`,
     );
+
+    // And a full reply round trip — which DH-ratchets both sides — still works afterwards.
+    const reply = ratchetEncrypt(
+      openedMid.state,
+      encoder.encode('reply'),
+      ad,
+      deterministicSource(71),
+    );
+    const openedReply = ratchetDecrypt(sender2, reply.output, ad, deterministicSource(72));
+    const nextSend = ratchetEncrypt(
+      openedReply.state,
+      encoder.encode('after-recovery'),
+      ad,
+      deterministicSource(73),
+    );
+    const openedAfter = ratchetDecrypt(
+      openedMid.state,
+      nextSend.output,
+      ad,
+      deterministicSource(74),
+    );
+    expect(new TextDecoder().decode(openedAfter.output)).toBe('after-recovery');
+  });
+
+  it('refuses a gap beyond the cache bound per-message and recovers through a DH ratchet', () => {
+    const { aliceState, bobState } = establishedRatchetPair(4);
+    const ad = encoder.encode('brick-pair');
+    const source = deterministicSource(60);
+    // Message 0 arrives normally; it is also what arms bob's sending chain (a responder's first
+    // receive runs the DH ratchet).
+    const first = ratchetEncrypt(aliceState, encoder.encode('m0'), ad, source);
+    const armedBob = ratchetDecrypt(bobState, first.output, ad, deterministicSource(61)).state;
+    // Then alice sends MAX_SKIPPED_KEYS + 2 more without any of them being delivered: delivering
+    // the last leaves a gap of MAX_SKIPPED_KEYS + 1 missed keys, which can never fit the cache.
+    let sender = first.state;
+    let tooFar: EncryptedRatchetMessage | undefined;
+    for (let index = 0; index <= MAX_SKIPPED_KEYS + 1; index += 1) {
+      const next = ratchetEncrypt(sender, encoder.encode(`m${String(index + 1)}`), ad, source);
+      sender = next.state;
+      tooFar = next.output;
+    }
+    if (tooFar === undefined) throw new Error('fixture');
+
+    // Per-message refusal: this delivery throws and the state is untouched...
+    expect(() => ratchetDecrypt(armedBob, tooFar, ad, deterministicSource(70))).toThrow(
+      TooManySkippedMessagesError,
+    );
+    expect(armedBob.receivedCount).toBe(1);
+    expect(armedBob.skippedMessageKeys.size).toBe(0);
+
+    // ...but the chain is not bricked: bob replies, alice DH-ratchets, and her next send under
+    // the new ratchet key arrives carrying `previousChainLength` past every bound. Before the
+    // fix that pre-ratchet skip threw and the session was unrecoverable.
+    const reply = ratchetEncrypt(armedBob, encoder.encode('rescue'), ad, deterministicSource(80));
+    const aliceTurn = ratchetDecrypt(sender, reply.output, ad, deterministicSource(81));
+    const rescueMessage = ratchetEncrypt(
+      aliceTurn.state,
+      encoder.encode('after-the-flood'),
+      ad,
+      deterministicSource(82),
+    );
+    const rescued = ratchetDecrypt(armedBob, rescueMessage.output, ad, deterministicSource(83));
+    expect(new TextDecoder().decode(rescued.output)).toBe('after-the-flood');
+
+    // The recovered session keeps working in both directions.
+    const ack = ratchetEncrypt(rescued.state, encoder.encode('ack'), ad, deterministicSource(84));
+    const acked = ratchetDecrypt(aliceTurn.state, ack.output, ad, deterministicSource(85));
+    expect(new TextDecoder().decode(acked.output)).toBe('ack');
   });
 
   it('round-trips explicit versioned state serialization without losing counters or keys', () => {
@@ -169,5 +264,90 @@ describe('revision-4 Double Ratchet with encrypted headers', () => {
     const openedSkipped = ratchetDecrypt(restored, message0, ad, receiverSource);
     expect(new TextDecoder().decode(openedSkipped.output)).toBe('m0');
     expect(openedSkipped.state.skippedMessageKeys.size).toBe(3);
+  });
+
+  /**
+   * Regression (2026-08 audit): two serialized entries with the same `(header key, message
+   * number)` id used to collapse silently via `Map#set`, shrinking the restored cache below the
+   * declared count and leaving the vault entry inconsistent with the session it restores.
+   */
+  it('rejects a serialized skipped-key section whose ids are not unique', () => {
+    // A structurally minimal responder state (every optional key absent) so the fixed layout is
+    // easy to synthesize: version, root/send pub/send priv, five presence flags, two header
+    // keys, three u32 counters, then the skipped-key count and entries.
+    const secrets: X3dhSecrets = {
+      rootKey: fixtureBytes(1),
+      initiatorHeaderKey: fixtureBytes(2),
+      responderHeaderKey: fixtureBytes(3),
+    };
+    const state = initializeResponderRatchet(secrets, {
+      publicKey: fixtureBytes(4),
+      privateKey: fixtureBytes(5),
+    });
+    const valid = encodeRatchetState(state);
+    expect(decodeRatchetState(valid).skippedMessageKeys.size).toBe(0);
+
+    const entry = (messageNumber: number): Uint8Array =>
+      new ByteWriter()
+        .fixed(fixtureBytes(9), KEY_BYTES)
+        .u32(messageNumber)
+        .fixed(fixtureBytes(10), KEY_BYTES)
+        .finish();
+
+    // Rebuild the buffer: same prefix with the count field replaced, then the identical entry
+    // twice. Raw concatenation, because `ByteWriter#bytes` would add a length prefix the state
+    // format does not have.
+    const countField = (value: number): Uint8Array => {
+      const bytes = new Uint8Array(4);
+      new DataView(bytes.buffer).setUint32(0, value, false);
+      return bytes;
+    };
+    const prefix = valid.subarray(0, valid.length - 4);
+    const corrupt = concatBytes(prefix, countField(2), entry(7), entry(7));
+    expect(() => decodeRatchetState(corrupt)).toThrow(RatchetStateError);
+    expect(() => decodeRatchetState(corrupt)).toThrow(
+      'Serialized skipped-key entries contain a duplicate id.',
+    );
+
+    // The distinct-entry control decodes fine and preserves the declared count.
+    const healthy = concatBytes(prefix, countField(2), entry(7), entry(8));
+    expect(decodeRatchetState(healthy).skippedMessageKeys.size).toBe(2);
+  });
+});
+
+describe('disposeX3dhSecrets', () => {
+  it('zeroizes every X3DH secret and the ephemeral key pair in place', () => {
+    const secrets: X3dhSecrets = {
+      rootKey: fixtureBytes(11),
+      initiatorHeaderKey: fixtureBytes(12),
+      responderHeaderKey: fixtureBytes(13),
+    };
+    const ephemeral = { publicKey: fixtureBytes(14), privateKey: fixtureBytes(15) };
+    disposeX3dhSecrets(secrets, ephemeral);
+    for (const buffer of [
+      secrets.rootKey,
+      secrets.initiatorHeaderKey,
+      secrets.responderHeaderKey,
+      ephemeral.publicKey,
+      ephemeral.privateKey,
+    ]) {
+      expect(buffer.every((byte) => byte === 0)).toBe(true);
+    }
+  });
+
+  it('zeroizes the secrets alone when called without an ephemeral pair', () => {
+    const secrets: X3dhSecrets = {
+      rootKey: fixtureBytes(21),
+      initiatorHeaderKey: fixtureBytes(22),
+      responderHeaderKey: fixtureBytes(23),
+    };
+    disposeX3dhSecrets(secrets);
+    for (const buffer of [
+      secrets.rootKey,
+      secrets.initiatorHeaderKey,
+      secrets.responderHeaderKey,
+    ]) {
+      expect(buffer.every((byte) => byte === 0)).toBe(true);
+    }
   });
 });

@@ -47,6 +47,8 @@ import {
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { getRequestContext } from '../../common/context/request-context.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
@@ -68,6 +70,10 @@ function requireSession(session: AccessTokenClaims | undefined): AccessTokenClai
  * Transport adapter for `patches.v1.E2eeService` (ADR 0020, P13-004/005/007/009). The
  * account-root/certified-device lifecycle, prekeys, conversation/envelope fanout, and report
  * evidence are all implemented — every RPC in the schema now has a node behind it.
+ *
+ * `RequirePrivacyAckGuard` is attached to `sendEnvelopes` and `createE2EeConversation`, the
+ * E2EE counterparts of the two write RPCs (`sendMessage`/`createConversation`) that
+ * `MessagesController` gates — same legacy controller policy (audit P2), never on reads.
  *
  * `E2eeCapabilityService` makes the ADR 0027 rollout decision from the same policy the fanout
  * accepts with; the controller only maps the gRPC call to that application service.
@@ -166,12 +172,17 @@ export class E2eeController implements E2eeServiceController {
     return this.prekeys.claimPrekeyBundles(requireSession(session).actorId, request);
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async createE2EeConversation(
     @Payload() request: CreateE2eeConversationRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
   ): Promise<CreateE2eeConversationResponse> {
-    return this.conversations.createE2eeConversation(requireSession(session).actorId, request);
+    return this.conversations.createE2eeConversation(
+      requireSession(session).actorId,
+      request,
+      getRequestContext()?.peer,
+    );
   }
 
   async getE2EeConversationState(
@@ -187,7 +198,11 @@ export class E2eeController implements E2eeServiceController {
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
   ): Promise<AddE2eeMemberResponse> {
-    return this.groups.addE2eeMember(requireSession(session).actorId, request);
+    return this.groups.addE2eeMember(
+      requireSession(session).actorId,
+      request,
+      getRequestContext()?.peer,
+    );
   }
 
   async removeE2EeMember(
@@ -206,12 +221,17 @@ export class E2eeController implements E2eeServiceController {
     return this.groups.listGroupControlEvents(requireSession(session).actorId, request);
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async sendEnvelopes(
     @Payload() request: SendEnvelopesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
   ): Promise<SendEnvelopesResponse> {
-    return this.conversations.sendEnvelopes(requireSession(session).actorId, request);
+    return this.conversations.sendEnvelopes(
+      requireSession(session).actorId,
+      request,
+      getRequestContext()?.peer,
+    );
   }
 
   async listMailboxEnvelopes(

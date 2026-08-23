@@ -32,6 +32,8 @@ const BOB: DeviceEnvelopeRecipient = {
   recipientDeviceId: 'bob-device',
 };
 
+const LM = 'logical-message-1';
+
 function pair(seed = 909): { alice: DoubleRatchetState; bob: DoubleRatchetState } {
   const established = establishedRatchetPair(seed);
   return { alice: established.aliceState, bob: established.bobState };
@@ -46,17 +48,82 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
 
     const sealed = sealDeviceEnvelope(
       alice,
-      { context: CONTEXT, recipient: BOB, plaintext, openingKey: opening, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
       deterministicSource(7),
     );
     const opened = openDeviceEnvelope(
       bob,
-      { context: CONTEXT, recipient: BOB, message: sealed.output, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        message: sealed.output,
+        commitment,
+      },
       deterministicSource(8),
     );
 
     expect(opened.output.plaintext).toEqual(plaintext);
     expect(toHex(opened.output.openingKey)).toEqual(toHex(opening));
+  });
+
+  /**
+   * The logical-message id is associated data (2026-08 audit fix), so an envelope is bound to the
+   * one logical message it was sealed for. A node that re-files a stored envelope under a
+   * different logical message — or replays one envelope as another message in the same
+   * conversation — fails authentication instead of silently substituting content.
+   */
+  it('rejects an envelope presented under a different logical message id', () => {
+    const { alice, bob } = pair();
+    const plaintext = encoder.encode('bound to exactly one logical message');
+    const opening = createFrankingOpeningKey();
+    const commitment = commitFranking(opening, CONTEXT, plaintext);
+    const sealed = sealDeviceEnvelope(
+      alice,
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
+      deterministicSource(7),
+    );
+
+    expect(() =>
+      openDeviceEnvelope(
+        bob,
+        {
+          context: CONTEXT,
+          recipient: BOB,
+          logicalMessageId: 'logical-message-2',
+          message: sealed.output,
+          commitment,
+        },
+        deterministicSource(8),
+      ),
+    ).toThrow(AuthenticationError);
+    expect(() =>
+      openDeviceEnvelope(
+        bob,
+        {
+          context: CONTEXT,
+          recipient: BOB,
+          logicalMessageId: LM,
+          message: sealed.output,
+          commitment,
+        },
+        deterministicSource(8),
+      ),
+    ).not.toThrow();
   });
 
   /**
@@ -91,6 +158,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
           {
             context: CONTEXT,
             recipient: BOB,
+            logicalMessageId: LM,
             plaintext,
             openingKey: opening,
             commitment: unrelatedCommitment,
@@ -109,7 +177,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
       const hostile = ratchetEncrypt(
         alice,
         new Uint8Array([1, ...opening, 0, 0, 0, plaintext.length, ...plaintext]),
-        encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, honestCommitment),
+        encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, LM, honestCommitment),
         deterministicSource(7),
       );
 
@@ -119,6 +187,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
           {
             context: CONTEXT,
             recipient: BOB,
+            logicalMessageId: LM,
             message: hostile.output,
             commitment: unrelatedCommitment,
           },
@@ -135,7 +204,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
       const hostile = ratchetEncrypt(
         alice,
         new Uint8Array([1, ...opening, 0, 0, 0, plaintext.length, ...plaintext]),
-        encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, unrelatedCommitment),
+        encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, LM, unrelatedCommitment),
         deterministicSource(7),
       );
 
@@ -146,6 +215,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
           {
             context: CONTEXT,
             recipient: BOB,
+            logicalMessageId: LM,
             message: hostile.output,
             commitment: unrelatedCommitment,
           },
@@ -170,7 +240,14 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
     const commitment = commitFranking(opening, CONTEXT, plaintext);
     const sealed = sealDeviceEnvelope(
       alice,
-      { context: CONTEXT, recipient: BOB, plaintext, openingKey: opening, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
       deterministicSource(7),
     );
 
@@ -180,6 +257,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
         {
           context: CONTEXT,
           recipient: { recipientActorId: 'bob', recipientDeviceId: 'bob-other-device' },
+          logicalMessageId: LM,
           message: sealed.output,
           commitment,
         },
@@ -195,7 +273,14 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
     const commitment = commitFranking(opening, CONTEXT, plaintext);
     const sealed = sealDeviceEnvelope(
       alice,
-      { context: CONTEXT, recipient: BOB, plaintext, openingKey: opening, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
       deterministicSource(7),
     );
     const substituted = commitment.slice();
@@ -204,7 +289,13 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
     expect(() =>
       openDeviceEnvelope(
         bob,
-        { context: CONTEXT, recipient: BOB, message: sealed.output, commitment: substituted },
+        {
+          context: CONTEXT,
+          recipient: BOB,
+          logicalMessageId: LM,
+          message: sealed.output,
+          commitment: substituted,
+        },
         deterministicSource(8),
       ),
     ).toThrow(AuthenticationError);
@@ -217,7 +308,14 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
     const commitment = commitFranking(opening, CONTEXT, plaintext);
     const sealed = sealDeviceEnvelope(
       alice,
-      { context: CONTEXT, recipient: BOB, plaintext, openingKey: opening, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
       deterministicSource(7),
     );
 
@@ -228,7 +326,13 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
       expect(() =>
         openDeviceEnvelope(
           bob,
-          { context: elsewhere, recipient: BOB, message: sealed.output, commitment },
+          {
+            context: elsewhere,
+            recipient: BOB,
+            logicalMessageId: LM,
+            message: sealed.output,
+            commitment,
+          },
           deterministicSource(8),
         ),
       ).toThrow(AuthenticationError);
@@ -256,6 +360,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
           {
             context: CONTEXT,
             recipient: { recipientActorId: 'bob', recipientDeviceId: 'bob-second-device' },
+            logicalMessageId: LM,
             plaintext: second,
             openingKey: equivocatingOpening,
             commitment,
@@ -273,7 +378,14 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
     const commitment = commitFranking(opening, CONTEXT, plaintext);
     const sealed = sealDeviceEnvelope(
       alice,
-      { context: CONTEXT, recipient: BOB, plaintext, openingKey: opening, commitment },
+      {
+        context: CONTEXT,
+        recipient: BOB,
+        logicalMessageId: LM,
+        plaintext,
+        openingKey: opening,
+        commitment,
+      },
       deterministicSource(7),
     );
 
@@ -283,6 +395,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
         {
           context: CONTEXT,
           recipient: BOB,
+          logicalMessageId: LM,
           plaintext,
           openingKey: opening,
           commitment: commitment.slice(0, 16),
@@ -296,6 +409,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
         {
           context: CONTEXT,
           recipient: BOB,
+          logicalMessageId: LM,
           message: sealed.output,
           commitment: new Uint8Array(64),
         },
@@ -308,7 +422,7 @@ describe('sealDeviceEnvelope / openDeviceEnvelope', () => {
 describe('encodeDeviceEnvelopeAssociatedData', () => {
   it('is domain-separated from the commitment transcript', () => {
     const commitment = commitFranking(createFrankingOpeningKey(), CONTEXT, encoder.encode('body'));
-    const associatedData = encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, commitment);
+    const associatedData = encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, LM, commitment);
     expect(new TextDecoder().decode(associatedData.subarray(4, 40))).toEqual(
       'patches-e2ee-v1/franking/envelope-ad',
     );
@@ -319,13 +433,28 @@ describe('encodeDeviceEnvelopeAssociatedData', () => {
     const left = encodeDeviceEnvelopeAssociatedData(
       CONTEXT,
       { recipientActorId: 'ab', recipientDeviceId: 'c' },
+      LM,
       commitment,
     );
     const right = encodeDeviceEnvelopeAssociatedData(
       CONTEXT,
       { recipientActorId: 'a', recipientDeviceId: 'bc' },
+      LM,
       commitment,
     );
     expect(toHex(left)).not.toEqual(toHex(right));
+  });
+
+  it('binds the logical message id as a length-prefixed field before the fixed-width commitment', () => {
+    const commitment = commitFranking(createFrankingOpeningKey(), CONTEXT, encoder.encode('body'));
+    const byId = (id: string): Uint8Array =>
+      encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, id, commitment);
+    // Distinct ids produce distinct AD...
+    expect(toHex(byId('message-1'))).not.toEqual(toHex(byId('message-2')));
+    // ...including at the id/commitment boundary, where the length prefix is what keeps a
+    // shorter id plus commitment-prefix confusion from reproducing another envelope's bytes.
+    expect(() => encodeDeviceEnvelopeAssociatedData(CONTEXT, BOB, '', commitment)).toThrow(
+      'Logical message id is invalid.',
+    );
   });
 });
