@@ -1,12 +1,23 @@
 import { generateKeyPairSync } from 'node:crypto';
 
-import { InboxActivity, Post, type Actor } from '@patches/database';
+import {
+  Actor,
+  Block,
+  Follow,
+  InboxActivity,
+  Mute,
+  Post,
+  PostTag,
+  QuoteAuthorization,
+  Tag,
+} from '@patches/database';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 
 import type { AppConfigService } from '../../../config/app-config.service.js';
 import type { NotificationsService } from '../../notifications/notification.service.js';
 import { FederationMetricsService } from '../federation-metrics.service.js';
+import { RemoteObjectFetchError, type RemoteObjectService } from '../remote-object.service.js';
 import type { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
 import { computeDigestHeader } from '../signatures/digest.js';
 import { signRequest } from '../signatures/http-signature.js';
@@ -103,10 +114,16 @@ interface FakeInboxActivityRepo {
   save: ReturnType<typeof vi.fn>;
 }
 
-function fakeManager(postRepo: FakePostRepo, inboxActivityRepo: FakeInboxActivityRepo) {
+function fakeManager(
+  postRepo: FakePostRepo,
+  inboxActivityRepo: FakeInboxActivityRepo,
+  extra: Map<unknown, unknown> = new Map(),
+) {
   const getRepository = (entity: unknown): unknown => {
     if (entity === Post) return postRepo;
     if (entity === InboxActivity) return inboxActivityRepo;
+    const extraRepo = extra.get(entity);
+    if (extraRepo !== undefined) return extraRepo;
     throw new Error(`unexpected entity in fakeManager.getRepository: ${String(entity)}`);
   };
   return { getRepository };
@@ -168,6 +185,7 @@ describe('InboxService — Update semantics (A-035)', () => {
       dataSource,
       config,
       remoteActors,
+      { fetchObject: vi.fn() } as unknown as RemoteObjectService,
       domainBlocks,
       delivery,
       notifications,
@@ -332,5 +350,508 @@ describe('InboxService — Update semantics (A-035)', () => {
         call[2] !== undefined && (call[2] as { forceRefetch?: boolean }).forceRefetch === true,
     );
     expect(refreshCall).toBeUndefined();
+  });
+});
+
+/** P18-007 (§180.2, ADR 0028 §3): inbound quote ingest — first-recognizable property wins,
+ * §109-gated resolution through `RemoteObjectService`, and a violating/unverifiable quote
+ * degrades to a plain post, never an endorsed one. Same fake-`EntityManager` pattern as the
+ * A-035 suite above; the only faked collaborator with behavior is `fetchObject`. */
+describe('InboxService — inbound quotes + tags (P18-007)', () => {
+  const ORIGIN = 'http://origin.test';
+  const QUOTED_URI = 'https://remote2.test/notes/9';
+  const BOB_URI = 'https://remote2.test/users/bob';
+  const LOCAL_QUOTED_ID = '11111111-1111-4111-8111-111111111111';
+
+  const QUOTED_NOTE_DOC = {
+    id: QUOTED_URI,
+    type: 'Note',
+    content: 'quoted body',
+    attributedTo: BOB_URI,
+  };
+
+  interface QuoteKit {
+    inbox: InboxService;
+    signer: { keyId: string; privateKeyPem: string };
+    sender: Actor;
+    fetchObject: ReturnType<typeof vi.fn>;
+    postSaves: Record<string, unknown>[];
+    quoteAuthSaves: Record<string, unknown>[];
+    tagSaves: Record<string, unknown>[];
+    postTagSaves: Record<string, unknown>[];
+  }
+
+  function quotedRow(overrides: Partial<Post> = {}): Post {
+    return {
+      id: 'quoted-1',
+      authorActorId: 'bob-1',
+      body: 'quoted body',
+      postType: 'NOTE',
+      visibility: 'PUBLIC',
+      inReplyToId: null,
+      rootPostId: 'quoted-1',
+      canonicalUri: QUOTED_URI,
+      originServer: 'remote2.test',
+      isLocal: false,
+      clientRequestId: null,
+      deletedAt: null,
+      quotePolicy: 'ANYONE',
+      createdAt: new Date(),
+      ...overrides,
+    } as Post;
+  }
+
+  /** Rows matched generically by `where` equality, mirroring TypeORM `findOne`. */
+  function matchingRepo(rows: Record<string, unknown>[]): { findOne: ReturnType<typeof vi.fn> } {
+    return {
+      findOne: vi.fn(({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          rows.find((row) => Object.entries(where).every(([key, value]) => row[key] === value)) ??
+            null,
+        ),
+      ),
+    };
+  }
+
+  function kit(options: {
+    quotedPost?: Post;
+    follows?: Record<string, unknown>[];
+    blocks?: Record<string, unknown>[];
+    blockedDomains?: string[];
+    fetchReturns?: Record<string, unknown> | null;
+    fetchThrows?: Error;
+  }): QuoteKit {
+    const { publicKeyPem, privateKeyPem } = keyPair();
+    const sender = fakeSender(publicKeyPem);
+    const signer = { keyId: `${sender.canonicalUri}#main-key`, privateKeyPem };
+    const bob = fakeSender('', {
+      id: 'bob-1',
+      handle: 'bob',
+      handleNormalized: 'bob@remote2.test',
+      homeServer: 'remote2.test',
+      canonicalUri: BOB_URI,
+      inboxUri: `${BOB_URI}/inbox`,
+    });
+
+    const postRows = new Map<string, Post>(
+      options.quotedPost === undefined ? [] : [[options.quotedPost.id, options.quotedPost]],
+    );
+    const postSaves: Record<string, unknown>[] = [];
+    const postRepo = {
+      findOne: vi.fn(({ where }: { where: Record<string, unknown> }) => {
+        for (const row of postRows.values()) {
+          const record = row as unknown as Record<string, unknown>;
+          if (Object.entries(where).every(([key, value]) => record[key] === value)) {
+            return Promise.resolve(row);
+          }
+        }
+        return Promise.resolve(null);
+      }),
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Post) => {
+        postRows.set(row.id, row);
+        postSaves.push(row as unknown as Record<string, unknown>);
+        return Promise.resolve(row);
+      }),
+      update: vi.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const inboxActivityRepo = {
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const quoteAuthSaves: Record<string, unknown>[] = [];
+    const quoteAuthRepo = {
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Record<string, unknown>) => {
+        quoteAuthSaves.push(row);
+        return Promise.resolve(row);
+      }),
+    };
+    const tagSaves: Record<string, unknown>[] = [];
+    const tagRepo = {
+      findOne: vi.fn(({ where }: { where: { name: string } }) =>
+        Promise.resolve(tagSaves.find((row) => row.name === where.name) ?? null),
+      ),
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Record<string, unknown>) => {
+        const created = { id: `tag-${String(row.name)}`, ...row };
+        tagSaves.push(created);
+        return Promise.resolve(created);
+      }),
+    };
+    const postTagSaves: Record<string, unknown>[] = [];
+    const postTagRepo = {
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Record<string, unknown>) => {
+        postTagSaves.push(row);
+        return Promise.resolve(row);
+      }),
+    };
+
+    const actorRepo = matchingRepo([
+      sender as unknown as Record<string, unknown>,
+      bob as unknown as Record<string, unknown>,
+    ]);
+    const followRepo = matchingRepo(options.follows ?? []);
+    const blockRepo = matchingRepo(options.blocks ?? []);
+    const muteRepo = matchingRepo([]);
+
+    const fetchObject = vi.fn();
+    if (options.fetchThrows !== undefined) {
+      fetchObject.mockRejectedValue(options.fetchThrows);
+    } else {
+      fetchObject.mockResolvedValue(
+        options.fetchReturns !== undefined ? options.fetchReturns : QUOTED_NOTE_DOC,
+      );
+    }
+
+    const remoteActors = {
+      resolveByAcct: vi.fn(),
+      getOrFetchByUri: vi.fn((_manager: unknown, uri: string) =>
+        Promise.resolve(uri === BOB_URI ? bob : sender),
+      ),
+    } as unknown as RemoteActorService;
+    const blocked = new Set(options.blockedDomains ?? []);
+    const domainBlocks = {
+      isBlocked: (_manager: unknown, domain: string) => Promise.resolve(blocked.has(domain)),
+    } as unknown as DomainBlockService;
+
+    const manager = fakeManager(
+      postRepo,
+      inboxActivityRepo,
+      new Map<unknown, unknown>([
+        [Actor, actorRepo],
+        [Follow, followRepo],
+        [Block, blockRepo],
+        [Mute, muteRepo],
+        [QuoteAuthorization, quoteAuthRepo],
+        [Tag, tagRepo],
+        [PostTag, postTagRepo],
+      ]),
+    );
+    const dataSource = {
+      transaction: (fn: (m: ReturnType<typeof fakeManager>) => unknown) => fn(manager),
+    } as unknown as DataSource;
+
+    const inbox = new InboxService(
+      dataSource,
+      { publicOrigin: ORIGIN } as AppConfigService,
+      remoteActors,
+      { fetchObject } as unknown as RemoteObjectService,
+      domainBlocks,
+      { enqueue: vi.fn() } as unknown as DeliveryService,
+      { notifyFollow: vi.fn(), notifyLike: vi.fn() } as unknown as NotificationsService,
+      { getOrCreateKeyPair: vi.fn() } as unknown as KeyService,
+      new FederationMetricsService({ federationEnabled: false } as AppConfigService),
+      {
+        consumeTransportPeer: vi.fn().mockReturnValue(true),
+        consumeVerifiedOrigin: vi.fn().mockReturnValue(true),
+      } as unknown as PeerRateLimiterService,
+      {} as unknown as TagExtractionService,
+    );
+    return {
+      inbox,
+      signer,
+      sender,
+      fetchObject,
+      postSaves,
+      quoteAuthSaves,
+      tagSaves,
+      postTagSaves,
+    };
+  }
+
+  let seq = 0;
+  function createNote(noteProps: Record<string, unknown> = {}): Record<string, unknown> {
+    seq += 1;
+    return {
+      id: `https://remote.test/activities/quote-${seq}`,
+      type: 'Create',
+      actor: 'https://remote.test/users/alice',
+      object: {
+        id: `https://remote.test/notes/quote-${seq}`,
+        type: 'Note',
+        content: 'quoting',
+        ...noteProps,
+      },
+    };
+  }
+
+  /** The quoter post is always the last post save (any fetched quoted post is ingested first). */
+  function quoterPost(kit: QuoteKit): Record<string, unknown> {
+    const saved = kit.postSaves.at(-1);
+    expect(saved).toBeDefined();
+    return saved as Record<string, unknown>;
+  }
+
+  it('records an endorsed quote for each of the four inbound quote property spellings', async () => {
+    const variants: Record<string, unknown>[] = [
+      { quote: QUOTED_URI },
+      { quoteUri: QUOTED_URI },
+      { quoteUrl: QUOTED_URI },
+      { _misskey_quote: QUOTED_URI },
+    ];
+    for (const variant of variants) {
+      const testKit = kit({});
+      await expect(
+        testKit.inbox.handle(buildContext(createNote(variant), testKit.signer)),
+      ).resolves.toEqual({ accepted: true, duplicate: false });
+
+      expect(testKit.fetchObject).toHaveBeenCalledWith(QUOTED_URI);
+      const quotedIngest = testKit.postSaves[0] as Record<string, unknown>;
+      expect(quotedIngest.canonicalUri).toBe(QUOTED_URI);
+      expect(quoterPost(testKit).quotedPostId).toBe(quotedIngest.id);
+      expect(testKit.quoteAuthSaves).toHaveLength(1);
+      expect(testKit.quoteAuthSaves[0]).toMatchObject({
+        quotedPostId: quotedIngest.id,
+        quoterActorId: 'sender-1',
+        claimedPolicy: 'ANYONE',
+        state: 'VERIFIED',
+        verifiedAt: expect.any(Date) as Date,
+      });
+      expect(testKit.quoteAuthSaves[0]?.quotingPostId).toBe(quoterPost(testKit).id);
+    }
+  });
+
+  it('recognizes both _misskey_quote namespace IRI spellings (with and without trailing slash)', async () => {
+    for (const key of [
+      'https://misskey-hub.net/ns#_misskey_quote',
+      'https://misskey-hub.net/ns/#_misskey_quote',
+    ]) {
+      const testKit = kit({});
+      await testKit.inbox.handle(buildContext(createNote({ [key]: QUOTED_URI }), testKit.signer));
+      expect(testKit.fetchObject).toHaveBeenCalledWith(QUOTED_URI);
+      expect(quoterPost(testKit).quotedPostId).toBeDefined();
+    }
+  });
+
+  it('first recognizable property wins when several quote properties are present', async () => {
+    const testKit = kit({});
+    await testKit.inbox.handle(
+      buildContext(
+        createNote({
+          quote: 'https://remote2.test/notes/winner',
+          quoteUrl: 'https://remote2.test/notes/loser',
+          _misskey_quote: 'https://remote2.test/notes/also-loser',
+        }),
+        testKit.signer,
+      ),
+    );
+    expect(testKit.fetchObject).toHaveBeenCalledTimes(1);
+    expect(testKit.fetchObject).toHaveBeenCalledWith('https://remote2.test/notes/winner');
+  });
+
+  it('falls through to the next property when a higher-precedence one is unrecognizable', async () => {
+    const testKit = kit({});
+    await testKit.inbox.handle(
+      buildContext(createNote({ quote: 42, quoteUrl: QUOTED_URI }), testKit.signer),
+    );
+    expect(testKit.fetchObject).toHaveBeenCalledWith(QUOTED_URI);
+    expect(quoterPost(testKit).quotedPostId).toBeDefined();
+  });
+
+  it('ingests a plain post (no linkage, no row) when the quoted object is gone (fetch → null)', async () => {
+    const testKit = kit({ fetchReturns: null });
+    await expect(
+      testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer)),
+    ).resolves.toEqual({ accepted: true, duplicate: false });
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the quote fetch fails outright (never rejects the post)', async () => {
+    const testKit = kit({ fetchThrows: new RemoteObjectFetchError('Fetch failed: timeout') });
+    await expect(
+      testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer)),
+    ).resolves.toEqual({ accepted: true, duplicate: false });
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the fetched object is not a valid Note', async () => {
+    const testKit = kit({
+      fetchReturns: { id: QUOTED_URI, type: 'Page', name: 'not a note' },
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post for a NOBODY-policy local quoted post (§180.2 NEVER)', async () => {
+    const testKit = kit({
+      quotedPost: quotedRow({
+        id: LOCAL_QUOTED_ID,
+        isLocal: true,
+        canonicalUri: null,
+        originServer: null,
+        quotePolicy: 'NOBODY',
+      }),
+    });
+    await testKit.inbox.handle(
+      buildContext(createNote({ quote: `${ORIGIN}/posts/${LOCAL_QUOTED_ID}` }), testKit.signer),
+    );
+    expect(testKit.fetchObject).not.toHaveBeenCalled();
+    expect(testKit.postSaves).toHaveLength(1);
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the remote note declares a self-only canQuote (NOBODY)', async () => {
+    const testKit = kit({
+      fetchReturns: {
+        ...QUOTED_NOTE_DOC,
+        interactionPolicy: { canQuote: BOB_URI },
+      },
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    // The quoted note itself is still ingested (a legitimate public post, exactly like
+    // `handleAnnounce`'s fetch-then-check order) — it is the *quote linkage* that NOBODY
+    // forbids (§180.2).
+    expect(testKit.postSaves).toHaveLength(2);
+    expect(testKit.postSaves[0]).toMatchObject({ quotePolicy: 'NOBODY' });
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the remote policy is declared but unrecognizable', async () => {
+    const testKit = kit({
+      fetchReturns: { ...QUOTED_NOTE_DOC, interactionPolicy: { canQuote: { nested: true } } },
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    expect(testKit.postSaves).toHaveLength(1);
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+  });
+
+  it('records the quote when a FOLLOWERS policy has follow-graph evidence (granted-ASK)', async () => {
+    const testKit = kit({
+      quotedPost: quotedRow({
+        id: LOCAL_QUOTED_ID,
+        isLocal: true,
+        canonicalUri: null,
+        originServer: null,
+        quotePolicy: 'FOLLOWERS',
+      }),
+      follows: [{ followerActorId: 'sender-1', followeeActorId: 'bob-1', status: 'FOLLOWING' }],
+    });
+    await testKit.inbox.handle(
+      buildContext(createNote({ quote: `${ORIGIN}/posts/${LOCAL_QUOTED_ID}` }), testKit.signer),
+    );
+    expect(quoterPost(testKit).quotedPostId).toBe(LOCAL_QUOTED_ID);
+    expect(testKit.quoteAuthSaves).toHaveLength(1);
+    expect(testKit.quoteAuthSaves[0]).toMatchObject({
+      quotedPostId: LOCAL_QUOTED_ID,
+      claimedPolicy: 'FOLLOWERS',
+      state: 'VERIFIED',
+    });
+  });
+
+  it('ingests a plain post when a FOLLOWERS policy has no follow evidence', async () => {
+    const testKit = kit({
+      quotedPost: quotedRow({
+        id: LOCAL_QUOTED_ID,
+        isLocal: true,
+        canonicalUri: null,
+        originServer: null,
+        quotePolicy: 'FOLLOWERS',
+      }),
+    });
+    await testKit.inbox.handle(
+      buildContext(createNote({ quote: `${ORIGIN}/posts/${LOCAL_QUOTED_ID}` }), testKit.signer),
+    );
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('maps a remote followers-audience canQuote to the FOLLOWERS class and honors follow evidence', async () => {
+    const testKit = kit({
+      fetchReturns: {
+        ...QUOTED_NOTE_DOC,
+        interactionPolicy: { canQuote: `${BOB_URI}/followers` },
+      },
+      follows: [{ followerActorId: 'sender-1', followeeActorId: 'bob-1', status: 'FOLLOWING' }],
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    const quotedIngest = testKit.postSaves[0] as Record<string, unknown>;
+    expect(quotedIngest.quotePolicy).toBe('FOLLOWERS');
+    expect(quoterPost(testKit).quotedPostId).toBe(quotedIngest.id);
+    expect(testKit.quoteAuthSaves[0]).toMatchObject({ claimedPolicy: 'FOLLOWERS' });
+  });
+
+  it('links a self-quote without an authorization row (FEP-044f auto-approval)', async () => {
+    const testKit = kit({
+      quotedPost: quotedRow({ authorActorId: 'sender-1', quotePolicy: 'ANYONE' }),
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    expect(quoterPost(testKit).quotedPostId).toBe('quoted-1');
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the quoted author blocks the quoter (§193 re-check)', async () => {
+    const testKit = kit({
+      blocks: [{ blockerActorId: 'bob-1', blockedActorId: 'sender-1' }],
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    // Mirror of handleAnnounce: the quoted note is fetched/ingested first, then the
+    // author-level block/mute re-check rejects the quote linkage.
+    expect(testKit.postSaves).toHaveLength(2);
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+  });
+
+  it('ingests a plain post when the quoted author sits on a domain-blocked server', async () => {
+    const testKit = kit({ blockedDomains: ['remote2.test'] });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    expect(testKit.postSaves).toHaveLength(1);
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+  });
+
+  it('endorses a quote of a local ANYONE-policy post without any remote fetch', async () => {
+    const testKit = kit({
+      quotedPost: quotedRow({
+        id: LOCAL_QUOTED_ID,
+        isLocal: true,
+        canonicalUri: null,
+        originServer: null,
+      }),
+    });
+    await testKit.inbox.handle(
+      buildContext(createNote({ quote: `${ORIGIN}/posts/${LOCAL_QUOTED_ID}` }), testKit.signer),
+    );
+    expect(testKit.fetchObject).not.toHaveBeenCalled();
+    expect(quoterPost(testKit).quotedPostId).toBe(LOCAL_QUOTED_ID);
+    expect(testKit.quoteAuthSaves[0]).toMatchObject({
+      quotedPostId: LOCAL_QUOTED_ID,
+      claimedPolicy: 'ANYONE',
+      state: 'VERIFIED',
+    });
+  });
+
+  it('ingests legacy Hashtag tags from the note and skips malformed entries', async () => {
+    const testKit = kit({});
+    await testKit.inbox.handle(
+      buildContext(
+        createNote({
+          tag: [
+            { type: 'Hashtag', name: '#Cats' },
+            { type: 'Mention', href: BOB_URI },
+            { type: 'Hashtag', name: 42 },
+            'not-even-an-object',
+          ],
+        }),
+        testKit.signer,
+      ),
+    );
+    expect(testKit.tagSaves).toEqual([{ id: 'tag-cats', name: 'cats', displayName: 'Cats' }]);
+    expect(testKit.postTagSaves).toEqual([{ postId: quoterPost(testKit).id, tagId: 'tag-cats' }]);
+  });
+
+  it('a plain note without quote or tags writes no quote/tag rows (regression)', async () => {
+    const testKit = kit({});
+    await testKit.inbox.handle(buildContext(createNote(), testKit.signer));
+    expect(testKit.fetchObject).not.toHaveBeenCalled();
+    expect(quoterPost(testKit).quotedPostId).toBeNull();
+    expect(testKit.quoteAuthSaves).toHaveLength(0);
+    expect(testKit.postTagSaves).toHaveLength(0);
   });
 });
