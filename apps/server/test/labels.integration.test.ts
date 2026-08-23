@@ -330,16 +330,16 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const windowMs = 24 * 60 * 60_000;
         const now = Date.now();
         const windowStart = new Date(Math.floor(now / windowMs) * windowMs);
-        const expiresAt = new Date(windowStart.getTime() + windowMs);
+        const windowEnd = new Date(windowStart.getTime() + windowMs);
         await dataSource.query(
-          `INSERT INTO rate_limit_buckets (key, window_start, count, expires_at)
+          `INSERT INTO rate_limit_buckets (key, window_start, cost, window_end)
            VALUES ($1, $2, $3, $4)
-           ON CONFLICT (key, window_start) DO UPDATE SET count = $3`,
+           ON CONFLICT (key, window_start) DO UPDATE SET cost = $3`,
           [
             `label_apply:labeler:${labelerId}`,
             windowStart,
             RATE_LIMITS.labelApplyPerDayPerLabeler,
-            expiresAt,
+            windowEnd,
           ],
         );
         const rateLimited = await expectRejection<ApplyLabelRequest, ApplyLabelResponse>(

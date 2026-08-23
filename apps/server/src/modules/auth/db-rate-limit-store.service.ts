@@ -33,15 +33,15 @@ export class DbRateLimitStore {
    */
   async increment(key: string, windowMs: number, now: Date): Promise<number> {
     const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
-    const expiresAt = new Date(windowStart.getTime() + windowMs);
+    const windowEnd = new Date(windowStart.getTime() + windowMs);
 
-    const rows = await this.dataSource.query<Array<{ count: number }>>(
-      `INSERT INTO rate_limit_buckets (key, window_start, count, expires_at)
+    const rows = await this.dataSource.query<Array<{ cost: number }>>(
+      `INSERT INTO rate_limit_buckets (key, window_start, cost, window_end)
        VALUES ($1, $2, 1, $3)
        ON CONFLICT (key, window_start)
-       DO UPDATE SET count = rate_limit_buckets.count + 1
-       RETURNING count`,
-      [key, windowStart, expiresAt],
+       DO UPDATE SET cost = rate_limit_buckets.cost + 1, updated_at = now()
+       RETURNING cost`,
+      [key, windowStart, windowEnd],
     );
 
     // 1-in-50 chance per call: expected to fire often enough in production traffic that
@@ -49,9 +49,9 @@ export class DbRateLimitStore {
     // it. Unbounded DELETE is fine here — buckets are windowed and short-lived, so the table
     // never grows large enough for this to be a real table scan in practice.
     if (Math.random() < 0.02) {
-      await this.dataSource.query('DELETE FROM rate_limit_buckets WHERE expires_at < $1', [now]);
+      await this.dataSource.query('DELETE FROM rate_limit_buckets WHERE window_end < $1', [now]);
     }
 
-    return rows[0]?.count ?? 1;
+    return rows[0]?.cost ?? 1;
   }
 }

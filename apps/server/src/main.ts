@@ -10,7 +10,7 @@ import { type MicroserviceOptions } from '@nestjs/microservices';
 import { type NestExpressApplication } from '@nestjs/platform-express';
 import { readDotEnvFile } from '@patches/config';
 
-import { PinoLogger } from 'nestjs-pino';
+import { Logger as PinoLoggerService } from 'nestjs-pino';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
@@ -119,7 +119,11 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     bodyParser: false,
   });
-  app.useLogger(app.get(PinoLogger));
+  // `PinoLogger` itself is TRANSIENT-scoped (nestjs-pino) and lacks `log()`, so it can be
+  // neither `app.get()`-ed nor passed to `useLogger()`. The library's `Logger` wrapper is a
+  // singleton `LoggerService` over the shared pino instance — the documented app logger.
+  const appLogger = app.get(PinoLoggerService);
+  app.useLogger(appLogger);
   // `inheritAppConfig: true` is load-bearing: a hybrid app's connected microservices do NOT
   // get the `APP_FILTER`/`APP_INTERCEPTOR` providers (RpcExceptionsFilter, request-context
   // + logging interceptors) unless told to inherit them — without it every AppError surfaced
@@ -161,7 +165,7 @@ async function bootstrap(): Promise<void> {
   // waits for in-flight calls) and the HTTP server (spec §124). fly.toml's `kill_timeout`
   // must exceed this drain (see infra/fly/fly.toml).
   const stopServing = (signal: string): void => {
-    app.get(PinoLogger).info(`received ${signal}, draining`);
+    appLogger.log(`received ${signal}, draining`);
     health.setStatus('NOT_SERVING');
     readiness.setServing(false);
   };
@@ -183,13 +187,12 @@ async function bootstrap(): Promise<void> {
   health.setStatus('SERVING');
   readiness.setServing(true);
 
-  const pinoLogger = app.get(PinoLogger);
-  pinoLogger.info(
+  appLogger.log(
     `patches gRPC server listening on ${url} (env=${env.NODE_ENV}, instance=${env.INSTANCE_NAME})`,
   );
 
   await app.listen(env.HTTP_PORT);
-  pinoLogger.info(
+  appLogger.log(
     `patches HTTP listener on :${String(env.HTTP_PORT)} — /healthz, Connect edge` +
       (env.FEDERATION_ENABLED ? ', federation surface' : '') +
       ` (origin=${env.PUBLIC_ORIGIN})`,
@@ -198,7 +201,7 @@ async function bootstrap(): Promise<void> {
   if (env.METRICS_ENABLED === 'true') {
     const { startMetricsServer } = await import('@patches/observability/metrics-server');
     await startMetricsServer(env.METRICS_PORT);
-    pinoLogger.info(`metrics server listening on :${String(env.METRICS_PORT)}`);
+    appLogger.log(`metrics server listening on :${String(env.METRICS_PORT)}`);
   }
 }
 
