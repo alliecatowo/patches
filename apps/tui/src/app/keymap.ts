@@ -620,6 +620,23 @@ export const KEYMAP: readonly Binding[] = [
     on: ['messages'],
     session: true,
   },
+  {
+    keys: 'G',
+    hint: 'membership',
+    description: 'Show this conversation’s verified membership-change history (encrypted groups)',
+    group: 'Account',
+    on: ['messages'],
+    session: true,
+    helpOnly: true,
+  },
+  {
+    keys: 'v',
+    hint: 'mark verified',
+    description: 'Mark the safety number as compared and verified for this conversation',
+    group: 'Account',
+    on: ['safetyNumber'],
+    session: true,
+  },
 
   // --- Screens (per-screen, non-timeline) -----------------------------------
   {

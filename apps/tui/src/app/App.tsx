@@ -21,6 +21,8 @@ import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
+import { wipeE2eeState } from '../e2ee/ratchet-vault.js';
+import { createVaultE2eeSender, type VaultE2eeSender, type E2eeVaultFault } from './e2ee-send.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
@@ -397,6 +399,15 @@ export function App({
         ensureAccessToken().then((accessToken) =>
           api.respondToMessageRequest(request, accessToken),
         ),
+      // P13-010 security surfaces — optional in the screen's contract, always bound
+      // here where the authenticated transport exists.
+      getIdentityRoot: (request) =>
+        ensureAccessToken().then((accessToken) => api.getIdentityRoot(request, accessToken)),
+      getDeviceRoster: (request) => api.getDeviceRoster(request),
+      listE2eeGroupControlEvents: (request) =>
+        ensureAccessToken().then((accessToken) =>
+          api.listE2eeGroupControlEvents(request, accessToken),
+        ),
     }),
     [api, ensureAccessToken],
   );
@@ -421,6 +432,59 @@ export function App({
       cancelled = true;
     };
   }, [api]);
+
+  // This node's E2EE capability state (P13-010) — best-effort, public, fetched once.
+  // Drives ADR 0027's persistent development-mode warning on conversation surfaces.
+  const [e2eeCapabilityState, setE2eeCapabilityState] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void api.getE2eeCapability({}).then(
+      (response) => {
+        if (cancelled) return;
+        const capabilityState = response.capability?.state;
+        if (capabilityState !== undefined) setE2eeCapabilityState(capabilityState);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  // Safety numbers compared and confirmed this session (`v` on the safety-number
+  // screen). Session-scoped: this client keeps no persistent verified-state store yet,
+  // so it renders exactly what it knows and nothing more.
+  const [verifiedPeers, setVerifiedPeers] = useState<ReadonlySet<string>>(new Set());
+  function markPeerVerified(actorId: string): void {
+    setVerifiedPeers((current) => new Set(current).add(actorId));
+    notify('Safety number marked as compared for this session.', 'success');
+  }
+
+  // The vault-backed send pipeline for end-to-end conversations (P13-010), keyed to
+  // the signed-in account. Faults are sticky until an explicit wipe resets them.
+  const [e2eeVaultFault, setE2eeVaultFault] = useState<E2eeVaultFault | undefined>(undefined);
+  const e2eeSenderRef = useRef<{ key: string; sender: VaultE2eeSender } | undefined>(undefined);
+  function e2eeSenderFor(activeSession: ActiveSession): VaultE2eeSender {
+    const key = `${api.target}:${activeSession.userId}`;
+    const existing = e2eeSenderRef.current;
+    if (existing?.key === key) return existing.sender;
+    existing?.sender.close();
+    const created = createVaultE2eeSender({
+      account: { nodeOrigin: api.target, userId: activeSession.userId },
+      allowInsecureKeyFile: isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE),
+    });
+    e2eeSenderRef.current = { key, sender: created };
+    return created;
+  }
+  async function sendViaVault(conversationId: string, body: string): Promise<void> {
+    if (session === undefined) return;
+    const sender = e2eeSenderFor(session);
+    try {
+      await sender.send(conversationId, body);
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
 
   // A-053 (spec §197.1: "every client MUST show the new summary at next session start"):
   // best-effort, non-blocking session-start check — compare this actor's last-acknowledged
@@ -1868,6 +1932,9 @@ export function App({
             session={session}
             isActive={active}
             ensureAccessToken={ensureAccessToken}
+            onWipeE2ee={() =>
+              wipeE2eeState({ account: { nodeOrigin: api.target, userId: session.userId } })
+            }
             onBack={back}
           />
         );
@@ -1879,6 +1946,8 @@ export function App({
             isActive={active}
             targetActorId={target.targetActorId}
             ensureAccessToken={ensureAccessToken}
+            verified={verifiedPeers.has(target.targetActorId)}
+            onMarkVerified={() => markPeerVerified(target.targetActorId)}
             onBack={back}
           />
         );
@@ -2074,6 +2143,10 @@ export function App({
             viewerActorId={session.userId}
             dmRetentionDays={dmRetentionDays}
             glyphSet={glyphSet}
+            verifiedPeers={verifiedPeers}
+            e2eeCapabilityState={e2eeCapabilityState}
+            sendE2ee={sendViaVault}
+            e2eeVaultFault={e2eeVaultFault}
             onBack={back}
             onOpenSafetyNumber={(actorId) =>
               setStack((s) => push(s, { screen: 'safetyNumber', targetActorId: actorId }))
@@ -2434,6 +2507,10 @@ export function App({
                                   viewerActorId={session.userId}
                                   dmRetentionDays={dmRetentionDays}
                                   glyphSet={glyphSet}
+                                  verifiedPeers={verifiedPeers}
+                                  e2eeCapabilityState={e2eeCapabilityState}
+                                  sendE2ee={sendViaVault}
+                                  e2eeVaultFault={e2eeVaultFault}
                                   // The screen owns backing out of its own thread/requests
                                   // sub-views on `Esc` (`backToList`) — this only fires once
                                   // it has nothing left to back out of, so the shell's own

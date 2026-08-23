@@ -274,6 +274,11 @@ function buildMethods(sdk: PatchesSdk) {
     getIdentityRoot: requiredToken(sdk.e2ee.getIdentityRoot),
     getDeviceRoster: optionalToken(sdk.e2ee.getDeviceRoster),
     revokeDevice: requiredToken(sdk.e2ee.revokeDevice),
+    // Capability is published pre-enrollment so a client can discover availability
+    // before offering anything (spec §183) — no access token required.
+    getE2eeCapability: noToken(sdk.e2ee.getE2eeCapability),
+    getE2eeConversationState: requiredToken(sdk.e2ee.getE2eeConversationState),
+    listE2eeGroupControlEvents: requiredToken(sdk.e2ee.listE2eeGroupControlEvents),
   };
 }
 

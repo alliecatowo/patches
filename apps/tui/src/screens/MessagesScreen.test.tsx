@@ -12,7 +12,13 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from '../../test/ansi.js';
-import { DM_DISCLOSURE, MessagesScreen, type MessagesScreenApi } from './MessagesScreen.js';
+import {
+  DM_DISCLOSURE,
+  MessagesScreen,
+  UNREVIEWED_DEV_E2EE_WARNING,
+  VAULT_FAULT_COPY,
+  type MessagesScreenApi,
+} from './MessagesScreen.js';
 import {
   makeActor,
   makeConversation,
@@ -100,8 +106,15 @@ describe('MessagesScreen', () => {
       readFile(new URL('../cli/dm.ts', import.meta.url), 'utf8'),
     ]);
     for (const source of sources) {
-      const withoutDisclosure = source.replaceAll(DM_DISCLOSURE, '');
-      expect(withoutDisclosure).not.toMatch(/\b(?:encrypted|secure|private)\b/i);
+      // §194 bans those words on the LEGACY server-visible DM surface only. The E2EE-mode
+      // copy describes genuinely end-to-end-encrypted conversations (ADR 0020 §11), so it
+      // is stripped before scanning, exactly like the mandated legacy disclosure above.
+      const withoutE2eeCopy = source
+        .replaceAll(DM_DISCLOSURE, '')
+        .replaceAll(UNREVIEWED_DEV_E2EE_WARNING, '')
+        .replaceAll(VAULT_FAULT_COPY.corrupt, '')
+        .replaceAll(VAULT_FAULT_COPY.rollback, '');
+      expect(withoutE2eeCopy).not.toMatch(/\b(?:encrypted|secure|private)\b/i);
     }
   });
 
