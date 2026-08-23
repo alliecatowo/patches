@@ -411,6 +411,8 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 
 ## Backlog / discovered
 
+- [ ] B-106 — worker has no DI-boot guard: `CleanExpiredNotificationsHandler` (P19-010) was injected by `JobDispatcher` but never registered in `JobRunnerModule` — unit tests construct the dispatcher directly, so nothing short of a real boot caught the crash-loop. Found by the first live preview deploy (patches-pr-61, 2026-08-23); fixed by registering the provider. Lasting fix: a no-database static or compile-time test asserting every class-typed constructor param of every provider is itself provided (extends `apps/server/src/di-graph.test.ts`'s approach to the worker, covering the missing-provider class the `Object`-token check misses).
+
 <!-- Swarm wave 1, 2026-08-22 -->
 
 - [ ] B-077 — `pnpm db:generate` emits phantom drift: unrelated `ALTER TABLE filter_list_subscriptions ... SET DEFAULT` (with a malformed `down`) from un-migrated entity drift in `filter-list-subscription.entity.ts`; stripped out of the P13-008 migration — needs its own reconciliation (entity fix or dedicated migration)
