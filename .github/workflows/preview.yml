@@ -1,17 +1,31 @@
-# Per-PR temporary preview environments (B-105): one Fly machine + one Neon branch
-# per pull request targeting a mainline branch (main, swarm/e2ee-federation-niceties).
+# Per-PR temporary FULL-STACK preview environments (B-105): one Fly app (server +
+# worker process groups, one machine each) + one Neon branch per pull request
+# targeting a mainline branch (main, swarm/e2ee-federation-niceties).
 #
 # deploy job   (opened/synchronize/reopened): create-or-reuse Neon branch `pr-<N>`,
-#              run migrations against it, deploy app `patches-pr-<N>` (degraded:
-#              no federation, no media/R2, no worker, no real email; PUBLIC_READ=true),
-#              then post/update a `<!-- patches-preview -->` PR comment.
+#              run migrations against it, deploy app `patches-pr-<N>` with BOTH
+#              processes (federation off, console email, PUBLIC_READ=true; media
+#              on iff all R2_PREVIEW_* secrets exist — see capability detection
+#              below), then post/update a `<!-- patches-preview -->` PR comment
+#              carrying the capability matrix.
 # teardown job (closed): destroy the Fly app and delete the Neon branch, best-effort.
 #
-# Secrets (repository or `preview` environment — set under Settings → Secrets):
+# Required secrets (repository or `preview` environment — Settings → Secrets):
 #   FLY_API_TOKEN      flyctl token allowed to create/destroy apps in the target org
+#                      (org-scoped: `fly tokens org <org>` — Fly's review-apps
+#                      blueprint's recommendation)
 #   NEON_API_KEY       Neon API key for the preview project (project-scoped org key
 #                      if the account supports it — docs/research/neon-branching.md)
 #   NEON_PROJECT_ID    Neon project id previews branch from (e.g. shy-recipe-96135980)
+# Optional secrets (media capability — set ALL FIVE or none):
+#   R2_PREVIEW_ACCOUNT_ID / R2_PREVIEW_ACCESS_KEY_ID / R2_PREVIEW_SECRET_ACCESS_KEY /
+#   R2_PREVIEW_BUCKET / R2_PREVIEW_ENDPOINT
+#                      scoped to a dedicated PREVIEW R2 bucket, never the production
+#                      one. When all five are present the workflow sets the app's
+#                      R2_* secrets and media (uploads + worker derivative jobs) is
+#                      live; when any is missing, media degrades cleanly (R2_* are
+#                      optional in packages/config's storageEnvSchema and the media
+#                      module errors at call time, not boot time).
 #   NEON_BRANCH_PASSWORD  Not read by this workflow: the branch role password comes
 #                      from `neon connection-string` (the Neon API hands the CLI the
 #                      password; verified in the CLI source). Keep this secret only
@@ -162,16 +176,55 @@ jobs:
         env:
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
 
-      - name: Set Fly secrets (branch DATABASE_URL + throwaway keys)
+      # Capability detection (documented matrix, never a silent failure): the ONLY
+      # optional capability is media, gated on the five R2_PREVIEW_* secrets being
+      # ALL present (all-or-none — partial config would half-work). Presence is
+      # checked via env mapping since `gh secret list` is unavailable to the
+      # workflow itself. Missing → media cleanly degraded (upload/derivative paths
+      # error at call time by design in packages/config's storageEnvSchema), and
+      # the PR comment says so.
+      - name: Detect optional media capability (R2 preview bucket)
+        env:
+          R2_PREVIEW_ACCOUNT_ID: ${{ secrets.R2_PREVIEW_ACCOUNT_ID }}
+          R2_PREVIEW_ACCESS_KEY_ID: ${{ secrets.R2_PREVIEW_ACCESS_KEY_ID }}
+          R2_PREVIEW_SECRET_ACCESS_KEY: ${{ secrets.R2_PREVIEW_SECRET_ACCESS_KEY }}
+          R2_PREVIEW_BUCKET: ${{ secrets.R2_PREVIEW_BUCKET }}
+          R2_PREVIEW_ENDPOINT: ${{ secrets.R2_PREVIEW_ENDPOINT }}
         run: |
           set -euo pipefail
-          flyctl secrets set --app "patches-pr-${PR_NUMBER}" \
-            DATABASE_URL="$DATABASE_URL" \
-            DATABASE_SSL=true \
-            JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" \
-            JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" \
-            AUTH_CODE_DELIVERY_ACTIVE_KEY_ID="$AUTH_CODE_DELIVERY_ACTIVE_KEY_ID" \
-            AUTH_CODE_DELIVERY_KEYS="$AUTH_CODE_DELIVERY_KEYS" >/dev/null
+          r2_args_file="$RUNNER_TEMP/preview-r2-args.txt"
+          if [ -n "$R2_PREVIEW_ACCOUNT_ID" ] && [ -n "$R2_PREVIEW_ACCESS_KEY_ID" ] && \
+             [ -n "$R2_PREVIEW_SECRET_ACCESS_KEY" ] && [ -n "$R2_PREVIEW_BUCKET" ] && \
+             [ -n "$R2_PREVIEW_ENDPOINT" ]; then
+            for value in "$R2_PREVIEW_ACCOUNT_ID" "$R2_PREVIEW_ACCESS_KEY_ID" \
+              "$R2_PREVIEW_SECRET_ACCESS_KEY" "$R2_PREVIEW_BUCKET" "$R2_PREVIEW_ENDPOINT"; do
+              echo "::add-mask::$value"
+            done
+            printf '%s\n' \
+              "R2_ACCOUNT_ID=$R2_PREVIEW_ACCOUNT_ID" \
+              "R2_ACCESS_KEY_ID=$R2_PREVIEW_ACCESS_KEY_ID" \
+              "R2_SECRET_ACCESS_KEY=$R2_PREVIEW_SECRET_ACCESS_KEY" \
+              "R2_BUCKET=$R2_PREVIEW_BUCKET" \
+              "R2_ENDPOINT=$R2_PREVIEW_ENDPOINT" > "$r2_args_file"
+            echo "PREVIEW_MEDIA=enabled" >> "$GITHUB_ENV"
+            echo "Media capability: enabled (dedicated R2 preview bucket detected)." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PREVIEW_MEDIA=disabled" >> "$GITHUB_ENV"
+            echo "Media capability: disabled (not all R2_PREVIEW_* secrets are set — uploads will fail fast, no derivative jobs)." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set Fly secrets (branch DATABASE_URL + throwaway keys + optional R2)
+        run: |
+          set -euo pipefail
+          args=(DATABASE_URL="$DATABASE_URL" DATABASE_SSL=true
+            JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY"
+            AUTH_CODE_DELIVERY_ACTIVE_KEY_ID="$AUTH_CODE_DELIVERY_ACTIVE_KEY_ID"
+            AUTH_CODE_DELIVERY_KEYS="$AUTH_CODE_DELIVERY_KEYS")
+          if [ -f "$RUNNER_TEMP/preview-r2-args.txt" ]; then
+            while IFS= read -r line; do args+=("$line"); done < "$RUNNER_TEMP/preview-r2-args.txt"
+            rm -f "$RUNNER_TEMP/preview-r2-args.txt"
+          fi
+          flyctl secrets set --app "patches-pr-${PR_NUMBER}" "${args[@]}" >/dev/null
 
       - name: Generate preview fly config
         run: node infra/preview/make-preview-config.mjs --pr "$PR_NUMBER"
@@ -179,8 +232,9 @@ jobs:
       - name: Deploy to Fly
         run: |
           set -euo pipefail
-          # --ha=false: exactly one machine (cost guard). --strategy immediate:
-          # replace it in place rather than briefly running two.
+          # --ha=false: exactly one machine per process group (cost guard — two
+          # total: server + worker). --strategy immediate: replace them in place
+          # rather than briefly running doubles.
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --remote-only --ha=false --strategy immediate --yes \
             --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
@@ -196,21 +250,32 @@ jobs:
           body_file="$RUNNER_TEMP/preview-comment.md"
           node -e '
             const fs = require("node:fs");
-            const { PR_NUMBER, APP, COMMIT_SHA } = process.env;
+            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA } = process.env;
             const NEON_BRANCH = `pr-${PR_NUMBER}`;
             const short = (COMMIT_SHA || "").slice(0, 7);
+            const media = PREVIEW_MEDIA === "enabled"
+              ? "on (dedicated R2 preview bucket — uploads + derivative jobs live)"
+              : "off (no R2_PREVIEW_* secrets — uploads fail fast)";
             const body = [
               process.argv[1],
-              "## Preview environment",
+              "## Preview environment (full stack)",
               "",
               "| What | Where |",
               "| --- | --- |",
               `| gRPC (TUI: \`patches --server ${APP}.fly.dev:443\`) | \`${APP}.fly.dev:443\` |`,
               `| HTTP / healthz | https://${APP}.fly.dev/healthz |`,
+              `| Worker (jobs: notifications, cleanup${PREVIEW_MEDIA === "enabled" ? ", media derivatives" : ""}) | running (\`WORKER_ID=preview-pr-${PR_NUMBER}\`, concurrency 2) |`,
               `| Neon branch | \`${NEON_BRANCH}\` |`,
               `| Commit | \`${short}\` |`,
               "",
-              "Degraded vs production: federation off, media/R2 off, no worker (verification codes and password-reset emails are **never delivered** on a preview), single machine with autostop.",
+              "Capability matrix:",
+              "",
+              "| Capability | State |",
+              "| --- | --- |",
+              "| gRPC + Connect API + worker + DB branch | live |",
+              `| Media / R2 | ${media} |`,
+              "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",
+              "| Real email | off (console provider: verification codes are accepted then dropped — **sign in with an existing account** from the cloned data) |",
               "",
               "**Data warning:** the preview database is a Neon branch of production — public content is readable logged-out (`PUBLIC_READ=true`), and DMs are server-visible like on any Patches node.",
               "",
