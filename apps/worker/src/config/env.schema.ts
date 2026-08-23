@@ -37,6 +37,16 @@ const envObjectSchema = z.object({
   ...emailEnvShape,
   ...storageEnvSchema.shape,
 
+  /** OpenTelemetry instrumentation (Wave 1 observability). */
+  OTEL_ENABLED: z.enum(['true', 'false']).default('false'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().trim().optional(),
+  OTEL_SERVICE_NAME: z.string().trim().default('patches-worker'),
+  OTEL_RESOURCE_ATTRIBUTES: z.string().trim().optional(),
+
+  /** Prometheus metrics server (Wave 1 observability). */
+  METRICS_ENABLED: z.enum(['true', 'false']).default('false'),
+  METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9090),
+
   /** Same rotatable auth-code envelope keyring and active id configured on the server. */
   AUTH_CODE_DELIVERY_KEYS: authCodeDeliveryKeyringJsonSchema,
   AUTH_CODE_DELIVERY_ACTIVE_KEY_ID: authCodeDeliveryKeyIdSchema,
@@ -107,6 +117,10 @@ const envObjectSchema = z.object({
    * the load-shedding this task is about, not itself a limit. */
   WORKER_BACKLOG_WARN_THRESHOLD: z.coerce.number().int().positive().default(1_000),
   WORKER_BACKLOG_LOG_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /** How often `JobRunner` pushes the `workerQueueDepth` gauge (B-101). */
+  WORKER_QUEUE_DEPTH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+  /** B-102: how many days to retain notifications before the cleanup job deletes them. */
+  NOTIFICATION_TTL_DAYS: z.coerce.number().int().positive().default(90),
 });
 
 export const envSchema = envObjectSchema.superRefine((value, ctx) => {

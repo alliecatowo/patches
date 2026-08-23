@@ -26,14 +26,14 @@ describe('createDataSourceOptions', () => {
   it('defaults ssl to false, poolMax to 10, logging to false', () => {
     const options = createDataSourceOptions({ url });
     expect(options.ssl).toBe(false);
-    expect(options.extra).toEqual({ max: 10 });
+    expect(options.extra).toEqual({ max: 10, statement_timeout: '10s' });
     expect(options.logging).toBe(false);
   });
 
   it('maps ssl/poolMax/logging inputs through', () => {
     const options = createDataSourceOptions({ url, ssl: true, poolMax: 25, logging: true });
     expect(options.ssl).toEqual({ rejectUnauthorized: true });
-    expect(options.extra).toEqual({ max: 25 });
+    expect(options.extra).toEqual({ max: 25, statement_timeout: '10s' });
     expect(options.logging).toBe(true);
   });
 

@@ -22,6 +22,7 @@ export const DATA_SOURCE = 'DATA_SOURCE';
           url: config.databaseUrl,
           ssl: config.databaseSsl,
           poolMax: config.databasePoolMax,
+          statementTimeout: config.databaseStatementTimeout,
         });
         await dataSource.initialize();
         return dataSource;

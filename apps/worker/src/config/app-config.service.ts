@@ -42,6 +42,10 @@ export class AppConfigService {
     return this.get('DATABASE_POOL_MAX');
   }
 
+  get databaseStatementTimeout(): string {
+    return this.get('DATABASE_STATEMENT_TIMEOUT');
+  }
+
   get authCodeDeliveryKeys(): Env['AUTH_CODE_DELIVERY_KEYS'] {
     return this.get('AUTH_CODE_DELIVERY_KEYS');
   }
@@ -160,5 +164,13 @@ export class AppConfigService {
 
   get backlogLogIntervalMs(): number {
     return this.get('WORKER_BACKLOG_LOG_INTERVAL_MS');
+  }
+
+  get queueDepthIntervalMs(): number {
+    return this.get('WORKER_QUEUE_DEPTH_INTERVAL_MS');
+  }
+
+  get notificationTtlDays(): number {
+    return this.get('NOTIFICATION_TTL_DAYS');
   }
 }

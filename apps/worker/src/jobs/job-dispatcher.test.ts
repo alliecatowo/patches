@@ -3,6 +3,7 @@ import type { JobType } from '@patches/database';
 
 import { type JobContext, type JobHandler } from './job-handler.js';
 import { JobDispatcher } from './job-dispatcher.js';
+import type { CleanExpiredNotificationsHandler } from './handlers/clean-expired-notifications.handler.js';
 import type { CleanExpiredTokensHandler } from './handlers/clean-expired-tokens.handler.js';
 import type { CleanExpiredUploadsHandler } from './handlers/clean-expired-uploads.handler.js';
 import type { ExportAccountHandler } from './handlers/export-account.handler.js';
@@ -25,6 +26,7 @@ describe('JobDispatcher', () => {
     const sendVerificationEmail = fakeHandler('SEND_VERIFICATION_EMAIL');
     const sendPasswordResetEmail = fakeHandler('SEND_PASSWORD_RESET_EMAIL');
     const cleanExpiredTokens = fakeHandler('CLEAN_EXPIRED_TOKENS');
+    const cleanExpiredNotifications = fakeHandler('CLEAN_EXPIRED_NOTIFICATIONS');
     const processMedia = fakeHandler('PROCESS_MEDIA');
     const cleanExpiredUploads = fakeHandler('CLEAN_EXPIRED_UPLOADS');
     const federationDeliver = fakeHandler('FEDERATION_DELIVER');
@@ -36,6 +38,7 @@ describe('JobDispatcher', () => {
       sendVerificationEmail as SendVerificationEmailHandler,
       sendPasswordResetEmail as SendPasswordResetEmailHandler,
       cleanExpiredTokens as CleanExpiredTokensHandler,
+      cleanExpiredNotifications as CleanExpiredNotificationsHandler,
       processMedia as ProcessMediaHandler,
       cleanExpiredUploads as CleanExpiredUploadsHandler,
       federationDeliver as FederationDeliverHandler,
@@ -47,6 +50,7 @@ describe('JobDispatcher', () => {
     expect(dispatcher.find('SEND_VERIFICATION_EMAIL')).toBe(sendVerificationEmail);
     expect(dispatcher.find('SEND_PASSWORD_RESET_EMAIL')).toBe(sendPasswordResetEmail);
     expect(dispatcher.find('CLEAN_EXPIRED_TOKENS')).toBe(cleanExpiredTokens);
+    expect(dispatcher.find('CLEAN_EXPIRED_NOTIFICATIONS')).toBe(cleanExpiredNotifications);
     expect(dispatcher.find('PROCESS_MEDIA')).toBe(processMedia);
     expect(dispatcher.find('CLEAN_EXPIRED_UPLOADS')).toBe(cleanExpiredUploads);
     expect(dispatcher.find('FEDERATION_DELIVER')).toBe(federationDeliver);
@@ -60,6 +64,7 @@ describe('JobDispatcher', () => {
       fakeHandler('SEND_VERIFICATION_EMAIL') as SendVerificationEmailHandler,
       fakeHandler('SEND_PASSWORD_RESET_EMAIL') as SendPasswordResetEmailHandler,
       fakeHandler('CLEAN_EXPIRED_TOKENS') as CleanExpiredTokensHandler,
+      fakeHandler('CLEAN_EXPIRED_NOTIFICATIONS') as CleanExpiredNotificationsHandler,
       fakeHandler('PROCESS_MEDIA') as ProcessMediaHandler,
       fakeHandler('CLEAN_EXPIRED_UPLOADS') as CleanExpiredUploadsHandler,
       fakeHandler('FEDERATION_DELIVER') as FederationDeliverHandler,

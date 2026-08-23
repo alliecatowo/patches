@@ -1,6 +1,7 @@
 import { type CallHandler, type ExecutionContext } from '@nestjs/common';
 import { lastValueFrom, NEVER, of } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { DataSource } from 'typeorm';
 
 import { type AppConfigService } from '../../config/app-config.service.js';
 import { type AccessTokenClaims } from '../../modules/auth/token.service.js';
@@ -18,8 +19,15 @@ function fakeConfig(overrides: Partial<Record<string, number>> = {}): AppConfigS
     rpcSearchBudgetPerActorPerMin: 100,
     rpcWriteConcurrencyLimit: 100,
     rpcTimeoutMs: 5_000,
+    rateLimitGlobal: false,
     ...overrides,
   } as unknown as AppConfigService;
+}
+
+function mockDataSource(): DataSource {
+  return {
+    transaction: vi.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
+  } as unknown as DataSource;
 }
 
 function rpcContext(call: object = {}): ExecutionContext {
@@ -55,7 +63,7 @@ const CLAIMS = (actorId: string): AccessTokenClaims => ({
 
 describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   it('passes non-rpc contexts straight through untouched', async () => {
-    const interceptor = new RpcBudgetInterceptor(fakeConfig());
+    const interceptor = new RpcBudgetInterceptor(fakeConfig(), mockDataSource());
     const httpContext = { getType: () => 'http' } as unknown as ExecutionContext;
 
     await expect(
@@ -64,7 +72,10 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   });
 
   it('allows calls under the peer read budget and rejects the one over it', async () => {
-    const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcReadBudgetPerPeerPerMin: 1 }));
+    const interceptor = new RpcBudgetInterceptor(
+      fakeConfig({ rpcReadBudgetPerPeerPerMin: 1 }),
+      mockDataSource(),
+    );
     const context = rpcContext();
     const call = () =>
       withContext('patches.v1.PostService/GetPost', 'peer-1', () =>
@@ -78,6 +89,7 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   it('keys the actor budget independently of which peer the caller is on', async () => {
     const interceptor = new RpcBudgetInterceptor(
       fakeConfig({ rpcReadBudgetPerActorPerMin: 1, rpcReadBudgetPerPeerPerMin: 100 }),
+      mockDataSource(),
     );
     const call: Record<string, unknown> = {};
     setSessionClaims(call as never, CLAIMS('actor-1'));
@@ -100,6 +112,7 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   it('resets both peer and actor budgets', async () => {
     const interceptor = new RpcBudgetInterceptor(
       fakeConfig({ rpcReadBudgetPerPeerPerMin: 1, rpcReadBudgetPerActorPerMin: 1 }),
+      mockDataSource(),
     );
     const call: Record<string, unknown> = {};
     setSessionClaims(call as never, CLAIMS('actor-1'));
@@ -126,7 +139,10 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   });
 
   it('sheds a write RPC immediately once the write-concurrency gate is full', async () => {
-    const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcWriteConcurrencyLimit: 1 }));
+    const interceptor = new RpcBudgetInterceptor(
+      fakeConfig({ rpcWriteConcurrencyLimit: 1 }),
+      mockDataSource(),
+    );
     const context = rpcContext();
 
     await withContext('patches.v1.PostService/CreatePost', 'peer-1', () => {
@@ -142,7 +158,10 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   });
 
   it('never gates a read RPC on write concurrency', async () => {
-    const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcWriteConcurrencyLimit: 1 }));
+    const interceptor = new RpcBudgetInterceptor(
+      fakeConfig({ rpcWriteConcurrencyLimit: 1 }),
+      mockDataSource(),
+    );
     const context = rpcContext();
 
     await withContext('patches.v1.PostService/CreatePost', 'peer-1', () => {
@@ -158,7 +177,10 @@ describe('RpcBudgetInterceptor (S-001/S-002)', () => {
   });
 
   it('abandons a handler that runs past the configured deadline', async () => {
-    const interceptor = new RpcBudgetInterceptor(fakeConfig({ rpcTimeoutMs: 20 }));
+    const interceptor = new RpcBudgetInterceptor(
+      fakeConfig({ rpcTimeoutMs: 20 }),
+      mockDataSource(),
+    );
     const context = rpcContext();
 
     await expect(

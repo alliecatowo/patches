@@ -1,8 +1,11 @@
 import { Global, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, getDataSourceToken } from '@nestjs/typeorm';
 import { createDataSourceOptions } from '@patches/database';
 
 import { AppConfigService } from '../config/app-config.service.js';
+
+/** DI token for the initialized `DataSource` — mirrors the worker's `DATA_SOURCE` export. */
+export const DATA_SOURCE = getDataSourceToken();
 
 /**
  * Wires the shared `@patches/database` DataSource into Nest's DI (spec §16, §128).
@@ -38,6 +41,7 @@ import { AppConfigService } from '../config/app-config.service.js';
             ssl: config.databaseSsl,
             poolMax: config.databasePoolMax,
             logging: false,
+            statementTimeout: config.databaseStatementTimeout,
           }),
           // Nest retries the initial connection; a developer or a test wants the failure
           // now, a production boot during a database failover does not.
@@ -47,5 +51,7 @@ import { AppConfigService } from '../config/app-config.service.js';
       },
     }),
   ],
+  // Re-export the DataSource token so other modules can inject it
+  exports: [DATA_SOURCE],
 })
 export class DatabaseModule {}

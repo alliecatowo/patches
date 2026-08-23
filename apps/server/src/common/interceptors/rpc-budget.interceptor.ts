@@ -2,20 +2,25 @@ import { type Metadata } from '@grpc/grpc-js';
 import {
   type CallHandler,
   type ExecutionContext,
+  Inject,
   Injectable,
   type NestInterceptor,
 } from '@nestjs/common';
 import { catchError, finalize, Observable, throwError, timeout, TimeoutError } from 'rxjs';
+import type { DataSource } from 'typeorm';
 
 import { getSessionClaims } from '../../modules/auth/session-context.js';
 import { AppConfigService } from '../../config/app-config.service.js';
+import { DATA_SOURCE } from '../../database/database.module.js';
 import { getRequestContext } from '../context/request-context.js';
 import { AppError } from '../errors/app-error.js';
 import {
   classifyRpc,
   ConcurrencyGate,
   RpcBudgetLimiter,
+  DbRpcBudgetLimiter,
   type RpcClass,
+  createRpcBudgetLimiter,
 } from '../rate-limit/rpc-budget.js';
 
 /**
@@ -35,22 +40,44 @@ import {
  */
 @Injectable()
 export class RpcBudgetInterceptor implements NestInterceptor {
-  private readonly peerLimiters: Record<RpcClass, RpcBudgetLimiter>;
-  private readonly actorLimiters: Record<RpcClass, RpcBudgetLimiter>;
+  private readonly peerLimiters: Record<RpcClass, RpcBudgetLimiter | DbRpcBudgetLimiter>;
+  private readonly actorLimiters: Record<RpcClass, RpcBudgetLimiter | DbRpcBudgetLimiter>;
   private readonly writeGate: ConcurrencyGate;
   private readonly rpcTimeoutMs: number;
+  private readonly useDb: boolean;
+  private readonly dataSource: DataSource;
 
-  constructor(config: AppConfigService) {
+  constructor(config: AppConfigService, @Inject(DATA_SOURCE) dataSource: DataSource) {
+    this.useDb = config.rateLimitGlobal;
+    this.dataSource = dataSource;
     const windowMs = 60_000;
     this.peerLimiters = {
-      read: new RpcBudgetLimiter({ limit: config.rpcReadBudgetPerPeerPerMin, windowMs }),
-      write: new RpcBudgetLimiter({ limit: config.rpcWriteBudgetPerPeerPerMin, windowMs }),
-      search: new RpcBudgetLimiter({ limit: config.rpcSearchBudgetPerPeerPerMin, windowMs }),
+      read: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcReadBudgetPerPeerPerMin,
+        windowMs,
+      }),
+      write: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcWriteBudgetPerPeerPerMin,
+        windowMs,
+      }),
+      search: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcSearchBudgetPerPeerPerMin,
+        windowMs,
+      }),
     };
     this.actorLimiters = {
-      read: new RpcBudgetLimiter({ limit: config.rpcReadBudgetPerActorPerMin, windowMs }),
-      write: new RpcBudgetLimiter({ limit: config.rpcWriteBudgetPerActorPerMin, windowMs }),
-      search: new RpcBudgetLimiter({ limit: config.rpcSearchBudgetPerActorPerMin, windowMs }),
+      read: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcReadBudgetPerActorPerMin,
+        windowMs,
+      }),
+      write: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcWriteBudgetPerActorPerMin,
+        windowMs,
+      }),
+      search: createRpcBudgetLimiter(dataSource, this.useDb, {
+        limit: config.rpcSearchBudgetPerActorPerMin,
+        windowMs,
+      }),
     };
     this.writeGate = new ConcurrencyGate(config.rpcWriteConcurrencyLimit);
     this.rpcTimeoutMs = config.rpcTimeoutMs;
@@ -58,8 +85,12 @@ export class RpcBudgetInterceptor implements NestInterceptor {
 
   /** Clear process-local budget buckets for an in-process test server. */
   resetBudgets(): void {
-    for (const limiter of Object.values(this.peerLimiters)) limiter.clear();
-    for (const limiter of Object.values(this.actorLimiters)) limiter.clear();
+    for (const limiter of Object.values(this.peerLimiters)) {
+      if ('clear' in limiter) limiter.clear();
+    }
+    for (const limiter of Object.values(this.actorLimiters)) {
+      if ('clear' in limiter) limiter.clear();
+    }
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -74,10 +105,8 @@ export class RpcBudgetInterceptor implements NestInterceptor {
     const peerKey = requestContext?.peer ?? 'unknown';
     const actorId = currentActorId(context);
 
-    if (!this.peerLimiters[rpcClass].tryConsume(peerKey)) throw budgetExceeded(rpcClass);
-    if (actorId !== undefined && !this.actorLimiters[rpcClass].tryConsume(actorId)) {
-      throw budgetExceeded(rpcClass);
-    }
+    const peerLimiter = this.peerLimiters[rpcClass];
+    const actorLimiter = this.actorLimiters[rpcClass];
 
     let releaseWriteGate: (() => void) | undefined;
     if (rpcClass === 'write') {
@@ -94,19 +123,36 @@ export class RpcBudgetInterceptor implements NestInterceptor {
       };
     }
 
-    return next.handle().pipe(
-      timeout(this.rpcTimeoutMs),
-      catchError((error: unknown) =>
-        throwError(() =>
-          error instanceof TimeoutError
-            ? new AppError('RPC_TIMEOUT', 'This request took too long and was abandoned.', {
-                context: { rpc },
-              })
-            : error,
-        ),
-      ),
-      releaseWriteGate === undefined ? finalize(() => undefined) : finalize(releaseWriteGate),
-    );
+    // Run the async budget check before the handler executes
+    return new Observable((subscriber) => {
+      void (async () => {
+        try {
+          if (!(await peerLimiter.tryConsume(peerKey))) throw budgetExceeded(rpcClass);
+          if (actorId !== undefined && !(await actorLimiter.tryConsume(actorId))) {
+            throw budgetExceeded(rpcClass);
+          }
+
+          const source = next.handle().pipe(
+            timeout(this.rpcTimeoutMs),
+            catchError((error: unknown) =>
+              throwError(() =>
+                error instanceof TimeoutError
+                  ? new AppError('RPC_TIMEOUT', 'This request took too long and was abandoned.', {
+                      context: { rpc },
+                    })
+                  : error,
+              ),
+            ),
+            releaseWriteGate === undefined ? finalize(() => undefined) : finalize(releaseWriteGate),
+          );
+
+          source.subscribe(subscriber);
+        } catch (error) {
+          if (releaseWriteGate !== undefined) releaseWriteGate();
+          subscriber.error(error);
+        }
+      })();
+    });
   }
 }
 

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
 import { AuthCodeEmailDeliveryService } from '../src/jobs/auth-code-email-delivery.service.js';
+import { CleanExpiredNotificationsHandler } from '../src/jobs/handlers/clean-expired-notifications.handler.js';
 import { CleanExpiredTokensHandler } from '../src/jobs/handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from '../src/jobs/handlers/clean-expired-uploads.handler.js';
 import { ExportAccountHandler } from '../src/jobs/handlers/export-account.handler.js';
@@ -97,6 +98,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       new SendVerificationEmailHandler(authCodeDelivery),
       new SendPasswordResetEmailHandler(authCodeDelivery),
       new CleanExpiredTokensHandler(dataSource),
+      new CleanExpiredNotificationsHandler(dataSource, config),
       new ProcessMediaHandler(dataSource, storage, config),
       new CleanExpiredUploadsHandler(dataSource, storage, config),
       new FederationDeliverHandler(dataSource, config),

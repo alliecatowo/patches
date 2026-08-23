@@ -1,25 +1,24 @@
-# Fly.io app configuration for Patches (P7-001).
+# Fly.io app configuration for Patches.
 #
-# Status: deployed 2026-08-18 as `patches-social` (patches-social.fly.dev). Deploy from the
-# repo root (the pnpm workspace needs the whole monorepo as build context):
-#
+# Deploy from the repo root (the pnpm workspace needs the whole monorepo as build context):
 #   flyctl deploy --config infra/fly/fly.toml --remote-only --ha=false
 #
 # See docs/operations/deployment.md for the full runbook (secrets, Postgres, admin access).
-app = "patches-social"
+app = "patches"
 primary_region = "iad"
 
 # Longer than the worker's 10s graceful drain and the server's in-flight gRPC drain (A-044);
 # Fly's default is 5s, which would SIGKILL a worker mid-job.
 kill_signal = "SIGTERM"
-kill_timeout = "20s"
+kill_timeout = "30s"
 
 [build]
   dockerfile = "../docker/Dockerfile"
 
 # Non-secret runtime env (secrets — DATABASE_URL, JWT_*, FEDERATION_KEY_ENCRYPTION_KEY,
-# R2_*, RESEND_API_KEY — are set with `fly secrets set`). `GRPC_HOST=0.0.0.0` so the
-# Machine's proxy can reach the listener; `PUBLIC_ORIGIN`/`NODE_DOMAIN` name this node.
+# R2_*, RESEND_API_KEY, SENTRY_DSN, OTEL_EXPORTER_OTLP_ENDPOINT — are set with
+# `fly secrets set`). `GRPC_HOST=0.0.0.0` so the Machine's proxy can reach the listener;
+# `PUBLIC_ORIGIN`/`NODE_DOMAIN` name this node.
 [env]
   NODE_ENV = "production"
   # ADR 0027: this owner-authorized disposable node deliberately exercises only the
@@ -29,13 +28,13 @@ kill_timeout = "20s"
   GRPC_HOST = "0.0.0.0"
   GRPC_PORT = "50051"
   HTTP_PORT = "8080"
-  PUBLIC_ORIGIN = "https://patches-social.fly.dev"
-  NODE_DOMAIN = "patches-social.fly.dev"
+  METRICS_PORT = "9090"
+  PUBLIC_ORIGIN = "https://patches.fly.dev"
+  NODE_DOMAIN = "patches.fly.dev"
   INVITE_ONLY = "true"
   PUBLIC_READ = "false"
   # ADR 0016 §6: bare `scheme://host[:port]` origins allowed to call the Connect edge
-  # cross-origin (apps/web, Cloudflare Pages — docs/operations/web.md). Not yet redeployed
-  # here — see that doc for the caveat.
+  # cross-origin (apps/web, Cloudflare Pages — docs/operations/web.md).
   WEB_ORIGINS = "https://patches-web.pages.dev"
   FEDERATION_ENABLED = "false"
   TRUST_PROXY_HEADERS = "true"
@@ -46,34 +45,33 @@ kill_timeout = "20s"
   # (NodeService.GetNodePolicy) — real values for the live node, not placeholders. Summarizes
   # ADR 0017 (server-visible DMs) and docs/product/privacy.md; the terms link points at the
   # full privacy document itself, since there is no separate ToS page yet.
-  PRIVACY_NOTICE_SUMMARY = "This node (patches-social.fly.dev) stores your account, profile, posts, and direct messages in a Postgres database (Neon, aws-us-east-2); uploaded images are stored in Cloudflare R2. Public posts and profile fields are visible to anyone who can reach this node. Direct messages are NOT end-to-end encrypted — this node's operator can read them (stated again on the messages screen). Deleting a post tombstones it for thread integrity; deleting your account starts a 30-day grace period, after which your content is purged except records tied to an open report or appeal. Export or delete your data any time from the privacy screen. Full policy and contact details: see the terms link and operator identity below."
+  PRIVACY_NOTICE_SUMMARY = "This node (patches.fly.dev) stores your account, profile, posts, and direct messages in a Postgres database (Neon, aws-us-east-2); uploaded images are stored in Cloudflare R2. Public posts and profile fields are visible to anyone who can reach this node. Direct messages are NOT end-to-end encrypted — this node's operator can read them (stated again on the messages screen). Deleting a post tombstones it for thread integrity; deleting your account starts a 30-day grace period, after which your content is purged except records tied to an open report or appeal. Export or delete your data any time from the privacy screen. Full policy and contact details: see the terms link and operator identity below."
   TERMS_URL = "https://github.com/alliecatowo/patches/blob/main/docs/product/privacy.md"
   APPEAL_INSTRUCTIONS = "Use the in-client appeal flow (the Appeals screen / patches appeal) within the appeal window shown on your notice, or email allisonemilycoleman@gmail.com with your handle, the notice ID, and why you believe it was wrong. One appeal per notice."
   OPERATOR_CONTACT = "Operated by Allison Coleman (allisonemilycoleman@gmail.com) — a solo self-hosted instance, not a company."
   DATA_LOCATION = "App: Fly.io (iad, US). Database: Neon Postgres (aws-us-east-2, US). Media: Cloudflare R2."
 
-# One image, two process groups (docs/research/fly-io.md §1, §5). Fly runs each group's
-# Machines with the corresponding command below, overriding the image's default CMD
-# (`infra/docker/Dockerfile`'s CMD is only what runs under a plain `podman run`/`docker
-# run`). Paths are relative to the runtime image's WORKDIR (/app), matching where
-# `pnpm deploy` placed each app (see Dockerfile) — NOT `apps/server/dist/main.js`, since
-# `pnpm deploy` flattens each app into its own top-level directory (`server/`, `worker/`).
+# One image, two process groups. Fly runs each group's Machines with the corresponding
+# command below, overriding the image's default CMD (`infra/docker/Dockerfile`'s CMD is
+# only what runs under a plain `podman run`/`docker run`). Paths are relative to the
+# runtime image's WORKDIR (/app), matching where `pnpm deploy` placed each app (see
+# Dockerfile) — NOT `apps/server/dist/main.js`, since `pnpm deploy` flattens each app
+# into its own top-level directory (`server/`, `worker/`).
 [processes]
   server = "node server/dist/main.js"
   worker = "node worker/dist/main.js"
 
-# Runs once per deploy, before new Machines take traffic (docs/research/fly-io.md §4).
-# Gets the same secrets/env vars as the app (DATABASE_URL, etc.) but no volumes — fine,
-# migrations don't need one. This is the ONLY place migrations run in production; the app
-# itself hard-codes `migrationsRun: false` (packages/database's `createDataSourceOptions`)
-# per spec §153.
+# Runs once per deploy, before new Machines take traffic. Gets the same secrets/env vars
+# as the app (DATABASE_URL, etc.) but no volumes — fine, migrations don't need one.
+# This is the ONLY place migrations run in production; the app itself hard-codes
+# `migrationsRun: false` (packages/database's `createDataSourceOptions`) per spec §153.
 [deploy]
-  release_command = "node server/migrate.mjs"
+  release_command = "pnpm db:migrate"
 
 # Public gRPC ingress — server group only. TLS terminates at Fly's edge; the app itself
-# listens plain h2c on `internal_port` (docs/research/fly-io.md §2). `worker` intentionally
-# has NO [[services]] block: it's a background job runner, not a request target, and gets
-# no public (or even private) network service.
+# listens plain h2c on `internal_port`. `worker` intentionally has NO [[services]] block:
+# it's a background job runner, not a request target, and gets no public (or even
+# private) network service.
 [[services]]
   internal_port = 50051
   protocol = "tcp"
@@ -86,23 +84,18 @@ kill_timeout = "20s"
   [services.ports.http_options]
     h2_backend = true
 
-  # Fly has no native gRPC check type (http/tcp only — docs/research/fly-io.md §3). This TCP
-  # check only confirms the gRPC socket accepts connections, not that the app is actually
-  # healthy — kept alongside the real application-level check below (`[checks.healthz]`)
-  # rather than replaced by it, since a TCP check needs no application code at all to pass.
+  # Fly has no native gRPC check type (http/tcp only). This TCP check only confirms the
+  # gRPC socket accepts connections, not that the app is actually healthy — kept alongside
+  # the real application-level check below (`[checks.healthz]`) rather than replaced by it,
+  # since a TCP check needs no application code at all to pass.
   [[services.tcp_checks]]
     grace_period = "10s"
     interval = "15s"
     timeout = "2s"
 
-# Public Connect (web/RN) ingress (ADR 0016 §8) — a second, independent `[[services]]`
-# block, since Fly allows only one service per external port and `:443` above is already
-# gRPC. `:8443` is one of Cloudflare's supported HTTPS ports
-# (developers.cloudflare.com/fundamentals/reference/network-ports), so the public web
-# origin fronts this with Cloudflare on `:443` and proxies to Fly's `:8443`. Same
-# `internal_port` (`HTTP_PORT`) the healthz check below also targets — the Connect edge,
-# `/healthz`, and (when `FEDERATION_ENABLED`) the federation HTTP surface all share the one
-# always-on HTTP listener (ADR 0016 §4).
+# Public HTTP/Connect ingress (ADR 0016 §8) — a second, independent `[[services]]` block,
+# since Fly allows only one service per external port and `:443` above is already gRPC.
+# `:80` and `:443` handlers on the same internal port — Fly terminates TLS at the edge.
 [[services]]
   internal_port = 8080
   protocol = "tcp"
@@ -110,16 +103,27 @@ kill_timeout = "20s"
 
   [[services.ports]]
     handlers = ["tls", "http"]
-    port = 8443
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+# Internal metrics endpoint — no external port, scrape-only from within the private network.
+[[services]]
+  internal_port = 9090
+  protocol = "tcp"
+  processes = ["server"]
+  # No [[services.ports]] = no external exposure
 
 # Real application-level health check (A-043): `GET /healthz` on the server process's HTTP
 # port, which reports 200 only when the database answers `SELECT 1` and the gRPC health
-# status is SERVING (`apps/server/src/modules/system/health.service.ts`), 503 otherwise. A
-# top-level `[checks]` entry rather than `[[services.http_checks]]` so it isn't tied to
+# status is SERVING (`apps/server/src/modules/system/health.service.ts`), 503 otherwise.
+# A top-level `[checks]` entry rather than `[[services.http_checks]]` so it isn't tied to
 # either `[[services]]` block above — `[checks]` targets a port directly, independent of
-# request routing (docs/research/fly-io.md §3). The HTTP listener is always-on (ADR 0016
-# §4): `FEDERATION_ENABLED=false` in `[env]` above means only the federation surface
-# (webfinger/actor/inbox/outbox) is absent, not `/healthz` or the Connect edge.
+# request routing. The HTTP listener is always-on (ADR 0016 §4): `FEDERATION_ENABLED=false`
+# in `[env]` above means only the federation surface (webfinger/actor/inbox/outbox) is
+# absent, not `/healthz` or the Connect edge.
 [checks]
   [checks.healthz]
     type = "http"
@@ -131,13 +135,34 @@ kill_timeout = "20s"
     grace_period = "10s"
     processes = ["server"]
 
+# Auto-scaling per process group
+[services.scaling]
+  # server: min=1, max=3
+  min_machines = 1
+  max_machines = 3
+
+[services.scaling.worker]
+  # worker: min=1, max=2
+  min_machines = 1
+  max_machines = 2
+
+# VM sizing per process group
+[[vm]]
+  process_group = "server"
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[vm]]
+  process_group = "worker"
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
 [deploy.release_command_vm]
   size = "shared-cpu-1x"
   memory = "512mb"
 
-# VM sizing per process group (`[[vm]]` blocks, or `fly scale vm --process-group=...`) is
-# intentionally NOT set here — docs/research/fly-io.md didn't verify the current `[[vm]]`
-# table syntax against official docs, and this file should only assert config that's
-# actually been checked. Fly defaults new apps to a small shared-cpu Machine; set explicit
-# sizing at first-deploy time once `[[vm]]`'s current syntax is confirmed against
-# fly.io/docs/reference/configuration/.
+# Temporary mount for worker media processing (sharp needs /tmp)
+[mounts]
+  destination = "/tmp"
+  source = "patches-tmp"
+  size_gb = 1
