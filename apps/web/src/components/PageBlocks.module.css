@@ -11,7 +11,9 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--fg-muted);
+  /* Page-document theme accent (§171), falling back to the node token outside a
+   * themed page route. */
+  color: var(--page-accent, var(--fg-muted));
   font-family: var(--font-mono);
   margin: 0 0 0.5rem 0;
 }
@@ -33,6 +35,33 @@
   font-family: var(--font-mono);
   overflow-x: auto;
   margin: 0;
+}
+
+/* Gallery cells resolve through GetMediaDownload like any Image block; until a URL
+ * lands, MediaImage renders an empty div that aspect-ratio holds open. */
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+
+.galleryCell {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+/* Page-document theme (§171) reaches blocks as --page-* custom properties set on the
+ * page-route container; every use falls back to the node's own tokens so the profile
+ * wall (no theme scope) renders exactly as before. */
+.heroTitle {
+  color: var(--page-accent, inherit);
+}
+
+.linkAnchor {
+  color: var(--page-accent, var(--accent));
 }
 
 .actorRow {

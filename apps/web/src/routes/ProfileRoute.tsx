@@ -13,6 +13,7 @@ import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { PageBlocks } from '../components/PageBlocks.js';
+import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
 import { useSession } from '../hooks/useSession.js';
@@ -224,6 +225,8 @@ export function ProfileRoute(): JSX.Element {
               </button>
             ) : null}
           </div>
+
+          {pageQuery.data ? <PinnedPosts ownerActorId={pageQuery.data.ownerActorId} /> : null}
 
           {activeBlocks.length > 0 ? (
             <PageBlocks

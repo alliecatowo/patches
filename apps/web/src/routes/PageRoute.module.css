@@ -2,6 +2,27 @@
   max-width: 42rem;
   margin: 0 auto;
   padding: 1.25rem 1.25rem 3rem 1.25rem;
+  /* Page-document theme (§171) lands here as --page-* custom properties set inline by
+   * the route; every consumer falls back to the node's own tokens when unset. Cosmetics
+   * only — nothing functional is gated on them (Amendment B §184.3). */
+  background: var(--page-bg, transparent);
+}
+
+.themeBorderSingle {
+  border: 1px solid var(--page-accent, var(--border-subtle));
+}
+
+.themeBorderDouble {
+  border: 4px double var(--page-accent, var(--border-subtle));
+}
+
+.themeBorderRound {
+  border: 1px solid var(--page-accent, var(--border-subtle));
+  border-radius: 1rem;
+}
+
+.themeBorderAscii {
+  border: 1px dashed var(--page-accent, var(--border-subtle));
 }
 
 .header {
@@ -16,7 +37,7 @@
 }
 
 .crumbs a {
-  color: var(--accent);
+  color: var(--page-accent, var(--accent));
   text-decoration: none;
 }
 
@@ -49,12 +70,12 @@
 }
 
 .subPageTab:hover {
-  border-color: var(--border-hover);
+  border-color: var(--page-accent, var(--border-hover));
 }
 
 .subPageTabActive {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--page-accent, var(--accent));
+  border-color: var(--page-accent, var(--accent));
   color: var(--accent-fg);
   font-weight: 700;
 }
@@ -77,6 +98,6 @@
 }
 
 .emptyActions a {
-  color: var(--accent);
+  color: var(--page-accent, var(--accent));
   font-weight: 600;
 }

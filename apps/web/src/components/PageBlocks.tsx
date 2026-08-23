@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { formatRelativeTime } from '../lib/format.js';
 import { safePageHref } from '../lib/page.js';
+import { GuestbookEntryActions, GuestbookSignForm } from './GuestbookControls.js';
 import { MediaImage } from './MediaImage.js';
 import { PostTimeline } from './PostTimeline.js';
 import styles from './PageBlocks.module.css';
@@ -35,10 +36,10 @@ export interface PageBlocksProps {
  * server's write-time sanitization), and every `Links` href is re-checked by
  * `safePageHref` so a `javascript:`/`data:` URL renders as inert text, never an anchor.
  *
- * Live blocks (`Posts`/`TopEight`/`Guestbook`) fetch their own data when `context` is
- * provided, mirroring the TUI renderer's semantics; unsupported block types
- * (`Gallery`/`Friends`/`Badges`/unknown) show a visible placeholder rather than failing
- * the page (§171's "never fail the page" rule).
+ * Live blocks (`Posts`/`TopEight`/`Guestbook`/`Friends`) fetch their own data when
+ * `context` is provided, mirroring the TUI renderer's semantics; unsupported block
+ * types (`Badges`/unknown) show a visible placeholder rather than failing the page
+ * (§171's "never fail the page" rule).
  */
 export function PageBlocks({ blocks, context }: PageBlocksProps): JSX.Element {
   return (
@@ -64,7 +65,7 @@ function renderBlock(
     case 'Hero':
       return (
         <div>
-          <h2>{sanitizeText(block.title)}</h2>
+          <h2 className={styles['heroTitle']}>{sanitizeText(block.title)}</h2>
           {block.subtitle ? (
             <p className={styles['muted']}>{sanitizeText(block.subtitle)}</p>
           ) : null}
@@ -84,6 +85,8 @@ function renderBlock(
       return (
         <MediaImage mediaId={block.mediaId} altText={block.alt ? sanitizeText(block.alt) : ''} />
       );
+    case 'Gallery':
+      return <GalleryBlock block={block} />;
     case 'Links':
       return <LinksBlock block={block} />;
     case 'Posts':
@@ -103,6 +106,12 @@ function renderBlock(
         <GuestbookBlock context={context} limit={block.limit ?? 20} />
       ) : (
         <PlaceholderBlock label="Guestbook — not supported here" />
+      );
+    case 'Friends':
+      return context ? (
+        <FriendsBlock context={context} limit={block.limit ?? 8} />
+      ) : (
+        <PlaceholderBlock label="Friends — not supported here" />
       );
     default:
       return <PlaceholderBlock label={`[${block.type} block — not supported here yet]`} />;
@@ -141,7 +150,12 @@ function LinksBlock({
         }
         return (
           <li key={link.href}>
-            <a href={href} target="_blank" rel="noopener noreferrer ugc">
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer ugc"
+              className={styles['linkAnchor']}
+            >
               {label || href}
             </a>
           </li>
@@ -247,8 +261,84 @@ function TopEightBlock({
   );
 }
 
-/** Guestbook entries, most-recent first as the server returns them (`ListGuestbook`) —
- * read-only on the web for now (signing stays a TUI affordance). */
+/** `Gallery` (§171) — a grid of the owner's Patches media resolved through the same
+ * `MediaService.GetMediaDownload` path an `Image` block (and every post attachment)
+ * already uses; the browser fetches bytes straight from object storage, never through
+ * this app's server (spec §101). */
+function GalleryBlock({
+  block,
+}: {
+  block: Extract<RenderablePageBlock, { type: 'Gallery' }>;
+}): JSX.Element {
+  return (
+    <div>
+      {block.caption ? <p className={styles['muted']}>{sanitizeText(block.caption)}</p> : null}
+      <div className={styles['galleryGrid']}>
+        {block.mediaIds.map((mediaId) => (
+          <MediaImage
+            key={mediaId}
+            mediaId={mediaId}
+            altText=""
+            className={styles['galleryCell']}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Actors who follow the page's owner back — a mutual-follows list via
+ * `SocialGraphService.ListMutualFollows` (B-024), a public read exactly like the TUI's
+ * `FriendsBlockView`. Rows render like the Top 8 rows; there are no remote refs here
+ * because the server only ever answers with local actors. */
+function FriendsBlock({
+  context,
+  limit,
+}: {
+  context: PageRenderContext;
+  limit: number;
+}): JSX.Element {
+  const friendsQuery = useQuery({
+    queryKey: ['page', context.handle, 'friends', limit],
+    queryFn: () =>
+      api.socialGraph.listMutualFollows({ actorId: context.ownerActorId, cursor: '', limit }),
+    staleTime: 60_000,
+  });
+
+  return (
+    <div>
+      <h3 className={styles['blockTitle']}>Friends</h3>
+      {friendsQuery.isPending ? <p className={styles['muted']}>Loading friends…</p> : null}
+      {friendsQuery.isError ? <p className={styles['muted']}>Couldn&apos;t load friends.</p> : null}
+      {friendsQuery.data?.actors.length === 0 ? (
+        <p className={styles['muted']}>No mutual follows yet.</p>
+      ) : null}
+      {(friendsQuery.data?.actors ?? []).map((actor: Actor) => (
+        <Link key={actor.id} to={`/@${actor.handle}`} className={styles['actorRow']}>
+          {actor.avatar?.url ? (
+            <img
+              src={actor.avatar.url}
+              alt=""
+              aria-hidden="true"
+              className={styles['actorAvatar']}
+            />
+          ) : (
+            <div className={styles['actorAvatarPlaceholder']}>
+              {actor.handle.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <span className={styles['actorName']}>{actor.displayName || actor.handle}</span>
+          <span className={styles['actorHandle']}>@{actor.handle}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Guestbook entries, most-recent first as the server returns them (`ListGuestbook`).
+ * Signed-in viewers can sign (`SignGuestbook`, rate-limited server-side — errors surface
+ * through the shared error copy); the page's owner can remove entries; anyone signed in
+ * can report one. Signed-out viewers get today's read-only view. */
 function GuestbookBlock({
   context,
   limit,
@@ -270,6 +360,7 @@ function GuestbookBlock({
   return (
     <div>
       <h3 className={styles['blockTitle']}>Guestbook</h3>
+      <GuestbookSignForm handle={context.handle} slug={context.slug} />
       {guestbookQuery.isPending ? <p className={styles['muted']}>Loading guestbook…</p> : null}
       {guestbookQuery.isError ? (
         <p className={styles['muted']}>Couldn&apos;t load the guestbook.</p>
@@ -288,6 +379,11 @@ function GuestbookBlock({
               <span className={styles['muted']}>a remote guest</span>
             )}
             <span className={styles['guestbookWhen']}>{formatRelativeTime(entry.createdAt)}</span>
+            <GuestbookEntryActions
+              entryId={entry.id}
+              authorActorId={entry.author?.id}
+              ownerActorId={context.ownerActorId}
+            />
           </div>
           <p className={styles['guestbookBody']}>{sanitizeText(entry.body, { multiline: true })}</p>
         </div>
