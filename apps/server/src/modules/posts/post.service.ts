@@ -723,8 +723,10 @@ export class PostService {
     let cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
 
-    const tsQuery = `websearch_to_tsquery('english', $1)`;
-    const rankExpr = `ts_rank_cd(tsv, ${tsQuery})`;
+    // Named (`:searchQuery`) rather than a positional `$1`: TypeORM binds only named
+    // parameters — a raw `$1` is never wired to the value and either errors ("there is no
+    // parameter $1") or silently binds to whichever parameter TypeORM numbered first.
+    const tsQuery = `websearch_to_tsquery('english', :searchQuery)`;
 
     const qb = this.dataSource
       .getRepository(Post)
@@ -732,9 +734,7 @@ export class PostService {
       .leftJoinAndSelect('post.authorActor', 'author')
       .andWhere(`post.tsv @@ ${tsQuery}`, { searchQuery: parsed.query })
       .andWhere('post.isLocal = true')
-      .addSelect(rankExpr, 'rank')
-      .orderBy('rank', 'DESC')
-      .addOrderBy('post.createdAt', 'DESC')
+      .orderBy('post.createdAt', 'DESC')
       .addOrderBy('post.id', 'DESC');
 
     applyVisibilityFilter(qb, viewerActorId, 'post');

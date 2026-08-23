@@ -51,7 +51,9 @@ export const DATA_SOURCE = getDataSourceToken();
       },
     }),
   ],
-  // Re-export the DataSource token so other modules can inject it
-  exports: [DATA_SOURCE],
+  // No `exports: [DATA_SOURCE]` here: the DataSource provider is owned by the imported
+  // `TypeOrmCoreModule`, and Nest forbids re-exporting a provider a module doesn't own
+  // (UnknownExportException). That core module is `@Global`, so `@Inject(DATA_SOURCE)`
+  // resolves everywhere without this module exporting anything.
 })
 export class DatabaseModule {}

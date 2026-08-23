@@ -34,6 +34,7 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     expect(rows.map((row) => row.table_name)).toEqual([
       'e2ee_device_identities',
       'e2ee_device_rosters',
+      'e2ee_group_control_events',
       'e2ee_identity_roots',
       'e2ee_logical_messages',
       'e2ee_mailbox_envelopes',
