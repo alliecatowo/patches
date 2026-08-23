@@ -160,7 +160,9 @@ jobs:
           echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Run migrations against the Neon branch
-        run: pnpm db:migrate
+        # `pnpm build` first: migration:run imports @patches/config's dist, which the
+        # setup action's install alone does not produce (CI's integration job builds too).
+        run: pnpm build && pnpm db:migrate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           DATABASE_SSL: 'true'
