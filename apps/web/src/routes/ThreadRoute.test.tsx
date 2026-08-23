@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppSession } from '../api/session.js';
 import { ThreadRoute } from './ThreadRoute.js';
@@ -19,6 +19,8 @@ const mockListReplies =
   >();
 const mockCreatePost = vi.fn<(...args: unknown[]) => Promise<{ post?: { id: string } }>>();
 const mockUseSession = vi.fn<() => AppSession | null>();
+const mockUploadMedia =
+  vi.fn<(file: File, onProgress: (fraction: number) => void) => Promise<string>>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -36,6 +38,11 @@ vi.mock('../api/client.js', () => ({
         Promise.resolve({ socialCapabilities: { maxPostChars: 500 } }),
     },
   } as unknown as PatchesApi,
+}));
+
+vi.mock('../lib/mediaUpload.js', () => ({
+  uploadMedia: (file: File, onProgress: (fraction: number) => void): Promise<string> =>
+    mockUploadMedia(file, onProgress),
 }));
 
 vi.mock('../hooks/useSession.js', () => ({
@@ -87,11 +94,20 @@ describe('ThreadRoute', () => {
     mockListReplies.mockReset();
     mockCreatePost.mockReset();
     mockUseSession.mockReset();
+    mockUploadMedia.mockReset();
 
     mockGetPost.mockResolvedValue({ post: mockPost });
     mockListReplies.mockResolvedValue({
       posts: [],
       page: { hasMore: false, nextCursor: '' },
+    });
+  });
+
+  beforeAll(() => {
+    // jsdom has no blob-URL implementation; the preview component needs both.
+    Object.assign(URL, {
+      createObjectURL: (): string => 'blob:test',
+      revokeObjectURL: (): void => undefined,
     });
   });
 
@@ -154,6 +170,50 @@ describe('ThreadRoute', () => {
           body: 'This is my reply!',
           inReplyToId: 'post-123',
         }),
+      );
+    });
+  });
+
+  it('blocks submitting while an attachment upload is still in flight, then attaches it', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    mockCreatePost.mockResolvedValue({ post: { id: 'reply-1' } });
+    // Never-settling on purpose until the test resolves it below.
+    let settleUpload: (mediaId: string) => void = (): void => undefined;
+    mockUploadMedia.mockReturnValue(
+      new Promise<string>((resolve) => {
+        settleUpload = resolve;
+      }),
+    );
+
+    const view = renderThread();
+    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+    // The tile rendered with its progress overlay (progress starts at 0).
+    await screen.findByText('0%');
+
+    const textarea = screen.getByPlaceholderText('Post your reply…');
+    fireEvent.change(textarea, { target: { value: 'With attachment' } });
+
+    const replyBtn = screen.getByRole('button', { name: 'Reply' });
+    expect(replyBtn).toBeDisabled();
+    fireEvent.click(replyBtn);
+    expect(mockCreatePost).not.toHaveBeenCalled();
+    expect(screen.getByText('0%')).toBeInTheDocument(); // progress overlay visible
+
+    settleUpload('media-9');
+    await waitFor(() => expect(replyBtn).toBeEnabled());
+
+    fireEvent.click(replyBtn);
+    await waitFor(() => {
+      expect(mockCreatePost).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaIds: ['media-9'] }),
       );
     });
   });

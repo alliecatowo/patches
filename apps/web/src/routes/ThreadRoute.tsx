@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { CloseIcon, ImageIcon } from '../components/icons/Icons.js';
+import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
 import { PostCard } from '../components/PostCard.js';
 import { useToast } from '../components/ToastProvider.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -114,7 +115,7 @@ export function ThreadRoute(): JSX.Element {
 
   const handleReplySubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (!replyBody.trim() || replyMutation.isPending || charsRemaining < 0) return;
+    if (!replyBody.trim() || replyMutation.isPending || charsRemaining < 0 || uploading) return;
     replyMutation.mutate();
   };
 
@@ -124,6 +125,11 @@ export function ThreadRoute(): JSX.Element {
   // still counted); the loaded list is only the fallback before it loads. Chronological
   // either way — no client-side ordering ever (Amendment B).
   const replyCount = rootPost?.counts?.replies ?? replies.length;
+
+  // A reply only attaches uploads whose status is `ready` (the mutation filters), so
+  // submitting mid-upload would silently drop every still-running attachment — block the
+  // submit instead, mirroring ComposeRoute.
+  const uploading = uploads.some((u) => u.status === 'uploading');
 
   if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
   if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
@@ -165,11 +171,25 @@ export function ThreadRoute(): JSX.Element {
               <div className={styles['mediaPreviewList']}>
                 {uploads.map((upload, idx) => (
                   <div key={idx} className={styles['mediaPreviewItem']}>
-                    <img
-                      src={URL.createObjectURL(upload.file)}
+                    <MediaUploadPreview
+                      file={upload.file}
                       alt="Attachment preview"
                       className={styles['mediaPreviewImg']}
                     />
+                    {upload.status === 'uploading' ? (
+                      <div className={styles['mediaPreviewBusy']}>
+                        <span>{Math.round(upload.progress * 100)}%</span>
+                      </div>
+                    ) : null}
+                    {upload.status === 'error' ? (
+                      <div
+                        className={styles['mediaPreviewError']}
+                        title={upload.error}
+                        aria-label="Upload failed"
+                      >
+                        <span>Failed</span>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       className={styles['removeMediaBtn']}
@@ -218,7 +238,10 @@ export function ThreadRoute(): JSX.Element {
                 <button
                   type="submit"
                   className={styles['replySubmitBtn']}
-                  disabled={!replyBody.trim() || replyMutation.isPending || charsRemaining < 0}
+                  disabled={
+                    !replyBody.trim() || replyMutation.isPending || charsRemaining < 0 || uploading
+                  }
+                  title={uploading ? 'Waiting for attachments to finish uploading…' : undefined}
                 >
                   {replyMutation.isPending ? 'Posting…' : 'Reply'}
                 </button>
