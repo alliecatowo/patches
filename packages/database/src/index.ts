@@ -49,6 +49,7 @@ export { FederationKey } from './entities/federation-key.entity.js';
 export { InboxActivity } from './entities/inbox-activity.entity.js';
 export { DomainBlock } from './entities/domain-block.entity.js';
 export { Repost } from './entities/repost.entity.js';
+export { QuoteAuthorization } from './entities/quote-authorization.entity.js';
 export { Tag } from './entities/tag.entity.js';
 export { PostTag } from './entities/post-tag.entity.js';
 export { TagMute } from './entities/tag-mute.entity.js';
