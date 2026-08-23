@@ -41,7 +41,9 @@ export type Screen =
   | 'filterLists'
   | 'labelers'
   | 'appeals'
-  | 'moderationLog';
+  | 'moderationLog'
+  | 'devices'
+  | 'safetyNumber';
 
 /** The two screens that can sit at the bottom of the navigation stack (spec §68). */
 export const ROOT_SCREENS = ['home', 'local'] as const;
@@ -610,6 +612,14 @@ export const KEYMAP: readonly Binding[] = [
     helpOnly: true,
     region: 'screen',
   },
+  {
+    keys: 's',
+    hint: 'safety number',
+    description: 'View safety number for this conversation',
+    group: 'Account',
+    on: ['messages'],
+    session: true,
+  },
 
   // --- Screens (per-screen, non-timeline) -----------------------------------
   {
@@ -945,6 +955,17 @@ export const KEYMAP: readonly Binding[] = [
     commands: [{ name: 'modlog' }],
   },
   {
+    keys: '',
+    hint: 'devices',
+    description: 'E2EE enrolled devices',
+    group: 'Account',
+    on: 'global',
+    session: true,
+    helpOnly: true,
+    region: 'screen',
+    commands: [{ name: 'devices' }],
+  },
+  {
     keys: 'j / k',
     hint: 'move',
     description: 'Move between rows',
@@ -1264,4 +1285,6 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   labelers: 'Labelers',
   appeals: 'Appeals',
   moderationLog: 'Moderation log',
+  devices: 'Devices',
+  safetyNumber: 'Safety number',
 };

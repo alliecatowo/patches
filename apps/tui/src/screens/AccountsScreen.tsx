@@ -14,7 +14,12 @@ import {
 } from '../auth/ssh-enroll.js';
 import type { ActiveSession } from '../auth/session.js';
 import { theme } from '../theme/index.js';
-import { CREDENTIAL_TYPE_SCHEMA, enumWireName } from '../api/wire/enums.js';
+import {
+  CREDENTIAL_TYPE_SCHEMA,
+  GITHUB_LOGIN_STATUS,
+  OIDC_LOGIN_STATUS,
+  enumWireName,
+} from '../api/wire/enums.js';
 
 export interface AccountsScreenProps {
   api: PatchesApi;
@@ -22,12 +27,8 @@ export interface AccountsScreenProps {
   session: ActiveSession;
   isActive: boolean;
   ensureAccessToken: () => Promise<string>;
-  /** `x` — signs out and returns to a logged-out screen. */
   onLogout: () => void;
-  /** `r` — only offered while `session.emailVerified` is false (A-028); the code
-   * itself still only arrives by email, entered via `patches verify <code>`. */
   onResendVerification: () => void;
-  /** `Esc` — back to whichever screen `L` was pressed from. */
   onBack: () => void;
 }
 
@@ -36,11 +37,45 @@ type CredentialsState =
   | { status: 'ready'; credentials: Credential[] }
   | { status: 'error'; error: FriendlyError };
 
+type OidcProvider = { id: string; displayName: string };
+
 type AddFlow =
   | { status: 'idle' }
+  | { status: 'choosing_type'; hasGitHub: boolean; oidcProviders: OidcProvider[] }
   | { status: 'discovering' }
   | { status: 'picking'; candidates: EnrollmentCandidate[]; selected: number }
   | { status: 'enrolling' }
+  | {
+      status: 'github_device';
+      verificationUri: string;
+      userCode: string;
+      deviceCode: string;
+      interval: number;
+    }
+  | {
+      status: 'github_polling';
+      verificationUri: string;
+      userCode: string;
+      deviceCode: string;
+      interval: number;
+    }
+  | { status: 'oidc_pick_provider'; providers: OidcProvider[]; selected: number }
+  | {
+      status: 'oidc_device';
+      providerId: string;
+      verificationUri: string;
+      userCode: string;
+      deviceCode: string;
+      interval: number;
+    }
+  | {
+      status: 'oidc_polling';
+      providerId: string;
+      verificationUri: string;
+      userCode: string;
+      deviceCode: string;
+      interval: number;
+    }
   | { status: 'done'; message: string }
   | { status: 'error'; message: string };
 
@@ -62,18 +97,6 @@ function describeCredentialRow(credential: Credential): string {
   return `${enumWireName(CREDENTIAL_TYPE_SCHEMA, credential.type)}  ${label}${identifier}`;
 }
 
-/**
- * `L` when already signed in (P1-013/B-022 follow-up — the CLI-only `patches keys
- * add|list|remove` and `patches logout` finally get an in-app equivalent): lists
- * credentials (`AuthService.ListCredentials`), `j`/`k` selects one, `a` enrolls an SSH
- * key already loaded in the agent (reuses `ssh-enroll.ts` exactly like `cli/keys.ts
- * runKeysAdd` — never reads a private key, agent signs a local possession proof), `v`
- * revokes the selected credential behind a `y`/`n` confirm (P15-007 — the previous
- * version had list/add but no revoke UI at all), `x` logs out. The server's
- * `RevokeCredential` refuses to revoke an account's last remaining credential
- * (`AuthService#revokeCredential`, spec §165) and its own error message is already
- * comprehensible, so it renders through `describeGrpcError` unmodified.
- */
 export function AccountsScreen({
   api,
   env,
@@ -106,7 +129,113 @@ export function AccountsScreen({
     };
   }, [api, ensureAccessToken]);
 
+  // Poll GitHub device flow
+  useEffect(() => {
+    if (addFlow.status !== 'github_polling') return;
+    const { deviceCode, interval } = addFlow;
+    let cancelled = false;
+    const timerId = setInterval(
+      () => {
+        ensureAccessToken()
+          .then((token) => api.pollGitHubLogin({ deviceCode }, token))
+          .then((response) => {
+            if (cancelled) return;
+            const s = response.status;
+            if (s === GITHUB_LOGIN_STATUS.PENDING || s === GITHUB_LOGIN_STATUS.SLOW_DOWN) return;
+            clearInterval(timerId);
+            if (s === GITHUB_LOGIN_STATUS.COMPLETE) {
+              setAddFlow({ status: 'done', message: 'GitHub account linked.' });
+            } else {
+              setAddFlow({
+                status: 'error',
+                message: 'GitHub authorisation expired — press Esc to try again.',
+              });
+            }
+            void ensureAccessToken()
+              .then((t) => api.listCredentials(t))
+              .then((r) => {
+                if (!cancelled) setState({ status: 'ready', credentials: [...r.credentials] });
+              });
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            clearInterval(timerId);
+            setAddFlow({
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Poll error.',
+            });
+          });
+      },
+      Math.max(5, interval) * 1000,
+    );
+    return () => {
+      cancelled = true;
+      clearInterval(timerId);
+    };
+  }, [addFlow, api, ensureAccessToken]);
+
+  // Poll OIDC device flow
+  useEffect(() => {
+    if (addFlow.status !== 'oidc_polling') return;
+    const { providerId, deviceCode, interval } = addFlow;
+    let cancelled = false;
+    const timerId = setInterval(
+      () => {
+        ensureAccessToken()
+          .then((token) => api.pollOidcLogin({ provider: providerId, deviceCode }, token))
+          .then((response) => {
+            if (cancelled) return;
+            const s = response.status;
+            if (s === OIDC_LOGIN_STATUS.PENDING || s === OIDC_LOGIN_STATUS.SLOW_DOWN) return;
+            clearInterval(timerId);
+            if (s === OIDC_LOGIN_STATUS.COMPLETE) {
+              setAddFlow({ status: 'done', message: 'OIDC account linked.' });
+            } else {
+              setAddFlow({
+                status: 'error',
+                message: 'OIDC authorisation expired — press Esc to try again.',
+              });
+            }
+            void ensureAccessToken()
+              .then((t) => api.listCredentials(t))
+              .then((r) => {
+                if (!cancelled) setState({ status: 'ready', credentials: [...r.credentials] });
+              });
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            clearInterval(timerId);
+            setAddFlow({
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Poll error.',
+            });
+          });
+      },
+      Math.max(5, interval) * 1000,
+    );
+    return () => {
+      cancelled = true;
+      clearInterval(timerId);
+    };
+  }, [addFlow, api, ensureAccessToken]);
+
   async function beginAdd(): Promise<void> {
+    let hasGitHub = false;
+    let oidcProviders: OidcProvider[] = [];
+    try {
+      const policy = await api.getAuthPolicy();
+      hasGitHub = policy.githubAuth;
+      oidcProviders = (policy.oidcProviders ?? []).map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+      }));
+    } catch {
+      // Policy fetch failure → SSH only
+    }
+    setAddFlow({ status: 'choosing_type', hasGitHub, oidcProviders });
+  }
+
+  async function beginSshAdd(): Promise<void> {
     const socketPath = sshAuthSock(env);
     if (socketPath === undefined) {
       setAddFlow({
@@ -127,6 +256,45 @@ export function AccountsScreen({
       setAddFlow({
         status: 'error',
         message: error instanceof Error ? error.message : 'Could not reach the SSH agent.',
+      });
+    }
+  }
+
+  async function beginGitHubAdd(): Promise<void> {
+    try {
+      const token = await ensureAccessToken();
+      const response = await api.beginGitHubLogin({}, token);
+      setAddFlow({
+        status: 'github_device',
+        verificationUri: response.verificationUri,
+        userCode: response.userCode,
+        deviceCode: response.deviceCode,
+        interval: response.interval,
+      });
+    } catch (error) {
+      setAddFlow({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Could not start GitHub device flow.',
+      });
+    }
+  }
+
+  async function beginOidcAdd(providerId: string): Promise<void> {
+    try {
+      const token = await ensureAccessToken();
+      const response = await api.beginOidcLogin({ provider: providerId }, token);
+      setAddFlow({
+        status: 'oidc_device',
+        providerId,
+        verificationUri: response.verificationUri,
+        userCode: response.userCode,
+        deviceCode: response.deviceCode,
+        interval: response.interval,
+      });
+    } catch (error) {
+      setAddFlow({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Could not start OIDC device flow.',
       });
     }
   }
@@ -172,9 +340,6 @@ export function AccountsScreen({
       setState({ status: 'ready', credentials });
       setSelectedCredential((index) => Math.min(index, Math.max(credentials.length - 1, 0)));
     } catch (error) {
-      // The server's own last-credential-guard message (AuthService#RevokeCredential) is
-      // already human-readable ("This is your only way to sign in…"), so it needs no
-      // TUI-specific override the way `TUI_COPY` provides for other error codes.
       setRevokeFlow({ status: 'error', message: describeGrpcError(error, api.target).title });
     }
   }
@@ -182,11 +347,11 @@ export function AccountsScreen({
   useInput(
     (input, key) => {
       if (key.escape) {
-        if (revokeFlow.status === 'confirming') {
-          setRevokeFlow({ status: 'idle' });
-          return;
-        }
-        if (revokeFlow.status === 'done' || revokeFlow.status === 'error') {
+        if (
+          revokeFlow.status === 'confirming' ||
+          revokeFlow.status === 'done' ||
+          revokeFlow.status === 'error'
+        ) {
           setRevokeFlow({ status: 'idle' });
           return;
         }
@@ -204,10 +369,57 @@ export function AccountsScreen({
       }
       if (revokeFlow.status === 'revoking') return;
       if (revokeFlow.status === 'done' || revokeFlow.status === 'error') {
-        // any key dismisses, Esc already handled above
         setRevokeFlow({ status: 'idle' });
         return;
       }
+
+      if (addFlow.status === 'choosing_type') {
+        if (input === 's') void beginSshAdd();
+        else if (input === 'g' && addFlow.hasGitHub) void beginGitHubAdd();
+        else if (input === 'o' && addFlow.oidcProviders.length > 0) {
+          if (addFlow.oidcProviders.length === 1 && addFlow.oidcProviders[0] !== undefined) {
+            void beginOidcAdd(addFlow.oidcProviders[0].id);
+          } else {
+            setAddFlow({
+              status: 'oidc_pick_provider',
+              providers: addFlow.oidcProviders,
+              selected: 0,
+            });
+          }
+        }
+        return;
+      }
+
+      if (addFlow.status === 'oidc_pick_provider') {
+        if (input === 'j' || key.downArrow) {
+          setAddFlow({
+            ...addFlow,
+            selected: Math.min(addFlow.selected + 1, addFlow.providers.length - 1),
+          });
+          return;
+        }
+        if (input === 'k' || key.upArrow) {
+          setAddFlow({ ...addFlow, selected: Math.max(addFlow.selected - 1, 0) });
+          return;
+        }
+        if (key.return) {
+          const p = addFlow.providers[addFlow.selected];
+          if (p !== undefined) void beginOidcAdd(p.id);
+        }
+        return;
+      }
+
+      if (addFlow.status === 'github_device') {
+        if (key.return) setAddFlow({ ...addFlow, status: 'github_polling' });
+        return;
+      }
+      if (addFlow.status === 'github_polling') return;
+      if (addFlow.status === 'oidc_device') {
+        if (key.return) setAddFlow({ ...addFlow, status: 'oidc_polling' });
+        return;
+      }
+      if (addFlow.status === 'oidc_polling') return;
+
       if (addFlow.status === 'picking') {
         if (input === 'j' || key.downArrow) {
           setAddFlow({
@@ -224,18 +436,23 @@ export function AccountsScreen({
         return;
       }
       if (addFlow.status === 'discovering' || addFlow.status === 'enrolling') return;
+      if (addFlow.status === 'done' || addFlow.status === 'error') {
+        setAddFlow({ status: 'idle' });
+        return;
+      }
+
       if (state.status === 'ready' && state.credentials.length > 0) {
         if (input === 'j' || key.downArrow) {
-          setSelectedCredential((index) => Math.min(index + 1, state.credentials.length - 1));
+          setSelectedCredential((i) => Math.min(i + 1, state.credentials.length - 1));
           return;
         }
         if (input === 'k' || key.upArrow) {
-          setSelectedCredential((index) => Math.max(index - 1, 0));
+          setSelectedCredential((i) => Math.max(i - 1, 0));
           return;
         }
         if (input === 'v') {
-          const credential = state.credentials[selectedCredential];
-          if (credential !== undefined) setRevokeFlow({ status: 'confirming', credential });
+          const c = state.credentials[selectedCredential];
+          if (c !== undefined) setRevokeFlow({ status: 'confirming', credential: c });
           return;
         }
       }
@@ -251,6 +468,16 @@ export function AccountsScreen({
     },
     { isActive },
   );
+
+  const oauthFlow =
+    addFlow.status === 'github_device' ||
+    addFlow.status === 'github_polling' ||
+    addFlow.status === 'oidc_device' ||
+    addFlow.status === 'oidc_polling'
+      ? addFlow
+      : undefined;
+  const isOauthPolling = addFlow.status === 'github_polling' || addFlow.status === 'oidc_polling';
+  const oauthKind = addFlow.status.startsWith('github') ? 'GitHub' : 'OIDC';
 
   return (
     <Box flexDirection="column">
@@ -283,7 +510,7 @@ export function AccountsScreen({
           : null}
       </Box>
       {revokeFlow.status === 'confirming' ? (
-        <Box marginTop={1} flexDirection="column">
+        <Box marginTop={1}>
           <Text color={theme.warn}>
             Revoke {describeCredentialRow(revokeFlow.credential)}? y confirm · n/Esc cancel
           </Text>
@@ -292,6 +519,48 @@ export function AccountsScreen({
       {revokeFlow.status === 'revoking' ? <Text color={theme.muted}>Revoking…</Text> : null}
       {revokeFlow.status === 'done' ? <Text color={theme.ok}>{revokeFlow.message}</Text> : null}
       {revokeFlow.status === 'error' ? <Text color={theme.error}>{revokeFlow.message}</Text> : null}
+      {addFlow.status === 'choosing_type' ? (
+        <Box marginTop={1}>
+          <Text color={theme.muted}>
+            Add: s SSH key{addFlow.hasGitHub ? ' · g GitHub' : ''}
+            {addFlow.oidcProviders.length > 0 ? ' · o OIDC' : ''} · Esc cancel
+          </Text>
+        </Box>
+      ) : null}
+      {addFlow.status === 'oidc_pick_provider' ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text color={theme.muted}>Choose OIDC provider (j/k, Enter):</Text>
+          {addFlow.providers.map((p, i) => (
+            <Text
+              key={p.id}
+              color={i === addFlow.selected ? theme.accent : theme.muted}
+              bold={i === addFlow.selected}
+            >
+              {i === addFlow.selected ? '› ' : '  '}
+              {p.displayName}
+            </Text>
+          ))}
+        </Box>
+      ) : null}
+      {oauthFlow !== undefined ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold>Link {oauthKind} account</Text>
+          <Text>
+            Open: <Text color={theme.accent}>{oauthFlow.verificationUri}</Text>
+          </Text>
+          <Text>
+            Code:{' '}
+            <Text color={theme.accent} bold>
+              {oauthFlow.userCode}
+            </Text>
+          </Text>
+          {isOauthPolling ? (
+            <Text color={theme.muted}>Waiting for authorisation… Esc to cancel</Text>
+          ) : (
+            <Text color={theme.muted}>Authorise in the browser, then press Enter · Esc cancel</Text>
+          )}
+        </Box>
+      ) : null}
       {addFlow.status === 'discovering' ? (
         <Text color={theme.muted}>Looking for SSH identities…</Text>
       ) : null}
@@ -315,7 +584,7 @@ export function AccountsScreen({
       {addFlow.status === 'error' ? <Text color={theme.error}>{addFlow.message}</Text> : null}
       <Box marginTop={1}>
         <Text color={theme.muted}>
-          a add SSH key · v revoke selected · j/k select · x log out · Esc back
+          a add credential · v revoke · j/k select · x log out · Esc back
         </Text>
       </Box>
     </Box>

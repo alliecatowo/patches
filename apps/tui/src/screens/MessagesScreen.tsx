@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { CONVERSATION_SECURITY_MODE } from '../api/wire/enums.js';
 import type {
   Conversation,
   GetConversationRequest,
@@ -69,6 +70,8 @@ export interface MessagesScreenProps {
    * not the same claim as "no limit" (spec §197.6).
    */
   dmRetentionDays?: number | undefined;
+  /** Opens the safety number screen for a conversation's peer. */
+  onOpenSafetyNumber?: ((actorId: string) => void) | undefined;
 }
 
 type Folder = 'inbox' | 'requests';
@@ -254,6 +257,7 @@ export function MessagesScreen({
   createRequestId = randomUUID,
   glyphSet = 'unicode',
   dmRetentionDays,
+  onOpenSafetyNumber,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -445,6 +449,16 @@ export function MessagesScreen({
           setSelectedListRow(moved);
           return;
         }
+        if (input === 's') {
+          const conversation = conversations.items[effectiveListRow];
+          if (conversation !== undefined && onOpenSafetyNumber !== undefined) {
+            const peer = conversation.members.find(
+              (member) => member.actor?.id !== viewerActorId,
+            )?.actor;
+            if (peer !== undefined) onOpenSafetyNumber(peer.id);
+          }
+          return;
+        }
         if (key.return) {
           const conversation = conversations.items[effectiveListRow];
           if (conversation !== undefined) openConversation(conversation);
@@ -539,6 +553,9 @@ export function MessagesScreen({
             >
               {isActive && index === effectiveListRow ? '› ' : '  '}
               {conversationLabel(conversation, viewerActorId)}
+              {conversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
+                ? ' [E2EE]'
+                : ' [Server-visible]'}
               {conversation.unreadCount > 0 ? ` · ${String(conversation.unreadCount)} unread` : ''}
             </Text>
           ))}
@@ -554,7 +571,11 @@ export function MessagesScreen({
           <Text bold>
             {selectedConversation === undefined
               ? sanitizeForTerminal(conversationId)
-              : conversationLabel(selectedConversation, viewerActorId)}
+              : `${conversationLabel(selectedConversation, viewerActorId)}${
+                  selectedConversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
+                    ? ' [E2EE]'
+                    : ' [Server-visible]'
+                }`}
           </Text>
           {threadError === undefined ? null : (
             <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>

@@ -41,6 +41,8 @@ import { ActorListScreen } from '../screens/ActorListScreen.js';
 import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
+import { DevicesScreen } from '../screens/DevicesScreen.js';
+import { SafetyNumberScreen } from '../screens/SafetyNumberScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
 import { FilterListsScreen } from '../screens/FilterListsScreen.js';
 import { FiltersScreen } from '../screens/FiltersScreen.js';
@@ -1859,6 +1861,27 @@ export function App({
             onBack={back}
           />
         );
+      case 'devices':
+        return session === undefined ? null : (
+          <DevicesScreen
+            api={api}
+            session={session}
+            isActive={active}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
+      case 'safetyNumber':
+        return session === undefined ? null : (
+          <SafetyNumberScreen
+            api={api}
+            session={session}
+            isActive={active}
+            targetActorId={target.targetActorId}
+            ensureAccessToken={ensureAccessToken}
+            onBack={back}
+          />
+        );
       case 'filters':
         return session === undefined ? null : (
           <FiltersScreen
@@ -2052,6 +2075,9 @@ export function App({
             dmRetentionDays={dmRetentionDays}
             glyphSet={glyphSet}
             onBack={back}
+            onOpenSafetyNumber={(actorId) =>
+              setStack((s) => push(s, { screen: 'safetyNumber', targetActorId: actorId }))
+            }
           />
         );
       case 'bookmarks':
@@ -2414,6 +2440,12 @@ export function App({
                                   // blanket `Esc` handler below defers to it entirely rather
                                   // than racing it closed mid-thread.
                                   onBack={() => setDmDrawerRequested(false)}
+                                  onOpenSafetyNumber={(actorId) => {
+                                    setDmDrawerRequested(false);
+                                    setStack((s) =>
+                                      push(s, { screen: 'safetyNumber', targetActorId: actorId }),
+                                    );
+                                  }}
                                 />
                               )}
                             </Drawer>
