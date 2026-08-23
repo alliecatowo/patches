@@ -248,6 +248,7 @@ jobs:
           set -euo pipefail
           marker="<!-- patches-preview: pr-${PR_NUMBER} -->"
           body_file="$RUNNER_TEMP/preview-comment.md"
+          # shellcheck disable=SC2016  # single quotes are intentional: ${...} below are JavaScript template literals, not shell expansions
           node -e '
             const fs = require("node:fs");
             const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA } = process.env;
