@@ -103,6 +103,31 @@ describe('ThreadRoute', () => {
     expect(screen.getByText(/Want to reply\?/i)).toBeInTheDocument();
   });
 
+  it('shows the reply count heading and a permalink anchor per post', async () => {
+    mockUseSession.mockReturnValue(null);
+    mockGetPost.mockResolvedValue({
+      post: { ...mockPost, counts: { likes: 1, reposts: 0, replies: 2 } } as unknown as Post,
+    });
+    const reply = { ...mockPost, id: 'reply-9', body: 'A nested reply' } as unknown as Post;
+    mockListReplies.mockResolvedValue({
+      posts: [reply],
+      page: { hasMore: false, nextCursor: '' },
+    });
+
+    renderThread();
+
+    expect(await screen.findByText('A nested reply')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2 replies' })).toBeInTheDocument();
+    // Permalink anchors: the root wrapper and each reply wrapper carry the post id, so
+    // `/p/<id>#<post-id>` fragments resolve.
+    expect(document.getElementById('post-123')).not.toBeNull();
+    expect(document.getElementById('reply-9')).not.toBeNull();
+    // The reply chain is indented one visual level without nesting semantics — the
+    // section exists and the reply article stays a direct sibling, not a list item.
+    expect(screen.getByRole('region', { name: 'Replies' })).toBeInTheDocument();
+    expect(document.querySelector('#reply-9 article')).not.toBeNull();
+  });
+
   it('renders inline reply composer when signed in and posts a reply', async () => {
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,

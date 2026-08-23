@@ -1,0 +1,82 @@
+.page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem 1.25rem;
+}
+
+.header {
+  margin-bottom: 1.25rem;
+}
+
+.crumbs {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  margin: 0 0 0.35rem 0;
+}
+
+.crumbs a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  text-decoration: underline;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.subPages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subPageTab {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.subPageTab:hover {
+  border-color: var(--border-hover);
+}
+
+.subPageTabActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+.empty {
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.error {
+  color: var(--danger, #f85149);
+  text-align: center;
+  padding: 2rem 0;
+  margin: 0;
+}
+
+.emptyActions {
+  text-align: center;
+}
+
+.emptyActions a {
+  color: var(--accent);
+  font-weight: 600;
+}

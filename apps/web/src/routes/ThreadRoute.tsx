@@ -15,7 +15,9 @@ import styles from './ThreadRoute.module.css';
 
 const MAX_MEDIA = 4;
 
-/** `/p/:id` — the post, inline quick reply composer, and one level of replies. */
+/** `/p/:id` — the focused root post, an inline quick-reply composer with a sticky
+ * "reply to @handle" header, and the chronologically-ordered reply list (one visual
+ * indent level via CSS; flat semantics underneath). */
 export function ThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const postId = id ?? '';
@@ -118,14 +120,20 @@ export function ThreadRoute(): JSX.Element {
 
   const replies = repliesQuery.data?.pages.flatMap((p) => p.posts) ?? [];
   const rootPost = postQuery.data?.post;
+  // The server's own count is authoritative (a reply may be filtered out of the list but
+  // still counted); the loaded list is only the fallback before it loads. Chronological
+  // either way — no client-side ordering ever (Amendment B).
+  const replyCount = rootPost?.counts?.replies ?? replies.length;
 
   if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
   if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
 
   return (
     <div>
-      <div className={styles['root']}>
-        <PostCard post={rootPost} />
+      {/* Root post — the thread's focus: highlighted, permalink-anchorable, and the
+          target of the composer's sticky "reply to" header. */}
+      <div className={styles['root']} id={rootPost.id}>
+        <PostCard post={rootPost} focused />
       </div>
 
       {/* Inline Reply Composer */}
@@ -225,25 +233,35 @@ export function ThreadRoute(): JSX.Element {
         </div>
       )}
 
-      {/* Replies Timeline */}
-      {replies.map((reply) => (
-        <PostCard key={reply.id} post={reply} />
-      ))}
+      {/* Replies — chronological, one visual indent level (CSS only; the list itself
+          stays a flat run of articles, no nesting semantics). */}
+      <section className={styles['replies']} aria-label="Replies">
+        {replyCount > 0 ? (
+          <h2 className={styles['repliesHeading']}>
+            {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+          </h2>
+        ) : null}
+        {replies.map((reply) => (
+          <div id={reply.id} key={reply.id} className={styles['replyAnchor']}>
+            <PostCard post={reply} />
+          </div>
+        ))}
 
-      {repliesQuery.hasNextPage ? (
-        <button
-          type="button"
-          className={styles['loadMore']}
-          onClick={() => void repliesQuery.fetchNextPage()}
-          disabled={repliesQuery.isFetchingNextPage}
-        >
-          {repliesQuery.isFetchingNextPage ? 'Loading…' : 'Load more replies'}
-        </button>
-      ) : null}
+        {repliesQuery.hasNextPage ? (
+          <button
+            type="button"
+            className={styles['loadMore']}
+            onClick={() => void repliesQuery.fetchNextPage()}
+            disabled={repliesQuery.isFetchingNextPage}
+          >
+            {repliesQuery.isFetchingNextPage ? 'Loading…' : 'Load more replies'}
+          </button>
+        ) : null}
 
-      {replies.length === 0 && !repliesQuery.isFetching ? (
-        <p className={styles['loadMore']}>No replies yet.</p>
-      ) : null}
+        {replies.length === 0 && !repliesQuery.isFetching ? (
+          <p className={styles['loadMore']}>No replies yet.</p>
+        ) : null}
+      </section>
     </div>
   );
 }
