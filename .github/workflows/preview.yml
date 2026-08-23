@@ -126,12 +126,23 @@ jobs:
             # No --parent unless configured: Neon defaults the parent to the
             # project's default branch. vars.NEON_PREVIEW_PARENT_BRANCH overrides
             # (e.g. an anonymized mirror) — see the runbook's data warning.
-            args=(--project-id "$NEON_PROJECT_ID" --name "$branch" --expires-at "$expires" --suspend-timeout 300 --output json --no-color)
+            args=(--project-id "$NEON_PROJECT_ID" --name "$branch" --expires-at "$expires" --output json --no-color)
             if [ -n "${NEON_PREVIEW_PARENT_BRANCH:-}" ]; then
               args+=(--parent "$NEON_PREVIEW_PARENT_BRANCH")
             fi
             echo "Creating Neon branch $branch (expires $expires)."
-            neon branches create "${args[@]}" >/dev/null
+            # --suspend-timeout is plan-gated ("modifying the suspend interval is not
+            # permitted on this account" on plans without scale-to-zero control) — retry
+            # once without it rather than failing the deploy over an idle-suspend knob.
+            if ! neon branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
+              if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
+                neon branches create "${args[@]}" >/dev/null
+              else
+                cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
+                exit 1
+              fi
+            fi
           fi
 
       - name: Fetch branch connection string

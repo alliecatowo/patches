@@ -159,7 +159,9 @@ immediate` replaces machines in place instead of briefly running doubles.
   `closed` event, or a fork PR can therefore never leak a permanent branch. Fly
   apps have no equivalent auto-expiry — the "Orphans" note below is the manual
   backstop.
-- Neon compute on the branch suspends after 300 s idle (`--suspend-timeout 300`).
+- Neon compute on the branch suspends after 300 s idle when the plan allows
+  `--suspend-timeout` (the deploy retries without it on plans that don't —
+  "modifying the suspend interval is not permitted on this account").
 
 ## Manual operations
 
@@ -205,7 +207,7 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
    neon branches get pr-<N> --project-id <id> --output json --no-color      # existence probe
    neon branches create --project-id <id> --name pr-<N> \
      [--parent "$NEON_PREVIEW_PARENT_BRANCH"] \
-     --expires-at <RFC3339 +7d> --suspend-timeout 300 --output json --no-color
+     --expires-at <RFC3339 +7d> [--suspend-timeout 300] --output json --no-color
    neon branches set-expiration pr-<N> --project-id <id> --expires-at <RFC3339 +7d>
    ```
 
