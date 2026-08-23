@@ -17,21 +17,19 @@ Source of truth: `INITIAL_VISION.md` (§1, §7–13, §125–129, §161) and **A
 The long-term multi-client shape (§1):
 
 ```text
-Patches TUI
-    |
-    | gRPC / protobuf
-    v
+Patches TUI                Patches Web (PWA)
+    |                             |
+    | gRPC / protobuf             | Connect / HTTP
+    v                             v
 Patches node            (patches.social is one; self-hosters run others)
     |
-    +---- PostgreSQL
+    +---- PostgreSQL (Neon in production)
     |
-    +---- object storage
+    +---- object storage (R2 in production, MinIO locally)
     |
     +---- background worker
     |
-    +---- ActivityPub federation to other nodes (v0.1+)
-    |
-    +---- React Native mobile app later
+    +---- ActivityPub federation to other nodes (v0.1+ lab)
 ```
 
 Each node is authoritative for its own local actors and nothing else. There is no global user
@@ -197,8 +195,8 @@ blocker emerges.
 
 ```text
 patches/
-├── apps/         server, worker, tui, admin
-├── packages/     proto, config, domain, database, observability, media, testkit
+├── apps/         server, worker, tui, web, admin
+├── packages/     proto, config, domain, database, client, crypto, markup, media, observability, terminal-media, testkit
 ├── infra/        docker, fly, compose
 ├── docs/         architecture, decisions, operations, product
 ├── .github/workflows/
@@ -212,13 +210,18 @@ patches/
 | `apps/server`                                                            | NestJS gRPC backend — the modular monolith                        |
 | `apps/worker`                                                            | Nest standalone application context; outbox/job consumer          |
 | `apps/tui`                                                               | Ink/React terminal client                                         |
+| `apps/web`                                                               | Responsive browser GUI (Vite + React 19, Connect protocol)        |
 | `apps/admin`                                                             | `patches-admin` CLI (Nest standalone or `nest-commander`)         |
 | `packages/proto`                                                         | Canonical `.proto` schemas + generated ts-proto output            |
 | `packages/config`                                                        | Shared `@nestjs/config` schemas/validation                        |
 | `packages/domain`                                                        | Framework-agnostic domain types/rules shared across apps          |
 | `packages/database`                                                      | TypeORM entities, migrations, data-source config                  |
-| `packages/observability`                                                 | Logging/OpenTelemetry/Sentry wiring for server + worker           |
+| `packages/client`                                                        | Transport-agnostic client SDK shared across clients               |
+| `packages/crypto`                                                        | Cryptographic helpers (e.g. envelope and key encryption)          |
+| `packages/markup`                                                        | Safe Markdown-subset rendering for Pages/bios/community rules     |
 | `packages/media`                                                         | sharp processing helpers, S3/R2 client wrapper                    |
+| `packages/observability`                                                 | Logging/OpenTelemetry/Sentry wiring for server + worker           |
+| `packages/terminal-media`                                                | Terminal image rendering (Kitty protocol + fallback)              |
 | `packages/testkit`                                                       | Test factories, fixtures, integration test harness                |
 | `infra/docker`, `infra/fly`, `infra/compose`                             | Dockerfiles, `fly.toml`(s)/process groups, local Compose services |
 | `docs/architecture`, `docs/decisions`, `docs/operations`, `docs/product` | This directory, ADRs, runbooks, principles/roadmap                |

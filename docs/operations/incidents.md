@@ -1,9 +1,6 @@
 # Incident response
 
-**Status: PLANNED / skeleton.** No production deployment exists yet as of 2026-08-17
-(Phase 0), so this runbook has not been exercised. It exists now so that when production
-does exist (Phase 7 onward), the team is not designing incident process for the first time
-mid-incident. Update this document as real incidents happen and the process gets refined.
+**Status: active.** The flagship node `patches-social.fly.dev` is live (deployed 2026-08-18, Phase 7). This runbook defines incident severity levels, detection mechanisms, and rollback procedures. Update this document as real incidents happen and the process gets refined.
 
 ## Severity levels
 

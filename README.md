@@ -5,9 +5,10 @@ Terminal-native social media.
 Patches is a small, chronological, open-source social network whose first-class client is a
 terminal app. No ranking algorithm, no infinite scroll, no ads — people, posts, images,
 replies, reposts and quotes, tags, communities, direct messages, and a feed sorted by time,
-always. Built as a TypeScript monorepo: a NestJS gRPC server, an Ink (React) TUI, a scoped web
-client, TypeORM + PostgreSQL, Protobuf/Buf, with two-node ActivityPub federation running in a
-local lab and a React Native client on the roadmap.
+always. Built as a TypeScript monorepo: a NestJS gRPC server, an Ink (React) TUI, a responsive web
+client (with themes, profile wall editing, followers/following, and PWA support), TypeORM +
+PostgreSQL, Protobuf/Buf, with two-node ActivityPub federation running in a local lab and mobile
+web / PWA providing the mobile experience (React Native paused).
 
 > **Status:** the single-node social product (Phases 0–8) plus Amendment B social depth
 > (reposts/quotes, tags, communities, DMs, flair, edit history) and Amendment C privacy/
@@ -22,7 +23,7 @@ The flagship node, `patches-social.fly.dev`, is running the real network — the
 connects there by default. It's invite-only right now; ask Allie for an invite code.
 
 Two hosted surfaces sit in front of the flagship node: [patches-web.pages.dev](https://patches-web.pages.dev)
-is the scoped browser GUI (`apps/web`), talking to `patches-social.fly.dev` over Connect; and
+is the responsive browser GUI (`apps/web`), talking to `patches-social.fly.dev` over Connect; and
 [patches-site.pages.dev](https://patches-site.pages.dev) is the docs/marketing site (`site/`,
 VitePress) — see [`docs/operations/web.md`](docs/operations/web.md) and
 [`docs/operations/site.md`](docs/operations/site.md) for hosting/deploy detail.
@@ -117,7 +118,7 @@ More: [`docs/operations/local-development.md`](docs/operations/local-development
 apps/server            NestJS 11 gRPC server (modular monolith)
 apps/worker            NestJS standalone background-job worker (media, exports, federation delivery, ...)
 apps/tui               Ink 7 / React 19 terminal client  (`patches`)
-apps/web               Scoped browser GUI (Vite + React 19), Connect transport, no separate backend
+apps/web               Responsive browser GUI (Vite + React 19), Connect transport, no separate backend
 apps/admin             Moderation/admin CLI (`patches-admin`) — reads/writes Postgres directly
 packages/proto         Protobuf schemas (patches.v1) + generated TypeScript (Buf + ts-proto, protobuf-es)
 packages/database      TypeORM 1.x DataSource, entities, migrations

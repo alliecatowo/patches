@@ -16,6 +16,13 @@ account transitions straight to `FOLLOWING` (spec §50). Following a **remote** 
 (P8-002/P8-003) instead creates a row with `status = 'PENDING'` until that actor's own node
 sends back an `Accept` activity, at which point `InboxService` flips it to `FOLLOWING`.
 
+### Followers and following lists
+
+Followers and following lists are served via `ActorService.ListFollowers` and `ActorService.ListFollowing` (keyset-paginated on `(created_at DESC, id DESC)`). Both clients provide full list screens:
+
+- **TUI**: `ProfileScreen` displays total counts and binds `F` (view followers) and `G` (view following), navigating to `ActorListScreen.tsx`. Signed-in users can also use `:followers` and `:following` in the command palette.
+- **Web**: `ProfileRoute.tsx` provides dedicated `Followers` and `Following` tabs, selectable via tab buttons or count pills (`# followers` / `# following`), rendering actor cards through `ActorList.tsx`.
+
 ## Locked accounts and follow requests (§197.5)
 
 `actor_privacy_prefs.locked` (default `false`, owned by `PrivacyService`,
@@ -189,6 +196,8 @@ char limit) — no media, no link previews, no attachments in v0. Sender deletio
 per-message tombstone. There are no read receipts and no typing indicators. Unread state is
 per-viewer; delivery is poll-based, no push infra. `ReportMessage` snapshots the reported
 message plus up to ten surrounding messages for moderator review. DMs are not federated in v0.
+
+**Retention honesty (B-061)**: `DM_RETENTION_DAYS` defaults to and publishes `0` (indefinite retention), matching the actual operational behavior where no server-side background deletion job exists. Nonzero configuration is rejected at startup until a verified deletion worker job is implemented.
 
 ## Flair, pinned posts, and quiet feed (§184–§185)
 

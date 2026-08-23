@@ -35,13 +35,23 @@ run, so they must not be described as live yet.
   `FollowButton`. It shares `FollowButton`'s `['relationship', actorId]` TanStack Query
   cache key, so a block (which also clears any existing follow server-side, spec §62) is
   reflected in both without a second fetch.
+- `apps/web/src/components/EditWallDialog.tsx` — modal dialog allowing profile owners to
+  compose, edit, reorder, and save Page blocks (Text, Markdown, Links, Image) to their profile
+  wall (`PageService.UpdatePage`).
+- `apps/web/src/components/ActorList.tsx` — actor card list used by `ProfileRoute`'s
+  `Followers` and `Following` tabs (which switch via count pills or tab headers).
+- `apps/web/src/routes/ThreadRoute.tsx` and `apps/web/src/components/PostCard.tsx` —
+  interactive thread view with an inline reply composer below the root post, plus card body
+  click navigation to `/p/:id`.
+- `apps/web/src/routes/settings/AppearanceSettingsRoute.tsx` — theme selection across the full
+  theme catalog with live swatch preview cards, OS-tracking dark/light support, and PWA install prompt.
 - `apps/web/src/components/RichBody.tsx` — renders a post body/bio through the shared
   `@patches/markup` grammar to React elements (no `dangerouslySetInnerHTML`); used in
   `PostCard`, `ComposeRoute`'s preview toggle, and `ProfileRoute`'s bio.
 - `apps/web/src/routes/settings/*`, `apps/web/src/routes/moderation/ModerationLogRoute.tsx`,
   `apps/web/src/routes/AppealsRoute.tsx` — the Amendment C safety surface (P14-018): privacy
-  prefs/export/deletion, personal filters, filter lists, labelers, the public moderation
-  log, and appeals — see `apps/web/README.md`'s route list for the full breakdown.
+  prefs/export/deletion, personal filters, filter lists, labelers, appearance/theme settings,
+  the public moderation log, and appeals — see `apps/web/README.md`'s route list for the full breakdown.
 
 See `apps/web/README.md` for the full route list, product rules the UI enforces (strictly
 chronological timelines, the mandatory DM disclosure, cosmetics never gating function,
@@ -148,8 +158,6 @@ Carried over from `apps/web/README.md` — see that file for the full, current l
 - `LabelService` has no "list my labeler subscriptions" RPC yet — `/settings/labelers` can
   subscribe/unsubscribe/set-action but can't show current subscription state on load.
 - `PinPost` always pins at `position: 0` — no UI yet for managing all three pin slots.
-- No TUI-palette theme picker on web yet (spec §185's plain/quiet-feed toggles are a TUI
-  concept; the cosmetic parity item is a selectable colour theme, still open).
 - The new `web.yml` CI deployment path is implemented and its build/action syntax has been
   checked locally, but has not yet performed a real Pages deployment. Manual deploys remain
   available through `mise run web:deploy`.

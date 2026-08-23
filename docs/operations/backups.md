@@ -16,10 +16,7 @@ Per `INITIAL_VISION.md` §90 (backups "enabled/verified" before Phase 7 deploy) 
 
 ## Scope
 
-Covers the production PostgreSQL database (Neon). Media (Cloudflare R2) is **not yet live in
-production** — `docs/operations/deployment.md` notes R2 credentials are not set on the live
-node (`tasks.md` B-031) — so R2 backup is `Status: planned`, not applicable to any real data
-yet.
+Covers the production PostgreSQL database (Neon). Media storage uses Cloudflare R2 (configured and live since B-031); object storage durability is provided by Cloudflare R2's underlying replication, and an off-platform cross-cloud media replication script remains a planned enhancement.
 
 ## Backup mechanisms
 

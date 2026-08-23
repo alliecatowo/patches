@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { restoreSession, signOut } from './api/session.js';
+import { composeTargetKey } from './compose/draft.js';
 import { ComposeScreen, type ComposeTarget } from './screens/ComposeScreen.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
@@ -86,6 +87,7 @@ export default function App(): JSX.Element {
         ) : null}
         {tab === 'compose' ? (
           <ComposeScreen
+            key={composeTargetKey(composeTarget)}
             target={composeTarget}
             onCancel={() => {
               setComposeTarget({ kind: 'post' });

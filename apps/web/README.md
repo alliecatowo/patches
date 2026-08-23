@@ -103,13 +103,13 @@ a live preview toggle; `?replyTo=<id>` replies, `?quote=<id>` quotes, `?edit=<id
 the caller's own posts in place), `/messages` + `/messages/:id` (DM notice always visible),
 `/c/:id` community feed + join/leave, `/t/:tag` tag feed.
 
-`/settings/*` (a shared layout with sub-nav): `profile` (display name/bio/nameplate),
+`/settings/*` (a shared layout with sub-nav): `appearance` (theme selection across the full theme catalog with live swatches, OS-tracking light/dark modes, and PWA installation prompt), `profile` (display name/bio/nameplate),
 `privacy` (notice acknowledgement, discoverable/indexable/local-feed/locked prefs, account
 export, account deletion with grace-period copy), `filters` (personal keyword/tag/actor/domain
 filters — literal terms only, never a pattern — with JSON export/import), `lists` (browse/
 subscribe/unsubscribe public filter lists, per-entry exceptions, publish your own), `labelers`
 (subscribe/unsubscribe, per-value action override — see Known gaps for what this screen can't
-show yet). `/moderation/log` (this node's public, anonymized moderation log — domain-kind
+show yet), `credentials` (passkeys and recovery credentials). `/moderation/log` (this node's public, anonymized moderation log — domain-kind
 entries are identified, account/post-kind entries never carry a handle/actor/post ID).
 `/appeals` (moderation notices with an appeal form, plus the caller's own appeals and their
 status).
@@ -120,7 +120,8 @@ Keyboard shortcuts mirror the TUI (`apps/tui`): `j`/`k` move focus between posts
 timeline, `l` likes the focused post, `c` opens compose, `/` opens search, `?` toggles a help
 dialog. All are ignored while typing in a form field. Every own-post action (edit, delete, pin/
 unpin, edit history) lives as a text button in `PostCard`'s action row rather than a shortcut,
-since it only applies to a subset of posts.
+since it only applies to a subset of posts. Clicking a post card body or reply button opens its
+thread (`/p/:id`), which includes an inline reply composer.
 
 ## Known gaps / follow-ups
 
@@ -132,7 +133,8 @@ since it only applies to a subset of posts.
   `Links`/`Hero`/`NowPlaying`/`AsciiArt`/`Spacer`. `Gallery`/`Friends`/`TopEight`/`Guestbook`/
   `Posts`/`Badges` blocks show a visible "not supported here yet" placeholder rather than a
   real render (spec §171 requires a placeholder over failing the page, which this satisfies,
-  but the blocks themselves are still worth building out).
+  but the blocks themselves are still worth building out). Profile wall editing is supported
+  via `EditWallDialog` (`+ Edit Wall` on the Wall tab).
 - Block/unblock, mute/unmute, and report (`ModerationService`) are wired into the profile
   page (`src/components/ModerationActions.tsx`, next to `FollowButton`) — not yet into
   `PostCard` (no "report this post" from a timeline) or a dedicated blocks/mutes list view.
@@ -145,9 +147,6 @@ since it only applies to a subset of posts.
   out of scope for this end-user settings screen.)
 - `PinPost` always pins at `position: 0` — there's no UI yet for reordering/managing all three
   pin slots (spec §188 allows up to 3).
-- No light/dark palette beyond the existing OS-preference CSS variables in `src/index.css` —
-  the TUI's named palettes (`docs/architecture/tui.md`) aren't mirrored as selectable web
-  themes yet.
 - Routes are code-split via react-router v7's `route.lazy()` (`src/router.tsx`) — only the
   shell (`RootLayout`, `ProtectedRoute`, `NotFoundRoute`) is in the eager entry chunk.
 

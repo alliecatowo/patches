@@ -1,7 +1,6 @@
 import { describeError } from '@patches/client';
-import { MAX_POST_CHARS } from '@patches/domain';
 import { MediaStatus, type Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -15,52 +14,41 @@ import {
 
 import { api } from '../api/client.js';
 import {
-  buildCreatePostRequest,
-  buildEditPostRequest,
+  addDraftMedia,
+  buildComposeSubmission,
+  createComposeDraftState,
+  removeDraftMedia,
+  setDraftBody,
+  setDraftContentWarning,
+  setDraftCwEnabled,
+  syncComposeDraftState,
+  type ComposeDraftState,
+  type ComposeTarget,
+} from '../compose/draft.js';
+import {
   canSubmitCompose,
-  draftFromPost,
-  emptyComposeDraft,
   MAX_COMPOSE_MEDIA,
-  type ComposeDraft,
+  resolveMaxPostChars,
+  type NodeInfoLike,
 } from '../compose/requests.js';
 import { newClientRequestId } from '../lib/id.js';
 import { pickImage } from '../media/picker.js';
 import { pollMediaUntilReady, uploadMediaBytes, type UploadProgress } from '../media/upload.js';
 
-/** What this screen composes: a plain post, a reply to `replyTo`, a quote of `quote`, or
- * an in-place edit of `editing` (`PostService.EditPost`, spec §189, §26 amended). The
- * caller (`App`) owns which of these is active — `PostRow`'s Reply/Quote/Edit buttons set
- * it, exactly as `apps/web`'s `ComposeRoute` reads `?replyTo=`/`?quote=`/`?edit=` from the
- * URL for the same three cases. */
-export type ComposeTarget =
-  | { kind: 'post' }
-  | { kind: 'reply'; replyTo: Post }
-  | { kind: 'quote'; quote: Post }
-  | { kind: 'edit'; editing: Post };
+export type { ComposeTarget, ComposeDraftState };
 
 export interface ComposeScreenProps {
   target: ComposeTarget;
   onPosted: (post: Post | undefined) => void;
   onCancel: () => void;
+  /** Optional override / preloaded node limit or node info response. */
+  maxPostChars?: NodeInfoLike;
 }
 
 type AttachState =
   | { status: 'idle' }
   | { status: 'uploading'; progress: UploadProgress }
   | { status: 'error'; message: string };
-
-function initialDraft(target: ComposeTarget): ComposeDraft {
-  switch (target.kind) {
-    case 'post':
-      return emptyComposeDraft();
-    case 'reply':
-      return { ...emptyComposeDraft(), inReplyToId: target.replyTo.id };
-    case 'quote':
-      return { ...emptyComposeDraft(), quotedPostId: target.quote.id };
-    case 'edit':
-      return draftFromPost(target.editing);
-  }
-}
 
 function titleFor(target: ComposeTarget): string {
   switch (target.kind) {
@@ -79,18 +67,53 @@ function titleFor(target: ComposeTarget): string {
  * Compose/reply/quote/edit with up to `MAX_COMPOSE_MEDIA` images (uploaded straight to
  * R2 via `media/upload.ts` — never proxied through Node, spec §153) and an optional
  * content warning. All request-shape and validation logic lives in `compose/requests.ts`
- * and `media/*.ts`, which are Vitest-covered; this component only renders that state
+ * and `compose/draft.ts`, which are Vitest-covered; this component only renders that state
  * (`docs/research/expo-react-native.md` §4).
  */
-export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps): JSX.Element {
-  const [draft, setDraft] = useState<ComposeDraft>(() => initialDraft(target));
-  const [cwEnabled, setCwEnabled] = useState(() => draft.contentWarning !== '');
+export function ComposeScreen({
+  target,
+  onPosted,
+  onCancel,
+  maxPostChars,
+}: ComposeScreenProps): JSX.Element {
+  const [draftState, setDraftState] = useState<ComposeDraftState>(() =>
+    createComposeDraftState(target),
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attach, setAttach] = useState<AttachState>({ status: 'idle' });
+  const [limit, setLimit] = useState<number>(() => resolveMaxPostChars(maxPostChars));
 
+  // Reset and re-key compose draft state whenever target changes so edit/reply/quote
+  // content cannot accidentally be submitted as a root post or leak across targets.
+  useEffect(() => {
+    setDraftState((current) => syncComposeDraftState(current, target));
+    setAttach({ status: 'idle' });
+    setError(null);
+  }, [target]);
+
+  // Fetch node info for max_post_chars limit if not explicitly passed
+  useEffect(() => {
+    if (maxPostChars !== undefined) return;
+    let cancelled = false;
+    api.node
+      .getNodeInfo({})
+      .then((info) => {
+        if (!cancelled) {
+          setLimit(resolveMaxPostChars(info));
+        }
+      })
+      .catch(() => {
+        // Fallback to domain default
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [maxPostChars]);
+
+  const { draft, cwEnabled } = draftState;
   const uploading = attach.status === 'uploading';
-  const canSubmit = canSubmitCompose(draft, MAX_POST_CHARS, uploading) && !pending;
+  const canSubmit = canSubmitCompose(draft, limit, uploading) && !pending;
 
   const onAttach = async (): Promise<void> => {
     if (draft.mediaIds.length >= MAX_COMPOSE_MEDIA) return;
@@ -108,7 +131,7 @@ export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps
       if (ready.status !== MediaStatus.READY) {
         throw new Error('That image failed to process.');
       }
-      setDraft((current) => ({ ...current, mediaIds: [...current.mediaIds, mediaId] }));
+      setDraftState((current) => addDraftMedia(current, mediaId));
       setAttach({ status: 'idle' });
     } catch (err) {
       setAttach({ status: 'error', message: describeError(err).message });
@@ -116,24 +139,18 @@ export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps
   };
 
   const removeMedia = (mediaId: string): void => {
-    setDraft((current) => ({
-      ...current,
-      mediaIds: current.mediaIds.filter((id) => id !== mediaId),
-    }));
+    setDraftState((current) => removeDraftMedia(current, mediaId));
   };
 
   const onSubmit = async (): Promise<void> => {
     setPending(true);
     setError(null);
     try {
-      const finalDraft: ComposeDraft = {
-        ...draft,
-        contentWarning: cwEnabled ? draft.contentWarning : '',
-      };
+      const submission = buildComposeSubmission(draftState, newClientRequestId());
       const response =
-        target.kind === 'edit'
-          ? await api.posts.editPost(buildEditPostRequest(target.editing.id, finalDraft))
-          : await api.posts.createPost(buildCreatePostRequest(finalDraft, newClientRequestId()));
+        submission.kind === 'edit'
+          ? await api.posts.editPost(submission.input)
+          : await api.posts.createPost(submission.input);
       onPosted(response.post);
     } catch (err) {
       setError(describeError(err).message);
@@ -159,12 +176,10 @@ export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps
         placeholderTextColor="#666"
         multiline
         value={draft.body}
-        onChangeText={(body) => setDraft((current) => ({ ...current, body }))}
+        onChangeText={(body) => setDraftState((current) => setDraftBody(current, body))}
       />
-      <Text
-        style={[styles.counter, draft.body.length > MAX_POST_CHARS ? styles.counterOver : null]}
-      >
-        {draft.body.length}/{MAX_POST_CHARS}
+      <Text style={[styles.counter, draft.body.length > limit ? styles.counterOver : null]}>
+        {draft.body.length}/{limit}
       </Text>
 
       {quotedPreview ? (
@@ -178,7 +193,12 @@ export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps
 
       <View style={styles.cwRow}>
         <Text style={styles.cwLabel}>Content warning</Text>
-        <Switch value={cwEnabled} onValueChange={setCwEnabled} />
+        <Switch
+          value={cwEnabled}
+          onValueChange={(enabled) =>
+            setDraftState((current) => setDraftCwEnabled(current, enabled))
+          }
+        />
       </View>
       {cwEnabled ? (
         <TextInput
@@ -186,7 +206,9 @@ export function ComposeScreen({ target, onPosted, onCancel }: ComposeScreenProps
           placeholder="Content warning text"
           placeholderTextColor="#666"
           value={draft.contentWarning}
-          onChangeText={(contentWarning) => setDraft((current) => ({ ...current, contentWarning }))}
+          onChangeText={(contentWarning) =>
+            setDraftState((current) => setDraftContentWarning(current, contentWarning))
+          }
         />
       ) : null}
 

@@ -222,7 +222,7 @@ it into the full compose screen (`C` also opens full compose directly) without l
 you've typed. Pressing `E` on your own post reopens compose in edit mode, prefilled with the
 existing body.
 
-### Following and search
+### Following, followers, and search
 
 `g s` or `/` opens search. `Tab` (or `1`/`2`/`3` while the query field is empty) switches
 between three modes: **people** (handle prefix and display-name match, or a remote
@@ -234,6 +234,13 @@ local filter can only narrow what the server already sent back). `↑`/`↓` rec
 searches, persisted across restarts. There is no way to sort or rank search results — posts
 always come back newest-first. From a profile, `f` follows or unfollows; `Ctrl+A`/attach and the
 rest of compose behave the same whether you're posting fresh or replying (`r`).
+
+**Followers and following lists.** From any profile in the TUI, press `F` to open that actor's
+**Followers** screen or `G` to open their **Following** screen (signed-in users can also run
+`:followers` or `:following` in the command palette to open their own). `j`/`k` move through the
+actor list, `Enter` or `o` opens the selected actor's profile, and `Esc` returns. On the web
+client (`/@handle`), click the **Followers** or **Following** tabs (or their count pills in the header)
+to browse followers and following.
 
 ### Notifications
 
@@ -248,10 +255,9 @@ true of every v0 conversation; nothing in this client ever calls a DM "encrypted
 "private." `Tab` switches between your **Inbox** and pending **Requests** (a message from someone
 you don't follow lands as a request until you accept it). Sending is optimistic: your message
 appears immediately, marked as sending; if it fails to actually send, the draft comes back into
-the compose field instead of silently vanishing, so you can just try again. The screen also has a
-plain-language retention note ("This node automatically deletes messages older than N days") for
-when a node exposes its message retention policy — _Status: planned_, the shell doesn't fetch and
-pass that policy through yet, so nothing shows there today.
+the compose field instead of silently vanishing, so you can just try again. Node policy honestly
+reports `0` (indefinite retention, B-061); any future automatic message deletion will be
+displayed on this screen when configured.
 
 The separately gated E2EE protocol is not a reviewed capability. An owner-authorized disposable
 node may explicitly advertise ADR 0027's isolated-test mode, regardless of its runtime
@@ -295,7 +301,9 @@ fields in a small form (`Tab`/arrows move between fields, `←`/`→` cycle an e
 `Ctrl+S` on a field form commits it back to the block list, and `Ctrl+S` on the block list
 validates and saves the _whole_ document via the same `UpdatePage` call the `$EDITOR` flow
 uses. `Esc` at any point backs out one level, keeping whatever you'd typed as a local draft —
-nothing is lost by backing out of either editor.
+nothing is lost by backing out of either editor. On the web client (`/@handle`), profile owners
+can switch to the **Wall** tab and click `+ Edit Wall` to open `EditWallDialog`, allowing you to
+add, edit, reorder, and save wall blocks in the browser.
 
 ### Privacy, filters, filter lists, and labelers
 
@@ -430,6 +438,22 @@ drawing it); `off` never fetches or draws anything — the box still renders fro
 metadata (dimensions, alt text), since that's content, not decoration. The same modes are
 available as a one-time override via the `PATCHES_IMAGES` environment variable
 (`auto`/`kitty`/`pixel`/`ascii`/`box`/`off`) if you'd rather not touch Preferences.
+
+## Using the Web client
+
+Patches also provides a responsive web GUI at **https://patches-web.pages.dev** (`apps/web`),
+communicating with the node over Connect/HTTP. It shares the same chronological timeline,
+honest DM disclosure, and no-algorithm product rules as the TUI:
+
+- **Timelines & Threads**: Strictly chronological Home, Local, Tag (`/t/:tag`), and Community
+  (`/c/:id`) feeds. Clicking any post card opens its thread (`/p/:id`), which includes an inline
+  reply composer when signed in.
+- **Profiles & Walls**: Profile view (`/@handle`) includes dedicated **Followers** and **Following**
+  tabs with count pills, plus a **Wall** tab with an interactive `+ Edit Wall` dialog for profile owners.
+- **Appearance & Themes**: `/settings/appearance` allows switching between light, dark, system-following,
+  and named themes with live swatch preview cards.
+- **Mobile & PWA**: Mobile web safe-area insets (`env(safe-area-inset-*)`) and progressive web app (PWA)
+  installation support are built in.
 
 ## Troubleshooting
 

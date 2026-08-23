@@ -1,19 +1,13 @@
 # Database
 
-**Status: mostly planned, local migration tooling implemented.** Describes the target
-PostgreSQL setup and migration policy per `INITIAL_VISION.md` §§14–16, §90, §123. As of
-2026-08-17 (Phase 0) no production database exists yet; local Docker Compose Postgres is
-the only environment in use. `packages/database`'s DataSource, snake_case naming strategy,
-and TypeORM CLI wiring (`pnpm db:migrate`/`db:revert`/`db:show`/`db:generate`) are
-implemented and verified against a local Postgres — see "Local commands" below.
+**Status: implemented.** Production runs on Neon PostgreSQL (`aws-us-east-2`, A-041, S-001, B-065) with continuous WAL PITR and branch-based workflow support; local development and CI use Docker Compose PostgreSQL. `packages/database`'s DataSource, snake_case naming strategy, and TypeORM CLI wiring (`pnpm db:migrate`/`db:revert`/`db:show`/`db:generate`) are implemented and verified against both environments.
 
 ## Engine and hosting
 
-- **Engine:** PostgreSQL, same major version locally and in production wherever practical.
-- **Production:** Fly Managed Postgres. Fly's managed offering is preferred over
-  self-managing Postgres on a Fly Volume — self-management is a fallback only if Managed
-  Postgres is genuinely unavailable, not a default choice.
-- **Local:** Docker Compose PostgreSQL (see `docs/operations/local-development.md`).
+- **Engine:** PostgreSQL 17+, same major engine locally and in production.
+- **Production:** Neon PostgreSQL (`aws-us-east-2`, default branch `production`, `sslmode=require`). The stopped original Fly Postgres cluster (`patches-social-db`) is retained only as a cold fallback — see `docs/operations/deployment.md`.
+- **Local:** Docker Compose PostgreSQL (`infra/compose/docker-compose.yml`, see `docs/operations/local-development.md`).
+- **Cloud dev branches:** Ephemeral Neon branches via `mise run neon:dev:*` (see `docs/operations/neon-environments.md`).
 
 ## ORM and access pattern
 

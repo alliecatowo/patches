@@ -31,6 +31,7 @@ apps/tui/src/
 │   ├── LocalScreen.tsx
 │   ├── ThreadScreen.tsx
 │   ├── ProfileScreen.tsx
+│   ├── ActorListScreen.tsx
 │   ├── NotificationsScreen.tsx
 │   ├── SearchScreen.tsx
 │   ├── ComposeScreen.tsx
@@ -630,6 +631,8 @@ looking at someone else's profile — never on your own. Backed by
 fetch is keyed by `actorId` the same way `useActor`'s "loading" state is (derived, not
 written synchronously in the effect — see the code comment for why
 `react-hooks/set-state-in-effect` requires that shape).
+
+**Followers and following lists (`screens/ActorListScreen.tsx`)**: `ProfileScreen` shows count summaries and binds `F` to view that actor's followers and `G` to view that actor's following list (also reachable for the signed-in user via `:followers` and `:following` command palette commands). `ActorListScreen` renders a paginated list of actors (`usePaginatedList<Actor>`) with nameplate decoration; `j`/`k`/arrow keys move the selection cursor, `Enter` or `o` opens the selected actor's profile, and `Esc` returns to the previous screen.
 
 **Nameplates, plain mode, and content warnings (B-018/B-019/B-022)**:
 `components/Nameplate.tsx` renders `@handle` styled by `Actor.nameplate` (spec §173) —

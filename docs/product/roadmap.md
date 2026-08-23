@@ -5,17 +5,17 @@ Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amend
 checklists in one place so status can be tracked without re-reading the full spec. Update the
 status line at the top of each phase as work lands — don't let this drift into fiction.
 
-**As of 2026-08-22: Phases 0–8 are implemented (see `tasks.md`); Phase 7 is deployed and the flagship node `patches-social.fly.dev` is live. R2 media storage and Resend email are configured. The repository is ahead of the live web build and its next gated deployment remains B-063.**
+**As of 2026-08-22: Phases 0–8 are implemented (see `tasks.md`); Phase 7 is deployed and the flagship node `patches-social.fly.dev` is live with Neon Postgres, production R2 media storage, and Resend email delivery. Phase 17 scale/capacity budgets (S-001/S-002) and security/retention updates (B-058–B-061) are implemented. The repository is ahead of the live web build and its next gated deployment remains B-063.**
 
 **As of this revision:** board Phase 11 — social depth (Amendment B, spec §178–§195: reposts
-and quotes, tags, communities, DMs, flair/pins, quiet feed, edit history) — is **implemented**
-end to end, reachable from the TUI (15/16 tasks landed; the remaining one is this docs sync).
+and quotes, tags, communities, DMs with honest indefinite retention, flair/pins/walls, quiet feed, edit history, and followers/following screens in TUI and Web) — is **implemented**
+end to end.
 Board Phase 14 — privacy, filters, decentralized moderation (Amendment C, spec §196–§210) — is
 also implemented, with a handful of documented follow-ups (see
 [Board Phase 14](#board-phase-14--privacy-filters-decentralized-moderation-amendment-c) below).
 Board Phase 10 (web client) resumed per owner direction 2026-08-18 and has landed
-(`apps/web`); React Native (P10-002) and migrating the TUI onto `@patches/client` (P10-005)
-remain open. Board Phase 15 — passwordless auth (passkeys, recovery codes, node
+(`apps/web`) as a responsive graphical peer with full theme support, profile wall editing, followers/following tabs, thread inline replies, and PWA/mobile safe-area support; React Native (P10-002) is paused (active-bug containment only, B-062) and migrating the TUI onto `@patches/client` (P10-005)
+remains open. Board Phase 15 — passwordless auth (passkeys, recovery codes, node
 password-auth policy) — started 2026-08-19 and has landed its server/database/web pieces
 (P15-002/003/004); GitHub device-flow-on-prod and TUI/web credential-manager parity remain
 open. See [Owner-directed board phases](#owner-directed-board-phases) below, and note
@@ -224,18 +224,17 @@ tracked separately from the site/media phase.
 
 ### Board Phase 10 — web + React Native clients
 
-**Status: web resumed (owner, 2026-08-18) and landed; React Native still paused.** A scoped,
+**Status: web resumed (owner, 2026-08-18) and landed; React Native paused.** A responsive,
 production web client (`apps/web`, Vite + React 19, Connect transport) exists and enforces the
-same chronological/no-scores/honest-DM rules as the TUI — see `apps/web/README.md`. The Connect
+same chronological/no-scores/honest-DM rules as the TUI. Features include light/dark/custom theme switcher (`/settings/appearance`), profile wall editing (`EditWallDialog`), followers/following tabs and actor lists, inline thread replies, post card thread navigation, PWA manifest with install prompt, and mobile safe-area insets — see `apps/web/README.md`. The Connect
 edge (P10-004) and [ADR 0016](../decisions/0016-connect-transport-and-client-sdk.md) are as
-landed. Open: React Native (P10-002) and migrating the TUI itself onto the shared
+landed. Open: React Native (P10-002, paused / active-bug containment only under B-062) and migrating the TUI itself onto the shared
 `@patches/client` SDK (P10-005).
 
 ### Board Phase 11 — social depth (Amendment B)
 
 **Status: implemented.** Spec **§178–§195**. TUI-first: a feature is not done until it is
-usable from the terminal — every item below is reachable from the TUI today (15/16 tasks
-landed; the remaining task is this docs sync, `P11-014`). See
+usable from the terminal — every item below is reachable from the TUI and Web today. See
 [`docs/architecture/social.md`](../architecture/social.md) for the implementation detail.
 
 - **Reposts and quotes** (§180) — a repost is a pointer, a quote is a post with
@@ -247,9 +246,11 @@ landed; the remaining task is this docs sync, `P11-014`). See
 - **Direct messages** (§183) — 1:1 and groups of ≤ 8, mutual-or-accepted gating, message
   requests, block-aware, reportable, rate-limited, text-only. **Server-visible, not
   end-to-end encrypted**, and every client says so on the screen where messages are read.
+  Indefinite retention is honestly published as `0` days (B-061).
 - **Flair, pinned posts, walls** (§184) — post accent, border style, like glyph, wall theme,
-  ≤ 3 pinned posts, all under capabilities-not-tiers: cosmetics may be capability-gated, a
+  ≤ 3 pinned posts, profile wall editing in Web (`EditWallDialog`) and TUI (`PageBlocksEditorScreen`), all under capabilities-not-tiers: cosmetics may be capability-gated, a
   _function_ may never be paywalled.
+- **Followers and following** — dedicated list screens in TUI (`ActorListScreen`, `F`/`G`, `:followers`/`:following`) and tabs in Web (`Followers`/`Following` on profile with count pills and `ActorList`).
 - **Plain mode and quiet feed** (§185) — the reader's opt-out, client-side.
 - **Edits with visible history, deletion, read-more folds** (§186). Scheduled posts, polls,
   and post analytics are explicitly out.
@@ -466,13 +467,13 @@ These are the literal go/no-go gates from the spec (§§157–160). A phase or m
 v0 is complete only when two real users can:
 
 - [x] register (with an SSH key or a password),
-- [ ] verify email _(where the node requires it — §165)_ — **in progress — A-028**,
+- [x] verify email _(where the node requires it — §165, A-028)_,
 - [x] login by password,
 - [x] login by SSH key,
 - [x] add and revoke a second credential,
 - [x] edit and visit a Page,
 - [x] persist session securely,
-- [ ] edit profile — **in progress — A-027**,
+- [x] edit profile _(A-027, A-037)_,
 - [x] search local actors,
 - [x] follow,
 - [x] unfollow,
@@ -509,13 +510,10 @@ And administrators can:
       live node)_,
 - [x] gRPC through Fly works _(confirmed live — `h2_backend`, verified end to end with real
       accounts, see `docs/operations/deployment.md#first-deploy-2026-08-18`)_,
-- [ ] Managed Postgres configured _(live node uses a Fly Postgres cluster, not Fly Managed
-      Postgres yet — planned switch, `docs/operations/deployment.md`)_,
-- [ ] R2 configured _(bucket exists; S3 access keys are dashboard-only and not yet fetched —
-      uploads disabled in prod, `tasks.md` B-031)_,
+- [x] Managed Postgres configured _(Neon Postgres in production, A-041; cold Fly Postgres fallback retained)_,
+- [x] R2 configured _(production R2 bucket and S3 credentials configured and verified live, B-031)_,
 - [x] worker configured _(`worker` process group live on `patches-social`)_,
-- [ ] email delivery configured _(`EMAIL_PROVIDER=console` — Resend sending domain not yet
-      verified, `tasks.md` B-031)_,
+- [x] email delivery configured _(Resend API key and verified updates.allisons.dev sender configured, B-031)_,
 - [x] migrations deploy automatically but explicitly _(confirmed live — `release_command`
       (`node server/migrate.mjs`) ran migrations successfully before the 2026-08-18 deploy's
       Machines took traffic)_,
