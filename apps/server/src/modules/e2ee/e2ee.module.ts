@@ -5,6 +5,7 @@ import { E2eeCapabilityService } from './e2ee-capability.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeController } from './e2ee.controller.js';
+import { E2eeGroupService } from './group-control.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
 import { DatabaseNodeFrankingKeyRing, NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import { E2eePrekeyService } from './prekey.service.js';
@@ -30,6 +31,7 @@ import { E2eeRuntimeApprovalModule } from './e2ee-runtime-approval.module.js';
     E2eePrekeyService,
     E2eeCapabilityService,
     E2eeConversationService,
+    E2eeGroupService,
     E2eeReportEvidenceService,
     { provide: NODE_FRANKING_KEY_RING, useClass: DatabaseNodeFrankingKeyRing },
   ],

@@ -3,6 +3,7 @@ import { getMetadataArgsStorage } from 'typeorm';
 
 import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
 import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
+import { E2eeGroupControlEvent } from './e2ee-group-control-event.entity.js';
 import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
 import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
@@ -21,6 +22,7 @@ const e2eeEntities = new Set<unknown>([
   E2eeMailboxEnvelope,
   E2eeReportEvidence,
   E2eeReportEvidenceItem,
+  E2eeGroupControlEvent,
 ]);
 
 describe('E2EE persistence privacy boundary', () => {

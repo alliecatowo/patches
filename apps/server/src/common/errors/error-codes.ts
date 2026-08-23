@@ -209,6 +209,16 @@ export const ERROR_CODES = [
    * ADR 0020 §9 requires. Unreachable in production while `E2EE_APPROVED_FRANKING_PROFILES` is
    * empty (P13-015/P13-016 must land persisted key custody first). */
   'E2EE_FRANKING_UNAVAILABLE',
+  /** `E2eeService.AddE2eeMember`/`RemoveE2eeMember` (P13-008, ADR 0020 §7): a submitted
+   * group-control event's device signature does not verify, its digest does not cover its
+   * transcript, or its decoded convenience fields disagree with the signed `event_bytes` —
+   * the group-transcript sibling of `E2EE_CERTIFICATE_INVALID`. */
+  'E2EE_GROUP_CONTROL_INVALID',
+  /** `E2eeService.AddE2eeMember`/`RemoveE2eeMember` (P13-008, ADR 0020 §7): a submitted
+   * group-control event does not extend the conversation's transcript by exactly one signed,
+   * chained, monotonic epoch step — including a concurrent transition that won the race to
+   * the same epoch. The caller re-reads `GetE2eeConversationState` and retries. */
+  'E2EE_GROUP_CONTROL_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -283,6 +293,8 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   E2EE_CONVERSATION_NOT_FOUND: GrpcStatus.NOT_FOUND,
   E2EE_FANOUT_REJECTED: GrpcStatus.FAILED_PRECONDITION,
   E2EE_FRANKING_UNAVAILABLE: GrpcStatus.FAILED_PRECONDITION,
+  E2EE_GROUP_CONTROL_INVALID: GrpcStatus.INVALID_ARGUMENT,
+  E2EE_GROUP_CONTROL_CONFLICT: GrpcStatus.FAILED_PRECONDITION,
 });
 
 export function grpcStatusForErrorCode(code: ErrorCode): GrpcStatus {

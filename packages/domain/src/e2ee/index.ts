@@ -71,6 +71,25 @@ export type {
 } from './certificates.js';
 
 export {
+  assertGroupControlChain,
+  assertGroupControlShape,
+  assertGroupControlSucceeds,
+  assertGroupSizeWithinBound,
+  canonicalGroupControlTranscript,
+  E2EE_GROUP_CHANGE_KINDS,
+  E2EE_GROUP_CONTROL_TRANSCRIPT_DOMAIN,
+  groupControlGenesisPreviousDigest,
+  groupControlGenesisTip,
+  verifyGroupControlSignature,
+} from './groups.js';
+export type {
+  E2eeGroupChangeKind,
+  E2eeGroupControlChainTip,
+  E2eeGroupControlEventFields,
+  E2eeGroupControlEventView,
+} from './groups.js';
+
+export {
   activeDeviceIds,
   assertRosterChain,
   assertRosterNotRolledBack,

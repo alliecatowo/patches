@@ -19,6 +19,7 @@ import { Credential } from './credential.entity.js';
 import { DomainBlock } from './domain-block.entity.js';
 import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
 import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
+import { E2eeGroupControlEvent } from './e2ee-group-control-event.entity.js';
 import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
 import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
@@ -135,6 +136,7 @@ export const ALL_ENTITIES = [
   E2eeOneTimePrekey,
   E2eeLogicalMessage,
   E2eeMailboxEnvelope,
+  E2eeGroupControlEvent,
   E2eeReportEvidence,
   E2eeReportEvidenceItem,
   E2eeNodeFrankingKey,

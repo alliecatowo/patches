@@ -36,9 +36,9 @@ import {
   acceptE2eeLogicalMessage,
   transcriptDigestForStoredMessage,
   type AcceptedLogicalMessage,
-  CURRENT_MEMBERSHIP_EPOCH,
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
+import { loadCurrentGroupControl } from './group-control.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import {
   E2EE_RUNTIME_APPROVAL_POLICY,
@@ -203,11 +203,16 @@ export class E2eeConversationService {
     const memberStates = await Promise.all(
       members.map((member) => this.#loadMemberState(member.actorId, now)),
     );
+    const { epoch, digest } = await loadCurrentGroupControl(
+      this.dataSource.manager,
+      request.conversationId,
+    );
 
     return {
       conversationId: conversation.id,
       securityMode: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
-      membershipEpoch: CURRENT_MEMBERSHIP_EPOCH.toString(),
+      membershipEpoch: epoch.toString(),
+      groupControlDigest: Buffer.from(digest),
       members: memberStates,
     };
   }

@@ -236,11 +236,12 @@ describe('proto files', () => {
         'GetDeletionStatus',
       ].sort(),
     );
-    // `E2eeService` is schema-only (ADR 0020, P13-001): no controller implements it, so this
-    // list is the contract a future implementation has to satisfy, not a claim that it exists.
+    // `E2eeService`'s full surface (ADR 0020, P13-001 onward): this list is the wire
+    // contract every node implementation has to satisfy.
     expect(serviceMethodNames(pkg, SERVICE_NAMES.e2ee)).toEqual(
       [
         'AcknowledgeEnvelopes',
+        'AddE2eeMember',
         'AttachReportEvidence',
         'ClaimPrekeyBundles',
         'CreateE2eeConversation',
@@ -251,9 +252,11 @@ describe('proto files', () => {
         'GetIdentityRoot',
         'GetPrekeyInventory',
         'ListDeviceRosters',
+        'ListE2eeGroupControlEvents',
         'ListMailboxEnvelopes',
         'PublishDeviceRoster',
         'PublishIdentityRoot',
+        'RemoveE2eeMember',
         'RevokeDevice',
         'SendEnvelopes',
         'UploadPrekeys',

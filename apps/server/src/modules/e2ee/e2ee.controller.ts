@@ -5,6 +5,8 @@ import {
   E2eeServiceControllerMethods,
   type AcknowledgeEnvelopesRequest,
   type AcknowledgeEnvelopesResponse,
+  type AddE2eeMemberRequest,
+  type AddE2eeMemberResponse,
   type AttachReportEvidenceRequest,
   type AttachReportEvidenceResponse,
   type ClaimPrekeyBundlesRequest,
@@ -26,12 +28,16 @@ import {
   type GetPrekeyInventoryResponse,
   type ListDeviceRostersRequest,
   type ListDeviceRostersResponse,
+  type ListE2eeGroupControlEventsRequest,
+  type ListE2eeGroupControlEventsResponse,
   type ListMailboxEnvelopesRequest,
   type ListMailboxEnvelopesResponse,
   type PublishDeviceRosterRequest,
   type PublishDeviceRosterResponse,
   type PublishIdentityRootRequest,
   type PublishIdentityRootResponse,
+  type RemoveE2eeMemberRequest,
+  type RemoveE2eeMemberResponse,
   type RevokeDeviceRequest,
   type RevokeDeviceResponse,
   type SendEnvelopesRequest,
@@ -47,6 +53,7 @@ import { type AccessTokenClaims } from '../auth/token.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
 import { E2eeCapabilityService } from './e2ee-capability.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
+import { E2eeGroupService } from './group-control.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
 import { E2eePrekeyService } from './prekey.service.js';
 import { E2eeReportEvidenceService } from './report-evidence.service.js';
@@ -74,6 +81,7 @@ export class E2eeController implements E2eeServiceController {
     private readonly deviceRosters: E2eeDeviceRosterService,
     private readonly prekeys: E2eePrekeyService,
     private readonly conversations: E2eeConversationService,
+    private readonly groups: E2eeGroupService,
     private readonly reportEvidence: E2eeReportEvidenceService,
     private readonly capability: E2eeCapabilityService,
   ) {}
@@ -172,6 +180,30 @@ export class E2eeController implements E2eeServiceController {
     @CurrentSession() session?: AccessTokenClaims,
   ): Promise<GetE2eeConversationStateResponse> {
     return this.conversations.getE2eeConversationState(requireSession(session).actorId, request);
+  }
+
+  async addE2EeMember(
+    @Payload() request: AddE2eeMemberRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<AddE2eeMemberResponse> {
+    return this.groups.addE2eeMember(requireSession(session).actorId, request);
+  }
+
+  async removeE2EeMember(
+    @Payload() request: RemoveE2eeMemberRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<RemoveE2eeMemberResponse> {
+    return this.groups.removeE2eeMember(requireSession(session).actorId, request);
+  }
+
+  async listE2EeGroupControlEvents(
+    @Payload() request: ListE2eeGroupControlEventsRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ListE2eeGroupControlEventsResponse> {
+    return this.groups.listGroupControlEvents(requireSession(session).actorId, request);
   }
 
   async sendEnvelopes(

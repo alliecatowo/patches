@@ -7,11 +7,6 @@ import "patches/v1/common.proto";
 
 // End-to-end encrypted direct messages (spec §183, §194, §195.1; ADR 0020).
 //
-// **Status: schema-only.** No `apps/server` controller implements any RPC below. A node that
-// loads this schema answers every method with `UNIMPLEMENTED` until ADR 0020 §11's staged
-// delivery reaches "node protocol behind a disabled capability". Publishing the schema is not
-// the capability; `GetE2eeCapability` is, and it reports `DISABLED` on the reference node.
-//
 // The whole point of this service is a boundary, so it is stated once here and re-stated as an
 // invariant on every message below:
 //
@@ -89,6 +84,22 @@ service E2eeService {
   // Everything a sender needs to build a correct fanout: the membership epoch, the members, and
   // each member's current roster and active devices.
   rpc GetE2eeConversationState(GetE2eeConversationStateRequest) returns (GetE2eeConversationStateResponse);
+
+  // Adds one member. Group size stays bounded at 8 (spec §183.3, ADR 0020 §7); the transition
+  // is a device-signed group-control event that establishes the next membership epoch. The new
+  // member receives future messages only — no history is re-encrypted or replayed to them.
+  rpc AddE2eeMember(AddE2eeMemberRequest) returns (AddE2eeMemberResponse);
+
+  // Removes one member (a member removing themselves is a leave). The transition is a
+  // device-signed group-control event that establishes the next membership epoch, and the
+  // removed member's devices are excluded from every later fanout: a send composed under the
+  // old epoch is rejected rather than delivered to them (ADR 0020 §7).
+  rpc RemoveE2eeMember(RemoveE2eeMemberRequest) returns (RemoveE2eeMemberResponse);
+
+  // The group-control transcript from the caller's last verified epoch forward, so a client
+  // verifies the membership hash chain itself instead of trusting the node's current-epoch
+  // claim — the conversation-level counterpart of `ListDeviceRosters` (ADR 0020 §7).
+  rpc ListE2eeGroupControlEvents(ListE2eeGroupControlEventsRequest) returns (ListE2eeGroupControlEventsResponse);
 
   // Accepts one logical message as one bounded, all-or-nothing per-device fanout, and returns
   // the node's franking tag over it (ADR 0020 §7, §9).
@@ -172,6 +183,15 @@ enum E2eeEvidenceVerificationStatus {
   // Verification failed. The report is **not** discarded — it is queued with the content marked
   // unverifiable (ADR 0020 §9). A failed franking check is not a finding of innocence.
   E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE = 3;
+}
+
+// One membership transition of an `E2EE_V1` conversation (ADR 0020 §7, P13-008). The names
+// match the persisted `e2ee_group_control_events.change_kind` check constraint
+// (`packages/database/src/entities/enums.ts`) exactly.
+enum E2eeGroupChangeKind {
+  E2EE_GROUP_CHANGE_KIND_UNSPECIFIED = 0;
+  E2EE_GROUP_CHANGE_KIND_ADDED = 1;
+  E2EE_GROUP_CHANGE_KIND_REMOVED = 2;
 }
 
 // What this node supports, and the protocol constants a client must agree with before it can
@@ -530,6 +550,53 @@ message E2eeMailboxEnvelope {
   google.protobuf.Timestamp received_at = 16;
 }
 
+// One authenticated membership transition (ADR 0020 §7: "root/device-certified group control
+// events establish a monotonic membership epoch and transcript digest; every payload binds
+// that epoch").
+//
+// Invariants, all enforced by the node on write and re-verified by every client on read:
+//   * `epoch` starts at 2 and increases by exactly 1 — epoch 1 is the conversation's creation
+//     membership, established by `CreateE2eeConversation`, and is never an event.
+//   * `previous_digest` equals the previous event's `digest` (all-zero 32 bytes for the first
+//     event), forming a hash chain over "who was in the group when".
+//   * `event_bytes` is the only authoritative content; the other fields are a decoded
+//     convenience view. `device_signature` is by the *signer's device* Ed25519 key over
+//     `event_bytes`, with strict RFC 8032 semantics, and the signer must be an active member
+//     with an active certified device at accept time. The subject and the signer may be the
+//     same actor (a leave).
+//   * A `REMOVED` subject is never delivered to again: their devices are excluded from every
+//     later fanout, and any send composed under their epoch is rejected whole.
+//   * An `ADDED` subject receives messages sent from their epoch forward only. No history is
+//     re-encrypted for them unless an existing member separately transfers it E2EE.
+message E2eeGroupControlEvent {
+  string conversation_id = 1;
+
+  // The membership epoch this event establishes: previous + 1.
+  uint64 epoch = 2;
+
+  E2eeGroupChangeKind change = 3;
+
+  // The actor being added or removed.
+  string subject_actor_id = 4;
+
+  // The member whose device signed the event.
+  string signer_actor_id = 5;
+  string signer_device_id = 6;
+
+  // All-zero (32 bytes) on the first event.
+  bytes previous_digest = 7;
+
+  bytes digest = 8;
+
+  // The exact canonical bytes `device_signature` covers. Encoding owned by
+  // `@patches/domain`'s `canonicalGroupControlTranscript`.
+  bytes event_bytes = 9;
+
+  bytes device_signature = 10;
+
+  google.protobuf.Timestamp created_at = 11;
+}
+
 message GetE2eeCapabilityRequest {}
 
 message GetE2eeCapabilityResponse {
@@ -756,6 +823,69 @@ message GetE2eeConversationStateResponse {
   ConversationSecurityMode security_mode = 2;
   uint64 membership_epoch = 3;
   repeated E2eeConversationMemberState members = 4;
+
+  // Digest of the newest group-control event, or the all-zero genesis digest when no
+  // transition has happened yet. Bound by clients into the same authenticated data as the
+  // epoch so a membership rollback is detectable, the conversation-level counterpart of a
+  // device roster digest (ADR 0020 §7).
+  bytes group_control_digest = 5;
+}
+
+message AddE2eeMemberRequest {
+  string conversation_id = 1;
+
+  // The actor being added. Must not already be an active member, must be available for a
+  // conversation with every current member (generic failure — no block oracle, spec §62).
+  string actor_id = 2;
+
+  string signer_device_id = 3;
+
+  // The device-signed transition event. `change` must be `ADDED`, `subject_actor_id` must
+  // equal `actor_id`, and `epoch` must be exactly current + 1.
+  E2eeGroupControlEvent event = 4;
+}
+
+message AddE2eeMemberResponse {
+  uint64 membership_epoch = 1;
+  E2eeGroupControlEvent event = 2;
+}
+
+message RemoveE2eeMemberRequest {
+  string conversation_id = 1;
+
+  // The actor being removed. Must be an active member; may be the caller (a leave).
+  string actor_id = 2;
+
+  string signer_device_id = 3;
+
+  // The device-signed transition event. `change` must be `REMOVED`, `subject_actor_id` must
+  // equal `actor_id`, and `epoch` must be exactly current + 1.
+  E2eeGroupControlEvent event = 4;
+}
+
+message RemoveE2eeMemberResponse {
+  uint64 membership_epoch = 1;
+  E2eeGroupControlEvent event = 2;
+}
+
+// Keyset pagination (spec §153), oldest first by `epoch`: like `ListDeviceRosters`, a hash
+// chain can only be verified forwards from the last epoch the caller already trusts.
+message ListE2eeGroupControlEventsRequest {
+  string conversation_id = 1;
+
+  // Keyset start: the highest epoch this caller has already verified. 0 replays from the
+  // first event (epoch 2).
+  uint64 after_epoch = 2;
+
+  // Opaque continuation cursor from a previous response. Never an offset or a page number.
+  string cursor = 3;
+
+  uint32 limit = 4;
+}
+
+message ListE2eeGroupControlEventsResponse {
+  repeated E2eeGroupControlEvent events = 1;
+  PageInfo page = 2;
 }
 
 message SendEnvelopesRequest {

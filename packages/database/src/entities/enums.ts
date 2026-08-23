@@ -180,6 +180,12 @@ export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[numb
 export const E2EE_EVIDENCE_VERIFICATION_STATUSES = ['PENDING', 'VERIFIED', 'UNVERIFIABLE'] as const;
 export type E2eeEvidenceVerificationStatus = (typeof E2EE_EVIDENCE_VERIFICATION_STATUSES)[number];
 
+/** `e2ee_group_control_events.change_kind` (ADR 0020 §7, P13-008) — mirrors
+ * `E2EE_GROUP_CHANGE_KINDS` in `@patches/domain`; the E2EE proto's `E2eeGroupChangeKind`
+ * enum names these same values with a `E2EE_GROUP_CHANGE_KIND_` prefix. */
+export const E2EE_GROUP_CHANGE_KINDS = ['ADDED', 'REMOVED'] as const;
+export type E2eeGroupChangeKind = (typeof E2EE_GROUP_CHANGE_KINDS)[number];
+
 /** `message_requests.status` (`INITIAL_VISION.md` §189). At most one pending request per
  * (sender, recipient) pair (§188) — enforced by a partial unique index, see
  * `message-request.entity.ts`. */

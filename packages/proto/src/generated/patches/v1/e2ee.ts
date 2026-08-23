@@ -92,6 +92,18 @@ export enum E2eeEvidenceVerificationStatus {
 }
 
 /**
+ * One membership transition of an `E2EE_V1` conversation (ADR 0020 §7, P13-008). The names
+ * match the persisted `e2ee_group_control_events.change_kind` check constraint
+ * (`packages/database/src/entities/enums.ts`) exactly.
+ */
+export enum E2eeGroupChangeKind {
+  E2EE_GROUP_CHANGE_KIND_UNSPECIFIED = 'E2EE_GROUP_CHANGE_KIND_UNSPECIFIED',
+  E2EE_GROUP_CHANGE_KIND_ADDED = 'E2EE_GROUP_CHANGE_KIND_ADDED',
+  E2EE_GROUP_CHANGE_KIND_REMOVED = 'E2EE_GROUP_CHANGE_KIND_REMOVED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
  * What this node supports, and the protocol constants a client must agree with before it can
  * interoperate. Every numeric field here is a *published copy* of a protocol constant, not a
  * knob: a client that disagrees with any of them refuses to speak `E2EE_V1` rather than
@@ -456,6 +468,48 @@ export interface E2eeMailboxEnvelope {
   receivedAt: Timestamp | undefined;
 }
 
+/**
+ * One authenticated membership transition (ADR 0020 §7: "root/device-certified group control
+ * events establish a monotonic membership epoch and transcript digest; every payload binds
+ * that epoch").
+ *
+ * Invariants, all enforced by the node on write and re-verified by every client on read:
+ *   * `epoch` starts at 2 and increases by exactly 1 — epoch 1 is the conversation's creation
+ *     membership, established by `CreateE2eeConversation`, and is never an event.
+ *   * `previous_digest` equals the previous event's `digest` (all-zero 32 bytes for the first
+ *     event), forming a hash chain over "who was in the group when".
+ *   * `event_bytes` is the only authoritative content; the other fields are a decoded
+ *     convenience view. `device_signature` is by the *signer's device* Ed25519 key over
+ *     `event_bytes`, with strict RFC 8032 semantics, and the signer must be an active member
+ *     with an active certified device at accept time. The subject and the signer may be the
+ *     same actor (a leave).
+ *   * A `REMOVED` subject is never delivered to again: their devices are excluded from every
+ *     later fanout, and any send composed under their epoch is rejected whole.
+ *   * An `ADDED` subject receives messages sent from their epoch forward only. No history is
+ *     re-encrypted for them unless an existing member separately transfers it E2EE.
+ */
+export interface E2eeGroupControlEvent {
+  conversationId: string;
+  /** The membership epoch this event establishes: previous + 1. */
+  epoch: string;
+  change: E2eeGroupChangeKind;
+  /** The actor being added or removed. */
+  subjectActorId: string;
+  /** The member whose device signed the event. */
+  signerActorId: string;
+  signerDeviceId: string;
+  /** All-zero (32 bytes) on the first event. */
+  previousDigest: Buffer;
+  digest: Buffer;
+  /**
+   * The exact canonical bytes `device_signature` covers. Encoding owned by
+   * `@patches/domain`'s `canonicalGroupControlTranscript`.
+   */
+  eventBytes: Buffer;
+  deviceSignature: Buffer;
+  createdAt: Timestamp | undefined;
+}
+
 export interface GetE2eeCapabilityRequest {}
 
 export interface GetE2eeCapabilityResponse {
@@ -687,6 +741,71 @@ export interface GetE2eeConversationStateResponse {
   securityMode: ConversationSecurityMode;
   membershipEpoch: string;
   members: E2eeConversationMemberState[];
+  /**
+   * Digest of the newest group-control event, or the all-zero genesis digest when no
+   * transition has happened yet. Bound by clients into the same authenticated data as the
+   * epoch so a membership rollback is detectable, the conversation-level counterpart of a
+   * device roster digest (ADR 0020 §7).
+   */
+  groupControlDigest: Buffer;
+}
+
+export interface AddE2eeMemberRequest {
+  conversationId: string;
+  /**
+   * The actor being added. Must not already be an active member, must be available for a
+   * conversation with every current member (generic failure — no block oracle, spec §62).
+   */
+  actorId: string;
+  signerDeviceId: string;
+  /**
+   * The device-signed transition event. `change` must be `ADDED`, `subject_actor_id` must
+   * equal `actor_id`, and `epoch` must be exactly current + 1.
+   */
+  event: E2eeGroupControlEvent | undefined;
+}
+
+export interface AddE2eeMemberResponse {
+  membershipEpoch: string;
+  event: E2eeGroupControlEvent | undefined;
+}
+
+export interface RemoveE2eeMemberRequest {
+  conversationId: string;
+  /** The actor being removed. Must be an active member; may be the caller (a leave). */
+  actorId: string;
+  signerDeviceId: string;
+  /**
+   * The device-signed transition event. `change` must be `REMOVED`, `subject_actor_id` must
+   * equal `actor_id`, and `epoch` must be exactly current + 1.
+   */
+  event: E2eeGroupControlEvent | undefined;
+}
+
+export interface RemoveE2eeMemberResponse {
+  membershipEpoch: string;
+  event: E2eeGroupControlEvent | undefined;
+}
+
+/**
+ * Keyset pagination (spec §153), oldest first by `epoch`: like `ListDeviceRosters`, a hash
+ * chain can only be verified forwards from the last epoch the caller already trusts.
+ */
+export interface ListE2eeGroupControlEventsRequest {
+  conversationId: string;
+  /**
+   * Keyset start: the highest epoch this caller has already verified. 0 replays from the
+   * first event (epoch 2).
+   */
+  afterEpoch: string;
+  /** Opaque continuation cursor from a previous response. Never an offset or a page number. */
+  cursor: string;
+  limit: number;
+}
+
+export interface ListE2eeGroupControlEventsResponse {
+  events: E2eeGroupControlEvent[];
+  page: PageInfo | undefined;
 }
 
 export interface SendEnvelopesRequest {
@@ -807,11 +926,6 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * End-to-end encrypted direct messages (spec §183, §194, §195.1; ADR 0020).
- *
- * **Status: schema-only.** No `apps/server` controller implements any RPC below. A node that
- * loads this schema answers every method with `UNIMPLEMENTED` until ADR 0020 §11's staged
- * delivery reaches "node protocol behind a disabled capability". Publishing the schema is not
- * the capability; `GetE2eeCapability` is, and it reports `DISABLED` on the reference node.
  *
  * The whole point of this service is a boundary, so it is stated once here and re-stated as an
  * invariant on every message below:
@@ -962,6 +1076,40 @@ export interface E2eeServiceClient {
   ): Observable<GetE2eeConversationStateResponse>;
 
   /**
+   * Adds one member. Group size stays bounded at 8 (spec §183.3, ADR 0020 §7); the transition
+   * is a device-signed group-control event that establishes the next membership epoch. The new
+   * member receives future messages only — no history is re-encrypted or replayed to them.
+   */
+
+  addE2EeMember(
+    request: AddE2eeMemberRequest,
+    metadata?: Metadata,
+  ): Observable<AddE2eeMemberResponse>;
+
+  /**
+   * Removes one member (a member removing themselves is a leave). The transition is a
+   * device-signed group-control event that establishes the next membership epoch, and the
+   * removed member's devices are excluded from every later fanout: a send composed under the
+   * old epoch is rejected rather than delivered to them (ADR 0020 §7).
+   */
+
+  removeE2EeMember(
+    request: RemoveE2eeMemberRequest,
+    metadata?: Metadata,
+  ): Observable<RemoveE2eeMemberResponse>;
+
+  /**
+   * The group-control transcript from the caller's last verified epoch forward, so a client
+   * verifies the membership hash chain itself instead of trusting the node's current-epoch
+   * claim — the conversation-level counterpart of `ListDeviceRosters` (ADR 0020 §7).
+   */
+
+  listE2EeGroupControlEvents(
+    request: ListE2eeGroupControlEventsRequest,
+    metadata?: Metadata,
+  ): Observable<ListE2eeGroupControlEventsResponse>;
+
+  /**
    * Accepts one logical message as one bounded, all-or-nothing per-device fanout, and returns
    * the node's franking tag over it (ADR 0020 §7, §9).
    */
@@ -1005,11 +1153,6 @@ export interface E2eeServiceClient {
 
 /**
  * End-to-end encrypted direct messages (spec §183, §194, §195.1; ADR 0020).
- *
- * **Status: schema-only.** No `apps/server` controller implements any RPC below. A node that
- * loads this schema answers every method with `UNIMPLEMENTED` until ADR 0020 §11's staged
- * delivery reaches "node protocol behind a disabled capability". Publishing the schema is not
- * the capability; `GetE2eeCapability` is, and it reports `DISABLED` on the reference node.
  *
  * The whole point of this service is a boundary, so it is stated once here and re-stated as an
  * invariant on every message below:
@@ -1196,6 +1339,46 @@ export interface E2eeServiceController {
     | GetE2eeConversationStateResponse;
 
   /**
+   * Adds one member. Group size stays bounded at 8 (spec §183.3, ADR 0020 §7); the transition
+   * is a device-signed group-control event that establishes the next membership epoch. The new
+   * member receives future messages only — no history is re-encrypted or replayed to them.
+   */
+
+  addE2EeMember(
+    request: AddE2eeMemberRequest,
+    metadata?: Metadata,
+  ): Promise<AddE2eeMemberResponse> | Observable<AddE2eeMemberResponse> | AddE2eeMemberResponse;
+
+  /**
+   * Removes one member (a member removing themselves is a leave). The transition is a
+   * device-signed group-control event that establishes the next membership epoch, and the
+   * removed member's devices are excluded from every later fanout: a send composed under the
+   * old epoch is rejected rather than delivered to them (ADR 0020 §7).
+   */
+
+  removeE2EeMember(
+    request: RemoveE2eeMemberRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<RemoveE2eeMemberResponse>
+    | Observable<RemoveE2eeMemberResponse>
+    | RemoveE2eeMemberResponse;
+
+  /**
+   * The group-control transcript from the caller's last verified epoch forward, so a client
+   * verifies the membership hash chain itself instead of trusting the node's current-epoch
+   * claim — the conversation-level counterpart of `ListDeviceRosters` (ADR 0020 §7).
+   */
+
+  listE2EeGroupControlEvents(
+    request: ListE2eeGroupControlEventsRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<ListE2eeGroupControlEventsResponse>
+    | Observable<ListE2eeGroupControlEventsResponse>
+    | ListE2eeGroupControlEventsResponse;
+
+  /**
    * Accepts one logical message as one bounded, all-or-nothing per-device fanout, and returns
    * the node's franking tag over it (ADR 0020 §7, §9).
    */
@@ -1262,6 +1445,9 @@ export function E2eeServiceControllerMethods() {
       'claimPrekeyBundles',
       'createE2EeConversation',
       'getE2EeConversationState',
+      'addE2EeMember',
+      'removeE2EeMember',
+      'listE2EeGroupControlEvents',
       'sendEnvelopes',
       'listMailboxEnvelopes',
       'acknowledgeEnvelopes',
