@@ -4,6 +4,7 @@ import type { EntityManager } from 'typeorm';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
 import { PagesModule } from '../pages/pages.module.js';
+import { TagsModule } from '../tags/tags.module.js';
 import { FederationMetricsService } from './federation-metrics.service.js';
 import {
   FEDERATION_GATEWAY,
@@ -94,7 +95,7 @@ class LazyFederationGateway implements FederationGateway {
  * surface reaches the network — see `main.ts`).
  */
 @Module({
-  imports: [NotificationsModule, PagesModule],
+  imports: [NotificationsModule, PagesModule, TagsModule],
   providers: [
     KeyService,
     RemoteActorService,
