@@ -2,7 +2,18 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, Follow, InboxActivity, Like, Post } from '@patches/database';
+import {
+  Actor,
+  Block,
+  Follow,
+  InboxActivity,
+  Like,
+  Mute,
+  Post,
+  PostTag,
+  Repost,
+  Tag,
+} from '@patches/database';
 import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
@@ -16,12 +27,16 @@ import {
 } from '../activitystreams/uris.js';
 import { FederationMetricsService } from '../federation-metrics.service.js';
 import { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
+import { safeFetch } from '../security/safe-fetch.js';
+import { parseBoundedJson } from '../security/bounded-json.js';
 import { verifyDigestHeader } from '../signatures/digest.js';
 import { verifyRequestSignature } from '../signatures/http-signature.js';
 import { DeliveryService } from './delivery.service.js';
 import { DomainBlockService } from './domain-block.service.js';
 import { KeyService } from './key.service.js';
 import { RemoteActorService } from './remote-actor.service.js';
+import { TagExtractionService } from '../../../modules/tags/tag-extraction.service.js';
+import { normalizeTagIdentity } from '../../../modules/tags/tag-grammar.js';
 
 /** AS2 actor object types an `Update` may target (`docs/research/activitypub.md`) — anything
  * else in `object.type` is neither a `Note` nor an actor this node knows how to refresh, so
@@ -62,6 +77,7 @@ export class InboxService {
     private readonly keys: KeyService,
     private readonly metrics: FederationMetricsService,
     private readonly rateLimiter: PeerRateLimiterService,
+    private readonly tagExtraction: TagExtractionService,
   ) {}
 
   async handle(ctx: InboxRequestContext): Promise<InboxResult> {
@@ -224,6 +240,9 @@ export class InboxService {
       case 'Like':
         this.metrics.increment('inbox_handled', labels);
         return this.handleLike(manager, activity, sender);
+      case 'Announce':
+        this.metrics.increment('inbox_handled', labels);
+        return this.handleAnnounce(manager, activity, sender);
       default:
         this.metrics.increment('inbox_ignored', labels);
         this.logger.log(JSON.stringify({ event: 'inbox_activity_ignored', type }));
@@ -319,6 +338,11 @@ export class InboxService {
       if (postId === undefined) return undefined;
       await manager.getRepository(Like).delete({ actorId: sender.id, postId });
     }
+
+    if (innerType === 'Announce') {
+      return this.handleUndoAnnounce(manager, innerRecord, sender);
+    }
+
     return undefined;
   }
 
@@ -507,6 +531,254 @@ export class InboxService {
       return undefined;
     }
     return () => this.notifications.notifyLike(post.authorActorId, sender.id, postId);
+  }
+
+  private async handleAnnounce(
+    manager: EntityManager,
+    activity: Record<string, unknown>,
+    sender: Actor,
+  ): Promise<undefined> {
+    if (activity.type !== 'Announce') return undefined;
+
+    const objectUri = objectUriOf(activity.object);
+    if (objectUri === undefined) return undefined;
+
+    const isLocal = objectUri.startsWith(this.config.publicOrigin);
+    if (isLocal) return undefined;
+
+    const post = await this.fetchRemotePost(manager, objectUri);
+    if (post === null) return undefined;
+
+    if (post.visibility !== 'PUBLIC' || post.deletedAt !== null) return undefined;
+
+    if (!post.isLocal) {
+      const postAuthor = await manager
+        .getRepository(Actor)
+        .findOne({ where: { id: post.authorActorId } });
+      if (postAuthor !== null && (await this.isBlockedOrMutedBy(manager, postAuthor, sender))) {
+        return undefined;
+      }
+    }
+
+    const announceId = activity.id;
+    if (typeof announceId !== 'string') return undefined;
+
+    const repostRepo = manager.getRepository(Repost);
+    const existingRepost = await repostRepo.findOne({
+      where: { actorId: sender.id, postId: post.id },
+    });
+    if (existingRepost !== null) return undefined;
+
+    const repost = repostRepo.create({
+      actorId: sender.id,
+      postId: post.id,
+      remoteActivityUri: announceId,
+    });
+
+    try {
+      await repostRepo.save(repost);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      return undefined;
+    }
+
+    if (Array.isArray(activity.tag) && activity.tag.length > 0) {
+      await this.ingestAnnounceTags(manager, post.id, activity.tag);
+    }
+
+    return undefined;
+  }
+
+  private async handleUndoAnnounce(
+    manager: EntityManager,
+    innerActivity: Record<string, unknown>,
+    sender: Actor,
+  ): Promise<undefined> {
+    const announceId = innerActivity.id;
+    if (typeof announceId !== 'string') return undefined;
+
+    const repost = await manager.getRepository(Repost).findOne({
+      where: { remoteActivityUri: announceId },
+      relations: { actor: true },
+    });
+    if (repost === null) return undefined;
+
+    if (repost.actorId !== sender.id) return undefined;
+
+    await manager.getRepository(Repost).delete({ id: repost.id });
+    return undefined;
+  }
+
+  private async isBlockedOrMutedBy(
+    manager: EntityManager,
+    postAuthor: Actor,
+    sender: Actor,
+  ): Promise<boolean> {
+    const block = await manager.getRepository(Block).findOne({
+      where: { blockerActorId: postAuthor.id, blockedActorId: sender.id },
+    });
+    if (block !== null) return true;
+
+    const mute = await manager.getRepository(Mute).findOne({
+      where: { muterActorId: postAuthor.id, mutedActorId: sender.id },
+    });
+    if (mute !== null) return true;
+
+    return false;
+  }
+
+  private async fetchRemotePost(manager: EntityManager, objectUri: string): Promise<Post | null> {
+    const existing = await manager.getRepository(Post).findOne({
+      where: { canonicalUri: objectUri },
+    });
+    if (existing !== null) return existing;
+
+    const policy = {
+      allowHttp: !this.config.isProduction,
+      allowPrivateNetworks: !this.config.isProduction,
+    };
+    let response;
+    try {
+      response = await safeFetch(objectUri, {
+        headers: { accept: 'application/activity+json, application/ld+json;q=0.9' },
+        policy,
+        maxBytes: 1024 * 1024,
+      });
+    } catch {
+      return null;
+    }
+
+    if (response.status !== 200) return null;
+
+    const contentType = response.headers['content-type'];
+    const contentTypeStr = Array.isArray(contentType) ? contentType[0] : contentType;
+    if (
+      contentTypeStr === undefined ||
+      (!contentTypeStr.includes('activity+json') && !contentTypeStr.includes('ld+json'))
+    ) {
+      return null;
+    }
+
+    let activityDoc: Record<string, unknown>;
+    try {
+      activityDoc = parseBoundedJson(response.body.toString('utf8')) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+
+    if (activityDoc.type !== 'Note' && activityDoc.type !== 'Article') return null;
+
+    const noteId = activityDoc.id;
+    const content = activityDoc.content;
+    const attributedTo = activityDoc.attributedTo;
+    if (
+      typeof noteId !== 'string' ||
+      typeof content !== 'string' ||
+      typeof attributedTo !== 'string'
+    ) {
+      return null;
+    }
+
+    const authorActor = await this.remoteActors.getOrFetchByUri(manager, attributedTo);
+    if (authorActor === null) return null;
+
+    const inReplyToRaw = activityDoc.inReplyTo;
+    let inReplyToId: string | null = null;
+    let rootPostId: string | undefined;
+    if (typeof inReplyToRaw === 'string') {
+      const localParentId = parseLocalPostUri(this.config.publicOrigin, inReplyToRaw);
+      const parent = await (localParentId !== undefined
+        ? manager.getRepository(Post).findOne({ where: { id: localParentId } })
+        : manager.getRepository(Post).findOne({ where: { canonicalUri: inReplyToRaw } }));
+      if (parent !== null) {
+        inReplyToId = parent.id;
+        rootPostId = parent.rootPostId;
+      }
+    }
+
+    const id = randomUUID();
+    const posts = manager.getRepository(Post);
+    try {
+      await posts.save(
+        posts.create({
+          id,
+          authorActorId: authorActor.id,
+          body: sanitizeNoteContent(content),
+          postType: 'NOTE',
+          visibility: 'PUBLIC',
+          inReplyToId,
+          rootPostId: rootPostId ?? id,
+          isLocal: false,
+          canonicalUri: noteId,
+          originServer: authorActor.homeServer,
+          clientRequestId: null,
+        }),
+      );
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      return manager.getRepository(Post).findOne({ where: { canonicalUri: noteId } });
+    }
+
+    return manager.getRepository(Post).findOne({ where: { id } });
+  }
+
+  private async ingestAnnounceTags(
+    manager: EntityManager,
+    postId: string,
+    tagArray: unknown[],
+  ): Promise<void> {
+    const postTagsRepo = manager.getRepository(PostTag);
+    const tagRepo = manager.getRepository(Tag);
+
+    for (const tagItem of tagArray) {
+      if (typeof tagItem !== 'object' || tagItem === null) continue;
+      const tagRecord = tagItem as Record<string, unknown>;
+      if (tagRecord.type !== 'Hashtag') continue;
+
+      const name = tagRecord.name;
+      if (typeof name !== 'string') continue;
+
+      const normalizedName = normalizeTagIdentity(name);
+      if (normalizedName.length === 0 || normalizedName.length > 30) continue;
+
+      let tag = await tagRepo.findOne({ where: { name: normalizedName } });
+      if (tag === null) {
+        const displayName =
+          typeof tagRecord.displayName === 'string' ? tagRecord.displayName : name;
+        try {
+          tag = await tagRepo.save(tagRepo.create({ name: normalizedName, displayName }));
+        } catch (error) {
+          if (!isUniqueViolation(error)) {
+            this.logger.warn(
+              JSON.stringify({
+                event: 'announce_tag_create_failed',
+                postId,
+                name: normalizedName,
+                error: String(error),
+              }),
+            );
+            continue;
+          }
+          tag = await tagRepo.findOne({ where: { name: normalizedName } });
+          if (tag === null) continue;
+        }
+      }
+
+      try {
+        await postTagsRepo.save(postTagsRepo.create({ postId, tagId: tag.id }));
+      } catch (error) {
+        if (!isUniqueViolation(error)) {
+          this.logger.warn(
+            JSON.stringify({
+              event: 'announce_tag_attach_failed',
+              postId,
+              tagId: tag.id,
+              error: String(error),
+            }),
+          );
+        }
+      }
+    }
   }
 }
 

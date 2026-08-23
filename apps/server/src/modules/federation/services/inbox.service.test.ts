@@ -15,6 +15,7 @@ import type { DomainBlockService } from './domain-block.service.js';
 import { InboxService, type InboxRequestContext } from './inbox.service.js';
 import type { KeyService } from './key.service.js';
 import type { RemoteActorService } from './remote-actor.service.js';
+import type { TagExtractionService } from '../../../modules/tags/tag-extraction.service.js';
 
 /**
  * A-035's "Update semantics decided" test coverage, at the `InboxService` unit level (per the
@@ -156,6 +157,7 @@ describe('InboxService — Update semantics (A-035)', () => {
       consumeTransportPeer: vi.fn().mockReturnValue(true),
       consumeVerifiedOrigin,
     } as unknown as PeerRateLimiterService;
+    const tagExtraction = {} as unknown as TagExtractionService;
 
     const manager = fakeManager(postRepo, inboxActivityRepo);
     const dataSource = {
@@ -172,6 +174,7 @@ describe('InboxService — Update semantics (A-035)', () => {
       keys,
       metrics,
       rateLimiter,
+      tagExtraction,
     );
   });
 

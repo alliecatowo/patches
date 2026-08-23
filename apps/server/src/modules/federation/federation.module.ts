@@ -19,6 +19,7 @@ import { InboxService } from './services/inbox.service.js';
 import { KeyService } from './services/key.service.js';
 import { OutboxCollectionService } from './services/outbox-collection.service.js';
 import { RemoteActorService } from './services/remote-actor.service.js';
+import { RemoteObjectService } from './remote-object.service.js';
 import { WebfingerService } from './services/webfinger.service.js';
 
 /**
@@ -103,6 +104,7 @@ class LazyFederationGateway implements FederationGateway {
     OutboxCollectionService,
     ActorDocumentService,
     WebfingerService,
+    RemoteObjectService,
     PeerRateLimiterService,
     FederationMetricsService,
     ActivityPubFederationGateway,
@@ -118,6 +120,7 @@ class LazyFederationGateway implements FederationGateway {
   exports: [
     FEDERATION_GATEWAY,
     RemoteActorService,
+    RemoteObjectService,
     ActorDocumentService,
     WebfingerService,
     InboxService,
