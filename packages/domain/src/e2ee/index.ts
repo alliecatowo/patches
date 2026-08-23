@@ -122,6 +122,57 @@ export type {
 } from './envelopes.js';
 
 export {
+  assertHistoryEntryFields,
+  assertHistoryTransferDigest,
+  assertHistoryTransferShape,
+  canonicalHistoryTransferTranscript,
+  decodeHistoryTransfer,
+  encodeHistoryTransfer,
+  E2EE_HISTORY_TRANSFER_DOMAIN,
+  E2EE_HISTORY_TRANSFER_MAX_ENTRIES,
+  E2EE_HISTORY_TRANSFER_MAX_ENTRY_BYTES,
+  E2EE_HISTORY_TRANSFER_MAX_RECORD_BYTES,
+  E2EE_HISTORY_TRANSFER_VERSION,
+} from './history-transfer.js';
+export type {
+  E2eeHistoryEntryFields,
+  E2eeHistoryTransferFields,
+  E2eeHistoryTransferView,
+} from './history-transfer.js';
+
+export {
+  assertRecoveryArchiveShape,
+  assertRestoredDeviceCertificateIsFresh,
+  assertServedRosterAcceptsRestore,
+  canonicalRecoveryArchiveTranscript,
+  decodeRecoveryArchiveDocument,
+  decodeRecoveryCode,
+  encodeRecoveryArchiveDocument,
+  encodeRecoveryCode,
+  E2EE_RECOVERY_ARCHIVE_CONTAINER_MAGIC,
+  E2EE_RECOVERY_ARCHIVE_CONTAINER_VERSION,
+  E2EE_RECOVERY_ARCHIVE_DOMAIN,
+  E2EE_RECOVERY_ARCHIVE_HEADER_BYTES,
+  E2EE_RECOVERY_ARCHIVE_KDF_INFO,
+  E2EE_RECOVERY_ARCHIVE_NONCE_BYTES,
+  E2EE_RECOVERY_ARCHIVE_SALT_BYTES,
+  E2EE_RECOVERY_ARCHIVE_VERSION,
+  E2EE_RECOVERY_KEY_BYTES,
+  E2EE_RECOVERY_MAX_CONVERSATIONS,
+  E2EE_RECOVERY_MAX_HISTORY_ENTRIES,
+  E2EE_RECOVERY_MAX_SETTINGS_BYTES,
+  groupRecoveryCodeForDisplay,
+  planRecoveryRestore,
+  recoveryCodeChecksumByte,
+} from './recovery.js';
+export type {
+  E2eeRecoveryArchiveDocument,
+  E2eeRecoveryArchiveView,
+  E2eeRecoveryConversationEntry,
+  E2eeRecoveryRestorePlan,
+} from './recovery.js';
+
+export {
   assertReporterConsent,
   assertReportEvidenceShape,
   E2EE_EVIDENCE_FAILURE_CODES,
