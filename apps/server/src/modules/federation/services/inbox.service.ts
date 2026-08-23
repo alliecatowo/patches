@@ -11,8 +11,10 @@ import {
   Mute,
   Post,
   PostTag,
+  QuoteAuthorization,
   Repost,
   Tag,
+  type QuotePolicy,
 } from '@patches/database';
 import { DataSource, type EntityManager } from 'typeorm';
 
@@ -25,6 +27,7 @@ import {
   parseLocalPostUri,
   stripFragment,
 } from '../activitystreams/uris.js';
+import { RemoteObjectService, type ActivityPubObject } from '../remote-object.service.js';
 import { FederationMetricsService } from '../federation-metrics.service.js';
 import { PeerRateLimiterService } from '../security/peer-rate-limiter.service.js';
 import { safeFetch } from '../security/safe-fetch.js';
@@ -42,6 +45,33 @@ import { normalizeTagIdentity } from '../../../modules/tags/tag-grammar.js';
  * else in `object.type` is neither a `Note` nor an actor this node knows how to refresh, so
  * it's ignored like any other unrecognized shape. */
 const AS2_ACTOR_TYPES = new Set(['Person', 'Service', 'Group', 'Organization', 'Application']);
+
+/** Inbound quote-property spellings, in precedence order (P18-007, ADR 0028 §3): the
+ * FEP-044f property first, then the three legacy fallbacks. Each entry lists the bare JSON
+ * key plus the full property IRI(s) a JSON-LD-expanding peer may use instead. The
+ * `_misskey_quote` namespace IRI appears with **and without** a trailing slash in
+ * authoritative sources (FEP-044f vs Misskey's own extension page — research note §2), so
+ * both spellings are listed. First *recognizable* value wins, matching Mastodon's
+ * documented "multiple quotes: only the first one" behavior. */
+const QUOTE_PROPERTY_SPELLINGS: readonly (readonly string[])[] = [
+  ['quote', 'https://w3id.org/fep/044f#quote'],
+  ['quoteUri', 'http://fedibird.com/ns#quoteUri'],
+  ['quoteUrl', 'https://www.w3.org/ns/activitystreams#quoteUrl'],
+  [
+    '_misskey_quote',
+    'https://misskey-hub.net/ns#_misskey_quote',
+    'https://misskey-hub.net/ns/#_misskey_quote',
+  ],
+];
+
+/** What one resolved inbound quote entitles the created post to (P18-007). */
+interface InboundQuoteResolution {
+  quotedPostId: string;
+  /** Present when the §180.2 evidence supports an endorsed quote — then (and only then) a
+   * `quote_authorizations` lifecycle row is recorded. Absent for self-quotes (FEP-044f
+   * auto-approves them; the P18-002 table never rows a self-quote). */
+  authorization?: { claimedPolicy: QuotePolicy };
+}
 
 export type InboxRejectionReason =
   'INVALID_SIGNATURE' | 'DOMAIN_BLOCKED' | 'ACTOR_MISMATCH' | 'MALFORMED_ACTIVITY' | 'RATE_LIMITED';
@@ -71,6 +101,7 @@ export class InboxService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: AppConfigService,
     private readonly remoteActors: RemoteActorService,
+    private readonly remoteObjects: RemoteObjectService,
     private readonly domainBlocks: DomainBlockService,
     private readonly delivery: DeliveryService,
     private readonly notifications: NotificationsService,
@@ -402,6 +433,12 @@ export class InboxService {
       }
     }
 
+    // P18-007 (§180.2, ADR 0028 §3): resolve the quote *before* insert so the row is born
+    // with the right linkage — a violating or unverifiable quote resolves to null and the
+    // post ingests plain, never as an endorsed quote. Resolution failure never rejects the
+    // post (draft-protocol rule: unknown shapes are silent no-ops).
+    const quote = await this.resolveInboundQuote(manager, note, origin, sender);
+
     const id = randomUUID();
     const posts = manager.getRepository(Post);
     try {
@@ -418,12 +455,206 @@ export class InboxService {
           canonicalUri: noteId,
           originServer: sender.homeServer,
           clientRequestId: null,
+          quotedPostId: quote === null ? null : quote.quotedPostId,
         }),
       );
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
+      return undefined;
+    }
+
+    if (quote !== null && quote.authorization !== undefined) {
+      await this.recordQuoteAuthorization(manager, quote, id, sender);
+    }
+
+    if (Array.isArray(note.tag) && note.tag.length > 0) {
+      await this.ingestHashtagTags(manager, id, note.tag);
     }
     return undefined;
+  }
+
+  /** P18-007: resolves an inbound Note's quote property into (quoted post, evidence) or
+   * `null` (= ingest as a plain post). §180.2 enforcement lives here: the quoted post must
+   * be resolvable (local row or §109-gated `RemoteObjectService.fetchObject`), its author
+   * must not block/mute the quoter nor sit on a domain-blocked server (§193, mirroring
+   * `handleAnnounce`), and its policy must permit the quote — `NOBODY` never permits,
+   * `FOLLOWERS` requires follow-graph evidence (the granted-ASK case), `ANYONE` is a
+   * standing grant. Self-quotes auto-approve with no authorization row (FEP-044f). */
+  private async resolveInboundQuote(
+    manager: EntityManager,
+    note: Record<string, unknown>,
+    origin: string,
+    sender: Actor,
+  ): Promise<InboundQuoteResolution | null> {
+    const quoteUri = firstRecognizableQuoteUri(note);
+    if (quoteUri === undefined) return null;
+    try {
+      const quoted = await this.loadQuotedPost(manager, quoteUri, origin);
+      if (quoted === null) return null;
+
+      const quotedAuthor = await manager
+        .getRepository(Actor)
+        .findOne({ where: { id: quoted.authorActorId } });
+      if (quotedAuthor === null) return null;
+      if (await this.isBlockedOrMutedBy(manager, quotedAuthor, sender)) return null;
+
+      if (quotedAuthor.id === sender.id) {
+        return { quotedPostId: quoted.id };
+      }
+
+      switch (quoted.quotePolicy) {
+        case 'NOBODY':
+          return null;
+        case 'ANYONE':
+          return { quotedPostId: quoted.id, authorization: { claimedPolicy: 'ANYONE' } };
+        case 'FOLLOWERS': {
+          const follow = await manager.getRepository(Follow).findOne({
+            where: {
+              followerActorId: sender.id,
+              followeeActorId: quotedAuthor.id,
+              status: 'FOLLOWING',
+            },
+          });
+          if (follow === null) return null;
+          return {
+            quotedPostId: quoted.id,
+            authorization: { claimedPolicy: 'FOLLOWERS' },
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      // Quote resolution is best-effort by design (P18-007: a draft protocol must not gain
+      // the power to 5xx the inbox) — degrade to a plain post, keep the post.
+      this.logger.warn(
+        JSON.stringify({
+          event: 'inbound_quote_resolution_failed',
+          quoteUri,
+          error: String(error),
+        }),
+      );
+      return null;
+    }
+  }
+
+  /** Loads the quoted post for `quoteUri`: a local row by id/`canonical_uri` when one
+   * exists, otherwise a §109-gated remote fetch through `RemoteObjectService.fetchObject`
+   * (ADR 0028 §5's single fetch path — never a second implementation) followed by a local
+   * ingest of the fetched Note. `null` = unresolvable/unverifiable → plain post. */
+  private async loadQuotedPost(
+    manager: EntityManager,
+    quoteUri: string,
+    origin: string,
+  ): Promise<Post | null> {
+    const posts = manager.getRepository(Post);
+    const localId = parseLocalPostUri(origin, quoteUri);
+    const existing = await (localId !== undefined
+      ? posts.findOne({ where: { id: localId } })
+      : posts.findOne({ where: { canonicalUri: quoteUri } }));
+    if (existing !== null) {
+      return existing.deletedAt !== null ? null : existing;
+    }
+    // A local-URI quote that doesn't resolve is stale, never fetchable remotely.
+    if (localId !== undefined) return null;
+
+    let document: ActivityPubObject;
+    try {
+      const fetched = await this.remoteObjects.fetchObject(quoteUri);
+      if (fetched === null) return null;
+      document = fetched;
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({ event: 'inbound_quote_fetch_failed', quoteUri, error: String(error) }),
+      );
+      return null;
+    }
+
+    if (document.type !== 'Note' && document.type !== 'Article') return null;
+    const docId = document.id;
+    const content = document.content;
+    const attributedTo = document.attributedTo;
+    if (
+      typeof docId !== 'string' ||
+      typeof content !== 'string' ||
+      typeof attributedTo !== 'string'
+    ) {
+      return null;
+    }
+
+    const authorActor = await this.remoteActors.getOrFetchByUri(manager, attributedTo);
+    if (authorActor === null) return null;
+    if (
+      authorActor.homeServer !== null &&
+      (await this.domainBlocks.isBlocked(manager, authorActor.homeServer))
+    ) {
+      return null;
+    }
+
+    const quotePolicy = quotePolicyFromNoteDocument(document, attributedTo);
+    // A declared-but-unrecognized interaction policy is an unverifiable grant (§180.2):
+    // ingest the quote as a plain post rather than guessing.
+    if (quotePolicy === undefined) return null;
+
+    const id = randomUUID();
+    try {
+      await posts.save(
+        posts.create({
+          id,
+          authorActorId: authorActor.id,
+          body: sanitizeNoteContent(content),
+          postType: 'NOTE',
+          visibility: 'PUBLIC',
+          inReplyToId: null,
+          rootPostId: id,
+          isLocal: false,
+          canonicalUri: docId,
+          originServer: authorActor.homeServer,
+          clientRequestId: null,
+          quotePolicy,
+        }),
+      );
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const raced = await posts.findOne({ where: { canonicalUri: docId } });
+      return raced !== null && raced.deletedAt === null ? raced : null;
+    }
+    return posts.findOne({ where: { id } });
+  }
+
+  /** Records the endorsed-quote evidence on the P18-002 lifecycle table — `VERIFIED` at
+   * ingest because the policy/follow evidence was checked in `resolveInboundQuote`. A
+   * failure here is logged, never thrown: the linkage is already saved and the policy
+   * already permitted it, so the post must not die over an evidence-row write. */
+  private async recordQuoteAuthorization(
+    manager: EntityManager,
+    quote: InboundQuoteResolution,
+    quotingPostId: string,
+    sender: Actor,
+  ): Promise<void> {
+    if (quote.authorization === undefined) return;
+    const repo = manager.getRepository(QuoteAuthorization);
+    try {
+      await repo.save(
+        repo.create({
+          quotedPostId: quote.quotedPostId,
+          quotingPostId,
+          quoterActorId: sender.id,
+          remoteStampUri: null,
+          claimedPolicy: quote.authorization.claimedPolicy,
+          state: 'VERIFIED',
+          verifiedAt: new Date(),
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({
+          event: 'inbound_quote_authorization_write_failed',
+          quotedPostId: quote.quotedPostId,
+          quotingPostId,
+          error: String(error),
+        }),
+      );
+    }
   }
 
   /**
@@ -583,7 +814,7 @@ export class InboxService {
     }
 
     if (Array.isArray(activity.tag) && activity.tag.length > 0) {
-      await this.ingestAnnounceTags(manager, post.id, activity.tag);
+      await this.ingestHashtagTags(manager, post.id, activity.tag);
     }
 
     return undefined;
@@ -722,7 +953,13 @@ export class InboxService {
     return manager.getRepository(Post).findOne({ where: { id } });
   }
 
-  private async ingestAnnounceTags(
+  /** Inbound `as:Hashtag` tag ingest, shared by the Announce and Create paths (P18-004/
+   * P18-007, research note §3): attaches each tag to the post through the same `tags`/
+   * `post_tags` tables local extraction writes. Every failure mode drops the *tag*, never
+   * the post. Mastodon's documented shape carries the `#` in `name` (`"#cats"`) — strip it
+   * before normalizing so federated tags land on the same canonical name local posts use
+   * (`tags.name` never keeps its `#`). */
+  private async ingestHashtagTags(
     manager: EntityManager,
     postId: string,
     tagArray: unknown[],
@@ -738,13 +975,14 @@ export class InboxService {
       const name = tagRecord.name;
       if (typeof name !== 'string') continue;
 
-      const normalizedName = normalizeTagIdentity(name);
+      const strippedName = name.startsWith('#') ? name.slice(1) : name;
+      const normalizedName = normalizeTagIdentity(strippedName);
       if (normalizedName.length === 0 || normalizedName.length > 30) continue;
 
       let tag = await tagRepo.findOne({ where: { name: normalizedName } });
       if (tag === null) {
         const displayName =
-          typeof tagRecord.displayName === 'string' ? tagRecord.displayName : name;
+          typeof tagRecord.displayName === 'string' ? tagRecord.displayName : strippedName;
         try {
           tag = await tagRepo.save(tagRepo.create({ name: normalizedName, displayName }));
         } catch (error) {
@@ -786,6 +1024,49 @@ export class InboxService {
  * remote `Note`'s `content` is otherwise trusted verbatim, same as on create. */
 function sanitizeNoteContent(content: string): string {
   return content.slice(0, 5000);
+}
+
+/** First recognizable inbound quote URI on a Note (P18-007, ADR 0028 §3): checks the four
+ * property spellings in precedence order (`quote` > `quoteUri` > `quoteUrl` >
+ * `_misskey_quote`, both IRI spellings for Misskey) and returns the first property whose
+ * value is a usable object reference — a string URI or an embedded object's `id`. An
+ * unrecognized value on a higher-precedence property falls through to the next property,
+ * never fails the note. */
+function firstRecognizableQuoteUri(note: Record<string, unknown>): string | undefined {
+  for (const spellings of QUOTE_PROPERTY_SPELLINGS) {
+    for (const key of spellings) {
+      const value = objectUriOf(note[key]);
+      if (typeof value === 'string' && value.length > 0) return value;
+    }
+  }
+  return undefined;
+}
+
+/** Maps a fetched remote Note's FEP-044f/GoToSocial interaction policy back onto the local
+ * `quote_policy` domain — the inbound mirror of `buildNoteObject`'s emission (P18-006):
+ * `as:Public` → `ANYONE`, the author's own URI → `NOBODY`, any other audience (a followers
+ * collection or an unknown collection) → `FOLLOWERS`-class, i.e. requires evidence. No
+ * declared policy defaults to `ANYONE` (the FEP-044f/Mastodon default). `undefined` means
+ * a policy was declared but is unrecognizable — an unverifiable grant the caller must treat
+ * as a plain post, never a guess. A `following` value inbound simply lands in the
+ * `FOLLOWERS` class; it is never emitted and never invents a local enum value. */
+function quotePolicyFromNoteDocument(
+  document: Record<string, unknown>,
+  attributedTo: string,
+): QuotePolicy | undefined {
+  const policy = document.interactionPolicy;
+  if (policy === undefined || policy === null) return 'ANYONE';
+  if (typeof policy !== 'object') return undefined;
+  const canQuote = (policy as Record<string, unknown>).canQuote;
+  if (canQuote === undefined) return undefined;
+  const raw = Array.isArray(canQuote) ? canQuote : [canQuote];
+  const values = raw
+    .map((entry) => objectUriOf(entry))
+    .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  if (values.length === 0) return undefined;
+  if (values.includes('https://www.w3.org/ns/activitystreams#Public')) return 'ANYONE';
+  if (values.every((uri) => uri === attributedTo)) return 'NOBODY';
+  return 'FOLLOWERS';
 }
 
 /** AS2 `object`/`actor` properties may be a bare URI string or an embedded object with an
