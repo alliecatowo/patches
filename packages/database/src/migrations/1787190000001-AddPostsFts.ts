@@ -5,7 +5,7 @@ export class AddPostsFts1787190000001 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE posts
       ADD COLUMN tsv tsvector GENERATED ALWAYS AS (
-        to_tsvector('english', COALESCE(body, '')
+        to_tsvector('english', COALESCE(body, ''))
       ) STORED;
     `);
     await queryRunner.query('CREATE INDEX idx_posts_tsv ON posts USING GIN (tsv);');
