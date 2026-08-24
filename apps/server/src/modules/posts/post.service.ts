@@ -687,7 +687,7 @@ export class PostService {
 
   /**
    * Full-text search over local post bodies (spec §194): Postgres `websearch_to_tsquery`
-   * against the `idx_posts_body_fts` GIN expression index (`Phase12PostSearch` migration),
+   * against the `tsv` generated column with `idx_posts_tsv` GIN index,
    * strictly newest-first and keyset-paged like every other list RPC — never a relevance
    * score, never a `sort`/`order` parameter.
    *
@@ -723,14 +723,16 @@ export class PostService {
     let cursor = decodeCursor(cursorRaw);
     const take = clampLimit(limit);
 
+    // Named (`:searchQuery`) rather than a positional `$1`: TypeORM binds only named
+    // parameters — a raw `$1` is never wired to the value and either errors ("there is no
+    // parameter $1") or silently binds to whichever parameter TypeORM numbered first.
+    const tsQuery = `websearch_to_tsquery('english', :searchQuery)`;
+
     const qb = this.dataSource
       .getRepository(Post)
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.authorActor', 'author')
-      .andWhere(
-        `to_tsvector('simple', COALESCE("post"."body", '')) @@ websearch_to_tsquery('simple', :searchQuery)`,
-        { searchQuery: parsed.query },
-      )
+      .andWhere(`post.tsv @@ ${tsQuery}`, { searchQuery: parsed.query })
       .andWhere('post.isLocal = true')
       .orderBy('post.createdAt', 'DESC')
       .addOrderBy('post.id', 'DESC');

@@ -52,6 +52,7 @@ export default defineConfig([
             'packages/config/*.config.{ts,mts,cts}',
             'packages/database/*.config.{ts,mts,cts}',
             'packages/markup/*.config.{ts,mts,cts}',
+            'packages/observability/*.config.{ts,mts,cts}',
             'packages/testkit/*.config.{ts,mts,cts}',
             'packages/terminal-media/*.config.{ts,mts,cts}',
           ],
@@ -86,6 +87,14 @@ export default defineConfig([
       ],
       'no-empty': ['error', { allowEmptyCatch: false }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    // Bench CLIs print their measurements to stdout — that output IS the artifact (P19-007,
+    // packages/bench). Same allowance the test files get; warn/error stay allowed app-wide.
+    files: ['packages/bench/**/*.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
   {

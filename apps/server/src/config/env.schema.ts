@@ -433,6 +433,16 @@ const envObjectSchema = z.object({
   HTTP_HEADERS_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   HTTP_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 
+  /** OpenTelemetry instrumentation (Wave 1 observability). */
+  OTEL_ENABLED: z.enum(['true', 'false']).default('false'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().trim().optional(),
+  OTEL_SERVICE_NAME: z.string().trim().default('patches-server'),
+  OTEL_RESOURCE_ATTRIBUTES: z.string().trim().optional(),
+
+  /** Prometheus metrics server (Wave 1 observability). */
+  METRICS_ENABLED: z.enum(['true', 'false']).default('false'),
+  METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9090),
+
   /** S-001: per-unary-RPC server-side deadline, enforced by `RpcBudgetInterceptor` — no
    * handler may hold a worker/DB connection open indefinitely regardless of client behaviour. */
   RPC_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
@@ -461,6 +471,12 @@ const envObjectSchema = z.object({
    * wall of `@x`s must not fan out into hundreds of notification writes from one post). Same
    * default as the value this replaces (`post.service.ts`'s former hardcoded constant). */
   MENTION_FANOUT_MAX: z.coerce.number().int().positive().default(50),
+  /** B-103: when true, rate limits use the DB-backed `rate_limit_buckets` table instead of
+   * the in-process fixed-window store. This enables global rate limiting across multiple
+   * server/worker replicas — essential when Fly's TLS-terminating proxy collapses all
+   * external clients to one peer address (A-039). Default false for backward compatibility
+   * and because the in-memory store is simpler for single-replica nodes. */
+  RATE_LIMIT_GLOBAL: booleanish().default(false),
 });
 
 export const envSchema = envObjectSchema

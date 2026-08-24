@@ -73,6 +73,10 @@ export class AppConfigService {
     return this.get('DATABASE_POOL_MAX');
   }
 
+  get databaseStatementTimeout(): string {
+    return this.get('DATABASE_STATEMENT_TIMEOUT');
+  }
+
   get authCodeDeliveryKeys(): Env['AUTH_CODE_DELIVERY_KEYS'] {
     return this.get('AUTH_CODE_DELIVERY_KEYS');
   }
@@ -409,6 +413,11 @@ export class AppConfigService {
   /** S-002: `PostService.createPost`'s mention-notification fan-out cap. */
   get mentionFanoutMax(): number {
     return this.get('MENTION_FANOUT_MAX');
+  }
+
+  /** B-103: whether rate limits use the DB-backed `rate_limit_buckets` table. */
+  get rateLimitGlobal(): boolean {
+    return this.get('RATE_LIMIT_GLOBAL');
   }
 }
 

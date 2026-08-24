@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { JobType } from '@patches/database';
 
+import { CleanExpiredNotificationsHandler } from './handlers/clean-expired-notifications.handler.js';
 import { CleanExpiredTokensHandler } from './handlers/clean-expired-tokens.handler.js';
 import { CleanExpiredUploadsHandler } from './handlers/clean-expired-uploads.handler.js';
 import { ExportAccountHandler } from './handlers/export-account.handler.js';
@@ -25,6 +26,7 @@ export class JobDispatcher {
     sendVerificationEmail: SendVerificationEmailHandler,
     sendPasswordResetEmail: SendPasswordResetEmailHandler,
     cleanExpiredTokens: CleanExpiredTokensHandler,
+    cleanExpiredNotifications: CleanExpiredNotificationsHandler,
     processMedia: ProcessMediaHandler,
     cleanExpiredUploads: CleanExpiredUploadsHandler,
     federationDeliver: FederationDeliverHandler,
@@ -36,6 +38,7 @@ export class JobDispatcher {
       [sendVerificationEmail.type, sendVerificationEmail],
       [sendPasswordResetEmail.type, sendPasswordResetEmail],
       [cleanExpiredTokens.type, cleanExpiredTokens],
+      [cleanExpiredNotifications.type, cleanExpiredNotifications],
       [processMedia.type, processMedia],
       [cleanExpiredUploads.type, cleanExpiredUploads],
       [federationDeliver.type, federationDeliver],

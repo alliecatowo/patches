@@ -42,6 +42,10 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 async function bootstrap(): Promise<void> {
   loadDotEnv();
 
+  if (process.env.OTEL_ENABLED === 'true') {
+    await import('@patches/observability/instrumentation').then((m) => m.initializeTelemetry());
+  }
+
   // Keep this import after dotenv loading. AppModule validates required configuration at
   // module-evaluation time, so a static ESM import would make the documented repo-root `.env`
   // invisible during fresh-clone worker startup.
@@ -64,6 +68,12 @@ async function bootstrap(): Promise<void> {
       `concurrency=${String(env.WORKER_CONCURRENCY)})`,
     'Bootstrap',
   );
+
+  if (env.METRICS_ENABLED === 'true') {
+    const { startMetricsServer } = await import('@patches/observability/metrics-server');
+    await startMetricsServer(env.METRICS_PORT);
+    logger.log(`metrics server listening on :${String(env.METRICS_PORT)}`, 'Bootstrap');
+  }
 
   const runPromise = runner.run();
 

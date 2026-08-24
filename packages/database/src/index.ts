@@ -198,6 +198,13 @@ export { appendAdminAuditLog } from './repositories/admin-audit.js';
 export type { AppendAdminAuditLogInput } from './repositories/admin-audit.js';
 
 export {
+  rateLimitBucketRepo,
+  getWindowBounds,
+  DEFAULT_WINDOW_MS,
+  type RateLimitBucketRepo,
+} from './repositories/rate-limit-bucket.js';
+
+export {
   loadNodeFrankingKeys,
   rotateNodeFrankingKey,
   latestNodeFrankingKey,
