@@ -247,10 +247,13 @@ gate: the package is still protocol core only, disabled outside isolated test no
   header-encryption state machine: retained root key, sending/receiving chain keys, a DH ratchet
   step (`dhRatchet`) that mixes fresh X25519 output into the root chain on every direction change,
   header keys (current + next, both directions) encrypted with XChaCha20-Poly1305, and skipped
-  keys indexed by `(sha256(header key), message number)` with two independent bounds (`MAX_SKIP`
-  per gap, `MAX_SKIPPED_KEYS` total retained). Post-compromise healing now holds: compromising a
-  snapshot of `DoubleRatchetState` does not compromise ciphertexts sent after the next DH ratchet
-  step in either direction, once an uncompromised party contributes fresh key material.
+  keys indexed by `(sha256(header key), message number)` with one bound (`MAX_SKIPPED_KEYS`,
+  documented at the constant; the former per-gap `MAX_SKIP` cap was removed in the 2026-08 audit
+  hardening because refusing before storing bricked a chain permanently — an oversized gap now
+  refuses only that message, and a reply round-trip DH-ratchets past a stuck chain). Post-compromise
+  healing now holds: compromising a snapshot of `DoubleRatchetState` does not compromise ciphertexts
+  sent after the next DH ratchet step in either direction, once an uncompromised party contributes
+  fresh key material.
 - **§6 build/inspection defects.** The package builds, typechecks, and has full test coverage
   (`build`/`typecheck`/`eslint`/`test` all green — see Verification below); `src/index.ts` exports
   every public module; `fromHex` in `codec.ts` already rejected malformed input (`/^[0-9a-f]*$/i`

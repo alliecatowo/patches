@@ -21,7 +21,6 @@ import {
   E2EE_VERSION,
   HEADER_NONCE_BYTES,
   KEY_BYTES,
-  MAX_SKIP,
   MAX_SKIPPED_KEYS,
   type DoubleRatchetState,
   type EncryptedRatchetMessage,
@@ -205,18 +204,26 @@ function skippedKeyId(headerKey: Uint8Array, messageNumber: number): string {
   return `${toHex(sha256Hash(headerKey))}:${String(messageNumber)}`;
 }
 
+/**
+ * Advances the receiving chain to `until`, retaining a skipped message key for every missed
+ * position. The cache bound (`MAX_SKIPPED_KEYS`, which documents the full recovery semantics) is
+ * the only refusal condition, and it refuses this one delivery attempt with the state untouched —
+ * never the chain: the previous hard per-gap cap threw before advancing anything, so one far-ahead
+ * delivery left every later message on the chain refusing forever.
+ */
 function skipMessageKeys(state: MutableRatchetState, until: number): void {
   if (!Number.isInteger(until) || until < state.receivedCount) {
     throw new ReplayedMessageError('Message number was already processed.');
   }
-  if (until - state.receivedCount > MAX_SKIP)
-    throw new TooManySkippedMessagesError('Gap too large.');
-  if (until === state.receivedCount) return;
+  const gap = until - state.receivedCount;
+  if (gap === 0) return;
   if (state.receivingChainKey === undefined || state.receivingHeaderKey === undefined) {
     throw new RatchetStateError('Receiving chain is not initialized.');
   }
-  if (state.skippedMessageKeys.size + (until - state.receivedCount) > MAX_SKIPPED_KEYS) {
-    throw new TooManySkippedMessagesError('Skipped-key cache is full.');
+  if (state.skippedMessageKeys.size + gap > MAX_SKIPPED_KEYS) {
+    throw new TooManySkippedMessagesError(
+      'Skipping this message would exceed the skipped-key cache bound.',
+    );
   }
   while (state.receivedCount < until) {
     const derived = kdfChain(state.receivingChainKey);
@@ -317,6 +324,16 @@ export function initializeResponderRatchet(
   };
 }
 
+/**
+ * Advances the sending chain by one message and returns the new state alongside the wire output.
+ *
+ * Crash-between-send-and-persist hazard: if the process dies after this returns but before the
+ * returned `state` is durably staged in the encrypted vault, a retry re-derives this same message
+ * key from the persisted chain — reusing a key and nonce the peer may already have seen. Only the
+ * caller-side stage→confirm contract (package README, "State commit contract": persist the
+ * transition before transmitting or acknowledging the output) makes that unreachable. Do not send
+ * before the new state is confirmed persisted.
+ */
 export function ratchetEncrypt(
   inputState: DoubleRatchetState,
   plaintext: Uint8Array,
@@ -390,7 +407,20 @@ export function ratchetDecrypt(
   }
   if (header === undefined) throw new AuthenticationError();
   if (needsDhRatchet) {
-    skipMessageKeys(state, header.previousChainLength);
+    // Retain whatever fits on the dying chain for late deliveries, but never let the dying chain
+    // refuse the ratchet: an oversized gap used to throw from this exact call site, and because
+    // every reply round-trip lands here with the far-ahead counter as `previousChainLength`, that
+    // refusal was unrecoverable — replies could not even restore the session. Whatever cannot be
+    // retained is abandoned with the chain; those positions are unreachable once it advances.
+    if (
+      header.previousChainLength >= state.receivedCount &&
+      state.skippedMessageKeys.size + (header.previousChainLength - state.receivedCount) <=
+        MAX_SKIPPED_KEYS &&
+      state.receivingChainKey !== undefined &&
+      state.receivingHeaderKey !== undefined
+    ) {
+      skipMessageKeys(state, header.previousChainLength);
+    }
     dhRatchet(state, header, source);
   }
   if (header.messageNumber < state.receivedCount) {
@@ -515,11 +545,18 @@ export function decodeRatchetState(bytes: Uint8Array): DoubleRatchetState {
     const headerKey = reader.fixed(KEY_BYTES);
     const messageNumber = reader.u32();
     const messageKey = reader.fixed(KEY_BYTES);
-    skippedMessageKeys.set(skippedKeyId(headerKey, messageNumber), {
-      headerKey,
-      messageNumber,
-      messageKey,
-    });
+    const id = skippedKeyId(headerKey, messageNumber);
+    if (skippedMessageKeys.has(id)) {
+      // A duplicate id would silently collapse the map below the declared count, leaving the
+      // restored session inconsistent with the vault entry it came from. Fail closed, and wipe
+      // what this loop parsed before the throw.
+      zeroize(headerKey, messageKey);
+      for (const parsed of skippedMessageKeys.values()) {
+        zeroize(parsed.headerKey, parsed.messageKey);
+      }
+      throw new RatchetStateError('Serialized skipped-key entries contain a duplicate id.');
+    }
+    skippedMessageKeys.set(id, { headerKey, messageNumber, messageKey });
   }
   reader.end();
   return {

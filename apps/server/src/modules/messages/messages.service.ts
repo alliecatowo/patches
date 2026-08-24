@@ -4,10 +4,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
-  Block,
   Conversation,
   ConversationMember,
-  Follow,
   Message,
   MessageRequest,
   type ConversationKind as DbConversationKind,
@@ -18,6 +16,7 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 import { AppError } from '../../common/errors/app-error.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { toActorSummary } from '../auth/auth.dto.js';
+import { blockedEitherDirection, mayMessageDirectly } from './direct-message-eligibility.js';
 import { applyActorHidePushdown, MAX_FILTER_ROUNDS } from '../feeds/feed.service.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import {
@@ -236,6 +235,7 @@ export class MessagesService {
         parsed.conversationId,
         input.actorId,
         true,
+        { legacyPlaintextConversation: true },
       );
 
       const messages = manager.getRepository(Message);
@@ -382,12 +382,12 @@ export class MessagesService {
         const allIds = [input.actorId, ...recipientIds];
         for (let i = 0; i < allIds.length; i += 1) {
           for (let j = i + 1; j < allIds.length; j += 1) {
-            if (await this.blockedEitherDirection(manager, allIds[i]!, allIds[j]!))
+            if (await blockedEitherDirection(manager, allIds[i]!, allIds[j]!))
               throw actorNotFound();
           }
         }
         for (const recipientId of recipientIds) {
-          if (!(await this.mayMessageDirectly(manager, input.actorId, recipientId)))
+          if (!(await mayMessageDirectly(manager, input.actorId, recipientId)))
             throw actorNotFound();
         }
 
@@ -410,8 +410,7 @@ export class MessagesService {
 
       const recipientId = recipientIds[0];
       if (recipientId === undefined) throw actorNotFound();
-      if (await this.blockedEitherDirection(manager, input.actorId, recipientId))
-        throw actorNotFound();
+      if (await blockedEitherDirection(manager, input.actorId, recipientId)) throw actorNotFound();
 
       // A pair has one active direct thread. Reusing it prevents duplicate inbox entries and
       // also lets the actor who accepted a request initiate later messages from their side —
@@ -438,7 +437,7 @@ export class MessagesService {
         };
       }
 
-      if (await this.mayMessageDirectly(manager, input.actorId, recipientId)) {
+      if (await mayMessageDirectly(manager, input.actorId, recipientId)) {
         await this.dmRateLimit.consumeSend(input.actorId, input.peer);
         const created = await this.createConversationWithMessage(
           manager,
@@ -545,9 +544,31 @@ export class MessagesService {
     return { conversation: outcome.conversation, request: outcome.request };
   }
 
-  /** Idempotent: leaving a conversation the caller isn't in is not an error (spec §189). */
+  /** Idempotent: leaving a conversation the caller isn't in is not an error (spec §189). An
+   * E2EE_V1 conversation is rejected for an active member: `leftAt` here would be an unsigned
+   * membership mutation on a cryptographically attested roster — leaving must go through
+   * `E2eeService.RemoveE2eeMember`, whose device-signed event advances the membership epoch
+   * (ADR 0020 §7). A non-member (or already-left member) keeps the §189 no-op. */
   async leaveConversation(actorId: string, conversationIdRaw: string): Promise<void> {
     const conversationId = parseInput(uuidInputSchema, conversationIdRaw);
+
+    const conversation = await this.dataSource.getRepository(Conversation).findOne({
+      where: { id: conversationId },
+    });
+    if (conversation === null) return;
+    if (conversation.securityMode !== 'LEGACY_SERVER_VISIBLE') {
+      const activeMembership = await this.dataSource
+        .getRepository(ConversationMember)
+        .findOne({ where: { conversationId, actorId, leftAt: IsNull() } });
+      if (activeMembership !== null) {
+        throw AppError.validation(
+          'This conversation is end-to-end encrypted. Use RemoveE2eeMember to leave it; ' +
+            'this command cannot alter its membership.',
+        );
+      }
+      return;
+    }
+
     await this.dataSource
       .getRepository(ConversationMember)
       .update({ conversationId, actorId, leftAt: IsNull() }, { leftAt: new Date() });
@@ -729,9 +750,7 @@ export class MessagesService {
       // A block permanently bars the request (§183.2). Use the same uniform not-found result
       // as an unavailable request so this path cannot become a block oracle to a caller that
       // obtains or guesses the request id.
-      if (
-        await this.blockedEitherDirection(manager, request.senderActorId, request.recipientActorId)
-      ) {
+      if (await blockedEitherDirection(manager, request.senderActorId, request.recipientActorId)) {
         throw messageRequestNotFound();
       }
 
@@ -959,6 +978,16 @@ export class MessagesService {
     return { view, messageId: message.id };
   }
 
+  /**
+   * The pair's one active **legacy plaintext** direct thread, for reuse by every
+   * plaintext-append path (`CreateConversation`, `RespondToMessageRequest` accept).
+   *
+   * Mode-aware deliberately (audit P0-1): `security_mode` is immutable (ADR 0020 §1.1) and a
+   * row can never be interpreted as both modes, so this finder must only ever return a
+   * `LEGACY_SERVER_VISIBLE` conversation. Reusing the pair's E2EE thread here would append a
+   * server-readable body into a ciphertext-only transcript — the exact plaintext leak the DB
+   * trigger added in this audit now rejects at the last line of defense.
+   */
   private async findExistingDirectConversation(
     manager: EntityManager,
     actorAId: string,
@@ -970,6 +999,7 @@ export class MessagesService {
 
     for (const membership of memberships) {
       if (membership.conversation.kind !== 'DIRECT') continue;
+      if (membership.conversation.securityMode !== 'LEGACY_SERVER_VISIBLE') continue;
       const otherMembers = await manager
         .getRepository(ConversationMember)
         .find({ where: { conversationId: membership.conversationId } });
@@ -1002,7 +1032,7 @@ export class MessagesService {
       (member) => member.actorId !== viewerActorId && member.leftAt === null,
     );
     for (const other of activeOthers) {
-      if (await this.blockedEitherDirection(manager, viewerActorId, other.actorId)) return null;
+      if (await blockedEitherDirection(manager, viewerActorId, other.actorId)) return null;
     }
 
     const unreadCount = await this.unreadCountFor(manager, conversation.id, viewerMembership);
@@ -1028,20 +1058,29 @@ export class MessagesService {
   }
 
   /** Throws `CONVERSATION_NOT_FOUND` uniformly for a missing conversation, a caller who isn't
-   * an active member, and a caller blocked-either-direction with a fellow active member (spec
-   * §183.4, §62 — no block oracle: a blocked send fails the same way any other unavailable
-   * conversation does). */
+   * an active member, a caller blocked-either-direction with a fellow active member, and —
+   * when `legacyPlaintextConversation` is set — a non-`LEGACY_SERVER_VISIBLE` one (spec §183.4,
+   * §62; audit P0-1: the plaintext write RPCs must not distinguish "E2EE conversation" from any
+   * other unavailable conversation, and must certainly not write into one). */
   private async requireActiveUnblockedMembership(
     manager: EntityManager,
     conversationId: string,
     actorId: string,
     requireActivePeer = false,
+    options: { readonly legacyPlaintextConversation?: boolean } = {},
   ): Promise<ConversationMember> {
     const members = await manager
       .getRepository(ConversationMember)
       .find({ where: { conversationId } });
     const viewerMembership = members.find((member) => member.actorId === actorId) ?? null;
     if (viewerMembership === null || viewerMembership.leftAt !== null) throw conversationNotFound();
+
+    if (options.legacyPlaintextConversation === true) {
+      const conversation = await manager
+        .getRepository(Conversation)
+        .findOne({ where: { id: conversationId } });
+      if (conversation?.securityMode !== 'LEGACY_SERVER_VISIBLE') throw conversationNotFound();
+    }
 
     const activeOthers = members.filter(
       (member) => member.actorId !== actorId && member.leftAt === null,
@@ -1051,7 +1090,7 @@ export class MessagesService {
     // cannot receive new messages.
     if (requireActivePeer && activeOthers.length === 0) throw conversationNotFound();
     for (const other of activeOthers) {
-      if (await this.blockedEitherDirection(manager, actorId, other.actorId))
+      if (await blockedEitherDirection(manager, actorId, other.actorId))
         throw conversationNotFound();
     }
     return viewerMembership;
@@ -1086,49 +1125,6 @@ export class MessagesService {
     }
 
     return qb.getCount();
-  }
-
-  private async blockedEitherDirection(
-    manager: EntityManager,
-    actorAId: string,
-    actorBId: string,
-  ): Promise<boolean> {
-    const blocks = manager.getRepository(Block);
-    const [aBlocksB, bBlocksA] = await Promise.all([
-      blocks.findOne({ where: { blockerActorId: actorAId, blockedActorId: actorBId } }),
-      blocks.findOne({ where: { blockerActorId: actorBId, blockedActorId: actorAId } }),
-    ]);
-    return aBlocksB !== null || bBlocksA !== null;
-  }
-
-  private async isMutualFollow(
-    manager: EntityManager,
-    actorAId: string,
-    actorBId: string,
-  ): Promise<boolean> {
-    const follows = manager.getRepository(Follow);
-    const [aFollowsB, bFollowsA] = await Promise.all([
-      follows.findOne({
-        where: { followerActorId: actorAId, followeeActorId: actorBId, status: 'FOLLOWING' },
-      }),
-      follows.findOne({
-        where: { followerActorId: actorBId, followeeActorId: actorAId, status: 'FOLLOWING' },
-      }),
-    ]);
-    return aFollowsB !== null && bFollowsA !== null;
-  }
-
-  /** Spec §183.2: mutual follow, or `targetId` accepted a request sent by `callerId`. */
-  private async mayMessageDirectly(
-    manager: EntityManager,
-    callerId: string,
-    targetId: string,
-  ): Promise<boolean> {
-    if (await this.isMutualFollow(manager, callerId, targetId)) return true;
-    const acceptedByTarget = await manager.getRepository(MessageRequest).findOne({
-      where: { senderActorId: callerId, recipientActorId: targetId, status: 'ACCEPTED' },
-    });
-    return acceptedByTarget !== null;
   }
 
   private toMessageView(row: Message & { senderActor: Actor | null }): MessageView {

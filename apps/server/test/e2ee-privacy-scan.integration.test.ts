@@ -53,6 +53,7 @@ import type { DataSource, ObjectLiteral } from 'typeorm';
 
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
+import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
 import {
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
@@ -612,9 +613,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         dataSource,
         testFrankingKeyRing,
         unreviewedTestPolicy,
+        // No-op budgets: this suite exercises privacy/leak invariants, not §188 windows.
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
       );
-      groups = new E2eeGroupService(dataSource);
-      reportEvidence = new E2eeReportEvidenceService(dataSource, testFrankingKeyRing);
+      groups = new E2eeGroupService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      reportEvidence = new E2eeReportEvidenceService(
+        dataSource,
+        testFrankingKeyRing,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
 
       server = await startTestServer();
       auth = createAuthClient(server.url, credentials.createInsecure());
@@ -656,6 +666,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       e2eeRecipient = await newActor();
       e2eeSenderDevice = await enrollFirstDevice(e2eeSender);
       e2eeRecipientDevice = await enrollFirstDevice(e2eeRecipient);
+      // §183.2 first-contact eligibility now applies to E2EE conversations too.
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: e2eeRecipient.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeRecipient.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
 
       const first = await conversations.createE2eeConversation(e2eeSender.actorId, {
         clientRequestId: randomUUID(),
@@ -673,8 +692,49 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       e2eeConversationId = first.conversationId;
 
       // Group transition: a third member joins at epoch 2 (writes the signed transcript).
+      // DIRECT-kind E2EE conversations cannot grow (ADR 0020 §7 pairwise bound), so the
+      // scan runs on a GROUP-kind thread: re-create with a second founding recipient.
+      const secondRecipient = await newActor();
+      const secondRecipientDevice = await enrollFirstDevice(secondRecipient);
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: secondRecipient.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: secondRecipient.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
+      const groupCreated = await conversations.createE2eeConversation(e2eeSender.actorId, {
+        clientRequestId: randomUUID(),
+        recipientActorIds: [e2eeRecipient.actorId, secondRecipient.actorId],
+        senderDeviceId: e2eeSenderDevice.deviceId,
+        message: buildLogicalMessage([
+          canaryEnvelope(
+            e2eeRecipient.actorId,
+            e2eeRecipientDevice.deviceId,
+            e2eeBodyBytes,
+            keyCanary,
+          ),
+          canaryEnvelope(
+            secondRecipient.actorId,
+            secondRecipientDevice.deviceId,
+            e2eeBodyBytes,
+            keyCanary,
+          ),
+        ]),
+      });
+      e2eeConversationId = groupCreated.conversationId;
+
       const newcomer = await newActor();
       const newcomerDevice = await enrollFirstDevice(newcomer);
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: newcomer.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: newcomer.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
       await groups.addE2eeMember(e2eeSender.actorId, {
         conversationId: e2eeConversationId,
         actorId: newcomer.actorId,

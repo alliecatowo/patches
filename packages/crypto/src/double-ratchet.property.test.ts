@@ -4,7 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { ratchetDecrypt, ratchetEncrypt } from './double-ratchet.js';
 import { E2eeProtocolError } from './errors.js';
 import { deterministicSource, establishedRatchetPair } from './testing/fixtures.js';
-import { MAX_SKIP, type DoubleRatchetState, type EncryptedRatchetMessage } from './types.js';
+import {
+  MAX_SKIPPED_KEYS,
+  type DoubleRatchetState,
+  type EncryptedRatchetMessage,
+} from './types.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -28,7 +32,7 @@ function shuffle<T>(items: readonly T[], swaps: readonly number[]): T[] {
   return result;
 }
 
-describe('Double Ratchet property: ping-pong under random drop/reorder within MAX_SKIP', () => {
+describe('Double Ratchet property: ping-pong under random drop/reorder within the skip cache bound', () => {
   it('decrypts every delivered message to its original plaintext regardless of order', () => {
     fc.assert(
       fc.property(
@@ -48,8 +52,8 @@ describe('Double Ratchet property: ping-pong under random drop/reorder within MA
             const encrypted = ratchetEncrypt(sender, encoder.encode(plaintext), ad, source);
             sender = encrypted.state;
             // Every message stays within the bounded skip window from the receiver's perspective:
-            // it never accumulates more than MAX_SKIP unread messages before being delivered.
-            if (index < MAX_SKIP) sent.push({ plaintext, encrypted: encrypted.output });
+            // it never accumulates more than MAX_SKIPPED_KEYS unread messages before delivery.
+            if (index < MAX_SKIPPED_KEYS) sent.push({ plaintext, encrypted: encrypted.output });
           }
 
           // Drop some messages (never delivered) using the boolean stream, but always keep at
