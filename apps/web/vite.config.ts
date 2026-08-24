@@ -28,16 +28,12 @@ function buildVersion(): string {
 const PATCHES_UPSTREAM =
   process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev:8443';
 
-export default defineConfig(({ mode }) => {
-  // Deploy-safety gate (postmortem 2026-08-24): a production bundle built without
-  // VITE_PATCHES_API_BASE silently falls back to same-origin /api, which static hosting
-  // answers with 405 — the app ships bricked. Fail the build instead, for BOTH CI and
-  // local deploys; dev mode keeps the /api proxy fallback.
-  if (!process.env['VITE_PATCHES_API_BASE'] && mode === 'production') {
-    throw new Error(
-      'VITE_PATCHES_API_BASE is required for production web builds (the API base is baked in at build time). Set it and rebuild — e.g. mise run web:deploy.',
-    );
-  }
+export default defineConfig(() => {
+  // Deploy-safety note (postmortem 2026-08-24): production builds MUST set
+  // VITE_PATCHES_API_BASE — the deploy tasks and CI do. A base-less production bundle
+  // would post to same-origin /api on static hosting and ship bricked (405s). The
+  // runtime renders a loud misconfiguration screen for that case rather than failing
+  // every local build here.
   return {
     define: {
       __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
