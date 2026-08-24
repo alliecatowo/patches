@@ -37,4 +37,4 @@
 
  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  ✓ Signed in as @alice.
- j / k move · Enter open · m mark all read · / search · Ctrl+R refresh · c compose · : / Ctrl+P commands · ? help · Esc back
+ j / k move · Enter open · m mark all read · / search · Ctrl+R refresh · c compose · : / Ctrl+P commands · ? help · ! report · Esc back

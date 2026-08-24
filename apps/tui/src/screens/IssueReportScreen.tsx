@@ -36,11 +36,13 @@ type SendState =
   | { status: 'fallback'; bundlePath: string; issuesUrl: string; reason: string };
 
 /**
- * `:report` — the beta issue reporter (B-112). Optional free-text description, an
- * opt-in "include my @handle" toggle that is OFF by default, and everything else is
+ * `!` / `:report` — the beta issue reporter (B-112). Optional free-text description,
+ * an opt-in "include my @handle" toggle that is OFF by default, and everything else is
  * automatic: a redacted diagnostics bundle (B-113 schema) built by the shared
  * `@patches/domain` path and POSTed to the issues-ingest Worker. Zero input still
- * files a full-context report.
+ * files a full-context report. Reachable from every screen (`!` is a shell global;
+ * text-entry screens excepted), because reporting is not only for hard failures —
+ * bugs, jank and feature ideas all belong here.
  *
  * When the endpoint is unreachable the bundle JSON is written to a local file and its
  * path plus the project's issues URL are shown for manual attach — the report is
@@ -102,7 +104,7 @@ export function IssueReportScreen({
     const bundle: DiagnosticsBundle = buildTuiDiagnosticsBundle({
       nodeDomain,
       ...(optedInHandle === undefined ? {} : { sessionHandle: optedInHandle }),
-      notes: 'filed from :report',
+      notes: 'filed from the in-app reporter (! / :report)',
     });
     setSend({ status: 'sending' });
     const outcome = await submitIssueReport({
@@ -133,7 +135,9 @@ export function IssueReportScreen({
         never included.
       </Text>
       <Box marginTop={1} flexDirection="column">
-        <Text color={theme.muted}>describe the problem (optional)</Text>
+        <Text color={theme.muted}>
+          what happened — a bug, something janky, or an idea? (optional)
+        </Text>
         <TextEditor
           value={description}
           onChange={setDescription}

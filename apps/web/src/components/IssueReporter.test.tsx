@@ -44,6 +44,24 @@ describe('IssueReporter', () => {
     expect(checkbox.checked).toBe(false);
   });
 
+  it('opens immediately when autoOpen is set (error-boundary invitation)', () => {
+    renderReporter({ autoOpen: true });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  // §194-safe copy check: the reporter invites everything — bugs, jank, ideas — and
+  // never frames itself around engagement or ranking.
+  it('copy invites bugs, jank and ideas alike', () => {
+    renderReporter();
+    fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+    expect(screen.getByText('What happened — bug, jank, or idea? (optional)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/feature you wish existed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Report an issue' })).toHaveAttribute(
+      'title',
+      'Issue, jank, or idea — anything counts',
+    );
+  });
+
   it('files a zero-input report and links the created issue', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ number: 12, url: 'https://github.com/x/issues/12' }), {

@@ -1,9 +1,13 @@
 # Beta issue reporter (B-112/B-113)
 
-The TUI (`:report`) and web ("Report an issue") file beta reports against the
-**issues-ingest** Cloudflare Worker, which opens labeled GitHub issues on
-`alliecatowo/patches` (`label: beta-reporter`). The Worker holds the only GitHub token;
-clients never hold write credentials.
+The TUI (`!` from any screen, or `:report` from the palette) and web ("Report an
+issue" chip, mounted once in `RootLayout` so it is persistent on every route) file
+beta reports against the **issues-ingest** Cloudflare Worker, which opens labeled
+GitHub issues on `alliecatowo/patches` (`label: beta-reporter`). The Worker holds the
+only GitHub token; clients never hold write credentials. Reporting is not reserved
+for hard failures — bugs, jank and feature ideas all belong here; the web route error
+boundary additionally auto-opens the modal (it replaces the layout, so its instance
+is the single reporter on screen).
 
 ## Endpoint
 
