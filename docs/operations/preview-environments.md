@@ -1,12 +1,13 @@
 # Preview environments (per-PR)
 
-**Status: implemented (B-105), never exercised end to end.** The workflow
-(`.github/workflows/preview.yml`), config template (`infra/preview/fly-preview.toml`),
-and generator (`infra/preview/make-preview-config.mjs`) are committed, and every CLI
-invocation they make was syntax-checked against current tooling (see "Verification
-status" at the bottom). But no real preview has been deployed from this environment —
-there are no Fly/Neon credentials here. Do not treat the first green run as a
-formality: expect the items labeled **unexecuted** below to need one round of fixes.
+**Status: implemented (B-105 + full-stack follow-up, same day), never exercised end
+to end.** The workflow (`.github/workflows/preview.yml`), config template
+(`infra/preview/fly-preview.toml`), and generator
+(`infra/preview/make-preview-config.mjs`) are committed, and every CLI invocation
+they make was syntax-checked against current tooling (see "Verification status" at
+the bottom). But no real preview has been deployed from this environment — there
+are no Fly/Neon credentials here. Do not treat the first green run as a formality:
+expect the items labeled **unexecuted** below to need one round of fixes.
 
 Every open PR targeting a mainline branch (`main`, `swarm/e2ee-federation-niceties`)
 gets a temporary environment:
@@ -16,9 +17,9 @@ pull request opened/synchronized/reopened
     |
     Neon branch pr-<N>  (created or reused; 7-day expiry as a fail-safe)
     pnpm db:migrate     (from the runner, against the branch's connection string)
-    flyctl deploy       (app patches-pr-<N>, single machine, autostop)
+    flyctl deploy       (app patches-pr-<N>: server machine + worker machine)
     |
-    PR comment: preview URL + Neon branch + commit   (edited in place, never duplicated)
+    PR comment: preview URL + capability matrix   (edited in place, never duplicated)
     |
 pull request closed
     |
@@ -26,24 +27,79 @@ pull request closed
     neon branches delete pr-<N>          (best-effort, continue-on-error)
 ```
 
-Stack: one Fly machine (app `patches-pr-<N>`, region `iad`) + one Neon branch
-(`pr-<N>`) of the production Neon project. The app is the same Docker image as
-production (`infra/docker/Dockerfile`), configured from
+Stack: one Fly app (`patches-pr-<N>`, region `iad`) with **both production process
+groups** — server (public gRPC + HTTP/Connect) and worker (job loop) — plus one
+Neon branch (`pr-<N>`) of the production Neon project. The app is the same Docker
+image as production (`infra/docker/Dockerfile`), configured from
 `infra/preview/fly-preview.toml` via `make-preview-config.mjs`.
 
-## What a preview includes / excludes
+## Design decision: full stack, two machines
 
-| Present                                                                       | Absent (by design)                                                                                                                                                                                                                                                             |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Full gRPC API on `patches-pr-<N>.fly.dev:443` (TLS at Fly's edge, h2c behind) | Federation (`FEDERATION_ENABLED=false` — no webfinger/inbox/outbox surface)                                                                                                                                                                                                    |
-| HTTP/Connect edge + `/healthz` on `:80` and `:8443`                           | Media/R2 uploads (no `R2_*` secrets — upload requests fail fast instead of proxying through Node)                                                                                                                                                                              |
-| A real schema: migrations run on the branch before deploy                     | Worker process group — **no job processing at all**                                                                                                                                                                                                                            |
-| `PUBLIC_READ=true` (logged-out reading, like production)                      | Email delivery: `EMAIL_PROVIDER=console`, and with no worker running, verification codes / password-reset mails are **enqueued but never delivered or printed anywhere**. Sign in with an existing account from the cloned data, or point a local worker at the branch (below) |
-| `PASSWORD_AUTH=optional`, `INVITE_ONLY=true` (defaults, set explicitly)       | Custom domain, metrics scraping, log drains                                                                                                                                                                                                                                    |
-| Real health check (`/healthz` gates the deploy on `SELECT 1` + gRPC SERVING)  | Production secrets: JWT keys and auth-code keyring are **throwaway values generated per deploy** by `pnpm keys:generate`; each push invalidates existing preview sessions                                                                                                      |
+Owner direction (2026-08-23): "full preview stack if possible". The default preview
+therefore runs **both** `server` and `worker` exactly as production does (same
+image, same `[processes]` commands, same graceful-drain semantics), with
+`--ha=false` pinning it to exactly one machine per process group.
 
-The `.fly.dev` hostname is reachable by anyone who guesses the URL; the PR comment
-adds no protection. Treat a preview exactly like the public node it is.
+**Why two machines, not "one machine running both processes":** fly.toml has no
+native way to put two process groups on one Machine — the only route is a shell
+PID-1 supervisor (`sh -c 'server & worker & wait'`), which (a) does not forward
+SIGTERM, so neither process gets its graceful drain (the exact thing
+`kill_timeout = 30s` exists for), and (b) coupled with `auto_stop_machines` would
+freeze the worker's claim loop whenever the _web_ side is idle — Fly autostops on
+proxy traffic, not CPU, so background jobs would stall until the next HTTP request
+woke the Machine. A continuously-running worker Machine is the honest floor cost of
+a full-stack preview; it is small (`shared-cpu-1x`, 512 MB), single-region, and
+destroyed with the app on PR close.
+
+### Reference material: adopted / rejected
+
+- **Fly.io review-apps blueprint** (`fly.io/docs/blueprints/review-apps-guide/`) —
+  **adopted**: ephemeral per-PR app from the repo's own image via a committed
+  config (their `config:` input mirrors our generated `fly-pr-<N>.toml`); destroy
+  on PR close; per-PR concurrency group; small machines; org-scoped token
+  (`fly tokens org <org>`) as the recommended `FLY_API_TOKEN` shape. **Rejected**:
+  the `superfly/fly-pr-review-apps` action itself — its entrypoint hardcodes a
+  single-process app, generates its own app name/URL scheme, and cannot drive our
+  Neon-branch + migrations + capability-detection steps; we shell out to flyctl
+  directly, which we can syntax-check and reason about. Also not applicable: its
+  `fly postgres` attach/detach resource pattern — our database is Neon branches,
+  not Fly Postgres.
+- **Cloudflare Workers preview URLs**
+  (`developers.cloudflare.com/changelog/post/2025-07-23-workers-preview-urls/`) —
+  **considered, rejected**: the Patches app runs on Fly Machines, not Workers;
+  per-branch preview aliases are a Workers-platform feature with no analogue here.
+  (Cloudflare remains in the stack only for R2 media and Pages static sites.)
+- **Neon CI preview workflows** (`neon.com/branching/ci-preview-workflows`) —
+  **adopted** (confirms the shape already shipped in v1): one branch per preview
+  connected to the app preview, schema changes isolated to the branch, delete on
+  merge/close, **expiration as automatic cleanup for missed hooks**, compute
+  scale-to-zero when idle. Our 7-day `--expires-at` bump-per-deploy is exactly
+  their "assign expiration times" pattern.
+
+## Capability matrix
+
+The PR comment always states exactly what is live. There are two
+environment-dependent capabilities (media, and the web frontend); everything else
+is fixed:
+
+| Capability                                                     | State                                                                      | Why / mechanism                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| gRPC API (`:443`) + HTTP/Connect (`:80`, `:8443`) + `/healthz` | always on                                                                  | same services as production                                                                                                                                                                                                                                                                                                                                    |
+| Worker job loop (notifications, cleanups, media derivatives)   | always on (full stack)                                                     | `WORKER_ID=preview-pr-<N>`, `WORKER_CONCURRENCY=2` in the shared `[env]`; lease-based reclaim (`WORKER_LEASE_TTL_MS` default 10 min) survives worker restarts                                                                                                                                                                                                  |
+| Neon DB branch with migrated schema                            | always on                                                                  | migrations run on the runner before deploy                                                                                                                                                                                                                                                                                                                     |
+| Web frontend preview (Cloudflare Pages)                        | **on iff both `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set** | built with `VITE_PATCHES_API_BASE=https://patches-pr-<N>.fly.dev:8443` (the Connect edge port) and deployed to Pages project `patches-web`, branch `pr-<N>`; the Pages origin is then added to the Fly app's `WEB_ORIGINS` secret. Missing → the web is not previewed; the backend-only preview is unchanged. All-or-none, stated in the PR comment            |
+| Media / R2 uploads                                             | **on iff all five `R2_PREVIEW_*` secrets exist**                           | detection step maps them to env and, when complete, sets the app's `R2_*` secrets against a dedicated **preview** bucket (never the production bucket). Missing → cleanly degraded: `R2_*` are optional in `packages/config`'s `storageEnvSchema` and the media module errors at call time, not boot time — uploads fail fast, no derivative jobs are enqueued |
+| Federation                                                     | always off                                                                 | an ephemeral origin makes federation meaningless-to-harmful: no stable identity across re-deploys (throwaway keys), the `patches-pr-<N>.fly.dev` origin appears/vanishes with the PR, and remote peers would accumulate dead inboxes. Enabling would also require a per-deploy `FEDERATION_KEY_ENCRYPTION_KEY` secret for zero value — not worth it            |
+| Real email                                                     | always off                                                                 | `EMAIL_PROVIDER=console`: the worker accepts each message and drops it (in-memory only — the provider deliberately logs only "accepted", never the code). Verification codes / password-reset mails are therefore **unreachable**: sign in with an existing account from the cloned data. No preview can ever send real mail                                   |
+| Production secrets                                             | never present                                                              | JWT keys + auth-code keyring are throwaway values regenerated by `pnpm keys:generate` on every deploy; existing preview sessions reset on each push                                                                                                                                                                                                            |
+
+Detection mechanism (kept deliberately simple): the workflow cannot run
+`gh secret list`, so each optional secret is mapped into the detection step's
+`env:` — an empty value means "unset". For the web preview, both the Cloudflare
+token (secret) and account id (variable) must be present; for media, all five
+`R2_PREVIEW_*` must be present. Any capability with a missing input is off, stated
+in the PR comment and the job summary. No silent partial config: each is
+all-or-none.
 
 ## Data warning (read before relying on the default parent)
 
@@ -58,22 +114,29 @@ That means:
 
 This is the owner's accepted tradeoff for B-105. If it stops being acceptable, set
 the repository variable `NEON_PREVIEW_PARENT_BRANCH` to a safer parent (an
-anonymized mirror per `docs/research/neon-branching.md`, or create branches with
-`--schema-only` semantics via that mirror) — the workflow passes it through as
-`--parent`. Changing the variable only affects branches created afterwards.
+anonymized mirror per `docs/research/neon-branching.md`) — the workflow passes it
+through as `--parent`. Changing the variable only affects branches created
+afterwards.
 
 ## Secrets and variables
 
 Set these once (repository secrets, or on a dedicated `preview` environment):
 
-| Name                         | Kind               | Used for                                                                                           |
-| ---------------------------- | ------------------ | -------------------------------------------------------------------------------------------------- |
-| `FLY_API_TOKEN`              | secret             | flyctl auth: create/secrets/deploy/destroy the `patches-pr-*` apps                                 |
-| `NEON_API_KEY`               | secret             | `neon` CLI auth: branch create/set-expiration/delete, connection string                            |
-| `NEON_PROJECT_ID`            | secret             | the Neon project previews branch from (`shy-recipe-96135980`, see `docs/operations/deployment.md`) |
-| `NEON_BRANCH_PASSWORD`       | secret             | **not read by the workflow** (see note) — manual psql fallback for operators                       |
-| `NEON_PREVIEW_PARENT_BRANCH` | variable, optional | override the branch parent (see data warning above)                                                |
-| `FLY_PREVIEW_ORG`            | variable, optional | Fly org for preview apps (default `personal`, matching the flagship app)                           |
+| Name                           | Kind                 | Used for                                                                                                                                                                                              |
+| ------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FLY_API_TOKEN`                | secret, **required** | flyctl auth: create/secrets/deploy/destroy the `patches-pr-*` apps. Scope: an **org-scoped token** (`fly tokens org <org>` — the review-apps blueprint's recommendation) rather than a personal token |
+| `NEON_API_KEY`                 | secret, **required** | `neon` CLI auth: branch create/set-expiration/delete, connection string. Scope: a **project-scoped org key** limited to the preview project where the plan allows (`docs/research/neon-branching.md`) |
+| `NEON_PROJECT_ID`              | secret, **required** | the Neon project previews branch from (`shy-recipe-96135980`, see `docs/operations/deployment.md`)                                                                                                    |
+| `R2_PREVIEW_ACCOUNT_ID`        | secret, optional     | media capability — all five R2_PREVIEW_* or none. Credentials scoped to a **dedicated preview bucket**                                                                                                |
+| `R2_PREVIEW_ACCESS_KEY_ID`     | secret, optional     | "                                                                                                                                                                                                     |
+| `R2_PREVIEW_SECRET_ACCESS_KEY` | secret, optional     | "                                                                                                                                                                                                     |
+| `R2_PREVIEW_BUCKET`            | secret, optional     | " (e.g. `patches-media-preview`)                                                                                                                                                                      |
+| `R2_PREVIEW_ENDPOINT`          | secret, optional     | " (`https://<account-id>.r2.cloudflarestorage.com`)                                                                                                                                                   |
+| `CLOUDFLARE_API_TOKEN`         | secret, optional     | web-preview capability — set WITH `CLOUDFLARE_ACCOUNT_ID` (both or neither). Cloudflare API token with Pages deploy permission for project `patches-web`                                              |
+| `CLOUDFLARE_ACCOUNT_ID`        | variable, optional   | " the Cloudflare account id that owns `patches-web`                                                                                                                                                   |
+| `NEON_BRANCH_PASSWORD`         | secret, not read     | manual psql fallback for operators — see below                                                                                                                                                        |
+| `NEON_PREVIEW_PARENT_BRANCH`   | variable, optional   | override the branch parent (see data warning above)                                                                                                                                                   |
+| `FLY_PREVIEW_ORG`              | variable, optional   | Fly org for preview apps (default `personal`, matching the flagship app)                                                                                                                              |
 
 Why `NEON_BRANCH_PASSWORD` is not needed by the workflow: `neon connection-string`
 returns a complete URL **including the branch role's password**, which the Neon API
@@ -81,26 +144,30 @@ hands to the CLI (verified in the CLI source: the command calls
 `getProjectBranchRolePassword` and embeds the result). This holds even when the
 parent is protected and children receive fresh passwords — a fixed secret could not
 be relied on there. The value never appears in logs (`::add-mask::` before anything
-could print it). Keep the secret only if you want the offline fallback documented
-under "Manual psql access" below.
+could print it).
 
 ## Cost guards
 
-- **Single machine**: `flyctl deploy --ha=false` + one `[[vm]]` (`shared-cpu-1x`,
-  512 MB); `--strategy immediate` replaces it in place instead of running two.
+- **Exactly two machines** (`flyctl deploy --ha=false` + one `[[vm]]` per process
+  group): the server machine autostops when idle and wakes on the next request;
+  the worker machine runs continuously for the preview's lifetime (see the design
+  decision above for why that is the floor cost of full-stack). `--strategy
+immediate` replaces machines in place instead of briefly running doubles.
 - **Autostop**: `auto_stop_machines = "stop"`, `auto_start_machines = true`,
-  `min_machines_running = 0` on both `[[services]]` — the machine stops after a few
-  idle minutes and wakes on the next request (sub-second cold start is fine for a
-  preview). Config keys verified against the fly.toml reference.
+  `min_machines_running = 0` on both `[[services]]` (server only — the worker has
+  no service to be stopped by). Config keys verified against the fly.toml
+  reference.
 - **Single region**: `iad`, like production.
-- **Destroy on close**: the teardown job deletes both the Fly app (machine, volumes,
-  certs, the lot) and the Neon branch.
-- **Bounded lifetime regardless**: every branch is created with `--expires-at` +7
-  days, and every re-deploy bumps the expiry. A cancelled workflow, a lost
+- **Destroy on close**: the teardown job deletes both the Fly app (machines,
+  volumes, certs, the lot) and the Neon branch.
+- **Bounded lifetime regardless**: every branch is created with `--expires-at`
+  +7 days, and every re-deploy bumps the expiry. A cancelled workflow, a lost
   `closed` event, or a fork PR can therefore never leak a permanent branch. Fly
-  apps have no equivalent auto-expiry — the runbook's "Orphans" section is the
-  manual backstop.
-- Neon compute on the branch suspends after 300 s idle (`--suspend-timeout 300`).
+  apps have no equivalent auto-expiry — the "Orphans" note below is the manual
+  backstop.
+- Neon compute on the branch suspends after 300 s idle when the plan allows
+  `--suspend-timeout` (the deploy retries without it on plans that don't —
+  "modifying the suspend interval is not permitted on this account").
 
 ## Manual operations
 
@@ -133,20 +200,6 @@ psql "postgres://neondb_owner:${NEON_BRANCH_PASSWORD}@<branch-host>/neondb?sslmo
 branch was created under a protected parent, the password differs from the
 parent's — use the value `neon connection-string` prints instead. **Unexecuted.**
 
-### Running a local worker against a preview branch
-
-To exercise registration (which needs code delivery) against a preview branch:
-
-```bash
-DATABASE_URL="$(neon connection-string pr-<N> --project-id "$NEON_PROJECT_ID" \
-  --database-name neondb --role-name neondb_owner | sed 's/&channel_binding=require//')" \
-DATABASE_SSL=true pnpm --filter @patches/worker start
-```
-
-(Pattern taken verbatim from `infra/scripts/neon-dev-branch.sh`'s `migrate`
-command, which is exercised. **This exact incantation is unexecuted** — the sed
-strip is documented in `docs/operations/deployment.md`.)
-
 ## Exact commands the workflow runs
 
 Every command below appears in `.github/workflows/preview.yml`; flag syntax checked
@@ -160,7 +213,7 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
    neon branches get pr-<N> --project-id <id> --output json --no-color      # existence probe
    neon branches create --project-id <id> --name pr-<N> \
      [--parent "$NEON_PREVIEW_PARENT_BRANCH"] \
-     --expires-at <RFC3339 +7d> --suspend-timeout 300 --output json --no-color
+     --expires-at <RFC3339 +7d> [--suspend-timeout 300] --output json --no-color
    neon branches set-expiration pr-<N> --project-id <id> --expires-at <RFC3339 +7d>
    ```
 
@@ -185,8 +238,12 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
 
    ```bash
    flyctl secrets set --app patches-pr-<N> DATABASE_URL=… DATABASE_SSL=true \
-     JWT_PRIVATE_KEY=… JWT_PUBLIC_KEY=… AUTH_CODE_DELIVERY_ACTIVE_KEY_ID=… AUTH_CODE_DELIVERY_KEYS=…
+     JWT_PRIVATE_KEY=… JWT_PUBLIC_KEY=… AUTH_CODE_DELIVERY_ACTIVE_KEY_ID=… AUTH_CODE_DELIVERY_KEYS=… \
+     [R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… R2_BUCKET=… R2_ENDPOINT=…]
    ```
+
+   The bracketed `R2_*` group is appended only when the media capability was
+   detected (all five `R2_PREVIEW_*` secrets present).
 
 6. **Config + deploy** (**unexecuted**):
 
@@ -198,14 +255,31 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
 
    All flags verified against the current `fly deploy` reference (`--ha`, default
    true; `--strategy immediate`; `--remote-only`; `--yes`). No `release_command`
-   runs in the preview config — migrations already ran in step 3.
+   runs in the preview config — migrations already ran in step 3. Both process
+   groups deploy; `--ha=false` keeps it to one machine each.
 
 7. **PR comment** (**unexecuted**): `gh api` against
    `repos/{owner}/{repo}/issues/<N>/comments` — find a comment containing the
    `<!-- patches-preview: pr-<N> -->` marker, `PATCH` it if present, else `POST`.
-   Never duplicates itself.
+   Never duplicates itself. Body carries the capability matrix (media + web states
+   from the detection steps).
 
-8. **Teardown** (**unexecuted**): the two manual-teardown commands above, each with
+8. **Web preview** (only when both `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+   are present; otherwise skipped — backend-only preview unchanged):
+
+   ```bash
+   pnpm --filter @patches/web... build   # VITE_PATCHES_API_BASE=https://patches-pr-<N>.fly.dev:8443
+   pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch pr-<N>
+   flyctl secrets set --app patches-pr-<N> WEB_ORIGINS="https://pr-<N>-patches-web.pages.dev,<deployed *.pages.dev URL>"
+   ```
+
+   The `:8443` in the API base matches the preview app's public Connect edge
+   (`infra/preview/fly-preview.toml`); `:443` is the gRPC service and would reject
+   the web's Connect calls. `WEB_ORIGINS` must list the Pages origin or the Connect
+   CORS middleware denies every cross-origin browser request (no `WEB_ORIGINS` =
+   same-origin only). Setting the secret restarts the machine.
+
+9. **Teardown** (**unexecuted**): the two manual-teardown commands above, each with
    `continue-on-error: true`, followed by a `$GITHUB_STEP_SUMMARY` report.
 
 ## Known gaps
@@ -221,6 +295,11 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
 - **Orphans**: `fly apps destroy` failures survive silently (best-effort by design).
   Occasionally list and reap: `flyctl apps list | grep '^patches-pr-'`.
 - **Sessions reset per push**: throwaway JWT keys are regenerated every deploy.
+- **Worker has no autostop** (by design — see design decision): while a preview is
+  open, its worker machine bills continuously. Close PRs promptly; that is the
+  intended control.
+- **Media capability is set at secret-config time**, not per-run toggling: the
+  matrix reflects whatever `R2_PREVIEW_*` secrets exist when the deploy runs.
 - **Preview of the preview machinery itself**: changes to `preview.yml` or the
   template only take effect on the _next_ PR event; use `workflow_dispatch` to
   re-run against an open PR.
@@ -248,7 +327,18 @@ get/list/delete/set-expiration`, `connection-string` (incl.
 - fly.io current docs: `fly deploy` flag list (`--ha`, `--strategy immediate`,
   `--remote-only`, `--yes`, `--build-arg`), `fly apps destroy <name> --yes`,
   fly.toml `[[services]]` `auto_stop_machines`/`auto_start_machines`/
-  `min_machines_running` semantics.
+  `min_machines_running` semantics, and the review-apps blueprint (reference
+  adoptions above).
+- Worker env contract read from `apps/worker/src/config/env.schema.ts`:
+  `WORKER_ID` (min 1 char, recorded in `outbox_jobs.locked_by`),
+  `WORKER_CONCURRENCY` (positive int, default 2), `DATABASE_URL` required,
+  `AUTH_CODE_DELIVERY_*` required — both already set app-wide by the workflow.
+  Zod strips unknown keys, so worker-only vars in the shared `[env]` cannot break
+  the server's schema.
+- Console email provider (`apps/worker/src/email/console-email-provider.ts`): logs
+  only "email (console provider): accepted" — codes never reach logs.
+- Storage gating (`packages/config/src/schemas/storage.ts`): every `R2_*` optional;
+  the media module errors at call time when absent — clean degradation confirmed.
 - `actionlint` and `prettier --check` pass on the workflow and all new files.
 
 **Unexecuted** anywhere: every step labeled so above — first real run happens on

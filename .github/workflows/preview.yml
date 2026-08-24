@@ -39,7 +39,7 @@
 #                      branch `pr-<N>`); when either is missing, the web preview is
 #                      skipped and the backend-only preview is unaffected.
 #   NEON_BRANCH_PASSWORD  Not read by this workflow: the branch role password comes
-#                      from `npx --yes neon@3.6.0 connection-string` (the Neon API hands the CLI the
+#                      from `neon connection-string` (the Neon API hands the CLI the
 #                      password; verified in the CLI source). Keep this secret only
 #                      if you want the documented manual-psql fallback in
 #                      docs/operations/preview-environments.md to work.
@@ -131,9 +131,9 @@ jobs:
           # a re-deploy (synchronize) pushes it out again. Explicit teardown on PR
           # close remains the normal cleanup path.
           expires="$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)"
-          if npx --yes neon@3.6.0 branches get "$branch" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null 2>&1; then
+          if neon branches get "$branch" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null 2>&1; then
             echo "Reusing existing Neon branch $branch (expiry bumped to $expires)."
-            npx --yes neon@3.6.0 branches set-expiration "$branch" --project-id "$NEON_PROJECT_ID" --expires-at "$expires" >/dev/null
+            neon branches set-expiration "$branch" --project-id "$NEON_PROJECT_ID" --expires-at "$expires" >/dev/null
           else
             # No --parent unless configured: Neon defaults the parent to the
             # project's default branch. vars.NEON_PREVIEW_PARENT_BRANCH overrides
@@ -146,10 +146,10 @@ jobs:
             # --suspend-timeout is plan-gated ("modifying the suspend interval is not
             # permitted on this account" on plans without scale-to-zero control) — retry
             # once without it rather than failing the deploy over an idle-suspend knob.
-            if ! npx --yes neon@3.6.0 branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
+            if ! neon branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
               if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
-                npx --yes neon@3.6.0 branches create "${args[@]}" >/dev/null
+                neon branches create "${args[@]}" >/dev/null
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
                 exit 1
@@ -160,10 +160,10 @@ jobs:
       - name: Fetch branch connection string
         run: |
           set -euo pipefail
-          # `npx --yes neon@3.6.0 connection-string` embeds the branch role's password (fetched from
+          # `neon connection-string` embeds the branch role's password (fetched from
           # the Neon API), so this value is a secret: mask it before it can hit any
           # log, and keep it in GITHUB_ENV only.
-          url="$(npx --yes neon@3.6.0 connection-string "pr-${PR_NUMBER}" \
+          url="$(neon connection-string "pr-${PR_NUMBER}" \
             --project-id "$NEON_PROJECT_ID" \
             --database-name neondb --role-name neondb_owner --no-color \
             | sed 's/&channel_binding=require//')"
@@ -186,7 +186,6 @@ jobs:
         run: |
           set -euo pipefail
           pnpm keys:generate > "$RUNNER_TEMP/preview-keys.env"
-          # shellcheck disable=SC2016
           for name in JWT_PRIVATE_KEY JWT_PUBLIC_KEY AUTH_CODE_DELIVERY_ACTIVE_KEY_ID AUTH_CODE_DELIVERY_KEYS; do
             value="$(sed -n "s/^${name}=//p" "$RUNNER_TEMP/preview-keys.env")"
             [ -n "$value" ] || { echo "keys:generate output is missing $name" >&2; exit 1; }
@@ -435,7 +434,7 @@ jobs:
       - name: Delete Neon branch (pr-<N>)
         id: neon_delete
         continue-on-error: true
-        run: npx --yes neon@3.6.0 branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
+        run: neon branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
 
       - name: Teardown summary
         if: always()
