@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
+import { useShakeToReport } from '../hooks/useShakeToReport.js';
+
 import { useRef, useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { api, signOut } from '../api/client.js';
 import { HeaderBar } from '../components/HeaderBar.js';
-import { IssueReporter } from '../components/IssueReporter.js';
 import {
   BellIcon,
   BookmarkIcon,
@@ -30,6 +31,7 @@ const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
   isActive ? `${styles['navLink']} ${styles['active']}` : (styles['navLink'] ?? '');
 
 export function RootLayout(): JSX.Element {
+  useShakeToReport();
   const session = useSession();
   const navigate = useNavigate();
   const helpRef = useRef<HTMLDialogElement>(null);
@@ -268,12 +270,6 @@ export function RootLayout(): JSX.Element {
 
       {/* Floating Right-Thumb Radial Fan-Out FAB (Mobile) */}
       <ThumbNavFab unreadCount={unreadCount} />
-
-      {/* B-112: the issue reporter lives here, not on individual routes — reporting
-          is always available (bugs, jank, ideas), so the chip is mounted exactly once
-          for every route inside the layout. Error boundaries render their own
-          auto-opened instance only because they replace this whole tree. */}
-      <IssueReporter variant="floating" />
 
       {/* Sleek Terminal-Style Profile Dropdown & Sheet */}
       <ProfileMenu isOpen={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} />

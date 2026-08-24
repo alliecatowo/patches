@@ -8,6 +8,7 @@ import {
   MessageIcon,
   PlusIcon,
   SearchIcon,
+  FlagIcon,
 } from './icons/Icons.js';
 import styles from './ThumbNavFab.module.css';
 
@@ -78,6 +79,19 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               <span className={styles['radialLabel']}>messages</span>
               <div className={styles['radialIconBtn']}>
                 <MessageIcon size={19} />
+              </div>
+            </Link>
+
+            <Link
+              to="/report"
+              className={`${styles['radialItem']} ${styles['radialReportItem']}`}
+              onClick={() => setIsOpen(false)}
+              style={{ animationDelay: '115ms' }}
+              role="menuitem"
+            >
+              <span className={styles['radialLabel']}>report</span>
+              <div className={styles['radialIconBtn']}>
+                <FlagIcon size={19} />
               </div>
             </Link>
 

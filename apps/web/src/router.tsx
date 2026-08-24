@@ -20,6 +20,10 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     children: [
       {
+        path: 'report',
+        lazy: () => import('./routes/ReportRoute.js').then((m) => ({ Component: m.ReportRoute })),
+      },
+      {
         index: true,
         lazy: () => import('./routes/HomeRoute.js').then((m) => ({ Component: m.HomeRoute })),
       },
