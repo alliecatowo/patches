@@ -409,6 +409,14 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [ ] P19-014 — Introduce a **`Cache`/read-through port** (Valkey later, post-§153); deploy only when the benchmark shows read-latency/write-amplification breach.
 - [ ] P19-015 — **Feed materialization** (hybrid push/pull, chronological) behind a flag when P19-007 shows the breach; never a ranking surface (§153/Amendment B).
 
+<!-- Audit-completion swarm 2026-08-24 (post P13-016 internal-review-of-record; PR #67 merged) -->
+
+- [ ] B-107 — **device enrollment flow**: TUI `EnrollDevice` caller producing a real `LocalDeviceIdentity` (keygen, certificate signing against the account root, signed roster bump with peer-warning copy), capability-gated UI in Accounts/Devices, so the B-101 runtime stops being dormant behind `enrolled()`
+- [ ] B-108 — **E2EE interop lab + capability enablement** (P13-014 slice): two-device/two-account round-trip against a real node through seal→fanout→open→decrypt incl. franking tag verification; on green populate `E2EE_APPROVED_FRANKING_PROFILES=patches-franking-v1` and flip capability reporting per B-094
+- [ ] B-109 — **envelope/prekey retention sweep** (audit P2): worker job deleting acknowledged envelopes past MAXLATENCY, consumed one-time prekeys, superseded signed prekeys; bounded batches + metrics
+- [ ] B-110 — **message arrival notifications**: content-free MESSAGE notifications (sender + conversation id only) wired into the E2EE accept path; §187 payload rules asserted by test
+- [ ] B-111 — **web honest degradation + ADR 0020 addendum**: web Messages state DMs are E2EE + terminal-only (kills false §183.1 notice, adds mode labels); docs record internal-review-of-record substitution, guarded-tier rollback boundary, anchor-ahead ritual, synced-home caveat
+
 ## Backlog / discovered
 
 - [x] B-105 — PR preview environments (owner ask 2026-08-23): per-PR temporary deploy via a Fly machine + a Neon branch (`fly deploy --config` with PR-suffixed app name, `neonctl branches create <pr-N>` + `DATABASE_URL` swap, migrations run on the branch), posting the preview URL on the PR; torn down on close/merge. Needs secrets strategy for R2/federation (or a degraded-feature flag set), a GitHub workflow wiring `workflow_run`/pull_request events to flyctl+neonctl, and a cost guard (machine size, single region, auto-destroy). Keep `swarm/e2ee-federation-niceties` mainline deploys untouched. **Landed 2026-08-23:** `.github/workflows/preview.yml` + `infra/preview/{fly-preview.toml,make-preview-config.mjs}` + runbook `docs/operations/preview-environments.md` (degraded env set: no federation/media/worker, autostop single machine, destroy-on-close, 7-day Neon expiry fail-safe); needs FLY_API_TOKEN/NEON_API_KEY/NEON_PROJECT_ID secrets before first real run.
