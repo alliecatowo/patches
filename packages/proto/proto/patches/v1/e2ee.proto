@@ -500,6 +500,12 @@ message E2eeLogicalMessage {
 
   // At most `max_group_members × max_active_devices_per_actor` (64) entries.
   repeated E2eeDeviceEnvelope device_envelopes = 5;
+
+  // The sender's pre-send logical id. ADR 0025 binds THIS value into every envelope's AEAD
+  // associated data, so the node must store and return it verbatim — a node-minted surrogate
+  // would make every recipient-side open fail authentication. Must be a UUID when set; the
+  // node minted ids before this field existed and still does when it is omitted.
+  optional string logical_message_id = 6;
 }
 
 // The node's versioned symmetric tag over an accepted logical message (ADR 0020 §9).

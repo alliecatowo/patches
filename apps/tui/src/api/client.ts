@@ -279,6 +279,12 @@ function buildMethods(sdk: PatchesSdk) {
     getE2eeCapability: noToken(sdk.e2ee.getE2eeCapability),
     getE2eeConversationState: requiredToken(sdk.e2ee.getE2eeConversationState),
     listE2eeGroupControlEvents: requiredToken(sdk.e2ee.listE2eeGroupControlEvents),
+    // B-101 send/receive runtime: prekey claim, fanout acceptance, and the device
+    // mailbox. Every call is authenticated; envelopes are opaque bytes end to end.
+    claimPrekeyBundles: requiredToken(sdk.e2ee.claimPrekeyBundles),
+    sendEnvelopes: requiredToken(sdk.e2ee.sendEnvelopes),
+    listMailboxEnvelopes: requiredToken(sdk.e2ee.listMailboxEnvelopes),
+    acknowledgeEnvelopes: requiredToken(sdk.e2ee.acknowledgeEnvelopes),
   };
 }
 
