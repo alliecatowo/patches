@@ -43,7 +43,8 @@ export type Screen =
   | 'appeals'
   | 'moderationLog'
   | 'devices'
-  | 'safetyNumber';
+  | 'safetyNumber'
+  | 'issueReport';
 
 /** The two screens that can sit at the bottom of the navigation stack (spec §68). */
 export const ROOT_SCREENS = ['home', 'local'] as const;
@@ -688,6 +689,37 @@ export const KEYMAP: readonly Binding[] = [
     region: 'editor',
   },
   {
+    keys: 'Esc',
+    hint: 'cancel',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'Tab',
+    hint: 'focus',
+    description: 'Move between the description and the opt-in handle toggle',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'space / x',
+    hint: 'toggle handle',
+    description: 'Attach (or detach) your @handle from the report',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'Ctrl+S',
+    hint: 'send report',
+    description: 'Send the issue report with its redacted diagnostics bundle',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
     keys: 'j / k',
     hint: 'reason',
     description: 'Choose a report reason',
@@ -981,6 +1013,20 @@ export const KEYMAP: readonly Binding[] = [
     helpOnly: true,
     region: 'screen',
     commands: [{ name: 'devices' }],
+  },
+  {
+    // B-112: palette-only like the other Amendment C destinations (spec §191 — no new
+    // global single-key bindings). `:report` files a beta issue with a redacted
+    // diagnostics bundle; works signed out, so it is deliberately not `session`.
+    keys: ':report',
+    hint: 'report an issue',
+    description:
+      'Report a problem with this app — sends a redacted diagnostics bundle to the developers',
+    group: 'Account',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'report' }],
   },
   {
     keys: 'j / k',
@@ -1304,4 +1350,5 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   moderationLog: 'Moderation log',
   devices: 'Devices',
   safetyNumber: 'Safety number',
+  issueReport: 'Report an issue',
 };

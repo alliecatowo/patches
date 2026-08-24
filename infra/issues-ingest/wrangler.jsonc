@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "patches-issues-ingest",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+  "vars": {
+    "GITHUB_REPO": "alliecatowo/patches",
+    "MAX_BODY_BYTES": "524288",
+  },
+}
