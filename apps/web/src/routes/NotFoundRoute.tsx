@@ -32,7 +32,10 @@ export function RouteErrorBoundary(): JSX.Element {
       <p>
         <Link to="/">Go home</Link>
       </p>
-      <IssueReporter variant="floating" />
+      {/* The boundary replaces RootLayout (the route tree's only errorElement), so the
+          global chip is gone by definition here — this auto-opened instance is the
+          single reporter on screen, inviting a report about the failure itself. */}
+      <IssueReporter variant="floating" autoOpen />
     </div>
   );
 }

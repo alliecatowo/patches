@@ -58,6 +58,13 @@ describe('IssueReportScreen', () => {
     expect(frame).toContain('never included');
   });
 
+  // §194-safe copy check: the description invites bugs, jank *and* ideas — reporting
+  // is not reserved for hard failures.
+  it('invites bugs, jank and ideas in its description prompt', () => {
+    const { lastFrame } = renderScreen();
+    expect(lastFrame()).toMatch(/a bug, something janky, or an idea/i);
+  });
+
   it('files a report with zero input and shows the issue number', async () => {
     resetDiagnosticsReporterForTests();
     getDiagnosticsReporter().recordRpcFailure('listHomeFeed', 14, 'UNAVAILABLE');

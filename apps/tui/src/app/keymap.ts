@@ -1215,6 +1215,24 @@ export const KEYMAP: readonly Binding[] = [
     region: 'shell',
     commands: [{ name: 'help' }],
   },
+  {
+    // B-112 follow-up: reporting is not only for hard failures. `!` opens the beta
+    // issue reporter from every screen the shell owns — bugs, jank and feature
+    // ideas alike, signed out included. Where `!` already has a targeted meaning
+    // (the focused post in `PostList`, the profile on `ProfileScreen`) that screen
+    // claims the keypress first and the shell stands down for it; text-entry
+    // screens never reach the shell handler at all because they consume their own
+    // printable input (the same stand-down the Ctrl+W prefix relies on, B-048).
+    // Last in KEYMAP on purpose: the ribbon's hint line fills in this order, and
+    // everything documented before this keeps its priority over `! report`.
+    keys: '!',
+    hint: 'report',
+    description:
+      'File an issue from anywhere — a bug, something janky, or an idea — with a redacted diagnostics bundle attached (on a selected post or profile, ! reports that target to the moderators instead)',
+    group: 'Account',
+    on: 'global',
+    region: 'shell',
+  },
 ];
 
 export interface HintContext {

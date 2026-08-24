@@ -280,6 +280,25 @@ export function App({
   const pendingPaneRef = useRef(false);
   const pendingPaneTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  // B-112 follow-up: Ink has no stop-propagation, so one keypress reaches every
+  // active listener — and a list's listener subscribes (child effect) before the
+  // shell's own, meaning a focused row's targeted `!` (`PostList` → `reportPost`,
+  // `ProfileScreen` → `reportActor`, both funnelled through `openReport`) fires
+  // *before* `handleShellInput` sees the same key. That claim suppresses the
+  // shell's global issue reporter for exactly that one keypress — it is set only
+  // when the targeted report actually opens (a screen must not claim the key
+  // forever just because `!` means something there), and it expires on a zero-delay
+  // timeout, after the current stdin event's synchronous fan-out, so an earlier
+  // targeted report can never swallow a later, unrelated `!`.
+  const targetedBangClaimedRef = useRef(false);
+  const targetedBangClaimTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  function claimTargetedBang(): void {
+    targetedBangClaimedRef.current = true;
+    clearTimeout(targetedBangClaimTimer.current);
+    targetedBangClaimTimer.current = setTimeout(() => {
+      targetedBangClaimedRef.current = false;
+    }, 0);
+  }
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
     setPendingGoState(next);
@@ -1156,12 +1175,16 @@ export function App({
     }
   }
 
-  /** `!` — opens the report screen scoped to a post or an actor (spec §55). */
+  /** `!` on a post or profile — the targeted report (spec §55). Claims the keypress
+   * once it actually opens, so the shell's global issue reporter (`!` below) stands
+   * down for it; signed out there is nothing to open, so the keypress falls through
+   * to the global reporter, which works without a session. */
   function openReport(target: ReportTarget): void {
     if (session === undefined) {
       notify('Log in first — press L.');
       return;
     }
+    claimTargetedBang();
     navigate({ screen: 'report', target });
   }
 
@@ -1878,6 +1901,15 @@ export function App({
     }
     if (input === 'q') {
       safeQuit();
+      return;
+    }
+    // B-112: `!` — the beta issue reporter from anywhere: errors, janky flows and
+    // feature ideas, not just hard failures. Legacy text-entry screens never get
+    // here (they consumed the key above), and a targeted post/profile report that
+    // actually opened claimed this keypress first (`claimTargetedBang`). `:report`
+    // reaches the same screen by name from the command palette.
+    if (input === '!' && !targetedBangClaimedRef.current) {
+      goTo({ screen: 'issueReport' });
       return;
     }
     if (input === '?') {

@@ -21,6 +21,11 @@ type SubmitState =
 export interface IssueReporterProps {
   /** `floating` = bottom-corner chip (error screens); `inline` = Settings entry. */
   variant?: 'floating' | 'inline';
+  /**
+   * Open the modal on mount — error boundaries auto-invite the report instead of
+   * waiting for a second click on an already-bad day.
+   */
+  autoOpen?: boolean;
 }
 
 /**
@@ -33,8 +38,11 @@ export interface IssueReporterProps {
  * When the ingest endpoint is unreachable, the bundle downloads as a JSON file for
  * manual attach at {@link ISSUES_REPO_URL} — the report is never silently lost.
  */
-export function IssueReporter({ variant = 'floating' }: IssueReporterProps): JSX.Element {
-  const [open, setOpen] = useState(false);
+export function IssueReporter({
+  variant = 'floating',
+  autoOpen = false,
+}: IssueReporterProps): JSX.Element {
+  const [open, setOpen] = useState(autoOpen);
   const location = useLocation();
 
   // Automatic breadcrumbs: route changes while mounted, plus the global window/
@@ -50,6 +58,7 @@ export function IssueReporter({ variant = 'floating' }: IssueReporterProps): JSX
         type="button"
         className={variant === 'floating' ? styles['chip'] : styles['navEntry']}
         onClick={() => setOpen(true)}
+        title="Issue, jank, or idea — anything counts"
       >
         Report an issue
       </button>
@@ -134,7 +143,7 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
         </p>
 
         <label className={styles.label} htmlFor="report-issue-description">
-          What happened? (optional)
+          What happened — bug, jank, or idea? (optional)
         </label>
         <textarea
           id="report-issue-description"
@@ -143,6 +152,7 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           maxLength={2000}
+          placeholder="A bug, something that felt off, a feature you wish existed — tell us what happened…"
         />
 
         <div className={styles.controls}>
