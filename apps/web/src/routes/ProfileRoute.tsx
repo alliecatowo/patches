@@ -13,6 +13,7 @@ import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { PageBlocks } from '../components/PageBlocks.js';
+import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
 import { useSession } from '../hooks/useSession.js';
@@ -100,7 +101,8 @@ export function ProfileRoute(): JSX.Element {
     );
 
   const pageView = pageQuery.data ? decodePageDocument(pageQuery.data.document) : null;
-  const activeBlocks = pageView?.pages[0]?.blocks ?? [];
+  const wallSubPage = pageView?.pages[0];
+  const activeBlocks = wallSubPage?.blocks ?? [];
 
   return (
     <div>
@@ -209,8 +211,11 @@ export function ProfileRoute(): JSX.Element {
         />
       ) : tab === 'wall' ? (
         <div className={styles['wall']}>
-          {session?.actor.id === actor.id ? (
-            <div className={styles['wallHeader']}>
+          <div className={styles['wallHeader']}>
+            <Link to={`/page/@${actor.handle}`} className={styles['viewPageBtn']}>
+              View full page →
+            </Link>
+            {session?.actor.id === actor.id ? (
               <button
                 type="button"
                 className={styles['editWallBtn']}
@@ -218,11 +223,24 @@ export function ProfileRoute(): JSX.Element {
               >
                 + Edit Wall
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
+
+          {pageQuery.data ? <PinnedPosts ownerActorId={pageQuery.data.ownerActorId} /> : null}
 
           {activeBlocks.length > 0 ? (
-            <PageBlocks blocks={activeBlocks} />
+            <PageBlocks
+              blocks={activeBlocks}
+              context={
+                pageQuery.data
+                  ? {
+                      handle: actor.handle,
+                      slug: wallSubPage?.slug ?? '',
+                      ownerActorId: pageQuery.data.ownerActorId,
+                    }
+                  : undefined
+              }
+            />
           ) : (
             <p style={{ color: 'var(--fg-muted)', textAlign: 'center', padding: '2rem' }}>
               No wall content yet.

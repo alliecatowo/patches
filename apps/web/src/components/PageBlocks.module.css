@@ -1,0 +1,158 @@
+.block {
+  margin-bottom: 1rem;
+}
+
+.block img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+.blockTitle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  /* Page-document theme accent (§171), falling back to the node token outside a
+   * themed page route. */
+  color: var(--page-accent, var(--fg-muted));
+  font-family: var(--font-mono);
+  margin: 0 0 0.5rem 0;
+}
+
+.placeholder {
+  color: var(--fg-muted);
+}
+
+.rejectedLink {
+  color: var(--fg-muted);
+}
+
+.rejectedLinkNote {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.asciiArt {
+  font-family: var(--font-mono);
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* Gallery cells resolve through GetMediaDownload like any Image block; until a URL
+ * lands, MediaImage renders an empty div that aspect-ratio holds open. */
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+
+.galleryCell {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+/* Page-document theme (§171) reaches blocks as --page-* custom properties set on the
+ * page-route container; every use falls back to the node's own tokens so the profile
+ * wall (no theme scope) renders exactly as before. */
+.heroTitle {
+  color: var(--page-accent, inherit);
+}
+
+.linkAnchor {
+  color: var(--page-accent, var(--accent));
+}
+
+.actorRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.actorRow:hover .actorName {
+  text-decoration: underline;
+}
+
+.actorAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.actorAvatarPlaceholder {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.actorName {
+  font-weight: 600;
+}
+
+.actorHandle {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.actorUnavailable {
+  color: var(--fg-muted);
+  padding: 0.3rem 0;
+}
+
+.guestbookEntry {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.guestbookEntry:last-child {
+  border-bottom: none;
+}
+
+.guestbookMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.guestbookAuthor {
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.guestbookAuthor:hover {
+  text-decoration: underline;
+}
+
+.guestbookWhen {
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.guestbookBody {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--fg-muted);
+}

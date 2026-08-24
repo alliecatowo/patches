@@ -37,6 +37,8 @@ export const ROUTE_KINDS: Readonly<Record<Screen, RouteKind>> = {
   postEdit: 'full',
   login: 'full',
   accounts: 'full',
+  devices: 'full',
+  safetyNumber: 'full',
   editProfile: 'full',
   preferences: 'full',
   help: 'full',

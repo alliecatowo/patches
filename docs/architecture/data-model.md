@@ -1291,7 +1291,8 @@ Max 1 KiB serialized (§188) — enforced in the service layer.
 ## Phase 13: E2EE direct-message tables (ADR 0020)
 
 **Status: implemented protocol schema; production capability disabled.** These tables exist and
-are exercised by integration tests. The default injected runtime policy remains fail-closed
+are exercised by integration tests (P13-008's group-control transcript ships in its own migration,
+`AddE2eeGroupControlEvents`). The default injected runtime policy remains fail-closed
 because the externally reviewed franking-profile list is empty. ADR 0027 permits exactly
 `patches-franking-v1` only behind explicit `E2EE_UNREVIEWED_DEV_MODE=true` on owner-authorized,
 disposable test infrastructure with no real users; `NODE_ENV` is a runtime setting, not this
@@ -1304,17 +1305,18 @@ body, private/session key, message key, or ratchet state is ever persisted here 
 `e2ee_report_evidence_items.disclosed_plaintext`: content a reporter explicitly selects and
 submits (ADR 0020 §9), never written by ordinary message delivery.
 
-| Table                        | Purpose                                                                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `e2ee_identity_roots`        | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                      |
-| `e2ee_device_identities`     | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`. |
-| `e2ee_device_rosters`        | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                       |
-| `e2ee_signed_prekeys`        | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                            |
-| `e2ee_one_time_prekeys`      | Public one-time X3DH prekeys; consumed rows are kept as anti-replay tombstones, not deleted.                                                         |
-| `e2ee_logical_messages`      | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                          |
-| `e2ee_mailbox_envelopes`     | One opaque per-recipient-device ciphertext payload per logical message.                                                                              |
-| `e2ee_report_evidence`       | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                |
-| `e2ee_report_evidence_items` | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                        |
+| Table                        | Purpose                                                                                                                                                                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2ee_identity_roots`        | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                                                                                                                                                                               |
+| `e2ee_device_identities`     | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`.                                                                                                                                                          |
+| `e2ee_device_rosters`        | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                                                                                                                                                                                |
+| `e2ee_signed_prekeys`        | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                                                                                                                                                                                     |
+| `e2ee_one_time_prekeys`      | Public one-time X3DH prekeys; consumed rows are kept as anti-replay tombstones, not deleted.                                                                                                                                                                                                                  |
+| `e2ee_logical_messages`      | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                                                                                                                                                                                   |
+| `e2ee_mailbox_envelopes`     | One opaque per-recipient-device ciphertext payload per logical message.                                                                                                                                                                                                                                       |
+| `e2ee_group_control_events`  | One device-signed, digest-chained membership transition (`ADDED`/`REMOVED`) per `E2EE_V1` conversation; unique `(conversation_id, epoch)`, `epoch >= 2` — epoch 1 is creation and has no event row. No FK on `subject_actor_id`: "who was in the group when" is evidence that survives account deletion (§7). |
+| `e2ee_report_evidence`       | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                                                                                                                                                                         |
+| `e2ee_report_evidence_items` | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                                                                                                                                                                                 |
 
 `reports.subject_type` gained `E2EE_MESSAGE` and `reports.subject_e2ee_logical_message_id`
 (no FK — evidence must outlive ordinary mailbox/message retention) alongside the pre-existing

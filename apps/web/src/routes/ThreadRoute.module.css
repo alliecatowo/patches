@@ -1,5 +1,9 @@
 .root {
   border-bottom: 2px solid var(--border);
+  background: var(--bg-raised);
+  box-shadow: inset 3px 0 0 var(--accent);
+  /* Fragment targets (`/p/<id>#<post-id>`) land clear of the sticky mobile header. */
+  scroll-margin-top: calc(52px + var(--sat, 0px));
 }
 
 .replyBox {
@@ -45,6 +49,20 @@
   font-size: 0.8rem;
   color: var(--fg-muted);
   font-family: var(--font-mono);
+  /* Stays pinned while the composer's textarea scrolls under it, so the viewer always
+     knows who they're replying to. Desktop has no sticky app header; on mobile it sits
+     below the 52px sticky HeaderBar (plus the safe-area inset). */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0.25rem 0;
+  background: var(--bg);
+}
+
+@media (max-width: 720px) {
+  .replyHeader {
+    top: calc(52px + var(--sat, 0px));
+  }
 }
 
 .replyTextarea {
@@ -176,6 +194,32 @@
   object-fit: cover;
 }
 
+.mediaPreviewBusy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.mediaPreviewError {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  text-align: center;
+  background: rgba(192, 57, 43, 0.85);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
 .removeMediaBtn {
   position: absolute;
   top: 2px;
@@ -190,6 +234,26 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.replies {
+  /* One visual indent level for the whole reply chain — presentation only; the posts
+     stay sibling articles in a flat list (no nesting/a11y-level changes). */
+  margin-left: 1.1rem;
+  border-left: 2px solid var(--border);
+}
+
+.repliesHeading {
+  margin: 0;
+  padding: 0.85rem 1rem 0.35rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+}
+
+.replyAnchor {
+  scroll-margin-top: calc(52px + var(--sat, 0px));
 }
 
 .loadMore {

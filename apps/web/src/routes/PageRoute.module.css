@@ -1,0 +1,103 @@
+.page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem 1.25rem;
+  /* Page-document theme (§171) lands here as --page-* custom properties set inline by
+   * the route; every consumer falls back to the node's own tokens when unset. Cosmetics
+   * only — nothing functional is gated on them (Amendment B §184.3). */
+  background: var(--page-bg, transparent);
+}
+
+.themeBorderSingle {
+  border: 1px solid var(--page-accent, var(--border-subtle));
+}
+
+.themeBorderDouble {
+  border: 4px double var(--page-accent, var(--border-subtle));
+}
+
+.themeBorderRound {
+  border: 1px solid var(--page-accent, var(--border-subtle));
+  border-radius: 1rem;
+}
+
+.themeBorderAscii {
+  border: 1px dashed var(--page-accent, var(--border-subtle));
+}
+
+.header {
+  margin-bottom: 1.25rem;
+}
+
+.crumbs {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  margin: 0 0 0.35rem 0;
+}
+
+.crumbs a {
+  color: var(--page-accent, var(--accent));
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  text-decoration: underline;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.subPages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subPageTab {
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.subPageTab:hover {
+  border-color: var(--page-accent, var(--border-hover));
+}
+
+.subPageTabActive {
+  background: var(--page-accent, var(--accent));
+  border-color: var(--page-accent, var(--accent));
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+.empty {
+  color: var(--fg-muted);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.error {
+  color: var(--danger, #f85149);
+  text-align: center;
+  padding: 2rem 0;
+  margin: 0;
+}
+
+.emptyActions {
+  text-align: center;
+}
+
+.emptyActions a {
+  color: var(--page-accent, var(--accent));
+  font-weight: 600;
+}

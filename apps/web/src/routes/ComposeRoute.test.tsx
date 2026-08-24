@@ -1,20 +1,27 @@
 import type { PatchesApi } from '@patches/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCreatePost = vi.fn();
 const mockGetNodeInfo = vi.fn().mockResolvedValue({
   socialCapabilities: { maxPostChars: 500 },
 });
+const mockUploadMedia =
+  vi.fn<(file: File, onProgress: (fraction: number) => void) => Promise<string>>();
 
 vi.mock('../api/client.js', () => ({
   api: {
     posts: { createPost: mockCreatePost },
     node: { getNodeInfo: mockGetNodeInfo },
   } as unknown as PatchesApi,
+}));
+
+vi.mock('../lib/mediaUpload.js', () => ({
+  uploadMedia: (file: File, onProgress: (fraction: number) => void): Promise<string> =>
+    mockUploadMedia(file, onProgress),
 }));
 
 const { ComposeRoute } = await import('./ComposeRoute.js');
@@ -34,9 +41,18 @@ function renderCompose(initialEntry = '/compose'): ReturnType<typeof render> {
 }
 
 describe('ComposeRoute', () => {
+  beforeAll(() => {
+    // jsdom has no blob-URL implementation; the preview component needs both.
+    Object.assign(URL, {
+      createObjectURL: (): string => 'blob:test',
+      revokeObjectURL: (): void => undefined,
+    });
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
     mockCreatePost.mockReset();
+    mockUploadMedia.mockReset();
   });
 
   it('restores draft text from localStorage on mount', () => {
@@ -75,5 +91,34 @@ describe('ComposeRoute', () => {
 
     fireEvent.click(cwBtn);
     expect(screen.getByPlaceholderText('Content warning description…')).toBeInTheDocument();
+  });
+
+  it('resets the file input after picking so the same file can be re-picked', async () => {
+    mockUploadMedia.mockResolvedValue('media-1');
+    const view = renderCompose();
+
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(['bytes'], 'shot.png', { type: 'image/png' });
+    fireEvent.change(input as Element, { target: { files: [file] } });
+
+    await waitFor(() => expect(mockUploadMedia).toHaveBeenCalledOnce());
+    expect((input as HTMLInputElement).value).toBe('');
+    // The upload tile rendered with a preview and no error state.
+    expect(view.container.querySelector('img')).not.toBeNull();
+    expect(screen.queryByText(/blocked before it reached storage/)).not.toBeInTheDocument();
+  });
+
+  it('surfaces the real upload error on the attachment tile', async () => {
+    mockUploadMedia.mockRejectedValue(new Error('Upload failed (HTTP 403).'));
+    const view = renderCompose();
+
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+
+    await screen.findByText(/HTTP 403/);
   });
 });

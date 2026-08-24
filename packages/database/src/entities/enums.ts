@@ -155,9 +155,22 @@ export type PageVisibility = (typeof PAGE_VISIBILITIES)[number];
 
 /** `posts.quote_policy` (`INITIAL_VISION.md` §189, Amendment B) — who may quote a post.
  * Re-checked server-side on every quoting `CreatePost` (§192), never inferred from the
- * client. */
+ * client. Also the `claimed_policy` domain on `quote_authorizations` (ADR 0028): the
+ * policy a stamp claims was in force, same three values, re-used rather than duplicated. */
 export const QUOTE_POLICIES = ['ANYONE', 'FOLLOWERS', 'NOBODY'] as const;
 export type QuotePolicy = (typeof QUOTE_POLICIES)[number];
+
+/** `quote_authorizations.state` (ADR 0028, P18-002) — the FEP-044f authorization
+ * lifecycle. `PENDING`: a `quoteAuthorization` stamp is referenced but not yet verified
+ * (or a `QuoteRequest` is awaited); `VERIFIED`: the stamp was dereferenced and validated
+ * (or our own author accepted the quote); `REVOKED`: the stamp was `Delete`d / the quoted
+ * author withdrew approval — a state flip on the row, never a delete, because an
+ * unapproved-after-revocation quote is still rendered, just not as endorsed (§193);
+ * `REJECTED`: the quoted author answered `Reject(QuoteRequest)` — the quote exists but
+ * was refused from the start. Mirrors `E2EE_EVIDENCE_VERIFICATION_STATUSES`' "fail to a
+ * state, never to discarded" shape. */
+export const QUOTE_AUTHORIZATION_STATES = ['PENDING', 'VERIFIED', 'REVOKED', 'REJECTED'] as const;
+export type QuoteAuthorizationState = (typeof QUOTE_AUTHORIZATION_STATES)[number];
 
 /** `community_members.role` (`INITIAL_VISION.md` §189). A community moderator's authority
  * stops at the community boundary (§192) — there is no cross-community role. */
@@ -179,6 +192,12 @@ export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[numb
 
 export const E2EE_EVIDENCE_VERIFICATION_STATUSES = ['PENDING', 'VERIFIED', 'UNVERIFIABLE'] as const;
 export type E2eeEvidenceVerificationStatus = (typeof E2EE_EVIDENCE_VERIFICATION_STATUSES)[number];
+
+/** `e2ee_group_control_events.change_kind` (ADR 0020 §7, P13-008) — mirrors
+ * `E2EE_GROUP_CHANGE_KINDS` in `@patches/domain`; the E2EE proto's `E2eeGroupChangeKind`
+ * enum names these same values with a `E2EE_GROUP_CHANGE_KIND_` prefix. */
+export const E2EE_GROUP_CHANGE_KINDS = ['ADDED', 'REMOVED'] as const;
+export type E2eeGroupChangeKind = (typeof E2EE_GROUP_CHANGE_KINDS)[number];
 
 /** `message_requests.status` (`INITIAL_VISION.md` §189). At most one pending request per
  * (sender, recipient) pair (§188) — enforced by a partial unique index, see

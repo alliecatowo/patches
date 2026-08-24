@@ -11,6 +11,9 @@ export interface PostRowProps {
   onReply?: (post: Post) => void;
   onQuote?: (post: Post) => void;
   onEdit?: (post: Post) => void;
+  /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
+   * timeline (B-082). Optional so contexts without a page stack render inert handles. */
+  onOpenPage?: (handle: string) => void;
 }
 
 /**
@@ -27,9 +30,11 @@ export function PostRow({
   onReply,
   onQuote,
   onEdit,
+  onOpenPage,
 }: PostRowProps): JSX.Element {
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
+  const authorHandle = post.author?.handle;
 
   return (
     <View style={styles.row}>
@@ -37,9 +42,20 @@ export function PostRow({
         <Text style={styles.name} numberOfLines={1}>
           {post.author?.displayName || post.author?.handle}
         </Text>
-        <Text style={styles.handle} numberOfLines={1}>
-          @{post.author?.handle}
-        </Text>
+        {onOpenPage !== undefined && authorHandle !== undefined ? (
+          <TouchableOpacity
+            onPress={() => onOpenPage(authorHandle)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={styles.handleLink} numberOfLines={1}>
+              @{authorHandle}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.handle} numberOfLines={1}>
+            @{authorHandle}
+          </Text>
+        )}
         <Text style={styles.time}>{formatRelativeTime(post.createdAt)}</Text>
       </View>
       {post.contentWarning !== '' && !cwOpen ? (
@@ -96,6 +112,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 4 },
   name: { color: '#fff', fontWeight: '700', flexShrink: 1 },
   handle: { color: '#888', flexShrink: 1 },
+  handleLink: { color: '#7c9cff', flexShrink: 1 },
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },

@@ -16,8 +16,10 @@ import { ComposeScreen, type ComposeTarget } from './screens/ComposeScreen.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NotificationsScreen } from './screens/NotificationsScreen.js';
+import { PageScreen } from './screens/PageScreen.js';
 import { RegisterScreen } from './screens/RegisterScreen.js';
 import { useSession } from './hooks/useSession.js';
+import { normalizeHandle } from './pages/document.js';
 
 type Tab = 'home' | 'compose' | 'notifications';
 type AuthView = 'login' | 'register';
@@ -33,10 +35,17 @@ export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
   const [authView, setAuthView] = useState<AuthView>('login');
   const [composeTarget, setComposeTarget] = useState<ComposeTarget>({ kind: 'post' });
+  /** The handle whose Patches Page is open, or `null` for the normal tab shell — the
+   * Pages viewer (B-082) replaces the content + tab bar until Back. */
+  const [pageHandle, setPageHandle] = useState<string | null>(null);
 
   const openCompose = (nextTarget: ComposeTarget): void => {
     setComposeTarget(nextTarget);
     setTab('compose');
+  };
+
+  const openPage = (handle: string): void => {
+    setPageHandle(normalizeHandle(handle));
   };
 
   useEffect(() => {
@@ -69,51 +78,64 @@ export default function App(): JSX.Element {
     <SafeAreaView style={styles.screen}>
       <StatusBar style="light" />
       <View style={styles.topBar}>
-        <Text style={styles.handle} numberOfLines={1}>
-          @{actor.handle}
-        </Text>
+        <TouchableOpacity
+          style={styles.topHandleButton}
+          onPress={() => openPage(actor.handle)}
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        >
+          <Text style={styles.handle} numberOfLines={1}>
+            @{actor.handle}
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => void signOut()}>
           <Text style={styles.signOut}>Sign out</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.content}>
-        {tab === 'home' ? (
-          <HomeScreen
-            viewerActorId={actor.id}
-            onReply={(post: Post) => openCompose({ kind: 'reply', replyTo: post })}
-            onQuote={(post: Post) => openCompose({ kind: 'quote', quote: post })}
-            onEdit={(post: Post) => openCompose({ kind: 'edit', editing: post })}
-          />
-        ) : null}
-        {tab === 'compose' ? (
-          <ComposeScreen
-            key={composeTargetKey(composeTarget)}
-            target={composeTarget}
-            onCancel={() => {
-              setComposeTarget({ kind: 'post' });
-              setTab('home');
-            }}
-            onPosted={() => {
-              setComposeTarget({ kind: 'post' });
-              setTab('home');
-            }}
-          />
-        ) : null}
-        {tab === 'notifications' ? <NotificationsScreen /> : null}
-      </View>
-      <View style={styles.tabBar}>
-        <TabButton label="Home" active={tab === 'home'} onPress={() => setTab('home')} />
-        <TabButton
-          label="Post"
-          active={tab === 'compose'}
-          onPress={() => openCompose({ kind: 'post' })}
-        />
-        <TabButton
-          label="Alerts"
-          active={tab === 'notifications'}
-          onPress={() => setTab('notifications')}
-        />
-      </View>
+      {pageHandle !== null ? (
+        <PageScreen handle={pageHandle} onBack={() => setPageHandle(null)} />
+      ) : (
+        <>
+          <View style={styles.content}>
+            {tab === 'home' ? (
+              <HomeScreen
+                viewerActorId={actor.id}
+                onReply={(post: Post) => openCompose({ kind: 'reply', replyTo: post })}
+                onQuote={(post: Post) => openCompose({ kind: 'quote', quote: post })}
+                onEdit={(post: Post) => openCompose({ kind: 'edit', editing: post })}
+                onOpenPage={openPage}
+              />
+            ) : null}
+            {tab === 'compose' ? (
+              <ComposeScreen
+                key={composeTargetKey(composeTarget)}
+                target={composeTarget}
+                onCancel={() => {
+                  setComposeTarget({ kind: 'post' });
+                  setTab('home');
+                }}
+                onPosted={() => {
+                  setComposeTarget({ kind: 'post' });
+                  setTab('home');
+                }}
+              />
+            ) : null}
+            {tab === 'notifications' ? <NotificationsScreen /> : null}
+          </View>
+          <View style={styles.tabBar}>
+            <TabButton label="Home" active={tab === 'home'} onPress={() => setTab('home')} />
+            <TabButton
+              label="Post"
+              active={tab === 'compose'}
+              onPress={() => openCompose({ kind: 'post' })}
+            />
+            <TabButton
+              label="Alerts"
+              active={tab === 'notifications'}
+              onPress={() => setTab('notifications')}
+            />
+          </View>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -145,6 +167,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2a2a2c',
   },
   handle: { color: '#fff', fontWeight: '700', flexShrink: 1 },
+  topHandleButton: { flexShrink: 1 },
   signOut: { color: '#7c9cff' },
   content: { flex: 1 },
   tabBar: {

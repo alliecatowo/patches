@@ -6,6 +6,7 @@ import {
   AuthService,
   CommunityService,
   DirectMessageService,
+  E2eeService,
   FeedService,
   FilterListService,
   FilterService,
@@ -66,6 +67,7 @@ export interface PatchesApi {
   readonly tags: Client<typeof TagService>;
   readonly communities: Client<typeof CommunityService>;
   readonly messages: Client<typeof DirectMessageService>;
+  readonly e2ee: Client<typeof E2eeService>;
   /** Amendment C (P14-001): personal keyword/actor/domain mute-style filters. */
   readonly filters: Client<typeof FilterService>;
   /** Amendment C: publicly shareable, subscribable filter lists. */
@@ -114,6 +116,7 @@ export function createPatchesApi(options: CreatePatchesApiOptions): PatchesApi {
     tags: bind(TagService, UNARY_DEADLINE_MS),
     communities: bind(CommunityService, UNARY_DEADLINE_MS),
     messages: bind(DirectMessageService, UNARY_DEADLINE_MS),
+    e2ee: bind(E2eeService, UNARY_DEADLINE_MS),
     filters: bind(FilterService, UNARY_DEADLINE_MS),
     filterLists: bind(FilterListService, UNARY_DEADLINE_MS),
     labels: bind(LabelService, UNARY_DEADLINE_MS),

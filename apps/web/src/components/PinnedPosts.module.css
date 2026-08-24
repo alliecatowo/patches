@@ -1,0 +1,13 @@
+.pinned {
+  margin-bottom: 1.25rem;
+}
+
+.heading {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-weight: 400;
+  margin: 0 0 0.5rem 0;
+}

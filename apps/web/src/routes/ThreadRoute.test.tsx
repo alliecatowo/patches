@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppSession } from '../api/session.js';
 import { ThreadRoute } from './ThreadRoute.js';
@@ -19,6 +19,8 @@ const mockListReplies =
   >();
 const mockCreatePost = vi.fn<(...args: unknown[]) => Promise<{ post?: { id: string } }>>();
 const mockUseSession = vi.fn<() => AppSession | null>();
+const mockUploadMedia =
+  vi.fn<(file: File, onProgress: (fraction: number) => void) => Promise<string>>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -36,6 +38,11 @@ vi.mock('../api/client.js', () => ({
         Promise.resolve({ socialCapabilities: { maxPostChars: 500 } }),
     },
   } as unknown as PatchesApi,
+}));
+
+vi.mock('../lib/mediaUpload.js', () => ({
+  uploadMedia: (file: File, onProgress: (fraction: number) => void): Promise<string> =>
+    mockUploadMedia(file, onProgress),
 }));
 
 vi.mock('../hooks/useSession.js', () => ({
@@ -87,11 +94,20 @@ describe('ThreadRoute', () => {
     mockListReplies.mockReset();
     mockCreatePost.mockReset();
     mockUseSession.mockReset();
+    mockUploadMedia.mockReset();
 
     mockGetPost.mockResolvedValue({ post: mockPost });
     mockListReplies.mockResolvedValue({
       posts: [],
       page: { hasMore: false, nextCursor: '' },
+    });
+  });
+
+  beforeAll(() => {
+    // jsdom has no blob-URL implementation; the preview component needs both.
+    Object.assign(URL, {
+      createObjectURL: (): string => 'blob:test',
+      revokeObjectURL: (): void => undefined,
     });
   });
 
@@ -101,6 +117,31 @@ describe('ThreadRoute', () => {
 
     expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
     expect(screen.getByText(/Want to reply\?/i)).toBeInTheDocument();
+  });
+
+  it('shows the reply count heading and a permalink anchor per post', async () => {
+    mockUseSession.mockReturnValue(null);
+    mockGetPost.mockResolvedValue({
+      post: { ...mockPost, counts: { likes: 1, reposts: 0, replies: 2 } } as unknown as Post,
+    });
+    const reply = { ...mockPost, id: 'reply-9', body: 'A nested reply' } as unknown as Post;
+    mockListReplies.mockResolvedValue({
+      posts: [reply],
+      page: { hasMore: false, nextCursor: '' },
+    });
+
+    renderThread();
+
+    expect(await screen.findByText('A nested reply')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2 replies' })).toBeInTheDocument();
+    // Permalink anchors: the root wrapper and each reply wrapper carry the post id, so
+    // `/p/<id>#<post-id>` fragments resolve.
+    expect(document.getElementById('post-123')).not.toBeNull();
+    expect(document.getElementById('reply-9')).not.toBeNull();
+    // The reply chain is indented one visual level without nesting semantics — the
+    // section exists and the reply article stays a direct sibling, not a list item.
+    expect(screen.getByRole('region', { name: 'Replies' })).toBeInTheDocument();
+    expect(document.querySelector('#reply-9 article')).not.toBeNull();
   });
 
   it('renders inline reply composer when signed in and posts a reply', async () => {
@@ -129,6 +170,50 @@ describe('ThreadRoute', () => {
           body: 'This is my reply!',
           inReplyToId: 'post-123',
         }),
+      );
+    });
+  });
+
+  it('blocks submitting while an attachment upload is still in flight, then attaches it', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    mockCreatePost.mockResolvedValue({ post: { id: 'reply-1' } });
+    // Never-settling on purpose until the test resolves it below.
+    let settleUpload: (mediaId: string) => void = (): void => undefined;
+    mockUploadMedia.mockReturnValue(
+      new Promise<string>((resolve) => {
+        settleUpload = resolve;
+      }),
+    );
+
+    const view = renderThread();
+    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+    // The tile rendered with its progress overlay (progress starts at 0).
+    await screen.findByText('0%');
+
+    const textarea = screen.getByPlaceholderText('Post your reply…');
+    fireEvent.change(textarea, { target: { value: 'With attachment' } });
+
+    const replyBtn = screen.getByRole('button', { name: 'Reply' });
+    expect(replyBtn).toBeDisabled();
+    fireEvent.click(replyBtn);
+    expect(mockCreatePost).not.toHaveBeenCalled();
+    expect(screen.getByText('0%')).toBeInTheDocument(); // progress overlay visible
+
+    settleUpload('media-9');
+    await waitFor(() => expect(replyBtn).toBeEnabled());
+
+    fireEvent.click(replyBtn);
+    await waitFor(() => {
+      expect(mockCreatePost).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaIds: ['media-9'] }),
       );
     });
   });

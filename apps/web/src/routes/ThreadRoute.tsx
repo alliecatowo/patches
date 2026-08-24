@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { CloseIcon, ImageIcon } from '../components/icons/Icons.js';
+import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
 import { PostCard } from '../components/PostCard.js';
 import { useToast } from '../components/ToastProvider.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -15,7 +16,9 @@ import styles from './ThreadRoute.module.css';
 
 const MAX_MEDIA = 4;
 
-/** `/p/:id` — the post, inline quick reply composer, and one level of replies. */
+/** `/p/:id` — the focused root post, an inline quick-reply composer with a sticky
+ * "reply to @handle" header, and the chronologically-ordered reply list (one visual
+ * indent level via CSS; flat semantics underneath). */
 export function ThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const postId = id ?? '';
@@ -112,20 +115,31 @@ export function ThreadRoute(): JSX.Element {
 
   const handleReplySubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (!replyBody.trim() || replyMutation.isPending || charsRemaining < 0) return;
+    if (!replyBody.trim() || replyMutation.isPending || charsRemaining < 0 || uploading) return;
     replyMutation.mutate();
   };
 
   const replies = repliesQuery.data?.pages.flatMap((p) => p.posts) ?? [];
   const rootPost = postQuery.data?.post;
+  // The server's own count is authoritative (a reply may be filtered out of the list but
+  // still counted); the loaded list is only the fallback before it loads. Chronological
+  // either way — no client-side ordering ever (Amendment B).
+  const replyCount = rootPost?.counts?.replies ?? replies.length;
+
+  // A reply only attaches uploads whose status is `ready` (the mutation filters), so
+  // submitting mid-upload would silently drop every still-running attachment — block the
+  // submit instead, mirroring ComposeRoute.
+  const uploading = uploads.some((u) => u.status === 'uploading');
 
   if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
   if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
 
   return (
     <div>
-      <div className={styles['root']}>
-        <PostCard post={rootPost} />
+      {/* Root post — the thread's focus: highlighted, permalink-anchorable, and the
+          target of the composer's sticky "reply to" header. */}
+      <div className={styles['root']} id={rootPost.id}>
+        <PostCard post={rootPost} focused />
       </div>
 
       {/* Inline Reply Composer */}
@@ -157,11 +171,25 @@ export function ThreadRoute(): JSX.Element {
               <div className={styles['mediaPreviewList']}>
                 {uploads.map((upload, idx) => (
                   <div key={idx} className={styles['mediaPreviewItem']}>
-                    <img
-                      src={URL.createObjectURL(upload.file)}
+                    <MediaUploadPreview
+                      file={upload.file}
                       alt="Attachment preview"
                       className={styles['mediaPreviewImg']}
                     />
+                    {upload.status === 'uploading' ? (
+                      <div className={styles['mediaPreviewBusy']}>
+                        <span>{Math.round(upload.progress * 100)}%</span>
+                      </div>
+                    ) : null}
+                    {upload.status === 'error' ? (
+                      <div
+                        className={styles['mediaPreviewError']}
+                        title={upload.error}
+                        aria-label="Upload failed"
+                      >
+                        <span>Failed</span>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       className={styles['removeMediaBtn']}
@@ -210,7 +238,10 @@ export function ThreadRoute(): JSX.Element {
                 <button
                   type="submit"
                   className={styles['replySubmitBtn']}
-                  disabled={!replyBody.trim() || replyMutation.isPending || charsRemaining < 0}
+                  disabled={
+                    !replyBody.trim() || replyMutation.isPending || charsRemaining < 0 || uploading
+                  }
+                  title={uploading ? 'Waiting for attachments to finish uploading…' : undefined}
                 >
                   {replyMutation.isPending ? 'Posting…' : 'Reply'}
                 </button>
@@ -225,25 +256,35 @@ export function ThreadRoute(): JSX.Element {
         </div>
       )}
 
-      {/* Replies Timeline */}
-      {replies.map((reply) => (
-        <PostCard key={reply.id} post={reply} />
-      ))}
+      {/* Replies — chronological, one visual indent level (CSS only; the list itself
+          stays a flat run of articles, no nesting semantics). */}
+      <section className={styles['replies']} aria-label="Replies">
+        {replyCount > 0 ? (
+          <h2 className={styles['repliesHeading']}>
+            {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+          </h2>
+        ) : null}
+        {replies.map((reply) => (
+          <div id={reply.id} key={reply.id} className={styles['replyAnchor']}>
+            <PostCard post={reply} />
+          </div>
+        ))}
 
-      {repliesQuery.hasNextPage ? (
-        <button
-          type="button"
-          className={styles['loadMore']}
-          onClick={() => void repliesQuery.fetchNextPage()}
-          disabled={repliesQuery.isFetchingNextPage}
-        >
-          {repliesQuery.isFetchingNextPage ? 'Loading…' : 'Load more replies'}
-        </button>
-      ) : null}
+        {repliesQuery.hasNextPage ? (
+          <button
+            type="button"
+            className={styles['loadMore']}
+            onClick={() => void repliesQuery.fetchNextPage()}
+            disabled={repliesQuery.isFetchingNextPage}
+          >
+            {repliesQuery.isFetchingNextPage ? 'Loading…' : 'Load more replies'}
+          </button>
+        ) : null}
 
-      {replies.length === 0 && !repliesQuery.isFetching ? (
-        <p className={styles['loadMore']}>No replies yet.</p>
-      ) : null}
+        {replies.length === 0 && !repliesQuery.isFetching ? (
+          <p className={styles['loadMore']}>No replies yet.</p>
+        ) : null}
+      </section>
     </div>
   );
 }

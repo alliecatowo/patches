@@ -1,0 +1,53 @@
+.signForm {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.signInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: vertical;
+}
+
+.signButton {
+  flex-shrink: 0;
+}
+
+.actions {
+  display: inline-flex;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.actionButton {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.actionButton:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+.reportForm {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.reasonSelect,
+.detailsInput {
+  font-size: 0.85rem;
+}
+
+.detailsInput {
+  flex: 1 1 12rem;
+  min-width: 0;
+}

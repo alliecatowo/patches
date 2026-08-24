@@ -28,11 +28,12 @@ import {
 } from '@patches/crypto';
 import { type E2eeFrankingTag as E2eeFrankingTagProto } from '@patches/proto';
 import { type E2eeLogicalMessage as E2eeLogicalMessageProto } from '@patches/proto/nest';
-import { IsNull, type EntityManager } from 'typeorm';
+import { type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { e2eeDigest } from './e2ee-crypto.adapter.js';
 import { toBytes } from './e2ee.codec.js';
+import { loadCurrentGroupControl } from './group-control.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
 import { type E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 
@@ -81,14 +82,16 @@ import { type E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.j
  *
  * ## Membership epoch
  *
- * No RPC in this node changes a conversation's membership after creation yet (`AddMember`/
- * `RemoveMember`/group epoch bumps are P13-008). Every conversation is therefore always at
- * epoch 1, enforced by `CURRENT_MEMBERSHIP_EPOCH` below rather than a per-conversation column
- * that would have no writer. `assertMembershipEpochCurrent` is still called against it so a
- * client that already speaks the general contract behaves identically once P13-008 lands.
+ * Every conversation starts at epoch 1 — the creation membership `CreateE2eeConversation`
+ * establishes — and each authenticated `AddE2eeMember`/`RemoveE2eeMember` appends exactly
+ * one device-signed event to the conversation's group-control transcript
+ * (`group-control.ts`), bumping the epoch by exactly one. This core loads that epoch from
+ * committed state *after* taking the member and device locks below, and rejects any send
+ * not composed under it (`assertMembershipEpochCurrent`): a message encrypted to a
+ * departed member's devices is rejected whole rather than delivered, and the sender
+ * recomposes under the new epoch. Replay of an already-accepted `client_request_id` keeps
+ * the epoch it was originally accepted under — the stored row is authoritative.
  */
-export const CURRENT_MEMBERSHIP_EPOCH = 1n;
-
 export interface AcceptedLogicalMessage {
   readonly logicalMessageId: string;
   readonly acceptedAt: Date;
@@ -158,13 +161,27 @@ function isActiveDevice(device: E2eeDeviceIdentityEntity, now: Date): boolean {
   return device.revokedAt === null && device.expiresAt.getTime() > now.getTime();
 }
 
-async function loadActiveMemberActorIds(
+/** Every current member's actor id — the same rows `loadActiveMemberActorIds` reads
+ * elsewhere, but locked `FOR SHARE` and ordered by `actorId` so a concurrent
+ * `RemoveE2eeMember` (a `leftAt` UPDATE on one of these rows) serializes against this
+ * accept exactly the way `RevokeDevice` serializes against the device-row lock below: a
+ * removal that commits first is visible here as an excluded member (the sender's fanout
+ * for them is rejected as addressing a non-member's device); a removal whose UPDATE is
+ * pending waits for this accept to commit, and the message lands under the epoch it was
+ * composed in while the member was still active. Two concurrent accepts take compatible
+ * `FOR SHARE` locks regardless, and the deterministic ordering keeps them out of deadlock
+ * with each other and with the device locks taken next. */
+async function lockActiveMemberActorIds(
   manager: EntityManager,
   conversationId: string,
 ): Promise<string[]> {
   const members = await manager
-    .getRepository(ConversationMemberEntity)
-    .find({ where: { conversationId, leftAt: IsNull() } });
+    .createQueryBuilder(ConversationMemberEntity, 'member')
+    .where('member.conversationId = :conversationId', { conversationId })
+    .andWhere('member.leftAt IS NULL')
+    .orderBy('member.actorId', 'ASC')
+    .setLock('pessimistic_read')
+    .getMany();
   return members.map((member) => member.actorId);
 }
 
@@ -295,7 +312,7 @@ export async function acceptE2eeLogicalMessage(
     return replayFromStoredMessage(manager, existing);
   }
 
-  const memberActorIds = await loadActiveMemberActorIds(manager, input.conversationId);
+  const memberActorIds = await lockActiveMemberActorIds(manager, input.conversationId);
   if (!memberActorIds.includes(input.senderActorId)) {
     throw new AppError(
       'E2EE_CONVERSATION_NOT_FOUND',
@@ -306,6 +323,11 @@ export async function acceptE2eeLogicalMessage(
   const deviceRows = await lockMemberDeviceRows(manager, memberActorIds);
   const now = new Date();
   const activeDevices = deviceRows.filter((device) => isActiveDevice(device, now));
+
+  // Loaded after the member and device locks, so the epoch this accept enforces can never
+  // be older than the membership snapshot the expected device set was computed from (see
+  // `lockActiveMemberActorIds`).
+  const { epoch: currentEpoch } = await loadCurrentGroupControl(manager, input.conversationId);
 
   const senderDevice = activeDevices.find(
     (device) => device.actorId === input.senderActorId && device.deviceId === input.senderDeviceId,
@@ -339,7 +361,7 @@ export async function acceptE2eeLogicalMessage(
     throw AppError.validation('membership_epoch is not a valid integer.', { cause: error });
   }
   try {
-    assertMembershipEpochCurrent(claimedEpoch, CURRENT_MEMBERSHIP_EPOCH);
+    assertMembershipEpochCurrent(claimedEpoch, currentEpoch);
   } catch (error) {
     wrapFanoutError(error);
   }
@@ -358,7 +380,7 @@ export async function acceptE2eeLogicalMessage(
   }
 
   const view: E2eeLogicalMessageView = {
-    membershipEpoch: CURRENT_MEMBERSHIP_EPOCH,
+    membershipEpoch: currentEpoch,
     frankingCommitment: toBytes(input.message.frankingCommitment),
     frankingProfile: input.message.frankingProfile,
     fanoutDigest: toBytes(input.message.fanoutDigest),
@@ -408,7 +430,7 @@ export async function acceptE2eeLogicalMessage(
     {
       id: logicalMessageId,
       conversationId: input.conversationId,
-      epoch: CURRENT_MEMBERSHIP_EPOCH.toString(),
+      epoch: currentEpoch.toString(),
       senderActorId: input.senderActorId,
       senderDeviceId: input.senderDeviceId,
       fanoutDigest: Buffer.from(view.fanoutDigest),
@@ -427,7 +449,7 @@ export async function acceptE2eeLogicalMessage(
     await manager.getRepository(E2eeLogicalMessageEntity).insert({
       id: logicalMessageId,
       conversationId: input.conversationId,
-      epoch: CURRENT_MEMBERSHIP_EPOCH.toString(),
+      epoch: currentEpoch.toString(),
       senderActorId: input.senderActorId,
       senderDeviceId: input.senderDeviceId,
       clientRequestId: input.clientRequestId,

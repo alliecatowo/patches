@@ -5,7 +5,11 @@ import {
   Conversation as ConversationEntity,
   ConversationMember as ConversationMemberEntity,
 } from '@patches/database';
-import { canonicalFanoutTranscript, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
+import {
+  canonicalFanoutTranscript,
+  canonicalGroupControlTranscript,
+  E2EE_FRANKING_PROFILE_V1,
+} from '@patches/domain';
 import { createTestUser } from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
@@ -17,11 +21,13 @@ import {
   encodePrekeyBundleTranscript,
   encodeRosterTranscript,
 } from '../src/modules/e2ee/e2ee.codec.js';
+import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
 import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
+import { E2eeGroupChangeKind } from '@patches/proto/nest';
 
 /** A fixed test-only franking key so `SendEnvelopes`/`CreateE2eeConversation` can actually issue
  * an acceptance tag. Distinct from the production `DatabaseNodeFrankingKeyRing` (P13-015),
@@ -75,7 +81,11 @@ function buildEnvelope(recipientActorId: string, recipientDeviceId: string): Tes
  */
 function buildLogicalMessage(
   envelopes: readonly TestEnvelope[],
-  options: { commitment?: Buffer; commitmentOverride?: Buffer } = {},
+  options: {
+    commitment?: Buffer;
+    commitmentOverride?: Buffer;
+    epoch?: bigint;
+  } = {},
 ) {
   const commitment = options.commitment ?? Buffer.from(sha256Hash(randomBytes(16)));
   const view = envelopes.map((envelope) => ({
@@ -94,13 +104,55 @@ function buildLogicalMessage(
     }),
   );
   return {
-    membershipEpoch: '1',
+    membershipEpoch: (options.epoch ?? 1n).toString(),
     frankingCommitment: options.commitmentOverride ?? commitment,
     frankingProfile: E2EE_FRANKING_PROFILE_V1,
     fanoutDigest: Buffer.from(fanoutDigest),
     deviceEnvelopes: [...envelopes],
   };
 }
+
+/** Builds a correctly-signed `E2eeGroupControlEvent` proto: canonical transcript from
+ * `@patches/domain` (the one encoder the signer and the node share, ADR 0020 §14.1), digest
+ * over it, Ed25519 by the signer device's signing key. `change` takes the generated
+ * ts-proto enum's string values — this schema generates string enums. */
+function signedGroupControlEvent(input: {
+  conversationId: string;
+  epoch: bigint;
+  change: E2eeGroupChangeKind;
+  subjectActorId: string;
+  signer: TestActorKeys;
+  signerDevice: DeviceKeys;
+  previousDigest: Buffer;
+}) {
+  const eventBytes = Buffer.from(
+    canonicalGroupControlTranscript({
+      conversationId: input.conversationId,
+      epoch: input.epoch,
+      change:
+        input.change === E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED ? 'ADDED' : 'REMOVED',
+      subjectActorId: input.subjectActorId,
+      signerActorId: input.signer.actorId,
+      signerDeviceId: input.signerDevice.deviceId,
+      previousDigest: new Uint8Array(input.previousDigest),
+    }),
+  );
+  return {
+    conversationId: input.conversationId,
+    epoch: input.epoch.toString(),
+    change: input.change,
+    subjectActorId: input.subjectActorId,
+    signerActorId: input.signer.actorId,
+    signerDeviceId: input.signerDevice.deviceId,
+    previousDigest: input.previousDigest,
+    digest: Buffer.from(sha256Hash(new Uint8Array(eventBytes))),
+    eventBytes,
+    deviceSignature: Buffer.from(sign(input.signerDevice.signingPrivateKey, eventBytes)),
+    createdAt: undefined,
+  };
+}
+
+const ZERO_DIGEST = Buffer.alloc(32);
 
 /**
  * `E2eeService`'s account-root/device-roster/prekey lifecycle (ADR 0020, P13-004/P13-005)
@@ -286,6 +338,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let deviceRosters: E2eeDeviceRosterService;
     let prekeys: E2eePrekeyService;
     let conversations: E2eeConversationService;
+    let groups: E2eeGroupService;
 
     beforeAll(async () => {
       dataSource = await createServerTestDataSource();
@@ -297,6 +350,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         testFrankingKeyRing,
         unreviewedTestPolicy,
       );
+      groups = new E2eeGroupService(dataSource);
     }, 60_000);
 
     afterAll(async () => {
@@ -993,6 +1047,507 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           limit: 0,
         });
         expect(drained.envelopes).toHaveLength(0);
+      });
+    });
+
+    describe('small-group pairwise fanout and roster transitions (ADR 0020 §7, P13-008)', () => {
+      /** Creates a group conversation with one enrolled device per actor, sender included,
+       * and returns everything the tests need to compose and verify fanouts. */
+      async function createGroup(memberCount: number) {
+        const actors: TestActorKeys[] = [];
+        const devices: DeviceKeys[] = [];
+        for (let i = 0; i < memberCount; i += 1) {
+          const actor = await newActor();
+          const { device } = await enrollFirstDevice(actor, 0);
+          actors.push(actor);
+          devices.push(device);
+        }
+        const [sender, ...recipients] = actors;
+        const senderDevice = devices[0] as DeviceKeys;
+        const created = await conversations.createE2eeConversation(sender!.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: recipients.map((actor) => actor.actorId),
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage(
+            devices
+              .slice(1)
+              .map((device, index) => buildEnvelope(recipients[index]!.actorId, device.deviceId)),
+          ),
+        });
+        return { actors, devices, sender: sender!, senderDevice, recipients, created };
+      }
+
+      it('delivers a group message to every member device pairwise — no sender key, no MLS, one envelope per device', async () => {
+        const { actors, devices, sender, senderDevice, created } = await createGroup(3);
+        // A second sender device joins the roster: Sesame self-fanout must reach it too.
+        const senderDevice2 = await enrollAdditionalDevice(sender);
+
+        const second = await conversations.sendEnvelopes(sender.actorId, {
+          conversationId: created.conversationId,
+          clientRequestId: randomUUID(),
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage(
+            [
+              ...devices
+                .slice(1)
+                .map((device, index) => buildEnvelope(actors[index + 1]!.actorId, device.deviceId)),
+              buildEnvelope(sender.actorId, senderDevice2.deviceId),
+            ],
+            { epoch: 1n },
+          ),
+        });
+
+        for (const [index, device] of devices.slice(1).entries()) {
+          const mailbox = await conversations.listMailboxEnvelopes(actors[index + 1]!.actorId, {
+            deviceId: device.deviceId,
+            cursor: '',
+            limit: 0,
+          });
+          expect(mailbox.envelopes.map((e) => e.logicalMessageId)).toContain(
+            second.logicalMessageId,
+          );
+        }
+        const selfMailbox = await conversations.listMailboxEnvelopes(sender.actorId, {
+          deviceId: senderDevice2.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(selfMailbox.envelopes.map((e) => e.logicalMessageId)).toContain(
+          second.logicalMessageId,
+        );
+        const sendingMailbox = await conversations.listMailboxEnvelopes(sender.actorId, {
+          deviceId: senderDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(sendingMailbox.envelopes).toHaveLength(0);
+      });
+
+      it('enforces the eight-member bound at creation and on AddE2eeMember', async () => {
+        const eight = await createGroup(8);
+        expect(eight.created.conversationId.length).toBeGreaterThan(0);
+
+        // Creation beyond the bound: same constant, same copy (`E2EE_GROUP_MAX_MEMBERS`).
+        // Distinct nonexistent ids so the *bound* is what rejects this, not the duplicate check.
+        await expect(
+          conversations.createE2eeConversation(eight.sender.actorId, {
+            clientRequestId: randomUUID(),
+            recipientActorIds: Array.from(
+              { length: 8 },
+              (_, index) => `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`,
+            ),
+            senderDeviceId: eight.senderDevice.deviceId,
+            message: buildLogicalMessage([]),
+          }),
+        ).rejects.toThrow(/at most 8 members/);
+
+        const ninth = await newActor();
+        await enrollFirstDevice(ninth, 0);
+        const state = await conversations.getE2eeConversationState(eight.sender.actorId, {
+          conversationId: eight.created.conversationId,
+        });
+        await expect(
+          groups.addE2eeMember(eight.sender.actorId, {
+            conversationId: eight.created.conversationId,
+            actorId: ninth.actorId,
+            signerDeviceId: eight.senderDevice.deviceId,
+            event: signedGroupControlEvent({
+              conversationId: eight.created.conversationId,
+              epoch: 2n,
+              change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+              subjectActorId: ninth.actorId,
+              signer: eight.sender,
+              signerDevice: eight.senderDevice,
+              previousDigest: Buffer.from(state.groupControlDigest),
+            }),
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_GROUP_CONTROL_CONFLICT' });
+      });
+
+      it('AddE2eeMember bumps the epoch; a stale-epoch send is rejected and the new member gets future messages only', async () => {
+        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const member = actors[1]!;
+        const memberDevice = devices[1]!;
+
+        const newcomer = await newActor();
+        const { device: newcomerDevice } = await enrollFirstDevice(newcomer, 0);
+
+        const added = await groups.addE2eeMember(sender.actorId, {
+          conversationId: created.conversationId,
+          actorId: newcomer.actorId,
+          signerDeviceId: senderDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 2n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+            subjectActorId: newcomer.actorId,
+            signer: sender,
+            signerDevice: senderDevice,
+            previousDigest: ZERO_DIGEST,
+          }),
+        });
+        expect(added.membershipEpoch).toBe('2');
+
+        const state = await conversations.getE2eeConversationState(sender.actorId, {
+          conversationId: created.conversationId,
+        });
+        expect(state.membershipEpoch).toBe('2');
+        expect(state.groupControlDigest).toEqual(added.event?.digest);
+        expect(state.members.map((m) => m.actorId).sort()).toEqual(
+          [sender.actorId, member.actorId, newcomer.actorId].sort(),
+        );
+
+        // Composed under epoch 1 while the conversation is at 2: rejected whole.
+        await expect(
+          conversations.sendEnvelopes(sender.actorId, {
+            conversationId: created.conversationId,
+            clientRequestId: randomUUID(),
+            senderDeviceId: senderDevice.deviceId,
+            message: buildLogicalMessage([
+              buildEnvelope(member.actorId, memberDevice.deviceId),
+              buildEnvelope(newcomer.actorId, newcomerDevice.deviceId),
+            ]),
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_FANOUT_REJECTED' });
+
+        // Recomposed under epoch 2: accepted, delivered to every current member device.
+        const after = await conversations.sendEnvelopes(sender.actorId, {
+          conversationId: created.conversationId,
+          clientRequestId: randomUUID(),
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage(
+            [
+              buildEnvelope(member.actorId, memberDevice.deviceId),
+              buildEnvelope(newcomer.actorId, newcomerDevice.deviceId),
+            ],
+            { epoch: 2n },
+          ),
+        });
+
+        const newcomerMailbox = await conversations.listMailboxEnvelopes(newcomer.actorId, {
+          deviceId: newcomerDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        // Future messages only: exactly the epoch-2 message, never the epoch-1 creation message.
+        expect(newcomerMailbox.envelopes.map((e) => e.logicalMessageId)).toEqual([
+          after.logicalMessageId,
+        ]);
+        expect(
+          newcomerMailbox.envelopes.every((envelope) => envelope.membershipEpoch === '2'),
+        ).toBe(true);
+      });
+
+      it('RemoveE2eeMember excludes the removed member from every later fanout and blocks their sends', async () => {
+        const { actors, devices, sender, senderDevice, created } = await createGroup(3);
+        const removed = actors[2]!;
+        const removedDevice = devices[2]!;
+        const keeper = actors[1]!;
+        const keeperDevice = devices[1]!;
+
+        const removedBefore = await conversations.listMailboxEnvelopes(removed.actorId, {
+          deviceId: removedDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(removedBefore.envelopes).toHaveLength(1);
+
+        const removal = await groups.removeE2eeMember(sender.actorId, {
+          conversationId: created.conversationId,
+          actorId: removed.actorId,
+          signerDeviceId: senderDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 2n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_REMOVED,
+            subjectActorId: removed.actorId,
+            signer: sender,
+            signerDevice: senderDevice,
+            previousDigest: ZERO_DIGEST,
+          }),
+        });
+        expect(removal.membershipEpoch).toBe('2');
+
+        // The removed member cannot send.
+        await expect(
+          conversations.sendEnvelopes(removed.actorId, {
+            conversationId: created.conversationId,
+            clientRequestId: randomUUID(),
+            senderDeviceId: removedDevice.deviceId,
+            message: buildLogicalMessage(
+              [
+                buildEnvelope(sender.actorId, senderDevice.deviceId),
+                buildEnvelope(keeper.actorId, keeperDevice.deviceId),
+              ],
+              { epoch: 2n },
+            ),
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
+
+        // A send still addressing the removed member's device is rejected as an unexpected
+        // target — their existing devices cannot claim future envelopes.
+        await expect(
+          conversations.sendEnvelopes(sender.actorId, {
+            conversationId: created.conversationId,
+            clientRequestId: randomUUID(),
+            senderDeviceId: senderDevice.deviceId,
+            message: buildLogicalMessage(
+              [
+                buildEnvelope(keeper.actorId, keeperDevice.deviceId),
+                buildEnvelope(removed.actorId, removedDevice.deviceId),
+              ],
+              { epoch: 2n },
+            ),
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_FANOUT_REJECTED' });
+
+        // Recomposed without them: accepted; they receive nothing new but keep what already
+        // arrived (removal stops future payloads, it is not a remote wipe).
+        const after = await conversations.sendEnvelopes(sender.actorId, {
+          conversationId: created.conversationId,
+          clientRequestId: randomUUID(),
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage([buildEnvelope(keeper.actorId, keeperDevice.deviceId)], {
+            epoch: 2n,
+          }),
+        });
+        expect(after.logicalMessageId.length).toBeGreaterThan(0);
+
+        const removedAfter = await conversations.listMailboxEnvelopes(removed.actorId, {
+          deviceId: removedDevice.deviceId,
+          cursor: '',
+          limit: 0,
+        });
+        expect(removedAfter.envelopes.map((e) => e.logicalMessageId)).toEqual([
+          created.logicalMessageId,
+        ]);
+
+        const state = await conversations.getE2eeConversationState(keeper.actorId, {
+          conversationId: created.conversationId,
+        });
+        expect(state.membershipEpoch).toBe('2');
+        expect(state.members.map((m) => m.actorId)).not.toContain(removed.actorId);
+      });
+
+      it('a member can remove themselves (leave), and a removed member can be re-added at the next epoch', async () => {
+        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const member = actors[1]!;
+        const memberDevice = devices[1]!;
+
+        const leave = await groups.removeE2eeMember(member.actorId, {
+          conversationId: created.conversationId,
+          actorId: member.actorId,
+          signerDeviceId: memberDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 2n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_REMOVED,
+            subjectActorId: member.actorId,
+            signer: member,
+            signerDevice: memberDevice,
+            previousDigest: ZERO_DIGEST,
+          }),
+        });
+        expect(leave.membershipEpoch).toBe('2');
+
+        const readd = await groups.addE2eeMember(sender.actorId, {
+          conversationId: created.conversationId,
+          actorId: member.actorId,
+          signerDeviceId: senderDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 3n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+            subjectActorId: member.actorId,
+            signer: sender,
+            signerDevice: senderDevice,
+            previousDigest: Buffer.from(leave.event?.digest as Buffer),
+          }),
+        });
+        expect(readd.membershipEpoch).toBe('3');
+
+        const state = await conversations.getE2eeConversationState(sender.actorId, {
+          conversationId: created.conversationId,
+        });
+        expect(state.membershipEpoch).toBe('3');
+        expect(state.members.map((m) => m.actorId)).toContain(member.actorId);
+      });
+
+      it('verifies the signed transcript: decoded-field tampering, wrong signer key, and chain breaks are rejected', async () => {
+        const { actors, sender, senderDevice, created } = await createGroup(2);
+        const newcomer = await newActor();
+        await enrollFirstDevice(newcomer, 0);
+
+        // Tampered decoded view: the convenience fields no longer match the signed bytes.
+        // (Tampering `signerDeviceId` would be caught even earlier, by the request-vs-event
+        // agreement check; `epoch` isolates the transcript-match rule itself.)
+        const tampered = signedGroupControlEvent({
+          conversationId: created.conversationId,
+          epoch: 2n,
+          change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+          subjectActorId: newcomer.actorId,
+          signer: sender,
+          signerDevice: senderDevice,
+          previousDigest: ZERO_DIGEST,
+        });
+        tampered.epoch = '5';
+        await expect(
+          groups.addE2eeMember(sender.actorId, {
+            conversationId: created.conversationId,
+            actorId: newcomer.actorId,
+            signerDeviceId: senderDevice.deviceId,
+            event: tampered,
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_GROUP_CONTROL_INVALID' });
+
+        // Signed by the wrong device key entirely.
+        const strangerKeys = generateSigningKeyPair();
+        const forged = signedGroupControlEvent({
+          conversationId: created.conversationId,
+          epoch: 2n,
+          change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+          subjectActorId: newcomer.actorId,
+          signer: sender,
+          signerDevice: {
+            deviceId: senderDevice.deviceId,
+            signingPrivateKey: strangerKeys.privateKey,
+            signingPublicKey: strangerKeys.publicKey,
+            agreementPublicKey: senderDevice.agreementPublicKey,
+          },
+          previousDigest: ZERO_DIGEST,
+        });
+        await expect(
+          groups.addE2eeMember(sender.actorId, {
+            conversationId: created.conversationId,
+            actorId: newcomer.actorId,
+            signerDeviceId: senderDevice.deviceId,
+            event: forged,
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_GROUP_CONTROL_INVALID' });
+
+        // Valid signature, but the epoch skips: a chain break, not a signature problem.
+        const gapped = signedGroupControlEvent({
+          conversationId: created.conversationId,
+          epoch: 3n,
+          change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+          subjectActorId: newcomer.actorId,
+          signer: sender,
+          signerDevice: senderDevice,
+          previousDigest: ZERO_DIGEST,
+        });
+        await expect(
+          groups.addE2eeMember(sender.actorId, {
+            conversationId: created.conversationId,
+            actorId: newcomer.actorId,
+            signerDeviceId: senderDevice.deviceId,
+            event: gapped,
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_GROUP_CONTROL_CONFLICT' });
+
+        // A non-member's correctly-signed event: the membership check fires first.
+        const outsider = await newActor();
+        const { device: outsiderDevice } = await enrollFirstDevice(outsider, 0);
+        await expect(
+          groups.addE2eeMember(outsider.actorId, {
+            conversationId: created.conversationId,
+            actorId: newcomer.actorId,
+            signerDeviceId: outsiderDevice.deviceId,
+            event: signedGroupControlEvent({
+              conversationId: created.conversationId,
+              epoch: 2n,
+              change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+              subjectActorId: newcomer.actorId,
+              signer: outsider,
+              signerDevice: outsiderDevice,
+              previousDigest: ZERO_DIGEST,
+            }),
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
+
+        // Nothing above mutated membership or the transcript.
+        const state = await conversations.getE2eeConversationState(sender.actorId, {
+          conversationId: created.conversationId,
+        });
+        expect(state.membershipEpoch).toBe('1');
+        expect(state.members.map((m) => m.actorId).sort()).toEqual(
+          [sender.actorId, actors[1]!.actorId].sort(),
+        );
+      });
+
+      it('ListE2eeGroupControlEvents returns the verified chain forward and keyset-paginates', async () => {
+        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const member = actors[1]!;
+        const memberDevice = devices[1]!;
+        const newcomer = await newActor();
+        await enrollFirstDevice(newcomer, 0);
+
+        const added = await groups.addE2eeMember(sender.actorId, {
+          conversationId: created.conversationId,
+          actorId: newcomer.actorId,
+          signerDeviceId: senderDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 2n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_ADDED,
+            subjectActorId: newcomer.actorId,
+            signer: sender,
+            signerDevice: senderDevice,
+            previousDigest: ZERO_DIGEST,
+          }),
+        });
+        const removed = await groups.removeE2eeMember(member.actorId, {
+          conversationId: created.conversationId,
+          actorId: newcomer.actorId,
+          signerDeviceId: memberDevice.deviceId,
+          event: signedGroupControlEvent({
+            conversationId: created.conversationId,
+            epoch: 3n,
+            change: E2eeGroupChangeKind.E2EE_GROUP_CHANGE_KIND_REMOVED,
+            subjectActorId: newcomer.actorId,
+            signer: member,
+            signerDevice: memberDevice,
+            previousDigest: Buffer.from(added.event?.digest as Buffer),
+          }),
+        });
+
+        const firstPage = await groups.listGroupControlEvents(sender.actorId, {
+          conversationId: created.conversationId,
+          afterEpoch: '0',
+          cursor: '',
+          limit: 1,
+        });
+        expect(firstPage.events).toHaveLength(1);
+        expect(firstPage.events[0]?.epoch).toBe('2');
+        expect(firstPage.page?.hasMore).toBe(true);
+
+        const rest = await groups.listGroupControlEvents(sender.actorId, {
+          conversationId: created.conversationId,
+          afterEpoch: '0',
+          cursor: firstPage.page?.nextCursor ?? '',
+          limit: 10,
+        });
+        expect(rest.events.map((event) => event.epoch)).toEqual(['3']);
+        expect(rest.events[0]?.digest).toEqual(removed.event?.digest);
+
+        // Forward-only replay: nothing at or before the highest verified epoch.
+        const none = await groups.listGroupControlEvents(sender.actorId, {
+          conversationId: created.conversationId,
+          afterEpoch: '3',
+          cursor: '',
+          limit: 10,
+        });
+        expect(none.events).toHaveLength(0);
+        expect(none.page?.hasMore).toBe(false);
+
+        // A non-member may not read the transcript.
+        await expect(
+          groups.listGroupControlEvents(newcomer.actorId, {
+            conversationId: created.conversationId,
+            afterEpoch: '0',
+            cursor: '',
+            limit: 10,
+          }),
+        ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
       });
     });
   },

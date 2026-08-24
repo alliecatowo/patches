@@ -11,6 +11,7 @@ import {
   ImageIcon,
   SparklesIcon,
 } from '../components/icons/Icons.js';
+import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
 import { RichBody } from '../components/RichBody.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ComposeRoute.module.css';
@@ -307,11 +308,7 @@ export function ComposeRoute(): JSX.Element {
         <div className={styles['mediaList']}>
           {uploads.map((upload, idx) => (
             <div className={styles['mediaItem']} key={idx}>
-              <img
-                src={upload.file.size > 0 ? URL.createObjectURL(upload.file) : ''}
-                alt=""
-                className={styles['mediaThumb']}
-              />
+              <MediaUploadPreview file={upload.file} alt="" className={styles['mediaThumb']} />
               <button
                 type="button"
                 className={styles['mediaRemoveBtn']}
@@ -326,8 +323,11 @@ export function ComposeRoute(): JSX.Element {
                 </div>
               ) : null}
               {upload.status === 'error' ? (
-                <div className={`${styles['uploadOverlay']} ${styles['uploadError']}`}>
-                  <span>Failed</span>
+                <div
+                  className={`${styles['uploadOverlay']} ${styles['uploadError']}`}
+                  title={upload.error}
+                >
+                  <span>{upload.error ?? 'Failed'}</span>
                 </div>
               ) : null}
             </div>
@@ -348,7 +348,13 @@ export function ComposeRoute(): JSX.Element {
               multiple
               disabled={uploads.length >= MAX_MEDIA}
               style={{ display: 'none' }}
-              onChange={(e) => onFilesSelected(e.target.files)}
+              onChange={(e) => {
+                onFilesSelected(e.target.files);
+                // Reset so picking the same file again (e.g. after removing a
+                // failed upload) still fires `change` — `value` would otherwise
+                // be unchanged and the browser would swallow the event.
+                e.target.value = '';
+              }}
             />
             <ImageIcon size={18} />
             <span className={styles['badge']}>{uploads.length > 0 ? uploads.length : ''}</span>

@@ -67,6 +67,7 @@ export { E2eeSignedPrekey } from './entities/e2ee-signed-prekey.entity.js';
 export { E2eeOneTimePrekey } from './entities/e2ee-one-time-prekey.entity.js';
 export { E2eeLogicalMessage } from './entities/e2ee-logical-message.entity.js';
 export { E2eeMailboxEnvelope } from './entities/e2ee-mailbox-envelope.entity.js';
+export { E2eeGroupControlEvent } from './entities/e2ee-group-control-event.entity.js';
 export { E2eeReportEvidence } from './entities/e2ee-report-evidence.entity.js';
 export { E2eeReportEvidenceItem } from './entities/e2ee-report-evidence-item.entity.js';
 export { E2eeNodeFrankingKey } from './entities/e2ee-node-franking-key.entity.js';

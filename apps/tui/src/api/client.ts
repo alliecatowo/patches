@@ -102,6 +102,10 @@ function buildMethods(sdk: PatchesSdk) {
     beginSshEnrollment: requiredToken(sdk.auth.beginSshEnrollment),
     resendVerification: noRequestRequiredToken(sdk.auth.resendVerification, {}),
     revokeCredential: requiredToken(sdk.auth.revokeCredential),
+    beginGitHubLogin: optionalToken(sdk.auth.beginGitHubLogin),
+    pollGitHubLogin: optionalToken(sdk.auth.pollGitHubLogin),
+    beginOidcLogin: optionalToken(sdk.auth.beginOidcLogin),
+    pollOidcLogin: optionalToken(sdk.auth.pollOidcLogin),
 
     // ---- ActorService / FeedService — public reads, no access token required ----
     getActor: noToken(sdk.actors.getActor),
@@ -212,7 +216,6 @@ function buildMethods(sdk: PatchesSdk) {
     listMessageRequests: requiredToken(sdk.messages.listMessageRequests),
     respondToMessageRequest: requiredToken(sdk.messages.respondToMessageRequest),
 
-    // ---- TagService — public search; mute state requires a session ----
     searchTags: optionalToken(sdk.tags.searchTags),
     muteTag: requiredToken(sdk.tags.muteTag),
     unmuteTag: requiredToken(sdk.tags.unmuteTag),
@@ -266,6 +269,16 @@ function buildMethods(sdk: PatchesSdk) {
     requestAccountDeletion: requiredToken(sdk.privacy.requestAccountDeletion),
     cancelAccountDeletion: requiredToken(sdk.privacy.cancelAccountDeletion),
     getDeletionStatus: requiredToken(sdk.privacy.getDeletionStatus),
+
+    // ---- E2eeService — encrypted DM infrastructure (ADR 0020) ----
+    getIdentityRoot: requiredToken(sdk.e2ee.getIdentityRoot),
+    getDeviceRoster: optionalToken(sdk.e2ee.getDeviceRoster),
+    revokeDevice: requiredToken(sdk.e2ee.revokeDevice),
+    // Capability is published pre-enrollment so a client can discover availability
+    // before offering anything (spec §183) — no access token required.
+    getE2eeCapability: noToken(sdk.e2ee.getE2eeCapability),
+    getE2eeConversationState: requiredToken(sdk.e2ee.getE2eeConversationState),
+    listE2eeGroupControlEvents: requiredToken(sdk.e2ee.listE2eeGroupControlEvents),
   };
 }
 

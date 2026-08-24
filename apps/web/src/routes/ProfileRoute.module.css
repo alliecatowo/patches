@@ -173,8 +173,25 @@
 .wallHeader {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.viewPageBtn {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius);
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: all 0.12s ease;
+}
+
+.viewPageBtn:hover {
+  color: var(--fg);
+  border-color: var(--border-hover);
 }
 
 .editWallBtn {
@@ -195,13 +212,4 @@
 .editWallBtn:hover {
   background: var(--bg-card);
   border-color: var(--border-hover);
-}
-
-.wallBlock {
-  margin-bottom: 1rem;
-}
-
-.wallBlock img {
-  max-width: 100%;
-  border-radius: var(--radius);
 }

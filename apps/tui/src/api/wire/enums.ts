@@ -26,6 +26,9 @@ export {
   ConversationSecurityMode as CONVERSATION_SECURITY_MODE,
   CredentialType as CREDENTIAL_TYPE,
   DomainPolicyAction as DOMAIN_POLICY_ACTION,
+  E2eeCapabilityState as E2EE_CAPABILITY_STATE,
+  E2eeDeviceStatus as E2EE_DEVICE_STATUS,
+  E2eeGroupChangeKind as E2EE_GROUP_CHANGE_KIND,
   FederationStance as FEDERATION_STANCE,
   FilterAction as FILTER_ACTION,
   FilterScope as FILTER_SCOPE,
@@ -71,5 +74,6 @@ export function enumWireName(schema: DescEnum, value: number): string {
 export {
   AppealStatusSchema as APPEAL_STATUS_SCHEMA,
   CredentialTypeSchema as CREDENTIAL_TYPE_SCHEMA,
+  E2eeDeviceStatusSchema as E2EE_DEVICE_STATUS_SCHEMA,
   FilterActionSchema as FILTER_ACTION_SCHEMA,
 } from '@patches/proto/es';

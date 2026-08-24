@@ -399,39 +399,82 @@ reading a remote post. Remote page documents are subject to the same §109 inges
 any other remote input — bounded size, validated content type, capped JSON depth — and to the
 same strict-on-write validation as local documents.
 
-## 7.6 Amendment B mapping (§193) — **Status: planned, no code**
+## 7.6 Amendment B mapping (§193) — **Status: decided (ADR 0028), Phase 18 in progress**
 
-Amendment B (§178–§195) adds reposts, quotes, tags, communities and DMs as **local,
-single-node** features. None of them federate in Phase 11. This section exists only so the
-local schema does not paint federation into a corner, and it moves **no** §109 gate and
-**no** §160 checklist item above — the checklist is unchanged by Amendment B.
+Amendment B (§178–§195) added reposts, quotes, tags, communities and DMs as **local,
+single-node** features. Phase 18 federates the first three, in that order, under
+[ADR 0028](../decisions/0028-federating-social-depth.md) (2026-08-22): reposts map to
+`Announce`/`Undo(Announce)` with **deterministically reconstructed** outbound activity
+ids; tags map to `as:Hashtag`; quotes map to FEP-044f with new + legacy properties emitted
+and all four accepted inbound, unknown shapes as silent no-ops. This section still moves
+**no** §109 gate and **no** §160 checklist item above — the checklist is unchanged by
+Amendment B and by Phase 18.
 
-The verified protocol detail, with citations and verification dates, lives in
+The verified protocol detail, with citations and verification dates (re-verified
+2026-08-22 for reposts/quotes/tags and the `Group` questions), lives in
 **`docs/research/activitypub-social-depth.md`**. Summary:
 
-| Feature     | ActivityPub shape                                                                           | Footing                                        |
-| ----------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Repost      | `Announce` of the object; `Undo(Announce)` to unrepost                                      | W3C Recommendation                             |
-| Quote       | FEP-044f `quote` + `quoteAuthorization`, plus legacy `quoteUri`/`quoteUrl`/`_misskey_quote` | FEP **draft**; Mastodon 4.4 reads, 4.5 authors |
-| Tags        | `Hashtag` entries in `tag` (an AS2 **extension** term, not in the Recommendation)           | de facto convention                            |
-| Communities | `Group` actor that `Announce`-wraps member activities (FEP-1b12, Lemmy/Mbin)                | FEP final, implementation docs thin            |
-| DMs         | `Note` addressed to recipients only — no `as:Public`, no follower collection                | W3C Recommendation                             |
+| Feature     | ActivityPub shape                                                                                                              | Footing                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Repost      | `Announce` of the object; `Undo(Announce)` to unrepost                                                                         | W3C Recommendation                                                       |
+| Quote       | FEP-044f `quote` + `quoteAuthorization` + `QuoteRequest`/`Accept`/`Reject`, plus legacy `quoteUri`/`quoteUrl`/`_misskey_quote` | FEP **draft**; Mastodon 4.4 reads, 4.5 authors (automatic approval only) |
+| Tags        | `Hashtag` entries in `tag` (an AS2 **extension** term, not in the Recommendation)                                              | de facto convention                                                      |
+| Communities | `Group` actor that `Announce`-wraps member activities (FEP-1b12, Lemmy/Mbin)                                                   | FEP final, implementation docs thin                                      |
+| DMs         | `Note` addressed to recipients only — no `as:Public`, no follower collection                                                   | W3C Recommendation                                                       |
 
-Four things that are already settled and must not be re-litigated per feature:
+Six things that are settled and must not be re-litigated per feature:
 
-- **DMs do not federate in v0** (§183.4, §194). Federated DMs are a separate security
-  decision with its own gate (§195.6), and shipping local DMs does not imply them. See ADR
-  [0017](../decisions/0017-server-visible-dms.md).
+- **DMs do not federate in v0** (§183.4, §194), and ADR
+  [0020](../decisions/0020-e2ee-direct-messages.md) §13 extends that to E2EE explicitly:
+  no DM key, prekey, envelope, report, or delivery path crosses the `FederationGateway`,
+  even when social features federate. Federated DMs remain a separate security decision
+  with their own gate (§195.6). See ADR [0017](../decisions/0017-server-visible-dms.md).
 - **Federated communities need their own ADR** (§193, §195.2). The `Group`-actor pattern is
   real and standardized (FEP-1b12, final 2023-02-09), but how a microblog server renders a
-  `Group` actor is **unverified** — that gap is the note's whole point.
+  `Group` actor is **unverified** (re-confirmed 2026-08-22 — Mastodon's ActivityPub page
+  still never mentions `Group`). Deferred by ADR 0028; Phase 18 schema assumes nothing
+  about it.
 - **A remote repost gets no exemption.** Inbound `Announce` must respect local block, mute
   and domain-block rules like any other activity (§193), and a quote of a remote post MUST
   NOT be displayed as authorized unless a FEP-044f authorization was actually received
-  (`quote_policy`, §180.2).
+  (`quote_policy`, §180.2) — which is why quote verification is a §109-gated remote fetch
+  (ADR 0028 §5).
+- **§180.1 chronology is local-only.** Our `Announce` emissions never re-sort anything on
+  this node, but a receiving server orders its own timelines; say so plainly rather than
+  pretending the rule federates (ADR 0028 §6).
 - **Re-verify before implementing** (§0, §155). FEP-044f is a draft and Mastodon's quote
   support changed across two minor releases in four months; the table above is a starting
   point, not a specification.
+
+### 7.6.1 Phase 18 schema (ADR 0028, P18-002)
+
+Two schema objects landed with ADR 0028 (`FederationSocialDepthSchema` migration); the
+tables are written but no inbox/outbox code uses them yet — that is P18-003+.
+
+- **`reposts.remote_activity_uri`** (nullable `text`, unique index) — the activity id of
+  the **remote** `Announce` an inbound repost arrived as. A remote `Undo(Announce)` names
+  that URI; storing it on the pointer row lets the undo find the row by lookup, and the
+  unique index guarantees one remote activity id can never claim two local repost rows.
+  Null on locally-originated reposts: outbound `Announce` ids are **reconstructed** from
+  the row (ADR 0028 §4), never stored, so this column never carries a value this node
+  minted.
+- **`quote_authorizations`** — the FEP-044f authorization lifecycle, one row per
+  (quoting post, quoted post) pair, mirroring the stamp's
+  (`interactingObject`, `interactionTarget`) identity: `quoted_post_id`, `quoting_post_id`
+  (nullable until the quote post has a local row), `quoter_actor_id`,
+  `remote_stamp_uri` (the `quoteAuthorization` document URI, when one exists),
+  `claimed_policy` (`ANYONE`/`FOLLOWERS`/`NOBODY`), `state`
+  (`PENDING`/`VERIFIED`/`REVOKED`/`REJECTED`), `verified_at`/`revoked_at`, timestamps.
+  Revocation is a state flip on the row, never a delete — an unauthorized-after-revocation
+  quote is still rendered, just not as endorsed (§193). A CHECK constraint forbids
+  self-quote rows (FEP-044f auto-approves those; no row needed). Indexes: unique
+  (`quoting_post_id`, `quoted_post_id`) for exactly-one semantics; (`quoted_post_id`,
+  `state`) for "who quoted me and is it still approved" and revocation fan-out.
+
+> **Note for the orchestrator (P18-002):** the two objects above belong in
+> `docs/architecture/data-model.md` with the other tables. That file is owned by another
+> agent this wave — merge this section's facts there and reduce this subsection to a
+> pointer.
 
 ## 8. Domain stability warning (§21, §91)
 

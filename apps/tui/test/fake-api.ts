@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { parsePageStrict, type PatchesPage } from '@patches/domain';
 import {
+  E2EE_CAPABILITY_STATE,
   FOLLOW_STATE,
   MEDIA_STATUS,
   POST_TYPE,
@@ -371,6 +372,16 @@ export class FakeApiHandle {
       // PASSWORD_AUTH=off, so the default that preserves every existing password-
       // login test's behavior is the right one here.
       getAuthPolicy: () => Promise.resolve({ passwordAuth: 'PASSWORD_AUTH_MODE_OPTIONAL' }),
+      // P13-010: E2EE surfaces the shell probes on mount. DISABLED is the honest
+      // default — it keeps every pre-E2EE test's expectations intact (no dev-mode
+      // warning, no capability affordances) while letting App render.
+      getE2eeCapability: () =>
+        Promise.resolve({
+          capability: { state: E2EE_CAPABILITY_STATE.DISABLED },
+        }),
+      getIdentityRoot: () => Promise.resolve({}),
+      getDeviceRoster: () => Promise.resolve({}),
+      listE2eeGroupControlEvents: () => Promise.resolve({ events: [] }),
       refreshSession: (request: RefreshSessionRequest) => this.refreshSession(request),
       logout: () => Promise.resolve({}),
       verifyEmail: (request: VerifyEmailRequest) => this.verifyEmail(request),

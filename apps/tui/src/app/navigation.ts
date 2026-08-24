@@ -31,11 +31,13 @@ type NavEntryVariant =
         | 'tagFeed'
         | 'followers'
         | 'following'
+        | 'safetyNumber'
       >;
     }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
   | { screen: 'followers'; actorId: string; handle: string }
   | { screen: 'following'; actorId: string; handle: string }
+  | { screen: 'safetyNumber'; targetActorId: string }
   | { screen: 'thread'; postId: string }
   | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }
