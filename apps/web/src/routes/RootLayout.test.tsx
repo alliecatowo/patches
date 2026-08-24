@@ -135,12 +135,8 @@ describe('RootLayout', () => {
 
   // B-112: reporting must be possible from every route, so the chip mounts exactly
   // once here in RootLayout — individual routes must not add a second one.
-  it('mounts exactly one persistent reporter chip for every route', () => {
-    mockUseSession.mockReturnValue(null);
+  it('does not mount a persistent reporter chip — reporting lives in the fan-out and /report (B-112 follow-up)', () => {
     renderLayout();
-
-    const chips = screen.getAllByRole('button', { name: 'Report an issue' });
-    expect(chips).toHaveLength(1);
-    expect(chips[0]).toHaveAttribute('title', 'Issue, jank, or idea — anything counts');
+    expect(screen.queryByRole('button', { name: 'Report an issue' })).toBeNull();
   });
 });

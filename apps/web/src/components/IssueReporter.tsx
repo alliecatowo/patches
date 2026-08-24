@@ -58,7 +58,7 @@ export function IssueReporter({
         type="button"
         className={variant === 'floating' ? styles['chip'] : styles['navEntry']}
         onClick={() => setOpen(true)}
-        title="Issue, jank, or idea — anything counts"
+        title="Bug, jank, or feature idea — anything counts"
       >
         Report an issue
       </button>

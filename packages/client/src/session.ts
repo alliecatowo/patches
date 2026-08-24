@@ -109,7 +109,17 @@ export class SessionManager {
       return await fn(token);
     } catch (error) {
       if (!isUnauthenticated(error)) throw error;
-      const refreshed = await this.refresh();
+      let refreshed: StoredSession;
+      try {
+        refreshed = await this.refresh();
+      } catch (refreshError) {
+        // The refresh token itself is dead (rotated-then-reused, expired, or family
+        // revoked). Holding onto it guarantees an infinite 401→refresh→fail loop that
+        // hammers the node's reuse-detection every retry — drop the pair and surface
+        // "not signed in" so the caller routes to sign-in instead.
+        await this.clear();
+        throw refreshError;
+      }
       return fn(refreshed.accessToken);
     }
   }
@@ -134,6 +144,15 @@ export class SessionManager {
     const refreshToken = this.current?.refreshToken;
     if (refreshToken === undefined) {
       throw new ConnectError('No session to refresh.', Code.Unauthenticated);
+    }
+    // Cross-tab guard: another tab may have ALREADY rotated this exact token and
+    // persisted the successor. Re-loading first turns the two-tab race from "loser's
+    // duplicate refresh flags reuse and revokes the whole family" into "loser adopts
+    // the winner's pair". Only hit the network when the stored token is still ours.
+    const stored = await this.store.load();
+    if (stored !== undefined && stored.refreshToken !== refreshToken) {
+      this.current = stored;
+      return stored;
     }
     const response = await this.authClient.refreshSession({ refreshToken });
     if (response.session === undefined) {
