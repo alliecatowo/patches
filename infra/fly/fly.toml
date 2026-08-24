@@ -66,7 +66,7 @@ kill_timeout = "30s"
 # This is the ONLY place migrations run in production; the app itself hard-codes
 # `migrationsRun: false` (packages/database's `createDataSourceOptions`) per spec §153.
 [deploy]
-  release_command = "pnpm db:migrate"
+  release_command = "node server/migrate.mjs"
 
 # Public gRPC ingress — server group only. TLS terminates at Fly's edge; the app itself
 # listens plain h2c on `internal_port`. `worker` intentionally has NO [[services]] block:
@@ -164,5 +164,5 @@ kill_timeout = "30s"
 # Temporary mount for worker media processing (sharp needs /tmp)
 [mounts]
   destination = "/tmp"
-  source = "patches-tmp"
+  source = "patches_tmp"
   size_gb = 1
