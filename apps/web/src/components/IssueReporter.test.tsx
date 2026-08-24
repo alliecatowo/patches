@@ -58,7 +58,7 @@ describe('IssueReporter', () => {
     expect(screen.getByPlaceholderText(/feature you wish existed/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Report an issue' })).toHaveAttribute(
       'title',
-      'Issue, jank, or idea — anything counts',
+      'Bug, jank, or feature idea — anything counts',
     );
   });
 

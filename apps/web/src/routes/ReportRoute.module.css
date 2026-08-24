@@ -1,0 +1,11 @@
+.page {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.lede {
+  opacity: 0.75;
+  line-height: 1.5;
+}
