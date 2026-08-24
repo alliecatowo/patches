@@ -1,6 +1,8 @@
 import type { CallOptions } from '@connectrpc/connect';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { createPatchesApi, type PatchesApi as PatchesSdk } from '@patches/client';
 
+import { getDiagnosticsReporter } from '../diagnostics/reporter.js';
 import { CLIENT_NAME, TUI_VERSION } from '../version.js';
 import { getAmbientAccessToken } from './ambient-token.js';
 import { createGrpcTransport } from './transport.js';
@@ -51,7 +53,12 @@ export class PatchesApi {
       clientName: CLIENT_NAME,
       clientVersion: TUI_VERSION,
     });
-    Object.assign(this, buildMethods(sdk));
+    Object.assign(
+      this,
+      withRpcFailureTelemetry(buildMethods(sdk), (rpc, error) =>
+        recordRpcFailureForDiagnostics(rpc, error),
+      ),
+    );
   }
 
   /**
@@ -66,6 +73,50 @@ export class PatchesApi {
   }
 }
 /* eslint-enable @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging */
+
+/**
+ * B-112 diagnostics seam: every RPC rejection is recorded into the issue reporter's
+ * event ring as a status-code-grade line — RPC name + Connect code only. The error
+ * object (whose message could carry server text or, on DM paths, body-derived detail)
+ * never leaves this function.
+ */
+function recordRpcFailureForDiagnostics(rpc: string, error: unknown): void {
+  let code: number = Code.Unknown;
+  if (error instanceof ConnectError) code = error.code;
+  getDiagnosticsReporter().recordRpcFailure(rpc, code, codeName(code));
+}
+
+function codeName(code: number): string {
+  return Code[code] ?? 'UNKNOWN';
+}
+
+/**
+ * Wraps every built RPC method so rejections pass through untouched after being noted.
+ * Exported for tests; the generic wrapper is what keeps the ~140-entry method table
+ * below free of per-call telemetry noise.
+ */
+export function withRpcFailureTelemetry<M extends Record<string, unknown>>(
+  methods: M,
+  record: (rpc: string, error: unknown) => void,
+): M {
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(methods)) {
+    if (typeof value !== 'function') {
+      wrapped[name] = value;
+      continue;
+    }
+    const fn = value as (...args: unknown[]) => unknown;
+    wrapped[name] = (...args: unknown[]): unknown => {
+      const result = fn(...args);
+      if (!(result instanceof Promise)) return result;
+      return result.catch((error: unknown) => {
+        record(name, error);
+        throw error;
+      });
+    };
+  }
+  return wrapped as M;
+}
 
 type Rpc<I, O> = (request: I, options?: CallOptions) => Promise<O>;
 

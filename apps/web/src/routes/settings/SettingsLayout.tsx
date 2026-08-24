@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { IssueReporter } from '../../components/IssueReporter.js';
 import styles from './SettingsLayout.module.css';
 
 const LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
@@ -36,6 +37,9 @@ export function SettingsLayout(): JSX.Element {
         <NavLink to="/settings/credentials" className={LINK_CLASS}>
           Sign-in methods
         </NavLink>
+        {/* B-112: the issue reporter's second entry point (the first is the floating
+            chip on error screens) — a button, not a route, so it opens the same modal. */}
+        <IssueReporter variant="inline" />
       </nav>
       <div className={styles['content']}>
         <Outlet />

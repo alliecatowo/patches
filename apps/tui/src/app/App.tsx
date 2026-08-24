@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Box, Text, useApp, useInput, useStdin, useWindowSize, type Key } from 'ink';
+import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize, type Key } from 'ink';
 import {
   type ReactElement,
   type ReactNode,
@@ -65,6 +65,9 @@ import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
 import { PrivacyScreen } from '../screens/PrivacyScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
+import { IssueReportScreen } from '../screens/IssueReportScreen.js';
+import { attachFrameCapture } from '../diagnostics/frame-capture.js';
+import { getDiagnosticsReporter } from '../diagnostics/reporter.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
 import { TagFeedScreen } from '../screens/TagFeedScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
@@ -213,6 +216,7 @@ export function App({
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
   const { columns, rows } = useWindowSize();
+  const { stdout } = useStdout();
   const { state: serverInfoState, retry: retryServerInfo } = useServerInfo(api);
 
   // The navigation stack (see `navigation.ts`). Patches opens straight onto a
@@ -493,6 +497,35 @@ export function App({
     notify('Safety number marked as compared for this session.', 'success');
   }
 
+  // B-112 diagnostics: keep the issue reporter's capability snapshot current so a
+  // `:report` bundle always describes the session it came from (plain/linear mode,
+  // whether the node advertises E2EE, whether this device has an enrolled vault).
+  // Read lazily at submit time — never during render — because the vault answer lives
+  // behind `e2eeSenderRef`, which only event handlers may touch.
+  function issueReporterCapabilities(): Record<string, boolean> {
+    const key = session === undefined ? undefined : `${api.target}:${session.userId}`;
+    const sender =
+      key !== undefined && e2eeSenderRef.current?.key === key
+        ? e2eeSenderRef.current.sender
+        : undefined;
+    return {
+      plainMode: plainEffective,
+      linearMode,
+      e2eeAdvertised: e2eeCapabilityState !== undefined,
+      vaultEnrolled: sender?.enrolled() === true,
+    };
+  }
+
+  // B-112 diagnostics: capture the last rendered frame's visible text by teeing the
+  // app's own stdout stream — Ink writes every frame there, so the reporter keeps a
+  // plain-text tail of whatever was last on screen (redacted again at bundle build).
+  useEffect(() => {
+    const capture = attachFrameCapture(stdout);
+    return () => {
+      capture.detach();
+    };
+  }, [stdout]);
+
   // The vault-backed send/receive pipeline for end-to-end conversations (P13-010,
   // B-101), keyed to the signed-in account. Faults are sticky until an explicit wipe
   // resets them. The pipeline is fully built and tested; it stays dormant until an
@@ -755,6 +788,7 @@ export function App({
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
+    getDiagnosticsReporter().recordBreadcrumb('nav', next.screen);
     setStack((current) => push(current, next));
   }
 
@@ -766,6 +800,7 @@ export function App({
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
+    getDiagnosticsReporter().recordBreadcrumb('nav', next.screen);
     setStack((current) => jump(current, next, options));
   }
 
@@ -773,7 +808,9 @@ export function App({
   function back(): void {
     navigated.current = true;
     setLegacySubmodeActive(false);
-    setStack((current) => pop(current));
+    const next = pop(stack);
+    getDiagnosticsReporter().recordBreadcrumb('nav-back', currentEntry(next).screen);
+    setStack(next);
   }
 
   function requireSession(next: NavEntry): void {
@@ -881,6 +918,7 @@ export function App({
       navigated.current = true;
       setLegacySubmodeActive(false);
       clearModals();
+      getDiagnosticsReporter().recordBreadcrumb('nav', 'thread');
       setStack((current) => replace(current, next));
       return;
     }
@@ -1596,6 +1634,10 @@ export function App({
       case 'privacy':
         requireSession({ screen: 'privacy' });
         return;
+      case 'report':
+        // B-112: the beta issue reporter — deliberately reachable signed out.
+        goTo({ screen: 'issueReport' });
+        return;
       case 'followers':
         if (session?.actor) {
           goTo({ screen: 'followers', actorId: session.userId, handle: session.actor.handle });
@@ -1765,7 +1807,9 @@ export function App({
       return;
     }
     const legacyTextScreen =
-      ['login', 'compose', 'postEdit', 'search', 'report', 'editProfile'].includes(screen) ||
+      ['login', 'compose', 'postEdit', 'search', 'report', 'editProfile', 'issueReport'].includes(
+        screen,
+      ) ||
       // The quick-post overlay hosts the same legacy text screen; without this the
       // shell would treat every character typed into it as a global key.
       modals.top?.id === 'quick-post';
@@ -2279,6 +2323,18 @@ export function App({
             onBack={back}
           />
         );
+      case 'issueReport':
+        return (
+          <IssueReportScreen
+            env={env}
+            nodeDomain={api.target}
+            sessionHandle={session?.actor?.handle}
+            capabilities={issueReporterCapabilities}
+            isActive={active}
+            onCancel={back}
+            onNotify={notify}
+          />
+        );
       case 'login':
         return (
           <LoginScreen
@@ -2632,10 +2688,17 @@ export function App({
                         )}
                         <HintLine
                           width={Math.max(10, columns - 2)}
-                          keys={hintsFor(screen, {
-                            authenticated: session !== undefined,
-                            canGoBack: canGoBack(stack),
-                          })}
+                          keys={[
+                            ...hintsFor(screen, {
+                              authenticated: session !== undefined,
+                              canGoBack: canGoBack(stack),
+                            }),
+                            // B-112: when the node itself is unreachable, surface the
+                            // reporter on the same line the problem is described in.
+                            ...(serverInfoState.status === 'error'
+                              ? ['connection issues? :report']
+                              : []),
+                          ]}
                         />
                       </Box>
                     </Box>

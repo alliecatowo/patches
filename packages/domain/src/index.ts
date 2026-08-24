@@ -61,6 +61,37 @@ export {
 export { containsUnsafeBytes, sanitizeText, utf8ByteLength } from './sanitize.js';
 export type { SanitizeTextOptions } from './sanitize.js';
 
+// Beta issue reporter diagnostics bundle (B-112/B-113): one schema + one redaction
+// transform, shared verbatim by the TUI and web clients.
+export {
+  buildDiagnosticsBundle,
+  redactDiagnosticsText,
+  serializeDiagnosticsBundle,
+  toIsoTimestamp,
+  DIAGNOSTICS_BREADCRUMB_DETAIL_MAX_CHARS,
+  DIAGNOSTICS_BUNDLE_SCHEMA_VERSION,
+  DIAGNOSTICS_EVENT_MAX_CHARS,
+  DIAGNOSTICS_FRAME_TAIL_MAX_CHARS,
+  DIAGNOSTICS_NOTES_MAX_CHARS,
+  DIAGNOSTICS_SCREENSHOT_MAX_CHARS,
+  MAX_DIAGNOSTICS_BUNDLE_BYTES,
+  MAX_DIAGNOSTICS_BREADCRUMBS,
+  MAX_DIAGNOSTICS_CAPABILITIES,
+  MAX_DIAGNOSTICS_EVENTS,
+  diagnosticsBundleSchema,
+  diagnosticsBreadcrumbSchema,
+  diagnosticsEventSchema,
+} from './diagnostics.js';
+export type {
+  DiagnosticsApp,
+  DiagnosticsBundle,
+  DiagnosticsBundleInput,
+  DiagnosticsBreadcrumb,
+  DiagnosticsBreadcrumbInput,
+  DiagnosticsEvent,
+  DiagnosticsEventInput,
+} from './diagnostics.js';
+
 export { BLOCK_SCHEMAS, BLOCK_TYPES, lenientPageBlockSchema, pageBlockSchema } from './blocks.js';
 export type { PageBlock, RenderablePageBlock, UnknownPageBlock } from './blocks.js';
 
