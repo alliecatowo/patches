@@ -22,6 +22,9 @@ import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { wipeE2eeState } from '../e2ee/ratchet-vault.js';
+import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
+import { verifyActorChain } from '../e2ee/chain.js';
+import { verifyGroupControlEvents } from '../e2ee/group-control.js';
 import { createVaultE2eeSender, type VaultE2eeSender, type E2eeVaultFault } from './e2ee-send.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
@@ -408,6 +411,36 @@ export function App({
         ensureAccessToken().then((accessToken) =>
           api.listE2eeGroupControlEvents(request, accessToken),
         ),
+      // B-101: the membership transcript is signature-verified client-side before the
+      // screen renders it — each event against its signer's certified device key, loaded
+      // from that actor's verified root → roster → certificate chain. A chain that
+      // cannot be verified fails its rows closed (`signatureVerified: false`), never
+      // silently passes them.
+      verifyGroupControlEvents: async ({ conversationId }) => {
+        const accessToken = await ensureAccessToken();
+        const response = await api.listE2eeGroupControlEvents(
+          { conversationId, afterEpoch: 0n, limit: 50 },
+          accessToken,
+        );
+        const verdict = await verifyGroupControlEvents(response.events, {
+          loadVerifiedChain: async (actorId) => {
+            const [rootResponse, rosterResponse] = await Promise.all([
+              api.getIdentityRoot({ actorId }, accessToken),
+              api.getDeviceRoster({ actorId }),
+            ]);
+            if (rootResponse.identityRoot === undefined || rosterResponse.roster === undefined) {
+              return undefined;
+            }
+            return verifyActorChain({
+              rootWire: rootResponse.identityRoot,
+              rosterWire: rosterResponse.roster,
+              certificatesWire: rosterResponse.certificates ?? [],
+              now: new Date(),
+            });
+          },
+        });
+        return { allVerified: verdict.allVerified, rows: verdict.rows };
+      },
     }),
     [api, ensureAccessToken],
   );
@@ -460,22 +493,29 @@ export function App({
     notify('Safety number marked as compared for this session.', 'success');
   }
 
-  // The vault-backed send pipeline for end-to-end conversations (P13-010), keyed to
-  // the signed-in account. Faults are sticky until an explicit wipe resets them.
+  // The vault-backed send/receive pipeline for end-to-end conversations (P13-010,
+  // B-101), keyed to the signed-in account. Faults are sticky until an explicit wipe
+  // resets them. The pipeline is fully built and tested; it stays dormant until an
+  // enrollment flow produces a messaging identity (`enrolled()` is false today — the
+  // TUI has no `EnrollDevice` caller yet), and sends/polls then say exactly that.
   const [e2eeVaultFault, setE2eeVaultFault] = useState<E2eeVaultFault | undefined>(undefined);
   const e2eeSenderRef = useRef<{ key: string; sender: VaultE2eeSender } | undefined>(undefined);
-  function e2eeSenderFor(activeSession: ActiveSession): VaultE2eeSender {
-    const key = `${api.target}:${activeSession.userId}`;
-    const existing = e2eeSenderRef.current;
-    if (existing?.key === key) return existing.sender;
-    existing?.sender.close();
-    const created = createVaultE2eeSender({
-      account: { nodeOrigin: api.target, userId: activeSession.userId },
-      allowInsecureKeyFile: isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE),
-    });
-    e2eeSenderRef.current = { key, sender: created };
-    return created;
-  }
+  const allowInsecureCredentialFile = isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE);
+  const e2eeSenderFor = useCallback(
+    (activeSession: ActiveSession): VaultE2eeSender => {
+      const key = `${api.target}:${activeSession.userId}`;
+      const existing = e2eeSenderRef.current;
+      if (existing?.key === key) return existing.sender;
+      existing?.sender.close();
+      const created = createVaultE2eeSender({
+        account: { nodeOrigin: api.target, userId: activeSession.userId },
+        allowInsecureKeyFile: allowInsecureCredentialFile,
+      });
+      e2eeSenderRef.current = { key, sender: created };
+      return created;
+    },
+    [api.target, allowInsecureCredentialFile],
+  );
   async function sendViaVault(conversationId: string, body: string): Promise<void> {
     if (session === undefined) return;
     const sender = e2eeSenderFor(session);
@@ -483,6 +523,44 @@ export function App({
       await sender.send(conversationId, body);
     } finally {
       setE2eeVaultFault(sender.fault());
+    }
+  }
+  /**
+   * Stable mailbox-drain callback for the open end-to-end thread (B-101). Undefined
+   * until a messaging identity is enrolled, so the screen renders nothing rather than
+   * polling a device this client does not have.
+   */
+  /**
+   * Stable mailbox-drain callback for the open end-to-end thread (B-101). Resolves
+   * empty until a messaging identity is enrolled (the TUI has no enrollment flow yet),
+   * so the screen renders nothing extra rather than pretending to poll a device this
+   * client does not have — and never touches the network on that path.
+   */
+  const receiveE2eeRows = useCallback(
+    (conversationId: string): Promise<readonly E2eeReceivedRow[]> => {
+      const sender = session === undefined ? undefined : e2eeSenderFor(session);
+      if (sender === undefined || !sender.enrolled()) return Promise.resolve([]);
+      return sender.pollMailbox(conversationId).then((result) => result.rows);
+    },
+    [session, e2eeSenderFor],
+  );
+  /** Device wipe (audit P1-2): route through the LIVE store's wipe/close, drop the
+   * cached sender instance, and clear the sticky fault so the account can start over. */
+  async function wipeE2eeForCurrentAccount(): Promise<void> {
+    if (session === undefined) return;
+    const key = `${api.target}:${session.userId}`;
+    try {
+      if (e2eeSenderRef.current?.key === key) {
+        await e2eeSenderRef.current.sender.wipe();
+      } else {
+        await wipeE2eeState({ account: { nodeOrigin: api.target, userId: session.userId } });
+      }
+    } finally {
+      if (e2eeSenderRef.current?.key === key) {
+        // `sender.wipe()` already closed itself; drop the cache either way.
+        e2eeSenderRef.current = undefined;
+      }
+      setE2eeVaultFault(undefined);
     }
   }
 
@@ -1932,9 +2010,7 @@ export function App({
             session={session}
             isActive={active}
             ensureAccessToken={ensureAccessToken}
-            onWipeE2ee={() =>
-              wipeE2eeState({ account: { nodeOrigin: api.target, userId: session.userId } })
-            }
+            onWipeE2ee={() => wipeE2eeForCurrentAccount()}
             onBack={back}
           />
         );
@@ -2146,6 +2222,7 @@ export function App({
             verifiedPeers={verifiedPeers}
             e2eeCapabilityState={e2eeCapabilityState}
             sendE2ee={sendViaVault}
+            receiveE2ee={receiveE2eeRows}
             e2eeVaultFault={e2eeVaultFault}
             onBack={back}
             onOpenSafetyNumber={(actorId) =>
@@ -2510,6 +2587,7 @@ export function App({
                                   verifiedPeers={verifiedPeers}
                                   e2eeCapabilityState={e2eeCapabilityState}
                                   sendE2ee={sendViaVault}
+                                  receiveE2ee={receiveE2eeRows}
                                   e2eeVaultFault={e2eeVaultFault}
                                   // The screen owns backing out of its own thread/requests
                                   // sub-views on `Esc` (`backToList`) — this only fires once

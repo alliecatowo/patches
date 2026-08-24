@@ -706,6 +706,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
                 keyCanary,
               ),
               canaryEnvelope(newcomer.actorId, newcomerDevice.deviceId, e2eeBodyBytes, keyCanary),
+              canaryEnvelope(
+                secondRecipient.actorId,
+                secondRecipientDevice.deviceId,
+                e2eeBodyBytes,
+                keyCanary,
+              ),
             ]),
           }),
         'E2EE_FANOUT_REJECTED',
@@ -725,6 +731,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               keyCanary,
             ),
             canaryEnvelope(newcomer.actorId, newcomerDevice.deviceId, e2eeBodyBytes, keyCanary),
+            canaryEnvelope(
+              secondRecipient.actorId,
+              secondRecipientDevice.deviceId,
+              e2eeBodyBytes,
+              keyCanary,
+            ),
           ],
           { epoch: 2n },
         ),
@@ -957,17 +969,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(exportHandlerSource.includes("'e2ee_")).toBe(false);
     });
 
-    it('deletion semantics: PURGE_ACCOUNT references no e2ee table (documented gap — see the ticket referenced in docs)', () => {
-      // Current behavior, asserted so the seam is visible: the purge handler erases
-      // legacy DM bodies but touches no e2ee_* row. Report-evidence rows are exempt by
-      // design (ADR 0020: evidence outlives account deletion); prekey/roster/logical-
-      // message rows surviving purge is an open deletion-semantics gap filed against
-      // apps/worker/src/jobs/handlers/purge-account.handler.ts, not fixed here.
+    it('deletion semantics: PURGE_ACCOUNT erases the purged actor’s e2ee rows but spares report evidence (audit P1 fix; ADR 0020 evidence-outlives rule)', () => {
+      // The purge handler now deletes identity roots, device identities/certs, rosters,
+      // prekeys, mailbox envelopes, logical messages, and self-signed group-control events
+      // for the purged actor — while report-evidence rows remain, by design, as the
+      // moderation record that outlives the account.
       const purgeHandlerSource = readFileSync(
         resolve(__dirname, '../../worker/src/jobs/handlers/purge-account.handler.ts'),
         'utf8',
       );
-      expect(purgeHandlerSource.includes('E2ee')).toBe(false);
+      expect(purgeHandlerSource.includes('E2ee')).toBe(true);
+      expect(purgeHandlerSource.includes('E2eeIdentityRoot')).toBe(true);
+      expect(purgeHandlerSource.includes('getRepository(E2eeReportEvidence')).toBe(false);
     });
   },
 );

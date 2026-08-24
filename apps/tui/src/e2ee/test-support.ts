@@ -1,12 +1,19 @@
 import {
+  certifyDevice,
+  createSignedPreKey,
   generateKeyAgreementKeyPair,
+  generateSigningKeyPair,
   initializeInitiatorRatchet,
   randomBytes,
+  rosterDigest,
+  signDeviceRoster,
   type DoubleRatchetState,
   type KeyPair,
+  type PreKeyBundle,
   type X3dhSecrets,
 } from '@patches/crypto';
 
+import { selfPrekeyBundle, type LocalDeviceIdentity } from './local-identity.js';
 import type { KeyringModuleLike, VaultAccount } from './vault-key-providers.js';
 import type { VaultFileHandle, VaultFileOperations } from './vault-file-operations.js';
 
@@ -203,4 +210,68 @@ export function failAdvanceOnce(provider: {
     },
     delete: () => provider.delete(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// A complete local messaging identity built from crypto primitives — shared by the
+// B-101 runtime/chain tests so every suite exercises the same shape of enrolled device.
+// ---------------------------------------------------------------------------
+
+export function testLocalIdentity(
+  actorId: string,
+  deviceId: string,
+): { readonly local: LocalDeviceIdentity; readonly bundle: PreKeyBundle } {
+  const root = generateSigningKeyPair();
+  const signing = generateSigningKeyPair();
+  const agreement = generateKeyAgreementKeyPair();
+  const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
+  const selfDevice = certifyDevice(root.privateKey, {
+    protocol: 'patches-e2ee-v1',
+    version: 1,
+    userId: actorId,
+    deviceId,
+    signingPublicKey: signing.publicKey,
+    agreementPublicKey: agreement.publicKey,
+    generation: 1,
+    createdAtMs: 1,
+    expiresAtMs,
+  });
+  const ownRoster = signDeviceRoster(root.privateKey, {
+    protocol: 'patches-e2ee-v1',
+    version: 1,
+    userId: actorId,
+    rootPublicKey: root.publicKey,
+    sequence: 1,
+    previousDigest: new Uint8Array(32),
+    devices: [selfDevice],
+    createdAtMs: 1,
+  });
+  const signedPreKeyPair = generateKeyAgreementKeyPair();
+  const signedPreKey = createSignedPreKey(
+    signing.privateKey,
+    selfDevice,
+    rosterDigest(ownRoster.roster),
+    {
+      id: 7,
+      publicKey: signedPreKeyPair.publicKey,
+      createdAtMs: 1,
+      expiresAtMs,
+    },
+  );
+  const local: LocalDeviceIdentity = {
+    actorId,
+    deviceId,
+    keys: { signing, agreement },
+    selfDevice,
+    ownRoster,
+    signedPreKey: {
+      id: signedPreKey.id,
+      keyPair: signedPreKeyPair,
+      createdAtMs: signedPreKey.createdAtMs,
+      expiresAtMs: signedPreKey.expiresAtMs,
+      signature: signedPreKey.signature,
+    },
+    oneTimePreKeys: [{ id: 91, keyPair: generateKeyAgreementKeyPair() }],
+  };
+  return { local, bundle: selfPrekeyBundle(local) };
 }

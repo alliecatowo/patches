@@ -417,6 +417,13 @@ export interface E2eeLogicalMessage {
   fanoutDigest: Buffer;
   /** At most `max_group_members × max_active_devices_per_actor` (64) entries. */
   deviceEnvelopes: E2eeDeviceEnvelope[];
+  /**
+   * The sender's pre-send logical id. ADR 0025 binds THIS value into every envelope's AEAD
+   * associated data, so the node must store and return it verbatim — a node-minted surrogate
+   * would make every recipient-side open fail authentication. Must be a UUID when set; the
+   * node minted ids before this field existed and still does when it is omitted.
+   */
+  logicalMessageId?: string | undefined;
 }
 
 /**
