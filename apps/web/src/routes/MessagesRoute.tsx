@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
-import { DmNotice } from '../components/DmNotice.js';
+import { DmNotice, securityModeLabel } from '../components/DmNotice.js';
 import { PlusIcon } from '../components/icons/Icons.js';
 import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { useSession } from '../hooks/useSession.js';
@@ -42,11 +42,17 @@ export function MessagesRoute(): JSX.Element {
       ) : null}
       {query.data?.conversations.map((conversation) => {
         const other = conversation.members.find((m) => m.actor?.id !== session?.actor.id)?.actor;
+        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) —
+        // the route-level notice above stays neutral because the list mixes modes.
+        const modeLabel = securityModeLabel(conversation.securityMode);
         return (
           <Link key={conversation.id} to={`/messages/${conversation.id}`} className={styles['row']}>
             <span className={conversation.unreadCount > 0 ? styles['unread'] : ''}>
               @{other?.handle ?? 'conversation'}
             </span>
+            {modeLabel === undefined ? null : (
+              <span className={styles['modeLabel']}>{modeLabel}</span>
+            )}
             <div className={styles['preview']}>
               {formatRelativeTime(conversation.lastMessageAt)}
             </div>

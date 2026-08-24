@@ -71,11 +71,17 @@ and a self-hosted node's operator may configure retention differently — see
 - Likes, bookmarks, and reposts — including which posts you've liked, so we
   can show you your own reaction. Bookmarks are private to you.
 - Communities you belong to, and your role in them.
-- **Direct messages.** See [Direct messages](#direct-messages) — they are
-  stored in the clear and the node's operators can read them.
+- **Direct messages.** See [Direct messages](#direct-messages) — bodies are
+  end-to-end encrypted on the `E2EE_V1` mode every new conversation uses;
+  the node routes ciphertext and never receives a decryption key.
 - Reports you file, including the free-text details, and — for a reported
-  direct message — a snapshot of up to 10 surrounding messages captured as
-  evidence at the moment you report (§183.4).
+  **legacy-mode** direct message (being removed; see
+  [Direct messages](#direct-messages)) — a snapshot of up to 10 surrounding
+  messages captured as evidence at the moment you report (§183.4). Reported
+  end-to-end messages carry no such snapshot by construction: the node has no
+  plaintext to snapshot, and instead verifies whatever evidence the reporter
+  explicitly discloses through `ReportE2eeMessage` +
+  `AttachReportEvidence`.
 
 **Operational logs:**
 
@@ -101,24 +107,40 @@ and a self-hosted node's operator may configure retention differently — see
 
 ## Direct messages
 
-**Direct messages are not end-to-end encrypted. The operators of the node
-hosting them can read them.** This is stated in the product itself, on the
-messages screen, and it is deliberate: a node that cannot read a report's
-evidence cannot act on harassment (§183.1, §183.4, and
-[ADR 0017](../decisions/0017-server-visible-dms.md)).
+Direct messages on Patches are **end-to-end encrypted**. Every conversation carries an immutable
+security mode ([ADR 0020](../decisions/0020-e2ee-direct-messages.md)), and the only mode with a
+future is `E2EE_V1`: message bodies are encrypted on your device before they reach the node, and
+the node stores and routes only ciphertext it cannot read — per-device envelopes addressed to
+each recipient's certified keys. The words "encrypted", "end-to-end", "secure", or "private"
+apply to this mode and no other (§194).
 
-Concretely: message bodies are stored in PostgreSQL in the clear, protected
-by TLS in transit, the provider's disk encryption at rest, and access
-control — the same protection as every other row in the database, and no
-more. "Direct" is the honest word for them; "private", "secure", and
-"encrypted" are not, and no Patches client or document is permitted to use
-those words about v0 DMs (§194).
+**Status: implemented** (Phase 13 + adversarial-audit hardening, ADR 0020 addendum
+2026-08-24): per-device identity certificates and signed device rosters, X3DH session setup,
+the full Double Ratchet with encrypted headers, franking with mandatory recipient-side
+verification, encrypted reports via `ReportE2eeMessage` plus reporter-disclosed evidence (§183.4,
+[ADR 0025](../decisions/0025-franking-commitment-binding.md)), and the terminal client's
+send/receive runtime. The web view has **no crypto runtime**: E2EE conversations are labeled
+there and open in the terminal client, which is where you read and send them.
 
-DMs are **not federated** — they never leave the node you sent them from
-(§193). They carry no media and no link previews. A node may configure a
-retention window that deletes old messages, published via `GetNodeInfo` so
-clients can state it truthfully; the reference node currently sets no
-window, and **no retention sweep is implemented yet** — see
+What end-to-end encryption does not hide from the node: who messages whom, when, how much
+(coarse ciphertext-size buckets), device/prekey inventory activity, and ordinary request
+metadata (§8). Reports disclose exactly what a reporter explicitly selects and submits, never
+more.
+
+**Status: being removed** ([ADR 0030](../decisions/0030-pre-alpha-consolidation-policy.md),
+tickets B-095/B-096). The original v0 direct-message design stored bodies in the clear and let
+node operators read them, with a mandated disclosure saying so. That mode
+(`LEGACY_SERVER_VISIBLE`) still exists in this pre-alpha codebase until the purge change set
+lands; while any conversation remains in it, clients say "Not end-to-end encrypted — this
+node's operators can read these messages" on its screen. With zero production users there is no
+migration window: the plaintext machinery is deleted in the same change set that removes the
+mode, and `E2EE_V1` becomes the only conversation security mode.
+
+DMs are **not federated** — they never leave the node you sent them from, and this does not
+change with encryption (§193, [ADR 0020 §13](../decisions/0020-e2ee-direct-messages.md)).
+They carry no media and no link previews. A node may configure a retention window for message
+records, published via `GetNodeInfo`; the reference node currently sets no window, and **no
+retention sweep is implemented yet** — see
 [Retention and deletion](#retention-and-deletion).
 
 ## What's public
@@ -205,8 +227,11 @@ disappears from feeds/search/the local timeline immediately — and after a grac
 by default, node-configurable) a `PURGE_ACCOUNT` job actually erases it; `CancelAccountDeletion`
 restores the account intact within the grace period. The purge job's scope is posts and bodies,
 media objects, follows (including pending follow requests), likes, bookmarks, reposts, community
-memberships, muted tags, filter-list and labeler subscriptions, DMs sent, sessions, credentials,
-export archives, and the notice acknowledgement.
+memberships, muted tags, filter-list and labeler subscriptions, DMs sent — including every E2EE
+keying artifact: identity roots, device certificates, rosters, prekeys, mailbox envelopes,
+logical messages, and group-control events (reporter-disclosed evidence is deliberately exempt,
+per [ADR 0020](../decisions/0020-e2ee-direct-messages.md)) — sessions, credentials, export
+archives, and the notice acknowledgement.
 
 **Status: planned.** A published, enforced retention schedule for uploaded originals, evidence
 snapshots, tombstones, and general logs still does not exist — there is no DM retention sweep,
