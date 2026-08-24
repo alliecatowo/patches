@@ -1,4 +1,4 @@
-import { Actor, Follow, Post, Repost } from '@patches/database';
+import { Actor, Follow, Post, PostTag, Repost } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AppConfigService } from '../../../config/app-config.service.js';
@@ -16,6 +16,14 @@ import type { KeyService } from './key.service.js';
  */
 
 const ORIGIN = 'https://local.test';
+
+/** Orders fixture rows by a single key the way the real repository would — string values
+ * lexicographically, ISO date strings included; anything else compares equal (the fake only
+ * ever sorts on keys the fixtures populate with strings). */
+function compareByOrderKey(a: unknown, b: unknown): number {
+  if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
+  return 0;
+}
 
 function fakeConfig(): AppConfigService {
   return { publicOrigin: ORIGIN } as AppConfigService;
@@ -77,18 +85,21 @@ interface FollowRow {
 
 /** Fakes just enough of `EntityManager` for the code paths under test: `getRepository(Actor)`'s
  * `findOneOrFail`/`findOne`, `getRepository(Follow)`'s chained query-builder,
- * `getRepository(Post)`'s `findOne`, and `getRepository(Repost)`'s `findOne` (with the
+ * `getRepository(Post)`'s `findOne`, `getRepository(PostTag)`'s `find` (with the ordering
+ * P18-006's publish path asks for), and `getRepository(Repost)`'s `findOne` (with the
  * relations the announce path needs pre-joined into the row). */
 function fakeManager(options: {
   actors?: Record<string, Actor>;
   follows?: FollowRow[];
   posts?: Record<string, Post>;
   reposts?: Record<string, Repost>;
+  postTags?: Record<string, unknown>[] | undefined;
 }) {
   const actors = options.actors ?? {};
   const follows = options.follows ?? [];
   const posts = options.posts ?? {};
   const reposts = options.reposts ?? {};
+  const postTags = options.postTags ?? [];
 
   const getRepository = (entity: unknown): unknown => {
     if (entity === Actor) {
@@ -119,6 +130,29 @@ function fakeManager(options: {
       return {
         findOne: ({ where: { id } }: { where: { id: string } }) =>
           Promise.resolve(posts[id] ?? null),
+      };
+    }
+    if (entity === PostTag) {
+      return {
+        find: ({
+          where,
+          order,
+        }: {
+          where: { postId: string };
+          order?: Record<string, 'ASC' | 'DESC'>;
+        }) => {
+          let rows = postTags.filter((row) => row.postId === where.postId);
+          if (order !== undefined) {
+            rows = [...rows].sort((a, b) => {
+              for (const [key, dir] of Object.entries(order)) {
+                const cmp = compareByOrderKey(a[key], b[key]);
+                if (cmp !== 0) return dir === 'ASC' ? cmp : -cmp;
+              }
+              return 0;
+            });
+          }
+          return Promise.resolve(rows);
+        },
       };
     }
     if (entity === Repost) {
@@ -383,5 +417,151 @@ describe('ActivityPubFederationGateway (P18-003: outbound Announce/Undo)', () =>
     const manager = fakeManager({});
     await expect(noop.announceRemotePost(manager as never, 'repost-1')).resolves.toBeUndefined();
     await expect(noop.unannounceRemotePost(manager as never, 'repost-1')).resolves.toBeUndefined();
+  });
+});
+
+/** P18-006 (ADR 0028 §3): publishPost emits the post's tags as `as:Hashtag` entries, quote
+ * linkage as FEP-044f `quote` + all three legacy fallbacks, and the local `quote_policy` as
+ * an additive interaction policy — all additively, so a peer that understands none of it
+ * still receives the same valid post it always did. */
+describe('ActivityPubFederationGateway (P18-006: outbound tags + quotes on publishPost)', () => {
+  const POST_ID = '22222222-2222-4222-8222-222222222222';
+
+  function publishPostFixture(overrides: Record<string, unknown> = {}): Post {
+    return {
+      id: POST_ID,
+      isLocal: true,
+      visibility: 'PUBLIC',
+      authorActor: localActor({ id: 'local-1' }),
+      body: 'hello #fediverse',
+      createdAt: new Date('2026-08-23T00:00:00Z'),
+      inReplyToId: null,
+      quotedPostId: null,
+      quotePolicy: 'ANYONE',
+      ...overrides,
+    } as Post;
+  }
+
+  function publishManager(options: {
+    post: Post;
+    posts?: Record<string, Post>;
+    postTags?: Record<string, unknown>[];
+  }) {
+    const follower = remoteActor({ id: 'remote-1', homeServer: 'good.example' });
+    return fakeManager({
+      posts: { [options.post.id]: options.post, ...options.posts },
+      follows: [{ followeeActorId: 'local-1', followerActor: follower }],
+      postTags: options.postTags,
+    });
+  }
+
+  async function publishedNote(
+    options: Parameters<typeof publishManager>[0],
+  ): Promise<Record<string, unknown>> {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const gateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    await gateway.publishPost(publishManager(options) as never, options.post.id);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const call = enqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    return call.activity.object as Record<string, unknown>;
+  }
+
+  it('emits one Hashtag tag entry per post_tag row, deterministically ordered', async () => {
+    const note = await publishedNote({
+      post: publishPostFixture(),
+      postTags: [
+        {
+          postId: POST_ID,
+          tagId: 'tag-b',
+          createdAt: '2026-08-23T00:00:02Z',
+          tag: { name: 'second' },
+        },
+        {
+          postId: POST_ID,
+          tagId: 'tag-a',
+          createdAt: '2026-08-23T00:00:01Z',
+          tag: { name: 'first' },
+        },
+      ],
+    });
+    expect(note.tag).toEqual([
+      { type: 'Hashtag', name: '#first', id: `${ORIGIN}/posts/${POST_ID}#tag-first` },
+      { type: 'Hashtag', name: '#second', id: `${ORIGIN}/posts/${POST_ID}#tag-second` },
+    ]);
+  });
+
+  it('emits no tag property for a post without post_tag rows', async () => {
+    const note = await publishedNote({ post: publishPostFixture() });
+    expect('tag' in note).toBe(false);
+  });
+
+  it('emits quote + all three legacy properties naming a remote quoted post’s canonicalUri', async () => {
+    const note = await publishedNote({
+      post: publishPostFixture({ quotedPostId: 'remote-quoted' }),
+      posts: {
+        'remote-quoted': {
+          id: 'remote-quoted',
+          isLocal: false,
+          canonicalUri: 'https://good.example/posts/9',
+        } as Post,
+      },
+    });
+    expect(note.quote).toBe('https://good.example/posts/9');
+    expect(note.quoteUri).toBe('https://good.example/posts/9');
+    expect(note.quoteUrl).toBe('https://good.example/posts/9');
+    expect(note._misskey_quote).toBe('https://good.example/posts/9');
+  });
+
+  it('emits quote naming the local post URI for a locally-authored quoted post', async () => {
+    const localQuotedId = '33333333-3333-4333-8333-333333333333';
+    const note = await publishedNote({
+      post: publishPostFixture({ quotedPostId: localQuotedId }),
+      posts: {
+        [localQuotedId]: {
+          id: localQuotedId,
+          isLocal: true,
+          canonicalUri: null,
+        } as Post,
+      },
+    });
+    expect(note.quote).toBe(`${ORIGIN}/posts/${localQuotedId}`);
+    expect(note._misskey_quote).toBe(`${ORIGIN}/posts/${localQuotedId}`);
+  });
+
+  it('emits no quote properties when the quoted post has no federated URI', async () => {
+    const note = await publishedNote({
+      post: publishPostFixture({ quotedPostId: 'missing' }),
+      posts: {},
+    });
+    for (const key of ['quote', 'quoteUri', 'quoteUrl', '_misskey_quote']) {
+      expect(key in note).toBe(false);
+    }
+  });
+
+  it('maps each local quote_policy to the matching canQuote audience (no invented following)', async () => {
+    const cases: readonly { policy: 'ANYONE' | 'FOLLOWERS' | 'NOBODY'; audience: string }[] = [
+      { policy: 'ANYONE', audience: 'https://www.w3.org/ns/activitystreams#Public' },
+      { policy: 'FOLLOWERS', audience: `${ORIGIN}/users/local/followers` },
+      { policy: 'NOBODY', audience: `${ORIGIN}/users/local` },
+    ];
+    for (const { policy, audience } of cases) {
+      const note = await publishedNote({ post: publishPostFixture({ quotePolicy: policy }) });
+      expect(note.interactionPolicy).toEqual({
+        id: `${ORIGIN}/posts/${POST_ID}#interaction-policy`,
+        canQuote: audience,
+      });
+    }
+  });
+
+  it('omits interactionPolicy for a post whose policy is not loaded (pre-P18-006 shape)', async () => {
+    const note = await publishedNote({
+      post: publishPostFixture({ quotePolicy: undefined }),
+    });
+    expect('interactionPolicy' in note).toBe(false);
   });
 });

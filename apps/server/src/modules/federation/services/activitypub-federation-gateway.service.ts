@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { Actor, Follow, Post, Repost } from '@patches/database';
+import { Actor, Follow, Post, PostTag, Repost } from '@patches/database';
 import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
@@ -53,6 +53,18 @@ export class ActivityPubFederationGateway implements FederationGateway {
 
     const actorUri = localActorUri(origin, author.handleNormalized);
     const inReplyTo = await this.federatedUriForPost(manager, post.inReplyToId);
+    // P18-006: the note's tags (from `post_tags`, the same rows the local tag feed reads)
+    // and quote linkage/policy, emitted additively per ADR 0028 §3. Ordered deterministically
+    // (insertion order, then tag id) so delivery retries serialize byte-identical documents.
+    const postTagRows = await manager.getRepository(PostTag).find({
+      where: { postId: post.id },
+      relations: { tag: true },
+      order: { createdAt: 'ASC', tagId: 'ASC' },
+    });
+    const quoteUri =
+      post.quotedPostId === null || post.quotedPostId === undefined
+        ? undefined
+        : await this.federatedUriForPost(manager, post.quotedPostId);
     const note = buildNoteObject({
       id: localPostUri(origin, post.id),
       attributedTo: actorUri,
@@ -60,6 +72,12 @@ export class ActivityPubFederationGateway implements FederationGateway {
       published: post.createdAt,
       inReplyTo: inReplyTo ?? null,
       followersUri: localActorFollowersUri(origin, author.handleNormalized),
+      tags:
+        postTagRows.length === 0
+          ? undefined
+          : postTagRows.map((row) => ({ name: row.tag.name, href: null })),
+      quoteUri,
+      quotePolicy: post.quotePolicy,
     });
     const activity = buildActivity({
       id: `${origin}/activities/${randomUUID()}`,
