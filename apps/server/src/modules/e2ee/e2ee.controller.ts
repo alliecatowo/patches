@@ -48,6 +48,7 @@ import {
 
 import { AppError } from '../../common/errors/app-error.js';
 import { AuthGuard } from '../auth/auth.guard.js';
+import { RequirePrivacyAckGuard } from '../../common/guards/require-privacy-ack.guard.js';
 import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
@@ -166,6 +167,7 @@ export class E2eeController implements E2eeServiceController {
     return this.prekeys.claimPrekeyBundles(requireSession(session).actorId, request);
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async createE2EeConversation(
     @Payload() request: CreateE2eeConversationRequest,
     @Ctx() _metadata?: Metadata,
@@ -206,6 +208,7 @@ export class E2eeController implements E2eeServiceController {
     return this.groups.listGroupControlEvents(requireSession(session).actorId, request);
   }
 
+  @UseGuards(RequirePrivacyAckGuard)
   async sendEnvelopes(
     @Payload() request: SendEnvelopesRequest,
     @Ctx() _metadata?: Metadata,
