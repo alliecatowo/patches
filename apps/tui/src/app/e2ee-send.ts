@@ -9,14 +9,16 @@
  *
  *   1. one lazily-opened, keyring-wrapped vault per account, whose faults are sticky and
  *      coarse (`corrupt`/`rollback` — inaccessible-history banners, never silent resets);
- *   2. the optional bridge to a real enrolled identity + transports. Without an enrolled
- *      messaging device (the TUI has no enrollment flow yet), sends fail with
- *      `E2eeNotEnrolledError`, which the messages screen renders as its
- *      enrolled-device copy — stated plainly, never downgraded;
+ *   2. the bridge to an enrolled identity + transports (B-107). Without an enrolled
+ *      messaging device, sends fail with `E2eeNotEnrolledError`, which the messages
+ *      screen renders as its enrolled-device copy — stated plainly, never downgraded.
+ *      Enrollment itself (`enroll()`) runs against this SAME vault instance so the
+ *      single-owner rule holds; `restoreEnrollment()` re-binds a previously submitted
+ *      enrollment on session start;
  *   3. the explicit wipe path (audit P1-2): wiping routes through the LIVE store's
  *      `wipe()`/`close()` so locks and in-memory secrets are released by the same object
- *      that acquired them, drops this factory's cached instance, and clears the sticky
- *      fault state so a wiped account can start over.
+ *      that acquired them, drops this factory's cached instance, unbinds any enrolled
+ *      identity, and clears the sticky fault state so a wiped account can start over.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -27,6 +29,12 @@ import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { createRatchetSessionVault, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
 import { VaultCorruptionError, VaultRollbackError } from '../e2ee/vault-errors.js';
 import type { VaultAccount } from '../e2ee/vault-key-providers.js';
+import {
+  enrollThisDevice,
+  loadStoredEnrollment,
+  type EnrollOutcome,
+  type EnrollmentTransport,
+} from '../e2ee/enrollment.js';
 
 /** Sticky, content-free vault faults surfaced verbatim as inaccessible-history states. */
 export type E2eeVaultFault = 'corrupt' | 'rollback';
@@ -65,6 +73,19 @@ export interface CreateVaultE2eeSenderOptions {
     readonly identity: LocalDeviceIdentity;
     readonly transports: E2eeTransports;
   };
+  /**
+   * B-107: builds the authenticated transports once an enrolled identity is known —
+   * either restored from this vault at startup or produced by `enroll()`. Without it a
+   * restored identity stays dormant (the pre-enrollment behavior), never half-bound.
+   */
+  readonly buildTransports?: (identity: LocalDeviceIdentity) => E2eeTransports;
+}
+
+export interface EnrollThroughVaultInput {
+  /** The signed-in account's actor id (certificates are issued per actor). */
+  readonly actorId: string;
+  /** The enrollment flow's RPC seam (capability probe, root publish, `EnrollDevice`). */
+  readonly transport: EnrollmentTransport;
 }
 
 export interface VaultE2eeSender {
@@ -79,6 +100,18 @@ export interface VaultE2eeSender {
    * envelopes) and returns render-ready rows. Requires an enrolled identity.
    */
   pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult>;
+  /**
+   * B-107: restores a previously submitted enrollment from this vault and binds it
+   * (and its transports) to the runtime. Resolves the bound identity, or `undefined`
+   * when this vault holds none.
+   */
+  restoreEnrollment(): Promise<LocalDeviceIdentity | undefined>;
+  /**
+   * B-107: runs the device-enrollment flow through this sender's OWN vault — one
+   * process owns the vault at a time (ADR 0020 §4) — then binds the resulting
+   * identity. Idempotent: an already-submitted enrollment short-circuits.
+   */
+  enroll(input: EnrollThroughVaultInput): Promise<EnrollOutcome>;
   /** Destroys local E2EE state through the live store and forgets this instance. */
   wipe(): Promise<void>;
   close(): void;
@@ -91,6 +124,8 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
   let owned = options.vault === undefined;
   let fault: E2eeVaultFault | undefined;
   let runtime: E2eeSessionRuntime | undefined;
+  let binding: { identity: LocalDeviceIdentity; transports: E2eeTransports } | undefined =
+    options.enrolled;
   // Stores this factory has already successfully opened (owned stores are opened
   // lazily below; injected stores arrive unopened and are opened here exactly once,
   // so their open-time faults surface through the same sticky-fault path).
@@ -132,23 +167,56 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
   }
 
   async function ensureRuntime(): Promise<E2eeSessionRuntime> {
-    if (options.enrolled === undefined) throw new E2eeNotEnrolledError();
+    if (binding === undefined) throw new E2eeNotEnrolledError();
     if (runtime !== undefined) return runtime;
     const store = await ensureOpen();
     runtime = new E2eeSessionRuntime({
       vault: store,
-      identity: options.enrolled.identity,
-      sendTransport: options.enrolled.transports,
-      mailboxTransport: options.enrolled.transports,
+      identity: binding.identity,
+      sendTransport: binding.transports,
+      mailboxTransport: binding.transports,
       ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
     });
     return runtime;
   }
 
+  /** Binds a submitted enrollment record through the caller-supplied transport builder. */
+  async function bindSubmitted(): Promise<LocalDeviceIdentity | undefined> {
+    if (binding !== undefined) return binding.identity;
+    if (options.buildTransports === undefined) return undefined;
+    const store = await ensureOpen();
+    const record = await loadStoredEnrollment(store);
+    if (record?.submitted !== true) return undefined;
+    binding = { identity: record.identity, transports: options.buildTransports(record.identity) };
+    runtime = undefined;
+    return binding.identity;
+  }
+
   return {
     fault: () => fault,
-    enrolled: () => options.enrolled !== undefined,
-    async send(conversationId: string, body: string): Promise<void> {
+    enrolled: () => binding !== undefined,
+    async restoreEnrollment(): Promise<LocalDeviceIdentity | undefined> {
+      try {
+        return await bindSubmitted();
+      } catch (error) {
+        noteFault(error);
+        throw error;
+      }
+    },
+    async enroll(input): Promise<EnrollOutcome> {
+      const store = await ensureOpen();
+      const outcome = await enrollThisDevice({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
+      });
+      if (outcome.status === 'enrolled' || outcome.status === 'already-enrolled') {
+        await bindSubmitted();
+      }
+      return outcome;
+    },
+    async send(conversationId, body): Promise<void> {
       const active = await ensureRuntime();
       try {
         await active.send(conversationId, body, randomUUID());
@@ -186,6 +254,7 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       owned = false;
       vault = undefined;
       runtime = undefined;
+      binding = undefined;
     },
   };
 }

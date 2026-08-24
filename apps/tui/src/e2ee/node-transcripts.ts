@@ -25,6 +25,13 @@ import type { E2eeDeviceCertificate, E2eeDeviceRoster } from '../api/wire/types.
 const CERTIFICATE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-device-cert';
 /** Same constant as the server codec's `ROSTER_TRANSCRIPT_DOMAIN`. */
 const ROSTER_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-roster-canonical';
+/**
+ * Same constant as the server codec's `PREKEY_BUNDLE_TRANSCRIPT_DOMAIN` (B-107: the
+ * enrollment flow is the first client that must *produce* these bytes, so the writer
+ * half of that encoder now lives here too — field-for-field the server's
+ * `encodePrekeyBundleTranscript`, including its pinned-empty `protocolVersion`).
+ */
+const PREKEY_BUNDLE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/signed-prekey-bundle';
 
 export interface DecodedCertificateTranscript {
   readonly actorId: string;
@@ -165,6 +172,52 @@ export function decodeRosterTranscript(bytes: Bytes): DecodedRosterTranscript {
   }
   reader.end();
   return { actorId, sequence, rootGeneration, previousDigest, entries };
+}
+
+export interface PrekeyBundleTranscriptFields {
+  readonly certificateDigest: Bytes;
+  readonly agreementPublicKey: Bytes;
+  /**
+   * Pinned to the empty string by the node's verifier (`device-roster.service.ts`): a
+   * device's advertised protocol versions are not a persisted column, so enroll-time and
+   * rotate-time transcripts must agree on this placeholder. The enrollment flow passes
+   * `''` and this type keeps the field explicit rather than hiding the agreement.
+   */
+  readonly protocolVersion: string;
+  readonly actorId: string;
+  readonly deviceId: string;
+  readonly signedPrekeyId: number;
+  readonly signedPrekeyPublicKey: Bytes;
+  readonly signedPrekeyCreatedAtMs: number;
+  readonly signedPrekeyExpiresAtMs: number;
+}
+
+/**
+ * The node's signed-prekey bundle transcript encoder — field-for-field the server
+ * codec's `encodePrekeyBundleTranscript`. Both signatures `EnrollDevice` carries over a
+ * new signed prekey (`signed_prekey.signature` and `prekey_bundle_signature`) cover
+ * these bytes, verified against this exact layout server-side.
+ */
+export function encodePrekeyBundleTranscript(fields: PrekeyBundleTranscriptFields): Bytes {
+  if (
+    !Number.isSafeInteger(fields.signedPrekeyId) ||
+    fields.signedPrekeyId < 0 ||
+    fields.signedPrekeyId > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error('Signed prekey id is out of range.');
+  }
+  return new ByteWriter()
+    .string(PREKEY_BUNDLE_TRANSCRIPT_DOMAIN)
+    .fixed(fields.certificateDigest, KEY_BYTES)
+    .fixed(fields.agreementPublicKey, KEY_BYTES)
+    .string(fields.protocolVersion)
+    .string(fields.actorId)
+    .string(fields.deviceId)
+    .u64(fields.signedPrekeyId)
+    .fixed(fields.signedPrekeyPublicKey, KEY_BYTES)
+    .u64(fields.signedPrekeyCreatedAtMs)
+    .u64(fields.signedPrekeyExpiresAtMs)
+    .finish();
 }
 
 /**

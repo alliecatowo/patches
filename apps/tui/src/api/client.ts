@@ -323,6 +323,10 @@ function buildMethods(sdk: PatchesSdk) {
 
     // ---- E2eeService — encrypted DM infrastructure (ADR 0020) ----
     getIdentityRoot: requiredToken(sdk.e2ee.getIdentityRoot),
+    // B-107: the enrollment path — publish this account's messaging root (first-device
+    // bootstrap) and register this device's certificate + signed roster + prekeys.
+    publishIdentityRoot: requiredToken(sdk.e2ee.publishIdentityRoot),
+    enrollDevice: requiredToken(sdk.e2ee.enrollDevice),
     getDeviceRoster: optionalToken(sdk.e2ee.getDeviceRoster),
     revokeDevice: requiredToken(sdk.e2ee.revokeDevice),
     // Capability is published pre-enrollment so a client can discover availability

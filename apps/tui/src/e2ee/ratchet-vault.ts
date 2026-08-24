@@ -47,6 +47,12 @@ export interface RatchetSessionVault {
   applyUpdate(sessionId: string, next: DoubleRatchetState): Promise<void>;
   /** Drops one session's state — the local half of the resync/recovery path. */
   deleteSession(sessionId: string): Promise<void>;
+  /**
+   * Opaque non-ratchet record access (B-107's enrollment record). The bytes are stored
+   * exactly as handed over, under a key that must never collide with a session id.
+   */
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
   wipe(): Promise<void>;
   close(): void;
 }
@@ -94,6 +100,14 @@ export class TypedRatchetVault implements RatchetSessionVault {
 
   deleteSession(sessionId: string): Promise<void> {
     return this.store.deleteRecord(sessionId);
+  }
+
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined> {
+    return this.store.getRecord(key);
+  }
+
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void> {
+    return this.store.updateRecord(key, value);
   }
 
   wipe(): Promise<void> {
