@@ -6,8 +6,12 @@
 #              run migrations against it, deploy app `patches-pr-<N>` with BOTH
 #              processes (federation off, console email, PUBLIC_READ=true; media
 #              on iff all R2_PREVIEW_* secrets exist — see capability detection
-#              below), then post/update a `<!-- patches-preview -->` PR comment
-#              carrying the capability matrix.
+#              below). When Cloudflare credentials are present, ALSO build apps/web
+#              against the preview API and publish it to Cloudflare Pages, then add
+#              the Pages origin to the Fly app's WEB_ORIGINS so the Connect CORS
+#              accepts it (an unset/empty WEB_ORIGINS denies every cross-origin
+#              browser request). Finally post/update a `<!-- patches-preview -->` PR
+#              comment carrying the capability matrix.
 # teardown job (closed): destroy the Fly app and delete the Neon branch, best-effort.
 #
 # Required secrets (repository or `preview` environment — Settings → Secrets):
@@ -26,6 +30,14 @@
 #                      live; when any is missing, media degrades cleanly (R2_* are
 #                      optional in packages/config's storageEnvSchema and the media
 #                      module errors at call time, not boot time).
+# Optional Cloudflare Pages credentials (web-preview capability — set BOTH or none):
+#   CLOUDFLARE_API_TOKEN  (secret) Cloudflare API token with Pages deploy permission
+#   CLOUDFLARE_ACCOUNT_ID (variable) the Cloudflare account id to deploy Pages into
+#                      When both are present the workflow builds apps/web with
+#                      VITE_PATCHES_API_BASE pointing at the preview Fly Connect
+#                      edge and deploys it to Cloudflare Pages (project `patches-web`,
+#                      branch `pr-<N>`); when either is missing, the web preview is
+#                      skipped and the backend-only preview is unaffected.
 #   NEON_BRANCH_PASSWORD  Not read by this workflow: the branch role password comes
 #                      from `neon connection-string` (the Neon API hands the CLI the
 #                      password; verified in the CLI source). Keep this secret only
@@ -256,11 +268,81 @@ jobs:
             --remote-only --ha=false --strategy immediate --yes \
             --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
 
+      # Optional web-preview capability, gated on the Cloudflare credentials exactly
+      # like the R2 media path: all-or-none. The detect step always runs (it only
+      # reads secret/var presence and sets PREVIEW_WEB for the capability matrix);
+      # the build/deploy/CORS steps below are additionally guarded by an `if:` so
+      # they are skipped entirely — never fail — when the credentials are absent.
+      - name: Detect optional web preview capability (Cloudflare Pages)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "PREVIEW_WEB=enabled" >> "$GITHUB_ENV"
+            echo "Web preview capability: enabled (Cloudflare API token + account id detected)." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PREVIEW_WEB=disabled" >> "$GITHUB_ENV"
+            echo "Web preview capability: disabled (CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID not set — apps/web is not previewed)." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build web client for preview
+        # Same `pnpm --filter @patches/web... build` shape as production web.yml; the
+        # `...` also builds the web's workspace deps. The Connect edge is on :8443
+        # (infra/preview/fly-preview.toml), so the API base must name that port — not
+        # :443, which is the gRPC service.
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: pnpm --filter @patches/web... build
+        env:
+          VITE_PATCHES_API_BASE: https://patches-pr-${{ github.event.pull_request.number || inputs.pr_number }}.fly.dev:8443
+          GITHUB_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
+
+      - name: Deploy web preview to Cloudflare Pages
+        id: web_deploy
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          # `--branch pr-<N>` keeps each PR's deploys on one Pages branch. Capture the
+          # live `https://<hash>-patches-web.pages.dev` URL wrangler prints into a step
+          # output (tee keeps it visible in the log for debugging).
+          web_url="$(pnpm exec wrangler pages deploy apps/web/dist \
+            --project-name patches-web \
+            --branch "pr-${{ github.event.pull_request.number || inputs.pr_number }}" \
+            2>&1 | tee /dev/stderr | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -n 1)"
+          [ -n "$web_url" ] || { echo "wrangler did not print a *.pages.dev URL" >&2; exit 1; }
+          echo "web_url=$web_url" >> "$GITHUB_OUTPUT"
+          echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Allow the web preview origin in Connect CORS
+        # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
+        # apps/server/src/transport/connect/cors.ts), so the preview web would be
+        # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
+        # like the other runtime secrets) to the deterministic branch alias AND the
+        # live deployment URL wrangler printed. Setting a secret restarts the machine.
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
+        run: |
+          set -euo pipefail
+          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          web_url="${{ steps.web_deploy.outputs.web_url }}"
+          branch_alias="https://pr-${pr}.patches-web.pages.dev"
+          flyctl secrets set --app "patches-pr-${pr}" \
+            "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null
+
       - name: Post preview URL comment on the PR (edit existing)
         env:
           GH_TOKEN: ${{ github.token }}
           APP: patches-pr-${{ github.event.pull_request.number || inputs.pr_number }}
           COMMIT_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
+          PREVIEW_MEDIA: ${{ env.PREVIEW_MEDIA }}
+          PREVIEW_WEB: ${{ env.PREVIEW_WEB }}
+          WEB_PREVIEW_URL: ${{ steps.web_deploy.outputs.web_url }}
         run: |
           set -euo pipefail
           marker="<!-- patches-preview: pr-${PR_NUMBER} -->"
@@ -268,12 +350,16 @@ jobs:
           # shellcheck disable=SC2016  # single quotes are intentional: ${...} below are JavaScript template literals, not shell expansions
           node -e '
             const fs = require("node:fs");
-            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA } = process.env;
+            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, WEB_PREVIEW_URL } = process.env;
             const NEON_BRANCH = `pr-${PR_NUMBER}`;
             const short = (COMMIT_SHA || "").slice(0, 7);
             const media = PREVIEW_MEDIA === "enabled"
               ? "on (dedicated R2 preview bucket — uploads + derivative jobs live)"
               : "off (no R2_PREVIEW_* secrets — uploads fail fast)";
+            const webUrl = (WEB_PREVIEW_URL || "").trim();
+            const web = PREVIEW_WEB === "enabled" && webUrl
+              ? `on — ${webUrl} (Connect API base \`https://${APP}.fly.dev:8443\`)`
+              : "off (no CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID — backend-only preview)";
             const body = [
               process.argv[1],
               "## Preview environment (full stack)",
@@ -283,6 +369,7 @@ jobs:
               `| gRPC (TUI: \`patches --server ${APP}.fly.dev:443\`) | \`${APP}.fly.dev:443\` |`,
               `| HTTP / healthz | https://${APP}.fly.dev/healthz |`,
               `| Worker (jobs: notifications, cleanup${PREVIEW_MEDIA === "enabled" ? ", media derivatives" : ""}) | running (\`WORKER_ID=preview-pr-${PR_NUMBER}\`, concurrency 2) |`,
+              `| Web preview${webUrl ? ` | ${webUrl} ` : " | — "}(\`pr-${PR_NUMBER}.patches-web.pages.dev\`)`,
               `| Neon branch | \`${NEON_BRANCH}\` |`,
               `| Commit | \`${short}\` |`,
               "",
@@ -292,6 +379,7 @@ jobs:
               "| --- | --- |",
               "| gRPC + Connect API + worker + DB branch | live |",
               `| Media / R2 | ${media} |`,
+              `| Web frontend (Cloudflare Pages) | ${web} |`,
               "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",
               "| Real email | off (console provider: verification codes are accepted then dropped — **sign in with an existing account** from the cloned data) |",
               "",
