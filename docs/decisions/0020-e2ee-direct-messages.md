@@ -432,3 +432,81 @@ unresolved cryptographic construction is made an external-review ship gate rathe
 > by no recipient — so a sender repudiates any message by supplying an unrelated commitment. See
 > [ADR 0024](0024-franking-construction-review.md). `E2EE_APPROVED_FRANKING_PROFILES` stays empty and
 > P13-014 stays blocked.
+
+## Addendum 2026-08-24 — adversarial-audit hardening; review-of-record substitution
+
+**Status:** Accepted (owner directive, 2026-08-24)
+**Amends:** §12.7 — the hard ship gate requiring independent cryptographic review of the franking
+construction (the gate P13-016 was filed to satisfy)
+**Relates to:** [ADR 0024](./0024-franking-construction-review.md),
+[ADR 0025](./0025-franking-commitment-binding.md), [ADR 0027](./0027-unreviewed-e2ee-development-mode.md),
+tasks B-101/B-102/B-107/B-108
+
+### Review of record
+
+ADR 0024 recorded that P13-016's review was **one internal reviewer**, and left the §12.7 gate
+shut on the grounds that nothing internal had yet counted as the review.
+The owner has directed (2026-08-24) that the **internal multi-agent adversarial audit** run across
+the E2EE stack — independent reviewer agents over the node services, the crypto frame codecs, the
+TUI vault/runtime, and the cross-layer privacy tests, with findings fixed and re-tested inside the
+same change set (remediation merged as #67, 2026-08-23) — is the **review of record** for §12.7
+and P13-016. ADR 0024's verdict stands as history: the construction it rejected was indeed
+rejected, and the replacement is ADR 0025's context-bound commitment with mandatory recipient
+verification, which the audit exercised end-to-end through the B-101 runtime.
+
+External cryptographic review remains desirable and may still be sought, but it is no longer the
+gating formality. What gates capability enablement now is engineering completion: **B-107 (device
+enrollment flow) and B-108 (two-device interop lab, then `patches-franking-v1` profile approval +
+capability flip per the B-094 rollout rule)** must land before any node enables `E2EE_V1` outside
+an isolated test node. Until then `GetE2eeCapability` keeps reporting disabled outside isolated
+test nodes and `assertFrankingProfileApproved` keeps throwing.
+
+### What the audit found and closed
+
+- **P0 — plaintext could be written into an `E2EE_V1` transcript.** Closed at three independent
+  layers: an application-service mode gate on every legacy DM write (`MessagesService.sendMessage`
+  and the mode-aware direct-thread reuse); a Postgres trigger backstop
+  (`trg_messages_require_legacy_security_mode`, migration
+  `MessagesRequireLegacySecurityMode1787530000000`) so no future code path or raw query can plant
+  a server-readable body in an encrypted conversation; and a CLI pre-flight refusal that turns the
+  node's uniform rejection into actionable copy.
+- **First-contact eligibility.** §183.2 eligibility (`mayMessageDirectly`) now applies to E2EE
+  conversation creation and member adds, matching the legacy DM paths — blocks alone stop an
+  ineligible stranger from demanding a ciphertext channel.
+- **Rate limits.** Windowed rate limiting (`E2eeRateLimitService`) now bounds E2EE sends and
+  prekey-fetch draining rather than leaving the encrypted paths unlimited.
+- **Purge coverage.** `PURGE_ACCOUNT` deletes the account's E2EE rows (identity roots, device
+  identities, rosters, one-time/signed prekeys, mailbox envelopes, logical messages sent,
+  group-control events). Reporter-disclosed evidence stays exempt by design (§1.4/§9).
+- **Crypto frame fixes.** `MAX_SKIP` exhaustion now fails the single message instead of poisoning
+  the session; `logical_message_id` (additive proto field) is bound into every device envelope's
+  associated data so ADR 0025's AD binds the node-assigned id, closing the real-node interop gap;
+  membership-epoch u32 ceilings are aligned across sender and node encoders; node-side transcript
+  domain separators were rotated off the shared defaults; duplicate skipped-key insertions are
+  rejected; X3DH intermediates are zeroized.
+
+### Residual risks accepted
+
+Recorded as decisions, not oversights — each is bounded, owned, and re-examinable:
+
+1. **Guarded-file-tier rollback detection boundary.** Rollback detection compares the vault file's
+   generation against an anchor stored _with the wrapping key_. On the OS-keyring tier the anchor
+   is unreachable to a restored backup; on the guarded-file fallback tier the anchor lives beside
+   the vault in the same config directory, so restoring **both** files to an earlier state defeats
+   detection. Accepted because the tier already requires explicit opt-in and is loudly warned as
+   weaker than the keyring.
+2. **Anchor-ahead recovery ritual (= explicit wipe).** When the anchor is ahead of the vault file
+   (files deleted, or a backup restored underneath us), `open()` refuses with a rollback fault and
+   past messages stay inaccessible — deliberately. The only exit is an explicit wipe
+   (`patches logout --wipe-e2ee`, or the wipe offered by device revocation). Recovery and data
+   loss are the same act, and the UI says so; there is no silent reset path.
+3. **Synced-home fork caveat.** §4's "one process owns a device vault" assumption governs
+   processes, not sync tools. Replicating the config directory across machines with a home-directory
+   sync tool can fork vault/key state between replicas or restore a consistent older snapshot —
+   the same boundary as risk 1. Operators must exclude the E2EE config directory from such tools;
+   each device enrolls its own identity instead.
+4. **Cached-roster staleness.** Fanout decisions use the client's last-verified view of the peer
+   roster; a device enrolled or revoked since the baseline is not seen until the next fetch.
+   Thread-open baselines and digest comparison narrow the window, and roster gossip makes server
+   rollback detectable, but they do not close it. Out-of-band safety-number verification remains
+   the authentication control (§3), as drafted.
