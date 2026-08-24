@@ -26,6 +26,9 @@ import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { verifyActorChain } from '../e2ee/chain.js';
 import { verifyGroupControlEvents } from '../e2ee/group-control.js';
 import { createVaultE2eeSender, type VaultE2eeSender, type E2eeVaultFault } from './e2ee-send.js';
+import { createEnrollmentTransport, createE2eeTransports } from './e2ee-transports.js';
+import { ENROLLMENT_PEER_WARNING_COPY } from '../e2ee/enrollment.js';
+import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
@@ -528,10 +531,11 @@ export function App({
 
   // The vault-backed send/receive pipeline for end-to-end conversations (P13-010,
   // B-101), keyed to the signed-in account. Faults are sticky until an explicit wipe
-  // resets them. The pipeline is fully built and tested; it stays dormant until an
-  // enrollment flow produces a messaging identity (`enrolled()` is false today — the
-  // TUI has no `EnrollDevice` caller yet), and sends/polls then say exactly that.
+  // resets them. Enrollment (B-107) binds a messaging identity into the same factory —
+  // restored from the vault at session start, or produced by the Accounts/Devices
+  // flow — and `enrolled()` gates send/poll exactly as before.
   const [e2eeVaultFault, setE2eeVaultFault] = useState<E2eeVaultFault | undefined>(undefined);
+  const [e2eeEnrolledDeviceId, setE2eeEnrolledDeviceId] = useState<string | undefined>(undefined);
   const e2eeSenderRef = useRef<{ key: string; sender: VaultE2eeSender } | undefined>(undefined);
   const allowInsecureCredentialFile = isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE);
   const e2eeSenderFor = useCallback(
@@ -543,12 +547,82 @@ export function App({
       const created = createVaultE2eeSender({
         account: { nodeOrigin: api.target, userId: activeSession.userId },
         allowInsecureKeyFile: allowInsecureCredentialFile,
+        // B-107: once an identity exists (restored or freshly enrolled), this builds
+        // its authenticated transports. Kept here — not inside e2ee-send — so the
+        // vault layer stays transport-free.
+        buildTransports: (identity: LocalDeviceIdentity) =>
+          createE2eeTransports({
+            api,
+            accessToken: ensureAccessToken,
+            identity,
+          }),
       });
       e2eeSenderRef.current = { key, sender: created };
       return created;
     },
-    [api.target, allowInsecureCredentialFile],
+    [api, ensureAccessToken, allowInsecureCredentialFile],
   );
+  /** Actor id for enrollment material (certificates bind actor + device). */
+  function actorIdFor(activeSession: ActiveSession): string {
+    return activeSession.actor?.id ?? activeSession.userId;
+  }
+  /**
+   * B-107: restores this account's previously submitted device enrollment from the
+   * vault on session start, binding it (and its transports) into the runtime. A vault
+   * fault here is sticky and surfaced like any other; absence just stays dormant.
+   */
+  useEffect(() => {
+    if (session === undefined) return;
+    let cancelled = false;
+    const sender = e2eeSenderFor(session);
+    void sender
+      .restoreEnrollment()
+      .then((identity) => {
+        if (!cancelled && identity !== undefined) setE2eeEnrolledDeviceId(identity.deviceId);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [session, e2eeSenderFor]);
+  /**
+   * B-107: the Accounts/Devices entry point's action — runs device enrollment through
+   * the sender's own vault and returns what the screen should tell the viewer.
+   */
+  async function enrollE2eeForCurrentAccount(): Promise<{
+    readonly ok: boolean;
+    readonly copy: string;
+    readonly peerWarning?: string | undefined;
+  }> {
+    if (session === undefined) return { ok: false, copy: 'You are not signed in.' };
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.enroll({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.status === 'enrolled') {
+        setE2eeEnrolledDeviceId(outcome.identity.deviceId);
+        return {
+          ok: true,
+          copy:
+            `This device is enrolled for end-to-end encrypted messages` +
+            `${outcome.createdRoot ? ' and now holds this account’s messaging identity' : ''}.`,
+          peerWarning: ENROLLMENT_PEER_WARNING_COPY,
+        };
+      }
+      if (outcome.status === 'already-enrolled') {
+        setE2eeEnrolledDeviceId(outcome.identity.deviceId);
+        return { ok: true, copy: 'This device is already enrolled for encrypted messages.' };
+      }
+      return { ok: false, copy: outcome.copy };
+    } catch (error) {
+      return { ok: false, copy: describeGrpcError(error, api.target).title };
+    } finally {
+      // Vault faults are sticky: mirror whatever the attempt left behind.
+      setE2eeVaultFault(sender.fault());
+    }
+  }
   async function sendViaVault(conversationId: string, body: string): Promise<void> {
     if (session === undefined) return;
     const sender = e2eeSenderFor(session);
@@ -594,6 +668,8 @@ export function App({
         e2eeSenderRef.current = undefined;
       }
       setE2eeVaultFault(undefined);
+      // A wiped vault no longer holds an enrollment either (B-107).
+      setE2eeEnrolledDeviceId(undefined);
     }
   }
 
@@ -2055,6 +2131,9 @@ export function App({
             isActive={active}
             ensureAccessToken={ensureAccessToken}
             onWipeE2ee={() => wipeE2eeForCurrentAccount()}
+            thisDeviceId={e2eeEnrolledDeviceId}
+            e2eeCapabilityState={e2eeCapabilityState}
+            onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
             onBack={back}
           />
         );
@@ -2318,6 +2397,10 @@ export function App({
             session={session}
             isActive={active}
             ensureAccessToken={ensureAccessToken}
+            e2eeCapabilityState={e2eeCapabilityState}
+            e2eeEnrolledDeviceId={e2eeEnrolledDeviceId}
+            onOpenDevices={() => navigate({ screen: 'devices' })}
+            onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
             onLogout={() => void logout()}
             onResendVerification={() => void resendVerificationEmail()}
             onBack={back}

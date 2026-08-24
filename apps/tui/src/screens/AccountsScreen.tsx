@@ -20,6 +20,7 @@ import {
   OIDC_LOGIN_STATUS,
   enumWireName,
 } from '../api/wire/enums.js';
+import { enrollmentOffered } from './DevicesScreen.js';
 
 export interface AccountsScreenProps {
   api: PatchesApi;
@@ -27,6 +28,18 @@ export interface AccountsScreenProps {
   session: ActiveSession;
   isActive: boolean;
   ensureAccessToken: () => Promise<string>;
+  /**
+   * B-107: this machine's enrolled messaging-device id, when one is bound. Shows as a
+   * status line with the `:devices` affordance; enrollment hides while it exists.
+   */
+  e2eeEnrolledDeviceId?: string | undefined;
+  /** This node's `GetE2eeCapability` state — gates the encrypted-device entry point. */
+  e2eeCapabilityState?: number | undefined;
+  /** Pushes the `:devices` screen (where the roster and revocation live). */
+  onOpenDevices?: (() => void) | undefined;
+  /** B-107: runs device enrollment through the shell's vault-backed sender. */
+  onEnrollE2ee?:
+    (() => Promise<{ ok: boolean; copy: string; peerWarning?: string | undefined }>) | undefined;
   onLogout: () => void;
   onResendVerification: () => void;
   onBack: () => void;
@@ -86,6 +99,14 @@ type RevokeFlow =
   | { status: 'done'; message: string }
   | { status: 'error'; message: string };
 
+/** B-107 states for the encrypted-device entry point on this screen. */
+type E2eeFlow =
+  | { status: 'idle' }
+  | { status: 'confirming' }
+  | { status: 'running' }
+  | { status: 'done'; message: string; peerWarning?: string | undefined }
+  | { status: 'error'; message: string };
+
 function describeCandidate(candidate: EnrollmentCandidate): string {
   const where = candidate.knownAt.length === 0 ? '' : ` (${candidate.knownAt.join(', ')})`;
   return `${candidate.fingerprint}  ${candidate.algorithm}${where}`;
@@ -103,6 +124,10 @@ export function AccountsScreen({
   session,
   isActive,
   ensureAccessToken,
+  e2eeEnrolledDeviceId,
+  e2eeCapabilityState,
+  onOpenDevices,
+  onEnrollE2ee,
   onLogout,
   onResendVerification,
   onBack,
@@ -110,7 +135,30 @@ export function AccountsScreen({
   const [state, setState] = useState<CredentialsState>({ status: 'loading' });
   const [addFlow, setAddFlow] = useState<AddFlow>({ status: 'idle' });
   const [revokeFlow, setRevokeFlow] = useState<RevokeFlow>({ status: 'idle' });
+  const [e2eeFlow, setE2eeFlow] = useState<E2eeFlow>({ status: 'idle' });
   const [selectedCredential, setSelectedCredential] = useState(0);
+
+  /** B-107: enrollment entry offered only where the node accepts it, and only when this
+   * machine has no enrolled device yet (`:devices` owns re-issue and revocation). */
+  const e2eeEnrollAvailable =
+    onEnrollE2ee !== undefined &&
+    e2eeEnrolledDeviceId === undefined &&
+    enrollmentOffered(e2eeCapabilityState);
+
+  async function runE2eeEnrollment(): Promise<void> {
+    if (onEnrollE2ee === undefined) return;
+    setE2eeFlow({ status: 'running' });
+    const outcome = await onEnrollE2ee();
+    if (outcome.ok) {
+      setE2eeFlow({
+        status: 'done',
+        message: outcome.copy,
+        ...(outcome.peerWarning === undefined ? {} : { peerWarning: outcome.peerWarning }),
+      });
+      return;
+    }
+    setE2eeFlow({ status: 'error', message: outcome.copy });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -361,6 +409,14 @@ export function AccountsScreen({
           setRevokeFlow({ status: 'idle' });
           return;
         }
+        if (
+          e2eeFlow.status === 'confirming' ||
+          e2eeFlow.status === 'done' ||
+          e2eeFlow.status === 'error'
+        ) {
+          setE2eeFlow({ status: 'idle' });
+          return;
+        }
         if (addFlow.status !== 'idle') {
           setAddFlow({ status: 'idle' });
           return;
@@ -376,6 +432,17 @@ export function AccountsScreen({
       if (revokeFlow.status === 'revoking') return;
       if (revokeFlow.status === 'done' || revokeFlow.status === 'error') {
         setRevokeFlow({ status: 'idle' });
+        return;
+      }
+
+      if (e2eeFlow.status === 'confirming') {
+        if (input === 'y' || key.return) void runE2eeEnrollment();
+        else if (input === 'n') setE2eeFlow({ status: 'idle' });
+        return;
+      }
+      if (e2eeFlow.status === 'running') return;
+      if (e2eeFlow.status === 'done' || e2eeFlow.status === 'error') {
+        setE2eeFlow({ status: 'idle' });
         return;
       }
 
@@ -464,6 +531,14 @@ export function AccountsScreen({
       }
       if (input === 'a') {
         void beginAdd();
+        return;
+      }
+      if (input === 'e' && e2eeEnrollAvailable) {
+        setE2eeFlow({ status: 'confirming' });
+        return;
+      }
+      if (input === 'D' && onOpenDevices !== undefined) {
+        onOpenDevices();
         return;
       }
       if (input === 'r' && !session.emailVerified) {
@@ -588,9 +663,49 @@ export function AccountsScreen({
       {addFlow.status === 'enrolling' ? <Text color={theme.muted}>Enrolling…</Text> : null}
       {addFlow.status === 'done' ? <Text color={theme.ok}>{addFlow.message}</Text> : null}
       {addFlow.status === 'error' ? <Text color={theme.error}>{addFlow.message}</Text> : null}
+      <Box marginTop={1} flexDirection="column">
+        {e2eeEnrolledDeviceId !== undefined ? (
+          <Text color={theme.muted}>
+            Encrypted-messaging device enrolled here ({e2eeEnrolledDeviceId}) — D devices
+          </Text>
+        ) : e2eeEnrollAvailable ? (
+          <Text color={theme.muted}>This device is not enrolled for encrypted messages yet.</Text>
+        ) : null}
+        {e2eeFlow.status === 'confirming' ? (
+          <>
+            <Text color={theme.warn} wrap="wrap">
+              Enroll THIS computer as an encrypted-messaging device? Its keys are generated here and
+              never leave it; the account’s device list gains one entry.
+            </Text>
+            <Text color={theme.muted}>y/Enter enroll · n/Esc cancel</Text>
+          </>
+        ) : null}
+        {e2eeFlow.status === 'running' ? (
+          <Text color={theme.muted}>Enrolling this device…</Text>
+        ) : null}
+        {e2eeFlow.status === 'done' ? (
+          <>
+            <Text color={theme.ok} wrap="wrap">
+              {e2eeFlow.message}
+            </Text>
+            {e2eeFlow.peerWarning !== undefined ? (
+              <Text color={theme.warn} wrap="wrap">
+                {e2eeFlow.peerWarning}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+        {e2eeFlow.status === 'error' ? (
+          <Text color={theme.error} wrap="wrap">
+            {e2eeFlow.message}
+          </Text>
+        ) : null}
+      </Box>
       <Box marginTop={1}>
         <Text color={theme.muted}>
-          a add credential · v revoke · j/k select · x log out · Esc back
+          a add credential · v revoke · j/k select
+          {onOpenDevices !== undefined ? ' · D devices' : ''}
+          {e2eeEnrollAvailable ? ' · e encrypt device' : ''} · x log out · Esc back
         </Text>
       </Box>
     </Box>

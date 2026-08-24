@@ -380,6 +380,12 @@ export class FakeApiHandle {
           capability: { state: E2EE_CAPABILITY_STATE.DISABLED },
         }),
       getIdentityRoot: () => Promise.resolve({}),
+      // B-107: the real flow is exercised by its own suite against purpose-built
+      // fakes; the generic fake refuses, matching an unconfigured node honestly.
+      publishIdentityRoot: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: no e2ee enrollment')),
+      enrollDevice: () =>
+        Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: no e2ee enrollment')),
       getDeviceRoster: () => Promise.resolve({}),
       listE2eeGroupControlEvents: () => Promise.resolve({ events: [] }),
       refreshSession: (request: RefreshSessionRequest) => this.refreshSession(request),
