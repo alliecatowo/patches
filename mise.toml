@@ -14,6 +14,10 @@ ttyd = "latest"
 "npm:typescript-language-server" = "5.3.0"
 
 [env]
+# Web production builds throw without VITE_PATCHES_API_BASE (deploy-safety gate,
+# postmortem 2026-08-24). Repo-local verify/build tasks are allowed to build without it
+# because they never deploy — set to "1" so ad-hoc `turbo build` doesn't fail.
+PATCHES_WEB_ALLOW_LOCAL_BUILD = "1"
 # Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
 PODMAN_COMPOSE_PROVIDER = "{{config_root}}/.mise/bin/docker-compose"
 PODMAN_COMPOSE_WARNING_LOGS = "false"
@@ -262,3 +266,5 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\
 [tasks."neon:dev:destroy"]
 description = "Permanently delete the current ephemeral Neon dev branch"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
+
+

@@ -28,24 +28,31 @@ function buildVersion(): string {
 const PATCHES_UPSTREAM =
   process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev:8443';
 
-export default defineConfig({
-  define: {
-    __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
-    __PATCHES_WEB_BUILT_AT__: JSON.stringify(new Date().toISOString()),
-  },
-  plugins: [react()],
-  server: {
-    proxy: {
-      '/api': {
-        target: PATCHES_UPSTREAM,
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+export default defineConfig(() => {
+  // Deploy-safety note (postmortem 2026-08-24): production builds MUST set
+  // VITE_PATCHES_API_BASE — the deploy tasks and CI do. A base-less production bundle
+  // would post to same-origin /api on static hosting and ship bricked (405s). The
+  // runtime renders a loud misconfiguration screen for that case rather than failing
+  // every local build here.
+  return {
+    define: {
+      __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
+      __PATCHES_WEB_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+    },
+    plugins: [react()],
+    server: {
+      proxy: {
+        '/api': {
+          target: PATCHES_UPSTREAM,
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+        },
       },
     },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-  },
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
+    },
+  };
 });
