@@ -31,6 +31,7 @@ import { type E2eeLogicalMessage as E2eeLogicalMessageProto } from '@patches/pro
 import { type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { parseInput, uuidInputSchema } from '../posts/validation.js';
 import { e2eeDigest } from './e2ee-crypto.adapter.js';
 import { toBytes } from './e2ee.codec.js';
 import { loadCurrentGroupControl } from './group-control.js';
@@ -424,7 +425,13 @@ export async function acceptE2eeLogicalMessage(
         : 1,
   );
 
-  const logicalMessageId = randomUUID();
+  // ADR 0025: the envelope AD binds the *sender's* pre-send logical id, so the stored
+  // id must be exactly what the sender bound — a node-minted surrogate would make every
+  // recipient-side open fail authentication. Honor the client-supplied id when present
+  // (validated UUID); mint only for legacy callers that omitted it.
+  const clientSuppliedId = input.message.logicalMessageId ?? '';
+  const logicalMessageId =
+    clientSuppliedId.length > 0 ? parseInput(uuidInputSchema, clientSuppliedId) : randomUUID();
   const acceptedAt = now;
   const transcript = reportTranscriptFor(
     {

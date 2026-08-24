@@ -53,6 +53,7 @@ import type { DataSource, ObjectLiteral } from 'typeorm';
 
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
+import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
 import {
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
@@ -612,9 +613,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         dataSource,
         testFrankingKeyRing,
         unreviewedTestPolicy,
+        // No-op budgets: this suite exercises privacy/leak invariants, not §188 windows.
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
       );
-      groups = new E2eeGroupService(dataSource);
-      reportEvidence = new E2eeReportEvidenceService(dataSource, testFrankingKeyRing);
+      groups = new E2eeGroupService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      reportEvidence = new E2eeReportEvidenceService(
+        dataSource,
+        testFrankingKeyRing,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
 
       server = await startTestServer();
       auth = createAuthClient(server.url, credentials.createInsecure());
@@ -656,6 +666,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       e2eeRecipient = await newActor();
       e2eeSenderDevice = await enrollFirstDevice(e2eeSender);
       e2eeRecipientDevice = await enrollFirstDevice(e2eeRecipient);
+      // §183.2 first-contact eligibility now applies to E2EE conversations too.
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: e2eeRecipient.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeRecipient.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
 
       const first = await conversations.createE2eeConversation(e2eeSender.actorId, {
         clientRequestId: randomUUID(),
@@ -673,8 +692,49 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       e2eeConversationId = first.conversationId;
 
       // Group transition: a third member joins at epoch 2 (writes the signed transcript).
+      // DIRECT-kind E2EE conversations cannot grow (ADR 0020 §7 pairwise bound), so the
+      // scan runs on a GROUP-kind thread: re-create with a second founding recipient.
+      const secondRecipient = await newActor();
+      const secondRecipientDevice = await enrollFirstDevice(secondRecipient);
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: secondRecipient.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: secondRecipient.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
+      const groupCreated = await conversations.createE2eeConversation(e2eeSender.actorId, {
+        clientRequestId: randomUUID(),
+        recipientActorIds: [e2eeRecipient.actorId, secondRecipient.actorId],
+        senderDeviceId: e2eeSenderDevice.deviceId,
+        message: buildLogicalMessage([
+          canaryEnvelope(
+            e2eeRecipient.actorId,
+            e2eeRecipientDevice.deviceId,
+            e2eeBodyBytes,
+            keyCanary,
+          ),
+          canaryEnvelope(
+            secondRecipient.actorId,
+            secondRecipientDevice.deviceId,
+            e2eeBodyBytes,
+            keyCanary,
+          ),
+        ]),
+      });
+      e2eeConversationId = groupCreated.conversationId;
+
       const newcomer = await newActor();
       const newcomerDevice = await enrollFirstDevice(newcomer);
+      await createTestFollow(dataSource.manager, {
+        followerActorId: e2eeSender.actorId,
+        followeeActorId: newcomer.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: newcomer.actorId,
+        followeeActorId: e2eeSender.actorId,
+      });
       await groups.addE2eeMember(e2eeSender.actorId, {
         conversationId: e2eeConversationId,
         actorId: newcomer.actorId,
@@ -706,6 +766,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
                 keyCanary,
               ),
               canaryEnvelope(newcomer.actorId, newcomerDevice.deviceId, e2eeBodyBytes, keyCanary),
+              canaryEnvelope(
+                secondRecipient.actorId,
+                secondRecipientDevice.deviceId,
+                e2eeBodyBytes,
+                keyCanary,
+              ),
             ]),
           }),
         'E2EE_FANOUT_REJECTED',
@@ -725,6 +791,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               keyCanary,
             ),
             canaryEnvelope(newcomer.actorId, newcomerDevice.deviceId, e2eeBodyBytes, keyCanary),
+            canaryEnvelope(
+              secondRecipient.actorId,
+              secondRecipientDevice.deviceId,
+              e2eeBodyBytes,
+              keyCanary,
+            ),
           ],
           { epoch: 2n },
         ),
@@ -957,17 +1029,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(exportHandlerSource.includes("'e2ee_")).toBe(false);
     });
 
-    it('deletion semantics: PURGE_ACCOUNT references no e2ee table (documented gap — see the ticket referenced in docs)', () => {
-      // Current behavior, asserted so the seam is visible: the purge handler erases
-      // legacy DM bodies but touches no e2ee_* row. Report-evidence rows are exempt by
-      // design (ADR 0020: evidence outlives account deletion); prekey/roster/logical-
-      // message rows surviving purge is an open deletion-semantics gap filed against
-      // apps/worker/src/jobs/handlers/purge-account.handler.ts, not fixed here.
+    it('deletion semantics: PURGE_ACCOUNT erases the purged actor’s e2ee rows but spares report evidence (audit P1 fix; ADR 0020 evidence-outlives rule)', () => {
+      // The purge handler now deletes identity roots, device identities/certs, rosters,
+      // prekeys, mailbox envelopes, logical messages, and self-signed group-control events
+      // for the purged actor — while report-evidence rows remain, by design, as the
+      // moderation record that outlives the account.
       const purgeHandlerSource = readFileSync(
         resolve(__dirname, '../../worker/src/jobs/handlers/purge-account.handler.ts'),
         'utf8',
       );
-      expect(purgeHandlerSource.includes('E2ee')).toBe(false);
+      expect(purgeHandlerSource.includes('E2ee')).toBe(true);
+      expect(purgeHandlerSource.includes('E2eeIdentityRoot')).toBe(true);
+      expect(purgeHandlerSource.includes('getRepository(E2eeReportEvidence')).toBe(false);
     });
   },
 );

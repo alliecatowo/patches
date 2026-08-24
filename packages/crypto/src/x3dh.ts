@@ -199,6 +199,25 @@ export interface RespondX3dhResult {
   readonly consumedOneTimePreKeyId?: number;
 }
 
+/**
+ * Best-effort zeroization of the X3DH setup material once both ratchets are initialized: the
+ * secrets (the initialized ratchet holds its own `.slice()`d copies, so the originals have no
+ * further use) and, on the initiator, the ephemeral ratchet key pair whose private half must not
+ * linger beside the persisted session. Call on every path that finishes setup — success and
+ * failure alike — after `initializeInitiatorRatchet`/`initializeResponderRatchet` have cloned what
+ * they need. The ephemeral argument is only ever the initiator's generated pair; a responder's
+ * signed prekey object is owned by its inventory and is never passed here.
+ */
+export function disposeX3dhSecrets(secrets: X3dhSecrets, initiatorEphemeral?: KeyPair): void {
+  zeroize(
+    secrets.rootKey,
+    secrets.initiatorHeaderKey,
+    secrets.responderHeaderKey,
+    initiatorEphemeral?.privateKey,
+    initiatorEphemeral?.publicKey,
+  );
+}
+
 export function respondX3dh(input: RespondX3dhInput): RespondX3dhResult {
   verifyRosterSnapshot(input.initiatorRoster, input.nowMs);
   verifyPreKeyBundle(input.responderBundle, input.responderRoster, input.nowMs);

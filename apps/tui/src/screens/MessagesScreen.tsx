@@ -42,6 +42,8 @@ import { movementTarget } from '../app/list-movement.js';
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
@@ -103,6 +105,20 @@ export interface MessagesScreenApi {
     afterEpoch: bigint;
     limit: number;
   }): Promise<ListE2eeGroupControlEventsResponse>;
+  /**
+   * B-101: when present, the membership transcript is signature-verified client-side
+   * (each event against its signer's certified device key) before display. Absent keeps
+   * the plain node-served listing.
+   */
+  verifyGroupControlEvents?(request: { conversationId: string }): Promise<{
+    allVerified: boolean;
+    rows: readonly {
+      epoch: bigint;
+      change: 'ADDED' | 'REMOVED' | 'UNKNOWN';
+      subjectActorId: string;
+      signatureVerified: boolean;
+    }[];
+  }>;
 }
 
 export interface MessagesScreenProps {
@@ -152,6 +168,15 @@ export interface MessagesScreenProps {
   /** How often an open end-to-end thread re-checks the peer's roots/roster chain.
    * Tests pass a small value; the default is deliberately unhurried. */
   securityPollMs?: number | undefined;
+  /**
+   * B-101: drains the viewer's end-to-end mailbox for this conversation and returns
+   * render-ready rows (decrypted messages, franking-failure placeholders, labeled
+   * history transfers). The callback owns decryption, durable receive-state commits,
+   * and acknowledgement; the screen only renders what survived validation.
+   */
+  receiveE2ee?: ((conversationId: string) => Promise<readonly E2eeReceivedRow[]>) | undefined;
+  /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
+  mailPollMs?: number | undefined;
 }
 
 type Folder = 'inbox' | 'requests';
@@ -371,6 +396,13 @@ interface TranscriptRow {
   epoch: bigint;
   change: 'ADDED' | 'REMOVED' | 'UNKNOWN';
   subjectActorId: string;
+  /** Present only when the transcript came back signature-verified (B-101 seam). */
+  signatureVerified?: boolean | undefined;
+}
+
+/** ADR 0025 §4's neutral placeholder for a message that failed its franking check. */
+export function unverifiableMessageCopy(senderLabel: string): string {
+  return `A message from ${senderLabel} could not be verified and was not shown.`;
 }
 
 /** Baseline security facts captured when a thread opens; changes against them raise interstitials. */
@@ -409,6 +441,8 @@ export function MessagesScreen({
   sendE2ee,
   e2eeVaultFault,
   securityPollMs = 30_000,
+  receiveE2ee,
+  mailPollMs = 5_000,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -431,9 +465,11 @@ export function MessagesScreen({
   const [transcript, setTranscript] = useState<
     | { status: 'hidden' }
     | { status: 'loading' }
-    | { status: 'shown'; rows: readonly TranscriptRow[] }
+    | { status: 'shown'; rows: readonly TranscriptRow[]; allVerified?: boolean | undefined }
     | { status: 'error'; message: string }
   >({ status: 'hidden' });
+  // B-101 mailbox rows for the open end-to-end thread (deduped by envelope id).
+  const [e2eeRows, setE2eeRows] = useState<readonly E2eeReceivedRow[]>([]);
 
   const fetchConversations = useCallback(
     (cursor: string): Promise<Page<Conversation>> =>
@@ -599,11 +635,65 @@ export function MessagesScreen({
     setPeerSecurity({ status: 'ok' });
   }
 
+  // --- end-to-end mailbox polling (B-101) ------------------------------------
+  // While an end-to-end thread is open, drain the device mailbox on an interval. The
+  // callback decrypts, commits receive state durably, and acknowledges; this effect
+  // only merges validated rows into the thread view. Failures retry on the next tick
+  // and never clear what earlier ticks rendered.
+  useEffect(() => {
+    if (!e2eeThreadOpen || conversationId === '' || receiveE2ee === undefined) return;
+    let cancelled = false;
+    async function poll(): Promise<void> {
+      if (cancelled) return;
+      try {
+        const rows = await receiveE2ee?.(conversationId);
+        if (cancelled || rows === undefined || rows.length === 0) return;
+        setE2eeRows((current) => {
+          const seen = new Set(current.map((row) => row.id));
+          const fresh = rows.filter((row) => !seen.has(row.id));
+          return fresh.length === 0 ? current : [...current, ...fresh];
+        });
+      } catch {
+        // Transient poll failures are invisible beyond the next tick's retry; nothing
+        // about a failed poll may be mistaken for "no messages".
+      }
+    }
+    void poll();
+    const timer = setInterval(() => void poll(), Math.max(250, mailPollMs));
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [e2eeThreadOpen, conversationId, receiveE2ee, mailPollMs]);
+
   function loadTranscript(id: string): void {
-    if (api.listE2eeGroupControlEvents === undefined) return;
     closeE2eeThreadWatch();
     setView('transcript');
     setTranscript({ status: 'loading' });
+    if (api.verifyGroupControlEvents !== undefined) {
+      // B-101 seam: verify every event's device signature against the signer's
+      // published, chain-verified device key before anything reaches the screen.
+      api
+        .verifyGroupControlEvents({ conversationId: id })
+        .then((verdict) => {
+          setTranscript({
+            status: 'shown',
+            rows: verdict.rows,
+            allVerified: verdict.allVerified,
+          });
+        })
+        .catch(() => {
+          setTranscript({
+            status: 'error',
+            message: 'Could not load the membership history for this conversation.',
+          });
+        });
+      return;
+    }
+    if (api.listE2eeGroupControlEvents === undefined) {
+      setTranscript({ status: 'hidden' });
+      return;
+    }
     api
       .listE2eeGroupControlEvents({ conversationId: id, afterEpoch: 0n, limit: 50 })
       .then((response) => {
@@ -619,6 +709,7 @@ export function MessagesScreen({
                   : 'UNKNOWN',
             subjectActorId: event.subjectActorId,
           })),
+          allVerified: undefined,
         });
       })
       .catch((error: unknown) => {
@@ -642,6 +733,7 @@ export function MessagesScreen({
     setPendingMessages([]);
     setSentMessages([]);
     setThreadError(undefined);
+    setE2eeRows([]);
     // Reopening re-baselines the security checks on purpose — acknowledging a change
     // interstitial is exactly this action (the copy says so), and it must not be
     // possible to acknowledge without the fetch that proves what is true now.
@@ -660,6 +752,7 @@ export function MessagesScreen({
     setPendingMessages([]);
     setSentMessages([]);
     setThreadError(undefined);
+    setE2eeRows([]);
     setTranscript({ status: 'hidden' });
   }
 
@@ -696,12 +789,18 @@ export function MessagesScreen({
         setPendingMessages((current) =>
           current.filter((message) => message.id !== clientRequestId),
         );
-      } catch {
+      } catch (error) {
         setPendingMessages((current) =>
           current.filter((message) => message.id !== clientRequestId),
         );
         setDraft(body);
-        setThreadError('Message was not sent. Your draft is still here.');
+        // No enrolled device (the TUI has no enrollment flow yet — B-101 leaves the
+        // pipeline wired but identity-less): say exactly that, not "message lost".
+        setThreadError(
+          error instanceof E2eeNotEnrolledError
+            ? E2EE_SEND_UNAVAILABLE_COPY
+            : 'Message was not sent. Your draft is still here.',
+        );
       } finally {
         setSending(false);
       }
@@ -767,6 +866,15 @@ export function MessagesScreen({
           conversations.loadMore();
           return;
         }
+        // Membership transcript takes precedence over list-movement's "jump to bottom":
+        // an E2EE row's G opens the signed transcript; other rows keep movement.
+        if (input === 'G') {
+          const conversation = conversations.items[effectiveListRow];
+          if (conversation !== undefined && isE2eeConversation(conversation)) {
+            loadTranscript(conversation.id);
+            return;
+          }
+        }
         const moved = movementTarget({
           input,
           key,
@@ -783,13 +891,6 @@ export function MessagesScreen({
           if (conversation !== undefined && onOpenSafetyNumber !== undefined) {
             const peer = peerActorIdOf(conversation, viewerActorId);
             if (peer !== undefined) onOpenSafetyNumber(peer);
-          }
-          return;
-        }
-        if (input === 'G') {
-          const conversation = conversations.items[effectiveListRow];
-          if (conversation !== undefined && isE2eeConversation(conversation)) {
-            loadTranscript(conversation.id);
           }
           return;
         }
@@ -995,6 +1096,45 @@ export function MessagesScreen({
               {sanitizeForTerminal(message.body)} <Text color={theme.muted}>· sending</Text>
             </Text>
           ))}
+          {e2eeRows.map((row) => {
+            if (row.kind === 'message') {
+              return (
+                <Text key={row.id}>
+                  <Text color={theme.muted}>{sanitizeForTerminal(row.senderLabel)}: </Text>
+                  {sanitizeForTerminal(row.body)}
+                </Text>
+              );
+            }
+            if (row.kind === 'unverifiable') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  {unverifiableMessageCopy(sanitizeForTerminal(row.senderLabel))}
+                </Text>
+              );
+            }
+            if (row.kind === 'undisplayable') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  A delivered message could not be displayed.
+                </Text>
+              );
+            }
+            return (
+              <Box key={row.id} flexDirection="column">
+                <Text color={theme.muted} wrap="wrap">
+                  Re-delivered history from {sanitizeForTerminal(row.fromLabel)} — provenance not
+                  independently verified.
+                </Text>
+                {row.entries.map((entry, index) => (
+                  <Text key={`${row.id}:${String(index)}`}>
+                    {'  '}
+                    <Text color={theme.muted}>{sanitizeForTerminal(entry.senderLabel)}: </Text>
+                    {sanitizeForTerminal(entry.body)}
+                  </Text>
+                ))}
+              </Box>
+            );
+          })}
           <Box marginTop={1}>
             <Text color={theme.accent}>Draft: </Text>
             <Text>{draft}</Text>
@@ -1019,11 +1159,23 @@ export function MessagesScreen({
               No membership changes yet — everyone who was in at creation is still in.
             </Text>
           ) : null}
+          {transcript.status === 'shown' && transcript.allVerified !== undefined ? (
+            <Text color={transcript.allVerified ? theme.ok : theme.warn} wrap="wrap">
+              {transcript.allVerified
+                ? 'Every membership event was signed by a member device; all signatures verified.'
+                : 'Some membership events could not be signature-verified against published device keys.'}
+            </Text>
+          ) : null}
           {transcript.status === 'shown'
             ? transcript.rows.map((row) => (
                 <Text key={`${row.epoch}`}>
                   epoch {row.epoch.toString()} — {row.change}{' '}
                   {sanitizeForTerminal(row.subjectActorId)}
+                  {row.signatureVerified === undefined ? null : (
+                    <Text color={row.signatureVerified ? theme.ok : theme.error}>
+                      {row.signatureVerified ? ' · signature verified' : ' · SIGNATURE UNVERIFIED'}
+                    </Text>
+                  )}
                 </Text>
               ))
             : null}

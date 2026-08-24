@@ -71,6 +71,12 @@ export interface DeviceEnvelopeRecipient {
 export interface SealDeviceEnvelopeInput {
   readonly context: FrankingCommitmentContext;
   readonly recipient: DeviceEnvelopeRecipient;
+  /**
+   * The logical message this envelope belongs to. Identical across every envelope in the fanout
+   * and bound into the associated data, so one envelope cannot be presented under a different
+   * logical message than the one it was sealed for.
+   */
+  readonly logicalMessageId: string;
   /** The logical plaintext, already padded to its bucket by the caller. */
   readonly plaintext: Uint8Array;
   /** One per logical message, shared by every envelope in the fanout. */
@@ -83,6 +89,12 @@ export interface SealDeviceEnvelopeInput {
 export interface OpenDeviceEnvelopeInput {
   readonly context: FrankingCommitmentContext;
   readonly recipient: DeviceEnvelopeRecipient;
+  /**
+   * The logical message the delivered envelope claims to belong to
+   * (`E2eeMailboxEnvelope.logical_message_id`), as the node delivered it — mirrored on seal and
+   * open so a node that re-files an envelope under another logical message fails authentication.
+   */
+  readonly logicalMessageId: string;
   readonly message: EncryptedRatchetMessage;
   /**
    * The commitment **as the node delivered it** (`E2eeMailboxEnvelope.franking_commitment`),
@@ -108,7 +120,8 @@ function requireNonEmptyString(value: string, label: string): void {
 }
 
 /**
- * The exact associated-data bytes every device envelope's body AEAD binds (ADR 0025 §2).
+ * The exact associated-data bytes every device envelope's body AEAD binds (ADR 0025 §2, as
+ * amended by the 2026-08 E2EE audit hardening: `logicalMessageId` joined the transcript).
  *
  * Exported because the sender, every recipient, and any conformance test must produce identical
  * bytes from three different packages, and a second encoder that has to agree with this one by
@@ -116,11 +129,15 @@ function requireNonEmptyString(value: string, label: string): void {
  *
  * Binding the recipient's `(actorId, deviceId)` costs nothing and makes a node that moves one
  * device's envelope into another device's mailbox produce an authentication failure rather than a
- * puzzle. The commitment is written last and at fixed width, so no field boundary is ambiguous.
+ * puzzle. Binding `logicalMessageId` extends the same treatment to the message axis: an envelope
+ * re-filed under a different logical message — same conversation, epoch, sender, and commitment
+ * slot — refuses to open. The commitment is written last and at fixed width, so no field boundary
+ * is ambiguous.
  */
 export function encodeDeviceEnvelopeAssociatedData(
   context: FrankingCommitmentContext,
   recipient: DeviceEnvelopeRecipient,
+  logicalMessageId: string,
   commitment: Uint8Array,
 ): Uint8Array {
   requireNonEmptyString(context.frankingProfile, 'Franking profile');
@@ -129,6 +146,7 @@ export function encodeDeviceEnvelopeAssociatedData(
   requireNonEmptyString(context.senderDeviceId, 'Sender device id');
   requireNonEmptyString(recipient.recipientActorId, 'Recipient actor id');
   requireNonEmptyString(recipient.recipientDeviceId, 'Recipient device id');
+  requireNonEmptyString(logicalMessageId, 'Logical message id');
   if (!Number.isSafeInteger(context.membershipEpoch) || context.membershipEpoch < 0) {
     throw new FrankingError('Membership epoch is invalid.');
   }
@@ -144,6 +162,7 @@ export function encodeDeviceEnvelopeAssociatedData(
     .string(context.senderDeviceId)
     .string(recipient.recipientActorId)
     .string(recipient.recipientDeviceId)
+    .string(logicalMessageId)
     .fixed(commitment, KEY_BYTES)
     .finish();
 }
@@ -195,6 +214,7 @@ export function sealDeviceEnvelope(
   const associatedData = encodeDeviceEnvelopeAssociatedData(
     input.context,
     input.recipient,
+    input.logicalMessageId,
     input.commitment,
   );
   const inner = encodeInnerPlaintext(input.openingKey, input.plaintext);
@@ -239,6 +259,7 @@ export function openDeviceEnvelope(
   const associatedData = encodeDeviceEnvelopeAssociatedData(
     input.context,
     input.recipient,
+    input.logicalMessageId,
     input.commitment,
   );
   const decrypted = ratchetDecrypt(state, input.message, associatedData, source);

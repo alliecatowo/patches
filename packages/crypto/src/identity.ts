@@ -16,8 +16,16 @@ import {
   type SignedPreKey,
 } from './types.js';
 
-const CERTIFICATE_CONTEXT = 'patches-e2ee-v1/device-certificate';
-const ROSTER_CONTEXT = 'patches-e2ee-v1/device-roster';
+/**
+ * Client-side identity transcript domains. Exported for one reason: the node's own
+ * certificate/roster transcript encoder (`apps/server` `e2ee.codec.ts`) signs over structurally
+ * similar material, and the audit found both encoders using these exact strings — two encoders,
+ * same domain separators, so a signature could verify across trust contexts up to the field-size
+ * caps. These are exported so that disjointness is asserted by a test in the server package
+ * instead of resting on two copies of two literals staying different by luck.
+ */
+export const CERTIFICATE_CONTEXT = 'patches-e2ee-v1/device-certificate';
+export const ROSTER_CONTEXT = 'patches-e2ee-v1/device-roster';
 const PREKEY_CONTEXT = 'patches-e2ee-v1/signed-prekey';
 const SAFETY_NUMBER_CONTEXT = 'patches-e2ee-v1/safety-number';
 const ZERO_DIGEST = new Uint8Array(32);

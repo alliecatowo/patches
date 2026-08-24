@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
+  Actor,
   Block,
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
@@ -244,86 +245,110 @@ export class E2eePrekeyService {
     }
     const deviceFilter = request.deviceIds.length === 0 ? null : new Set(request.deviceIds);
 
-    // Generic, no-oracle authorization (spec §62): the caller may not claim bundles for an
-    // actor who blocks them or whom they block. `MessagesModule`'s richer mutual-follow/
-    // accepted-request authorization for a *specific* conversation is intentionally not
-    // duplicated here — `CreateE2eeConversation`/`GetE2eeConversationState` (not implemented by
-    // this module; see `e2ee.controller.ts`) own that check, and until one of those RPCs exists
-    // there is no conversation id a caller could legitimately supply anyway.
-    const blocks =
-      targetActorIds.length === 0
-        ? []
-        : await this.dataSource.getRepository(Block).find({
-            where: [
-              { blockerActorId: actorId, blockedActorId: In(targetActorIds) },
-              { blockedActorId: actorId, blockerActorId: In(targetActorIds) },
-            ],
-          });
-    const blockedActorIds = new Set(blocks.flatMap((b) => [b.blockerActorId, b.blockedActorId]));
+    // Everything below — block filtering, drain accounting, and the consume UPDATE itself —
+    // runs inside ONE transaction. The per-device drain budget in `claimOneOneTimePrekey`
+    // used to be checked on the raw DataSource outside any transaction, so two concurrent
+    // claimants could both read the same count before either consumed, and together exceed
+    // the window bound (audit P2 TOCTOU). Inside the claiming transaction the count and the
+    // `FOR UPDATE SKIP LOCKED` consume commit atomically per device.
+    return this.dataSource.transaction(async (manager) => {
+      // Generic, no-oracle authorization (spec §62): the caller may not claim bundles for an
+      // actor who blocks them or whom they block. This RPC is deliberately *not*
+      // conversation-bound key discovery — no conversation id is involved — so the
+      // first-contact eligibility that gates conversation creation lives with
+      // `CreateE2eeConversation`/`AddE2eeMember` (which now enforce the same
+      // `mayMessageDirectly` semantics as legacy DMs), not duplicated here. What this path
+      // must guarantee is only: no bundles for blocked pairs, none for deleted actors, and
+      // a bounded drain rate per target device.
+      const blocks =
+        targetActorIds.length === 0
+          ? []
+          : await manager.getRepository(Block).find({
+              where: [
+                { blockerActorId: actorId, blockedActorId: In(targetActorIds) },
+                { blockedActorId: actorId, blockerActorId: In(targetActorIds) },
+              ],
+            });
+      const blockedActorIds = new Set(blocks.flatMap((b) => [b.blockerActorId, b.blockedActorId]));
 
-    const bundles: E2eePrekeyBundle[] = [];
-    const rosters: ClaimPrekeyBundlesResponse['rosters'] = [];
+      // Deleted actors serve nothing (audit P1): between a deletion request and its purge
+      // the identity rows still exist, but a deleted account's keys must not be handed out.
+      const liveTargets =
+        targetActorIds.length === 0
+          ? []
+          : (await manager.getRepository(Actor).find({ where: { id: In(targetActorIds) } }))
+              .filter((actor) => actor.deletedAt === null)
+              .map((actor) => actor.id);
 
-    for (const targetActorId of targetActorIds) {
-      if (targetActorId !== actorId && blockedActorIds.has(targetActorId)) continue;
+      const bundles: E2eePrekeyBundle[] = [];
+      const rosters: ClaimPrekeyBundlesResponse['rosters'] = [];
 
-      const root = await this.dataSource
-        .getRepository(E2eeIdentityRootEntity)
-        .findOne({ where: { actorId: targetActorId, rotatedAt: IsNull() } });
-      const rosterRow = await loadCurrentRosterRow(this.dataSource.manager, targetActorId);
-      if (root === null || rosterRow === null) continue;
+      for (const targetActorId of targetActorIds) {
+        if (!liveTargets.includes(targetActorId)) continue;
+        if (targetActorId !== actorId && blockedActorIds.has(targetActorId)) continue;
 
-      const decoded = decodeStoredRoster(rosterRow);
-      const activeEntries = decoded.entries.filter(
-        (entry) => entry.active && (deviceFilter === null || deviceFilter.has(entry.deviceId)),
-      );
-      if (activeEntries.length === 0) continue;
-      rosters.push(toProtoRoster(rosterRow, decoded.entries, decoded.rootGeneration));
+        const root = await manager
+          .getRepository(E2eeIdentityRootEntity)
+          .findOne({ where: { actorId: targetActorId, rotatedAt: IsNull() } });
+        const rosterRow = await loadCurrentRosterRow(manager, targetActorId);
+        if (root === null || rosterRow === null) continue;
 
-      const devices = await this.dataSource.getRepository(E2eeDeviceIdentityEntity).find({
-        where: activeEntries.map((entry) => ({
-          actorId: targetActorId,
-          deviceId: entry.deviceId,
-          revokedAt: IsNull(),
-        })),
-      });
-
-      for (const device of devices) {
-        const signedPrekey = await this.dataSource.getRepository(E2eeSignedPrekeyEntity).findOne({
-          where: { deviceIdentityId: device.id, retiredAt: IsNull() },
-        });
-        if (signedPrekey === null) continue;
-
-        const oneTimePrekey = await this.claimOneOneTimePrekey(device.id);
-        bundles.push(
-          buildBundle(
-            targetActorId,
-            root.generation,
-            toBytes(root.publicKey),
-            device,
-            signedPrekey,
-            oneTimePrekey,
-            BigInt(rosterRow.sequence),
-            toBytes(rosterRow.digest),
-          ),
+        const decoded = decodeStoredRoster(rosterRow);
+        const activeEntries = decoded.entries.filter(
+          (entry) => entry.active && (deviceFilter === null || deviceFilter.has(entry.deviceId)),
         );
-      }
-    }
+        if (activeEntries.length === 0) continue;
+        rosters.push(toProtoRoster(rosterRow, decoded.entries, decoded.rootGeneration));
 
-    return { bundles, rosters };
+        const devices = await manager.getRepository(E2eeDeviceIdentityEntity).find({
+          where: activeEntries.map((entry) => ({
+            actorId: targetActorId,
+            deviceId: entry.deviceId,
+            revokedAt: IsNull(),
+          })),
+        });
+
+        for (const device of devices) {
+          const signedPrekey = await manager.getRepository(E2eeSignedPrekeyEntity).findOne({
+            where: { deviceIdentityId: device.id, retiredAt: IsNull() },
+          });
+          if (signedPrekey === null) continue;
+
+          const oneTimePrekey = await this.claimOneOneTimePrekey(manager, device.id);
+          bundles.push(
+            buildBundle(
+              targetActorId,
+              root.generation,
+              toBytes(root.publicKey),
+              device,
+              signedPrekey,
+              oneTimePrekey,
+              BigInt(rosterRow.sequence),
+              toBytes(rosterRow.digest),
+            ),
+          );
+        }
+      }
+
+      return { bundles, rosters };
+    });
   }
 
   /**
-   * Atomically removes at most one available one-time prekey for one device (ADR 0020 §5,
-   * "the node never returns the same one-time prekey twice"). `FOR UPDATE SKIP LOCKED` inside
-   * the subquery is what makes two concurrent callers race for *different* rows instead of
-   * blocking on the same lock and both later acting on the same "available" row — the failure
-   * mode a naive `SELECT` then `UPDATE`/`DELETE` pair would have.
+   * Atomically removes at most one available one-time prekey for one device, inside the
+   * caller's claiming transaction (ADR 0020 §5, "the node never returns the same one-time
+   * prekey twice"). `FOR UPDATE SKIP LOCKED` inside the subquery is what makes two concurrent
+   * callers race for *different* rows instead of blocking on the same lock and both later
+   * acting on the same "available" row — the failure mode a naive `SELECT` then
+   * `UPDATE`/`DELETE` pair would have. The per-device drain-budget count runs here too, in
+   * the same transaction, so it can never be raced past by parallel claims (see
+   * `claimPrekeyBundles`).
    */
   private async claimOneOneTimePrekey(
+    manager: EntityManager,
     deviceIdentityId: string,
   ): Promise<ClaimedOneTimePrekey | null> {
-    const recentClaims = await this.dataSource.query<{ count: number }[]>(
+    const recentClaims = await manager.query<{ count: number }[]>(
       `SELECT count(*)::int AS count FROM e2ee_one_time_prekeys
        WHERE device_identity_id = $1 AND consumed_at IS NOT NULL
          AND consumed_at > now() - ($2 || ' milliseconds')::interval`,
@@ -338,7 +363,7 @@ export class E2eePrekeyService {
     // the tuple as the rows array itself doesn't throw — `rows[0]` is just the real rows array,
     // which is always "defined" even when empty, silently turning every claim into a false
     // "not exhausted" once the row list itself is emptied.
-    const [rows] = await this.dataSource.query<[{ key_id: string; public_key: Buffer }[], number]>(
+    const [rows] = await manager.query<[{ key_id: string; public_key: Buffer }[], number]>(
       `UPDATE e2ee_one_time_prekeys
        SET consumed_at = now()
        WHERE id = (

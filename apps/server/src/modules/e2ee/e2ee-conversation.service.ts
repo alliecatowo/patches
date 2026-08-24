@@ -32,12 +32,14 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
+import { mayMessageDirectly } from '../messages/direct-message-eligibility.js';
 import {
   acceptE2eeLogicalMessage,
   transcriptDigestForStoredMessage,
   type AcceptedLogicalMessage,
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { loadCurrentGroupControl } from './group-control.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import {
@@ -67,6 +69,7 @@ export class E2eeConversationService {
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
     @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
     private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
+    private readonly rateLimits: E2eeRateLimitService,
   ) {
     this.#keys = keys;
   }
@@ -74,6 +77,7 @@ export class E2eeConversationService {
   async createE2eeConversation(
     actorId: string,
     request: CreateE2eeConversationRequest,
+    peer: string | undefined = undefined,
   ): Promise<CreateE2eeConversationResponse> {
     if (request.clientRequestId.length === 0) {
       throw AppError.validation('client_request_id is required.');
@@ -114,6 +118,10 @@ export class E2eeConversationService {
       });
     }
 
+    // Same order as `MessagesService.createConversation`: dedup replay first, budgets second,
+    // transaction last — a retried send never burns budget twice.
+    await this.rateLimits.consumeConversationCreate(actorId, peer);
+
     return this.dataSource.transaction(async (manager) => {
       const kind: DbConversationKind = recipientIds.length === 1 ? 'DIRECT' : 'GROUP';
 
@@ -132,6 +140,14 @@ export class E2eeConversationService {
         for (let j = i + 1; j < allIds.length; j += 1) {
           if (await blockedEitherDirection(manager, allIds[i]!, allIds[j]!)) throw actorNotFound();
         }
+      }
+
+      // First-contact eligibility, identical to the legacy DM paths' `mayMessageDirectly`
+      // semantics (spec §183.2; audit P1 — blocks alone let an ineligible stranger demand
+      // first contact here). Uniform `actorNotFound()` keeps it indistinguishable from any
+      // other unavailable recipient (spec §62).
+      for (const recipientId of recipientIds) {
+        if (!(await mayMessageDirectly(manager, actorId, recipientId))) throw actorNotFound();
       }
 
       const conversation = await manager.getRepository(ConversationEntity).save(
@@ -248,10 +264,16 @@ export class E2eeConversationService {
   async sendEnvelopes(
     actorId: string,
     request: SendEnvelopesRequest,
+    peer: string | undefined = undefined,
   ): Promise<SendEnvelopesResponse> {
     if (request.conversationId.length === 0) {
       throw AppError.validation('conversation_id is required.');
     }
+
+    // Before the transaction, matching `MessagesService.sendMessage`'s ordering (§188): a
+    // rejected send must not have held row locks, and a budgeted-out caller learns that
+    // without the fanout machinery running.
+    await this.rateLimits.consumeEnvelopeSend(actorId, peer);
 
     return this.dataSource.transaction(async (manager) => {
       const conversation = await manager

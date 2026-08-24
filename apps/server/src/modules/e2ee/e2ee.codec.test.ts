@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
+import { CERTIFICATE_CONTEXT, ROSTER_CONTEXT } from '@patches/crypto';
+
 import { AppError } from '../../common/errors/app-error.js';
 import {
+  CERTIFICATE_TRANSCRIPT_DOMAIN,
   decodeCertificateTranscript,
   decodeRosterTranscript,
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
   encodeRosterTranscript,
+  ROSTER_TRANSCRIPT_DOMAIN,
 } from './e2ee.codec.js';
 
 function bytes(seed: number, length = 32): Uint8Array {
@@ -27,6 +31,20 @@ describe('e2ee.codec certificate transcript', () => {
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     expiresAt: new Date('2026-06-01T00:00:00.000Z'),
   };
+
+  /**
+   * Regression (2026-08 audit): this encoder and `@patches/crypto`'s root-signed identity
+   * encoders used the *same* domain separator strings for structurally similar transcripts, so
+   * signatures were mutually verifiable across trust contexts up to the field-size caps. The
+   * node's domains are now distinct, and this pins the disjointness against the exported client
+   * constants rather than two copies of two literals.
+   */
+  it('uses transcript domains disjoint from the client-side identity contexts', () => {
+    expect(CERTIFICATE_TRANSCRIPT_DOMAIN).not.toBe(CERTIFICATE_CONTEXT);
+    expect(ROSTER_TRANSCRIPT_DOMAIN).not.toBe(ROSTER_CONTEXT);
+    expect(CERTIFICATE_TRANSCRIPT_DOMAIN.startsWith('patches-e2ee-v1/node-')).toBe(true);
+    expect(ROSTER_TRANSCRIPT_DOMAIN.startsWith('patches-e2ee-v1/node-')).toBe(true);
+  });
 
   it('round-trips through encode/decode', () => {
     const encoded = encodeCertificateTranscript(fields);

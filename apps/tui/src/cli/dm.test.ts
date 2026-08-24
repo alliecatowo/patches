@@ -1,10 +1,13 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  ConversationSchema,
+  GetConversationResponseSchema,
   ListConversationsResponseSchema,
   ListMessageRequestsResponseSchema,
   ListMessagesResponseSchema,
   SendMessageResponseSchema,
 } from '@patches/proto/es';
+import { CONVERSATION_SECURITY_MODE } from '../api/wire/enums.js';
 import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -134,12 +137,46 @@ describe('runDm', () => {
     const exitCode = await runDm(['send', 'conversation-1', 'hello', 'there'], deps(api, output));
 
     expect(exitCode).toBe(0);
+    expect(api.getConversation).toHaveBeenCalledWith({ id: 'conversation-1' });
     expect(api.sendMessage).toHaveBeenCalledWith({
       clientRequestId: 'client-request-id',
       conversationId: 'conversation-1',
       body: 'hello there',
     });
     expect(output.out.join('')).toContain('Sent message-1.');
+  });
+
+  it('refuses to send into an end-to-end encrypted conversation and points at the app path', async () => {
+    const api = fakeApi();
+    const output = io();
+    const e2eeConversation = create(ConversationSchema, {
+      ...conversation(),
+      securityMode: CONVERSATION_SECURITY_MODE.E2EE_V1,
+    });
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: e2eeConversation }),
+    );
+
+    const exitCode = await runDm(['send', 'conversation-1', 'hello'], deps(api, output));
+
+    expect(exitCode).toBe(1);
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    // Worded to stay inside §194's scanner: the banned words apply to the LEGACY surface,
+    // but this refusal lives on that same file, so it describes the mode without the
+    // word "encrypted" (the proto doc reserves it for E2EE-mode screens).
+    expect(output.err.join('')).toContain('end-to-end encryption');
+    expect(output.err.join('')).toContain('interactive app');
+  });
+
+  it('still sends when the conversation lookup comes back empty, letting the server answer', async () => {
+    const api = fakeApi();
+    const output = io();
+    api.getConversation.mockResolvedValue(create(GetConversationResponseSchema, {}));
+
+    const exitCode = await runDm(['send', 'conversation-1', 'hello'], deps(api, output));
+
+    expect(exitCode).toBe(0);
+    expect(api.sendMessage).toHaveBeenCalled();
   });
 
   it('sanitizes text returned in a transport error', async () => {

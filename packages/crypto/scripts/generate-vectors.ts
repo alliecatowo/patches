@@ -162,10 +162,12 @@ function generateFrankingVector(): void {
     plaintextUtf8: 'vector reported message body',
     context,
     commitmentHex: toHex(commitment),
+    logicalMessageId: transcript.logicalMessageId,
     envelopeAssociatedDataHex: toHex(
       encodeDeviceEnvelopeAssociatedData(
         context,
         { recipientActorId: 'bob', recipientDeviceId: 'bob-device' },
+        transcript.logicalMessageId,
         commitment,
       ),
     ),
@@ -198,17 +200,18 @@ function generateDeviceEnvelopeVector(): void {
     senderDeviceId: 'alice-device',
   };
   const recipient = { recipientActorId: 'bob', recipientDeviceId: 'bob-device' };
+  const logicalMessageId = 'vector-message-1';
   const openingKey = sha256Hash(encoder.encode('vector-envelope-opening-key'));
   const plaintext = encoder.encode('vector sealed envelope body');
   const commitment = commitFranking(openingKey, context, plaintext);
   const sealed = sealDeviceEnvelope(
     aliceState,
-    { context, recipient, plaintext, openingKey, commitment },
+    { context, recipient, logicalMessageId, plaintext, openingKey, commitment },
     deterministicSource(seed),
   );
   const opened = openDeviceEnvelope(
     bobState,
-    { context, recipient, message: sealed.output, commitment },
+    { context, recipient, logicalMessageId, message: sealed.output, commitment },
     deterministicSource(seed + 1),
   );
   if (toHex(opened.output.openingKey) !== toHex(openingKey)) {
@@ -217,16 +220,20 @@ function generateDeviceEnvelopeVector(): void {
 
   writeJson('device-envelope.json', {
     description:
-      'ADR 0025 device envelope: the franking opening travels in the inner authenticated ' +
-      'plaintext and the commitment is the body AEAD associated data. Replayed by ' +
+      'ADR 0025 device envelope (as amended by the 2026-08 audit hardening: the associated ' +
+      'data also binds the logical message id): the franking opening travels in the inner ' +
+      'authenticated plaintext and the commitment is the body AEAD associated data. Replayed by ' +
       'src/vectors.test.ts.',
     seed,
     context,
     recipient,
+    logicalMessageId,
     openingKeyHex: toHex(openingKey),
     plaintextUtf8: 'vector sealed envelope body',
     commitmentHex: toHex(commitment),
-    associatedDataHex: toHex(encodeDeviceEnvelopeAssociatedData(context, recipient, commitment)),
+    associatedDataHex: toHex(
+      encodeDeviceEnvelopeAssociatedData(context, recipient, logicalMessageId, commitment),
+    ),
     encryptedHeaderHex: toHex(sealed.output.encryptedHeader),
     ciphertextHex: toHex(sealed.output.ciphertext),
   });

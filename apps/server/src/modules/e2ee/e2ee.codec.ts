@@ -28,10 +28,20 @@ import { AppError } from '../../common/errors/app-error.js';
  * therefore also how the node reconstructs them on read: decoding is safe here specifically
  * because the node itself enforced, on write, that encoding these same fields reproduces the
  * stored bytes exactly.
+ *
+ * **Domain separators are node-local on purpose** (2026-08 audit fix): these transcripts cover
+ * structurally similar material to `@patches/crypto`'s root-signed identity contexts
+ * (`CERTIFICATE_CONTEXT`/`ROSTER_CONTEXT`), and both encoders used to share the exact same
+ * prefix strings — two independent encoders whose signatures were mutually verifiable across
+ * trust contexts, held apart only by the 1 MiB field caps. The node's strings are now distinct
+ * (`e2ee.codec.test.ts` asserts the disjointness against the exported client constants).
+ * Rotated pre-production with zero enrolled devices, per ADR 0030; any dev row carrying an
+ * old-domain transcript now fails closed in {@link decodeCertificateTranscript}/
+ * {@link decodeRosterTranscript} rather than half-verifying.
  */
 
-const CERTIFICATE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/device-certificate';
-const ROSTER_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/device-roster';
+export const CERTIFICATE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-device-cert';
+export const ROSTER_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-roster-canonical';
 const PREKEY_BUNDLE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/signed-prekey-bundle';
 
 function msFromDate(value: Date, label: string): number {
