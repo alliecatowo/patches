@@ -262,3 +262,5 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\
 [tasks."neon:dev:destroy"]
 description = "Permanently delete the current ephemeral Neon dev branch"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
+
+
