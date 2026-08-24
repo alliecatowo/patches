@@ -49,6 +49,16 @@
   font-size: 0.8rem;
 }
 
+.modeLabel {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
 .thread {
   display: flex;
   flex-direction: column;
