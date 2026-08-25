@@ -41,10 +41,10 @@ version:
   plainly and specifically, not as a generic "secure messaging" claim — see
   [`docs/architecture/e2ee.md`](docs/architecture/e2ee.md) for the real state of the protocol
   and what's still gated.
-- **The hosted web build lags the repository.** [patches-web.pages.dev](https://patches-web.pages.dev)
-  is currently serving an older revision (`0.1.0+29df763`); several fixes verified locally
-  (actor-session serialization, closed-node profile errors, build identity) aren't live until
-  the next gated deploy completes.
+- **The hosted web build** at [patches-web.pages.dev](https://patches-web.pages.dev) deploys
+  from `main` on a gate, not on every commit — if something there looks off, its footer prints
+  the exact commit it's running (`patches web <version>+<short-sha>`); compare that against
+  `git log` on `main` rather than trusting a claim frozen in this README.
 - **Federation** runs today only as a local two-node lab (`mise run fed:lab`); the flagship
   node does not federate with the outside world yet.
 - **The live node is invite-only.** Ask Allie for a code, or run the whole stack locally
