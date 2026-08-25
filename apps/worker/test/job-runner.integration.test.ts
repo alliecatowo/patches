@@ -6,10 +6,12 @@ import {
   AuthCode,
   createDataSource,
   encryptAuthCodeDelivery,
+  enqueueOutboxJobIfAbsent,
   OutboxJob,
 } from '@patches/database';
 import type { StorageClient } from '@patches/media';
 import { createTestUser } from '@patches/testkit';
+import { In } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -384,8 +386,12 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     const runA = runnerA.run();
     const runB = runnerB.run();
 
+    // Scope to these jobs' ids, not a whole-table count: inside the 00:00–03:00 UTC
+    // scheduling window the runners also legitimately enqueue the daily CLEAN_EXPIRED_
+    // NOTIFICATIONS job (B-102), which would otherwise never let this predicate pass.
+    const jobIds = jobs.map((job) => job.id);
     await waitFor(async () => {
-      const rows = await dataSource.getRepository(OutboxJob).find();
+      const rows = await dataSource.getRepository(OutboxJob).findBy({ id: In(jobIds) });
       return rows.length === jobs.length && rows.every((row) => row.status === 'COMPLETED');
     });
 
@@ -397,8 +403,29 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     // totals must add up to exactly the number enqueued, never more.
     expect(providerA.sent.length + providerB.sent.length).toBe(jobs.length);
 
-    const rows = await dataSource.getRepository(OutboxJob).find();
+    const rows = await dataSource.getRepository(OutboxJob).findBy({ id: In(jobIds) });
     expect(rows.every((row) => row.status === 'COMPLETED')).toBe(true);
+  });
+
+  it('concurrent workers racing the daily-cleanup enqueue insert exactly one job', async () => {
+    // Regression: `enqueueDailyCleanupIfDue` used check-then-insert, so two runners crossing
+    // the 00:00–03:00 UTC scheduling window after a truncate both passed the findOne check and
+    // the loser's 23505 rejection killed its run() loop (CI failed only inside that window).
+    // The atomic `ON CONFLICT DO NOTHING` helper must let all racers succeed — exactly one row.
+    const idempotencyKey = `CLEAN_EXPIRED_NOTIFICATIONS:race-${randomUUID()}`;
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        enqueueOutboxJobIfAbsent(dataSource.manager, {
+          type: 'CLEAN_EXPIRED_NOTIFICATIONS',
+          payload: {},
+          availableAt: new Date(Date.now() + 60_000),
+          idempotencyKey,
+        }),
+      ),
+    );
+    expect(results.filter((inserted: boolean) => inserted)).toHaveLength(1);
+    const scheduled = await dataSource.getRepository(OutboxJob).find({ where: { idempotencyKey } });
+    expect(scheduled).toHaveLength(1);
   });
 
   it('reclaims a job abandoned PROCESSING by a crashed worker (B-013)', async () => {

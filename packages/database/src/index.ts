@@ -188,13 +188,18 @@ export { AuthCodeDeliveryEnvelopes1787420562003 } from './migrations/17874205620
 export {
   claimOutboxJobs,
   countPendingOutboxJobs,
+  enqueueOutboxJobIfAbsent,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   outboxBackoffDelayMs,
   replayOutboxJob,
   DEFAULT_OUTBOX_BACKOFF,
 } from './repositories/outbox.js';
-export type { ClaimOutboxJobsOptions, OutboxBackoffOptions } from './repositories/outbox.js';
+export type {
+  ClaimOutboxJobsOptions,
+  OutboxBackoffOptions,
+  OutboxJobInsert,
+} from './repositories/outbox.js';
 
 export { appendAdminAuditLog } from './repositories/admin-audit.js';
 export type { AppendAdminAuditLogInput } from './repositories/admin-audit.js';
