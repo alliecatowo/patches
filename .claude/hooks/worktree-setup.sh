@@ -14,6 +14,13 @@
 #
 # CAUTION: never run `git worktree prune`/`remove` while agents are live — it deletes a
 # running agent's tree out from under it and loses its work.
+#
+# Worktrees live under the repo's SIBLING directory, never /tmp. On 2026-08-20 three agents
+# were killed mid-edit by a usage limit; /tmp is tmpfs, the machine rebooted before they could
+# be resumed, and every uncommitted change went with it. A worktree holds hours of work and
+# must outlive a reboot. (/tmp also runs out of *inodes* long before disk — eleven worktrees
+# hit 100% of 1M inodes with 4.8G still free, and every command then fails with
+# "no space left on device" on a path with plenty of space. `df -i`, not `df -h`.)
 set -uo pipefail
 
 input="$(cat)"
@@ -24,14 +31,14 @@ repo="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 dir="$(printf '%s' "$input" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(j.worktree_path??j.worktreePath??j.path??"")}catch{}})' 2>/dev/null || true)"
 
 slug="$(date +%s)-$$"
-[ -n "$dir" ] || dir="${TMPDIR:-/tmp}/patches-wt/${slug}"
+[ -n "$dir" ] || dir="${PATCHES_WORKTREE_ROOT:-$(dirname "$repo")/patches-agent-wt}/${slug}"
 branch="agent/wt-${slug}"
 
 mkdir -p "$(dirname "$dir")" || exit 0
 git -C "$repo" worktree add -b "$branch" "$dir" HEAD >/dev/null 2>&1 || exit 0
 
 # Shared turbo cache across worktrees: the first build pays full cost, the rest replay it.
-cache="${TMPDIR:-/tmp}/patches-wt/.turbo-cache"
+cache="${PATCHES_WORKTREE_ROOT:-$(dirname "$repo")/patches-agent-wt}/.turbo-cache"
 mkdir -p "$cache"
 
 {
