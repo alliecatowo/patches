@@ -35,6 +35,8 @@ import {
   REPORT_REASON,
   type AuthGrpcClient,
   type ModerationGrpcClient,
+  type MuteActorRequest,
+  type MuteActorResponse,
   type ReportE2eeMessageRequest,
   type ReportE2eeMessageResponse,
 } from '@patches/proto';
@@ -904,6 +906,62 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       for (const canary of canaries) {
         expect(serialized.includes(canary.bytes.toString('utf8'))).toBe(false);
       }
+    });
+
+    it('a muted sender produces no MESSAGE notification, though the message itself still arrives (§63, B-098)', async () => {
+      // Mute (unlike block) never blocks eligibility or delivery — only the notification.
+      // `mayMessageDirectly` only checks mutual follow, so a muted sender's conversation
+      // still gets created and fanned out; `NotificationsService.create`'s mute check is
+      // the only thing that must suppress the row.
+      const { user: inviter } = await createTestUser(dataSource.manager);
+      const mutingRecipient = await newRegisteredActor(inviter.id);
+      const mutedSender = await newRegisteredActor(inviter.id);
+      const mutingRecipientDevice = await enrollFirstDevice(mutingRecipient);
+      const mutedSenderDevice = await enrollFirstDevice(mutedSender);
+      await createTestFollow(dataSource.manager, {
+        followerActorId: mutedSender.actorId,
+        followeeActorId: mutingRecipient.actorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: mutingRecipient.actorId,
+        followeeActorId: mutedSender.actorId,
+      });
+
+      await callUnary<MuteActorRequest, MuteActorResponse>(
+        moderation.muteActor.bind(moderation),
+        { actorId: mutedSender.actorId },
+        { accessToken: mutingRecipient.accessToken },
+      );
+
+      const created = await conversations.createE2eeConversation(mutedSender.actorId, {
+        clientRequestId: randomUUID(),
+        recipientActorIds: [mutingRecipient.actorId],
+        senderDeviceId: mutedSenderDevice.deviceId,
+        message: buildLogicalMessage([
+          canaryEnvelope(
+            mutingRecipient.actorId,
+            mutingRecipientDevice.deviceId,
+            e2eeBodyBytes,
+            keyCanary,
+          ),
+        ]),
+      });
+
+      // The message itself still landed (mute is not eligibility): a real logical message
+      // and mailbox envelope exist for the muting recipient's device.
+      const envelope = await dataSource.getRepository(E2eeMailboxEnvelope).findOne({
+        where: { logicalMessageId: created.logicalMessageId },
+      });
+      expect(envelope).not.toBeNull();
+
+      // But no MESSAGE notification was written for the muting recipient in this conversation.
+      const notified = await dataSource.getRepository(NotificationEntity).findOne({
+        where: {
+          recipientActorId: mutingRecipient.actorId,
+          conversationId: created.conversationId,
+        },
+      });
+      expect(notified).toBeNull();
     });
 
     it('log/error scan: no canary appears in any captured Logger line or thrown error', () => {
