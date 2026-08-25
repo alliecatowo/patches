@@ -617,10 +617,14 @@ Measured: 278 files in ~107ms vs `tsc` ~3.9s. Gotchas verified locally:
   whose dist nothing imports.
 - SWC does not type-check — the separate `tsc --noEmit` `typecheck` task is
   mandatory and already exists.
-- `nest doctor` (deprecation/misconfig diagnostics) **does not exist in @nestjs/cli
-  11.0.24** (latest stable as of 2026-08-25) — it first appears in the 12.0.0-alpha
-  line. The stable equivalent is `nest info` (project + package-matrix dump), which
-  is what CI runs; revisit doctor when CLI 12 is stable.
+- **NestJS Doctor** (nestjs.doctor — third-party, NOT the `@nestjs/cli` binary, which
+  has no `doctor` subcommand in 11.x): deterministic local CLI (`npx
+nestjs-doctor@latest <dir>`, zero AI calls) + `RoloBits/nestjs-doctor@v1` GitHub
+  Action that reviews PRs (sticky score comment, inline comments, commit status).
+  `scope: changed` (default, needs `fetch-depth: 0`) reports only PR-introduced
+  findings; non-PR runs exit 0. Gates (`blocking: error|warning`, `min-score`) are
+  opt-in. This repo runs it per Nest app in `.github/workflows/nestjs-doctor.yml`,
+  comment-only until the comment quality is proven.
 
 - pnpm 11: `onlyBuiltDependencies` etc. removed → `allowBuilds` in
   `pnpm-workspace.yaml` (not `package.json`).

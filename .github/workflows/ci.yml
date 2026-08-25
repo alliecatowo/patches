@@ -28,17 +28,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
 
-      # Nest project health for server + worker (admin is not a Nest app): `nest info`
-      # verifies the Nest CLI can load each project and prints the resolved package
-      # matrix — it catches broken installs/mismatched @nestjs/* versions at CI time.
-      # NOTE: `nest doctor` (proper diagnostics) first ships in @nestjs/cli 12 — switch
-      # this step to it when the catalog moves past 11.0.24 (verified 2026-08-25:
-      # 11.0.24 is latest stable; doctor exists only in 12.0.0-alpha).
-      - name: nest info (server, worker)
-        run: |
-          pnpm --filter @patches/server exec nest info
-          pnpm --filter @patches/worker exec nest info
-
   proto:
     name: proto (buf + generated code freshness)
     runs-on: ubuntu-latest
