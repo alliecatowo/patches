@@ -4,6 +4,7 @@ import type { EntityManager } from 'typeorm';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
 import { PagesModule } from '../pages/pages.module.js';
+import { TagsModule } from '../tags/tags.module.js';
 import { FederationMetricsService } from './federation-metrics.service.js';
 import {
   FEDERATION_GATEWAY,
@@ -19,6 +20,7 @@ import { InboxService } from './services/inbox.service.js';
 import { KeyService } from './services/key.service.js';
 import { OutboxCollectionService } from './services/outbox-collection.service.js';
 import { RemoteActorService } from './services/remote-actor.service.js';
+import { RemoteObjectService } from './remote-object.service.js';
 import { WebfingerService } from './services/webfinger.service.js';
 
 /**
@@ -93,7 +95,7 @@ class LazyFederationGateway implements FederationGateway {
  * surface reaches the network — see `main.ts`).
  */
 @Module({
-  imports: [NotificationsModule, PagesModule],
+  imports: [NotificationsModule, PagesModule, TagsModule],
   providers: [
     KeyService,
     RemoteActorService,
@@ -103,6 +105,7 @@ class LazyFederationGateway implements FederationGateway {
     OutboxCollectionService,
     ActorDocumentService,
     WebfingerService,
+    RemoteObjectService,
     PeerRateLimiterService,
     FederationMetricsService,
     ActivityPubFederationGateway,
@@ -118,6 +121,7 @@ class LazyFederationGateway implements FederationGateway {
   exports: [
     FEDERATION_GATEWAY,
     RemoteActorService,
+    RemoteObjectService,
     ActorDocumentService,
     WebfingerService,
     InboxService,

@@ -10,7 +10,7 @@
     "types": ["vite/client"],
     "noEmit": true
   },
-  // `vite.config.ts`/`vitest.config.ts` are included so typescript-eslint's project
-  // service can type-check them (same pattern as apps/tui/tsconfig.json).
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  // Tooling configs and browser specs stay in the web project so type-aware linting checks
+  // them with the same DOM and Vite environment as the client.
+  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts", "vitest.config.ts"]
 }

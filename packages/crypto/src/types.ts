@@ -6,7 +6,16 @@ export const E2EE_ALGORITHM = 'X25519+Ed25519+HKDF-SHA256+XChaCha20-Poly1305+DR-
 export const KEY_BYTES = 32;
 export const SIGNATURE_BYTES = 64;
 export const HEADER_NONCE_BYTES = 24;
-export const MAX_SKIP = 1_000;
+/**
+ * The ceiling on the skipped-message-key cache, and therefore the only skip bound the ratchet
+ * enforces (2026-08 audit fix). Recovery semantics: a delivered message whose chain position is
+ * ahead of the receive counter causes the receiver to derive and retain every missed key, and
+ * refuses (`TooManySkippedMessagesError`, that one delivery attempt only, state untouched) when
+ * the whole gap would not fit below this bound. Refusal never advances or wedges the chain — a
+ * reply round-trip DH-ratchets past a stuck chain, whereas the retired per-gap cap (`MAX_SKIP`,
+ * removed under ADR 0030's pre-production consolidation policy) threw before storing anything
+ * and left every future message on the chain, and every DH ratchet off it, refusing forever.
+ */
 export const MAX_SKIPPED_KEYS = 2_000;
 
 export interface KeyPair {

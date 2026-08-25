@@ -20,8 +20,6 @@ import {
   type ReportActorResponse,
   type ReportE2eeMessageRequest,
   type ReportE2eeMessageResponse,
-  type ReportMessageRequest,
-  type ReportMessageResponse,
   type ReportPostRequest,
   type ReportPostResponse,
   type UnblockActorRequest,
@@ -167,22 +165,6 @@ export class ModerationController implements ModerationServiceController {
     const reportId = await this.moderation.reportActor(
       requireSession(session).actorId,
       request.actorId,
-      reportReasonFromProto(request.reason),
-      request.details,
-    );
-    return { reportId };
-  }
-
-  @UseGuards(AuthGuard)
-  async reportMessage(
-    @Payload() request: ReportMessageRequest,
-    @Ctx() _metadata?: Metadata,
-    @CurrentSession() session?: AccessTokenClaims,
-  ): Promise<ReportMessageResponse> {
-    this.reportRateLimit.consume(getRequestContext()?.peer);
-    const reportId = await this.moderation.reportMessage(
-      requireSession(session).actorId,
-      request.messageId,
       reportReasonFromProto(request.reason),
       request.details,
     );

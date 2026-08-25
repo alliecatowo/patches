@@ -1,6 +1,6 @@
 import type { PageBlock, RenderablePageBlock } from '@patches/domain';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -17,6 +17,43 @@ export interface EditWallDialogProps {
 }
 
 type BlockType = 'Text' | 'NowPlaying' | 'Hero' | 'AsciiArt';
+
+/** The document's `theme` and every sub-page beyond the wall's (index 0) — carried
+ * through `mutationFn` byte-for-byte, never round-tripped through the lenient
+ * render-time parser. A sub-page written by a newer client can hold a block type this
+ * one doesn't recognize; the lenient parser would turn that into a placeholder that
+ * fails the server's *strict* validation on save, silently corrupting/dropping that
+ * sub-page. Raw JSON pass-through avoids that entirely. */
+interface RawPageDocument {
+  theme?: unknown;
+  pages: unknown[];
+}
+
+function parseRawDocument(currentDocument?: Uint8Array): RawPageDocument | null {
+  if (!currentDocument || currentDocument.length === 0) return null;
+  try {
+    const json = new TextDecoder().decode(currentDocument);
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const record = parsed as { theme?: unknown; pages?: unknown };
+    return { theme: record.theme, pages: Array.isArray(record.pages) ? record.pages : [] };
+  } catch {
+    return null;
+  }
+}
+
+/** The wall's own sub-page keeps its original `slug`/`title` on save rather than always
+ * being renamed to "home"/"Home" — those only apply when there was no prior document
+ * (a brand-new wall) or its first sub-page was malformed. */
+function firstSubPageMeta(raw: RawPageDocument | null): { slug: string; title: string } {
+  const first = raw?.pages[0];
+  const record =
+    typeof first === 'object' && first !== null ? (first as Record<string, unknown>) : {};
+  const slug =
+    typeof record['slug'] === 'string' && record['slug'] !== '' ? record['slug'] : 'home';
+  const title = typeof record['title'] === 'string' ? record['title'] : 'Home';
+  return { slug, title };
+}
 
 function extractInitialBlocks(currentDocument?: Uint8Array): PageBlock[] {
   if (!currentDocument || currentDocument.length === 0) return [];
@@ -46,10 +83,32 @@ export function EditWallDialog({
   const toast = useToast();
 
   const [blocks, setBlocks] = useState<PageBlock[]>(() => extractInitialBlocks(currentDocument));
+  const [rawDoc, setRawDoc] = useState<RawPageDocument | null>(() =>
+    parseRawDocument(currentDocument),
+  );
   const [selectedType, setSelectedType] = useState<BlockType>('Text');
   const [bodyInput, setBodyInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
   const [subtitleInput, setSubtitleInput] = useState('');
+
+  // `currentDocument` is the profile route's `GetPage` result — still loading (`undefined`)
+  // at the moment this dialog first mounts, since it only enters the tree once the wall tab
+  // is selected, which is exactly when that fetch starts. Without this, the two `useState`
+  // initializers above would freeze on an empty wall forever. Re-sync once per "open": at
+  // the false→true transition, and again the first time `currentDocument` arrives after
+  // that if the fetch was still in flight when the dialog opened.
+  const pendingSyncRef = useRef(true);
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) pendingSyncRef.current = true;
+    wasOpenRef.current = isOpen;
+
+    if (isOpen && pendingSyncRef.current && currentDocument !== undefined) {
+      setBlocks(extractInitialBlocks(currentDocument));
+      setRawDoc(parseRawDocument(currentDocument));
+      pendingSyncRef.current = false;
+    }
+  }, [isOpen, currentDocument]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -92,16 +151,12 @@ export function EditWallDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const doc = {
+      const { slug, title } = firstSubPageMeta(rawDoc);
+      const doc: Record<string, unknown> = {
         version: 1,
-        pages: [
-          {
-            slug: 'home',
-            title: 'Home',
-            blocks,
-          },
-        ],
+        pages: [{ slug, title, blocks }, ...(rawDoc?.pages.slice(1) ?? [])],
       };
+      if (rawDoc?.theme !== undefined) doc['theme'] = rawDoc.theme;
       const encoded = new TextEncoder().encode(JSON.stringify(doc));
       return await api.pages.updatePage({ document: encoded });
     },

@@ -108,6 +108,7 @@ describe('vector replay: franking commitment and node report tag', () => {
         encodeDeviceEnvelopeAssociatedData(
           context,
           { recipientActorId: 'bob', recipientDeviceId: 'bob-device' },
+          frankingVector.logicalMessageId,
           commitment,
         ),
       ),
@@ -136,17 +137,18 @@ describe('vector replay: ADR 0025 device envelope', () => {
     const { aliceState, bobState } = establishedRatchetPair(deviceEnvelopeVector.seed);
     const context: FrankingCommitmentContext = deviceEnvelopeVector.context;
     const recipient = deviceEnvelopeVector.recipient;
+    const logicalMessageId: string = deviceEnvelopeVector.logicalMessageId;
     const openingKey = fromHex(deviceEnvelopeVector.openingKeyHex);
     const plaintext = encoder.encode(deviceEnvelopeVector.plaintextUtf8);
     const commitment = commitFranking(openingKey, context, plaintext);
     expect(toHex(commitment)).toBe(deviceEnvelopeVector.commitmentHex);
-    expect(toHex(encodeDeviceEnvelopeAssociatedData(context, recipient, commitment))).toBe(
-      deviceEnvelopeVector.associatedDataHex,
-    );
+    expect(
+      toHex(encodeDeviceEnvelopeAssociatedData(context, recipient, logicalMessageId, commitment)),
+    ).toBe(deviceEnvelopeVector.associatedDataHex);
 
     const sealed = sealDeviceEnvelope(
       aliceState,
-      { context, recipient, plaintext, openingKey, commitment },
+      { context, recipient, logicalMessageId, plaintext, openingKey, commitment },
       deterministicSource(deviceEnvelopeVector.seed),
     );
     expect(toHex(sealed.output.encryptedHeader)).toBe(deviceEnvelopeVector.encryptedHeaderHex);
@@ -154,7 +156,7 @@ describe('vector replay: ADR 0025 device envelope', () => {
 
     const opened = openDeviceEnvelope(
       bobState,
-      { context, recipient, message: sealed.output, commitment },
+      { context, recipient, logicalMessageId, message: sealed.output, commitment },
       deterministicSource(deviceEnvelopeVector.seed + 1),
     );
     expect(opened.output.plaintext).toEqual(plaintext);

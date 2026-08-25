@@ -398,13 +398,17 @@ it" and it "will not appear in the home timeline."
 - Message requests (§183.2), decline-bars-30-days, and "mutuals only" have no protocol
   equivalent at all. `inferred:` a remote sender cannot be held to them by the wire format;
   they would have to be enforced entirely on inbound at our node.
-- §183.4's report-snapshot evidence model presumes the node can read message bodies — see
-  `docs/decisions/0017-server-visible-dms.md`. Federating DMs multiplies the number of node
-  operators who can read a given message from one to two-or-more, which is precisely the
-  exposure §183.4 declines to take on in v0.
-- §183.1's labelling obligation ("Not end-to-end encrypted — this node's operators can read
-  these messages") would need re-wording if DMs ever federate, because "this node's
-  operators" would no longer be the full set of readers.
+- §183.4's report-snapshot evidence model presumed the node could read message bodies — see
+  `docs/decisions/0017-server-visible-dms.md` (superseded by
+  `docs/decisions/0030-pre-alpha-consolidation-policy.md`: that mode is retired and every
+  conversation is now `E2EE_V1`, with reports carrying only reporter-disclosed evidence via
+  `ReportE2eeMessage`/`AttachReportEvidence`). Federating a conversation would still multiply
+  the set of nodes that see routing metadata (who messages whom, when) from one to
+  two-or-more, which is part of what §195.6 would need to weigh.
+- The disclosure obligation (§194; currently `requiredConversationDisclosure('E2EE_V1')` in
+  `@patches/domain`, "End-to-end encrypted. This node cannot read these messages, but it can
+  see who you message and when.") would need re-wording if DMs ever federate, because "this
+  node" would no longer be the only party that sees the metadata.
 
 ---
 

@@ -1,6 +1,6 @@
 import { randomBytes } from '@patches/crypto';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import type { VaultFileOperations } from './vault-file-operations.js';
 import { defaultVaultFileOperations } from './vault-file-operations.js';
@@ -253,9 +253,40 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
     );
   }
 
+  /**
+   * Removes orphaned temporaries left in the key directory by a process that died
+   * between `openWriteExclusive` and `rename`. Each one holds a *plaintext wrapping
+   * key*, so an interrupted rotation must not leave copies of it lying around
+   * indefinitely — the in-process `catch` below only covers crashes this process
+   * survives. Called on every read and write path; failures are non-fatal because a
+   * key that cannot be swept must still not block opening the vault.
+   */
+  private async sweepTemporaries(): Promise<void> {
+    const directory = dirname(this.path);
+    let names: string[];
+    try {
+      names = await this.operations.readdir(directory);
+    } catch {
+      // Directory missing or unreadable: nothing to sweep, and the caller's own
+      // mkdir/read handles the real error.
+      return;
+    }
+    const prefix = `${basename(this.path)}.`;
+    for (const name of names) {
+      if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+      try {
+        await this.operations.rm(join(directory, name), { force: true });
+      } catch {
+        // Best effort: a stubborn temp is swept on the next open rather than
+        // failing an otherwise healthy vault.
+      }
+    }
+  }
+
   private async writeRecord(state: VaultKeyState): Promise<void> {
     const directory = dirname(this.path);
     await this.operations.mkdir(directory, { recursive: true, mode: 0o700 });
+    await this.sweepTemporaries();
     const temporary = `${this.path}.${String(process.pid)}.${globalThis.crypto.randomUUID()}.tmp`;
     try {
       const handle = await this.operations.openWriteExclusive(temporary, 0o600);
@@ -286,7 +317,12 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
 
   async loadOrCreate(): Promise<VaultKeyState> {
     const existing = await this.readRecord();
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      // The common path never writes, so this is the only place an orphan from a
+      // previously crashed rotation gets cleaned up.
+      await this.sweepTemporaries();
+      return existing;
+    }
     const state = { wrappingKey: randomBytes(32), generation: 0 };
     await this.writeRecord(state);
     return state;
@@ -305,6 +341,8 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
 
   async delete(): Promise<void> {
     await this.operations.rm(this.path, { force: true });
+    // A wipe that left a temp behind would leave the wrapping key recoverable.
+    await this.sweepTemporaries();
   }
 }
 

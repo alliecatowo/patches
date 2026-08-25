@@ -1,0 +1,141 @@
+# Template for per-PR FULL-STACK preview Fly apps (B-105). NOT deployable as-is.
+#
+# infra/preview/make-preview-config.mjs replaces every `__PR__` token with the PR
+# number and writes `fly-pr-<N>.toml` next to this file — the generated config MUST
+# stay in this directory so the `[build] dockerfile` path (`../docker/Dockerfile`)
+# keeps resolving the same way as infra/fly/fly.toml (paths are relative to the
+# config file, build context stays the repo root).
+#
+# Same process groups as infra/fly/fly.toml (server + worker — full stack), with
+# preview deltas (docs/operations/preview-environments.md):
+#   - exactly ONE machine per process group (`flyctl deploy --ha=false`): the
+#     server machine autostops when idle; the worker machine has no service and
+#     therefore never autostops — it IS the floor cost of a full preview
+#   - FEDERATION_ENABLED=false (ephemeral origin — see runbook for why)
+#   - media/R2 enabled only when the workflow detects all five R2_PREVIEW_*
+#     secrets; otherwise media degrades cleanly (R2_* are optional in
+#     packages/config's storageEnvSchema and only error at call time)
+#   - EMAIL_PROVIDER=console (no real sends; codes accepted then dropped)
+#   - PUBLIC_READ=true, INVITE_ONLY=true, PASSWORD_AUTH=optional
+#   - single region iad; no [mounts] (sharp's scratch /tmp is ephemeral and
+#     sufficient for 10 MB preview images); no release_command — migrations run
+#     on the CI runner against the Neon branch before `flyctl deploy`
+app = "patches-pr-__PR__"
+primary_region = "iad"
+
+# Same drain window as production: longer than the server's in-flight gRPC drain
+# and the worker's graceful claim-loop stop.
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "../docker/Dockerfile"
+
+# Non-secret runtime env (applies to BOTH process groups — each app's zod schema
+# strips the other's keys, so worker-only vars here don't affect the server).
+# Secrets (DATABASE_URL, DATABASE_SSL, JWT_*, AUTH_CODE_DELIVERY_*, and — only
+# when detected — R2_*) are set per-PR with `flyctl secrets set` by the workflow.
+[env]
+  NODE_ENV = "production"
+  # A-038: Nest's "normal" log level is literally `log` — `info` crashes the server.
+  LOG_LEVEL = "log"
+  INSTANCE_NAME = "patches preview pr-__PR__"
+  GRPC_HOST = "0.0.0.0"
+  GRPC_PORT = "50051"
+  HTTP_PORT = "8080"
+  METRICS_PORT = "9090"
+  PUBLIC_ORIGIN = "https://patches-pr-__PR__.fly.dev"
+  NODE_DOMAIN = "patches-pr-__PR__.fly.dev"
+  INVITE_ONLY = "true"
+  PUBLIC_READ = "true"
+  PASSWORD_AUTH = "optional"
+  FEDERATION_ENABLED = "false"
+  TRUST_PROXY_HEADERS = "true"
+  EMAIL_PROVIDER = "console"
+  EMAIL_FROM = "Patches Preview <noreply@preview.invalid>"
+  # Worker claim-loop identity: unique per PR so `outbox_jobs.locked_by` rows on
+  # the shared Neon branch are attributable, and stable across re-deploys so a
+  # stale lease from a previous deploy is visibly reclaimed by the same id.
+  WORKER_ID = "preview-pr-__PR__"
+  # Max jobs claimed per pass (also the effective concurrency). 2 = the schema
+  # default, set explicitly so the preview's job throughput is pinned.
+  WORKER_CONCURRENCY = "2"
+  # Preview-honest operator-transparency values (A-052): the branch data is a copy
+  # of production, and DMs are server-visible on every Patches node (ADR 0017).
+  PRIVACY_NOTICE_SUMMARY = "Temporary preview node for pull request #__PR__, destroyed automatically when the PR closes. It serves a copy of the production database. Public posts and profiles are readable by anyone. Direct messages are end-to-end encrypted — this node cannot read them, but it can see who you message and when. Sending and reading them requires the terminal client."
+  DATA_LOCATION = "App: Fly.io (iad, US) preview machines. Database: Neon Postgres branch pr-__PR__ (aws-us-east-2, US). Media: depends on preview configuration."
+
+# Same one image / two process groups split as production (infra/fly/fly.toml).
+[processes]
+  server = "node server/dist/main.js"
+  worker = "node worker/dist/main.js"
+
+# Public gRPC ingress (TUI connects to patches-pr-__PR__.fly.dev:443). Autostop keys
+# verified against the fly.toml reference (auto_stop_machines = "stop" | "suspend" |
+# "off"; with a single machine per region it stops when idle and restarts on the
+# first request). Server-only: the worker machine is not a request target.
+[[services]]
+  internal_port = 50051
+  protocol = "tcp"
+  processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.ports.http_options]
+    h2_backend = true
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "15s"
+    timeout = "2s"
+
+# Public HTTP/Connect ingress on :80 and :8443 — NOT :443, which the gRPC service
+# above already claims (Fly allows only one service per external port; the live node
+# likewise serves its Connect edge on :8443).
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 8443
+
+# Real application-level health check (A-043): 200 only when the Neon branch answers
+# SELECT 1 and gRPC health is SERVING — so a deploy whose database is unreachable
+# fails visibly instead of serving errors.
+[checks]
+  [checks.healthz]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    processes = ["server"]
+
+# One small machine per process group (never more: the workflow deploys with
+# --ha=false). Worker keeps production's 512mb — sharp's image processing needs it
+# when media is enabled.
+[[vm]]
+  process_group = "server"
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[vm]]
+  process_group = "worker"
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -249,13 +249,15 @@ the public sees that the floor is being enforced, and for what. See
 **Status: implemented.** Direct messages and communities each have their own moderation
 surface, layered on top of the node floor above, not separate from it.
 
-**Direct messages** (§183.4): `ModerationService.ReportMessage` snapshots the reported message
-plus up to ten surrounding messages for moderator review — a DM report is unactionable without
-that evidence, which is one reason v0 DMs are server-visible rather than end-to-end encrypted
-(see [`privacy.md`](privacy.md#direct-messages)). Blocking is bidirectional and immediate: it
-stops delivery both ways and hides the conversation from the blocker, and a blocked sender's
-send simply fails the way any unavailable recipient's would, revealing nothing. Message and
-message-request sends are rate-limited per actor and per peer.
+**Direct messages** (§183.4; ADR 0030/B-095): every conversation is end-to-end encrypted
+(`E2EE_V1`), so `ModerationService.ReportMessage`'s plaintext snapshot is retired along with
+the legacy mode it depended on. `ReportE2eeMessage` plus `E2eeService.AttachReportEvidence`
+replace it: a reporter explicitly selects and submits plaintext evidence (up to 10 messages of
+context), which the node verifies against the franking commitment but never sees any other
+way (see [`privacy.md`](privacy.md#direct-messages)). Blocking is bidirectional and immediate:
+it stops delivery both ways and hides the conversation from the blocker, and a blocked
+sender's send simply fails the way any unavailable recipient's would, revealing nothing.
+Envelope sends are rate-limited per actor and per peer.
 
 **Communities** (§182.3): the creator is the first moderator; moderators may appoint/remove
 other moderators (never the creator), remove a post _from the community_ — the post survives

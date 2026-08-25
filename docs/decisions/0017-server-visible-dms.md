@@ -1,6 +1,6 @@
 # 0017. Direct messages are server-visible in v0, not end-to-end encrypted
 
-**Status:** Accepted
+**Status:** Superseded by 0030
 **Date:** 2026-08-18
 
 ## Context

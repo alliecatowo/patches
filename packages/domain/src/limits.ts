@@ -68,17 +68,6 @@ export const MAX_COMMUNITY_DESCRIPTION_CHARS = 500;
 export const MAX_COMMUNITY_RULES_BYTES = 4 * 1024;
 export const MAX_COMMUNITY_MODERATORS = 16;
 
-/** DM body, in characters. */
-export const MAX_DM_BODY_CHARS = 2_000;
-
-/** Members in a group conversation, including the creator. */
-export const DM_GROUP_MAX = 8;
-
-/** At most one pending message request per (sender, recipient) pair, and at most one message
- * on it — enforced by `message_requests`' partial unique index (`packages/database`). */
-export const MESSAGE_REQUEST_MAX_PENDING_PER_PAIR = 1;
-export const MESSAGE_REQUEST_MAX_MESSAGES = 1;
-
 /** Actor flair document, serialized. 1 KiB. */
 export const MAX_ACTOR_FLAIR_BYTES = 1 * 1024;
 

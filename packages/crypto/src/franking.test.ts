@@ -80,6 +80,37 @@ describe('franking commitment', () => {
       verifyFrankingCommitment(opening, CONTEXT, plaintext, commitment.slice(0, 4)),
     ).toThrow('Franking commitment has an invalid length.');
   });
+
+  /**
+   * Regression (2026-08 audit): the commitment transcript writes `membershipEpoch` at u64 width
+   * while the node's report transcript writes it at u32. Without a shared cap, an epoch above
+   * `0xFFFFFFFF` committed fine on the sender side but was rejected by the node's own encoder at
+   * report time — an unreportable message. Both encoders now enforce the same range.
+   */
+  it('refuses a membership epoch past the shared u32 width in both transcripts', () => {
+    const opening = createFrankingOpeningKey();
+    const plaintext = encoder.encode('width-bound');
+    const tooBig = 0x1_0000_0000;
+    expect(() =>
+      commitFranking(opening, { ...CONTEXT, membershipEpoch: tooBig }, plaintext),
+    ).toThrow('Membership epoch exceeds the transcript width.');
+    expect(() =>
+      encodeReportTranscript({
+        ...baseTranscript(digest('commitment')),
+        membershipEpoch: tooBig,
+      }),
+    ).toThrow('Membership epoch is invalid.');
+    // Boundary control: the maximum representable epoch still commits and reports.
+    const maxEpoch = { ...CONTEXT, membershipEpoch: 0xffff_ffff };
+    expect(
+      verifyFrankingCommitment(
+        opening,
+        maxEpoch,
+        plaintext,
+        commitFranking(opening, maxEpoch, plaintext),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('node report tag', () => {

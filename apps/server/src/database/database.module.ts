@@ -1,8 +1,11 @@
 import { Global, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, getDataSourceToken } from '@nestjs/typeorm';
 import { createDataSourceOptions } from '@patches/database';
 
 import { AppConfigService } from '../config/app-config.service.js';
+
+/** DI token for the initialized `DataSource` — mirrors the worker's `DATA_SOURCE` export. */
+export const DATA_SOURCE = getDataSourceToken();
 
 /**
  * Wires the shared `@patches/database` DataSource into Nest's DI (spec §16, §128).
@@ -38,6 +41,7 @@ import { AppConfigService } from '../config/app-config.service.js';
             ssl: config.databaseSsl,
             poolMax: config.databasePoolMax,
             logging: false,
+            statementTimeout: config.databaseStatementTimeout,
           }),
           // Nest retries the initial connection; a developer or a test wants the failure
           // now, a production boot during a database failover does not.
@@ -47,5 +51,9 @@ import { AppConfigService } from '../config/app-config.service.js';
       },
     }),
   ],
+  // No `exports: [DATA_SOURCE]` here: the DataSource provider is owned by the imported
+  // `TypeOrmCoreModule`, and Nest forbids re-exporting a provider a module doesn't own
+  // (UnknownExportException). That core module is `@Global`, so `@Inject(DATA_SOURCE)`
+  // resolves everywhere without this module exporting anything.
 })
 export class DatabaseModule {}

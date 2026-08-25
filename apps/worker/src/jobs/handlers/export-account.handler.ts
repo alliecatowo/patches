@@ -8,13 +8,11 @@ import {
   Actor,
   ActorPrivacyPrefs,
   Bookmark,
-  ConversationMember,
   Credential,
   exportAccountPayloadSchema,
   Follow,
   Like,
   Media,
-  Message,
   Post,
   PostEdit,
   Report,
@@ -50,13 +48,13 @@ const README = [
   '                   (dimensions, upload date — the bytes themselves are under media/).',
   '  posts.json     — every post you authored, including its edit history.',
   '  follows.json   — who you follow and who follows you.',
-  '  messages.json  — every direct message you sent, and every message sent to you in a',
-  '                   conversation you are (or were) a member of. A null "body" means the',
-  '                   message was deleted (tombstoned) before this export ran. This is your',
-  '                   own data, so unlike every other export/display surface in this product',
-  '                   message bodies ARE included here — see spec §204.2.',
   '  media/         — the original bytes of every image you uploaded that is not deleted.',
   '  manifest.json  — every file above, its byte size, and its sha256.',
+  '',
+  'Direct messages are NOT in this archive, and that is not an omission we can fix: this node',
+  'only ever stores your conversations end-to-end encrypted, so it holds no readable copy of',
+  'any message to put here. The only device that can read your messages is your own — export',
+  'them from the client that holds your keys.',
   '',
   'Filters, filter lists, and labeler subscriptions (spec §198-200) are not included because',
   'this node does not implement those features yet — there is nothing to export.',
@@ -117,7 +115,7 @@ export async function buildTarGz(files: readonly ArchiveFile[]): Promise<Buffer>
 /**
  * `EXPORT_ACCOUNT` (P14-010/P14-023, `INITIAL_VISION.md` §197.3, §204.2): builds the requesting
  * actor's data export as a gzipped tar archive (`account.json`, `posts.json`, `follows.json`,
- * `messages.json`, `media/<id>.<ext>`, `manifest.json`) and uploads it to object storage, then
+ * `media/<id>.<ext>`, `manifest.json`) and uploads it to object storage, then
  * marks the `account_exports` row `READY`.
  *
  * Idempotent (`docs/architecture/jobs.md` §7): a row that is no longer `PENDING` — already
@@ -219,17 +217,6 @@ export class ExportAccountHandler implements JobHandler {
     const mutedTags = await manager
       .getRepository(TagMute)
       .find({ where: { actorId }, relations: { tag: true } });
-
-    const memberships = await manager
-      .getRepository(ConversationMember)
-      .find({ where: { actorId } });
-    const conversationIds = memberships.map((membership) => membership.conversationId);
-    const messages =
-      conversationIds.length === 0
-        ? []
-        : await manager
-            .getRepository(Message)
-            .find({ where: { conversationId: In(conversationIds) }, order: { createdAt: 'ASC' } });
 
     const reportsFiled = await manager
       .getRepository(Report)
@@ -349,23 +336,15 @@ export class ExportAccountHandler implements JobHandler {
       })),
     });
 
-    // §204.2: this is the user's own data, so unlike every other export/display surface in
-    // this product, message *bodies* are included here.
-    const messagesFile = jsonFile('messages.json', {
-      directMessages: messages.map((message) => ({
-        id: message.id,
-        conversationId: message.conversationId,
-        senderActorId: message.senderActorId,
-        body: message.deletedAt === null ? message.body : null,
-        createdAt: message.createdAt.toISOString(),
-      })),
-    });
+    // No `messages.json`: §204.2's "your own data, so bodies ARE included" carve-out only ever
+    // applied to the plaintext DM table, which ADR 0030 deleted. The node cannot read a message
+    // it only stores encrypted, so there is no body to export — the README above says so rather
+    // than shipping an empty file that reads like a bug.
 
     return [
       account,
       postsFile,
       followsFile,
-      messagesFile,
       ...mediaFiles.map((file) => ({ name: file.name, buffer: file.buffer })),
     ];
   }

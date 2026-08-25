@@ -137,59 +137,59 @@ with a leading `>` (and shown bold) so the focused pane is visible even in plain
 `Tab` moves focus between the two panes; `Ctrl+W h` / `Ctrl+W l` move focus directly
 to the primary/secondary pane (both are no-ops when the screen isn't split):
 
-| Key                     | Action                                                                                               |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| `g h`                   | go to Home feed (posts from people you follow)                                                       |
-| `g l`                   | go to Local feed (public posts on this node)                                                         |
-| `g p`                   | go to your own profile                                                                               |
-| `g n`                   | go to notifications                                                                                  |
-| `g b`                   | go to your bookmarks                                                                                 |
-| `g d`                   | go to direct messages                                                                                |
-| `g c`                   | go to communities on this node                                                                       |
-| `g e`                   | edit your display name, bio and nameplate                                                            |
-| `g s` / `/`             | search                                                                                               |
-| `g v`                   | go to your own Patches Page                                                                          |
-| `Ctrl+G`                | like `g <key>`, but opens the destination in the second pane instead of replacing the current screen |
-| `Tab`                   | when the screen is split, move focus between the two panes (the focused one is marked `>`)           |
-| `Ctrl+W h` / `Ctrl+W l` | when the screen is split, move focus directly to the primary / secondary pane                        |
-| `: / Ctrl+P`            | command palette — every key above, by name                                                           |
-| `:privacy`              | privacy notice, discoverability, account export and deletion                                         |
-| `:followrequests`       | pending requests to follow your locked account                                                       |
-| `:filters`              | your own bring-your-own filters                                                                      |
-| `:lists`                | browse, subscribe to, and publish filter lists                                                       |
-| `:labelers`             | subscribe to labelers and set per-value actions                                                      |
-| `:appeals`              | file and track appeals against a moderation notice                                                   |
-| `:modlog`               | this node's public, anonymized moderation log                                                        |
-| `c`                     | compose a new post                                                                                   |
-| `j / ↓`                 | move down one post                                                                                   |
-| `k / ↑`                 | move up one post                                                                                     |
-| `n / space`             | load the next page of posts                                                                          |
-| `Ctrl+R`                | refresh the current screen                                                                           |
-| `Enter`                 | open the selected post's thread                                                                      |
-| `r`                     | reply to the selected post                                                                           |
-| `l`                     | like/unlike the selected post                                                                        |
-| `b`                     | bookmark/unbookmark the selected post                                                                |
-| `R`                     | repost/unrepost the selected post                                                                    |
-| `Q`                     | quote the selected post in a new post                                                                |
-| `d`                     | delete your own selected post (confirm `y`/`n`)                                                      |
-| `H`                     | view the selected post's edit history                                                                |
-| `#`                     | open the selected post's first tag timeline                                                          |
-| `t`                     | search tags                                                                                          |
-| `p`                     | open the selected post's author profile                                                              |
-| `f`                     | follow/unfollow the profile you're viewing                                                           |
-| `J`                     | join/leave the community you're viewing                                                              |
-| `B`                     | block/unblock the profile you're viewing (confirm `y`/`n`)                                           |
-| `M`                     | mute/unmute the profile you're viewing (confirm `y`/`n`)                                             |
-| `!`                     | report the selected post, or the profile you're viewing                                              |
-| `v`                     | visit the selected actor's Patches Page (or `patches visit @handle`)                                 |
-| `e`                     | edit your own Patches Page (opens `$EDITOR`)                                                         |
-| `o`                     | open the selected post's first attachment externally                                                 |
-| `L`                     | login / switch accounts                                                                              |
-| `Ctrl+D`                | toggle the direct-message drawer (falls back to `g d`)                                               |
-| `P`                     | toggle plain mode (strip nameplate decoration)                                                       |
-| `?`                     | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages                               |
-| `q`                     | quit                                                                                                 |
-| `Esc`                   | cancel the current modal/action; back one level otherwise                                            |
+| Key                     | Action                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `g h`                   | go to Home feed (posts from people you follow)                                                        |
+| `g l`                   | go to Local feed (public posts on this node)                                                          |
+| `g p`                   | go to your own profile                                                                                |
+| `g n`                   | go to notifications                                                                                   |
+| `g b`                   | go to your bookmarks                                                                                  |
+| `g d`                   | go to direct messages                                                                                 |
+| `g c`                   | go to communities on this node                                                                        |
+| `g e`                   | edit your display name, bio and nameplate                                                             |
+| `g s` / `/`             | search                                                                                                |
+| `g v`                   | go to your own Patches Page                                                                           |
+| `Ctrl+G`                | like `g <key>`, but opens the destination in the second pane instead of replacing the current screen  |
+| `Tab`                   | when the screen is split, move focus between the two panes (the focused one is marked `>`)            |
+| `Ctrl+W h` / `Ctrl+W l` | when the screen is split, move focus directly to the primary / secondary pane                         |
+| `: / Ctrl+P`            | command palette — every key above, by name                                                            |
+| `:privacy`              | privacy notice, discoverability, account export and deletion                                          |
+| `:followrequests`       | pending requests to follow your locked account                                                        |
+| `:filters`              | your own bring-your-own filters                                                                       |
+| `:lists`                | browse, subscribe to, and publish filter lists                                                        |
+| `:labelers`             | subscribe to labelers and set per-value actions                                                       |
+| `:appeals`              | file and track appeals against a moderation notice                                                    |
+| `:modlog`               | this node's public, anonymized moderation log                                                         |
+| `c`                     | compose a new post                                                                                    |
+| `j / ↓`                 | move down one post                                                                                    |
+| `k / ↑`                 | move up one post                                                                                      |
+| `n / space`             | load the next page of posts                                                                           |
+| `Ctrl+R`                | refresh the current screen                                                                            |
+| `Enter`                 | open the selected post's thread                                                                       |
+| `r`                     | reply to the selected post                                                                            |
+| `l`                     | like/unlike the selected post                                                                         |
+| `b`                     | bookmark/unbookmark the selected post                                                                 |
+| `R`                     | repost/unrepost the selected post                                                                     |
+| `Q`                     | quote the selected post in a new post                                                                 |
+| `d`                     | delete your own selected post (confirm `y`/`n`)                                                       |
+| `H`                     | view the selected post's edit history                                                                 |
+| `#`                     | open the selected post's first tag timeline                                                           |
+| `t`                     | search tags                                                                                           |
+| `p`                     | open the selected post's author profile                                                               |
+| `f`                     | follow/unfollow the profile you're viewing                                                            |
+| `J`                     | join/leave the community you're viewing                                                               |
+| `B`                     | block/unblock the profile you're viewing (confirm `y`/`n`)                                            |
+| `M`                     | mute/unmute the profile you're viewing (confirm `y`/`n`)                                              |
+| `!`                     | report the selected post/profile to the moderators; anywhere else, file an issue — bug, jank, or idea |
+| `v`                     | visit the selected actor's Patches Page (or `patches visit @handle`)                                  |
+| `e`                     | edit your own Patches Page (opens `$EDITOR`)                                                          |
+| `o`                     | open the selected post's first attachment externally                                                  |
+| `L`                     | login / switch accounts                                                                               |
+| `Ctrl+D`                | toggle the direct-message drawer (falls back to `g d`)                                                |
+| `P`                     | toggle plain mode (strip nameplate decoration)                                                        |
+| `?`                     | help — the full keymap, grouped; `j`/`k` scrolls, `Space`/`PgDn` pages                                |
+| `q`                     | quit                                                                                                  |
+| `Esc`                   | cancel the current modal/action; back one level otherwise                                             |
 
 This table is checked against the TUI's own binding table by
 `apps/tui/test/docs-keymap.test.ts`, so it cannot drift from the keys the app
@@ -248,23 +248,30 @@ to browse followers and following.
 
 ### Direct messages
 
-`Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
-full-screen `g d` isn't wired into the shell yet). The first line is always the same disclosure —
-**"Not end-to-end encrypted — this node's operators can read these messages."** — because that's
-true of every v0 conversation; nothing in this client ever calls a DM "encrypted," "secure," or
-"private." `Tab` switches between your **Inbox** and pending **Requests** (a message from someone
-you don't follow lands as a request until you accept it). Sending is optimistic: your message
-appears immediately, marked as sending; if it fails to actually send, the draft comes back into
-the compose field instead of silently vanishing, so you can just try again. Node policy honestly
-reports `0` (indefinite retention, B-061); any future automatic message deletion will be
-displayed on this screen when configured.
+DMs are terminal-client-only in v0 — web and mobile have no crypto runtime, so they cannot
+start or read a conversation (the web profile's "Message" button explains this rather than
+pretending to work). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
+server-readable mode this client used to support is retired and can no longer exist. `Ctrl+D`
+toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
+full-screen `g d` isn't wired into the shell yet). The first line is always the same
+disclosure — **"End-to-end encrypted. This node cannot read these messages, but it can see
+who you message and when."** — because that's true of every conversation; the second clause
+is the honest part of the claim and is never dropped. Nothing in this client ever calls a DM
+"encrypted," "secure," or "private" outside that fixed sentence. Starting a new conversation
+requires a mutual follow — there is no message-request flow to fall back on. Sending is
+optimistic: your message appears immediately, marked as sending; if it fails to actually send,
+the draft comes back into the compose field instead of silently vanishing, so you can just try
+again. Node policy honestly reports `0` (indefinite retention, B-061); any future automatic
+message deletion will be displayed on this screen when configured.
 
-The separately gated E2EE protocol is not a reviewed capability. An owner-authorized disposable
-node may explicitly advertise ADR 0027's isolated-test mode, regardless of its runtime
-`NODE_ENV`; any client surface that lets you create or read one of those conversations must
-persistently show **“Unreviewed development E2EE — for testing only; do not use for sensitive
-conversations.”** Treat its data as disposable. That warning is not an external-review or
-security claim, and it does not replace the conversation's routing-metadata disclosure.
+Production E2EE is not yet a reviewed capability (independent review pending, ADR 0020 §12,
+P13-014) — the default node keeps DMs switched off entirely (there is no plaintext fallback to
+drop back to). An owner-authorized disposable node may explicitly advertise ADR 0027's
+isolated-test mode, regardless of its runtime `NODE_ENV`; any client surface that lets you
+create or read one of those conversations must persistently show **“Unreviewed development
+E2EE — for testing only; do not use for sensitive conversations.”** Treat its data as
+disposable. That warning is not an external-review or security claim, and it does not replace
+the conversation's routing-metadata disclosure.
 
 ### Blocking, muting, and reporting
 
@@ -274,6 +281,14 @@ post or the profile you're viewing, with a reason and optional free text. `patch
 (the moderator-facing CLI, not covered here — see
 [`docs/operations/moderation.md`](./operations/moderation.md)) is how a node's administrators
 review reports, suspend accounts, and act on them.
+
+Reporting the _app_ itself is always available, not just when something breaks: `!` opens
+the beta issue reporter from any screen (`:report` from the palette does the same) — a bug,
+something janky, or a feature idea all belong there. It sends a redacted diagnostics bundle
+(app version, node address, recent errors as status codes only, navigation trail, last
+screen text — message contents are never included) and works signed out. On the web the
+"Report an issue" chip sits on every page; if a render error takes a route down, its error
+screen opens the report form directly.
 
 ### Patches Pages
 
@@ -303,7 +318,10 @@ validates and saves the _whole_ document via the same `UpdatePage` call the `$ED
 uses. `Esc` at any point backs out one level, keeping whatever you'd typed as a local draft —
 nothing is lost by backing out of either editor. On the web client (`/@handle`), profile owners
 can switch to the **Wall** tab and click `+ Edit Wall` to open `EditWallDialog`, allowing you to
-add, edit, reorder, and save wall blocks in the browser.
+add and remove blocks on the wall (the index sub-page) and save the result in the browser —
+there's no in-dialog reordering or in-place block editing yet (delete and re-add instead). Any
+other sub-pages and the document's theme, created via the TUI's structured or `$EDITOR` editor,
+are preserved untouched.
 
 ### Privacy, filters, filter lists, and labelers
 

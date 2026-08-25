@@ -11,11 +11,11 @@ import { FollowButton } from '../components/FollowButton.js';
 import { MessageIcon } from '../components/icons/Icons.js';
 import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
-import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
+import { useToast } from '../components/ToastProvider.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
 import { NotFoundRoute } from './NotFoundRoute.js';
@@ -29,7 +29,7 @@ export function ProfileRoute(): JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
-  const [dmOpen, setDmOpen] = useState(false);
+  const toast = useToast();
   const profileHandle =
     handle !== undefined && handle.startsWith('@') && handle.length > 1 && handle[1] !== '@'
       ? handle.slice(1)
@@ -41,13 +41,19 @@ export function ProfileRoute(): JSX.Element {
     enabled: profileHandle !== undefined,
   });
 
-  const pageQuery = useQuery({
-    queryKey: ['page', profileHandle],
-    queryFn: () => api.pages.getPage({ handle: profileHandle ?? '', slug: '' }),
-    enabled: tab === 'wall' && profileHandle !== undefined,
-  });
-
   const actor = actorQuery.data?.actor;
+
+  // Keyed and fetched by the *canonical* handle (`actor.handle`, as `getActorByHandle`
+  // resolved it) rather than whatever case the URL happened to carry — otherwise a link
+  // typed/pasted with different casing than the actor's stored handle (lookup is
+  // case-insensitive) puts this query under a cache key `EditWallDialog`'s post-save
+  // `invalidateQueries(['page', actor.handle])` can never match, so the wall silently
+  // shows stale content after a successful save.
+  const pageQuery = useQuery({
+    queryKey: ['page', actor?.handle ?? profileHandle],
+    queryFn: () => api.pages.getPage({ handle: actor?.handle ?? profileHandle ?? '', slug: '' }),
+    enabled: tab === 'wall' && actor !== undefined,
+  });
 
   const followersQuery = useQuery({
     queryKey: ['followers', actor?.id],
@@ -120,7 +126,12 @@ export function ProfileRoute(): JSX.Element {
               <button
                 type="button"
                 className={styles['messageBtn']}
-                onClick={() => setDmOpen(true)}
+                onClick={() =>
+                  toast.pushToast({
+                    message: `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
+                    tone: 'info',
+                  })
+                }
                 aria-label={`Send message to @${actor.handle}`}
               >
                 <MessageIcon size={16} />
@@ -269,19 +280,6 @@ export function ProfileRoute(): JSX.Element {
           emptyMessage="Not following anyone yet."
         />
       )}
-
-      {session && session.actor.id !== actor.id ? (
-        <NewMessageDialog
-          isOpen={dmOpen}
-          onClose={() => setDmOpen(false)}
-          initialRecipient={{
-            id: actor.id,
-            handle: actor.handle,
-            displayName: actor.displayName,
-            avatarUrl: actor.avatar?.url,
-          }}
-        />
-      ) : null}
     </div>
   );
 }

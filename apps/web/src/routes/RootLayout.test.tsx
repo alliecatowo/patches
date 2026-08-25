@@ -132,4 +132,11 @@ describe('RootLayout', () => {
     expect(screen.queryByLabelText('More destinations')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'More' })).toHaveAttribute('aria-expanded', 'false');
   });
+
+  // B-112: reporting must be possible from every route, so the chip mounts exactly
+  // once here in RootLayout — individual routes must not add a second one.
+  it('does not mount a persistent reporter chip — reporting lives in the fan-out and /report (B-112 follow-up)', () => {
+    renderLayout();
+    expect(screen.queryByRole('button', { name: 'Report an issue' })).toBeNull();
+  });
 });

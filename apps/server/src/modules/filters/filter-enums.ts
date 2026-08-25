@@ -42,10 +42,13 @@ export function filterTermKindFromProto(value: FilterTermKind): DbFilterTermKind
 
 /**
  * A-051 (spec §198.3): `NOTIFICATIONS` (enforced by `NotificationsService.listNotifications`)
- * and `MESSAGE_REQUESTS` (enforced by `MessagesService.listMessageRequests`) are the two scopes
- * with no list-item UI to attach a `filtered_by` hint to — neither RPC's response shape carries
- * one. A filter/list-subscription action of `collapse` or `warn` is accepted and stored for
- * these scopes exactly like any other, but only ever behaves as `hide` there; `collapse`/`warn`
+ * and `MESSAGE_REQUESTS` are the two scopes with no list-item UI to attach a `filtered_by` hint
+ * to — neither RPC's response shape carries one. `MESSAGE_REQUESTS`'s own enforcement point
+ * (`MessagesService.listMessageRequests`) was removed by ADR 0030 §B-095 along with the rest of
+ * the server-visible DM message-request flow; the scope value itself is left in place (never
+ * reuse a removed enum value/number, spec §153) but is currently unenforced by any RPC. A
+ * filter/list-subscription action of `collapse` or `warn` is accepted and stored for these
+ * scopes exactly like any other, but only ever behaves as `hide` there; `collapse`/`warn`
  * are a silent no-op, matching every other client-presentation action that never fails
  * validation server-side. This is intentional, not a gap: rejecting `collapse`/`warn` at write
  * time would need the write path to know which scopes were selected on the same filter as a

@@ -1,7 +1,7 @@
 .card {
   display: flex;
-  gap: 0.85rem;
-  padding: 1rem 1.15rem;
+  gap: var(--timeline-row-gap);
+  padding: var(--timeline-row-padding-block) var(--timeline-row-padding-inline);
   border-bottom: 1px solid var(--border);
   transition: background-color 0.12s ease;
   position: relative;
@@ -23,8 +23,8 @@
 }
 
 .avatar {
-  width: 44px;
-  height: 44px;
+  width: var(--timeline-avatar-size);
+  height: var(--timeline-avatar-size);
   border-radius: var(--radius-full);
   background: var(--bg-raised);
   object-fit: cover;
@@ -32,8 +32,8 @@
 }
 
 .avatarPlaceholder {
-  width: 44px;
-  height: 44px;
+  width: var(--timeline-avatar-size);
+  height: var(--timeline-avatar-size);
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--accent-fg);
@@ -324,14 +324,14 @@
 
 @media (max-width: 480px) {
   .card {
-    gap: 0.65rem;
-    padding: 0.85rem 0.75rem;
+    gap: var(--timeline-row-gap);
+    padding: var(--timeline-row-padding-block) var(--timeline-row-padding-inline);
   }
 
   .avatar,
   .avatarPlaceholder {
-    width: 38px;
-    height: 38px;
+    width: var(--timeline-avatar-size);
+    height: var(--timeline-avatar-size);
   }
 
   .mediaImg {

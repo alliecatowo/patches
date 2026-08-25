@@ -40,7 +40,7 @@ export { Mute } from './entities/mute.entity.js';
 export { Like } from './entities/like.entity.js';
 export { Bookmark } from './entities/bookmark.entity.js';
 export { Notification } from './entities/notification.entity.js';
-export { Report, type MessageSnapshotEntry } from './entities/report.entity.js';
+export { Report } from './entities/report.entity.js';
 export { Page } from './entities/page.entity.js';
 export { PageRevision } from './entities/page-revision.entity.js';
 export { PageAsset } from './entities/page-asset.entity.js';
@@ -49,6 +49,7 @@ export { FederationKey } from './entities/federation-key.entity.js';
 export { InboxActivity } from './entities/inbox-activity.entity.js';
 export { DomainBlock } from './entities/domain-block.entity.js';
 export { Repost } from './entities/repost.entity.js';
+export { QuoteAuthorization } from './entities/quote-authorization.entity.js';
 export { Tag } from './entities/tag.entity.js';
 export { PostTag } from './entities/post-tag.entity.js';
 export { TagMute } from './entities/tag-mute.entity.js';
@@ -58,13 +59,12 @@ export { CommunityBan } from './entities/community-ban.entity.js';
 export { CommunityInvite } from './entities/community-invite.entity.js';
 export { Conversation } from './entities/conversation.entity.js';
 export { ConversationMember } from './entities/conversation-member.entity.js';
-export { Message } from './entities/message.entity.js';
-export { MessageRequest } from './entities/message-request.entity.js';
 export { E2eeIdentityRoot } from './entities/e2ee-identity-root.entity.js';
 export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
 export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';
 export { E2eeSignedPrekey } from './entities/e2ee-signed-prekey.entity.js';
 export { E2eeOneTimePrekey } from './entities/e2ee-one-time-prekey.entity.js';
+export { E2eeOneTimePrekeyKeyId } from './entities/e2ee-one-time-prekey-key-id.entity.js';
 export { E2eeLogicalMessage } from './entities/e2ee-logical-message.entity.js';
 export { E2eeMailboxEnvelope } from './entities/e2ee-mailbox-envelope.entity.js';
 export { E2eeGroupControlEvent } from './entities/e2ee-group-control-event.entity.js';
@@ -110,7 +110,6 @@ export {
   LABEL_ACTIONS,
   LABEL_SUBJECT_TYPES,
   MEDIA_STATES,
-  MESSAGE_REQUEST_STATUSES,
   MODERATION_ACTION_TYPES,
   MODERATION_LOG_SUBJECT_KINDS,
   MODERATION_REASON_CATEGORIES,
@@ -144,7 +143,6 @@ export type {
   LabelAction,
   LabelSubjectType,
   MediaState,
-  MessageRequestStatus,
   ModerationActionType,
   ModerationLogSubjectKind,
   ModerationReasonCategory,
@@ -186,16 +184,28 @@ export { AuthCodeDeliveryEnvelopes1787420562003 } from './migrations/17874205620
 export {
   claimOutboxJobs,
   countPendingOutboxJobs,
+  enqueueOutboxJobIfAbsent,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   outboxBackoffDelayMs,
   replayOutboxJob,
   DEFAULT_OUTBOX_BACKOFF,
 } from './repositories/outbox.js';
-export type { ClaimOutboxJobsOptions, OutboxBackoffOptions } from './repositories/outbox.js';
+export type {
+  ClaimOutboxJobsOptions,
+  OutboxBackoffOptions,
+  OutboxJobInsert,
+} from './repositories/outbox.js';
 
 export { appendAdminAuditLog } from './repositories/admin-audit.js';
 export type { AppendAdminAuditLogInput } from './repositories/admin-audit.js';
+
+export {
+  rateLimitBucketRepo,
+  getWindowBounds,
+  DEFAULT_WINDOW_MS,
+  type RateLimitBucketRepo,
+} from './repositories/rate-limit-bucket.js';
 
 export {
   loadNodeFrankingKeys,
@@ -207,6 +217,10 @@ export type { NodeFrankingKeySnapshot } from './repositories/e2ee-node-franking-
 export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
 
 export { JOB_TYPES, type JobType } from './jobs/job-types.js';
+export {
+  e2eeRetentionSweepPayloadSchema,
+  type E2eeRetentionSweepPayload,
+} from './jobs/payloads.js';
 export {
   AUTH_CODE_EMAIL_JOB_TYPES,
   AuthCodeDeliveryEnvelopeError,

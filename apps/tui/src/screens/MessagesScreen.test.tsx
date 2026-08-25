@@ -1,19 +1,13 @@
 import { readFile } from 'node:fs/promises';
 
 import { create } from '@bufbuild/protobuf';
-import {
-  GetConversationResponseSchema,
-  ListConversationsResponseSchema,
-  ListMessageRequestsResponseSchema,
-  ListMessagesResponseSchema,
-} from '@patches/proto/es';
-import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
+import { GetConversationResponseSchema, ListConversationsResponseSchema } from '@patches/proto/es';
+import type { Actor, Conversation } from '../api/wire/types.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from '../../test/ansi.js';
 import {
-  DM_DISCLOSURE,
   MessagesScreen,
   UNREVIEWED_DEV_E2EE_WARNING,
   VAULT_FAULT_COPY,
@@ -23,8 +17,6 @@ import {
   makeActor,
   makeConversation,
   makeConversationMember,
-  makeMessage,
-  makeMessageRequest,
   makePageInfo,
 } from '../test/wire-fixtures.js';
 
@@ -36,10 +28,8 @@ function actor(id: string, handle: string, displayName: string): Actor {
 
 const alice = actor('actor-alice', 'alice', 'Alice');
 
-/** Every v0 conversation this screen renders is server-visible (ADR 0017) —
- * `CONVERSATION_SECURITY_MODE_E2EE_V1` conversations are a different feature's
- * concurrent WIP on this branch (`E2eeService`) and don't yet reach this screen —
- * `makeConversation`'s default already reflects that. */
+/** B-095/ADR 0030 retired `LEGACY_SERVER_VISIBLE`: every conversation this screen can
+ * reach is `E2EE_V1` — `makeConversation`'s default already reflects that. */
 function conversation(id: string, peer = alice): Conversation {
   return makeConversation({
     id,
@@ -48,35 +38,17 @@ function conversation(id: string, peer = alice): Conversation {
   });
 }
 
-function message(id: string, body: string, sender = alice): Message {
-  return makeMessage({ id, sender, body });
-}
-
-function request(id: string, body: string): MessageRequest {
-  return makeMessageRequest({ id, sender: alice, body });
-}
-
 interface FakeApi extends MessagesScreenApi {
   listConversations: ReturnType<typeof vi.fn<MessagesScreenApi['listConversations']>>;
   getConversation: ReturnType<typeof vi.fn<MessagesScreenApi['getConversation']>>;
-  listMessages: ReturnType<typeof vi.fn<MessagesScreenApi['listMessages']>>;
-  sendMessage: ReturnType<typeof vi.fn<MessagesScreenApi['sendMessage']>>;
   markConversationRead: ReturnType<typeof vi.fn<MessagesScreenApi['markConversationRead']>>;
-  listMessageRequests: ReturnType<typeof vi.fn<MessagesScreenApi['listMessageRequests']>>;
-  respondToMessageRequest: ReturnType<typeof vi.fn<MessagesScreenApi['respondToMessageRequest']>>;
 }
 
 function fakeApi(): FakeApi {
   return {
     listConversations: vi.fn().mockResolvedValue({ conversations: [], page: undefined }),
     getConversation: vi.fn().mockResolvedValue({ conversation: undefined }),
-    listMessages: vi.fn().mockResolvedValue({ messages: [], page: undefined }),
-    sendMessage: vi.fn().mockResolvedValue({ message: undefined }),
     markConversationRead: vi.fn().mockResolvedValue({}),
-    listMessageRequests: vi.fn().mockResolvedValue({ requests: [], page: undefined }),
-    respondToMessageRequest: vi
-      .fn()
-      .mockResolvedValue({ request: undefined, conversation: undefined }),
   };
 }
 
@@ -94,31 +66,49 @@ async function waitForFrame(lastFrame: () => string | undefined, text: string): 
 }
 
 describe('MessagesScreen', () => {
-  it('keeps the disclosure on the first row and has no prohibited DM descriptors', async () => {
-    const api = fakeApi();
-    const { lastFrame } = render(<MessagesScreen api={api} isActive />);
-    const frame = await waitForFrame(lastFrame, 'No conversations yet.');
+  it(
+    'renders no legacy server-visible disclosure and stays inside the accurate-language ' +
+      'rule (B-096: §194 now bans "encrypted"/"secure"/"private" everywhere they would ' +
+      'overclaim, but every conversation is genuinely E2EE_V1, so the fixed E2EE-mode ' +
+      'copy naming that fact is the one deliberate exception)',
+    async () => {
+      const api = fakeApi();
+      const { lastFrame } = render(<MessagesScreen api={api} isActive />);
+      const frame = await waitForFrame(lastFrame, 'No conversations yet.');
 
-    expect(frame.split('\n')[0]).toBe(DM_DISCLOSURE);
+      // The retired legacy notice ("Not end-to-end encrypted — this node's operators can
+      // read these messages") must not appear anywhere — it would now be false, since no
+      // server-visible conversation can exist any more.
+      expect(frame).not.toContain("this node's operators can read these messages");
 
-    const sources = await Promise.all([
-      readFile(new URL('./MessagesScreen.tsx', import.meta.url), 'utf8'),
-      readFile(new URL('../cli/dm.ts', import.meta.url), 'utf8'),
-    ]);
-    for (const source of sources) {
-      // §194 bans those words on the LEGACY server-visible DM surface only. The E2EE-mode
-      // copy describes genuinely end-to-end-encrypted conversations (ADR 0020 §11), so it
-      // is stripped before scanning, exactly like the mandated legacy disclosure above.
-      const withoutE2eeCopy = source
-        .replaceAll(DM_DISCLOSURE, '')
-        .replaceAll(UNREVIEWED_DEV_E2EE_WARNING, '')
-        .replaceAll(VAULT_FAULT_COPY.corrupt, '')
-        .replaceAll(VAULT_FAULT_COPY.rollback, '');
-      expect(withoutE2eeCopy).not.toMatch(/\b(?:encrypted|secure|private)\b/i);
-    }
-  });
+      const sources = await Promise.all([
+        readFile(new URL('./MessagesScreen.tsx', import.meta.url), 'utf8'),
+        readFile(new URL('../cli/dm.ts', import.meta.url), 'utf8'),
+      ]);
+      for (const source of sources) {
+        // Every remaining conversation is genuinely `E2EE_V1` (ADR 0030/B-095), so the
+        // banned words are legitimate in the small set of fixed strings that state that
+        // fact plainly. Stripping them before scanning keeps the rest of both files
+        // honest: nothing outside these named exceptions may claim encryption/security/
+        // privacy that isn't backed by `mayDescribeAsEndToEndEncrypted`.
+        const withoutE2eeCopy = source
+          .replaceAll(UNREVIEWED_DEV_E2EE_WARNING, '')
+          .replaceAll(VAULT_FAULT_COPY.corrupt, '')
+          .replaceAll(VAULT_FAULT_COPY.rollback, '')
+          // `cli/dm.ts`'s `DM_NOTICE`/`E2EE_REFUSAL` mirror
+          // `requiredConversationDisclosure('E2EE_V1')` from `@patches/domain` rather than
+          // importing it (kept for a small CLI dependency surface) — strip by content,
+          // not by importing the constant, so this test also catches the mirror drifting.
+          .replaceAll(
+            'End-to-end encrypted. This node cannot read these messages, but it can see who you message and when.',
+            '',
+          );
+        expect(withoutE2eeCopy).not.toMatch(/\b(?:encrypted|secure|private)\b/i);
+      }
+    },
+  );
 
-  it('uses opaque cursors and navigates list to thread to requests with Esc back', async () => {
+  it('uses opaque cursors and navigates list to thread with Esc back', async () => {
     const api = fakeApi();
     const hostilePeer = actor('peer-1', `mallory\x1b[2J`, 'Mal\x07lory');
     const first = conversation('conversation-1', hostilePeer);
@@ -139,18 +129,6 @@ describe('MessagesScreen', () => {
     api.getConversation.mockResolvedValue(
       create(GetConversationResponseSchema, { conversation: first }),
     );
-    api.listMessages.mockResolvedValue(
-      create(ListMessagesResponseSchema, {
-        messages: [message('message-1', `hello\x1b[Hthere`, hostilePeer)],
-        page: makePageInfo(),
-      }),
-    );
-    api.listMessageRequests.mockResolvedValue(
-      create(ListMessageRequestsResponseSchema, {
-        requests: [request('request-1', `please\x1b[2J reply`)],
-        page: makePageInfo(),
-      }),
-    );
 
     const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
     await waitForFrame(lastFrame, '@mallory[2J');
@@ -160,24 +138,14 @@ describe('MessagesScreen', () => {
     expect(api.listConversations).toHaveBeenLastCalledWith({ cursor: 'opaque-next', limit: 20 });
 
     stdin.write(KEY.enter);
-    const thread = await waitForFrame(lastFrame, 'hello[Hthere');
+    const thread = await waitForFrame(lastFrame, '[E2EE]');
     expect(thread).not.toContain('\x1b[H');
-    expect(api.markConversationRead).toHaveBeenCalledWith({
-      conversationId: 'conversation-1',
-      throughMessageId: 'message-1',
-    });
 
     stdin.write(KEY.escape);
-    await waitForFrame(lastFrame, 'r requests');
-    stdin.write('r');
-    const requests = await waitForFrame(lastFrame, 'please[2J reply');
-    expect(requests).toContain('Message requests');
-
-    stdin.write(KEY.escape);
-    await waitForFrame(lastFrame, 'r requests');
+    await waitForFrame(lastFrame, '@mallory[2J');
   });
 
-  it('renders an optimistic send and restores the draft when sending fails', async () => {
+  it('refuses to send without a vault-backed pipeline, rather than falling back to a plaintext RPC', async () => {
     const api = fakeApi();
     const existing = conversation('conversation-1');
     api.listConversations.mockResolvedValue(
@@ -185,14 +153,6 @@ describe('MessagesScreen', () => {
     );
     api.getConversation.mockResolvedValue(
       create(GetConversationResponseSchema, { conversation: existing }),
-    );
-
-    let rejectSend: ((reason: Error) => void) | undefined;
-    api.sendMessage.mockImplementation(
-      () =>
-        new Promise((_, reject) => {
-          rejectSend = reject;
-        }),
     );
 
     const { lastFrame, stdin } = render(
@@ -205,55 +165,8 @@ describe('MessagesScreen', () => {
     await waitForFrame(lastFrame, 'Draft: hello');
     stdin.write(KEY.enter);
 
-    await waitForFrame(lastFrame, 'hello · sending');
-    expect(api.sendMessage).toHaveBeenCalledWith({
-      clientRequestId: 'request-id',
-      conversationId: 'conversation-1',
-      body: 'hello',
-    });
-
-    rejectSend?.(new Error('network failed'));
-    const failed = await waitForFrame(lastFrame, 'Message was not sent. Your draft is still here.');
+    const failed = await waitForFrame(lastFrame, 'needs an enrolled device');
     expect(failed).toContain('Draft: hello');
-    expect(failed).not.toContain('hello · sending');
-  });
-
-  it('shows an Inbox/Requests folder strip and switches with Tab (P12-114)', async () => {
-    const api = fakeApi();
-    const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
-    await waitForFrame(lastFrame, 'No conversations yet.');
-    expect(stripSgr(lastFrame() ?? '')).toContain('Inbox');
-    expect(stripSgr(lastFrame() ?? '')).toContain('Requests');
-
-    stdin.write('\t');
-    await waitForFrame(lastFrame, 'No pending requests.');
-
-    stdin.write('\t');
-    await waitForFrame(lastFrame, 'No conversations yet.');
-  });
-
-  it('shows a pending glyph on an optimistic send', async () => {
-    const api = fakeApi();
-    const existing = conversation('conversation-1');
-    api.listConversations.mockResolvedValue(
-      create(ListConversationsResponseSchema, { conversations: [existing] }),
-    );
-    api.getConversation.mockResolvedValue(
-      create(GetConversationResponseSchema, { conversation: existing }),
-    );
-    api.sendMessage.mockImplementation(() => new Promise(() => undefined));
-
-    const { lastFrame, stdin } = render(
-      <MessagesScreen api={api} isActive createRequestId={() => 'request-id'} />,
-    );
-    await waitForFrame(lastFrame, '@alice');
-    stdin.write(KEY.enter);
-    await waitForFrame(lastFrame, 'Draft:');
-    stdin.write('hi');
-    await waitForFrame(lastFrame, 'Draft: hi');
-    stdin.write(KEY.enter);
-    const frame = await waitForFrame(lastFrame, 'hi · sending');
-    expect(frame).toContain('◌ you:');
   });
 
   it('renders node-policy retention copy when the caller supplies it, and nothing when it has not fetched it yet', async () => {
@@ -272,26 +185,5 @@ describe('MessagesScreen', () => {
     const withoutPolicy = await waitForFrame(lastFrame, 'No conversations yet.');
     expect(withoutPolicy).not.toContain('automatic deletion');
     expect(withoutPolicy).not.toContain('automatically deletes');
-  });
-
-  it('accepts and declines selected requests without exposing transport details', async () => {
-    const api = fakeApi();
-    api.listMessageRequests.mockResolvedValue(
-      create(ListMessageRequestsResponseSchema, {
-        requests: [request('request-1', 'one'), request('request-2', 'two')],
-      }),
-    );
-
-    const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
-    await waitForFrame(lastFrame, 'No conversations yet.');
-    stdin.write('r');
-    await waitForFrame(lastFrame, 'one');
-    stdin.write('a');
-    await waitForFrame(lastFrame, 'Request accepted.');
-    expect(api.respondToMessageRequest).toHaveBeenCalledWith({ id: 'request-1', accept: true });
-
-    stdin.write('d');
-    await waitForFrame(lastFrame, 'Request declined.');
-    expect(api.respondToMessageRequest).toHaveBeenCalledWith({ id: 'request-2', accept: false });
   });
 });

@@ -71,12 +71,21 @@ a test rather than input validation with a comment.
 
 ### 2. The commitment is associated data for every device envelope
 
+> **Amendment (2026-08 E2EE audit hardening):** `AD_d` gained one more length-prefixed field,
+> `string(logicalMessageId)`, written after `recipientDeviceId` and before `fixed(C, 32)` — an
+> envelope is now bound to the one logical message it was sealed for, not merely to the
+> conversation and commitment slot. The context string is unchanged (`envelope-ad` never parsed a
+> layout version; both sides recompute it from metadata), and the byte change ships with no
+> compatibility path because no node has ever accepted an envelope (ADR 0030). Vectors in
+> `@patches/crypto` are regenerated.
+
 ```text
 AD_d = string("patches-e2ee-v1/franking/envelope-ad")
     || string(frankingProfile) || string(protocol) || u8(version)
     || string(conversationId)  || u64(membershipEpoch)
     || string(senderActorId)   || string(senderDeviceId)
     || string(recipientActorId)|| string(recipientDeviceId)
+    || string(logicalMessageId)
     || fixed(C, 32)
 ```
 

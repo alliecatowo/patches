@@ -23,14 +23,9 @@ export const protobufPackage = 'patches.v1';
 export enum ConversationSecurityMode {
   CONVERSATION_SECURITY_MODE_UNSPECIFIED = 'CONVERSATION_SECURITY_MODE_UNSPECIFIED',
   /**
-   * CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE - Spec §183.1 / ADR 0017. The node stores and can read these bodies. A client MUST say so on
-   * the screen where the messages are read, and MUST NOT call them encrypted, end-to-end,
-   * secure, or private (spec §194).
-   */
-  CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE = 'CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE',
-  /**
-   * CONVERSATION_SECURITY_MODE_E2EE_V1 - ADR 0020. The node routes ciphertext it cannot read. This is the only value for which a
-   * client may use the words "end-to-end encrypted".
+   * CONVERSATION_SECURITY_MODE_E2EE_V1 - ADR 0020. The node routes ciphertext it cannot read. This is now the only conversation
+   * security mode a client will ever see — `E2eeService.CreateE2eeConversation` is the only
+   * way to produce one.
    */
   CONVERSATION_SECURITY_MODE_E2EE_V1 = 'CONVERSATION_SECURITY_MODE_E2EE_V1',
   UNRECOGNIZED = 'UNRECOGNIZED',
@@ -41,8 +36,10 @@ export enum ConversationSecurityMode {
  * `packages/domain/src/e2ee/modes.ts`'s `E2EE_CAPABILITY_STATES`.
  *
  * This is a protocol capability, never a payment or a social gate: spec §194 forbids
- * capability-gating a *function*, and DMs are a function. A node that disables E2EE_V1 still
- * offers legacy DMs to everyone.
+ * capability-gating a *function*, and DMs are a function. Unlike before ADR 0030, there is no
+ * server-visible fallback: a node with E2EE_V1 disabled offers no DMs at all until it clears
+ * ADR 0020 §12's gates (accepted consequence, ADR 0030's Application 1, "production DMs go
+ * dark").
  */
 export enum E2eeCapabilityState {
   E2EE_CAPABILITY_STATE_UNSPECIFIED = 'E2EE_CAPABILITY_STATE_UNSPECIFIED',
@@ -417,6 +414,13 @@ export interface E2eeLogicalMessage {
   fanoutDigest: Buffer;
   /** At most `max_group_members × max_active_devices_per_actor` (64) entries. */
   deviceEnvelopes: E2eeDeviceEnvelope[];
+  /**
+   * The sender's pre-send logical id. ADR 0025 binds THIS value into every envelope's AEAD
+   * associated data, so the node must store and return it verbatim — a node-minted surrogate
+   * would make every recipient-side open fail authentication. Must be a UUID when set; the
+   * node minted ids before this field existed and still does when it is omitted.
+   */
+  logicalMessageId?: string | undefined;
 }
 
 /**
@@ -934,10 +938,10 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  *     an E2EE message body, a message key, ratchet state, a device private key, or a recovery
  *     key. `E2eeReportEvidenceItem.disclosed_plaintext` is the single, deliberate exception in
  *     this entire schema — plaintext a reporter explicitly selected and submitted (ADR 0020 §9).
- *   * `E2EE_V1` and `LEGACY_SERVER_VISIBLE` are immutable conversation modes fixed at creation.
- *     There is no RPC here that converts one into the other, and there will never be one: the
- *     node has already read a legacy conversation, and re-encrypting that history would be a
- *     false claim (ADR 0020 §11).
+ *   * `E2EE_V1` is the only conversation security mode (ADR 0030, B-095 — the server-visible
+ *     `LEGACY_SERVER_VISIBLE` mode this once coexisted with is retired, its enum value
+ *     reserved). It is immutable, fixed at creation: there is no RPC here — nor will there ever
+ *     be one — that converts a conversation's mode after the fact.
  *   * An E2EE send never falls back to plaintext or to a server-held key. When a device, a
  *     prekey, or the capability is unavailable, the send **fails** (ADR 0020 §1.2).
  *   * Only an `E2EE_V1` conversation may be described to a user as encrypted or end-to-end.
@@ -1161,10 +1165,10 @@ export interface E2eeServiceClient {
  *     an E2EE message body, a message key, ratchet state, a device private key, or a recovery
  *     key. `E2eeReportEvidenceItem.disclosed_plaintext` is the single, deliberate exception in
  *     this entire schema — plaintext a reporter explicitly selected and submitted (ADR 0020 §9).
- *   * `E2EE_V1` and `LEGACY_SERVER_VISIBLE` are immutable conversation modes fixed at creation.
- *     There is no RPC here that converts one into the other, and there will never be one: the
- *     node has already read a legacy conversation, and re-encrypting that history would be a
- *     false claim (ADR 0020 §11).
+ *   * `E2EE_V1` is the only conversation security mode (ADR 0030, B-095 — the server-visible
+ *     `LEGACY_SERVER_VISIBLE` mode this once coexisted with is retired, its enum value
+ *     reserved). It is immutable, fixed at creation: there is no RPC here — nor will there ever
+ *     be one — that converts a conversation's mode after the fact.
  *   * An E2EE send never falls back to plaintext or to a server-held key. When a device, a
  *     prekey, or the capability is unavailable, the send **fails** (ADR 0020 §1.2).
  *   * Only an `E2EE_V1` conversation may be described to a user as encrypted or end-to-end.

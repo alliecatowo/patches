@@ -10,12 +10,14 @@ import {
   canonicalGroupControlTranscript,
   E2EE_FRANKING_PROFILE_V1,
 } from '@patches/domain';
-import { createTestUser } from '@patches/testkit';
+import { createTestFollow, createTestUser } from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
+import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
+import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import {
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
@@ -349,8 +351,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         dataSource,
         testFrankingKeyRing,
         unreviewedTestPolicy,
+        // No-op budgets: this suite exercises fanout/protocol behavior, not §188 windows
+        // (covered by e2ee-rate-limit.service.test.ts), and would blow through them.
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+        new NotificationsService(dataSource),
       );
-      groups = new E2eeGroupService(dataSource);
+      groups = new E2eeGroupService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
     }, 60_000);
 
     afterAll(async () => {
@@ -365,6 +374,21 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         rootPrivateKey: rootKeys.privateKey,
         rootPublicKey: rootKeys.publicKey,
       };
+    }
+
+    /**
+     * E2EE conversations enforce the same §183.2 first-contact eligibility as legacy DMs
+     * (mutual follow), so conversation-level tests must establish the social edge first.
+     */
+    async function allowDirectMessaging(fromActorId: string, toActorId: string): Promise<void> {
+      await createTestFollow(dataSource.manager, {
+        followerActorId: fromActorId,
+        followeeActorId: toActorId,
+      });
+      await createTestFollow(dataSource.manager, {
+        followerActorId: toActorId,
+        followeeActorId: fromActorId,
+      });
     }
 
     async function enrollFirstDevice(actor: TestActorKeys, prekeyCount = 5) {
@@ -486,6 +510,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       await expect(
         prekeys.getPrekeyInventory(actor.actorId, { deviceId: device.deviceId }),
       ).rejects.toMatchObject({ code: 'E2EE_DEVICE_NOT_FOUND' });
+      const [rows] = await dataSource.query<Array<{ public_prekeys: string; issued_ids: string }>>(
+        `SELECT
+           (SELECT count(*) FROM e2ee_one_time_prekeys WHERE device_identity_id = d.id) AS public_prekeys,
+           (SELECT count(*) FROM e2ee_one_time_prekey_key_ids WHERE device_identity_id = d.id) AS issued_ids
+         FROM e2ee_device_identities d WHERE d.actor_id = $1 AND d.device_id = $2`,
+        [actor.actorId, device.deviceId],
+      );
+      // Revocation removes public unused material, but not the immutable issued-ID namespace.
+      expect(rows).toEqual({ public_prekeys: '0', issued_ids: '3' });
     });
 
     it('rejects PublishDeviceRoster with a sequence gap', async () => {
@@ -499,23 +532,35 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       ).rejects.toMatchObject({ code: 'E2EE_ROSTER_CONFLICT' });
     });
 
-    it('uploads a rotated signed prekey and tops up one-time prekeys, capped at the target', async () => {
+    it('uploads a rotated signed prekey and rejects one-time top-ups past the inventory target', async () => {
       const actor = await newActor();
       const { device } = await enrollFirstDevice(actor, 2);
       const certificateDigest = (await deviceRosters.getDeviceRoster({ actorId: actor.actorId }))
         .certificates[0]?.certificateDigest as unknown as Uint8Array;
-      const now = new Date(Date.now() + 1000);
-      const bundle = signedPrekeyBundle(actor, device, certificateDigest, 2n, now);
-      const response = await prekeys.uploadPrekeys(actor.actorId, {
+      const now = Date.now() + 1000;
+      // Over-capacity is an explicit error, never silent truncation (audit P2 fix).
+      const overBundle = signedPrekeyBundle(actor, device, certificateDigest, 2n, new Date(now));
+      await expect(
+        prekeys.uploadPrekeys(actor.actorId, {
+          deviceId: device.deviceId,
+          signedPrekey: overBundle.signedPrekey,
+          oneTimePrekeys: oneTimePrekeys(200, 100),
+          prekeyBundleBytes: overBundle.prekeyBundleBytes,
+          prekeyBundleSignature: overBundle.prekeyBundleSignature,
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+      // Room for exactly 98 more under the 100-per-device target.
+      const fitBundle = signedPrekeyBundle(actor, device, certificateDigest, 3n, new Date(now + 1));
+      const fit = await prekeys.uploadPrekeys(actor.actorId, {
         deviceId: device.deviceId,
-        signedPrekey: bundle.signedPrekey,
-        oneTimePrekeys: oneTimePrekeys(200, 100),
-        prekeyBundleBytes: bundle.prekeyBundleBytes,
-        prekeyBundleSignature: bundle.prekeyBundleSignature,
+        signedPrekey: fitBundle.signedPrekey,
+        oneTimePrekeys: oneTimePrekeys(98, 200),
+        prekeyBundleBytes: fitBundle.prekeyBundleBytes,
+        prekeyBundleSignature: fitBundle.prekeyBundleSignature,
       });
-      expect(response.signedPrekey?.keyId).toBe('2');
-      // 2 initial + 200 offered, capped at the 100 target.
-      expect(response.oneTimePrekeyCount).toBe(100);
+      expect(fit.signedPrekey?.keyId).toBe('3');
+      expect(fit.oneTimePrekeyCount).toBe(100);
     });
 
     it('reports exhaustion in the fallback bundle once one-time prekeys run out', async () => {
@@ -541,6 +586,47 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
       expect(second.bundles[0]?.oneTimePrekeyExhausted).toBe(true);
       expect(second.bundles[0]?.oneTimePrekey).toBeUndefined();
+    });
+
+    it('keeps a claimed-and-public-row-deleted key id permanently rejected by the issued ledger', async () => {
+      const claimant = await newActor();
+      const target = await newActor();
+      const { device } = await enrollFirstDevice(target, 1);
+
+      const claimed = await prekeys.claimPrekeyBundles(claimant.actorId, {
+        conversationId: '',
+        actorIds: [target.actorId],
+        deviceIds: [],
+      });
+      expect(claimed.bundles[0]?.oneTimePrekey?.keyId).toBe('1');
+
+      await dataSource.query(
+        `DELETE FROM e2ee_one_time_prekeys
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      const [publicRows] = await dataSource.query<Array<{ count: string }>>(
+        `SELECT count(*) FROM e2ee_one_time_prekeys
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      expect(Number(publicRows?.count)).toBe(0);
+
+      await expect(
+        prekeys.uploadPrekeys(target.actorId, {
+          deviceId: device.deviceId,
+          signedPrekey: undefined,
+          oneTimePrekeys: oneTimePrekeys(1, 1),
+          prekeyBundleBytes: Buffer.alloc(0),
+          prekeyBundleSignature: Buffer.alloc(0),
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      const [ledger] = await dataSource.query<Array<{ count: string }>>(
+        `SELECT count(*) FROM e2ee_one_time_prekey_key_ids
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      expect(Number(ledger?.count)).toBe(1);
     });
 
     it('never hands the same one-time prekey to two concurrent claimants (atomic claim)', async () => {
@@ -637,10 +723,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
         const defaultPolicyConversations = new E2eeConversationService(
           dataSource,
           testFrankingKeyRing,
           new E2eeRuntimeApprovalPolicy(false),
+          new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+          new NotificationsService(dataSource),
         );
         const conversationCountBefore = await dataSource
           .getRepository(ConversationEntity)
@@ -682,6 +771,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const envelope = buildEnvelope(recipient.actorId, recipientDevice.deviceId);
         const response = await conversations.createE2eeConversation(sender.actorId, {
@@ -717,6 +807,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const clientRequestId = randomUUID();
         const message = buildLogicalMessage([
@@ -762,6 +853,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const envelope = buildEnvelope(recipient.actorId, recipientDevice.deviceId);
         await expect(
@@ -789,6 +881,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const envelope = {
           ...buildEnvelope(recipient.actorId, recipientDevice.deviceId),
@@ -809,6 +902,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: firstDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const created = await conversations.createE2eeConversation(sender.actorId, {
           clientRequestId: randomUUID(),
@@ -858,6 +952,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const { device: senderDevice1 } = await enrollFirstDevice(sender, 0);
         const senderDevice2 = await enrollAdditionalDevice(sender);
         const { device: recipientDevice1 } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
         const recipientDevice2 = await enrollAdditionalDevice(recipient);
 
         const created = await conversations.createE2eeConversation(sender.actorId, {
@@ -906,6 +1001,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const created = await conversations.createE2eeConversation(sender.actorId, {
           clientRequestId: randomUUID(),
@@ -937,6 +1033,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const created = await conversations.createE2eeConversation(sender.actorId, {
           clientRequestId: randomUUID(),
@@ -1006,6 +1103,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const created = await conversations.createE2eeConversation(sender.actorId, {
           clientRequestId: randomUUID(),
@@ -1059,6 +1157,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         for (let i = 0; i < memberCount; i += 1) {
           const actor = await newActor();
           const { device } = await enrollFirstDevice(actor, 0);
+          if (i > 0) {
+            await allowDirectMessaging(actors[0]!.actorId, actor.actorId);
+          }
           actors.push(actor);
           devices.push(device);
         }
@@ -1143,6 +1244,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
         const ninth = await newActor();
         await enrollFirstDevice(ninth, 0);
+        await allowDirectMessaging(eight.sender.actorId, ninth.actorId);
         const state = await conversations.getE2eeConversationState(eight.sender.actorId, {
           conversationId: eight.created.conversationId,
         });
@@ -1165,12 +1267,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
 
       it('AddE2eeMember bumps the epoch; a stale-epoch send is rejected and the new member gets future messages only', async () => {
-        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const { actors, devices, sender, senderDevice, created } = await createGroup(3);
         const member = actors[1]!;
         const memberDevice = devices[1]!;
 
         const newcomer = await newActor();
         const { device: newcomerDevice } = await enrollFirstDevice(newcomer, 0);
+        await allowDirectMessaging(sender.actorId, newcomer.actorId);
 
         const added = await groups.addE2eeMember(sender.actorId, {
           conversationId: created.conversationId,
@@ -1194,7 +1297,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(state.membershipEpoch).toBe('2');
         expect(state.groupControlDigest).toEqual(added.event?.digest);
         expect(state.members.map((m) => m.actorId).sort()).toEqual(
-          [sender.actorId, member.actorId, newcomer.actorId].sort(),
+          [sender.actorId, member.actorId, actors[2]!.actorId, newcomer.actorId].sort(),
         );
 
         // Composed under epoch 1 while the conversation is at 2: rejected whole.
@@ -1205,6 +1308,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             senderDeviceId: senderDevice.deviceId,
             message: buildLogicalMessage([
               buildEnvelope(member.actorId, memberDevice.deviceId),
+              buildEnvelope(actors[2]!.actorId, devices[2]!.deviceId),
               buildEnvelope(newcomer.actorId, newcomerDevice.deviceId),
             ]),
           }),
@@ -1218,6 +1322,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           message: buildLogicalMessage(
             [
               buildEnvelope(member.actorId, memberDevice.deviceId),
+              buildEnvelope(actors[2]!.actorId, devices[2]!.deviceId),
               buildEnvelope(newcomer.actorId, newcomerDevice.deviceId),
             ],
             { epoch: 2n },
@@ -1330,7 +1435,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
 
       it('a member can remove themselves (leave), and a removed member can be re-added at the next epoch', async () => {
-        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const { actors, devices, sender, senderDevice, created } = await createGroup(3);
         const member = actors[1]!;
         const memberDevice = devices[1]!;
 
@@ -1374,9 +1479,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
 
       it('verifies the signed transcript: decoded-field tampering, wrong signer key, and chain breaks are rejected', async () => {
-        const { actors, sender, senderDevice, created } = await createGroup(2);
+        const { actors, sender, senderDevice, created } = await createGroup(3);
         const newcomer = await newActor();
         await enrollFirstDevice(newcomer, 0);
+        await allowDirectMessaging(sender.actorId, newcomer.actorId);
 
         // Tampered decoded view: the convenience fields no longer match the signed bytes.
         // (Tampering `signerDeviceId` would be caught even earlier, by the request-vs-event
@@ -1470,16 +1576,17 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         });
         expect(state.membershipEpoch).toBe('1');
         expect(state.members.map((m) => m.actorId).sort()).toEqual(
-          [sender.actorId, actors[1]!.actorId].sort(),
+          [sender.actorId, actors[1]!.actorId, actors[2]!.actorId].sort(),
         );
       });
 
       it('ListE2eeGroupControlEvents returns the verified chain forward and keyset-paginates', async () => {
-        const { actors, devices, sender, senderDevice, created } = await createGroup(2);
+        const { actors, devices, sender, senderDevice, created } = await createGroup(3);
         const member = actors[1]!;
         const memberDevice = devices[1]!;
         const newcomer = await newActor();
         await enrollFirstDevice(newcomer, 0);
+        await allowDirectMessaging(sender.actorId, newcomer.actorId);
 
         const added = await groups.addE2eeMember(sender.actorId, {
           conversationId: created.conversationId,
@@ -1539,15 +1646,26 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(none.events).toHaveLength(0);
         expect(none.page?.hasMore).toBe(false);
 
-        // A non-member may not read the transcript.
+        // A removed member may read the transcript up to and including their own removal
+        // event (audit P2 fix); a never-member still gets the uniform not-found.
+        const outsider = await newActor();
+        await enrollFirstDevice(outsider, 0);
         await expect(
-          groups.listGroupControlEvents(newcomer.actorId, {
+          groups.listGroupControlEvents(outsider.actorId, {
             conversationId: created.conversationId,
             afterEpoch: '0',
             cursor: '',
             limit: 10,
           }),
         ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
+
+        const removedMemberView = await groups.listGroupControlEvents(newcomer.actorId, {
+          conversationId: created.conversationId,
+          afterEpoch: '0',
+          cursor: '',
+          limit: 10,
+        });
+        expect(removedMemberView.events.map((event) => event.epoch)).toEqual(['2', '3']);
       });
     });
   },

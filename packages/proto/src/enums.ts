@@ -35,10 +35,7 @@ import type {
 } from './generated/patches/v1/filters.js';
 import type { LabelAction as LabelActionT } from './generated/patches/v1/labels.js';
 import type { MediaStatus as MediaStatusT } from './generated/patches/v1/media.js';
-import type {
-  ConversationKind as ConversationKindT,
-  MessageRequestStatus as MessageRequestStatusT,
-} from './generated/patches/v1/messages.js';
+import type { ConversationKind as ConversationKindT } from './generated/patches/v1/messages.js';
 import type {
   ModerationActionType as ModerationActionTypeT,
   ModerationLogSubjectKind as ModerationLogSubjectKindT,
@@ -186,13 +183,6 @@ export const CONVERSATION_KIND = {
   UNSPECIFIED: 'CONVERSATION_KIND_UNSPECIFIED' as ConversationKindT,
   DIRECT: 'CONVERSATION_KIND_DIRECT' as ConversationKindT,
   GROUP: 'CONVERSATION_KIND_GROUP' as ConversationKindT,
-} as const;
-
-export const MESSAGE_REQUEST_STATUS = {
-  UNSPECIFIED: 'MESSAGE_REQUEST_STATUS_UNSPECIFIED' as MessageRequestStatusT,
-  PENDING: 'MESSAGE_REQUEST_STATUS_PENDING' as MessageRequestStatusT,
-  ACCEPTED: 'MESSAGE_REQUEST_STATUS_ACCEPTED' as MessageRequestStatusT,
-  DECLINED: 'MESSAGE_REQUEST_STATUS_DECLINED' as MessageRequestStatusT,
 } as const;
 
 export const FILTER_TERM_KIND = {

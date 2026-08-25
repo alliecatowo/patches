@@ -25,6 +25,7 @@ import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 import { E2eeMailboxEnvelope } from './e2ee-mailbox-envelope.entity.js';
 import { E2eeNodeFrankingKey } from './e2ee-node-franking-key.entity.js';
 import { E2eeOneTimePrekey } from './e2ee-one-time-prekey.entity.js';
+import { E2eeOneTimePrekeyKeyId } from './e2ee-one-time-prekey-key-id.entity.js';
 import { E2eeReportEvidenceItem } from './e2ee-report-evidence-item.entity.js';
 import { E2eeReportEvidence } from './e2ee-report-evidence.entity.js';
 import { E2eeSignedPrekey } from './e2ee-signed-prekey.entity.js';
@@ -47,8 +48,6 @@ import { LabelerSubscription } from './labeler-subscription.entity.js';
 import { LabelerSubscriptionAction } from './labeler-subscription-action.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
-import { Message } from './message.entity.js';
-import { MessageRequest } from './message-request.entity.js';
 import { ModerationLogEntry } from './moderation-log-entry.entity.js';
 import { Mute } from './mute.entity.js';
 import { Notification } from './notification.entity.js';
@@ -131,13 +130,12 @@ export const ALL_ENTITIES = [
   CommunityInvite,
   Conversation,
   ConversationMember,
-  Message,
-  MessageRequest,
   E2eeIdentityRoot,
   E2eeDeviceIdentity,
   E2eeDeviceRoster,
   E2eeSignedPrekey,
   E2eeOneTimePrekey,
+  E2eeOneTimePrekeyKeyId,
   E2eeLogicalMessage,
   E2eeMailboxEnvelope,
   E2eeGroupControlEvent,

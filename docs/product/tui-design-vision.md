@@ -32,8 +32,9 @@ the row you are reading, and never once garbled.
 6. **The terminal is the brand.** No faux-GUI: no fake shadows, no mouse dependence, no emoji
    soup. Box-drawing, weight (bold/dim), one accent, and whitespace do the design work — the
    same tools `lazygit`, `k9s` and `htop` use, applied with more restraint.
-7. **Honest by construction.** DMs say what they are (§183.1); tombstones, CWs and moderation
-   notices are content and always render (§185); nothing is animated to make you stay (§4.2).
+7. **Honest by construction.** DMs say what they are — end-to-end encrypted, but visible to the
+   node as metadata (§194, ADR 0030/B-095); tombstones, CWs and moderation notices are content
+   and always render (§185); nothing is animated to make you stay (§4.2).
 
 ---
 
@@ -459,20 +460,21 @@ post's tags as a strip picker, `#` jumps to the first tag's feed; the tag feed r
 
 ```text
  patches › messages › @kim ──────────────────────────────────────── ● patches.social  @allison  ✉ 2
- ⚠ Not end-to-end encrypted — this node's operators can read these messages.     retention: 90 days
+ ✓ End-to-end encrypted. This node cannot read these messages, but it can see who you message and when.
  ── conversations ────────────────│ ── @kim ────────────────────────────────────────────────────────
  ▌@kim                      1h  ● │                                      did the ssh flow work?  1h
   @bob, @carol (3)          1d    │  yep! agent forwarding and everything                       58m
-  requests (1)                    │                                         nice. write it up?  57m
+                                  │
                                   │
                                   │ ▌type a message…                    ^S send · Enter newline
 ```
 
-The notice is a permanent first content row (never in the ribbon, never scrolls away, never a
-tooltip — §183.1). Requests are a separate folder with accept/decline confirms; no attachments,
-no previews, no typing indicator, no read receipts (§183.3, §194). `Ctrl+S` sends, like every
-form (§77's "explicit submit key"); `Enter` inserts a newline unless the preference "Enter sends
-in messages" is on. Optional `D` drawer (proposal: same primitive as notifications, opens the
+The disclosure is a permanent first content row (never in the ribbon, never scrolls away, never a
+tooltip — §194). Starting a conversation requires a mutual follow — there is no message-request
+folder; that flow was retired with the plaintext mode it depended on (ADR 0030/B-095). No
+attachments, no previews, no typing indicator, no read receipts (§183.3, §194). `Ctrl+S` sends,
+like every form (§77's "explicit submit key"); `Enter` inserts a newline unless the preference
+"Enter sends in messages" is on. Optional `D` drawer (proposal: same primitive as notifications, opens the
 newest conversation) — the notice renders at the top of the drawer too. Sending is optimistic with `⠋` → `✓`; a failed send keeps the text in the box.
 
 ### 5.9 Search (`/`)
@@ -579,7 +581,8 @@ only), TUI ring + drawer + plain form (`now: @bob soldering… (12m)`).
 - No reaction picker; the like glyph is a skin on _your_ like (§184.2). No per-glyph counts.
 - No view counts, read receipts, typing indicators, "seen by", online presence, streaks (§4.2, §183.3).
 - No cosmetics that gate function; a capability may unlock a colour, never a verb (§184.3).
-- No "encrypted/secure/private" wording near DMs; no DM text in any log or error (§183.1, §194).
+- No "encrypted/secure/private" wording near DMs outside the one fixed E2EE disclosure sentence;
+  no DM text in any log or error (§194).
 - No mouse-first affordances, no auto-playing anything, no infinite auto-load (paging is `n`/`Space`
   and the sticky "new" pill; the list never grows under your cursor).
 - No hover-only information, no icon-only controls, no colour-only state.

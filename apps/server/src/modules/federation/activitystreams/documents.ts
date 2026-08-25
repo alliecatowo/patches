@@ -1,3 +1,5 @@
+import type { QuotePolicy } from '@patches/database';
+
 import { ACTIVITYSTREAMS_CONTEXT } from '../federation.constants.js';
 import {
   localActorFollowersUri,
@@ -63,6 +65,16 @@ export function buildActorDocument(
   return prune(doc);
 }
 
+/** One outbound `as:Hashtag` entry (P18-006, ADR 0028 §3). `name` is the canonical
+ * normalized `tags.name` — the AS2 convention (Mastodon's documented shape, research note
+ * §3) prefixes it with `#` at emit time, which is also what this node's own inbound ingest
+ * strips back off. `href` is this node's tag-page URI or `null` when the node exposes none
+ * (a remote `href` is display metadata at most — this node never follows it). */
+export interface LocalNoteTag {
+  name: string;
+  href: string | null;
+}
+
 export interface LocalNoteInput {
   id: string;
   attributedTo: string;
@@ -75,10 +87,40 @@ export interface LocalNoteInput {
    * visibilities are not federated in F1 — `FederationGateway.publishPost` only ever calls
    * this for `PUBLIC` posts. */
   followersUri: string;
+  /** P18-006: the post's tags, emitted as `as:Hashtag` entries on the AS2 `tag` property
+   * (an AS2 *extension* term, not the Recommendation — research note §3). Omitted when the
+   * post has none, so pre-P18-006 callers (the outbox serializer) emit the same document
+   * shape they always did. */
+  tags?: LocalNoteTag[] | undefined;
+  /** P18-006 (ADR 0028 §3): the federated URI of the post this post quotes. When present,
+   * the note carries FEP-044f `quote` **and** all three legacy fallback properties — the
+   * combination the FEP itself recommends and Mastodon documents accepting. Strictly
+   * additive: a peer that understands none of the four still receives a valid plain post. */
+  quoteUri?: string | undefined;
+  /** P18-006: who may quote *this* post, mapped onto FEP-044f/GoToSocial interaction-policy
+   * vocabulary. Omitted by callers that don't know the policy. There is deliberately no
+   * `following` value — that is an inbound-only spelling some peers use (`packages/database`
+   * `enums.ts`, research note §2), never one this node emits. */
+  quotePolicy?: QuotePolicy | undefined;
+}
+
+/** The single audience URI each local policy maps to (ADR 0028 §3; research note §2:
+ * Mastodon's authoring set is `public`/`followers`/`nobody` — a 1:1 map onto ours). */
+function quotePolicyAudienceUri(note: LocalNoteInput, policy: QuotePolicy): string {
+  switch (policy) {
+    case 'ANYONE':
+      return 'https://www.w3.org/ns/activitystreams#Public';
+    case 'FOLLOWERS':
+      return note.followersUri;
+    case 'NOBODY':
+      // "Just me": the author's own actor URI — FEP-044f auto-approves self-quotes, so a
+      // canQuote of the author alone is exactly the NOBODY policy.
+      return note.attributedTo;
+  }
 }
 
 export function buildNoteObject(note: LocalNoteInput): ActivityStreamsDocument {
-  return prune({
+  const doc: ActivityStreamsDocument = {
     id: note.id,
     type: 'Note',
     attributedTo: note.attributedTo,
@@ -87,7 +129,37 @@ export function buildNoteObject(note: LocalNoteInput): ActivityStreamsDocument {
     inReplyTo: note.inReplyTo,
     to: ['https://www.w3.org/ns/activitystreams#Public'],
     cc: [note.followersUri],
-  });
+  };
+  if (note.tags !== undefined && note.tags.length > 0) {
+    doc.tag = note.tags.map((tag) =>
+      prune({
+        type: 'Hashtag',
+        name: `#${tag.name}`,
+        // Deterministic fragment id derived from the note's own URI (never a random UUID —
+        // same discipline as `activity-ids.ts`), so re-serializing the same post is
+        // byte-stable for outbox/delivery retries.
+        id: `${note.id}#tag-${encodeURIComponent(tag.name)}`,
+        href: tag.href ?? undefined,
+      }),
+    );
+  }
+  if (note.quoteUri !== undefined && note.quoteUri !== null) {
+    // Bare JSON keys, exactly as Misskey/Fedibird emit the legacy trio in the wild; the
+    // FEP-044f `quote` term is emitted bare the same way (adding @context mappings would
+    // change `federation.constants.ts`, and every mainstream reader matches on the bare
+    // name — re-verify at the P18-008 two-node lab).
+    doc.quote = note.quoteUri;
+    doc.quoteUri = note.quoteUri;
+    doc.quoteUrl = note.quoteUri;
+    doc._misskey_quote = note.quoteUri;
+  }
+  if (note.quotePolicy !== undefined) {
+    doc.interactionPolicy = prune({
+      id: `${note.id}#interaction-policy`,
+      canQuote: quotePolicyAudienceUri(note, note.quotePolicy),
+    });
+  }
+  return prune(doc);
 }
 
 /** Wraps `object` in a `{type, id, actor, object}` activity — every AS2 side-effecting

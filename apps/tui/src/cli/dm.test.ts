@@ -1,11 +1,6 @@
 import { create } from '@bufbuild/protobuf';
-import {
-  ListConversationsResponseSchema,
-  ListMessageRequestsResponseSchema,
-  ListMessagesResponseSchema,
-  SendMessageResponseSchema,
-} from '@patches/proto/es';
-import type { Actor, Conversation, Message, MessageRequest } from '../api/wire/types.js';
+import { ListConversationsResponseSchema } from '@patches/proto/es';
+import type { Actor, Conversation } from '../api/wire/types.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { runDm, type DmCommandApi, type DmCommandSession } from './dm.js';
@@ -14,8 +9,6 @@ import {
   makeActor,
   makeConversation,
   makeConversationMember,
-  makeMessage,
-  makeMessageRequest,
   makePageInfo,
 } from '../test/wire-fixtures.js';
 
@@ -34,35 +27,17 @@ function conversation(id = 'conversation-1'): Conversation {
   });
 }
 
-function message(id: string, body: string): Message {
-  return makeMessage({ id, sender: alice, body });
-}
-
-function request(id: string, body: string): MessageRequest {
-  return makeMessageRequest({ id, sender: alice, body });
-}
-
 interface FakeApi extends DmCommandApi {
   listConversations: ReturnType<typeof vi.fn<DmCommandApi['listConversations']>>;
   getConversation: ReturnType<typeof vi.fn<DmCommandApi['getConversation']>>;
-  listMessages: ReturnType<typeof vi.fn<DmCommandApi['listMessages']>>;
-  sendMessage: ReturnType<typeof vi.fn<DmCommandApi['sendMessage']>>;
   markConversationRead: ReturnType<typeof vi.fn<DmCommandApi['markConversationRead']>>;
-  listMessageRequests: ReturnType<typeof vi.fn<DmCommandApi['listMessageRequests']>>;
-  respondToMessageRequest: ReturnType<typeof vi.fn<DmCommandApi['respondToMessageRequest']>>;
 }
 
 function fakeApi(): FakeApi {
   return {
     listConversations: vi.fn().mockResolvedValue({ conversations: [], page: undefined }),
     getConversation: vi.fn().mockResolvedValue({ conversation: conversation() }),
-    listMessages: vi.fn().mockResolvedValue({ messages: [], page: undefined }),
-    sendMessage: vi.fn().mockResolvedValue({ message: undefined }),
     markConversationRead: vi.fn().mockResolvedValue({}),
-    listMessageRequests: vi.fn().mockResolvedValue({ requests: [], page: undefined }),
-    respondToMessageRequest: vi
-      .fn()
-      .mockResolvedValue({ request: undefined, conversation: undefined }),
   };
 }
 
@@ -96,7 +71,7 @@ function deps(api: DmCommandApi, output: CliIo): Parameters<typeof runDm>[1] {
 }
 
 describe('runDm', () => {
-  it('lists conversations with keyset flags and sanitizes remote actor text', async () => {
+  it('lists conversations with keyset flags, sanitizes remote actor text, and states the accurate E2EE disclosure', async () => {
     const api = fakeApi();
     const output = io();
     const hostile = actor('actor-hostile', `mallory\x1b[2J`, 'Mal\x07lory');
@@ -117,88 +92,40 @@ describe('runDm', () => {
     expect(exitCode).toBe(0);
     expect(api.listConversations).toHaveBeenCalledWith({ cursor: 'opaque-cursor', limit: 7 });
     expect(output.out[0]).toBe(
-      "Not end-to-end encrypted — this node's operators can read these messages.\n",
+      'End-to-end encrypted. This node cannot read these messages, but it can see who you message and when.\n',
     );
     expect(output.out.join('')).toContain('Mallory (@mallory[2J)');
     expect(output.out.join('')).toContain('next cursor: next[H');
     expect(output.out.join('')).not.toContain('\x1b');
   });
 
-  it('sends a message with an idempotency id', async () => {
+  it('refuses to send, pointing at the interactive app, since no headless surface holds E2EE keys', async () => {
     const api = fakeApi();
     const output = io();
-    api.sendMessage.mockResolvedValue(
-      create(SendMessageResponseSchema, { message: message('message-1', 'hello there') }),
-    );
 
-    const exitCode = await runDm(['send', 'conversation-1', 'hello', 'there'], deps(api, output));
+    const exitCode = await runDm(['send', 'conversation-1', 'hello'], deps(api, output));
 
-    expect(exitCode).toBe(0);
-    expect(api.sendMessage).toHaveBeenCalledWith({
-      clientRequestId: 'client-request-id',
-      conversationId: 'conversation-1',
-      body: 'hello there',
-    });
-    expect(output.out.join('')).toContain('Sent message-1.');
+    expect(exitCode).toBe(1);
+    expect(api.getConversation).not.toHaveBeenCalled();
+    expect(output.err.join('')).toContain('end-to-end encryption');
+    expect(output.err.join('')).toContain('interactive app');
   });
 
-  it('sanitizes text returned in a transport error', async () => {
+  it('refuses to read for the same reason', async () => {
     const api = fakeApi();
     const output = io();
-    api.sendMessage.mockRejectedValue({ code: 3, details: `bad\x1b[2J request` });
 
-    expect(await runDm(['send', 'conversation-1', 'hello'], deps(api, output))).toBe(1);
-    expect(output.err.join('')).toContain('bad[2J request');
-    expect(output.err.join('')).not.toContain('\x1b');
+    const exitCode = await runDm(['read', 'conversation-1'], deps(api, output));
+
+    expect(exitCode).toBe(1);
+    expect(output.err.join('')).toContain('interactive app');
   });
 
-  it('reads a page chronologically and marks through its newest message', async () => {
+  it('unknown subcommand still reports usage', async () => {
     const api = fakeApi();
     const output = io();
-    api.listMessages.mockResolvedValue(
-      create(ListMessagesResponseSchema, {
-        messages: [message('newest', `new\x1b[2J`), message('older', 'old')],
-        page: makePageInfo({ nextCursor: 'older-cursor', hasMore: true }),
-      }),
-    );
 
-    const exitCode = await runDm(['read', 'conversation-1', '--limit', '2'], deps(api, output));
-
-    expect(exitCode).toBe(0);
-    expect(api.getConversation).toHaveBeenCalledWith({ id: 'conversation-1' });
-    expect(api.listMessages).toHaveBeenCalledWith({
-      conversationId: 'conversation-1',
-      cursor: '',
-      limit: 2,
-    });
-    expect(api.markConversationRead).toHaveBeenCalledWith({
-      conversationId: 'conversation-1',
-      throughMessageId: 'newest',
-    });
-    expect(output.out.join('').indexOf('\told')).toBeLessThan(
-      output.out.join('').indexOf('\tnew[2J'),
-    );
-  });
-
-  it('lists, accepts, and declines requests', async () => {
-    const api = fakeApi();
-    api.listMessageRequests.mockResolvedValue(
-      create(ListMessageRequestsResponseSchema, {
-        requests: [request('request-1', `hello\x1b[H`)],
-      }),
-    );
-
-    const listed = io();
-    expect(await runDm(['requests'], deps(api, listed))).toBe(0);
-    expect(api.listMessageRequests).toHaveBeenCalledWith({ cursor: '', limit: 20 });
-    expect(listed.out.join('')).toContain('hello[H');
-
-    const accepted = io();
-    expect(await runDm(['requests', 'accept', 'request-1'], deps(api, accepted))).toBe(0);
-    expect(api.respondToMessageRequest).toHaveBeenCalledWith({ id: 'request-1', accept: true });
-
-    const declined = io();
-    expect(await runDm(['requests', 'decline', 'request-2'], deps(api, declined))).toBe(0);
-    expect(api.respondToMessageRequest).toHaveBeenCalledWith({ id: 'request-2', accept: false });
+    expect(await runDm(['requests'], deps(api, output))).toBe(1);
+    expect(output.err.join('')).toContain('Unknown dm subcommand');
   });
 });

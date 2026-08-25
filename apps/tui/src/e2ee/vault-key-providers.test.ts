@@ -102,6 +102,47 @@ describe('GuardedFileVaultKeyProvider', () => {
     expect(fs.modes.get(keyPath)).toBe(0o600);
   });
 
+  it('sweeps a crashed rotation temp so no plaintext wrapping key is left behind', async () => {
+    const { provider, fs } = make();
+    const original = await provider.loadOrCreate();
+    // A process that died between the exclusive open and the rename leaves this: a
+    // 0600 file containing the wrapping key in the clear.
+    const orphan = `${keyPath}.4242.11111111-2222-3333-4444-555555555555.tmp`;
+    fs.files.set(orphan, new TextEncoder().encode('{"v":1,"k":"AAAA","g":0}\n'));
+
+    const reopened = await new GuardedFileVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    }).loadOrCreate();
+
+    expect([...fs.files.keys()]).toEqual([keyPath]);
+    // Sweeping is cleanup, never a reset: the live key is untouched.
+    expect(reopened.wrappingKey).toEqual(original.wrappingKey);
+  });
+
+  it('sweeps temps on delete so a wipe leaves no recoverable key', async () => {
+    const { provider, fs } = make();
+    await provider.loadOrCreate();
+    fs.files.set(`${keyPath}.99.abc.tmp`, new TextEncoder().encode('{"v":1,"k":"AAAA","g":0}\n'));
+    await provider.delete();
+    expect([...fs.files.keys()]).toEqual([]);
+  });
+
+  it('leaves unrelated files in the key directory alone', async () => {
+    const { provider, fs } = make();
+    await provider.loadOrCreate();
+    const neighbour = '/cfg/patches/e2ee/keys/other.key';
+    fs.files.set(neighbour, new TextEncoder().encode('{"v":1,"k":"AAAA","g":0}\n'));
+    fs.files.set(`${neighbour}.7.x.tmp`, new TextEncoder().encode('not ours'));
+    await provider.advanceGeneration(9);
+    expect([...fs.files.keys()].sort()).toEqual(
+      [neighbour, `${neighbour}.7.x.tmp`, keyPath].sort(),
+    );
+  });
+
   it('fails closed on a malformed key file', async () => {
     const { fs } = make();
     fs.files.set(keyPath, new TextEncoder().encode('{oops'));

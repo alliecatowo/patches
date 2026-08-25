@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { Actor, Follow, Post, Repost } from '@patches/database';
+import { Actor, Follow, Post, PostTag, Repost } from '@patches/database';
 import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
-import { localRepostAnnounceUri } from '../activity-ids.js';
+import { localDeterministicActivityUri, localRepostAnnounceUri } from '../activity-ids.js';
 import { buildActivity, buildNoteObject, buildTombstone } from '../activitystreams/documents.js';
 import type { FederationGateway } from '../federation-gateway.js';
 import { localActorFollowersUri, localActorUri, localPostUri } from '../activitystreams/uris.js';
@@ -53,6 +53,18 @@ export class ActivityPubFederationGateway implements FederationGateway {
 
     const actorUri = localActorUri(origin, author.handleNormalized);
     const inReplyTo = await this.federatedUriForPost(manager, post.inReplyToId);
+    // P18-006: the note's tags (from `post_tags`, the same rows the local tag feed reads)
+    // and quote linkage/policy, emitted additively per ADR 0028 §3. Ordered deterministically
+    // (insertion order, then tag id) so delivery retries serialize byte-identical documents.
+    const postTagRows = await manager.getRepository(PostTag).find({
+      where: { postId: post.id },
+      relations: { tag: true },
+      order: { createdAt: 'ASC', tagId: 'ASC' },
+    });
+    const quoteUri =
+      post.quotedPostId === null || post.quotedPostId === undefined
+        ? undefined
+        : await this.federatedUriForPost(manager, post.quotedPostId);
     const note = buildNoteObject({
       id: localPostUri(origin, post.id),
       attributedTo: actorUri,
@@ -60,6 +72,12 @@ export class ActivityPubFederationGateway implements FederationGateway {
       published: post.createdAt,
       inReplyTo: inReplyTo ?? null,
       followersUri: localActorFollowersUri(origin, author.handleNormalized),
+      tags:
+        postTagRows.length === 0
+          ? undefined
+          : postTagRows.map((row) => ({ name: row.tag.name, href: null })),
+      quoteUri,
+      quotePolicy: post.quotePolicy,
     });
     const activity = buildActivity({
       id: `${origin}/activities/${randomUUID()}`,
@@ -106,11 +124,13 @@ export class ActivityPubFederationGateway implements FederationGateway {
     await this.keys.getOrCreateKeyPair(manager, follower.id);
 
     const origin = this.config.publicOrigin;
+    const followActorUri = localActorUri(origin, follower.handleNormalized);
+    const targetUri = target.canonicalUri ?? '';
     const activity = buildActivity({
-      id: `${origin}/activities/${randomUUID()}`,
+      id: localDeterministicActivityUri(origin, 'follow', followActorUri, targetUri),
       type: 'Follow',
-      actor: localActorUri(origin, follower.handleNormalized),
-      object: target.canonicalUri ?? '',
+      actor: followActorUri,
+      object: targetUri,
     });
     await this.delivery.enqueue(manager, {
       actorId: follower.id,
@@ -134,15 +154,19 @@ export class ActivityPubFederationGateway implements FederationGateway {
 
     const origin = this.config.publicOrigin;
     const followActorUri = localActorUri(origin, follower.handleNormalized);
+    const targetUri = target.canonicalUri ?? '';
+    // The inner Follow's id is reconstructed exactly as `followRemoteActor` minted it
+    // (B-079) — the `follows` row is already gone by unfollow time (hard-deleted, not a
+    // status flip), so there is nothing left to look an id up from; it must be re-derived.
     const undo = buildActivity({
       id: `${origin}/activities/${randomUUID()}`,
       type: 'Undo',
       actor: followActorUri,
       object: buildActivity({
-        id: `${origin}/activities/${randomUUID()}`,
+        id: localDeterministicActivityUri(origin, 'follow', followActorUri, targetUri),
         type: 'Follow',
         actor: followActorUri,
-        object: target.canonicalUri ?? '',
+        object: targetUri,
       }),
     });
     await this.delivery.enqueue(manager, {
@@ -192,7 +216,7 @@ export class ActivityPubFederationGateway implements FederationGateway {
     // The outer Undo wrapper's own id may be one-shot random — what must be stable (ADR 0028
     // §4) is the *object*: exactly the deterministic Announce document, so a peer matches
     // this undo to the announce it already recorded. Never a fresh inner-activity id (the
-    // B-079 flaw unfollow/unlike still carry).
+    // Follow/Like paths follow the same rule via `localDeterministicActivityUri`, B-079).
     const undo = buildActivity({
       id: `${origin}/activities/${randomUUID()}`,
       type: 'Undo',
@@ -227,10 +251,14 @@ export class ActivityPubFederationGateway implements FederationGateway {
     await this.keys.getOrCreateKeyPair(manager, liker.id);
 
     const origin = this.config.publicOrigin;
+    const likerActorUri = localActorUri(origin, liker.handleNormalized);
+    // Deterministic id (B-079): `likes` has no surrogate id (composite `(actor, post)` PK,
+    // hard-deleted on unlike), so `unlikeRemotePost` re-derives this exact call to reconstruct
+    // the same `Like` document — including its id — to name inside `Undo`'s object.
     const activity = buildActivity({
-      id: `${origin}/activities/${randomUUID()}`,
+      id: localDeterministicActivityUri(origin, 'like', likerActorUri, post.canonicalUri),
       type,
-      actor: localActorUri(origin, liker.handleNormalized),
+      actor: likerActorUri,
       object: post.canonicalUri,
     });
     return { activity, inboxUrl: targetInbox };

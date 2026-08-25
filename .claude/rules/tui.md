@@ -101,9 +101,21 @@ message-typed field (`counts`, `avatar`, `editedAt`, `post`, …) as **`null`**,
 types say `undefined`. Never test `=== undefined` on such fields — use `present()` from
 `apps/tui/src/api/present.ts`. (Found the hard way: the app crashed on `author.counts.posts`.)
 
-## Direct messages (§183.1, §194)
+## Direct messages (§194, ADR 0030/B-095)
 
-The messages screen MUST render, on the screen itself (not help/tooltip), the exact notice:
-"Not end-to-end encrypted — this node's operators can read these messages". No TUI string may
-describe DMs as "encrypted", "secure" or "private" (a test greps for it). No attachment or
+`LEGACY_SERVER_VISIBLE` is retired (proto enum value reserved, never reissued) — every
+conversation is `CONVERSATION_SECURITY_MODE_E2EE_V1`. The old §183.1 notice ("Not end-to-end
+encrypted — this node's operators can read these messages") is now false and MUST NOT appear
+anywhere. The messages screen MUST instead render, on the screen itself (not help/tooltip),
+`requiredConversationDisclosure('E2EE_V1')` from `@patches/domain`:
+
+> End-to-end encrypted. This node cannot read these messages, but it can see who you message
+> and when.
+
+The second clause (metadata visibility) is load-bearing — don't drop it. §194 still bans
+"encrypted"/"secure"/"private" anywhere they'd overclaim; the fixed E2EE-mode copy above is
+the one deliberate, true exception, because every reachable conversation genuinely is E2EE.
+`apps/tui/src/screens/MessagesScreen.test.tsx` enforces this: it asserts the retired notice
+never renders, then greps `MessagesScreen.tsx` and `cli/dm.ts` for
+`encrypted|secure|private` after stripping the named fixed-copy exceptions. No attachment or
 link-preview affordance in DMs in v0.
