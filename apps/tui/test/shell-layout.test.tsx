@@ -192,15 +192,17 @@ describe('the header ribbon (P12-102)', () => {
 });
 
 describe('the direct-message drawer (P12-122)', () => {
-  it('opens beside the timeline on Ctrl+D and closes on Esc, keeping the disclosure', async () => {
+  it('opens beside the timeline on Ctrl+D and closes on Esc', async () => {
     const fake = seedTimeline();
     const app = renderAppInWindow(140, 40, { fake });
     await flush();
     await loginAs(app, 'alice', 'x');
 
     app.press('');
-    const opened = await expectFrame(app.lastFrame, 'Messages');
-    expect(opened).toContain('Not end-to-end encrypted');
+    // B-096: every conversation is E2EE_V1 now, so the retired server-visible
+    // notice no longer renders — the empty-state copy is what settles here instead.
+    const opened = await expectFrame(app.lastFrame, 'No conversations yet.');
+    expect(opened).toContain('Messages');
     assertFits(app, 'dm drawer open');
 
     app.press(KEY.escape);
@@ -217,7 +219,7 @@ describe('the direct-message drawer (P12-122)', () => {
 
     app.press('');
     // `g d`'s screen, not a drawer: the ribbon/status breadcrumb changes.
-    const frame = await expectFrame(app.lastFrame, 'Not end-to-end encrypted');
+    const frame = await expectFrame(app.lastFrame, 'No conversations yet.');
     expect(frame).toContain('Messages');
     assertFits(app, 'narrow Ctrl+D fallback');
     app.unmount();
