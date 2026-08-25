@@ -17,6 +17,7 @@ catalog:
   vitest: ^4.1.10
   '@vitest/coverage-v8': ^4.1.10
   '@swc/core': ^1.16.0
+  '@swc/cli': ^0.8.1
   unplugin-swc: ^1.5.11
   # nest
   '@nestjs/common': ^11.2.1

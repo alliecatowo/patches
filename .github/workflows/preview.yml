@@ -73,12 +73,16 @@ permissions:
 jobs:
   deploy:
     name: deploy (Fly preview + Neon branch)
-    # pull_request: skip forks (no secrets) and the closed event (teardown's job).
-    # workflow_dispatch: always allowed; the resolve step below fails fast on a
-    # missing or closed PR.
+    # pull_request: skip forks (no secrets), the closed event (teardown's job), and
+    # bot-authored PRs — dependabot/renovate runs get NO secrets (GitHub withholds
+    # them from Dependabot-triggered workflows), so a deploy there can only die at
+    # the first Neon/flyctl call with "Cannot run interactive auth in CI" (observed
+    # 2026-08-25, PR #80). workflow_dispatch: always allowed; the resolve step below
+    # fails fast on a missing or closed PR.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.action != 'closed' && github.event.pull_request.head.repo.fork == false)
+      (github.event.action != 'closed' && github.event.pull_request.head.repo.fork == false &&
+       github.event.pull_request.user.type != 'Bot')
     runs-on: ubuntu-latest
     concurrency:
       # One in-flight deploy per PR; a new push cancels the superseded deploy.

@@ -372,3 +372,14 @@ Two rules of thumb:
 2. **Never express "exactly once" as an application-side read-then-write** — put the uniqueness in
    the DML (`ON CONFLICT DO NOTHING` / conditional `UPDATE`), the same way `claimOutboxJobs` and
    `replayOutboxJob` already do.
+
+## A gitignored file listed in turbo globalDependencies splits the cache by checkout (2026-08-25)
+
+`.env` is in `turbo.json` `globalDependencies`, so every task's hash includes its
+contents. It is also gitignored — meaning the main checkout hashed one world and
+every fresh agent worktree (no `.env`) hashed another: two disjoint cache families,
+zero hits between them, even with a shared `TURBO_CACHE_DIR`. The worktree-setup
+hook now copies the main checkout's `.env` into each new worktree before the first
+build. General rule: anything in `globalDependencies` that isn't checked in must be
+materialized identically in every checkout sharing the cache, or the "shared" cache
+silently isn't.
