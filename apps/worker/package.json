@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "nest build -b swc -p tsconfig.build.json && find dist \\( -name \"*.test.js\" -o -name \"*.test.js.map\" \\) -delete",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "dev": "nest start --watch",
@@ -34,6 +34,7 @@
     "@nestjs/cli": "catalog:",
     "@nestjs/testing": "catalog:",
     "@patches/testkit": "workspace:*",
+    "@swc/cli": "catalog:",
     "@swc/core": "catalog:",
     "@types/nodemailer": "catalog:",
     "@types/pg": "catalog:",

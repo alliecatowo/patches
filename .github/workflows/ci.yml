@@ -28,6 +28,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
 
+      # nest doctor: Nest's own project health check (deprecated/removed APIs,
+      # misconfigurations). server + worker are the Nest apps (admin is not).
+      - name: nest doctor (server, worker)
+        run: |
+          pnpm --filter @patches/server exec nest doctor
+          pnpm --filter @patches/worker exec nest doctor
+
   proto:
     name: proto (buf + generated code freshness)
     runs-on: ubuntu-latest
@@ -67,6 +74,12 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm build
       - run: pnpm test
+
+      # Coverage floor for the security-critical package (thresholds live in
+      # packages/crypto/vitest.config.ts). Runs vitest directly — outside turbo —
+      # so it executes on every push rather than being replayed from cache.
+      - name: Enforce crypto coverage thresholds
+        run: pnpm --filter @patches/crypto exec vitest run --coverage
 
       # Optional: only uploads whatever coverage output the vitest projects already
       # produce on their own (no coverage flag is forced here — not every project is

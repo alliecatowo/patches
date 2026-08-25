@@ -350,3 +350,14 @@ only the ones at 0 (nothing unique in them), then `git worktree prune` and `git 
 **Learning:** The root kept implementing after an orchestration-only request, while model routing
 was obsolete and confused role-fixed effort with selectable overrides. **Action taken:** `AGENTS.md`
 now defines ownership, Luna/Terra/Sol review routing, fork economy, and effective-effort reporting.
+
+## A gitignored file listed in turbo globalDependencies splits the cache by checkout (2026-08-25)
+
+`.env` is in `turbo.json` `globalDependencies`, so every task's hash includes its
+contents. It is also gitignored — meaning the main checkout hashed one world and
+every fresh agent worktree (no `.env`) hashed another: two disjoint cache families,
+zero hits between them, even with a shared `TURBO_CACHE_DIR`. The worktree-setup
+hook now copies the main checkout's `.env` into each new worktree before the first
+build. General rule: anything in `globalDependencies` that isn't checked in must be
+materialized identically in every checkout sharing the cache, or the "shared" cache
+silently isn't.
