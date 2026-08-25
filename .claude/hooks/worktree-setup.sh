@@ -31,12 +31,18 @@ mkdir -p "$(dirname "$dir")" || exit 0
 git -C "$repo" worktree add -b "$branch" "$dir" HEAD >/dev/null 2>&1 || exit 0
 
 # Shared turbo cache across worktrees: the first build pays full cost, the rest replay it.
-cache="${TMPDIR:-/tmp}/patches-wt/.turbo-cache"
+# Same location as TURBO_CACHE_DIR in mise.toml [env] — one cache for the main checkout
+# and every worktree, set explicitly because this hook may run without mise env active.
+cache="${TURBO_CACHE_DIR:-$HOME/.cache/patches/turbo}"
 mkdir -p "$cache"
 
 {
   cd "$dir" || exit 0
   flock /tmp/patches-pnpm.lock pnpm install --prefer-offline --silent
+  # .env is in turbo's globalDependencies but gitignored — without a copy, every
+  # worktree hashes differently from the main checkout and never hits its cache
+  # entries (two disjoint hash families). Same machine, same local secrets: copy it.
+  [ -f "$repo/.env" ] && cp "$repo/.env" "$dir/.env"
   pnpm exec turbo run build --cache-dir="$cache" --output-logs=errors-only
 } >/dev/null 2>&1
 

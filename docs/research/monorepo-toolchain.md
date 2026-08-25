@@ -110,6 +110,17 @@ Docs: turborepo.dev/docs/reference/configuration, /crafting-your-repository/usin
 `dependsOn: ["^build"]` = run in workspace deps first. `cache:false,
 persistent:true` is the standard `dev`/watch-task pattern.
 
+**Cache location (re-verified 2026-08-25 against turbo 2.10.10):** default cache
+is `<repo>/.turbo/cache`. Override with `--cache-dir` **or the `TURBO_CACHE_DIR`
+env var** (verified empirically: both produce identical cache dirs). A shared
+absolute cache dir across the main checkout and sibling agent worktrees is the
+pattern this repo uses (`~/.cache/patches/turbo`, set in `mise.toml [env]` and
+in `.claude/hooks/worktree-setup.sh`) — turbo entries are content-addressed per
+task hash, so concurrent checkouts sharing one cache is safe and each new
+worktree replays builds instead of paying full cost. Do NOT point CI at the
+same var unless the cache is actually transported there; CI keeps the
+repo-local `.turbo` default and caches it via `actions/cache`.
+
 **Env handling — strict mode is the 2.x default.** `globalEnv` invalidates
 every task's cache hash; per-task `env` invalidates only that task. Undeclared
 env vars are filtered out of the task's runtime entirely, not just excluded

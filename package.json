@@ -19,7 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run build && vitest run",
+    "test": "turbo run test",
     "test:watch": "vitest",
     "test:integration": "vitest run --project database --project testkit --project server-integration --project worker-integration --project admin-integration --no-file-parallelism",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
