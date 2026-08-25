@@ -4,6 +4,7 @@ import { generateSigningKeyPair, sha256Hash, sign } from '@patches/crypto';
 import {
   Conversation as ConversationEntity,
   ConversationMember as ConversationMemberEntity,
+  Notification as NotificationEntity,
 } from '@patches/database';
 import {
   canonicalFanoutTranscript,
@@ -18,6 +19,7 @@ import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.s
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
 import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
 import { NotificationsService } from '../src/modules/notifications/notification.service.js';
+import { MessagesService } from '../src/modules/messages/messages.service.js';
 import {
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
@@ -839,6 +841,91 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         });
         // Not two envelopes: the retry did not create a second session/delivery.
         expect(mailbox.envelopes).toHaveLength(1);
+      });
+
+      it('an E2EE arrival writes exactly one content-free MESSAGE notification and bumps the recipient unread count (B-098, §187/§194)', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice } = await enrollFirstDevice(sender, 0);
+        const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
+
+        const clientRequestId = randomUUID();
+        const created = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId,
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage([
+            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
+          ]),
+        });
+
+        // Shape (§187): sender actor id + conversation id ONLY — never a body, preview,
+        // or any envelope metadata. There is nothing else on the row to check because
+        // the schema has no body column; postId/communityId must stay null.
+        const rows = await dataSource.getRepository(NotificationEntity).find({
+          where: { conversationId: created.conversationId },
+        });
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          type: 'MESSAGE',
+          recipientActorId: recipient.actorId,
+          actorId: sender.actorId,
+          postId: null,
+          communityId: null,
+        });
+
+        // No self-notify: the sender's own notification list stays empty for this
+        // conversation even though their device is a fanout member.
+        const selfRows = await dataSource.getRepository(NotificationEntity).find({
+          where: { recipientActorId: sender.actorId, conversationId: created.conversationId },
+        });
+        expect(selfRows).toHaveLength(0);
+
+        // Unread integration: the arrival reflects in the recipient's per-viewer unread
+        // count (query over E2eeLogicalMessage vs lastReadMessageId — nothing to bump,
+        // the row itself is the signal).
+        const messages = new MessagesService(dataSource);
+        expect(
+          (await messages.getConversation(recipient.actorId, created.conversationId)).unreadCount,
+        ).toBe(1);
+
+        // A dedup replay of the same logical message never notifies twice.
+        await conversations.sendEnvelopes(sender.actorId, {
+          conversationId: created.conversationId,
+          clientRequestId,
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage([
+            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
+          ]),
+        });
+        expect(
+          await dataSource.getRepository(NotificationEntity).count({
+            where: { conversationId: created.conversationId },
+          }),
+        ).toBe(1);
+
+        // The rate limit: the recipient reads (re-arming the unread-collapse dedupe),
+        // then a genuinely new message arrives inside the one-minute window — the
+        // message is delivered and unread goes back up, but no second notification row.
+        await messages.markConversationRead(recipient.actorId, created.conversationId, '');
+        const second = await conversations.sendEnvelopes(sender.actorId, {
+          conversationId: created.conversationId,
+          clientRequestId: randomUUID(),
+          senderDeviceId: senderDevice.deviceId,
+          message: buildLogicalMessage([
+            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
+          ]),
+        });
+        expect(second.logicalMessageId).not.toBe(created.logicalMessageId);
+        expect(
+          (await messages.getConversation(recipient.actorId, created.conversationId)).unreadCount,
+        ).toBe(1);
+        expect(
+          await dataSource.getRepository(NotificationEntity).count({
+            where: { conversationId: created.conversationId },
+          }),
+        ).toBe(1);
       });
 
       /**

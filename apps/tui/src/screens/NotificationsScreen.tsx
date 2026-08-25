@@ -24,6 +24,10 @@ const GROUP_WINDOW_MS = 10 * 60 * 1000;
 export interface NotificationGroup {
   readonly type: Notification['type'];
   readonly postId: string;
+  /** The MESSAGE analogue of `postId`: the conversation a B-098 arrival notification
+   * points at. Groups never merge across conversations, the way post groups never
+   * merge across posts. */
+  readonly conversationId: string;
   /** Newest-first, same order as the source list — `notifications[0]` is the row's
    * primary (the one `Enter`/`o` opens, and whose glyph/relative-time draws). */
   readonly notifications: readonly Notification[];
@@ -48,6 +52,7 @@ export function groupNotifications(
       last !== undefined &&
       last.type === notification.type &&
       last.postId === notification.postId &&
+      last.conversationId === notification.conversationId &&
       present(lastCreatedAt) &&
       present(createdAt) &&
       Math.abs(lastCreatedAt.getTime() - createdAt.getTime()) <= GROUP_WINDOW_MS;
@@ -57,6 +62,7 @@ export function groupNotifications(
       groups.push({
         type: notification.type,
         postId: notification.postId,
+        conversationId: notification.conversationId,
         notifications: [notification],
       });
     }
@@ -71,6 +77,10 @@ export interface NotificationsScreenProps {
   ensureAccessToken: () => Promise<string>;
   /** `Enter` on a LIKE/REPLY/MENTION notification — opens the related post's thread. */
   onOpenPost: (postId: string) => void;
+  /** `Enter` on a MESSAGE notification (B-098) — opens the conversation thread. Optional
+   * because alternate shells may have no messages surface; the row then falls back to
+   * the sender's profile. */
+  onOpenConversation?: ((conversationId: string) => void) | undefined;
   /** `Enter` on a FOLLOW notification — opens the triggering actor's profile. */
   onOpenAuthor: (actor: Actor) => void;
   /** Fires whenever notifications are marked read — by `m`, by opening one, or by
@@ -98,6 +108,8 @@ function typeIcon(type: Notification['type']): string {
       return '!';
     case NOTIFICATION_TYPE.FOLLOW_REQUEST:
       return '?';
+    case NOTIFICATION_TYPE.MESSAGE:
+      return '✉';
     default:
       return '·';
   }
@@ -120,6 +132,11 @@ function typeLabel(type: Notification['type']): string {
       // screen (or the requester's own profile) — this row is a pointer, not an
       // inline actionable control.
       return 'wants to follow you — see :followrequests';
+    case NOTIFICATION_TYPE.MESSAGE:
+      // B-098 (§187/§194): content-free by contract — the sender handle plus this
+      // fixed verb is all a MESSAGE row may ever render. Never a body preview; the
+      // client learns content only by opening the conversation.
+      return 'sent you a message';
     default:
       return 'notification';
   }
@@ -127,15 +144,17 @@ function typeLabel(type: Notification['type']): string {
 
 /**
  * `g n` — the caller's notifications (spec §56, §113): FOLLOW/LIKE/REPLY/MENTION/
- * MODERATION, keyset-paginated, `Enter` opens the related post/profile, `m` marks
- * every currently-loaded notification read. No push infrastructure in v0 — the TUI
- * polls (`useUnreadCount`) and refreshes this list manually.
+ * MESSAGE/MODERATION, keyset-paginated, `Enter` opens the related post/profile/
+ * conversation, `m` marks every currently-loaded notification read. No push
+ * infrastructure in v0 — the TUI polls (`useUnreadCount`) and refreshes this list
+ * manually.
  */
 export function NotificationsScreen({
   api,
   isActive,
   ensureAccessToken,
   onOpenPost,
+  onOpenConversation,
   onOpenAuthor,
   onReadStateChanged,
 }: NotificationsScreenProps): ReactElement {
@@ -252,6 +271,10 @@ export function NotificationsScreen({
     // `@erin +2 followed you` row opens @erin's profile, not the oldest follower's.
     const primary = group.notifications[0];
     if (primary === undefined) return;
+    if (primary.conversationId !== '' && onOpenConversation !== undefined) {
+      onOpenConversation(primary.conversationId);
+      return;
+    }
     if (primary.postId !== '') onOpenPost(primary.postId);
     else if (present(primary.actor)) onOpenAuthor(primary.actor);
   }

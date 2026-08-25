@@ -32,6 +32,7 @@ type NavEntryVariant =
         | 'followers'
         | 'following'
         | 'safetyNumber'
+        | 'messages'
       >;
     }
   | { screen: 'profile'; actorId: string; knownActor: Actor | undefined }
@@ -42,6 +43,10 @@ type NavEntryVariant =
   | { screen: 'postHistory'; postId: string }
   | { screen: 'page'; handle: string; slug: string }
   | { screen: 'report'; target: ReportTarget }
+  /** B-098: opening a conversation from a MESSAGE notification travels on the stack so
+   * `Esc` is still exactly one `pop` back to notifications. Absent `conversationId` is
+   * the plain `g d`/`:messages` list — same screen, no thread preselected. */
+  | { screen: 'messages'; conversationId?: string }
   /** `#`/search's tags tab/`:tag` (P12-115) — the tag travels on the stack entry, same
    * "no second fetch, `Esc` is still a `pop`" reasoning as `profile`/`page` above. */
   | { screen: 'tagFeed'; tag: Tag }
@@ -96,6 +101,8 @@ function sameEntry(a: NavEntry, b: NavEntry): boolean {
   if (a.screen === 'media' && b.screen === 'media') return a.postId === b.postId;
   if (a.screen === 'postEdit' && b.screen === 'postEdit') return a.postId === b.postId;
   if (a.screen === 'tagFeed' && b.screen === 'tagFeed') return a.tag.id === b.tag.id;
+  if (a.screen === 'messages' && b.screen === 'messages')
+    return a.conversationId === b.conversationId;
   return true;
 }
 
