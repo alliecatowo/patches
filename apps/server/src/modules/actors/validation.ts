@@ -78,13 +78,32 @@ export const acctSchema = z
   .max(320, 'acct is too long')
   .regex(/^[^@\s]+@[^@\s]+$/, 'acct must be in the form user@domain');
 
+/** `#RRGGBB`, or two `#RRGGBB` stops separated by a comma (a "start,end" gradient pair — see
+ * `apps/tui/src/components/Nameplate.tsx`'s `gradientFirstStop` and
+ * `apps/web/src/components/Nameplate.tsx`'s `nameplateColor`, the two renderers that consume
+ * this string). This field reaches the web client's `linear-gradient(90deg, ${stop}, ${stop})`
+ * and `color: ${stop}` CSS verbatim (B-136b) — the length cap alone let anything through
+ * (`javascript:`-style CSS expressions, `url(...)`, arbitrary function calls), so this is a
+ * strict allowlist that REJECTS a malformed value rather than trying to sanitize it into a
+ * safe one. Named CSS colours are deliberately not accepted — expanding the allowlist means
+ * expanding this regex, not adding a colour-name table with all of *its* own edge cases. */
+const NAME_COLOR_STOP = '#[0-9a-fA-F]{6}';
+const NAME_COLOR_PATTERN = new RegExp(`^${NAME_COLOR_STOP}(\\s*,\\s*${NAME_COLOR_STOP})?$`);
+
 /**
  * Client-writable nameplate fields (spec §173). `badges` is deliberately absent from this
  * schema — it is server-attested only, and `ActorService.updateProfile` never reads a client-
  * supplied value for it (see the caller).
  */
 export const nameplateInputSchema = z.object({
-  nameColor: z.string().trim().max(NAME_COLOR_MAX_LENGTH).optional(),
+  nameColor: z
+    .string()
+    .trim()
+    .max(NAME_COLOR_MAX_LENGTH)
+    .refine((value) => value === '' || NAME_COLOR_PATTERN.test(value), {
+      message: 'name_color must be #RRGGBB, or two #RRGGBB stops separated by a comma.',
+    })
+    .optional(),
   glyph: z.string().trim().max(GLYPH_MAX_LENGTH).optional(),
   avatarFrame: z.string().trim().max(AVATAR_FRAME_MAX_LENGTH).optional(),
   statusLine: z.string().trim().max(STATUS_LINE_MAX_LENGTH).optional(),
