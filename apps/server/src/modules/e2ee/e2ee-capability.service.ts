@@ -35,14 +35,17 @@ export class E2eeCapabilityService {
 
   getCapability(): GetE2eeCapabilityResponse {
     const signingEra = this.keys.currentEra();
+    const profileApproved = this.approvalPolicy.isProfileApproved(E2EE_FRANKING_PROFILE_V1);
     if (
-      this.approvalPolicy.isUnreviewedDevelopmentMode &&
+      (profileApproved || this.approvalPolicy.isUnreviewedDevelopmentMode) &&
       signingEra !== undefined &&
       this.keys.keyForEra(signingEra) !== undefined
     ) {
       return {
         capability: {
-          state: E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
+          state: profileApproved
+            ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY
+            : E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
           supportedProtocolVersions: [E2EE_PROTOCOL_V1],
           maxActiveDevicesPerActor: E2EE_MAX_ACTIVE_DEVICES_PER_ACTOR,
           maxGroupMembers: E2EE_GROUP_MAX_MEMBERS,

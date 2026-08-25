@@ -83,6 +83,8 @@ const envObjectSchema = z.object({
    * whether this node is authorized to exercise the isolated-test capability.
    */
   E2EE_UNREVIEWED_DEV_MODE: booleanish().default(false),
+  // Owner-approved franking profiles (P13-016 resolution). Empty = fail-closed.
+  E2EE_APPROVED_FRANKING_PROFILES: z.string().default(''),
   /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
