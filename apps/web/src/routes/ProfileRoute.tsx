@@ -11,11 +11,11 @@ import { FollowButton } from '../components/FollowButton.js';
 import { MessageIcon } from '../components/icons/Icons.js';
 import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
-import { NewMessageDialog } from '../components/NewMessageDialog.js';
 import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
+import { useToast } from '../components/ToastProvider.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
 import { NotFoundRoute } from './NotFoundRoute.js';
@@ -29,7 +29,7 @@ export function ProfileRoute(): JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
-  const [dmOpen, setDmOpen] = useState(false);
+  const toast = useToast();
   const profileHandle =
     handle !== undefined && handle.startsWith('@') && handle.length > 1 && handle[1] !== '@'
       ? handle.slice(1)
@@ -120,7 +120,12 @@ export function ProfileRoute(): JSX.Element {
               <button
                 type="button"
                 className={styles['messageBtn']}
-                onClick={() => setDmOpen(true)}
+                onClick={() =>
+                  toast.pushToast({
+                    message: `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
+                    tone: 'info',
+                  })
+                }
                 aria-label={`Send message to @${actor.handle}`}
               >
                 <MessageIcon size={16} />
@@ -269,19 +274,6 @@ export function ProfileRoute(): JSX.Element {
           emptyMessage="Not following anyone yet."
         />
       )}
-
-      {session && session.actor.id !== actor.id ? (
-        <NewMessageDialog
-          isOpen={dmOpen}
-          onClose={() => setDmOpen(false)}
-          initialRecipient={{
-            id: actor.id,
-            handle: actor.handle,
-            displayName: actor.displayName,
-            avatarUrl: actor.avatar?.url,
-          }}
-        />
-      ) : null}
     </div>
   );
 }

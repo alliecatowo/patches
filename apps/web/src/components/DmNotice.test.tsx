@@ -5,28 +5,23 @@ import { describe, expect, it } from 'vitest';
 import { DmNotice, dmNoticeCopy, securityModeLabel } from './DmNotice.js';
 
 describe('DmNotice', () => {
-  it('keeps the mandated §183.1 disclosure for LEGACY_SERVER_VISIBLE conversations', () => {
-    render(<DmNotice securityMode={ConversationSecurityMode.LEGACY_SERVER_VISIBLE} />);
-    expect(
-      screen.getByText("Not end-to-end encrypted — this node's operators can read these messages."),
-    ).toBeInTheDocument();
-  });
-
   it('says E2EE_V1 conversations are end-to-end encrypted and that this web view cannot decrypt them', () => {
     render(<DmNotice securityMode={ConversationSecurityMode.E2EE_V1} />);
     const text = screen.getByRole('note').textContent ?? '';
     expect(text).toContain('End-to-end encrypted.');
-    // The web client has no crypto runtime (B-102): it must not pretend otherwise.
+    // The web client has no crypto runtime (B-102/B-096): it must not pretend otherwise.
     expect(text).toMatch(/terminal client/);
-    expect(text).toMatch(/can't decrypt/);
+    expect(text).toMatch(/no key material to decrypt/);
   });
 
-  it('asserts neither claim when there is no conversation context', () => {
+  it('asserts neither claim when there is no conversation context, but still names E2EE accurately', () => {
     render(<DmNotice />);
     const text = screen.getByRole('note').textContent ?? '';
     expect(text).toBe(dmNoticeCopy(undefined));
-    expect(text).not.toContain('Not end-to-end encrypted —');
-    expect(text).not.toContain('End-to-end encrypted.');
+    // B-095/B-096 (ADR 0030): the retired server-visible mode can no longer exist, so —
+    // unlike before the migration — a generic notice may say "end-to-end encrypted" here
+    // without overclaiming, because that is now true of every conversation there is.
+    expect(text).toContain('end-to-end encrypted');
   });
 
   it.each([
@@ -39,12 +34,7 @@ describe('DmNotice', () => {
   });
 
   it('never uses "secure" or "private" to describe DMs in any mode (§194)', () => {
-    const modes = [
-      undefined,
-      ConversationSecurityMode.E2EE_V1,
-      ConversationSecurityMode.LEGACY_SERVER_VISIBLE,
-      ConversationSecurityMode.UNSPECIFIED,
-    ];
+    const modes = [undefined, ConversationSecurityMode.E2EE_V1, ConversationSecurityMode.UNSPECIFIED];
     for (const mode of modes) {
       render(<DmNotice securityMode={mode} />);
     }
@@ -59,9 +49,6 @@ describe('DmNotice', () => {
 describe('securityModeLabel', () => {
   it('labels the modes the API exposes and nothing else', () => {
     expect(securityModeLabel(ConversationSecurityMode.E2EE_V1)).toBe('E2EE');
-    expect(securityModeLabel(ConversationSecurityMode.LEGACY_SERVER_VISIBLE)).toBe(
-      'Server-visible',
-    );
     expect(securityModeLabel(ConversationSecurityMode.UNSPECIFIED)).toBeUndefined();
     expect(securityModeLabel(undefined)).toBeUndefined();
   });

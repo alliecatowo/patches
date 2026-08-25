@@ -21,6 +21,9 @@ vi.mock('../components/FollowButton.js', () => ({ FollowButton: () => null }));
 vi.mock('../components/ModerationActions.js', () => ({ ModerationActions: () => null }));
 vi.mock('../components/PageBlocks.js', () => ({ PageBlocks: () => null }));
 vi.mock('../components/PostTimeline.js', () => ({ PostTimeline: () => null }));
+vi.mock('../components/ToastProvider.js', () => ({
+  useToast: (): { pushToast: () => void } => ({ pushToast: () => undefined }),
+}));
 
 const { ProfileRoute } = await import('./ProfileRoute.js');
 

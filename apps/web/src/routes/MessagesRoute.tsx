@@ -1,18 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { DmNotice, securityModeLabel } from '../components/DmNotice.js';
 import { PlusIcon } from '../components/icons/Icons.js';
-import { NewMessageDialog } from '../components/NewMessageDialog.js';
+import { useToast } from '../components/ToastProvider.js';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import styles from './MessagesRoute.module.css';
 
+/** B-095/B-096: no client-creatable-conversation RPC survives for a web view with no
+ * E2EE key material — starting a conversation needs the terminal client's vault. */
+const START_CONVERSATION_HINT =
+  'Start a new conversation from the terminal client — this web view has no encryption keys to create one.';
+
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
-  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const toast = useToast();
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -26,7 +31,7 @@ export function MessagesRoute(): JSX.Element {
         <button
           type="button"
           className={styles['newMsgBtn']}
-          onClick={() => setNewMessageOpen(true)}
+          onClick={() => toast.pushToast({ message: START_CONVERSATION_HINT, tone: 'info' })}
           aria-label="New direct message"
         >
           <PlusIcon size={16} />
@@ -59,8 +64,6 @@ export function MessagesRoute(): JSX.Element {
           </Link>
         );
       })}
-
-      <NewMessageDialog isOpen={newMessageOpen} onClose={() => setNewMessageOpen(false)} />
     </div>
   );
 }
