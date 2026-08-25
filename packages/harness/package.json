@@ -22,5 +22,11 @@
   },
   "devDependencies": {
     "tsup": "catalog:"
+  },
+  "dependencies": {
+    "@connectrpc/connect": "catalog:",
+    "@connectrpc/connect-node": "catalog:",
+    "@patches/client": "workspace:*",
+    "@patches/proto": "workspace:*"
   }
 }

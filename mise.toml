@@ -212,7 +212,7 @@ description = "Print JSON status for the isolated one-node local browser/agent h
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js status"
 
 [tasks."lab:logs"]
-description = "Print harness server/worker logs; pass -- --follow to tail"
+description = "Print up to 200 allowlisted/redacted JSON log records; pass -- --request-id <exact> or --limit N (safe follow is disabled)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js logs \"$@\""
 
 [tasks."lab:down"]
@@ -220,8 +220,16 @@ description = "Stop only server and worker processes recorded by the isolated lo
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down"
 
 [tasks."lab:register"]
-description = "Create a disposable browser-login account in the running local harness; pass -- --handle alice"
+description = "Create a disposable local account through direct gRPC; pass password only with --password-stdin"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js register \"$@\""
+
+[tasks."lab:action"]
+description = "Run a direct local harness gRPC action; authenticated verbs require --password-stdin"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js \"$@\""
+
+[tasks."lab:world:ensure"]
+description = "Ensure an unchanged stable-key JSON world; declaration drift fails closed"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js world-ensure \"$@\""
 
 [tasks."docker:build"]
 description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"
@@ -286,4 +294,3 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\
 [tasks."neon:dev:destroy"]
 description = "Permanently delete the current ephemeral Neon dev branch"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
-

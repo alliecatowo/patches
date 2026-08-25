@@ -1,5 +1,39 @@
 # Agent harness contract
 
+## Direct action surface
+
+`mise run lab:action -- <verb> ...` drives the isolated lab through `@patches/client/grpc` and
+`createPatchesApi`, never through a TUI shell. The currently supported verbs are `register`,
+`login`, `logout`, `post`, `delete-post`, `follow`, `unfollow`, `notifications`, and
+`wait-unread`. Authenticated actions take `--handle --password-stdin`; plaintext passwords are
+never accepted in argv, and tokens are process-local and never written or printed. Every action
+revokes the sessions it creates before returning. Each action generates, sends, and returns its exact
+`x-request-id` (`requestIds` for multi-RPC notification/world actions); mutation results also
+return their deterministic `clientRequestId` where applicable.
+
+`mise run lab:world:ensure -- --file world.json` accepts credential-free, stable-key
+`{ users, follows?, posts? }` JSON. Credentials are derived from a protected, non-emitted lab seed.
+An identical declaration can be run twice; changes and removals fail closed because this slice does
+not yet implement authoritative inverse cleanup. It intentionally does not manage communities,
+DMs, Mailpit, or log inspection; notification actions exclude DM notifications and bounded waits
+observe unread counts only.
+
+For recovery testing only, `world-ensure --fail-after N` fails immediately after atomically
+journaling mutation `N`; rerun the identical declaration without the flag to prove resume. The
+journal is written before the first RPC and after every successful mutation, so a partial failure
+cannot be bypassed with a different declaration.
+
+World JSON is a strict recursive schema: every resource has a stable `key`, unknown fields and
+secret-bearing property names are rejected. The seed and ownership journal are current-user,
+regular, no-follow files with exact `0600` permissions; malformed, symlinked, weak, or permissive
+state is refused rather than repaired implicitly.
+
+`mise run lab:logs -- --request-id <exact> --limit 200` emits bounded JSON lines containing only
+allowlisted operational fields after string scrubbing. Non-JSON lines and arbitrary nested values
+are omitted. Each file is read backward with a hard 256 KiB/1,000-line pre-parse cap and an
+explicit `logs.truncated` record; request IDs must be canonical UUIDs and trace IDs exact 32-digit
+hex. Raw following is disabled until a streaming implementation can enforce the same boundary.
+
 This repository supports Codex, Claude, and other clients through the same contract:
 
 - The root/main agent orchestrates and gates acceptance. It delegates safely separable

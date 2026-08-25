@@ -1,16 +1,43 @@
 #!/usr/bin/env node
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createHmac, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { closeSync } from 'node:fs';
 import { chmod } from 'node:fs/promises';
 import { once } from 'node:events';
-import { resolve } from 'node:path';
+
+import {
+  assertActionProcessStatuses,
+  assertPasswordStdinArgs,
+  createHarnessApi,
+  createPost,
+  deletePost,
+  ensureWorld,
+  follow,
+  login,
+  logoutAll,
+  notifications,
+  readWorld,
+  register as registerRpc,
+  unknownCommandFailure,
+  writeCliError,
+  unfollow,
+  waitForUnread,
+} from './actions.js';
+import {
+  assertWorldCompatible,
+  declaredWorldManifest,
+  readWorldManifest,
+  readWorldSeed,
+  type WorldManifest,
+} from './world-state.js';
+import { readBoundedLogTail, writeSafeLogOutput, type BoundedLogSource } from './log-redaction.js';
 
 import {
   DEFAULT_DATABASE_NAME,
   DEFAULT_GRPC_PORT,
   DEFAULT_HTTP_PORT,
   allowlistedRuntimeEnvironment,
+  atomicPersistLeaf,
   assertLinuxHarness,
   canonicalRepoRoot,
   clearState,
@@ -20,10 +47,8 @@ import {
   inspectRecordedProcess,
   newRunId,
   openAppendOnlyLog,
-  openReadOnlyRegularLeaf,
   pathsFor,
   prepareRunDirectory,
-  readRegularLeaf,
   readState,
   stopRecordedProcess,
   waitForProcessSurvival,
@@ -34,7 +59,22 @@ import {
   writeState,
 } from './lab.js';
 
-const COMMANDS = new Set(['up', 'status', 'logs', 'down', 'register']);
+const COMMANDS = new Set([
+  'up',
+  'status',
+  'logs',
+  'down',
+  'register',
+  'login',
+  'logout',
+  'post',
+  'delete-post',
+  'follow',
+  'unfollow',
+  'notifications',
+  'wait-unread',
+  'world-ensure',
+]);
 
 interface CommandResult {
   readonly code: number;
@@ -57,13 +97,15 @@ async function repoRoot(): Promise<string> {
 
 function usage(): string {
   return [
-    'Usage: patches-harness <up|status|logs|down|register> [options]',
+    'Usage: patches-harness <up|status|logs|down|register|login|logout|post|delete-post|follow|unfollow|notifications|wait-unread|world-ensure> [options]',
     '',
     'up       build and start one disposable local server + worker lab',
     'status   print JSON state for the local lab',
-    'logs     print server and worker logs (use --follow to tail)',
+    'logs     print a bounded, redacted JSON snapshot; --request-id and --limit are optional',
     'down     stop only processes recorded by this lab',
-    'register create a browser-login test account; --handle is optional',
+    'register/login/logout/post/delete-post/follow/unfollow use direct local gRPC actions',
+    'auth actions require --password-stdin; notifications/wait-unread observe non-DM notifications',
+    'world-ensure reapplies an unchanged stable-key world and refuses declarative drift',
     '',
     'Lifecycle commands currently require Linux because process ownership is proven via /proc.',
   ].join('\n');
@@ -360,31 +402,24 @@ async function status(root: string): Promise<void> {
   });
 }
 
-async function logs(root: string, follow: boolean): Promise<void> {
+async function logs(root: string, args: readonly string[]): Promise<void> {
   const paths = pathsFor(root);
-  if (follow) {
-    const serverDescriptor = openReadOnlyRegularLeaf(`${paths.logDirectory}/server.log`);
-    const workerDescriptor = openReadOnlyRegularLeaf(`${paths.logDirectory}/worker.log`);
+  if (args.includes('--follow'))
+    throw new Error('safe follow mode is not implemented; use bounded log snapshots');
+  const sources: BoundedLogSource[] = [];
+  for (const service of ['server', 'worker']) {
     try {
-      const tail = spawn('tail', ['-n', '+1', '-f', '/proc/self/fd/3', '/proc/self/fd/4'], {
-        stdio: ['inherit', 'inherit', 'inherit', serverDescriptor, workerDescriptor],
-      });
-      await once(tail, 'close');
-    } finally {
-      closeSync(serverDescriptor);
-      closeSync(workerDescriptor);
-    }
-    return;
-  }
-  for (const name of ['server.log', 'worker.log']) {
-    try {
-      process.stdout.write(
-        `==> ${name}\n${await readRegularLeaf(`${paths.logDirectory}/${name}`)}`,
-      );
+      const source = await readBoundedLogTail(`${paths.logDirectory}/${service}.log`);
+      sources.push({ ...source, service });
     } catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
     }
   }
+  const requestId = flag(args, '--request-id');
+  writeSafeLogOutput(sources, {
+    ...(requestId === undefined ? {} : { requestId }),
+    limit: Number(flag(args, '--limit') ?? '200'),
+  });
 }
 
 async function down(root: string): Promise<void> {
@@ -411,52 +446,181 @@ function flag(args: readonly string[], name: string): string | undefined {
 }
 
 async function register(root: string, args: readonly string[]): Promise<void> {
-  const paths = pathsFor(root);
-  const state = await readState(paths);
-  if (
-    state === undefined ||
-    (await inspectRecordedProcess(state.server, 'apps/server/dist/main.js', state.runId)) !==
-      'owned-running'
-  ) {
-    throw new Error('harness lab is not running; run `mise run lab` first');
-  }
+  const state = await runningState(root);
   const handle = flag(args, '--handle') ?? `agent${newRunId().slice(0, 10)}`;
-  const password = flag(args, '--password') ?? `Harness-${newRunId()}!`;
+  const password = await passwordFromStdin(args);
   const email = flag(args, '--email') ?? `${handle}@harness.local`;
-  const credentialHome = resolve(paths.runDirectory, 'credentials', handle);
-  await prepareRunDirectory(paths);
-  const result = await command(
-    process.execPath,
-    [
-      'apps/tui/dist/cli.js',
-      '--insecure',
-      '--server',
-      `127.0.0.1:${String(state.grpcPort)}`,
-      'register',
-      '--handle',
-      handle,
-      '--display-name',
-      handle,
-      '--email',
-      email,
-      '--password-stdin',
-    ],
-    root,
-    {
-      ...allowlistedRuntimeEnvironment(process.env),
-      PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE: '1',
-      XDG_CONFIG_HOME: credentialHome,
-    },
-    `${password}\n`,
-  );
-  if (result.code !== 0) throw new Error(`registration failed: ${result.stderr || result.stdout}`);
+  const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+  const result = await registerRpc(api, { handle, email, password, clientRequestId: randomUUID() });
+  const cleanup = await logoutAll(api, result.session);
   print({
-    handle,
+    ...result.result,
     email,
-    password,
     webUrl: `http://127.0.0.1:${String(state.httpPort)}`,
-    note: 'Use these credentials in the local web login form. They are scoped to this disposable harness lab.',
+    cleanupRequestId: cleanup.requestId,
   });
+}
+
+async function runningState(root: string): Promise<HarnessState> {
+  const state = await readState(pathsFor(root));
+  if (state === undefined) throw new Error('harness lab is not running; run `mise run lab` first');
+  const [server, worker] = await Promise.all([
+    inspectRecordedProcess(state.server, 'apps/server/dist/main.js', state.runId),
+    inspectRecordedProcess(state.worker, 'apps/worker/dist/main.js', state.runId),
+  ]);
+  assertActionProcessStatuses(server, worker);
+  return state;
+}
+
+function required(args: readonly string[], name: string): string {
+  return flag(args, name) ?? fail(`${name} is required`);
+}
+
+async function passwordFromStdin(args: readonly string[]): Promise<string> {
+  assertPasswordStdinArgs(args);
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  for await (const chunk of process.stdin) input += chunk;
+  const password = input.replace(/\r?\n$/, '');
+  if (password.length === 0 || password.includes('\n') || password.includes('\r'))
+    throw new Error('password stdin must contain exactly one non-empty line');
+  return password;
+}
+
+async function authenticatedAction(
+  root: string,
+  args: readonly string[],
+  action: (
+    api: ReturnType<typeof createHarnessApi>['api'],
+    session: Awaited<ReturnType<typeof login>>['session'],
+  ) => Promise<unknown>,
+): Promise<void> {
+  const state = await runningState(root);
+  const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+  const signedIn = await login(api, {
+    emailOrHandle: required(args, '--handle'),
+    password: await passwordFromStdin(args),
+  });
+  let result: unknown;
+  try {
+    result = await action(api, signedIn.session);
+  } finally {
+    const cleanup = await logoutAll(api, signedIn.session);
+    if (result !== undefined && typeof result === 'object' && result !== null)
+      result = {
+        ...result,
+        authRequestId: signedIn.result.requestId,
+        cleanupRequestId: cleanup.requestId,
+      };
+  }
+  print(result);
+}
+
+async function worldSeed(root: string): Promise<Buffer> {
+  const paths = pathsFor(root);
+  const seedPath = `${paths.runDirectory}/world-seed`;
+  try {
+    return await readWorldSeed(seedPath);
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+  const seed = randomBytes(32);
+  await atomicPersistLeaf(seedPath, seed.toString('base64url'), newRunId());
+  return readWorldSeed(seedPath);
+}
+
+async function ensureDeclaredWorld(
+  root: string,
+  state: HarnessState,
+  args: readonly string[],
+): Promise<void> {
+  const world = await readWorld(required(args, '--file'));
+  const declared = declaredWorldManifest(world);
+  const manifestPath = `${pathsFor(root).runDirectory}/world-manifest.json`;
+  let existing: WorldManifest | undefined;
+  try {
+    existing = await readWorldManifest(manifestPath);
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+  assertWorldCompatible(declared, existing);
+  let journal = existing ?? declared;
+  const failAfter = flag(args, '--fail-after');
+  const failAfterCount = failAfter === undefined ? undefined : Number(failAfter);
+  if (failAfterCount !== undefined && (!Number.isInteger(failAfterCount) || failAfterCount < 1))
+    throw new Error('--fail-after must be a positive integer');
+  let mutationCount = 0;
+  if (existing === undefined)
+    await atomicPersistLeaf(manifestPath, `${JSON.stringify(journal)}\n`, newRunId());
+  const seed = await worldSeed(root);
+  const result = await ensureWorld(
+    createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api,
+    world,
+    (key) => `${createHmac('sha256', seed).update(key).digest('base64url')}!aA9`,
+    async (key) => {
+      if (journal.completedKeys.includes(key)) return;
+      journal = { ...journal, completedKeys: [...journal.completedKeys, key].sort() };
+      await atomicPersistLeaf(manifestPath, `${JSON.stringify(journal)}\n`, newRunId());
+      mutationCount += 1;
+      if (mutationCount === failAfterCount)
+        throw new Error(
+          `injected world failure after journaling ${String(mutationCount)} mutation`,
+        );
+    },
+  );
+  print(result);
+}
+
+async function action(root: string, subcommand: string, args: readonly string[]): Promise<void> {
+  if (subcommand === 'login') {
+    const state = await runningState(root);
+    const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+    const signedIn = await login(api, {
+      emailOrHandle: required(args, '--handle'),
+      password: await passwordFromStdin(args),
+    });
+    const cleanup = await logoutAll(api, signedIn.session);
+    print({ ...signedIn.result, cleanupRequestId: cleanup.requestId });
+  } else if (subcommand === 'logout')
+    await authenticatedAction(root, args, () =>
+      Promise.resolve({ status: 'all-sessions-revoked' }),
+    );
+  else if (subcommand === 'post')
+    await authenticatedAction(root, args, (api, session) =>
+      createPost(api, session, {
+        body: required(args, '--body'),
+        clientRequestId: flag(args, '--client-request-id') ?? randomUUID(),
+      }),
+    );
+  else if (subcommand === 'delete-post')
+    await authenticatedAction(root, args, (api, session) =>
+      deletePost(api, session, required(args, '--id')),
+    );
+  else if (subcommand === 'follow')
+    await authenticatedAction(root, args, (api, session) =>
+      follow(api, session, required(args, '--actor-id')),
+    );
+  else if (subcommand === 'unfollow')
+    await authenticatedAction(root, args, (api, session) =>
+      unfollow(api, session, required(args, '--actor-id')),
+    );
+  else if (subcommand === 'notifications')
+    await authenticatedAction(root, args, (api, session) =>
+      notifications(api, session, Number(flag(args, '--limit') ?? '30')),
+    );
+  else if (subcommand === 'wait-unread')
+    await authenticatedAction(root, args, (api, session) =>
+      waitForUnread(
+        api,
+        session,
+        Number(required(args, '--at-least')),
+        Number(flag(args, '--timeout-ms') ?? '3000'),
+      ),
+    );
+  else if (subcommand === 'world-ensure') {
+    const state = await runningState(root);
+    await ensureDeclaredWorld(root, state, args);
+  }
 }
 
 async function main(): Promise<void> {
@@ -465,18 +629,18 @@ async function main(): Promise<void> {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  if (!COMMANDS.has(subcommand)) fail(`${usage()}\n\nUnknown command: ${subcommand}`);
+  if (!COMMANDS.has(subcommand)) fail(`${usage()}\n\n${unknownCommandFailure()}`);
   assertLinuxHarness();
   const root = await repoRoot();
   if (subcommand === 'up') await up(root);
   else if (subcommand === 'status') await status(root);
-  else if (subcommand === 'logs') await logs(root, args.includes('--follow'));
+  else if (subcommand === 'logs') await logs(root, args);
   else if (subcommand === 'down') await down(root);
-  else await register(root, args);
+  else if (subcommand === 'register') await register(root, args);
+  else await action(root, subcommand, args);
 }
 
 void main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`patches-harness: ${message}\n`);
+  writeCliError(error);
   process.exitCode = 1;
 });

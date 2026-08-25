@@ -53,6 +53,26 @@ describe('createPatchesApi', () => {
     expect(seen[0]).not.toBe(seen[1]);
   });
 
+  it('preserves a caller-supplied request ID for external action correlation', async () => {
+    let seen: string | null | undefined;
+    const transport = createRouterTransport((router) => {
+      router.service(SystemService, {
+        ping(request, context) {
+          seen = context.requestHeader.get('x-request-id');
+          return { nonce: request.nonce };
+        },
+      });
+    });
+    const api = createPatchesApi({ transport, clientName: 'test-client', clientVersion: '1.0.0' });
+
+    await api.system.ping(
+      { nonce: 'correlated' },
+      { headers: { 'x-request-id': 'harness-request-42' } },
+    );
+
+    expect(seen).toBe('harness-request-42');
+  });
+
   it('lets a caller override the default deadline via CallOptions', async () => {
     let seenTimeoutMs: number | undefined;
     const transport = createRouterTransport((router) => {

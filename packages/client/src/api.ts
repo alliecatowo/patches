@@ -131,8 +131,9 @@ export function createPatchesApi(options: CreatePatchesApiOptions): PatchesApi {
 }
 
 /**
- * Wraps a generated Connect client so every method gets a fresh request ID, the client
- * identity headers, and a default deadline before the underlying call runs.
+ * Wraps a generated Connect client so every method gets a request ID (a fresh secure UUID
+ * unless the caller explicitly supplied one for end-to-end correlation), the client identity
+ * headers, and a default deadline before the underlying call runs.
  *
  * `createClient`'s method map is built dynamically from `service.method` (one function
  * per RPC, `Client<T>` is a mapped type) — there is no fixed set of keys to hand-write a
@@ -157,7 +158,11 @@ function bindService<T extends DescService>(
       const method = value as (request: unknown, callOptions?: CallOptions) => unknown;
       return (request: unknown, callOptions?: CallOptions) => {
         const headers = new Headers(callOptions?.headers);
-        headers.set(METADATA_KEYS.requestId, crypto.randomUUID());
+        // Callers that coordinate an external action (for example a local harness) may
+        // supply a correlation ID and need the server to observe that exact value. Ordinary
+        // callers retain the secure, fresh UUID default on every call.
+        if (!headers.has(METADATA_KEYS.requestId))
+          headers.set(METADATA_KEYS.requestId, crypto.randomUUID());
         headers.set(METADATA_KEYS.client, clientName);
         headers.set(METADATA_KEYS.clientVersion, clientVersion);
         return method(request, {
