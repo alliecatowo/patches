@@ -182,10 +182,18 @@ metadata, retention, export/deletion, contact — summarizing `docs/product/priv
 page), `APPEAL_INSTRUCTIONS` (the in-client Appeals screen, or email the operator),
 `OPERATOR_CONTACT` (who runs this node), and `DATA_LOCATION` (Fly for compute, Neon Postgres in
 `aws-us-east-2` for the database, Cloudflare R2 for media). See the file itself for the exact
-published text — **as of this sweep (B-097) `infra/fly/fly.toml`'s `PRIVACY_NOTICE_SUMMARY`
-still asserts the retired ADR 0017 wording ("Direct messages are NOT end-to-end encrypted —
-this node's operator can read them"), which is now false; it needs updating and redeploying,
-tracked separately from this docs sweep.**
+published text.
+
+**These two values are published copy, not just config.** `PRIVACY_NOTICE_SUMMARY` in both
+`infra/fly/fly.toml` and `infra/preview/fly-preview.toml` is served **unauthenticated** through
+`NodeService.GetNodePolicy`, so a stale value is a false public statement rather than a private
+misconfiguration. Both asserted the retired ADR 0017 wording ("Direct messages are NOT
+end-to-end encrypted — this node's operator can read them") for as long as it took B-097 to
+notice; that became false the moment B-095 removed the server-visible mode. They now mirror
+`requiredConversationDisclosure('E2EE_V1')` from `@patches/domain` — **including its second
+clause, that the node still sees who you message and when.** Whenever that domain constant
+changes, change these too, in the same commit, and redeploy: an accurate constant behind a stale
+env var still lies to everyone who asks the node what it does.
 
 **Gotcha: `LOG_LEVEL` is `log`, not `info`.** The server's logger factory
 (`apps/server/src/common/logging/logger.factory.ts`) uses Nest's own `LogLevel` union, whose

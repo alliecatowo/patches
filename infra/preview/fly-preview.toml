@@ -62,7 +62,7 @@ kill_timeout = "30s"
   WORKER_CONCURRENCY = "2"
   # Preview-honest operator-transparency values (A-052): the branch data is a copy
   # of production, and DMs are server-visible on every Patches node (ADR 0017).
-  PRIVACY_NOTICE_SUMMARY = "Temporary preview node for pull request #__PR__, destroyed automatically when the PR closes. It serves a copy of the production database. Public posts and profiles are readable by anyone. Direct messages are NOT end-to-end encrypted — the node operator can read them."
+  PRIVACY_NOTICE_SUMMARY = "Temporary preview node for pull request #__PR__, destroyed automatically when the PR closes. It serves a copy of the production database. Public posts and profiles are readable by anyone. Direct messages are end-to-end encrypted — this node cannot read them, but it can see who you message and when. Sending and reading them requires the terminal client."
   DATA_LOCATION = "App: Fly.io (iad, US) preview machines. Database: Neon Postgres branch pr-__PR__ (aws-us-east-2, US). Media: depends on preview configuration."
 
 # Same one image / two process groups split as production (infra/fly/fly.toml).
