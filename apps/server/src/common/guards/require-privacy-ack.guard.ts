@@ -25,11 +25,12 @@ import { AppError } from '../errors/app-error.js';
  * Reads are never gated: this guard is only ever attached to a write RPC, never to a whole
  * controller.
  *
- * Attached to `PostController.createPost`, `MessagesController.sendMessage`/
- * `createConversation`, `GraphController.followActor`, and
+ * Attached to `PostController.createPost`, `GraphController.followActor`, and
  * `CommunityController.createCommunity`/`joinCommunity`. Posting *into* a community goes
  * through `PostController.createPost` (which sets `communityId`), so it is already covered
- * without a separate attachment on `CommunityController`.
+ * without a separate attachment on `CommunityController`. `MessagesController.sendMessage`/
+ * `createConversation` were removed by ADR 0030 §B-095 — DM writes now go through
+ * `E2eeService`, which this guard is not currently attached to.
  */
 @Injectable()
 export class RequirePrivacyAckGuard implements CanActivate {

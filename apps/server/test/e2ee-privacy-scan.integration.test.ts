@@ -19,8 +19,6 @@ import {
   E2eeReportEvidence,
   E2eeReportEvidenceItem,
   E2eeSignedPrekey,
-  Message as MessageEntity,
-  MessageRequest,
   ModerationLogEntry,
   Notification as NotificationEntity,
   OutboxJob,
@@ -33,20 +31,14 @@ import {
 } from '@patches/domain';
 import {
   createAuthClient,
-  createDirectMessageClient,
   createModerationClient,
   REPORT_REASON,
   type AuthGrpcClient,
-  type CreateConversationRequest,
-  type CreateConversationResponse,
-  type DirectMessageGrpcClient,
-  type ListMessagesRequest,
-  type ListMessagesResponse,
   type ModerationGrpcClient,
   type ReportE2eeMessageRequest,
   type ReportE2eeMessageResponse,
 } from '@patches/proto';
-import { createTestFollow, createTestUser } from '@patches/testkit';
+import { createTestUser } from '@patches/testkit';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource, ObjectLiteral } from 'typeorm';
@@ -74,28 +66,32 @@ import { callUnary, startTestServer, type TestServer } from './support/test-serv
  * Not a functional suite: every test here is an *absence* proof. Canaries are planted at
  * the only places the boundary allows them and then asserted absent everywhere else:
  *
- * 1. **Storage scan** — after exercising the legacy DM, E2EE create/send/group/report
- *    flows against real PostgreSQL, walk every column of every table those flows write
- *    (plus notifications/outbox/audit surfaces) and assert each canary appears only in
- *    its explicitly allowlisted `(table, column)` pairs.
+ * 1. **Storage scan** — after exercising the E2EE create/send/group/report flows
+ *    against real PostgreSQL, walk every column of every table those flows write (plus
+ *    notifications/outbox/audit surfaces) and assert each canary appears only in its
+ *    explicitly allowlisted `(table, column)` pairs.
  * 2. **Log/error/notification scan** — the whole app's Nest `Logger` output is captured
- *    (including thrown `AppError`/gRPC error text) and asserted canary-free; and no
- *    notification row is created for an E2EE conversation at all (§187-style generic
- *    signal or nothing — never a body).
- * 3. **Migration semantics** — a LEGACY_SERVER_VISIBLE conversation stays legacy and
- *    legible after E2EE capability arrives, and `security_mode` cannot be flipped in
- *    place (the BEFORE UPDATE trigger rejects both directions).
- * 4. **Export/deletion semantics** — E2EE flows write no `messages` rows (so the
- *    account export's `messages.json` cannot carry E2EE content), and the export/purge
- *    handlers reference no e2ee table.
+ *    (including thrown `AppError`/gRPC error text) and asserted canary-free; and the
+ *    notification row an E2EE arrival creates (ADR 0030 §B-095 re-points the `MESSAGE`
+ *    notification type here) carries only a generic signal and a `conversation_id`,
+ *    never a body.
+ * 3. **Migration semantics** — `conversations.security_mode` cannot be flipped in place
+ *    after creation (the BEFORE UPDATE trigger rejects a change even though `E2EE_V1`
+ *    is the only value that exists to flip to or from — ADR 0030 §B-095 removed
+ *    `LEGACY_SERVER_VISIBLE`; that removal itself is what packages/database's own
+ *    migration integration coverage verifies, not this file).
+ * 4. **Export/deletion semantics** — the account export handler references no e2ee
+ *    table (it exports no DM content at all now — ADR 0030 §B-095 removed the
+ *    `messages` table `messages.json` used to read, and E2EE bodies are never
+ *    server-visible to export in the first place); neither does the purge handler.
  * 5. **Federation isolation** (ADR 0020 §12.11/§13) — a source-level import-graph walk
  *    proves no path from any federation module to the e2ee module (and vice versa).
  *
- * The canaries stand in for real secrets: `legacyBody`/`e2eeBody` for message bodies,
- * `evidenceCanary` for reporter-disclosed plaintext, `keyCanary` for ratchet/prekey
- * private-key material. Envelope bytes deliberately *contain* the canaries, so any code
- * that copies, echoes, logs, or re-persists payload bytes anywhere but the allowlisted
- * opaque columns fails this suite loudly.
+ * The canaries stand in for real secrets: `e2eeBody` for message bodies, `evidenceCanary`
+ * for reporter-disclosed plaintext, `keyCanary` for ratchet/prekey private-key material.
+ * Envelope bytes deliberately *contain* the canaries, so any code that copies, echoes,
+ * logs, or re-persists payload bytes anywhere but the allowlisted opaque columns fails
+ * this suite loudly.
  */
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL_SERVER ?? process.env.TEST_DATABASE_URL;
@@ -126,7 +122,6 @@ const PROTOCOL = 'patches-e2ee-v1';
 // ---------------------------------------------------------------------------
 
 const randTag = () => randomBytes(8).toString('hex');
-const legacyBody = `PRIVSCAN-LEGACY-BODY-${randTag()}`;
 const e2eeBody = `PRIVSCAN-E2EE-BODY-${randTag()}`;
 const evidenceCanary = `PRIVSCAN-EVIDENCE-${randTag()}`;
 const reportDetails = `PRIVSCAN-REPORT-DETAILS-${randTag()}`;
@@ -143,7 +138,6 @@ interface Canary {
 }
 
 const canaries: readonly Canary[] = [
-  { name: 'legacyBody', bytes: Buffer.from(legacyBody, 'utf8') },
   { name: 'e2eeBody', bytes: e2eeBodyBytes },
   { name: 'evidenceCanary', bytes: evidenceBytes },
   { name: 'reportDetails', bytes: Buffer.from(reportDetails, 'utf8') },
@@ -151,11 +145,8 @@ const canaries: readonly Canary[] = [
 ];
 
 /** The ONLY (entity property, canary) pairs a correct node may persist. Everything else
- * is a leak. `Message.body` is additionally row-scoped to the legacy conversation in the
- * scan itself — legacy DMs are server-visible by design (ADR 0017), but an E2EE-flow
- * row must never carry the legacy canary and vice versa. */
+ * is a leak. */
 const STORAGE_ALLOWLIST: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ['Message.body', new Set(['legacyBody'])],
   ['E2eeMailboxEnvelope.ciphertext', new Set(['e2eeBody'])],
   ['E2eeMailboxEnvelope.encryptedHeader', new Set(['keyCanary'])],
   ['E2eeReportEvidenceItem.disclosedPlaintext', new Set(['evidenceCanary'])],
@@ -494,8 +485,6 @@ interface EntityMetadata {
 const SCANNED_ENTITIES: readonly EntityMetadata[] = [
   { label: 'Conversation', Entity: ConversationEntity },
   { label: 'ConversationMember', Entity: ConversationMemberEntity },
-  { label: 'Message', Entity: MessageEntity },
-  { label: 'MessageRequest', Entity: MessageRequest },
   { label: 'Report', Entity: ReportEntity },
   { label: 'Notification', Entity: NotificationEntity },
   { label: 'OutboxJob', Entity: OutboxJob },
@@ -524,7 +513,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let dataSource: DataSource;
     let server: TestServer;
     let auth: AuthGrpcClient;
-    let messages: DirectMessageGrpcClient;
     let moderation: ModerationGrpcClient;
     let identityRoots: E2eeIdentityRootService;
     let deviceRosters: E2eeDeviceRosterService;
@@ -533,13 +521,11 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     let reportEvidence: E2eeReportEvidenceService;
 
     // Populated once by the seeding flow in beforeAll; every test reads this state.
-    let legacyConversationId = '';
     let e2eeConversationId = '';
     let e2eeSender!: TestActorKeys & { accessToken: string };
     let e2eeRecipient!: TestActorKeys;
     let e2eeSenderDevice!: DeviceKeys;
     let e2eeRecipientDevice!: DeviceKeys;
-    let legacyAlice!: TestActor;
     let reportedLogicalMessageId = '';
 
     async function newActor(): Promise<TestActorKeys> {
@@ -619,34 +605,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       server = await startTestServer();
       auth = createAuthClient(server.url, credentials.createInsecure());
       moderation = createModerationClient(server.url, credentials.createInsecure());
-      messages = createDirectMessageClient(server.url, credentials.createInsecure());
 
-      // --- Legacy DM flow (ADR 0017): server-visible by design, but its body must
-      // --- never leave messages.body (and never reach logs — asserted below).
       const { user: inviter } = await createTestUser(dataSource.manager);
-      legacyAlice = await registerTestActor(auth, dataSource, inviter.id);
-      const legacyBob = await registerTestActor(auth, dataSource, inviter.id);
-      await createTestFollow(dataSource.manager, {
-        followerActorId: legacyAlice.actorId,
-        followeeActorId: legacyBob.actorId,
-      });
-      await createTestFollow(dataSource.manager, {
-        followerActorId: legacyBob.actorId,
-        followeeActorId: legacyAlice.actorId,
-      });
-      const created = await callUnary<CreateConversationRequest, CreateConversationResponse>(
-        messages.createConversation.bind(messages),
-        {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [legacyBob.actorId],
-          initialBody: legacyBody,
-        },
-        { accessToken: legacyAlice.accessToken },
-      );
-      if (created.conversation === null || created.conversation === undefined) {
-        throw new Error('legacy conversation was not created');
-      }
-      legacyConversationId = created.conversation.id;
 
       // --- E2EE flow: every envelope byte array carries a canary.
       // The sender is a registered actor (see `newRegisteredActor`): the report flow
@@ -809,7 +769,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     });
 
     it('storage scan: every canary appears only in its allowlisted columns (ADR 0020 §12.6)', async () => {
-      expect(legacyConversationId).not.toBe('');
       expect(e2eeConversationId).not.toBe('');
       const violations: string[] = [];
 
@@ -832,15 +791,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
               const allowed = STORAGE_ALLOWLIST.get(`${label}.${column}`);
               const isAllowed = allowed?.has(canary.name) ?? false;
-              // Row-scoping: the legacy body may exist only on the legacy conversation's
-              // message rows — never on any row created by an E2EE flow.
-              const rowScopeOk =
-                label !== 'Message' ||
-                (row as { conversationId?: unknown }).conversationId === legacyConversationId;
-              if (!isAllowed || !rowScopeOk) {
+              if (!isAllowed) {
                 violations.push(
                   `${canary.name} leaked into ${label}.${column} (row ${rowIndex}, ` +
-                    `allowed=${String(isAllowed)}, rowScopeOk=${String(rowScopeOk)})`,
+                    `allowed=${String(isAllowed)})`,
                 );
               }
             }
@@ -851,14 +805,20 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(violations, `Storage canary leaks:\n${violations.join('\n')}`).toEqual([]);
     }, 60_000);
 
-    it('no notification row is created for an E2EE conversation (§187/ADR 0020 §1.5)', async () => {
+    it('a MESSAGE notification for an E2EE arrival carries a conversation id and nothing else (§187, ADR 0030 §B-095)', async () => {
+      // ADR 0030 §B-095 re-points the MESSAGE notification type at E2EE arrivals: the
+      // recipient's `createE2eeConversation` fanout writes one, and it must be
+      // content-free — a generic signal plus `conversation_id`, never a body, since the
+      // node never has a body to leak in the first place.
       const forE2eeConversation = await dataSource
         .getRepository(NotificationEntity)
-        .countBy({ conversationId: e2eeConversationId });
-      expect(forE2eeConversation).toBe(0);
+        .find({ where: { conversationId: e2eeConversationId } });
+      expect(forE2eeConversation.length).toBeGreaterThan(0);
+      for (const row of forE2eeConversation) {
+        expect(row.type).toBe('MESSAGE');
+      }
 
-      // Every notification in the database, scanned as text: no canary anywhere. A
-      // MESSAGE notification is a generic signal + conversation id, never a body.
+      // Every notification in the database, scanned as text: no canary anywhere.
       const all = await dataSource.getRepository(NotificationEntity).find();
       const serialized = JSON.stringify(all, (_key, nested: unknown) => {
         if (Buffer.isBuffer(nested)) return nested.toString('hex');
@@ -885,70 +845,30 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(violations, `Log canary leaks:\n${violations.join('\n')}`).toEqual([]);
     });
 
-    it('migration: a LEGACY_SERVER_VISIBLE conversation stays legacy and legible after E2EE capability arrives', async () => {
-      // E2EE capability "arrives": both legacy actors publish identity roots and devices.
-      // One keypair — the root's self-signature must verify against its own public half.
-      const legacyRootKeys = generateSigningKeyPair();
-      const legacyKeys: TestActorKeys = {
-        actorId: legacyAlice.actorId,
-        rootPrivateKey: legacyRootKeys.privateKey,
-        rootPublicKey: legacyRootKeys.publicKey,
-      };
-      await enrollFirstDevice(legacyKeys);
-
-      const conversation = await dataSource
-        .getRepository(ConversationEntity)
-        .findOneByOrFail({ id: legacyConversationId });
-      expect(conversation.securityMode).toBe('LEGACY_SERVER_VISIBLE');
-
-      const listed = await callUnary<ListMessagesRequest, ListMessagesResponse>(
-        messages.listMessages.bind(messages),
-        { conversationId: legacyConversationId, cursor: '', limit: 10 },
-        { accessToken: legacyAlice.accessToken },
-      );
-      const bodies = listed.messages.map((message) => message.body ?? '');
-      expect(bodies.some((body) => body.includes(legacyBody))).toBe(true);
-    });
-
-    it('migration: security_mode cannot be flipped in place — the DB trigger rejects both directions', async () => {
+    it('migration: security_mode is immutable — the BEFORE UPDATE trigger rejects any change, even though E2EE_V1 is the only value left (ADR 0030 §B-095)', async () => {
+      // ADR 0030 §B-095 removed `LEGACY_SERVER_VISIBLE`; `E2EE_V1` is the only value the
+      // `security_mode` CHECK constraint accepts today. The trigger fires on any `NEW`
+      // value `IS DISTINCT FROM` `OLD` regardless of the CHECK constraint (BEFORE UPDATE
+      // triggers run before constraint enforcement), so a bogus target value still proves
+      // the immutability guard is live rather than merely rejected as an invalid enum.
       await expect(
         dataSource.query('UPDATE conversations SET security_mode = $1 WHERE id = $2', [
-          'E2EE_V1',
-          legacyConversationId,
-        ]),
-      ).rejects.toThrow(/security mode is immutable/i);
-
-      await expect(
-        dataSource.query('UPDATE conversations SET security_mode = $1 WHERE id = $2', [
-          'LEGACY_SERVER_VISIBLE',
+          'BOGUS_MODE',
           e2eeConversationId,
         ]),
       ).rejects.toThrow(/security mode is immutable/i);
 
-      // Neither update took effect.
-      const legacy = await dataSource
-        .getRepository(ConversationEntity)
-        .findOneByOrFail({ id: legacyConversationId });
       const encrypted = await dataSource
         .getRepository(ConversationEntity)
         .findOneByOrFail({ id: e2eeConversationId });
-      expect(legacy.securityMode).toBe('LEGACY_SERVER_VISIBLE');
       expect(encrypted.securityMode).toBe('E2EE_V1');
     });
 
-    it('export semantics: E2EE flows write no messages rows, and the export handler reads no e2ee table (§204, ADR 0020 §12.10)', async () => {
-      // The export's messages.json is built from `messages` rows of the actor's
-      // conversations (apps/worker/src/jobs/handlers/export-account.handler.ts).
-      const legacyRows = await dataSource
-        .getRepository(MessageEntity)
-        .countBy({ conversationId: legacyConversationId });
-      const e2eeRows = await dataSource
-        .getRepository(MessageEntity)
-        .countBy({ conversationId: e2eeConversationId });
-      expect(legacyRows).toBeGreaterThan(0);
-      expect(e2eeRows).toBe(0);
-
-      // And by construction the export never queries any E2EE envelope/ciphertext table.
+    it('export semantics: the export handler reads no e2ee table (§204, ADR 0020 §12.10, ADR 0030 §B-095)', () => {
+      // ADR 0030 §B-095 removed the `messages` table (and `messages.json`, the export
+      // section that used to read it) along with `LEGACY_SERVER_VISIBLE` DMs — the node
+      // never holds E2EE plaintext to export in the first place (ADR 0020), so there is
+      // no DM content in an account export at all now.
       const exportHandlerSource = readFileSync(
         resolve(__dirname, '../../worker/src/jobs/handlers/export-account.handler.ts'),
         'utf8',
@@ -958,10 +878,11 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     });
 
     it('deletion semantics: PURGE_ACCOUNT references no e2ee table (documented gap — see the ticket referenced in docs)', () => {
-      // Current behavior, asserted so the seam is visible: the purge handler erases
-      // legacy DM bodies but touches no e2ee_* row. Report-evidence rows are exempt by
-      // design (ADR 0020: evidence outlives account deletion); prekey/roster/logical-
-      // message rows surviving purge is an open deletion-semantics gap filed against
+      // Current behavior, asserted so the seam is visible: the purge handler touches no
+      // e2ee_* row (ADR 0030 §B-095 removed its old legacy-DM-body tombstone step along
+      // with the `messages` table). Report-evidence rows are exempt by design (ADR 0020:
+      // evidence outlives account deletion); prekey/roster/logical-message rows surviving
+      // purge is an open deletion-semantics gap filed against
       // apps/worker/src/jobs/handlers/purge-account.handler.ts, not fixed here.
       const purgeHandlerSource = readFileSync(
         resolve(__dirname, '../../worker/src/jobs/handlers/purge-account.handler.ts'),
