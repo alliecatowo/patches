@@ -121,6 +121,14 @@
 .choiceGroup label {
   display: flex;
   align-items: center;
+  min-height: 44px;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.choiceGroup label {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
   cursor: pointer;
 }

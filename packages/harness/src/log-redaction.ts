@@ -60,6 +60,7 @@ export function safeLogLine(line: string, requestId?: string): string | undefine
   try {
     parsed = JSON.parse(line);
   } catch {
+    // Non-JSON lines have no allowlisted structure and are intentionally omitted.
     return undefined;
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;

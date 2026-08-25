@@ -139,6 +139,12 @@ test('B-087 appearance choices persist and retain an accessible six-action radia
   await expect(page.getByRole('radio', { name: 'Compact' })).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-fan-style', 'radial');
   await expect(page.locator('html')).toHaveAttribute('data-density', 'compact');
+  for (const name of ['Stacked (default)', 'Radial fan', 'Cozy (default)', 'Compact']) {
+    const target = page.locator('label').filter({ hasText: name });
+    const box = await target.boundingBox();
+    expect(box, `${name} needs a touch target`).not.toBeNull();
+    expect(box?.height, `${name} target height`).toBeGreaterThanOrEqual(44);
+  }
 
   // The reduced-motion state is also a deterministic visual-proof surface: no stagger can
   // leave one fixed action mid-flight in the screenshot.

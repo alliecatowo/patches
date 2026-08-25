@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
+import { MAX_PASSWORD_STDIN_BYTES, readPasswordStdin } from './cli.js';
 
 interface Result {
   readonly code: number;
@@ -14,6 +16,22 @@ interface Result {
 }
 
 const live = process.env['PATCHES_HARNESS_LIVE'] === '1' ? it : it.skip;
+
+describe('password stdin bounds', () => {
+  it('accepts the exact byte boundary and rejects an overflow before accumulation', async () => {
+    async function* chunks(...values: string[]): AsyncGenerator<string> {
+      await Promise.resolve();
+      yield* values;
+    }
+
+    await expect(
+      readPasswordStdin(chunks('a'.repeat(MAX_PASSWORD_STDIN_BYTES))),
+    ).resolves.toHaveLength(MAX_PASSWORD_STDIN_BYTES);
+    await expect(
+      readPasswordStdin(chunks('a'.repeat(MAX_PASSWORD_STDIN_BYTES), 'b')),
+    ).rejects.toThrow('password stdin is too large');
+  });
+});
 
 async function run(command: string, args: readonly string[], cwd: string): Promise<Result> {
   const child = spawn(command, [...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });

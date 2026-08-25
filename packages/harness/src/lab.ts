@@ -404,6 +404,7 @@ export async function inspectRecordedProcess(
     const ownsNonce = environment.split('\0').includes(`PATCHES_HARNESS_RUN_ID=${runId}`);
     return ownsCommand && ownsNonce ? 'owned-running' : 'unowned';
   } catch {
+    // A /proc read failure cannot prove ownership, so fail closed as unowned.
     return 'unowned';
   }
 }

@@ -476,15 +476,31 @@ function required(args: readonly string[], name: string): string {
   return flag(args, name) ?? fail(`${name} is required`);
 }
 
-async function passwordFromStdin(args: readonly string[]): Promise<string> {
-  assertPasswordStdinArgs(args);
-  let input = '';
-  process.stdin.setEncoding('utf8');
-  for await (const chunk of process.stdin) input += chunk;
-  const password = input.replace(/\r?\n$/, '');
+export const MAX_PASSWORD_STDIN_BYTES = 1024;
+
+export async function readPasswordStdin(
+  inputStream: AsyncIterable<Uint8Array | string>,
+): Promise<string> {
+  let bytes = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of inputStream) {
+    const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk);
+    bytes += buffer.length;
+    // Keep the CLI's password input bounded before retaining another chunk in memory.
+    if (bytes > MAX_PASSWORD_STDIN_BYTES) throw new Error('password stdin is too large');
+    chunks.push(buffer);
+  }
+  const password = Buffer.concat(chunks)
+    .toString('utf8')
+    .replace(/\r?\n$/, '');
   if (password.length === 0 || password.includes('\n') || password.includes('\r'))
     throw new Error('password stdin must contain exactly one non-empty line');
   return password;
+}
+
+async function passwordFromStdin(args: readonly string[]): Promise<string> {
+  assertPasswordStdinArgs(args);
+  return readPasswordStdin(process.stdin);
 }
 
 async function authenticatedAction(

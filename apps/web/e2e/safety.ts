@@ -19,6 +19,7 @@ export function attestHarnessStatus(stdout: string): AttestedHarness {
   try {
     parsed = JSON.parse(stdout);
   } catch {
+    // A malformed ownership attestation is never trusted.
     throw new Error('patches-harness status did not return valid JSON.');
   }
   if (typeof parsed !== 'object' || parsed === null) {
