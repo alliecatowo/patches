@@ -53,6 +53,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0030](./0030-pre-alpha-consolidation-policy.md)                 | Pre-alpha consolidation policy: no legacy grace periods before production (applies to legacy DMs now) | Accepted           |
 | [0031](./0031-e2ee-retention-and-prekey-reuse.md)                | Safe E2EE retention cleanup and one-time-prekey reuse prevention                                      | Accepted           |
 | [0032](./0032-dm-delivery-stays-poll-based.md)                   | DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate                 | Accepted           |
+| [0033](./0033-one-e2ee-identity-transcript-family.md)            | One E2EE identity transcript family, owned by `@patches/crypto` (amends ADR 0020 §14.1)               | Accepted           |
 
 ## Template
 
