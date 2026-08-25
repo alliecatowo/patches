@@ -206,7 +206,9 @@ describe('buildDiagnosticsBundle', () => {
     ).toBe(true);
   });
 
-  it('keeps only the frame tail when the render is enormous', () => {
+  // 30s: redacting a 1M-char frame takes >5s (the default) on loaded CI runners —
+  // this test timed out intermittently on GitHub's shared build-test runners (2026-08-25).
+  it('keeps only the frame tail when the render is enormous', { timeout: 30_000 }, () => {
     const bundle = buildDiagnosticsBundle({
       ...baseInput(),
       // 'z' rather than a hex letter — a million f's *is* key-material-shaped input, and
