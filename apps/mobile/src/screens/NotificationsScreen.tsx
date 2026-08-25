@@ -100,7 +100,7 @@ export function NotificationsScreen(): JSX.Element {
         refreshing={loading && items.length === 0}
         onRefresh={() => void load('', true)}
         ListEmptyComponent={
-          !loading ? <Text style={styles.empty}>No notifications yet.</Text> : null
+          !loading ? <Text style={styles.empty}>No notifications yet.</Text> : undefined
         }
       />
     </View>
