@@ -101,6 +101,30 @@ export {
 export type { E2eeDeviceRosterView, E2eeRosterEntryView } from './roster.js';
 
 export {
+  assertControlEnvelopeDigest,
+  assertControlEnvelopeShape,
+  canonicalControlEnvelopeBytes,
+  decodeControlEnvelope,
+  encodeControlEnvelope,
+  E2EE_CONTROL_ENVELOPE_DOMAIN,
+  E2EE_CONTROL_ENVELOPE_VERSION,
+  E2EE_CONTROL_MAX_BYTES,
+  E2EE_CONTROL_MAX_EDIT_PLAINTEXT_BYTES,
+  E2EE_CONTROL_MAX_READ_RECEIPT_IDS,
+  E2EE_CONTROL_TYPING_TTL_MS,
+  E2EE_CONTROL_TYPES,
+} from './control.js';
+export type {
+  E2eeControlEnvelope,
+  E2eeControlEnvelopeView,
+  E2eeControlType,
+  E2eeDeleteControl,
+  E2eeEditControl,
+  E2eeReadReceiptControl,
+  E2eeTypingControl,
+} from './control.js';
+
+export {
   assertCiphertextDigestsMatchCiphertexts,
   assertEnvelopeShape,
   assertFanoutCovers,
