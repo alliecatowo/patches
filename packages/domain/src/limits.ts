@@ -5,6 +5,8 @@
  * packages/domain so ... clients ... share one definition").
  */
 
+import { E2EE_GROUP_MAX_MEMBERS } from './e2ee/modes.js';
+
 /** Serialized document ceiling — 64 KiB. */
 export const PAGE_DOCUMENT_MAX_BYTES = 64 * 1024;
 
@@ -71,8 +73,9 @@ export const MAX_COMMUNITY_MODERATORS = 16;
 /** DM body, in characters. */
 export const MAX_DM_BODY_CHARS = 2_000;
 
-/** Members in a group conversation, including the creator. */
-export const DM_GROUP_MAX = 8;
+/** Members in a group conversation, including the creator (B-078: same spec bound of 8 as
+ * `E2EE_GROUP_MAX_MEMBERS`; aliased rather than duplicated so the two can't silently diverge). */
+export const DM_GROUP_MAX = E2EE_GROUP_MAX_MEMBERS;
 
 /** At most one pending message request per (sender, recipient) pair, and at most one message
  * on it — enforced by `message_requests`' partial unique index (`packages/database`). */
