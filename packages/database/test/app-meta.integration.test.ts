@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
-import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 import { AppMeta } from '../src/entities/app-meta.entity.js';
 
 // Never point tests at the dev DB (docs/agents/PACKAGE_CONVENTIONS.md, INITIAL_VISION.md
@@ -69,9 +68,10 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
     expect(found.value).toEqual({ id: 'test-instance' });
   });
 
-  it('refuses to roll back the irreversible issued-prekey ledger migration', async () => {
-    expect(ALL_MIGRATIONS).toContain('AddE2eeIssuedPrekeyLedger1787617557448');
-    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible/i);
+  it('round-trips the issued-prekey ledger migration and leaves no pending migration', async () => {
+    await dataSource.undoLastMigration();
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(1);
+    await dataSource.runMigrations();
     expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 });

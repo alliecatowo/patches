@@ -217,10 +217,12 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     ).rejects.toThrow(/chk_invites_uses_within_max/);
   });
 
-  it('reports no pending migrations and refuses rollback past the irreversible ledger fence', async () => {
+  it('round-trips the last migration and reports no pending migrations', async () => {
     const executor = new MigrationExecutor(dataSource);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
-    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible/i);
+    await dataSource.undoLastMigration();
+    expect(await executor.getPendingMigrations()).toHaveLength(1);
+    await dataSource.runMigrations();
     expect(await executor.getPendingMigrations()).toHaveLength(0);
   });
 });

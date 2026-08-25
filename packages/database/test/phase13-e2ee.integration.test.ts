@@ -150,6 +150,37 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     ).resolves.toEqual([]);
   });
 
+  it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
+    await dataSource.undoLastMigration();
+
+    await expect(
+      dataSource.query(`SELECT to_regclass('public.e2ee_one_time_prekey_key_ids') AS relation`),
+    ).resolves.toEqual([{ relation: null }]);
+    await expect(
+      dataSource.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conname = 'fk_e2ee_one_time_prekeys_device_identity_id_key_id'`,
+      ),
+    ).resolves.toEqual([]);
+
+    await dataSource.runMigrations();
+    await expect(
+      dataSource.query(
+        `SELECT key_id FROM e2ee_one_time_prekey_key_ids
+         WHERE device_identity_id = $1 AND key_id = $2`,
+        [migrationFixture.deviceIdentityId, migrationFixture.keyId],
+      ),
+    ).resolves.toEqual([{ key_id: migrationFixture.keyId }]);
+    await expect(
+      dataSource.query(
+        `INSERT INTO e2ee_one_time_prekeys (device_identity_id, key_id, public_key)
+         VALUES ($1, 742, $2)`,
+        [migrationFixture.deviceIdentityId, Buffer.alloc(32, 8)],
+      ),
+    ).rejects.toThrow(/fk_e2ee_one_time_prekeys_device_identity_id_key_id/);
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
+  });
+
   it('keeps legacy rows labelled and rejects every conversation mode change', async () => {
     const actorId = randomUUID();
     const conversationId = randomUUID();

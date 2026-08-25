@@ -27,13 +27,18 @@ export class AddE2eeIssuedPrekeyLedger1787617557448 implements MigrationInterfac
     );
   }
 
-  public down(_queryRunner: QueryRunner): Promise<void> {
-    // Fail closed. This ledger may already be the sole durable proof that a consumed public
-    // prekey ID cannot be reused; removing it would reopen that namespace after a sweep.
-    return Promise.reject(
-      new Error(
-        'AddE2eeIssuedPrekeyLedger is irreversible: retain the ledger/FK and roll forward.',
-      ),
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX "public"."idx_e2ee_signed_prekeys_retired_at_id"`);
+    await queryRunner.query(`DROP INDEX "public"."idx_e2ee_one_time_prekeys_consumed_at_id"`);
+    await queryRunner.query(`DROP INDEX "public"."idx_e2ee_mailbox_envelopes_acknowledged_at_id"`);
+    // The prekey table depends on the issued-ID ledger. Remove that dependent FK before
+    // removing the ledger's own device-identity FK and table.
+    await queryRunner.query(
+      `ALTER TABLE "e2ee_one_time_prekeys" DROP CONSTRAINT "fk_e2ee_one_time_prekeys_device_identity_id_key_id"`,
     );
+    await queryRunner.query(
+      `ALTER TABLE "e2ee_one_time_prekey_key_ids" DROP CONSTRAINT "fk_e2ee_one_time_prekey_key_ids_device_identity_id"`,
+    );
+    await queryRunner.query(`DROP TABLE "e2ee_one_time_prekey_key_ids"`);
   }
 }
