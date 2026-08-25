@@ -75,11 +75,17 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-      # Coverage floor for the security-critical package (thresholds live in
-      # packages/crypto/vitest.config.ts). Runs vitest directly — outside turbo —
-      # so it executes on every push rather than being replayed from cache.
+      # Coverage floor for the security-critical package. Runs vitest directly —
+      # outside turbo — so it executes on every push rather than being replayed
+      # from cache. Floors sit ~3-6pts under the 2026-08-25 measurement (lines
+      # 90.25 / branches 76.01 / statements 88.29): they catch regressions, not
+      # noise. (Vitest 4 has no per-project coverage config — hence CLI flags.)
       - name: Enforce crypto coverage thresholds
-        run: pnpm --filter @patches/crypto exec vitest run --coverage
+        run: >-
+          pnpm --filter @patches/crypto exec vitest run --coverage
+          --coverage.thresholds.lines=85
+          --coverage.thresholds.branches=70
+          --coverage.thresholds.statements=85
 
       # Optional: only uploads whatever coverage output the vitest projects already
       # produce on their own (no coverage flag is forced here — not every project is
