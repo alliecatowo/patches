@@ -203,6 +203,26 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/lab/fed-lab.sh up"
 description = "Stop the federation lab started by `mise run fed:lab` (kills the PIDs recorded in infra/lab/.run/)"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/lab/fed-lab.sh down"
 
+[tasks.lab]
+description = "Build and start the isolated one-node local browser/agent harness (server :50058, HTTP :8088, database patches_harness_lab)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build && node packages/harness/dist/cli.js up"
+
+[tasks."lab:status"]
+description = "Print JSON status for the isolated one-node local browser/agent harness"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js status"
+
+[tasks."lab:logs"]
+description = "Print harness server/worker logs; pass -- --follow to tail"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js logs \"$@\""
+
+[tasks."lab:down"]
+description = "Stop only server and worker processes recorded by the isolated local harness"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down"
+
+[tasks."lab:register"]
+description = "Create a disposable browser-login account in the running local harness; pass -- --handle alice"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js register \"$@\""
+
 [tasks."docker:build"]
 description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"
 run = """
@@ -266,5 +286,4 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\
 [tasks."neon:dev:destroy"]
 description = "Permanently delete the current ephemeral Neon dev branch"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
-
 

@@ -51,6 +51,7 @@ export default defineConfig([
             'apps/worker/*.config.{ts,mts,cts}',
             'packages/config/*.config.{ts,mts,cts}',
             'packages/database/*.config.{ts,mts,cts}',
+            'packages/harness/*.config.{ts,mts,cts}',
             'packages/markup/*.config.{ts,mts,cts}',
             'packages/observability/*.config.{ts,mts,cts}',
             'packages/testkit/*.config.{ts,mts,cts}',
