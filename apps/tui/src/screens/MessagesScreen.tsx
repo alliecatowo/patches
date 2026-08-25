@@ -746,8 +746,6 @@ export function MessagesScreen({
       }
 
       if (view === 'list') {
-          return;
-        }
         if ((input === 'n' || input === ' ') && conversations.hasMore) {
           conversations.loadMore();
           return;
@@ -866,16 +864,13 @@ export function MessagesScreen({
             >
               {isActive && index === effectiveListRow ? '› ' : '  '}
               {conversationLabel(conversation, viewerActorId)}
-              {conversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
-                ? ' [E2EE]'
-                : ' [Server-visible]'}
+              {isE2eeConversation(conversation) ? ' [E2EE]' : ''}
               {conversation.unreadCount > 0 ? ` · ${String(conversation.unreadCount)} unread` : ''}
             </Text>
           ))}
           {conversations.loadingMore ? <Loading label="Loading more" /> : null}
           <Text color={theme.muted}>
-            Enter open · r requests · Tab folder · n / space more · s safety number · G membership ·
-            Esc back
+            Enter open · n / space more · s safety number · G membership · Esc back
           </Text>
         </Box>
       ) : null}
@@ -886,9 +881,7 @@ export function MessagesScreen({
             {selectedConversation === undefined
               ? sanitizeForTerminal(conversationId)
               : `${conversationLabel(selectedConversation, viewerActorId)}${
-                  selectedConversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
-                    ? ' [E2EE]'
-                    : ' [Server-visible]'
+                  isE2eeConversation(selectedConversation) ? ' [E2EE]' : ''
                 }`}
           </Text>
           {threadDisclosure === undefined ? null : <Text color={theme.ok}>{threadDisclosure}</Text>}
@@ -915,21 +908,6 @@ export function MessagesScreen({
           {threadError === undefined ? null : (
             <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>
           )}
-          {messages.error === undefined ? null : <Text color={theme.error}>{messages.error}</Text>}
-          {messages.loading ? <Loading label="Loading messages" /> : null}
-          {messages.hasMore ? <Text color={theme.muted}>Tab loads older messages</Text> : null}
-          {chronologicalMessages.map((message) => (
-            <Text key={message.id}>
-              <Text color={theme.muted}>{actorLabel(message.sender)}: </Text>
-              {messageBody(message)}
-            </Text>
-          ))}
-          {locallySent.map((message) => (
-            <Text key={message.id}>
-              <Text color={theme.muted}>{actorLabel(message.sender)}: </Text>
-              {messageBody(message)}
-            </Text>
-          ))}
           {pendingMessages.map((message) => (
             <Text key={message.id}>
               <Text color={theme.muted}>{glyph('pending', glyphSet)} you: </Text>
@@ -1020,32 +998,6 @@ export function MessagesScreen({
               ))
             : null}
           <Text color={theme.muted}>Esc back to conversation</Text>
-        </Box>
-      ) : null}
-
-      {view === 'requests' ? (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>Message requests</Text>
-          {requests.error === undefined ? null : <Text color={theme.error}>{requests.error}</Text>}
-          {requestStatus === undefined ? null : <Text color={theme.muted}>{requestStatus}</Text>}
-          {requests.loading ? <Loading label="Loading requests" /> : null}
-          {!requests.loading && visibleRequests.length === 0 ? (
-            <Text color={theme.muted}>No pending requests.</Text>
-          ) : null}
-          {visibleRequests.map((request, index) => (
-            <Text
-              key={request.id}
-              color={isActive && index === effectiveRequestRow ? theme.accent : theme.text}
-              bold={isActive && index === effectiveRequestRow}
-            >
-              {isActive && index === effectiveRequestRow ? '› ' : '  '}
-              {actorLabel(request.sender)}: {sanitizeForTerminal(request.body)}
-            </Text>
-          ))}
-          {requests.loadingMore ? <Loading label="Loading more" /> : null}
-          <Text color={theme.muted}>
-            a accept · d decline · Tab folder · n / space more · Esc conversations
-          </Text>
         </Box>
       ) : null}
     </Box>

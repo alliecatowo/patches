@@ -42,13 +42,7 @@ function fakeApi(conversation: Conversation): MessagesScreenApi {
     getConversation: vi
       .fn()
       .mockResolvedValue(create(GetConversationResponseSchema, { conversation })),
-    listMessages: vi.fn().mockResolvedValue({ messages: [], page: undefined }),
-    sendMessage: vi.fn().mockResolvedValue({ message: undefined }),
     markConversationRead: vi.fn().mockResolvedValue({}),
-    listMessageRequests: vi.fn().mockResolvedValue({ requests: [], page: undefined }),
-    respondToMessageRequest: vi
-      .fn()
-      .mockResolvedValue({ request: undefined, conversation: undefined }),
   };
 }
 

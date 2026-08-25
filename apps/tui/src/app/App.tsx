@@ -416,18 +416,8 @@ export function App({
         ensureAccessToken().then((accessToken) => api.listConversations(request, accessToken)),
       getConversation: (request) =>
         ensureAccessToken().then((accessToken) => api.getConversation(request, accessToken)),
-      listMessages: (request) =>
-        ensureAccessToken().then((accessToken) => api.listMessages(request, accessToken)),
-      sendMessage: (request) =>
-        ensureAccessToken().then((accessToken) => api.sendMessage(request, accessToken)),
       markConversationRead: (request) =>
         ensureAccessToken().then((accessToken) => api.markConversationRead(request, accessToken)),
-      listMessageRequests: (request) =>
-        ensureAccessToken().then((accessToken) => api.listMessageRequests(request, accessToken)),
-      respondToMessageRequest: (request) =>
-        ensureAccessToken().then((accessToken) =>
-          api.respondToMessageRequest(request, accessToken),
-        ),
       // P13-010 security surfaces — optional in the screen's contract, always bound
       // here where the authenticated transport exists.
       getIdentityRoot: (request) =>

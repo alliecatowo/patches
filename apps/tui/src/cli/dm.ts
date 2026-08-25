@@ -209,10 +209,10 @@ async function runList(rest: readonly string[], deps: DmDeps): Promise<number> {
 }
 
 /**
- * `send`/`read` never reach the network: every conversation is end-to-end encrypted, and
- * this headless command holds no decryption keys (those live only in the interactive
- * app's local vault). Refusing locally is more honest than making a request that would
- * either fail opaquely or — worse — succeed and leave plaintext outside the vault.
+ * `send`/`read` never reach the network: every conversation is `E2EE_V1`, and this
+ * headless command holds no decryption keys (those live only in the interactive app's
+ * local vault). Refusing locally is more honest than making a request that would either
+ * fail opaquely or — worse — succeed and leave plaintext outside the vault.
  */
 function refuseHeadlessContentAccess(rest: readonly string[], deps: DmDeps): number {
   if (rest[0] === '-h' || rest[0] === '--help') {
