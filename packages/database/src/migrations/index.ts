@@ -28,6 +28,7 @@ import { Phase13NodeFrankingKeys1787235748738 } from './1787235748738-Phase13Nod
 import { AuthCodeDeliveryEnvelopes1787420562003 } from './1787420562003-AuthCodeDeliveryEnvelopes.js';
 import { AddE2eeGroupControlEvents1787448705727 } from './1787448705727-AddE2eeGroupControlEvents.js';
 import { FederationSocialDepthSchema1787450799656 } from './1787450799656-FederationSocialDepthSchema.js';
+import { FilterListSubscriptionScopesDefaultReconciliation1787658107141 } from './1787658107141-FilterListSubscriptionScopesDefaultReconciliation.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -72,4 +73,5 @@ export const ALL_MIGRATIONS = [
   AuthCodeDeliveryEnvelopes1787420562003,
   AddE2eeGroupControlEvents1787448705727,
   FederationSocialDepthSchema1787450799656,
+  FilterListSubscriptionScopesDefaultReconciliation1787658107141,
 ];

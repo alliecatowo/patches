@@ -17,10 +17,23 @@ import {
 } from './enums.js';
 import { FilterList } from './filter-list.entity.js';
 
-/** The full `FILTER_SCOPES` set, as a Postgres `ARRAY[...]` literal — the subscription-table
+/** The full `FILTER_SCOPES` set, as a Postgres array-literal string — the subscription-table
  * `scopes` column's DEFAULT (P14-022, spec §199.1's subscriber-chosen scopes, "empty defaults
- * to every scope"). Kept next to the column it defaults so the two never drift independently. */
-const ALL_FILTER_SCOPES_ARRAY_LITERAL = `ARRAY[${FILTER_SCOPES.map((scope) => `'${scope}'`).join(', ')}]::text[]`;
+ * to every scope"). Kept next to the column it defaults so the two never drift independently.
+ *
+ * B-077: deliberately a quoted `'{A,B,...}'` literal, **not** an `ARRAY['A', 'B', ...]` call
+ * expression and **not** cast with `::text[]`. TypeORM 1.x's postgres driver compares a
+ * function-valued `default` against the live column two ways that both trip on the `ARRAY[...]`
+ * form: (1) it introspects the live default by stripping every `::cast` suffix
+ * (`PostgresQueryRunner.loadTables`), so a literal ending in `::text[]` never matches what it
+ * reads back once that cast is stripped; (2) it lowercases everything *outside* single-quoted
+ * spans before comparing (`PostgresDriver.lowerDefaultValueIfNecessary`, meant for function
+ * calls like `NOW()`), which silently turns `ARRAY[` into `array[` on the entity side while
+ * Postgres always reports the keyword back as `ARRAY[` — an unfixable case mismatch as long as
+ * `ARRAY` sits outside the quotes. A bare quoted `'{...}'` literal has no keyword outside its
+ * quotes and needs no cast (Postgres infers `text[]` from the column), so it is stable under
+ * both transformations and `migration:generate` reports no drift once applied. */
+const ALL_FILTER_SCOPES_ARRAY_LITERAL = `'{${FILTER_SCOPES.join(',')}}'`;
 
 /**
  * An actor's subscription to a published filter list (`INITIAL_VISION.md` §199.2). Composite
