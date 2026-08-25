@@ -255,12 +255,15 @@ function buildMethods(sdk: PatchesSdk) {
     inviteToCommunity: requiredToken(sdk.communities.inviteToCommunity),
     respondToCommunityInvite: requiredToken(sdk.communities.respondToCommunityInvite),
 
-    // ---- DirectMessageService — E2EE-only (B-095/B-096): listing/leaving/read-marking
-    // only, all calls require a session (spec §183). Send/receive go through
-    // `E2eeService` (`createE2eeTransports`), not this service.
+    // ---- DirectMessageService — E2EE-only (B-095/B-096): listing/read-marking only, all
+    // calls require a session (spec §183). Send/receive go through `E2eeService`
+    // (`createE2eeTransports`), not this service. `leaveConversation` is deliberately not
+    // exposed here (B-136d): the server rejects every call with UNIMPLEMENTED (every
+    // conversation is E2EE_V1, and self-removal goes through
+    // `E2eeService.RemoveE2eeMember` instead), so a TUI client method for it would only ever
+    // be dead code with nothing to call it.
     listConversations: requiredToken(sdk.messages.listConversations),
     getConversation: requiredToken(sdk.messages.getConversation),
-    leaveConversation: requiredToken(sdk.messages.leaveConversation),
     markConversationRead: requiredToken(sdk.messages.markConversationRead),
 
     searchTags: optionalToken(sdk.tags.searchTags),
