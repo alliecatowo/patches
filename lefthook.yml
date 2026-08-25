@@ -12,7 +12,9 @@ pre-commit:
       stage_fixed: true
     eslint:
       glob: '*.{ts,tsx,mts,cts,js,mjs,cjs}'
-      run: pnpm exec eslint {staged_files}
+      # Same cache mise run check uses — without it every commit cold-starts the
+      # type-aware TS program (~30s+ on this repo); with it, repeat commits lint in ~2s.
+      run: pnpm exec eslint {staged_files} --cache --cache-location node_modules/.cache/eslint/
 
 # Pushes are the test gate; commits stay cheap.
 pre-push:

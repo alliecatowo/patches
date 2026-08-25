@@ -21,7 +21,7 @@ pnpm proto:breaking   # only if packages/proto changed
 pnpm db:show          # only if a Postgres instance is reachable (see below) and packages/database changed
 ```
 
-`pnpm verify` = `format:check && lint && typecheck && test` in one shot — use it as the fast default; run the proto/db steps separately when relevant.
+`pnpm verify` = `format:check && lint && typecheck && test` in one shot — use it as the fast default; run the proto/db steps separately when relevant. `pnpm test` is `turbo run test`: per-package unit tests, cached — an unchanged package replays instead of re-running. Integration suites are NOT part of it (they're DB-dependent and uncacheable); run them via `mise run test` or `pnpm test:integration`.
 
 ## Scoped variant — use this while working
 
@@ -29,8 +29,9 @@ pnpm db:show          # only if a Postgres instance is reachable (see below) and
 mise run check <name>        # tui | web | server | database | … (or the full @patches/<name>)
 ```
 
-One command: typecheck + tests (dot reporter) + prettier for that workspace, run under the
-**pinned** Node. Use it instead of hand-rolling `pnpm --filter X typecheck && … && …` chains,
+One command: typecheck + tests + prettier for that workspace, run under the **pinned** Node,
+turbo-cached (typecheck+test replay instantly when nothing changed). Use it instead of
+hand-rolling `pnpm --filter X typecheck && … && …` chains,
 and instead of wrapping anything in `zsh -i -c` or `mise exec --` — those only ever existed to
 work around a stale `node` on `PATH`, and `mise run` already resolves the pinned toolchain.
 

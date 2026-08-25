@@ -21,6 +21,13 @@ PATCHES_WEB_ALLOW_LOCAL_BUILD = "1"
 # Lets `podman compose` reuse the compose binary mise installs (only used when docker is unavailable).
 PODMAN_COMPOSE_PROVIDER = "{{config_root}}/.mise/bin/docker-compose"
 PODMAN_COMPOSE_WARNING_LOGS = "false"
+# One turbo cache for the main checkout AND every agent worktree (absolute path — a
+# {{config_root}}-relative one would nest inside worktrees, which live in sibling dirs).
+# Worktrees get it for free when they run under mise; .claude/hooks/worktree-setup.sh
+# falls back to the same path when mise env isn't active. CI doesn't use mise [env],
+# so it keeps the repo-local .turbo/ default, which .github/actions/setup already caches.
+# Verified against turbo 2.10.10: TURBO_CACHE_DIR behaves exactly like --cache-dir.
+TURBO_CACHE_DIR = "{{env.HOME}}/.cache/patches/turbo"
 
 [tasks.compose]
 description = "Run compose against infra/compose/docker-compose.yml (docker compose, falling back to podman compose)"
@@ -176,9 +183,10 @@ cd "$MISE_PROJECT_ROOT"
 name="${1:?usage: mise run check <workspace>   e.g. tui, web, server, @patches/tui}"
 case "$name" in @patches/*) pkg="$name" ;; *) pkg="@patches/$name" ;; esac
 dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(execSync("pnpm ls -r --depth -1 --json",{encoding:"utf8"}));const m=l.find(p=>p.name===process.argv[1]);if(!m){console.error("unknown workspace: "+process.argv[1]);process.exit(1)}process.stdout.write(m.path)' "$pkg")"
-echo "→ $pkg  ($dir)"
-pnpm --filter "$pkg" typecheck
-pnpm --filter "$pkg" test --reporter=dot
+  echo "→ $pkg  ($dir)"
+  # typecheck+test in one turbo invocation: dependency-ordered, parallel, and cached —
+  # an unchanged workspace replays in ~0s instead of re-running vitest every time.
+  pnpm exec turbo run typecheck test --filter="$pkg" --output-logs=errors-only
 # eslint was missing here until 2026-08-20, so agents kept reporting a workspace green
 # and then tripping lefthook's eslint at commit time (import-type, no-misused-promises,
 # no-empty-object-type). The pre-commit hook must never be the first place lint runs.
@@ -189,7 +197,9 @@ echo "✓ $pkg is green"
 
 [tasks.test]
 description = "All tests including integration (needs the compose stack)"
-run = "cd \"$MISE_PROJECT_ROOT\" && TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" pnpm test"
+# `pnpm test` is now `turbo run test` (unit tests only, cached); the integration projects
+# are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
+run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && pnpm test && pnpm test:integration"
 
 [tasks.down]
 description = "Stop the compose stack"
