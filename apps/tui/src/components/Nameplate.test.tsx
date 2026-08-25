@@ -43,4 +43,9 @@ describe('Nameplate', () => {
     );
     expect(lastFrame()).toBe('★ @alice[2J');
   });
+
+  it('strips control characters from the `text` override too (B-136a)', () => {
+    const { lastFrame } = render(<Nameplate handle="alice" text={`Display\x1b[2JName`} />);
+    expect(lastFrame()).toBe('Display[2JName');
+  });
 });

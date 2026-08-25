@@ -43,7 +43,7 @@ export function Nameplate({
     ? fallbackColor
     : ((present(nameplate) ? gradientFirstStop(nameplate.nameColor) : undefined) ?? fallbackColor);
   const glyph = plain || !present(nameplate) ? '' : sanitizeForTerminal(nameplate.glyph);
-  const label = text ?? `@${sanitizeForTerminal(handle)}`;
+  const label = text !== undefined ? sanitizeForTerminal(text) : `@${sanitizeForTerminal(handle)}`;
   // `Text`'s `color` prop type has no `undefined` member (exactOptionalPropertyTypes
   // requires actually omitting the prop, not passing `color={undefined}`).
   return (
