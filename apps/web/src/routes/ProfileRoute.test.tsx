@@ -101,6 +101,25 @@ describe('ProfileRoute', () => {
     expect(document.querySelector('[data-name-tag]')?.getAttribute('data-name-tag')).toBe('pilled');
   });
 
+  it('refuses to render a non-https profileBannerUrl (B-136c)', async () => {
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+        profileBannerUrl: 'data:image/png;base64,AAAA',
+      } as Actor,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
+    expect(document.querySelector('img')).toBeNull();
+  });
+
   it('uses account-not-found copy only for a genuine NOT_FOUND response', async () => {
     mockGetActorByHandle.mockRejectedValue(new ConnectError('Actor not found.', Code.NotFound));
 
