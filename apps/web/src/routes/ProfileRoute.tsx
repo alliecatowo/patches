@@ -41,13 +41,19 @@ export function ProfileRoute(): JSX.Element {
     enabled: profileHandle !== undefined,
   });
 
-  const pageQuery = useQuery({
-    queryKey: ['page', profileHandle],
-    queryFn: () => api.pages.getPage({ handle: profileHandle ?? '', slug: '' }),
-    enabled: tab === 'wall' && profileHandle !== undefined,
-  });
-
   const actor = actorQuery.data?.actor;
+
+  // Keyed and fetched by the *canonical* handle (`actor.handle`, as `getActorByHandle`
+  // resolved it) rather than whatever case the URL happened to carry — otherwise a link
+  // typed/pasted with different casing than the actor's stored handle (lookup is
+  // case-insensitive) puts this query under a cache key `EditWallDialog`'s post-save
+  // `invalidateQueries(['page', actor.handle])` can never match, so the wall silently
+  // shows stale content after a successful save.
+  const pageQuery = useQuery({
+    queryKey: ['page', actor?.handle ?? profileHandle],
+    queryFn: () => api.pages.getPage({ handle: actor?.handle ?? profileHandle ?? '', slug: '' }),
+    enabled: tab === 'wall' && actor !== undefined,
+  });
 
   const followersQuery = useQuery({
     queryKey: ['followers', actor?.id],

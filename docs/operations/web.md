@@ -35,8 +35,11 @@ Production Pages builds must target the standard HTTPS Connect origin below; the
   cache key, so a block (which also clears any existing follow server-side, spec §62) is
   reflected in both without a second fetch.
 - `apps/web/src/components/EditWallDialog.tsx` — modal dialog allowing profile owners to
-  compose, edit, reorder, and save Page blocks (Text, Markdown, Links, Image) to their profile
-  wall (`PageService.UpdatePage`).
+  compose, delete, and save blocks (Text, NowPlaying, Hero, AsciiArt) on their profile wall — the
+  `PatchesPage` document's index sub-page (`PageService.UpdatePage`). Saving preserves any other
+  sub-pages and the document's `theme` byte-for-byte rather than round-tripping them through the
+  lenient render-time parser, so a sub-page holding a block type this dialog doesn't know about
+  isn't corrupted by an unrelated wall edit.
 - `apps/web/src/components/ActorList.tsx` — actor card list used by `ProfileRoute`'s
   `Followers` and `Following` tabs (which switch via count pills or tab headers).
 - `apps/web/src/routes/ThreadRoute.tsx` and `apps/web/src/components/PostCard.tsx` —
