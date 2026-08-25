@@ -255,17 +255,13 @@ function buildMethods(sdk: PatchesSdk) {
     inviteToCommunity: requiredToken(sdk.communities.inviteToCommunity),
     respondToCommunityInvite: requiredToken(sdk.communities.respondToCommunityInvite),
 
-    // ---- DirectMessageService — all calls require a session (spec §183) ----
+    // ---- DirectMessageService — E2EE-only (B-095/B-096): listing/leaving/read-marking
+    // only, all calls require a session (spec §183). Send/receive go through
+    // `E2eeService` (`createE2eeTransports`), not this service.
     listConversations: requiredToken(sdk.messages.listConversations),
     getConversation: requiredToken(sdk.messages.getConversation),
-    listMessages: requiredToken(sdk.messages.listMessages),
-    sendMessage: requiredToken(sdk.messages.sendMessage),
-    deleteMessage: requiredToken(sdk.messages.deleteMessage),
-    createConversation: requiredToken(sdk.messages.createConversation),
     leaveConversation: requiredToken(sdk.messages.leaveConversation),
     markConversationRead: requiredToken(sdk.messages.markConversationRead),
-    listMessageRequests: requiredToken(sdk.messages.listMessageRequests),
-    respondToMessageRequest: requiredToken(sdk.messages.respondToMessageRequest),
 
     searchTags: optionalToken(sdk.tags.searchTags),
     muteTag: requiredToken(sdk.tags.muteTag),

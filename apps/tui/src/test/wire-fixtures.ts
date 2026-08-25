@@ -35,7 +35,6 @@ import {
   FILTERED_BY_PROVENANCE,
   FOLLOW_STATE,
   LABEL_ACTION,
-  MESSAGE_REQUEST_STATUS,
   MODERATION_ACTION_TYPE,
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
@@ -64,8 +63,6 @@ import type {
   Labeler,
   LabelVocabularyEntry,
   MediaAttachment,
-  Message,
-  MessageRequest,
   ModerationLogEntry,
   ModerationNotice,
   Nameplate,
@@ -363,16 +360,15 @@ export function makeTag(overrides: Partial<Tag> = {}): Tag {
   };
 }
 
-/** Every v0 conversation the TUI renders is server-visible (ADR 0017) - a
- * `CONVERSATION_SECURITY_MODE_E2EE_V1` conversation is a different feature's concurrent
- * WIP, not something any of these fixtures need to represent. */
+/** B-095 retired `LEGACY_SERVER_VISIBLE` (ADR 0030): every conversation any client can
+ * still reach is `E2EE_V1`, so that is the only default these fixtures need. */
 export function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
   const createdBy = overrides.createdBy ?? makeActor();
   return {
     $typeName: 'patches.v1.Conversation',
     id: 'conversation-1',
     kind: CONVERSATION_KIND.DIRECT,
-    securityMode: CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE,
+    securityMode: CONVERSATION_SECURITY_MODE.E2EE_V1,
     createdBy,
     members: [
       {
@@ -387,32 +383,6 @@ export function makeConversation(overrides: Partial<Conversation> = {}): Convers
     createdAt: undefined,
     lastMessageAt: undefined,
     unreadCount: 0,
-    ...overrides,
-  };
-}
-
-export function makeMessage(overrides: Partial<Message> = {}): Message {
-  return {
-    $typeName: 'patches.v1.Message',
-    id: 'message-1',
-    conversationId: 'conversation-1',
-    sender: makeActor(),
-    body: 'hello',
-    createdAt: undefined,
-    deletedAt: undefined,
-    ...overrides,
-  };
-}
-
-export function makeMessageRequest(overrides: Partial<MessageRequest> = {}): MessageRequest {
-  return {
-    $typeName: 'patches.v1.MessageRequest',
-    id: 'request-1',
-    sender: makeActor(),
-    recipient: undefined,
-    body: 'hello',
-    status: MESSAGE_REQUEST_STATUS.PENDING,
-    createdAt: undefined,
     ...overrides,
   };
 }

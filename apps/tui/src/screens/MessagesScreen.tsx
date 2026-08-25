@@ -20,18 +20,8 @@ import type {
   ListConversationsRequest,
   ListConversationsResponse,
   ListE2eeGroupControlEventsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  Message,
-  MessageRequest,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from '../api/wire/types.js';
 import { Box, Text, useInput, useStdin } from 'ink';
 import type { ReactElement } from 'react';
@@ -47,9 +37,6 @@ import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
-
-export const DM_DISCLOSURE =
-  "Not end-to-end encrypted — this node's operators can read these messages.";
 
 /**
  * ADR 0027: when the node's capability RPC reports `ISOLATED_TEST_ONLY`, every surface
@@ -88,13 +75,7 @@ const MEMBERSHIP_CONFLICT_COPY =
 export interface MessagesScreenApi {
   listConversations(request: ListConversationsRequest): Promise<ListConversationsResponse>;
   getConversation(request: GetConversationRequest): Promise<GetConversationResponse>;
-  listMessages(request: ListMessagesRequest): Promise<ListMessagesResponse>;
-  sendMessage(request: SendMessageRequest): Promise<SendMessageResponse>;
   markConversationRead(request: MarkConversationReadRequest): Promise<MarkConversationReadResponse>;
-  listMessageRequests(request: ListMessageRequestsRequest): Promise<ListMessageRequestsResponse>;
-  respondToMessageRequest(
-    request: RespondToMessageRequestRequest,
-  ): Promise<RespondToMessageRequestResponse>;
   /** Optional because only shells with an authenticated `E2eeService` transport provide
    * the security surfaces below; without them the screen renders mode labels but no
    * verification state, transcript, or change interstitials. */
@@ -178,8 +159,6 @@ export interface MessagesScreenProps {
   /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
   mailPollMs?: number | undefined;
 }
-
-type Folder = 'inbox' | 'requests';
 
 interface Page<T> {
   items: readonly T[];
@@ -326,10 +305,6 @@ function conversationLabel(conversation: Conversation, viewerActorId?: string): 
   return shown.map((member) => actorLabel(member.actor)).join(', ');
 }
 
-function messageBody(message: Message): string {
-  return present(message.deletedAt) ? '[deleted]' : sanitizeForTerminal(message.body);
-}
-
 /**
  * Node-policy retention copy (P12-114, spec §197.6). `undefined` means the caller hasn't
  * fetched `NodePolicy.retention.dmRetentionDays` yet, and renders nothing — silence is not
@@ -342,18 +317,22 @@ function retentionCopyFor(dmRetentionDays: number | undefined): string | undefin
   return `This node automatically deletes messages older than ${String(dmRetentionDays)} day${dmRetentionDays === 1 ? '' : 's'}.`;
 }
 
-type View = 'list' | 'thread' | 'requests' | 'transcript';
+type View = 'list' | 'thread' | 'transcript';
 
 interface PendingMessage {
   id: string;
   body: string;
 }
 
-/** The wire's numeric mode, mapped into the domain vocabulary its disclosure rules speak. */
+/**
+ * The wire's numeric mode, mapped into the domain vocabulary its disclosure rules speak.
+ * `LEGACY_SERVER_VISIBLE` is reserved, never issued (ADR 0030/B-095) — only `E2EE_V1`
+ * conversations reach this client, but an unrecognised wire value still renders nothing
+ * rather than guessing.
+ */
 function domainModeOf(
   mode: Conversation['securityMode'],
 ): DomainConversationSecurityMode | undefined {
-  if (mode === CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE) return 'LEGACY_SERVER_VISIBLE';
   if (mode === CONVERSATION_SECURITY_MODE.E2EE_V1) return 'E2EE_V1';
   return undefined;
 }
@@ -450,14 +429,10 @@ export function MessagesScreen({
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const [conversationId, setConversationId] = useState(initialConversationId ?? '');
   const [selectedListRow, setSelectedListRow] = useState(0);
-  const [selectedRequestRow, setSelectedRequestRow] = useState(0);
-  const [resolvedRequests, setResolvedRequests] = useState<ReadonlySet<string>>(new Set());
   const [draft, setDraft] = useState('');
   const [pendingMessages, setPendingMessages] = useState<readonly PendingMessage[]>([]);
-  const [sentMessages, setSentMessages] = useState<readonly Message[]>([]);
   const [sending, setSending] = useState(false);
   const [threadError, setThreadError] = useState<string | undefined>();
-  const [requestStatus, setRequestStatus] = useState<string | undefined>();
   // P13-010 change/compromise interstitials: baseline vs. now for the open thread's peer.
   const [peerSecurity, setPeerSecurity] = useState<PeerSecurityStatus>({ status: 'ok' });
   const peerBaseline = useRef<PeerSecurityBaseline | undefined>(undefined);
@@ -485,53 +460,6 @@ export function MessagesScreen({
     'conversations',
     fetchConversations,
     'Could not load conversations.',
-  );
-
-  const fetchRequests = useCallback(
-    (cursor: string): Promise<Page<MessageRequest>> =>
-      api.listMessageRequests({ cursor, limit: 20 }).then((response) => ({
-        items: response.requests,
-        nextCursor: response.page?.nextCursor ?? '',
-        hasMore: response.page?.hasMore ?? false,
-      })),
-    [api],
-  );
-  const requests = useKeysetList(
-    view === 'requests',
-    'requests',
-    fetchRequests,
-    'Could not load message requests.',
-  );
-  const visibleRequests = requests.items.filter((request) => !resolvedRequests.has(request.id));
-
-  const fetchMessages = useCallback(
-    (cursor: string): Promise<Page<Message>> => {
-      if (conversationId === '') {
-        return Promise.resolve({ items: [], nextCursor: '', hasMore: false });
-      }
-      return api.listMessages({ conversationId, cursor, limit: 30 }).then((response) => {
-        const newest = response.messages[0];
-        if (cursor === '' && newest !== undefined) {
-          void api
-            .markConversationRead({ conversationId, throughMessageId: newest.id })
-            .catch(() => {
-              // Read state is best-effort; no receipt or error surface is exposed.
-            });
-        }
-        return {
-          items: response.messages,
-          nextCursor: response.page?.nextCursor ?? '',
-          hasMore: response.page?.hasMore ?? false,
-        };
-      });
-    },
-    [api, conversationId],
-  );
-  const messages = useKeysetList(
-    view === 'thread' && conversationId !== '',
-    conversationId,
-    fetchMessages,
-    'Could not load messages.',
   );
 
   useEffect(() => {
@@ -724,14 +652,12 @@ export function MessagesScreen({
 
   const visibleCount = Math.max(3, rows - 4);
   const effectiveListRow = Math.min(selectedListRow, Math.max(conversations.items.length - 1, 0));
-  const effectiveRequestRow = Math.min(selectedRequestRow, Math.max(visibleRequests.length - 1, 0));
 
   function openConversation(conversation: Conversation): void {
     setSelectedConversation(conversation);
     setConversationId(conversation.id);
     setDraft('');
     setPendingMessages([]);
-    setSentMessages([]);
     setThreadError(undefined);
     setE2eeRows([]);
     // Reopening re-baselines the security checks on purpose — acknowledging a change
@@ -750,60 +676,38 @@ export function MessagesScreen({
     setSelectedConversation(undefined);
     setDraft('');
     setPendingMessages([]);
-    setSentMessages([]);
     setThreadError(undefined);
     setE2eeRows([]);
     setTranscript({ status: 'hidden' });
   }
 
+  /**
+   * Every reachable conversation is end-to-end (ADR 0030/B-095 retired the plaintext
+   * `SendMessage` RPC this used to fall back to). Sending never rides a plaintext path —
+   * not as a fallback, not "just this once" (ADR 0020 §1.2) — it goes through the
+   * shell's vault-backed pipeline or it does not go out at all.
+   */
   async function sendDraft(): Promise<void> {
     const body = draft;
     if (body.trim() === '' || conversationId === '' || sending) return;
-    // An end-to-end conversation never rides the plaintext RPC — not as a fallback,
-    // not "just this once" (ADR 0020 §1.2). It goes through the shell's vault-backed
-    // pipeline or it does not go out at all.
-    if (isE2eeConversation(selectedConversation)) {
-      if (e2eeVaultFault !== undefined) {
-        setThreadError(`${VAULT_FAULT_COPY[e2eeVaultFault]} ${VAULT_FAULT_HINT}`);
-        return;
-      }
-      if (peerSecurity.status === 'identityChanged') {
-        setThreadError(IDENTITY_CHANGED_COPY);
-        return;
-      }
-      if (peerSecurity.status === 'rosterChanged') {
-        setThreadError(ROSTER_CHANGED_COPY);
-        return;
-      }
-      if (sendE2ee === undefined) {
-        setThreadError(E2EE_SEND_UNAVAILABLE_COPY);
-        return;
-      }
-      const clientRequestId = createRequestId();
-      setSending(true);
-      setThreadError(undefined);
-      setDraft('');
-      setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
-      try {
-        await sendE2ee(conversationId, body);
-        setPendingMessages((current) =>
-          current.filter((message) => message.id !== clientRequestId),
-        );
-      } catch (error) {
-        setPendingMessages((current) =>
-          current.filter((message) => message.id !== clientRequestId),
-        );
-        setDraft(body);
-        // No enrolled device (the TUI has no enrollment flow yet — B-101 leaves the
-        // pipeline wired but identity-less): say exactly that, not "message lost".
-        setThreadError(
-          error instanceof E2eeNotEnrolledError
-            ? E2EE_SEND_UNAVAILABLE_COPY
-            : 'Message was not sent. Your draft is still here.',
-        );
-      } finally {
-        setSending(false);
-      }
+    if (!isE2eeConversation(selectedConversation)) {
+      setThreadError('This conversation could not be sent to.');
+      return;
+    }
+    if (e2eeVaultFault !== undefined) {
+      setThreadError(`${VAULT_FAULT_COPY[e2eeVaultFault]} ${VAULT_FAULT_HINT}`);
+      return;
+    }
+    if (peerSecurity.status === 'identityChanged') {
+      setThreadError(IDENTITY_CHANGED_COPY);
+      return;
+    }
+    if (peerSecurity.status === 'rosterChanged') {
+      setThreadError(ROSTER_CHANGED_COPY);
+      return;
+    }
+    if (sendE2ee === undefined) {
+      setThreadError(E2EE_SEND_UNAVAILABLE_COPY);
       return;
     }
     const clientRequestId = createRequestId();
@@ -812,42 +716,27 @@ export function MessagesScreen({
     setDraft('');
     setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
     try {
-      const response = await api.sendMessage({ clientRequestId, conversationId, body });
+      await sendE2ee(conversationId, body);
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
-      if (present(response.message)) {
-        const sentMessage = response.message;
-        setSentMessages((current) => [...current, sentMessage]);
-      }
-    } catch {
+    } catch (error) {
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
       setDraft(body);
-      setThreadError('Message was not sent. Your draft is still here.');
+      // No enrolled device (the TUI has no enrollment flow yet — B-101 leaves the
+      // pipeline wired but identity-less): say exactly that, not "message lost".
+      setThreadError(
+        error instanceof E2eeNotEnrolledError
+          ? E2EE_SEND_UNAVAILABLE_COPY
+          : 'Message was not sent. Your draft is still here.',
+      );
     } finally {
       setSending(false);
-    }
-  }
-
-  async function respondToSelectedRequest(accept: boolean): Promise<void> {
-    const request = visibleRequests[effectiveRequestRow];
-    if (request === undefined) return;
-    setRequestStatus(accept ? 'Accepting request…' : 'Declining request…');
-    try {
-      const response = await api.respondToMessageRequest({ id: request.id, accept });
-      setResolvedRequests((current) => new Set(current).add(request.id));
-      if (accept && present(response.conversation)) {
-        openConversation(response.conversation);
-        return;
-      }
-      setRequestStatus(accept ? 'Request accepted.' : 'Request declined.');
-    } catch {
-      setRequestStatus('Could not update that request.');
     }
   }
 
   useInput(
     (input, key) => {
       if (key.escape) {
-        if (view === 'thread' || view === 'requests') backToList();
+        if (view === 'thread') backToList();
         else if (view === 'transcript') {
           // The transcript is a list-level overlay of one conversation; Esc lands on
           // that conversation's row again.
@@ -857,9 +746,6 @@ export function MessagesScreen({
       }
 
       if (view === 'list') {
-        if (input === 'r' || key.tab) {
-          setRequestStatus(undefined);
-          setView('requests');
           return;
         }
         if ((input === 'n' || input === ' ') && conversations.hasMore) {
@@ -901,31 +787,6 @@ export function MessagesScreen({
         return;
       }
 
-      if (view === 'requests') {
-        if (key.tab) {
-          setView('list');
-          return;
-        }
-        if ((input === 'n' || input === ' ') && requests.hasMore) {
-          requests.loadMore();
-          return;
-        }
-        const moved = movementTarget({
-          input,
-          key,
-          current: effectiveRequestRow,
-          total: visibleRequests.length,
-          pageSize: visibleCount,
-        });
-        if (moved !== undefined) {
-          setSelectedRequestRow(moved);
-          return;
-        }
-        if (input === 'a') void respondToSelectedRequest(true);
-        if (input === 'd') void respondToSelectedRequest(false);
-        return;
-      }
-
       if (view === 'transcript') {
         // Read-only overlay: every key other than Esc is ignored until the viewer backs out.
         return;
@@ -934,10 +795,6 @@ export function MessagesScreen({
       // Safety numbers and the membership transcript live on the *list* level, not in
       // the thread: the thread owns every printable key for drafting, and stealing
       // letters there would corrupt drafts. One Esc away keeps them unambiguous.
-      if (key.tab && messages.hasMore) {
-        messages.loadMore();
-        return;
-      }
       if (key.return) {
         void sendDraft();
         return;
@@ -955,10 +812,6 @@ export function MessagesScreen({
     { isActive: isActive && isRawModeSupported },
   );
 
-  const chronologicalMessages = [...messages.items].reverse();
-  const knownMessageIds = new Set(chronologicalMessages.map((message) => message.id));
-  const locallySent = sentMessages.filter((message) => !knownMessageIds.has(message.id));
-  const folder: Folder = view === 'requests' ? 'requests' : 'inbox';
   const retentionCopy = retentionCopyFor(dmRetentionDays);
   // Mode labels are immutable facts of the conversation (ADR 0020 §11): read from
   // `securityMode`, worded by the domain's disclosure rules, never by local assumption.
@@ -978,7 +831,6 @@ export function MessagesScreen({
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.warn}>{DM_DISCLOSURE}</Text>
       {unreviewedDevWarning ? (
         <Text color={theme.warn} bold>
           {UNREVIEWED_DEV_E2EE_WARNING}
@@ -996,18 +848,6 @@ export function MessagesScreen({
       )}
       <Text color={theme.accent}>Messages</Text>
       {retentionCopy === undefined ? null : <Text color={theme.muted}>{retentionCopy}</Text>}
-      {view === 'thread' ? null : (
-        <Text>
-          <Text bold={folder === 'inbox'} inverse={folder === 'inbox'}>
-            {' Inbox '}
-          </Text>
-          <Text> </Text>
-          <Text bold={folder === 'requests'} inverse={folder === 'requests'}>
-            {' Requests '}
-          </Text>
-          <Text color={theme.muted}> · Tab switches</Text>
-        </Text>
-      )}
 
       {view === 'list' ? (
         <Box marginTop={1} flexDirection="column">

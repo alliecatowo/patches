@@ -1,23 +1,12 @@
-import { randomUUID } from 'node:crypto';
-
 import type {
   GetConversationRequest,
   GetConversationResponse,
   ListConversationsRequest,
   ListConversationsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from '../api/wire/types.js';
 
-import { CONVERSATION_SECURITY_MODE } from '../api/wire/enums.js';
 import { present } from '../api/present.js';
 import { describeGrpcError } from '../api/errors.js';
 import { type PatchesApi } from '../api/client.js';
@@ -26,21 +15,30 @@ import { sanitizeForTerminal } from '../format/sanitize.js';
 import { createApi, openCredentialStore } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
-const DM_NOTICE = "Not end-to-end encrypted — this node's operators can read these messages.";
+/**
+ * B-096: every remaining conversation is `E2EE_V1` (ADR 0030/B-095 retired the legacy
+ * server-visible mode). This is accurate, unlike the legacy §183.1 notice it replaces —
+ * see `requiredConversationDisclosure('E2EE_V1')` in `@patches/domain`, which this
+ * mirrors rather than imports to keep the CLI's dependency surface small.
+ */
+const DM_NOTICE =
+  'End-to-end encrypted. This node cannot read these messages, but it can see who you message and when.';
 
+/**
+ * `patches dm send`/`read` cannot reach an end-to-end conversation's content: the
+ * decryption keys live only in the interactive app's local vault, and the server no
+ * longer carries a plaintext message surface for any conversation to fall back to.
+ */
 const E2EE_REFUSAL =
-  'This conversation uses end-to-end encryption, whose keys `patches dm send` does not hold, ' +
-  'so it cannot write here. Use the interactive app instead — its DM screen composes these ' +
-  'messages.';
+  'This conversation uses end-to-end encryption, whose keys `patches dm` does not hold, ' +
+  'so it cannot read or write here. Use the interactive app instead — its DM screen composes ' +
+  'and decrypts these messages.';
 
-const USAGE = `Usage: patches dm <list|send|read|requests> [options]
+const USAGE = `Usage: patches dm <list|send|read> [options]
 
   patches dm list [--cursor <cursor>] [--limit <count>]
   patches dm send <conversation-id> <message>
-  patches dm read <conversation-id> [--cursor <cursor>] [--limit <count>]
-  patches dm requests [--cursor <cursor>] [--limit <count>]
-  patches dm requests accept <request-id>
-  patches dm requests decline <request-id>
+  patches dm read <conversation-id>
 
 Options:
   --cursor <cursor>              continue from an opaque keyset cursor
@@ -52,13 +50,7 @@ Options:
 export interface DmCommandApi {
   listConversations(request: ListConversationsRequest): Promise<ListConversationsResponse>;
   getConversation(request: GetConversationRequest): Promise<GetConversationResponse>;
-  listMessages(request: ListMessagesRequest): Promise<ListMessagesResponse>;
-  sendMessage(request: SendMessageRequest): Promise<SendMessageResponse>;
   markConversationRead(request: MarkConversationReadRequest): Promise<MarkConversationReadResponse>;
-  listMessageRequests(request: ListMessageRequestsRequest): Promise<ListMessageRequestsResponse>;
-  respondToMessageRequest(
-    request: RespondToMessageRequestRequest,
-  ): Promise<RespondToMessageRequestResponse>;
 }
 
 export interface DmCommandSession {
@@ -113,11 +105,7 @@ function commandApi(api: PatchesApi, accessToken: string): DmCommandApi {
   return {
     listConversations: (request) => api.listConversations(request, accessToken),
     getConversation: (request) => api.getConversation(request, accessToken),
-    listMessages: (request) => api.listMessages(request, accessToken),
-    sendMessage: (request) => api.sendMessage(request, accessToken),
     markConversationRead: (request) => api.markConversationRead(request, accessToken),
-    listMessageRequests: (request) => api.listMessageRequests(request, accessToken),
-    respondToMessageRequest: (request) => api.respondToMessageRequest(request, accessToken),
   };
 }
 
@@ -220,126 +208,22 @@ async function runList(rest: readonly string[], deps: DmDeps): Promise<number> {
   });
 }
 
-async function runSend(rest: readonly string[], deps: DmDeps): Promise<number> {
+/**
+ * `send`/`read` never reach the network: every conversation is end-to-end encrypted, and
+ * this headless command holds no decryption keys (those live only in the interactive
+ * app's local vault). Refusing locally is more honest than making a request that would
+ * either fail opaquely or — worse — succeed and leave plaintext outside the vault.
+ */
+function refuseHeadlessContentAccess(rest: readonly string[], deps: DmDeps): number {
   if (rest[0] === '-h' || rest[0] === '--help') {
     deps.io.stdout(USAGE);
     return 0;
   }
-  const [conversationId, ...bodyParts] = rest;
-  const body = bodyParts.join(' ').trim();
-  if (conversationId === undefined || conversationId === '' || body === '') {
-    deps.io.stderr(`A conversation id and message are required.\n\n${USAGE}`);
-    return 1;
-  }
-  if (Array.from(body).length > 2_000) {
-    deps.io.stderr('A message can be at most 2,000 characters.\n');
-    return 1;
-  }
-  return withSession(deps, async ({ api }) => {
-    // Client mirror of the server's plaintext-into-E2EE gate (audit P0-1c): fetch the
-    // conversation's mode first and refuse to send anything into an E2EE one. The server
-    // rejects such sends uniformly anyway; refusing here turns that opaque NOT_FOUND into
-    // actionable guidance instead. A missing conversation falls through so the server's own
-    // error surfaces unchanged.
-    const existing = await api.getConversation({ id: conversationId });
-    if (
-      present(existing.conversation) &&
-      existing.conversation.securityMode !== CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE
-    ) {
-      deps.io.stderr(`${E2EE_REFUSAL}\n`);
-      return 1;
-    }
-    const response = await api.sendMessage({
-      clientRequestId: deps.createRequestId?.() ?? randomUUID(),
-      conversationId,
-      body,
-    });
-    deps.io.stdout(
-      present(response.message) ? `Sent ${oneLine(response.message.id)}.\n` : 'Message sent.\n',
-    );
-    return 0;
-  });
+  deps.io.stderr(`${E2EE_REFUSAL}\n`);
+  return 1;
 }
 
-async function runRead(rest: readonly string[], deps: DmDeps): Promise<number> {
-  const [conversationId, ...flagArgs] = rest;
-  if (conversationId === '-h' || conversationId === '--help') {
-    deps.io.stdout(USAGE);
-    return 0;
-  }
-  if (conversationId === undefined || conversationId === '') {
-    deps.io.stderr(`A conversation id is required.\n\n${USAGE}`);
-    return 1;
-  }
-  const flags = parsePageFlags(flagArgs);
-  if ('error' in flags) {
-    deps.io.stderr(`${flags.error}\n\n${USAGE}`);
-    return 1;
-  }
-  return withSession(deps, async ({ api }) => {
-    const conversation = await api.getConversation({ id: conversationId });
-    if (!present(conversation.conversation)) {
-      throw new Error('That conversation no longer exists.');
-    }
-    const response = await api.listMessages({
-      conversationId,
-      cursor: flags.cursor,
-      limit: flags.limit,
-    });
-    for (const message of [...response.messages].reverse()) {
-      const body = present(message.deletedAt) ? '[deleted]' : oneLine(message.body);
-      deps.io.stdout(`${actorLabel(message.sender)}\t${body}\n`);
-    }
-    if (response.messages.length === 0) deps.io.stdout('No messages.\n');
-    const newest = response.messages[0];
-    if (flags.cursor === '' && newest !== undefined) {
-      await api.markConversationRead({ conversationId, throughMessageId: newest.id });
-    }
-    if (response.page?.hasMore === true) {
-      deps.io.stdout(`next cursor: ${oneLine(response.page.nextCursor)}\n`);
-    }
-  });
-}
-
-async function runRequests(rest: readonly string[], deps: DmDeps): Promise<number> {
-  const [action, requestId, ...extra] = rest;
-  if (action === 'accept' || action === 'decline') {
-    if (requestId === undefined || requestId === '' || extra.length > 0) {
-      deps.io.stderr(`A single request id is required.\n\n${USAGE}`);
-      return 1;
-    }
-    return withSession(deps, async ({ api }) => {
-      await api.respondToMessageRequest({ id: requestId, accept: action === 'accept' });
-      deps.io.stdout(
-        `${action === 'accept' ? 'Accepted' : 'Declined'} request ${oneLine(requestId)}.\n`,
-      );
-    });
-  }
-
-  const flags = parsePageFlags(rest);
-  if ('error' in flags) {
-    deps.io.stderr(`${flags.error}\n\n${USAGE}`);
-    return 1;
-  }
-  if (flags.help) {
-    deps.io.stdout(USAGE);
-    return 0;
-  }
-  return withSession(deps, async ({ api }) => {
-    const response = await api.listMessageRequests({ cursor: flags.cursor, limit: flags.limit });
-    if (response.requests.length === 0) deps.io.stdout('No pending requests.\n');
-    for (const request of response.requests) {
-      deps.io.stdout(
-        `${oneLine(request.id)}\t${actorLabel(request.sender)}\t${oneLine(request.body)}\n`,
-      );
-    }
-    if (response.page?.hasMore === true) {
-      deps.io.stdout(`next cursor: ${oneLine(response.page.nextCursor)}\n`);
-    }
-  });
-}
-
-/** Headless conversation/message-request equivalent of the interactive screen. */
+/** Headless conversation-listing counterpart of the interactive screen. */
 export async function runDm(rest: readonly string[], deps: DmDeps): Promise<number> {
   const [subcommand, ...remaining] = rest;
   if (subcommand === '-h' || subcommand === '--help') {
@@ -351,9 +235,8 @@ export async function runDm(rest: readonly string[], deps: DmDeps): Promise<numb
     return 1;
   }
   if (subcommand === 'list') return runList(remaining, deps);
-  if (subcommand === 'send') return runSend(remaining, deps);
-  if (subcommand === 'read') return runRead(remaining, deps);
-  if (subcommand === 'requests') return runRequests(remaining, deps);
+  if (subcommand === 'send') return refuseHeadlessContentAccess(remaining, deps);
+  if (subcommand === 'read') return refuseHeadlessContentAccess(remaining, deps);
   deps.io.stderr(`Unknown dm subcommand: ${subcommand}\n\n${USAGE}`);
   return 1;
 }
