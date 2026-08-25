@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   commitFranking,
@@ -221,7 +221,11 @@ interface Party {
   readonly vault: TypedRatchetVault;
 }
 
-async function makeParty(identity: TestIdentity, node: FakeNode): Promise<Party> {
+async function makeParty(
+  identity: TestIdentity,
+  node: FakeNode,
+  nowMs?: () => number,
+): Promise<Party> {
   const store = new MemoryVaultStore();
   await store.open();
   const vault = new TypedRatchetVault(store);
@@ -230,6 +234,7 @@ async function makeParty(identity: TestIdentity, node: FakeNode): Promise<Party>
     identity: identity.local,
     sendTransport: node.sendTransport(identity),
     mailboxTransport: node.mailboxTransport(identity.local.deviceId),
+    ...(nowMs === undefined ? {} : { nowMs }),
   });
   return { runtime, vault };
 }
@@ -303,6 +308,95 @@ describe('E2EE runtime (B-101)', () => {
     }
     // Acknowledged anyway, so the mailbox drains (ADR 0025 §4).
     expect(node.acknowledgedIds).toHaveLength(1);
+  });
+
+  it('refuses to decrypt when the node-delivered franking commitment is tampered with', async () => {
+    const { node, alice, bob } = await makeWorld();
+    await alice.runtime.send(CONV, 'franking secret', 'req-fr1');
+
+    // The commitment is the envelope's associated data (ADR 0025 §2), so a node that
+    // swaps it — the exact move the franking construction has to survive — cannot
+    // produce a readable envelope. There is no code path that yields plaintext with an
+    // unverified commitment: `openDeviceEnvelope` is the only source of plaintext.
+    const box = node.mailboxes.get('device-bob') ?? [];
+    const envelope = box[0];
+    expect(envelope).toBeDefined();
+    if (envelope === undefined) return;
+    const authentic = envelope.frankingCommitment;
+    envelope.frankingCommitment = authentic.slice();
+    envelope.frankingCommitment[0] = (authentic[0] ?? 0) ^ 0x01;
+
+    const result = await bob.runtime.pollMailbox({ conversationId: CONV });
+    expect(result.rows.map((row) => row.kind)).toEqual(['unverifiable']);
+    expect(JSON.stringify(result.rows)).not.toContain('franking secret');
+    expect(node.acknowledgedIds).toHaveLength(1);
+  });
+
+  it('never lets plaintext or key material reach a console or stderr diagnostic', async () => {
+    const captured: string[] = [];
+    const record = (...parts: unknown[]): void => {
+      captured.push(parts.map((part) => String(part)).join(' '));
+    };
+    const consoleSpies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(record),
+    );
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      captured.push(typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    });
+
+    const body = 'zebra-quintessence-plaintext';
+    try {
+      const { node, alice, bob } = await makeWorld();
+      await alice.runtime.send(CONV, body, 'req-log1');
+      await bob.runtime.pollMailbox({ conversationId: CONV });
+
+      // Exercise the failure paths too — they are where a naive implementation logs.
+      node.failNextSend = true;
+      const sendError = await alice.runtime
+        .send(CONV, body, 'req-log2')
+        .catch((error: unknown) =>
+          error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error),
+        );
+      captured.push(String(sendError));
+
+      const box = node.mailboxes.get('device-bob') ?? [];
+      const tampered = box[0];
+      if (tampered !== undefined) {
+        tampered.ciphertext = tampered.ciphertext.slice();
+        tampered.ciphertext[3] = (tampered.ciphertext[3] ?? 0) ^ 0x80;
+      }
+      const poll = await bob.runtime.pollMailbox({ conversationId: CONV });
+      captured.push(JSON.stringify(poll));
+
+      const transcript = captured.join('\n');
+      expect(transcript).not.toContain(body);
+      // Ratchet/root/prekey private halves, in every encoding a careless log would use.
+      for (const secret of [
+        ALICE_IDENTITY.local.keys.signing.privateKey,
+        ALICE_IDENTITY.local.keys.agreement.privateKey,
+        ALICE_IDENTITY.local.signedPreKey.keyPair.privateKey,
+      ]) {
+        expect(transcript).not.toContain(Buffer.from(secret).toString('hex'));
+        expect(transcript).not.toContain(Buffer.from(secret).toString('base64'));
+      }
+      // Nothing at all should have gone to a console or stderr from this pipeline.
+      for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of consoleSpies) spy.mockRestore();
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('uses the injected clock for session-setup validity windows', async () => {
+    const node = new FakeNode();
+    // Past every test certificate's expiry: setup must fail closed rather than
+    // establishing a session against expired material.
+    const expired = (): number => Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const alice = await makeParty(ALICE_IDENTITY, node, expired);
+    await expect(alice.runtime.send(CONV, 'too late', 'req-clock')).rejects.toThrow();
+    expect(node.mailboxes.get('device-bob') ?? []).toHaveLength(0);
   });
 
   it('rejects an envelope re-filed under a different logical message id', async () => {
