@@ -318,7 +318,10 @@ validates and saves the _whole_ document via the same `UpdatePage` call the `$ED
 uses. `Esc` at any point backs out one level, keeping whatever you'd typed as a local draft —
 nothing is lost by backing out of either editor. On the web client (`/@handle`), profile owners
 can switch to the **Wall** tab and click `+ Edit Wall` to open `EditWallDialog`, allowing you to
-add, edit, reorder, and save wall blocks in the browser.
+add and remove blocks on the wall (the index sub-page) and save the result in the browser —
+there's no in-dialog reordering or in-place block editing yet (delete and re-add instead). Any
+other sub-pages and the document's theme, created via the TUI's structured or `$EDITOR` editor,
+are preserved untouched.
 
 ### Privacy, filters, filter lists, and labelers
 

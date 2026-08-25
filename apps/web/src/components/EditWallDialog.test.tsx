@@ -46,6 +46,74 @@ describe('EditWallDialog', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('syncs the block list once the page document arrives after the dialog is already open', async () => {
+    const doc = new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        pages: [
+          { slug: 'home', title: 'Home', blocks: [{ type: 'Text', body: 'existing wall text' }] },
+        ],
+      }),
+    );
+
+    const { rerender } = renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+      currentDocument: undefined,
+    });
+
+    expect(screen.queryByText('existing wall text')).not.toBeInTheDocument();
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <EditWallDialog isOpen={true} onClose={vi.fn()} handle="allie" currentDocument={doc} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('existing wall text')).toBeInTheDocument();
+  });
+
+  it('preserves other sub-pages and the theme when saving the wall unchanged', async () => {
+    const doc = new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        theme: { accent: '#ff00ff' },
+        pages: [
+          { slug: 'landing', title: 'Landing', blocks: [{ type: 'Text', body: 'wall text' }] },
+          { slug: 'about', title: 'About', blocks: [{ type: 'Text', body: 'about me' }] },
+        ],
+      }),
+    );
+
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+      currentDocument: doc,
+    });
+
+    expect(await screen.findByText('wall text')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Wall' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePage).toHaveBeenCalledTimes(1);
+    });
+
+    const [request] = mockUpdatePage.mock.calls[0] as [{ document: Uint8Array }];
+    const saved = JSON.parse(new TextDecoder().decode(request.document)) as {
+      theme?: { accent?: string };
+      pages: { slug: string; title: string }[];
+    };
+
+    expect(saved.theme).toEqual({ accent: '#ff00ff' });
+    expect(saved.pages).toHaveLength(2);
+    expect(saved.pages[0]).toMatchObject({ slug: 'landing', title: 'Landing' });
+    expect(saved.pages[1]).toMatchObject({ slug: 'about', title: 'About' });
+  });
+
   it('allows adding a text block and saving the wall', async () => {
     const onClose = vi.fn();
     renderDialog({
