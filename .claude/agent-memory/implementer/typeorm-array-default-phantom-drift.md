@@ -11,10 +11,11 @@ migration.
 
 **Why:** TypeORM 1.x's `PostgresDriver.defaultEqual` compares a function-valued column default
 two ways that both trip on the `ARRAY[...]` call-expression form:
+
 1. `PostgresQueryRunner` introspects the live default by stripping every `::cast` suffix via
    `.replaceAll(/::[\w\s.[\]\-"]+/g, "")` before storing it as `tableColumn.default` — so a
    literal ending in `::text[]` never matches what comes back once that cast is stripped.
-2. `PostgresDriver.lowerDefaultValueIfNecessary` lowercases everything *outside* single-quoted
+2. `PostgresDriver.lowerDefaultValueIfNecessary` lowercases everything _outside_ single-quoted
    spans before comparing (meant to normalize bare function calls like `NOW()`), which silently
    turns `ARRAY[` into `array[` on the entity side — but Postgres always reports the keyword
    back as `ARRAY[`, so this mismatch can never be closed as long as `ARRAY` sits outside quotes.
