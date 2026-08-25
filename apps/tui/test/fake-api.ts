@@ -8,10 +8,12 @@ import {
   FOLLOW_STATE,
   GITHUB_LOGIN_STATUS,
   MEDIA_STATUS,
+  NAME_TAG_STYLE,
   OIDC_LOGIN_STATUS,
   PASSWORD_AUTH_MODE,
   POST_TYPE,
   POST_VISIBILITY,
+  PROFILE_FRAME,
   QUOTE_POLICY,
 } from '../src/api/wire/enums.js';
 import { fromDate } from '../src/api/wire/time.js';
@@ -709,6 +711,10 @@ export class FakeApiHandle {
       avatar: undefined,
       isLocal: true,
       joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      profileBannerUrl: '',
+      profileFrame: PROFILE_FRAME.UNSPECIFIED,
+      nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
+      accentColor: '',
       counts: {
         $typeName: 'patches.v1.ActorCounts',
         followers: followerCount,

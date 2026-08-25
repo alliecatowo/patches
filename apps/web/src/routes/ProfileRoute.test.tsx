@@ -1,6 +1,6 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { PatchesApi } from '@patches/client';
-import type { Actor } from '@patches/proto/es';
+import { NameTagStyle, ProfileFrame, type Actor } from '@patches/proto/es';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
@@ -71,6 +71,34 @@ describe('ProfileRoute', () => {
 
     expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
     expect(mockGetActorByHandle).toHaveBeenCalledWith({ handle: 'allie' });
+    // Degradation (§184.3): no banner set → no banner element at all.
+    expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('renders rapid personalization: banner, frame, and name tag (B-130)', async () => {
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+        profileBannerUrl: 'https://cdn.example.com/banner.png',
+        profileFrame: ProfileFrame.GLOW,
+        nameTagStyle: NameTagStyle.PILLED,
+        accentColor: '#10B981',
+      } as Actor,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
+    const banner = document.querySelector('img[src="https://cdn.example.com/banner.png"]');
+    expect(banner).not.toBeNull();
+    // Frame and name tag are data attributes on the existing structure — decoration only.
+    expect(document.querySelector('[data-frame]')?.getAttribute('data-frame')).toBe('glow');
+    expect(document.querySelector('[data-name-tag]')?.getAttribute('data-name-tag')).toBe('pilled');
   });
 
   it('uses account-not-found copy only for a genuine NOT_FOUND response', async () => {

@@ -14,6 +14,33 @@ import { PageInfo } from './common.js';
 export const protobufPackage = 'patches.v1';
 
 /**
+ * Rapid personalization (owner request 2026-08-25): a profile-level frame effect. Pure
+ * cosmetics — never gates function (§184.3), and every client must degrade to "no frame"
+ * for UNSPECIFIED/NONE or any value it cannot render.
+ */
+export enum ProfileFrame {
+  PROFILE_FRAME_UNSPECIFIED = 'PROFILE_FRAME_UNSPECIFIED',
+  PROFILE_FRAME_NONE = 'PROFILE_FRAME_NONE',
+  PROFILE_FRAME_BORDER = 'PROFILE_FRAME_BORDER',
+  PROFILE_FRAME_GLOW = 'PROFILE_FRAME_GLOW',
+  PROFILE_FRAME_GRADIENT = 'PROFILE_FRAME_GRADIENT',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
+ * How the actor's name tag renders on their profile (same purely-cosmetic rules as
+ * `ProfileFrame`).
+ */
+export enum NameTagStyle {
+  NAME_TAG_STYLE_UNSPECIFIED = 'NAME_TAG_STYLE_UNSPECIFIED',
+  NAME_TAG_STYLE_NONE = 'NAME_TAG_STYLE_NONE',
+  NAME_TAG_STYLE_BADGE = 'NAME_TAG_STYLE_BADGE',
+  NAME_TAG_STYLE_RIBBON = 'NAME_TAG_STYLE_RIBBON',
+  NAME_TAG_STYLE_PILLED = 'NAME_TAG_STYLE_PILLED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
  * A lightweight reference to a `Media` row. Full `Media`/`MediaService` land with the media
  * upload slice (spec §27–32); `media_id` empty means "no media" — e.g. `Actor.avatar` when
  * unset.
@@ -119,6 +146,18 @@ export interface Actor {
    * this node's own domain; a local actor's node is only ever the caller's own (`Session.node`).
    */
   homeServer: string;
+  /**
+   * Profile banner image URL (http/https only, max 2,048 chars — same rule as
+   * `website_url`, spec §58/§104). Empty means no banner, and a client must reserve no
+   * space for it then (§184.3 degradation).
+   */
+  profileBannerUrl: string;
+  /** Profile-level frame effect. UNSPECIFIED/NONE render plain. */
+  profileFrame: ProfileFrame;
+  /** How the actor's name tag renders. UNSPECIFIED/NONE render plain. */
+  nameTagStyle: NameTagStyle;
+  /** Profile accent colour, `#RRGGBB`. Empty means the client default. */
+  accentColor: string;
 }
 
 export interface GetActorRequest {
@@ -157,6 +196,16 @@ export interface UpdateProfileRequest {
   nameplate: Nameplate | undefined;
   /** Applied when `"flair"` is in `update_mask` (spec §189, §190). */
   flair: ActorFlair | undefined;
+  /**
+   * The four rapid-personalization fields (owner request 2026-08-25) — each applied when
+   * its own snake_case name is in `update_mask`. `profile_banner_url` must be http(s) and
+   * ≤ 2,048 chars (empty clears it); `accent_color` must be `#RRGGBB` (empty clears it);
+   * the enum fields reject UNSPECIFIED (pick NONE to clear).
+   */
+  profileBannerUrl: string;
+  profileFrame: ProfileFrame;
+  nameTagStyle: NameTagStyle;
+  accentColor: string;
 }
 
 export interface UpdateProfileResponse {

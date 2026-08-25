@@ -3,6 +3,9 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
+import { stripSgr } from '../../test/ansi.js';
+import { NAME_TAG_STYLE, PROFILE_FRAME } from '../api/wire/enums.js';
 import { ProfileScreen } from './ProfileScreen.js';
 import { makeActor, makeRelationship } from '../test/wire-fixtures.js';
 
@@ -138,5 +141,83 @@ describe('ProfileScreen follow-request awareness (§197.5)', () => {
     await vi.waitFor(() =>
       expect(onNotify).toHaveBeenCalledWith('Follow request sent.', 'success'),
     );
+  });
+});
+
+describe('ProfileScreen rapid personalization (B-130)', () => {
+  function renderScreen(theActor: Actor): { lastFrame: () => string | undefined } {
+    return render(
+      <ProfileScreen
+        api={buildApi()}
+        actorId={theActor.id}
+        knownActor={theActor}
+        isActive
+        actions={{}}
+      />,
+    );
+  }
+
+  it('renders the banner placeholder, frame border, name tag glyph, and nameplate-styled display name', async () => {
+    const { lastFrame } = renderScreen(
+      actor({
+        displayName: 'Bob',
+        profileBannerUrl: 'https://cdn.example.com/banner.png',
+        profileFrame: PROFILE_FRAME.GRADIENT,
+        nameTagStyle: NAME_TAG_STYLE.BADGE,
+        accentColor: '#10B981',
+        nameplate: {
+          $typeName: 'patches.v1.Nameplate',
+          nameColor: '#FF69B4',
+          glyph: '✿',
+          badges: [],
+          avatarFrame: '',
+          statusLine: '',
+          profileBorder: '',
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain('cdn.example.com'));
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toContain('banner: cdn.example.com');
+    // Name tag suffix glyph rides after the nameplate-styled display name.
+    expect(frame).toContain('✿ Bob ◆');
+    // A frame renders as an Ink box border ('bold' style for GRADIENT → ┏ corner).
+    expect(frame).toContain('┏');
+  });
+
+  it('degrades to a plain profile with no cosmetics set (§184.3)', async () => {
+    const { lastFrame } = renderScreen(actor({ displayName: 'Bob' }));
+    await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).not.toContain('banner:');
+    expect(frame).not.toContain('◆');
+    expect(frame).not.toContain('┌');
+  });
+
+  it('strips every decoration in plain mode even when cosmetics are set', async () => {
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <ProfileScreen
+          api={buildApi()}
+          actorId="actor-2"
+          knownActor={actor({
+            displayName: 'Bob',
+            profileBannerUrl: 'https://cdn.example.com/banner.png',
+            profileFrame: PROFILE_FRAME.GLOW,
+            nameTagStyle: NAME_TAG_STYLE.RIBBON,
+            accentColor: '#10B981',
+          })}
+          isActive
+          actions={{}}
+        />
+      </PlainModeProvider>,
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).not.toContain('banner:');
+    expect(frame).not.toContain('»');
+    expect(frame).not.toContain('┌');
+    // The name itself still renders — decoration stripped, content intact.
+    expect(frame).toContain('Bob');
   });
 });

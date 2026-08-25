@@ -204,8 +204,10 @@ function QuotedPost({ post }: { post: Post }): ReactElement {
   const body = post.deleted ? '[deleted]' : post.body === '' ? post.linkUrl : post.body;
   return (
     <Box flexDirection="column" height={3} flexShrink={0} overflow="hidden" marginTop={1}>
+      {/* B-129: the quoted author's nameplate renders here too — a name appears, the
+          nameplate appears (§173), same as the row header above. */}
       <Text color={theme.muted} wrap="truncate-end">
-        ┌ quoted @{sanitizeForTerminal(handle)}
+        ┌ quoted <Nameplate handle={handle} nameplate={post.author?.nameplate ?? undefined} />
         {isRemote ? REMOTE_ORIGIN_SUFFIX : ''}
       </Text>
       <Text wrap="truncate-end">│ {sanitizeForTerminal(body)}</Text>

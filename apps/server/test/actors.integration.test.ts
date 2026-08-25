@@ -19,6 +19,7 @@ import {
   type UpdateProfileRequest,
   type UpdateProfileResponse,
 } from '@patches/proto';
+import { NameTagStyle, ProfileFrame } from '@patches/proto/nest';
 import { createTestFollow, createTestPost, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -120,6 +121,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       return { paths } as unknown as UpdateProfileRequest['updateMask'];
     }
 
+    /** The four rapid-personalization fields at their "unset" values — every fixture that
+     * does not exercise them still must satisfy the (all-required) request type. */
+    const noPersonalization = {
+      profileBannerUrl: '',
+      profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
+      nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
+      accentColor: '',
+    } as const;
+
     describe('UpdateProfile', () => {
       it('applies only the fields named in update_mask (spec: UpdateProfileRequest doc)', async () => {
         const originalBio = 'bio before the update';
@@ -132,6 +142,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: '',
             nameplate: undefined,
             flair: undefined,
+            ...noPersonalization,
             updateMask: fieldMask(['bio']),
           },
           { accessToken: bob.accessToken },
@@ -155,6 +166,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: '',
             nameplate: undefined,
             flair: undefined,
+            ...noPersonalization,
             updateMask: fieldMask(['display_name']),
           },
           { accessToken: bob.accessToken },
@@ -178,6 +190,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: '',
             nameplate: undefined,
             flair: undefined,
+            ...noPersonalization,
             updateMask: fieldMask(['display_name']),
           },
         );
@@ -194,6 +207,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: 'not-a-url',
             nameplate: undefined,
             flair: undefined,
+            ...noPersonalization,
             updateMask: fieldMask(['website_url']),
           },
           { accessToken: alice.accessToken },
@@ -219,6 +233,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               profileBorder: '',
             },
             flair: undefined,
+            ...noPersonalization,
             updateMask: fieldMask(['nameplate']),
           },
           { accessToken: bob.accessToken },
@@ -231,6 +246,116 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(response.actor?.nameplate?.nameColor).toBe('#7C3AED');
         expect(response.actor?.nameplate?.statusLine).toBe('building patches');
         expect(response.actor?.nameplate?.badges).toEqual([]);
+      });
+    });
+
+    describe('UpdateProfile — rapid personalization (banner/frame/tag/accent)', () => {
+      it('writes and clears each field through its own mask path', async () => {
+        await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            profileBannerUrl: 'https://cdn.example.com/banner.png',
+            profileFrame: ProfileFrame.PROFILE_FRAME_GRADIENT,
+            nameTagStyle: NameTagStyle.NAME_TAG_STYLE_PILLED,
+            accentColor: '#10B981',
+            updateMask: fieldMask([
+              'profile_banner_url',
+              'profile_frame',
+              'name_tag_style',
+              'accent_color',
+            ]),
+          },
+          { accessToken: alice.accessToken },
+        );
+
+        const response = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: alice.actorId },
+        );
+        expect(response.actor?.profileBannerUrl).toBe('https://cdn.example.com/banner.png');
+        expect(response.actor?.profileFrame).toBe(ProfileFrame.PROFILE_FRAME_GRADIENT);
+        expect(response.actor?.nameTagStyle).toBe(NameTagStyle.NAME_TAG_STYLE_PILLED);
+        expect(response.actor?.accentColor).toBe('#10B981');
+
+        // Clearing: empty string nulls a URL/colour, an explicit NONE clears an enum —
+        // UNSPECIFIED is not a storable value (the write below would be INVALID_ARGUMENT).
+        await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            profileBannerUrl: '',
+            profileFrame: ProfileFrame.PROFILE_FRAME_NONE,
+            nameTagStyle: NameTagStyle.NAME_TAG_STYLE_NONE,
+            accentColor: '',
+            updateMask: fieldMask([
+              'profile_banner_url',
+              'profile_frame',
+              'name_tag_style',
+              'accent_color',
+            ]),
+          },
+          { accessToken: alice.accessToken },
+        );
+
+        const cleared = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: alice.actorId },
+        );
+        // An explicit NONE clears *to NONE* (distinguishable from never-set UNSPECIFIED on
+        // the wire, though every client must render both identically — no frame).
+        expect(cleared.actor?.profileBannerUrl).toBe('');
+        expect(cleared.actor?.profileFrame).toBe(ProfileFrame.PROFILE_FRAME_NONE);
+        expect(cleared.actor?.nameTagStyle).toBe(NameTagStyle.NAME_TAG_STYLE_NONE);
+        expect(cleared.actor?.accentColor).toBe('');
+      });
+
+      it.each([
+        [
+          'a non-http(s) banner URL',
+          { profileBannerUrl: 'ftp://example.com/x.png' },
+          'profile_banner_url',
+        ],
+        ['a non-hex accent colour', { accentColor: 'green' }, 'accent_color'],
+        ['a 7-digit hex-ish accent colour', { accentColor: '#1234567' }, 'accent_color'],
+        [
+          'an UNSPECIFIED profile frame',
+          { profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED },
+          'profile_frame',
+        ],
+        [
+          'an UNSPECIFIED name tag style',
+          { nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED },
+          'name_tag_style',
+        ],
+      ] as const)('rejects %s with INVALID_ARGUMENT', async (_label, patch, maskPath) => {
+        const request = {
+          displayName: '',
+          bio: '',
+          locationText: '',
+          websiteUrl: '',
+          nameplate: undefined,
+          flair: undefined,
+          ...noPersonalization,
+          ...patch,
+          updateMask: fieldMask([maskPath]),
+        };
+        const error = await expectRejection<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          request,
+          { accessToken: alice.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
       });
     });
 

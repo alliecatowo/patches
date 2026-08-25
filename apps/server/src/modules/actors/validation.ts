@@ -92,6 +92,34 @@ export const nameplateInputSchema = z.object({
 });
 export type NameplateInput = z.infer<typeof nameplateInputSchema>;
 
+/** Rapid personalization (owner request 2026-08-25). Same 2,048-char budget as
+ * `website_url`; http(s)-only comes from `safeUrlSchema` (§104). An empty string (field
+ * cleared) is allowed through by the caller, not this schema. */
+export const PROFILE_BANNER_URL_MAX_LENGTH = WEBSITE_URL_MAX_LENGTH;
+export const profileBannerUrlSchema = safeUrlSchema(
+  PROFILE_BANNER_URL_MAX_LENGTH,
+  'profile banner URL',
+);
+
+/** `#RRGGBB` only — no named colours, no alpha, no gradients (the nameplate's own
+ * `name_color` stays the gradient-capable field). */
+export const accentColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'accent_color must be a #RRGGBB hex string.');
+
+/** Storable `ProfileFrame` values — the wire enum names without the prefix. UNSPECIFIED is
+ * deliberately absent: a caller must pick an explicit value (NONE clears), never "unset"
+ * (that's omitting the mask path). */
+export const PROFILE_FRAMES = ['NONE', 'BORDER', 'GLOW', 'GRADIENT'] as const;
+export type ProfileFrameValue = (typeof PROFILE_FRAMES)[number];
+export const profileFrameSchema = z.enum(PROFILE_FRAMES);
+
+/** Storable `NameTagStyle` values, same rules as `PROFILE_FRAMES`. */
+export const NAME_TAG_STYLES = ['NONE', 'BADGE', 'RIBBON', 'PILLED'] as const;
+export type NameTagStyleValue = (typeof NAME_TAG_STYLES)[number];
+export const nameTagStyleSchema = z.enum(NAME_TAG_STYLES);
+
 const UNSAFE_GLYPH = /[\p{Cc}\p{Cf}\p{M}\u200B-\u200F\u202A-\u202E\u2060-\u206F]/u;
 const DOUBLE_WIDTH =
   /[\p{Extended_Pictographic}\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe6f\uff00-\uff60\uffe0-\uffe6]/u;

@@ -1,4 +1,5 @@
 import { describeError } from '@patches/client';
+import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type JSX } from 'react';
 
@@ -14,6 +15,10 @@ interface FormState {
   websiteUrl: string;
   nameColor: string;
   glyph: string;
+  profileBannerUrl: string;
+  profileFrame: ProfileFrame;
+  nameTagStyle: NameTagStyle;
+  accentColor: string;
 }
 
 /** `/settings/profile` — display name, bio, and nameplate cosmetics (never gate function,
@@ -45,6 +50,12 @@ export function SettingsProfileRoute(): JSX.Element {
       websiteUrl: actor.websiteUrl,
       nameColor: actor.nameplate?.nameColor ?? '',
       glyph: actor.nameplate?.glyph ?? '',
+      profileBannerUrl: actor.profileBannerUrl,
+      profileFrame:
+        actor.profileFrame === ProfileFrame.UNSPECIFIED ? ProfileFrame.NONE : actor.profileFrame,
+      nameTagStyle:
+        actor.nameTagStyle === NameTagStyle.UNSPECIFIED ? NameTagStyle.NONE : actor.nameTagStyle,
+      accentColor: actor.accentColor,
     });
   }
 
@@ -56,7 +67,19 @@ export function SettingsProfileRoute(): JSX.Element {
         bio: form.bio,
         locationText: form.locationText,
         websiteUrl: form.websiteUrl,
-        updateMask: { paths: ['display_name', 'bio', 'location_text', 'website_url', 'nameplate'] },
+        updateMask: {
+          paths: [
+            'display_name',
+            'bio',
+            'location_text',
+            'website_url',
+            'nameplate',
+            'profile_banner_url',
+            'profile_frame',
+            'name_tag_style',
+            'accent_color',
+          ],
+        },
         nameplate: {
           nameColor: form.nameColor,
           glyph: form.glyph,
@@ -65,6 +88,10 @@ export function SettingsProfileRoute(): JSX.Element {
           statusLine: '',
           profileBorder: '',
         },
+        profileBannerUrl: form.profileBannerUrl,
+        profileFrame: form.profileFrame,
+        nameTagStyle: form.nameTagStyle,
+        accentColor: form.accentColor,
       });
     },
     onSuccess: (response) => {
@@ -79,6 +106,12 @@ export function SettingsProfileRoute(): JSX.Element {
   const set =
     (key: keyof FormState) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((current) => (current ? { ...current, [key]: event.target.value } : current));
+
+  const setFrame = (frame: ProfileFrame): void =>
+    setForm((current) => (current ? { ...current, profileFrame: frame } : current));
+
+  const setNameTag = (style: NameTagStyle): void =>
+    setForm((current) => (current ? { ...current, nameTagStyle: style } : current));
 
   return (
     <div className={styles['wrap']}>
@@ -127,6 +160,50 @@ export function SettingsProfileRoute(): JSX.Element {
         <div className={styles['field']}>
           <label htmlFor="settings-glyph">Nameplate glyph (one character)</label>
           <input id="settings-glyph" value={form.glyph} onChange={set('glyph')} />
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="settings-banner">Profile banner image URL (https, optional)</label>
+          <input
+            id="settings-banner"
+            value={form.profileBannerUrl}
+            onChange={set('profileBannerUrl')}
+            placeholder="https://…"
+          />
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="settings-frame">Profile frame</label>
+          <select
+            id="settings-frame"
+            value={form.profileFrame}
+            onChange={(event) => setFrame(Number(event.target.value))}
+          >
+            <option value={ProfileFrame.NONE}>None</option>
+            <option value={ProfileFrame.BORDER}>Border</option>
+            <option value={ProfileFrame.GLOW}>Glow</option>
+            <option value={ProfileFrame.GRADIENT}>Gradient</option>
+          </select>
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="settings-name-tag">Name tag style</label>
+          <select
+            id="settings-name-tag"
+            value={form.nameTagStyle}
+            onChange={(event) => setNameTag(Number(event.target.value))}
+          >
+            <option value={NameTagStyle.NONE}>None</option>
+            <option value={NameTagStyle.BADGE}>Badge</option>
+            <option value={NameTagStyle.RIBBON}>Ribbon</option>
+            <option value={NameTagStyle.PILLED}>Pilled</option>
+          </select>
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="settings-accent">Accent colour (hex)</label>
+          <input
+            id="settings-accent"
+            value={form.accentColor}
+            onChange={set('accentColor')}
+            placeholder="#10B981"
+          />
         </div>
         <button type="submit" className={styles['submit']} disabled={mutation.isPending}>
           {mutation.isPending ? 'Saving…' : 'Save'}

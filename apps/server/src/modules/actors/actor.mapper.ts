@@ -1,7 +1,23 @@
 import { dateToTimestamp } from '@patches/proto';
+import { NameTagStyle, ProfileFrame } from '@patches/proto/nest';
 import type { Actor as ProtoActor, Nameplate as ProtoNameplate } from '@patches/proto';
 
 import type { ActorProfile, NameplateSummary } from './actor.dto.js';
+import type { ProfileFrameValue, NameTagStyleValue } from './validation.js';
+
+const PROFILE_FRAME_TO_PROTO: Readonly<Record<ProfileFrameValue, ProfileFrame>> = Object.freeze({
+  NONE: ProfileFrame.PROFILE_FRAME_NONE,
+  BORDER: ProfileFrame.PROFILE_FRAME_BORDER,
+  GLOW: ProfileFrame.PROFILE_FRAME_GLOW,
+  GRADIENT: ProfileFrame.PROFILE_FRAME_GRADIENT,
+});
+
+const NAME_TAG_STYLE_TO_PROTO: Readonly<Record<NameTagStyleValue, NameTagStyle>> = Object.freeze({
+  NONE: NameTagStyle.NAME_TAG_STYLE_NONE,
+  BADGE: NameTagStyle.NAME_TAG_STYLE_BADGE,
+  RIBBON: NameTagStyle.NAME_TAG_STYLE_RIBBON,
+  PILLED: NameTagStyle.NAME_TAG_STYLE_PILLED,
+});
 
 /** Application DTO → protobuf message (spec §128), field-by-field — see `auth.mapper.ts`'s
  * comment on why never a spread. `avatar` is unset: no `MediaService` yet. */
@@ -31,10 +47,22 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
             updatedAt: dateToTimestamp(profile.flair.updatedAt),
           },
     pinnedPostIds: [...profile.pinnedPostIds],
+    profileBannerUrl: profile.profileBannerUrl ?? '',
+    profileFrame:
+      profile.profileFrame === null
+        ? ProfileFrame.PROFILE_FRAME_UNSPECIFIED
+        : PROFILE_FRAME_TO_PROTO[profile.profileFrame],
+    nameTagStyle:
+      profile.nameTagStyle === null
+        ? NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED
+        : NAME_TAG_STYLE_TO_PROTO[profile.nameTagStyle],
+    accentColor: profile.accentColor ?? '',
   };
 }
 
-function toProtoNameplate(nameplate: NameplateSummary): ProtoNameplate {
+/** Exported for `auth.mapper.ts`'s embedded-actor summary (B-129: the nameplate must reach
+ * feeds/threads/search, which all serialize actors through that mapper). */
+export function toProtoNameplate(nameplate: NameplateSummary): ProtoNameplate {
   return {
     nameColor: nameplate.nameColor,
     glyph: nameplate.glyph,

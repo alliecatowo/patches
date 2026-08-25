@@ -214,6 +214,57 @@ describe('PostRow remote origin (P18-009, spec §163/§180/§192)', () => {
 });
 
 describe('PostRow edits and community attribution (P11-009)', () => {
+  it('renders the author nameplate in feed contexts (B-129, spec §173)', () => {
+    const nameplated = makeActor({
+      handle: 'bob',
+      nameplate: {
+        $typeName: 'patches.v1.Nameplate',
+        nameColor: '#FF69B4',
+        glyph: '✿',
+        badges: [],
+        avatarFrame: '',
+        statusLine: '',
+        profileBorder: '',
+      },
+    });
+    const quoted = post({
+      id: 'quoted',
+      body: 'quoted body',
+      author: nameplated,
+    });
+    const { lastFrame } = render(
+      <PostRow post={post({ author: nameplated, quotedPost: quoted })} />,
+    );
+    const frame = lastFrame() ?? '';
+    // The glyph renders beside both the row header's name and the quoted author's name —
+    // a name appears, the nameplate appears. (The colour is SGR and stripped here; the
+    // glyph proves the nameplate reached the feed row at all.)
+    expect(stripSgr(frame)).toContain('✿ @bob');
+    expect(stripSgr(frame).split('✿ @bob').length).toBe(3);
+  });
+
+  it('renders no nameplate decoration in plain mode', () => {
+    const nameplated = makeActor({
+      handle: 'bob',
+      nameplate: {
+        $typeName: 'patches.v1.Nameplate',
+        nameColor: '#FF69B4',
+        glyph: '✿',
+        badges: [],
+        avatarFrame: '',
+        statusLine: '',
+        profileBorder: '',
+      },
+    });
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <PostRow post={post({ author: nameplated })} />
+      </PlainModeProvider>,
+    );
+    expect(stripSgr(lastFrame() ?? '')).not.toContain('✿');
+    expect(stripSgr(lastFrame() ?? '')).toContain('@bob');
+  });
+
   it('marks edits and community attribution without changing the body', () => {
     const { lastFrame } = render(
       <PostRow

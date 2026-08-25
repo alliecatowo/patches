@@ -80,6 +80,15 @@ export class ActorController implements ActorServiceController {
       ...(request.flair === undefined || request.flair === null
         ? {}
         : { flairDocument: request.flair.document }),
+      // Rapid personalization (owner request 2026-08-25). Enum values arrive as their full
+      // wire names (`enums: String` proto-loader decoding, e.g. 'PROFILE_FRAME_GLOW'); the
+      // service's vocabulary is the prefix-free storable name, so strip it here at the
+      // transport boundary. UNSPECIFIED strips to 'UNSPECIFIED', which the service schema
+      // rejects — a caller must pick an explicit value.
+      profileBannerUrl: request.profileBannerUrl,
+      profileFrame: wireEnumName(request.profileFrame, 'PROFILE_FRAME_'),
+      nameTagStyle: wireEnumName(request.nameTagStyle, 'NAME_TAG_STYLE_'),
+      accentColor: request.accentColor,
       updateMask: fieldMaskPaths(request.updateMask),
     });
     return { actor: toProtoActor(profile) };
@@ -145,4 +154,10 @@ function fieldMaskPaths(mask: unknown): string[] {
     if (Array.isArray(paths)) return paths as string[];
   }
   return [];
+}
+
+/** Full proto enum name → prefix-free storable name (`'PROFILE_FRAME_GLOW'` → `'GLOW'`). */
+function wireEnumName(value: string | undefined, prefix: string): string | undefined {
+  if (value === undefined) return undefined;
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }

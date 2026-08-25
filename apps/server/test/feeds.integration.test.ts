@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import {
+  createActorClient,
   createAuthClient,
   createFeedClient,
   createPostClient,
@@ -16,8 +17,10 @@ import {
   type ListLocalFeedRequest,
   type ListLocalFeedResponse,
   type PostGrpcClient,
+  type UpdateProfileRequest,
+  type UpdateProfileResponse,
 } from '@patches/proto';
-import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
+import { NameTagStyle, PostVisibility, ProfileFrame, QuotePolicy } from '@patches/proto/nest';
 import {
   createTestBlock,
   createTestFollow,
@@ -85,7 +88,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       await dataSource.destroy();
     });
 
-    async function createPost(overrides: Partial<CreatePostRequest> = {}): Promise<string> {
+    async function createPost(
+      overrides: Partial<CreatePostRequest> = {},
+      author: TestActor = alice,
+    ): Promise<string> {
       const response = await callUnary<CreatePostRequest, CreatePostResponse>(
         posts.createPost.bind(posts),
         {
@@ -101,7 +107,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           quotePolicy: QuotePolicy.QUOTE_POLICY_UNSPECIFIED,
           ...overrides,
         },
-        { accessToken: alice.accessToken },
+        { accessToken: author.accessToken },
       );
       const id = response.post?.id;
       if (id === undefined) throw new Error('createPost did not return a post');
@@ -202,6 +208,50 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { cursor: '', limit: 50 },
         );
         expect(page.posts.some((post) => post.id === id)).toBe(true);
+      });
+
+      it('embeds the author nameplate on feed posts (B-129, spec §173)', async () => {
+        const author = await registerTestActor(auth, dataSource, inviterUserId);
+        const actorClient = createActorClient(server.url, grpcCredentials.createInsecure());
+        try {
+          await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+            actorClient.updateProfile.bind(actorClient),
+            {
+              displayName: '',
+              bio: '',
+              locationText: '',
+              websiteUrl: '',
+              nameplate: {
+                nameColor: '#FF69B4',
+                glyph: '✿',
+                badges: [],
+                avatarFrame: '',
+                statusLine: '',
+                profileBorder: '',
+              },
+              flair: undefined,
+              profileBannerUrl: '',
+              profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
+              nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
+              accentColor: '',
+              updateMask: { paths: ['nameplate'] } as unknown as UpdateProfileRequest['updateMask'],
+            },
+            { accessToken: author.accessToken },
+          );
+        } finally {
+          actorClient.close();
+        }
+        const id = await createPost({ body: 'nameplated post for the local feed' }, author);
+
+        const page = await callUnary<ListLocalFeedRequest, ListLocalFeedResponse>(
+          feeds.listLocalFeed.bind(feeds),
+          { cursor: '', limit: 50 },
+        );
+        const post = page.posts.find((entry) => entry.id === id);
+        // Before B-129 the embedded `Post.author` never carried `nameplate` (the summary
+        // mapper left it undefined), so nameplates rendered on profiles but never in feeds.
+        expect(post?.author?.nameplate?.nameColor).toBe('#FF69B4');
+        expect(post?.author?.nameplate?.glyph).toBe('✿');
       });
 
       it('hides a blocked-either-direction author from an authenticated viewer (§62)', async () => {

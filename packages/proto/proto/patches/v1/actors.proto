@@ -95,6 +95,27 @@ message ActorFlair {
   google.protobuf.Timestamp updated_at = 2;
 }
 
+// Rapid personalization (owner request 2026-08-25): a profile-level frame effect. Pure
+// cosmetics — never gates function (§184.3), and every client must degrade to "no frame"
+// for UNSPECIFIED/NONE or any value it cannot render.
+enum ProfileFrame {
+  PROFILE_FRAME_UNSPECIFIED = 0;
+  PROFILE_FRAME_NONE = 1;
+  PROFILE_FRAME_BORDER = 2;
+  PROFILE_FRAME_GLOW = 3;
+  PROFILE_FRAME_GRADIENT = 4;
+}
+
+// How the actor's name tag renders on their profile (same purely-cosmetic rules as
+// `ProfileFrame`).
+enum NameTagStyle {
+  NAME_TAG_STYLE_UNSPECIFIED = 0;
+  NAME_TAG_STYLE_NONE = 1;
+  NAME_TAG_STYLE_BADGE = 2;
+  NAME_TAG_STYLE_RIBBON = 3;
+  NAME_TAG_STYLE_PILLED = 4;
+}
+
 // A social identity. Doubles as both the full profile (`GetActor`) and a lightweight "actor
 // summary" embedded in other responses (e.g. `Post.author`, `Session.actor`) — see the
 // `ActorCounts` comment for what's guaranteed in each case.
@@ -140,6 +161,19 @@ message Actor {
   // the actor's home node's domain for a remote actor — render `@handle@home_server`. Never
   // this node's own domain; a local actor's node is only ever the caller's own (`Session.node`).
   string home_server = 14;
+  // Profile banner image URL (http/https only, max 2,048 chars — same rule as
+  // `website_url`, spec §58/§104). Empty means no banner, and a client must reserve no
+  // space for it then (§184.3 degradation).
+  string profile_banner_url = 15;
+
+  // Profile-level frame effect. UNSPECIFIED/NONE render plain.
+  ProfileFrame profile_frame = 16;
+
+  // How the actor's name tag renders. UNSPECIFIED/NONE render plain.
+  NameTagStyle name_tag_style = 17;
+
+  // Profile accent colour, `#RRGGBB`. Empty means the client default.
+  string accent_color = 18;
 }
 
 message GetActorRequest {
@@ -176,6 +210,15 @@ message UpdateProfileRequest {
 
   // Applied when `"flair"` is in `update_mask` (spec §189, §190).
   ActorFlair flair = 7;
+
+  // The four rapid-personalization fields (owner request 2026-08-25) — each applied when
+  // its own snake_case name is in `update_mask`. `profile_banner_url` must be http(s) and
+  // ≤ 2,048 chars (empty clears it); `accent_color` must be `#RRGGBB` (empty clears it);
+  // the enum fields reject UNSPECIFIED (pick NONE to clear).
+  string profile_banner_url = 8;
+  ProfileFrame profile_frame = 9;
+  NameTagStyle name_tag_style = 10;
+  string accent_color = 11;
 }
 
 message UpdateProfileResponse {

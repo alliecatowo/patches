@@ -1,5 +1,12 @@
 import type { Actor as ActorEntity } from '@patches/database';
 
+import {
+  PROFILE_FRAMES,
+  NAME_TAG_STYLES,
+  type ProfileFrameValue,
+  type NameTagStyleValue,
+} from './validation.js';
+
 /**
  * `ActorService`'s own vocabulary (spec §128–129) — never an `Actor` entity past this layer.
  * Distinct from `auth.dto.ts`'s `ActorSummary`: that one is deliberately counts-less (an
@@ -44,6 +51,11 @@ export interface ActorProfile {
   nameplate: NameplateSummary | null;
   flair: { document: string; updatedAt: Date } | null;
   pinnedPostIds: string[];
+  /** Rapid personalization (owner request 2026-08-25) — `null` = unset. */
+  profileBannerUrl: string | null;
+  profileFrame: ProfileFrameValue | null;
+  nameTagStyle: NameTagStyleValue | null;
+  accentColor: string | null;
 }
 
 export function toActorProfile(
@@ -71,16 +83,35 @@ export function toActorProfile(
         ? null
         : { document: JSON.stringify(extras.flair.document), updatedAt: extras.flair.updatedAt },
     pinnedPostIds: [...(extras.pinnedPostIds ?? [])].slice(0, 3),
+    profileBannerUrl: actor.profileBannerUrl,
+    // Defensive, same reasoning as `toNameplateSummary` below: a hand-edited or
+    // future-schema row degrades to "unset" rather than 500-ing the profile read.
+    profileFrame: profileFrameOf(actor.profileFrame),
+    nameTagStyle: nameTagStyleOf(actor.nameTagStyle),
+    accentColor: actor.accentColor,
   };
+}
+
+function profileFrameOf(raw: string | null): ProfileFrameValue | null {
+  return (PROFILE_FRAMES as readonly string[]).includes(raw ?? '')
+    ? (raw as ProfileFrameValue)
+    : null;
+}
+
+function nameTagStyleOf(raw: string | null): NameTagStyleValue | null {
+  return (NAME_TAG_STYLES as readonly string[]).includes(raw ?? '')
+    ? (raw as NameTagStyleValue)
+    : null;
 }
 
 /**
  * The `nameplate` column is untyped `jsonb` at the database layer (`Record<string, unknown> |
  * null`) — this is the one place that trusts its shape, defaulting any field that isn't the
  * type it should be rather than throwing, so a hand-edited or future-schema row degrades to
- * "field absent" instead of a 500.
+ * "field absent" instead of a 500. Exported because the embedded-actor summary
+ * (`auth.dto.ts`'s `ActorSummary`, B-129: nameplates must render in feeds) reuses it.
  */
-function toNameplateSummary(raw: Record<string, unknown> | null): NameplateSummary | null {
+export function toNameplateSummary(raw: Record<string, unknown> | null): NameplateSummary | null {
   if (raw === null) return null;
   const string = (value: unknown): string => (typeof value === 'string' ? value : '');
   const stringArray = (value: unknown): string[] =>

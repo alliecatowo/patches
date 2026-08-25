@@ -38,9 +38,11 @@ import {
   MODERATION_ACTION_TYPE,
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
+  NAME_TAG_STYLE,
   NOTIFICATION_TYPE,
   POST_TYPE,
   POST_VISIBILITY,
+  PROFILE_FRAME,
   QUOTE_POLICY,
   CREDENTIAL_TYPE,
   REGISTRATION_MODE,
@@ -105,6 +107,10 @@ export function makeActor(overrides: Partial<Actor> = {}): Actor {
     nameplate: undefined,
     flair: undefined,
     pinnedPostIds: [],
+    profileBannerUrl: '',
+    profileFrame: PROFILE_FRAME.UNSPECIFIED,
+    nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
+    accentColor: '',
     ...overrides,
   };
 }

@@ -2,8 +2,8 @@
 // @generated from file patches/v1/actors.proto (package patches.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
-import { fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
+import type { GenEnum, GenFile, GenMessage, GenService } from '@bufbuild/protobuf/codegenv2';
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from '@bufbuild/protobuf/codegenv2';
 import type { FieldMask, Timestamp } from '@bufbuild/protobuf/wkt';
 import {
   file_google_protobuf_field_mask,
@@ -19,7 +19,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_actors: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChdwYXRjaGVzL3YxL2FjdG9ycy5wcm90bxIKcGF0Y2hlcy52MSIpCghNZWRpYVJlZhIQCghtZWRpYV9pZBgBIAEoCRILCgN1cmwYAiABKAkiQgoLQWN0b3JDb3VudHMSEQoJZm9sbG93ZXJzGAEgASgNEhEKCWZvbGxvd2luZxgCIAEoDRINCgVwb3N0cxgDIAEoDSKBAQoJTmFtZXBsYXRlEhIKCm5hbWVfY29sb3IYASABKAkSDQoFZ2x5cGgYAiABKAkSDgoGYmFkZ2VzGAMgAygJEhQKDGF2YXRhcl9mcmFtZRgEIAEoCRITCgtzdGF0dXNfbGluZRgFIAEoCRIWCg5wcm9maWxlX2JvcmRlchgGIAEoCSJOCgpBY3RvckZsYWlyEhAKCGRvY3VtZW50GAEgASgJEi4KCnVwZGF0ZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoEDCgVBY3RvchIKCgJpZBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEgsKA2JpbxgEIAEoCRIVCg1sb2NhdGlvbl90ZXh0GAUgASgJEhMKC3dlYnNpdGVfdXJsGAYgASgJEiQKBmF2YXRhchgHIAEoCzIULnBhdGNoZXMudjEuTWVkaWFSZWYSEAoIaXNfbG9jYWwYCCABKAgSLQoJam9pbmVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBInCgZjb3VudHMYCiABKAsyFy5wYXRjaGVzLnYxLkFjdG9yQ291bnRzEigKCW5hbWVwbGF0ZRgLIAEoCzIVLnBhdGNoZXMudjEuTmFtZXBsYXRlEiUKBWZsYWlyGAwgASgLMhYucGF0Y2hlcy52MS5BY3RvckZsYWlyEhcKD3Bpbm5lZF9wb3N0X2lkcxgNIAMoCRITCgtob21lX3NlcnZlchgOIAEoCSIdCg9HZXRBY3RvclJlcXVlc3QSCgoCaWQYASABKAkiNAoQR2V0QWN0b3JSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IiKQoXR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QSDgoGaGFuZGxlGAEgASgJIjwKGEdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3Ii5wEKFFVwZGF0ZVByb2ZpbGVSZXF1ZXN0EhQKDGRpc3BsYXlfbmFtZRgBIAEoCRILCgNiaW8YAiABKAkSFQoNbG9jYXRpb25fdGV4dBgDIAEoCRITCgt3ZWJzaXRlX3VybBgEIAEoCRIvCgt1cGRhdGVfbWFzaxgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5GaWVsZE1hc2sSKAoJbmFtZXBsYXRlGAYgASgLMhUucGF0Y2hlcy52MS5OYW1lcGxhdGUSJQoFZmxhaXIYByABKAsyFi5wYXRjaGVzLnYxLkFjdG9yRmxhaXIiOQoVVXBkYXRlUHJvZmlsZVJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvciJDChNTZWFyY2hBY3RvcnNSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJdChRTZWFyY2hBY3RvcnNSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIkcKFExpc3RGb2xsb3dlcnNSZXF1ZXN0EhAKCGFjdG9yX2lkGAEgASgJEg4KBmN1cnNvchgCIAEoCRINCgVsaW1pdBgDIAEoDSJeChVMaXN0Rm9sbG93ZXJzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChRMaXN0Rm9sbG93aW5nUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXgoVTGlzdEZvbGxvd2luZ1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iIwoTUmVzb2x2ZUFjdG9yUmVxdWVzdBIMCgRhY2N0GAEgASgJIjgKFFJlc29sdmVBY3RvclJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvcjLcBAoMQWN0b3JTZXJ2aWNlEkUKCEdldEFjdG9yEhsucGF0Y2hlcy52MS5HZXRBY3RvclJlcXVlc3QaHC5wYXRjaGVzLnYxLkdldEFjdG9yUmVzcG9uc2USXQoQR2V0QWN0b3JCeUhhbmRsZRIjLnBhdGNoZXMudjEuR2V0QWN0b3JCeUhhbmRsZVJlcXVlc3QaJC5wYXRjaGVzLnYxLkdldEFjdG9yQnlIYW5kbGVSZXNwb25zZRJUCg1VcGRhdGVQcm9maWxlEiAucGF0Y2hlcy52MS5VcGRhdGVQcm9maWxlUmVxdWVzdBohLnBhdGNoZXMudjEuVXBkYXRlUHJvZmlsZVJlc3BvbnNlElEKDFNlYXJjaEFjdG9ycxIfLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVxdWVzdBogLnBhdGNoZXMudjEuU2VhcmNoQWN0b3JzUmVzcG9uc2USVAoNTGlzdEZvbGxvd2VycxIgLnBhdGNoZXMudjEuTGlzdEZvbGxvd2Vyc1JlcXVlc3QaIS5wYXRjaGVzLnYxLkxpc3RGb2xsb3dlcnNSZXNwb25zZRJUCg1MaXN0Rm9sbG93aW5nEiAucGF0Y2hlcy52MS5MaXN0Rm9sbG93aW5nUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdEZvbGxvd2luZ1Jlc3BvbnNlElEKDFJlc29sdmVBY3RvchIfLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVxdWVzdBogLnBhdGNoZXMudjEuUmVzb2x2ZUFjdG9yUmVzcG9uc2ViBnByb3RvMw',
+    'ChdwYXRjaGVzL3YxL2FjdG9ycy5wcm90bxIKcGF0Y2hlcy52MSIpCghNZWRpYVJlZhIQCghtZWRpYV9pZBgBIAEoCRILCgN1cmwYAiABKAkiQgoLQWN0b3JDb3VudHMSEQoJZm9sbG93ZXJzGAEgASgNEhEKCWZvbGxvd2luZxgCIAEoDRINCgVwb3N0cxgDIAEoDSKBAQoJTmFtZXBsYXRlEhIKCm5hbWVfY29sb3IYASABKAkSDQoFZ2x5cGgYAiABKAkSDgoGYmFkZ2VzGAMgAygJEhQKDGF2YXRhcl9mcmFtZRgEIAEoCRITCgtzdGF0dXNfbGluZRgFIAEoCRIWCg5wcm9maWxlX2JvcmRlchgGIAEoCSJOCgpBY3RvckZsYWlyEhAKCGRvY3VtZW50GAEgASgJEi4KCnVwZGF0ZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIpYECgVBY3RvchIKCgJpZBgBIAEoCRIOCgZoYW5kbGUYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEgsKA2JpbxgEIAEoCRIVCg1sb2NhdGlvbl90ZXh0GAUgASgJEhMKC3dlYnNpdGVfdXJsGAYgASgJEiQKBmF2YXRhchgHIAEoCzIULnBhdGNoZXMudjEuTWVkaWFSZWYSEAoIaXNfbG9jYWwYCCABKAgSLQoJam9pbmVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBInCgZjb3VudHMYCiABKAsyFy5wYXRjaGVzLnYxLkFjdG9yQ291bnRzEigKCW5hbWVwbGF0ZRgLIAEoCzIVLnBhdGNoZXMudjEuTmFtZXBsYXRlEiUKBWZsYWlyGAwgASgLMhYucGF0Y2hlcy52MS5BY3RvckZsYWlyEhcKD3Bpbm5lZF9wb3N0X2lkcxgNIAMoCRITCgtob21lX3NlcnZlchgOIAEoCRIaChJwcm9maWxlX2Jhbm5lcl91cmwYDyABKAkSLwoNcHJvZmlsZV9mcmFtZRgQIAEoDjIYLnBhdGNoZXMudjEuUHJvZmlsZUZyYW1lEjAKDm5hbWVfdGFnX3N0eWxlGBEgASgOMhgucGF0Y2hlcy52MS5OYW1lVGFnU3R5bGUSFAoMYWNjZW50X2NvbG9yGBIgASgJIh0KD0dldEFjdG9yUmVxdWVzdBIKCgJpZBgBIAEoCSI0ChBHZXRBY3RvclJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvciIpChdHZXRBY3RvckJ5SGFuZGxlUmVxdWVzdBIOCgZoYW5kbGUYASABKAkiPAoYR2V0QWN0b3JCeUhhbmRsZVJlc3BvbnNlEiAKBWFjdG9yGAEgASgLMhEucGF0Y2hlcy52MS5BY3RvciL8AgoUVXBkYXRlUHJvZmlsZVJlcXVlc3QSFAoMZGlzcGxheV9uYW1lGAEgASgJEgsKA2JpbxgCIAEoCRIVCg1sb2NhdGlvbl90ZXh0GAMgASgJEhMKC3dlYnNpdGVfdXJsGAQgASgJEi8KC3VwZGF0ZV9tYXNrGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLkZpZWxkTWFzaxIoCgluYW1lcGxhdGUYBiABKAsyFS5wYXRjaGVzLnYxLk5hbWVwbGF0ZRIlCgVmbGFpchgHIAEoCzIWLnBhdGNoZXMudjEuQWN0b3JGbGFpchIaChJwcm9maWxlX2Jhbm5lcl91cmwYCCABKAkSLwoNcHJvZmlsZV9mcmFtZRgJIAEoDjIYLnBhdGNoZXMudjEuUHJvZmlsZUZyYW1lEjAKDm5hbWVfdGFnX3N0eWxlGAogASgOMhgucGF0Y2hlcy52MS5OYW1lVGFnU3R5bGUSFAoMYWNjZW50X2NvbG9yGAsgASgJIjkKFVVwZGF0ZVByb2ZpbGVSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IiQwoTU2VhcmNoQWN0b3JzUmVxdWVzdBINCgVxdWVyeRgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXQoUU2VhcmNoQWN0b3JzUmVzcG9uc2USIQoGYWN0b3JzGAEgAygLMhEucGF0Y2hlcy52MS5BY3RvchIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyJHChRMaXN0Rm9sbG93ZXJzUmVxdWVzdBIQCghhY3Rvcl9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKA0iXgoVTGlzdEZvbGxvd2Vyc1Jlc3BvbnNlEiEKBmFjdG9ycxgBIAMoCzIRLnBhdGNoZXMudjEuQWN0b3ISIgoEcGFnZRgCIAEoCzIULnBhdGNoZXMudjEuUGFnZUluZm8iRwoUTGlzdEZvbGxvd2luZ1JlcXVlc3QSEAoIYWN0b3JfaWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNIl4KFUxpc3RGb2xsb3dpbmdSZXNwb25zZRIhCgZhY3RvcnMYASADKAsyES5wYXRjaGVzLnYxLkFjdG9yEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIiMKE1Jlc29sdmVBY3RvclJlcXVlc3QSDAoEYWNjdBgBIAEoCSI4ChRSZXNvbHZlQWN0b3JSZXNwb25zZRIgCgVhY3RvchgBIAEoCzIRLnBhdGNoZXMudjEuQWN0b3IqkwEKDFByb2ZpbGVGcmFtZRIdChlQUk9GSUxFX0ZSQU1FX1VOU1BFQ0lGSUVEEAASFgoSUFJPRklMRV9GUkFNRV9OT05FEAESGAoUUFJPRklMRV9GUkFNRV9CT1JERVIQAhIWChJQUk9GSUxFX0ZSQU1FX0dMT1cQAxIaChZQUk9GSUxFX0ZSQU1FX0dSQURJRU5UEAQqlwEKDE5hbWVUYWdTdHlsZRIeChpOQU1FX1RBR19TVFlMRV9VTlNQRUNJRklFRBAAEhcKE05BTUVfVEFHX1NUWUxFX05PTkUQARIYChROQU1FX1RBR19TVFlMRV9CQURHRRACEhkKFU5BTUVfVEFHX1NUWUxFX1JJQkJPThADEhkKFU5BTUVfVEFHX1NUWUxFX1BJTExFRBAEMtwECgxBY3RvclNlcnZpY2USRQoIR2V0QWN0b3ISGy5wYXRjaGVzLnYxLkdldEFjdG9yUmVxdWVzdBocLnBhdGNoZXMudjEuR2V0QWN0b3JSZXNwb25zZRJdChBHZXRBY3RvckJ5SGFuZGxlEiMucGF0Y2hlcy52MS5HZXRBY3RvckJ5SGFuZGxlUmVxdWVzdBokLnBhdGNoZXMudjEuR2V0QWN0b3JCeUhhbmRsZVJlc3BvbnNlElQKDVVwZGF0ZVByb2ZpbGUSIC5wYXRjaGVzLnYxLlVwZGF0ZVByb2ZpbGVSZXF1ZXN0GiEucGF0Y2hlcy52MS5VcGRhdGVQcm9maWxlUmVzcG9uc2USUQoMU2VhcmNoQWN0b3JzEh8ucGF0Y2hlcy52MS5TZWFyY2hBY3RvcnNSZXF1ZXN0GiAucGF0Y2hlcy52MS5TZWFyY2hBY3RvcnNSZXNwb25zZRJUCg1MaXN0Rm9sbG93ZXJzEiAucGF0Y2hlcy52MS5MaXN0Rm9sbG93ZXJzUmVxdWVzdBohLnBhdGNoZXMudjEuTGlzdEZvbGxvd2Vyc1Jlc3BvbnNlElQKDUxpc3RGb2xsb3dpbmcSIC5wYXRjaGVzLnYxLkxpc3RGb2xsb3dpbmdSZXF1ZXN0GiEucGF0Y2hlcy52MS5MaXN0Rm9sbG93aW5nUmVzcG9uc2USUQoMUmVzb2x2ZUFjdG9yEh8ucGF0Y2hlcy52MS5SZXNvbHZlQWN0b3JSZXF1ZXN0GiAucGF0Y2hlcy52MS5SZXNvbHZlQWN0b3JSZXNwb25zZWIGcHJvdG8z',
     [file_google_protobuf_field_mask, file_google_protobuf_timestamp, file_patches_v1_common],
   );
 
@@ -277,6 +277,36 @@ export type Actor = Message<'patches.v1.Actor'> & {
    * @generated from field: string home_server = 14;
    */
   homeServer: string;
+
+  /**
+   * Profile banner image URL (http/https only, max 2,048 chars — same rule as
+   * `website_url`, spec §58/§104). Empty means no banner, and a client must reserve no
+   * space for it then (§184.3 degradation).
+   *
+   * @generated from field: string profile_banner_url = 15;
+   */
+  profileBannerUrl: string;
+
+  /**
+   * Profile-level frame effect. UNSPECIFIED/NONE render plain.
+   *
+   * @generated from field: patches.v1.ProfileFrame profile_frame = 16;
+   */
+  profileFrame: ProfileFrame;
+
+  /**
+   * How the actor's name tag renders. UNSPECIFIED/NONE render plain.
+   *
+   * @generated from field: patches.v1.NameTagStyle name_tag_style = 17;
+   */
+  nameTagStyle: NameTagStyle;
+
+  /**
+   * Profile accent colour, `#RRGGBB`. Empty means the client default.
+   *
+   * @generated from field: string accent_color = 18;
+   */
+  accentColor: string;
 };
 
 /**
@@ -406,6 +436,31 @@ export type UpdateProfileRequest = Message<'patches.v1.UpdateProfileRequest'> & 
    * @generated from field: patches.v1.ActorFlair flair = 7;
    */
   flair?: ActorFlair | undefined;
+
+  /**
+   * The four rapid-personalization fields (owner request 2026-08-25) — each applied when
+   * its own snake_case name is in `update_mask`. `profile_banner_url` must be http(s) and
+   * ≤ 2,048 chars (empty clears it); `accent_color` must be `#RRGGBB` (empty clears it);
+   * the enum fields reject UNSPECIFIED (pick NONE to clear).
+   *
+   * @generated from field: string profile_banner_url = 8;
+   */
+  profileBannerUrl: string;
+
+  /**
+   * @generated from field: patches.v1.ProfileFrame profile_frame = 9;
+   */
+  profileFrame: ProfileFrame;
+
+  /**
+   * @generated from field: patches.v1.NameTagStyle name_tag_style = 10;
+   */
+  nameTagStyle: NameTagStyle;
+
+  /**
+   * @generated from field: string accent_color = 11;
+   */
+  accentColor: string;
 };
 
 /**
@@ -627,6 +682,87 @@ export type ResolveActorResponse = Message<'patches.v1.ResolveActorResponse'> & 
 export const ResolveActorResponseSchema: GenMessage<ResolveActorResponse> =
   /*@__PURE__*/
   messageDesc(file_patches_v1_actors, 18);
+
+/**
+ * Rapid personalization (owner request 2026-08-25): a profile-level frame effect. Pure
+ * cosmetics — never gates function (§184.3), and every client must degrade to "no frame"
+ * for UNSPECIFIED/NONE or any value it cannot render.
+ *
+ * @generated from enum patches.v1.ProfileFrame
+ */
+export enum ProfileFrame {
+  /**
+   * @generated from enum value: PROFILE_FRAME_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PROFILE_FRAME_NONE = 1;
+   */
+  NONE = 1,
+
+  /**
+   * @generated from enum value: PROFILE_FRAME_BORDER = 2;
+   */
+  BORDER = 2,
+
+  /**
+   * @generated from enum value: PROFILE_FRAME_GLOW = 3;
+   */
+  GLOW = 3,
+
+  /**
+   * @generated from enum value: PROFILE_FRAME_GRADIENT = 4;
+   */
+  GRADIENT = 4,
+}
+
+/**
+ * Describes the enum patches.v1.ProfileFrame.
+ */
+export const ProfileFrameSchema: GenEnum<ProfileFrame> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_actors, 0);
+
+/**
+ * How the actor's name tag renders on their profile (same purely-cosmetic rules as
+ * `ProfileFrame`).
+ *
+ * @generated from enum patches.v1.NameTagStyle
+ */
+export enum NameTagStyle {
+  /**
+   * @generated from enum value: NAME_TAG_STYLE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: NAME_TAG_STYLE_NONE = 1;
+   */
+  NONE = 1,
+
+  /**
+   * @generated from enum value: NAME_TAG_STYLE_BADGE = 2;
+   */
+  BADGE = 2,
+
+  /**
+   * @generated from enum value: NAME_TAG_STYLE_RIBBON = 3;
+   */
+  RIBBON = 3,
+
+  /**
+   * @generated from enum value: NAME_TAG_STYLE_PILLED = 4;
+   */
+  PILLED = 4,
+}
+
+/**
+ * Describes the enum patches.v1.NameTagStyle.
+ */
+export const NameTagStyleSchema: GenEnum<NameTagStyle> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_actors, 1);
 
 /**
  * Social identities: local accounts today, remote (federated) actors later (spec §19, §21,

@@ -19,10 +19,14 @@ import {
   bioSchema,
   displayNameSchema,
   locationTextSchema,
+  accentColorSchema,
   NAMEPLATE_MAX_BYTES,
   nameplateInputSchema,
+  nameTagStyleSchema,
   parseActorFlairDocument,
   parseInput,
+  profileBannerUrlSchema,
+  profileFrameSchema,
   searchQuerySchema,
   uuidInputSchema,
   websiteUrlSchema,
@@ -41,6 +45,10 @@ export interface UpdateProfileInput {
   websiteUrl?: string;
   nameplate?: NameplateInput;
   flairDocument?: string;
+  profileBannerUrl?: string;
+  profileFrame?: string;
+  nameTagStyle?: string;
+  accentColor?: string;
   /** Proto field names (snake_case), e.g. `["display_name", "bio"]`; only these are applied. */
   updateMask: readonly string[];
 }
@@ -125,7 +133,18 @@ export class ActorService {
   updateProfile(input: UpdateProfileInput): Promise<ActorProfile> {
     const paths = new Set(input.updateMask);
     const patch: Partial<
-      Pick<Actor, 'displayName' | 'bio' | 'locationText' | 'websiteUrl' | 'nameplate'>
+      Pick<
+        Actor,
+        | 'displayName'
+        | 'bio'
+        | 'locationText'
+        | 'websiteUrl'
+        | 'nameplate'
+        | 'profileBannerUrl'
+        | 'profileFrame'
+        | 'nameTagStyle'
+        | 'accentColor'
+      >
     > = {};
 
     if (paths.has('display_name')) {
@@ -143,6 +162,23 @@ export class ActorService {
     if (paths.has('website_url')) {
       const raw = (input.websiteUrl ?? '').trim();
       patch.websiteUrl = raw.length === 0 ? null : parseInput(websiteUrlSchema, raw);
+    }
+    // Rapid personalization (owner request 2026-08-25): four purely-cosmetic fields, same
+    // field-mask semantics as above — empty string clears a URL/colour to `null`; the enum
+    // schemas reject UNSPECIFIED so a caller clears those with an explicit NONE.
+    if (paths.has('profile_banner_url')) {
+      const raw = (input.profileBannerUrl ?? '').trim();
+      patch.profileBannerUrl = raw.length === 0 ? null : parseInput(profileBannerUrlSchema, raw);
+    }
+    if (paths.has('accent_color')) {
+      const raw = (input.accentColor ?? '').trim();
+      patch.accentColor = raw.length === 0 ? null : parseInput(accentColorSchema, raw);
+    }
+    if (paths.has('profile_frame')) {
+      patch.profileFrame = parseInput(profileFrameSchema, input.profileFrame ?? '');
+    }
+    if (paths.has('name_tag_style')) {
+      patch.nameTagStyle = parseInput(nameTagStyleSchema, input.nameTagStyle ?? '');
     }
 
     // Parsed up front (like every other field) but *applied* inside the transaction below,
