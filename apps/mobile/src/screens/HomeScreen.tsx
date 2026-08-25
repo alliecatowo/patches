@@ -107,7 +107,7 @@ export function HomeScreen({
         onEndReachedThreshold={0.4}
         refreshing={loading && posts.length === 0}
         onRefresh={() => void load('', true)}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>{emptyMessage}</Text> : null}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>{emptyMessage}</Text> : undefined}
         ListFooterComponent={
           loading && posts.length > 0 ? <ActivityIndicator style={styles.footer} /> : null
         }
