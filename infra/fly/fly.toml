@@ -4,7 +4,7 @@
 #   flyctl deploy --config infra/fly/fly.toml --remote-only --ha=false
 #
 # See docs/operations/deployment.md for the full runbook (secrets, Postgres, admin access).
-app = "patches"
+app = "patches-social"
 primary_region = "iad"
 
 # Longer than the worker's 10s graceful drain and the server's in-flight gRPC drain (A-044);
