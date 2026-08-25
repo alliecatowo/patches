@@ -3,9 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { parsePageStrict, type PatchesPage } from '@patches/domain';
 import {
+  CREDENTIAL_TYPE,
   E2EE_CAPABILITY_STATE,
   FOLLOW_STATE,
+  GITHUB_LOGIN_STATUS,
   MEDIA_STATUS,
+  OIDC_LOGIN_STATUS,
+  PASSWORD_AUTH_MODE,
   POST_TYPE,
   POST_VISIBILITY,
   QUOTE_POLICY,
@@ -15,8 +19,12 @@ import {
   type Actor,
   type AddCredentialRequest as AddCredentialRequestInit,
   type AddCredentialResponse,
+  type BeginGitHubLoginRequest,
+  type BeginGitHubLoginResponse,
   type BeginMediaUploadRequest as BeginMediaUploadRequestInit,
   type BeginMediaUploadResponse,
+  type BeginOidcLoginRequest,
+  type BeginOidcLoginResponse,
   type BlockActorRequest as BlockActorRequestInit,
   type BlockActorResponse,
   type BookmarkPostRequest as BookmarkPostRequestInit,
@@ -32,6 +40,7 @@ import {
   type GetActorByHandleResponse,
   type GetActorRequest as GetActorRequestInit,
   type GetActorResponse,
+  type GetAuthPolicyResponse,
   type GetMediaDownloadRequest as GetMediaDownloadRequestInit,
   type GetMediaDownloadResponse,
   type GetPageRequest as GetPageRequestInit,
@@ -85,7 +94,12 @@ import {
   type Nameplate,
   type Notification,
   type NotificationType,
+  type OidcProviderInfo,
   type PageInfo,
+  type PollGitHubLoginRequest,
+  type PollGitHubLoginResponse,
+  type PollOidcLoginRequest,
+  type PollOidcLoginResponse,
   type Post,
   type RefreshSessionRequest as RefreshSessionRequestInit,
   type RefreshSessionResponse,
@@ -294,6 +308,13 @@ export interface FakeApiOptions {
   /** `ResolveActor` throws `UNIMPLEMENTED` when `false` (B-028's "federation disabled"
    * case) — defaults to `true`. */
   federationEnabled?: boolean;
+  /** `GetAuthPolicy.github_auth` (P15-006/P15-008) — whether this node offers GitHub
+   * device-flow sign-in/linking. Defaults to `false` so every pre-P15-008 test's "SSH
+   * only" `AccountsScreen` add-flow keeps working unchanged. */
+  githubAuth?: boolean;
+  /** `GetAuthPolicy.oidc_providers` (P15-006/P15-008) — this node's configured generic
+   * OIDC providers. Defaults to none. */
+  oidcProviders?: OidcProviderInfo[];
 }
 
 function grpcError(code: number, message: string): Error & { code: number } {
@@ -312,6 +333,11 @@ export class FakeApiHandle {
   /** Every user id `resendVerification` was called for, in call order — tests assert
    * against this rather than the fake tracking a resend "count" per user (A-028). */
   readonly resendVerificationCalls: string[] = [];
+  /** What the *next* `pollGitHubLogin`/`pollOidcLogin` call resolving a device code
+   * settles to, mutable per test (P15-008) — the real device flow is asynchronous
+   * (a human authorizes in a browser), so the fake can't know the outcome up front. */
+  githubLoginOutcome: 'COMPLETE' | 'DENIED' | 'EXPIRED' = 'COMPLETE';
+  oidcLoginOutcome: 'COMPLETE' | 'DENIED' | 'EXPIRED' = 'COMPLETE';
 
   private readonly users = new Map<string, FakeUser>();
   private readonly posts: Post[] = []; // newest first
@@ -336,6 +362,13 @@ export class FakeApiHandle {
   private readonly localDomain: string;
   private readonly federationEnabled: boolean;
   private readonly remoteActors = new Map<string, Actor>(); // acct ("user@domain") -> Actor (B-028)
+  private readonly githubAuth: boolean;
+  private readonly oidcProviders: OidcProviderInfo[];
+  // deviceCode -> the caller's own userId (P15-008 only exercises the *link* path — an
+  // authenticated `AccountsScreen` always calls `ensureAccessToken()` before `begin*Login`,
+  // never the anonymous login path).
+  private readonly githubDeviceFlows = new Map<string, string>();
+  private readonly oidcDeviceFlows = new Map<string, string>();
 
   constructor(options: FakeApiOptions = {}) {
     installFakeMediaFetch();
@@ -348,6 +381,8 @@ export class FakeApiHandle {
     this.pageSize = options.pageSize ?? 20;
     this.localDomain = options.localDomain ?? this.target.split(':')[0] ?? 'patches.test';
     this.federationEnabled = options.federationEnabled ?? true;
+    this.githubAuth = options.githubAuth ?? false;
+    this.oidcProviders = options.oidcProviders ?? [];
     this.serverInfo = {
       $typeName: 'patches.v1.GetServerInfoResponse',
       serverVersion: '0.1.0',
@@ -371,7 +406,7 @@ export class FakeApiHandle {
       // P15-002: always resolves 'optional' — no test currently exercises
       // PASSWORD_AUTH=off, so the default that preserves every existing password-
       // login test's behavior is the right one here.
-      getAuthPolicy: () => Promise.resolve({ passwordAuth: 'PASSWORD_AUTH_MODE_OPTIONAL' }),
+      getAuthPolicy: () => this.getAuthPolicy(),
       // P13-010: E2EE surfaces the shell probes on mount. DISABLED is the honest
       // default — it keeps every pre-E2EE test's expectations intact (no dev-mode
       // warning, no capability affordances) while letting App render.
@@ -394,6 +429,12 @@ export class FakeApiHandle {
         Promise.reject(grpcError(GrpcStatus.UNIMPLEMENTED, 'fake api: not needed by the tests')),
       logoutAllSessions: () => Promise.resolve({}),
       listCredentials: (accessToken: string) => this.listCredentials(accessToken),
+      beginGitHubLogin: (_request: BeginGitHubLoginRequest, accessToken?: string) =>
+        this.beginGitHubLogin(accessToken),
+      pollGitHubLogin: (request: PollGitHubLoginRequest) => this.pollGitHubLogin(request),
+      beginOidcLogin: (request: BeginOidcLoginRequest, accessToken?: string) =>
+        this.beginOidcLogin(request, accessToken),
+      pollOidcLogin: (request: PollOidcLoginRequest) => this.pollOidcLogin(request),
       getActor: (request: GetActorRequest) => this.getActor(request),
       getActorByHandle: (request: GetActorByHandleRequest) => this.getActorByHandle(request),
       searchActors: (request: SearchActorsRequest) => this.searchActors(request),
@@ -739,6 +780,18 @@ export class FakeApiHandle {
       emailVerified: user.emailVerified ?? true,
       node: this.target,
     };
+  }
+
+  /** GitHub/OIDC device-flow completion (P15-008) only ever has a `userId`, not a
+   * `FakeUser` — the caller resolved it from a session that already proved the user
+   * exists, so a missing entry here means the fake's own bookkeeping is broken, not
+   * something a caller can recover from. */
+  private requireUser(userId: string): FakeUser {
+    const user = this.users.get(userId);
+    if (user === undefined) {
+      throw new Error(`fake-api: unknown userId ${userId}`);
+    }
+    return user;
   }
 
   private register(request: RegisterRequest): Promise<RegisterResponse> {
@@ -1512,6 +1565,121 @@ export class FakeApiHandle {
   }
 
   // ---- AccountsScreen (B-022): AuthService.ListCredentials/AddCredential ----
+
+  private getAuthPolicy(): Promise<GetAuthPolicyResponse> {
+    return Promise.resolve({
+      $typeName: 'patches.v1.GetAuthPolicyResponse',
+      passwordAuth: PASSWORD_AUTH_MODE.OPTIONAL,
+      githubAuth: this.githubAuth,
+      oidcProviders: this.oidcProviders,
+    });
+  }
+
+  /** `AccountsScreen`'s `a` add-flow only ever calls this authenticated (P15-008 links to
+   * the caller's own account, mirroring the web client's `mode="link"` — the anonymous
+   * login path isn't exercised from the in-app screen). */
+  private beginGitHubLogin(accessToken?: string): Promise<BeginGitHubLoginResponse> {
+    if (!this.githubAuth) {
+      return Promise.reject(
+        grpcError(GrpcStatus.FAILED_PRECONDITION, 'GitHub sign-in is not configured on this node.'),
+      );
+    }
+    const session = accessToken === undefined ? undefined : this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const deviceCode = randomUUID();
+    this.githubDeviceFlows.set(deviceCode, session.userId);
+    return Promise.resolve({
+      $typeName: 'patches.v1.BeginGitHubLoginResponse',
+      deviceCode,
+      userCode: 'WXYZ-9876',
+      verificationUri: 'https://github.com/login/device',
+      interval: 5,
+      expiresAt: fromDate(new Date(Date.now() + 10 * 60_000)),
+    });
+  }
+
+  /** Settles to `githubLoginOutcome` (default `COMPLETE`) on every poll — the fake has no
+   * real out-of-band browser step, so it doesn't need to model a `PENDING` phase. */
+  private pollGitHubLogin(request: PollGitHubLoginRequest): Promise<PollGitHubLoginResponse> {
+    const userId = this.githubDeviceFlows.get(request.deviceCode);
+    if (userId === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'Unknown or expired device code.'));
+    }
+    if (this.githubLoginOutcome !== 'COMPLETE') {
+      this.githubDeviceFlows.delete(request.deviceCode);
+      return Promise.resolve({
+        $typeName: 'patches.v1.PollGitHubLoginResponse',
+        status:
+          this.githubLoginOutcome === 'DENIED'
+            ? GITHUB_LOGIN_STATUS.DENIED
+            : GITHUB_LOGIN_STATUS.EXPIRED,
+        session: undefined,
+      });
+    }
+    this.githubDeviceFlows.delete(request.deviceCode);
+    this.addCredentialFor(userId, {
+      type: CREDENTIAL_TYPE.GITHUB,
+      label: '',
+      identifier: 'octocat',
+    });
+    return Promise.resolve({
+      $typeName: 'patches.v1.PollGitHubLoginResponse',
+      status: GITHUB_LOGIN_STATUS.COMPLETE,
+      session: this.issueSession(this.requireUser(userId)),
+    });
+  }
+
+  private beginOidcLogin(
+    request: BeginOidcLoginRequest,
+    accessToken?: string,
+  ): Promise<BeginOidcLoginResponse> {
+    if (this.oidcProviders.find((provider) => provider.id === request.provider) === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'Unknown OIDC provider.'));
+    }
+    const session = accessToken === undefined ? undefined : this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    const deviceCode = randomUUID();
+    this.oidcDeviceFlows.set(deviceCode, session.userId);
+    return Promise.resolve({
+      $typeName: 'patches.v1.BeginOidcLoginResponse',
+      deviceCode,
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://oidc.example.test/device',
+      interval: 5,
+      expiresAt: fromDate(new Date(Date.now() + 10 * 60_000)),
+    });
+  }
+
+  private pollOidcLogin(request: PollOidcLoginRequest): Promise<PollOidcLoginResponse> {
+    const userId = this.oidcDeviceFlows.get(request.deviceCode);
+    if (userId === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.NOT_FOUND, 'Unknown or expired device code.'));
+    }
+    if (this.oidcLoginOutcome !== 'COMPLETE') {
+      this.oidcDeviceFlows.delete(request.deviceCode);
+      return Promise.resolve({
+        $typeName: 'patches.v1.PollOidcLoginResponse',
+        status:
+          this.oidcLoginOutcome === 'DENIED' ? OIDC_LOGIN_STATUS.DENIED : OIDC_LOGIN_STATUS.EXPIRED,
+        session: undefined,
+      });
+    }
+    this.oidcDeviceFlows.delete(request.deviceCode);
+    this.addCredentialFor(userId, {
+      type: CREDENTIAL_TYPE.OIDC,
+      label: '',
+      identifier: `${request.provider}:subject`,
+    });
+    return Promise.resolve({
+      $typeName: 'patches.v1.PollOidcLoginResponse',
+      status: OIDC_LOGIN_STATUS.COMPLETE,
+      session: this.issueSession(this.requireUser(userId)),
+    });
+  }
 
   private listCredentials(accessToken: string): Promise<ListCredentialsResponse> {
     const session = this.requireSession(accessToken);
