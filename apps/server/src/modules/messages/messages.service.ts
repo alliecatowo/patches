@@ -7,7 +7,7 @@ import {
   ConversationMember,
   E2eeLogicalMessage,
 } from '@patches/database';
-import { DataSource, IsNull, type EntityManager } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { toActorSummary } from '../auth/auth.dto.js';
@@ -98,12 +98,22 @@ export class MessagesService {
     return view;
   }
 
-  /** Idempotent: leaving a conversation the caller isn't in is not an error (spec §189). */
-  async leaveConversation(actorId: string, conversationIdRaw: string): Promise<void> {
-    const conversationId = parseInput(uuidInputSchema, conversationIdRaw);
-    await this.dataSource
-      .getRepository(ConversationMember)
-      .update({ conversationId, actorId, leftAt: IsNull() }, { leftAt: new Date() });
+  /**
+   * Always rejected (ADR 0030 §B-095): every conversation is `E2EE_V1`, so leaving is a
+   * group-control transition, not a column flip — a silent `left_at` write would desync the
+   * membership epoch and the roster chain every other member verifies. Self-removal goes
+   * through `E2eeService.RemoveE2eeMember` with `actor_id` set to the caller, which bumps the
+   * epoch and emits the signed `REMOVED` event. The rejection is uniform and precedes any
+   * database work, so it leaks nothing (spec §62).
+   */
+  // Not `async`: there is nothing to await, and the rejection must precede any database work.
+  leaveConversation(_actorId: string, _conversationIdRaw: string): Promise<void> {
+    return Promise.reject(
+      new AppError(
+        'NOT_IMPLEMENTED',
+        'Leaving a conversation is not supported: use E2eeService.RemoveE2eeMember to leave.',
+      ),
+    );
   }
 
   /** `through_message_id` is an `E2eeLogicalMessage.id` (ADR 0030 §B-095 — the node has no

@@ -170,6 +170,24 @@ describe('proto files', () => {
     expect(serviceMethodNames(pkg, SERVICE_NAMES.directMessage)).toEqual(
       ['GetConversation', 'LeaveConversation', 'ListConversations', 'MarkConversationRead'].sort(),
     );
+    // `ModerationService` after ADR 0030 §B-095: `ReportMessage` (snapshot-backed evidence for
+    // a server-visible DM) is gone from the wire — `ReportE2eeMessage` plus reporter-disclosed
+    // evidence is the whole DM moderation story.
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.moderation)).toEqual(
+      [
+        'BlockActor',
+        'ListBlocks',
+        'ListModerationLog',
+        'ListMutes',
+        'ListMyModerationNotices',
+        'MuteActor',
+        'ReportActor',
+        'ReportE2eeMessage',
+        'ReportPost',
+        'UnblockActor',
+        'UnmuteActor',
+      ].sort(),
+    );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.tag)).toEqual(
       ['ListMutedTags', 'MuteTag', 'SearchTags', 'UnmuteTag'].sort(),
     );
@@ -263,6 +281,16 @@ describe('proto files', () => {
         expect(method.path.startsWith(`/${PATCHES_PACKAGE_NAME}.${serviceName}/`)).toBe(true);
       }
     }
+  });
+
+  it('reserves the retired legacy conversation security mode (ADR 0030 §B-095, spec §153)', () => {
+    const pkg = loadPatchesPackage();
+    const mode = pkg.ConversationSecurityMode as Record<string, number | string>;
+    expect(mode.CONVERSATION_SECURITY_MODE_E2EE_V1).toBe(2);
+    expect(mode.CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE).toBeUndefined();
+    // Number 1 stays reserved on the wire: neither name→number nor the reverse mapping may
+    // resolve it, and no future value may quietly claim it.
+    expect(mode[1]).toBeUndefined();
   });
 
   it('pins the wire protocol version and metadata keys', () => {
