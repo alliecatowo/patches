@@ -49,12 +49,10 @@ mise run web:deploy                                # build + deploy to Cloudflar
 
 ### Talking to a node
 
-The running live node's CORS allow-list hasn't actually been redeployed with a browser
-origin yet (see `docs/operations/web.md`'s "CORS coupling" section — `infra/fly/fly.toml`
-now sets `WEB_ORIGINS`, but that config change hasn't shipped), so dev mode proxies `/api/*`
-to a real node instead of hitting it directly from the browser (`vite.config.ts`'s
+Dev mode proxies `/api/*` to a real node instead of hitting it directly from the browser
+(`vite.config.ts`'s
 `server.proxy`). By default that upstream is the live node,
-`https://patches-social.fly.dev:8443`; override it with `PATCHES_DEV_UPSTREAM` for a local
+`https://patches-social.fly.dev`; override it with `PATCHES_DEV_UPSTREAM` for a local
 server (`http://127.0.0.1:8080`, the Nest HTTP listener that also serves Connect at
 `/patches.v1.*`):
 
