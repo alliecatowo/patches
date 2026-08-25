@@ -42,7 +42,9 @@ protobuf request → controller (transport adapter) → application service → 
 
 ## Delegation
 
-The main session orchestrates; subagents in `.claude/agents/` do the work. **sonnet** for implementation, **haiku** for mechanical checks, **opus** for review/architecture/tricky debugging, **fable** only for the hardest problems — never more than one at a time. Fan out in parallel with a **disjoint file set** per agent, stated explicitly. Briefs are self-contained — paste the snippets the agent needs rather than listing files to read first. Nesting allowed to depth 3. Escalate to opus after a sonnet agent fails the same way twice — don't retry a third time at the same model. A reviewer must be a stronger model than the implementer it's reviewing. Never downgrade implementation work to haiku.
+The frontier main session is the orchestrator and acceptance gate: it turns explicit work into bounded tasks, delegates product/harness edits when a worker can safely own them, reviews results, and integrates. It must not invent or automatically claim tasks; `tasks.md`, the user, and the spec define work. Parallel workers get exact owned and forbidden paths and preserve unrelated work.
+
+Use the cheapest adequate available capability class, not a presumed model name: Haiku-equivalent for mechanical checks and narrow diagnostics; Sonnet-equivalent for normal implementation, tests, docs, and research; Opus-equivalent for architecture, security/crypto, hard debugging, and high-risk final review. A worker may delegate an independent mechanical subtask downward, not create a second coordinator. Briefs are short and self-contained (goal, constraints, paths, acceptance checks); use reduced/non-full context for workers when the runtime supports it. An independent reviewer must be strictly stronger than the implementer; verifier runs the relevant checks, while the implementer fixes failures. After two equivalent failures, change approach or escalate. See `docs/agents/MODEL_ROUTING.md` and `docs/agents/HARNESS.md`; never weaken hard rules or expand scope silently.
 
 ## Repository map
 
