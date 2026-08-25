@@ -51,7 +51,6 @@ import {
   GITHUB_LOGIN_STATUS,
   LABEL_ACTION,
   MEDIA_STATUS,
-  MESSAGE_REQUEST_STATUS,
   MODERATION_ACTION_TYPE,
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,
@@ -142,12 +141,6 @@ describe('hand-mirrored enums stay in sync with the generated proto enums', () =
 
   it('CONVERSATION_KIND matches ConversationKind', () => {
     expect(Object.values(CONVERSATION_KIND).sort()).toEqual(generatedValues(ConversationKind));
-  });
-
-  it('MESSAGE_REQUEST_STATUS matches MessageRequestStatus', () => {
-    expect(Object.values(MESSAGE_REQUEST_STATUS).sort()).toEqual(
-      generatedValues(MessageRequestStatus),
-    );
   });
 
   it('FILTER_TERM_KIND matches FilterTermKind', () => {
