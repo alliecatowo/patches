@@ -25,8 +25,7 @@ function buildVersion(): string {
 // being configured for a web origin yet (WEB_ORIGINS server env, not set for
 // this client). `VITE_PATCHES_API_BASE` overrides the base URL the app itself
 // requests against (defaults to `/api`, the proxied path) — see `src/api/client.ts`.
-const PATCHES_UPSTREAM =
-  process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev:8443';
+const PATCHES_UPSTREAM = process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev';
 
 export default defineConfig(() => {
   // Deploy-safety note (postmortem 2026-08-24): production builds MUST set

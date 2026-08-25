@@ -155,7 +155,7 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
-VITE_PATCHES_API_BASE="${VITE_PATCHES_API_BASE:-https://patches-social.fly.dev:8443}" pnpm --filter @patches/web build
+VITE_PATCHES_API_BASE="${VITE_PATCHES_API_BASE:-https://patches-social.fly.dev}" pnpm --filter @patches/web build
 pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
 """
 
@@ -266,5 +266,4 @@ run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh reset \"$@\
 [tasks."neon:dev:destroy"]
 description = "Permanently delete the current ephemeral Neon dev branch"
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/scripts/neon-dev-branch.sh destroy \"$@\""
-
 
