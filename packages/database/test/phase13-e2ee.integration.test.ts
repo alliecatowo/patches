@@ -8,6 +8,16 @@ import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
+// The ledger migration is located BY NAME, never by position: slicing [-1] broke when
+// later migrations landed after it (FilterListScopes, RemoveLegacyServerVisibleDms),
+// building a schema that already had the composite prekey FK — the fixture insert then
+// failed with fk_e2ee_one_time_prekeys_device_identity_id_key_id (main CI, 2026-08-25).
+const LEDGER_MIGRATION_NAME = 'AddE2eeIssuedPrekeyLedger1787617557448';
+const ledgerIndex = ALL_MIGRATIONS.findIndex((m) => m.name === LEDGER_MIGRATION_NAME);
+if (ledgerIndex === -1) {
+  throw new Error(`${LEDGER_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`);
+}
+
 if (!testDatabaseUrl) {
   console.warn(
     '[packages/database] Skipping Phase 13 E2EE schema tests: TEST_DATABASE_URL is not set.',
@@ -21,8 +31,9 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
   beforeAll(async () => {
     dataSource = createDataSource({ url: testDatabaseUrl! });
     // Prove the ledger migration against actual existing E2EE rows, rather than only against
-    // an empty latest schema. The ledger migration is deliberately last in this release.
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(0, -1) });
+    // an empty latest schema: migrate to just BEFORE the ledger, insert fixture rows, then
+    // run the ledger (and anything after it) on top.
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(0, ledgerIndex) });
     await dataSource.initialize();
     await dataSource.dropDatabase();
     await dataSource.runMigrations();
@@ -62,7 +73,9 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     // target migration rather than mutating an already-initialized source.
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(-1) });
+    // The ledger and everything appended after it, in order — the final state must be
+    // fully migrated ("no pending migration" assertion below).
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex) });
     await dataSource.initialize();
     await dataSource.runMigrations();
     await dataSource.destroy();
@@ -151,7 +164,11 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
   });
 
   it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
-    await dataSource.undoLastMigration();
+    // Undo from the ledger onward (migrations after the ledger pop first), so the
+    // DB ends at the pre-ledger schema — exactly what the assertions below expect.
+    for (let i = ALL_MIGRATIONS.length - ledgerIndex; i > 0; i--) {
+      await dataSource.undoLastMigration();
+    }
 
     await expect(
       dataSource.query(`SELECT to_regclass('public.e2ee_one_time_prekey_key_ids') AS relation`),
@@ -181,7 +198,10 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 
-  it('keeps legacy rows labelled and rejects every conversation mode change', async () => {
+  it('defaults new conversations to E2EE_V1 and still rejects every mode change', async () => {
+    // Updated for RemoveLegacyServerVisibleDms (post-ADR 0031): LEGACY_SERVER_VISIBLE is
+    // gone — the column default is E2EE_V1 and the CHECK admits only that value. The
+    // immutability trigger (Phase13E2ee, ADR 0020 §1.1) is unchanged.
     const actorId = randomUUID();
     const conversationId = randomUUID();
     await dataSource.query(
@@ -196,12 +216,13 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT "security_mode" FROM "conversations" WHERE "id" = $1`,
       [conversationId],
     );
-    expect(rows[0]?.security_mode).toBe('LEGACY_SERVER_VISIBLE');
+    expect(rows[0]?.security_mode).toBe('E2EE_V1');
     await expect(
-      dataSource.query(`UPDATE "conversations" SET "security_mode" = 'E2EE_V1' WHERE "id" = $1`, [
-        conversationId,
-      ]),
-    ).rejects.toThrow(/immutable/);
+      dataSource.query(
+        `UPDATE "conversations" SET "security_mode" = 'LEGACY_SERVER_VISIBLE' WHERE "id" = $1`,
+        [conversationId],
+      ),
+    ).rejects.toThrow(/immutable|chk_conversations_security_mode/);
   });
 
   it('enforces key lengths and one active root/device/signed-prekey per identity', async () => {
