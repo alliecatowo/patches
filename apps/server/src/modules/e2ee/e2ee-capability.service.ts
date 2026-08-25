@@ -13,12 +13,22 @@ import {
 } from '@patches/domain';
 import { E2eeCapabilityState, type GetE2eeCapabilityResponse } from '@patches/proto/nest';
 
+import { AppConfigService } from '../../config/app-config.service.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import {
   E2EE_RUNTIME_APPROVAL_POLICY,
   type E2eeRuntimeApprovalPolicy,
 } from './e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
+
+/**
+ * The one configuration read the rollout disclosure needs (B-108): whether the operator has
+ * flipped the final `E2EE_V1_ENABLED` gate. Structural on purpose so tests can pass a
+ * one-getter stand-in; the DI binding is the `AppConfigService` class token, which satisfies it.
+ */
+interface E2eeV1RolloutConfig {
+  readonly e2eeV1Enabled: boolean;
+}
 
 /**
  * Computes E2EE rollout disclosure from the same runtime policy the fanout accept path uses.
@@ -31,6 +41,9 @@ export class E2eeCapabilityService {
     @Inject(NODE_FRANKING_KEY_RING) private readonly keys: NodeFrankingKeyRing,
     @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
     private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
+    // Optional so existing direct constructions (tests) compile unchanged; DI always supplies
+    // it, and an absent config fails closed to the pre-B-108 canary disclosure.
+    @Inject(AppConfigService) private readonly config?: E2eeV1RolloutConfig,
   ) {}
 
   getCapability(): GetE2eeCapabilityResponse {
@@ -41,11 +54,17 @@ export class E2eeCapabilityService {
       signingEra !== undefined &&
       this.keys.keyForEra(signingEra) !== undefined
     ) {
+      // B-108's final gate: an env-approved operator flip reports ENABLED, but only on top of
+      // an approved profile — it can never dress an unreviewed node up as a reviewed product.
+      // Canary and enabled accept identical send traffic; this is disclosure, not a new gate.
+      const canaryComplete = profileApproved && (this.config?.e2eeV1Enabled ?? false);
       return {
         capability: {
-          state: profileApproved
-            ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY
-            : E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
+          state: canaryComplete
+            ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_ENABLED
+            : profileApproved
+              ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY
+              : E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
           supportedProtocolVersions: [E2EE_PROTOCOL_V1],
           maxActiveDevicesPerActor: E2EE_MAX_ACTIVE_DEVICES_PER_ACTOR,
           maxGroupMembers: E2EE_GROUP_MAX_MEMBERS,
