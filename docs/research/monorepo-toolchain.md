@@ -617,8 +617,10 @@ Measured: 278 files in ~107ms vs `tsc` ~3.9s. Gotchas verified locally:
   whose dist nothing imports.
 - SWC does not type-check — the separate `tsc --noEmit` `typecheck` task is
   mandatory and already exists.
-- `nest doctor` (project health: deprecated APIs, misconfig) runs in CI's
-  quality job for both Nest apps.
+- `nest doctor` (deprecation/misconfig diagnostics) **does not exist in @nestjs/cli
+  11.0.24** (latest stable as of 2026-08-25) — it first appears in the 12.0.0-alpha
+  line. The stable equivalent is `nest info` (project + package-matrix dump), which
+  is what CI runs; revisit doctor when CLI 12 is stable.
 
 - pnpm 11: `onlyBuiltDependencies` etc. removed → `allowBuilds` in
   `pnpm-workspace.yaml` (not `package.json`).
