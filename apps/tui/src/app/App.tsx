@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Box, Text, useApp, useInput, useStdin, useWindowSize, type Key } from 'ink';
+import { Box, Text, useApp, useInput, useStdin, useStdout, useWindowSize, type Key } from 'ink';
 import {
   type ReactElement,
   type ReactNode,
@@ -22,7 +22,13 @@ import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
 import { wipeE2eeState } from '../e2ee/ratchet-vault.js';
+import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
+import { verifyActorChain } from '../e2ee/chain.js';
+import { verifyGroupControlEvents } from '../e2ee/group-control.js';
 import { createVaultE2eeSender, type VaultE2eeSender, type E2eeVaultFault } from './e2ee-send.js';
+import { createEnrollmentTransport, createE2eeTransports } from './e2ee-transports.js';
+import { ENROLLMENT_PEER_WARNING_COPY } from '../e2ee/enrollment.js';
+import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
 import type { PostRowActions } from '../components/PostList.js';
@@ -62,6 +68,9 @@ import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
 import { PrivacyScreen } from '../screens/PrivacyScreen.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ReportScreen, type ReportTarget } from '../screens/ReportScreen.js';
+import { IssueReportScreen } from '../screens/IssueReportScreen.js';
+import { attachFrameCapture } from '../diagnostics/frame-capture.js';
+import { getDiagnosticsReporter } from '../diagnostics/reporter.js';
 import { SearchScreen } from '../screens/SearchScreen.js';
 import { TagFeedScreen } from '../screens/TagFeedScreen.js';
 import { ThreadScreen } from '../screens/ThreadScreen.js';
@@ -210,6 +219,7 @@ export function App({
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
   const { columns, rows } = useWindowSize();
+  const { stdout } = useStdout();
   const { state: serverInfoState, retry: retryServerInfo } = useServerInfo(api);
 
   // The navigation stack (see `navigation.ts`). Patches opens straight onto a
@@ -273,6 +283,25 @@ export function App({
   const pendingPaneRef = useRef(false);
   const pendingPaneTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  // B-112 follow-up: Ink has no stop-propagation, so one keypress reaches every
+  // active listener — and a list's listener subscribes (child effect) before the
+  // shell's own, meaning a focused row's targeted `!` (`PostList` → `reportPost`,
+  // `ProfileScreen` → `reportActor`, both funnelled through `openReport`) fires
+  // *before* `handleShellInput` sees the same key. That claim suppresses the
+  // shell's global issue reporter for exactly that one keypress — it is set only
+  // when the targeted report actually opens (a screen must not claim the key
+  // forever just because `!` means something there), and it expires on a zero-delay
+  // timeout, after the current stdin event's synchronous fan-out, so an earlier
+  // targeted report can never swallow a later, unrelated `!`.
+  const targetedBangClaimedRef = useRef(false);
+  const targetedBangClaimTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  function claimTargetedBang(): void {
+    targetedBangClaimedRef.current = true;
+    clearTimeout(targetedBangClaimTimer.current);
+    targetedBangClaimTimer.current = setTimeout(() => {
+      targetedBangClaimedRef.current = false;
+    }, 0);
+  }
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
     setPendingGoState(next);
@@ -387,18 +416,8 @@ export function App({
         ensureAccessToken().then((accessToken) => api.listConversations(request, accessToken)),
       getConversation: (request) =>
         ensureAccessToken().then((accessToken) => api.getConversation(request, accessToken)),
-      listMessages: (request) =>
-        ensureAccessToken().then((accessToken) => api.listMessages(request, accessToken)),
-      sendMessage: (request) =>
-        ensureAccessToken().then((accessToken) => api.sendMessage(request, accessToken)),
       markConversationRead: (request) =>
         ensureAccessToken().then((accessToken) => api.markConversationRead(request, accessToken)),
-      listMessageRequests: (request) =>
-        ensureAccessToken().then((accessToken) => api.listMessageRequests(request, accessToken)),
-      respondToMessageRequest: (request) =>
-        ensureAccessToken().then((accessToken) =>
-          api.respondToMessageRequest(request, accessToken),
-        ),
       // P13-010 security surfaces — optional in the screen's contract, always bound
       // here where the authenticated transport exists.
       getIdentityRoot: (request) =>
@@ -408,6 +427,36 @@ export function App({
         ensureAccessToken().then((accessToken) =>
           api.listE2eeGroupControlEvents(request, accessToken),
         ),
+      // B-101: the membership transcript is signature-verified client-side before the
+      // screen renders it — each event against its signer's certified device key, loaded
+      // from that actor's verified root → roster → certificate chain. A chain that
+      // cannot be verified fails its rows closed (`signatureVerified: false`), never
+      // silently passes them.
+      verifyGroupControlEvents: async ({ conversationId }) => {
+        const accessToken = await ensureAccessToken();
+        const response = await api.listE2eeGroupControlEvents(
+          { conversationId, afterEpoch: 0n, limit: 50 },
+          accessToken,
+        );
+        const verdict = await verifyGroupControlEvents(response.events, {
+          loadVerifiedChain: async (actorId) => {
+            const [rootResponse, rosterResponse] = await Promise.all([
+              api.getIdentityRoot({ actorId }, accessToken),
+              api.getDeviceRoster({ actorId }),
+            ]);
+            if (rootResponse.identityRoot === undefined || rosterResponse.roster === undefined) {
+              return undefined;
+            }
+            return verifyActorChain({
+              rootWire: rootResponse.identityRoot,
+              rosterWire: rosterResponse.roster,
+              certificatesWire: rosterResponse.certificates ?? [],
+              now: new Date(),
+            });
+          },
+        });
+        return { allVerified: verdict.allVerified, rows: verdict.rows };
+      },
     }),
     [api, ensureAccessToken],
   );
@@ -460,21 +509,128 @@ export function App({
     notify('Safety number marked as compared for this session.', 'success');
   }
 
-  // The vault-backed send pipeline for end-to-end conversations (P13-010), keyed to
-  // the signed-in account. Faults are sticky until an explicit wipe resets them.
+  // B-112 diagnostics: keep the issue reporter's capability snapshot current so a
+  // `:report` bundle always describes the session it came from (plain/linear mode,
+  // whether the node advertises E2EE, whether this device has an enrolled vault).
+  // Read lazily at submit time — never during render — because the vault answer lives
+  // behind `e2eeSenderRef`, which only event handlers may touch.
+  function issueReporterCapabilities(): Record<string, boolean> {
+    const key = session === undefined ? undefined : `${api.target}:${session.userId}`;
+    const sender =
+      key !== undefined && e2eeSenderRef.current?.key === key
+        ? e2eeSenderRef.current.sender
+        : undefined;
+    return {
+      plainMode: plainEffective,
+      linearMode,
+      e2eeAdvertised: e2eeCapabilityState !== undefined,
+      vaultEnrolled: sender?.enrolled() === true,
+    };
+  }
+
+  // B-112 diagnostics: capture the last rendered frame's visible text by teeing the
+  // app's own stdout stream — Ink writes every frame there, so the reporter keeps a
+  // plain-text tail of whatever was last on screen (redacted again at bundle build).
+  useEffect(() => {
+    const capture = attachFrameCapture(stdout);
+    return () => {
+      capture.detach();
+    };
+  }, [stdout]);
+
+  // The vault-backed send/receive pipeline for end-to-end conversations (P13-010,
+  // B-101), keyed to the signed-in account. Faults are sticky until an explicit wipe
+  // resets them. Enrollment (B-107) binds a messaging identity into the same factory —
+  // restored from the vault at session start, or produced by the Accounts/Devices
+  // flow — and `enrolled()` gates send/poll exactly as before.
   const [e2eeVaultFault, setE2eeVaultFault] = useState<E2eeVaultFault | undefined>(undefined);
+  const [e2eeEnrolledDeviceId, setE2eeEnrolledDeviceId] = useState<string | undefined>(undefined);
   const e2eeSenderRef = useRef<{ key: string; sender: VaultE2eeSender } | undefined>(undefined);
-  function e2eeSenderFor(activeSession: ActiveSession): VaultE2eeSender {
-    const key = `${api.target}:${activeSession.userId}`;
-    const existing = e2eeSenderRef.current;
-    if (existing?.key === key) return existing.sender;
-    existing?.sender.close();
-    const created = createVaultE2eeSender({
-      account: { nodeOrigin: api.target, userId: activeSession.userId },
-      allowInsecureKeyFile: isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE),
-    });
-    e2eeSenderRef.current = { key, sender: created };
-    return created;
+  const allowInsecureCredentialFile = isTruthy(env.PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE);
+  const e2eeSenderFor = useCallback(
+    (activeSession: ActiveSession): VaultE2eeSender => {
+      const key = `${api.target}:${activeSession.userId}`;
+      const existing = e2eeSenderRef.current;
+      if (existing?.key === key) return existing.sender;
+      existing?.sender.close();
+      const created = createVaultE2eeSender({
+        account: { nodeOrigin: api.target, userId: activeSession.userId },
+        allowInsecureKeyFile: allowInsecureCredentialFile,
+        // B-107: once an identity exists (restored or freshly enrolled), this builds
+        // its authenticated transports. Kept here — not inside e2ee-send — so the
+        // vault layer stays transport-free.
+        buildTransports: (identity: LocalDeviceIdentity) =>
+          createE2eeTransports({
+            api,
+            accessToken: ensureAccessToken,
+            identity,
+          }),
+      });
+      e2eeSenderRef.current = { key, sender: created };
+      return created;
+    },
+    [api, ensureAccessToken, allowInsecureCredentialFile],
+  );
+  /** Actor id for enrollment material (certificates bind actor + device). */
+  function actorIdFor(activeSession: ActiveSession): string {
+    return activeSession.actor?.id ?? activeSession.userId;
+  }
+  /**
+   * B-107: restores this account's previously submitted device enrollment from the
+   * vault on session start, binding it (and its transports) into the runtime. A vault
+   * fault here is sticky and surfaced like any other; absence just stays dormant.
+   */
+  useEffect(() => {
+    if (session === undefined) return;
+    let cancelled = false;
+    const sender = e2eeSenderFor(session);
+    void sender
+      .restoreEnrollment()
+      .then((identity) => {
+        if (!cancelled && identity !== undefined) setE2eeEnrolledDeviceId(identity.deviceId);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [session, e2eeSenderFor]);
+  /**
+   * B-107: the Accounts/Devices entry point's action — runs device enrollment through
+   * the sender's own vault and returns what the screen should tell the viewer.
+   */
+  async function enrollE2eeForCurrentAccount(): Promise<{
+    readonly ok: boolean;
+    readonly copy: string;
+    readonly peerWarning?: string | undefined;
+  }> {
+    if (session === undefined) return { ok: false, copy: 'You are not signed in.' };
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.enroll({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.status === 'enrolled') {
+        setE2eeEnrolledDeviceId(outcome.identity.deviceId);
+        return {
+          ok: true,
+          copy:
+            `This device is enrolled for end-to-end encrypted messages` +
+            `${outcome.createdRoot ? ' and now holds this account’s messaging identity' : ''}.`,
+          peerWarning: ENROLLMENT_PEER_WARNING_COPY,
+        };
+      }
+      if (outcome.status === 'already-enrolled') {
+        setE2eeEnrolledDeviceId(outcome.identity.deviceId);
+        return { ok: true, copy: 'This device is already enrolled for encrypted messages.' };
+      }
+      return { ok: false, copy: outcome.copy };
+    } catch (error) {
+      return { ok: false, copy: describeGrpcError(error, api.target).title };
+    } finally {
+      // Vault faults are sticky: mirror whatever the attempt left behind.
+      setE2eeVaultFault(sender.fault());
+    }
   }
   async function sendViaVault(conversationId: string, body: string): Promise<void> {
     if (session === undefined) return;
@@ -483,6 +639,46 @@ export function App({
       await sender.send(conversationId, body);
     } finally {
       setE2eeVaultFault(sender.fault());
+    }
+  }
+  /**
+   * Stable mailbox-drain callback for the open end-to-end thread (B-101). Undefined
+   * until a messaging identity is enrolled, so the screen renders nothing rather than
+   * polling a device this client does not have.
+   */
+  /**
+   * Stable mailbox-drain callback for the open end-to-end thread (B-101). Resolves
+   * empty until a messaging identity is enrolled (the TUI has no enrollment flow yet),
+   * so the screen renders nothing extra rather than pretending to poll a device this
+   * client does not have — and never touches the network on that path.
+   */
+  const receiveE2eeRows = useCallback(
+    (conversationId: string): Promise<readonly E2eeReceivedRow[]> => {
+      const sender = session === undefined ? undefined : e2eeSenderFor(session);
+      if (sender === undefined || !sender.enrolled()) return Promise.resolve([]);
+      return sender.pollMailbox(conversationId).then((result) => result.rows);
+    },
+    [session, e2eeSenderFor],
+  );
+  /** Device wipe (audit P1-2): route through the LIVE store's wipe/close, drop the
+   * cached sender instance, and clear the sticky fault so the account can start over. */
+  async function wipeE2eeForCurrentAccount(): Promise<void> {
+    if (session === undefined) return;
+    const key = `${api.target}:${session.userId}`;
+    try {
+      if (e2eeSenderRef.current?.key === key) {
+        await e2eeSenderRef.current.sender.wipe();
+      } else {
+        await wipeE2eeState({ account: { nodeOrigin: api.target, userId: session.userId } });
+      }
+    } finally {
+      if (e2eeSenderRef.current?.key === key) {
+        // `sender.wipe()` already closed itself; drop the cache either way.
+        e2eeSenderRef.current = undefined;
+      }
+      setE2eeVaultFault(undefined);
+      // A wiped vault no longer holds an enrollment either (B-107).
+      setE2eeEnrolledDeviceId(undefined);
     }
   }
 
@@ -677,6 +873,7 @@ export function App({
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
+    getDiagnosticsReporter().recordBreadcrumb('nav', next.screen);
     setStack((current) => push(current, next));
   }
 
@@ -688,6 +885,7 @@ export function App({
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
+    getDiagnosticsReporter().recordBreadcrumb('nav', next.screen);
     setStack((current) => jump(current, next, options));
   }
 
@@ -695,7 +893,9 @@ export function App({
   function back(): void {
     navigated.current = true;
     setLegacySubmodeActive(false);
-    setStack((current) => pop(current));
+    const next = pop(stack);
+    getDiagnosticsReporter().recordBreadcrumb('nav-back', currentEntry(next).screen);
+    setStack(next);
   }
 
   function requireSession(next: NavEntry): void {
@@ -803,6 +1003,7 @@ export function App({
       navigated.current = true;
       setLegacySubmodeActive(false);
       clearModals();
+      getDiagnosticsReporter().recordBreadcrumb('nav', 'thread');
       setStack((current) => replace(current, next));
       return;
     }
@@ -1040,12 +1241,16 @@ export function App({
     }
   }
 
-  /** `!` — opens the report screen scoped to a post or an actor (spec §55). */
+  /** `!` on a post or profile — the targeted report (spec §55). Claims the keypress
+   * once it actually opens, so the shell's global issue reporter (`!` below) stands
+   * down for it; signed out there is nothing to open, so the keypress falls through
+   * to the global reporter, which works without a session. */
   function openReport(target: ReportTarget): void {
     if (session === undefined) {
       notify('Log in first — press L.');
       return;
     }
+    claimTargetedBang();
     navigate({ screen: 'report', target });
   }
 
@@ -1518,6 +1723,10 @@ export function App({
       case 'privacy':
         requireSession({ screen: 'privacy' });
         return;
+      case 'report':
+        // B-112: the beta issue reporter — deliberately reachable signed out.
+        goTo({ screen: 'issueReport' });
+        return;
       case 'followers':
         if (session?.actor) {
           goTo({ screen: 'followers', actorId: session.userId, handle: session.actor.handle });
@@ -1687,7 +1896,9 @@ export function App({
       return;
     }
     const legacyTextScreen =
-      ['login', 'compose', 'postEdit', 'search', 'report', 'editProfile'].includes(screen) ||
+      ['login', 'compose', 'postEdit', 'search', 'report', 'editProfile', 'issueReport'].includes(
+        screen,
+      ) ||
       // The quick-post overlay hosts the same legacy text screen; without this the
       // shell would treat every character typed into it as a global key.
       modals.top?.id === 'quick-post';
@@ -1756,6 +1967,15 @@ export function App({
     }
     if (input === 'q') {
       safeQuit();
+      return;
+    }
+    // B-112: `!` — the beta issue reporter from anywhere: errors, janky flows and
+    // feature ideas, not just hard failures. Legacy text-entry screens never get
+    // here (they consumed the key above), and a targeted post/profile report that
+    // actually opened claimed this keypress first (`claimTargetedBang`). `:report`
+    // reaches the same screen by name from the command palette.
+    if (input === '!' && !targetedBangClaimedRef.current) {
+      goTo({ screen: 'issueReport' });
       return;
     }
     if (input === '?') {
@@ -1932,9 +2152,10 @@ export function App({
             session={session}
             isActive={active}
             ensureAccessToken={ensureAccessToken}
-            onWipeE2ee={() =>
-              wipeE2eeState({ account: { nodeOrigin: api.target, userId: session.userId } })
-            }
+            onWipeE2ee={() => wipeE2eeForCurrentAccount()}
+            thisDeviceId={e2eeEnrolledDeviceId}
+            e2eeCapabilityState={e2eeCapabilityState}
+            onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
             onBack={back}
           />
         );
@@ -2146,6 +2367,7 @@ export function App({
             verifiedPeers={verifiedPeers}
             e2eeCapabilityState={e2eeCapabilityState}
             sendE2ee={sendViaVault}
+            receiveE2ee={receiveE2eeRows}
             e2eeVaultFault={e2eeVaultFault}
             onBack={back}
             onOpenSafetyNumber={(actorId) =>
@@ -2197,9 +2419,25 @@ export function App({
             session={session}
             isActive={active}
             ensureAccessToken={ensureAccessToken}
+            e2eeCapabilityState={e2eeCapabilityState}
+            e2eeEnrolledDeviceId={e2eeEnrolledDeviceId}
+            onOpenDevices={() => navigate({ screen: 'devices' })}
+            onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
             onLogout={() => void logout()}
             onResendVerification={() => void resendVerificationEmail()}
             onBack={back}
+          />
+        );
+      case 'issueReport':
+        return (
+          <IssueReportScreen
+            env={env}
+            nodeDomain={api.target}
+            sessionHandle={session?.actor?.handle}
+            capabilities={issueReporterCapabilities}
+            isActive={active}
+            onCancel={back}
+            onNotify={notify}
           />
         );
       case 'login':
@@ -2510,6 +2748,7 @@ export function App({
                                   verifiedPeers={verifiedPeers}
                                   e2eeCapabilityState={e2eeCapabilityState}
                                   sendE2ee={sendViaVault}
+                                  receiveE2ee={receiveE2eeRows}
                                   e2eeVaultFault={e2eeVaultFault}
                                   // The screen owns backing out of its own thread/requests
                                   // sub-views on `Esc` (`backToList`) — this only fires once
@@ -2554,10 +2793,17 @@ export function App({
                         )}
                         <HintLine
                           width={Math.max(10, columns - 2)}
-                          keys={hintsFor(screen, {
-                            authenticated: session !== undefined,
-                            canGoBack: canGoBack(stack),
-                          })}
+                          keys={[
+                            ...hintsFor(screen, {
+                              authenticated: session !== undefined,
+                              canGoBack: canGoBack(stack),
+                            }),
+                            // B-112: when the node itself is unreachable, surface the
+                            // reporter on the same line the problem is described in.
+                            ...(serverInfoState.status === 'error'
+                              ? ['connection issues? :report']
+                              : []),
+                          ]}
                         />
                       </Box>
                     </Box>

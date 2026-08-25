@@ -24,31 +24,31 @@ Where to look:
 
 ## 1. Conversation modes
 
-| Mode                    | Node body access                                     | Mutation / fallback |
-| ----------------------- | ---------------------------------------------------- | ------------------- |
-| `LEGACY_SERVER_VISIBLE` | The node stores and can read the existing plaintext. | Immutable.          |
-| `E2EE_V1`               | The node routes opaque ciphertext and metadata only. | Immutable.          |
+| Mode      | Node body access                                     | Mutation / fallback |
+| --------- | ---------------------------------------------------- | ------------------- |
+| `E2EE_V1` | The node routes opaque ciphertext and metadata only. | Immutable.          |
 
-The mode is fixed at creation and there is no transition RPC in any schema. Legacy history is never
-relabelled, copied into an encrypted conversation as if it had always been protected, or upgraded in
-place — the node has already read it, and re-encrypting it would be a false claim. An E2EE send
-fails when the capability or any active participant device is unavailable; it never falls back to
+`CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE` (the plaintext, server-readable mode ADR 0017
+originally shipped) is **retired**: ADR 0030/B-095 removed its enum value (reserved, never
+reissued) and deleted `DirectMessageService`'s plaintext send/read/delete RPCs and the
+message-request flow. `E2EE_V1` is the only conversation security mode a client can reach today.
+
+The mode is fixed at creation and there is no transition RPC in any schema. An E2EE send fails
+when the capability or any active participant device is unavailable; it never falls back to
 plaintext, and a client that cannot speak the protocol cannot join or render the conversation.
 
-`packages/domain/src/e2ee/modes.ts` pins the immutable modes, the rollout states, the
+`packages/domain/src/e2ee/modes.ts` pins the immutable mode, the rollout states, the
 8-member/8-device fanout bound, the 100 one-time-prekey target, the seven-day signed-prekey
 rotation, the ten-message report-context limit, and the no-downgrade negotiation rule.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> LEGACY_SERVER_VISIBLE: DirectMessageService.CreateConversation
     [*] --> E2EE_V1: E2eeService.CreateE2eeConversation
-    LEGACY_SERVER_VISIBLE --> [*]: deleted
     E2EE_V1 --> [*]: deleted
-    note right of LEGACY_SERVER_VISIBLE
-        No edge between the two modes.
-        Not "not yet" — there is no RPC,
-        and there will not be one.
+    note right of E2EE_V1
+        The only reachable mode.
+        LEGACY_SERVER_VISIBLE is reserved,
+        never reissued (ADR 0030/B-095).
     end note
 ```
 
@@ -252,18 +252,19 @@ ADR rather than editing a constant in a feature branch.
 
 ## 6. What clients must say
 
-Spec §183.1 and §194 are not style guidance. `packages/domain/src/e2ee/modes.ts` exposes both rules
-as functions so no client re-derives them:
+§194 and ADR 0030/B-095 are not style guidance (they supersede §183.1, which mandated a notice
+for a mode that no longer exists). `packages/domain/src/e2ee/modes.ts` exposes both rules as
+functions so no client re-derives them:
 
-| Mode                    | `mayDescribeAsEndToEndEncrypted` | Required disclosure (`requiredConversationDisclosure`)                                                 |
-| ----------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `LEGACY_SERVER_VISIBLE` | `false`                          | "Not end-to-end encrypted — this node's operators can read these messages."                            |
-| `E2EE_V1`               | `true`                           | "End-to-end encrypted. This node cannot read these messages, but it can see who you message and when." |
+| Mode      | `mayDescribeAsEndToEndEncrypted` | Required disclosure (`requiredConversationDisclosure`)                                                 |
+| --------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `E2EE_V1` | `true`                           | "End-to-end encrypted. This node cannot read these messages, but it can see who you message and when." |
 
-The words _encrypted_, _end-to-end_, _secure_, and _private_ are forbidden for anything but
-`E2EE_V1` — with no "mostly", "soon", or "effectively" qualifier. Both modes have something the user
-has to be told, which is why the disclosure is text rather than a boolean: legacy is readable by the
-operator, and E2EE still exposes routing metadata. Neither may be shortened to "private".
+The words _encrypted_, _end-to-end_, _secure_, and _private_ are forbidden everywhere except this
+one fixed disclosure — with no "mostly", "soon", or "effectively" qualifier. The disclosure is
+text rather than a boolean because bodies being unreadable is only half the story: E2EE still
+exposes routing metadata (who messages whom and when) to the node, which is why that second
+clause is load-bearing and must not be dropped. It may not be shortened to "private".
 
 Clients read the mode from `Conversation.security_mode` on the wire, never from a local assumption
 about which screen they are on.
@@ -292,8 +293,9 @@ The production capability is `DISABLED`. `ISOLATED_TEST_ONLY` is valid only on a
 isolated test node. `EXPERIMENTAL_CANARY` and `ENABLED` are post-review states and must not be
 selected until ADR 0020 §12's automated gates and P13-014's independent review and remediation are
 complete. Enabling the capability never downgrades an existing conversation, and disabling it never
-converts one — a node that turns E2EE off still offers legacy DMs to everyone, because DMs are a
-**function** and §184.3 forbids capability-gating a function.
+converts one. Since ADR 0030/B-095 there is no plaintext fallback: a node with the capability
+`DISABLED` offers no DM function at all rather than falling back to a server-visible mode —
+production DMs stay dark until the ship-gates above pass (ADR 0030 §"Application 1").
 
 ## 8. Cryptographic boundary
 
@@ -312,7 +314,47 @@ primitives; that is not an audit of Patches' composition. JavaScript cannot guar
 execution or complete zeroization, so wiping is best-effort. Cross-client vectors and independent
 security review and remediation remain hard ship gates.
 
-## 9. Federation is a non-goal here
+## 9. Client runtime status (B-101)
+
+The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol composition) and
+`apps/tui/src/app/e2ee-{send,transports}.ts` (the shell's vault ownership and the bindings to
+`PatchesApi`). What is wired end to end today:
+
+- **Send.** `E2eeSessionRuntime.send` loads the fanout plan from `GetE2eeConversationState`, pads one
+  logical plaintext, derives one franking opening and commitment per logical message, seals one
+  envelope per target device, stages every advanced ratchet state durably **before** the bytes leave,
+  and submits the whole fanout through the real `SendEnvelopes`. A transport failure confirms the
+  staged states for pre-existing sessions (adoption keeps the reloaded ratchet at least as advanced
+  as anything sent) and deletes sessions this send created, whose X3DH-carrying first envelope never
+  reached the peer. A failed send therefore never wedges a conversation.
+- **Receive.** `pollMailbox` drains `ListMailboxEnvelopes` oldest-first, opens each envelope through
+  `openDeviceEnvelope` — which authenticates the logical message id and the node-delivered franking
+  commitment as associated data, and verifies the recovered opening — commits the advanced receive
+  state, and only then acknowledges. `openDeviceEnvelope` is the only source of plaintext in the
+  client, so franking verification is structural rather than a policy a caller could skip. A failure
+  renders a neutral placeholder and is still acknowledged: never shown, never silent.
+- **Verification on read.** `chain.ts` re-verifies every served identity root, roster, and active
+  device certificate against the authoritative `*_bytes` with strict RFC 8032 semantics, and
+  `group-control.ts` verifies the membership transcript against those rosters.
+- **History transfer** is parsed and rendered as labelled re-delivered provenance and never re-enters
+  any session state.
+- **Vault lifecycle.** Wipe routes through the live store, drops the cached instance, unbinds the
+  enrolled identity, and clears the sticky fault; both the vault file and the guarded key file sweep
+  their own crash-orphaned temporaries on open.
+
+**The one open blocker is session bootstrap against a peer.** Identity material exists in two
+transcript families that sign the same facts under different encodings: the _crypto-native_ family
+(`packages/crypto/src/identity.ts`, which `initiateX3dh`/`respondX3dh` re-verify) and the
+_node-canonical_ family (`apps/server/src/modules/e2ee/e2ee.codec.ts`, mirrored for clients in
+`apps/tui/src/e2ee/node-transcripts.ts`), which is the only one the node stores and serves. Device
+enrollment mints both, but publishes only the node-canonical one, so a client can fully authenticate
+a peer's published chain and still not construct the crypto-native `PreKeyBundle`/`SignedDeviceRoster`
+X3DH demands — that would need the peer's root signature over the crypto-native encoding, which no
+other party can mint. `claimPrekeyBundles` and peer `loadPeerRoster` therefore **fail closed** with
+fixed copy rather than half-verifying (ADR 0020 §14.2). Unifying the two families onto the
+node-canonical transcript is the remaining work; it changes reviewed crypto and so needs its own ADR.
+
+## 10. Federation is a non-goal here
 
 ADR 0020 §13 authorizes **local-node E2EE only**. No key, prekey, envelope, roster, report, or DM
 delivery path may cross `FederationGateway` or ActivityPub, even when public federation is enabled

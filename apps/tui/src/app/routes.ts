@@ -49,6 +49,7 @@ export const ROUTE_KINDS: Readonly<Record<Screen, RouteKind>> = {
   labelers: 'full',
   appeals: 'full',
   moderationLog: 'full',
+  issueReport: 'full',
 };
 
 export function routeKind(screen: Screen): RouteKind {

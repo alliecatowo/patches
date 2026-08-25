@@ -8,6 +8,7 @@ import { E2EE_DEVICE_STATUS_SCHEMA, enumWireName } from '../api/wire/enums.js';
 import type { ActiveSession } from '../auth/session.js';
 import { theme } from '../theme/index.js';
 import { Loading } from '../components/Loading.js';
+import { ENROLLMENT_REFUSAL_COPY } from '../e2ee/enrollment.js';
 
 export interface DevicesScreenProps {
   api: PatchesApi;
@@ -22,6 +23,20 @@ export interface DevicesScreenProps {
    * viewer-chosen act.
    */
   onWipeE2ee?: (() => Promise<void>) | undefined;
+  /**
+   * B-107: this machine's enrolled device id, when the vault holds a submitted
+   * enrollment. Marks the roster row that IS this computer, so the viewer can tell
+   * their own installation from the others the node serves.
+   */
+  thisDeviceId?: string | undefined;
+  /**
+   * This node's `GetE2eeCapability` state (P13-010). Gates the enroll entry point:
+   * offered only where the node actually accepts enrollment traffic.
+   */
+  e2eeCapabilityState?: number | undefined;
+  /** B-107: runs device enrollment through the shell's vault-backed sender. */
+  onEnrollE2ee?:
+    (() => Promise<{ ok: boolean; copy: string; peerWarning?: string | undefined }>) | undefined;
   onBack: () => void;
 }
 
@@ -48,6 +63,21 @@ type RevokeFlow =
   | { status: 'wiped' }
   | { status: 'error'; message: string };
 
+/** B-107 states for the enroll entry point. Gated by `e2eeCapabilityState`. */
+export function enrollmentOffered(capabilityState: number | undefined): boolean {
+  // Mirrors E2eeCapabilityState: UNSPECIFIED(0)/DISABLED(1) nodes do not accept
+  // enrollment; the staged rollout states (2–5) do. Absent capability ⇒ offer nothing
+  // rather than guessing (same honesty rule as every other optional shell input).
+  return capabilityState !== undefined && capabilityState >= 2 && capabilityState <= 5;
+}
+
+type EnrollFlow =
+  | { status: 'idle' }
+  | { status: 'confirming' }
+  | { status: 'running' }
+  | { status: 'done'; message: string; peerWarning?: string | undefined }
+  | { status: 'error'; message: string };
+
 function loadDevices(api: PatchesApi, session: ActiveSession): Promise<DeviceEntry[]> {
   const actorId = session.actor?.id;
   if (actorId === undefined) return Promise.resolve([]);
@@ -65,10 +95,13 @@ function loadDevices(api: PatchesApi, session: ActiveSession): Promise<DeviceEnt
 }
 
 /**
- * `:devices` command — list and revoke E2EE enrolled devices (P13-010).
- * Uses `GetDeviceRoster` which returns the full certificate list; revocation asks
- * twice where it must: once for the server-side revoke, then — only after it
- * succeeds — an explicit y/n for erasing this machine's own encrypted history.
+ * `:devices` command — list and revoke E2EE enrolled devices (P13-010), and enroll
+ * THIS machine as a new messaging device (B-107). Uses `GetDeviceRoster` which returns
+ * the full certificate list; revocation asks twice where it must: once for the
+ * server-side revoke, then — only after it succeeds — an explicit y/n for erasing this
+ * machine's own encrypted history. Enrollment confirms first, states the ADR 0020 §3
+ * peer-visible security event in its result, and is offered only where the node's
+ * capability says enrollment traffic is accepted.
  */
 export function DevicesScreen({
   api,
@@ -76,10 +109,14 @@ export function DevicesScreen({
   isActive,
   ensureAccessToken,
   onWipeE2ee,
+  thisDeviceId,
+  e2eeCapabilityState,
+  onEnrollE2ee,
   onBack,
 }: DevicesScreenProps): ReactElement {
   const [state, setState] = useState<DevicesState>({ status: 'loading' });
   const [revokeFlow, setRevokeFlow] = useState<RevokeFlow>({ status: 'idle' });
+  const [enrollFlow, setEnrollFlow] = useState<EnrollFlow>({ status: 'idle' });
   const [selectedDevice, setSelectedDevice] = useState(0);
 
   useEffect(() => {
@@ -131,6 +168,28 @@ export function DevicesScreen({
     }
   }
 
+  /** B-107: runs enrollment after its explicit confirm. */
+  async function runEnrollment(): Promise<void> {
+    if (onEnrollE2ee === undefined) return;
+    setEnrollFlow({ status: 'running' });
+    const outcome = await onEnrollE2ee();
+    if (outcome.ok) {
+      setEnrollFlow({
+        status: 'done',
+        message: outcome.copy,
+        ...(outcome.peerWarning === undefined ? {} : { peerWarning: outcome.peerWarning }),
+      });
+      try {
+        const devices = await loadDevices(api, session);
+        setState({ status: 'ready', devices });
+      } catch {
+        // The roster refresh is cosmetic here; the enrollment result stands on its own.
+      }
+      return;
+    }
+    setEnrollFlow({ status: 'error', message: outcome.copy });
+  }
+
   useInput(
     (input, key) => {
       if (key.escape) {
@@ -141,6 +200,14 @@ export function DevicesScreen({
           revokeFlow.status === 'wiped'
         ) {
           setRevokeFlow({ status: 'idle' });
+          return;
+        }
+        if (
+          enrollFlow.status === 'confirming' ||
+          enrollFlow.status === 'done' ||
+          enrollFlow.status === 'error'
+        ) {
+          setEnrollFlow({ status: 'idle' });
           return;
         }
         onBack();
@@ -167,6 +234,16 @@ export function DevicesScreen({
         setRevokeFlow({ status: 'idle' });
         return;
       }
+      if (enrollFlow.status === 'confirming') {
+        if (input === 'y' || key.return) void runEnrollment();
+        else if (input === 'n') setEnrollFlow({ status: 'idle' });
+        return;
+      }
+      if (enrollFlow.status === 'running') return;
+      if (enrollFlow.status === 'done' || enrollFlow.status === 'error') {
+        setEnrollFlow({ status: 'idle' });
+        return;
+      }
       if (state.status === 'ready' && state.devices.length > 0) {
         if (input === 'j' || key.downArrow) {
           setSelectedDevice((index) => Math.min(index + 1, state.devices.length - 1));
@@ -182,9 +259,19 @@ export function DevicesScreen({
           return;
         }
       }
+      if (
+        input === 'e' &&
+        onEnrollE2ee !== undefined &&
+        enrollmentOffered(e2eeCapabilityState) &&
+        thisDeviceId === undefined
+      ) {
+        setEnrollFlow({ status: 'confirming' });
+      }
     },
     { isActive },
   );
+
+  const showEnrollHint = onEnrollE2ee !== undefined && enrollmentOffered(e2eeCapabilityState);
 
   if (state.status === 'loading') return <Loading label="Loading devices..." />;
   if (state.status === 'error') {
@@ -208,6 +295,7 @@ export function DevicesScreen({
           state.devices.map((device, index) => {
             const selected = index === selectedDevice;
             const revoked = device.status !== 'ACTIVE';
+            const isThisDevice = thisDeviceId !== undefined && device.deviceId === thisDeviceId;
             return (
               <Text
                 key={device.deviceId}
@@ -215,12 +303,21 @@ export function DevicesScreen({
                 bold={selected}
               >
                 {selected ? '› ' : '  '}
-                {device.deviceId} · root gen {String(device.rootGeneration)} ·{' '}
+                {device.deviceId}
+                {isThisDevice ? ' (this device)' : ''} · root gen {String(device.rootGeneration)} ·{' '}
                 {revoked ? `${device.status} — no longer delivered to` : device.status}
               </Text>
             );
           })
         )}
+        {thisDeviceId !== undefined &&
+        state.status === 'ready' &&
+        !state.devices.some((device) => device.deviceId === thisDeviceId) ? (
+          <Text color={theme.warn}>
+            This computer’s enrolled device ({thisDeviceId}) is missing from the served roster — it
+            may have been revoked elsewhere.
+          </Text>
+        ) : null}
       </Box>
       <Box marginTop={1} flexDirection="column">
         {revokeFlow.status === 'confirming' && (
@@ -252,8 +349,37 @@ export function DevicesScreen({
             {revokeFlow.message}
           </Text>
         )}
-        {revokeFlow.status === 'idle' && (
-          <Text color={theme.muted}>j/k select · v revoke · Esc back</Text>
+        {enrollFlow.status === 'confirming' && (
+          <Box flexDirection="column">
+            <Text color={theme.warn} wrap="wrap">
+              Enroll THIS computer as an encrypted-messaging device? Its keys are generated here and
+              never leave it; the account’s device list gains one entry.
+            </Text>
+            <Text color={theme.muted}>y/Enter enroll · n/Esc cancel</Text>
+          </Box>
+        )}
+        {enrollFlow.status === 'running' && <Loading label="Enrolling this device..." />}
+        {enrollFlow.status === 'done' && (
+          <Box flexDirection="column">
+            <Text color={theme.ok} wrap="wrap">
+              {enrollFlow.message}
+            </Text>
+            {enrollFlow.peerWarning !== undefined && (
+              <Text color={theme.warn} wrap="wrap">
+                {enrollFlow.peerWarning}
+              </Text>
+            )}
+          </Box>
+        )}
+        {enrollFlow.status === 'error' && (
+          <Text color={theme.error} wrap="wrap">
+            {enrollFlow.message || ENROLLMENT_REFUSAL_COPY.capabilityOff}
+          </Text>
+        )}
+        {revokeFlow.status === 'idle' && enrollFlow.status === 'idle' && (
+          <Text color={theme.muted}>
+            j/k select · v revoke{showEnrollHint ? ' · e enroll this device' : ''} · Esc back
+          </Text>
         )}
       </Box>
     </Box>

@@ -20,18 +20,8 @@ import type {
   ListConversationsRequest,
   ListConversationsResponse,
   ListE2eeGroupControlEventsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  Message,
-  MessageRequest,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from '../api/wire/types.js';
 import { Box, Text, useInput, useStdin } from 'ink';
 import type { ReactElement } from 'react';
@@ -42,12 +32,11 @@ import { movementTarget } from '../app/list-movement.js';
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
-
-export const DM_DISCLOSURE =
-  "Not end-to-end encrypted — this node's operators can read these messages.";
 
 /**
  * ADR 0027: when the node's capability RPC reports `ISOLATED_TEST_ONLY`, every surface
@@ -86,13 +75,7 @@ const MEMBERSHIP_CONFLICT_COPY =
 export interface MessagesScreenApi {
   listConversations(request: ListConversationsRequest): Promise<ListConversationsResponse>;
   getConversation(request: GetConversationRequest): Promise<GetConversationResponse>;
-  listMessages(request: ListMessagesRequest): Promise<ListMessagesResponse>;
-  sendMessage(request: SendMessageRequest): Promise<SendMessageResponse>;
   markConversationRead(request: MarkConversationReadRequest): Promise<MarkConversationReadResponse>;
-  listMessageRequests(request: ListMessageRequestsRequest): Promise<ListMessageRequestsResponse>;
-  respondToMessageRequest(
-    request: RespondToMessageRequestRequest,
-  ): Promise<RespondToMessageRequestResponse>;
   /** Optional because only shells with an authenticated `E2eeService` transport provide
    * the security surfaces below; without them the screen renders mode labels but no
    * verification state, transcript, or change interstitials. */
@@ -103,6 +86,20 @@ export interface MessagesScreenApi {
     afterEpoch: bigint;
     limit: number;
   }): Promise<ListE2eeGroupControlEventsResponse>;
+  /**
+   * B-101: when present, the membership transcript is signature-verified client-side
+   * (each event against its signer's certified device key) before display. Absent keeps
+   * the plain node-served listing.
+   */
+  verifyGroupControlEvents?(request: { conversationId: string }): Promise<{
+    allVerified: boolean;
+    rows: readonly {
+      epoch: bigint;
+      change: 'ADDED' | 'REMOVED' | 'UNKNOWN';
+      subjectActorId: string;
+      signatureVerified: boolean;
+    }[];
+  }>;
 }
 
 export interface MessagesScreenProps {
@@ -152,9 +149,16 @@ export interface MessagesScreenProps {
   /** How often an open end-to-end thread re-checks the peer's roots/roster chain.
    * Tests pass a small value; the default is deliberately unhurried. */
   securityPollMs?: number | undefined;
+  /**
+   * B-101: drains the viewer's end-to-end mailbox for this conversation and returns
+   * render-ready rows (decrypted messages, franking-failure placeholders, labeled
+   * history transfers). The callback owns decryption, durable receive-state commits,
+   * and acknowledgement; the screen only renders what survived validation.
+   */
+  receiveE2ee?: ((conversationId: string) => Promise<readonly E2eeReceivedRow[]>) | undefined;
+  /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
+  mailPollMs?: number | undefined;
 }
-
-type Folder = 'inbox' | 'requests';
 
 interface Page<T> {
   items: readonly T[];
@@ -301,10 +305,6 @@ function conversationLabel(conversation: Conversation, viewerActorId?: string): 
   return shown.map((member) => actorLabel(member.actor)).join(', ');
 }
 
-function messageBody(message: Message): string {
-  return present(message.deletedAt) ? '[deleted]' : sanitizeForTerminal(message.body);
-}
-
 /**
  * Node-policy retention copy (P12-114, spec §197.6). `undefined` means the caller hasn't
  * fetched `NodePolicy.retention.dmRetentionDays` yet, and renders nothing — silence is not
@@ -317,18 +317,22 @@ function retentionCopyFor(dmRetentionDays: number | undefined): string | undefin
   return `This node automatically deletes messages older than ${String(dmRetentionDays)} day${dmRetentionDays === 1 ? '' : 's'}.`;
 }
 
-type View = 'list' | 'thread' | 'requests' | 'transcript';
+type View = 'list' | 'thread' | 'transcript';
 
 interface PendingMessage {
   id: string;
   body: string;
 }
 
-/** The wire's numeric mode, mapped into the domain vocabulary its disclosure rules speak. */
+/**
+ * The wire's numeric mode, mapped into the domain vocabulary its disclosure rules speak.
+ * `LEGACY_SERVER_VISIBLE` is reserved, never issued (ADR 0030/B-095) — only `E2EE_V1`
+ * conversations reach this client, but an unrecognised wire value still renders nothing
+ * rather than guessing.
+ */
 function domainModeOf(
   mode: Conversation['securityMode'],
 ): DomainConversationSecurityMode | undefined {
-  if (mode === CONVERSATION_SECURITY_MODE.LEGACY_SERVER_VISIBLE) return 'LEGACY_SERVER_VISIBLE';
   if (mode === CONVERSATION_SECURITY_MODE.E2EE_V1) return 'E2EE_V1';
   return undefined;
 }
@@ -371,6 +375,13 @@ interface TranscriptRow {
   epoch: bigint;
   change: 'ADDED' | 'REMOVED' | 'UNKNOWN';
   subjectActorId: string;
+  /** Present only when the transcript came back signature-verified (B-101 seam). */
+  signatureVerified?: boolean | undefined;
+}
+
+/** ADR 0025 §4's neutral placeholder for a message that failed its franking check. */
+export function unverifiableMessageCopy(senderLabel: string): string {
+  return `A message from ${senderLabel} could not be verified and was not shown.`;
 }
 
 /** Baseline security facts captured when a thread opens; changes against them raise interstitials. */
@@ -409,6 +420,8 @@ export function MessagesScreen({
   sendE2ee,
   e2eeVaultFault,
   securityPollMs = 30_000,
+  receiveE2ee,
+  mailPollMs = 5_000,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -416,14 +429,10 @@ export function MessagesScreen({
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const [conversationId, setConversationId] = useState(initialConversationId ?? '');
   const [selectedListRow, setSelectedListRow] = useState(0);
-  const [selectedRequestRow, setSelectedRequestRow] = useState(0);
-  const [resolvedRequests, setResolvedRequests] = useState<ReadonlySet<string>>(new Set());
   const [draft, setDraft] = useState('');
   const [pendingMessages, setPendingMessages] = useState<readonly PendingMessage[]>([]);
-  const [sentMessages, setSentMessages] = useState<readonly Message[]>([]);
   const [sending, setSending] = useState(false);
   const [threadError, setThreadError] = useState<string | undefined>();
-  const [requestStatus, setRequestStatus] = useState<string | undefined>();
   // P13-010 change/compromise interstitials: baseline vs. now for the open thread's peer.
   const [peerSecurity, setPeerSecurity] = useState<PeerSecurityStatus>({ status: 'ok' });
   const peerBaseline = useRef<PeerSecurityBaseline | undefined>(undefined);
@@ -431,9 +440,11 @@ export function MessagesScreen({
   const [transcript, setTranscript] = useState<
     | { status: 'hidden' }
     | { status: 'loading' }
-    | { status: 'shown'; rows: readonly TranscriptRow[] }
+    | { status: 'shown'; rows: readonly TranscriptRow[]; allVerified?: boolean | undefined }
     | { status: 'error'; message: string }
   >({ status: 'hidden' });
+  // B-101 mailbox rows for the open end-to-end thread (deduped by envelope id).
+  const [e2eeRows, setE2eeRows] = useState<readonly E2eeReceivedRow[]>([]);
 
   const fetchConversations = useCallback(
     (cursor: string): Promise<Page<Conversation>> =>
@@ -449,53 +460,6 @@ export function MessagesScreen({
     'conversations',
     fetchConversations,
     'Could not load conversations.',
-  );
-
-  const fetchRequests = useCallback(
-    (cursor: string): Promise<Page<MessageRequest>> =>
-      api.listMessageRequests({ cursor, limit: 20 }).then((response) => ({
-        items: response.requests,
-        nextCursor: response.page?.nextCursor ?? '',
-        hasMore: response.page?.hasMore ?? false,
-      })),
-    [api],
-  );
-  const requests = useKeysetList(
-    view === 'requests',
-    'requests',
-    fetchRequests,
-    'Could not load message requests.',
-  );
-  const visibleRequests = requests.items.filter((request) => !resolvedRequests.has(request.id));
-
-  const fetchMessages = useCallback(
-    (cursor: string): Promise<Page<Message>> => {
-      if (conversationId === '') {
-        return Promise.resolve({ items: [], nextCursor: '', hasMore: false });
-      }
-      return api.listMessages({ conversationId, cursor, limit: 30 }).then((response) => {
-        const newest = response.messages[0];
-        if (cursor === '' && newest !== undefined) {
-          void api
-            .markConversationRead({ conversationId, throughMessageId: newest.id })
-            .catch(() => {
-              // Read state is best-effort; no receipt or error surface is exposed.
-            });
-        }
-        return {
-          items: response.messages,
-          nextCursor: response.page?.nextCursor ?? '',
-          hasMore: response.page?.hasMore ?? false,
-        };
-      });
-    },
-    [api, conversationId],
-  );
-  const messages = useKeysetList(
-    view === 'thread' && conversationId !== '',
-    conversationId,
-    fetchMessages,
-    'Could not load messages.',
   );
 
   useEffect(() => {
@@ -599,11 +563,65 @@ export function MessagesScreen({
     setPeerSecurity({ status: 'ok' });
   }
 
+  // --- end-to-end mailbox polling (B-101) ------------------------------------
+  // While an end-to-end thread is open, drain the device mailbox on an interval. The
+  // callback decrypts, commits receive state durably, and acknowledges; this effect
+  // only merges validated rows into the thread view. Failures retry on the next tick
+  // and never clear what earlier ticks rendered.
+  useEffect(() => {
+    if (!e2eeThreadOpen || conversationId === '' || receiveE2ee === undefined) return;
+    let cancelled = false;
+    async function poll(): Promise<void> {
+      if (cancelled) return;
+      try {
+        const rows = await receiveE2ee?.(conversationId);
+        if (cancelled || rows === undefined || rows.length === 0) return;
+        setE2eeRows((current) => {
+          const seen = new Set(current.map((row) => row.id));
+          const fresh = rows.filter((row) => !seen.has(row.id));
+          return fresh.length === 0 ? current : [...current, ...fresh];
+        });
+      } catch {
+        // Transient poll failures are invisible beyond the next tick's retry; nothing
+        // about a failed poll may be mistaken for "no messages".
+      }
+    }
+    void poll();
+    const timer = setInterval(() => void poll(), Math.max(250, mailPollMs));
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [e2eeThreadOpen, conversationId, receiveE2ee, mailPollMs]);
+
   function loadTranscript(id: string): void {
-    if (api.listE2eeGroupControlEvents === undefined) return;
     closeE2eeThreadWatch();
     setView('transcript');
     setTranscript({ status: 'loading' });
+    if (api.verifyGroupControlEvents !== undefined) {
+      // B-101 seam: verify every event's device signature against the signer's
+      // published, chain-verified device key before anything reaches the screen.
+      api
+        .verifyGroupControlEvents({ conversationId: id })
+        .then((verdict) => {
+          setTranscript({
+            status: 'shown',
+            rows: verdict.rows,
+            allVerified: verdict.allVerified,
+          });
+        })
+        .catch(() => {
+          setTranscript({
+            status: 'error',
+            message: 'Could not load the membership history for this conversation.',
+          });
+        });
+      return;
+    }
+    if (api.listE2eeGroupControlEvents === undefined) {
+      setTranscript({ status: 'hidden' });
+      return;
+    }
     api
       .listE2eeGroupControlEvents({ conversationId: id, afterEpoch: 0n, limit: 50 })
       .then((response) => {
@@ -619,6 +637,7 @@ export function MessagesScreen({
                   : 'UNKNOWN',
             subjectActorId: event.subjectActorId,
           })),
+          allVerified: undefined,
         });
       })
       .catch((error: unknown) => {
@@ -633,15 +652,14 @@ export function MessagesScreen({
 
   const visibleCount = Math.max(3, rows - 4);
   const effectiveListRow = Math.min(selectedListRow, Math.max(conversations.items.length - 1, 0));
-  const effectiveRequestRow = Math.min(selectedRequestRow, Math.max(visibleRequests.length - 1, 0));
 
   function openConversation(conversation: Conversation): void {
     setSelectedConversation(conversation);
     setConversationId(conversation.id);
     setDraft('');
     setPendingMessages([]);
-    setSentMessages([]);
     setThreadError(undefined);
+    setE2eeRows([]);
     // Reopening re-baselines the security checks on purpose — acknowledging a change
     // interstitial is exactly this action (the copy says so), and it must not be
     // possible to acknowledge without the fetch that proves what is true now.
@@ -658,53 +676,38 @@ export function MessagesScreen({
     setSelectedConversation(undefined);
     setDraft('');
     setPendingMessages([]);
-    setSentMessages([]);
     setThreadError(undefined);
+    setE2eeRows([]);
     setTranscript({ status: 'hidden' });
   }
 
+  /**
+   * Every reachable conversation is end-to-end (ADR 0030/B-095 retired the plaintext
+   * `SendMessage` RPC this used to fall back to). Sending never rides a plaintext path —
+   * not as a fallback, not "just this once" (ADR 0020 §1.2) — it goes through the
+   * shell's vault-backed pipeline or it does not go out at all.
+   */
   async function sendDraft(): Promise<void> {
     const body = draft;
     if (body.trim() === '' || conversationId === '' || sending) return;
-    // An end-to-end conversation never rides the plaintext RPC — not as a fallback,
-    // not "just this once" (ADR 0020 §1.2). It goes through the shell's vault-backed
-    // pipeline or it does not go out at all.
-    if (isE2eeConversation(selectedConversation)) {
-      if (e2eeVaultFault !== undefined) {
-        setThreadError(`${VAULT_FAULT_COPY[e2eeVaultFault]} ${VAULT_FAULT_HINT}`);
-        return;
-      }
-      if (peerSecurity.status === 'identityChanged') {
-        setThreadError(IDENTITY_CHANGED_COPY);
-        return;
-      }
-      if (peerSecurity.status === 'rosterChanged') {
-        setThreadError(ROSTER_CHANGED_COPY);
-        return;
-      }
-      if (sendE2ee === undefined) {
-        setThreadError(E2EE_SEND_UNAVAILABLE_COPY);
-        return;
-      }
-      const clientRequestId = createRequestId();
-      setSending(true);
-      setThreadError(undefined);
-      setDraft('');
-      setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
-      try {
-        await sendE2ee(conversationId, body);
-        setPendingMessages((current) =>
-          current.filter((message) => message.id !== clientRequestId),
-        );
-      } catch {
-        setPendingMessages((current) =>
-          current.filter((message) => message.id !== clientRequestId),
-        );
-        setDraft(body);
-        setThreadError('Message was not sent. Your draft is still here.');
-      } finally {
-        setSending(false);
-      }
+    if (!isE2eeConversation(selectedConversation)) {
+      setThreadError('This conversation could not be sent to.');
+      return;
+    }
+    if (e2eeVaultFault !== undefined) {
+      setThreadError(`${VAULT_FAULT_COPY[e2eeVaultFault]} ${VAULT_FAULT_HINT}`);
+      return;
+    }
+    if (peerSecurity.status === 'identityChanged') {
+      setThreadError(IDENTITY_CHANGED_COPY);
+      return;
+    }
+    if (peerSecurity.status === 'rosterChanged') {
+      setThreadError(ROSTER_CHANGED_COPY);
+      return;
+    }
+    if (sendE2ee === undefined) {
+      setThreadError(E2EE_SEND_UNAVAILABLE_COPY);
       return;
     }
     const clientRequestId = createRequestId();
@@ -713,42 +716,27 @@ export function MessagesScreen({
     setDraft('');
     setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
     try {
-      const response = await api.sendMessage({ clientRequestId, conversationId, body });
+      await sendE2ee(conversationId, body);
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
-      if (present(response.message)) {
-        const sentMessage = response.message;
-        setSentMessages((current) => [...current, sentMessage]);
-      }
-    } catch {
+    } catch (error) {
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
       setDraft(body);
-      setThreadError('Message was not sent. Your draft is still here.');
+      // No enrolled device (the TUI has no enrollment flow yet — B-101 leaves the
+      // pipeline wired but identity-less): say exactly that, not "message lost".
+      setThreadError(
+        error instanceof E2eeNotEnrolledError
+          ? E2EE_SEND_UNAVAILABLE_COPY
+          : 'Message was not sent. Your draft is still here.',
+      );
     } finally {
       setSending(false);
-    }
-  }
-
-  async function respondToSelectedRequest(accept: boolean): Promise<void> {
-    const request = visibleRequests[effectiveRequestRow];
-    if (request === undefined) return;
-    setRequestStatus(accept ? 'Accepting request…' : 'Declining request…');
-    try {
-      const response = await api.respondToMessageRequest({ id: request.id, accept });
-      setResolvedRequests((current) => new Set(current).add(request.id));
-      if (accept && present(response.conversation)) {
-        openConversation(response.conversation);
-        return;
-      }
-      setRequestStatus(accept ? 'Request accepted.' : 'Request declined.');
-    } catch {
-      setRequestStatus('Could not update that request.');
     }
   }
 
   useInput(
     (input, key) => {
       if (key.escape) {
-        if (view === 'thread' || view === 'requests') backToList();
+        if (view === 'thread') backToList();
         else if (view === 'transcript') {
           // The transcript is a list-level overlay of one conversation; Esc lands on
           // that conversation's row again.
@@ -758,14 +746,18 @@ export function MessagesScreen({
       }
 
       if (view === 'list') {
-        if (input === 'r' || key.tab) {
-          setRequestStatus(undefined);
-          setView('requests');
-          return;
-        }
         if ((input === 'n' || input === ' ') && conversations.hasMore) {
           conversations.loadMore();
           return;
+        }
+        // Membership transcript takes precedence over list-movement's "jump to bottom":
+        // an E2EE row's G opens the signed transcript; other rows keep movement.
+        if (input === 'G') {
+          const conversation = conversations.items[effectiveListRow];
+          if (conversation !== undefined && isE2eeConversation(conversation)) {
+            loadTranscript(conversation.id);
+            return;
+          }
         }
         const moved = movementTarget({
           input,
@@ -786,42 +778,10 @@ export function MessagesScreen({
           }
           return;
         }
-        if (input === 'G') {
-          const conversation = conversations.items[effectiveListRow];
-          if (conversation !== undefined && isE2eeConversation(conversation)) {
-            loadTranscript(conversation.id);
-          }
-          return;
-        }
         if (key.return) {
           const conversation = conversations.items[effectiveListRow];
           if (conversation !== undefined) openConversation(conversation);
         }
-        return;
-      }
-
-      if (view === 'requests') {
-        if (key.tab) {
-          setView('list');
-          return;
-        }
-        if ((input === 'n' || input === ' ') && requests.hasMore) {
-          requests.loadMore();
-          return;
-        }
-        const moved = movementTarget({
-          input,
-          key,
-          current: effectiveRequestRow,
-          total: visibleRequests.length,
-          pageSize: visibleCount,
-        });
-        if (moved !== undefined) {
-          setSelectedRequestRow(moved);
-          return;
-        }
-        if (input === 'a') void respondToSelectedRequest(true);
-        if (input === 'd') void respondToSelectedRequest(false);
         return;
       }
 
@@ -833,10 +793,6 @@ export function MessagesScreen({
       // Safety numbers and the membership transcript live on the *list* level, not in
       // the thread: the thread owns every printable key for drafting, and stealing
       // letters there would corrupt drafts. One Esc away keeps them unambiguous.
-      if (key.tab && messages.hasMore) {
-        messages.loadMore();
-        return;
-      }
       if (key.return) {
         void sendDraft();
         return;
@@ -854,10 +810,6 @@ export function MessagesScreen({
     { isActive: isActive && isRawModeSupported },
   );
 
-  const chronologicalMessages = [...messages.items].reverse();
-  const knownMessageIds = new Set(chronologicalMessages.map((message) => message.id));
-  const locallySent = sentMessages.filter((message) => !knownMessageIds.has(message.id));
-  const folder: Folder = view === 'requests' ? 'requests' : 'inbox';
   const retentionCopy = retentionCopyFor(dmRetentionDays);
   // Mode labels are immutable facts of the conversation (ADR 0020 §11): read from
   // `securityMode`, worded by the domain's disclosure rules, never by local assumption.
@@ -877,7 +829,6 @@ export function MessagesScreen({
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.warn}>{DM_DISCLOSURE}</Text>
       {unreviewedDevWarning ? (
         <Text color={theme.warn} bold>
           {UNREVIEWED_DEV_E2EE_WARNING}
@@ -895,18 +846,6 @@ export function MessagesScreen({
       )}
       <Text color={theme.accent}>Messages</Text>
       {retentionCopy === undefined ? null : <Text color={theme.muted}>{retentionCopy}</Text>}
-      {view === 'thread' ? null : (
-        <Text>
-          <Text bold={folder === 'inbox'} inverse={folder === 'inbox'}>
-            {' Inbox '}
-          </Text>
-          <Text> </Text>
-          <Text bold={folder === 'requests'} inverse={folder === 'requests'}>
-            {' Requests '}
-          </Text>
-          <Text color={theme.muted}> · Tab switches</Text>
-        </Text>
-      )}
 
       {view === 'list' ? (
         <Box marginTop={1} flexDirection="column">
@@ -925,16 +864,13 @@ export function MessagesScreen({
             >
               {isActive && index === effectiveListRow ? '› ' : '  '}
               {conversationLabel(conversation, viewerActorId)}
-              {conversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
-                ? ' [E2EE]'
-                : ' [Server-visible]'}
+              {isE2eeConversation(conversation) ? ' [E2EE]' : ''}
               {conversation.unreadCount > 0 ? ` · ${String(conversation.unreadCount)} unread` : ''}
             </Text>
           ))}
           {conversations.loadingMore ? <Loading label="Loading more" /> : null}
           <Text color={theme.muted}>
-            Enter open · r requests · Tab folder · n / space more · s safety number · G membership ·
-            Esc back
+            Enter open · n / space more · s safety number · G membership · Esc back
           </Text>
         </Box>
       ) : null}
@@ -945,9 +881,7 @@ export function MessagesScreen({
             {selectedConversation === undefined
               ? sanitizeForTerminal(conversationId)
               : `${conversationLabel(selectedConversation, viewerActorId)}${
-                  selectedConversation.securityMode === CONVERSATION_SECURITY_MODE.E2EE_V1
-                    ? ' [E2EE]'
-                    : ' [Server-visible]'
+                  isE2eeConversation(selectedConversation) ? ' [E2EE]' : ''
                 }`}
           </Text>
           {threadDisclosure === undefined ? null : <Text color={theme.ok}>{threadDisclosure}</Text>}
@@ -974,27 +908,51 @@ export function MessagesScreen({
           {threadError === undefined ? null : (
             <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>
           )}
-          {messages.error === undefined ? null : <Text color={theme.error}>{messages.error}</Text>}
-          {messages.loading ? <Loading label="Loading messages" /> : null}
-          {messages.hasMore ? <Text color={theme.muted}>Tab loads older messages</Text> : null}
-          {chronologicalMessages.map((message) => (
-            <Text key={message.id}>
-              <Text color={theme.muted}>{actorLabel(message.sender)}: </Text>
-              {messageBody(message)}
-            </Text>
-          ))}
-          {locallySent.map((message) => (
-            <Text key={message.id}>
-              <Text color={theme.muted}>{actorLabel(message.sender)}: </Text>
-              {messageBody(message)}
-            </Text>
-          ))}
           {pendingMessages.map((message) => (
             <Text key={message.id}>
               <Text color={theme.muted}>{glyph('pending', glyphSet)} you: </Text>
               {sanitizeForTerminal(message.body)} <Text color={theme.muted}>· sending</Text>
             </Text>
           ))}
+          {e2eeRows.map((row) => {
+            if (row.kind === 'message') {
+              return (
+                <Text key={row.id}>
+                  <Text color={theme.muted}>{sanitizeForTerminal(row.senderLabel)}: </Text>
+                  {sanitizeForTerminal(row.body)}
+                </Text>
+              );
+            }
+            if (row.kind === 'unverifiable') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  {unverifiableMessageCopy(sanitizeForTerminal(row.senderLabel))}
+                </Text>
+              );
+            }
+            if (row.kind === 'undisplayable') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  A delivered message could not be displayed.
+                </Text>
+              );
+            }
+            return (
+              <Box key={row.id} flexDirection="column">
+                <Text color={theme.muted} wrap="wrap">
+                  Re-delivered history from {sanitizeForTerminal(row.fromLabel)} — provenance not
+                  independently verified.
+                </Text>
+                {row.entries.map((entry, index) => (
+                  <Text key={`${row.id}:${String(index)}`}>
+                    {'  '}
+                    <Text color={theme.muted}>{sanitizeForTerminal(entry.senderLabel)}: </Text>
+                    {sanitizeForTerminal(entry.body)}
+                  </Text>
+                ))}
+              </Box>
+            );
+          })}
           <Box marginTop={1}>
             <Text color={theme.accent}>Draft: </Text>
             <Text>{draft}</Text>
@@ -1019,41 +977,27 @@ export function MessagesScreen({
               No membership changes yet — everyone who was in at creation is still in.
             </Text>
           ) : null}
+          {transcript.status === 'shown' && transcript.allVerified !== undefined ? (
+            <Text color={transcript.allVerified ? theme.ok : theme.warn} wrap="wrap">
+              {transcript.allVerified
+                ? 'Every membership event was signed by a member device; all signatures verified.'
+                : 'Some membership events could not be signature-verified against published device keys.'}
+            </Text>
+          ) : null}
           {transcript.status === 'shown'
             ? transcript.rows.map((row) => (
                 <Text key={`${row.epoch}`}>
                   epoch {row.epoch.toString()} — {row.change}{' '}
                   {sanitizeForTerminal(row.subjectActorId)}
+                  {row.signatureVerified === undefined ? null : (
+                    <Text color={row.signatureVerified ? theme.ok : theme.error}>
+                      {row.signatureVerified ? ' · signature verified' : ' · SIGNATURE UNVERIFIED'}
+                    </Text>
+                  )}
                 </Text>
               ))
             : null}
           <Text color={theme.muted}>Esc back to conversation</Text>
-        </Box>
-      ) : null}
-
-      {view === 'requests' ? (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>Message requests</Text>
-          {requests.error === undefined ? null : <Text color={theme.error}>{requests.error}</Text>}
-          {requestStatus === undefined ? null : <Text color={theme.muted}>{requestStatus}</Text>}
-          {requests.loading ? <Loading label="Loading requests" /> : null}
-          {!requests.loading && visibleRequests.length === 0 ? (
-            <Text color={theme.muted}>No pending requests.</Text>
-          ) : null}
-          {visibleRequests.map((request, index) => (
-            <Text
-              key={request.id}
-              color={isActive && index === effectiveRequestRow ? theme.accent : theme.text}
-              bold={isActive && index === effectiveRequestRow}
-            >
-              {isActive && index === effectiveRequestRow ? '› ' : '  '}
-              {actorLabel(request.sender)}: {sanitizeForTerminal(request.body)}
-            </Text>
-          ))}
-          {requests.loadingMore ? <Loading label="Loading more" /> : null}
-          <Text color={theme.muted}>
-            a accept · d decline · Tab folder · n / space more · Esc conversations
-          </Text>
         </Box>
       ) : null}
     </Box>

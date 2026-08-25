@@ -280,8 +280,9 @@ explicitly set `E2EE_UNREVIEWED_DEV_MODE=true` only on an owner-authorized dispo
 with no real users; `NODE_ENV` is a runtime setting rather than a deployment trust
 classification. That permits exactly `patches-franking-v1`, reports an isolated-test capability
 rather than an enabled/reviewed state, and requires the persistent client warning **“Unreviewed
-development E2EE — for testing only; do not use for sensitive conversations.”** Ordinary
-conversations remain `LEGACY_SERVER_VISIBLE` — see
+development E2EE — for testing only; do not use for sensitive conversations.”** `E2EE_V1` is
+the only conversation security mode; ADR 0030/B-095 retired `LEGACY_SERVER_VISIBLE` (enum
+value reserved, never reissued) along with the plaintext machinery it depended on — see
 [`docs/architecture/e2ee.md`](../architecture/e2ee.md) and
 [`docs/architecture/data-model.md`](../architecture/data-model.md)'s "Phase 13" section for the
 full detail; owned by a separate work stream from this document's Amendment B/C sync.

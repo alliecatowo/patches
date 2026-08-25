@@ -47,6 +47,12 @@ export interface RatchetSessionVault {
   applyUpdate(sessionId: string, next: DoubleRatchetState): Promise<void>;
   /** Drops one session's state — the local half of the resync/recovery path. */
   deleteSession(sessionId: string): Promise<void>;
+  /**
+   * Opaque non-ratchet record access (B-107's enrollment record). The bytes are stored
+   * exactly as handed over, under a key that must never collide with a session id.
+   */
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
   wipe(): Promise<void>;
   close(): void;
 }
@@ -94,6 +100,14 @@ export class TypedRatchetVault implements RatchetSessionVault {
 
   deleteSession(sessionId: string): Promise<void> {
     return this.store.deleteRecord(sessionId);
+  }
+
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined> {
+    return this.store.getRecord(key);
+  }
+
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void> {
+    return this.store.updateRecord(key, value);
   }
 
   wipe(): Promise<void> {
@@ -164,15 +178,29 @@ export interface WipeE2eeStateOptions {
 
 /**
  * Destroys one account's local E2EE state without needing the wrapping key: the vault
- * database, any temp/lock files, the guarded key file if present, and the keyring
- * entry (wrapping key + generation anchor). Idempotent — wiping an absent state is a
- * no-op, and logout/device-revocation flows should call this on every path.
+ * database, any temp/lock files, the guarded key file if present, the keyring
+ * entry (wrapping key + generation anchor), and the guarded-key provider's own torn temp
+ * writes beside the key file (audit P2-1: `GuardedFileVaultKeyProvider` commits its key
+ * record through a `${path}.{pid}.{uuid}.tmp` sibling, so a wipe that removed only the
+ * vault-side temps could still leave wrapping-key material on disk). Idempotent —
+ * wiping an absent state is a no-op, and logout/device-revocation flows should call this
+ * on every path.
  */
 export async function wipeE2eeState(options: WipeE2eeStateOptions): Promise<void> {
   const operations = options.fileOperations ?? defaultVaultFileOperations();
   const vaultPath = options.vaultPath ?? vaultDatabaseFilePath(options.account);
-  const directory = dirname(vaultPath);
-  const base = basename(vaultPath);
+  const keyFilePath = options.keyFilePath ?? vaultKeyFilePath(options.account);
+  await sweepTempSiblings(operations, vaultPath);
+  await operations.rm(vaultPath, { force: true });
+  await sweepTempSiblings(operations, keyFilePath);
+  await operations.rm(keyFilePath, { force: true });
+  await deleteVaultKeyringEntry(options.account, options.keyring);
+}
+
+/** Removes every `.{pid}.{uuid}.tmp` / `.lock` sibling of `path` (best-effort). */
+async function sweepTempSiblings(operations: VaultFileOperations, path: string): Promise<void> {
+  const directory = dirname(path);
+  const base = basename(path);
   try {
     const names = await operations.readdir(directory);
     for (const name of names) {
@@ -184,7 +212,4 @@ export async function wipeE2eeState(options: WipeE2eeStateOptions): Promise<void
   } catch {
     // No directory to sweep (never created / already removed) — the goal state.
   }
-  await operations.rm(vaultPath, { force: true });
-  await operations.rm(options.keyFilePath ?? vaultKeyFilePath(options.account), { force: true });
-  await deleteVaultKeyringEntry(options.account, options.keyring);
 }

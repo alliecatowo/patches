@@ -285,8 +285,6 @@ export type {
   ReportActorResponse,
   ReportE2eeMessageRequest,
   ReportE2eeMessageResponse,
-  ReportMessageRequest,
-  ReportMessageResponse,
   ReportPostRequest,
   ReportPostResponse,
   UnblockActorRequest,
@@ -384,10 +382,6 @@ export {
 export type {
   Conversation,
   ConversationMember,
-  CreateConversationRequest,
-  CreateConversationResponse,
-  DeleteMessageRequest,
-  DeleteMessageResponse,
   DirectMessageServiceClient,
   DirectMessageServiceController,
   GetConversationRequest,
@@ -396,24 +390,13 @@ export type {
   LeaveConversationResponse,
   ListConversationsRequest,
   ListConversationsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  Message,
-  MessageRequest,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from './generated/patches/v1/messages.js';
 export {
   ConversationKind,
   DIRECT_MESSAGE_SERVICE_NAME,
   DirectMessageServiceControllerMethods,
-  MessageRequestStatus,
 } from './generated/patches/v1/messages.js';
 
 export type {

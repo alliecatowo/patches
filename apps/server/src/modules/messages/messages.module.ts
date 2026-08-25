@@ -1,18 +1,15 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
-import { NotificationsModule } from '../notifications/notification.module.js';
-import { DmRateLimitService } from './dm-rate-limit.service.js';
 import { MessagesController } from './messages.controller.js';
 import { MessagesService } from './messages.service.js';
 
-/** Direct messages are local-only and intentionally import no federation or media module. */
+/** The generic conversation surface — listing, reading, membership, read-state. Local-only,
+ * intentionally imports no federation module (ADR 0020 §13). */
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [AuthModule],
   controllers: [MessagesController],
-  providers: [MessagesService, DmRateLimitService],
-  // ModerationModule uses the exported evidence-snapshot boundary for ReportMessage instead
-  // of reaching into the messages tables and duplicating membership rules.
+  providers: [MessagesService],
   exports: [MessagesService],
 })
 export class MessagesModule {}

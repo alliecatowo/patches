@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor as ActorEntity,
@@ -32,12 +32,15 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
+import { mayMessageDirectly } from '../messages/direct-message-eligibility.js';
+import { NotificationsService } from '../notifications/notification.service.js';
 import {
   acceptE2eeLogicalMessage,
   transcriptDigestForStoredMessage,
   type AcceptedLogicalMessage,
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { loadCurrentGroupControl } from './group-control.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import {
@@ -58,6 +61,8 @@ import { loadCurrentRosterRow } from './roster-chain.js';
 @Injectable()
 export class E2eeConversationService {
   readonly #keys: NodeFrankingKeyRing;
+  /** Only ever receives ids — never message content, ciphertext, or franking material (§183.1). */
+  readonly #logger = new Logger(E2eeConversationService.name);
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -67,6 +72,10 @@ export class E2eeConversationService {
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
     @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
     private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
+    private readonly rateLimits: E2eeRateLimitService,
+    // Concrete class, not an interface: `design:paramtypes` has to carry a real token Nest can
+    // resolve, so this parameter must never be widened to an interface without `@Inject`.
+    private readonly notifications: NotificationsService,
   ) {
     this.#keys = keys;
   }
@@ -74,6 +83,7 @@ export class E2eeConversationService {
   async createE2eeConversation(
     actorId: string,
     request: CreateE2eeConversationRequest,
+    peer: string | undefined = undefined,
   ): Promise<CreateE2eeConversationResponse> {
     if (request.clientRequestId.length === 0) {
       throw AppError.validation('client_request_id is required.');
@@ -114,7 +124,11 @@ export class E2eeConversationService {
       });
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    // Dedup replay first, budgets second, transaction last — a retried send never burns
+    // budget twice.
+    await this.rateLimits.consumeConversationCreate(actorId, peer);
+
+    const created = await this.dataSource.transaction(async (manager) => {
       const kind: DbConversationKind = recipientIds.length === 1 ? 'DIRECT' : 'GROUP';
 
       const recipients = await manager
@@ -132,6 +146,14 @@ export class E2eeConversationService {
         for (let j = i + 1; j < allIds.length; j += 1) {
           if (await blockedEitherDirection(manager, allIds[i]!, allIds[j]!)) throw actorNotFound();
         }
+      }
+
+      // First-contact eligibility, identical to the legacy DM paths' `mayMessageDirectly`
+      // semantics (spec §183.2; audit P1 — blocks alone let an ineligible stranger demand
+      // first contact here). Uniform `actorNotFound()` keeps it indistinguishable from any
+      // other unavailable recipient (spec §62).
+      for (const recipientId of recipientIds) {
+        if (!(await mayMessageDirectly(manager, actorId, recipientId))) throw actorNotFound();
       }
 
       const conversation = await manager.getRepository(ConversationEntity).save(
@@ -156,8 +178,64 @@ export class E2eeConversationService {
         approvalPolicy: this.approvalPolicy,
       });
 
-      return this.#toCreateResponse(conversation.id, accepted);
+      return { response: this.#toCreateResponse(conversation.id, accepted), accepted };
     });
+
+    // Content-free MESSAGE notification (spec §187, ADR 0030 §B-095) — recipientIds is
+    // already the exact "every other member" set for a brand-new conversation, so no
+    // extra membership query is needed the way `sendEnvelopes` (an existing conversation)
+    // requires below.
+    if (!created.accepted.replay) {
+      await this.#notifyRecipients(recipientIds, actorId, created.response.conversationId);
+    }
+
+    return created.response;
+  }
+
+  /**
+   * The `MESSAGE` notification, re-pointed at E2EE arrivals (ADR 0030 §"Application 1", point 3).
+   *
+   * Deliberately content-free, and structurally incapable of carrying content: the only inputs
+   * are actor ids and a conversation id — all node-side routing metadata the node already holds
+   * in `e2ee_logical_messages`. It never sees plaintext (ADR 0020: it does not exist server-side)
+   * and never touches the ciphertext or the franking material either, so there is nothing here
+   * for a §183.1 leak to travel through. `Notification` itself has no body/preview column and the
+   * proto message has no such field, so this stays true at the wire boundary too.
+   *
+   * Runs after the fanout transaction commits, never inside it: an accepted, franked message must
+   * not be rolled back because a notification insert lost a race, and `NotificationsService` reads
+   * blocks/mutes on its own connection anyway. For the same reason a failure here is logged and
+   * swallowed rather than surfaced — the message *was* accepted, and reporting failure would make
+   * the client retry a send that already succeeded.
+   */
+  async #notifyRecipients(
+    recipientActorIds: readonly string[],
+    senderActorId: string,
+    conversationId: string,
+  ): Promise<void> {
+    for (const recipientActorId of recipientActorIds) {
+      try {
+        await this.notifications.notifyMessage(recipientActorId, senderActorId, conversationId);
+      } catch (error) {
+        this.#logger.warn(
+          `Failed to write MESSAGE notification for conversation ${conversationId}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
+  }
+
+  /** Every other still-active member of an existing conversation — the notification audience for
+   * `sendEnvelopes`, where (unlike conversation creation) the recipient set is not in the request.
+   * Membership only; no device or envelope data is read, so no ciphertext is in reach. */
+  async #activeCoMemberIds(conversationId: string, senderActorId: string): Promise<string[]> {
+    const members = await this.dataSource
+      .getRepository(ConversationMemberEntity)
+      .find({ where: { conversationId, leftAt: IsNull() } });
+    return members
+      .filter((member) => member.actorId !== senderActorId)
+      .map((member) => member.actorId);
   }
 
   #toCreateResponse(
@@ -248,12 +326,18 @@ export class E2eeConversationService {
   async sendEnvelopes(
     actorId: string,
     request: SendEnvelopesRequest,
+    peer: string | undefined = undefined,
   ): Promise<SendEnvelopesResponse> {
     if (request.conversationId.length === 0) {
       throw AppError.validation('conversation_id is required.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    // Before the transaction, matching `MessagesService.sendMessage`'s ordering (§188): a
+    // rejected send must not have held row locks, and a budgeted-out caller learns that
+    // without the fanout machinery running.
+    await this.rateLimits.consumeEnvelopeSend(actorId, peer);
+
+    const accepted = await this.dataSource.transaction(async (manager) => {
       const conversation = await manager
         .getRepository(ConversationEntity)
         .findOne({ where: { id: request.conversationId } });
@@ -261,7 +345,7 @@ export class E2eeConversationService {
         throw new AppError('E2EE_CONVERSATION_NOT_FOUND', 'No such E2EE conversation.');
       }
 
-      const accepted = await acceptE2eeLogicalMessage(manager, {
+      return acceptE2eeLogicalMessage(manager, {
         conversationId: request.conversationId,
         senderActorId: actorId,
         senderDeviceId: request.senderDeviceId,
@@ -270,15 +354,25 @@ export class E2eeConversationService {
         keys: this.#keys,
         approvalPolicy: this.approvalPolicy,
       });
-
-      return {
-        logicalMessageId: accepted.logicalMessageId,
-        acceptedAt: dateToTimestamp(accepted.acceptedAt),
-        frankingTag: accepted.frankingTag,
-        fanoutDigest: Buffer.from(accepted.fanoutDigest),
-        acceptedRecipientDeviceIds: [...accepted.acceptedRecipientDeviceIds],
-      };
     });
+
+    // Content-free MESSAGE notification for the arrival (see `#notifyRecipients`). Skipped on a
+    // dedup replay: the same logical message must not notify twice.
+    if (!accepted.replay) {
+      await this.#notifyRecipients(
+        await this.#activeCoMemberIds(request.conversationId, actorId),
+        actorId,
+        request.conversationId,
+      );
+    }
+
+    return {
+      logicalMessageId: accepted.logicalMessageId,
+      acceptedAt: dateToTimestamp(accepted.acceptedAt),
+      frankingTag: accepted.frankingTag,
+      fanoutDigest: Buffer.from(accepted.fanoutDigest),
+      acceptedRecipientDeviceIds: [...accepted.acceptedRecipientDeviceIds],
+    };
   }
 
   async listMailboxEnvelopes(

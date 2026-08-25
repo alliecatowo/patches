@@ -38,7 +38,6 @@ export {
   GitHubLoginStatus as GITHUB_LOGIN_STATUS,
   LabelAction as LABEL_ACTION,
   MediaStatus as MEDIA_STATUS,
-  MessageRequestStatus as MESSAGE_REQUEST_STATUS,
   ModerationActionType as MODERATION_ACTION_TYPE,
   ModerationLogSubjectKind as MODERATION_LOG_SUBJECT_KIND,
   ModerationReasonCategory as MODERATION_REASON_CATEGORY,

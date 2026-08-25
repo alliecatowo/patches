@@ -1,5 +1,5 @@
 // Patches PWA Service Worker — shell caching & offline resilience
-const CACHE_NAME = 'patches-shell-v1';
+const CACHE_NAME = 'patches-shell-v2';
 const PRECACHE_URLS = [
   '/',
   '/index.html',

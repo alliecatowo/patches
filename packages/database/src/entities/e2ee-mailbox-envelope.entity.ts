@@ -14,6 +14,7 @@ import { E2eeLogicalMessage } from './e2ee-logical-message.entity.js';
 /** One opaque pairwise envelope in a recipient device mailbox. */
 @Entity({ name: 'e2ee_mailbox_envelopes' })
 @Index(['logicalMessageId', 'recipientDeviceIdentityId'], { unique: true })
+@Index(['acknowledgedAt', 'id'], { where: '"acknowledged_at" IS NOT NULL' })
 // Partial, not general: the only mailbox-fetch query path is "undelivered envelopes for this
 // device, oldest first" (§7/§9) — acknowledged envelopes are cleaned up, not browsed by this
 // shape. A non-partial twin over the same three columns would collide on name (see the other

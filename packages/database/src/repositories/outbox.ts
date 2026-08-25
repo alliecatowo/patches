@@ -1,5 +1,6 @@
 import { In } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity.js';
 import { AuthCode } from '../entities/auth-code.entity.js';
 import { OutboxJob } from '../entities/outbox-job.entity.js';
 import { isAuthCodeEmailJobType } from '../jobs/auth-code-delivery.js';
@@ -269,6 +270,46 @@ export async function replayOutboxJob(
     .andWhere("type NOT IN ('SEND_VERIFICATION_EMAIL', 'SEND_PASSWORD_RESET_EMAIL')")
     .execute();
   return (result.affected ?? 0) === 1;
+}
+
+/** Row shape for {@link enqueueOutboxJobIfAbsent}. */
+export interface OutboxJobInsert {
+  type: string;
+  payload: Record<string, unknown>;
+  availableAt: Date;
+  idempotencyKey: string;
+}
+
+/**
+ * Inserts a job only when no row already holds its `idempotency_key`, via
+ * `INSERT ... ON CONFLICT DO NOTHING` — the check is atomic in the database, not a
+ * read-then-write race. Two workers crossing the same scheduling boundary at once (B-102's
+ * daily cleanup is the motivating case) both succeed; exactly one inserts and the other gets
+ * `false`. Returns whether this call created the row.
+ */
+export async function enqueueOutboxJobIfAbsent(
+  manager: EntityManager,
+  job: OutboxJobInsert,
+): Promise<boolean> {
+  const result = await manager
+    .createQueryBuilder()
+    .insert()
+    .into(OutboxJob)
+    .values({
+      type: job.type,
+      payload: job.payload,
+      availableAt: job.availableAt,
+      idempotencyKey: job.idempotencyKey,
+      // `_QueryDeepPartialEntity` does not accept a plain object for the `payload` jsonb
+      // column — same deep-partial quirk as `actor.service.ts`'s nameplate note.
+    } as QueryDeepPartialEntity<OutboxJob>)
+    // Plain `orIgnore()` emits `ON CONFLICT DO NOTHING`: the only unique constraints on
+    // `outbox_jobs` are the primary key (absent here) and `idempotency_key`, so an ignored
+    // insert always means "another worker already scheduled this job".
+    .orIgnore()
+    .execute();
+  // Postgres appends RETURNING to the insert; a conflict-ignored row returns none.
+  return (result.raw as unknown[]).length > 0;
 }
 
 /**

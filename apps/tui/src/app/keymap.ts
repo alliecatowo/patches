@@ -43,7 +43,8 @@ export type Screen =
   | 'appeals'
   | 'moderationLog'
   | 'devices'
-  | 'safetyNumber';
+  | 'safetyNumber'
+  | 'issueReport';
 
 /** The two screens that can sit at the bottom of the navigation stack (spec §68). */
 export const ROOT_SCREENS = ['home', 'local'] as const;
@@ -688,6 +689,37 @@ export const KEYMAP: readonly Binding[] = [
     region: 'editor',
   },
   {
+    keys: 'Esc',
+    hint: 'cancel',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'Tab',
+    hint: 'focus',
+    description: 'Move between the description and the opt-in handle toggle',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'space / x',
+    hint: 'toggle handle',
+    description: 'Attach (or detach) your @handle from the report',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
+    keys: 'Ctrl+S',
+    hint: 'send report',
+    description: 'Send the issue report with its redacted diagnostics bundle',
+    group: 'Screens',
+    on: ['issueReport'],
+    region: 'editor',
+  },
+  {
     keys: 'j / k',
     hint: 'reason',
     description: 'Choose a report reason',
@@ -983,6 +1015,20 @@ export const KEYMAP: readonly Binding[] = [
     commands: [{ name: 'devices' }],
   },
   {
+    // B-112: palette-only like the other Amendment C destinations (spec §191 — no new
+    // global single-key bindings). `:report` files a beta issue with a redacted
+    // diagnostics bundle; works signed out, so it is deliberately not `session`.
+    keys: ':report',
+    hint: 'report an issue',
+    description:
+      'Report a problem with this app — sends a redacted diagnostics bundle to the developers',
+    group: 'Account',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+    commands: [{ name: 'report' }],
+  },
+  {
     keys: 'j / k',
     hint: 'move',
     description: 'Move between rows',
@@ -1169,6 +1215,24 @@ export const KEYMAP: readonly Binding[] = [
     region: 'shell',
     commands: [{ name: 'help' }],
   },
+  {
+    // B-112 follow-up: reporting is not only for hard failures. `!` opens the beta
+    // issue reporter from every screen the shell owns — bugs, jank and feature
+    // ideas alike, signed out included. Where `!` already has a targeted meaning
+    // (the focused post in `PostList`, the profile on `ProfileScreen`) that screen
+    // claims the keypress first and the shell stands down for it; text-entry
+    // screens never reach the shell handler at all because they consume their own
+    // printable input (the same stand-down the Ctrl+W prefix relies on, B-048).
+    // Last in KEYMAP on purpose: the ribbon's hint line fills in this order, and
+    // everything documented before this keeps its priority over `! report`.
+    keys: '!',
+    hint: 'report',
+    description:
+      'File an issue from anywhere — a bug, something janky, or an idea — with a redacted diagnostics bundle attached (on a selected post or profile, ! reports that target to the moderators instead)',
+    group: 'Account',
+    on: 'global',
+    region: 'shell',
+  },
 ];
 
 export interface HintContext {
@@ -1304,4 +1368,5 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   moderationLog: 'Moderation log',
   devices: 'Devices',
   safetyNumber: 'Safety number',
+  issueReport: 'Report an issue',
 };

@@ -1,19 +1,18 @@
 # Web (`@patches/web`)
 
-**Status: deployed 2026-08-19, CORS live; hosted build currently stale.** `apps/web/` is a real, text-forward browser GUI
+**Status: deployed; CORS live.** `apps/web/` is a real, text-forward browser GUI
 for Patches (spec §0, §154, Amendment B §179 — web is paused as a _general_ client target
 until board Phase 11, but this scoped GUI gives the node a proper web front door in the
 meantime). Vite + React 19, built on the shared `@patches/client` SDK (ADR 0016 §9 — the
 same SDK the TUI and, eventually, React Native use). Deployed to Cloudflare Pages (project
 `patches-web`) at **https://patches-web.pages.dev**. Verified 2026-08-19: the production
 node's CORS allow-list (`WEB_ORIGINS`) includes that origin —
-`curl -sI -H 'Origin: https://patches-web.pages.dev' -X OPTIONS -H 'Access-Control-Request-Method: POST' https://patches-social.fly.dev:8443/patches.v1.SystemService/GetServerInfo`
+`curl -sI -H 'Origin: https://patches-web.pages.dev' -X OPTIONS -H 'Access-Control-Request-Method: POST' https://patches-social.fly.dev/patches.v1.SystemService/GetServerInfo`
 returns `access-control-allow-origin: https://patches-web.pages.dev` — so the live page can
 successfully call the live node end to end.
 
-As observed 2026-08-22, the hosted footer still reports `0.1.0+29df763`. The repository's
-newer source fixes below pass locally, but no CI or manual Pages deployment of this revision has
-run, so they must not be described as live yet.
+Production Pages builds must target the standard HTTPS Connect origin below; the dedicated
+`:50051` listener is native gRPC only.
 
 ## What it is
 
@@ -36,8 +35,11 @@ run, so they must not be described as live yet.
   cache key, so a block (which also clears any existing follow server-side, spec §62) is
   reflected in both without a second fetch.
 - `apps/web/src/components/EditWallDialog.tsx` — modal dialog allowing profile owners to
-  compose, edit, reorder, and save Page blocks (Text, Markdown, Links, Image) to their profile
-  wall (`PageService.UpdatePage`).
+  compose, delete, and save blocks (Text, NowPlaying, Hero, AsciiArt) on their profile wall — the
+  `PatchesPage` document's index sub-page (`PageService.UpdatePage`). Saving preserves any other
+  sub-pages and the document's `theme` byte-for-byte rather than round-tripping them through the
+  lenient render-time parser, so a sub-page holding a block type this dialog doesn't know about
+  isn't corrupted by an unrelated wall edit.
 - `apps/web/src/components/ActorList.tsx` — actor card list used by `ProfileRoute`'s
   `Followers` and `Following` tabs (which switch via count pills or tab headers).
 - `apps/web/src/routes/ThreadRoute.tsx` and `apps/web/src/components/PostCard.tsx` —
@@ -101,7 +103,7 @@ mise run web:deploy
 which is exactly:
 
 ```sh
-VITE_PATCHES_API_BASE=https://patches-social.fly.dev:8443 pnpm --filter @patches/web build
+VITE_PATCHES_API_BASE=https://patches-social.fly.dev pnpm --filter @patches/web build
 pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
 ```
 
@@ -118,7 +120,7 @@ route (`/@handle`) after the first deploy.
 In dev, the Vite proxy sidesteps CORS by making every request look same-origin to the
 browser. Pages serves only static files — there is no proxy in production — so the
 production build talks to the node's real public origin directly
-(`VITE_PATCHES_API_BASE=https://patches-social.fly.dev:8443`, baked in at build time,
+(`VITE_PATCHES_API_BASE=https://patches-social.fly.dev`, baked in at build time,
 `apps/web/src/api/client.ts`). That means the request is genuinely cross-origin, which is
 where CORS below comes in.
 

@@ -25,27 +25,33 @@ function buildVersion(): string {
 // being configured for a web origin yet (WEB_ORIGINS server env, not set for
 // this client). `VITE_PATCHES_API_BASE` overrides the base URL the app itself
 // requests against (defaults to `/api`, the proxied path) — see `src/api/client.ts`.
-const PATCHES_UPSTREAM =
-  process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev:8443';
+const PATCHES_UPSTREAM = process.env['PATCHES_DEV_UPSTREAM'] ?? 'https://patches-social.fly.dev';
 
-export default defineConfig({
-  define: {
-    __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
-    __PATCHES_WEB_BUILT_AT__: JSON.stringify(new Date().toISOString()),
-  },
-  plugins: [react()],
-  server: {
-    proxy: {
-      '/api': {
-        target: PATCHES_UPSTREAM,
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+export default defineConfig(() => {
+  // Deploy-safety note (postmortem 2026-08-24): production builds MUST set
+  // VITE_PATCHES_API_BASE — the deploy tasks and CI do. A base-less production bundle
+  // would post to same-origin /api on static hosting and ship bricked (405s). The
+  // runtime renders a loud misconfiguration screen for that case rather than failing
+  // every local build here.
+  return {
+    define: {
+      __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
+      __PATCHES_WEB_BUILT_AT__: JSON.stringify(new Date().toISOString()),
+    },
+    plugins: [react()],
+    server: {
+      proxy: {
+        '/api': {
+          target: PATCHES_UPSTREAM,
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+        },
       },
     },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-  },
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
+    },
+  };
 });

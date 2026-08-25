@@ -62,8 +62,9 @@ export type AuthCodePurpose = (typeof AUTH_CODE_PURPOSES)[number];
  * content-free bell pointing the recipient at `ModerationService.ListMyModerationNotices`,
  * which reads the actual notice from `admin_audit_log` (§201.2's "read projection ... not a
  * second source of truth" — see `notice-projection.ts`), not from anything stored here.
- * `MESSAGE` (P11-004, §183.4) is written by `DirectMessageService.SendMessage`/
- * `CreateConversation` — never carries the message body, only `conversation_id` (see
+ * `MESSAGE` (P11-004, §183.4; re-pointed at E2EE arrivals by ADR 0030 §B-095) is written by
+ * `E2eeConversationService.createE2eeConversation`/`sendEnvelopes` — never carries the message
+ * body (the node has no plaintext to carry), only `conversation_id` (see
  * `notification.entity.ts`). `REPOST`/`QUOTE` (P11-006, §187) are written by
  * `ReactionsService.repostPost`/`PostService.createPost` respectively. */
 export const NOTIFICATION_TYPES = [
@@ -92,16 +93,11 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
  * is reportable per §172 ("guestbook entries are ... reportable, §64") — `ModerationService`
  * has no guestbook-entry RPC, so `PageService.ReportGuestbookEntry` (`pages.proto`) writes
  * this subject type directly into the same `reports` table `ModerationService` uses, rather
- * than duplicating the report model. `MESSAGE` (P11-004, §183.4) is the fourth: reporting a
- * message snapshots up to 10 surrounding messages into `message_snapshot` at write time (see
- * `report.entity.ts`), since the message(s) themselves may later be tombstoned/deleted. */
-export const REPORT_SUBJECT_TYPES = [
-  'ACTOR',
-  'POST',
-  'GUESTBOOK_ENTRY',
-  'MESSAGE',
-  'E2EE_MESSAGE',
-] as const;
+ * than duplicating the report model. `MESSAGE` (the plaintext-DM report/evidence-snapshot
+ * subject, P11-004, §183.4) was removed by ADR 0030 §B-095 alongside the rest of the
+ * server-visible DM machinery it existed to snapshot evidence for — `E2EE_MESSAGE` (P13-019,
+ * ADR 0020 §9) is the only message-report subject type now. */
+export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST', 'GUESTBOOK_ENTRY', 'E2EE_MESSAGE'] as const;
 export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number];
 
 export const REPORT_REASONS = [
@@ -186,8 +182,12 @@ export type CommunityInviteStatus = (typeof COMMUNITY_INVITE_STATUSES)[number];
 export const CONVERSATION_KINDS = ['DIRECT', 'GROUP'] as const;
 export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 
-/** Immutable direct-message security boundary (ADR 0020). */
-export const CONVERSATION_SECURITY_MODES = ['LEGACY_SERVER_VISIBLE', 'E2EE_V1'] as const;
+/** Immutable direct-message security boundary (ADR 0020). `E2EE_V1` is the only value: ADR
+ * 0030 §B-095 removed the server-visible `LEGACY_SERVER_VISIBLE` mode (ADR 0017) — zero users
+ * meant zero migration cost, so the value was dropped rather than carried forward. The
+ * protobuf enum reserves its old number and name (`patches/v1/e2ee.proto`); this text-backed
+ * CHECK constraint has no equivalent reservation concept, so it is simply narrowed. */
+export const CONVERSATION_SECURITY_MODES = ['E2EE_V1'] as const;
 export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[number];
 
 export const E2EE_EVIDENCE_VERIFICATION_STATUSES = ['PENDING', 'VERIFIED', 'UNVERIFIABLE'] as const;
@@ -198,12 +198,6 @@ export type E2eeEvidenceVerificationStatus = (typeof E2EE_EVIDENCE_VERIFICATION_
  * enum names these same values with a `E2EE_GROUP_CHANGE_KIND_` prefix. */
 export const E2EE_GROUP_CHANGE_KINDS = ['ADDED', 'REMOVED'] as const;
 export type E2eeGroupChangeKind = (typeof E2EE_GROUP_CHANGE_KINDS)[number];
-
-/** `message_requests.status` (`INITIAL_VISION.md` §189). At most one pending request per
- * (sender, recipient) pair (§188) — enforced by a partial unique index, see
- * `message-request.entity.ts`. */
-export const MESSAGE_REQUEST_STATUSES = ['PENDING', 'ACCEPTED', 'DECLINED'] as const;
-export type MessageRequestStatus = (typeof MESSAGE_REQUEST_STATUSES)[number];
 
 /** `filters.action` / `filter_list_subscriptions.action` (`INITIAL_VISION.md` §198.3,
  * §199.2). What a matched filter (or a list-derived filter) does to a post. Also the base

@@ -12,7 +12,7 @@ import type { PageInfo } from './common_pb.js';
 import { file_patches_v1_common } from './common_pb.js';
 import type { ConversationSecurityMode } from './e2ee_pb.js';
 import { file_patches_v1_e2ee } from './e2ee_pb.js';
-import type { Message as Message$1 } from '@bufbuild/protobuf';
+import type { Message } from '@bufbuild/protobuf';
 
 /**
  * Describes the file patches/v1/messages.proto.
@@ -20,7 +20,7 @@ import type { Message as Message$1 } from '@bufbuild/protobuf';
 export const file_patches_v1_messages: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChlwYXRjaGVzL3YxL21lc3NhZ2VzLnByb3RvEgpwYXRjaGVzLnYxIr8BChJDb252ZXJzYXRpb25NZW1iZXISIAoFYWN0b3IYASABKAsyES5wYXRjaGVzLnYxLkFjdG9yEi0KCWpvaW5lZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASKwoHbGVmdF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASHAoUbGFzdF9yZWFkX21lc3NhZ2VfaWQYBCABKAkSDQoFbXV0ZWQYBSABKAgi1gIKDENvbnZlcnNhdGlvbhIKCgJpZBgBIAEoCRIqCgRraW5kGAIgASgOMhwucGF0Y2hlcy52MS5Db252ZXJzYXRpb25LaW5kEiUKCmNyZWF0ZWRfYnkYAyABKAsyES5wYXRjaGVzLnYxLkFjdG9yEi8KB21lbWJlcnMYBCADKAsyHi5wYXRjaGVzLnYxLkNvbnZlcnNhdGlvbk1lbWJlchIuCgpjcmVhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIzCg9sYXN0X21lc3NhZ2VfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDHVucmVhZF9jb3VudBgHIAEoDRI7Cg1zZWN1cml0eV9tb2RlGAggASgOMiQucGF0Y2hlcy52MS5Db252ZXJzYXRpb25TZWN1cml0eU1vZGUivwEKB01lc3NhZ2USCgoCaWQYASABKAkSFwoPY29udmVyc2F0aW9uX2lkGAIgASgJEiEKBnNlbmRlchgDIAEoCzIRLnBhdGNoZXMudjEuQWN0b3ISDAoEYm9keRgEIAEoCRIuCgpjcmVhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgpkZWxldGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI5ChhMaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QSDgoGY3Vyc29yGAEgASgJEg0KBWxpbWl0GAIgASgNInAKGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USLwoNY29udmVyc2F0aW9ucxgBIAMoCzIYLnBhdGNoZXMudjEuQ29udmVyc2F0aW9uEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIiQKFkdldENvbnZlcnNhdGlvblJlcXVlc3QSCgoCaWQYASABKAkiSQoXR2V0Q29udmVyc2F0aW9uUmVzcG9uc2USLgoMY29udmVyc2F0aW9uGAEgASgLMhgucGF0Y2hlcy52MS5Db252ZXJzYXRpb24iTQoTTGlzdE1lc3NhZ2VzUmVxdWVzdBIXCg9jb252ZXJzYXRpb25faWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgNImEKFExpc3RNZXNzYWdlc1Jlc3BvbnNlEiUKCG1lc3NhZ2VzGAEgAygLMhMucGF0Y2hlcy52MS5NZXNzYWdlEiIKBHBhZ2UYAiABKAsyFC5wYXRjaGVzLnYxLlBhZ2VJbmZvIlYKElNlbmRNZXNzYWdlUmVxdWVzdBIZChFjbGllbnRfcmVxdWVzdF9pZBgBIAEoCRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkSDAoEYm9keRgDIAEoCSI7ChNTZW5kTWVzc2FnZVJlc3BvbnNlEiQKB21lc3NhZ2UYASABKAsyEy5wYXRjaGVzLnYxLk1lc3NhZ2UiIgoURGVsZXRlTWVzc2FnZVJlcXVlc3QSCgoCaWQYASABKAkiPQoVRGVsZXRlTWVzc2FnZVJlc3BvbnNlEiQKB21lc3NhZ2UYASABKAsyEy5wYXRjaGVzLnYxLk1lc3NhZ2UiaQoZQ3JlYXRlQ29udmVyc2F0aW9uUmVxdWVzdBIZChFjbGllbnRfcmVxdWVzdF9pZBgBIAEoCRIbChNyZWNpcGllbnRfYWN0b3JfaWRzGAIgAygJEhQKDGluaXRpYWxfYm9keRgDIAEoCSJ5ChpDcmVhdGVDb252ZXJzYXRpb25SZXNwb25zZRIuCgxjb252ZXJzYXRpb24YASABKAsyGC5wYXRjaGVzLnYxLkNvbnZlcnNhdGlvbhIrCgdyZXF1ZXN0GAIgASgLMhoucGF0Y2hlcy52MS5NZXNzYWdlUmVxdWVzdCIzChhMZWF2ZUNvbnZlcnNhdGlvblJlcXVlc3QSFwoPY29udmVyc2F0aW9uX2lkGAEgASgJIhsKGUxlYXZlQ29udmVyc2F0aW9uUmVzcG9uc2UiUgobTWFya0NvbnZlcnNhdGlvblJlYWRSZXF1ZXN0EhcKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCRIaChJ0aHJvdWdoX21lc3NhZ2VfaWQYAiABKAkiHgocTWFya0NvbnZlcnNhdGlvblJlYWRSZXNwb25zZSLVAQoOTWVzc2FnZVJlcXVlc3QSCgoCaWQYASABKAkSIQoGc2VuZGVyGAIgASgLMhEucGF0Y2hlcy52MS5BY3RvchIkCglyZWNpcGllbnQYAyABKAsyES5wYXRjaGVzLnYxLkFjdG9yEgwKBGJvZHkYBCABKAkSMAoGc3RhdHVzGAUgASgOMiAucGF0Y2hlcy52MS5NZXNzYWdlUmVxdWVzdFN0YXR1cxIuCgpjcmVhdGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI7ChpMaXN0TWVzc2FnZVJlcXVlc3RzUmVxdWVzdBIOCgZjdXJzb3IYASABKAkSDQoFbGltaXQYAiABKA0ibwobTGlzdE1lc3NhZ2VSZXF1ZXN0c1Jlc3BvbnNlEiwKCHJlcXVlc3RzGAEgAygLMhoucGF0Y2hlcy52MS5NZXNzYWdlUmVxdWVzdBIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyI8Ch5SZXNwb25kVG9NZXNzYWdlUmVxdWVzdFJlcXVlc3QSCgoCaWQYASABKAkSDgoGYWNjZXB0GAIgASgIIn4KH1Jlc3BvbmRUb01lc3NhZ2VSZXF1ZXN0UmVzcG9uc2USKwoHcmVxdWVzdBgBIAEoCzIaLnBhdGNoZXMudjEuTWVzc2FnZVJlcXVlc3QSLgoMY29udmVyc2F0aW9uGAIgASgLMhgucGF0Y2hlcy52MS5Db252ZXJzYXRpb24qcAoQQ29udmVyc2F0aW9uS2luZBIhCh1DT05WRVJTQVRJT05fS0lORF9VTlNQRUNJRklFRBAAEhwKGENPTlZFUlNBVElPTl9LSU5EX0RJUkVDVBABEhsKF0NPTlZFUlNBVElPTl9LSU5EX0dST1VQEAIqrAEKFE1lc3NhZ2VSZXF1ZXN0U3RhdHVzEiYKIk1FU1NBR0VfUkVRVUVTVF9TVEFUVVNfVU5TUEVDSUZJRUQQABIiCh5NRVNTQUdFX1JFUVVFU1RfU1RBVFVTX1BFTkRJTkcQARIjCh9NRVNTQUdFX1JFUVVFU1RfU1RBVFVTX0FDQ0VQVEVEEAISIwofTUVTU0FHRV9SRVFVRVNUX1NUQVRVU19ERUNMSU5FRBADMtsHChREaXJlY3RNZXNzYWdlU2VydmljZRJgChFMaXN0Q29udmVyc2F0aW9ucxIkLnBhdGNoZXMudjEuTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0GiUucGF0Y2hlcy52MS5MaXN0Q29udmVyc2F0aW9uc1Jlc3BvbnNlEloKD0dldENvbnZlcnNhdGlvbhIiLnBhdGNoZXMudjEuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBojLnBhdGNoZXMudjEuR2V0Q29udmVyc2F0aW9uUmVzcG9uc2USUQoMTGlzdE1lc3NhZ2VzEh8ucGF0Y2hlcy52MS5MaXN0TWVzc2FnZXNSZXF1ZXN0GiAucGF0Y2hlcy52MS5MaXN0TWVzc2FnZXNSZXNwb25zZRJOCgtTZW5kTWVzc2FnZRIeLnBhdGNoZXMudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0Gh8ucGF0Y2hlcy52MS5TZW5kTWVzc2FnZVJlc3BvbnNlElQKDURlbGV0ZU1lc3NhZ2USIC5wYXRjaGVzLnYxLkRlbGV0ZU1lc3NhZ2VSZXF1ZXN0GiEucGF0Y2hlcy52MS5EZWxldGVNZXNzYWdlUmVzcG9uc2USYwoSQ3JlYXRlQ29udmVyc2F0aW9uEiUucGF0Y2hlcy52MS5DcmVhdGVDb252ZXJzYXRpb25SZXF1ZXN0GiYucGF0Y2hlcy52MS5DcmVhdGVDb252ZXJzYXRpb25SZXNwb25zZRJgChFMZWF2ZUNvbnZlcnNhdGlvbhIkLnBhdGNoZXMudjEuTGVhdmVDb252ZXJzYXRpb25SZXF1ZXN0GiUucGF0Y2hlcy52MS5MZWF2ZUNvbnZlcnNhdGlvblJlc3BvbnNlEmkKFE1hcmtDb252ZXJzYXRpb25SZWFkEicucGF0Y2hlcy52MS5NYXJrQ29udmVyc2F0aW9uUmVhZFJlcXVlc3QaKC5wYXRjaGVzLnYxLk1hcmtDb252ZXJzYXRpb25SZWFkUmVzcG9uc2USZgoTTGlzdE1lc3NhZ2VSZXF1ZXN0cxImLnBhdGNoZXMudjEuTGlzdE1lc3NhZ2VSZXF1ZXN0c1JlcXVlc3QaJy5wYXRjaGVzLnYxLkxpc3RNZXNzYWdlUmVxdWVzdHNSZXNwb25zZRJyChdSZXNwb25kVG9NZXNzYWdlUmVxdWVzdBIqLnBhdGNoZXMudjEuUmVzcG9uZFRvTWVzc2FnZVJlcXVlc3RSZXF1ZXN0GisucGF0Y2hlcy52MS5SZXNwb25kVG9NZXNzYWdlUmVxdWVzdFJlc3BvbnNlYgZwcm90bzM',
+    'ChlwYXRjaGVzL3YxL21lc3NhZ2VzLnByb3RvEgpwYXRjaGVzLnYxIr8BChJDb252ZXJzYXRpb25NZW1iZXISIAoFYWN0b3IYASABKAsyES5wYXRjaGVzLnYxLkFjdG9yEi0KCWpvaW5lZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASKwoHbGVmdF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASHAoUbGFzdF9yZWFkX21lc3NhZ2VfaWQYBCABKAkSDQoFbXV0ZWQYBSABKAgi1gIKDENvbnZlcnNhdGlvbhIKCgJpZBgBIAEoCRIqCgRraW5kGAIgASgOMhwucGF0Y2hlcy52MS5Db252ZXJzYXRpb25LaW5kEiUKCmNyZWF0ZWRfYnkYAyABKAsyES5wYXRjaGVzLnYxLkFjdG9yEi8KB21lbWJlcnMYBCADKAsyHi5wYXRjaGVzLnYxLkNvbnZlcnNhdGlvbk1lbWJlchIuCgpjcmVhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIzCg9sYXN0X21lc3NhZ2VfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDHVucmVhZF9jb3VudBgHIAEoDRI7Cg1zZWN1cml0eV9tb2RlGAggASgOMiQucGF0Y2hlcy52MS5Db252ZXJzYXRpb25TZWN1cml0eU1vZGUiOQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0Eg4KBmN1cnNvchgBIAEoCRINCgVsaW1pdBgCIAEoDSJwChlMaXN0Q29udmVyc2F0aW9uc1Jlc3BvbnNlEi8KDWNvbnZlcnNhdGlvbnMYASADKAsyGC5wYXRjaGVzLnYxLkNvbnZlcnNhdGlvbhIiCgRwYWdlGAIgASgLMhQucGF0Y2hlcy52MS5QYWdlSW5mbyIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIkkKF0dldENvbnZlcnNhdGlvblJlc3BvbnNlEi4KDGNvbnZlcnNhdGlvbhgBIAEoCzIYLnBhdGNoZXMudjEuQ29udmVyc2F0aW9uIjMKGExlYXZlQ29udmVyc2F0aW9uUmVxdWVzdBIXCg9jb252ZXJzYXRpb25faWQYASABKAkiGwoZTGVhdmVDb252ZXJzYXRpb25SZXNwb25zZSJSChtNYXJrQ29udmVyc2F0aW9uUmVhZFJlcXVlc3QSFwoPY29udmVyc2F0aW9uX2lkGAEgASgJEhoKEnRocm91Z2hfbWVzc2FnZV9pZBgCIAEoCSIeChxNYXJrQ29udmVyc2F0aW9uUmVhZFJlc3BvbnNlKnAKEENvbnZlcnNhdGlvbktpbmQSIQodQ09OVkVSU0FUSU9OX0tJTkRfVU5TUEVDSUZJRUQQABIcChhDT05WRVJTQVRJT05fS0lORF9ESVJFQ1QQARIbChdDT05WRVJTQVRJT05fS0lORF9HUk9VUBACMqEDChREaXJlY3RNZXNzYWdlU2VydmljZRJgChFMaXN0Q29udmVyc2F0aW9ucxIkLnBhdGNoZXMudjEuTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0GiUucGF0Y2hlcy52MS5MaXN0Q29udmVyc2F0aW9uc1Jlc3BvbnNlEloKD0dldENvbnZlcnNhdGlvbhIiLnBhdGNoZXMudjEuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBojLnBhdGNoZXMudjEuR2V0Q29udmVyc2F0aW9uUmVzcG9uc2USYAoRTGVhdmVDb252ZXJzYXRpb24SJC5wYXRjaGVzLnYxLkxlYXZlQ29udmVyc2F0aW9uUmVxdWVzdBolLnBhdGNoZXMudjEuTGVhdmVDb252ZXJzYXRpb25SZXNwb25zZRJpChRNYXJrQ29udmVyc2F0aW9uUmVhZBInLnBhdGNoZXMudjEuTWFya0NvbnZlcnNhdGlvblJlYWRSZXF1ZXN0GigucGF0Y2hlcy52MS5NYXJrQ29udmVyc2F0aW9uUmVhZFJlc3BvbnNlYgZwcm90bzM',
     [
       file_google_protobuf_timestamp,
       file_patches_v1_actors,
@@ -32,7 +32,7 @@ export const file_patches_v1_messages: GenFile =
 /**
  * @generated from message patches.v1.ConversationMember
  */
-export type ConversationMember = Message$1<'patches.v1.ConversationMember'> & {
+export type ConversationMember = Message<'patches.v1.ConversationMember'> & {
   /**
    * @generated from field: patches.v1.Actor actor = 1;
    */
@@ -51,7 +51,8 @@ export type ConversationMember = Message$1<'patches.v1.ConversationMember'> & {
   leftAt?: Timestamp | undefined;
 
   /**
-   * Empty if nothing has been read yet.
+   * Empty if nothing has been read yet. An `E2eeLogicalMessage` id (opaque to this service) —
+   * never a plaintext message id, since the node holds no plaintext (ADR 0020, ADR 0030).
    *
    * @generated from field: string last_read_message_id = 4;
    */
@@ -74,7 +75,7 @@ export const ConversationMemberSchema: GenMessage<ConversationMember> =
 /**
  * @generated from message patches.v1.Conversation
  */
-export type Conversation = Message$1<'patches.v1.Conversation'> & {
+export type Conversation = Message<'patches.v1.Conversation'> & {
   /**
    * @generated from field: string id = 1;
    */
@@ -113,16 +114,10 @@ export type Conversation = Message$1<'patches.v1.Conversation'> & {
   unreadCount: number;
 
   /**
-   * Which security mode this conversation was created in (ADR 0017, ADR 0020). Read-only and
-   * fixed at creation: there is no RPC anywhere in this schema that converts a conversation
-   * between modes. `CreateConversation` always produces
-   * `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; `E2eeService.CreateE2eeConversation` is
-   * the only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`.
-   *
-   * Clients MUST render disclosure from this field and never from a local assumption: spec
-   * §183.1 requires the "not end-to-end encrypted — this node's operators can read these
-   * messages" line on the legacy screen, and spec §194 forbids the words encrypted, end-to-end,
-   * secure, or private for anything but `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+   * Which security mode this conversation was created in (ADR 0020; ADR 0030 §B-095). Read-only
+   * and fixed at creation: there is no RPC anywhere in this schema that converts a conversation
+   * between modes. Always `CONVERSATION_SECURITY_MODE_E2EE_V1` today —
+   * `E2eeService.CreateE2eeConversation` is the only way to produce a `Conversation`.
    *
    * @generated from field: patches.v1.ConversationSecurityMode security_mode = 8;
    */
@@ -138,56 +133,9 @@ export const ConversationSchema: GenMessage<Conversation> =
   messageDesc(file_patches_v1_messages, 1);
 
 /**
- * @generated from message patches.v1.Message
- */
-export type Message = Message$1<'patches.v1.Message'> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-
-  /**
-   * @generated from field: string conversation_id = 2;
-   */
-  conversationId: string;
-
-  /**
-   * @generated from field: patches.v1.Actor sender = 3;
-   */
-  sender?: Actor | undefined;
-
-  /**
-   * Empty when `deleted_at` is set. Max 2,000 characters (spec §188).
-   *
-   * @generated from field: string body = 4;
-   */
-  body: string;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp created_at = 5;
-   */
-  createdAt?: Timestamp | undefined;
-
-  /**
-   * Unset (zero value) unless this message was deleted.
-   *
-   * @generated from field: google.protobuf.Timestamp deleted_at = 6;
-   */
-  deletedAt?: Timestamp | undefined;
-};
-
-/**
- * Describes the message patches.v1.Message.
- * Use `create(MessageSchema)` to create a new message.
- */
-export const MessageSchema: GenMessage<Message> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 2);
-
-/**
  * @generated from message patches.v1.ListConversationsRequest
  */
-export type ListConversationsRequest = Message$1<'patches.v1.ListConversationsRequest'> & {
+export type ListConversationsRequest = Message<'patches.v1.ListConversationsRequest'> & {
   /**
    * @generated from field: string cursor = 1;
    */
@@ -205,12 +153,12 @@ export type ListConversationsRequest = Message$1<'patches.v1.ListConversationsRe
  */
 export const ListConversationsRequestSchema: GenMessage<ListConversationsRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 3);
+  messageDesc(file_patches_v1_messages, 2);
 
 /**
  * @generated from message patches.v1.ListConversationsResponse
  */
-export type ListConversationsResponse = Message$1<'patches.v1.ListConversationsResponse'> & {
+export type ListConversationsResponse = Message<'patches.v1.ListConversationsResponse'> & {
   /**
    * @generated from field: repeated patches.v1.Conversation conversations = 1;
    */
@@ -228,12 +176,12 @@ export type ListConversationsResponse = Message$1<'patches.v1.ListConversationsR
  */
 export const ListConversationsResponseSchema: GenMessage<ListConversationsResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 4);
+  messageDesc(file_patches_v1_messages, 3);
 
 /**
  * @generated from message patches.v1.GetConversationRequest
  */
-export type GetConversationRequest = Message$1<'patches.v1.GetConversationRequest'> & {
+export type GetConversationRequest = Message<'patches.v1.GetConversationRequest'> & {
   /**
    * @generated from field: string id = 1;
    */
@@ -246,12 +194,12 @@ export type GetConversationRequest = Message$1<'patches.v1.GetConversationReques
  */
 export const GetConversationRequestSchema: GenMessage<GetConversationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 5);
+  messageDesc(file_patches_v1_messages, 4);
 
 /**
  * @generated from message patches.v1.GetConversationResponse
  */
-export type GetConversationResponse = Message$1<'patches.v1.GetConversationResponse'> & {
+export type GetConversationResponse = Message<'patches.v1.GetConversationResponse'> & {
   /**
    * @generated from field: patches.v1.Conversation conversation = 1;
    */
@@ -264,212 +212,12 @@ export type GetConversationResponse = Message$1<'patches.v1.GetConversationRespo
  */
 export const GetConversationResponseSchema: GenMessage<GetConversationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 6);
-
-/**
- * @generated from message patches.v1.ListMessagesRequest
- */
-export type ListMessagesRequest = Message$1<'patches.v1.ListMessagesRequest'> & {
-  /**
-   * @generated from field: string conversation_id = 1;
-   */
-  conversationId: string;
-
-  /**
-   * @generated from field: string cursor = 2;
-   */
-  cursor: string;
-
-  /**
-   * @generated from field: uint32 limit = 3;
-   */
-  limit: number;
-};
-
-/**
- * Describes the message patches.v1.ListMessagesRequest.
- * Use `create(ListMessagesRequestSchema)` to create a new message.
- */
-export const ListMessagesRequestSchema: GenMessage<ListMessagesRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 7);
-
-/**
- * @generated from message patches.v1.ListMessagesResponse
- */
-export type ListMessagesResponse = Message$1<'patches.v1.ListMessagesResponse'> & {
-  /**
-   * @generated from field: repeated patches.v1.Message messages = 1;
-   */
-  messages: Message[];
-
-  /**
-   * @generated from field: patches.v1.PageInfo page = 2;
-   */
-  page?: PageInfo | undefined;
-};
-
-/**
- * Describes the message patches.v1.ListMessagesResponse.
- * Use `create(ListMessagesResponseSchema)` to create a new message.
- */
-export const ListMessagesResponseSchema: GenMessage<ListMessagesResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 8);
-
-/**
- * @generated from message patches.v1.SendMessageRequest
- */
-export type SendMessageRequest = Message$1<'patches.v1.SendMessageRequest'> & {
-  /**
-   * @generated from field: string client_request_id = 1;
-   */
-  clientRequestId: string;
-
-  /**
-   * @generated from field: string conversation_id = 2;
-   */
-  conversationId: string;
-
-  /**
-   * @generated from field: string body = 3;
-   */
-  body: string;
-};
-
-/**
- * Describes the message patches.v1.SendMessageRequest.
- * Use `create(SendMessageRequestSchema)` to create a new message.
- */
-export const SendMessageRequestSchema: GenMessage<SendMessageRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 9);
-
-/**
- * @generated from message patches.v1.SendMessageResponse
- */
-export type SendMessageResponse = Message$1<'patches.v1.SendMessageResponse'> & {
-  /**
-   * @generated from field: patches.v1.Message message = 1;
-   */
-  message?: Message | undefined;
-};
-
-/**
- * Describes the message patches.v1.SendMessageResponse.
- * Use `create(SendMessageResponseSchema)` to create a new message.
- */
-export const SendMessageResponseSchema: GenMessage<SendMessageResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 10);
-
-/**
- * @generated from message patches.v1.DeleteMessageRequest
- */
-export type DeleteMessageRequest = Message$1<'patches.v1.DeleteMessageRequest'> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-};
-
-/**
- * Describes the message patches.v1.DeleteMessageRequest.
- * Use `create(DeleteMessageRequestSchema)` to create a new message.
- */
-export const DeleteMessageRequestSchema: GenMessage<DeleteMessageRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 11);
-
-/**
- * @generated from message patches.v1.DeleteMessageResponse
- */
-export type DeleteMessageResponse = Message$1<'patches.v1.DeleteMessageResponse'> & {
-  /**
-   * The now-tombstoned message, so the caller can render `[deleted]` without a refetch.
-   *
-   * @generated from field: patches.v1.Message message = 1;
-   */
-  message?: Message | undefined;
-};
-
-/**
- * Describes the message patches.v1.DeleteMessageResponse.
- * Use `create(DeleteMessageResponseSchema)` to create a new message.
- */
-export const DeleteMessageResponseSchema: GenMessage<DeleteMessageResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 12);
-
-/**
- * @generated from message patches.v1.CreateConversationRequest
- */
-export type CreateConversationRequest = Message$1<'patches.v1.CreateConversationRequest'> & {
-  /**
-   * @generated from field: string client_request_id = 1;
-   */
-  clientRequestId: string;
-
-  /**
-   * Excludes the caller. 1 recipient makes a direct conversation; 2+ (up to 7, an 8-member
-   * ceiling including the caller, spec §188) makes a group.
-   *
-   * @generated from field: repeated string recipient_actor_ids = 2;
-   */
-  recipientActorIds: string[];
-
-  /**
-   * Required — a conversation is never created empty.
-   *
-   * @generated from field: string initial_body = 3;
-   */
-  initialBody: string;
-};
-
-/**
- * Describes the message patches.v1.CreateConversationRequest.
- * Use `create(CreateConversationRequestSchema)` to create a new message.
- */
-export const CreateConversationRequestSchema: GenMessage<CreateConversationRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 13);
-
-/**
- * @generated from message patches.v1.CreateConversationResponse
- */
-export type CreateConversationResponse = Message$1<'patches.v1.CreateConversationResponse'> & {
-  /**
-   * Set when the recipient (direct) or every recipient (group) could be messaged directly
-   * (spec §183.2 — mutual follow, or an already-accepted request). Unset when this call
-   * instead created a `MessageRequest` — see `request` below.
-   *
-   * @generated from field: patches.v1.Conversation conversation = 1;
-   */
-  conversation?: Conversation | undefined;
-
-  /**
-   * Set instead of `conversation` for a direct conversation with a non-mutual-follow
-   * recipient (spec §183.2): the first message becomes the request's one carried message
-   * rather than a `Message` in an open `Conversation`. Never set for a group (a group
-   * creator may only add actors it could already message directly, §183.3).
-   *
-   * @generated from field: patches.v1.MessageRequest request = 2;
-   */
-  request?: MessageRequest | undefined;
-};
-
-/**
- * Describes the message patches.v1.CreateConversationResponse.
- * Use `create(CreateConversationResponseSchema)` to create a new message.
- */
-export const CreateConversationResponseSchema: GenMessage<CreateConversationResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 14);
+  messageDesc(file_patches_v1_messages, 5);
 
 /**
  * @generated from message patches.v1.LeaveConversationRequest
  */
-export type LeaveConversationRequest = Message$1<'patches.v1.LeaveConversationRequest'> & {
+export type LeaveConversationRequest = Message<'patches.v1.LeaveConversationRequest'> & {
   /**
    * @generated from field: string conversation_id = 1;
    */
@@ -482,12 +230,12 @@ export type LeaveConversationRequest = Message$1<'patches.v1.LeaveConversationRe
  */
 export const LeaveConversationRequestSchema: GenMessage<LeaveConversationRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 15);
+  messageDesc(file_patches_v1_messages, 6);
 
 /**
  * @generated from message patches.v1.LeaveConversationResponse
  */
-export type LeaveConversationResponse = Message$1<'patches.v1.LeaveConversationResponse'> & {};
+export type LeaveConversationResponse = Message<'patches.v1.LeaveConversationResponse'> & {};
 
 /**
  * Describes the message patches.v1.LeaveConversationResponse.
@@ -495,19 +243,19 @@ export type LeaveConversationResponse = Message$1<'patches.v1.LeaveConversationR
  */
 export const LeaveConversationResponseSchema: GenMessage<LeaveConversationResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 16);
+  messageDesc(file_patches_v1_messages, 7);
 
 /**
  * @generated from message patches.v1.MarkConversationReadRequest
  */
-export type MarkConversationReadRequest = Message$1<'patches.v1.MarkConversationReadRequest'> & {
+export type MarkConversationReadRequest = Message<'patches.v1.MarkConversationReadRequest'> & {
   /**
    * @generated from field: string conversation_id = 1;
    */
   conversationId: string;
 
   /**
-   * Marks every message at or before this one as read.
+   * Marks every message at or before this one as read. An `E2eeLogicalMessage` id.
    *
    * @generated from field: string through_message_id = 2;
    */
@@ -520,13 +268,12 @@ export type MarkConversationReadRequest = Message$1<'patches.v1.MarkConversation
  */
 export const MarkConversationReadRequestSchema: GenMessage<MarkConversationReadRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 17);
+  messageDesc(file_patches_v1_messages, 8);
 
 /**
  * @generated from message patches.v1.MarkConversationReadResponse
  */
-export type MarkConversationReadResponse =
-  Message$1<'patches.v1.MarkConversationReadResponse'> & {};
+export type MarkConversationReadResponse = Message<'patches.v1.MarkConversationReadResponse'> & {};
 
 /**
  * Describes the message patches.v1.MarkConversationReadResponse.
@@ -534,151 +281,7 @@ export type MarkConversationReadResponse =
  */
 export const MarkConversationReadResponseSchema: GenMessage<MarkConversationReadResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 18);
-
-/**
- * A pending contact request created by `CreateConversation` when the caller and the intended
- * recipient are not mutual follows (spec §189). At most one pending request per
- * (sender, recipient) pair, and at most one message (spec §188) — accepting is what turns it
- * into an ordinary `Conversation`/`Message`.
- *
- * @generated from message patches.v1.MessageRequest
- */
-export type MessageRequest = Message$1<'patches.v1.MessageRequest'> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-
-  /**
-   * @generated from field: patches.v1.Actor sender = 2;
-   */
-  sender?: Actor | undefined;
-
-  /**
-   * @generated from field: patches.v1.Actor recipient = 3;
-   */
-  recipient?: Actor | undefined;
-
-  /**
-   * @generated from field: string body = 4;
-   */
-  body: string;
-
-  /**
-   * @generated from field: patches.v1.MessageRequestStatus status = 5;
-   */
-  status: MessageRequestStatus;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp created_at = 6;
-   */
-  createdAt?: Timestamp | undefined;
-};
-
-/**
- * Describes the message patches.v1.MessageRequest.
- * Use `create(MessageRequestSchema)` to create a new message.
- */
-export const MessageRequestSchema: GenMessage<MessageRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 19);
-
-/**
- * @generated from message patches.v1.ListMessageRequestsRequest
- */
-export type ListMessageRequestsRequest = Message$1<'patches.v1.ListMessageRequestsRequest'> & {
-  /**
-   * @generated from field: string cursor = 1;
-   */
-  cursor: string;
-
-  /**
-   * @generated from field: uint32 limit = 2;
-   */
-  limit: number;
-};
-
-/**
- * Describes the message patches.v1.ListMessageRequestsRequest.
- * Use `create(ListMessageRequestsRequestSchema)` to create a new message.
- */
-export const ListMessageRequestsRequestSchema: GenMessage<ListMessageRequestsRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 20);
-
-/**
- * @generated from message patches.v1.ListMessageRequestsResponse
- */
-export type ListMessageRequestsResponse = Message$1<'patches.v1.ListMessageRequestsResponse'> & {
-  /**
-   * @generated from field: repeated patches.v1.MessageRequest requests = 1;
-   */
-  requests: MessageRequest[];
-
-  /**
-   * @generated from field: patches.v1.PageInfo page = 2;
-   */
-  page?: PageInfo | undefined;
-};
-
-/**
- * Describes the message patches.v1.ListMessageRequestsResponse.
- * Use `create(ListMessageRequestsResponseSchema)` to create a new message.
- */
-export const ListMessageRequestsResponseSchema: GenMessage<ListMessageRequestsResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 21);
-
-/**
- * @generated from message patches.v1.RespondToMessageRequestRequest
- */
-export type RespondToMessageRequestRequest =
-  Message$1<'patches.v1.RespondToMessageRequestRequest'> & {
-    /**
-     * @generated from field: string id = 1;
-     */
-    id: string;
-
-    /**
-     * @generated from field: bool accept = 2;
-     */
-    accept: boolean;
-  };
-
-/**
- * Describes the message patches.v1.RespondToMessageRequestRequest.
- * Use `create(RespondToMessageRequestRequestSchema)` to create a new message.
- */
-export const RespondToMessageRequestRequestSchema: GenMessage<RespondToMessageRequestRequest> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 22);
-
-/**
- * @generated from message patches.v1.RespondToMessageRequestResponse
- */
-export type RespondToMessageRequestResponse =
-  Message$1<'patches.v1.RespondToMessageRequestResponse'> & {
-    /**
-     * @generated from field: patches.v1.MessageRequest request = 1;
-     */
-    request?: MessageRequest | undefined;
-
-    /**
-     * Set only when `accept` was true.
-     *
-     * @generated from field: patches.v1.Conversation conversation = 2;
-     */
-    conversation?: Conversation | undefined;
-  };
-
-/**
- * Describes the message patches.v1.RespondToMessageRequestResponse.
- * Use `create(RespondToMessageRequestResponseSchema)` to create a new message.
- */
-export const RespondToMessageRequestResponseSchema: GenMessage<RespondToMessageRequestResponse> =
-  /*@__PURE__*/
-  messageDesc(file_patches_v1_messages, 23);
+  messageDesc(file_patches_v1_messages, 9);
 
 /**
  * @generated from enum patches.v1.ConversationKind
@@ -708,41 +311,14 @@ export const ConversationKindSchema: GenEnum<ConversationKind> =
   enumDesc(file_patches_v1_messages, 0);
 
 /**
- * @generated from enum patches.v1.MessageRequestStatus
- */
-export enum MessageRequestStatus {
-  /**
-   * @generated from enum value: MESSAGE_REQUEST_STATUS_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: MESSAGE_REQUEST_STATUS_PENDING = 1;
-   */
-  PENDING = 1,
-
-  /**
-   * @generated from enum value: MESSAGE_REQUEST_STATUS_ACCEPTED = 2;
-   */
-  ACCEPTED = 2,
-
-  /**
-   * @generated from enum value: MESSAGE_REQUEST_STATUS_DECLINED = 3;
-   */
-  DECLINED = 3,
-}
-
-/**
- * Describes the enum patches.v1.MessageRequestStatus.
- */
-export const MessageRequestStatusSchema: GenEnum<MessageRequestStatus> =
-  /*@__PURE__*/
-  enumDesc(file_patches_v1_messages, 1);
-
-/**
- * Direct messages (spec §183.4, §188–190, §192). Mutual/accepted gating, block-aware both
- * directions with no block oracle, rate-limited per actor and per peer, never federated —
- * bodies never appear in logs/metrics/traces/errors (spec §192). No media, no link previews.
+ * The generic conversation surface (spec §183, §188–190; ADR 0030 §B-095). Every conversation
+ * today is `E2EE_V1` (`E2eeService.CreateE2eeConversation` is the only way to create one, and
+ * `E2eeService.SendEnvelopes` the only way to add a message to one) — this service only lists,
+ * reads, and tracks membership/read-state for conversations, never their content. The plaintext
+ * send/read/request RPCs this service used to carry (`SendMessage`, `ListMessages`,
+ * `DeleteMessage`, `CreateConversation`, and the whole `MessageRequest` flow) were removed by
+ * ADR 0030's pre-alpha consolidation policy the same change set E2EE-only conversations shipped
+ * in — never federated (ADR 0020 §13).
  *
  * @generated from service patches.v1.DirectMessageService
  */
@@ -764,46 +340,6 @@ export const DirectMessageService: GenService<{
     output: typeof GetConversationResponseSchema;
   };
   /**
-   * @generated from rpc patches.v1.DirectMessageService.ListMessages
-   */
-  listMessages: {
-    methodKind: 'unary';
-    input: typeof ListMessagesRequestSchema;
-    output: typeof ListMessagesResponseSchema;
-  };
-  /**
-   * Requires `client_request_id` (spec §45) — same idempotency pattern as `CreatePost`.
-   *
-   * @generated from rpc patches.v1.DirectMessageService.SendMessage
-   */
-  sendMessage: {
-    methodKind: 'unary';
-    input: typeof SendMessageRequestSchema;
-    output: typeof SendMessageResponseSchema;
-  };
-  /**
-   * Soft delete/tombstone — never a hard delete over this API (same rule as `DeletePost`).
-   *
-   * @generated from rpc patches.v1.DirectMessageService.DeleteMessage
-   */
-  deleteMessage: {
-    methodKind: 'unary';
-    input: typeof DeleteMessageRequestSchema;
-    output: typeof DeleteMessageResponseSchema;
-  };
-  /**
-   * Starts a direct (1 recipient) or group (up to 8 members total, spec §188) conversation
-   * with its first message. A direct conversation with a non-mutual-follow recipient creates
-   * a `MessageRequest` instead of a `Message` — see `MessageRequest`'s comment.
-   *
-   * @generated from rpc patches.v1.DirectMessageService.CreateConversation
-   */
-  createConversation: {
-    methodKind: 'unary';
-    input: typeof CreateConversationRequestSchema;
-    output: typeof CreateConversationResponseSchema;
-  };
-  /**
    * Idempotent: leaving a conversation the caller isn't in is not an error.
    *
    * @generated from rpc patches.v1.DirectMessageService.LeaveConversation
@@ -820,26 +356,5 @@ export const DirectMessageService: GenService<{
     methodKind: 'unary';
     input: typeof MarkConversationReadRequestSchema;
     output: typeof MarkConversationReadResponseSchema;
-  };
-  /**
-   * The caller's own pending message requests (received), most-recent first.
-   *
-   * @generated from rpc patches.v1.DirectMessageService.ListMessageRequests
-   */
-  listMessageRequests: {
-    methodKind: 'unary';
-    input: typeof ListMessageRequestsRequestSchema;
-    output: typeof ListMessageRequestsResponseSchema;
-  };
-  /**
-   * Accepting opens (or reuses) the direct conversation and returns it; declining does not
-   * notify the sender and never auto-accepts anything else from them (spec §192).
-   *
-   * @generated from rpc patches.v1.DirectMessageService.RespondToMessageRequest
-   */
-  respondToMessageRequest: {
-    methodKind: 'unary';
-    input: typeof RespondToMessageRequestRequestSchema;
-    output: typeof RespondToMessageRequestResponseSchema;
   };
 }> = /*@__PURE__*/ serviceDesc(file_patches_v1_messages, 0);

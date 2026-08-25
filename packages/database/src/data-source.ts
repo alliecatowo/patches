@@ -19,6 +19,7 @@ export interface CreateDataSourceOptionsInput {
   sslCa?: string;
   poolMax?: number;
   logging?: boolean;
+  statementTimeout?: string;
 }
 
 /**
@@ -35,7 +36,25 @@ export interface CreateDataSourceOptionsInput {
  * release step, never something that races at app startup.
  */
 export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
-  const { url, ssl = false, sslCa, poolMax = 10, logging = false } = input;
+  const {
+    url,
+    ssl = false,
+    sslCa,
+    poolMax = 10,
+    logging = false,
+    statementTimeout = '10s',
+  } = input;
+  // node-postgres interprets `statement_timeout` as **milliseconds** (a number); a string
+  // like '10s' gets coerced to `10`, i.e. a 10-millisecond fuse that randomly kills any
+  // statement slower than a trivial SELECT (seen as migration-run flakiness). Accept the
+  // human unit strings the env schema promises and hand pg a number.
+  const timeoutMatch = /^(\d+)(ms|s)$/.exec(statementTimeout);
+  const statementTimeoutMs = timeoutMatch
+    ? Number(timeoutMatch[1]) * (timeoutMatch[2] === 's' ? 1000 : 1)
+    : Number(statementTimeout);
+  if (!Number.isFinite(statementTimeoutMs) || statementTimeoutMs <= 0) {
+    throw new Error(`Invalid statement timeout: ${statementTimeout}`);
+  }
   return {
     type: 'postgres',
     url,
@@ -46,7 +65,7 @@ export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
     namingStrategy: new SnakeNamingStrategy(),
     entities: [...ALL_ENTITIES],
     migrations: [...ALL_MIGRATIONS],
-    extra: { max: poolMax },
+    extra: { max: poolMax, statement_timeout: statementTimeoutMs },
   } satisfies DataSourceOptions;
 }
 

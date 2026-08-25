@@ -6,6 +6,7 @@ import {
 } from '@patches/proto/nest';
 import { DataSource } from 'typeorm';
 
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import { attachReportEvidence, type NodeFrankingKeyRing } from './report-evidence.js';
 import {
@@ -35,6 +36,7 @@ export class E2eeReportEvidenceService {
     // `node-franking-key-ring.ts`). Tests can still inject a fake positionally, bypassing Nest
     // entirely.
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
+    private readonly rateLimits: E2eeRateLimitService,
   ) {
     this.#keys = keys;
   }
@@ -42,7 +44,13 @@ export class E2eeReportEvidenceService {
   async attachReportEvidence(
     actorId: string,
     request: AttachReportEvidenceRequest,
+    peer: string | undefined = undefined,
   ): Promise<AttachReportEvidenceResponse> {
+    // Same shape as the legacy report paths' budget (`ReportRateLimitService`, spec §102):
+    // evidence disclosure is a reporter-initiated write and is rate-limited before any
+    // verification work runs. Audit P1: this RPC previously had no limit at all.
+    await this.rateLimits.consumeReportEvidence(actorId, peer);
+
     return this.dataSource.transaction((manager) =>
       attachReportEvidence(manager, actorId, request, this.#keys),
     );

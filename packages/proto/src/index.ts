@@ -260,8 +260,6 @@ export type {
   ReportActorResponse,
   ReportE2eeMessageRequest,
   ReportE2eeMessageResponse,
-  ReportMessageRequest,
-  ReportMessageResponse,
   ReportPostRequest,
   ReportPostResponse,
   UnblockActorRequest,
@@ -343,10 +341,6 @@ export type { CommunityInviteStatus, CommunityRole } from './generated/patches/v
 export type {
   Conversation,
   ConversationMember,
-  CreateConversationRequest,
-  CreateConversationResponse,
-  DeleteMessageRequest,
-  DeleteMessageResponse,
   DirectMessageServiceClient,
   DirectMessageServiceController,
   GetConversationRequest,
@@ -355,20 +349,10 @@ export type {
   LeaveConversationResponse,
   ListConversationsRequest,
   ListConversationsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  Message,
-  MessageRequest,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from './generated/patches/v1/messages.js';
-export type { ConversationKind, MessageRequestStatus } from './generated/patches/v1/messages.js';
+export type { ConversationKind } from './generated/patches/v1/messages.js';
 
 // E2EE DM contract (ADR 0020, P13-001). Schema-only: no server controller implements
 // `E2eeService` yet, so these are the wire types a future implementation must satisfy.
@@ -579,7 +563,6 @@ export {
   GITHUB_LOGIN_STATUS,
   LABEL_ACTION,
   MEDIA_STATUS,
-  MESSAGE_REQUEST_STATUS,
   MODERATION_ACTION_TYPE,
   MODERATION_LOG_SUBJECT_KIND,
   MODERATION_REASON_CATEGORY,

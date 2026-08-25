@@ -16,9 +16,11 @@ import {
   type RemoveE2eeMemberRequest,
   type RemoveE2eeMemberResponse,
 } from '@patches/proto/nest';
-import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { mayMessageDirectly } from '../messages/direct-message-eligibility.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { appendGroupControlEvent, toProtoGroupControlEvent } from './group-control.js';
 
 const DEFAULT_LIST_LIMIT = 50;
@@ -51,11 +53,15 @@ const MAX_LIST_LIMIT = 200;
  */
 @Injectable()
 export class E2eeGroupService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rateLimits: E2eeRateLimitService,
+  ) {}
 
   async addE2eeMember(
     actorId: string,
     request: AddE2eeMemberRequest,
+    peer: string | undefined = undefined,
   ): Promise<AddE2eeMemberResponse> {
     if (request.conversationId.length === 0) {
       throw AppError.validation('conversation_id is required.');
@@ -69,8 +75,10 @@ export class E2eeGroupService {
       );
     }
 
+    await this.rateLimits.consumeGroupControl(actorId, peer);
+
     return this.dataSource.transaction(async (manager) => {
-      await requireE2eeConversation(manager, request.conversationId);
+      const conversation = await requireE2eeConversation(manager, request.conversationId);
       const members = await loadMembers(manager, request.conversationId);
       requireActiveMember(members, actorId, 'Only an active member may add a member.');
 
@@ -92,6 +100,29 @@ export class E2eeGroupService {
         if (await blockedEitherDirection(manager, member.actorId, request.actorId)) {
           throw subjectUnavailable();
         }
+      }
+
+      // First-contact eligibility for the add's subject, the same `mayMessageDirectly`
+      // semantics legacy DM creation enforces (spec §183.2; audit P1). Blocks above cover
+      // every existing pair; this covers "the caller may contact this subject at all".
+      // Rejoins of a previously-removed member are subject to it too — eligibility is
+      // evaluated at transition time, never inherited from the original add.
+      //
+      // Audit P0-1(d), per ADR 0020 §7: a DIRECT-kind E2EE thread is its founding pairwise
+      // conversation. Group-control growth — adding someone with no prior membership row —
+      // would silently turn it into a three-person group wearing a DIRECT identity, which no
+      // client renders as a group, and would break the pairwise DIRECT invariants (§1.1: a
+      // row is never interpretable as both shapes). New members therefore require a
+      // GROUP-kind conversation; rejoins of the founding pair stay allowed so remove/rejoin
+      // remains symmetric on a 1:1 thread.
+      if (conversation.kind === 'DIRECT' && existingRow === undefined) {
+        throw AppError.validation(
+          'A DIRECT-kind E2EE conversation cannot add new members. Create a GROUP-kind ' +
+            'E2EE conversation instead.',
+        );
+      }
+      if (!(await mayMessageDirectly(manager, actorId, request.actorId))) {
+        throw subjectUnavailable();
       }
 
       try {
@@ -199,11 +230,16 @@ export class E2eeGroupService {
     const conversation = await this.dataSource
       .getRepository(ConversationEntity)
       .findOne({ where: { id: request.conversationId } });
+    // Membership is looked up regardless of `leftAt` (audit P2): a *removed* member must
+    // still be able to read the transcript up to and including their own removal event —
+    // they lived those epochs and need the events to verify the transcripts their devices
+    // already hold. Everything after their removal stays hidden, exactly like mailbox
+    // envelopes stop at revocation without becoming a remote wipe (ADR 0020 §7).
     const membership =
       conversation === null
         ? null
         : await this.dataSource.getRepository(ConversationMemberEntity).findOne({
-            where: { conversationId: request.conversationId, actorId, leftAt: IsNull() },
+            where: { conversationId: request.conversationId, actorId },
           });
     if (conversation === null || conversation.securityMode !== 'E2EE_V1' || membership === null) {
       throw new AppError(
@@ -221,11 +257,36 @@ export class E2eeGroupService {
         : parseEpoch(decodeEpochCursor(request.cursor), 'cursor');
     const startEpoch = cursorEpoch > afterEpoch ? cursorEpoch : afterEpoch;
 
-    const rows = await this.dataSource.getRepository(E2eeGroupControlEventEntity).find({
-      where: { conversationId: request.conversationId, epoch: MoreThan(startEpoch.toString()) },
-      order: { epoch: 'ASC' },
-      take: limit + 1,
-    });
+    // A past member's window ends at the last REMOVED event naming them — their removal, or
+    // (defensively, if the row outlived its event) nothing at all.
+    let endEpoch: bigint | null = null;
+    if (membership.leftAt !== null) {
+      const removal = await this.dataSource.getRepository(E2eeGroupControlEventEntity).findOne({
+        where: {
+          conversationId: request.conversationId,
+          subjectActorId: actorId,
+          changeKind: 'REMOVED',
+        },
+        order: { epoch: 'DESC' },
+      });
+      if (removal === null) {
+        return { events: [], page: { nextCursor: '', hasMore: false } };
+      }
+      endEpoch = BigInt(removal.epoch);
+    }
+
+    const qb = this.dataSource
+      .getRepository(E2eeGroupControlEventEntity)
+      .createQueryBuilder('event')
+      .where('event.conversationId = :conversationId', { conversationId: request.conversationId })
+      .andWhere('event.epoch > :startEpoch', { startEpoch: startEpoch.toString() })
+      .orderBy('event.epoch', 'ASC')
+      .take(limit + 1);
+    if (endEpoch !== null) {
+      qb.andWhere('event.epoch <= :endEpoch', { endEpoch: endEpoch.toString() });
+    }
+
+    const rows = await qb.getMany();
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
     const last = page.at(-1);

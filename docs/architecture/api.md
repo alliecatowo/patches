@@ -408,20 +408,27 @@ capability- and rate-limit-gated and idempotent by creator plus `client_request_
 becomes the first moderator. Moderation changes are audit logged, and removing a community
 clears its posts' `community_id`.
 
-### DirectMessageService (§183) — implemented in `messages.proto` (P11-004)
+### DirectMessageService (§183, §194; ADR 0030/B-095) — content-free surface only, `messages.proto`
 
-Provides conversation creation/list/get, send/list/delete, request accept/decline, unread
-marking, and archive operations. Direct threads require mutual follows or an accepted request;
-pending requests allow one message, declined pairs have a 30-day bar, groups are capped at
-eight, and block failures do not expose a recipient oracle. Messages are sanitized text,
-sender deletion is a tombstone, and unread state is per viewer without read receipts.
+ADR 0030/B-095 deleted this service's plaintext send/read/delete RPCs and the message-request
+flow in the same change set as the enum removal below; only `ListConversations`,
+`GetConversation`, `LeaveConversation`, and `MarkConversationRead` remain. Message bodies now
+travel exclusively through `E2eeService.SendEnvelopes`/`ListMailboxEnvelopes` — see the next
+section. Direct threads still require a mutual follow (`mayMessageDirectly`,
+`apps/server/src/modules/messages/direct-message-eligibility.ts`); the accepted-message-request
+arm of §183.2 has no backing store any more, so mutual follow is currently the only path to
+first contact. Groups are capped at eight, and block failures do not expose a recipient oracle.
+Unread state is per viewer without read receipts.
 
 No push infrastructure until a mobile client exists — the TUI polls while active and
 supports manual refresh.
 
-`Conversation.security_mode` is read-only and fixed at creation. `CreateConversation` always
-produces `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; there is no RPC in this service that
-converts a conversation between modes. Clients render the §183.1/§194 disclosure from that field.
+`Conversation.security_mode` is read-only and fixed at creation. Every conversation is
+`CONVERSATION_SECURITY_MODE_E2EE_V1`; `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE` is
+reserved and never reissued. There is no RPC in any service that converts a conversation
+between modes. Clients render the E2EE disclosure
+(`requiredConversationDisclosure('E2EE_V1')`, `@patches/domain`) from that field — see
+`docs/architecture/e2ee.md` §6.
 
 ### E2eeService (§183, §194, §195.1) — implemented node-side, capability disabled (`e2ee.proto`, ADR 0020)
 

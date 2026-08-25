@@ -4,8 +4,19 @@ import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 
 import { createDataSource } from '../src/data-source.js';
+import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+
+// The ledger migration is located BY NAME, never by position: slicing [-1] broke when
+// later migrations landed after it (FilterListScopes, RemoveLegacyServerVisibleDms),
+// building a schema that already had the composite prekey FK — the fixture insert then
+// failed with fk_e2ee_one_time_prekeys_device_identity_id_key_id (main CI, 2026-08-25).
+const LEDGER_MIGRATION_NAME = 'AddE2eeIssuedPrekeyLedger1787617557448';
+const ledgerIndex = ALL_MIGRATIONS.findIndex((m) => m.name === LEDGER_MIGRATION_NAME);
+if (ledgerIndex === -1) {
+  throw new Error(`${LEDGER_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`);
+}
 
 if (!testDatabaseUrl) {
   console.warn(
@@ -15,12 +26,61 @@ if (!testDatabaseUrl) {
 
 describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postgres)', () => {
   let dataSource: DataSource;
+  let migrationFixture: { deviceIdentityId: string; keyId: string };
 
   beforeAll(async () => {
     dataSource = createDataSource({ url: testDatabaseUrl! });
+    // Prove the ledger migration against actual existing E2EE rows, rather than only against
+    // an empty latest schema: migrate to just BEFORE the ledger, insert fixture rows, then
+    // run the ledger (and anything after it) on top.
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(0, ledgerIndex) });
     await dataSource.initialize();
     await dataSource.dropDatabase();
     await dataSource.runMigrations();
+    const actorId = randomUUID();
+    const rootId = randomUUID();
+    const deviceIdentityId = randomUUID();
+    const keyId = '741';
+    await dataSource.query(
+      `INSERT INTO actors (id, handle, handle_normalized, is_local) VALUES ($1, $2, $2, true)`,
+      [actorId, `preledger_${randomUUID().slice(0, 8)}`],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key) VALUES ($1, $2, 1, $3)`,
+      [rootId, actorId, Buffer.alloc(32, 1)],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_device_identities (id, actor_id, identity_root_id, device_id, generation, signing_public_key, agreement_public_key, certificate_bytes, root_signature, certificate_created_at, expires_at)
+       VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, now(), now() + interval '1 day')`,
+      [
+        deviceIdentityId,
+        actorId,
+        rootId,
+        randomUUID(),
+        Buffer.alloc(32, 2),
+        Buffer.alloc(32, 3),
+        Buffer.alloc(128, 4),
+        Buffer.alloc(64, 5),
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_one_time_prekeys (device_identity_id, key_id, public_key, consumed_at)
+       VALUES ($1, $2, $3, now())`,
+      [deviceIdentityId, keyId, Buffer.alloc(32, 6)],
+    );
+    migrationFixture = { deviceIdentityId, keyId };
+    // TypeORM captures migration metadata at initialization, so reconnect with the single
+    // target migration rather than mutating an already-initialized source.
+    await dataSource.destroy();
+    dataSource = createDataSource({ url: testDatabaseUrl! });
+    // The ledger and everything appended after it, in order — the final state must be
+    // fully migrated ("no pending migration" assertion below).
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex) });
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+    await dataSource.destroy();
+    dataSource = createDataSource({ url: testDatabaseUrl! });
+    await dataSource.initialize();
   });
 
   afterAll(async () => {
@@ -39,6 +99,7 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       'e2ee_logical_messages',
       'e2ee_mailbox_envelopes',
       'e2ee_node_franking_keys',
+      'e2ee_one_time_prekey_key_ids',
       'e2ee_one_time_prekeys',
       'e2ee_report_evidence',
       'e2ee_report_evidence_items',
@@ -47,7 +108,100 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 
-  it('keeps legacy rows labelled and rejects every conversation mode change', async () => {
+  it('backfills existing issued IDs before enforcing the retention FKs and indexes', async () => {
+    const ledgers = await dataSource.query<Array<{ key_id: string; consumed_at: Date | null }>>(
+      `SELECT key_id, consumed_at FROM e2ee_one_time_prekey_key_ids
+       WHERE device_identity_id = $1 AND key_id = $2`,
+      [migrationFixture.deviceIdentityId, migrationFixture.keyId],
+    );
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0]?.consumed_at).not.toBeNull();
+    await expect(
+      dataSource.query(
+        `INSERT INTO e2ee_one_time_prekeys (device_identity_id, key_id, public_key)
+         VALUES ($1, 742, $2)`,
+        [migrationFixture.deviceIdentityId, Buffer.alloc(32, 7)],
+      ),
+    ).rejects.toThrow(/fk_e2ee_one_time_prekeys_device_identity_id_key_id/);
+    const indexes = await dataSource.query<Array<{ indexname: string; indexdef: string }>>(
+      `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'
+       AND indexname IN ('idx_e2ee_mailbox_envelopes_acknowledged_at_id',
+                         'idx_e2ee_one_time_prekeys_consumed_at_id',
+                         'idx_e2ee_signed_prekeys_retired_at_id')`,
+    );
+    expect(indexes.map((index) => index.indexname).sort()).toEqual([
+      'idx_e2ee_mailbox_envelopes_acknowledged_at_id',
+      'idx_e2ee_one_time_prekeys_consumed_at_id',
+      'idx_e2ee_signed_prekeys_retired_at_id',
+    ]);
+    for (const index of indexes) expect(index.indexdef).toMatch(/WHERE .*IS NOT NULL/);
+    const constraints = await dataSource.query<
+      Array<{ conname: string; contype: string; confdeltype: string; definition: string }>
+    >(
+      `SELECT conname, contype, confdeltype, pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conname IN ('pk_e2ee_one_time_prekey_key_ids_device_identity_id_key_id',
+                         'fk_e2ee_one_time_prekey_key_ids_device_identity_id',
+                         'fk_e2ee_one_time_prekeys_device_identity_id_key_id')`,
+    );
+    expect(constraints).toHaveLength(3);
+    expect(constraints.find((row) => row.conname.startsWith('pk_'))?.definition).toContain(
+      'PRIMARY KEY (device_identity_id, key_id)',
+    );
+    expect(
+      constraints.find(
+        (row) => row.conname === 'fk_e2ee_one_time_prekey_key_ids_device_identity_id',
+      )?.confdeltype,
+    ).toBe('c');
+    expect(
+      constraints.find(
+        (row) => row.conname === 'fk_e2ee_one_time_prekeys_device_identity_id_key_id',
+      )?.confdeltype,
+    ).toBe('r');
+    await expect(
+      dataSource.query(`SELECT 1 FROM outbox_jobs WHERE type = 'E2EE_RETENTION_SWEEP' LIMIT 1`),
+    ).resolves.toEqual([]);
+  });
+
+  it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
+    // Undo from the ledger onward (migrations after the ledger pop first), so the
+    // DB ends at the pre-ledger schema — exactly what the assertions below expect.
+    for (let i = ALL_MIGRATIONS.length - ledgerIndex; i > 0; i--) {
+      await dataSource.undoLastMigration();
+    }
+
+    await expect(
+      dataSource.query(`SELECT to_regclass('public.e2ee_one_time_prekey_key_ids') AS relation`),
+    ).resolves.toEqual([{ relation: null }]);
+    await expect(
+      dataSource.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conname = 'fk_e2ee_one_time_prekeys_device_identity_id_key_id'`,
+      ),
+    ).resolves.toEqual([]);
+
+    await dataSource.runMigrations();
+    await expect(
+      dataSource.query(
+        `SELECT key_id FROM e2ee_one_time_prekey_key_ids
+         WHERE device_identity_id = $1 AND key_id = $2`,
+        [migrationFixture.deviceIdentityId, migrationFixture.keyId],
+      ),
+    ).resolves.toEqual([{ key_id: migrationFixture.keyId }]);
+    await expect(
+      dataSource.query(
+        `INSERT INTO e2ee_one_time_prekeys (device_identity_id, key_id, public_key)
+         VALUES ($1, 742, $2)`,
+        [migrationFixture.deviceIdentityId, Buffer.alloc(32, 8)],
+      ),
+    ).rejects.toThrow(/fk_e2ee_one_time_prekeys_device_identity_id_key_id/);
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
+  });
+
+  it('defaults new conversations to E2EE_V1 and still rejects every mode change', async () => {
+    // Updated for RemoveLegacyServerVisibleDms (post-ADR 0031): LEGACY_SERVER_VISIBLE is
+    // gone — the column default is E2EE_V1 and the CHECK admits only that value. The
+    // immutability trigger (Phase13E2ee, ADR 0020 §1.1) is unchanged.
     const actorId = randomUUID();
     const conversationId = randomUUID();
     await dataSource.query(
@@ -62,12 +216,13 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT "security_mode" FROM "conversations" WHERE "id" = $1`,
       [conversationId],
     );
-    expect(rows[0]?.security_mode).toBe('LEGACY_SERVER_VISIBLE');
+    expect(rows[0]?.security_mode).toBe('E2EE_V1');
     await expect(
-      dataSource.query(`UPDATE "conversations" SET "security_mode" = 'E2EE_V1' WHERE "id" = $1`, [
-        conversationId,
-      ]),
-    ).rejects.toThrow(/immutable/);
+      dataSource.query(
+        `UPDATE "conversations" SET "security_mode" = 'LEGACY_SERVER_VISIBLE' WHERE "id" = $1`,
+        [conversationId],
+      ),
+    ).rejects.toThrow(/immutable|chk_conversations_security_mode/);
   });
 
   it('enforces key lengths and one active root/device/signed-prekey per identity', async () => {

@@ -24,11 +24,12 @@ storage, and UI is a separate Phase 13 ship gate owned elsewhere.
   prekey use is optional and its absence is surfaced (`usedOneTimePreKey`/
   `consumedOneTimePreKeyId`), never silently claimed as protection it didn't provide.
 - **`double-ratchet.ts`** — Signal Double Ratchet revision 4, header-encryption profile: DH
-  ratchet, root/sending/receiving KDF chains, bounded skipped-message keys (`MAX_SKIP`,
-  `MAX_SKIPPED_KEYS`) indexed by `(header key, message number)`, out-of-order delivery, and
-  explicit, versioned state serialization (`encodeRatchetState`/`decodeRatchetState`) for an
-  encrypted vault. `ratchetEncrypt`/`ratchetDecrypt` never mutate the caller's state — see "State
-  commit contract" below.
+  ratchet, root/sending/receiving KDF chains, bounded skipped-message keys (`MAX_SKIPPED_KEYS`,
+  the sole skip bound — its recovery semantics are documented at the constant) indexed by
+  `(header key, message number)`, out-of-order delivery, and explicit, versioned state
+  serialization (`encodeRatchetState`/`decodeRatchetState`) for an encrypted vault.
+  `ratchetEncrypt`/`ratchetDecrypt` never mutate the caller's state — see "State commit contract"
+  below.
 - **`franking.ts`** — an HMAC-based committing scheme for abuse-report evidence (ADR 0020 §9):
   a sender-chosen opening key binds a commitment to the exact plaintext; the node's own symmetric
   report tag binds a canonical transcript (era, conversation/epoch, message/sender/recipient
@@ -55,7 +56,7 @@ Signal's X3DH and Double Ratchet specifications do not publish test-vector secti
 therefore use the official RFC 7748 and RFC 8032 primitive vectors (`primitives.test.ts`), plus
 this implementation's own checked-in deterministic generated transcripts (`vectors/`), inline
 deterministic transcript assertions, `fast-check` property tests for ping-pong delivery under
-random drop/reorder within `MAX_SKIP` and fuzzed-ciphertext decryption
+random drop/reorder within the skip-cache bound and fuzzed-ciphertext decryption
 (`double-ratchet.property.test.ts`), and replay/malformed-input/state-rollback unit tests.
 Cross-implementation vectors and independent review remain open ship gates.
 

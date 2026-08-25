@@ -22,7 +22,7 @@
     "test": "turbo run test",
     "test:watch": "vitest",
     "test:integration": "vitest run --project database --project testkit --project server-integration --project worker-integration --project admin-integration --no-file-parallelism",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "verify": "export PATCHES_WEB_ALLOW_LOCAL_BUILD=1 && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "proto:gen": "pnpm --filter @patches/proto gen",
     "proto:lint": "pnpm --filter @patches/proto lint:buf",
     "proto:format": "pnpm --filter @patches/proto format:buf",
@@ -53,6 +53,20 @@
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vitest": "catalog:",
-    "wrangler": "catalog:"
+    "wrangler": "catalog:",
+    "prom-client": "catalog:",
+    "@opentelemetry/exporter-prometheus": "catalog:",
+    "@opentelemetry/auto-instrumentations-node": "catalog:",
+    "@opentelemetry/instrumentation-grpc": "catalog:",
+    "@opentelemetry/instrumentation-http": "catalog:",
+    "@opentelemetry/instrumentation-nestjs-core": "catalog:",
+    "@opentelemetry/instrumentation-pg": "catalog:",
+    "@opentelemetry/sdk-node": "^0.50.0",
+    "@opentelemetry/sdk-metrics": "^1.25.0",
+    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@opentelemetry/resources": "^1.25.0",
+    "@opentelemetry/semantic-conventions": "^1.25.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.50.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.50.0"
   }
 }

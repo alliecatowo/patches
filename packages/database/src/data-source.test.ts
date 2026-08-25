@@ -26,15 +26,30 @@ describe('createDataSourceOptions', () => {
   it('defaults ssl to false, poolMax to 10, logging to false', () => {
     const options = createDataSourceOptions({ url });
     expect(options.ssl).toBe(false);
-    expect(options.extra).toEqual({ max: 10 });
+    // ms number, never a unit string — pg would read '10s' as 10ms (see data-source.ts)
+    expect(options.extra).toEqual({ max: 10, statement_timeout: 10_000 });
     expect(options.logging).toBe(false);
   });
 
   it('maps ssl/poolMax/logging inputs through', () => {
     const options = createDataSourceOptions({ url, ssl: true, poolMax: 25, logging: true });
     expect(options.ssl).toEqual({ rejectUnauthorized: true });
-    expect(options.extra).toEqual({ max: 25 });
+    expect(options.extra).toEqual({ max: 25, statement_timeout: 10_000 });
     expect(options.logging).toBe(true);
+  });
+
+  it('coerces unit-suffixed statement timeouts to milliseconds', () => {
+    expect(createDataSourceOptions({ url, statementTimeout: '5s' }).extra).toEqual({
+      max: 10,
+      statement_timeout: 5_000,
+    });
+    expect(createDataSourceOptions({ url, statementTimeout: '250ms' }).extra).toEqual({
+      max: 10,
+      statement_timeout: 250,
+    });
+    expect(() => createDataSourceOptions({ url, statementTimeout: '10min' })).toThrow(
+      /Invalid statement timeout/,
+    );
   });
 
   it('never disables certificate verification, and takes a private CA instead', () => {

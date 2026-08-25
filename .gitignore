@@ -39,6 +39,7 @@ Thumbs.db
 
 # --- agent / local overrides ---
 .claude/settings.local.json
+.codex/playwright-output/
 *.local.md
 .mise.local.toml
 

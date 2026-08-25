@@ -9,6 +9,8 @@ export const databaseEnvSchema = z.object({
   TEST_DATABASE_URL: z.url().optional(),
   DATABASE_SSL: booleanish().default(false),
   DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
+  /** Per-connection statement timeout (e.g. '10s', '30s'). Applied via pg `statement_timeout`. */
+  DATABASE_STATEMENT_TIMEOUT: z.string().default('10s'),
 });
 
 export type DatabaseEnv = z.infer<typeof databaseEnvSchema>;

@@ -83,6 +83,17 @@ const envObjectSchema = z.object({
    * whether this node is authorized to exercise the isolated-test capability.
    */
   E2EE_UNREVIEWED_DEV_MODE: booleanish().default(false),
+  // Owner-approved franking profiles (P13-016 resolution). Empty = fail-closed.
+  E2EE_APPROVED_FRANKING_PROFILES: z.string().default(''),
+  /**
+   * B-108 / P13-014 — the final EXPERIMENTAL_CANARY → ENABLED flip (ADR 0020 §11's rollout
+   * ladder, `E2EE_CAPABILITY_STATE_ENABLED`). Disclosure only: canary and enabled accept the
+   * exact same send traffic, so this changes what `GetE2eeCapability` reports, not the fanout
+   * approval gate. It can never upgrade a node past its review position — without an approved
+   * franking profile the node still reports `ISOLATED_TEST_ONLY`/`DISABLED`. Default false;
+   * flip to true only after `infra/scripts/e2ee-lab.sh` (the B-108 interop lab) is green.
+   */
+  E2EE_V1_ENABLED: booleanish().default(false),
   /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
@@ -433,6 +444,16 @@ const envObjectSchema = z.object({
   HTTP_HEADERS_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   HTTP_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 
+  /** OpenTelemetry instrumentation (Wave 1 observability). */
+  OTEL_ENABLED: z.enum(['true', 'false']).default('false'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().trim().optional(),
+  OTEL_SERVICE_NAME: z.string().trim().default('patches-server'),
+  OTEL_RESOURCE_ATTRIBUTES: z.string().trim().optional(),
+
+  /** Prometheus metrics server (Wave 1 observability). */
+  METRICS_ENABLED: z.enum(['true', 'false']).default('false'),
+  METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9090),
+
   /** S-001: per-unary-RPC server-side deadline, enforced by `RpcBudgetInterceptor` — no
    * handler may hold a worker/DB connection open indefinitely regardless of client behaviour. */
   RPC_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
@@ -461,6 +482,12 @@ const envObjectSchema = z.object({
    * wall of `@x`s must not fan out into hundreds of notification writes from one post). Same
    * default as the value this replaces (`post.service.ts`'s former hardcoded constant). */
   MENTION_FANOUT_MAX: z.coerce.number().int().positive().default(50),
+  /** B-103: when true, rate limits use the DB-backed `rate_limit_buckets` table instead of
+   * the in-process fixed-window store. This enables global rate limiting across multiple
+   * server/worker replicas — essential when Fly's TLS-terminating proxy collapses all
+   * external clients to one peer address (A-039). Default false for backward compatibility
+   * and because the in-memory store is simpler for single-replica nodes. */
+  RATE_LIMIT_GLOBAL: booleanish().default(false),
 });
 
 export const envSchema = envObjectSchema

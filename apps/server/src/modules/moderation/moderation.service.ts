@@ -25,7 +25,6 @@ import type { ActorSummary } from '../auth/auth.dto.js';
 import { toActorSummary } from '../auth/auth.dto.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import type { RelationshipView } from '../graph/graph.dto.js';
-import { MessagesService } from '../messages/messages.service.js';
 import { PostService } from '../posts/post.service.js';
 import { parseInput, uuidInputSchema } from '../posts/validation.js';
 import {
@@ -55,7 +54,6 @@ export class ModerationService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly posts: PostService,
-    private readonly messages: MessagesService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -263,44 +261,18 @@ export class ModerationService {
   }
 
   /**
-   * Captures bounded, point-in-time evidence for a DM report (spec §183.4). A missing
-   * message and a message outside one of the caller's active conversations are deliberately
-   * indistinguishable, preserving the same no-oracle rule as the DM read paths.
-   */
-  async reportMessage(
-    reporterActorId: string,
-    messageIdRaw: string,
-    reason: ReportReason,
-    details: string,
-  ): Promise<string> {
-    const messageId = parseInput(uuidInputSchema, messageIdRaw);
-
-    const evidence = await this.messages.snapshotMessageForReport(reporterActorId, messageId);
-    const reports = this.dataSource.getRepository(Report);
-    const saved = await reports.save(
-      reports.create({
-        reporterActorId,
-        subjectType: 'MESSAGE',
-        subjectMessageId: evidence.messageId,
-        messageSnapshot: evidence.snapshot,
-        reason,
-        details: normalizeDetails(details),
-      }),
-    );
-    return saved.id;
-  }
-
-  /**
-   * A fourth sibling of `reportPost`/`reportActor`/`reportMessage`, not a generic report
-   * method (ADR 0020 §9, P13-019): unlike `reportMessage`, this cannot snapshot plaintext into
-   * `message_snapshot` — the node never has E2EE plaintext to snapshot. It only creates the
-   * `Report` row (`subject_type = 'E2EE_MESSAGE'`); a reporter who wants to substantiate the
-   * report discloses plaintext/opening/franking material separately, and only with explicit
-   * consent, via `E2eeService.AttachReportEvidence` against this returned `report_id`.
+   * A third sibling of `reportPost`/`reportActor`, not a generic report method (ADR 0020 §9,
+   * P13-019): the node never has E2EE plaintext to snapshot, so this only creates the `Report`
+   * row (`subject_type = 'E2EE_MESSAGE'`); a reporter who wants to substantiate the report
+   * discloses plaintext/opening/franking material separately, and only with explicit consent,
+   * via `E2eeService.AttachReportEvidence` against this returned `report_id`. `reportMessage`,
+   * the plaintext sibling this once had (spec §183.4's snapshot-backed evidence), was removed
+   * by ADR 0030 §B-095 alongside the rest of the server-visible DM machinery it snapshotted —
+   * this is the whole message-report story now.
    *
    * A missing logical message and one whose conversation the caller isn't (or never was) a
-   * member of are uniformly `E2EE_MESSAGE_NOT_FOUND` — same no-oracle rule `reportMessage`'s
-   * `MESSAGE_NOT_FOUND` already follows.
+   * member of are uniformly `E2EE_MESSAGE_NOT_FOUND` — no-oracle, same reasoning every other
+   * membership-gated lookup in this service follows.
    */
   async reportE2eeMessage(
     reporterActorId: string,

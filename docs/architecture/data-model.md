@@ -1165,14 +1165,14 @@ invite can be re-sent.
 
 A direct-message conversation (§183.4). Never federated, no media, no link previews (§192).
 
-| Column                | Type          | Nullable | Notes                                                                                  |
-| --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------- |
-| `id`                  | `uuid`        | no       | PK                                                                                     |
-| `kind`                | `text`        | no       | `direct` \| `group`, default `direct`                                                  |
-| `security_mode`       | `text`        | no       | immutable `LEGACY_SERVER_VISIBLE` \| `E2EE_V1`; existing rows default to legacy        |
-| `created_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — a conversation outlives its creator's account |
-| `created_at`          | `timestamptz` | no       |                                                                                        |
-| `last_message_at`     | `timestamptz` | no       | denormalized, updated on every `SendMessage`, drives `ListConversations`'s ordering    |
+| Column                | Type          | Nullable | Notes                                                                                                                                                                                        |
+| --------------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | `uuid`        | no       | PK                                                                                                                                                                                           |
+| `kind`                | `text`        | no       | `direct` \| `group`, default `direct`                                                                                                                                                        |
+| `security_mode`       | `text`        | no       | immutable, `CHECK`-constrained to `E2EE_V1` only (ADR 0030/B-095, migration `RemoveLegacyServerVisibleDms`); `LEGACY_SERVER_VISIBLE` rows were deleted, not migrated (pre-alpha, zero users) |
+| `created_by_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — a conversation outlives its creator's account                                                                                                       |
+| `created_at`          | `timestamptz` | no       |                                                                                                                                                                                              |
+| `last_message_at`     | `timestamptz` | no       | denormalized, updated on every `SendMessage`, drives `ListConversations`'s ordering                                                                                                          |
 
 ---
 
@@ -1191,43 +1191,15 @@ A direct-message conversation (§183.4). Never federated, no media, no link prev
 
 ---
 
-### `messages`
+### `messages`, `message_requests` — dropped (ADR 0030/B-095)
 
-Bodies never appear in logs/metrics/traces/errors (§192, enforced at the logging layer, not
-here). Soft delete (tombstone), same as `posts`.
-
-| Column            | Type          | Nullable | Notes                                                                          |
-| ----------------- | ------------- | -------- | ------------------------------------------------------------------------------ |
-| `id`              | `uuid`        | no       | PK                                                                             |
-| `conversation_id` | `uuid`        | no       | FK → `conversations.id`, `ON DELETE CASCADE`                                   |
-| `sender_actor_id` | `uuid`        | yes      | FK → `actors.id`, `ON DELETE SET NULL` — history outlives the sender's account |
-| `body`            | `text`        | no       | max 2,000 chars (§188); empty once tombstoned                                  |
-| `created_at`      | `timestamptz` | no       |                                                                                |
-| `deleted_at`      | `timestamptz` | yes      | tombstone                                                                      |
-
-**Indexes** (§189): `messages(conversation_id, created_at, id)`.
-
----
-
-### `message_requests`
-
-The other new unsolicited-contact vector (§192, alongside `community_invites`).
-
-| Column               | Type          | Nullable | Notes                                                       |
-| -------------------- | ------------- | -------- | ----------------------------------------------------------- |
-| `id`                 | `uuid`        | no       | PK                                                          |
-| `sender_actor_id`    | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                       |
-| `recipient_actor_id` | `uuid`        | no       | FK → `actors.id`, `ON DELETE CASCADE`                       |
-| `body`               | `text`        | no       | max 2,000 chars (§188) — same budget as an ordinary message |
-| `status`             | `text`        | no       | `pending` \| `accepted` \| `declined`, default `pending`    |
-| `created_at`         | `timestamptz` | no       |                                                             |
-
-**Constraints**: `UNIQUE (sender_actor_id, recipient_actor_id) WHERE status = 'PENDING'` — not
-in §189's literal column list, but required by §188's "1 pending per (sender, recipient)"
-limit, which MUST exist as a database constraint where practical; same partial-unique-index
-technique §189 already specifies for `community_invites`.
-
-**Indexes**: `message_requests(recipient_actor_id, created_at, id)`.
+Both tables (the plaintext message body store and the unsolicited-contact request flow) were
+dropped outright by migration `RemoveLegacyServerVisibleDms` when `LEGACY_SERVER_VISIBLE` was
+retired — pre-alpha, zero users, so ADR 0030's consolidation policy authorized deleting the
+data rather than migrating it. Message bodies now travel exclusively as opaque ciphertext
+through the `e2ee_*` tables below (`e2ee_mailbox_envelopes` etc.); first contact requires a
+mutual follow (see `docs/architecture/social.md`'s Direct messages section) since there is no
+request-flow backing store any more.
 
 ---
 
@@ -1296,31 +1268,35 @@ are exercised by integration tests (P13-008's group-control transcript ships in 
 because the externally reviewed franking-profile list is empty. ADR 0027 permits exactly
 `patches-franking-v1` only behind explicit `E2EE_UNREVIEWED_DEV_MODE=true` on owner-authorized,
 disposable test infrastructure with no real users; `NODE_ENV` is a runtime setting, not this
-deployment-trust boundary. This does not satisfy the external-review gate. Ordinary conversations remain
-`LEGACY_SERVER_VISIBLE` (§1.1, enforced by a
-`BEFORE UPDATE` trigger on `conversations.security_mode` that rejects any change). No plaintext
+deployment-trust boundary. This does not satisfy the external-review gate. Every conversation is
+`E2EE_V1` (§1.1; `LEGACY_SERVER_VISIBLE` is retired, ADR 0030/B-095) and the mode is immutable,
+enforced by a `BEFORE UPDATE` trigger on `conversations.security_mode` that rejects any change.
+No plaintext
 body, private/session key, message key, or ratchet state is ever persisted here — see
 `packages/database/src/entities/e2ee-privacy.test.ts`, which asserts that by inspecting every
 `E2ee*` entity's column metadata. The one narrow, intentional exception is
 `e2ee_report_evidence_items.disclosed_plaintext`: content a reporter explicitly selects and
 submits (ADR 0020 §9), never written by ordinary message delivery.
 
-| Table                        | Purpose                                                                                                                                                                                                                                                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `e2ee_identity_roots`        | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                                                                                                                                                                               |
-| `e2ee_device_identities`     | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`.                                                                                                                                                          |
-| `e2ee_device_rosters`        | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                                                                                                                                                                                |
-| `e2ee_signed_prekeys`        | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                                                                                                                                                                                     |
-| `e2ee_one_time_prekeys`      | Public one-time X3DH prekeys; consumed rows are kept as anti-replay tombstones, not deleted.                                                                                                                                                                                                                  |
-| `e2ee_logical_messages`      | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                                                                                                                                                                                   |
-| `e2ee_mailbox_envelopes`     | One opaque per-recipient-device ciphertext payload per logical message.                                                                                                                                                                                                                                       |
-| `e2ee_group_control_events`  | One device-signed, digest-chained membership transition (`ADDED`/`REMOVED`) per `E2EE_V1` conversation; unique `(conversation_id, epoch)`, `epoch >= 2` — epoch 1 is creation and has no event row. No FK on `subject_actor_id`: "who was in the group when" is evidence that survives account deletion (§7). |
-| `e2ee_report_evidence`       | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                                                                                                                                                                         |
-| `e2ee_report_evidence_items` | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                                                                                                                                                                                 |
+| Table                          | Purpose                                                                                                                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2ee_identity_roots`          | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                                                                                                                                                                               |
+| `e2ee_device_identities`       | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`.                                                                                                                                                          |
+| `e2ee_device_rosters`          | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                                                                                                                                                                                |
+| `e2ee_signed_prekeys`          | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                                                                                                                                                                                     |
+| `e2ee_one_time_prekey_key_ids` | Immutable per-device issued one-time-prekey IDs. The `(device_identity_id, key_id)` ledger survives public-row retention cleanup and is the anti-reuse fence; it cascades only with device-identity purge.                                                                                                    |
+| `e2ee_one_time_prekeys`        | Public one-time X3DH prekeys. Every row has a composite foreign key to the issued-ID ledger; consumed rows may be swept only after the ledger records consumption.                                                                                                                                            |
+| `e2ee_logical_messages`        | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                                                                                                                                                                                   |
+| `e2ee_mailbox_envelopes`       | One opaque per-recipient-device ciphertext payload per logical message. Retention sweeps only durably acknowledged rows older than the protocol `MAXLATENCY`; unacknowledged rows are never expiry candidates.                                                                                                |
+| `e2ee_group_control_events`    | One device-signed, digest-chained membership transition (`ADDED`/`REMOVED`) per `E2EE_V1` conversation; unique `(conversation_id, epoch)`, `epoch >= 2` — epoch 1 is creation and has no event row. No FK on `subject_actor_id`: "who was in the group when" is evidence that survives account deletion (§7). |
+| `e2ee_report_evidence`         | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                                                                                                                                                                         |
+| `e2ee_report_evidence_items`   | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                                                                                                                                                                                 |
 
 `reports.subject_type` gained `E2EE_MESSAGE` and `reports.subject_e2ee_logical_message_id`
-(no FK — evidence must outlive ordinary mailbox/message retention) alongside the pre-existing
-`MESSAGE` subject.
+(no FK — evidence must outlive ordinary mailbox/message retention). The plaintext `MESSAGE`
+subject type, its `subject_message_id` column, and its `message_snapshot` column are dropped
+(migration `RemoveLegacyServerVisibleDms`, ADR 0030/B-095) — `E2EE_MESSAGE` is the only
+message-report subject type left.
 
 **Partial-index naming note**: several tables above intentionally have only _one_ index over a
 given column set (e.g. `e2ee_mailbox_envelopes` has no non-partial twin of its

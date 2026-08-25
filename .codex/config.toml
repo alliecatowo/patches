@@ -7,3 +7,50 @@ enabled_tools = ["list_commands", "run_task"]
 default_tools_approval_mode = "prompt"
 startup_timeout_sec = 10
 tool_timeout_sec = 1800
+
+# An isolated, Playwright-owned browser for unattended web inspection and loopback-harness
+# checks. It neither uses the in-app Browser nor attaches to a
+# user's Chrome profile. Keep arbitrary page evaluation and browser-state/file tools
+# disabled at the Codex boundary; add a capability deliberately if a task requires it.
+[mcp_servers.playwright]
+command = "pnpm"
+args = [
+  "dlx",
+  "@playwright/mcp@0.0.79",
+  "--headless",
+  "--isolated",
+  "--block-service-workers",
+  "--image-responses",
+  "omit",
+  "--codegen",
+  "none",
+  "--console-level",
+  "warning",
+  "--timeout-action",
+  "15000",
+  "--timeout-navigation",
+  "60000",
+  "--timeout-settle",
+  "500",
+  "--output-dir",
+  ".codex/playwright-output",
+  "--output-max-size",
+  "52428800",
+]
+enabled_tools = [
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_click",
+  "browser_type",
+  "browser_press_key",
+  "browser_select_option",
+  "browser_hover",
+  "browser_drag",
+  "browser_wait_for",
+  "browser_take_screenshot",
+  "browser_console_messages",
+  "browser_network_requests",
+  "browser_close",
+]
+startup_timeout_sec = 60
+tool_timeout_sec = 90

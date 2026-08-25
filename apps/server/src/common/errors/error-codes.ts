@@ -65,13 +65,6 @@ export const ERROR_CODES = [
    * "no block oracle" rule (§62, §183.4) applied the same way `POST_NOT_FOUND` already is.
    */
   'CONVERSATION_NOT_FOUND',
-  /** `DeleteMessage`/`ModerationService.ReportMessage` on a message id that doesn't exist, or
-   * (for `DeleteMessage`) one the caller didn't send — uniform for the same no-oracle reason
-   * as `CONVERSATION_NOT_FOUND`. */
-  'MESSAGE_NOT_FOUND',
-  /** `RespondToMessageRequest` on a request id that doesn't exist or isn't addressed to the
-   * caller. */
-  'MESSAGE_REQUEST_NOT_FOUND',
   /** `DirectMessageService`'s write paths when this node has `DM_ENABLED=false` (spec §183,
    * §190's `dm_enabled` capability). */
   'DM_DISABLED',
@@ -187,7 +180,7 @@ export const ERROR_CODES = [
   /** P13-019: `ModerationService.ReportE2eeMessage` on a `logical_message_id` that does not
    * resolve to an `E2eeLogicalMessage`, or one whose conversation the caller is not (and never
    * was) a member of — uniform for "doesn't exist" and "isn't yours to report", same §62
-   * no-oracle reason as `CONVERSATION_NOT_FOUND`/`MESSAGE_NOT_FOUND`. */
+   * no-oracle reason as `CONVERSATION_NOT_FOUND`. */
   'E2EE_MESSAGE_NOT_FOUND',
   /** `E2eeService.GetE2eeConversationState`/`SendEnvelopes` (P13-007): a `conversation_id` that
    * doesn't exist, isn't `E2EE_V1`, or the caller isn't an active member of — uniform for the
@@ -254,8 +247,6 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   PAGE_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
   GUESTBOOK_ENTRY_NOT_FOUND: GrpcStatus.NOT_FOUND,
   CONVERSATION_NOT_FOUND: GrpcStatus.NOT_FOUND,
-  MESSAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
-  MESSAGE_REQUEST_NOT_FOUND: GrpcStatus.NOT_FOUND,
   DM_DISABLED: GrpcStatus.FAILED_PRECONDITION,
   COMMUNITY_NOT_FOUND: GrpcStatus.NOT_FOUND,
   COMMUNITY_NAME_TAKEN: GrpcStatus.ALREADY_EXISTS,

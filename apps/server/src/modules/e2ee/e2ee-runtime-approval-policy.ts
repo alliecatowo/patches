@@ -12,7 +12,10 @@ import { assertFrankingProfileApproved, E2EE_FRANKING_PROFILE_V1 } from '@patche
 export class E2eeRuntimeApprovalPolicy {
   readonly #unreviewedDevelopmentMode: boolean;
 
-  constructor(unreviewedDevelopmentMode: boolean) {
+  readonly #approvedProfiles: ReadonlySet<string>;
+
+  constructor(unreviewedDevelopmentMode: boolean, approvedProfiles: readonly string[] = []) {
+    this.#approvedProfiles = new Set(approvedProfiles);
     this.#unreviewedDevelopmentMode = unreviewedDevelopmentMode;
   }
 
@@ -20,7 +23,12 @@ export class E2eeRuntimeApprovalPolicy {
     return this.#unreviewedDevelopmentMode;
   }
 
+  isProfileApproved(profile: string): boolean {
+    return this.#approvedProfiles.has(profile);
+  }
+
   assertProfileApproved(profile: string): void {
+    if (this.isProfileApproved(profile)) return;
     if (this.#unreviewedDevelopmentMode && profile === E2EE_FRANKING_PROFILE_V1) return;
     assertFrankingProfileApproved(profile);
   }

@@ -52,8 +52,25 @@ export class AppConfigService {
   }
 
   /** ADR 0027's owner-authorized, explicitly unreviewed E2EE isolated-test exception. */
+  get e2eeApprovedFrankingProfiles(): string[] {
+    const raw = this.get('E2EE_APPROVED_FRANKING_PROFILES');
+    return raw
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+
   get e2eeUnreviewedDevMode(): boolean {
     return this.get('E2EE_UNREVIEWED_DEV_MODE');
+  }
+
+  /**
+   * B-108 / P13-014: the final canary→ENABLED disclosure flip. True only when the operator
+   * has set `E2EE_V1_ENABLED` after the interop lab passed — never a substitute for an
+   * approved franking profile (see `e2eeApprovedFrankingProfiles`).
+   */
+  get e2eeV1Enabled(): boolean {
+    return this.get('E2EE_V1_ENABLED');
   }
 
   /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
@@ -71,6 +88,10 @@ export class AppConfigService {
 
   get databasePoolMax(): number {
     return this.get('DATABASE_POOL_MAX');
+  }
+
+  get databaseStatementTimeout(): string {
+    return this.get('DATABASE_STATEMENT_TIMEOUT');
   }
 
   get authCodeDeliveryKeys(): Env['AUTH_CODE_DELIVERY_KEYS'] {
@@ -409,6 +430,11 @@ export class AppConfigService {
   /** S-002: `PostService.createPost`'s mention-notification fan-out cap. */
   get mentionFanoutMax(): number {
     return this.get('MENTION_FANOUT_MAX');
+  }
+
+  /** B-103: whether rate limits use the DB-backed `rate_limit_buckets` table. */
+  get rateLimitGlobal(): boolean {
+    return this.get('RATE_LIMIT_GLOBAL');
   }
 }
 

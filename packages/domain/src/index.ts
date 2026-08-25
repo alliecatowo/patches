@@ -20,13 +20,11 @@ export {
   COMMUNITY_NAME_MAX_CHARS,
   COMMUNITY_NAME_MIN_CHARS,
   COMMUNITY_NAME_PATTERN,
-  DM_GROUP_MAX,
   MAX_ACTOR_FLAIR_BYTES,
   MAX_COMMUNITY_DESCRIPTION_CHARS,
   MAX_COMMUNITY_DISPLAY_NAME_CHARS,
   MAX_COMMUNITY_MODERATORS,
   MAX_COMMUNITY_RULES_BYTES,
-  MAX_DM_BODY_CHARS,
   MAX_PINNED_POSTS,
   MAX_POST_CHARS,
   MAX_POST_CHARS_NODE_CEILING,
@@ -34,8 +32,6 @@ export {
   MAX_QUOTED_POST_NESTING_RENDERED,
   MAX_TAG_NAME_CHARS,
   MAX_TAGS_PER_POST,
-  MESSAGE_REQUEST_MAX_MESSAGES,
-  MESSAGE_REQUEST_MAX_PENDING_PER_PAIR,
   RATE_LIMITS,
 } from './limits.js';
 export {
@@ -60,6 +56,37 @@ export {
 
 export { containsUnsafeBytes, sanitizeText, utf8ByteLength } from './sanitize.js';
 export type { SanitizeTextOptions } from './sanitize.js';
+
+// Beta issue reporter diagnostics bundle (B-112/B-113): one schema + one redaction
+// transform, shared verbatim by the TUI and web clients.
+export {
+  buildDiagnosticsBundle,
+  redactDiagnosticsText,
+  serializeDiagnosticsBundle,
+  toIsoTimestamp,
+  DIAGNOSTICS_BREADCRUMB_DETAIL_MAX_CHARS,
+  DIAGNOSTICS_BUNDLE_SCHEMA_VERSION,
+  DIAGNOSTICS_EVENT_MAX_CHARS,
+  DIAGNOSTICS_FRAME_TAIL_MAX_CHARS,
+  DIAGNOSTICS_NOTES_MAX_CHARS,
+  DIAGNOSTICS_SCREENSHOT_MAX_CHARS,
+  MAX_DIAGNOSTICS_BUNDLE_BYTES,
+  MAX_DIAGNOSTICS_BREADCRUMBS,
+  MAX_DIAGNOSTICS_CAPABILITIES,
+  MAX_DIAGNOSTICS_EVENTS,
+  diagnosticsBundleSchema,
+  diagnosticsBreadcrumbSchema,
+  diagnosticsEventSchema,
+} from './diagnostics.js';
+export type {
+  DiagnosticsApp,
+  DiagnosticsBundle,
+  DiagnosticsBundleInput,
+  DiagnosticsBreadcrumb,
+  DiagnosticsBreadcrumbInput,
+  DiagnosticsEvent,
+  DiagnosticsEventInput,
+} from './diagnostics.js';
 
 export { BLOCK_SCHEMAS, BLOCK_TYPES, lenientPageBlockSchema, pageBlockSchema } from './blocks.js';
 export type { PageBlock, RenderablePageBlock, UnknownPageBlock } from './blocks.js';

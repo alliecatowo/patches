@@ -28,6 +28,12 @@ import { Phase13NodeFrankingKeys1787235748738 } from './1787235748738-Phase13Nod
 import { AuthCodeDeliveryEnvelopes1787420562003 } from './1787420562003-AuthCodeDeliveryEnvelopes.js';
 import { AddE2eeGroupControlEvents1787448705727 } from './1787448705727-AddE2eeGroupControlEvents.js';
 import { FederationSocialDepthSchema1787450799656 } from './1787450799656-FederationSocialDepthSchema.js';
+import { AddRateLimitBuckets1787190000002 } from './1787190000002-AddRateLimitBuckets.js';
+import { AddE2eeIssuedPrekeyLedger1787617557448 } from './1787617557448-AddE2eeIssuedPrekeyLedger.js';
+import { AddPgStatStatements1787190000000 } from './1787190000000-AddPgStatStatements.js';
+import { AddPostsFts1787190000001 } from './1787190000001-AddPostsFts.js';
+import { FilterListSubscriptionScopesDefaultReconciliation1787658107141 } from './1787658107141-FilterListSubscriptionScopesDefaultReconciliation.js';
+import { RemoveLegacyServerVisibleDms1787660000000 } from './1787660000000-RemoveLegacyServerVisibleDms.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -72,4 +78,10 @@ export const ALL_MIGRATIONS = [
   AuthCodeDeliveryEnvelopes1787420562003,
   AddE2eeGroupControlEvents1787448705727,
   FederationSocialDepthSchema1787450799656,
+  AddPgStatStatements1787190000000,
+  AddPostsFts1787190000001,
+  AddRateLimitBuckets1787190000002,
+  AddE2eeIssuedPrekeyLedger1787617557448,
+  FilterListSubscriptionScopesDefaultReconciliation1787658107141,
+  RemoveLegacyServerVisibleDms1787660000000,
 ];

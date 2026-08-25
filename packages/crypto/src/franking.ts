@@ -32,6 +32,16 @@ const COMMITMENT_CONTEXT = 'patches-e2ee-v1/franking/commitment';
 const REPORT_CONTEXT = 'patches-e2ee-v1/franking/report';
 
 /**
+ * The one membership-epoch range both transcript encoders accept. {@link encodeCommitmentTranscript}
+ * writes the epoch at u64 width and {@link encodeReportTranscript} writes it at u32 width (the
+ * report width is fixed: widening it would change every stored node-tag transcript, breaking
+ * node-tag compat). Left unchecked, an epoch above `0xFFFFFFFF` would commit under the u64
+ * encoder but be refused by the node's own transcript encoder — a commitment that could never be
+ * reported against. Capping both encoders to this range keeps them binding identical epochs.
+ */
+const MEMBERSHIP_EPOCH_U32_MAX = 0xffff_ffff;
+
+/**
  * The anti-Grubbs/Lu/Ristenpart (CRYPTO 2017) invariant, not ordinary input validation: RFC 2104
  * key reduction makes `HMAC(K, M) === HMAC(SHA256(K), M)` whenever `|K| > 64`, which lets a
  * committer forge a second opening for the same commitment/tag once a key is long enough to be
@@ -94,17 +104,25 @@ function encodeCommitmentTranscript(
   requireNonEmptyString(context.senderActorId, 'Sender actor id');
   requireNonEmptyString(context.senderDeviceId, 'Sender device id');
   requireCount(context.membershipEpoch, 'Membership epoch');
-  return new ByteWriter()
-    .string(COMMITMENT_CONTEXT)
-    .string(context.frankingProfile)
-    .string(E2EE_PROTOCOL)
-    .u8(E2EE_VERSION)
-    .string(context.conversationId)
-    .u64(context.membershipEpoch)
-    .string(context.senderActorId)
-    .string(context.senderDeviceId)
-    .bytes(plaintext)
-    .finish();
+  if (context.membershipEpoch > MEMBERSHIP_EPOCH_U32_MAX) {
+    throw new FrankingError('Membership epoch exceeds the transcript width.');
+  }
+  return (
+    new ByteWriter()
+      .string(COMMITMENT_CONTEXT)
+      .string(context.frankingProfile)
+      .string(E2EE_PROTOCOL)
+      .u8(E2EE_VERSION)
+      .string(context.conversationId)
+      // Same logical field the report transcript encodes at u32 (see MEMBERSHIP_EPOCH_U32_MAX):
+      // values above that range are rejected by both encoders, so this wider wire form never
+      // diverges in accepted range from the node-side encoder below.
+      .u64(context.membershipEpoch)
+      .string(context.senderActorId)
+      .string(context.senderDeviceId)
+      .bytes(plaintext)
+      .finish()
+  );
 }
 
 /**
@@ -215,7 +233,14 @@ export function encodeReportTranscript(transcript: FrankingReportTranscript): Ui
   if (!Number.isSafeInteger(transcript.frankingKeyEra) || transcript.frankingKeyEra < 0) {
     throw new FrankingError('Franking-key era is invalid.');
   }
-  if (!Number.isSafeInteger(transcript.membershipEpoch) || transcript.membershipEpoch < 0) {
+  if (
+    !Number.isSafeInteger(transcript.membershipEpoch) ||
+    transcript.membershipEpoch < 0 ||
+    // Cross-link of MEMBERSHIP_EPOCH_U32_MAX: the commitment encoder writes this same field at
+    // u64, so the shared cap — not the wire width here — is what keeps the two transcripts
+    // binding identical epoch ranges.
+    transcript.membershipEpoch > MEMBERSHIP_EPOCH_U32_MAX
+  ) {
     throw new FrankingError('Membership epoch is invalid.');
   }
   if (!Number.isSafeInteger(transcript.acceptedAtMs) || transcript.acceptedAtMs < 0) {

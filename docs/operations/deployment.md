@@ -176,12 +176,24 @@ classification. Remove the flag before the node handles non-disposable data or r
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
-(what's stored, what's public, that DMs are server-visible, retention, export/deletion,
-contact — summarizing ADR 0017 and `docs/product/privacy.md`), `TERMS_URL` (points at the
-full `docs/product/privacy.md` on GitHub — there is no separate ToS page), `APPEAL_INSTRUCTIONS`
-(the in-client Appeals screen, or email the operator), `OPERATOR_CONTACT` (who runs this node),
-and `DATA_LOCATION` (Fly for compute, Neon Postgres in `aws-us-east-2` for the database,
-Cloudflare R2 for media). See the file itself for the exact published text.
+(what's stored, what's public, that DMs are end-to-end encrypted but visible to the node as
+metadata, retention, export/deletion, contact — summarizing `docs/product/privacy.md`),
+`TERMS_URL` (points at the full `docs/product/privacy.md` on GitHub — there is no separate ToS
+page), `APPEAL_INSTRUCTIONS` (the in-client Appeals screen, or email the operator),
+`OPERATOR_CONTACT` (who runs this node), and `DATA_LOCATION` (Fly for compute, Neon Postgres in
+`aws-us-east-2` for the database, Cloudflare R2 for media). See the file itself for the exact
+published text.
+
+**These two values are published copy, not just config.** `PRIVACY_NOTICE_SUMMARY` in both
+`infra/fly/fly.toml` and `infra/preview/fly-preview.toml` is served **unauthenticated** through
+`NodeService.GetNodePolicy`, so a stale value is a false public statement rather than a private
+misconfiguration. Both asserted the retired ADR 0017 wording ("Direct messages are NOT
+end-to-end encrypted — this node's operator can read them") for as long as it took B-097 to
+notice; that became false the moment B-095 removed the server-visible mode. They now mirror
+`requiredConversationDisclosure('E2EE_V1')` from `@patches/domain` — **including its second
+clause, that the node still sees who you message and when.** Whenever that domain constant
+changes, change these too, in the same commit, and redeploy: an accurate constant behind a stale
+env var still lies to everyone who asks the node what it does.
 
 **Gotcha: `LOG_LEVEL` is `log`, not `info`.** The server's logger factory
 (`apps/server/src/common/logging/logger.factory.ts`) uses Nest's own `LogLevel` union, whose
