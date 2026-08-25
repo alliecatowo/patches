@@ -44,6 +44,14 @@ export function nextIdleDelayMs(currentMs: number, maxMs: number): number {
   return Math.min(currentMs * 2, maxMs);
 }
 
+/** Error material persisted in the outbox must never contain handler/repository input or IDs. */
+export function sanitizeJobFailure(_error: unknown): {
+  code: 'JOB_HANDLER_FAILED';
+  message: string;
+} {
+  return { code: 'JOB_HANDLER_FAILED', message: 'Job handler failed.' };
+}
+
 /**
  * Claim loop over the Postgres outbox (`docs/architecture/jobs.md`, `INITIAL_VISION.md`
  * §12–13, §124).
@@ -269,11 +277,10 @@ export class JobRunner {
       );
     } catch (error) {
       // Never log `job.payload` here — verification/reset jobs carry a code (spec §101).
-      const message = isAuthCodeEmailJobType(job.type)
-        ? 'AUTH_CODE_DELIVERY_FAILED'
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      const failure = isAuthCodeEmailJobType(job.type)
+        ? { code: 'AUTH_CODE_DELIVERY_FAILED', message: 'AUTH_CODE_DELIVERY_FAILED' }
+        : sanitizeJobFailure(error);
+      const message = failure.message;
       const outcome = await this.dataSource.transaction((manager) =>
         markOutboxJobFailed(manager, job.id, { claim, error: message }),
       );
@@ -287,7 +294,7 @@ export class JobRunner {
       this.circuitBreaker.recordFailure(job.type);
       if (!wasOpen && this.circuitBreaker.isOpen(job.type)) {
         this.logger.warn(
-          JSON.stringify({ event: 'outbox_circuit_open', type: job.type, error: message }),
+          JSON.stringify({ event: 'outbox_circuit_open', type: job.type, error: failure.code }),
         );
       }
       this.logger.warn(
@@ -297,7 +304,7 @@ export class JobRunner {
           attempt: job.attempts,
           latencyMs: Date.now() - start,
           outcome,
-          error: message,
+          error: failure.code,
         }),
       );
     }

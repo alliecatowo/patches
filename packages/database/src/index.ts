@@ -66,6 +66,7 @@ export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
 export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';
 export { E2eeSignedPrekey } from './entities/e2ee-signed-prekey.entity.js';
 export { E2eeOneTimePrekey } from './entities/e2ee-one-time-prekey.entity.js';
+export { E2eeOneTimePrekeyKeyId } from './entities/e2ee-one-time-prekey-key-id.entity.js';
 export { E2eeLogicalMessage } from './entities/e2ee-logical-message.entity.js';
 export { E2eeMailboxEnvelope } from './entities/e2ee-mailbox-envelope.entity.js';
 export { E2eeGroupControlEvent } from './entities/e2ee-group-control-event.entity.js';
@@ -215,6 +216,10 @@ export type { NodeFrankingKeySnapshot } from './repositories/e2ee-node-franking-
 export { runMigrationsForTests } from './testing/run-migrations-for-tests.js';
 
 export { JOB_TYPES, type JobType } from './jobs/job-types.js';
+export {
+  e2eeRetentionSweepPayloadSchema,
+  type E2eeRetentionSweepPayload,
+} from './jobs/payloads.js';
 export {
   AUTH_CODE_EMAIL_JOB_TYPES,
   AuthCodeDeliveryEnvelopeError,

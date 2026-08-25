@@ -36,6 +36,8 @@ export const JOB_TYPES = [
    * timer. Seeded once by the `Phase13NodeFrankingKeys` migration; see
    * `apps/worker/src/jobs/handlers/rotate-e2ee-franking-key.handler.ts`. */
   'E2EE_ROTATE_FRANKING_KEY',
+  /** ADR 0031: bounded daily cleanup of acknowledged envelopes and obsolete public prekeys. */
+  'E2EE_RETENTION_SWEEP',
 ] as const;
 
 export type JobType = (typeof JOB_TYPES)[number];

@@ -41,6 +41,20 @@ export const httpRequestsTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+export const e2eeRetentionDeletedTotal = new Counter({
+  name: 'patches_e2ee_retention_deleted_total',
+  help: 'E2EE retention rows deleted by bounded kind',
+  labelNames: ['kind'] as const,
+  registers: [metricsRegistry],
+});
+
+export const e2eeRetentionRunsTotal = new Counter({
+  name: 'patches_e2ee_retention_runs_total',
+  help: 'E2EE retention sweep outcomes',
+  labelNames: ['outcome'] as const,
+  registers: [metricsRegistry],
+});
+
 export type MetricsRegistry = typeof metricsRegistry;
 
 export function registerCustomMetrics(customRegistry: Registry): void {
@@ -49,4 +63,6 @@ export function registerCustomMetrics(customRegistry: Registry): void {
   customRegistry.registerMetric(workerQueueDepth);
   customRegistry.registerMetric(httpDuration);
   customRegistry.registerMetric(httpRequestsTotal);
+  customRegistry.registerMetric(e2eeRetentionDeletedTotal);
+  customRegistry.registerMetric(e2eeRetentionRunsTotal);
 }

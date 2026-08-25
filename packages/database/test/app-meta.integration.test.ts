@@ -69,24 +69,9 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
     expect(found.value).toEqual({ id: 'test-instance' });
   });
 
-  it('reverts the migration and drops the table, then leaves the schema migrated again', async () => {
-    // `undoLastMigration()` reverts exactly one migration, and this one is no longer the
-    // last: unwind the whole stack so `app_meta` (the first migration) is actually gone.
-    for (let remaining = ALL_MIGRATIONS.length; remaining > 0; remaining -= 1) {
-      await dataSource.undoLastMigration();
-    }
-
-    const queryRunner = dataSource.createQueryRunner();
-    try {
-      const table = await queryRunner.getTable('app_meta');
-      expect(table).toBeUndefined();
-    } finally {
-      await queryRunner.release();
-    }
-
-    // Restore state so this test doesn't leave the schema half-migrated for whatever
-    // Postgres session runs next (this file is the only writer of TEST_DATABASE_URL's
-    // schema in this suite, but being tidy costs nothing).
-    await dataSource.runMigrations();
+  it('refuses to roll back the irreversible issued-prekey ledger migration', async () => {
+    expect(ALL_MIGRATIONS).toContain('AddE2eeIssuedPrekeyLedger1787617557448');
+    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible/i);
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 });

@@ -1,10 +1,17 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { AuthCode, createDataSource, encryptAuthCodeDelivery, OutboxJob } from '@patches/database';
+import { Logger } from '@nestjs/common';
+import {
+  AccountDeletionRequest,
+  AuthCode,
+  createDataSource,
+  encryptAuthCodeDelivery,
+  OutboxJob,
+} from '@patches/database';
 import type { StorageClient } from '@patches/media';
 import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AppConfigService } from '../src/config/app-config.service.js';
 import { ConsoleEmailProvider } from '../src/email/console-email-provider.js';
@@ -17,6 +24,7 @@ import { FederationDeliverHandler } from '../src/jobs/handlers/federation-delive
 import { ProcessMediaHandler } from '../src/jobs/handlers/process-media.handler.js';
 import { PurgeAccountHandler } from '../src/jobs/handlers/purge-account.handler.js';
 import { RotateE2eeFrankingKeyHandler } from '../src/jobs/handlers/rotate-e2ee-franking-key.handler.js';
+import { E2eeRetentionSweepHandler } from '../src/jobs/handlers/e2ee-retention-sweep.handler.js';
 import { SendPasswordResetEmailHandler } from '../src/jobs/handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from '../src/jobs/handlers/send-verification-email.handler.js';
 import { JobDispatcher } from '../src/jobs/job-dispatcher.js';
@@ -105,9 +113,41 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       new ExportAccountHandler(dataSource, storage),
       new PurgeAccountHandler(dataSource, storage),
       new RotateE2eeFrankingKeyHandler(dataSource),
+      new E2eeRetentionSweepHandler(dataSource),
     );
     const runner = new JobRunner(dataSource, dispatcher, config);
     return { runner, emailProvider };
+  }
+
+  function buildRunnerWithFailingRetention(secret: string): JobRunner {
+    const config = fakeConfig({});
+    const storage = unusedStorage();
+    const authCodeDelivery = new AuthCodeEmailDeliveryService(
+      dataSource,
+      config,
+      new ConsoleEmailProvider(),
+    );
+    const failingRetention = {
+      type: 'E2EE_RETENTION_SWEEP' as const,
+      handle: (): Promise<void> => Promise.reject(new Error(secret)),
+    };
+    return new JobRunner(
+      dataSource,
+      new JobDispatcher(
+        new SendVerificationEmailHandler(authCodeDelivery),
+        new SendPasswordResetEmailHandler(authCodeDelivery),
+        new CleanExpiredTokensHandler(dataSource),
+        new CleanExpiredNotificationsHandler(dataSource, config),
+        new ProcessMediaHandler(dataSource, storage, config),
+        new CleanExpiredUploadsHandler(dataSource, storage, config),
+        new FederationDeliverHandler(dataSource, config),
+        new ExportAccountHandler(dataSource, storage),
+        new PurgeAccountHandler(dataSource, storage),
+        new RotateE2eeFrankingKeyHandler(dataSource),
+        failingRetention as unknown as E2eeRetentionSweepHandler,
+      ),
+      config,
+    );
   }
 
   async function enqueue(
@@ -206,6 +246,106 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
     expect(dead.attempts).toBe(2);
     expect(dead.lastError).toBe('AUTH_CODE_DELIVERY_FAILED');
     expect(dead.payload).toEqual({ v: 1, redacted: true });
+  });
+
+  it('redacts a generic handler failure in retry/dead-letter state and worker logs', async () => {
+    const secret = 'ciphertext=opaque-device-7d2a86d1';
+    const job = await enqueue(
+      'E2EE_RETENTION_SWEEP',
+      { scheduledFor: '2026-08-24T00:00:00.000Z' },
+      { maxAttempts: 2 },
+    );
+    const logs: string[] = [];
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      logs.push(String(message));
+    });
+    try {
+      const runner = buildRunnerWithFailingRetention(secret);
+      const firstRun = runner.run();
+      await waitFor(async () => {
+        const row = await dataSource.getRepository(OutboxJob).findOneBy({ id: job.id });
+        return row?.status === 'PENDING' && row.attempts === 1;
+      });
+      runner.requestStop();
+      await firstRun;
+
+      const retried = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
+      expect(retried.lastError).toBe('Job handler failed.');
+      expect(JSON.stringify(retried)).not.toContain(secret);
+      await dataSource
+        .getRepository(OutboxJob)
+        .update({ id: job.id }, { availableAt: new Date(0) });
+
+      const retryRunner = buildRunnerWithFailingRetention(secret);
+      const secondRun = retryRunner.run();
+      await waitFor(async () => {
+        const row = await dataSource.getRepository(OutboxJob).findOneBy({ id: job.id });
+        return row?.status === 'DEAD';
+      });
+      retryRunner.requestStop();
+      await secondRun;
+    } finally {
+      warn.mockRestore();
+    }
+    const dead = await dataSource.getRepository(OutboxJob).findOneByOrFail({ id: job.id });
+    expect(dead.lastError).toBe('Job handler failed.');
+    expect(dead.attempts).toBe(2);
+    expect(logs.join('\n')).toContain('JOB_HANDLER_FAILED');
+    expect(logs.join('\n')).not.toContain(secret);
+  });
+
+  it('purges an E2EE device FK graph and removes its issued-key ledger only with the device', async () => {
+    const { actor } = await createTestUser(dataSource.manager, {
+      handle: `purge${randomUUID().replaceAll('-', '').slice(0, 12)}`,
+    });
+    const rootId = randomUUID();
+    const deviceId = randomUUID();
+    await dataSource.getRepository(AccountDeletionRequest).save({
+      actorId: actor.id,
+      requestedAt: new Date(),
+      purgeAfter: new Date(0),
+      cancelledAt: null,
+      purgedAt: null,
+    });
+    await dataSource.query(
+      `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key) VALUES ($1, $2, 1, $3)`,
+      [rootId, actor.id, Buffer.alloc(32, 1)],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_device_identities (id, actor_id, identity_root_id, device_id, generation, signing_public_key, agreement_public_key, certificate_bytes, root_signature, certificate_created_at, expires_at)
+       VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, now(), now() + interval '1 day')`,
+      [
+        deviceId,
+        actor.id,
+        rootId,
+        randomUUID(),
+        Buffer.alloc(32, 2),
+        Buffer.alloc(32, 3),
+        Buffer.alloc(128, 4),
+        Buffer.alloc(64, 5),
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_one_time_prekey_key_ids (device_identity_id, key_id) VALUES ($1, 1)`,
+      [deviceId],
+    );
+    await dataSource.query(
+      `INSERT INTO e2ee_one_time_prekeys (device_identity_id, key_id, public_key) VALUES ($1, 1, $2)`,
+      [deviceId, Buffer.alloc(32, 6)],
+    );
+
+    await new PurgeAccountHandler(dataSource, unusedStorage()).handle(
+      { actorId: actor.id },
+      { jobId: `purge-e2ee-${randomUUID()}`, attempt: 1 },
+    );
+
+    const [counts] = await dataSource.query<Array<{ devices: string; ledgers: string }>>(
+      `SELECT
+         (SELECT count(*) FROM e2ee_device_identities WHERE id = $1) AS devices,
+         (SELECT count(*) FROM e2ee_one_time_prekey_key_ids WHERE device_identity_id = $1) AS ledgers`,
+      [deviceId],
+    );
+    expect(counts).toEqual({ devices: '0', ledgers: '0' });
   });
 
   it('atomically scrubs a terminal auth-email failure and deletes its auth-code row', async () => {
