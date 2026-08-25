@@ -248,23 +248,30 @@ to browse followers and following.
 
 ### Direct messages
 
-`Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
-full-screen `g d` isn't wired into the shell yet). The first line is always the same disclosure —
-**"Not end-to-end encrypted — this node's operators can read these messages."** — because that's
-true of every v0 conversation; nothing in this client ever calls a DM "encrypted," "secure," or
-"private." `Tab` switches between your **Inbox** and pending **Requests** (a message from someone
-you don't follow lands as a request until you accept it). Sending is optimistic: your message
-appears immediately, marked as sending; if it fails to actually send, the draft comes back into
-the compose field instead of silently vanishing, so you can just try again. Node policy honestly
-reports `0` (indefinite retention, B-061); any future automatic message deletion will be
-displayed on this screen when configured.
+DMs are terminal-client-only in v0 — web and mobile have no crypto runtime, so they cannot
+start or read a conversation (the web profile's "Message" button explains this rather than
+pretending to work). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
+server-readable mode this client used to support is retired and can no longer exist. `Ctrl+D`
+toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
+full-screen `g d` isn't wired into the shell yet). The first line is always the same
+disclosure — **"End-to-end encrypted. This node cannot read these messages, but it can see
+who you message and when."** — because that's true of every conversation; the second clause
+is the honest part of the claim and is never dropped. Nothing in this client ever calls a DM
+"encrypted," "secure," or "private" outside that fixed sentence. Starting a new conversation
+requires a mutual follow — there is no message-request flow to fall back on. Sending is
+optimistic: your message appears immediately, marked as sending; if it fails to actually send,
+the draft comes back into the compose field instead of silently vanishing, so you can just try
+again. Node policy honestly reports `0` (indefinite retention, B-061); any future automatic
+message deletion will be displayed on this screen when configured.
 
-The separately gated E2EE protocol is not a reviewed capability. An owner-authorized disposable
-node may explicitly advertise ADR 0027's isolated-test mode, regardless of its runtime
-`NODE_ENV`; any client surface that lets you create or read one of those conversations must
-persistently show **“Unreviewed development E2EE — for testing only; do not use for sensitive
-conversations.”** Treat its data as disposable. That warning is not an external-review or
-security claim, and it does not replace the conversation's routing-metadata disclosure.
+Production E2EE is not yet a reviewed capability (independent review pending, ADR 0020 §12,
+P13-014) — the default node keeps DMs switched off entirely (there is no plaintext fallback to
+drop back to). An owner-authorized disposable node may explicitly advertise ADR 0027's
+isolated-test mode, regardless of its runtime `NODE_ENV`; any client surface that lets you
+create or read one of those conversations must persistently show **“Unreviewed development
+E2EE — for testing only; do not use for sensitive conversations.”** Treat its data as
+disposable. That warning is not an external-review or security claim, and it does not replace
+the conversation's routing-metadata disclosure.
 
 ### Blocking, muting, and reporting
 

@@ -443,7 +443,9 @@ Six things that are settled and must not be re-litigated per feature:
   [0020](../decisions/0020-e2ee-direct-messages.md) §13 extends that to E2EE explicitly:
   no DM key, prekey, envelope, report, or delivery path crosses the `FederationGateway`,
   even when social features federate. Federated DMs remain a separate security decision
-  with their own gate (§195.6). See ADR [0017](../decisions/0017-server-visible-dms.md).
+  with their own gate (§195.6). See ADR [0017](../decisions/0017-server-visible-dms.md)
+  (superseded by [0030](../decisions/0030-pre-alpha-consolidation-policy.md), which retired
+  the plaintext mode this ADR governed; the federation prohibition itself is unchanged).
 - **Federated communities need their own ADR** (§193, §195.2). The `Group`-actor pattern is
   real and standardized (FEP-1b12, final 2023-02-09), but how a microblog server renders a
   `Group` actor is **unverified** (re-confirmed 2026-08-22 — Mastodon's ActivityPub page

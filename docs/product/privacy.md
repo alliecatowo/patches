@@ -72,16 +72,13 @@ and a self-hosted node's operator may configure retention differently — see
   can show you your own reaction. Bookmarks are private to you.
 - Communities you belong to, and your role in them.
 - **Direct messages.** See [Direct messages](#direct-messages) — bodies are
-  end-to-end encrypted on the `E2EE_V1` mode every new conversation uses;
+  end-to-end encrypted on `E2EE_V1`, the only conversation mode that exists;
   the node routes ciphertext and never receives a decryption key.
-- Reports you file, including the free-text details, and — for a reported
-  **legacy-mode** direct message (being removed; see
-  [Direct messages](#direct-messages)) — a snapshot of up to 10 surrounding
-  messages captured as evidence at the moment you report (§183.4). Reported
-  end-to-end messages carry no such snapshot by construction: the node has no
-  plaintext to snapshot, and instead verifies whatever evidence the reporter
-  explicitly discloses through `ReportE2eeMessage` +
-  `AttachReportEvidence`.
+- Reports you file, including the free-text details. Every message report is
+  `ReportE2eeMessage`; the node carries no plaintext snapshot by construction
+  (there is no legacy plaintext mode left to snapshot) and instead verifies
+  whatever evidence the reporter explicitly discloses through
+  `ReportE2eeMessage` + `AttachReportEvidence`.
 
 **Operational logs:**
 
@@ -127,14 +124,15 @@ What end-to-end encryption does not hide from the node: who messages whom, when,
 metadata (§8). Reports disclose exactly what a reporter explicitly selects and submits, never
 more.
 
-**Status: being removed** ([ADR 0030](../decisions/0030-pre-alpha-consolidation-policy.md),
-tickets B-095/B-096). The original v0 direct-message design stored bodies in the clear and let
-node operators read them, with a mandated disclosure saying so. That mode
-(`LEGACY_SERVER_VISIBLE`) still exists in this pre-alpha codebase until the purge change set
-lands; while any conversation remains in it, clients say "Not end-to-end encrypted — this
-node's operators can read these messages" on its screen. With zero production users there is no
-migration window: the plaintext machinery is deleted in the same change set that removes the
-mode, and `E2EE_V1` becomes the only conversation security mode.
+**Status: removed** ([ADR 0030](../decisions/0030-pre-alpha-consolidation-policy.md),
+tickets B-095/B-096). The original v0 direct-message design (ADR 0017) stored bodies in the
+clear and let node operators read them, with a mandated disclosure saying so. That mode
+(`LEGACY_SERVER_VISIBLE`) is retired — its protobuf enum value is reserved and never reissued,
+the plaintext send/read/delete RPCs and the message-request flow are deleted, and any existing
+legacy rows were dropped outright (pre-alpha, zero users, so there was no migration to run).
+`E2EE_V1` is the only conversation security mode a client can reach; the old disclosure ("Not
+end-to-end encrypted — this node's operators can read these messages") would now be false and
+must not appear anywhere.
 
 DMs are **not federated** — they never leave the node you sent them from, and this does not
 change with encryption (§193, [ADR 0020 §13](../decisions/0020-e2ee-direct-messages.md)).

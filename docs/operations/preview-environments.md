@@ -107,7 +107,8 @@ By default the Neon branch `pr-<N>` is a child of the **project's default branch
 production** (the CLI's `--parent` default; no override is set in the workflow).
 That means:
 
-- All production data — posts, profiles, and **server-visible DMs** — is copied into
+- All production data — posts, profiles, and **DM ciphertext/metadata** (who messages whom
+  and when; every conversation is end-to-end encrypted, ADR 0030/B-095) — is copied into
   the preview, which `PUBLIC_READ=true` then serves to anyone logged out.
 - Existing production accounts exist on the preview, password hashes included: a
   user who can log in on production can log in on the preview.

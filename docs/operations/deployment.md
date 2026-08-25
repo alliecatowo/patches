@@ -176,12 +176,16 @@ classification. Remove the flag before the node handles non-disposable data or r
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
-(what's stored, what's public, that DMs are server-visible, retention, export/deletion,
-contact — summarizing ADR 0017 and `docs/product/privacy.md`), `TERMS_URL` (points at the
-full `docs/product/privacy.md` on GitHub — there is no separate ToS page), `APPEAL_INSTRUCTIONS`
-(the in-client Appeals screen, or email the operator), `OPERATOR_CONTACT` (who runs this node),
-and `DATA_LOCATION` (Fly for compute, Neon Postgres in `aws-us-east-2` for the database,
-Cloudflare R2 for media). See the file itself for the exact published text.
+(what's stored, what's public, that DMs are end-to-end encrypted but visible to the node as
+metadata, retention, export/deletion, contact — summarizing `docs/product/privacy.md`),
+`TERMS_URL` (points at the full `docs/product/privacy.md` on GitHub — there is no separate ToS
+page), `APPEAL_INSTRUCTIONS` (the in-client Appeals screen, or email the operator),
+`OPERATOR_CONTACT` (who runs this node), and `DATA_LOCATION` (Fly for compute, Neon Postgres in
+`aws-us-east-2` for the database, Cloudflare R2 for media). See the file itself for the exact
+published text — **as of this sweep (B-097) `infra/fly/fly.toml`'s `PRIVACY_NOTICE_SUMMARY`
+still asserts the retired ADR 0017 wording ("Direct messages are NOT end-to-end encrypted —
+this node's operator can read them"), which is now false; it needs updating and redeploying,
+tracked separately from this docs sweep.**
 
 **Gotcha: `LOG_LEVEL` is `log`, not `info`.** The server's logger factory
 (`apps/server/src/common/logging/logger.factory.ts`) uses Nest's own `LogLevel` union, whose

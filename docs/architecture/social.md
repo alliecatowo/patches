@@ -172,30 +172,40 @@ outrank community moderators everywhere. Invites are pointers, not auto-joins: o
 invite per `(community, actor)`, producing a `COMMUNITY_INVITE` notification the invitee
 accepts (`RespondToCommunityInvite`) or ignores.
 
-## Direct messages (§183) — server-visible, not encrypted
+## Direct messages (§183, §194; ADR 0020, ADR 0030/B-095) — end-to-end encrypted
 
-**v0 DMs are not end-to-end encrypted; the node's operators can read them.** Message bodies
-are stored in PostgreSQL in the clear (TLS in transit, provider disk encryption at rest, and
-ordinary row-level access control — the same protection every other row gets, no more). No
-Patches client, document, or marketing surface may call v0 DMs "encrypted", "secure",
-"end-to-end", or "private" (§194); every client must display the honest statement above
-plainly on the messages screen itself, not a settings footnote. This is a deliberate trade:
-server-visible bodies are what make `ReportMessage`'s evidence snapshot possible at all.
+**Every DM conversation is `CONVERSATION_SECURITY_MODE_E2EE_V1`.** ADR 0017's server-visible,
+plaintext mode (`CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`) is retired: its enum value
+is reserved and never reissued, and ADR 0030/B-095 deleted `DirectMessageService`'s plaintext
+send/read/delete RPCs and the message-request flow in the same change set. The node routes,
+authorizes, rate-limits, and retains opaque ciphertext bytes — it never receives a message
+body, a message key, or ratchet/device key state (`packages/proto/proto/patches/v1/e2ee.proto`).
+Every client must display, on the messages screen itself, the disclosure
+`requiredConversationDisclosure('E2EE_V1')` (`@patches/domain`): "End-to-end encrypted. This
+node cannot read these messages, but it can see who you message and when." The metadata clause
+is not throat-clearing — the node still sees who messages whom and when, and no client may
+imply otherwise (§194). See `docs/architecture/e2ee.md` for the full protocol.
 
-`MessagesService`/`MessagesController` (`apps/server/src/modules/messages/`) gate unsolicited
-DMs: an actor may open a conversation directly only with a mutual follow, or someone who
-accepted a prior message request from them (`isMessageEligible`,
-`messages.service.ts`). Otherwise the first message creates a `MessageRequest` row — at most
-one pending request per `(sender, recipient)`, carrying a single message. Accepting promotes
-it to a conversation (`RespondToMessageRequest`); declining deletes the request and bars a new
-request from that sender for 30 days (`THIRTY_DAYS_MS`, enforced by `declineBar` lookup in
-`messages.service.ts`); blocking bars it permanently and reveals nothing to the blocked sender
-(§62's no-oracle rule). Groups cap at 8 members; an actor cannot be added to a group with
-someone who has blocked them or whom they have blocked. Messages are plain text only (2,000
-char limit) — no media, no link previews, no attachments in v0. Sender deletion is a
-per-message tombstone. There are no read receipts and no typing indicators. Unread state is
-per-viewer; delivery is poll-based, no push infra. `ReportMessage` snapshots the reported
-message plus up to ten surrounding messages for moderator review. DMs are not federated in v0.
+`MessagesService`/`MessagesController` (`apps/server/src/modules/messages/`) still exists but
+now serves only the content-free surface: `ListConversations`, `GetConversation`,
+`LeaveConversation`, `MarkConversationRead`. First-contact gating moved into
+`mayMessageDirectly` (`direct-message-eligibility.ts`), shared by the E2EE module's
+`CreateE2eeConversation`/`AddE2eeMember`: an actor may open a conversation only with a mutual
+follow. §183.2's second arm — "or the target accepted a prior message request" — has no
+backing store any more (the `message_requests` flow was deleted with the plaintext machinery);
+mutual follow is the only path to first contact until an E2EE-native request flow is designed.
+Blocking bars contact in either direction and reveals nothing to the blocked party (§62's
+no-oracle rule). Groups cap at 8 members; an actor cannot be added to a group with someone who
+has blocked them or whom they have blocked. There are no read receipts and no typing
+indicators. Unread state is per-viewer; delivery is poll-based, no push infra.
+`E2eeService.AttachReportEvidence` is the one deliberate exception to "the node never sees a
+body": a reporter explicitly selects and submits plaintext as evidence, retained for the
+lifetime of the report and no longer. DMs are not federated in v0 (ADR 0020 §13, unchanged).
+
+DMs are **terminal-client-only in v0**: web and mobile have no crypto runtime and cannot start
+or read a conversation. The web profile "Message" button (`apps/web/src/components/DmNotice.tsx`)
+toasts an honest refusal rather than degrading into a broken or misleading affordance; mobile
+has no DM surface at all.
 
 **Retention honesty (B-061)**: `DM_RETENTION_DAYS` defaults to and publishes `0` (indefinite retention), matching the actual operational behavior where no server-side background deletion job exists. Nonzero configuration is rejected at startup until a verified deletion worker job is implemented.
 
