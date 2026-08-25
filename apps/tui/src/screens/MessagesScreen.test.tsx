@@ -13,7 +13,12 @@ import {
   VAULT_FAULT_COPY,
   type MessagesScreenApi,
 } from './MessagesScreen.js';
-import { makeActor, makeConversation, makeConversationMember, makePageInfo } from '../test/wire-fixtures.js';
+import {
+  makeActor,
+  makeConversation,
+  makeConversationMember,
+  makePageInfo,
+} from '../test/wire-fixtures.js';
 
 const KEY = { enter: '\r', escape: '\x1b' } as const;
 
