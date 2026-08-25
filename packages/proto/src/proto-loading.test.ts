@@ -168,18 +168,7 @@ describe('proto files', () => {
       ].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.directMessage)).toEqual(
-      [
-        'CreateConversation',
-        'DeleteMessage',
-        'GetConversation',
-        'LeaveConversation',
-        'ListConversations',
-        'ListMessageRequests',
-        'ListMessages',
-        'MarkConversationRead',
-        'RespondToMessageRequest',
-        'SendMessage',
-      ].sort(),
+      ['GetConversation', 'LeaveConversation', 'ListConversations', 'MarkConversationRead'].sort(),
     );
     expect(serviceMethodNames(pkg, SERVICE_NAMES.tag)).toEqual(
       ['ListMutedTags', 'MuteTag', 'SearchTags', 'UnmuteTag'].sort(),

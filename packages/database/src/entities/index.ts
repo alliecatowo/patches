@@ -48,8 +48,6 @@ import { LabelerSubscription } from './labeler-subscription.entity.js';
 import { LabelerSubscriptionAction } from './labeler-subscription-action.entity.js';
 import { Like } from './like.entity.js';
 import { Media } from './media.entity.js';
-import { Message } from './message.entity.js';
-import { MessageRequest } from './message-request.entity.js';
 import { ModerationLogEntry } from './moderation-log-entry.entity.js';
 import { Mute } from './mute.entity.js';
 import { Notification } from './notification.entity.js';
@@ -132,8 +130,6 @@ export const ALL_ENTITIES = [
   CommunityInvite,
   Conversation,
   ConversationMember,
-  Message,
-  MessageRequest,
   E2eeIdentityRoot,
   E2eeDeviceIdentity,
   E2eeDeviceRoster,

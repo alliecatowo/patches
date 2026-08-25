@@ -40,7 +40,7 @@ export { Mute } from './entities/mute.entity.js';
 export { Like } from './entities/like.entity.js';
 export { Bookmark } from './entities/bookmark.entity.js';
 export { Notification } from './entities/notification.entity.js';
-export { Report, type MessageSnapshotEntry } from './entities/report.entity.js';
+export { Report } from './entities/report.entity.js';
 export { Page } from './entities/page.entity.js';
 export { PageRevision } from './entities/page-revision.entity.js';
 export { PageAsset } from './entities/page-asset.entity.js';
@@ -59,8 +59,6 @@ export { CommunityBan } from './entities/community-ban.entity.js';
 export { CommunityInvite } from './entities/community-invite.entity.js';
 export { Conversation } from './entities/conversation.entity.js';
 export { ConversationMember } from './entities/conversation-member.entity.js';
-export { Message } from './entities/message.entity.js';
-export { MessageRequest } from './entities/message-request.entity.js';
 export { E2eeIdentityRoot } from './entities/e2ee-identity-root.entity.js';
 export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
 export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';
@@ -112,7 +110,6 @@ export {
   LABEL_ACTIONS,
   LABEL_SUBJECT_TYPES,
   MEDIA_STATES,
-  MESSAGE_REQUEST_STATUSES,
   MODERATION_ACTION_TYPES,
   MODERATION_LOG_SUBJECT_KINDS,
   MODERATION_REASON_CATEGORIES,
@@ -146,7 +143,6 @@ export type {
   LabelAction,
   LabelSubjectType,
   MediaState,
-  MessageRequestStatus,
   ModerationActionType,
   ModerationLogSubjectKind,
   ModerationReasonCategory,
