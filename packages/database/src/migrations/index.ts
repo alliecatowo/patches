@@ -32,6 +32,7 @@ import { AddRateLimitBuckets1787190000002 } from './1787190000002-AddRateLimitBu
 import { AddE2eeIssuedPrekeyLedger1787617557448 } from './1787617557448-AddE2eeIssuedPrekeyLedger.js';
 import { AddPgStatStatements1787190000000 } from './1787190000000-AddPgStatStatements.js';
 import { AddPostsFts1787190000001 } from './1787190000001-AddPostsFts.js';
+import { FilterListSubscriptionScopesDefaultReconciliation1787658107141 } from './1787658107141-FilterListSubscriptionScopesDefaultReconciliation.js';
 import { RemoveLegacyServerVisibleDms1787660000000 } from './1787660000000-RemoveLegacyServerVisibleDms.js';
 
 /**
@@ -81,5 +82,6 @@ export const ALL_MIGRATIONS = [
   AddPostsFts1787190000001,
   AddRateLimitBuckets1787190000002,
   AddE2eeIssuedPrekeyLedger1787617557448,
+  FilterListSubscriptionScopesDefaultReconciliation1787658107141,
   RemoveLegacyServerVisibleDms1787660000000,
 ];
