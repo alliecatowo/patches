@@ -15,7 +15,10 @@ import {
       provide: E2EE_RUNTIME_APPROVAL_POLICY,
       inject: [AppConfigService],
       useFactory: (config: AppConfigService) =>
-        new E2eeRuntimeApprovalPolicy(config.e2eeUnreviewedDevMode),
+        new E2eeRuntimeApprovalPolicy(
+          config.e2eeUnreviewedDevMode,
+          config.e2eeApprovedFrankingProfiles,
+        ),
     },
   ],
   exports: [E2EE_RUNTIME_APPROVAL_POLICY],

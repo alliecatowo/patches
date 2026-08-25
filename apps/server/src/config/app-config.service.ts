@@ -52,6 +52,14 @@ export class AppConfigService {
   }
 
   /** ADR 0027's owner-authorized, explicitly unreviewed E2EE isolated-test exception. */
+  get e2eeApprovedFrankingProfiles(): string[] {
+    const raw = this.get('E2EE_APPROVED_FRANKING_PROFILES');
+    return raw
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+
   get e2eeUnreviewedDevMode(): boolean {
     return this.get('E2EE_UNREVIEWED_DEV_MODE');
   }
