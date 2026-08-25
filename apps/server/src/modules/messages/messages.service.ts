@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, Block, Conversation, ConversationMember, E2eeLogicalMessage } from '@patches/database';
+import {
+  Actor,
+  Block,
+  Conversation,
+  ConversationMember,
+  E2eeLogicalMessage,
+} from '@patches/database';
 import { DataSource, IsNull, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';

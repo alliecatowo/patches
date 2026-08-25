@@ -59,7 +59,7 @@ import { E2eeReportEvidenceService } from '../src/modules/e2ee/report-evidence.s
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
 import { createServerTestDataSource } from './support/database.js';
-import { registerTestActor, type TestActor } from './support/fixtures.js';
+import { registerTestActor } from './support/fixtures.js';
 import { callUnary, startTestServer, type TestServer } from './support/test-server.js';
 
 /**

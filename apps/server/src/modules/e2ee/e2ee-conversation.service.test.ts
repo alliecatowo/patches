@@ -87,9 +87,7 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
   }
 
   it('rejects a create whose target the caller could not message directly, uniformly', async () => {
-    const { dataSource } = dataSourceFor(
-      managerWithFirstContact({ mutualFollow: false }),
-    );
+    const { dataSource } = dataSourceFor(managerWithFirstContact({ mutualFollow: false }));
     const result = serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(actorId, {
       clientRequestId: 'req-1',
       recipientActorIds: ['recipient'],
@@ -142,9 +140,7 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
   });
 
   it('consumes the create budget before opening its transaction for a fresh send', async () => {
-    const { dataSource, consume } = dataSourceFor(
-      managerWithFirstContact({ mutualFollow: false }),
-    );
+    const { dataSource, consume } = dataSourceFor(managerWithFirstContact({ mutualFollow: false }));
     await serviceWith(dataSource, limiterFrom(consume))
       .createE2eeConversation(actorId, {
         clientRequestId: 'fresh-request',
@@ -181,7 +177,6 @@ describe('MESSAGE notification on an E2EE arrival (ADR 0030, §183.1)', () => {
     // notification may be written — a notification is evidence a message landed.
     expect(notifyMessage).not.toHaveBeenCalled();
   });
-
 });
 
 describe('E2eeConversationService.sendEnvelopes rate-limit ordering (audit P1)', () => {

@@ -13,11 +13,7 @@ import {
   Tag,
   TagMute,
 } from '@patches/database';
-import type {
-  CommunityInviteStatus,
-  CommunityRole,
-  ConversationKind,
-} from '@patches/database';
+import type { CommunityInviteStatus, CommunityRole, ConversationKind } from '@patches/database';
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 
