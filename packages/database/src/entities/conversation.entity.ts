@@ -30,8 +30,9 @@ export class Conversation {
   @Column({ type: 'text', default: 'DIRECT' })
   declare kind: ConversationKind;
 
-  /** Immutable after insert. A database trigger in the Phase 13 migration rejects changes. */
-  @Column({ type: 'text', default: 'LEGACY_SERVER_VISIBLE' })
+  /** Immutable after insert. A database trigger in the Phase 13 migration rejects changes.
+   * `E2EE_V1` is the only value since ADR 0030 §B-095 removed `LEGACY_SERVER_VISIBLE`. */
+  @Column({ type: 'text', default: 'E2EE_V1' })
   declare securityMode: ConversationSecurityMode;
 
   /** Nullable, `SET NULL` rather than `RESTRICT`: a conversation must outlive its creator's

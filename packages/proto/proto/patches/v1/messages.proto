@@ -7,51 +7,29 @@ import "patches/v1/actors.proto";
 import "patches/v1/common.proto";
 import "patches/v1/e2ee.proto";
 
-// Direct messages (spec §183.4, §188–190, §192). Mutual/accepted gating, block-aware both
-// directions with no block oracle, rate-limited per actor and per peer, never federated —
-// bodies never appear in logs/metrics/traces/errors (spec §192). No media, no link previews.
+// The generic conversation surface (spec §183, §188–190; ADR 0030 §B-095). Every conversation
+// today is `E2EE_V1` (`E2eeService.CreateE2eeConversation` is the only way to create one, and
+// `E2eeService.SendEnvelopes` the only way to add a message to one) — this service only lists,
+// reads, and tracks membership/read-state for conversations, never their content. The plaintext
+// send/read/request RPCs this service used to carry (`SendMessage`, `ListMessages`,
+// `DeleteMessage`, `CreateConversation`, and the whole `MessageRequest` flow) were removed by
+// ADR 0030's pre-alpha consolidation policy the same change set E2EE-only conversations shipped
+// in — never federated (ADR 0020 §13).
 service DirectMessageService {
   rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
 
   rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
 
-  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
-
-  // Requires `client_request_id` (spec §45) — same idempotency pattern as `CreatePost`.
-  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
-
-  // Soft delete/tombstone — never a hard delete over this API (same rule as `DeletePost`).
-  rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
-
-  // Starts a direct (1 recipient) or group (up to 8 members total, spec §188) conversation
-  // with its first message. A direct conversation with a non-mutual-follow recipient creates
-  // a `MessageRequest` instead of a `Message` — see `MessageRequest`'s comment.
-  rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
-
   // Idempotent: leaving a conversation the caller isn't in is not an error.
   rpc LeaveConversation(LeaveConversationRequest) returns (LeaveConversationResponse);
 
   rpc MarkConversationRead(MarkConversationReadRequest) returns (MarkConversationReadResponse);
-
-  // The caller's own pending message requests (received), most-recent first.
-  rpc ListMessageRequests(ListMessageRequestsRequest) returns (ListMessageRequestsResponse);
-
-  // Accepting opens (or reuses) the direct conversation and returns it; declining does not
-  // notify the sender and never auto-accepts anything else from them (spec §192).
-  rpc RespondToMessageRequest(RespondToMessageRequestRequest) returns (RespondToMessageRequestResponse);
 }
 
 enum ConversationKind {
   CONVERSATION_KIND_UNSPECIFIED = 0;
   CONVERSATION_KIND_DIRECT = 1;
   CONVERSATION_KIND_GROUP = 2;
-}
-
-enum MessageRequestStatus {
-  MESSAGE_REQUEST_STATUS_UNSPECIFIED = 0;
-  MESSAGE_REQUEST_STATUS_PENDING = 1;
-  MESSAGE_REQUEST_STATUS_ACCEPTED = 2;
-  MESSAGE_REQUEST_STATUS_DECLINED = 3;
 }
 
 message ConversationMember {
@@ -61,7 +39,8 @@ message ConversationMember {
   // Unset while still a member.
   google.protobuf.Timestamp left_at = 3;
 
-  // Empty if nothing has been read yet.
+  // Empty if nothing has been read yet. An `E2eeLogicalMessage` id (opaque to this service) —
+  // never a plaintext message id, since the node holds no plaintext (ADR 0020, ADR 0030).
   string last_read_message_id = 4;
 
   bool muted = 5;
@@ -78,31 +57,11 @@ message Conversation {
   // Unread count for the caller specifically — never populated for anyone else.
   uint32 unread_count = 7;
 
-  // Which security mode this conversation was created in (ADR 0017, ADR 0020). Read-only and
-  // fixed at creation: there is no RPC anywhere in this schema that converts a conversation
-  // between modes. `CreateConversation` always produces
-  // `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE`; `E2eeService.CreateE2eeConversation` is
-  // the only way to produce `CONVERSATION_SECURITY_MODE_E2EE_V1`.
-  //
-  // Clients MUST render disclosure from this field and never from a local assumption: spec
-  // §183.1 requires the "not end-to-end encrypted — this node's operators can read these
-  // messages" line on the legacy screen, and spec §194 forbids the words encrypted, end-to-end,
-  // secure, or private for anything but `CONVERSATION_SECURITY_MODE_E2EE_V1`.
+  // Which security mode this conversation was created in (ADR 0020; ADR 0030 §B-095). Read-only
+  // and fixed at creation: there is no RPC anywhere in this schema that converts a conversation
+  // between modes. Always `CONVERSATION_SECURITY_MODE_E2EE_V1` today —
+  // `E2eeService.CreateE2eeConversation` is the only way to produce a `Conversation`.
   ConversationSecurityMode security_mode = 8;
-}
-
-message Message {
-  string id = 1;
-  string conversation_id = 2;
-  Actor sender = 3;
-
-  // Empty when `deleted_at` is set. Max 2,000 characters (spec §188).
-  string body = 4;
-
-  google.protobuf.Timestamp created_at = 5;
-
-  // Unset (zero value) unless this message was deleted.
-  google.protobuf.Timestamp deleted_at = 6;
 }
 
 message ListConversationsRequest {
@@ -123,60 +82,6 @@ message GetConversationResponse {
   Conversation conversation = 1;
 }
 
-message ListMessagesRequest {
-  string conversation_id = 1;
-  string cursor = 2;
-  uint32 limit = 3;
-}
-
-message ListMessagesResponse {
-  repeated Message messages = 1;
-  PageInfo page = 2;
-}
-
-message SendMessageRequest {
-  string client_request_id = 1;
-  string conversation_id = 2;
-  string body = 3;
-}
-
-message SendMessageResponse {
-  Message message = 1;
-}
-
-message DeleteMessageRequest {
-  string id = 1;
-}
-
-message DeleteMessageResponse {
-  // The now-tombstoned message, so the caller can render `[deleted]` without a refetch.
-  Message message = 1;
-}
-
-message CreateConversationRequest {
-  string client_request_id = 1;
-
-  // Excludes the caller. 1 recipient makes a direct conversation; 2+ (up to 7, an 8-member
-  // ceiling including the caller, spec §188) makes a group.
-  repeated string recipient_actor_ids = 2;
-
-  // Required — a conversation is never created empty.
-  string initial_body = 3;
-}
-
-message CreateConversationResponse {
-  // Set when the recipient (direct) or every recipient (group) could be messaged directly
-  // (spec §183.2 — mutual follow, or an already-accepted request). Unset when this call
-  // instead created a `MessageRequest` — see `request` below.
-  Conversation conversation = 1;
-
-  // Set instead of `conversation` for a direct conversation with a non-mutual-follow
-  // recipient (spec §183.2): the first message becomes the request's one carried message
-  // rather than a `Message` in an open `Conversation`. Never set for a group (a group
-  // creator may only add actors it could already message directly, §183.3).
-  MessageRequest request = 2;
-}
-
 message LeaveConversationRequest {
   string conversation_id = 1;
 }
@@ -186,43 +91,8 @@ message LeaveConversationResponse {}
 message MarkConversationReadRequest {
   string conversation_id = 1;
 
-  // Marks every message at or before this one as read.
+  // Marks every message at or before this one as read. An `E2eeLogicalMessage` id.
   string through_message_id = 2;
 }
 
 message MarkConversationReadResponse {}
-
-// A pending contact request created by `CreateConversation` when the caller and the intended
-// recipient are not mutual follows (spec §189). At most one pending request per
-// (sender, recipient) pair, and at most one message (spec §188) — accepting is what turns it
-// into an ordinary `Conversation`/`Message`.
-message MessageRequest {
-  string id = 1;
-  Actor sender = 2;
-  Actor recipient = 3;
-  string body = 4;
-  MessageRequestStatus status = 5;
-  google.protobuf.Timestamp created_at = 6;
-}
-
-message ListMessageRequestsRequest {
-  string cursor = 1;
-  uint32 limit = 2;
-}
-
-message ListMessageRequestsResponse {
-  repeated MessageRequest requests = 1;
-  PageInfo page = 2;
-}
-
-message RespondToMessageRequestRequest {
-  string id = 1;
-  bool accept = 2;
-}
-
-message RespondToMessageRequestResponse {
-  MessageRequest request = 1;
-
-  // Set only when `accept` was true.
-  Conversation conversation = 2;
-}

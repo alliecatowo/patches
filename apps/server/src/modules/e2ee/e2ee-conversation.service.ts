@@ -32,6 +32,7 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
+import { NotificationsService } from '../notifications/notification.service.js';
 import {
   acceptE2eeLogicalMessage,
   transcriptDigestForStoredMessage,
@@ -67,6 +68,7 @@ export class E2eeConversationService {
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
     @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
     private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
+    private readonly notifications: NotificationsService,
   ) {
     this.#keys = keys;
   }
@@ -114,7 +116,7 @@ export class E2eeConversationService {
       });
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const created = await this.dataSource.transaction(async (manager) => {
       const kind: DbConversationKind = recipientIds.length === 1 ? 'DIRECT' : 'GROUP';
 
       const recipients = await manager
@@ -156,8 +158,18 @@ export class E2eeConversationService {
         approvalPolicy: this.approvalPolicy,
       });
 
-      return this.#toCreateResponse(conversation.id, accepted);
+      return { response: this.#toCreateResponse(conversation.id, accepted), accepted };
     });
+
+    // Content-free MESSAGE notification (spec §187, ADR 0030 §B-095) — recipientIds is
+    // already the exact "every other member" set for a brand-new conversation, so no
+    // extra membership query is needed the way `sendEnvelopes` (an existing conversation)
+    // requires below.
+    if (!created.accepted.replay) {
+      await this.#notifyRecipients(recipientIds, actorId, created.response.conversationId);
+    }
+
+    return created.response;
   }
 
   #toCreateResponse(

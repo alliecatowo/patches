@@ -11,8 +11,9 @@ const DAY_MS = 24 * HOUR_MS;
 
 /** Follow requests created (not ordinary immediate follows), per actor. Starting values — not
  * named in `INITIAL_VISION.md` §204's table, but §197.5's "rate-limited" requirement still
- * applies (same "no new write path ships with no limit at all" reasoning `DmRateLimitService`
- * documents for message requests, whose per-hour/per-day shape this mirrors). */
+ * applies (the same "no new write path ships with no limit at all" reasoning the removed
+ * plaintext-DM message-request limiter once documented, ADR 0030 §B-095 — this mirrors its
+ * per-hour/per-day shape). */
 const REQUESTS_PER_HOUR = 20;
 const REQUESTS_PER_DAY = 100;
 
@@ -23,11 +24,10 @@ const PEER_MULTIPLIER = 5;
 
 /**
  * Database-backed, per-actor **and** per-peer rate limiting for `SocialGraphService.FollowActor`
- * against a locked actor (spec §197.5) — built on the same shared `enforceWindowRateLimit`/
- * `enforceWindowPeerRateLimit` helpers `DmRateLimitService` uses for message requests, rather
- * than joining `modules/auth/rate-limit.service.ts`'s in-memory, closed-`RateLimitAction`
- * union: a follow-request budget must survive a process restart and be shared across every
- * server process from the start, same as a message request's.
+ * against a locked actor (spec §197.5) — built on the shared `enforceWindowRateLimit`/
+ * `enforceWindowPeerRateLimit` helpers rather than joining `modules/auth/rate-limit.service.ts`'s
+ * in-memory, closed-`RateLimitAction` union: a follow-request budget must survive a process
+ * restart and be shared across every server process from the start.
  */
 @Injectable()
 export class FollowRequestRateLimitService {

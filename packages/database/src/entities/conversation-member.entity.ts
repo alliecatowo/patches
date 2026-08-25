@@ -30,8 +30,9 @@ export class ConversationMember {
   @Column({ type: 'timestamptz', nullable: true })
   declare leftAt: Date | null;
 
-  /** Null if nothing has been read yet. No FK to `messages` on purpose: a message can be
-   * deleted (tombstoned, not removed) after being marked read, and this column must keep
+  /** Null if nothing has been read yet. An `e2ee_logical_messages.id` (ADR 0030 §B-095 removed
+   * the plaintext `messages` table this column used to point at). No FK on purpose: an E2EE
+   * logical message can be soft-deleted after being marked read, and this column must keep
    * pointing at its id regardless. */
   @Column({ type: 'uuid', nullable: true })
   declare lastReadMessageId: string | null;

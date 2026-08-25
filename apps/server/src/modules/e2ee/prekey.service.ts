@@ -41,7 +41,8 @@ import { decodeStoredRoster, loadCurrentRosterRow } from './roster-chain.js';
  * device in the trailing window. Deliberately simple — a real limiter would use shared
  * counter/token-bucket infrastructure this codebase doesn't have yet — but it is a real,
  * enforced, per-request-checked bound, not a config knob a remote node could widen. Follow-up:
- * move it onto whatever shared rate-limit infrastructure `DmRateLimitService` generalizes into.
+ * move it onto whatever shared rate-limit infrastructure `common/rate-limit/window-rate-
+ * limiter.ts`'s other callers (e.g. `follow-request-rate-limit.service.ts`) generalize into.
  */
 const PREKEY_CLAIM_RATE_LIMIT = 30;
 const PREKEY_CLAIM_RATE_WINDOW_MS = 60_000;
