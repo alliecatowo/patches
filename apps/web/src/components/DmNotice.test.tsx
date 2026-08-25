@@ -34,7 +34,11 @@ describe('DmNotice', () => {
   });
 
   it('never uses "secure" or "private" to describe DMs in any mode (§194)', () => {
-    const modes = [undefined, ConversationSecurityMode.E2EE_V1, ConversationSecurityMode.UNSPECIFIED];
+    const modes = [
+      undefined,
+      ConversationSecurityMode.E2EE_V1,
+      ConversationSecurityMode.UNSPECIFIED,
+    ];
     for (const mode of modes) {
       render(<DmNotice securityMode={mode} />);
     }
