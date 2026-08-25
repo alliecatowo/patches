@@ -6,6 +6,8 @@ export {
   workerQueueDepth,
   httpDuration,
   httpRequestsTotal,
+  e2eeRetentionDeletedTotal,
+  e2eeRetentionRunsTotal,
   type MetricsRegistry,
   registerCustomMetrics,
 } from './metrics.js';

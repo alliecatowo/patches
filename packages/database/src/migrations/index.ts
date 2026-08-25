@@ -29,6 +29,7 @@ import { AuthCodeDeliveryEnvelopes1787420562003 } from './1787420562003-AuthCode
 import { AddE2eeGroupControlEvents1787448705727 } from './1787448705727-AddE2eeGroupControlEvents.js';
 import { FederationSocialDepthSchema1787450799656 } from './1787450799656-FederationSocialDepthSchema.js';
 import { AddRateLimitBuckets1787190000002 } from './1787190000002-AddRateLimitBuckets.js';
+import { AddE2eeIssuedPrekeyLedger1787617557448 } from './1787617557448-AddE2eeIssuedPrekeyLedger.js';
 import { AddPgStatStatements1787190000000 } from './1787190000000-AddPgStatStatements.js';
 import { AddPostsFts1787190000001 } from './1787190000001-AddPostsFts.js';
 
@@ -78,4 +79,5 @@ export const ALL_MIGRATIONS = [
   AddPgStatStatements1787190000000,
   AddPostsFts1787190000001,
   AddRateLimitBuckets1787190000002,
+  AddE2eeIssuedPrekeyLedger1787617557448,
 ];

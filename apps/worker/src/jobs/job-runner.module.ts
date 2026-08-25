@@ -11,6 +11,7 @@ import { FederationDeliverHandler } from './handlers/federation-deliver.handler.
 import { ProcessMediaHandler } from './handlers/process-media.handler.js';
 import { PurgeAccountHandler } from './handlers/purge-account.handler.js';
 import { RotateE2eeFrankingKeyHandler } from './handlers/rotate-e2ee-franking-key.handler.js';
+import { E2eeRetentionSweepHandler } from './handlers/e2ee-retention-sweep.handler.js';
 import { SendPasswordResetEmailHandler } from './handlers/send-password-reset-email.handler.js';
 import { SendVerificationEmailHandler } from './handlers/send-verification-email.handler.js';
 import { JobDispatcher } from './job-dispatcher.js';
@@ -31,6 +32,7 @@ import { JobRunner } from './job-runner.js';
     ExportAccountHandler,
     PurgeAccountHandler,
     RotateE2eeFrankingKeyHandler,
+    E2eeRetentionSweepHandler,
     JobDispatcher,
     JobRunner,
   ],

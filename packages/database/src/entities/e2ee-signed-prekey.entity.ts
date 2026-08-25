@@ -13,6 +13,7 @@ import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
 @Entity({ name: 'e2ee_signed_prekeys' })
 @Index(['deviceIdentityId', 'keyId'], { unique: true })
 @Index(['deviceIdentityId', 'expiresAt'])
+@Index(['retiredAt', 'id'], { where: '"retired_at" IS NOT NULL' })
 // Partial: at most one *active* (non-retired) signed prekey per device.
 @Index(['deviceIdentityId'], { unique: true, where: '"retired_at" IS NULL' })
 @Check('chk_e2ee_signed_prekeys_public_key_length', 'octet_length("public_key") = 32')

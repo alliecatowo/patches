@@ -152,3 +152,12 @@ export type PurgeAccountPayload = z.infer<typeof purgeAccountPayloadSchema>;
  * next run (`docs/operations/e2ee-franking-key-rotation.md`). */
 export const rotateE2eeFrankingKeyPayloadSchema = z.object({}).strict();
 export type RotateE2eeFrankingKeyPayload = z.infer<typeof rotateE2eeFrankingKeyPayloadSchema>;
+
+/** ADR 0031: retention is entirely protocol-owned; no caller-provided controls are accepted. */
+export const e2eeRetentionSweepPayloadSchema = z
+  .object({
+    /** Stable scheduled bucket, carried forward rather than inferred from retry wall-clock time. */
+    scheduledFor: z.string().datetime({ offset: true }),
+  })
+  .strict();
+export type E2eeRetentionSweepPayload = z.infer<typeof e2eeRetentionSweepPayloadSchema>;

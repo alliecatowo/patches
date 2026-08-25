@@ -2,6 +2,12 @@
  * Register the Service Worker in production / supported browser environments.
  */
 export function registerServiceWorker(): void {
+  // An explicit development escape hatch keeps a stale production worker from intercepting a
+  // Vite visual/debug session. It is compiled away from production builds unless deliberately
+  // set there, and deployment configuration never sets this value.
+  if (import.meta.env.DEV && import.meta.env['VITE_PATCHES_DISABLE_SERVICE_WORKER'] === '1') {
+    return;
+  }
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
   }

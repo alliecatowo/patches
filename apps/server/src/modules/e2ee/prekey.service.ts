@@ -6,6 +6,7 @@ import {
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
   E2eeOneTimePrekey as E2eeOneTimePrekeyEntity,
+  E2eeOneTimePrekeyKeyId as E2eeOneTimePrekeyKeyIdEntity,
   E2eeSignedPrekey as E2eeSignedPrekeyEntity,
 } from '@patches/database';
 import {
@@ -377,7 +378,20 @@ export class E2eePrekeyService {
       [deviceIdentityId],
     );
     const row = rows[0];
-    return row === undefined ? null : { keyId: row.key_id, publicKey: row.public_key };
+    if (row === undefined) return null;
+
+    // The ledger is the durable non-reuse fence. Updating it within this same transaction means
+    // the public row cannot be claimed without preserving its consumed reservation.
+    const consumed = await manager
+      .getRepository(E2eeOneTimePrekeyKeyIdEntity)
+      .update(
+        { deviceIdentityId, keyId: row.key_id, consumedAt: IsNull() },
+        { consumedAt: new Date() },
+      );
+    if (consumed.affected !== 1) {
+      throw AppError.internal('One-time prekey issued-key ledger is inconsistent.');
+    }
+    return { keyId: row.key_id, publicKey: row.public_key };
   }
 }
 

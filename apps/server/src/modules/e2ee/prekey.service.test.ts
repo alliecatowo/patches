@@ -4,6 +4,7 @@ import {
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
   E2eeOneTimePrekey as E2eeOneTimePrekeyEntity,
+  E2eeOneTimePrekeyKeyId as E2eeOneTimePrekeyKeyIdEntity,
   E2eeSignedPrekey as E2eeSignedPrekeyEntity,
 } from '@patches/database';
 import { E2EE_ONE_TIME_PREKEY_TARGET } from '@patches/domain';
@@ -56,7 +57,7 @@ function certificateBytes(): Buffer {
 }
 
 describe('UploadPrekeys inventory-capacity rejection (audit P2)', () => {
-  function run(oneTimePrekeys: number): Promise<unknown> {
+  function run(oneTimePrekeys: number, ledgerInsertError?: unknown): Promise<unknown> {
     const manager = {
       getRepository(entity: unknown) {
         if (entity === E2eeDeviceIdentityEntity)
@@ -87,6 +88,14 @@ describe('UploadPrekeys inventory-capacity rejection (audit P2)', () => {
             insert: vi.fn(() => Promise.resolve(undefined)),
           };
         }
+        if (entity === E2eeOneTimePrekeyKeyIdEntity) {
+          return {
+            insert:
+              ledgerInsertError === undefined
+                ? vi.fn().mockResolvedValue(undefined)
+                : vi.fn().mockRejectedValue(ledgerInsertError),
+          };
+        }
         throw new Error(`Unexpected repository: ${String(entity)}`);
       },
     } as unknown as EntityManager;
@@ -113,6 +122,11 @@ describe('UploadPrekeys inventory-capacity rejection (audit P2)', () => {
     await expect(run(1)).resolves.toMatchObject({
       oneTimePrekeyCount: E2EE_ONE_TIME_PREKEY_TARGET,
     });
+  });
+
+  it('rethrows an unrelated ledger unique violation instead of mapping it to a duplicate key id', async () => {
+    const error = { code: '23505', constraint: 'some_other_unique_constraint' };
+    await expect(run(1, error)).rejects.toBe(error);
   });
 });
 

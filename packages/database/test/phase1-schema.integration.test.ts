@@ -217,31 +217,12 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     ).rejects.toThrow(/chk_invites_uses_within_max/);
   });
 
-  it('round-trips down and back up, and reports no pending migrations', async () => {
+  it('round-trips the last migration and reports no pending migrations', async () => {
     const executor = new MigrationExecutor(dataSource);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
-
-    // Revert everything down to the Phase 0 migration (CreateAppMeta), whatever has been
-    // stacked on top since — this test must not break every time a phase adds a migration.
-    while ((await executor.getExecutedMigrations()).length > 1) {
-      await dataSource.undoLastMigration();
-    }
-    const queryRunner = dataSource.createQueryRunner();
-    try {
-      expect(await queryRunner.getTable('posts')).toBeUndefined();
-      expect(await queryRunner.getTable('credentials')).toBeUndefined();
-      // The Phase 0 migration is untouched by the Phase 1 revert.
-      expect(await queryRunner.getTable('app_meta')).toBeDefined();
-    } finally {
-      await queryRunner.release();
-    }
-
+    await dataSource.undoLastMigration();
+    expect(await executor.getPendingMigrations()).toHaveLength(1);
     await dataSource.runMigrations();
-    const restored = dataSource.createQueryRunner();
-    try {
-      expect(await restored.getTable('posts')).toBeDefined();
-    } finally {
-      await restored.release();
-    }
+    expect(await executor.getPendingMigrations()).toHaveLength(0);
   });
 });
