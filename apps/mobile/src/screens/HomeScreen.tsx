@@ -109,7 +109,7 @@ export function HomeScreen({
         onRefresh={() => void load('', true)}
         ListEmptyComponent={!loading ? <Text style={styles.empty}>{emptyMessage}</Text> : undefined}
         ListFooterComponent={
-          loading && posts.length > 0 ? <ActivityIndicator style={styles.footer} /> : null
+          loading && posts.length > 0 ? <ActivityIndicator style={styles.footer} /> : undefined
         }
       />
     </View>
