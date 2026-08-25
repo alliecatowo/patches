@@ -52,6 +52,92 @@
   animation: popItem 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+.radialVariant {
+  width: 220px;
+  height: 228px;
+}
+
+.radialVariant .radialItem {
+  --fan-x: 0px;
+  --fan-y: -92px;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  gap: 0;
+  animation-name: popRadialItem;
+}
+
+/* Six fixed points on a 200px quarter-circle centered on the compose trigger. */
+.radialVariant .radialItem:nth-child(1) {
+  --fan-x: -4px;
+  --fan-y: -132px;
+}
+.radialVariant .radialItem:nth-child(2) {
+  --fan-x: -66px;
+  --fan-y: -122px;
+}
+.radialVariant .radialItem:nth-child(3) {
+  --fan-x: -122px;
+  --fan-y: -94px;
+}
+.radialVariant .radialItem:nth-child(4) {
+  --fan-x: -166px;
+  --fan-y: -50px;
+}
+.radialVariant .radialItem:nth-child(5) {
+  --fan-x: -194px;
+  --fan-y: 6px;
+}
+.radialVariant .radialItem:nth-child(6) {
+  --fan-x: -204px;
+  --fan-y: 68px;
+}
+
+.radialVariant .radialLabel {
+  position: absolute;
+  right: 52px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.radialVariant .radialItem:hover .radialLabel,
+.radialVariant .radialItem:focus .radialLabel {
+  opacity: 1;
+}
+
+.radialVariant .radialItem:nth-child(-n + 2) .radialLabel {
+  right: auto;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.radialVariant .radialItem:nth-child(4) .radialLabel {
+  right: 52px;
+}
+
+.radialVariant .radialItem:nth-child(5) .radialLabel,
+.radialVariant .radialItem:nth-child(6) .radialLabel {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.radialVariant .radialItem:nth-child(5) .radialLabel {
+  bottom: 150px;
+}
+
+.radialVariant .radialItem:nth-child(6) .radialLabel {
+  right: 46px;
+  bottom: auto;
+  left: auto;
+  padding: 0.3rem 0.35rem;
+  transform: none;
+}
+
 .radialLabel {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -159,6 +245,33 @@
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes popRadialItem {
+  from {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(var(--fan-x), var(--fan-y)) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fabBackdrop,
+  .radialItem,
+  .radialIconBtn,
+  .mainFab {
+    animation: none;
+    transition: none;
+  }
+  .radialVariant .radialItem {
+    transform: translate(var(--fan-x), var(--fan-y));
+  }
+  .radialVariant .radialLabel {
+    transition: none;
   }
 }
 

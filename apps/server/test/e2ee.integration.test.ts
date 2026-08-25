@@ -508,6 +508,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       await expect(
         prekeys.getPrekeyInventory(actor.actorId, { deviceId: device.deviceId }),
       ).rejects.toMatchObject({ code: 'E2EE_DEVICE_NOT_FOUND' });
+      const [rows] = await dataSource.query<Array<{ public_prekeys: string; issued_ids: string }>>(
+        `SELECT
+           (SELECT count(*) FROM e2ee_one_time_prekeys WHERE device_identity_id = d.id) AS public_prekeys,
+           (SELECT count(*) FROM e2ee_one_time_prekey_key_ids WHERE device_identity_id = d.id) AS issued_ids
+         FROM e2ee_device_identities d WHERE d.actor_id = $1 AND d.device_id = $2`,
+        [actor.actorId, device.deviceId],
+      );
+      // Revocation removes public unused material, but not the immutable issued-ID namespace.
+      expect(rows).toEqual({ public_prekeys: '0', issued_ids: '3' });
     });
 
     it('rejects PublishDeviceRoster with a sequence gap', async () => {
@@ -575,6 +584,47 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
       expect(second.bundles[0]?.oneTimePrekeyExhausted).toBe(true);
       expect(second.bundles[0]?.oneTimePrekey).toBeUndefined();
+    });
+
+    it('keeps a claimed-and-public-row-deleted key id permanently rejected by the issued ledger', async () => {
+      const claimant = await newActor();
+      const target = await newActor();
+      const { device } = await enrollFirstDevice(target, 1);
+
+      const claimed = await prekeys.claimPrekeyBundles(claimant.actorId, {
+        conversationId: '',
+        actorIds: [target.actorId],
+        deviceIds: [],
+      });
+      expect(claimed.bundles[0]?.oneTimePrekey?.keyId).toBe('1');
+
+      await dataSource.query(
+        `DELETE FROM e2ee_one_time_prekeys
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      const [publicRows] = await dataSource.query<Array<{ count: string }>>(
+        `SELECT count(*) FROM e2ee_one_time_prekeys
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      expect(Number(publicRows?.count)).toBe(0);
+
+      await expect(
+        prekeys.uploadPrekeys(target.actorId, {
+          deviceId: device.deviceId,
+          signedPrekey: undefined,
+          oneTimePrekeys: oneTimePrekeys(1, 1),
+          prekeyBundleBytes: Buffer.alloc(0),
+          prekeyBundleSignature: Buffer.alloc(0),
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      const [ledger] = await dataSource.query<Array<{ count: string }>>(
+        `SELECT count(*) FROM e2ee_one_time_prekey_key_ids
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2) AND key_id = 1`,
+        [target.actorId, device.deviceId],
+      );
+      expect(Number(ledger?.count)).toBe(1);
     });
 
     it('never hands the same one-time prekey to two concurrent claimants (atomic claim)', async () => {

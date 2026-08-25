@@ -4,6 +4,7 @@ import {
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeDeviceRoster as E2eeDeviceRosterEntity,
   E2eeOneTimePrekey as E2eeOneTimePrekeyEntity,
+  E2eeOneTimePrekeyKeyId as E2eeOneTimePrekeyKeyIdEntity,
   E2eeSignedPrekey as E2eeSignedPrekeyEntity,
 } from '@patches/database';
 import {
@@ -378,6 +379,15 @@ async function saveOneTimePrekeys(
   if (accepted.length === 0) return 0;
   const repo = manager.getRepository(E2eeOneTimePrekeyEntity);
   try {
+    // Reserve opaque IDs before public material is inserted. Both inserts use this transaction's
+    // manager, so a duplicate reservation rolls back the whole upload (ADR 0031 §2).
+    await manager.getRepository(E2eeOneTimePrekeyKeyIdEntity).insert(
+      accepted.map((prekey) => ({
+        deviceIdentityId,
+        keyId: prekey.keyId,
+        consumedAt: null,
+      })),
+    );
     await repo.insert(
       accepted.map((prekey) => ({
         deviceIdentityId,
@@ -386,10 +396,24 @@ async function saveOneTimePrekeys(
       })),
     );
   } catch (error) {
-    // Unique (device_identity_id, key_id) — a client that replays an already-uploaded key id.
-    throw AppError.validation('One-time prekey ids must be unique per device.', { cause: error });
+    // Only the immutable ledger's exact primary-key conflict is a client duplicate. Do not turn
+    // connectivity, FK, datatype, or an unrelated unique violation into a misleading validation
+    // response: those must retain their normal failure semantics and observability.
+    if (isIssuedPrekeyLedgerDuplicate(error)) {
+      throw AppError.validation('One-time prekey ids must be unique per device.', { cause: error });
+    }
+    throw error;
   }
   return accepted.length;
+}
+
+function isIssuedPrekeyLedgerDuplicate(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const postgres = error as { code?: unknown; constraint?: unknown };
+  return (
+    postgres.code === '23505' &&
+    postgres.constraint === 'pk_e2ee_one_time_prekey_key_ids_device_identity_id_key_id'
+  );
 }
 
 function clampListLimit(requested: number): number {

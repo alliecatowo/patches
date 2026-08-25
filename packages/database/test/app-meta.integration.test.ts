@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
-import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 import { AppMeta } from '../src/entities/app-meta.entity.js';
 
 // Never point tests at the dev DB (docs/agents/PACKAGE_CONVENTIONS.md, INITIAL_VISION.md
@@ -69,24 +68,10 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
     expect(found.value).toEqual({ id: 'test-instance' });
   });
 
-  it('reverts the migration and drops the table, then leaves the schema migrated again', async () => {
-    // `undoLastMigration()` reverts exactly one migration, and this one is no longer the
-    // last: unwind the whole stack so `app_meta` (the first migration) is actually gone.
-    for (let remaining = ALL_MIGRATIONS.length; remaining > 0; remaining -= 1) {
-      await dataSource.undoLastMigration();
-    }
-
-    const queryRunner = dataSource.createQueryRunner();
-    try {
-      const table = await queryRunner.getTable('app_meta');
-      expect(table).toBeUndefined();
-    } finally {
-      await queryRunner.release();
-    }
-
-    // Restore state so this test doesn't leave the schema half-migrated for whatever
-    // Postgres session runs next (this file is the only writer of TEST_DATABASE_URL's
-    // schema in this suite, but being tidy costs nothing).
+  it('round-trips the issued-prekey ledger migration and leaves no pending migration', async () => {
+    await dataSource.undoLastMigration();
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(1);
     await dataSource.runMigrations();
+    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 });

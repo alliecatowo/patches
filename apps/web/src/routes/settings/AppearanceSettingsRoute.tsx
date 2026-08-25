@@ -1,8 +1,10 @@
 import type { JSX } from 'react';
 
 import { CheckIcon, DownloadIcon, SparklesIcon } from '../../components/icons/Icons.js';
+import { useInterfacePreferences } from '../../hooks/useInterfacePreferences.js';
 import { useSystemPrefersDark, useTheme } from '../../hooks/useTheme.js';
 import { THEME_CATALOG } from '../../lib/theme.js';
+import { useAppBadgeStatus } from '../../pwa/appBadgeStatus.js';
 import { usePwaInstall } from '../../pwa/usePwaInstall.js';
 import formStyles from '../AuthForm.module.css';
 import styles from './AppearanceSettingsRoute.module.css';
@@ -13,8 +15,19 @@ import styles from './AppearanceSettingsRoute.module.css';
  */
 export function AppearanceSettingsRoute(): JSX.Element {
   const { preference, setPreference } = useTheme();
+  const { fanStyle, density, setFanStyle, setDensity } = useInterfacePreferences();
   const systemPrefersDark = useSystemPrefersDark();
   const { isInstallable, isStandalone, isIos, promptInstall } = usePwaInstall();
+  const appBadgeStatus = useAppBadgeStatus();
+
+  const appBadgeDescription =
+    appBadgeStatus.capability === 'unsupported'
+      ? 'App icon badges are not available in this browser.'
+      : appBadgeStatus.operation === 'failed'
+        ? 'This browser exposes app icon badges, but the last badge update was not accepted.'
+        : appBadgeStatus.operation === 'applied' || appBadgeStatus.operation === 'cleared'
+          ? 'This browser accepted the last app icon badge update.'
+          : 'This browser exposes app icon badges; no badge update has run yet.';
 
   return (
     <div className={formStyles['wrap']} style={{ margin: 0, maxWidth: 'none' }}>
@@ -90,6 +103,58 @@ export function AppearanceSettingsRoute(): JSX.Element {
         </p>
       </section>
 
+      <section className={styles['preferencesSection']}>
+        <div className={styles['sectionTitleRow']}>
+          <SparklesIcon size={18} />
+          <h2>Layout</h2>
+        </div>
+        <fieldset className={styles['choiceGroup']}>
+          <legend>Quick menu</legend>
+          <label>
+            <input
+              type="radio"
+              name="fan-style"
+              checked={fanStyle === 'stacked'}
+              onChange={() => setFanStyle('stacked')}
+            />
+            Stacked (default)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="fan-style"
+              checked={fanStyle === 'radial'}
+              onChange={() => setFanStyle('radial')}
+            />
+            Radial fan
+          </label>
+        </fieldset>
+        <fieldset className={styles['choiceGroup']}>
+          <legend>Timeline density</legend>
+          <label>
+            <input
+              type="radio"
+              name="density"
+              checked={density === 'cozy'}
+              onChange={() => setDensity('cozy')}
+            />
+            Cozy (default)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="density"
+              checked={density === 'compact'}
+              onChange={() => setDensity('compact')}
+            />
+            Compact
+          </label>
+        </fieldset>
+        <p className={styles['hint']}>
+          Saved on this device only. Density changes spacing, never text size or available actions.
+        </p>
+      </section>
+
       <section style={{ marginTop: '2rem' }}>
         <div className={styles['sectionTitleRow']}>
           <DownloadIcon size={18} />
@@ -101,7 +166,7 @@ export function AppearanceSettingsRoute(): JSX.Element {
             <div>
               <strong style={{ color: 'var(--ok)' }}>✓ Patches is installed as a PWA</strong>
               <p className={styles['pwaDesc']}>
-                Running in standalone mode with offline shell and app badging enabled.
+                Running in standalone mode with the offline shell.
               </p>
             </div>
           ) : isInstallable ? (
@@ -133,6 +198,10 @@ export function AppearanceSettingsRoute(): JSX.Element {
               </p>
             </div>
           )}
+          <p className={styles['pwaDesc']}>
+            {appBadgeDescription} Actual icon display depends on the installed app, browser, and
+            operating system.
+          </p>
         </div>
       </section>
     </div>

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   claimOutboxJobs,
   countPendingOutboxJobs,
+  enqueueOutboxJobIfAbsent,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   isAuthCodeEmailJobType,
@@ -42,6 +43,14 @@ function getNextCleanupAvailableAt(now: Date): Date {
  */
 export function nextIdleDelayMs(currentMs: number, maxMs: number): number {
   return Math.min(currentMs * 2, maxMs);
+}
+
+/** Error material persisted in the outbox must never contain handler/repository input or IDs. */
+export function sanitizeJobFailure(_error: unknown): {
+  code: 'JOB_HANDLER_FAILED';
+  message: string;
+} {
+  return { code: 'JOB_HANDLER_FAILED', message: 'Job handler failed.' };
 }
 
 /**
@@ -182,8 +191,9 @@ export class JobRunner {
 
   /** B-102: enqueues the daily `CLEAN_EXPIRED_NOTIFICATIONS` job at 03:00 UTC.
    * Runs once per day when the loop crosses the 03:00 UTC boundary. Uses `available_at`
-   * to schedule the exact execution time, and an idempotency key to avoid duplicates if
-   * multiple workers are running. */
+   * to schedule the exact execution time, and an insert-time idempotency-key conflict check
+   * (`enqueueOutboxJobIfAbsent`) so multiple concurrent workers can never double-enqueue —
+   * or crash the claim loop on a lost check-then-insert race. */
   private async enqueueDailyCleanupIfDue(): Promise<void> {
     const now = Date.now();
     const nextCleanupAt = getNextCleanupAvailableAt(new Date(now));
@@ -199,24 +209,21 @@ export class JobRunner {
 
     this.lastCleanupEnqueueAtMs = now;
 
-    // Check if a job for this day already exists (idempotency key based on date).
+    // Enqueue the job with available_at set to 03:00 UTC. The idempotency key is date-based;
+    // a concurrent worker that scheduled the same day makes this a no-op, not an error.
     const idempotencyKey = `CLEAN_EXPIRED_NOTIFICATIONS:${nextCleanupAt.toISOString().split('T')[0]}`;
-    const existing = await this.dataSource.manager.getRepository('OutboxJob').findOne({
-      where: { idempotencyKey },
-    });
-    if (existing) return;
-
-    // Enqueue the job with available_at set to 03:00 UTC.
-    await this.dataSource.manager.getRepository('OutboxJob').save({
+    const inserted = await enqueueOutboxJobIfAbsent(this.dataSource.manager, {
       type: 'CLEAN_EXPIRED_NOTIFICATIONS',
       payload: {},
       availableAt: nextCleanupAt,
       idempotencyKey,
     });
 
-    this.logger.log(
-      JSON.stringify({ event: 'cleanup_job_enqueued', availableAt: nextCleanupAt.toISOString() }),
-    );
+    if (inserted) {
+      this.logger.log(
+        JSON.stringify({ event: 'cleanup_job_enqueued', availableAt: nextCleanupAt.toISOString() }),
+      );
+    }
   }
 
   /** Interruptible sleep: `requestStop()` wakes it immediately instead of waiting it out. */
@@ -269,11 +276,10 @@ export class JobRunner {
       );
     } catch (error) {
       // Never log `job.payload` here — verification/reset jobs carry a code (spec §101).
-      const message = isAuthCodeEmailJobType(job.type)
-        ? 'AUTH_CODE_DELIVERY_FAILED'
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      const failure = isAuthCodeEmailJobType(job.type)
+        ? { code: 'AUTH_CODE_DELIVERY_FAILED', message: 'AUTH_CODE_DELIVERY_FAILED' }
+        : sanitizeJobFailure(error);
+      const message = failure.message;
       const outcome = await this.dataSource.transaction((manager) =>
         markOutboxJobFailed(manager, job.id, { claim, error: message }),
       );
@@ -287,7 +293,7 @@ export class JobRunner {
       this.circuitBreaker.recordFailure(job.type);
       if (!wasOpen && this.circuitBreaker.isOpen(job.type)) {
         this.logger.warn(
-          JSON.stringify({ event: 'outbox_circuit_open', type: job.type, error: message }),
+          JSON.stringify({ event: 'outbox_circuit_open', type: job.type, error: failure.code }),
         );
       }
       this.logger.warn(
@@ -297,7 +303,7 @@ export class JobRunner {
           attempt: job.attempts,
           latencyMs: Date.now() - start,
           outcome,
-          error: message,
+          error: failure.code,
         }),
       );
     }

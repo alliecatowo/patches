@@ -24,13 +24,14 @@ export default defineConfig([
   ]),
   {
     files: ['**/*.{ts,tsx,mts,cts}'],
+    ignores: ['vitest.config.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
         projectService: {
-          // Root-level scripts/configs, plus every package's own build/test config files
-          // (vitest.config.ts, vitest.config.mts, vitest.integration.config.mts,
-          // tsup.config.ts, ...) — letting typescript-eslint fall back to its default,
+          // Every package's own build/test config files (vitest.config.ts,
+          // vitest.config.mts, vitest.integration.config.mts, tsup.config.ts, ...) —
+          // letting typescript-eslint fall back to its default,
           // tsconfig-less program for these means each package's tsconfig.json doesn't
           // have to `include` them just to keep typed linting from erroring (B-005).
           // `**` is disallowed here (typescript-eslint caps default-project matching to
@@ -43,14 +44,12 @@ export default defineConfig([
           // packages/media) keep including their config files in tsconfig.json until
           // someone applies the same change there.
           allowDefaultProject: [
-            '*.js',
-            '*.mjs',
-            '*.ts',
             'apps/admin/*.config.{ts,mts,cts}',
             'apps/server/*.config.{ts,mts,cts}',
             'apps/worker/*.config.{ts,mts,cts}',
             'packages/config/*.config.{ts,mts,cts}',
             'packages/database/*.config.{ts,mts,cts}',
+            'packages/harness/*.config.{ts,mts,cts}',
             'packages/markup/*.config.{ts,mts,cts}',
             'packages/observability/*.config.{ts,mts,cts}',
             'packages/testkit/*.config.{ts,mts,cts}',
@@ -58,9 +57,9 @@ export default defineConfig([
           ],
           // apps/web/tsconfig.json already includes vite.config.ts/vitest.config.ts
           // itself (same pattern as apps/tui), so it doesn't need an entry here.
-          // Default cap is 8; the packages above contribute 17 matching config files, all
-          // small and cheap to parse standalone (no type info needed) — raising this is the
-          // documented escape hatch, not a performance red flag at this file count.
+          // Default cap is 8; the explicitly listed package configs above contribute 20
+          // matching files. The root Vitest config is linted below without falling back to
+          // a default project, so this intentionally remains a tight fixed bound.
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
         },
         tsconfigRootDir: import.meta.dirname,
@@ -87,6 +86,16 @@ export default defineConfig([
       ],
       'no-empty': ['error', { allowEmptyCatch: false }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    // This root orchestration config intentionally has no owning tsconfig. Its imports are
+    // type-safe at build/runtime, but it does not need a tsconfig-less typed program; keeping
+    // it out of allowDefaultProject preserves the bounded package-config lint cost above.
+    files: ['vitest.config.ts'],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
   {

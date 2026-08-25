@@ -38,7 +38,9 @@ export function RootLayout(): JSX.Element {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const unreadQuery = useQuery({
-    queryKey: ['notifications', 'unread-count'],
+    // Keep cached unread data scoped to its actor so switching accounts never reuses a prior
+    // account's count for either the in-app indicator or the optional OS app badge.
+    queryKey: ['notifications', 'unread-count', session?.actor.id],
     queryFn: () => api.notifications.getUnreadCount({}),
     enabled: session !== null,
     refetchInterval: 30_000,
@@ -46,8 +48,8 @@ export function RootLayout(): JSX.Element {
 
   const unreadCount = unreadQuery.data?.count ?? 0;
 
-  // Sync unread notification count with PWA App Badging API
-  useAppBadge(session ? unreadCount : 0);
+  // Sync the current actor's unread notification count with the optional PWA App Badging API.
+  useAppBadge(unreadCount, session?.actor.id);
 
   useKeyboardShortcuts({
     c: () => void navigate('/compose'),

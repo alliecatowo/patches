@@ -16,4 +16,6 @@ export {
   type ExportAccountPayload,
   purgeAccountPayloadSchema,
   type PurgeAccountPayload,
+  e2eeRetentionSweepPayloadSchema,
+  type E2eeRetentionSweepPayload,
 } from './payloads.js';

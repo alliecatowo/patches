@@ -1,6 +1,7 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useInterfacePreferences } from '../hooks/useInterfacePreferences.js';
 import {
   BellIcon,
   ComposeIcon,
@@ -18,37 +19,46 @@ export interface ThumbNavFabProps {
 
 export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
+  const { fanStyle } = useInterfacePreferences();
+  const mainButtonRef = useRef<HTMLButtonElement>(null);
+  const firstLinkRef = useRef<HTMLAnchorElement>(null);
+
+  const closeAndRestoreFocus = useCallback((): void => {
+    mainButtonRef.current?.focus();
+    setIsOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setIsOpen(false);
+      if (e.key === 'Escape') closeAndRestoreFocus();
     };
 
     window.addEventListener('keydown', handleKeyDown);
+    firstLinkRef.current?.focus();
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [closeAndRestoreFocus, isOpen]);
 
   return (
     <>
       {isOpen ? (
-        <div
-          className={styles['fabBackdrop']}
-          onClick={() => setIsOpen(false)}
-          aria-hidden="true"
-        />
+        <div className={styles['fabBackdrop']} onClick={closeAndRestoreFocus} aria-hidden="true" />
       ) : null}
 
       <div className={styles['fabContainer']}>
         {isOpen ? (
-          <div className={styles['radialMenu']} role="menu" aria-label="Quick navigation">
+          <nav
+            className={`${styles['radialMenu']} ${fanStyle === 'radial' ? styles['radialVariant'] : ''}`}
+            data-layout={fanStyle}
+            aria-label="Quick navigation"
+          >
             <Link
+              ref={firstLinkRef}
               to="/compose"
               className={`${styles['radialItem']} ${styles['radialPostItem']}`}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '10ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>post</span>
               <div className={styles['radialIconBtn']}>
@@ -61,7 +71,6 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               className={styles['radialItem']}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '40ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>search</span>
               <div className={styles['radialIconBtn']}>
@@ -74,7 +83,6 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               className={styles['radialItem']}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '70ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>messages</span>
               <div className={styles['radialIconBtn']}>
@@ -87,7 +95,6 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               className={`${styles['radialItem']} ${styles['radialReportItem']}`}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '115ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>report</span>
               <div className={styles['radialIconBtn']}>
@@ -100,7 +107,6 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               className={styles['radialItem']}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '100ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>notifications</span>
               <div className={styles['radialIconBtn']}>
@@ -116,17 +122,17 @@ export function ThumbNavFab({ unreadCount = 0 }: ThumbNavFabProps): JSX.Element 
               className={styles['radialItem']}
               onClick={() => setIsOpen(false)}
               style={{ animationDelay: '130ms' }}
-              role="menuitem"
             >
               <span className={styles['radialLabel']}>home</span>
               <div className={styles['radialIconBtn']}>
                 <HomeIcon size={19} />
               </div>
             </Link>
-          </div>
+          </nav>
         ) : null}
 
         <button
+          ref={mainButtonRef}
           type="button"
           className={`${styles['mainFab']} ${isOpen ? styles['open'] : ''}`}
           onClick={() => setIsOpen((prev) => !prev)}

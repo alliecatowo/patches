@@ -350,3 +350,25 @@ only the ones at 0 (nothing unique in them), then `git worktree prune` and `git 
 **Learning:** The root kept implementing after an orchestration-only request, while model routing
 was obsolete and confused role-fixed effort with selectable overrides. **Action taken:** `AGENTS.md`
 now defines ownership, Luna/Terra/Sol review routing, fork economy, and effective-effort reporting.
+
+## 2026-08-25 — CI red only between 00:00–03:00 UTC: clock-gated race
+
+**Learning:** `integration (Postgres + migrations)` failed on both the PR and `main` at ~01:43 and
+~02:13 UTC, while runs before midnight and after 03:00 passed. `JobRunner.enqueueDailyCleanupIfDue`
+enqueues the daily cleanup only inside that window, via check-then-insert on the
+`idempotency_key` — two concurrent runners both pass `findOne`, the loser's 23505 rejection kills
+its `run()` loop, and the test's `waitFor` times out. The same window also broke the test's
+whole-table row count (the legitimately enqueued cleanup job is an extra row).
+
+**Action taken:** `enqueueOutboxJobIfAbsent` (`packages/database/src/repositories/outbox.ts`) does
+`INSERT ... ON CONFLICT DO NOTHING` and returns whether it inserted; the runner uses it instead of
+findOne+save, and the test scopes `findBy({ id: In(jobIds) })`. Regression test races four same-key
+inserts and asserts exactly one row.
+
+Two rules of thumb:
+
+1. **A CI failure whose timestamps cluster in a fixed UTC window is a clock-gated code path** — grep
+   for `setUTCHours`/fixed-window scheduling before re-running and hoping.
+2. **Never express "exactly once" as an application-side read-then-write** — put the uniqueness in
+   the DML (`ON CONFLICT DO NOTHING` / conditional `UPDATE`), the same way `claimOutboxJobs` and
+   `replayOutboxJob` already do.
