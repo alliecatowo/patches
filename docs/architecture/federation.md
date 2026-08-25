@@ -222,6 +222,21 @@ filter on this to fully close the outbound half"), closed as a second, independe
 top of (not a replacement for) `DeliveryService.enqueue`'s existing filter. Covered by
 `apps/server/src/modules/federation/services/activitypub-federation-gateway.service.test.ts`.
 
+Also resolved: outbound `Follow`/`Like` used to mint a fresh `randomUUID()` for the inner
+activity every time `Undo` was built, instead of naming the original `Follow`/`Like`'s id — a
+peer has no way to match an `Undo` against an activity id it has never seen, so the unfollow/
+unlike could silently fail to take effect remotely (B-079). Fixed the same way ADR 0028 §4
+already required for reposts: the inner id is **deterministic**, reconstructed rather than
+looked up, via `localDeterministicActivityUri(origin, 'follow' | 'like', actorUri, objectUri)`
+(`apps/server/src/modules/federation/activity-ids.ts`) — a SHA-256 of the activity kind plus
+the local actor's own (immutable, handle-derived) URI and the remote object's (immutable)
+`canonicalUri`. Unlike a repost's `Announce` id, which is reconstructed from the `reposts` row's
+surrogate id, `Follow`/`Like` have no row left to reconstruct from by undo time (`follows` rows
+are hard-deleted on unfollow; `likes` has no surrogate id at all, only its composite PK), hence
+the content-hash derivation instead of a row-id one. The derivation is a wire contract — see the
+doc comment on `localDeterministicActivityUri` before changing it. Covered by the same test
+file's "B-079: outbound Follow/Like Undo names the original id" suite.
+
 ### Stage F2 — interoperability (**v0.3–v0.4**, Phases 10–11)
 
 Test against mainstream ActivityPub implementations (e.g. Mastodon). Implement:

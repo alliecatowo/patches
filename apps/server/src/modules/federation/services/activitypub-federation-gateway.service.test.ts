@@ -385,3 +385,141 @@ describe('ActivityPubFederationGateway (P18-003: outbound Announce/Undo)', () =>
     await expect(noop.unannounceRemotePost(manager as never, 'repost-1')).resolves.toBeUndefined();
   });
 });
+
+/** B-079: `Undo(Follow)`/`Undo(Like)` must name the *original* activity id, not a fresh
+ * `randomUUID()` — a peer receiving the undo can only match it to the activity it already
+ * recorded if the inner id is byte-identical. Neither `follows` nor `likes` keeps a row past
+ * unfollow/unlike, so the id is re-derived via `localDeterministicActivityUri` rather than
+ * looked up. */
+describe('ActivityPubFederationGateway (B-079: outbound Follow/Like Undo names the original id)', () => {
+  it('followRemoteActor reconstructs the same Follow activity id across repeated calls', async () => {
+    const follower = localActor({ id: 'local-1' });
+    const target = remoteActor({ id: 'remote-1', homeServer: 'good.example' });
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const gateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    const manager = fakeManager({ actors: { 'local-1': follower, 'remote-1': target } });
+
+    await gateway.followRemoteActor(manager as never, 'local-1', 'remote-1');
+    await gateway.followRemoteActor(manager as never, 'local-1', 'remote-1');
+
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    const first = enqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    const second = enqueue.mock.calls[1]?.[1] as { activity: Record<string, unknown> };
+    expect(first.activity.type).toBe('Follow');
+    expect(typeof first.activity.id).toBe('string');
+    expect(second.activity.id).toBe(first.activity.id);
+  });
+
+  it("unfollowRemoteActor's Undo names the exact id followRemoteActor minted for the Follow", async () => {
+    const follower = localActor({ id: 'local-1' });
+    const target = remoteActor({ id: 'remote-1', homeServer: 'good.example' });
+    const manager = fakeManager({ actors: { 'local-1': follower, 'remote-1': target } });
+
+    const followEnqueue = vi.fn().mockResolvedValue(undefined);
+    const followGateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue: followEnqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    await followGateway.followRemoteActor(manager as never, 'local-1', 'remote-1');
+    const originalFollow = followEnqueue.mock.calls[0]?.[1] as {
+      activity: Record<string, unknown>;
+    };
+    const originalFollowId = originalFollow.activity.id as string;
+
+    const unfollowEnqueue = vi.fn().mockResolvedValue(undefined);
+    const unfollowGateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue: unfollowEnqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    await unfollowGateway.unfollowRemoteActor(manager as never, 'local-1', 'remote-1');
+
+    expect(unfollowEnqueue).toHaveBeenCalledTimes(1);
+    const call = unfollowEnqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    expect(call.activity.type).toBe('Undo');
+    const object = call.activity.object as Record<string, unknown>;
+    expect(object.type).toBe('Follow');
+    // The whole point of B-079: the Undo's inner Follow must name the id the peer already has
+    // on file, not a fresh one.
+    expect(object.id).toBe(originalFollowId);
+    // And the outer Undo wrapper is a distinct, one-shot id (never equal to the inner one).
+    expect(call.activity.id).not.toBe(object.id);
+  });
+
+  it('likeRemotePost reconstructs the same Like activity id across repeated calls', async () => {
+    const liker = localActor({ id: 'local-1' });
+    const author = remoteActor({ id: 'remote-1', homeServer: 'good.example' });
+    const post = {
+      id: 'post-1',
+      isLocal: false,
+      authorActor: author,
+      canonicalUri: 'https://good.example/posts/1',
+    } as Post;
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const gateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    const manager = fakeManager({ actors: { 'local-1': liker }, posts: { 'post-1': post } });
+
+    await gateway.likeRemotePost(manager as never, 'local-1', 'post-1');
+    await gateway.likeRemotePost(manager as never, 'local-1', 'post-1');
+
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    const first = enqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    const second = enqueue.mock.calls[1]?.[1] as { activity: Record<string, unknown> };
+    expect(first.activity.type).toBe('Like');
+    expect(typeof first.activity.id).toBe('string');
+    expect(second.activity.id).toBe(first.activity.id);
+  });
+
+  it("unlikeRemotePost's Undo names the exact id likeRemotePost minted for the Like", async () => {
+    const liker = localActor({ id: 'local-1' });
+    const author = remoteActor({ id: 'remote-1', homeServer: 'good.example' });
+    const post = {
+      id: 'post-1',
+      isLocal: false,
+      authorActor: author,
+      canonicalUri: 'https://good.example/posts/1',
+    } as Post;
+    const manager = fakeManager({ actors: { 'local-1': liker }, posts: { 'post-1': post } });
+
+    const likeEnqueue = vi.fn().mockResolvedValue(undefined);
+    const likeGateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue: likeEnqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    await likeGateway.likeRemotePost(manager as never, 'local-1', 'post-1');
+    const originalLike = likeEnqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    const originalLikeId = originalLike.activity.id as string;
+
+    const unlikeEnqueue = vi.fn().mockResolvedValue(undefined);
+    const unlikeGateway = new ActivityPubFederationGateway(
+      fakeConfig(),
+      { enqueue: unlikeEnqueue } as unknown as DeliveryService,
+      fakeKeys(),
+      fakeDomainBlocks([]),
+    );
+    await unlikeGateway.unlikeRemotePost(manager as never, 'local-1', 'post-1');
+
+    expect(unlikeEnqueue).toHaveBeenCalledTimes(1);
+    const call = unlikeEnqueue.mock.calls[0]?.[1] as { activity: Record<string, unknown> };
+    expect(call.activity.type).toBe('Undo');
+    const object = call.activity.object as Record<string, unknown>;
+    expect(object.type).toBe('Like');
+    expect(object.id).toBe(originalLikeId);
+    expect(call.activity.id).not.toBe(object.id);
+  });
+});
