@@ -12,7 +12,7 @@ import { CommunityInviteStatus, CommunityRole } from './generated/patches/v1/com
 import { FilterAction, FilterScope, FilterTermKind } from './generated/patches/v1/filters.js';
 import { LabelAction } from './generated/patches/v1/labels.js';
 import { MediaStatus } from './generated/patches/v1/media.js';
-import { ConversationKind, MessageRequestStatus } from './generated/patches/v1/messages.js';
+import { ConversationKind } from './generated/patches/v1/messages.js';
 import {
   ModerationActionType,
   ModerationLogSubjectKind,

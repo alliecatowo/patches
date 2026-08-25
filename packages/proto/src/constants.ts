@@ -186,26 +186,14 @@ import type {
   UpdateCommunityResponse,
 } from './generated/patches/v1/communities.js';
 import type {
-  CreateConversationRequest,
-  CreateConversationResponse,
-  DeleteMessageRequest,
-  DeleteMessageResponse,
   GetConversationRequest,
   GetConversationResponse,
   LeaveConversationRequest,
   LeaveConversationResponse,
   ListConversationsRequest,
   ListConversationsResponse,
-  ListMessageRequestsRequest,
-  ListMessageRequestsResponse,
-  ListMessagesRequest,
-  ListMessagesResponse,
   MarkConversationReadRequest,
   MarkConversationReadResponse,
-  RespondToMessageRequestRequest,
-  RespondToMessageRequestResponse,
-  SendMessageRequest,
-  SendMessageResponse,
 } from './generated/patches/v1/messages.js';
 import type {
   BlockActorRequest,
@@ -224,8 +212,6 @@ import type {
   ReportActorResponse,
   ReportE2eeMessageRequest,
   ReportE2eeMessageResponse,
-  ReportMessageRequest,
-  ReportMessageResponse,
   ReportPostRequest,
   ReportPostResponse,
   UnblockActorRequest,
@@ -586,7 +572,6 @@ export interface ModerationGrpcClient extends Client {
   listMutes: GrpcUnaryCall<ListMutesRequest, ListMutesResponse>;
   reportPost: GrpcUnaryCall<ReportPostRequest, ReportPostResponse>;
   reportActor: GrpcUnaryCall<ReportActorRequest, ReportActorResponse>;
-  reportMessage: GrpcUnaryCall<ReportMessageRequest, ReportMessageResponse>;
   reportE2EeMessage: GrpcUnaryCall<ReportE2eeMessageRequest, ReportE2eeMessageResponse>;
   listModerationLog: GrpcUnaryCall<ListModerationLogRequest, ListModerationLogResponse>;
   listMyModerationNotices: GrpcUnaryCall<
@@ -639,17 +624,8 @@ export interface CommunityGrpcClient extends Client {
 export interface DirectMessageGrpcClient extends Client {
   listConversations: GrpcUnaryCall<ListConversationsRequest, ListConversationsResponse>;
   getConversation: GrpcUnaryCall<GetConversationRequest, GetConversationResponse>;
-  listMessages: GrpcUnaryCall<ListMessagesRequest, ListMessagesResponse>;
-  sendMessage: GrpcUnaryCall<SendMessageRequest, SendMessageResponse>;
-  deleteMessage: GrpcUnaryCall<DeleteMessageRequest, DeleteMessageResponse>;
-  createConversation: GrpcUnaryCall<CreateConversationRequest, CreateConversationResponse>;
   leaveConversation: GrpcUnaryCall<LeaveConversationRequest, LeaveConversationResponse>;
   markConversationRead: GrpcUnaryCall<MarkConversationReadRequest, MarkConversationReadResponse>;
-  listMessageRequests: GrpcUnaryCall<ListMessageRequestsRequest, ListMessageRequestsResponse>;
-  respondToMessageRequest: GrpcUnaryCall<
-    RespondToMessageRequestRequest,
-    RespondToMessageRequestResponse
-  >;
 }
 
 /** `patches.v1.TagService` as seen by a raw grpc-js client. */

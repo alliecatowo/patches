@@ -145,17 +145,6 @@ export interface ReportActorResponse {
   reportId: string;
 }
 
-export interface ReportMessageRequest {
-  messageId: string;
-  reason: ReportReason;
-  /** Optional free text. Max 2,000 characters (spec §58-style bound). */
-  details: string;
-}
-
-export interface ReportMessageResponse {
-  reportId: string;
-}
-
 export interface ReportE2eeMessageRequest {
   /**
    * An `E2eeLogicalMessage.id` (client-generated logical id shared across every per-device
@@ -282,21 +271,14 @@ export interface ModerationServiceClient {
   reportActor(request: ReportActorRequest, metadata?: Metadata): Observable<ReportActorResponse>;
 
   /**
-   * Snapshot-backed (spec §183.4): the reported message's content is captured into the report
-   * at write time so a later deletion by either party can't destroy the evidence.
-   */
-
-  reportMessage(
-    request: ReportMessageRequest,
-    metadata?: Metadata,
-  ): Observable<ReportMessageResponse>;
-
-  /**
-   * A fourth sibling of `ReportPost`/`ReportActor`/`ReportMessage`, not a generic report RPC
-   * (ADR 0020 §9): the node holds no plaintext for an E2EE logical message, so unlike
-   * `ReportMessage` this creates an evidence-free `Report` row keyed by
-   * `subject_e2ee_logical_message_id`. A follow-up `E2eeService.AttachReportEvidence` call
-   * supplies the reporter-disclosed plaintext/opening/franking material against this report id.
+   * A third sibling of `ReportPost`/`ReportActor`, not a generic report RPC (ADR 0020 §9): the
+   * node holds no plaintext for an E2EE logical message, so this creates an evidence-free
+   * `Report` row keyed by `subject_e2ee_logical_message_id`. A follow-up
+   * `E2eeService.AttachReportEvidence` call supplies the reporter-disclosed
+   * plaintext/opening/franking material against this report id. `ReportMessage`, the plaintext
+   * sibling this once had (snapshot-backed evidence for a server-visible DM), was removed by
+   * ADR 0030 §B-095 alongside the rest of the server-visible DM machinery — `ReportE2eeMessage`
+   * plus disclosed evidence is the whole moderation story for DMs now.
    */
 
   reportE2EeMessage(
@@ -390,21 +372,14 @@ export interface ModerationServiceController {
   ): Promise<ReportActorResponse> | Observable<ReportActorResponse> | ReportActorResponse;
 
   /**
-   * Snapshot-backed (spec §183.4): the reported message's content is captured into the report
-   * at write time so a later deletion by either party can't destroy the evidence.
-   */
-
-  reportMessage(
-    request: ReportMessageRequest,
-    metadata?: Metadata,
-  ): Promise<ReportMessageResponse> | Observable<ReportMessageResponse> | ReportMessageResponse;
-
-  /**
-   * A fourth sibling of `ReportPost`/`ReportActor`/`ReportMessage`, not a generic report RPC
-   * (ADR 0020 §9): the node holds no plaintext for an E2EE logical message, so unlike
-   * `ReportMessage` this creates an evidence-free `Report` row keyed by
-   * `subject_e2ee_logical_message_id`. A follow-up `E2eeService.AttachReportEvidence` call
-   * supplies the reporter-disclosed plaintext/opening/franking material against this report id.
+   * A third sibling of `ReportPost`/`ReportActor`, not a generic report RPC (ADR 0020 §9): the
+   * node holds no plaintext for an E2EE logical message, so this creates an evidence-free
+   * `Report` row keyed by `subject_e2ee_logical_message_id`. A follow-up
+   * `E2eeService.AttachReportEvidence` call supplies the reporter-disclosed
+   * plaintext/opening/franking material against this report id. `ReportMessage`, the plaintext
+   * sibling this once had (snapshot-backed evidence for a server-visible DM), was removed by
+   * ADR 0030 §B-095 alongside the rest of the server-visible DM machinery — `ReportE2eeMessage`
+   * plus disclosed evidence is the whole moderation story for DMs now.
    */
 
   reportE2EeMessage(
@@ -455,7 +430,6 @@ export function ModerationServiceControllerMethods() {
       'listMutes',
       'reportPost',
       'reportActor',
-      'reportMessage',
       'reportE2EeMessage',
       'listModerationLog',
       'listMyModerationNotices',
