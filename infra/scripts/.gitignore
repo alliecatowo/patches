@@ -1,0 +1,2 @@
+# e2ee-lab runtime artifacts (pid files, logs, curl captures) — same convention as infra/lab/.gitignore
+.run/

@@ -86,6 +86,15 @@ const envObjectSchema = z.object({
   // Owner-approved franking profiles (P13-016 resolution). Empty = fail-closed.
   E2EE_APPROVED_FRANKING_PROFILES: z.string().default(''),
   /**
+   * B-108 / P13-014 — the final EXPERIMENTAL_CANARY → ENABLED flip (ADR 0020 §11's rollout
+   * ladder, `E2EE_CAPABILITY_STATE_ENABLED`). Disclosure only: canary and enabled accept the
+   * exact same send traffic, so this changes what `GetE2eeCapability` reports, not the fanout
+   * approval gate. It can never upgrade a node past its review position — without an approved
+   * franking profile the node still reports `ISOLATED_TEST_ONLY`/`DISABLED`. Default false;
+   * flip to true only after `infra/scripts/e2ee-lab.sh` (the B-108 interop lab) is green.
+   */
+  E2EE_V1_ENABLED: booleanish().default(false),
+  /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
    * proxy that always sets/overwrites those headers (Fly's edge does); off by default so a

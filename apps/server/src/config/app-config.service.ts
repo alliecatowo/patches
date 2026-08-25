@@ -64,6 +64,15 @@ export class AppConfigService {
     return this.get('E2EE_UNREVIEWED_DEV_MODE');
   }
 
+  /**
+   * B-108 / P13-014: the final canary→ENABLED disclosure flip. True only when the operator
+   * has set `E2EE_V1_ENABLED` after the interop lab passed — never a substitute for an
+   * approved franking profile (see `e2eeApprovedFrankingProfiles`).
+   */
+  get e2eeV1Enabled(): boolean {
+    return this.get('E2EE_V1_ENABLED');
+  }
+
   /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
   get trustProxyHeaders(): boolean {
     return this.get('TRUST_PROXY_HEADERS');
