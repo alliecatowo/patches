@@ -61,6 +61,12 @@ export interface E2eeRuntimeOptions {
   readonly identity: LocalDeviceIdentity;
   readonly sendTransport: E2eeSendTransport;
   readonly mailboxTransport: E2eeMailboxTransport;
+  /**
+   * Clock for certificate and prekey validity windows. Injectable so tests can pin a
+   * moment inside (or outside) a certificate's window; production omits it. Session
+   * setup is the only place time is consulted — the ratchet itself is timeless.
+   */
+  readonly nowMs?: (() => number) | undefined;
 }
 
 interface PreparedSession {
@@ -76,12 +82,14 @@ export class E2eeSessionRuntime {
   private readonly identity: LocalDeviceIdentity;
   private readonly sendTransport: E2eeSendTransport;
   private readonly mailboxTransport: E2eeMailboxTransport;
+  private readonly nowMs: () => number;
 
   constructor(options: E2eeRuntimeOptions) {
     this.vault = options.vault;
     this.identity = options.identity;
     this.sendTransport = options.sendTransport;
     this.mailboxTransport = options.mailboxTransport;
+    this.nowMs = options.nowMs ?? ((): number => Date.now());
   }
 
   // ------------------------------- send -----------------------------------
@@ -231,7 +239,7 @@ export class E2eeSessionRuntime {
       identity: this.identity,
       peerBundle: peer.bundle,
       peerRoster: peer.roster,
-      nowMs: Date.now(),
+      nowMs: this.nowMs(),
     });
     await this.vault.applyUpdate(sessionId, established.state);
     const stored = await this.vault.getSession(sessionId);
@@ -342,7 +350,7 @@ export class E2eeSessionRuntime {
           selfBundle: selfPrekeyBundle(this.identity),
           setup,
           initiatorRoster,
-          nowMs: Date.now(),
+          nowMs: this.nowMs(),
         });
         state = established.state;
       }
