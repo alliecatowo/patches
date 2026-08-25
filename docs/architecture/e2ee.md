@@ -312,7 +312,47 @@ primitives; that is not an audit of Patches' composition. JavaScript cannot guar
 execution or complete zeroization, so wiping is best-effort. Cross-client vectors and independent
 security review and remediation remain hard ship gates.
 
-## 9. Federation is a non-goal here
+## 9. Client runtime status (B-101)
+
+The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol composition) and
+`apps/tui/src/app/e2ee-{send,transports}.ts` (the shell's vault ownership and the bindings to
+`PatchesApi`). What is wired end to end today:
+
+- **Send.** `E2eeSessionRuntime.send` loads the fanout plan from `GetE2eeConversationState`, pads one
+  logical plaintext, derives one franking opening and commitment per logical message, seals one
+  envelope per target device, stages every advanced ratchet state durably **before** the bytes leave,
+  and submits the whole fanout through the real `SendEnvelopes`. A transport failure confirms the
+  staged states for pre-existing sessions (adoption keeps the reloaded ratchet at least as advanced
+  as anything sent) and deletes sessions this send created, whose X3DH-carrying first envelope never
+  reached the peer. A failed send therefore never wedges a conversation.
+- **Receive.** `pollMailbox` drains `ListMailboxEnvelopes` oldest-first, opens each envelope through
+  `openDeviceEnvelope` — which authenticates the logical message id and the node-delivered franking
+  commitment as associated data, and verifies the recovered opening — commits the advanced receive
+  state, and only then acknowledges. `openDeviceEnvelope` is the only source of plaintext in the
+  client, so franking verification is structural rather than a policy a caller could skip. A failure
+  renders a neutral placeholder and is still acknowledged: never shown, never silent.
+- **Verification on read.** `chain.ts` re-verifies every served identity root, roster, and active
+  device certificate against the authoritative `*_bytes` with strict RFC 8032 semantics, and
+  `group-control.ts` verifies the membership transcript against those rosters.
+- **History transfer** is parsed and rendered as labelled re-delivered provenance and never re-enters
+  any session state.
+- **Vault lifecycle.** Wipe routes through the live store, drops the cached instance, unbinds the
+  enrolled identity, and clears the sticky fault; both the vault file and the guarded key file sweep
+  their own crash-orphaned temporaries on open.
+
+**The one open blocker is session bootstrap against a peer.** Identity material exists in two
+transcript families that sign the same facts under different encodings: the _crypto-native_ family
+(`packages/crypto/src/identity.ts`, which `initiateX3dh`/`respondX3dh` re-verify) and the
+_node-canonical_ family (`apps/server/src/modules/e2ee/e2ee.codec.ts`, mirrored for clients in
+`apps/tui/src/e2ee/node-transcripts.ts`), which is the only one the node stores and serves. Device
+enrollment mints both, but publishes only the node-canonical one, so a client can fully authenticate
+a peer's published chain and still not construct the crypto-native `PreKeyBundle`/`SignedDeviceRoster`
+X3DH demands — that would need the peer's root signature over the crypto-native encoding, which no
+other party can mint. `claimPrekeyBundles` and peer `loadPeerRoster` therefore **fail closed** with
+fixed copy rather than half-verifying (ADR 0020 §14.2). Unifying the two families onto the
+node-canonical transcript is the remaining work; it changes reviewed crypto and so needs its own ADR.
+
+## 10. Federation is a non-goal here
 
 ADR 0020 §13 authorizes **local-node E2EE only**. No key, prekey, envelope, roster, report, or DM
 delivery path may cross `FederationGateway` or ActivityPub, even when public federation is enabled
