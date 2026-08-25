@@ -563,11 +563,9 @@ describe('ActivityPubFederationGateway (P18-006: outbound tags + quotes on publi
       post: publishPostFixture({ quotePolicy: undefined }),
     });
     expect('interactionPolicy' in note).toBe(false);
-/** B-079: `Undo(Follow)`/`Undo(Like)` must name the *original* activity id, not a fresh
- * `randomUUID()` — a peer receiving the undo can only match it to the activity it already
- * recorded if the inner id is byte-identical. Neither `follows` nor `likes` keeps a row past
- * unfollow/unlike, so the id is re-derived via `localDeterministicActivityUri` rather than
- * looked up. */
+  });
+});
+
 describe('ActivityPubFederationGateway (B-079: outbound Follow/Like Undo names the original id)', () => {
   it('followRemoteActor reconstructs the same Follow activity id across repeated calls', async () => {
     const follower = localActor({ id: 'local-1' });
