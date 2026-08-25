@@ -356,7 +356,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .findOne({ where: { id: response.reportId } });
         expect(row?.subjectType).toBe('E2EE_MESSAGE');
         expect(row?.subjectE2eeLogicalMessageId).toBe(logicalMessageId);
-        expect(row?.messageSnapshot).toBeNull();
       });
 
       it('rejects a logical message id from a conversation the caller never joined', async () => {

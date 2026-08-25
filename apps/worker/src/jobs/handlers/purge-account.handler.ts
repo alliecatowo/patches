@@ -22,7 +22,6 @@ import {
   LabelerSubscription,
   Like,
   Media,
-  Message,
   Post,
   purgeAccountPayloadSchema,
   RefreshToken,
@@ -47,7 +46,7 @@ import { type JobContext, type JobHandler } from '../job-handler.js';
  * `PURGE_ACCOUNT` (P14-010/P14-024, `INITIAL_VISION.md` §197.4): erases an account's content
  * once its grace period has elapsed. Scope: profile fields, posts and bodies, media objects,
  * follows, follow requests (both directions), reactions (likes), bookmarks, reposts, community
- * memberships, muted tags, filter-list subscriptions, labeler subscriptions, DMs sent, export
+ * memberships, muted tags, filter-list subscriptions, labeler subscriptions, export
  * archives, sessions, and credentials — plus the notice acknowledgement itself
  * ("filters, lists, subscriptions, and acknowledgements", §197.4). Filter *lists* and labelers
  * themselves are not purged here — those are owned by the actor as author, not as subscriber,
@@ -228,12 +227,8 @@ export class PurgeAccountHandler implements JobHandler {
     await manager.getRepository(FilterListSubscription).delete({ actorId });
     await manager.getRepository(LabelerSubscription).delete({ actorId });
 
-    // DMs the actor sent — same tombstone convention `DirectMessageService.deleteMessage`
-    // already uses (`body` cleared, `deletedAt` set), applied to every message this actor
-    // ever sent rather than one at a time.
-    await manager
-      .getRepository(Message)
-      .update({ senderActorId: actorId, deletedAt: IsNull() }, { body: '', deletedAt: now });
+    // No DM-body tombstone step: ADR 0030 deleted the plaintext `messages` table with the
+    // legacy security mode, so the only DM rows left are the encrypted ones handled below.
 
     // E2EE material (audit P1; ADR 0020 §10's "the node deletes its unused public prekeys"
     // generalized to the whole account). Order follows the FK graph: envelopes and prekeys

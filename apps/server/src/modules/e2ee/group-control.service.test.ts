@@ -6,7 +6,6 @@ import {
   ConversationMember as ConversationMemberEntity,
   E2eeGroupControlEvent as E2eeGroupControlEventEntity,
   Follow as FollowEntity,
-  MessageRequest as MessageRequestEntity,
 } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -37,7 +36,6 @@ interface ManagerOptions {
   /** Subject's membership row; `undefined` means "no row" (a brand-new member). */
   readonly subjectRow?: { readonly leftAt: Date | null } | undefined;
   readonly mutualFollow: boolean;
-  readonly acceptedRequest: boolean;
 }
 
 function managerFor(options: ManagerOptions): EntityManager {
@@ -66,8 +64,6 @@ function managerFor(options: ManagerOptions): EntityManager {
       if (entity === BlockEntity) return { findOne: vi.fn().mockResolvedValue(null) };
       if (entity === FollowEntity)
         return { findOne: vi.fn().mockResolvedValue(options.mutualFollow ? { id: 'f' } : null) };
-      if (entity === MessageRequestEntity)
-        return { findOne: vi.fn().mockResolvedValue(options.acceptedRequest ? { id: 'r' } : null) };
       throw new Error(`Unexpected repository: ${String(entity)}`);
     },
   } as unknown as EntityManager;
@@ -113,7 +109,6 @@ describe('E2eeGroupService.addE2eeMember first-contact + DIRECT-kind rules (audi
           callerMembership: { leftAt: null },
           subjectRow: undefined,
           mutualFollow: true,
-          acceptedRequest: false,
         }),
       ),
     ).rejects.toThrow(/DIRECT-kind/);
@@ -127,7 +122,6 @@ describe('E2eeGroupService.addE2eeMember first-contact + DIRECT-kind rules (audi
           callerMembership: { leftAt: null },
           subjectRow: { leftAt: new Date() },
           mutualFollow: false,
-          acceptedRequest: false,
         }),
       ),
     ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
@@ -141,23 +135,22 @@ describe('E2eeGroupService.addE2eeMember first-contact + DIRECT-kind rules (audi
           callerMembership: { leftAt: null },
           subjectRow: undefined,
           mutualFollow: false,
-          acceptedRequest: false,
         }),
       ),
     ).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
   });
 
   it('passes an eligible GROUP-kind add through to the signed-event append', async () => {
-    // Eligibility satisfied via an accepted request; the append then rejects the dummy
-    // event bytes — proving the run reached the transcript verification step.
+    // Eligibility satisfied via mutual follow — the only remaining first-contact route since
+    // ADR 0030 deleted `message_requests`. The append then rejects the dummy event bytes,
+    // proving the run reached the transcript verification step.
     await expect(
       run(
         managerFor({
           conversation: { securityMode: 'E2EE_V1', kind: 'GROUP' },
           callerMembership: { leftAt: null },
           subjectRow: undefined,
-          mutualFollow: false,
-          acceptedRequest: true,
+          mutualFollow: true,
         }),
       ),
     ).rejects.toThrow(/signed event transcript/);
@@ -172,7 +165,6 @@ describe('E2eeGroupService.addE2eeMember first-contact + DIRECT-kind rules (audi
             callerMembership: { leftAt: null },
             subjectRow: undefined,
             mutualFollow: false,
-            acceptedRequest: false,
           }),
         ),
     });

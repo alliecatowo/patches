@@ -1,26 +1,26 @@
-import { Block, Follow, MessageRequest } from '@patches/database';
+import { Block, Follow } from '@patches/database';
 import type { EntityManager } from 'typeorm';
 
 /**
- * The one definition of "may this caller contact this target directly" (spec §183.2): mutual
- * follow, or the target accepted a message request previously sent by the caller.
+ * The one definition of "may this caller contact this target directly" (spec §183.2).
  *
- * Extracted from `MessagesService` so the E2EE module's first-contact surfaces
- * (`CreateE2eeConversation`, `AddE2eeMember`) enforce exactly the same eligibility rule as the
- * legacy DM paths instead of a second, drifting copy — the audit found `AddE2eeMember`'s
- * block-only check let a stranger who was never eligible for legacy DM demand first contact
- * through the E2EE path. Callers own their own uniform, no-oracle error mapping (spec §62).
+ * Shared by the E2EE module's first-contact surfaces (`CreateE2eeConversation`,
+ * `AddE2eeMember`) so they enforce one rule rather than two drifting copies — the audit found
+ * `AddE2eeMember`'s block-only check let a stranger demand first contact through the E2EE path.
+ * Callers own their own uniform, no-oracle error mapping (spec §62).
+ *
+ * §183.2's second arm ("or the target accepted a message request you sent") no longer has a
+ * backing store: ADR 0030 deleted the whole `message_requests` flow with the plaintext DM
+ * machinery, so mutual follow is the only path to first contact until an E2EE-native request
+ * flow is designed. This is deliberately the *narrower* of the two possible readings — nobody
+ * gains reach they did not already have.
  */
 export async function mayMessageDirectly(
   manager: EntityManager,
   callerId: string,
   targetId: string,
 ): Promise<boolean> {
-  if (await isMutualFollow(manager, callerId, targetId)) return true;
-  const acceptedByTarget = await manager.getRepository(MessageRequest).findOne({
-    where: { senderActorId: callerId, recipientActorId: targetId, status: 'ACCEPTED' },
-  });
-  return acceptedByTarget !== null;
+  return isMutualFollow(manager, callerId, targetId);
 }
 
 async function isMutualFollow(

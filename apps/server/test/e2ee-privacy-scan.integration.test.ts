@@ -38,7 +38,7 @@ import {
   type ReportE2eeMessageRequest,
   type ReportE2eeMessageResponse,
 } from '@patches/proto';
-import { createTestUser } from '@patches/testkit';
+import { createTestFollow, createTestUser } from '@patches/testkit';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource, ObjectLiteral } from 'typeorm';
@@ -52,6 +52,7 @@ import {
   encodeRosterTranscript,
 } from '../src/modules/e2ee/e2ee.codec.js';
 import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
+import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { E2eeReportEvidenceService } from '../src/modules/e2ee/report-evidence.service.js';
@@ -601,6 +602,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         unreviewedTestPolicy,
         // No-op budgets: this suite exercises privacy/leak invariants, not §188 windows.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+        // A REAL NotificationsService, deliberately: the MESSAGE notifications an E2EE arrival
+        // now writes land in `notifications`, which the canary sweep below scans like every
+        // other table. A body leaking into a notification row fails this suite.
+        new NotificationsService(dataSource),
       );
       groups = new E2eeGroupService(
         dataSource,

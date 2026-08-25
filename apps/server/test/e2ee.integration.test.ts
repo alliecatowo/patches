@@ -17,6 +17,7 @@ import type { DataSource } from 'typeorm';
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
 import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
+import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import {
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
@@ -353,6 +354,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         // No-op budgets: this suite exercises fanout/protocol behavior, not §188 windows
         // (covered by e2ee-rate-limit.service.test.ts), and would blow through them.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+        new NotificationsService(dataSource),
       );
       groups = new E2eeGroupService(
         dataSource,
@@ -727,6 +729,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           testFrankingKeyRing,
           new E2eeRuntimeApprovalPolicy(false),
           new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+          new NotificationsService(dataSource),
         );
         const conversationCountBefore = await dataSource
           .getRepository(ConversationEntity)

@@ -6,8 +6,6 @@ import {
   CommunityMember,
   Conversation,
   ConversationMember,
-  Message,
-  MessageRequest,
   PinnedPost,
   PostEdit,
   PostTag,
@@ -19,7 +17,6 @@ import type {
   CommunityInviteStatus,
   CommunityRole,
   ConversationKind,
-  MessageRequestStatus,
 } from '@patches/database';
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
@@ -255,56 +252,6 @@ export async function createTestConversationMember(
       lastReadMessageId: options.lastReadMessageId ?? null,
       muted: options.muted ?? false,
       ...(options.joinedAt === undefined ? {} : { joinedAt: options.joinedAt }),
-    }),
-  );
-}
-
-export interface CreateTestMessageOptions {
-  conversationId: string;
-  senderActorId?: string | null;
-  body?: string;
-  createdAt?: Date;
-  deletedAt?: Date | null;
-}
-
-export async function createTestMessage(
-  manager: EntityManager,
-  options: CreateTestMessageOptions,
-): Promise<Message> {
-  const messages = manager.getRepository(Message);
-  const id = randomUUID();
-  return messages.save(
-    messages.create({
-      id,
-      conversationId: options.conversationId,
-      senderActorId: options.senderActorId ?? null,
-      body: options.body ?? `test message ${id}`,
-      deletedAt: options.deletedAt ?? null,
-      ...(options.createdAt === undefined ? {} : { createdAt: options.createdAt }),
-    }),
-  );
-}
-
-export interface CreateTestMessageRequestOptions {
-  senderActorId: string;
-  recipientActorId: string;
-  body?: string;
-  status?: MessageRequestStatus;
-  createdAt?: Date;
-}
-
-export async function createTestMessageRequest(
-  manager: EntityManager,
-  options: CreateTestMessageRequestOptions,
-): Promise<MessageRequest> {
-  const requests = manager.getRepository(MessageRequest);
-  return requests.save(
-    requests.create({
-      senderActorId: options.senderActorId,
-      recipientActorId: options.recipientActorId,
-      body: options.body ?? 'hey there',
-      status: options.status ?? 'PENDING',
-      ...(options.createdAt === undefined ? {} : { createdAt: options.createdAt }),
     }),
   );
 }

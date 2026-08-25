@@ -3,7 +3,6 @@ import {
   Block as BlockEntity,
   E2eeLogicalMessage as E2eeLogicalMessageEntity,
   Follow as FollowEntity,
-  MessageRequest as MessageRequestEntity,
 } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -11,6 +10,7 @@ import type { DataSource, EntityManager } from 'typeorm';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
 import type { E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 import type { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
+import type { NotificationsService } from '../notifications/notification.service.js';
 import type { NodeFrankingKeyRing } from './report-evidence.js';
 
 function recipientActor(id: string): Partial<ActorEntity> {
@@ -20,13 +20,19 @@ function recipientActor(id: string): Partial<ActorEntity> {
 function serviceWith(
   dataSource: unknown,
   rateLimits: E2eeRateLimitService,
+  notifications: NotificationsService = noopNotifications(),
 ): E2eeConversationService {
   return new E2eeConversationService(
     dataSource as DataSource,
     {} as unknown as NodeFrankingKeyRing,
     {} as E2eeRuntimeApprovalPolicy,
     rateLimits,
+    notifications,
   );
+}
+
+function noopNotifications(): NotificationsService {
+  return { notifyMessage: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService;
 }
 
 /** A repository stub that tolerates any call so a test can drive the service to exactly the
@@ -44,10 +50,7 @@ function permissiveRepo(): Record<string, ReturnType<typeof vi.fn>> {
   };
 }
 
-function managerWithFirstContact(options: {
-  readonly mutualFollow: boolean;
-  readonly acceptedRequest: boolean;
-}): EntityManager {
+function managerWithFirstContact(options: { readonly mutualFollow: boolean }): EntityManager {
   const permissive = permissiveRepo();
   return {
     getRepository(entity: unknown) {
@@ -57,31 +60,27 @@ function managerWithFirstContact(options: {
       if (entity === BlockEntity) return { findOne: vi.fn().mockResolvedValue(null) };
       if (entity === FollowEntity)
         return { findOne: vi.fn().mockResolvedValue(options.mutualFollow ? { id: 'f' } : null) };
-      if (entity === MessageRequestEntity)
-        return {
-          findOne: vi.fn().mockResolvedValue(options.acceptedRequest ? { id: 'r' } : null),
-        };
       return permissive;
     },
   } as unknown as EntityManager;
 }
 
+function dataSourceFor(manager: EntityManager): {
+  readonly dataSource: unknown;
+  readonly consume: ReturnType<typeof vi.fn>;
+} {
+  const consume = vi.fn(() => Promise.resolve());
+  return {
+    consume,
+    dataSource: {
+      getRepository: () => ({ findOne: vi.fn().mockResolvedValue(null) }),
+      transaction: (body: (manager: EntityManager) => Promise<unknown>) => body(manager),
+    },
+  };
+}
+
 describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
   const actorId = '00000000-0000-4000-8000-00000000000a';
-
-  function dataSourceFor(manager: EntityManager): {
-    readonly dataSource: unknown;
-    readonly consume: ReturnType<typeof vi.fn>;
-  } {
-    const consume = vi.fn(() => Promise.resolve());
-    return {
-      consume,
-      dataSource: {
-        getRepository: () => ({ findOne: vi.fn().mockResolvedValue(null) }),
-        transaction: (body: (manager: EntityManager) => Promise<unknown>) => body(manager),
-      },
-    };
-  }
 
   function limiterFrom(consume: ReturnType<typeof vi.fn>): E2eeRateLimitService {
     return { consumeConversationCreate: consume } as unknown as E2eeRateLimitService;
@@ -89,7 +88,7 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
 
   it('rejects a create whose target the caller could not message directly, uniformly', async () => {
     const { dataSource } = dataSourceFor(
-      managerWithFirstContact({ mutualFollow: false, acceptedRequest: false }),
+      managerWithFirstContact({ mutualFollow: false }),
     );
     const result = serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(actorId, {
       clientRequestId: 'req-1',
@@ -101,11 +100,10 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
     await expect(result).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
   });
 
-  it.each([
-    { mutualFollow: true, acceptedRequest: false },
-    { mutualFollow: false, acceptedRequest: true },
-  ])(
-    'admits a create when first contact is allowed (mutualFollow=$mutualFollow, acceptedRequest=$acceptedRequest)',
+  // §183.2's "accepted message request" arm went away with the `message_requests` table
+  // (ADR 0030) — mutual follow is the only remaining route to first contact.
+  it.each([{ mutualFollow: true }])(
+    'admits a create when first contact is allowed (mutualFollow=$mutualFollow)',
     async (options) => {
       const { dataSource } = dataSourceFor(managerWithFirstContact(options));
       const result = serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(actorId, {
@@ -131,7 +129,7 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
           entity === E2eeLogicalMessageEntity ? existingFindOne : vi.fn().mockResolvedValue(null),
       }),
       transaction: (body: (manager: EntityManager) => Promise<unknown>) =>
-        body(managerWithFirstContact({ mutualFollow: false, acceptedRequest: false })),
+        body(managerWithFirstContact({ mutualFollow: false })),
     };
     const result = serviceWith(dataSource, limiterFrom(consume)).createE2eeConversation(actorId, {
       clientRequestId: 'replayed-request',
@@ -145,7 +143,7 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
 
   it('consumes the create budget before opening its transaction for a fresh send', async () => {
     const { dataSource, consume } = dataSourceFor(
-      managerWithFirstContact({ mutualFollow: false, acceptedRequest: false }),
+      managerWithFirstContact({ mutualFollow: false }),
     );
     await serviceWith(dataSource, limiterFrom(consume))
       .createE2eeConversation(actorId, {
@@ -158,6 +156,32 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
     expect(consume).toHaveBeenCalledTimes(1);
     expect(consume.mock.calls[0]?.[0]).toBe(actorId);
   });
+});
+
+describe('MESSAGE notification on an E2EE arrival (ADR 0030, §183.1)', () => {
+  it('passes nothing but ids to NotificationsService, and never on a failed accept', async () => {
+    const notifyMessage = vi.fn(() => Promise.resolve());
+    const notifications = { notifyMessage } as unknown as NotificationsService;
+    const { dataSource } = dataSourceFor(managerWithFirstContact({ mutualFollow: true }));
+
+    await serviceWith(
+      dataSource,
+      { consumeConversationCreate: vi.fn() } as unknown as E2eeRateLimitService,
+      notifications,
+    )
+      .createE2eeConversation('00000000-0000-4000-8000-00000000000a', {
+        clientRequestId: 'req-1',
+        recipientActorIds: ['recipient'],
+        senderDeviceId: 'device-1',
+        message: undefined,
+      })
+      .catch(() => undefined);
+
+    // The accept above fails on the missing logical message, so no arrival happened and no
+    // notification may be written — a notification is evidence a message landed.
+    expect(notifyMessage).not.toHaveBeenCalled();
+  });
+
 });
 
 describe('E2eeConversationService.sendEnvelopes rate-limit ordering (audit P1)', () => {
