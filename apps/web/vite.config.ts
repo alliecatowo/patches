@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 /** Build identity shown in the footer and on `window.__PATCHES_WEB__` — `<package version>+<short sha>`. */
 function buildVersion(): string {
@@ -38,7 +39,34 @@ export default defineConfig(() => {
       __PATCHES_WEB_VERSION__: JSON.stringify(buildVersion()),
       __PATCHES_WEB_BUILT_AT__: JSON.stringify(new Date().toISOString()),
     },
-    plugins: [react()],
+    plugins: [
+      react(),
+      // B-156: service worker via vite-plugin-pwa. `injectManifest` (not
+      // `generateSW`) because the B-153 navigation policy — network-first with a
+      // cached-shell fallback on network failure AND `!response.ok` — cannot be
+      // expressed with stock Workbox runtime strategies; `src/pwa/sw.ts` owns it.
+      // `injectRegister: false` keeps registration in `src/pwa/serviceWorkerRegistration.ts`
+      // (update detection + one-shot `controllerchange` reload, B-153). `manifest: false`
+      // keeps `public/manifest.webmanifest` the single source of truth. Dev serves no
+      // worker at all (default `devOptions.enabled: false`).
+      VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src/pwa',
+        filename: 'sw.ts',
+        registerType: 'autoUpdate',
+        injectRegister: false,
+        manifest: false,
+        injectManifest: {
+          // Precache everything the old hand-rolled worker precached (shell, icons,
+          // web manifest) plus hashed assets; workbox-build additionally ignores the
+          // emitted sw.js itself.
+          globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
+          // Default 2 MiB would silently skip a chunky bundle; hashed assets are
+          // immutable so caching them is cheap and safe.
+          maximumFileSizeToCacheInBytes: 5_000_000,
+        },
+      }),
+    ],
     server: {
       proxy: {
         '/api': {

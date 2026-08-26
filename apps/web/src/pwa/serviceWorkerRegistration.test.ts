@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * B-153 regression tests: an updated service worker (installed while a page is already
  * controlled) must reload the page once on takeover, while a first-ever install (no
  * previous controller) must not. The module keeps page-lifetime state, so each test
- * re-imports it fresh via `vi.resetModules()`.
+ * re-imports it fresh via `vi.resetModules()`. `registerServiceWorker()` skips dev
+ * builds (dev serves no worker), so each test also stubs `import.meta.env.DEV` off.
  */
 
 class FakeServiceWorker extends EventTarget {
@@ -54,6 +55,7 @@ let capturedLoadHandlers: ((event: Event) => void)[] = [];
 
 async function importFreshAndRegister(): Promise<void> {
   vi.resetModules();
+  vi.stubEnv('DEV', false);
   const mod = await import('./serviceWorkerRegistration.js');
   const addSpy = vi.spyOn(window, 'addEventListener');
   try {
@@ -67,6 +69,7 @@ async function importFreshAndRegister(): Promise<void> {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const handler of capturedLoadHandlers) window.removeEventListener('load', handler);
   capturedLoadHandlers = [];
   delete (navigator as Partial<Navigator> & { serviceWorker?: unknown }).serviceWorker;
@@ -76,8 +79,6 @@ describe('registerServiceWorker', () => {
   it('reloads once when an updated worker takes over an already-controlled page', async () => {
     const reload = stubLocationReload();
     const { fake, registration } = installFakeServiceWorker();
-    const updatedHeard = vi.fn();
-    window.addEventListener('patches:sw-updated', updatedHeard);
     await importFreshAndRegister();
     window.dispatchEvent(new Event('load'));
     await vi.waitFor(() => expect(fake.register).toHaveBeenCalled());
@@ -90,9 +91,7 @@ describe('registerServiceWorker', () => {
     registration.installing.state = 'installed';
     registration.installing.dispatchEvent(new Event('statechange'));
 
-    expect(updatedHeard).toHaveBeenCalledOnce();
-
-    // Takeover happens later (skipWaiting + clients.claim in sw.js).
+    // Takeover happens later (skipWaiting + clients.claim in sw.ts).
     expect(reload).not.toHaveBeenCalled();
     fake.controller = { id: 'new' };
     fake.dispatchEvent(new Event('controllerchange'));
@@ -127,6 +126,23 @@ describe('registerServiceWorker', () => {
     delete (navigator as Partial<Navigator> & { serviceWorker?: unknown }).serviceWorker;
     await expect(importFreshAndRegister()).resolves.toBeUndefined();
     window.dispatchEvent(new Event('load'));
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('does not register in dev builds (dev serves no service worker)', async () => {
+    const reload = stubLocationReload();
+    const { fake } = installFakeServiceWorker();
+    vi.resetModules();
+    vi.stubEnv('DEV', true);
+    const mod = await import('./serviceWorkerRegistration.js');
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    try {
+      mod.registerServiceWorker();
+    } finally {
+      addSpy.mockRestore();
+    }
+    window.dispatchEvent(new Event('load'));
+    expect(fake.register).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
   });
 });

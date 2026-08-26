@@ -30,7 +30,11 @@
     "@tanstack/react-query": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router-dom": "catalog:"
+    "react-router-dom": "catalog:",
+    "workbox-core": "catalog:",
+    "workbox-precaching": "catalog:",
+    "workbox-routing": "catalog:",
+    "workbox-strategies": "catalog:"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
@@ -41,6 +45,7 @@
     "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
     "vite": "catalog:",
+    "vite-plugin-pwa": "catalog:",
     "vitest": "catalog:"
   }
 }
