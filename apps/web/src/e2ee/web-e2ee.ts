@@ -43,6 +43,7 @@ import {
 } from './vault.js';
 import {
   ENROLLMENT_PEER_WARNING_COPY,
+  disposeStoredEnrollment,
   enrollThisDevice,
   loadStoredEnrollment,
   type EnrollOutcome,
@@ -181,6 +182,10 @@ class WebE2eeManager {
         return;
       }
       this.bind(vault, stored.identity);
+      // `bind` only needs `stored.identity` going forward; the account root private key
+      // this load pulled off disk has no further use in this manager and must not sit in
+      // memory unzeroized (ADR 0020 §4).
+      disposeStoredEnrollment(stored);
       this.setStatus({ kind: 'enrolled' });
     } catch {
       if (seq !== this.setActorSeq) {
