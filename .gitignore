@@ -7,6 +7,7 @@ dist/
 dist-release/
 build/
 .turbo/
+infra/preview/.image-context/
 *.tsbuildinfo
 
 # generated protobuf output is committed intentionally

@@ -278,15 +278,37 @@ jobs:
       - name: Generate preview fly config
         run: node infra/preview/make-preview-config.mjs --pr "$PR_NUMBER"
 
-      - name: Deploy to Fly
+      - name: Build server + worker on the runner (turbo-cached)
+        # The same turbo cache the CI jobs restore (setup action) makes unchanged
+        # packages FULL TURBO replays; only what this PR changed actually compiles.
+        run: pnpm exec turbo run build --filter=@patches/server --filter=@patches/worker
+
+      - name: Stage self-contained app dirs (pnpm deploy)
         run: |
           set -euo pipefail
-          # --ha=false: exactly one machine per process group (cost guard — two
-          # total: server + worker). --strategy immediate: replace them in place
-          # rather than briefly running doubles.
+          ctx="infra/preview/.image-context"
+          rm -rf "$ctx" && mkdir -p "$ctx"
+          pnpm --filter @patches/server deploy --prod --legacy "$ctx/server"
+          pnpm --filter @patches/worker deploy --prod --legacy "$ctx/worker"
+          cp infra/docker/migrate.mjs "$ctx/migrate.mjs"
+
+      - name: Assemble image (COPY-only — no toolchain in CI docker)
+        run: >-
+          docker build -f infra/docker/Dockerfile.prebuilt
+          -t "patches-pr-${PR_NUMBER}:ci"
+          --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+          infra/preview/.image-context
+
+      - name: Deploy prebuilt image to Fly
+        # Built on the runner from the restored pnpm/turbo caches (Fly's remote
+        # builders share none of those, and their cold path measured ~1m50s per
+        # deploy). --image deploys the local image; process groups, checks, and
+        # autostop all come from the generated fly config as before.
+        run: |
+          set -euo pipefail
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
-            --remote-only --ha=false --strategy immediate --yes \
-            --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+            --image "patches-pr-${PR_NUMBER}:ci" \
+            --ha=false --strategy immediate --yes
 
       # Optional web-preview capability, gated on the Cloudflare credentials exactly
       # like the R2 media path: all-or-none. The detect step always runs (it only
