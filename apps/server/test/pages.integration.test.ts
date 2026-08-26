@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
+import { parsePageForRender } from '@patches/domain';
 import {
   createAuthClient,
   createModerationClient,
@@ -176,6 +177,71 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           {},
         );
         expect(rejected.code).toBe(GrpcStatus.NOT_FOUND);
+      });
+
+      it('round-trips the exact document shape EditWallDialog saves through to a renderable GetPage response', async () => {
+        // Mirrors `apps/web/src/components/EditWallDialog.tsx`'s `mutationFn` byte-for-byte:
+        // `{ version: 1, pages: [{ slug, title, blocks }] }`, no `theme` key at all when the
+        // wall never had one (a brand-new wall, `rawDoc === null`), UTF-8 JSON via
+        // `TextEncoder`. B-202 (owner-reported prod bug): confirms the server persists and
+        // serves back a document `@patches/domain`'s `parsePageForRender` — the function
+        // `apps/web/src/lib/page.ts`'s `decodePageDocument` calls, which is what
+        // `apps/web/src/routes/PageRoute.tsx` renders — accepts, i.e. that `GetPage` never
+        // returns something `decodePageDocument` turns into `null` ("This page couldn't be
+        // displayed") for a document this dialog can actually produce.
+        const owner = await newActor();
+        const editWallDialogDocument = {
+          version: 1,
+          pages: [
+            {
+              slug: 'home',
+              title: 'Home',
+              blocks: [
+                { type: 'Text', body: 'hello from the edit wall dialog' },
+                { type: 'NowPlaying', text: 'Daft Punk - Digital Love' },
+                { type: 'Hero', title: 'Welcome', subtitle: 'to my wall' },
+              ],
+            },
+          ],
+        };
+        // `Buffer.from` here, not a bare `Uint8Array`: the web client's real
+        // `@connectrpc/connect` stub accepts either, but this suite's ts-proto-generated
+        // gRPC client types the wire field as `Buffer` specifically.
+        const encoded = Buffer.from(
+          new TextEncoder().encode(JSON.stringify(editWallDialogDocument)),
+        );
+
+        const updated = await callUnary<UpdatePageRequest, UpdatePageResponse>(
+          pages.updatePage.bind(pages),
+          { document: encoded },
+          { accessToken: owner.accessToken },
+        );
+        expect(updated.revisionId).toBeTruthy();
+
+        const fetched = await callUnary<GetPageRequest, GetPageResponse>(
+          pages.getPage.bind(pages),
+          { handle: owner.handle, slug: '' },
+          {},
+        );
+
+        // `apps/web/src/lib/page.ts`'s `decodePageDocument`, inlined (it's browser-only
+        // TextDecoder/JSON.parse/parsePageForRender, all available in Node — no reason to
+        // import across the app boundary for an equivalent three-line function).
+        expect(fetched.document.length).toBeGreaterThan(0);
+        const json: unknown = JSON.parse(new TextDecoder().decode(fetched.document));
+        const view = parsePageForRender(json);
+        expect(view).not.toBeNull();
+
+        // `PageRoute`'s active-sub-page resolution: match `response.activeSlug` against a
+        // document sub-page, falling back to the first one.
+        const activeSubPage =
+          view.pages.find((subPage) => subPage.slug === fetched.activeSlug) ?? view.pages[0];
+        expect(activeSubPage).toBeDefined();
+        expect(activeSubPage?.blocks).toEqual([
+          { type: 'Text', body: 'hello from the edit wall dialog' },
+          { type: 'NowPlaying', text: 'Daft Punk - Digital Love' },
+          { type: 'Hero', title: 'Welcome', subtitle: 'to my wall' },
+        ]);
       });
 
       it('gives a fresh actor an empty revision history rather than an error', async () => {

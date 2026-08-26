@@ -72,6 +72,21 @@ by tests):
    reloads the page exactly once (B-153). The old `patches:sw-updated` event was
    dropped in B-156 — it never had a listener.
 
+**B-202 addition (2026-08-26):** step 1 above ("the browser revalidates `/sw.js` on
+navigations") is the whole trigger for this update flow — and per the Service Worker
+spec's [update algorithm](https://w3c.github.io/ServiceWorker/#update-algorithm), a
+byte-diff check only happens on a full navigation to a page in scope, an explicit
+`registration.update()` call, or the browser's own coarse (documented as up to ~24h)
+background timer. A single-page app never performs another full navigation after its
+first load — React Router's client-side routing never touches that path — so a tab
+left open across a redeploy could sit on the pre-deploy bundle for a long time with
+nothing ever checking for an update, let alone reloading. `scheduleProactiveUpdateChecks`
+(added for B-202) closes that gap: it calls `registration.update()` once immediately
+after registration, again whenever the tab regains visibility, and on a 15-minute
+interval while visible — all three are safe no-ops when the installed worker already
+matches the served `/sw.js` byte-for-byte. Pinned by
+`serviceWorkerRegistration.test.ts`'s "proactive update checks (B-202)" block.
+
 Request handling: navigations are **network-first** with the precached shell served
 on network failure _and_ on `!response.ok`; `/api` + `/patches.v1.*` RPC traffic is
 **never matched by any route** (the navigation matcher denies those paths and no
