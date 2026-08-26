@@ -601,6 +601,26 @@ export function enrollRequestFromRecord(record: StoredEnrollment): EnrollDeviceR
   });
 }
 
+/**
+ * Rebuilds the byte-identical `PublishIdentityRootRequest` a stored bootstrap record
+ * produced, so a crash (or failure) between persisting the record and publishing the root
+ * republishes the same root instead of minting a second one. `undefined` for a record
+ * that did not bootstrap the account root — there is nothing of ours to publish.
+ */
+export function publishRootRequestFromRecord(
+  record: StoredEnrollment,
+): PublishIdentityRootRequest | undefined {
+  if (!record.createdRoot) return undefined;
+  return create(PublishIdentityRootRequestSchema, {
+    identityRoot: buildBootstrapIdentityRoot({
+      actorId: record.identity.actorId,
+      privateKey: record.rootPrivate,
+      publicKey: record.rootPublic,
+      createdAtMs: record.identity.selfDevice.certificate.createdAtMs,
+    }),
+  });
+}
+
 function buildBootstrapIdentityRoot(input: {
   readonly actorId: string;
   readonly privateKey: Uint8Array;
@@ -674,11 +694,28 @@ export interface EnrollThisDeviceInput {
   readonly nowMs?: () => number;
 }
 
+/** Constant-time-ness is irrelevant here (both operands are public keys); this only has
+ * to be an exact comparison rather than a reference one. */
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
 /**
  * Runs the enrollment flow idempotently. Safe to call again after any failure: either a
  * resumable record exists, or nothing was ever persisted. Transport failures propagate
- * untouched after the record is durable — the caller renders fixed copy, and the next
- * attempt re-submits identical material instead of minting orphan keys.
+ * untouched — the caller renders fixed copy, and the next attempt re-submits identical
+ * material instead of minting orphan keys.
+ *
+ * A failed preflight is never read as an answer. `getCapability`/`getIdentityRoot`
+ * returning `undefined` means the node *said* so — the transport adapter maps only
+ * `NOT_FOUND` to absence — while every other failure throws through here, so no identity
+ * root is minted, let alone published, on the strength of a request that never completed.
+ * The remote check runs on EVERY attempt, resumes included: a record persisted before an
+ * earlier failure must still be reconciled against whatever the account publishes now.
  */
 export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<EnrollOutcome> {
   const nowMs = input.nowMs ?? Date.now;
@@ -687,7 +724,7 @@ export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<En
     return { status: 'already-enrolled', identity: existing.identity };
   }
 
-  const capability = await input.transport.getCapability().catch(() => undefined);
+  const capability = await input.transport.getCapability();
   if (
     capability === undefined ||
     !isCapabilityUsable(capability.state) ||
@@ -700,22 +737,33 @@ export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<En
     };
   }
 
+  const remoteRoot = await input.transport.getIdentityRoot(input.actorId);
+  const publishedRoot =
+    remoteRoot !== undefined && remoteRoot.publicKey.length > 0 ? remoteRoot : undefined;
+
   let record = existing;
   if (record === undefined) {
-    const remoteRoot = await input.transport.getIdentityRoot(input.actorId).catch(() => undefined);
-    // `undefined` covers both "nothing published" (the bootstrap path) and a failed
-    // lookup; the latter retries on the next attempt, still having persisted nothing.
-    if (remoteRoot !== undefined && remoteRoot.publicKey.length > 0) {
+    if (publishedRoot !== undefined) {
       return { status: 'refused', reason: 'remote-root', copy: ENROLLMENT_REFUSAL_COPY.remoteRoot };
     }
     const generated = generateEnrollment({ actorId: input.actorId, nowMs: nowMs() });
-    // Durable BEFORE any network call (ADR 0020 §4): the node must never hold keys this
-    // device could lose in a crash, and a retry reuses — never regenerates — them.
+    // Durable BEFORE any network call, but strictly AFTER the remote check answered
+    // (ADR 0020 §4): the node must never hold keys this device could lose in a crash,
+    // and a retry reuses — never regenerates — them.
     await saveStoredEnrollment(input.vault, generated.record);
     record = generated.record;
     if (generated.publishRootRequest !== undefined) {
       await input.transport.publishIdentityRoot(generated.publishRootRequest);
     }
+  } else if (publishedRoot === undefined) {
+    // Resuming a record whose root never landed: republish the identical bootstrap root
+    // rather than enrolling a device against an authority the node does not know.
+    const republish = publishRootRequestFromRecord(record);
+    if (republish !== undefined) await input.transport.publishIdentityRoot(republish);
+  } else if (!sameBytes(publishedRoot.publicKey, record.rootPublic)) {
+    // Another device published an authority key while this record sat unsubmitted; this
+    // installation cannot enroll under it (ADR 0020 §2 — linking is recovery work).
+    return { status: 'refused', reason: 'remote-root', copy: ENROLLMENT_REFUSAL_COPY.remoteRoot };
   }
 
   await input.transport.enrollDevice(enrollRequestFromRecord(record));
