@@ -85,8 +85,36 @@ PATCHES_DEV_UPSTREAM=http://127.0.0.1:8080 mise run web
 Deploys go through `wrangler` (Cloudflare's CLI), same pattern as `docs/operations/site.md`.
 Authenticated locally via OAuth (`pnpm exec wrangler whoami`) on this machine, or in CI via a
 scoped `CLOUDFLARE_API_TOKEN` secret plus the non-secret `CLOUDFLARE_ACCOUNT_ID` variable.
-`.github/workflows/web.yml` now builds the exact `main` commit that passed CI and can deploy it;
-the CI deployment remains gated until `WEB_DEPLOY_ENABLED=true` and the token are configured.
+`.github/workflows/web.yml` builds the exact `main` commit that passed CI and deploys it.
+
+**The deploy step is gated on `vars.WEB_DEPLOY_ENABLED == 'true'`** (enabled 2026-08-26). Until
+that date the variable was never set, so every Web run reported green while its final step was
+skipped and **nothing was ever published** — the live site sat on a hand-run `mise run web:deploy`
+of `af4e1de` (2026-08-25), 29 commits behind `main`, so none of Phase 20's fixes were live (B-198). The workflow now writes a `Web deploy SKIPPED` block to the
+run summary whenever the gate is off, so a silent no-op can't look like a successful deploy again.
+
+Four settings have to be right. The job declares `environment: production`, so an environment
+variable shadows the repo-level one of the same name — set both, or check the environment first
+when a value looks wrong:
+
+| Setting                 | Scope                           | Value                            |
+| ----------------------- | ------------------------------- | -------------------------------- |
+| `WEB_DEPLOY_ENABLED`    | repo var + `production` env var | `true`                           |
+| `WEB_API_BASE`          | repo var + `production` env var | `https://patches-social.fly.dev` |
+| `CLOUDFLARE_ACCOUNT_ID` | repo var + `production` env var | the account ID                   |
+| `CLOUDFLARE_API_TOKEN`  | repo secret                     | scoped Pages token               |
+
+`WEB_API_BASE` is baked into the bundle at build time, so a wrong value ships a broken client.
+The `production` environment's copy read `https://patches-social.fly.dev:8443` until 2026-08-26;
+port 8443 refuses connections (`curl` to it fails, `:443` returns 200), so had the deploy gate
+been on, CI would have published a client pointing at a dead port. Verify with
+`curl -s -o /dev/null -w '%{http_code}' https://patches-social.fly.dev/healthz` before changing it.
+
+To re-publish the current `main` without pushing a commit, run the workflow by hand:
+
+```sh
+gh workflow run web.yml --ref main
+```
 
 The Cloudflare Pages project was created once with:
 
