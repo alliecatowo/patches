@@ -209,6 +209,20 @@ jobs:
         env:
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
 
+      # B-154 root cause: a freshly created app has NO IP addresses (flyctl stopped
+      # auto-allocating), and without a shared IPv4 there is no <app>.fly.dev DNS —
+      # the Connect edge is unreachable from browsers and every login fails with
+      # "can't connect to backend" while the machine itself is perfectly healthy.
+      # Allocate the free org-shared IPv4 idempotently; re-runs are no-ops.
+      - name: Ensure shared IPv4 (DNS for <app>.fly.dev)
+        run: |
+          set -euo pipefail
+          if flyctl ips list --app "patches-pr-${PR_NUMBER}" 2>/dev/null | grep -q "v4"; then
+            echo "IPv4 already allocated."
+          else
+            flyctl ips allocate-v4 --shared --app "patches-pr-${PR_NUMBER}"
+          fi
+
       # Capability detection (documented matrix, never a silent failure): the ONLY
       # optional capability is media, gated on the five R2_PREVIEW_* secrets being
       # ALL present (all-or-none — partial config would half-work). Presence is
@@ -353,13 +367,12 @@ jobs:
           set -euo pipefail
           pr="${{ github.event.pull_request.number || inputs.pr_number }}"
           origin="https://pr-${pr}.patches-web.pages.dev"
+          # The HTTP/Connect edge is :8443 — :443 is the gRPC service (spec of
+          # infra/preview/fly-preview.toml); healthz lives behind the HTTP one.
           edge="https://patches-pr-${pr}.fly.dev:8443"
-          base="https://patches-pr-${pr}.fly.dev"
-          # A brand-new app's DNS can take a minute to appear — retry the probe
-          # rather than failing the deploy over propagation (curl exit 6 = resolve).
           health=""
           for i in $(seq 1 10); do
-            if health="$(curl -fsS --max-time 20 "${base}/healthz" 2>/dev/null)"; then break; fi
+            if health="$(curl -fsS --max-time 20 "${edge}/healthz" 2>/dev/null)"; then break; fi
             echo "healthz not reachable yet (attempt ${i}/10); waiting 15s"; sleep 15
           done
           [ -n "$health" ] || { echo "healthz never became reachable" >&2; exit 1; }
