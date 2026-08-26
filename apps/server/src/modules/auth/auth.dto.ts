@@ -24,6 +24,9 @@ export interface ActorSummary {
   websiteUrl: string | null;
   isLocal: boolean;
   joinedAt: Date;
+  /** `null` for a local actor (spec §163) — the mapper turns this into the wire's empty
+   * string, same convention as `PostSummary`'s `originServer`. */
+  homeServer: string | null;
 }
 
 export interface SessionEnvelope {
@@ -63,6 +66,7 @@ export function toActorSummary(actor: ActorEntity): ActorSummary {
     websiteUrl: actor.websiteUrl,
     isLocal: actor.isLocal,
     joinedAt: actor.createdAt,
+    homeServer: actor.homeServer,
   };
 }
 

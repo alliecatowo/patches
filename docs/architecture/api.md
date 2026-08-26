@@ -222,6 +222,15 @@ ignore unknown block types gracefully; the server rejects them on write.
 | `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                                                        |
 | `ResolveActor`     | (B-028) discovers a remote actor by `acct:user@domain` via WebFinger (`RemoteActorService`) and upserts/returns it (`is_local = false`) so the caller can `SocialGraphService.FollowActor` it; requires an authenticated session and is rate-limited per caller; `NOT_IMPLEMENTED` when `FEDERATION_ENABLED=false` |
 
+`Actor.home_server` (B-179) is the federation origin domain (§163): empty for a local actor —
+render `@handle` — and the actor's home node's domain for a remote one — render
+`@handle@home_server`. Populated from the `actors.home_server` column in every `Actor`
+construction path (`GetActor`/`GetActorByHandle`/`SearchActors`/`ListFollowers`/`ListFollowing`/
+`ResolveActor`, and every embedded `Actor` summary — `Post.author`, `Session.actor`, etc.).
+`Post.origin_server` follows the same convention for the authoring node of a post. Rendering the
+`@handle@domain` label itself is left to each client (TUI: P18-009, web: B-180) — this only
+guarantees the domain is on the wire.
+
 `UpdateProfile`'s `nameplate.badges` is never accepted from the client (§173) — the server
 mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's existing
 badges forward regardless of what a request sends, and validates the serialized record stays

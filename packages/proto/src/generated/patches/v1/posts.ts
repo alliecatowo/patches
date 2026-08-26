@@ -164,6 +164,12 @@ export interface Post {
    * annotation. Empty for an anonymous read or a viewer with no labeler subscriptions.
    */
   labels: Label[];
+  /**
+   * Federation origin domain (spec §163), same convention as `Actor.home_server`. Empty for a
+   * post authored on this node — render with no domain suffix. Set to the authoring node's
+   * domain for a post that arrived via federation.
+   */
+  originServer: string;
 }
 
 export interface CreatePostRequest {

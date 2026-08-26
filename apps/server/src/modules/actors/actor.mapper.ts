@@ -15,6 +15,7 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
     websiteUrl: profile.websiteUrl ?? '',
     avatar: undefined,
     isLocal: profile.isLocal,
+    homeServer: profile.homeServer ?? '',
     joinedAt: dateToTimestamp(profile.joinedAt),
     counts: {
       followers: profile.counts.followers,

@@ -94,6 +94,7 @@ export function toProtoActor(actor: ActorSummary): Actor {
     // Same "not loaded here" reasoning as `counts`/`nameplate` above (P11-001).
     flair: undefined,
     pinnedPostIds: [],
+    homeServer: actor.homeServer ?? '',
   };
 }
 

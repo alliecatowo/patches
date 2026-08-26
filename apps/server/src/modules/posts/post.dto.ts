@@ -112,6 +112,9 @@ export interface PostView {
    * profiles are deliberately not filterable in v1"), so `PostService.getPost`/`listReplies`/
    * `listActorPosts` always pass this as unset too. */
   filteredBy: FilteredByHintView | null;
+  /** `null` for a post authored on this node (spec §163) — the mapper turns this into the
+   * wire's empty string, same convention as `ActorSummary.homeServer`. */
+  originServer: string | null;
 }
 
 export interface ToPostViewExtras {
@@ -164,6 +167,7 @@ export function toPostView(
     repostedByTotal: extras.repostedByTotal ?? 0,
     labels: deleted ? [] : [...(extras.labels ?? [])],
     filteredBy: deleted ? null : (extras.filteredBy ?? null),
+    originServer: post.originServer,
   };
 }
 
