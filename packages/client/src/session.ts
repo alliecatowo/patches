@@ -198,6 +198,26 @@ export class SessionManager {
     return this.snapshot;
   }
 
+  /**
+   * Removes the `storage` listener registered in the constructor (B-174) — a no-op if
+   * `storageKey` was never set or `window` never existed. Safe to call more than once.
+   * Only needed by callers whose `SessionManager` doesn't live for the whole process:
+   * a short-lived instance (e.g. one built per test, or per request in a multi-tenant
+   * host) leaks one `window` listener per instance otherwise. An app-lifetime singleton
+   * (e.g. `apps/web/src/api/client.ts`'s `sessionManager`) has no matching lifecycle
+   * event to call this from and correctly never disposes — the listener dies with the
+   * tab/process either way.
+   */
+  dispose(): void {
+    if (
+      this.storageKey !== undefined &&
+      typeof window !== 'undefined' &&
+      typeof window.removeEventListener === 'function'
+    ) {
+      window.removeEventListener('storage', this.handleStorageEvent);
+    }
+  }
+
   /** The current access token's `exp` as ms since epoch, or `undefined` when signed
    * out / not yet loaded / the token has no parseable `exp` (B-169 proactive-refresh UI). */
   async getExpiresAt(): Promise<number | undefined> {

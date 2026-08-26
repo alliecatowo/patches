@@ -426,4 +426,40 @@ describe('SessionManager cross-tab storage sync (B-169)', () => {
     expect(listener).not.toHaveBeenCalled();
     expect(session.getSnapshot()).toEqual({ signedIn: false, expiresAt: undefined });
   });
+
+  it('dispose() removes the storage listener (B-174) — a foreign write no longer notifies', async () => {
+    const target = stubWindow();
+    const store = new InMemoryCredentialStore();
+    const session = managerOver(store);
+    const listener = vi.fn();
+    session.subscribe(listener);
+    await tick();
+    listener.mockClear();
+
+    session.dispose();
+
+    await store.save({ accessToken: makeJwt({ exp: 60 }), refreshToken: 'foreign-r' });
+    target.dispatchEvent(new FakeStorageEvent(KEY));
+    await tick();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(session.getSnapshot()).toEqual({ signedIn: false, expiresAt: undefined });
+  });
+
+  it('dispose() is a no-op when called more than once', () => {
+    const store = new InMemoryCredentialStore();
+    const session = managerOver(store);
+
+    expect(() => {
+      session.dispose();
+      session.dispose();
+    }).not.toThrow();
+  });
+
+  it('dispose() is a no-op without storageKey or window', () => {
+    const { transport } = transportWithRefresh(() => ({ accessToken: 'a', refreshToken: 'r' }));
+    const session = new SessionManager({ transport });
+
+    expect(() => session.dispose()).not.toThrow();
+  });
 });
