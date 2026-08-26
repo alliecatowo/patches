@@ -1,0 +1,171 @@
+# Production deploy: one Fly app (`patches-social`), two process groups (server +
+# worker) from the SAME image and the SAME `flyctl deploy` invocation, so a deploy
+# can never land the two process groups on different images.
+#
+# ** KNOWN DUAL-PATH RISK (as of 2026-08-25) — owner action required **
+# The Fly.io GitHub App is also installed on this repo and independently redeploys
+# `patches-social` on every push to `main`, with NO CI gate (verified via
+# `gh api repos/alliecatowo/patches/deployments` — deployments created by
+# `fly-io[bot]` exist for pushes whose CI run failed). That path is NOT controlled by
+# this file — it's a GitHub App / Fly dashboard integration, not a workflow, and this
+# agent's GitHub token lacks the `admin:org`/app-installation scope needed to inspect
+# or disable it via `gh api`; `flyctl` has no CLI surface for it either (checked
+# `flyctl apps --help`, `flyctl deploy --help`). Until an owner with dashboard access
+# disconnects it (Fly dashboard → patches-social → Settings → GitHub → Disconnect, OR
+# GitHub → Settings → Applications → Installed GitHub Apps → Fly → Configure →
+# restrict repository access), THIS workflow and the Fly GitHub App race on every
+# push to `main`. See docs/operations/deployment.md's "Deploy paths" section.
+#
+# Trigger design: `workflow_run` on the `CI` workflow's completion, filtered to
+# `conclusion == success` and `head_branch == main` — the same idiom already used by
+# `.github/workflows/web.yml` in this repo for the identical problem ("only ship an
+# artifact built from a commit that CI has actually passed on"). This satisfies BOTH
+# "deploy on push to main" (CI itself is push-to-main-triggered, so this fires right
+# after) and "never deploy on a red CI run" in one mechanism, without duplicating CI's
+# job graph via `needs:`/reusable-workflow wiring — a `workflow_run` consumer can't
+# accidentally run against an unrelated or stale checkout of `main`, since it always
+# deploys `github.event.workflow_run.head_sha`, the exact commit CI validated.
+# `workflow_dispatch` (with an optional `ref` input, default `main`) is the manual
+# escape hatch — e.g. redeploying an already-green commit without waiting for a new
+# CI run, or forcing a redeploy after an infra-only change.
+#
+# Kill switch: the actual deploy step (not the whole job) is additionally gated on
+# repository variables `FLY_DEPLOY_ENABLED` and `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE`
+# — see docs/operations/deployment.md's "One-time auth-envelope rollout" section for
+# why the latter exists. Both are already `true` in this repository (the one-time
+# rollout is complete), so routine merges to `main` deploy automatically; an operator
+# can still flip `FLY_DEPLOY_ENABLED` to `false` (`gh variable set FLY_DEPLOY_ENABLED
+# --body false`) to pause automatic deploys without touching this file.
+#
+# Release order (docs/operations/deployment.md "Running database migrations"):
+# `infra/fly/fly.toml`'s `[deploy].release_command` (`node server/migrate.mjs`) runs
+# migrations automatically as part of `flyctl deploy`, before the new Machines take
+# traffic — there is no separate migration step in this workflow to keep in sync with
+# that config; a bare `flyctl deploy --config infra/fly/fly.toml` deploys both the
+# `server` and `worker` process groups (`[processes]` in that same file) from one
+# build, so they always land on the same image.
+#
+# Postmortem guard (docs/operations/postmortem-2026-08-24-web-outage.md): that outage
+# was a `fly.toml` ingress misconfiguration — TWO public `[[services]]` blocks, with
+# `:443` bound to the native gRPC listener instead of the Connect HTTP one. This
+# workflow re-asserts the fixed shape (`:443`/`:80` -> the Connect service on
+# `internal_port 8080`, never the gRPC service on `internal_port 50051`) before every
+# deploy, so that regression can't reach production silently again.
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to deploy (must already be on `main`'s history)
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  # One fixed group (not per-sha, unlike web.yml) — a production deploy must never
+  # race a second one; overlapping triggers queue in order instead of running in
+  # parallel. Never cancel a deploy that's already in flight (`flyctl deploy` mid-run
+  # is not something to interrupt).
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy (Fly production)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+
+      - name: Resolve deployed commit
+        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      - name: Assert fly.toml ingress shape (postmortem 2026-08-24 guard)
+        run: |
+          python3 - <<'PY'
+          import sys
+          import tomllib
+
+          with open("infra/fly/fly.toml", "rb") as f:
+              cfg = tomllib.load(f)
+
+          errors = []
+          for svc in cfg.get("services", []):
+              internal = svc.get("internal_port")
+              ports = [p.get("port") for p in svc.get("ports", [])]
+              if 443 in ports and internal != 8080:
+                  errors.append(
+                      f"service with internal_port={internal} exposes :443 "
+                      "(expected only the Connect HTTP service on internal_port 8080 to "
+                      "expose :443 — see docs/operations/postmortem-2026-08-24-web-outage.md)"
+                  )
+              if internal == 50051 and 443 in ports:
+                  errors.append(
+                      "native gRPC service (internal_port 50051) must not expose :443"
+                  )
+
+          if errors:
+              print("\n".join(errors), file=sys.stderr)
+              sys.exit(1)
+          print("fly.toml ingress shape OK: :443/:80 -> Connect (8080) only, gRPC stays on its own public port")
+          PY
+
+      - name: Deploy to Fly (server + worker, one image)
+        if: vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true'
+        run: |
+          flyctl deploy --config infra/fly/fly.toml --remote-only \
+            --build-arg PATCHES_BUILD_SHA="${DEPLOY_SHA}"
+
+      - name: Skip notice (deploy disabled)
+        if: vars.FLY_DEPLOY_ENABLED != 'true' || vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE != 'true'
+        run: |
+          echo "Deploy skipped: FLY_DEPLOY_ENABLED=${{ vars.FLY_DEPLOY_ENABLED }}, AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=${{ vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE }} (both must be 'true')." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify /healthz
+        if: vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true'
+        run: |
+          set -euo pipefail
+          url="https://patches-social.fly.dev/healthz"
+          for i in $(seq 1 20); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url" || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "healthz OK ($url -> 200) after $i attempt(s)."
+              exit 0
+            fi
+            echo "healthz attempt $i: got $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "healthz did not return 200 from $url after 20 attempts." >&2
+          exit 1
+
+      - name: Deploy summary
+        if: always() && vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true'
+        run: |
+          {
+            echo "## Production deploy"
+            echo "- Commit: \`${DEPLOY_SHA}\`"
+            echo "- App: \`patches-social\` (server + worker process groups)"
+            echo "- Health check: https://patches-social.fly.dev/healthz"
+          } >> "$GITHUB_STEP_SUMMARY"

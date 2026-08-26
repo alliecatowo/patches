@@ -11,12 +11,15 @@ publish workflows has run.
 
 - **`.github/workflows/ci.yml`** — runs on every pull request and on push to `main`.
   Required for branch protection (see below).
-- **`.github/workflows/deploy.yml`** — deploys Fly after a successful push-triggered CI run
-  for this repository's `main`, guarded by the production environment and both
-  `FLY_DEPLOY_ENABLED` and `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE`. The first gate is the
-  operator's explicit switch for routine Fly deployment; the second confirms the one-time
-  auth-code-envelope rollout is complete. Both must be `true` for deploy and smoke-test
-  steps; either being unset or false leaves the workflow as a safe no-op.
+- **`.github/workflows/deploy.yml`** (added 2026-08-25, B-145 companion work) — deploys
+  Fly after a successful push-triggered CI run for this repository's `main`, guarded by
+  the production environment and both `FLY_DEPLOY_ENABLED` and
+  `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE`. The first gate is the operator's explicit switch
+  for routine Fly deployment; the second confirms the one-time auth-code-envelope
+  rollout is complete. Both must be `true` for deploy and healthz-verify steps; either
+  being unset or false leaves the workflow as a safe no-op. **This is not yet the only
+  thing deploying `patches-social`** — see `docs/operations/deployment.md`'s "Deploy
+  paths" section for the still-connected, ungated Fly GitHub App that races it.
 - **`.github/workflows/{web,site,site-gh-pages}.yml`** — build/publish the production web
   and site artifacts only after a successful push-triggered CI run for this repository's
   `main`; Cloudflare publishing remains separately variable-gated.
@@ -33,7 +36,7 @@ publish workflows has run.
 | `quality`     | `pnpm format:check`, `pnpm lint`, `pnpm typecheck`                                                                                                  | `typecheck` is a Turbo task that depends on `^build` + `gen`, so it pulls in generated protobuf code automatically.                                                                                                                                                                                   |
 | `proto`       | `pnpm proto:format`, `pnpm proto:lint`, `pnpm proto:breaking` (PRs only), `pnpm proto:gen` + `git diff --exit-code -- packages/proto/src/generated` | Proves buf-generated TypeScript is committed and up to date. Checks out full history (`fetch-depth: 0`) and fetches `main` explicitly so `buf breaking --against '.git#branch=main,subdir=packages/proto'` has something to diff against. Skipped on push to `main` itself (no meaningful self-diff). |
 | `build-test`  | `pnpm build`, `pnpm test`                                                                                                                           | Unit tests only (vitest, no external services). Uploads any `**/coverage/**` output as an artifact — best-effort, does not fail if a project has no coverage provider configured.                                                                                                                     |
-| `integration` | `pnpm build`, migration validation, `pnpm test:integration`                                                                                         | See "Migration validation" and "Why one database" below. Runs against a `postgres:17-alpine` service container.                                                                                                                                                                                       |
+| `integration` | `pnpm build`, migration validation, `pnpm test:integration`                                                                                         | `needs: build-test` (added 2026-08-25) — shares its turbo cache scope with `build-test` instead of racing it (see "Caching" below). See "Migration validation" and "Why one database" below. Runs against a `postgres:17-alpine` service container.                                                   |
 | `actionlint`  | `actionlint .github/workflows/*.yml`                                                                                                                | Lightweight job — just checkout + mise (actionlint only), no workspace install.                                                                                                                                                                                                                       |
 | `ci-ok`       | Aggregates the result of every job above                                                                                                            | The single required status check for branch protection (see below). Uses `if: always()` so it still runs and reports failure even if an earlier job failed, was cancelled, or was skipped.                                                                                                            |
 
@@ -154,13 +157,24 @@ mise-action's pnpm install working fine, this split can be collapsed back to a s
 - **pnpm store** — via `pnpm/setup@v2`'s `cache: true`, keyed on the lockfile
   automatically.
 - **mise tool cache** — via `jdx/mise-action`'s `cache: true`.
-- **Turbo local cache** — `actions/cache@v4` on `.turbo`, key `turbo-<runner.os>-<sha>`,
-  restore-keys `turbo-<runner.os>-`. The key is intentionally shared across jobs (not
-  namespaced per job) because Turbo hashes each task by its actual inputs — a `build`/
-  `gen` result computed in one job is reusable by another job that needs the same task
-  with the same inputs. Concurrent jobs racing to save the same cache key is harmless;
-  `actions/cache` silently skips the save on a duplicate key rather than failing the
-  step.
+- **Turbo local cache** — `actions/cache@v4` on `.turbo`, key
+  `turbo-<runner.os>-<scope>-<sha>`, restore-keys `turbo-<runner.os>-<scope>-`, where
+  `<scope>` defaults to the calling job's own name (`.github/actions/setup`'s
+  `cache-scope` input). **Changed 2026-08-25** (B-145 companion CI cleanup): earlier
+  this key was shared across every job unscoped
+  (`turbo-<runner.os>-<sha>`) on the theory that a same-commit `build`/`gen` result
+  computed in one job is reusable by any other job needing the same inputs. That's
+  true of the cache _contents_, but not of `actions/cache`'s save semantics: every job
+  in a run restores near-simultaneously (before any of them has saved yet), and
+  `actions/cache` silently skips a save once a cache already exists under that exact
+  key — so in practice only the FIRST job to finish successfully persisted its `.turbo`
+  output per commit, and every other job's freshly-computed cache entries were
+  dropped. Scoping the key by job name means every job persists its own cache on
+  every run. The `integration` job is the one deliberate exception: it passes
+  `cache-scope: build-test` and is sequenced `needs: build-test` (see the job table
+  above), since both jobs run the literal same full-workspace `pnpm build` — this
+  guarantees `integration` restores a cache `build-test` has _already_ saved, instead
+  of computing (and then dropping) its own redundant one.
 
 ## Branch protection
 

@@ -94,6 +94,12 @@ jobs:
 
   integration:
     name: integration (Postgres + migrations)
+    # Runs after build-test (same `pnpm build`, same inputs) rather than racing it in
+    # parallel, and explicitly shares its turbo cache scope (setup's `cache-scope`
+    # input) instead of using its own: build-test's cache is guaranteed already saved
+    # by the time this job's `Restore turbo cache` step runs, so `pnpm build` below
+    # gets a real cache hit here instead of a second full cold rebuild.
+    needs: build-test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -130,6 +136,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+        with:
+          cache-scope: build-test
       - run: pnpm build
 
       - name: Create per-project test databases

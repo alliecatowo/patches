@@ -1,17 +1,60 @@
 # Deployment
 
-**Status: deployed 2026-08-18.** The flagship node, Fly app `patches-social` (org
-"personal", region `iad`), is live at `patches-social.fly.dev:443` and has been exercised
-end to end with two real accounts (register, login, post, follow, like, reply, thread,
-notifications, home feed — see "First deploy" below). `infra/docker/Dockerfile`,
-`infra/fly/fly.toml`, and `.github/workflows/deploy.yml` are what shipped it. The current live
-revision was deployed by hand; the CI path is implemented but has never completed a deploy and
-is currently held closed until the one-time auth-envelope rollout succeeds. Media uploads use the production R2
-bucket and verification email is sent through Resend from the verified
-`noreply@updates.allisons.dev` sender; federation is off by design. As of 2026-08-18 (A-041),
-production `DATABASE_URL` points at **Neon**, not the original Fly Postgres cluster — see
-"Production database" below. Sections describing genuinely not-yet-exercised steps (custom
-domain, autoscaling, log drain) still say `Status: planned`.
+**Status: deployed 2026-08-18, deploy path corrected 2026-08-25.** The flagship node, Fly
+app `patches-social` (org "personal", region `iad`), is live at
+`patches-social.fly.dev` and has been exercised end to end with two real accounts
+(register, login, post, follow, like, reply, thread, notifications, home feed — see
+"First deploy" below). `infra/docker/Dockerfile` and `infra/fly/fly.toml` are what
+shipped it. Media uploads use the production R2 bucket and verification email is sent
+through Resend from the verified `noreply@updates.allisons.dev` sender; federation is
+off by design. As of 2026-08-18 (A-041), production `DATABASE_URL` points at **Neon**,
+not the original Fly Postgres cluster — see "Production database" below. Sections
+describing genuinely not-yet-exercised steps (custom domain, autoscaling, log drain)
+still say `Status: planned`.
+
+## Deploy paths (read this before touching production)
+
+**What actually deployed every release up to 2026-08-25**, verified via `gh api
+repos/alliecatowo/patches/deployments` (`creator.login: "fly-io[bot]"`,
+`description: "Deploying patches-social to Fly.io"`): the **Fly.io GitHub App**, a
+dashboard-configured continuous-deployment integration installed on this repo — not
+any file in this repo, and not gated on CI. This is a real defect, not a
+documentation gap: `gh api` showed a production deployment
+(`6084350830`, `2026-08-25T13:38:02Z`) created from the same push whose CI run
+(`32854508360`) had **failed**. There was never a `.github/workflows/deploy.yml` in
+this repo before this change — earlier versions of this doc described one; that was
+aspirational, not shipped (confirmed by `ls .github/workflows/` on the live branch).
+
+**What deploys now**: `.github/workflows/deploy.yml`, added 2026-08-25 — triggers via
+`workflow_run` on the `CI` workflow's completion (`conclusion == success`,
+`head_branch == main`), the same idiom `.github/workflows/web.yml` already used in
+this repo, plus a manual `workflow_dispatch`. It deploys both the `server` and
+`worker` process groups from one `flyctl deploy --config infra/fly/fly.toml`
+invocation, asserts the `fly.toml` ingress shape matches the postmortem fix (see
+`docs/operations/postmortem-2026-08-24-web-outage.md`), and verifies `/healthz`
+returns 200 afterward. It is gated behind repository variables
+`FLY_DEPLOY_ENABLED` and `AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE` (both `true` as of
+2026-08-25 — see "One-time auth-envelope rollout" below for why the second one
+exists).
+
+**Known dual-path risk — owner action still required.** The Fly GitHub App is NOT
+disconnected as of this doc's last edit. Until an owner disconnects it (Fly
+dashboard → `patches-social` → Settings → GitHub → Disconnect, **or** GitHub →
+Settings → Applications → Installed GitHub Apps → Fly → Configure → remove this
+repo from its repository access), pushes to `main` race TWO independent deploys:
+the new CI-gated workflow, and the old ungated Fly GitHub App. Do not treat
+`deploy.yml`'s existence as having solved the "no CI gate" problem until that
+disconnect happens — until then the ungated path can still ship a red-CI commit
+regardless of what `deploy.yml` does. This agent's GitHub token could not inspect or
+disable the App installation itself (`gh api .../installations` needs
+`admin:org`/app-installation scope this token lacks; `flyctl` has no CLI surface for
+it — checked `flyctl apps --help`, `flyctl deploy --help`).
+
+**Deploying by hand in an incident** (either path failed, or both need to be
+bypassed): the exact manual sequence is still the "First deploy" transcript below —
+`flyctl deploy --config infra/fly/fly.toml --remote-only`, run from a shell with
+`FLY_API_TOKEN`/`flyctl auth login` set up. Nothing about the new workflow removes
+that manual escape hatch.
 
 Per `INITIAL_VISION.md` §§84–91, §122, §141.
 
@@ -128,9 +171,11 @@ generate`), and the `tsup` builds for `@patches/config`/`@patches/media`/
   `processes = ["server"]`, `[deploy].release_command`) matches
   `docs/research/fly-io.md`'s verified Fly config syntax. **Never deployed** — no Fly
   account in this environment.
-- `.github/workflows/deploy.yml` — `actionlint` clean. **Never completed through CI** — the
-  required variable, endpoint, and token now exist, but the latest `main` CI run failed before
-  the deploy gate (the node itself was deployed by hand; see "First deploy" below).
+- `.github/workflows/deploy.yml` (2026-08-18 note, since superseded) — this file did not
+  actually exist in the committed repo as of 2026-08-25 (confirmed via `ls
+.github/workflows/`); production deploys ran through the Fly.io GitHub App instead, with
+  no CI gate. See "Deploy paths" above for the corrected picture and the file that exists
+  now.
 
 ## First deploy (2026-08-18)
 
@@ -539,29 +584,36 @@ CI runs again on main -> ci-ok
 Deploy workflow (workflow_run, triggered by CI's completion) -> flyctl deploy --remote-only
     |  (release_command runs migrations first, before new Machines take traffic)
     |
-smoke test (patches ping against the deployed host)
+verify: GET https://patches-social.fly.dev/healthz returns 200 (retried up to ~100s)
 ```
 
-`.github/workflows/deploy.yml` implements this. The complete `vars.FLY_GRPC_HOST` endpoint and
-a `FLY_API_TOKEN` secret are configured. Routine deployment requires both
-`vars.FLY_DEPLOY_ENABLED=true` and `vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=true`; the latter
-must remain false/unset until the one-time rollout above is exercised. The path has not completed
-a real CI-triggered deploy. Deploy credentials are never exposed to pull requests from
-forks — the workflow only triggers off `workflow_run` (main-only) and manual dispatch, both
-of which run with the repo's own secrets, never a fork's.
+`.github/workflows/deploy.yml` (added 2026-08-25 — see "Deploy paths" above)
+implements this, using the same `workflow_run`-on-`CI` idiom as `web.yml`, plus
+`workflow_dispatch` for a manual redeploy. `FLY_API_TOKEN` is configured. Routine
+deployment requires both `vars.FLY_DEPLOY_ENABLED=true` and
+`vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE=true` (both `true` as of 2026-08-25 — the
+one-time rollout above is complete); an operator can set either back to `false` to
+pause automatic deploys without editing the workflow file. Deploy credentials are
+never exposed to pull requests from forks — the workflow only triggers off
+`workflow_run` (main-only, same-repo) and manual dispatch, both of which run with
+the repo's own secrets, never a fork's. `actionlint` and `python3 -c
+"import tomllib; ..."` both pass on the workflow file and `infra/fly/fly.toml`
+respectively (checked 2026-08-25); the workflow itself has not yet completed a real
+CI-triggered deploy from this environment (no way to push to `main` and wait for it
+here).
 
 ## Smoke tests
 
-`.github/workflows/deploy.yml`'s final step reuses the TUI's existing non-interactive
-`patches ping` subcommand (`apps/tui/src/cli/ping.ts` — one real
-`SystemService.GetServerInfo` gRPC round trip, JSON output, exit 0/1) against
-the complete `vars.FLY_GRPC_HOST` endpoint over TLS, rather than writing a second, parallel gRPC smoke-test
-client. **Status: planned** — never run against a real deployment.
+`.github/workflows/deploy.yml`'s final step curls `https://patches-social.fly.dev/healthz`
+directly (up to 20 attempts, 5s apart) rather than a gRPC client round trip — simpler than
+standing up a gRPC smoke client in the runner, and it's the exact same endpoint
+`infra/fly/fly.toml`'s own `[checks.healthz]` already polls, so a workflow failure and a
+Fly health-check failure mean the same thing. **Status: planned** — never run against a
+real deployment from this environment (same reason as above).
 
-The workflow also passes the exact validated commit as `PATCHES_BUILD_SHA` at image build time.
-`GetServerInfo.server_version` consequently reports `<package-version>+<short-sha>` in deployed
-images, while local/unidentified builds retain the plain package version. This makes a smoke-test
-response directly comparable with the web footer's build identity.
+The workflow passes the exact deployed commit as `PATCHES_BUILD_SHA` at image build time,
+same as before this change — `GetServerInfo.server_version` (queryable via `patches ping`
+or the TUI) still reports `<package-version>+<short-sha>` in deployed images.
 
 ## Graceful shutdown
 

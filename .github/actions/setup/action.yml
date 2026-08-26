@@ -4,6 +4,17 @@ description: >
   `pnpm install --frozen-lockfile`. Also restores the Turborepo local cache.
   Used by every CI/CD job that needs the workspace installed.
 
+inputs:
+  cache-scope:
+    description: >
+      Turbo cache key scope. Defaults to the calling job's own name (github.job) so
+      every job persists an independent cache. Pass another job's name (e.g.
+      `build-test`) to deliberately share that job's cache instead — for a job that
+      runs the exact same full-workspace build and is sequenced (`needs:`) after it,
+      so it restores an already-saved cache rather than rebuilding cold.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -22,10 +33,24 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
+    # Keyed by scope (default: the calling job's own name), not just OS/sha: every
+    # CI/CD job that uses this action runs on its own fresh runner in parallel, so a
+    # single shared exact-sha key meant only the FIRST job to finish its
+    # `actions/cache` post-step could actually save (a save under an already-existing
+    # key is silently skipped) — every other job's newly-computed turbo outputs were
+    # dropped. Scoping by job name lets every job persist its own cache release over
+    # release; `cache-scope` lets a job explicitly reuse another (already-sequenced)
+    # job's cache instead — see the input's description above.
+    - name: Resolve cache scope
+      shell: bash
+      run: |
+        scope="${{ inputs.cache-scope }}"
+        echo "CACHE_SCOPE=${scope:-${{ github.job }}}" >> "$GITHUB_ENV"
+
     - name: Restore turbo cache
       uses: actions/cache@v4
       with:
         path: .turbo
-        key: turbo-${{ runner.os }}-${{ github.sha }}
+        key: turbo-${{ runner.os }}-${{ env.CACHE_SCOPE }}-${{ github.sha }}
         restore-keys: |
-          turbo-${{ runner.os }}-
+          turbo-${{ runner.os }}-${{ env.CACHE_SCOPE }}-
