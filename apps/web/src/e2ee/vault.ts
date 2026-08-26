@@ -154,11 +154,25 @@ function fromBase64(value: string, expectedLength: number): Uint8Array | undefin
 /** Loads (or creates once, ever) the account's wrapping secret. A malformed stored
  * value is treated as absent only when no vault exists yet; once a vault exists the
  * secret must decode, otherwise the vault would be silently unreadable-by-choice. */
-function loadOrCreateSecret(account: WebVaultAccount, storage: VaultBrowserStorage): Uint8Array {
+function loadOrCreateSecret(
+  account: WebVaultAccount,
+  storage: VaultBrowserStorage,
+  vaultAlreadyExists: boolean,
+): Uint8Array {
   const stored = storage.getItem(secretKey(account));
   if (stored !== null) {
     const parsed = fromBase64(stored, SECRET_BYTES);
     if (parsed !== undefined) return parsed;
+    if (vaultAlreadyExists) {
+      // A sealed vault document already exists in IndexedDB, but the wrapping secret
+      // beside it won't decode: generating and storing a fresh secret here would
+      // silently strand the existing vault forever (it can never decrypt under a new
+      // secret). Refuse instead — the vault is already unreachable either way, but this
+      // way its one on-disk trace of the real secret isn't also overwritten. Fails
+      // closed as `VaultCorruptionError` (via `open()`), the same fault the caller
+      // would hit moments later from a data-key mismatch regardless.
+      throw new VaultCorruptionError();
+    }
   }
   const secret = randomBytes(SECRET_BYTES);
   storage.setItem(secretKey(account), toBase64(secret));
@@ -365,18 +379,22 @@ export class IndexedDbRatchetVaultStore implements RatchetVaultStore {
       return fresh;
     });
 
-    this.secret = loadOrCreateSecret(this.account, this.storage);
+    // Read the vault document BEFORE deciding whether a malformed stored secret may be
+    // replaced (see `loadOrCreateSecret`): once a vault document exists, silently
+    // overwriting its wrapping secret would strand it, so that decision needs to know
+    // this up front rather than after already having generated a fresh secret.
+    // Same IDBObjectStore.get typing gap noted below: cast to the shape this vault wrote.
+    const blob = await withStateStore(this.db, 'readonly', (store) =>
+      requestDone<Uint8Array | undefined>(store.get(DOC_KEY) as IDBRequest<Uint8Array | undefined>),
+    );
+
+    this.secret = loadOrCreateSecret(this.account, this.storage, blob !== undefined);
     const wrappingKey = await deriveWrappingKey(this.secret, salt);
     this.dataKey = deriveVaultDataKey(
       wrappingKey,
       `${this.account.origin}\u0000${this.account.actorId}`,
     );
     zeroize(wrappingKey);
-
-    // Same IDBObjectStore.get typing gap as above: cast to the shape this vault wrote.
-    const blob = await withStateStore(this.db, 'readonly', (store) =>
-      requestDone<Uint8Array | undefined>(store.get(DOC_KEY) as IDBRequest<Uint8Array | undefined>),
-    );
 
     const anchor = readAnchor(this.account, this.storage);
     if (blob === undefined) {

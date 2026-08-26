@@ -101,6 +101,12 @@ class WebE2eeManager {
   private runtime: E2eeSessionRuntime | undefined;
   /** The account the open vault belongs to (set by `setActor`, read by `enroll`). */
   private actorId: string | undefined;
+  /** Serializes `setActor`: each call captures its own sequence number and checks it
+   * after every await. A call whose number no longer matches was superseded by a later
+   * call (StrictMode double-effect, rapid navigation) — it closes whatever vault it
+   * opened instead of leaking the IndexedDB connection, and never touches shared state
+   * (single-owner rule, `vault.ts:36-38`). The last call issued always wins. */
+  private setActorSeq = 0;
   private readonly api: E2eeApiSurface;
   private readonly nowMs: (() => number) | undefined;
 
@@ -135,6 +141,7 @@ class WebE2eeManager {
 
   /** Called by the session layer on sign-in/sign-out/actor switch. */
   async setActor(actor: { readonly id: string } | null): Promise<void> {
+    const seq = (this.setActorSeq += 1);
     if (actor === null) {
       this.release();
       this.setStatus({ kind: 'signed-out' });
@@ -142,10 +149,22 @@ class WebE2eeManager {
     }
     this.release();
     this.setStatus({ kind: 'loading' });
+    let vault: RatchetSessionVault | undefined;
     try {
       const account: WebVaultAccount = { origin: location.origin, actorId: actor.id };
-      const vault = await createRatchetSessionVault({ account });
+      vault = await createRatchetSessionVault({ account });
+      if (seq !== this.setActorSeq) {
+        // Superseded while opening: a later setActor call already owns `this.vault`
+        // (or none does, e.g. a later sign-out). Close the vault THIS call opened
+        // rather than leaking the connection, and leave shared state untouched.
+        vault.close();
+        return;
+      }
       const stored = await loadStoredEnrollment(vault);
+      if (seq !== this.setActorSeq) {
+        vault.close();
+        return;
+      }
       if (stored === undefined || !stored.submitted) {
         // Keep the vault open: enroll() runs against THIS instance (single-owner rule).
         this.vault = vault;
@@ -156,6 +175,12 @@ class WebE2eeManager {
       this.bind(vault, stored.identity);
       this.setStatus({ kind: 'enrolled' });
     } catch {
+      if (seq !== this.setActorSeq) {
+        // Superseded before or during the failure: don't clobber whatever the winning
+        // call has since set. Still close any vault this call itself opened.
+        vault?.close();
+        return;
+      }
       // Sticky, coarse, content-free fault — never the error itself (spec §194).
       this.release();
       this.setStatus({ kind: 'fault', copy: WEB_E2EE_COPY.vaultFault });
@@ -242,7 +267,17 @@ class WebE2eeManager {
    * `CreateE2eeConversation` itself). Existing conversations send/receive normally.
    */
   createConversation(): Promise<never> {
-    this.requireRuntime();
+    // Not async: `requireRuntime`'s throw must surface as a rejection (callers await
+    // this), which a synchronous throw from a non-async function would bypass instead.
+    try {
+      this.requireRuntime();
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error
+          ? error
+          : new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable),
+      );
+    }
     return Promise.reject(new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable));
   }
 

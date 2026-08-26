@@ -96,11 +96,41 @@ export function MessagesRoute(): JSX.Element {
       />
 
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
-      {query.data?.conversations.length === 0 ? (
-        <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No conversations yet.</p>
-      ) : null}
-      {query.data?.conversations.map((conversation) => {
-        const other = conversation.members.find((m) => m.actor?.id !== session?.actor.id)?.actor;
+      {query.data === undefined ? null : (
+        <ConversationList
+          conversations={query.data.conversations}
+          viewerActorId={session?.actor.id}
+        />
+      )}
+    </div>
+  );
+}
+
+type ConversationsResult = Awaited<ReturnType<typeof api.messages.listConversations>>;
+type ConversationRow = ConversationsResult['conversations'][number];
+
+/**
+ * The conversation rows AND the §183.1 disclosure as one unit: it is structurally
+ * impossible to render a row here without the disclosure appearing above it, in every
+ * `E2eePanel` status (including `fault`, which is sticky — see `web-e2ee.ts:158-162`).
+ */
+function ConversationList({
+  conversations,
+  viewerActorId,
+}: {
+  conversations: readonly ConversationRow[];
+  viewerActorId: string | undefined;
+}): JSX.Element | null {
+  if (conversations.length === 0) {
+    return <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No conversations yet.</p>;
+  }
+  return (
+    <>
+      <p role="note" style={panelStyle}>
+        {requiredConversationDisclosure('E2EE_V1')}
+      </p>
+      {conversations.map((conversation) => {
+        const other = conversation.members.find((m) => m.actor?.id !== viewerActorId)?.actor;
         // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) —
         // the panel above stays neutral because the list mixes states.
         const modeLabel = securityModeLabel(conversation.securityMode);
@@ -118,7 +148,7 @@ export function MessagesRoute(): JSX.Element {
           </Link>
         );
       })}
-    </div>
+    </>
   );
 }
 

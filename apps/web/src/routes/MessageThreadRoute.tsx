@@ -42,6 +42,7 @@ export function MessageThreadRoute(): JSX.Element {
   });
   const conversation = conversationQuery.data?.conversation;
   const securityMode = conversation?.securityMode;
+  const disclosedByConversation = securityMode === ConversationSecurityMode.E2EE_V1;
 
   const otherMembers = conversation?.members.filter((member) => member.leftAt === undefined) ?? [];
 
@@ -110,7 +111,7 @@ export function MessageThreadRoute(): JSX.Element {
 
   return (
     <div className={styles['thread']}>
-      {securityMode === ConversationSecurityMode.E2EE_V1 ? (
+      {disclosedByConversation ? (
         <p
           role="note"
           style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
@@ -167,9 +168,7 @@ export function MessageThreadRoute(): JSX.Element {
             <p>No decrypted messages yet on this device.</p>
           </div>
         ) : null}
-        {rows.map((row) => (
-          <MessageRow key={row.id} row={row} />
-        ))}
+        <MessageRows rows={rows} alreadyDisclosed={disclosedByConversation} />
         {notice === null ? null : (
           <div className={styles['emptyThread']}>
             <p>{notice}</p>
@@ -200,6 +199,38 @@ export function MessageThreadRoute(): JSX.Element {
         </form>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The message rows AND the §183.1 disclosure as one unit: `rows` come from
+ * `webE2ee().poll()` and render independently of `conversationQuery` (which can fail or
+ * never settle). `alreadyDisclosed` only suppresses the duplicate paragraph when the
+ * conversation-derived one above is already on screen — rows are never rendered without
+ * a disclosure somewhere, including when `conversationQuery` never resolves.
+ */
+function MessageRows({
+  rows,
+  alreadyDisclosed,
+}: {
+  rows: readonly InboxRow[];
+  alreadyDisclosed: boolean;
+}): JSX.Element | null {
+  if (rows.length === 0) return null;
+  return (
+    <>
+      {alreadyDisclosed ? null : (
+        <p
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
+          {requiredConversationDisclosure('E2EE_V1')}
+        </p>
+      )}
+      {rows.map((row) => (
+        <MessageRow key={row.id} row={row} />
+      ))}
+    </>
   );
 }
 
