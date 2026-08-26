@@ -63,12 +63,16 @@ describe('NotificationsScreen FOLLOW_REQUEST rows (§197.5)', () => {
 });
 
 describe('NotificationsScreen MESSAGE rows (B-098, §187/§194)', () => {
-  const messageNotification = (conversationId: string): Notification =>
+  const messageNotification = (
+    conversationId: string,
+    createdAt?: { seconds: bigint; nanos: number },
+  ): Notification =>
     notification({
       type: NOTIFICATION_TYPE.MESSAGE,
       conversationId,
       postId: '',
       actor: actor('dana'),
+      ...(createdAt === undefined ? {} : { createdAt }),
     });
 
   it('renders sender handle + "sent you a message" and no body preview', async () => {
@@ -150,8 +154,10 @@ describe('NotificationsScreen MESSAGE rows (B-098, §187/§194)', () => {
   });
 
   it('repeat MESSAGE rows for the same conversation collapse into one group', () => {
-    const first = messageNotification('conv-1');
-    const second = messageNotification('conv-1');
+    // Grouping requires both rows' createdAt inside GROUP_WINDOW_MS (10 min).
+    const now = { seconds: BigInt(Math.floor(Date.now() / 1000)), nanos: 0 };
+    const first = messageNotification('conv-1', now);
+    const second = messageNotification('conv-1', now);
     const groups = groupNotifications([first, second]);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.notifications).toHaveLength(2);

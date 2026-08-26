@@ -45,10 +45,10 @@ export interface UpdateProfileInput {
   websiteUrl?: string;
   nameplate?: NameplateInput;
   flairDocument?: string;
-  profileBannerUrl?: string;
-  profileFrame?: string;
-  nameTagStyle?: string;
-  accentColor?: string;
+  profileBannerUrl?: string | undefined;
+  profileFrame?: string | undefined;
+  nameTagStyle?: string | undefined;
+  accentColor?: string | undefined;
   /** Proto field names (snake_case), e.g. `["display_name", "bio"]`; only these are applied. */
   updateMask: readonly string[];
 }

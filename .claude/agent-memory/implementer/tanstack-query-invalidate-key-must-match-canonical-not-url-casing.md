@@ -6,7 +6,7 @@ metadata:
 ---
 
 If a route's query key is built from a raw URL param (e.g. `['page', urlHandleParam]`) but a
-sibling mutation's `invalidateQueries` targets the *canonical* form of that same identifier (e.g.
+sibling mutation's `invalidateQueries` targets the _canonical_ form of that same identifier (e.g.
 `['page', actor.handle]` from an already-resolved API response), and the server-side lookup for
 that identifier is case-insensitive but returns canonical casing, the two can silently diverge:
 a case-mismatched URL means invalidate never matches, and a save leaves stale cached data on

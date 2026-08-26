@@ -14,6 +14,7 @@ function summaryFixture(overrides: Partial<ActorSummary>): ActorSummary {
     isLocal: true,
     joinedAt: new Date('2024-01-01T00:00:00Z'),
     homeServer: null,
+    nameplate: null,
     ...overrides,
   };
 }
