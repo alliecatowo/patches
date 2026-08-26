@@ -270,8 +270,8 @@ problem this ADR exists to fix.
 
 ## Follow-ups
 
-- **B-191** — Stage 0(b): fix the TUI's enrollment drift (B-131 parity). Live defect.
-- **B-192** — Stage 0(a): cross-client setup-block framing vector and its replay on both sides.
-- **B-193** — Stage 2: extract `@patches/e2ee-client`. Blocked on B-124 and ADR 0033 §7.
+- **B-194** — Stage 0(b): fix the TUI's enrollment drift (B-131 parity). Live defect.
+- **B-195** — Stage 0(a): cross-client setup-block framing vector and its replay on both sides.
+- **B-196** — Stage 2: extract `@patches/e2ee-client`. Blocked on B-124 and ADR 0033 §7.
 - **B-124** — gains Stage 1's both-copies acceptance condition; its "hoist into `@patches/domain`"
   phrasing is superseded by ADR 0033 §1 and this ADR.
