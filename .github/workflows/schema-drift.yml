@@ -1,0 +1,193 @@
+# Schema drift gate (P19-025) — atlas `schema inspect` vs a checked-in snapshot.
+#
+# SCOPE VARIANT: no-secrets / ephemeral-container. No production DATABASE_URL
+# secret exists anywhere in this repo's CI (grep "secrets." over .github/ finds
+# only FLY/NEON/R2/CLOUDFLARE tokens), so this workflow applies ALL migrations
+# to an empty postgres:17-alpine service container and inspects THAT database.
+# It catches "migration landed but the snapshot wasn't regenerated" drift —
+# including via the weekly schedule, which diffs main's migrations against
+# main's snapshot.
+#
+# FOLLOW-UP (production drift, NOT implemented): real-prod drift (a manual
+# ALTER TABLE / Neon console edit that bypassed `pnpm db:migrate`) can only be
+# caught by inspecting production. That requires a read-only connection-string
+# secret (e.g. PROD_DATABASE_URL_RO) the repository owner must add — do not
+# invent one. When it exists: add a separate job that runs
+# `atlas schema inspect` against it, still comparing to this same snapshot,
+# still never printing the URL, and never reading row data.
+#
+# This workflow is deliberately NOT a required check and never runs on
+# pull_request — it must not slow the PR path (ci.yml owns that).
+# Research basis: docs/research/atlas-reshape.md (free/local community edition;
+# `schema inspect` verified read-only against this repo's schema 2026-08-26).
+
+name: Schema drift
+
+on:
+  workflow_dispatch:
+    inputs:
+      regenerate:
+        description: >
+          Rewrite infra/scripts/schema.snapshot.hcl from the fully migrated
+          container and open a PR with the result — run this right after a
+          migration lands. The PR is never auto-merged.
+        type: boolean
+        default: false
+  schedule:
+    # Weekly, Mondays 04:23 UTC — off the top of the hour; the repo currently
+    # has no other cron schedules to collide with.
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize runs per ref (weekly runs use main; dispatches use their branch).
+  # Never cancel: two regenerate dispatches racing the shared bot branch would
+  # need the loser to keep its (also valid) result.
+  group: schema-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: drift (migrate, atlas inspect, diff snapshot)
+    # Skip the pure check when this dispatch explicitly asked for a regenerate
+    # — drift is the expected state being fixed there.
+    if: >-
+      !(github.event_name == 'workflow_dispatch' && inputs.regenerate)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: patches
+          POSTGRES_PASSWORD: patches
+          POSTGRES_DB: patches_drift
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patches -d patches_drift"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Ephemeral service-container credentials, not a secret. Read by both
+      # `pnpm db:migrate` (TypeORM) and the drift script (atlas).
+      DATABASE_URL: postgres://patches:patches@localhost:5432/patches_drift
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Not in mise.toml (single-purpose CI tool), so pin it here: exact
+      # version + sha256 of the release.ariga.io artifact. To bump: download
+      # the new atlas-community-linux-amd64-vX.Y.Z, `sha256sum` it, update both
+      # values AND regenerate the snapshot in the same PR (a different version
+      # may render HCL differently).
+      - name: Install atlas (community edition, pinned)
+        run: |
+          set -euo pipefail
+          version="v1.3.1"
+          sha256="521aafcdc4c81a6aee3d553adc97633821a7cb28076ffcdf4add27add930c804"
+          curl -sSf --max-time 300 -o "$RUNNER_TEMP/atlas" \
+            "https://release.ariga.io/atlas/atlas-community-linux-amd64-${version}"
+          echo "${sha256}  $RUNNER_TEMP/atlas" | sha256sum --check -
+          sudo install -m 0755 "$RUNNER_TEMP/atlas" /usr/local/bin/atlas
+          atlas version
+
+      - name: Apply all migrations to the ephemeral database
+        run: pnpm db:migrate
+
+      - name: Fail if migrated schema differs from the checked-in snapshot
+        run: node infra/scripts/schema-drift.mjs
+
+  regenerate:
+    name: regenerate (rewrites snapshot, opens PR)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.regenerate
+    runs-on: ubuntu-latest
+    # Job-level least privilege: only the regenerate path gets write access.
+    permissions:
+      contents: write
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: patches
+          POSTGRES_PASSWORD: patches
+          POSTGRES_DB: patches_drift
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patches -d patches_drift"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://patches:patches@localhost:5432/patches_drift
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Install atlas (community edition, pinned)
+        run: |
+          set -euo pipefail
+          version="v1.3.1"
+          sha256="521aafcdc4c81a6aee3d553adc97633821a7cb28076ffcdf4add27add930c804"
+          curl -sSf --max-time 300 -o "$RUNNER_TEMP/atlas" \
+            "https://release.ariga.io/atlas/atlas-community-linux-amd64-${version}"
+          echo "${sha256}  $RUNNER_TEMP/atlas" | sha256sum --check -
+          sudo install -m 0755 "$RUNNER_TEMP/atlas" /usr/local/bin/atlas
+          atlas version
+
+      - name: Apply all migrations to the ephemeral database
+        run: pnpm db:migrate
+
+      - name: Regenerate the snapshot
+        run: node infra/scripts/schema-drift.mjs --regenerate
+
+      # Never auto-commits to main: the snapshot lands via a PR from a bot-owned
+      # disposable branch. The push is a force push because the branch is fully
+      # recreated from the dispatched ref on every run. A PR opened with
+      # GITHUB_TOKEN does not trigger ci.yml (GitHub anti-recursion rule, by
+      # design) — see the PR body for merge guidance.
+      - name: Commit regenerated snapshot and open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="chore/schema-snapshot-regenerate"
+          git config user.name "patches-bot"
+          git config user.email "actions@users.noreply.github.com"
+          gh auth setup-git
+          git checkout -B "$branch"
+          git add infra/scripts/schema.snapshot.hcl
+          if git diff --cached --quiet; then
+            echo "Snapshot already matches the migrated schema — nothing to commit, no PR."
+            exit 0
+          fi
+          git commit -m "chore(db): regenerate atlas schema snapshot"
+          git push --force origin "$branch"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat > "$RUNNER_TEMP/pr-body.md" <<'EOF'
+          Regenerated `infra/scripts/schema.snapshot.hcl` by applying every
+          migration to an empty Postgres 17 container and running
+          `atlas community v1.3.1 schema inspect`.
+
+          - Triggering run: see workflow run link below
+          - How to merge: this PR was opened with `GITHUB_TOKEN`, so `ci.yml`
+            does not run on it (GitHub never triggers workflows from its own
+            token — by design; this file is a data-only snapshot). Use
+            `mise run merge-pr -- <this PR> --bypass "snapshot-only, GITHUB_TOKEN PR runs no CI"`.
+          - Docs: `docs/operations/schema-drift.md`
+          EOF
+          sed -i "1a\\
+          ${run_url}" "$RUNNER_TEMP/pr-body.md"
+          if gh pr create --base main --head "$branch" \
+               --title "chore(db): regenerate atlas schema snapshot" \
+               --body-file "$RUNNER_TEMP/pr-body.md"; then
+            echo "PR opened."
+          else
+            echo "A PR for $branch already exists:"
+            gh pr list --head "$branch" --json url --jq '.[0].url'
+          fi
