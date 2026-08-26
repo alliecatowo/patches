@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 
+import { LazyRouteBoundary } from './components/LazyRouteBoundary.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 import { NotFoundRoute, RouteErrorBoundary } from './routes/NotFoundRoute.js';
 import { RootLayout } from './routes/RootLayout.js';
@@ -12,6 +13,12 @@ import { RootLayout } from './routes/RootLayout.js';
  * wrapped routes wrap the lazily-imported component in their `Component`
  * result rather than importing `ProtectedRoute` per chunk, since it's already
  * part of the shell.
+ *
+ * Every lazy child route also gets its own `errorElement: <LazyRouteBoundary />`
+ * (B-158) so a single route's render crash — or a stale client's `lazy` import
+ * 404ing against a post-deploy chunk hash — only replaces that route's `<Outlet />`
+ * slot. `RouteErrorBoundary` on the root stays as the fallback for errors in
+ * `RootLayout` itself, which has no ancestor `errorElement` to bubble to.
  */
 export const router = createBrowserRouter([
   {
@@ -22,48 +29,59 @@ export const router = createBrowserRouter([
       {
         path: 'report',
         lazy: () => import('./routes/ReportRoute.js').then((m) => ({ Component: m.ReportRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         index: true,
         lazy: () => import('./routes/HomeRoute.js').then((m) => ({ Component: m.HomeRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'login',
         lazy: () => import('./routes/LoginRoute.js').then((m) => ({ Component: m.LoginRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'register',
         lazy: () =>
           import('./routes/RegisterRoute.js').then((m) => ({ Component: m.RegisterRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'search',
         lazy: () => import('./routes/SearchRoute.js').then((m) => ({ Component: m.SearchRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'p/:id',
         lazy: () => import('./routes/ThreadRoute.js').then((m) => ({ Component: m.ThreadRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'page/:handle',
         lazy: () => import('./routes/PageRoute.js').then((m) => ({ Component: m.PageRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'page/:handle/:slug',
         lazy: () => import('./routes/PageRoute.js').then((m) => ({ Component: m.PageRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: ':handle',
         lazy: () => import('./routes/ProfileRoute.js').then((m) => ({ Component: m.ProfileRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 't/:tag',
         lazy: () => import('./routes/TagRoute.js').then((m) => ({ Component: m.TagRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'c/:id',
         lazy: () =>
           import('./routes/CommunityRoute.js').then((m) => ({ Component: m.CommunityRoute })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'notifications',
@@ -75,6 +93,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'bookmarks',
@@ -86,6 +105,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'compose',
@@ -97,6 +117,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'settings',
@@ -108,6 +129,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
         children: [
           {
             path: 'profile',
@@ -115,6 +137,7 @@ export const router = createBrowserRouter([
               import('./routes/SettingsProfileRoute.js').then((m) => ({
                 Component: m.SettingsProfileRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'appearance',
@@ -122,6 +145,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/AppearanceSettingsRoute.js').then((m) => ({
                 Component: m.AppearanceSettingsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'privacy',
@@ -129,6 +153,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/PrivacySettingsRoute.js').then((m) => ({
                 Component: m.PrivacySettingsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'filters',
@@ -136,6 +161,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/FiltersSettingsRoute.js').then((m) => ({
                 Component: m.FiltersSettingsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'lists',
@@ -143,6 +169,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/FilterListsSettingsRoute.js').then((m) => ({
                 Component: m.FilterListsSettingsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'labelers',
@@ -150,6 +177,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/LabelersSettingsRoute.js').then((m) => ({
                 Component: m.LabelersSettingsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
           {
             path: 'credentials',
@@ -157,6 +185,7 @@ export const router = createBrowserRouter([
               import('./routes/settings/CredentialsRoute.js').then((m) => ({
                 Component: m.CredentialsRoute,
               })),
+            errorElement: <LazyRouteBoundary />,
           },
         ],
       },
@@ -166,6 +195,7 @@ export const router = createBrowserRouter([
           import('./routes/moderation/ModerationLogRoute.js').then((m) => ({
             Component: m.ModerationLogRoute,
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'appeals',
@@ -177,6 +207,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'messages',
@@ -188,6 +219,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       {
         path: 'messages/:id',
@@ -199,6 +231,7 @@ export const router = createBrowserRouter([
               </ProtectedRoute>
             ),
           })),
+        errorElement: <LazyRouteBoundary />,
       },
       { path: '*', element: <NotFoundRoute /> },
     ],
