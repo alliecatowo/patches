@@ -28,23 +28,37 @@ const run = (cmdArgs) =>
   execFileSync('pnpm', ['exec', 'wrangler', ...cmdArgs], { encoding: 'utf8' });
 
 try {
-  const list = run(['pages', 'deployment', 'list', '--project-name', 'patches-web']);
-  const rows = list
-    .split('\n')
-    .filter((line) => line.includes(`│ pr-${pr} `))
-    .map((line) => {
-      const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/.exec(line);
-      return m?.[1];
-    })
-    .filter((id) => id !== undefined);
-  if (rows.length === 0) {
-    console.log(`no Pages deployments on branch pr-${pr} — nothing to clean`);
+  const raw = run(['pages', 'deployment', 'list', '--project-name', 'patches-web', '--json']);
+  // Structured output (docs/research/wrangler.md), not the box-drawing table B-173 replaced —
+  // a wrangler version that stops emitting this shape must fail this job loudly (no
+  // `continue-on-error` swallow below) instead of silently sweeping nothing, or the
+  // orphan-Pages leak B-154 fixed comes back with no signal.
+  const rows = JSON.parse(raw);
+  if (!Array.isArray(rows)) {
+    throw new Error(`wrangler --json output was not an array: ${raw.slice(0, 200)}`);
   }
-  for (const id of rows) {
-    console.log(`deleting Pages deployment ${id} (branch pr-${pr})`);
+  const branch = `pr-${pr}`;
+  const ids = rows
+    .map((row, index) => {
+      if (typeof row !== 'object' || row === null) {
+        throw new Error(`deployment row ${index} was not an object: ${JSON.stringify(row)}`);
+      }
+      const { Id, Branch } = row;
+      if (typeof Id !== 'string' || typeof Branch !== 'string') {
+        throw new Error(`deployment row ${index} missing string Id/Branch: ${JSON.stringify(row)}`);
+      }
+      return { id: Id, branch: Branch };
+    })
+    .filter((row) => row.branch === branch)
+    .map((row) => row.id);
+  if (ids.length === 0) {
+    console.log(`no Pages deployments on branch ${branch} — nothing to clean`);
+  }
+  for (const id of ids) {
+    console.log(`deleting Pages deployment ${id} (branch ${branch})`);
     run(['pages', 'deployment', 'delete', id, '--project-name', 'patches-web', '-f']);
   }
-  console.log(`done: ${rows.length} deployment(s) removed`);
+  console.log(`done: ${ids.length} deployment(s) removed`);
 } catch (err) {
   console.error(String(err));
   process.exit(1);
