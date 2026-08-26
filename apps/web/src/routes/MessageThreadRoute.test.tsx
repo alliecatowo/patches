@@ -6,10 +6,14 @@ import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { MessageThreadRoute } from './MessageThreadRoute.js';
 
 const mockGetConversation =
   vi.fn<(...args: unknown[]) => Promise<{ conversation?: Conversation }>>();
+const mockToastError = vi.fn<(...args: unknown[]) => void>();
+const mockUseSession = vi.fn<() => unknown>();
+const mockUseE2ee = vi.fn<() => { kind: string }>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -18,6 +22,20 @@ vi.mock('../api/client.js', () => ({
         mockGetConversation(...args),
     },
   } as unknown as PatchesApi,
+}));
+
+vi.mock('../hooks/useSession.js', () => ({
+  useSession: () => mockUseSession(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: Object.assign((...args: unknown[]) => mockToastError(...args), {
+    error: (...args: unknown[]) => mockToastError(...args),
+  }),
+}));
+
+vi.mock('../e2ee/use-e2ee.js', () => ({
+  useE2ee: () => mockUseE2ee(),
 }));
 
 function renderThread(): ReturnType<typeof render> {
@@ -47,41 +65,77 @@ function e2eeConversation(handle: string): Conversation {
   } as unknown as Conversation;
 }
 
-describe('MessageThreadRoute (B-096: E2EE-only, no plaintext content surface)', () => {
+function noteText(): string {
+  return screen
+    .getAllByRole('note')
+    .map((node) => node.textContent ?? '')
+    .join(' ');
+}
+
+describe('MessageThreadRoute (B-132: the composer never promises what it cannot do)', () => {
   beforeEach(() => {
     mockGetConversation.mockReset();
+    mockToastError.mockReset();
+    mockUseSession.mockReset();
+    mockUseE2ee.mockReset();
+    mockUseSession.mockReturnValue({ actor: { id: 'actor-me', handle: 'allie' } });
+    mockUseE2ee.mockReturnValue({ kind: 'enrolled' });
   });
 
-  it('shows the accurate terminal-client disclosure and never renders a composer', async () => {
+  it('shows the conversation disclosure read off the wire', async () => {
     mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
 
     renderThread();
 
     await waitFor(() => {
-      expect(screen.getByRole('note').textContent).toContain('End-to-end encrypted.');
+      expect(noteText()).toContain('End-to-end encrypted.');
     });
-    expect(screen.getByRole('note').textContent).toContain(
-      'This web view has no key material to decrypt them',
-    );
-    // No plaintext RPC survives B-095: there must be no composer to type into.
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
   });
 
-  it('points at the conversation participant while opening in the terminal client', async () => {
+  it('disables the composer and explains why, with no retry promise', async () => {
     mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
 
     renderThread();
 
-    expect(await screen.findByText(/@bob/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(noteText()).toContain('End-to-end encrypted.');
+    });
+    expect(noteText()).toContain(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
+    expect(screen.getByRole('textbox', { name: 'Message body' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /send/i })).toBeDisabled();
+    // The disabled state must not be sold as transient.
+    expect(noteText()).not.toContain('Try again');
   });
 
-  it('asserts nothing while the conversation has not loaded yet', () => {
-    // Never settles: the notice must already be honest during the fetch.
+  it('never claims decrypted history is merely empty while nothing can be read', async () => {
+    mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
+
+    renderThread();
+
+    await waitFor(() => {
+      expect(noteText()).toContain('End-to-end encrypted.');
+    });
+    expect(screen.queryByText('No decrypted messages yet on this device.')).not.toBeInTheDocument();
+  });
+
+  it('asserts nothing about the mode while the conversation has not loaded yet', () => {
+    // Never settles: whatever renders during the fetch must already be honest.
     mockGetConversation.mockReturnValue(new Promise(() => undefined));
 
     renderThread();
 
-    expect(screen.getByRole('note').textContent).not.toContain('End-to-end encrypted.');
+    expect(noteText()).not.toContain('End-to-end encrypted.');
+  });
+
+  it('tells an un-enrolled browser what enrolling does, and does not overclaim', async () => {
+    mockUseE2ee.mockReturnValue({ kind: 'not-enrolled' });
+    mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
+
+    renderThread();
+
+    await waitFor(() => {
+      expect(noteText()).toContain('enrolled as a messaging device');
+    });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 });

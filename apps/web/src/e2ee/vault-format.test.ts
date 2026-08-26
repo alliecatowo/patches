@@ -1,0 +1,163 @@
+/**
+ * Sealed-container codec tests. The security claims under test are the ones the vault
+ * leans on: the container authenticates its own header (so the cleartext generation
+ * cannot be edited), any byte flip fails closed as corruption rather than decoding to
+ * something, and the document survives a byte-exact round trip.
+ */
+import { randomBytes } from '@patches/crypto';
+import { describe, expect, it } from 'vitest';
+
+import { VaultCorruptionError } from './vault-errors.js';
+import {
+  decodeVaultDocument,
+  deriveVaultDataKey,
+  encodeVaultDocument,
+  openSealedVaultBlob,
+  parseSealedVaultBlob,
+  sealVaultBlob,
+  type VaultDocument,
+} from './vault-format.js';
+
+const KEY = new Uint8Array(32).fill(7);
+const OTHER_KEY = new Uint8Array(32).fill(9);
+
+function open(key: Uint8Array, blob: Uint8Array): Uint8Array {
+  return openSealedVaultBlob(key, parseSealedVaultBlob(blob));
+}
+
+describe('deriveVaultDataKey', () => {
+  it('is deterministic and account-scoped', () => {
+    const wrapping = randomBytes(32);
+    const a = deriveVaultDataKey(wrapping, 'https://node.example\u0000actor-1');
+    const again = deriveVaultDataKey(wrapping, 'https://node.example\u0000actor-1');
+    const other = deriveVaultDataKey(wrapping, 'https://node.example\u0000actor-2');
+
+    expect(a).toHaveLength(32);
+    expect([...again]).toEqual([...a]);
+    expect([...other]).not.toEqual([...a]);
+  });
+});
+
+describe('sealVaultBlob / openSealedVaultBlob', () => {
+  it('round-trips a payload and preserves the generation in the clear', () => {
+    const plaintext = randomBytes(128);
+    const blob = sealVaultBlob(KEY, 42, plaintext);
+
+    const parsed = parseSealedVaultBlob(blob);
+    expect(parsed.generation).toBe(42);
+    expect([...open(KEY, blob)]).toEqual([...plaintext]);
+  });
+
+  it('uses a fresh nonce per seal, so identical plaintexts never seal identically', () => {
+    const plaintext = new Uint8Array(64).fill(3);
+
+    const first = sealVaultBlob(KEY, 1, plaintext);
+    const second = sealVaultBlob(KEY, 1, plaintext);
+
+    expect([...first]).not.toEqual([...second]);
+  });
+
+  it('refuses a blob sealed under a different key', () => {
+    const blob = sealVaultBlob(KEY, 1, randomBytes(32));
+
+    expect(() => open(OTHER_KEY, blob)).toThrow(VaultCorruptionError);
+  });
+
+  it('refuses a flipped ciphertext byte', () => {
+    const blob = sealVaultBlob(KEY, 1, randomBytes(32));
+    const tampered = blob.slice();
+    const last = tampered.length - 1;
+    tampered[last] = (tampered[last] ?? 0) ^ 0x01;
+
+    expect(() => open(KEY, tampered)).toThrow(VaultCorruptionError);
+  });
+
+  it('refuses an edited generation, even though it sits in the clear', () => {
+    const blob = sealVaultBlob(KEY, 5, randomBytes(32));
+    const tampered = blob.slice();
+    // Generation is the u64 right after the 7-byte magic and the version byte.
+    tampered[15] = (tampered[15] ?? 0) + 1;
+
+    expect(parseSealedVaultBlob(tampered).generation).not.toBe(5);
+    expect(() => open(KEY, tampered)).toThrow(VaultCorruptionError);
+  });
+
+  it('refuses a foreign magic, a bad version, and a truncated container', () => {
+    const blob = sealVaultBlob(KEY, 1, randomBytes(32));
+
+    const foreignMagic = blob.slice();
+    foreignMagic[0] = 0x00;
+    expect(() => parseSealedVaultBlob(foreignMagic)).toThrow(VaultCorruptionError);
+
+    const badVersion = blob.slice();
+    badVersion[7] = 99;
+    expect(() => parseSealedVaultBlob(badVersion)).toThrow(VaultCorruptionError);
+
+    expect(() => parseSealedVaultBlob(blob.slice(0, 20))).toThrow(VaultCorruptionError);
+    expect(() => parseSealedVaultBlob(new Uint8Array(0))).toThrow(VaultCorruptionError);
+  });
+
+  it('never leaks key material or payload bytes in its failure message', () => {
+    const blob = sealVaultBlob(KEY, 1, randomBytes(32));
+
+    try {
+      open(OTHER_KEY, blob);
+      expect.unreachable('decryption under the wrong key must throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(VaultCorruptionError);
+      expect((error as Error).message).toBe(
+        'The encrypted E2EE vault failed authentication or is malformed.',
+      );
+    }
+  });
+});
+
+describe('encodeVaultDocument / decodeVaultDocument', () => {
+  it('round-trips sessions with and without a staged successor', () => {
+    const document: VaultDocument = {
+      sessions: new Map([
+        ['conv-1|actor-a|device-a', { live: randomBytes(48), staged: undefined }],
+        ['conv-1|actor-b|device-b', { live: randomBytes(16), staged: randomBytes(24) }],
+      ]),
+    };
+
+    const decoded = decodeVaultDocument(encodeVaultDocument(document));
+
+    expect([...decoded.sessions.keys()]).toEqual([...document.sessions.keys()]);
+    for (const [sessionId, record] of document.sessions) {
+      const round = decoded.sessions.get(sessionId);
+      expect([...(round?.live ?? [])]).toEqual([...record.live]);
+      expect(round?.staged === undefined).toBe(record.staged === undefined);
+      if (record.staged !== undefined) {
+        expect([...(round?.staged ?? [])]).toEqual([...record.staged]);
+      }
+    }
+  });
+
+  it('round-trips an empty document', () => {
+    const decoded = decodeVaultDocument(encodeVaultDocument({ sessions: new Map() }));
+
+    expect(decoded.sessions.size).toBe(0);
+  });
+
+  it('fails closed on a truncated or trailing-byte document', () => {
+    const encoded = encodeVaultDocument({
+      sessions: new Map([['s', { live: randomBytes(8), staged: undefined }]]),
+    });
+
+    expect(() => decodeVaultDocument(encoded.slice(0, encoded.length - 2))).toThrow(
+      VaultCorruptionError,
+    );
+    const trailing = new Uint8Array(encoded.length + 1);
+    trailing.set(encoded);
+    expect(() => decodeVaultDocument(trailing)).toThrow(VaultCorruptionError);
+  });
+
+  it('fails closed on an unknown document version', () => {
+    const encoded = encodeVaultDocument({ sessions: new Map() });
+    const bumped = encoded.slice();
+    bumped[0] = 42;
+
+    expect(() => decodeVaultDocument(bumped)).toThrow(VaultCorruptionError);
+  });
+});

@@ -6,12 +6,14 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { MessagesRoute } from './MessagesRoute.js';
 
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockToast = vi.fn<(...args: unknown[]) => void>();
+const mockUseE2ee = vi.fn<() => { kind: string }>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -28,6 +30,10 @@ vi.mock('../hooks/useSession.js', () => ({
 
 vi.mock('sonner', () => ({
   toast: (...args: unknown[]): void => mockToast(...args),
+}));
+
+vi.mock('../e2ee/use-e2ee.js', () => ({
+  useE2ee: () => mockUseE2ee(),
 }));
 
 function conversation(id: string, handle: string): Conversation {
@@ -59,6 +65,8 @@ describe('MessagesRoute', () => {
     mockListConversations.mockReset();
     mockUseSession.mockReset();
     mockToast.mockReset();
+    mockUseE2ee.mockReset();
+    mockUseE2ee.mockReturnValue({ kind: 'enrolled' });
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-me', handle: 'allie' } as unknown as Actor,
     });
@@ -83,14 +91,35 @@ describe('MessagesRoute', () => {
     expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
   });
 
-  it('points "New Message" at the terminal client instead of opening a dialog (no creatable-conversation RPC survives B-095)', async () => {
+  it('disables "New Message" while no session can be established (B-132)', async () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
     await screen.findByText('No conversations yet.');
 
-    fireEvent.click(screen.getByLabelText('New direct message'));
+    const newMessage = screen.getByLabelText('New direct message');
+    expect(newMessage).toBeDisabled();
+    fireEvent.click(newMessage);
+    // A disabled control must not pretend to have tried.
+    expect(mockToast).not.toHaveBeenCalled();
+  });
 
-    expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('terminal client') as string);
+  it('states plainly on the enrolled panel that messaging does not work here yet', async () => {
+    mockListConversations.mockResolvedValue({ conversations: [] });
+    renderMessages();
+    await screen.findByText('No conversations yet.');
+
+    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+  });
+
+  it('offers enrollment without claiming it enables messaging', async () => {
+    mockUseE2ee.mockReturnValue({ kind: 'not-enrolled' });
+    mockListConversations.mockResolvedValue({ conversations: [] });
+
+    renderMessages();
+    await screen.findByText('No conversations yet.');
+
+    expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
+    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
   });
 });

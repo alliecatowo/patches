@@ -125,6 +125,7 @@ catalog:
   sonner: ^2.0.8
   '@tanstack/react-query-devtools': ^5.102.3
   web-vitals: ^6.2.0
+  fake-indexeddb: ^6.2.5
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:
