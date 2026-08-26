@@ -1,0 +1,562 @@
+/**
+ * `E2eeSessionRuntime` tests (B-185). The happy path (compose a session, seal one
+ * envelope, decrypt it on the other side) is the least likely part of this module to be
+ * wrong — everything here targets the failure and crash paths instead:
+ *
+ *   - the staged-commit crash window around `send()`'s catch block (`:191-208`): a
+ *     freshly created session is deleted on failure (its X3DH envelope never left, so
+ *     nothing could ever authenticate against it), while a pre-existing session's
+ *     staged advance is confirmed/adopted instead of left pending (audit P1-1);
+ *   - what a genuine process crash (not a caught throw) leaves behind for a freshly
+ *     created session — see the `BUG (suspected)` test below;
+ *   - the mailbox's replay-duplicate acknowledgement (`:289-297`);
+ *   - the franking-failure `unverifiable` path (`:378-386`);
+ *   - responder-side session establishment from an inbound initial envelope (`:340-356`).
+ *
+ * Identities are built with the same primitives `enrollment.ts` uses in production
+ * (`certifyDevice`, `signDeviceRoster`, `createSignedPreKey`), so sessions here run the
+ * real X3DH/Double Ratchet code, not a stand-in.
+ */
+import 'fake-indexeddb/auto';
+
+import {
+  certifyDevice,
+  commitFranking,
+  createFrankingOpeningKey,
+  createSignedPreKey,
+  generateKeyAgreementKeyPair,
+  generateSigningKeyPair,
+  rosterDigest,
+  sealDeviceEnvelope,
+  signDeviceRoster,
+  E2EE_PROTOCOL,
+  E2EE_VERSION,
+  KEY_BYTES,
+  type CertifiedDevice,
+  type DeviceCertificate,
+} from '@patches/crypto';
+import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
+import { describe, expect, it } from 'vitest';
+
+import type { LocalDeviceIdentity } from './local-identity.js';
+import { selfPrekeyBundle } from './local-identity.js';
+import { E2eeSessionRuntime } from './runtime-session.js';
+import {
+  encodeChatPlaintext,
+  sessionIdFor,
+  type ClaimedPeerBundle,
+  type E2eeMailboxEnvelopeLike,
+  type E2eeMailboxTransport,
+  type E2eeSendTransport,
+  type FanoutPlan,
+  type SendEnvelopesRequestLike,
+} from './runtime.js';
+import { establishInitiatorSession, withInitialFraming } from './session-setup.js';
+import { createRatchetSessionVault, type RatchetSessionVault } from './vault.js';
+
+const NOW = 1_700_000_000_000;
+const CONVERSATION_ID = 'c1';
+
+let counter = 0;
+
+function freshId(label: string): string {
+  counter += 1;
+  return `${label}-${counter}`;
+}
+
+// ---------------------------------------------------------------------------
+// Identity fixture — the same statements enrollment.ts's crypto-native family makes
+// ---------------------------------------------------------------------------
+
+function buildIdentity(actorId: string, deviceId: string): LocalDeviceIdentity {
+  const rootKeys = generateSigningKeyPair();
+  const signing = generateSigningKeyPair();
+  const agreement = generateKeyAgreementKeyPair();
+  const certificate: DeviceCertificate = {
+    protocol: E2EE_PROTOCOL,
+    version: E2EE_VERSION,
+    userId: actorId,
+    deviceId,
+    signingPublicKey: signing.publicKey,
+    agreementPublicKey: agreement.publicKey,
+    generation: 1,
+    createdAtMs: NOW,
+    expiresAtMs: NOW + 30 * 24 * 60 * 60 * 1_000,
+  };
+  const selfDevice: CertifiedDevice = certifyDevice(rootKeys.privateKey, certificate);
+  const ownRoster = signDeviceRoster(rootKeys.privateKey, {
+    protocol: E2EE_PROTOCOL,
+    version: E2EE_VERSION,
+    userId: actorId,
+    rootPublicKey: rootKeys.publicKey,
+    sequence: 1,
+    previousDigest: new Uint8Array(KEY_BYTES),
+    devices: [selfDevice],
+    createdAtMs: NOW,
+  });
+  const ownDigest = rosterDigest(ownRoster.roster);
+  const signedPreKeyPair = generateKeyAgreementKeyPair();
+  const signedPreKeyStatement = createSignedPreKey(signing.privateKey, selfDevice, ownDigest, {
+    id: 1,
+    publicKey: signedPreKeyPair.publicKey,
+    createdAtMs: NOW,
+    expiresAtMs: NOW + 7 * 24 * 60 * 60 * 1_000,
+  });
+  return {
+    actorId,
+    deviceId,
+    keys: { signing, agreement },
+    selfDevice,
+    ownRoster,
+    signedPreKey: {
+      id: signedPreKeyStatement.id,
+      keyPair: signedPreKeyPair,
+      createdAtMs: signedPreKeyStatement.createdAtMs,
+      expiresAtMs: signedPreKeyStatement.expiresAtMs,
+      signature: signedPreKeyStatement.signature,
+    },
+    oneTimePreKeys: [{ id: 1, keyPair: generateKeyAgreementKeyPair() }],
+  };
+}
+
+function claimedBundle(identity: LocalDeviceIdentity): ClaimedPeerBundle {
+  return {
+    actorId: identity.actorId,
+    deviceId: identity.deviceId,
+    bundle: selfPrekeyBundle(identity),
+    roster: identity.ownRoster,
+  };
+}
+
+async function openVault(): Promise<RatchetSessionVault> {
+  return createRatchetSessionVault({
+    account: { origin: 'https://node.example', actorId: freshId('actor') },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Transport fakes
+// ---------------------------------------------------------------------------
+
+function sendTransportFor(
+  plan: FanoutPlan,
+  peerIdentity: LocalDeviceIdentity,
+  opts: { sendThrows?: Error | undefined },
+): { transport: E2eeSendTransport; state: { claims: number; sent: SendEnvelopesRequestLike[] } } {
+  const state = { claims: 0, sent: [] as SendEnvelopesRequestLike[] };
+  const transport: E2eeSendTransport = {
+    loadFanoutPlan: () => Promise.resolve(plan),
+    claimPrekeyBundles: () => {
+      state.claims += 1;
+      return Promise.resolve([claimedBundle(peerIdentity)]);
+    },
+    sendEnvelopes: (request) => {
+      if (opts.sendThrows !== undefined) return Promise.reject(opts.sendThrows);
+      state.sent.push(request);
+      return Promise.resolve(undefined);
+    },
+  };
+  return { transport, state };
+}
+
+// A send-side transport this test never expects to be called, for receive-only tests.
+function deadSendTransport(): E2eeSendTransport {
+  return {
+    loadFanoutPlan: () => Promise.reject(new Error('unused in this test: send never runs')),
+    claimPrekeyBundles: () => Promise.reject(new Error('unused in this test: send never runs')),
+    sendEnvelopes: () => Promise.reject(new Error('unused in this test: send never runs')),
+  };
+}
+
+function deadMailboxTransport(): E2eeMailboxTransport {
+  return {
+    listMailboxPage: () => Promise.resolve({ envelopes: [], nextCursor: '' }),
+    acknowledge: () => Promise.resolve(undefined),
+    loadPeerRoster: () => Promise.reject(new Error('unused in this test: mailbox never polls')),
+  };
+}
+
+function queueMailbox(
+  pages: readonly (readonly E2eeMailboxEnvelopeLike[])[],
+  rosterByActor: ReadonlyMap<string, LocalDeviceIdentity>,
+): { transport: E2eeMailboxTransport; state: { acked: string[]; ackCalls: number } } {
+  const state = { acked: [] as string[], ackCalls: 0 };
+  let pageIndex = 0;
+  const transport: E2eeMailboxTransport = {
+    listMailboxPage: () => {
+      const envelopes = pages[pageIndex] ?? [];
+      pageIndex += 1;
+      return Promise.resolve({ envelopes, nextCursor: '' });
+    },
+    acknowledge: (ids) => {
+      state.ackCalls += 1;
+      state.acked.push(...ids);
+      return Promise.resolve(undefined);
+    },
+    loadPeerRoster: (actorId) => {
+      const identity = rosterByActor.get(actorId);
+      if (identity === undefined)
+        return Promise.reject(new Error(`no roster fixture for ${actorId}`));
+      return Promise.resolve(identity.ownRoster);
+    },
+  };
+  return { transport, state };
+}
+
+/** Seals a real initial (X3DH-carrying) envelope from `sender` to `recipient`. */
+function sealInitialEnvelope(params: {
+  readonly sender: LocalDeviceIdentity;
+  readonly recipient: LocalDeviceIdentity;
+  readonly body: string;
+  readonly envelopeId: string;
+}): E2eeMailboxEnvelopeLike {
+  const established = establishInitiatorSession({
+    identity: params.sender,
+    peerBundle: selfPrekeyBundle(params.recipient),
+    peerRoster: params.recipient.ownRoster,
+    nowMs: NOW,
+  });
+  const plaintext = encodeChatPlaintext(params.body);
+  const openingKey = createFrankingOpeningKey();
+  const context = {
+    frankingProfile: E2EE_FRANKING_PROFILE_V1,
+    conversationId: CONVERSATION_ID,
+    membershipEpoch: 1,
+    senderActorId: params.sender.actorId,
+    senderDeviceId: params.sender.deviceId,
+  };
+  const commitment = commitFranking(openingKey, context, plaintext);
+  const transition = sealDeviceEnvelope(established.state, {
+    context,
+    recipient: {
+      recipientActorId: params.recipient.actorId,
+      recipientDeviceId: params.recipient.deviceId,
+    },
+    logicalMessageId: params.envelopeId,
+    plaintext,
+    openingKey,
+    commitment,
+  });
+  return {
+    envelopeId: params.envelopeId,
+    logicalMessageId: params.envelopeId,
+    conversationId: CONVERSATION_ID,
+    membershipEpoch: 1n,
+    senderActorId: params.sender.actorId,
+    senderDeviceId: params.sender.deviceId,
+    recipientDeviceId: params.recipient.deviceId,
+    encryptedHeader: withInitialFraming(established.setupPrefix, transition.output.encryptedHeader),
+    ciphertext: transition.output.ciphertext,
+    frankingCommitment: commitment,
+    frankingTag: { profile: E2EE_FRANKING_PROFILE_V1 },
+  };
+}
+
+function flipByte(bytes: Uint8Array): Uint8Array {
+  const out = bytes.slice();
+  out[0] = (out[0] ?? 0) ^ 0x01;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// send() — staged-commit crash window
+// ---------------------------------------------------------------------------
+
+describe('E2eeSessionRuntime.send — staged-commit recovery on transport failure', () => {
+  it('deletes a freshly created session when the send fails, so a retry re-establishes instead of wedging', async () => {
+    const self = buildIdentity('alice', 'dev-a');
+    const peer = buildIdentity('bob', 'dev-b');
+    const vault = await openVault();
+    const plan: FanoutPlan = {
+      conversationId: CONVERSATION_ID,
+      membershipEpoch: 1n,
+      targets: [{ actorId: peer.actorId, deviceId: peer.deviceId }],
+    };
+    const opts: { sendThrows?: Error | undefined } = { sendThrows: new Error('network down') };
+    const { transport, state } = sendTransportFor(plan, peer, opts);
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: transport,
+      mailboxTransport: deadMailboxTransport(),
+      nowMs: () => NOW,
+    });
+    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+
+    await expect(runtime.send(CONVERSATION_ID, 'hello', 'req-1')).rejects.toThrow('network down');
+
+    // No half-established session survives: the X3DH envelope never reached the peer,
+    // so nothing could ever authenticate against this chain.
+    expect(await vault.getSession(sessionId)).toBeUndefined();
+    expect(state.claims).toBe(1);
+
+    opts.sendThrows = undefined;
+    await runtime.send(CONVERSATION_ID, 'hello again', 'req-2');
+
+    // Recovery re-claims prekeys and establishes fresh — never resumes the deleted one.
+    expect(state.claims).toBe(2);
+    expect(await vault.getSession(sessionId)).toBeDefined();
+    vault.close();
+  });
+
+  it('confirms (adopts) a pre-existing session’s staged advance when the send fails, instead of leaving it pending', async () => {
+    const self = buildIdentity('gina', 'dev-g');
+    const peer = buildIdentity('hank', 'dev-h');
+    const vault = await openVault();
+    const plan: FanoutPlan = {
+      conversationId: CONVERSATION_ID,
+      membershipEpoch: 1n,
+      targets: [{ actorId: peer.actorId, deviceId: peer.deviceId }],
+    };
+    const opts: { sendThrows?: Error | undefined } = {};
+    const { transport, state } = sendTransportFor(plan, peer, opts);
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: transport,
+      mailboxTransport: deadMailboxTransport(),
+      nowMs: () => NOW,
+    });
+    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+
+    await runtime.send(CONVERSATION_ID, 'first', 'req-1');
+    const established = await vault.getSession(sessionId);
+    if (established === undefined) throw new Error('test setup: session was not established');
+
+    opts.sendThrows = new Error('network down');
+    await expect(runtime.send(CONVERSATION_ID, 'second', 'req-2')).rejects.toThrow('network down');
+
+    const afterFailure = await vault.getSession(sessionId);
+    expect(afterFailure).toBeDefined();
+    // The ratchet is confirmed AHEAD of the failed send, not reverted or dropped
+    // (audit P1-1): the next send flows normally from here.
+    expect(afterFailure?.sentCount).toBeGreaterThan(established.sentCount);
+    // Pre-existing session: no re-claim on failure, unlike the freshly-created case above.
+    expect(state.claims).toBe(1);
+
+    opts.sendThrows = undefined;
+    await runtime.send(CONVERSATION_ID, 'third', 'req-3');
+    expect(state.claims).toBe(1);
+    vault.close();
+  });
+
+  it('BUG (suspected): a real crash between staging and confirming a NEW session — not a caught throw — leaves the vault presenting it as an already-advanced, live session on reopen, even though its X3DH envelope never left the process', async () => {
+    // `send()`'s catch block (runtime-session.ts:191-208) only runs for an in-process
+    // exception. A genuine crash (tab kill, OOM, power loss) between the `stageSend`
+    // at :164-167 and that catch never runs any recovery code at all — the vault's own
+    // crash contract (verified in vault.test.ts's "adopts a staged send left behind by
+    // a crash between stage and confirm") is generic per-session and has no notion of
+    // "this session was only just created and its first envelope never sent". On
+    // reopen it promotes the staged, POST-send state to live regardless. This
+    // reproduces exactly that sequence without going through `send()`'s own catch, to
+    // show what state a real crash — not a thrown/caught error — actually leaves.
+    const self = buildIdentity('carol', 'dev-c');
+    const peer = buildIdentity('dave', 'dev-d');
+    const account = { origin: 'https://node.example', actorId: freshId('crash-actor') };
+    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+
+    const first = await createRatchetSessionVault({ account });
+    const established = establishInitiatorSession({
+      identity: self,
+      peerBundle: selfPrekeyBundle(peer),
+      peerRoster: peer.ownRoster,
+      nowMs: NOW,
+    });
+    // Mirrors `ensureSendSession`: commit the freshly created session before anything
+    // is sealed against it (runtime-session.ts:244).
+    await first.applyUpdate(sessionId, established.state);
+    const createdState = await first.getSession(sessionId);
+    if (createdState === undefined) throw new Error('test setup: session was not stored');
+
+    const plaintext = encodeChatPlaintext('never actually sent');
+    const openingKey = createFrankingOpeningKey();
+    const context = {
+      frankingProfile: E2EE_FRANKING_PROFILE_V1,
+      conversationId: CONVERSATION_ID,
+      membershipEpoch: 1,
+      senderActorId: self.actorId,
+      senderDeviceId: self.deviceId,
+    };
+    const commitment = commitFranking(openingKey, context, plaintext);
+    const transition = sealDeviceEnvelope(createdState, {
+      context,
+      recipient: { recipientActorId: peer.actorId, recipientDeviceId: peer.deviceId },
+      logicalMessageId: 'req-1',
+      plaintext,
+      openingKey,
+      commitment,
+    });
+    // Mirrors the durable pre-send stage (runtime-session.ts:164-167). The "crash"
+    // happens right here: no bytes left the process, and neither `deleteSession` nor
+    // `confirmSend` (the catch block's two branches) ever runs.
+    await first.stageSend(sessionId, transition.state);
+    first.close();
+
+    const second = await createRatchetSessionVault({ account });
+    const reopened = await second.getSession(sessionId);
+
+    expect(reopened).toBeDefined();
+    // The vault silently adopted the post-send state as live — one message ahead of
+    // what the peer (who never received `transition.output`) could possibly know
+    // about. A subsequent real send would use this advanced chain and address the
+    // peer as an existing session (no setup prefix), which the peer cannot open: see
+    // `processEnvelope`'s `storedState === undefined` branch returning
+    // `undisplayable` for a non-initial header with no local session. The message
+    // would be silently lost rather than the conversation being wedged loudly.
+    expect(reopened?.sentCount).toBe(1);
+    second.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pollMailbox — responder establishment, replay, franking failure
+// ---------------------------------------------------------------------------
+
+describe('E2eeSessionRuntime.pollMailbox', () => {
+  it('establishes the responder side of a session from an inbound initial envelope', async () => {
+    const self = buildIdentity('erin', 'dev-e');
+    const peer = buildIdentity('frank', 'dev-f');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi there',
+      envelopeId: 'env-1',
+    });
+    const mailbox = queueMailbox([[envelope]], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.error).toBeUndefined();
+    expect(result.rows).toEqual([
+      {
+        kind: 'message',
+        id: 'env-1',
+        senderLabel: `@${peer.actorId}`,
+        body: 'hi there',
+        sentByViewer: false,
+      },
+    ]);
+    expect(mailbox.state.acked).toEqual(['env-1']);
+    // The responder session is durably committed, ready for the next inbound message.
+    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+    expect(await vault.getSession(sessionId)).toBeDefined();
+    vault.close();
+  });
+
+  it('acknowledges a redelivered envelope on the replay guard without re-processing it a second time', async () => {
+    const self = buildIdentity('erin2', 'dev-e2');
+    const peer = buildIdentity('frank2', 'dev-f2');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    // The same envelope redelivered in one page — a lost ack followed by mailbox
+    // redelivery looks exactly like this from the runtime's point of view.
+    const mailbox = queueMailbox([[envelope, envelope]], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.error).toBeUndefined();
+    // Rendered exactly once, never twice.
+    expect(result.rows).toHaveLength(1);
+    // Both deliveries are acknowledged so the mailbox actually drains.
+    expect(mailbox.state.acked).toEqual(['env-1', 'env-1']);
+    vault.close();
+  });
+
+  it('renders unverifiable and still acknowledges when the franking check fails, without committing any session state', async () => {
+    const self = buildIdentity('erin3', 'dev-e3');
+    const peer = buildIdentity('frank3', 'dev-f3');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    const tampered: E2eeMailboxEnvelopeLike = {
+      ...envelope,
+      frankingCommitment: flipByte(envelope.frankingCommitment),
+    };
+    const mailbox = queueMailbox([[tampered]], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.error).toBeUndefined();
+    expect(result.rows).toEqual([
+      { kind: 'unverifiable', id: 'env-1', senderLabel: `@${peer.actorId}` },
+    ]);
+    expect(mailbox.state.acked).toEqual(['env-1']);
+    // Never rendered, never silent (ADR 0025 §4) — and no session state was committed
+    // for a handshake that never authenticated.
+    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+    expect(await vault.getSession(sessionId)).toBeUndefined();
+    vault.close();
+  });
+
+  it('surfaces a fixed error and stops paging when a later page fetch fails, still acknowledging what was already processed', async () => {
+    const self = buildIdentity('erin4', 'dev-e4');
+    const peer = buildIdentity('frank4', 'dev-f4');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    const acked: string[] = [];
+    let calls = 0;
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: {
+        listMailboxPage: () => {
+          calls += 1;
+          if (calls === 1) return Promise.resolve({ envelopes: [envelope], nextCursor: 'more' });
+          return Promise.reject(new Error('network down'));
+        },
+        acknowledge: (ids) => {
+          acked.push(...ids);
+          return Promise.resolve(undefined);
+        },
+        loadPeerRoster: () => Promise.resolve(peer.ownRoster),
+      },
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(calls).toBe(2);
+    expect(result.rows).toHaveLength(1);
+    expect(acked).toEqual(['env-1']);
+    // Fixed, content-free copy — never the underlying transport error.
+    expect(result.error).toBe('Could not fetch new encrypted messages.');
+    vault.close();
+  });
+});
