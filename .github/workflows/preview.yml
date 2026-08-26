@@ -386,8 +386,20 @@ jobs:
           pr="${{ github.event.pull_request.number || inputs.pr_number }}"
           web_url="${{ steps.web_deploy.outputs.web_url }}"
           branch_alias="https://pr-${pr}.patches-web.pages.dev"
-          flyctl secrets set --app "patches-pr-${pr}" \
-            "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null
+          # The deploy a few steps up just replaced both machines; setting a secret
+          # immediately can race "machine is replacing: concurrent update in
+          # progress". Retry with backoff instead of failing the preview over it.
+          for i in $(seq 1 6); do
+            if flyctl secrets set --app "patches-pr-${pr}" \
+                 "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null 2>"$RUNNER_TEMP/cors-err.txt"; then
+              echo "WEB_ORIGINS set (attempt ${i})."; exit 0
+            fi
+            if ! grep -q "concurrent update in progress" "$RUNNER_TEMP/cors-err.txt"; then
+              cat "$RUNNER_TEMP/cors-err.txt" >&2; exit 1
+            fi
+            echo "machines still replacing (attempt ${i}/6); waiting 10s"; sleep 10
+          done
+          cat "$RUNNER_TEMP/cors-err.txt" >&2; exit 1
 
       - name: Verify web↔backend connectivity (healthz + CORS preflight)
         # B-154: a partner hit "can't connect to the backend" on a preview web URL.
