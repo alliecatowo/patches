@@ -74,7 +74,18 @@ fine — nothing requires them to be isolated from each other.
 The `database`, `server-integration`, `worker-integration`, `admin-integration`, and
 `testkit` vitest projects each get their **own** database now (B-012 closed out the
 last gap — `testkit` used to share `patches_test` with `database`, see "History"
-below):
+below).
+
+Root `pnpm test:integration` (`package.json`) selects these with
+`--project database --project testkit --project '*-integration'` — the `*-integration`
+glob (vitest supports wildcard `--project` filters) picks up any future
+`<workspace>-integration` project automatically, so adding one only means naming its
+vitest project that way, not also editing this script (H-022). `database` and `testkit`
+stay listed by their literal names since they're single hybrid unit+integration
+projects (see their own `vitest.config.ts` doc comments) rather than following the
+`-integration` suffix convention.
+
+Today that resolves to:
 
 - `database` uses `patches_test` (`TEST_DATABASE_URL`, the one the `services:` postgres
   container provisions on boot).

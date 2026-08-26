@@ -21,7 +21,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:watch": "vitest",
-    "test:integration": "vitest run --project database --project testkit --project server-integration --project worker-integration --project admin-integration --no-file-parallelism",
+    "test:integration": "vitest run --project database --project testkit --project '*-integration' --no-file-parallelism",
     "verify": "export PATCHES_WEB_ALLOW_LOCAL_BUILD=1 && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "proto:gen": "pnpm --filter @patches/proto gen",
     "proto:lint": "pnpm --filter @patches/proto lint:buf",

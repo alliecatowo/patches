@@ -82,9 +82,11 @@ Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--j
 
   user list
   user show <handle>
-  user suspend <handle> --reason <text>
+  user suspend <handle> --reason <text> [--reason-category <category>]
   user unsuspend <handle>
-  user delete <handle> [--reason <text>]
+  user delete <handle> [--reason <text>] [--reason-category <category>]
+  user deletion-status <handle>
+  user cancel-deletion <handle>
 
   report list [--status open]
   report show <id>
