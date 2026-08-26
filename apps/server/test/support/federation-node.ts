@@ -8,10 +8,12 @@ import {
   createAuthClient,
   createFeedClient,
   createPostClient,
+  createReactionClient,
   createSocialGraphClient,
   type AuthGrpcClient,
   type FeedGrpcClient,
   type PostGrpcClient,
+  type ReactionGrpcClient,
   type SocialGraphGrpcClient,
 } from '@patches/proto';
 import { createDataSource, runMigrationsForTests } from '@patches/database';
@@ -57,7 +59,16 @@ export interface FederationTestNode {
   graph: SocialGraphGrpcClient;
   posts: PostGrpcClient;
   feeds: FeedGrpcClient;
+  /** P18-008: repost/unrepost, needed by the Announce/Undo(Announce) id-stability lab. */
+  reactions: ReactionGrpcClient;
   close(): Promise<void>;
+  /** P18-008: kills this node's OS process and respawns a fresh one against the exact same
+   * database, ports, domain, and keys. A test that performs a mutating call, restarts, then
+   * performs a follow-up call that must reconstruct the same value (e.g. a deterministic
+   * `Undo`'s inner `Announce` id, ADR 0028 §4) proves the value comes from persisted state —
+   * a fresh process has an empty heap, so nothing can have been memoized in a JS variable
+   * across the restart. */
+  restart(): Promise<void>;
 }
 
 export interface StartFederationNodeOptions {
@@ -112,38 +123,46 @@ export async function startFederationNode(
   // B-026: FEDERATION_ENABLED=true now requires this — a fresh key per node/run, exactly like
   // the JWT keypair generated just above.
   const federationKeyEncryptionKey = randomBytes(32).toString('base64');
+  const jwtPrivateKey = Buffer.from(await exportPKCS8(privateKey)).toString('base64');
+  const jwtPublicKey = Buffer.from(await exportSPKI(publicKey)).toString('base64');
 
-  const child = spawn(process.execPath, [MAIN_JS], {
-    cwd: SERVER_ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      DATABASE_URL: options.databaseUrl,
-      NODE_DOMAIN: options.nodeDomain,
-      PUBLIC_ORIGIN: publicOrigin,
-      FEDERATION_ENABLED: 'true',
-      FEDERATION_KEY_ENCRYPTION_KEY: federationKeyEncryptionKey,
-      HTTP_PORT: String(httpPort),
-      GRPC_HOST: '127.0.0.1',
-      GRPC_PORT: String(grpcPort),
-      INVITE_ONLY: 'false',
-      JWT_PRIVATE_KEY: Buffer.from(await exportPKCS8(privateKey)).toString('base64'),
-      JWT_PUBLIC_KEY: Buffer.from(await exportSPKI(publicKey)).toString('base64'),
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let stderrTail = '';
-  child.stderr?.on('data', (chunk: Buffer) => {
-    stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4000);
-  });
-  child.once('exit', (code) => {
-    if (code !== null && code !== 0) {
-      console.error(
-        `federation test node (${options.nodeDomain}) exited with code ${String(code)}:\n${stderrTail}`,
-      );
-    }
-  });
+  const env = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DATABASE_URL: options.databaseUrl,
+    NODE_DOMAIN: options.nodeDomain,
+    PUBLIC_ORIGIN: publicOrigin,
+    FEDERATION_ENABLED: 'true',
+    FEDERATION_KEY_ENCRYPTION_KEY: federationKeyEncryptionKey,
+    HTTP_PORT: String(httpPort),
+    GRPC_HOST: '127.0.0.1',
+    GRPC_PORT: String(grpcPort),
+    INVITE_ONLY: 'false',
+    JWT_PRIVATE_KEY: jwtPrivateKey,
+    JWT_PUBLIC_KEY: jwtPublicKey,
+  };
 
+  function spawnChild(): ChildProcess {
+    const proc = spawn(process.execPath, [MAIN_JS], {
+      cwd: SERVER_ROOT,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stderrTail = '';
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4000);
+    });
+    proc.once('exit', (code) => {
+      if (code !== null && code !== 0) {
+        console.error(
+          `federation test node (${options.nodeDomain}) exited with code ${String(code)}:\n${stderrTail}`,
+        );
+      }
+    });
+    return proc;
+  }
+
+  let child = spawnChild();
   await waitForHttpReady(publicOrigin, child);
 
   return {
@@ -154,9 +173,15 @@ export async function startFederationNode(
     graph: createSocialGraphClient(grpcUrl, credentials.createInsecure()),
     posts: createPostClient(grpcUrl, credentials.createInsecure()),
     feeds: createFeedClient(grpcUrl, credentials.createInsecure()),
+    reactions: createReactionClient(grpcUrl, credentials.createInsecure()),
     close: async () => {
       await stopChild(child);
       await dataSource.destroy();
+    },
+    restart: async () => {
+      await stopChild(child);
+      child = spawnChild();
+      await waitForHttpReady(publicOrigin, child);
     },
   };
 }

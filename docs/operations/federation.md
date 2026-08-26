@@ -86,6 +86,62 @@ behavior (`ConfigModule.forRoot({validate})` evaluates exactly once per process)
 freezes every environment variable with a zod default to whatever it resolved to the first time
 `config.module.ts` was ever imported, regardless of later `process.env` writes.
 
+### Two-node lab (P18-008)
+
+Three more round trips over the same two nodes, appended to the same test file/`describe`
+block (so they share node A/B's `beforeAll` boot): repost/unrepost `Announce`/`Undo(Announce)`
+id stability, tag feed inclusion, and quote-of-remote plus local-from-remote quote linkage.
+
+**Announce-id stability proof:** the repost example captures the _actual_ pending
+`FEDERATION_DELIVER` job's `payload.activity.id` for the `Announce` right after `RepostPost`,
+computes the expected id independently via `localRepostAnnounceUri(nodeA.publicOrigin,
+repostRow.id)`, asserts they match, then calls `nodeA.restart()` — kills node A's OS process
+and respawns a brand-new one against the same database/ports/keys — before calling
+`UnrepostPost`. The `Undo`'s inner `object.id`, read from the new pending job on the _new_
+process, is asserted equal to the same expected id. Because the second computation happens in
+a process with an empty heap, it cannot be a memoized JS value from the first call; it can only
+be `buildAnnounceUndoAnnounce` re-reading the (still-persisted) `reposts` row — the B-079
+regression class this test exists to catch.
+
+**Known bug found by this round trip (reported, not fixed — outside P18-008's owned/forbidden
+files):** the tag-feed example is `it.fails(...)`. `PostService.createPost`'s new-post branch
+(`apps/server/src/modules/posts/post.service.ts`, inside `createPost`'s `dataSource
+.transaction`) calls `this.federation.publishPost(manager, id)` _before_ `this.tagExtraction
+.extractAndAttach(manager, id, ...)`. `publishPost` reads `post_tags` to build the outbound
+Note's `tag` array, so at that point in the transaction it always sees zero rows — no post's
+`Hashtag` ever reaches a federated peer, regardless of anything in `handleAnnounce`/
+`handleCreate` (P18-004/P18-007), which are both correct and simply never receive a tag to
+ingest. A fix would swap the two calls' order in `post.service.ts`. The test asserts the
+_intended_ behavior and is expected to keep failing until that lands; if it ever starts
+passing, `it.fails` itself fails, flagging the fix.
+
+Run the whole file (same command as above, includes the P18-008 examples):
+
+```bash
+mise exec -- pnpm --filter @patches/server build
+TEST_DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_server \
+  mise exec -- pnpm --filter @patches/server exec vitest run \
+  --config vitest.integration.config.mts federation-two-node
+```
+
+#### Verified run (2026-08-25)
+
+```
+ RUN  v4.1.11 /home/allie/develop/patches-agent-wt/1787721536-881301/apps/server
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed | 1 expected fail (4)
+   Start at  22:35:24
+   Duration  11.27s (transform 1.70s, setup 632ms, import 2.25s, tests 8.29s, environment 0ms)
+```
+
+The 3 passing examples: the original P8-008 Follow/Create/Delete round trip, the P18-008
+repost/unrepost Announce-id-stability round trip (including the node A process restart), and
+the P18-008 quote round trip (quote of remote + local-from-remote, both recording a `VERIFIED`
+`quote_authorizations` row with `claimedPolicy: 'ANYONE'`). The 1 expected failure is the
+tag-feed example documenting the bug above.
+
 ## Manual two-node lab (B-029)
 
 `mise run fed:lab` (`infra/lab/fed-lab.sh`) is a scripted version of the automated two-node
