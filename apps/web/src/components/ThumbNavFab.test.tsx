@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
+import { setFanStyle } from '../lib/interfacePreferences.js';
 import { ThumbNavFab } from './ThumbNavFab.js';
 
 const EXPECTED_ACTIONS: ReadonlyArray<{ readonly label: string; readonly href: string }> = [
@@ -18,8 +19,21 @@ function openMenu(): HTMLElement {
   return screen.getByRole('navigation', { name: 'Quick navigation' });
 }
 
+function expectSixActions(nav: HTMLElement): void {
+  const links = within(nav).getAllByRole('link');
+  expect(links).toHaveLength(6);
+  for (const action of EXPECTED_ACTIONS) {
+    // Substring match: the unread badge text joins the notifications link name.
+    expect(within(nav).getByRole('link', { name: new RegExp(action.label) })).toHaveAttribute(
+      'href',
+      action.href,
+    );
+  }
+}
+
 describe('ThumbNavFab', () => {
   it('toggles the radial menu on click and closes on escape, restoring focus', () => {
+    setFanStyle('radial');
     render(
       <MemoryRouter>
         <ThumbNavFab unreadCount={12} />
@@ -41,6 +55,7 @@ describe('ThumbNavFab', () => {
   });
 
   it('renders all six actions on the radial layout, report included', () => {
+    setFanStyle('radial');
     render(
       <MemoryRouter>
         <ThumbNavFab />
@@ -49,17 +64,50 @@ describe('ThumbNavFab', () => {
 
     const nav = openMenu();
     expect(nav).toHaveAttribute('data-layout', 'radial');
-    const links = within(nav).getAllByRole('link');
-    expect(links).toHaveLength(6);
-    for (const action of EXPECTED_ACTIONS) {
-      expect(within(nav).getByRole('link', { name: action.label })).toHaveAttribute(
-        'href',
-        action.href,
-      );
-    }
+    expectSixActions(nav);
+  });
+
+  it('renders all six actions on the stacked layout when the preference says stacked', () => {
+    setFanStyle('stacked');
+    render(
+      <MemoryRouter>
+        <ThumbNavFab unreadCount={12} />
+      </MemoryRouter>,
+    );
+
+    const nav = openMenu();
+    expect(nav).toHaveAttribute('data-layout', 'stacked');
+    expectSixActions(nav);
+    expect(screen.getByText('9+')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /post/i })).toHaveFocus();
+  });
+
+  it('switches layouts live without reopening when the preference changes', () => {
+    setFanStyle('radial');
+    render(
+      <MemoryRouter>
+        <ThumbNavFab />
+      </MemoryRouter>,
+    );
+
+    const nav = openMenu();
+    expect(nav).toHaveAttribute('data-layout', 'radial');
+
+    act(() => {
+      setFanStyle('stacked');
+    });
+    expect(nav).toHaveAttribute('data-layout', 'stacked');
+    expectSixActions(nav);
+
+    act(() => {
+      setFanStyle('radial');
+    });
+    expect(nav).toHaveAttribute('data-layout', 'radial');
+    expectSixActions(nav);
   });
 
   it('stagger items along the arc with strictly increasing animation delays', () => {
+    setFanStyle('radial');
     render(
       <MemoryRouter>
         <ThumbNavFab />
@@ -78,6 +126,7 @@ describe('ThumbNavFab', () => {
   });
 
   it('closes on backdrop click', () => {
+    setFanStyle('radial');
     render(
       <MemoryRouter>
         <ThumbNavFab />

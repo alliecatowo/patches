@@ -1,5 +1,11 @@
 // Patches PWA Service Worker — shell caching & offline resilience
 const CACHE_NAME = 'patches-shell-v2';
+
+/** Cached SPA shell for navigation fallbacks (B-153). */
+function cachedShell() {
+  return caches.match('/index.html').then((cached) => cached || caches.match('/'));
+}
+
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -50,12 +56,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: Network-First with cached SPA index.html fallback
+  // Navigation requests: Network-First with cached SPA index.html fallback.
+  // B-153: `fetch` resolves (not rejects) for 4xx/5xl error pages, so a half-broken
+  // deploy (rollback window, churned preview) used to be served verbatim and bricked
+  // the app even though a good shell sat in the cache — fall back on !response.ok too.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() =>
-        caches.match('/index.html').then((cached) => cached || caches.match('/')),
-      ),
+      fetch(request)
+        .then((response) => {
+          if (response.ok) return response;
+          return cachedShell();
+        })
+        .catch(() => cachedShell()),
     );
     return;
   }

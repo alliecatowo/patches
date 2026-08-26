@@ -339,6 +339,40 @@ jobs:
           flyctl secrets set --app "patches-pr-${pr}" \
             "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null
 
+      - name: Verify web↔backend connectivity (healthz + CORS preflight)
+        # B-154: a partner hit "can't connect to the backend" on a preview web URL.
+        # That instance was a merged-PR teardown window (backend gone, Pages orphan —
+        # now fixed in teardown), but this probe proves the LIVE path every deploy:
+        # the Pages origin must get CORS approval from the Connect edge and healthz
+        # must answer, exactly as the browser client's login fetch does.
+        if: env.PREVIEW_WEB == 'enabled'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          origin="https://pr-${pr}.patches-web.pages.dev"
+          edge="https://patches-pr-${pr}.fly.dev:8443"
+          echo "healthz:"
+          curl -fsS --max-time 30 "${edge/8443/443}/healthz" | head -c 200; echo
+          echo "CORS preflight from ${origin}:"
+          preflight="$(curl -fsS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -X OPTIONS "${edge}/patches.v1.AuthService/Login" \
+            -H "Origin: ${origin}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type')"
+          echo "preflight status: ${preflight}"
+          allow="$(curl -fsS --max-time 30 -o /dev/null -w '%{header_json}' \
+            -X OPTIONS "${edge}/patches.v1.AuthService/Login" \
+            -H "Origin: ${origin}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);process.stdout.write((h["access-control-allow-origin"]??[]).join(","))})')"
+          echo "access-control-allow-origin: ${allow}"
+          [ "${allow#*$origin}" != "$allow" ] || { echo "CORS preflight did not allow the Pages origin" >&2; exit 1; }
+          echo "connectivity OK" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Post preview URL comment on the PR (edit existing)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -407,7 +441,7 @@ jobs:
           rm -f "$body_file"
 
   teardown:
-    name: teardown (destroy Fly app + Neon branch)
+    name: teardown (destroy Fly app + Neon branch + Pages preview)
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     concurrency:
@@ -427,9 +461,16 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
-      # Both steps are best-effort on purpose: a PR closed before the first
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24.19.0
+
+      # Best-effort on purpose throughout (B-154): a PR closed before the first
       # successful deploy (or from a fork, where secrets are unavailable) has
-      # nothing to destroy, and that must not fail this job.
+      # nothing to destroy, and that must not fail this job. The Pages sweep uses
+      # the repo's wrangler devDependency + the deploy step's auth pattern.
       - name: Destroy Fly app (patches-pr-<N>)
         id: fly_destroy
         continue-on-error: true
@@ -440,6 +481,14 @@ jobs:
         continue-on-error: true
         run: neon branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
 
+      - name: Delete Cloudflare Pages deployments (pr-<N>)
+        id: pages_delete
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm install --frozen-lockfile --silent && node infra/preview/preview-sweep.mjs --pr "$PR_NUMBER"
+
       - name: Teardown summary
         if: always()
         run: |
@@ -448,8 +497,10 @@ jobs:
             echo "## Preview teardown (PR #${PR_NUMBER})"
             echo "- Fly app \`patches-pr-${PR_NUMBER}\`: ${FLY_RESULT}"
             echo "- Neon branch \`pr-${PR_NUMBER}\`: ${NEON_RESULT}"
-            echo "- If either failed, the Neon branch's 7-day expiry is the fail-safe; see manual teardown in docs/operations/preview-environments.md."
+            echo "- Cloudflare Pages deployments \`pr-${PR_NUMBER}\`: ${PAGES_RESULT}"
+            echo "- If anything failed, the Neon branch's 7-day expiry is the fail-safe; see manual teardown in docs/operations/preview-environments.md."
           } >> "$GITHUB_STEP_SUMMARY"
         env:
           FLY_RESULT: ${{ steps.fly_destroy.outcome == 'success' && 'destroyed' || 'FAILED (or nothing to destroy)' }}
           NEON_RESULT: ${{ steps.neon_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}
+          PAGES_RESULT: ${{ steps.pages_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}

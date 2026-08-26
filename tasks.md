@@ -439,6 +439,43 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 - [x] B-110 — **message arrival notifications**: content-free MESSAGE notifications (sender + conversation id only) wired into the E2EE accept path; §187 payload rules asserted by test _(obsolete duplicate of canonical B-098; retained for history)_
 - [x] B-111 — **web honest degradation + ADR 0020 addendum**: web Messages state DMs are E2EE + terminal-only (kills false §183.1 notice, adds mode labels); docs record internal-review-of-record substitution, guarded-tier rollback boundary, anchor-ahead ritual, synced-home caveat
 
+## Phase 20 — live bugs from owner testing 2026-08-26 (web PWA, highest priority)
+
+<!-- Owner + partner testing on iOS PWA. tasks.md is the canonical board until an external
+     tracker is set up — do not duplicate these into GitHub issues. -->
+
+- [x] B-148 — **Web nav-style preference never applies**: selecting "stacked" instead of "radial" in settings leaves the nav radial for everyone — the menu is always radial regardless of the saved preference (`apps/web/src/hooks/useInterfacePreferences.ts`, `apps/web/src/lib/interfacePreferences.ts`, `apps/web/src/components/ThumbNavFab.tsx`). Find where the preference is read vs where ThumbNavFab picks its variant — likely the pref is persisted but never consumed (or consumed under a different key than the one the settings screen writes).
+- [x] B-149 — **iOS PWA: the report-issue entry triggers an undo-typing action** — tapping report-issue (or its attach-screenshot control) in the iOS installed-PWA fires an undo/redo typing action instead of the intended UI. Suspect a keyboard/`contentEditable`/input-focus interaction or a shake-gesture ("shake to undo") triggered by focus loss; verify on iOS Safari PWA specifically, since the control works in desktop browsers.
+- [x] B-150 — **Attach-screenshot button in the report-issue form does nothing** (`apps/web/src/components/IssueReporter.tsx`). Reproduce, fix (file input + preview, sized/limited), and cover with a test.
+- [x] B-151 — **Send-issue gets stuck on "sending…" forever; nothing is ever sent** (`apps/web/src/components/IssueReporter.tsx`). Check the send path: is there a real backend/report endpoint wired (or a documented no-op), does the promise reject silently, is the stuck state never cleared on failure? Fix so it either sends or surfaces an honest error and returns to a usable state.
+- [x] B-152 — **After sending/sending/dismissing a report, the app returns to the report-issue screen instead of the screen you were on** — losing your place. The reporter must restore the previous route/location on close, not land on its own entry screen.
+- [x] B-153 — **Timeline required sign-out/sign-in to load (one-time?)** after the 2026-08-25 session. Probably a stale service-worker/cache or auth-token rotation artifact (B-121 territory). Diagnose the SW update flow; if it's a one-off from the deploy churn, document why and close with the explanation rather than a speculative fix.
+- [ ] B-154 — **Preview teardown must also destroy the Cloudflare Pages web preview.** Confirmed 2026-08-26: teardown (16 successful runs, zero orphan Fly apps, Neon clean) never touches CF Pages — orphan `pr-N.patches-web.pages.dev` deployments remain live for pr-82, pr-83, pr-84, pr-85, pr-86, pr-94, each pointing at a destroyed backend. That's the likely cause of the partner's "web preview loads but login says it can't connect to the backend" (merged PR's preview). Fix: teardown deletes the Pages deployment/branch alias (wrangler/API) when `PREVIEW_WEB` was used; also verify a **live** (open-PR) web preview can actually log in against its Fly Connect edge — CORS `WEB_ORIGINS` set at deploy includes the branch alias, but confirm end-to-end on the next PR, and purge the six existing orphans.
+
+## Phase 21 — web DX / robustness backlog (owner triage 2026-08-26)
+
+<!-- tasks.md is the canonical board until an external tracker is set up. Suggested
+     order per owner: PWA plugin → sonner → RQ devtools → cross-tab session → upload
+     retry → diagnostics persistence → route error boundaries → web vitals → bundle
+     analyzer CI. -->
+
+- [ ] B-155 — **Replace `ToastProvider` with `sonner`** (60 lines → 1 import): accessible, promise API, dismissible, smaller bundle. Migration: swap all `useToast()` call sites, delete `apps/web/src/components/ToastProvider*`.
+- [ ] B-156 — **Replace the hand-rolled SW with `vite-plugin-pwa`** (~150-line swap: `apps/web/public/sw.js` + `apps/web/src/pwa/serviceWorkerRegistration.ts` + `usePwaInstall.ts` go away). Must preserve the behaviors B-153 just fixed/documented in `docs/research/web-sw-caching.md`: network-first navigations (including `!response.ok` fallback), one-shot `controllerchange` reload, honest install-prompt UX. **This is the next task after the Phase 20 fix wave lands.**
+- [ ] B-157 — **React Query devtools in dev**: `@tanstack/react-query-devtools`, one line in `main.tsx` behind `import.meta.env.DEV`.
+- [ ] B-158 — **Error boundary per lazy route**: today only the router-level `RouteErrorBoundary` exists; wrap each lazy route so one route's crash degrades gracefully instead of blanking the app.
+- [ ] B-159 — **Media upload: retry + abort** — the XHR upload in `apps/web/src/lib/mediaUpload.ts` has no retry on network blip; add exponential backoff + `AbortSignal` support.
+- [ ] B-160 — **Media upload: chunked/multipart for >100 MB** — R2 presigned PUT is single-part; needs multipart (server support too). Depends on B-159's abort plumbing.
+- [ ] B-161 — **Session-expired UX**: `signOut()` is silent — user sees a blank screen until navigation. Add a "session expired" toast + auto-redirect to login (rides on B-155's sonner).
+- [ ] B-162 — **Diagnostics: persist breadcrumbs to `sessionStorage`** so they survive reload (currently lost on refresh). Redaction rules from `@patches/domain` diagnostics still apply.
+- [ ] B-163 — **Replace `useShakeToReport` with `shake.js`** (2 KB, battle-tested) — custom threshold logic goes; ties into the B-149 iOS shake/undo interaction.
+- [ ] B-164 — **`AbortController` on all React Query mutations** to prevent state updates on unmounted components.
+- [ ] B-165 — **Structured browser logging** (pino-browser or a small `console` wrapper): levels + context + sampling instead of scattered `console.info/error`.
+- [ ] B-166 — **Web Vitals collection** (CLS, LCP, FID, INP) via `web-vitals` → ship to the existing metrics endpoint.
+- [ ] B-167 — **Feature flags / remote config** for gradual rollouts (theme, new routes) — currently hardcoded. Must never gate function (§184.3). _(researched 2026-08-26: no external SaaS — client SDKs leak user IPs and it's a third-party dependency; no self-hosted Unleash/Flipt/Flagsmith yet — one more Fly service for a 2-person pre-alpha. Decision: server-served flag map fed from `packages/config` env (the existing `FEDERATION_ENABLED`/`PUBLIC_READ` pattern, exposed via RPC or `GetServerInfo`), clients read at boot. Revisit a self-hosted server (license-check first — several changed licenses recently) only if remote toggling without deploys becomes a real need; A/B-on-engagement is banned by Amendment B regardless.)_
+- [ ] B-168 — **Bundle analyzer in CI** (`vite-bundle-analyzer` or rollup-plugin-visualizer): fail if any vendor chunk exceeds a threshold.
+- [ ] B-169 — **Session store hardening** (keep `useSyncExternalStore` — it's the right pattern): (a) cross-tab sync via `window.addEventListener('storage')` in `packages/client/src/session.ts`; (b) emit a "token refreshed" custom event from `sessionManager.withSession` success for UI; (c) add `expiresAt` (decoded JWT `exp`) to `AppSession` for proactive-refresh UI.
+- [ ] B-170 — **Conditional off-the-shelf swaps** — only when the trigger fires: forms grow → `react-hook-form` + `zod`; date formatting grows → `date-fns`; shortcut combos grow → `hotcards-js`/`hotkeys-js`; feed >50 items → `@tanstack/react-virtual`; LQIP needed → lazy-load image lib. Explicitly keep: `RichBody.tsx` + `@patches/markup` (domain-owned parser), native `loading="lazy"` (fine for now).
+
 ## Backlog / discovered
 
 <!-- Owner product-direction capture 2026-08-24 -->
