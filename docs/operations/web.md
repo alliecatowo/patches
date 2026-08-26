@@ -124,6 +124,31 @@ production build talks to the node's real public origin directly
 `apps/web/src/api/client.ts`). That means the request is genuinely cross-origin, which is
 where CORS below comes in.
 
+### Bundle size budget (B-168)
+
+`.github/workflows/web.yml`'s deploy job runs `pnpm --filter @patches/web run bundle:check`
+right after the production build and before the Cloudflare deploy step — it fails the job
+(blocking deploy) if any built `dist/assets/*.js` chunk exceeds the raw or gzip threshold in
+`apps/web/bundle-budget.json`. It never touches a plain `build`/`web:deploy` beyond that one
+read-only check.
+
+To see what's actually in a chunk:
+
+```sh
+pnpm --filter @patches/web run bundle:analyze   # ANALYZE=1 vite build
+```
+
+This writes a treemap report to `apps/web/dist-analyze/bundle-report.html` (open it in a
+browser) — a separate output directory from `dist`, so it can never leak into, resize, or
+slow down the artifact that gets deployed. The same step runs in CI on every deploy attempt
+and its report is uploaded as the `web-bundle-report` workflow artifact, win or lose.
+
+To raise a budget: read the report first and confirm the growth is a real, intentional
+dependency change (not something that should be code-split or route-lazy-loaded instead).
+Then bump both `maxChunkBytes` and `maxChunkGzipBytes` together in `bundle-budget.json`,
+updating its `_comment` with the new measurement and date — the file is the only place these
+numbers live; `apps/web/scripts/check-bundle-budget.mjs` just enforces them.
+
 ## The CORS coupling
 
 The Connect edge's CORS allow-list (`WEB_ORIGINS`, ADR 0016 §6, `apps/server/src/

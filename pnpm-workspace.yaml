@@ -121,6 +121,7 @@ catalog:
   workbox-precaching: ^7.4.1
   workbox-routing: ^7.4.1
   workbox-strategies: ^7.4.1
+  rollup-plugin-visualizer: ^7.1.1
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

@@ -39,6 +39,27 @@ jobs:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
 
+      # B-168: fails the job (and therefore blocks the deploy step below) if any built
+      # JS chunk exceeds apps/web/bundle-budget.json's thresholds. Runs against the
+      # exact artifact the deploy step is about to publish, no extra build.
+      - name: Check bundle size budget
+        run: pnpm --filter @patches/web run bundle:check
+
+      - name: Build bundle report artifact
+        if: always()
+        run: pnpm --filter @patches/web run bundle:analyze
+        env:
+          VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Upload bundle report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle-report
+          path: apps/web/dist-analyze/bundle-report.html
+          if-no-files-found: warn
+
       - name: Deploy to Cloudflare Pages
         if: ${{ vars.WEB_DEPLOY_ENABLED == 'true' }}
         run: pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true

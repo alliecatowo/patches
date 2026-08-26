@@ -16,7 +16,9 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "playwright test",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "bundle:analyze": "ANALYZE=1 vite build",
+    "bundle:check": "node scripts/check-bundle-budget.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
@@ -44,6 +46,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
+    "rollup-plugin-visualizer": "catalog:",
     "vite": "catalog:",
     "vite-plugin-pwa": "catalog:",
     "vitest": "catalog:"
