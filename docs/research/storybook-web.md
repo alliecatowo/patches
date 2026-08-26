@@ -156,6 +156,22 @@ also run under (§4b).
 
 ## 4. Visual regression WITHOUT SaaS
 
+> **Update 2026-08-26 — Lost Pixel is dead; Argos CI evaluated.** Lost Pixel (the owner's
+> earlier preference as a Chromatic alternative) was **archived 2026-04-22** — "Lost Pixel is
+> joining Figma. We are sunsetting the product"
+> (<https://github.com/lost-pixel/lost-pixel>, now read-only). Do not adopt it. The owner
+> suggested **Argos CI** as the replacement candidate: verified active
+> (<https://argos-ci.com/>), first-class `@argos-ci/storybook` SDK, GitHub check
+> integration, per-PR review UI, flake management, an agent-facing MCP server, free Hobby
+> tier of 5,000 screenshots/month. **It is SaaS** — the same B-167-precedent line this
+> section was drawn around — so adopting it is an explicit owner decision, not a default.
+> State of the field after the sunset: self-hosted options are (b) below (recommended,
+> already chosen for phase 3) and `reg-suit` (self-hosted S3-backed, no hosted review UI,
+> slow release cadence); everything else credible (Argos, Chromatic, Percy, Happo) is SaaS.
+> Decision rule: if a hosted review UI + zero baseline bookkeeping turns out to matter to
+> the owner, revisit Argos (5k screenshots/month covers our ~60-shot phase-3 matrix 80×
+> over); otherwise (b) stays the plan.
+
 Chromatic and Percy are **rejected** up front — external SaaS, same precedent as B-167's flag-tooling
 decision. Note the official path _is_ SaaS: "Storybook supports cross-browser visual testing natively
 using Chromatic, a cloud service made by the Storybook team"
