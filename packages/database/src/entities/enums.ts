@@ -217,7 +217,6 @@ export const FILTER_SCOPES = [
   'COMMUNITY_FEED',
   'NOTIFICATIONS',
   'SEARCH',
-  'MESSAGE_REQUESTS',
 ] as const;
 export type FilterScope = (typeof FILTER_SCOPES)[number];
 

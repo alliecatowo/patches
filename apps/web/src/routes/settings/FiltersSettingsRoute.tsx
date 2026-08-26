@@ -22,7 +22,6 @@ const SCOPES = [
   FilterScope.COMMUNITY_FEED,
   FilterScope.NOTIFICATIONS,
   FilterScope.SEARCH,
-  FilterScope.MESSAGE_REQUESTS,
 ];
 
 interface DraftTerm {
