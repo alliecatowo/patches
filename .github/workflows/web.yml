@@ -99,3 +99,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      # B-203: `wrangler pages deploy` returning 0 only means Cloudflare accepted the
+      # upload — B-198 was exactly this step reporting green while a stale WEB_DEPLOY_ENABLED
+      # gate meant nothing actually changed for users. Polls the live `index` chunk's
+      # `__PATCHES_WEB__` build stamp (vite.config.ts's buildVersion()) for TARGET_SHA, since
+      # Cloudflare Pages propagation is not instant.
+      - name: Verify deployed bundle matches this commit
+        if: ${{ vars.WEB_DEPLOY_ENABLED == 'true' }}
+        run: pnpm --filter @patches/web run verify:deploy
+        env:
+          TARGET_SHA: ${{ env.TARGET_SHA }}

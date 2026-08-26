@@ -19,7 +19,8 @@
     "clean": "rm -rf dist .turbo",
     "bundle:analyze": "ANALYZE=1 vite build",
     "bundle:check": "node scripts/check-bundle-budget.mjs",
-    "dist:check": "node scripts/check-dist-production.mjs"
+    "dist:check": "node scripts/check-dist-production.mjs",
+    "verify:deploy": "node scripts/verify-deployed-sha.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
