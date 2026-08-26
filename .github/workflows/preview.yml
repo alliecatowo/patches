@@ -354,8 +354,16 @@ jobs:
           pr="${{ github.event.pull_request.number || inputs.pr_number }}"
           origin="https://pr-${pr}.patches-web.pages.dev"
           edge="https://patches-pr-${pr}.fly.dev:8443"
-          echo "healthz:"
-          curl -fsS --max-time 30 "${edge/8443/443}/healthz" | head -c 200; echo
+          base="https://patches-pr-${pr}.fly.dev"
+          # A brand-new app's DNS can take a minute to appear — retry the probe
+          # rather than failing the deploy over propagation (curl exit 6 = resolve).
+          health=""
+          for i in $(seq 1 10); do
+            if health="$(curl -fsS --max-time 20 "${base}/healthz" 2>/dev/null)"; then break; fi
+            echo "healthz not reachable yet (attempt ${i}/10); waiting 15s"; sleep 15
+          done
+          [ -n "$health" ] || { echo "healthz never became reachable" >&2; exit 1; }
+          echo "healthz: ${health}" | head -c 200; echo
           echo "CORS preflight from ${origin}:"
           preflight="$(curl -fsS --max-time 30 -o /dev/null -w '%{http_code}' \
             -X OPTIONS "${edge}/patches.v1.AuthService/Login" \
@@ -370,7 +378,7 @@ jobs:
             -H 'Access-Control-Request-Headers: content-type' \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);process.stdout.write((h["access-control-allow-origin"]??[]).join(","))})')"
           echo "access-control-allow-origin: ${allow}"
-          [ "${allow#*$origin}" != "$allow" ] || { echo "CORS preflight did not allow the Pages origin" >&2; exit 1; }
+          case ",${allow}," in *",${origin}"*) ;; *) echo "CORS preflight did not allow the Pages origin" >&2; exit 1 ;; esac
           echo "connectivity OK" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Post preview URL comment on the PR (edit existing)
