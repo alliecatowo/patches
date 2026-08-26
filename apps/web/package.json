@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "clean": "rm -rf dist .turbo",
     "bundle:analyze": "ANALYZE=1 vite build",
-    "bundle:check": "node scripts/check-bundle-budget.mjs"
+    "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "dist:check": "node scripts/check-dist-production.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",

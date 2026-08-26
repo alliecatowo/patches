@@ -177,6 +177,36 @@ Then bump both `maxChunkBytes` and `maxChunkGzipBytes` together in `bundle-budge
 updating its `_comment` with the new measurement and date — the file is the only place these
 numbers live; `apps/web/scripts/check-bundle-budget.mjs` just enforces them.
 
+### Production-mode dist guard (B-200/B-201)
+
+**Incident:** at some point before 2026-08-26, `https://patches-web.pages.dev` was found
+serving a **development-mode** bundle — `jsxDEV` at every JSX call site (the dev, not prod,
+React transform), the React/react-query development runtimes, `import.meta.env.DEV` folded
+to `true` so `main.tsx`'s `ReactQueryDevtoolsInDev` branch actually rendered the TanStack
+Query devtools floater to every visitor, and the builder's own absolute filesystem path
+(`/home/allie/develop/patches/apps/web/src/main.tsx`) embedded as a literal bundled string.
+`vite.config.ts` and the `build` script (`tsc --noEmit && vite build`) were both already
+correct — production is Vite's default mode. The defect was purely that a stale or
+otherwise dev-mode `apps/web/dist` directory got published by `wrangler pages deploy`;
+`bundle:check` (B-168) didn't catch it because it only gates chunk size, not build mode.
+Root cause of _how_ a dev-mode `dist` got published was not conclusively identified — the
+fix is a guard that makes the class of bug impossible to ship silently, not a single-cause
+postmortem.
+
+Two changes close this:
+
+1. `mise run web:deploy` now runs `rm -rf apps/web/dist` before building, so a stale
+   artifact from a previous (possibly dev-mode) run can never be the one that gets deployed
+   if a later build step fails partway.
+2. `pnpm --filter @patches/web run dist:check` (`apps/web/scripts/check-dist-production.mjs`)
+   scans every emitted `dist/**/*.js` file — never `*.js.map`, since `sourcemap: true`
+   means maps legitimately carry dev source text and absolute paths in `sourcesContent`,
+   which is not executed code — for `jsxDEV`, `react-query-devtools`, and absolute
+   build-machine paths (`/home/`, `/Users/`, a Windows drive path). It runs both in
+   `mise run web:deploy` (after the build, before the `wrangler` deploy) and as a step in
+   `.github/workflows/web.yml`'s deploy job (after `bundle:check`, before the bundle report
+   artifact build) — either path fails before anything reaches Cloudflare Pages.
+
 ### React Query devtools (B-157)
 
 `main.tsx` mounts `@tanstack/react-query-devtools` behind `import.meta.env.DEV`, via
