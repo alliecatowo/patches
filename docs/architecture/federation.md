@@ -468,15 +468,15 @@ two-node lab — `docs/operations/federation.md`'s "Two-node lab (P18-008)" sect
 - **P18-008** — two-node lab round trip proving the above: repost/unrepost
   `Announce`/`Undo(Announce)` id stability across an actual process restart of node A,
   and quote-of-remote plus local-from-remote quote linkage (each recording a `VERIFIED`
-  `quote_authorizations` row). **Found, and left open, a real bug**: the tag-feed arm of
-  the same round trip is `it.fails` — `PostService.createPost` calls
+  `quote_authorizations` row). **Found a real bug, since fixed (P18-011)**: the tag-feed arm of
+  the same round trip failed because `PostService.createPost` called
   `federation.publishPost` before `tagExtraction.extractAndAttach`, so a federated
-  post's `post_tags` are always empty at publish time and no Hashtag ever reaches a
-  peer. `handleAnnounce`/`handleCreate` (P18-004/P18-007) are unaffected and correct;
-  the fix is reordering the two calls in `post.service.ts`, tracked separately from this
-  doc. See `docs/operations/federation.md` for the transcript and current fix status.
+  post's `post_tags` were always empty at publish time and no Hashtag ever reached a
+  peer. `handleAnnounce`/`handleCreate` (P18-004/P18-007) were unaffected and correct.
+  P18-011 swapped the two calls and added a unit-level ordering guard; all four
+  round-trip cases now pass. See `docs/operations/federation.md` for the transcript.
 - **P18-009** — TUI rendering: remote-repost/remote-quote attribution and the one-level
-  quote-embed nesting bound, both client-only and unaffected by the bug above (they
+  quote-embed nesting bound, both client-only and unaffected by that bug (they
   render whatever tags a post already has). Web equivalent tracked as B-180.
 
 The verified protocol detail, with citations and verification dates (re-verified
