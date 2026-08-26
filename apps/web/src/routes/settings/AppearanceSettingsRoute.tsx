@@ -1,7 +1,13 @@
 import type { JSX } from 'react';
+import { Link } from 'react-router-dom';
 
 import { CheckIcon, DownloadIcon, SparklesIcon } from '../../components/icons/Icons.js';
 import { useInterfacePreferences } from '../../hooks/useInterfacePreferences.js';
+import {
+  requestShakeToReportPermission,
+  shakeToReportRequiresGesturePermission,
+  useShakeReportPermission,
+} from '../../hooks/useShakeToReport.js';
 import { useSystemPrefersDark, useTheme } from '../../hooks/useTheme.js';
 import { THEME_CATALOG } from '../../lib/theme.js';
 import { useAppBadgeStatus } from '../../pwa/appBadgeStatus.js';
@@ -19,6 +25,8 @@ export function AppearanceSettingsRoute(): JSX.Element {
   const systemPrefersDark = useSystemPrefersDark();
   const { isInstallable, isStandalone, isIos, promptInstall } = usePwaInstall();
   const appBadgeStatus = useAppBadgeStatus();
+  const shakePermission = useShakeReportPermission();
+  const shakeNeedsGesture = shakeToReportRequiresGesturePermission();
 
   const appBadgeDescription =
     appBadgeStatus.capability === 'unsupported'
@@ -204,6 +212,50 @@ export function AppearanceSettingsRoute(): JSX.Element {
           </p>
         </div>
       </section>
+
+      {shakeNeedsGesture ? (
+        <section style={{ marginTop: '2rem' }}>
+          <div className={styles['sectionTitleRow']}>
+            <SparklesIcon size={18} />
+            <h2>Shake to report</h2>
+          </div>
+
+          <div className={styles['pwaCard']}>
+            {shakePermission === 'granted' ? (
+              <div>
+                <strong style={{ color: 'var(--ok)' }}>✓ Shake to report is enabled</strong>
+                <p className={styles['pwaDesc']}>
+                  Shake your device to jump straight to the report screen.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <strong>
+                  {shakePermission === 'denied'
+                    ? 'Shake to report is off'
+                    : 'Enable shake to report'}
+                </strong>
+                <p className={styles['pwaDesc']}>
+                  {shakePermission === 'denied'
+                    ? "Motion access was denied, so shaking your device won't open the report screen — that permission has to come from Safari, not from Patches."
+                    : 'iOS requires a one-time tap before Patches can read motion, so shaking can open the report screen.'}
+                </p>
+                <button
+                  type="button"
+                  className={styles['pwaInstallBtn']}
+                  onClick={() => void requestShakeToReportPermission()}
+                >
+                  {shakePermission === 'denied' ? 'Try again' : 'Enable shake to report'}
+                </button>
+                <p className={styles['pwaDesc']}>
+                  Either way, you can always <Link to="/report">report an issue</Link> from the
+                  menu.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -51,3 +51,17 @@ library-swap question and is filed as `B-181` rather than folded into this decis
 
 **Not verified here**: on-device iOS behavior. Everything above is registry/API/source-level
 research; nothing in this note claims to have been tested on a physical iOS device.
+
+## B-181 fix landed (2026-08-25)
+
+`useShakeToReport.ts` now feature-detects the iOS-only static `DeviceMotionEvent.requestPermission`
+(a narrow local TS interface, not `any` — the DOM lib ships no ambient type for this non-standard
+Apple extension) and only attaches the `devicemotion` listener once a persisted permission is
+`granted`. The gesture itself is requested from `AppearanceSettingsRoute.tsx`'s new "Shake to
+report" section, whose button calls `requestShakeToReportPermission()` synchronously from
+`onClick` — the one place in the app that is unambiguously a real user gesture. Denial (or Safari
+throwing because the call happened outside a gesture) is treated as `'denied'` and shown honestly,
+with a link to `/report`, rather than leaving a dead control. See
+`docs/operations/issue-reporter.md`'s "Web: shake-to-report and its iOS opt-in" section for the
+full behavior. **Still not verified on a physical iOS device** — coverage here is jsdom unit tests
+stubbing `DeviceMotionEvent.requestPermission`, not on-device Safari testing.

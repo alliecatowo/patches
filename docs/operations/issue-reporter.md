@@ -102,3 +102,33 @@ defence in depth.
 TUI fallback: if the `POST` to the Worker fails, the TUI writes the bundle JSON to the
 OS tmpdir instead and prints the issues URL for manual attach — the same shape web
 always uses (see "Web: local save" above).
+
+## Web: shake-to-report and its iOS opt-in (B-181)
+
+`useShakeToReport` (`apps/web/src/hooks/useShakeToReport.ts`) listens for `devicemotion`
+spikes and routes to `/report`. Android/Chrome fire `devicemotion` with no prompt, so
+that path is unchanged. iOS 13+ Safari/PWA gates `devicemotion` behind
+`DeviceMotionEvent.requestPermission()`, which **must** be invoked synchronously from a
+real user-gesture handler — calling it on mount is silently rejected, which was the bug:
+shake-to-report was a no-op on real iPhones with no error at all.
+
+The hook now capability-detects the iOS-only static method (`DeviceMotionEvent` has no
+ambient DOM type for it, so a narrow local interface names it instead of reaching for
+`any`) and gates the listener on a persisted permission (`unknown` / `granted` /
+`denied`, localStorage key `patches.web.shake-report-permission.v1`, synced across tabs
+the same way `lib/interfacePreferences.ts` persists other client-only preferences). The
+one-time opt-in lives in **Settings → Appearance** (`AppearanceSettingsRoute.tsx`), in a
+"Shake to report" section that only renders when the gesture gate exists; its button
+calls `requestShakeToReportPermission()` directly from `onClick`.
+
+Honest-UX handling: if permission is denied (or Safari throws because the call didn't
+happen inside a gesture), the section says "Shake to report is off" with a plain
+explanation and a link to `/report` — never a control that looks live but silently does
+nothing. Browsers without the gesture gate (Android, desktop) keep working exactly as
+before, with no new prompt and no new UI.
+
+**Status: implemented, unverified on a physical iPhone** — this repo's environment has
+no iOS device; the permission-gating logic is covered by jsdom unit tests
+(`apps/web/src/hooks/useShakeToReport.test.tsx`,
+`apps/web/src/routes/settings/AppearanceSettingsRoute.test.tsx`) that stub
+`DeviceMotionEvent.requestPermission`, not by on-device testing.
