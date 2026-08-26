@@ -56,3 +56,4 @@
 - [Node version mismatch breaks jsdom localStorage](node-version-mismatch-jsdom-localstorage.md) — bare `node` on PATH ahead of mise's pin (e.g. Node 26 vs pinned 24) makes window.localStorage undefined in vitest jsdom tests; re-run via `mise exec --` before "fixing" the app
 - [TypeORM ARRAY default phantom drift](typeorm-array-default-phantom-drift.md) — ARRAY[...]::text[] column defaults never match TypeORM 1.x's introspection; use a bare quoted '{...}' literal instead
 - [Shared checkout: local DB schema drift](shared-checkout-local-db-schema-drift.md) — stale podman Postgres volume can report phantom db:generate drift on tables you never touched; check migrations table vs migration files on disk
+- [Local podman Postgres credentials](local-podman-postgres-credentials.md) — TEST_DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test to hand-verify a cleanup migration against pre-existing stale state, not just a fresh test DB
