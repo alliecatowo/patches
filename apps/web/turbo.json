@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // B-206: `vite.config.ts`'s `buildVersion()` bakes the commit sha into the bundle
+      // (`__PATCHES_WEB__.version`, `0.1.0+<short sha>`) by reading `CF_PAGES_COMMIT_SHA`
+      // or `GITHUB_SHA`. Neither is in the root `globalEnv`, and turbo's Vite framework
+      // inference only adds `VITE_*` — so changing *only* the sha was a cache **hit**, and
+      // the restored `dist/` carried the previous build's sha. That stamp is the sole
+      // evidence for "is the deployed bundle actually this commit?" (it is how B-198's
+      // 29-commit-stale deploy was diagnosed, and B-203 turns it into a required
+      // post-deploy gate), so a stale one makes the check report on the wrong commit.
+      //
+      // Declared here rather than in the root `globalEnv` deliberately: keying *every*
+      // package's build on the commit sha would make every build in CI a guaranteed cache
+      // miss. Only this package's output actually embeds the sha, so only this package's
+      // build should be invalidated by it.
+      "env": ["GITHUB_SHA", "CF_PAGES_COMMIT_SHA"]
+    }
+  }
+}
