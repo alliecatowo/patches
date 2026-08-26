@@ -255,6 +255,33 @@ function databaseName(account: WebVaultAccount): string {
   return `patches-e2ee-vault/${encodeURIComponent(account.origin)}/${account.actorId}`;
 }
 
+export interface WipeVaultStorageOptions {
+  readonly indexedDb?: VaultIndexedDbLike | undefined;
+  readonly browserStorage?: VaultBrowserStorage | undefined;
+}
+
+/** Erases one account's vault storage (IndexedDB database + both localStorage keys) by
+ * account key alone — no live, open store instance required. `IndexedDbRatchetVaultStore
+ * .wipe()` needs a non-closed store, which a sticky open()-time fault (rollback/
+ * corruption) never hands the caller: `createRatchetSessionVault` closes and discards
+ * the store itself on a failed `open()`, before the manager ever sees it. This lets a
+ * caller (the manager's explicit reset) reach the same erased end state either way. */
+export async function wipeVaultStorage(
+  account: WebVaultAccount,
+  options: WipeVaultStorageOptions = {},
+): Promise<void> {
+  const indexedDb = options.indexedDb ?? defaultIndexedDb;
+  const browserStorage = options.browserStorage ?? defaultBrowserStorage;
+  browserStorage.removeItem(secretKey(account));
+  browserStorage.removeItem(anchorKey(account));
+  await new Promise<void>((resolve) => {
+    const request = indexedDb.deleteDatabase(databaseName(account));
+    request.addEventListener('success', () => resolve());
+    request.addEventListener('error', () => resolve());
+    request.addEventListener('blocked', () => resolve());
+  });
+}
+
 function requestDone<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.addEventListener('success', () => resolve(request.result));
@@ -562,16 +589,12 @@ export class IndexedDbRatchetVaultStore implements RatchetVaultStore {
     }
     this.sessions = new Map();
     this.generation = 0;
-    this.storage.removeItem(secretKey(this.account));
-    this.storage.removeItem(anchorKey(this.account));
     const db = this.db;
     this.db = undefined;
     if (db !== undefined) db.close();
-    await new Promise<void>((resolve) => {
-      const request = this.indexedDb.deleteDatabase(databaseName(this.account));
-      request.addEventListener('success', () => resolve());
-      request.addEventListener('error', () => resolve());
-      request.addEventListener('blocked', () => resolve());
+    await wipeVaultStorage(this.account, {
+      indexedDb: this.indexedDb,
+      browserStorage: this.storage,
     });
   }
 

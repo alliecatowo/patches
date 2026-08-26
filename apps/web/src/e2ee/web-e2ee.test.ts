@@ -94,6 +94,32 @@ function openedVaultOf(manager: ReturnType<typeof createWebE2eeManager>): Ratche
   return vault;
 }
 
+function rawRequest<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.addEventListener('success', () => resolve(request.result));
+    request.addEventListener('error', () => reject(request.error ?? new Error('idb failure')));
+  });
+}
+
+/** Flips a byte in the sealed document straight in IndexedDB, matching
+ * `IndexedDbRatchetVaultStore`'s own database-naming rule (`vault.ts`'s
+ * `databaseName`), to reproduce a corruption fault without a second exported seam. */
+async function corruptSealedDocument(actorId: string): Promise<void> {
+  const name = `patches-e2ee-vault/${encodeURIComponent(location.origin)}/${actorId}`;
+  const db = await rawRequest(indexedDB.open(name));
+  try {
+    const read = db.transaction('state', 'readonly').objectStore('state');
+    const blob = await rawRequest<Uint8Array>(read.get('doc') as IDBRequest<Uint8Array>);
+    const tampered = blob.slice();
+    const last = tampered.length - 1;
+    tampered[last] = (tampered[last] ?? 0) ^ 0x01;
+    const write = db.transaction('state', 'readwrite').objectStore('state');
+    await rawRequest(write.put(tampered, 'doc'));
+  } finally {
+    db.close();
+  }
+}
+
 describe('WebE2eeManager.setActor — overlapping calls', () => {
   it('closes the loser’s vault instead of leaking it, and the winner ends up usable', async () => {
     const closeSpy = vi.spyOn(IndexedDbRatchetVaultStore.prototype, 'close');
@@ -134,7 +160,7 @@ describe('WebE2eeManager.setActor — overlapping calls', () => {
 });
 
 describe('WebE2eeManager — sticky fault (B-185)', () => {
-  it('BUG (suspected): wipe() does not clear the persisted cause of an open()-time fault, so the "only exit from a sticky fault" re-faults the very next setActor for the same actor', async () => {
+  it('wipe() clears the persisted cause of an open()-time fault (B-190), so the "only exit from a sticky fault" genuinely exits it and the next setActor for the same actor succeeds clean', async () => {
     // module header: "faults (corrupt/rollback) are sticky and coarse... never a
     // silent wipe"; `wipe()`'s own doc comment: "also the only exit from a sticky
     // fault". Reproducing the exact fault vault.test.ts covers at the store layer
@@ -157,19 +183,38 @@ describe('WebE2eeManager — sticky fault (B-185)', () => {
     await manager.wipe();
     expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
 
-    // Suspected bug (root cause pinned down in the `WebE2eeManager.wipe` describe
-    // block below, which reproduces it without a fault in the way): `wipe()` never
-    // actually calls the underlying store's `wipe()` here, for THIS specific case for
-    // an additional reason beyond that general bug — this fault's `this.vault` was
-    // never assigned in the first place (`createRatchetSessionVault` closes and
-    // discards the store itself before rethrowing on a failed `open()`, per
-    // `vault.ts`). Either way, the rollback anchor this fault is keyed on survives
-    // untouched, and the very next `setActor` for this actor faults again for the
-    // identical, still-uncleared reason — the UI's "Resetting deletes this browser's
-    // E2EE history" promise does not hold for the fault it is written to describe.
-    expect(localStorage.getItem(anchorKey)).toBe('5');
+    // This fault's `this.vault` was never assigned in the first place
+    // (`createRatchetSessionVault` closes and discards the store itself before
+    // rethrowing on a failed `open()`, per `vault.ts`) — `wipe()` must still reach the
+    // rollback anchor this fault is keyed on directly by account key. Once cleared, the
+    // very next `setActor` for this actor opens a genuinely fresh vault instead of
+    // faulting again for the identical, previously-uncleared reason.
+    expect(localStorage.getItem(anchorKey)).toBeNull();
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
+  });
+
+  it('a wipe from a vault-open fault (corruption) also leaves recoverable state, and the next setActor succeeds clean', async () => {
+    const manager = createWebE2eeManager({ api: fakeApi });
+    const actor = { id: freshActorId() };
+
+    // Open once normally and commit a record so a real sealed document exists to
+    // corrupt (a fresh vault never writes the `doc` key until its first commit), then
+    // close it before tampering (matches `vault.test.ts`'s "fails closed when the
+    // sealed document has been tampered with").
+    await manager.setActor(actor);
+    await openedVaultOf(manager).putOpaqueRecord('marker', new Uint8Array([1]));
+    manager['release']();
+    await corruptSealedDocument(actor.id);
+
     await manager.setActor(actor);
     expect(manager.getStatus()).toEqual({ kind: 'fault', copy: WEB_E2EE_COPY.vaultFault });
+
+    await manager.wipe();
+    expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
+
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
   });
 });
 
@@ -255,22 +300,12 @@ describe('WebE2eeManager.wipe', () => {
     expect(manager['identity']).toBeUndefined();
   });
 
-  it('BUG (suspected): does not actually clear the underlying vault storage — `release()` closes the vault before `wipe()` gets to use it, and a closed `IndexedDbRatchetVaultStore.wipe()` is a silent no-op', async () => {
+  it('actually clears the underlying vault storage (B-190): wipe() erases the store before releasing/closing it, not after', async () => {
     // `wipe()`'s own doc comment calls this "the explicit, labeled destructive reset".
-    // Its body is:
-    //   const vault = this.vault;
-    //   this.release();                          // <- closes `vault` right here
-    //   if (vault !== undefined) {
-    //     try { await vault.wipe(); }             // <- runs on an already-closed store
-    //     finally { vault.close(); }
-    //   }
     // `IndexedDbRatchetVaultStore.wipe()` starts with `if (this.closed) return;`
-    // (vault.ts), so by the time `vault.wipe()` runs, `release()` has already closed
-    // it and this is a guaranteed no-op — every time, not only in the fault case
-    // above. Nothing about a corrupt/rolled-back vault, or even an ordinary healthy
-    // one, is ever actually erased by this method today; only the manager's own
-    // in-memory pointers and `status` change. Filed as a suspected bug, not fixed
-    // here per B-185's scope (tests only).
+    // (vault.ts), so the underlying wipe has to run on the still-open store, before it
+    // is released/closed — otherwise it is a guaranteed no-op. A record written before
+    // `wipe()` must not survive a reopen of the same account afterwards.
     const manager = createWebE2eeManager({ api: fakeApi });
     const actor = { id: freshActorId() };
     await manager.setActor(actor);
@@ -281,6 +316,38 @@ describe('WebE2eeManager.wipe', () => {
     await manager.setActor(actor);
     const reopened = openedVaultOf(manager);
 
-    expect([...((await reopened.getOpaqueRecord('marker')) ?? [])]).toEqual([1]);
+    expect(await reopened.getOpaqueRecord('marker')).toBeUndefined();
+  });
+
+  it('closes the vault exactly once (B-190): no leaked connection, no double-close', async () => {
+    const closeSpy = vi.spyOn(IndexedDbRatchetVaultStore.prototype, 'close');
+    const manager = createWebE2eeManager({ api: fakeApi });
+    const actor = { id: freshActorId() };
+    await manager.setActor(actor);
+
+    await manager.wipe();
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    closeSpy.mockRestore();
+  });
+
+  it('a wipe from a vault-open fault (rollback) leaves clean, recoverable localStorage state and both IndexedDB and localStorage are erased for the account', async () => {
+    const manager = createWebE2eeManager({ api: fakeApi });
+    const actor = { id: freshActorId() };
+    const anchorKey = `patches-e2ee-vault/generation/${location.origin}/${actor.id}`;
+    const secretKey = `patches-e2ee-vault/secret/${location.origin}/${actor.id}`;
+    localStorage.setItem(anchorKey, '3');
+    localStorage.setItem(secretKey, 'not-a-real-secret-but-present');
+
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({ kind: 'fault', copy: WEB_E2EE_COPY.vaultFault });
+
+    await manager.wipe();
+
+    expect(localStorage.getItem(anchorKey)).toBeNull();
+    expect(localStorage.getItem(secretKey)).toBeNull();
+
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
   });
 });

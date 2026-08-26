@@ -37,6 +37,7 @@ import { E2eeSessionRuntime } from './runtime-session.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import {
   createRatchetSessionVault,
+  wipeVaultStorage,
   type RatchetSessionVault,
   type WebVaultAccount,
 } from './vault.js';
@@ -101,6 +102,11 @@ class WebE2eeManager {
   private runtime: E2eeSessionRuntime | undefined;
   /** The account the open vault belongs to (set by `setActor`, read by `enroll`). */
   private actorId: string | undefined;
+  /** The last actor `setActor` was asked to become, independent of `actorId`/`release()`
+   * — a fault clears `actorId` (via `release()`) even though the manager never held a
+   * vault for it, so `wipe()` needs its own memory of which account's storage to erase.
+   * Cleared only on sign-out (`setActor(null)`), never by a fault or a superseded call. */
+  private lastActorId: string | undefined;
   /** Serializes `setActor`: each call captures its own sequence number and checks it
    * after every await. A call whose number no longer matches was superseded by a later
    * call (StrictMode double-effect, rapid navigation) — it closes whatever vault it
@@ -144,10 +150,12 @@ class WebE2eeManager {
     const seq = (this.setActorSeq += 1);
     if (actor === null) {
       this.release();
+      this.lastActorId = undefined;
       this.setStatus({ kind: 'signed-out' });
       return;
     }
     this.release();
+    this.lastActorId = actor.id;
     this.setStatus({ kind: 'loading' });
     let vault: RatchetSessionVault | undefined;
     try {
@@ -281,17 +289,32 @@ class WebE2eeManager {
     return Promise.reject(new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable));
   }
 
-  /** Explicit, labeled destructive reset (also the only exit from a sticky fault). */
+  /** Explicit, labeled destructive reset (also the only exit from a sticky fault).
+   * Must erase before releasing: `IndexedDbRatchetVaultStore.wipe()` is a no-op on an
+   * already-closed store, so the underlying wipe has to run while this manager still
+   * owns an open vault, not after. `this.vault` is claimed (set to `undefined`) up
+   * front so the `release()` call below — which also closes whatever vault it finds —
+   * never double-closes the one this method already closed itself. */
   async wipe(): Promise<void> {
     const vault = this.vault;
-    this.release();
+    this.vault = undefined;
     if (vault !== undefined) {
       try {
         await vault.wipe();
       } finally {
         vault.close();
       }
+    } else if (this.lastActorId !== undefined) {
+      // A sticky open()-time fault (rollback/corruption) never hands this manager a
+      // vault at all — `createRatchetSessionVault` closes and discards the store
+      // itself on a failed `open()` (`vault.ts`), and the fault path's `release()`
+      // already cleared `this.actorId`. `lastActorId` survives that clear, so this
+      // reaches the same erased end state directly by account key — a genuine exit
+      // from the fault, not just a status reset that leaves the same cause to
+      // re-fault next time.
+      await wipeVaultStorage({ origin: location.origin, actorId: this.lastActorId });
     }
+    this.release();
     this.setStatus({ kind: 'not-enrolled' });
   }
 
