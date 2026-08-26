@@ -1,16 +1,20 @@
 # NestJS Doctor — deterministic (non-AI) NestJS code review on PRs (nestjs.doctor).
 #
+# Single root-level scan: nestjs-doctor auto-detects the pnpm workspace and scans
+# every Nest sub-project (apps/server + apps/worker; per-app
+# nestjs-doctor.config.json still applies), producing ONE combined score and one
+# scope line. (The previous two-job layout made each job print its own fraction
+# against the PR-wide file total — "5 of 59" — which read like files were skipped
+# when the other job owned them.)
+#
 # What it does per PR: sticky summary comment with a health score, inline review
 # comments on changed lines, and a commit status. `scope: changed` (the action's
-# default) means ONLY findings the PR introduces are reported — the apps' existing
-# backlog (found in the 2026-08-25 baseline scan: sync I/O in main.ts, DataSource
-# injected directly in services, unused module exports) stays out of reviews.
-# Non-PR events (push to main) force scope:full and always exit 0 — main cannot
-# go red on pre-existing findings.
+# default) means ONLY findings the PR introduces are reported. Non-PR events
+# (push to main) force scope:full and always exit 0.
 #
 # Deliberately NOT gating yet: blocking:none + no min-score (comment/score only).
-# Flip to `blocking: error` once a few PRs have landed with sane comments — that
-# is a deliberate follow-up, not a drive-by.
+# Flip to `blocking: error` once a few PRs have landed with sane comments — a
+# deliberate follow-up, not a drive-by.
 #
 # Dependabot/bot PRs: the action needs only github.token (no third-party secret),
 # so it runs fine there (unlike the Fly preview workflow, which bots skip).
@@ -31,8 +35,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  server:
-    name: doctor (apps/server)
+  doctor:
+    name: doctor (server + worker)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,17 +44,4 @@ jobs:
           fetch-depth: 0 # required for scope:changed (merge-base vs base branch)
       - uses: RoloBits/nestjs-doctor@bfc83dafb95b59d45d879d8756f01c1cf89054ab # v1
         with:
-          directory: apps/server
-          node-version: 24
-
-  worker:
-    name: doctor (apps/worker)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: RoloBits/nestjs-doctor@bfc83dafb95b59d45d879d8756f01c1cf89054ab # v1
-        with:
-          directory: apps/worker
           node-version: 24
