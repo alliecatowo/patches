@@ -156,21 +156,39 @@ also run under (§4b).
 
 ## 4. Visual regression WITHOUT SaaS
 
-> **Update 2026-08-26 — Lost Pixel is dead; Argos CI evaluated.** Lost Pixel (the owner's
-> earlier preference as a Chromatic alternative) was **archived 2026-04-22** — "Lost Pixel is
-> joining Figma. We are sunsetting the product"
-> (<https://github.com/lost-pixel/lost-pixel>, now read-only). Do not adopt it. The owner
-> suggested **Argos CI** as the replacement candidate: verified active
-> (<https://argos-ci.com/>), first-class `@argos-ci/storybook` SDK, GitHub check
-> integration, per-PR review UI, flake management, an agent-facing MCP server, free Hobby
-> tier of 5,000 screenshots/month. **It is SaaS** — the same B-167-precedent line this
-> section was drawn around — so adopting it is an explicit owner decision, not a default.
-> State of the field after the sunset: self-hosted options are (b) below (recommended,
-> already chosen for phase 3) and `reg-suit` (self-hosted S3-backed, no hosted review UI,
-> slow release cadence); everything else credible (Argos, Chromatic, Percy, Happo) is SaaS.
-> Decision rule: if a hosted review UI + zero baseline bookkeeping turns out to matter to
-> the owner, revisit Argos (5k screenshots/month covers our ~60-shot phase-3 matrix 80×
-> over); otherwise (b) stays the plan.
+> **Update 2 (2026-08-26, later) — self-hosted platform survey: VRT recommended if/when we
+> outgrow (b).** Context: Lost Pixel (the original preference) was **archived 2026-04-22**
+> (joined Figma; repo read-only); Argos was then evaluated and **rejected — SaaS-only** (its
+> "OSS core" is SDKs, the service is hosted). The owner asked for self-hostable alternatives;
+> two candidates researched plus the field:
+>
+> - **Visual Regression Tracker** (`Visual-Regression-Tracker/Visual-Regression-Tracker`) —
+>   **RECOMMENDED.** Apache-2.0, 707★, actively maintained (v5.7.0 released 2026-08-23; commits
+>   2026-08-07). Deploy = one `docker compose up` (backend + frontend + Postgres) — fits our
+>   podman/`mise run compose` conventions, no Kubernetes. Framework-agnostic by design: CI
+>   uploads screenshots over REST/SDK (JS/Java/Python/.NET) with first-party Playwright/Cypress
+>   agents; what we'd actually wire is our existing vitest-browser-mode captures pushed via the
+>   JS SDK. Gives us the thing (b) can't: a review/approve UI, baseline history keyed by
+>   Name+Branch+OS+Browser+Viewport+Device, ignore regions, multi-engine diffing (pixelmatch
+>   default, looks-same, odiff, optional VLM). Wiki documents a Storybook integration path.
+> - **lastest** (`las-team/lastest`) — **rejected for now**, despite the most impressive feature
+>   list (recorder, AI gen/fix, 3 diff engines, 24-tool MCP server). Three disqualifiers for
+>   this repo today: (1) **every test execution requires its Embedded-Browser Kubernetes pool**
+>   (k3d in dev) — there is no local-Playwright fallback by design, and this repo's posture is
+>   no-Kubernetes (§153, and we run podman, not a k8s cluster); (2) **FSL-1.1-ALv2** — source
+>   available and free to self-host but not OSI open source; (3) maturity risk: 17★, single
+>   team, 1.1k commits of velocity without community depth. Revisit if it matures and grows a
+>   non-k8s execution mode.
+> - **reg-suit** (reg-viz) — v0.14.6 (2026-03), slower cadence, no server at all: baselines in
+>   S3/R2 (we have R2) + PR comments with diff images. Zero-infra runner-up if we decide running
+>   even one compose stack for testing is too much, but its review flow is PR-comments-only —
+>   no approve UI, no baseline history browser.
+>
+> **Decision rule (B-207):** phase 3 starts with (b) `toMatchScreenshot` (zero new infra,
+> baselines in-repo) exactly as specced; the moment baseline-approval churn across
+> story×viewport×theme matrices starts hurting (the PR-diff-of-PNGs problem), stand up VRT via
+> compose and port the capture path to its SDK — the vitest capture code carries over, only the
+> compare/approve target moves.
 
 Chromatic and Percy are **rejected** up front — external SaaS, same precedent as B-167's flag-tooling
 decision. Note the official path _is_ SaaS: "Storybook supports cross-browser visual testing natively
