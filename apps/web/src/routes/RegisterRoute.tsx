@@ -1,10 +1,11 @@
 import { describeError } from '@patches/client';
 import { PasswordAuthMode } from '@patches/proto/es';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from './AuthForm.module.css';
 
 /** `/register` — this node is invite-only (spec §33), so `inviteCode` is required.
@@ -40,21 +41,27 @@ export function RegisterRoute(): JSX.Element {
   });
   const passwordAuthOff = authPolicyQuery.data?.passwordAuth === PasswordAuthMode.OFF;
 
-  const mutation = useMutation({
-    mutationFn: () =>
-      api.auth.register({
-        email: form.email,
-        handle: form.handle,
-        displayName: form.displayName,
-        password: form.password,
-        inviteCode: form.inviteCode,
-        clientRequestId: crypto.randomUUID(),
-        sshPublicKey: '',
-        // §204.2: the notice shown above (`policy.privacyNoticeSummary`) is what the
-        // acknowledgement checkbox gates submit on — send the version it belongs to so a
-        // REQUIRE_PRIVACY_ACK node can verify it's current, and record it in this same call.
-        privacyNoticeVersionAcknowledged: policy?.privacyNoticeVersion ?? 0,
-      }),
+  // B-164: registering, then navigating away from `/register` before the RPC round-trip
+  // (and the two follow-up calls in `onSuccess`) finishes must not later establish a
+  // session and redirect out from under whatever screen the viewer moved to instead.
+  const mutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) =>
+      api.auth.register(
+        {
+          email: form.email,
+          handle: form.handle,
+          displayName: form.displayName,
+          password: form.password,
+          inviteCode: form.inviteCode,
+          clientRequestId: crypto.randomUUID(),
+          sshPublicKey: '',
+          // §204.2: the notice shown above (`policy.privacyNoticeSummary`) is what the
+          // acknowledgement checkbox gates submit on — send the version it belongs to so a
+          // REQUIRE_PRIVACY_ACK node can verify it's current, and record it in this same call.
+          privacyNoticeVersionAcknowledged: policy?.privacyNoticeVersion ?? 0,
+        },
+        { signal },
+      ),
     onSuccess: async (response) => {
       if (response.session) await establishSession(response.session);
       if (policy) {

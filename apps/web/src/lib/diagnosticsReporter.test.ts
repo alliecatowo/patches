@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SESSION_REFRESHED_EVENT, type SessionRefreshedDetail } from '@patches/client';
 import { MAX_DIAGNOSTICS_BREADCRUMBS } from '@patches/domain';
 
 import {
@@ -39,6 +40,18 @@ describe('web diagnostics reporter', () => {
     window.dispatchEvent(new ErrorEvent('error', { message: 'boom: render died' }));
     const kinds = webBreadcrumbs().map((crumb) => crumb.kind);
     expect(kinds).toContain('window-error');
+  });
+
+  it('records a breadcrumb when the session is silently refreshed (B-169)', () => {
+    installGlobalCollectors();
+    window.dispatchEvent(
+      new CustomEvent<SessionRefreshedDetail>(SESSION_REFRESHED_EVENT, {
+        detail: { expiresAt: Date.UTC(2026, 0, 1) },
+      }),
+    );
+    const last = webBreadcrumbs().at(-1);
+    expect(last?.kind).toBe('session-refreshed');
+    expect(last?.detail).toContain('2026-01-01');
   });
 
   it('records unhandled rejections', async () => {
@@ -193,6 +206,44 @@ describe('breadcrumb persistence across reloads (B-162)', () => {
     );
     installGlobalCollectors();
     expect(webBreadcrumbs()).toHaveLength(0);
+  });
+
+  it('redacts token- and DM-shaped secrets before they ever reach sessionStorage (B-171)', () => {
+    installGlobalCollectors();
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGhpc19pc19hZmFrZXNpZw';
+    // Token-shaped: a bearer/JWT that could ride along on an auth-failure console.error.
+    recordWebBreadcrumb('console-error', `rpc failed: Authorization: Bearer ${jwt}`);
+    // DM-shaped: a leaked DM session cookie value alongside message-like text — exactly the
+    // §183.1 "no DM bodies in logs" territory this fix protects.
+    recordWebBreadcrumb(
+      'console-error',
+      'dm thread 42 cookie: dm_session=hunter2; body: "meet me at 9"',
+    );
+    flushWebBreadcrumbsToSessionStorage();
+
+    const raw = window.sessionStorage.getItem(DIAGNOSTICS_BREADCRUMB_STORAGE_KEY) ?? '';
+    expect(raw).not.toContain(jwt);
+    expect(raw).not.toContain('hunter2');
+    expect(raw).toContain('[REDACTED');
+    // The in-memory ring itself is redacted on write, not only the persisted mirror.
+    expect(webBreadcrumbs().some((crumb) => crumb.detail.includes(jwt))).toBe(false);
+    expect(webBreadcrumbs().some((crumb) => crumb.detail.includes('hunter2'))).toBe(false);
+  });
+
+  it('re-redacts a legacy unredacted stored value on restore (B-171)', () => {
+    window.sessionStorage.setItem(
+      DIAGNOSTICS_BREADCRUMB_STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        routeCounter: 1,
+        crumbs: [
+          { at: '2026-08-25T00:00:00.000Z', kind: 'console-error', detail: 'password: hunter2' },
+        ],
+      }),
+    );
+    installGlobalCollectors();
+    expect(webBreadcrumbs()[0]?.detail).not.toContain('hunter2');
+    expect(webBreadcrumbs()[0]?.detail).toContain('[REDACTED');
   });
 
   it('never throws when the storage quota is exhausted (Safari private mode)', () => {

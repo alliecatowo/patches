@@ -5,18 +5,15 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { ToastProvider } from './ToastProvider.js';
 import { ActorList } from './ActorList.js';
 
 function renderList(props: Parameters<typeof ActorList>[0]): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <MemoryRouter>
-          <ActorList {...props} />
-        </MemoryRouter>
-      </ToastProvider>
+      <MemoryRouter>
+        <ActorList {...props} />
+      </MemoryRouter>
     </QueryClientProvider>
   );
   return render(tree);

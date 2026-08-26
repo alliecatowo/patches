@@ -79,7 +79,12 @@ describe('OidcLoginButton (P15-006)', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in with gitlab/i }));
 
     expect(await screen.findByText('ABCD-1234')).toBeInTheDocument();
-    expect(mockBeginOidcLogin).toHaveBeenCalledWith({ provider: 'gitlab' });
+    const [beginRequest, beginOptions] = mockBeginOidcLogin.mock.calls[0] as [
+      unknown,
+      { signal: AbortSignal },
+    ];
+    expect(beginRequest).toEqual({ provider: 'gitlab' });
+    expect(beginOptions.signal).toBeInstanceOf(AbortSignal);
 
     await advance(5_000);
     expect(mockPollOidcLogin).toHaveBeenCalledWith({

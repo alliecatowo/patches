@@ -477,7 +477,7 @@ jobs:
               "| What | Where |",
               "| --- | --- |",
               `| gRPC (TUI: \`patches --server ${APP}.fly.dev:443\`) | \`${APP}.fly.dev:443\` |`,
-              `| HTTP / healthz | https://${APP}.fly.dev/healthz |`,
+              `| HTTP / healthz | https://${APP}.fly.dev:8443/healthz |`,
               `| Worker (jobs: notifications, cleanup${PREVIEW_MEDIA === "enabled" ? ", media derivatives" : ""}) | running (\`WORKER_ID=preview-pr-${PR_NUMBER}\`, concurrency 2) |`,
               `| Web preview${webUrl ? ` | ${webUrl} ` : " | — "}(\`pr-${PR_NUMBER}.patches-web.pages.dev\`)`,
               `| Neon branch | \`${NEON_BRANCH}\` |`,
@@ -493,7 +493,7 @@ jobs:
               "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",
               "| Real email | off (console provider: verification codes are accepted then dropped — **sign in with an existing account** from the cloned data) |",
               "",
-              "**Data warning:** the preview database is a Neon branch of production — public content is readable logged-out (`PUBLIC_READ=true`), and DMs are server-visible like on any Patches node.",
+              "**Data warning:** the preview database is a Neon branch of production — public content is readable logged-out (`PUBLIC_READ=true`); as on every Patches node, v0 DMs are server-visible (never encrypted/private) to the operator of this node.",
               "",
               "Destroyed automatically when this PR closes.",
             ].join("\n");

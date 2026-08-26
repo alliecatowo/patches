@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getThemePreference, setThemePreference } from '../../lib/theme.js';
@@ -8,13 +9,31 @@ import {
   setDensityPreference,
   setFanStyle,
 } from '../../lib/interfacePreferences.js';
+import {
+  getShakeReportPermission,
+  setShakeReportPermission,
+} from '../../hooks/useShakeToReport.js';
 import { reportAppBadgeOperation } from '../../pwa/appBadgeStatus.js';
 import { AppearanceSettingsRoute } from './AppearanceSettingsRoute.js';
 
 const STORAGE_KEY = 'patches.web.theme.v1';
+const SHAKE_PERMISSION_STORAGE_KEY = 'patches.web.shake-report-permission.v1';
 const originalSetAppBadge = Object.getOwnPropertyDescriptor(navigator, 'setAppBadge');
 const originalClearAppBadge = Object.getOwnPropertyDescriptor(navigator, 'clearAppBadge');
 const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+
+/** Minimal stand-in for iOS Safari's non-standard static `requestPermission` gate. */
+class DeviceMotionEventWithPermission {
+  static requestPermission: () => Promise<'granted' | 'denied'>;
+}
+
+function renderRoute(): ReturnType<typeof render> {
+  return render(
+    <MemoryRouter>
+      <AppearanceSettingsRoute />
+    </MemoryRouter>,
+  );
+}
 
 function setStandaloneMode(): void {
   Object.defineProperty(window, 'matchMedia', {
@@ -53,10 +72,12 @@ describe('AppearanceSettingsRoute', () => {
     setFanStyle('stacked');
     setDensityPreference('cozy');
     reportAppBadgeOperation('idle');
+    setShakeReportPermission('unknown');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     restoreBadgeApi('setAppBadge', originalSetAppBadge);
     restoreBadgeApi('clearAppBadge', originalClearAppBadge);
     if (originalMatchMedia === undefined) {
@@ -65,10 +86,11 @@ describe('AppearanceSettingsRoute', () => {
       Object.defineProperty(window, 'matchMedia', originalMatchMedia);
     }
     reportAppBadgeOperation('idle');
+    setShakeReportPermission('unknown');
   });
 
   it('persists client-only menu and density choices', () => {
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
     fireEvent.click(screen.getByRole('radio', { name: 'Radial fan' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Compact' }));
 
@@ -79,7 +101,7 @@ describe('AppearanceSettingsRoute', () => {
   });
 
   it('renders every theme option with the current preference selected', () => {
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
 
     expect(screen.getByRole('radio', { name: 'Light' })).not.toBeChecked();
     expect(screen.getByRole('radio', { name: 'Dark' })).not.toBeChecked();
@@ -87,7 +109,7 @@ describe('AppearanceSettingsRoute', () => {
   });
 
   it('choosing a theme persists it and updates <html data-theme> immediately', () => {
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
 
@@ -97,24 +119,24 @@ describe('AppearanceSettingsRoute', () => {
   });
 
   it('persists the choice across a remount', () => {
-    const { unmount } = render(<AppearanceSettingsRoute />);
+    const { unmount } = renderRoute();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Light' }));
     unmount();
 
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
     expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked();
   });
 
   it('renders its content under both the light and dark themes', () => {
     document.documentElement.setAttribute('data-theme', 'light');
-    const light = render(<AppearanceSettingsRoute />);
+    const light = renderRoute();
     expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument();
     light.unmount();
 
     document.documentElement.setAttribute('data-theme', 'dark');
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
     expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument();
   });
@@ -126,7 +148,7 @@ describe('AppearanceSettingsRoute', () => {
       clearAppBadge: { configurable: true, value: undefined },
     });
 
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
 
     expect(screen.getByText(/Patches is installed as a PWA/)).toBeInTheDocument();
     expect(
@@ -143,10 +165,74 @@ describe('AppearanceSettingsRoute', () => {
     });
     reportAppBadgeOperation('failed');
 
-    render(<AppearanceSettingsRoute />);
+    renderRoute();
 
     expect(screen.getByText(/Patches is installed as a PWA/)).toBeInTheDocument();
     expect(screen.getByText(/last badge update was not accepted/)).toBeInTheDocument();
     expect(screen.queryByText(/badging enabled/i)).not.toBeInTheDocument();
+  });
+
+  it('shows no shake-to-report control on browsers without the iOS gesture gate', () => {
+    vi.unstubAllGlobals();
+    renderRoute();
+
+    expect(screen.queryByRole('heading', { name: 'Shake to report' })).not.toBeInTheDocument();
+  });
+
+  it('offers a one-tap opt-in on iOS Safari and calls requestPermission from the click', () => {
+    const requestPermission = vi.fn().mockResolvedValue('granted');
+    vi.stubGlobal(
+      'DeviceMotionEvent',
+      class {
+        static requestPermission = requestPermission;
+      },
+    );
+
+    renderRoute();
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shake to report' }));
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it('honestly reports a granted permission as enabled', async () => {
+    vi.stubGlobal('DeviceMotionEvent', DeviceMotionEventWithPermission);
+    DeviceMotionEventWithPermission.requestPermission = vi.fn().mockResolvedValue('granted');
+
+    renderRoute();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shake to report' }));
+
+    expect(await screen.findByText(/Shake to report is enabled/)).toBeInTheDocument();
+    expect(getShakeReportPermission()).toBe('granted');
+    expect(window.localStorage.getItem(SHAKE_PERMISSION_STORAGE_KEY)).toBe('granted');
+  });
+
+  it('honestly reports a denied permission and points at the always-available reporter — never a silent no-op', async () => {
+    vi.stubGlobal('DeviceMotionEvent', DeviceMotionEventWithPermission);
+    DeviceMotionEventWithPermission.requestPermission = vi.fn().mockResolvedValue('denied');
+
+    renderRoute();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shake to report' }));
+
+    expect(await screen.findByText(/Shake to report is off/)).toBeInTheDocument();
+    expect(screen.getByText(/Motion access was denied/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'report an issue' })).toHaveAttribute(
+      'href',
+      '/report',
+    );
+    expect(getShakeReportPermission()).toBe('denied');
+  });
+
+  it('persists a granted permission across a remount without re-prompting', async () => {
+    vi.stubGlobal('DeviceMotionEvent', DeviceMotionEventWithPermission);
+    DeviceMotionEventWithPermission.requestPermission = vi.fn().mockResolvedValue('granted');
+
+    const { unmount } = renderRoute();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shake to report' }));
+    await screen.findByText(/Shake to report is enabled/);
+    unmount();
+
+    renderRoute();
+    expect(screen.getByText(/Shake to report is enabled/)).toBeInTheDocument();
   });
 });

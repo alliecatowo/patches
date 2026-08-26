@@ -315,13 +315,19 @@ export class PostService {
         );
       }
 
+      // P18-011: tag extraction must run before federation publish — `publishPost` reads
+      // `post_tags` (P18-006) to build the outbound Note's `tag` array, so if it ran first it
+      // would always see zero rows and ship a tagless Note to every remote follower.
+      // `extractAndAttach` never throws (it catches persistence/extraction-system failures and
+      // returns `[]`, §181/§148), so reordering it ahead of federation publish cannot turn a
+      // tag-extraction failure into a dropped post.
+      await this.tagExtraction.extractAndAttach(manager, id, parsed.body ?? '');
+
       // P8-002/P8-003: delivers `Create(Note)` to the author's remote followers, enqueued in
       // this same transaction (`FederationGateway`'s doc comment). No-op (`NoopFederationGateway`
       // or `publishPost`'s own visibility check) unless federation is enabled and the post is
       // `PUBLIC`.
       await this.federation.publishPost(manager, id);
-
-      await this.tagExtraction.extractAndAttach(manager, id, parsed.body ?? '');
 
       const mentionActorIds =
         parsed.body === undefined

@@ -11,7 +11,7 @@ import { MessagesRoute } from './MessagesRoute.js';
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
 const mockUseSession = vi.fn<() => unknown>();
-const mockPushToast = vi.fn();
+const mockToast = vi.fn<(...args: unknown[]) => void>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -26,8 +26,8 @@ vi.mock('../hooks/useSession.js', () => ({
   useSession: () => mockUseSession(),
 }));
 
-vi.mock('../components/ToastProvider.js', () => ({
-  useToast: (): { pushToast: typeof mockPushToast } => ({ pushToast: mockPushToast }),
+vi.mock('sonner', () => ({
+  toast: (...args: unknown[]): void => mockToast(...args),
 }));
 
 function conversation(id: string, handle: string): Conversation {
@@ -58,7 +58,7 @@ describe('MessagesRoute', () => {
   beforeEach(() => {
     mockListConversations.mockReset();
     mockUseSession.mockReset();
-    mockPushToast.mockReset();
+    mockToast.mockReset();
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-me', handle: 'allie' } as unknown as Actor,
     });
@@ -91,8 +91,6 @@ describe('MessagesRoute', () => {
 
     fireEvent.click(screen.getByLabelText('New direct message'));
 
-    expect(mockPushToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining('terminal client') as string }),
-    );
+    expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('terminal client') as string);
   });
 });

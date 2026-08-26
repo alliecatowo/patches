@@ -4,7 +4,11 @@
 the two-node lab described in §4's Stage F1: WebFinger, actor documents, inbox/outbox, `Follow`
 /`Accept`/`Undo`/`Create`/`Update`/`Delete`/`Like`, HTTP Signatures, SSRF/ingestion hardening,
 in-process telemetry counters (A-036), and a two-real-process integration test
-(`apps/server/test/federation-two-node.integration.test.ts`).
+(`apps/server/test/federation-two-node.integration.test.ts`). Phase 18 (P18-001..009,
+2026-08-22–25) extended that same lab to federate three Amendment B features — reposts, tags,
+quotes — under [ADR 0028](../decisions/0028-federating-social-depth.md); see §7.6 below.
+Communities stay local-only in v0 (the `Group`-actor pattern is unverified and deferred to its
+own ADR) and DMs never cross the federation seam at all, encrypted or not (ADR 0020 §13).
 None of it is reachable unless an operator sets `FEDERATION_ENABLED=true` — every node still
 ships with federation off by default (§176), and Stage F2/F3 (Mastodon interoperability, public
 federation, §160's full readiness checklist) remain **not started**. This document describes the
@@ -414,16 +418,66 @@ reading a remote post. Remote page documents are subject to the same §109 inges
 any other remote input — bounded size, validated content type, capped JSON depth — and to the
 same strict-on-write validation as local documents.
 
-## 7.6 Amendment B mapping (§193) — **Status: decided (ADR 0028), Phase 18 in progress**
+## 7.6 Amendment B mapping (§193) — **Status: decided (ADR 0028), Phase 18 implemented (P18-001..009), off by default**
 
 Amendment B (§178–§195) added reposts, quotes, tags, communities and DMs as **local,
 single-node** features. Phase 18 federates the first three, in that order, under
 [ADR 0028](../decisions/0028-federating-social-depth.md) (2026-08-22): reposts map to
 `Announce`/`Undo(Announce)` with **deterministically reconstructed** outbound activity
 ids; tags map to `as:Hashtag`; quotes map to FEP-044f with new + legacy properties emitted
-and all four accepted inbound, unknown shapes as silent no-ops. This section still moves
-**no** §109 gate and **no** §160 checklist item above — the checklist is unchanged by
-Amendment B and by Phase 18.
+and all four accepted inbound, unknown shapes as silent no-ops. Communities stay
+**local-only** in v0 and DMs never cross the federation seam at all — neither is affected
+by anything below. This section still moves **no** §109 gate and **no** §160 checklist
+item above — the checklist is unchanged by Amendment B and by Phase 18; Phase 18 remains
+reachable only when `FEDERATION_ENABLED=true`, same as every other Stage F1 surface.
+
+Landed, in dependency order (all behind the same off-by-default flag, all covered by the
+two-node lab — `docs/operations/federation.md`'s "Two-node lab (P18-008)" section):
+
+- **P18-002** — schema: `reposts.remote_activity_uri` (nullable, unique-indexed — links a
+  remote `Announce` to the local pointer row so a remote `Undo` can find it) and
+  `quote_authorizations` (the FEP-044f authorization lifecycle table). See §7.6.1 below.
+- **P18-003** — outbound reposts: `FederationGateway.announceRemotePost`/
+  `unannounceRemotePost` (`activitypub-federation-gateway.service.ts`,
+  `reaction.service.ts`), emitting `Announce`/`Undo(Announce)` with the id
+  `localRepostAnnounceUri` reconstructs from the repost row (`activity-ids.ts`) —
+  never `randomUUID()` (B-079's failure mode, deliberately not repeated).
+- **P18-004** — inbound `Announce`/`Undo(Announce)` (`InboxService.handleAnnounce`/
+  `handleUndoAnnounce`, `inbox.service.ts`): re-checks §180.1 eligibility and
+  block/mute/domain-block at ingest, links the local repost row's
+  `remote_activity_uri`, and ingests a remote post's `tag` array through the same local
+  Hashtag grammar a local post uses — a grammar failure drops the tag, never the post.
+- **P18-005** — `RemoteObjectService` (`remote-object.service.ts`): fetch-by-URI for
+  quote resolution, content-type-validated (`application/activity+json`/`ld+json`),
+  bounded-JSON, TTL-cached with a negative cache for 404/410, per-origin rate limit,
+  built on the existing `safeFetch` SSRF/rebinding defenses (§109) rather than a parallel
+  fetch path; refuses any DM-path caller before ever making a request.
+- **P18-006** — outbound tags + quotes (`activitystreams/documents.ts`'s
+  `buildNoteObject`): emits `tag: [Hashtag]` from `post_tags` in deterministic
+  `(created_at, tag_id)` order, and — for a quote post — `quote` plus the legacy
+  `quoteUri`/`quoteUrl`/`_misskey_quote` properties together; `quote_policy` maps onto
+  `interactionPolicy.canQuote` (`ANYONE`→`as:Public`, `FOLLOWERS`→the followers
+  collection, `NOBODY`→the author URI only — no invented `following` value).
+- **P18-007** — inbound quotes (`InboxService`'s quote branch): reads
+  `quote`>`quoteUri`>`quoteUrl`>`_misskey_quote` in first-recognizable-wins precedence,
+  resolves the quoted object through P18-005 only, and enforces §180.2 — an
+  unverifiable, policy-violating, or blocked-author quote ingests as a **plain post**,
+  never an endorsed one. Records a `quote_authorizations` row
+  (`PENDING`/`VERIFIED`/`REJECTED`) on receipt; a self-quote links with no row
+  (FEP-044f auto-approves those).
+- **P18-008** — two-node lab round trip proving the above: repost/unrepost
+  `Announce`/`Undo(Announce)` id stability across an actual process restart of node A,
+  and quote-of-remote plus local-from-remote quote linkage (each recording a `VERIFIED`
+  `quote_authorizations` row). **Found a real bug, since fixed (P18-011)**: the tag-feed arm of
+  the same round trip failed because `PostService.createPost` called
+  `federation.publishPost` before `tagExtraction.extractAndAttach`, so a federated
+  post's `post_tags` were always empty at publish time and no Hashtag ever reached a
+  peer. `handleAnnounce`/`handleCreate` (P18-004/P18-007) were unaffected and correct.
+  P18-011 swapped the two calls and added a unit-level ordering guard; all four
+  round-trip cases now pass. See `docs/operations/federation.md` for the transcript.
+- **P18-009** — TUI rendering: remote-repost/remote-quote attribution and the one-level
+  quote-embed nesting bound, both client-only and unaffected by that bug (they
+  render whatever tags a post already has). Web equivalent tracked as B-180.
 
 The verified protocol detail, with citations and verification dates (re-verified
 2026-08-22 for reposts/quotes/tags and the `Group` questions), lives in
@@ -465,8 +519,9 @@ Six things that are settled and must not be re-litigated per feature:
 
 ### 7.6.1 Phase 18 schema (ADR 0028, P18-002)
 
-Two schema objects landed with ADR 0028 (`FederationSocialDepthSchema` migration); the
-tables are written but no inbox/outbox code uses them yet — that is P18-003+.
+Two schema objects landed with ADR 0028 (`FederationSocialDepthSchema` migration).
+Both are now read and written by the inbox/outbox code described above (P18-003
+through P18-007) — this is no longer schema-only.
 
 - **`reposts.remote_activity_uri`** (nullable `text`, unique index) — the activity id of
   the **remote** `Announce` an inbound repost arrived as. A remote `Undo(Announce)` names
@@ -488,10 +543,11 @@ tables are written but no inbox/outbox code uses them yet — that is P18-003+.
   (`quoting_post_id`, `quoted_post_id`) for exactly-one semantics; (`quoted_post_id`,
   `state`) for "who quoted me and is it still approved" and revocation fan-out.
 
-> **Note for the orchestrator (P18-002):** the two objects above belong in
-> `docs/architecture/data-model.md` with the other tables. That file is owned by another
-> agent this wave — merge this section's facts there and reduce this subsection to a
-> pointer.
+> **Known doc gap, still open as of P18-010:** the two objects above belong in
+> `docs/architecture/data-model.md` with the other tables; as of this writing that file
+> still does not mention `reposts.remote_activity_uri` or `quote_authorizations`.
+> `docs/architecture/data-model.md` is outside this task's owned paths — flagged here
+> rather than fixed.
 
 ## 8. Domain stability warning (§21, §91)
 

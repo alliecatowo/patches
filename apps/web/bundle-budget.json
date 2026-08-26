@@ -1,0 +1,5 @@
+{
+  "_comment": "B-168 size budget for apps/web/dist/assets/*.js. Thresholds are the largest chunk measured on 2026-08-25 (`VITE_PATCHES_API_BASE=https://patches-social.fly.dev pnpm --filter @patches/web build`) plus ~30% headroom: the biggest chunk that day was index-*.js at 270.32 kB raw / 81.76 kB gzip (route entry pulling in react-router + app shell), followed by client-*.js (the generated Connect client) at 214.89 kB raw / 61.03 kB gzip. Route-level chunks are all well under 20 kB. Re-measure with `pnpm --filter @patches/web run bundle:analyze` and bump both numbers together (with a note of the new measurement date) if a legitimate dependency grows the shell — don't raise it to silence a check without reading the report first.",
+  "maxChunkBytes": 350000,
+  "maxChunkGzipBytes": 110000
+}

@@ -319,3 +319,14 @@ kbd,
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* sonner (B-155): border color per toast type, matching the terminal theme's tokens
+   instead of sonner's stock light-mode palette. Base colors come from Toaster's
+   toastOptions in main.tsx. */
+[data-sonner-toast][data-type='error'] {
+  border-color: var(--danger) !important;
+}
+
+[data-sonner-toast][data-type='success'] {
+  border-color: var(--ok) !important;
+}

@@ -12,17 +12,20 @@ export const TEST_MINIO_DEFAULTS = {
   R2_REGION: 'auto',
 } as const;
 
-/** Fills in `R2_*` env vars with the compose defaults, but never overwrites a value the
- * environment (or a developer's `.env`) already set — same "don't clobber" stance
- * `prepareServerEnv` takes for most of its variables. Must run before `startTestServer()`
+/** Forces `R2_*` env vars to the compose MinIO defaults — **overwritten, never defaulted**,
+ * same stance `env.ts` documents for `DATABASE_URL` and for the identical reason: this suite's
+ * own `S3StorageClient` (in `beforeAll`, below) and `isMinioReachable()` both hardcode
+ * `TEST_MINIO_DEFAULTS` and talk to local MinIO only, so the server-under-test's storage client
+ * must point at the exact same instance or the two halves of the suite silently diverge. A
+ * "don't clobber" `??=` here previously let a developer's shell or `.env` — commonly holding
+ * real Cloudflare R2 production credentials for `mise run server` — leak into the test process,
+ * producing a MinIO `403 InvalidAccessKeyId`/`SignatureDoesNotMatch` against a presigned URL
+ * that was actually signed for R2, not local MinIO (B-092). Must run before `startTestServer()`
  * (which imports `config.module.js`, and `ConfigModule.forRoot()` validates `process.env`
  * at call time — see `env.ts`'s own note on this). */
 export function prepareMediaTestEnv(): void {
   for (const [key, value] of Object.entries(TEST_MINIO_DEFAULTS)) {
-    const current = process.env[key];
-    if (current === undefined || current.length === 0) {
-      process.env[key] = value;
-    }
+    process.env[key] = value;
   }
 }
 

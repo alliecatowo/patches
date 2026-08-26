@@ -113,6 +113,12 @@ export interface Actor {
   flair: ActorFlair | undefined;
   /** Up to 3, in display order (spec §188). */
   pinnedPostIds: string[];
+  /**
+   * Federation origin domain (spec §163). Empty for a local actor — render `@handle`. Set to
+   * the actor's home node's domain for a remote actor — render `@handle@home_server`. Never
+   * this node's own domain; a local actor's node is only ever the caller's own (`Session.node`).
+   */
+  homeServer: string;
 }
 
 export interface GetActorRequest {

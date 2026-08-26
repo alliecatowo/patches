@@ -133,6 +133,7 @@ export function toProtoPost(view: PostView): ProtoPost {
     // unset/empty value here rather than a guess.
     filteredBy: view.filteredBy === null ? undefined : toProtoFilteredByHint(view.filteredBy),
     labels: view.labels.map(toProtoLabel),
+    originServer: view.originServer ?? '',
   };
 }
 

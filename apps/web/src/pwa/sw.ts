@@ -75,9 +75,13 @@ worker.addEventListener('activate', (event) => {
 
 // Drops precache caches from outdated Workbox versions (registers its own
 // `activate` listener). `precache` adds the injected manifest to the controller and
-// wires its install/activate lifecycle (populate + prune stale revisions — so stale
-// shells disappear while content-hashed `/assets/*`, revision-less, persist for
-// still-running old tabs).
+// wires its install/activate lifecycle: on activate, `PrecacheController` deletes
+// every cached URL that is absent from the NEW manifest (workbox-precaching@7.4.1
+// `PrecacheController.activate`) — including old hashed `/assets/*` chunks the new
+// build no longer references. A still-running old tab that misses the one-shot
+// reload below therefore loses its own cached bundle and falls back to fetching it
+// straight from the origin/CDN, which only works while that old build's files are
+// still being served there.
 cleanupOutdatedCaches();
 precache(
   (self as unknown as PwaWorkerGlobalScope & { __WB_MANIFEST: PrecacheManifest }).__WB_MANIFEST,

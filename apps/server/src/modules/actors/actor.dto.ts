@@ -35,6 +35,9 @@ export interface ActorProfile {
   locationText: string | null;
   websiteUrl: string | null;
   isLocal: boolean;
+  /** `null` for a local actor (spec §163) — the mapper turns this into the wire's empty
+   * string, same convention `Post.originServer` uses. */
+  homeServer: string | null;
   joinedAt: Date;
   counts: ActorCountsSummary;
   /** `null` when the actor has never customized their presentation (spec §173). */
@@ -59,6 +62,7 @@ export function toActorProfile(
     locationText: actor.locationText,
     websiteUrl: actor.websiteUrl,
     isLocal: actor.isLocal,
+    homeServer: actor.homeServer,
     joinedAt: actor.createdAt,
     counts,
     nameplate: toNameplateSummary(actor.nameplate),

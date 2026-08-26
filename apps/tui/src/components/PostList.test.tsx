@@ -5,8 +5,14 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ContentSizeProvider } from '../app/layout.js';
+import { PlainModeProvider } from '../theme/plain-mode.js';
 import { PostList } from './PostList.js';
-import { makePost, makePostCounts, makePostViewerState } from '../test/wire-fixtures.js';
+import {
+  makePost,
+  makePostCounts,
+  makePostViewerState,
+  makeRemoteActor,
+} from '../test/wire-fixtures.js';
 
 function selectedPost(): Post {
   return makePost({
@@ -54,5 +60,55 @@ describe('PostList Amendment B row actions', () => {
       expect(callback).toHaveBeenCalledOnce();
       expect(callback).toHaveBeenCalledWith(post);
     }
+  });
+});
+
+describe('PostList remote origin (P18-009)', () => {
+  it('renders a remote reposter and remote quote embed through the full list, in rich mode', () => {
+    const remoteQuoted = makePost({
+      id: 'quoted-remote',
+      body: 'quoted from another instance',
+      author: makeRemoteActor({ handle: 'quinn' }),
+    });
+    const post = makePost({
+      repostedBy: [makeRemoteActor({ handle: 'rae' })],
+      repostedByTotal: 1,
+      quotedPost: remoteQuoted,
+    });
+    const { lastFrame } = render(
+      <ContentSizeProvider size={{ rows: 20, columns: 80 }}>
+        <PostList posts={[post]} loading={false} hasMore={false} emptyMessage="empty" />
+      </ContentSizeProvider>,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('↻ @rae (remote) reposted');
+    expect(frame).toContain('quoted @quinn (remote)');
+  });
+
+  it('renders the same remote-origin markers in plain mode and existing row actions still fire (no new keys, §191)', () => {
+    const post = makePost({
+      repostedBy: [makeRemoteActor({ handle: 'rae' })],
+      repostedByTotal: 1,
+      quotePolicy: QUOTE_POLICY.ANYONE,
+    });
+    const onQuote = vi.fn();
+    const { stdin, lastFrame } = render(
+      <PlainModeProvider plain>
+        <ContentSizeProvider size={{ rows: 16, columns: 80 }}>
+          <PostList
+            posts={[post]}
+            loading={false}
+            hasMore={false}
+            emptyMessage="empty"
+            isActive
+            onQuote={onQuote}
+          />
+        </ContentSizeProvider>
+      </PlainModeProvider>,
+    );
+    expect(lastFrame() ?? '').toContain('↻ @rae (remote) reposted');
+    stdin.write('Q');
+    expect(onQuote).toHaveBeenCalledOnce();
+    expect(onQuote).toHaveBeenCalledWith(post);
   });
 });

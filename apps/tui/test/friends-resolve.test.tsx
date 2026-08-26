@@ -89,6 +89,7 @@ describe('Resolve a remote actor by acct (B-028)', () => {
       $typeName: 'patches.v1.Actor',
       id: 'actor-remote-bob',
       handle: 'bob@remote.example',
+      homeServer: 'remote.example',
       displayName: 'Remote Bob',
       bio: '',
       locationText: '',

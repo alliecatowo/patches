@@ -39,6 +39,9 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
+  - [`operations/session-management-audit.md`](./operations/session-management-audit.md) — H-022
+    audit confirming the TUI/`@patches/client` session-manager split is intentional (ADR 0023),
+    not accidental duplication
 - **`product/`** — what Patches is and why: product principles, roadmap, moderation policy,
   and the privacy notice.
   - [`product/principles.md`](./product/principles.md)

@@ -1,10 +1,10 @@
 import { describeError } from '@patches/client';
 import { DeviceLinkStatus } from '@patches/proto/es';
-import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from '../routes/AuthForm.module.css';
 
 interface DeviceLink {
@@ -49,8 +49,10 @@ export function DeviceLinkButton(): JSX.Element {
     [clearScheduledPoll],
   );
 
-  const beginMutation = useMutation({
-    mutationFn: () => api.auth.beginDeviceLink({}),
+  // B-164: same orphaned-poll-loop risk as `GitHubLoginButton.beginMutation` — unmounting
+  // before this resolves must not later schedule polling for a screen that's gone.
+  const beginMutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) => api.auth.beginDeviceLink({}, { signal }),
     onSuccess: (response) => {
       setExpired(false);
       const deviceLink: DeviceLink = {

@@ -23,8 +23,8 @@ vi.mock('../components/FollowButton.js', () => ({ FollowButton: () => null }));
 vi.mock('../components/ModerationActions.js', () => ({ ModerationActions: () => null }));
 vi.mock('../components/PageBlocks.js', () => ({ PageBlocks: () => null }));
 vi.mock('../components/PostTimeline.js', () => ({ PostTimeline: () => null }));
-vi.mock('../components/ToastProvider.js', () => ({
-  useToast: (): { pushToast: () => void } => ({ pushToast: () => undefined }),
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { error: vi.fn() }),
 }));
 vi.mock('../hooks/useSession.js', () => ({
   useSession: (): { actor: { id: string } } | null => mockUseSession(),

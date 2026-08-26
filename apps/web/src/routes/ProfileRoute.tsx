@@ -3,6 +3,7 @@ import { describeError, isSignInRequired } from '@patches/client';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
 import { ActorList } from '../components/ActorList.js';
@@ -15,7 +16,6 @@ import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
-import { useToast } from '../components/ToastProvider.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
 import { NotFoundRoute } from './NotFoundRoute.js';
@@ -29,7 +29,6 @@ export function ProfileRoute(): JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
-  const toast = useToast();
   const profileHandle =
     handle !== undefined && handle.startsWith('@') && handle.length > 1 && handle[1] !== '@'
       ? handle.slice(1)
@@ -127,10 +126,9 @@ export function ProfileRoute(): JSX.Element {
                 type="button"
                 className={styles['messageBtn']}
                 onClick={() =>
-                  toast.pushToast({
-                    message: `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
-                    tone: 'info',
-                  })
+                  toast(
+                    `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
+                  )
                 }
                 aria-label={`Send message to @${actor.handle}`}
               >

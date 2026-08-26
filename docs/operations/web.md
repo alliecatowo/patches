@@ -124,6 +124,64 @@ production build talks to the node's real public origin directly
 `apps/web/src/api/client.ts`). That means the request is genuinely cross-origin, which is
 where CORS below comes in.
 
+### Bundle size budget (B-168)
+
+`.github/workflows/web.yml`'s deploy job runs `pnpm --filter @patches/web run bundle:check`
+right after the production build and before the Cloudflare deploy step — it fails the job
+(blocking deploy) if any built `dist/assets/*.js` chunk exceeds the raw or gzip threshold in
+`apps/web/bundle-budget.json`. It never touches a plain `build`/`web:deploy` beyond that one
+read-only check.
+
+To see what's actually in a chunk:
+
+```sh
+pnpm --filter @patches/web run bundle:analyze   # ANALYZE=1 vite build
+```
+
+This writes a treemap report to `apps/web/dist-analyze/bundle-report.html` (open it in a
+browser) — a separate output directory from `dist`, so it can never leak into, resize, or
+slow down the artifact that gets deployed. The same step runs in CI on every deploy attempt
+and its report is uploaded as the `web-bundle-report` workflow artifact, win or lose.
+
+To raise a budget: read the report first and confirm the growth is a real, intentional
+dependency change (not something that should be code-split or route-lazy-loaded instead).
+Then bump both `maxChunkBytes` and `maxChunkGzipBytes` together in `bundle-budget.json`,
+updating its `_comment` with the new measurement and date — the file is the only place these
+numbers live; `apps/web/scripts/check-bundle-budget.mjs` just enforces them.
+
+### React Query devtools (B-157)
+
+`main.tsx` mounts `@tanstack/react-query-devtools` behind `import.meta.env.DEV`, via
+`import()` inside the conditional branch (not a static import gated by an `if`) — Vite's
+`DEV` constant folding lets Rollup dead-code-eliminate the whole branch, including the
+dynamic `import()` call itself, so no devtools code reaches a production chunk. Verified by
+building with `pnpm --filter @patches/web build` and confirming `react-query-devtools`
+appears nowhere in the emitted `dist/assets/*.js` (only in a `.js.map`'s embedded
+`sourcesContent`, which is source for debugging, not executed code) — `bundle:check` still
+passes with no change to the thresholds.
+
+### Web Vitals collection (B-166)
+
+`src/lib/webVitals.ts` collects CLS, LCP, and INP via the `web-vitals` package (6.x, the
+version in this repo) and batches them into a single `sendBeacon` (falling back to a
+`keepalive` `fetch`) on `visibilitychange`/`pagehide`. FID is not collected: `web-vitals` 6.x
+dropped `onFID` entirely in favor of `onINP`, matching Google's 2024 deprecation — there is
+nothing to report.
+
+There is no browser-facing metrics _ingest_ endpoint on this server yet — the only
+`/metrics` surfaces (`packages/observability`) are Prometheus scrape endpoints, pull rather
+than push, and cannot receive a beacon from a browser. Rather than invent a server endpoint,
+the client reads its destination from `VITE_WEB_VITALS_ENDPOINT` at build time; if it is
+unset (every environment today), `initWebVitals()` never installs a single observer — zero
+behavioral or bundle-size change out of the box. The server-side ingest endpoint is tracked
+as B-178.
+
+The payload never carries the concrete URL, a handle, or a post id: `pathToRoutePattern`
+reduces the live `location.pathname` to the same route _shape_ `router.tsx` defines (e.g.
+`/p/:id`, `/page/:handle/:slug`), matching the DM/PII rule in §194 generalized to metrics.
+Any failure to send (unreachable endpoint, missing `sendBeacon`/`fetch`, a thrown
+serialization error) is swallowed — this must never surface a user-visible error or toast.
+
 ## The CORS coupling
 
 The Connect edge's CORS allow-list (`WEB_ORIGINS`, ADR 0016 §6, `apps/server/src/

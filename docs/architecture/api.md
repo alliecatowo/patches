@@ -222,6 +222,15 @@ ignore unknown block types gracefully; the server rejects them on write.
 | `ListFollowing`    | same as `ListFollowers`, opposite direction                                                                                                                                                                                                                                                                        |
 | `ResolveActor`     | (B-028) discovers a remote actor by `acct:user@domain` via WebFinger (`RemoteActorService`) and upserts/returns it (`is_local = false`) so the caller can `SocialGraphService.FollowActor` it; requires an authenticated session and is rate-limited per caller; `NOT_IMPLEMENTED` when `FEDERATION_ENABLED=false` |
 
+`Actor.home_server` (B-179) is the federation origin domain (§163): empty for a local actor —
+render `@handle` — and the actor's home node's domain for a remote one — render
+`@handle@home_server`. Populated from the `actors.home_server` column in every `Actor`
+construction path (`GetActor`/`GetActorByHandle`/`SearchActors`/`ListFollowers`/`ListFollowing`/
+`ResolveActor`, and every embedded `Actor` summary — `Post.author`, `Session.actor`, etc.).
+`Post.origin_server` follows the same convention for the authoring node of a post. Rendering the
+`@handle@domain` label itself is left to each client (TUI: P18-009, web: B-180) — this only
+guarantees the domain is on the wire.
+
 `UpdateProfile`'s `nameplate.badges` is never accepted from the client (§173) — the server
 mapper (`actor.service.ts`'s `buildNameplateRecord`) always carries the actor's existing
 badges forward regardless of what a request sends, and validates the serialized record stays
@@ -420,8 +429,15 @@ arm of §183.2 has no backing store any more, so mutual follow is currently the 
 first contact. Groups are capped at eight, and block failures do not expose a recipient oracle.
 Unread state is per viewer without read receipts.
 
-No push infrastructure until a mobile client exists — the TUI polls while active and
-supports manual refresh.
+No push infrastructure and no streaming RPC: DM delivery is poll-based, decided deliberately in
+ADR [0032](../decisions/0032-dm-delivery-stays-poll-based.md), which also publishes the freshness
+SLA and the measured triggers that would reopen it. Current cadence: 5 s while a TUI thread is open
+(`apps/tui/src/screens/MessagesScreen.tsx:424`), 60 s for the TUI unread badge
+(`apps/tui/src/hooks/useUnreadCount.ts:5`), 30 s for web's badge
+(`apps/web/src/routes/RootLayout.tsx:46`). Two surfaces do **not** meet that SLA yet — the TUI and
+web conversation lists are fetched once per mount and never refresh (`MessagesScreen.tsx:458`;
+`apps/web/src/routes/MessagesRoute.tsx:22-25`) — tracked as P19-017. §56's "and refresh manually"
+is likewise not yet wired to DM screens (P19-016).
 
 `Conversation.security_mode` is read-only and fixed at creation. Every conversation is
 `CONVERSATION_SECURITY_MODE_E2EE_V1`; `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE` is

@@ -1,10 +1,10 @@
 import { describeError } from '@patches/client';
 import { OidcLoginStatus, type OidcProviderInfo } from '@patches/proto/es';
-import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from '../routes/AuthForm.module.css';
 
 interface DeviceLink {
@@ -59,8 +59,11 @@ export function OidcLoginButton({
     [clearScheduledPoll],
   );
 
-  const beginMutation = useMutation({
-    mutationFn: () => api.auth.beginOidcLogin({ provider: provider.id }),
+  // B-164: same orphaned-poll-loop risk as `GitHubLoginButton.beginMutation` — unmounting
+  // before this resolves must not later schedule polling for a screen that's gone.
+  const beginMutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) =>
+      api.auth.beginOidcLogin({ provider: provider.id }, { signal }),
     onSuccess: (response) => {
       setTerminal(null);
       setCopied(false);
