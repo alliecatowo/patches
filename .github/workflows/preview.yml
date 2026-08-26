@@ -176,9 +176,11 @@ jobs:
           echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Run migrations against the Neon branch
-        # `pnpm build` first: migration:run imports @patches/config's dist, which the
-        # setup action's install alone does not produce (CI's integration job builds too).
-        run: pnpm build && pnpm db:migrate
+        # Scoped turbo build — `@patches/database` + its workspace deps (config, proto,
+        # …) — not the full 21-workspace `pnpm build`: migrations only need the
+        # database package's dist, and this slice is usually restored warm from the
+        # setup action's turbo cache (saves ~30-40s per preview deploy).
+        run: pnpm --filter @patches/database... build && pnpm db:migrate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           DATABASE_SSL: 'true'
@@ -371,9 +373,12 @@ jobs:
           # infra/preview/fly-preview.toml); healthz lives behind the HTTP one.
           edge="https://patches-pr-${pr}.fly.dev:8443"
           health=""
-          for i in $(seq 1 10); do
-            if health="$(curl -fsS --max-time 20 "${edge}/healthz" 2>/dev/null)"; then break; fi
-            echo "healthz not reachable yet (attempt ${i}/10); waiting 15s"; sleep 15
+          # Autostopped server machines take a few seconds to wake on the first
+          # request, and a brand-new app's DNS can take a minute — probe with short
+          # intervals rather than paying a flat 15s sleep per attempt.
+          for i in $(seq 1 20); do
+            if health="$(curl -fsS --max-time 10 "${edge}/healthz" 2>/dev/null)"; then break; fi
+            echo "healthz not reachable yet (attempt ${i}/20); waiting 5s"; sleep 5
           done
           [ -n "$health" ] || { echo "healthz never became reachable" >&2; exit 1; }
           echo "healthz: ${health}" | head -c 200; echo
