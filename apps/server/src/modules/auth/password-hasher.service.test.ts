@@ -1,7 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import type * as Argon2 from '@node-rs/argon2';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { AppConfigService } from '../../config/app-config.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
+
+/**
+ * Wraps the real `verify` export in a spy so tests can assert it was actually invoked (and with
+ * what argument) without touching its behaviour — `importOriginal` returns the genuine
+ * `@node-rs/argon2` binding, so every call still runs a real Argon2id verification. This package
+ * is CJS (no top-level `await`), so the mocked module is fetched lazily in `beforeAll`.
+ */
+vi.mock('@node-rs/argon2', async (importOriginal) => {
+  const actual = await importOriginal<typeof Argon2>();
+  return { ...actual, verify: vi.fn(actual.verify) };
+});
+
+let verifySpy: ReturnType<typeof vi.mocked<typeof Argon2.verify>>;
+
+beforeAll(async () => {
+  const argon2 = await import('@node-rs/argon2');
+  verifySpy = vi.mocked(argon2.verify);
+});
 
 /**
  * Argon2id at the OWASP baseline takes roughly 50–100ms per call by design, so this suite
@@ -49,21 +68,19 @@ describe('PasswordHasher', () => {
     expect(await service.verify('$argon2id$not-a-real-hash', 'anything')).toBe(false);
   });
 
-  it('spends comparable time on a missing hash as on a real one', async () => {
+  it('runs a real Argon2id verification against the dummy hash for a missing stored hash (spec §166)', async () => {
     const service = hasher();
-    const hash = await service.hash('a good long password');
-    await service.verify(null, 'warm up the dummy hash');
+    verifySpy.mockClear();
 
-    const timeOf = async (stored: string | null): Promise<number> => {
-      const started = process.hrtime.bigint();
-      await service.verify(stored, 'a wrong password');
-      return Number(process.hrtime.bigint() - started) / 1e6;
-    };
+    expect(await service.verify(null, 'a wrong password')).toBe(false);
 
-    const real = await timeOf(hash);
-    const absent = await timeOf(null);
-    // A generous bound: the point is that the "no such user" path runs a real KDF at all,
-    // not that two Argon2id runs finish within microseconds of each other on a busy CI box.
-    expect(absent).toBeGreaterThan(real / 4);
+    // The point being protected is that the "no such user" path spends a real KDF call rather
+    // than short-circuiting — asserted directly via the spy, not inferred from wall-clock time
+    // (which the old version of this test compared across two runs and was flaky under
+    // concurrent scheduling, see B-194).
+    expect(verifySpy).toHaveBeenCalledTimes(1);
+    const [suppliedHash] = verifySpy.mock.calls[0] ?? [];
+    expect(typeof suppliedHash).toBe('string');
+    expect((suppliedHash as string).startsWith('$argon2id$')).toBe(true);
   });
 });
