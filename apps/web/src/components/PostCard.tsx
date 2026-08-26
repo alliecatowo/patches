@@ -8,7 +8,12 @@ import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
-import { formatAbsoluteTime, formatCount, formatRelativeTime } from '../lib/format.js';
+import {
+  formatAbsoluteTime,
+  formatActorHandle,
+  formatCount,
+  formatRelativeTime,
+} from '../lib/format.js';
 import {
   AlertTriangleIcon,
   BookmarkIcon,
@@ -261,7 +266,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
               {post.repostedBy.map((actor, index) => (
                 <span key={actor.id}>
                   {index > 0 ? ', ' : ''}
-                  <Link to={`/@${actor.handle}`}>@{actor.handle}</Link>
+                  <Link to={`/@${actor.handle}`}>@{formatActorHandle(actor)}</Link>
                 </span>
               ))}
             </span>
@@ -421,7 +426,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
                           {post.quotedPost.author?.displayName || post.quotedPost.author?.handle}
                         </CosmeticText>
                       </strong>
-                      <span className={styles['time']}>@{post.quotedPost.author?.handle}</span>
+                      <span className={styles['time']}>
+                        @{formatActorHandle(post.quotedPost.author)}
+                      </span>
                     </div>
                     <div className={styles['text']}>
                       <RichBody source={post.quotedPost.body} />

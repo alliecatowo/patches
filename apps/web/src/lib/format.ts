@@ -39,6 +39,20 @@ export function formatAbsoluteTime(timestamp: Timestamp | undefined): string {
   return date.toLocaleString();
 }
 
+/**
+ * Spec §163's canonical `handle@domain` identity for a reposter/quoted author (B-180,
+ * mirrors `apps/tui/src/components/PostRow.tsx`'s `REMOTE_ORIGIN_SUFFIX` handling now that
+ * B-179 put `Actor.home_server` on the wire). Plain text, no colour/icon of its own — `@`
+ * prefix is added by the caller alongside the existing markup, same as a local handle. Empty
+ * `homeServer` (a locally-owned actor) renders with no domain suffix.
+ */
+export function formatActorHandle(
+  actor: { handle: string; homeServer?: string } | undefined,
+): string {
+  if (!actor) return '';
+  return actor.homeServer ? `${actor.handle}@${actor.homeServer}` : actor.handle;
+}
+
 /** Compact counter formatting ("1.2K", "3M") for reply/like/repost counts. */
 export function formatCount(count: number): string {
   if (count < 1000) return String(count);
