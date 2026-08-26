@@ -15,6 +15,7 @@ class FakeServiceWorker extends EventTarget {
 class FakeRegistration extends EventTarget {
   readonly installing = new FakeServiceWorker();
   controller: object | null = null;
+  update = vi.fn().mockResolvedValue(undefined);
 }
 
 interface FakeNavigatorServiceWorker extends EventTarget {
@@ -144,5 +145,59 @@ describe('registerServiceWorker', () => {
     window.dispatchEvent(new Event('load'));
     expect(fake.register).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  /** B-202: a single-page app never performs another full navigation after its first
+   * load, so nothing else in the browser ever re-checks `/sw.js` for a byte-diff once
+   * this tab is open. These pin the proactive `registration.update()` calls that
+   * close that gap — see the doc comment on `scheduleProactiveUpdateChecks`. */
+  describe('proactive update checks (B-202)', () => {
+    function stubVisibility(state: DocumentVisibilityState): void {
+      Object.defineProperty(document, 'visibilityState', {
+        value: state,
+        configurable: true,
+      });
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('checks for an update when the tab regains visibility', async () => {
+      stubLocationReload();
+      const { registration } = installFakeServiceWorker();
+      await importFreshAndRegister();
+      window.dispatchEvent(new Event('load'));
+      await vi.waitFor(() => expect(registration.update).toHaveBeenCalledTimes(1));
+
+      stubVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(registration.update).toHaveBeenCalledTimes(1);
+
+      stubVisibility('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(registration.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-checks on a coarse interval while the tab stays visible, not while hidden', async () => {
+      stubLocationReload();
+      const { registration } = installFakeServiceWorker();
+      stubVisibility('visible');
+      vi.useFakeTimers();
+      try {
+        await importFreshAndRegister();
+        window.dispatchEvent(new Event('load'));
+        await vi.waitFor(() => expect(registration.update).toHaveBeenCalledTimes(1));
+
+        await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+        expect(registration.update).toHaveBeenCalledTimes(2);
+
+        stubVisibility('hidden');
+        await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+        expect(registration.update).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.clearAllTimers();
+      }
+    });
   });
 });
