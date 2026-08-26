@@ -2374,6 +2374,7 @@ export function App({
             onOpenSafetyNumber={(actorId) =>
               setStack((s) => push(s, { screen: 'safetyNumber', targetActorId: actorId }))
             }
+            onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
           />
         );
       case 'bookmarks':
@@ -2772,6 +2773,9 @@ export function App({
                                       push(s, { screen: 'safetyNumber', targetActorId: actorId }),
                                     );
                                   }}
+                                  onReadStateChanged={() =>
+                                    setUnreadNonce((current) => current + 1)
+                                  }
                                 />
                               )}
                             </Drawer>

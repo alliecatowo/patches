@@ -158,6 +158,13 @@ export interface MessagesScreenProps {
   receiveE2ee?: ((conversationId: string) => Promise<readonly E2eeReceivedRow[]>) | undefined;
   /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
   mailPollMs?: number | undefined;
+  /**
+   * P19-018: fired after a successful `MarkConversationRead` so the shell can refresh
+   * the status-bar unread badge (`useUnreadCount`'s poll otherwise only refires on a
+   * screen change or its own 60s interval — the same pattern `NotificationsScreen`
+   * already uses for `MarkNotificationsRead`).
+   */
+  onReadStateChanged?: (() => void) | undefined;
 }
 
 interface Page<T> {
@@ -422,6 +429,7 @@ export function MessagesScreen({
   securityPollMs = 30_000,
   receiveE2ee,
   mailPollMs = 5_000,
+  onReadStateChanged,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -445,6 +453,38 @@ export function MessagesScreen({
   >({ status: 'hidden' });
   // B-101 mailbox rows for the open end-to-end thread (deduped by envelope id).
   const [e2eeRows, setE2eeRows] = useState<readonly E2eeReceivedRow[]>([]);
+  // P19-018: conversation ids marked read locally this session, so the list badge
+  // clears without waiting for `ListConversations` to be refetched (it never is —
+  // `useKeysetList`'s identity is a static `'conversations'` string). Never removed
+  // once set, same as `NotificationsScreen`'s `readOverride` — a conversation only
+  // gets less unread by the caller opening it, and a fresh mount re-fetches for real.
+  const [readOverrideIds, setReadOverrideIds] = useState<ReadonlySet<string>>(new Set());
+
+  // Marks the open conversation read exactly once per open: keyed only on
+  // `conversationId`, so re-renders, polling ticks, and prop changes never re-fire it,
+  // but leaving and reopening the same thread (or opening a different one) does.
+  useEffect(() => {
+    if (conversationId === '') return;
+    const target = conversationId;
+    let cancelled = false;
+    api
+      .markConversationRead({ conversationId: target, throughMessageId: '' })
+      .then(() => {
+        if (cancelled) return;
+        setReadOverrideIds((current) =>
+          current.has(target) ? current : new Set(current).add(target),
+        );
+        onReadStateChanged?.();
+      })
+      .catch(() => {
+        // Best-effort, matching `NotificationsScreen`'s `markReadThrough`: a failed
+        // mark-read must never be mistaken for "now read" locally, so no override is
+        // set and the badge keeps showing what the server actually believes.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, conversationId, onReadStateChanged]);
 
   const fetchConversations = useCallback(
     (cursor: string): Promise<Page<Conversation>> =>
@@ -856,18 +896,21 @@ export function MessagesScreen({
           {!conversations.loading && conversations.items.length === 0 ? (
             <Text color={theme.muted}>No conversations yet.</Text>
           ) : null}
-          {conversations.items.map((conversation, index) => (
-            <Text
-              key={conversation.id}
-              color={isActive && index === effectiveListRow ? theme.accent : theme.text}
-              bold={isActive && index === effectiveListRow}
-            >
-              {isActive && index === effectiveListRow ? '› ' : '  '}
-              {conversationLabel(conversation, viewerActorId)}
-              {isE2eeConversation(conversation) ? ' [E2EE]' : ''}
-              {conversation.unreadCount > 0 ? ` · ${String(conversation.unreadCount)} unread` : ''}
-            </Text>
-          ))}
+          {conversations.items.map((conversation, index) => {
+            const unreadCount = readOverrideIds.has(conversation.id) ? 0 : conversation.unreadCount;
+            return (
+              <Text
+                key={conversation.id}
+                color={isActive && index === effectiveListRow ? theme.accent : theme.text}
+                bold={isActive && index === effectiveListRow}
+              >
+                {isActive && index === effectiveListRow ? '› ' : '  '}
+                {conversationLabel(conversation, viewerActorId)}
+                {isE2eeConversation(conversation) ? ' [E2EE]' : ''}
+                {unreadCount > 0 ? ` · ${String(unreadCount)} unread` : ''}
+              </Text>
+            );
+          })}
           {conversations.loadingMore ? <Loading label="Loading more" /> : null}
           <Text color={theme.muted}>
             Enter open · n / space more · s safety number · G membership · Esc back

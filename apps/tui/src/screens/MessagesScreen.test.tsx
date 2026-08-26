@@ -7,6 +7,7 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from '../../test/ansi.js';
+import { flush } from '../../test/harness.js';
 import {
   MessagesScreen,
   UNREVIEWED_DEV_E2EE_WARNING,
@@ -185,5 +186,91 @@ describe('MessagesScreen', () => {
     const withoutPolicy = await waitForFrame(lastFrame, 'No conversations yet.');
     expect(withoutPolicy).not.toContain('automatic deletion');
     expect(withoutPolicy).not.toContain('automatically deletes');
+  });
+
+  it(
+    'marks a conversation read exactly once on open, clears its badge locally, and does ' +
+      'not re-fire on reopen/re-render (P19-018)',
+    async () => {
+      const api = fakeApi();
+      const existing = conversation('conversation-1');
+      api.listConversations.mockResolvedValue(
+        create(ListConversationsResponseSchema, {
+          conversations: [{ ...existing, unreadCount: 3 }],
+        }),
+      );
+      api.getConversation.mockResolvedValue(
+        create(GetConversationResponseSchema, { conversation: existing }),
+      );
+      const onReadStateChanged = vi.fn();
+
+      const { lastFrame, stdin, rerender } = render(
+        <MessagesScreen api={api} isActive onReadStateChanged={onReadStateChanged} />,
+      );
+      const list = await waitForFrame(lastFrame, '3 unread');
+      expect(list).toContain('@alice');
+      expect(api.markConversationRead).not.toHaveBeenCalled();
+
+      stdin.write(KEY.enter);
+      await waitForFrame(lastFrame, '[E2EE]');
+      expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+      expect(api.markConversationRead).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        throughMessageId: '',
+      });
+
+      // A re-render while the same thread stays open must not re-fire the RPC — only
+      // opening a (new) conversation id does.
+      rerender(<MessagesScreen api={api} isActive onReadStateChanged={onReadStateChanged} />);
+      await waitForFrame(lastFrame, '[E2EE]');
+      expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+      expect(onReadStateChanged).toHaveBeenCalledTimes(1);
+
+      // Target text unique to the settled *list* view — the thread header also
+      // contains "@alice" (inside "Alice (@alice) [E2EE]"), so waiting on that alone
+      // would resolve instantly on the stale pre-Escape frame.
+      stdin.write(KEY.escape);
+      const back = await waitForFrame(lastFrame, 'Enter open');
+      // The badge clears locally without waiting for a refetch.
+      expect(back).not.toContain('unread');
+
+      // Reopening the same conversation marks it read again (a second open is a new
+      // "opened this thread" event, e.g. after new messages arrived).
+      stdin.write(KEY.enter);
+      await waitForFrame(lastFrame, '[E2EE]');
+      expect(api.markConversationRead).toHaveBeenCalledTimes(2);
+      // `onReadStateChanged` fires from the mark-read promise's `.then`, which the
+      // frame condition above does not wait on — give it a tick to settle (documented
+      // hazard: a resolved `waitForFrame` doesn't imply a still-pending microtask ran).
+      await flush();
+      expect(onReadStateChanged).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('does not clear a conversation badge locally when marking it read fails (P19-018)', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, {
+        conversations: [{ ...existing, unreadCount: 3 }],
+      }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
+    api.markConversationRead.mockRejectedValue(new Error('unavailable'));
+
+    const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
+    await waitForFrame(lastFrame, '3 unread');
+
+    stdin.write(KEY.enter);
+    await waitForFrame(lastFrame, '[E2EE]');
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    stdin.write(KEY.escape);
+    const back = await waitForFrame(lastFrame, 'Enter open');
+    // The server still believes this is unread — the badge must keep saying so, never
+    // fake a local zero over a failed mark-read.
+    expect(back).toContain('3 unread');
   });
 });
