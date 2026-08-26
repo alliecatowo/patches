@@ -326,3 +326,41 @@ pnpm --filter @patches/web run test-storybook   # headless chromium smoke of eve
   It is a separate workflow and therefore **non-required** — it never appears in `ci-ok`.
 
 Visual regression (Lost Pixel) is a planned later phase and intentionally absent.
+
+### Phase 2: full catalog, themes, scenarios, publishing
+
+- **Sidebar groups:** `Welcome` (start here), `Design System` (atoms/cards), `Routes`
+  (full screens), `Patterns` (flows/composites), `Feedback` (moderation/disclosure).
+  Story naming is `Component / state` via the group title + story name.
+- **Theme toolbar:** the globe toolbar's Theme control applies the app's own mechanism
+  (`src/lib/theme.ts` → `data-theme` on `<html>`, tokens in `index.css`). All 8 themes
+  (system/patches/dark/light/paper/mono/hacker/pastel) are one click away; there is no
+  separate Storybook theming system.
+- **Scenario fixtures:** stories wrap their setup in `scenario()` from
+  `apps/web/.storybook/decorators.tsx`, which resets the mock client's scenario state,
+  the session store, and compose drafts before applying `setStory*` setters
+  (`apps/web/.storybook/mocks/apiClient.ts`) and `signedInAs(viewerActor)` /
+  `signedOut`. Typed fixtures live in `apps/web/.storybook/fixtures.ts`. The loud
+  fail-on-unmocked-RPC proxy from phase 1 is unchanged.
+- **Fixture rules:** obviously synthetic handles/ids, fixed timestamps, inline SVG
+  data-URIs for images — and **conversation metadata only, never DM bodies** (v0 DMs are
+  server-visible, spec §183.1; thread stories render the disclosure copy, nothing
+  else).
+- **Play functions:** stories that cheaply demonstrate behavior (follow toggle, report
+  submit, CW reveal, theme switch, device-flow code panel, …) carry `play` functions
+  from `storybook/test`; `test-storybook` executes them all in headless chromium.
+
+#### Publishing the workbench (opt-in)
+
+`storybook.yml` has a second job, `deploy`, that publishes `storybook-static/` to the
+Cloudflare Pages project **`patches-storybook`**. It runs only on a main-push
+`workflow_run` after CI concluded success, and only when the repository variable
+**`STORYBOOK_DEPLOY_ENABLED`** is `true` — the gate is at the job level so an opt-out
+shows as a *skipped* job, never a green run that published nothing (the B-198/B-205
+lesson). Owner actions to turn it on:
+
+1. Create the Cloudflare Pages project named exactly `patches-storybook` (reuses the
+   existing `CLOUDFLARE_API_TOKEN` secret and `CLOUDFLARE_ACCOUNT_ID` variable).
+2. Set the repository variable `STORYBOOK_DEPLOY_ENABLED=true`.
+
+The deploy job is likewise non-required (separate workflow, outside `ci-ok`).

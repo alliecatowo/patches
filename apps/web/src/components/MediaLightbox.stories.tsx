@@ -4,6 +4,7 @@ import { photoDataUri } from '../../.storybook/fixtures.js';
 import { MediaLightbox } from './MediaLightbox.js';
 
 const meta = {
+  title: 'Design System/MediaLightbox',
   component: MediaLightbox,
   parameters: {
     layout: 'fullscreen',

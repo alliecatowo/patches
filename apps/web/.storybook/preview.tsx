@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { MemoryRouter } from 'react-router-dom';
 
 import type { Decorator, Preview } from '@storybook/react-vite';
 
 import '../src/index.css';
+import { setThemePreference, THEME_CATALOG, type ThemePreference } from '../src/lib/theme.js';
 
 /**
  * A fresh QueryClient per story mount: route stories refire their queries when the
@@ -34,6 +35,24 @@ const WithAppProviders: Decorator = (Story) => {
       </MemoryRouter>
     </QueryClientProvider>
   );
+};
+
+function isThemePreference(value: unknown): value is ThemePreference {
+  return typeof value === 'string' && THEME_CATALOG.some((theme) => theme.id === value);
+}
+
+/**
+ * Theme toolbar wired to the app's own mechanism (`src/lib/theme.ts` — `data-theme` on
+ * `<html>` + the CSS custom properties in `index.css`). No parallel theming system
+ * exists here: switching this global calls the same `setThemePreference` the Appearance
+ * settings route calls, so stories render with exactly the production token pipeline.
+ */
+const WithTheme: Decorator = (Story, { globals }) => {
+  const theme = isThemePreference(globals.theme) ? globals.theme : 'patches';
+  useEffect(() => {
+    setThemePreference(theme);
+  }, [theme]);
+  return <Story />;
 };
 
 /**
@@ -68,10 +87,22 @@ const preview: Preview = {
     // a check. Promote per-component to 'error' as issues are fixed.
     a11y: { test: 'todo' },
   },
+  globalTypes: {
+    theme: {
+      description: 'App theme — applies the app data-theme token set (src/lib/theme.ts)',
+      toolbar: {
+        icon: 'contrast',
+        title: 'Theme',
+        items: THEME_CATALOG.map((theme) => ({ value: theme.id, title: theme.name })),
+        dynamicTitle: true,
+      },
+    },
+  },
   initialGlobals: {
     viewport: { value: 'mobilePwa', isRotated: false },
+    theme: 'patches',
   },
-  decorators: [WithAppProviders],
+  decorators: [WithAppProviders, WithTheme],
 };
 
 export default preview;

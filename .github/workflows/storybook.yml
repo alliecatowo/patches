@@ -1,9 +1,23 @@
-# Storybook for apps/web (H-029 phase 1): builds the component-workbench bundle and runs
-# the addon-vitest browser-mode smoke over every story. Deliberately NON-REQUIRED — it is
+# Storybook for apps/web (H-029): builds the component-workbench bundle and runs the
+# addon-vitest browser-mode smoke over every story. Deliberately NON-REQUIRED — it is
 # a separate workflow, so it never appears in ci.yml's `ci-ok` aggregation and cannot
 # block a merge (docs/operations/ci.md documents ci-ok as the single required check).
 # The production web pipeline is untouched: Storybook builds to storybook-static/, never
 # dist/, and is absent from turbo's `build` task graph.
+#
+# Deploy job (phase 2): publishes storybook-static to the Cloudflare Pages project
+# `patches-storybook` — ONLY on a main-push `workflow_run` after CI concluded success.
+# The gate `vars.STORYBOOK_DEPLOY_ENABLED == 'true'` sits at the JOB level on purpose
+# (B-198/B-205 lesson): when the owner has not opted in, the job shows up as *skipped*,
+# never as a fake green run that published nothing. It is a separate workflow and
+# therefore also non-required.
+#
+# OWNER ACTIONS needed before the first deploy happens (see docs/operations/web.md):
+#   1. Create the Cloudflare Pages project named exactly `patches-storybook`
+#      (uses the existing CLOUDFLARE_API_TOKEN secret / CLOUDFLARE_ACCOUNT_ID var).
+#   2. Set the repository variable STORYBOOK_DEPLOY_ENABLED=true.
+# Until both are done the deploy job stays skipped and patches-storybook.pages.dev
+# serves nothing.
 
 name: Storybook
 
@@ -12,6 +26,12 @@ on:
   # Same rationale as ci.yml: lets a stalled PR event be recovered by hand against the
   # PR's head branch without waiting for delivery.
   workflow_dispatch:
+  # Deploy path: main-push CI runs that concluded. workflow_run events only fire on the
+  # default branch, which is what keeps PR builds out of the publish job below.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -23,9 +43,14 @@ concurrency:
 jobs:
   storybook:
     name: storybook (build + smoke, non-required)
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      # On workflow_run, build the exact commit CI verified (same contract as the deploy
+      # job below); on PR/dispatch events this is the PR head / dispatched ref.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ./.github/actions/setup
 
       # Vitest browser mode drives Playwright's chromium headlessly (no Storybook server
@@ -54,3 +79,47 @@ jobs:
           path: apps/web/storybook-static
           if-no-files-found: ignore
           retention-days: 7
+
+  # Publishes the workbench to Cloudflare Pages. The STORYBOOK_DEPLOY_ENABLED gate is at
+  # the job level (not a step) so an opt-out is legible as a skipped job in the run view
+  # — the same honesty rule web.yml learned the hard way in B-198.
+  deploy:
+    name: storybook deploy (Cloudflare Pages, opt-in)
+    if: >-
+      vars.STORYBOOK_DEPLOY_ENABLED == 'true' && (
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    concurrency:
+      group: storybook-deploy-pages
+      cancel-in-progress: false
+    steps:
+      # workflow_run carries the CI-verified commit, not the (possibly newer) default
+      # branch tip — same contract as web.yml's deploy job.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: ./.github/actions/setup
+
+      - name: Build workspace dependencies
+        run: pnpm --filter @patches/web^... build
+
+      - name: Build the Storybook bundle
+        run: pnpm --filter @patches/web run storybook:build
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm exec wrangler pages deploy apps/web/storybook-static --project-name patches-storybook --branch main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Report deploy
+        run: |
+          echo "Published the Storybook workbench (commit ${TARGET_SHA}) to the Cloudflare Pages project patches-storybook." >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
