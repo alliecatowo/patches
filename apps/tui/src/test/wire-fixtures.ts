@@ -107,6 +107,7 @@ export function makeActor(overrides: Partial<Actor> = {}): Actor {
     nameplate: undefined,
     flair: undefined,
     pinnedPostIds: [],
+    homeServer: '',
     profileBannerUrl: '',
     profileFrame: PROFILE_FRAME.UNSPECIFIED,
     nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
@@ -117,8 +118,8 @@ export function makeActor(overrides: Partial<Actor> = {}): Actor {
 
 /**
  * A remote actor (`isLocal: false`) — the shape federation ingest produces (spec §163/§180):
- * `handle` is the bare `preferredUsername` with no domain suffix, since the wire's `Actor`
- * message has no home-server/domain field yet (P18-009 filed B-171 to add one). Tests
+ * `handle` is the bare `preferredUsername` with no domain suffix; the domain lives in
+ * `homeServer` (B-179), so a client renders `@handle@homeServer`. Tests
  * exercising remote-origin rendering should build from this rather than
  * `makeActor({ isLocal: false })` ad hoc, so the "no domain on the wire" shape stays in one
  * place.
@@ -128,6 +129,7 @@ export function makeRemoteActor(overrides: Partial<Actor> = {}): Actor {
     id: 'remote-actor-1',
     handle: 'quinn',
     isLocal: false,
+    homeServer: 'remote.example',
     ...overrides,
   });
 }
@@ -157,6 +159,7 @@ export function makePost(overrides: Partial<Post> = {}): Post {
     repostedByTotal: 0,
     filteredBy: undefined,
     labels: [],
+    originServer: '',
     ...overrides,
   };
 }

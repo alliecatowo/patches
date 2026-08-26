@@ -264,7 +264,109 @@ describe('PostRow edits and community attribution (P11-009)', () => {
     expect(stripSgr(lastFrame() ?? '')).not.toContain('✿');
     expect(stripSgr(lastFrame() ?? '')).toContain('@bob');
   });
+});
 
+describe('PostRow remote origin (P18-009, spec §163/§180/§192)', () => {
+  it('marks a remote reposter as not local, in addition to the local case', () => {
+    const local = post().author;
+    const localFrame = render(
+      <PostRow
+        post={post({
+          repostedBy: local === undefined ? [] : [local],
+          repostedByTotal: 1,
+        })}
+      />,
+    ).lastFrame();
+    expect(localFrame ?? '').toContain('↻ @alice reposted');
+    expect(localFrame ?? '').not.toContain('(remote)');
+
+    const remoteReposter = makeRemoteActor({ handle: 'quinn' });
+    const { lastFrame } = render(
+      <PostRow
+        post={post({
+          repostedBy: [remoteReposter],
+          repostedByTotal: 1,
+        })}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('↻ @quinn (remote) reposted');
+  });
+
+  it('marks only the remote reposter(s) when local and remote reposters are collapsed together', () => {
+    const local = makeActor({ id: 'actor-2', handle: 'bob' });
+    const remote = makeRemoteActor({ handle: 'quinn' });
+    const { lastFrame } = render(
+      <PostRow
+        post={post({
+          repostedBy: [local, remote],
+          repostedByTotal: 2,
+        })}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('@bob');
+    expect(frame).not.toContain('@bob (remote)');
+    expect(frame).toContain('@quinn (remote)');
+  });
+
+  it("marks a remote quoted post's origin", () => {
+    const remoteQuoted = post({
+      id: 'quoted-remote',
+      body: 'quoted from another instance',
+      author: makeRemoteActor({ handle: 'quinn' }),
+    });
+    const { lastFrame } = render(<PostRow post={post({ quotedPost: remoteQuoted })} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('quoted @quinn (remote)');
+    expect(frame).toContain('quoted from another instance');
+  });
+
+  it('never recurses into a remote quote-of-a-quote even if the fixture is nested', () => {
+    const deeplyNested = post({
+      id: 'deep',
+      body: 'must never render',
+      author: makeRemoteActor({ id: 'remote-actor-2', handle: 'rae' }),
+    });
+    const remoteQuoted = post({
+      id: 'quoted-remote',
+      body: 'one level deep',
+      author: makeRemoteActor({ handle: 'quinn' }),
+      quotedPost: deeplyNested,
+    });
+    const { lastFrame } = render(<PostRow post={post({ quotedPost: remoteQuoted })} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('quoted @quinn (remote)');
+    expect(frame).toContain('one level deep');
+    expect(frame).not.toContain('must never render');
+    expect(frame).not.toContain('@rae');
+  });
+
+  it('renders remote-origin markers identically in plain mode (no colour dependency)', () => {
+    const remoteReposter = makeRemoteActor({ handle: 'quinn' });
+    const remoteQuoted = post({
+      id: 'quoted-remote',
+      body: 'quoted from another instance',
+      author: makeRemoteActor({ handle: 'quinn' }),
+    });
+    const { lastFrame } = render(
+      <PlainModeProvider plain>
+        <PostRow
+          post={post({
+            repostedBy: [remoteReposter],
+            repostedByTotal: 1,
+            quotedPost: remoteQuoted,
+          })}
+        />
+      </PlainModeProvider>,
+    );
+    const frame = stripSgr(lastFrame() ?? '');
+    expect(frame).toContain('↻ @quinn (remote) reposted');
+    expect(frame).toContain('quoted @quinn (remote)');
+  });
+});
+
+describe('PostRow edits and community attribution (P11-009)', () => {
   it('marks edits and community attribution without changing the body', () => {
     const { lastFrame } = render(
       <PostRow
