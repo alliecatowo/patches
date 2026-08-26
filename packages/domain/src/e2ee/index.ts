@@ -123,6 +123,8 @@ export type {
   E2eeReadReceiptControl,
   E2eeTypingControl,
 } from './control.js';
+
+export {
   assertGroupMembershipBounds,
   assertMembershipChain,
   assertMembershipEventShape,
