@@ -50,7 +50,11 @@ enum FilterScope {
   FILTER_SCOPE_COMMUNITY_FEED = 4;
   FILTER_SCOPE_NOTIFICATIONS = 5;
   FILTER_SCOPE_SEARCH = 6;
-  FILTER_SCOPE_MESSAGE_REQUESTS = 7;
+
+  // B-095 (ADR 0030) deleted the server-visible-DM message-request flow this scope governed;
+  // B-126 removed the now-dead scope. Never reuse either the number or the name (spec §153).
+  reserved 7;
+  reserved "FILTER_SCOPE_MESSAGE_REQUESTS";
 }
 
 // What a matched filter does to a post (spec §198.3). Reused by filter list subscriptions
