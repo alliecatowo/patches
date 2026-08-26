@@ -12,5 +12,12 @@
   },
   // Tooling configs and browser specs stay in the web project so type-aware linting checks
   // them with the same DOM and Vite environment as the client.
-  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "e2e",
+    "playwright.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    ".storybook/*"
+  ]
 }

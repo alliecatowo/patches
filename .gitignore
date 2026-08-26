@@ -7,6 +7,7 @@ dist/
 dist-release/
 build/
 .turbo/
+storybook-static/
 infra/preview/.image-context/
 *.tsbuildinfo
 
