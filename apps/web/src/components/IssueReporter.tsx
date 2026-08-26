@@ -1,14 +1,20 @@
-import { useEffect, useState, type JSX, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  useRef,
+  type ChangeEvent,
+  type JSX,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useSession } from '../hooks/useSession.js';
 import {
   buildWebDiagnosticsBundle,
-  displayMediaSupported,
   installGlobalCollectors,
   recordRoute,
 } from '../lib/diagnosticsReporter.js';
-import { captureScreenshotDataUrl } from '../lib/screenshot.js';
+import { fileToScreenshotDataUrl } from '../lib/screenshot.js';
 import styles from './IssueReporter.module.css';
 
 /** Where saved bundles are attached by hand — shown in every outcome panel. */
@@ -36,8 +42,10 @@ export interface IssueReporterProps {
 
 /**
  * The web issue reporter (B-112): a low-friction "Report an issue" affordance whose
- * modal takes an optional description, an opt-in user-granted screenshot
- * (`getDisplayMedia` — disabled with an honest "not supported on this device" label
+ * modal takes an optional description, an optional screenshot attached from the
+ * device's image picker (photo library on iOS PWA — the primary path, since
+ * `getDisplayMedia` does not exist on iOS Safari) or, where supported, a live screen
+ * capture, and saves a redacted diagnostics bundle locally (B-151: no v0 backend).
  * where the API is missing, e.g. iOS), and an opt-in @handle that is OFF by default.
  * Everything else is automatic: a redacted diagnostics bundle built through the
  * shared `@patches/domain` schema.
@@ -98,11 +106,24 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [screenshot, setScreenshot] = useState<string | undefined>(undefined);
   const [screenshotNote, setScreenshotNote] = useState<string | undefined>(undefined);
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
-  const captureSupported = displayMediaSupported();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function captureScreenshot(): Promise<void> {
+  /**
+   * Attach path: the device's own image picker (photo library on iOS PWA, files on
+   * desktop) — the only screenshot source that works on every platform AND the only
+   * one that makes sense: live capture would show the reporter itself, not the bug.
+   */
+  function pickScreenshotFile(): void {
     setScreenshotNote(undefined);
-    const result = await captureScreenshotDataUrl();
+    fileInputRef.current?.click();
+  }
+
+  async function onScreenshotFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    // Allow re-picking the same file after detach: clear the input's value.
+    event.target.value = '';
+    if (file === undefined) return;
+    const result = await fileToScreenshotDataUrl(file);
     if ('dataUrl' in result) {
       setScreenshot(result.dataUrl);
       setScreenshotNote(`screenshot attached (${Math.round(result.dataUrl.length / 1024)} KiB)`);
@@ -110,10 +131,10 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
       setScreenshot(undefined);
       setScreenshotNote(
         result.reason === 'unsupported'
-          ? 'screenshots are not supported in this browser'
-          : result.reason === 'denied'
-            ? 'screen capture was cancelled'
-            : 'screenshot was too large to attach',
+          ? 'that file is not a supported image'
+          : result.reason === 'too-large'
+            ? 'screenshot was too large to attach'
+            : 'the image could not be read',
       );
     }
   }
@@ -179,23 +200,25 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
         />
 
         <div className={styles.controls}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(event) => void onScreenshotFile(event)}
+            aria-hidden="true"
+            tabIndex={-1}
+          />
           <button
             type="button"
             className={styles.controlButton}
-            onClick={() => void captureScreenshot()}
+            onClick={pickScreenshotFile}
             onPointerDown={steadyTap}
-            disabled={!captureSupported}
-            title={captureSupported ? undefined : 'Screen capture is not supported on this device'}
           >
-            {screenshot === undefined ? 'Attach screenshot' : 'Reattach screenshot'}
+            {screenshot === undefined ? 'Attach screenshot' : 'Replace screenshot'}
           </button>
           {screenshotNote === undefined ? null : (
             <span className={styles.note}>{screenshotNote}</span>
-          )}
-          {captureSupported ? null : (
-            <span className={styles.note}>
-              not supported on this device — reports work without it
-            </span>
           )}
         </div>
 

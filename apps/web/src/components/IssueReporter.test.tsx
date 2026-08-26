@@ -192,29 +192,34 @@ describe('IssueReporter', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('disables the attach control honestly when screen capture is unsupported (B-150)', () => {
+  it('attach is always enabled and opens the device image picker (B-150)', () => {
     renderReporter();
     fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
     const attach = screen.getByRole('button', { name: /Attach screenshot/ });
-    expect(attach).toBeDisabled();
-    expect(attach).toHaveAttribute('title', 'Screen capture is not supported on this device');
-    expect(screen.getByText(/not supported on this device/)).toBeInTheDocument();
+    // No getDisplayMedia in jsdom — the picker path must still work everywhere.
+    expect(attach).toBeEnabled();
+    // The hidden input is the picker target; the button drives it.
+    const input = document.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    expect(input?.getAttribute('accept')).toBe('image/*');
   });
 
-  it('explains a cancelled capture instead of silently doing nothing (B-150)', async () => {
-    vi.stubGlobal('navigator', {
-      mediaDevices: {
-        getDisplayMedia: vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError')),
-      },
-    });
+  it('explains an unsupported file instead of silently doing nothing (B-150)', async () => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn().mockRejectedValue(new Error('decode failed')),
+    );
     renderReporter();
     fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
-    const attach = screen.getByRole('button', { name: /Attach screenshot/ });
-    expect(attach).toBeEnabled();
-    fireEvent.click(attach);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      value: [new File(['x'], 'broken.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    fireEvent.change(input);
 
     await waitFor(() =>
-      expect(screen.getByText('screen capture was cancelled')).toBeInTheDocument(),
+      expect(screen.getByText('the image could not be read')).toBeInTheDocument(),
     );
   });
 });
