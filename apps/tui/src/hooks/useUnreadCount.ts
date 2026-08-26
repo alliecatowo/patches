@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 
 import type { PatchesApi } from '../api/client.js';
-
-const POLL_MS = 60_000;
+import { TUI_UNREAD_BADGE_POLL_MS } from '../app/poll-intervals.js';
 
 /**
  * The unread-notification badge in the status bar (spec §56, §113: "the TUI can poll
  * when active and refresh manually" — no push infrastructure in v0). Refetches
  * `NotificationService.GetUnreadCount` whenever `screenKey` changes (cheap — one small
- * RPC on every screen change) and on a 60s interval while signed in; `undefined` while
- * signed out or before the first fetch resolves, so callers never render a stale "0".
+ * RPC on every screen change) and on ADR 0032's published interval while signed in;
+ * `undefined` while signed out or before the first fetch resolves, so callers never
+ * render a stale "0".
  */
 export function useUnreadCount(
   api: PatchesApi,
@@ -39,7 +39,7 @@ export function useUnreadCount(
     }
 
     refresh();
-    const interval = setInterval(refresh, POLL_MS);
+    const interval = setInterval(refresh, TUI_UNREAD_BADGE_POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);

@@ -10,6 +10,7 @@ import { PlusIcon } from '../components/icons/Icons.js';
 import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
+import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import {
   WEB_E2EE_SESSION_UNAVAILABLE_COPY,
   webE2eeSessionSetupAvailable,
@@ -29,6 +30,14 @@ const buttonStyle = {
 } as const;
 
 /**
+ * P19-017: extends this client's poll-failure house rule to the conversation list —
+ * nothing about a failed `ListConversations` poll may be mistaken for a genuinely empty
+ * inbox. Shown whenever the query is in an error state, whether or not a prior
+ * successful fetch left conversations on screen.
+ */
+export const DM_LIST_POLL_FAILED_COPY = 'Could not load conversations.';
+
+/**
  * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, and this browser
  * can now hold its own enrolled messaging device. Enrollment is real and works; actually
  * moving messages does not yet, because no session can be established from a browser
@@ -43,6 +52,16 @@ export function MessagesRoute(): JSX.Element {
   const query = useQuery({
     queryKey: ['conversations'],
     queryFn: () => api.messages.listConversations({ cursor: '', limit: 30 }),
+    // ADR 0032 §1: the DM list updates within 60s while the tab is focused; single
+    // source of truth in `lib/poll-intervals.ts` (P19-021). `refetchIntervalInBackground`
+    // stays at its TanStack Query default (`false`), which already suspends this
+    // interval while the tab is hidden/unfocused — see `docs/research/tanstack-query.md`.
+    refetchInterval: WEB_DM_POLL_MS,
+    // Re-enabled for this query only; the app-wide default in `main.tsx` stays off.
+    // A DM inbox that silently misses new messages while backgrounded is exactly the
+    // gap ADR 0032 closes, so tabbing back in should refresh immediately rather than
+    // wait up to another `WEB_DM_POLL_MS`.
+    refetchOnWindowFocus: true,
   });
 
   async function handleEnroll(): Promise<void> {
@@ -96,10 +115,16 @@ export function MessagesRoute(): JSX.Element {
       />
 
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
+      {query.isError && query.data === undefined ? (
+        <p role="alert" style={{ padding: '1rem', color: 'var(--fg-muted)' }}>
+          {DM_LIST_POLL_FAILED_COPY}
+        </p>
+      ) : null}
       {query.data === undefined ? null : (
         <ConversationList
           conversations={query.data.conversations}
           viewerActorId={session?.actor.id}
+          pollFailed={query.isError}
         />
       )}
     </div>
@@ -117,15 +142,32 @@ type ConversationRow = ConversationsResult['conversations'][number];
 function ConversationList({
   conversations,
   viewerActorId,
+  pollFailed,
 }: {
   conversations: readonly ConversationRow[];
   viewerActorId: string | undefined;
+  /** P19-017: the most recent `ListConversations` poll failed. An empty list under a
+   * failed poll is never claimed as "no conversations yet" — that would assert a fact
+   * this fetch didn't actually confirm. */
+  pollFailed: boolean;
 }): JSX.Element | null {
   if (conversations.length === 0) {
-    return <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No conversations yet.</p>;
+    return (
+      <p
+        role={pollFailed ? 'alert' : undefined}
+        style={{ padding: '1rem', color: 'var(--fg-muted)' }}
+      >
+        {pollFailed ? DM_LIST_POLL_FAILED_COPY : 'No conversations yet.'}
+      </p>
+    );
   }
   return (
     <>
+      {pollFailed ? (
+        <p role="alert" style={panelStyle}>
+          {DM_LIST_POLL_FAILED_COPY} Showing the last known list.
+        </p>
+      ) : null}
       <p role="note" style={panelStyle}>
         {requiredConversationDisclosure('E2EE_V1')}
       </p>
