@@ -51,6 +51,14 @@ jobs:
       - name: Check bundle size budget
         run: pnpm --filter @patches/web run bundle:check
 
+      # B-200/B-201: a stale or dev-mode dist got published once with the pipeline reporting
+      # green throughout (jsxDEV at every call site, react-query devtools rendered to every
+      # visitor, the builder's absolute path embedded in the bundle). bundle:check only gates
+      # size, not mode — this scans the exact artifact the deploy step is about to publish for
+      # dev-mode/absolute-path markers and fails the job before anything reaches users.
+      - name: Check dist is a clean production build
+        run: pnpm --filter @patches/web run dist:check
+
       - name: Build bundle report artifact
         if: always()
         run: pnpm --filter @patches/web run bundle:analyze

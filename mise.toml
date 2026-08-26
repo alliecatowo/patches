@@ -162,7 +162,9 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$MISE_PROJECT_ROOT"
+rm -rf apps/web/dist
 VITE_PATCHES_API_BASE="${VITE_PATCHES_API_BASE:-https://patches-social.fly.dev}" pnpm --filter @patches/web build
+pnpm --filter @patches/web run dist:check
 pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
 """
 
