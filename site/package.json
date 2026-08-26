@@ -10,7 +10,8 @@
     "preview": "vitepress preview .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "echo 'no tests for @patches/site' && exit 0",
-    "clean": "rm -rf .vitepress/dist .vitepress/cache docs"
+    "clean": "rm -rf .vitepress/dist .vitepress/cache docs",
+    "verify:deploy": "node scripts/verify-deployed-sha.mjs"
   },
   "devDependencies": {
     "vitepress": "catalog:"
