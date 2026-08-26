@@ -35,6 +35,14 @@ PostgreSQL schema for a Patches **node**. Source of truth: `INITIAL_VISION.md` �
 - Timestamps: `timestamptz` throughout (`created_at`, `updated_at`, and friends).
 - ORM: TypeORM, Data Mapper style. `synchronize: false`, `migrationsRun: false` in
   every environment; schema changes ship as reviewed migrations (§16.1–16.2).
+- **Online-DDL discipline** (lock levels, expand/contract sequencing for
+  add-column-with-default/type-change/`NOT NULL`/index creation/renames, and the
+  TypeORM-specific `CREATE INDEX CONCURRENTLY` + `--transaction=none` requirement) lives in
+  `docs/operations/database.md`'s "Online-DDL discipline" section — read it before writing
+  a migration against a table with live traffic. `docs/research/atlas-reshape.md` and
+  `docs/research/neon-branching.md` cover complementary tooling evaluation (Atlas/Reshape,
+  a Neon-branch pre-apply test harness), neither of which replaces the migration flow
+  described here.
 - Soft deletion is used for posts, actors, media (tombstoning) — not hard deletes —
   to preserve thread integrity, moderation audit trail, and future federation
   `Delete` semantics (§25).
