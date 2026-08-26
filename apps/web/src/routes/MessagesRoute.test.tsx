@@ -7,7 +7,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
-import { MessagesRoute } from './MessagesRoute.js';
+import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
+import { DM_LIST_POLL_FAILED_COPY, MessagesRoute } from './MessagesRoute.js';
 
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
@@ -48,7 +49,7 @@ function conversation(id: string, handle: string): Conversation {
   } as unknown as Conversation;
 }
 
-function renderMessages(): ReturnType<typeof render> {
+function renderMessages(): { queryClient: QueryClient } & ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
@@ -57,7 +58,7 @@ function renderMessages(): ReturnType<typeof render> {
       </MemoryRouter>
     </QueryClientProvider>
   );
-  return render(tree);
+  return { queryClient, ...render(tree) };
 }
 
 describe('MessagesRoute', () => {
@@ -121,5 +122,54 @@ describe('MessagesRoute', () => {
 
     expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
     expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+  });
+
+  it('polls the conversation list every WEB_DM_POLL_MS while mounted (ADR 0032, P19-021)', async () => {
+    vi.useFakeTimers();
+    try {
+      mockListConversations.mockResolvedValue({ conversations: [] });
+      renderMessages();
+
+      await vi.waitFor(() => expect(mockListConversations).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(WEB_DM_POLL_MS);
+      await vi.waitFor(() => expect(mockListConversations).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it(
+    'shows a failed refresh as failed, never as an empty inbox — the same house rule ' +
+      'the badge and in-thread poll already keep (P19-017)',
+    async () => {
+      mockListConversations.mockResolvedValueOnce({
+        conversations: [conversation('conv-e2ee', 'violet')],
+      });
+      const { queryClient } = renderMessages();
+      expect(await screen.findByText('@violet')).toBeInTheDocument();
+
+      mockListConversations.mockRejectedValueOnce(new Error('network down'));
+      await queryClient.refetchQueries({ queryKey: ['conversations'] });
+
+      // The stale-but-real conversation stays on screen, and the failure is stated —
+      // it is never silently swallowed into "no conversations".
+      expect(
+        await screen.findByText(DM_LIST_POLL_FAILED_COPY, { exact: false }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('@violet')).toBeInTheDocument();
+      expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
+    },
+  );
+
+  it('an empty list under a failed poll is worded as a failure, not as "no conversations yet"', async () => {
+    mockListConversations.mockResolvedValueOnce({ conversations: [] });
+    const { queryClient } = renderMessages();
+    await screen.findByText('No conversations yet.');
+
+    mockListConversations.mockRejectedValueOnce(new Error('network down'));
+    await queryClient.refetchQueries({ queryKey: ['conversations'] });
+
+    expect(await screen.findByText(DM_LIST_POLL_FAILED_COPY)).toBeInTheDocument();
+    expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
   });
 });

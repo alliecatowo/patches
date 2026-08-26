@@ -29,6 +29,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useContentSize } from '../app/layout.js';
 import { movementTarget } from '../app/list-movement.js';
+import {
+  TUI_CONVERSATION_LIST_POLL_MS,
+  TUI_THREAD_MAIL_POLL_MS,
+  TUI_THREAD_SECURITY_POLL_MS,
+} from '../app/poll-intervals.js';
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
@@ -159,6 +164,12 @@ export interface MessagesScreenProps {
   /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
   mailPollMs?: number | undefined;
   /**
+   * P19-017: how often the conversation list refreshes while it is open and this
+   * screen is the active one (ADR 0032 §1). Tests pass a small value; the default is
+   * `TUI_CONVERSATION_LIST_POLL_MS`.
+   */
+  conversationListPollMs?: number | undefined;
+  /**
    * P19-018: fired after a successful `MarkConversationRead` so the shell can refresh
    * the status-bar unread badge (`useUnreadCount`'s poll otherwise only refires on a
    * screen change or its own 60s interval — the same pattern `NotificationsScreen`
@@ -196,6 +207,13 @@ function useKeysetList<T>(
   identity: string,
   fetchPage: (cursor: string) => Promise<Page<T>>,
   errorMessage: string,
+  /**
+   * Bumped by a caller that wants a background page-1 refresh without resetting
+   * `identity` (P19-017). Since `identity` itself doesn't change, `isCurrent` stays
+   * true across the refetch — the list keeps rendering its last-known items with no
+   * loading flash, exactly like every other background poll in this screen.
+   */
+  refreshToken?: number,
 ): KeysetList<T> {
   const [stored, setStored] = useState<StoredPage<T>>({
     identity: '',
@@ -228,23 +246,31 @@ function useKeysetList<T>(
         });
       })
       .catch(() => {
-        if (generation.current === currentGeneration) {
-          setStored({
-            identity,
-            items: [],
-            cursor: '',
-            hasMore: false,
-            loadingMore: false,
-            error: errorMessage,
-          });
-        }
+        if (generation.current !== currentGeneration) return;
+        // A failed refresh of an already-loaded list must never render as "no
+        // messages" (the same house rule the in-thread mailbox poll and the unread
+        // badge already keep): if this identity was already current, keep its items
+        // and surface only the error. A failed *first* load for this identity still
+        // has nothing to preserve.
+        setStored((current) =>
+          current.identity === identity
+            ? { ...current, loadingMore: false, error: errorMessage }
+            : {
+                identity,
+                items: [],
+                cursor: '',
+                hasMore: false,
+                loadingMore: false,
+                error: errorMessage,
+              },
+        );
       })
       .finally(() => {
         if (generation.current === currentGeneration) {
           fetching.current = false;
         }
       });
-  }, [enabled, errorMessage, fetchPage, identity]);
+  }, [enabled, errorMessage, fetchPage, identity, refreshToken]);
 
   const loadMore = useCallback(() => {
     if (fetching.current || !isCurrent || !stored.hasMore) return;
@@ -426,9 +452,10 @@ export function MessagesScreen({
   e2eeCapabilityState,
   sendE2ee,
   e2eeVaultFault,
-  securityPollMs = 30_000,
+  securityPollMs = TUI_THREAD_SECURITY_POLL_MS,
   receiveE2ee,
-  mailPollMs = 5_000,
+  mailPollMs = TUI_THREAD_MAIL_POLL_MS,
+  conversationListPollMs = TUI_CONVERSATION_LIST_POLL_MS,
   onReadStateChanged,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
@@ -454,11 +481,15 @@ export function MessagesScreen({
   // B-101 mailbox rows for the open end-to-end thread (deduped by envelope id).
   const [e2eeRows, setE2eeRows] = useState<readonly E2eeReceivedRow[]>([]);
   // P19-018: conversation ids marked read locally this session, so the list badge
-  // clears without waiting for `ListConversations` to be refetched (it never is —
-  // `useKeysetList`'s identity is a static `'conversations'` string). Never removed
-  // once set, same as `NotificationsScreen`'s `readOverride` — a conversation only
-  // gets less unread by the caller opening it, and a fresh mount re-fetches for real.
+  // clears without waiting for the next `ListConversations` poll tick to land. Never
+  // removed once set, same as `NotificationsScreen`'s `readOverride` — a conversation
+  // only gets less unread by the caller opening it, and a fresh poll re-fetches for real.
   const [readOverrideIds, setReadOverrideIds] = useState<ReadonlySet<string>>(new Set());
+  // P19-017: bumped on a `conversationListPollMs` interval while the list is open and
+  // this screen is active, so `useKeysetList` re-fetches page 1 without resetting its
+  // `identity` (see that hook's `refreshToken` param — no loading flash, no second
+  // independent fetch path).
+  const [conversationListRefreshTick, setConversationListRefreshTick] = useState(0);
 
   // Marks the open conversation read exactly once per open: keyed only on
   // `conversationId`, so re-renders, polling ticks, and prop changes never re-fire it,
@@ -500,7 +531,25 @@ export function MessagesScreen({
     'conversations',
     fetchConversations,
     'Could not load conversations.',
+    conversationListRefreshTick,
   );
+
+  // P19-017 / ADR 0032: the conversation list refreshes on `conversationListPollMs`
+  // while it is the visible, focused list — not while a thread or the transcript
+  // overlay is open on top of it, and not while another screen owns the terminal
+  // (`isActive` false). Same shape as the mailbox/security polls below: fire once
+  // immediately, then on an interval, clear on cleanup.
+  const listPollActive = isActive && view === 'list';
+  useEffect(() => {
+    if (!listPollActive) return;
+    const timer = setInterval(
+      () => setConversationListRefreshTick((tick) => tick + 1),
+      Math.max(250, conversationListPollMs),
+    );
+    return () => {
+      clearInterval(timer);
+    };
+  }, [listPollActive, conversationListPollMs]);
 
   useEffect(() => {
     if (view !== 'thread' || conversationId === '') return;
@@ -893,7 +942,13 @@ export function MessagesScreen({
             <Text color={theme.error}>{conversations.error}</Text>
           )}
           {conversations.loading ? <Loading label="Loading conversations" /> : null}
-          {!conversations.loading && conversations.items.length === 0 ? (
+          {/* P19-017: a failed poll must never be mistaken for a genuinely empty
+              inbox — the error line above already says a fetch failed, so this only
+              renders once loading has finished, nothing failed, and the list is
+              actually empty. */}
+          {!conversations.loading &&
+          conversations.error === undefined &&
+          conversations.items.length === 0 ? (
             <Text color={theme.muted}>No conversations yet.</Text>
           ) : null}
           {conversations.items.map((conversation, index) => {

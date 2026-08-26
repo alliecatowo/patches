@@ -14,6 +14,7 @@ import type { InboxRow } from '../e2ee/runtime.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
+import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import styles from './MessagesRoute.module.css';
 import { toast } from 'sonner';
 
@@ -39,6 +40,14 @@ export function MessageThreadRoute(): JSX.Element {
     queryKey: ['conversation', conversationId],
     queryFn: () => api.messages.getConversation({ id: conversationId }),
     enabled: conversationId !== '',
+    // ADR 0032 §1: thread metadata updates within 60s while the tab is focused; single
+    // source of truth in `lib/poll-intervals.ts` (P19-021). `refetchIntervalInBackground`
+    // stays at its TanStack Query default (`false`), which already suspends this
+    // interval while the tab is hidden/unfocused (`docs/research/tanstack-query.md`).
+    refetchInterval: WEB_DM_POLL_MS,
+    // Re-enabled for this query only; the app-wide default in `main.tsx` stays off —
+    // matches the same call in `MessagesRoute.tsx` and for the same reason.
+    refetchOnWindowFocus: true,
   });
   const conversation = conversationQuery.data?.conversation;
   const securityMode = conversation?.securityMode;
