@@ -195,6 +195,23 @@ EXPORT_ACCOUNT
 PURGE_ACCOUNT
 ```
 
+E2EE (ADR 0020, B-109):
+
+```text
+E2EE_RETENTION_SWEEP
+```
+
+`apps/worker/src/jobs/handlers/e2ee-retention-sweep.handler.ts` is a self-scheduling recurring
+job: each run enqueues its own successor bucket (`E2EE_RETENTION_INTERVAL_MS`, default 24h) via
+the outbox idempotency key, so no separate cron exists for it, matching `PURGE_ACCOUNT`'s pattern
+above. Per run it deletes, in bounded `E2EE_RETENTION_BATCH_SIZE`-row batches with
+`SKIP LOCKED`, only: mailbox envelopes that are acknowledged _and_ older than
+`E2EE_MAILBOX_MAX_LATENCY_MS` (`packages/domain`, ADR 0020), one-time prekeys already recorded
+consumed, and signed prekeys already recorded retired — an ambiguous (not-yet-acknowledged/
+consumed/retired) row is always left alone. Deleted counts are aggregated per kind and reported
+via `e2eeRetentionDeletedTotal`/`e2eeRetentionRunsTotal` (`packages/observability`); envelope/key
+contents never appear in logs or metrics (§194).
+
 `PrivacyService.ExportAccount`/`RequestAccountDeletion` (`apps/server/src/modules/privacy/`)
 enqueue these; `apps/worker/src/jobs/handlers/export-account.handler.ts`/
 `purge-account.handler.ts` run them. `PURGE_ACCOUNT`'s `available_at` is set to the deletion
