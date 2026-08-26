@@ -1,4 +1,5 @@
 import type { Actor, Notification } from '../api/wire/types.js';
+import type { Timestamp } from '@bufbuild/protobuf/wkt';
 import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
@@ -63,10 +64,7 @@ describe('NotificationsScreen FOLLOW_REQUEST rows (§197.5)', () => {
 });
 
 describe('NotificationsScreen MESSAGE rows (B-098, §187/§194)', () => {
-  const messageNotification = (
-    conversationId: string,
-    createdAt?: { seconds: bigint; nanos: number },
-  ): Notification =>
+  const messageNotification = (conversationId: string, createdAt?: Timestamp): Notification =>
     notification({
       type: NOTIFICATION_TYPE.MESSAGE,
       conversationId,
@@ -155,7 +153,11 @@ describe('NotificationsScreen MESSAGE rows (B-098, §187/§194)', () => {
 
   it('repeat MESSAGE rows for the same conversation collapse into one group', () => {
     // Grouping requires both rows' createdAt inside GROUP_WINDOW_MS (10 min).
-    const now = { seconds: BigInt(Math.floor(Date.now() / 1000)), nanos: 0 };
+    const now: Timestamp = {
+      seconds: BigInt(Math.floor(Date.now() / 1000)),
+      nanos: 0,
+      $typeName: 'google.protobuf.Timestamp',
+    };
     const first = messageNotification('conv-1', now);
     const second = messageNotification('conv-1', now);
     const groups = groupNotifications([first, second]);
