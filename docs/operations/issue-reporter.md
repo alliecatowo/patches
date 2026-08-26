@@ -87,6 +87,18 @@ Redaction guarantees (§194 discipline, golden-tested):
 - Post-redaction ceiling 256 KiB: oldest events shed first, then frame, then screenshot,
   then notes truncated.
 
+### Web breadcrumb persistence (B-162/B-171)
+
+`apps/web/src/lib/diagnosticsReporter.ts` mirrors its in-memory breadcrumb ring to
+`sessionStorage` (tab-scoped; key `patches.web.diagnostics-breadcrumbs.v1`) so a reload
+before reporting doesn't lose the trail — flushed on `pagehide`, restored on boot.
+`sessionStorage` is cleartext, so every breadcrumb `detail` is redacted with
+`@patches/domain`'s `redactDiagnosticsText` (the same rules used at bundle-build time)
+**before** it enters the ring, not only when a bundle is later built; a stored value is
+re-redacted again on restore so a mirror written by an older build can never widen what a
+fresh capture would have stored. Bundle-build redaction stays in place on top of this as
+defence in depth.
+
 TUI fallback: if the `POST` to the Worker fails, the TUI writes the bundle JSON to the
 OS tmpdir instead and prints the issues URL for manual attach — the same shape web
 always uses (see "Web: local save" above).

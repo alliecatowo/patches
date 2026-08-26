@@ -34,10 +34,8 @@
     "react-dom": "catalog:",
     "react-router-dom": "catalog:",
     "sonner": "catalog:",
-    "workbox-core": "catalog:",
     "workbox-precaching": "catalog:",
-    "workbox-routing": "catalog:",
-    "workbox-strategies": "catalog:"
+    "workbox-routing": "catalog:"
   },
   "devDependencies": {
     "@playwright/test": "catalog:",

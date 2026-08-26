@@ -300,16 +300,10 @@ catalogs:
     vitest:
       specifier: ^4.1.11
       version: 4.1.11
-    workbox-core:
-      specifier: ^7.4.1
-      version: 7.4.1
     workbox-precaching:
       specifier: ^7.4.1
       version: 7.4.1
     workbox-routing:
-      specifier: ^7.4.1
-      version: 7.4.1
-    workbox-strategies:
       specifier: ^7.4.1
       version: 7.4.1
     wrangler:
@@ -747,16 +741,10 @@ importers:
       sonner:
         specifier: 'catalog:'
         version: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      workbox-core:
-        specifier: 'catalog:'
-        version: 7.4.1
       workbox-precaching:
         specifier: 'catalog:'
         version: 7.4.1
       workbox-routing:
-        specifier: 'catalog:'
-        version: 7.4.1
-      workbox-strategies:
         specifier: 'catalog:'
         version: 7.4.1
     devDependencies:

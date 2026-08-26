@@ -1,7 +1,7 @@
 import { describeError } from '@patches/client';
 import { PostVisibility, QuotePolicy } from '@patches/proto/es';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -29,6 +29,19 @@ export function ThreadRoute(): JSX.Element {
   const [replyBody, setReplyBody] = useState('');
   const [uploads, setUploads] = useState<MediaUploadHandle[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // In-flight uploads' abort switches, keyed by the same `File` identity `uploads`
+  // entries are matched on. Not reactive state on purpose — aborting doesn't itself
+  // need a render, only the `uploads` update that follows it does (B-172).
+  const uploadControllersRef = useRef(new Map<File, AbortController>());
+
+  // Unmounting mid-upload (navigating away from the thread) must cancel every
+  // still-running PUT rather than let it finish into a component that's gone (B-172).
+  useEffect(() => {
+    const controllers = uploadControllersRef.current;
+    return () => {
+      for (const controller of controllers.values()) controller.abort();
+    };
+  }, []);
 
   const postQuery = useQuery({
     queryKey: ['post', postId],
@@ -58,19 +71,30 @@ export function ThreadRoute(): JSX.Element {
     const remaining = MAX_MEDIA - uploads.length;
     const selected = Array.from(files).slice(0, remaining);
     for (const file of selected) {
+      const controller = new AbortController();
+      uploadControllersRef.current.set(file, controller);
       const handle: MediaUploadHandle = { mediaId: '', file, progress: 0, status: 'uploading' };
       setUploads((current) => [...current, handle]);
-      uploadMedia(file, (fraction) => {
-        setUploads((current) =>
-          current.map((u) => (u.file === file ? { ...u, progress: fraction } : u)),
-        );
-      })
+      uploadMedia(
+        file,
+        (fraction) => {
+          setUploads((current) =>
+            current.map((u) => (u.file === file ? { ...u, progress: fraction } : u)),
+          );
+        },
+        { signal: controller.signal },
+      )
         .then((mediaId) => {
+          uploadControllersRef.current.delete(file);
           setUploads((current) =>
             current.map((u) => (u.file === file ? { ...u, mediaId, status: 'ready' } : u)),
           );
         })
         .catch((error: unknown) => {
+          uploadControllersRef.current.delete(file);
+          // A user-cancelled (or unmount-cancelled) upload is not a failure: no error
+          // tile, no toast — just gone, same as if it had never been picked (B-172).
+          if (error instanceof DOMException && error.name === 'AbortError') return;
           setUploads((current) =>
             current.map((u) =>
               u.file === file ? { ...u, status: 'error', error: describeError(error).message } : u,
@@ -80,8 +104,18 @@ export function ThreadRoute(): JSX.Element {
     }
   };
 
+  /** Also the cancel button for a still-uploading tile: aborts the in-flight PUT (if
+   * any) before dropping the tile, so cancelling never leaves a request running behind
+   * a form that looks like it moved on (B-172). */
   const removeUpload = (index: number): void => {
-    setUploads((current) => current.filter((_, i) => i !== index));
+    setUploads((current) => {
+      const target = current[index];
+      if (target) {
+        uploadControllersRef.current.get(target.file)?.abort();
+        uploadControllersRef.current.delete(target.file);
+      }
+      return current.filter((_, i) => i !== index);
+    });
   };
 
   const replyMutation = useMutation({
@@ -193,7 +227,7 @@ export function ThreadRoute(): JSX.Element {
                       type="button"
                       className={styles['removeMediaBtn']}
                       onClick={() => removeUpload(idx)}
-                      aria-label="Remove image"
+                      aria-label={upload.status === 'uploading' ? 'Cancel upload' : 'Remove image'}
                     >
                       <CloseIcon size={12} />
                     </button>

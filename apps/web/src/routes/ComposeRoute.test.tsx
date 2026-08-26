@@ -10,7 +10,13 @@ const mockGetNodeInfo = vi.fn().mockResolvedValue({
   socialCapabilities: { maxPostChars: 500 },
 });
 const mockUploadMedia =
-  vi.fn<(file: File, onProgress: (fraction: number) => void) => Promise<string>>();
+  vi.fn<
+    (
+      file: File,
+      onProgress: (fraction: number) => void,
+      options?: { signal?: AbortSignal },
+    ) => Promise<string>
+  >();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -20,8 +26,11 @@ vi.mock('../api/client.js', () => ({
 }));
 
 vi.mock('../lib/mediaUpload.js', () => ({
-  uploadMedia: (file: File, onProgress: (fraction: number) => void): Promise<string> =>
-    mockUploadMedia(file, onProgress),
+  uploadMedia: (
+    file: File,
+    onProgress: (fraction: number) => void,
+    options?: { signal?: AbortSignal },
+  ): Promise<string> => mockUploadMedia(file, onProgress, options),
 }));
 
 const { ComposeRoute } = await import('./ComposeRoute.js');
@@ -120,5 +129,52 @@ describe('ComposeRoute', () => {
     });
 
     await screen.findByText(/HTTP 403/);
+  });
+
+  it('passes an AbortSignal, and clicking cancel aborts it and drops the tile without an error (B-172)', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    mockUploadMedia.mockImplementation(
+      (_file, _onProgress, options) =>
+        new Promise((_resolve, reject) => {
+          capturedSignal = options?.signal;
+          options?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The media upload was aborted.', 'AbortError'));
+          });
+        }),
+    );
+    const view = renderCompose();
+
+    const input = view.container.querySelector('input[type="file"]');
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+
+    const cancelBtn = await screen.findByLabelText('Cancel upload');
+    expect(capturedSignal?.aborted).toBe(false);
+    fireEvent.click(cancelBtn);
+
+    expect(capturedSignal?.aborted).toBe(true);
+    await waitFor(() => expect(view.container.querySelector('img')).toBeNull());
+    expect(screen.queryByText(/Failed|HTTP|aborted/i)).not.toBeInTheDocument();
+  });
+
+  it('aborts any still-uploading attachment on unmount (B-172)', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    mockUploadMedia.mockImplementation(
+      (_file, _onProgress, options) =>
+        new Promise(() => {
+          capturedSignal = options?.signal;
+        }),
+    );
+    const view = renderCompose();
+
+    const input = view.container.querySelector('input[type="file"]');
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+
+    view.unmount();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 });

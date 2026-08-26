@@ -20,7 +20,13 @@ const mockListReplies =
 const mockCreatePost = vi.fn<(...args: unknown[]) => Promise<{ post?: { id: string } }>>();
 const mockUseSession = vi.fn<() => AppSession | null>();
 const mockUploadMedia =
-  vi.fn<(file: File, onProgress: (fraction: number) => void) => Promise<string>>();
+  vi.fn<
+    (
+      file: File,
+      onProgress: (fraction: number) => void,
+      options?: { signal?: AbortSignal },
+    ) => Promise<string>
+  >();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -41,8 +47,11 @@ vi.mock('../api/client.js', () => ({
 }));
 
 vi.mock('../lib/mediaUpload.js', () => ({
-  uploadMedia: (file: File, onProgress: (fraction: number) => void): Promise<string> =>
-    mockUploadMedia(file, onProgress),
+  uploadMedia: (
+    file: File,
+    onProgress: (fraction: number) => void,
+    options?: { signal?: AbortSignal },
+  ): Promise<string> => mockUploadMedia(file, onProgress, options),
 }));
 
 vi.mock('../hooks/useSession.js', () => ({
@@ -216,5 +225,65 @@ describe('ThreadRoute', () => {
         expect.objectContaining({ mediaIds: ['media-9'] }),
       );
     });
+  });
+
+  it('passes an AbortSignal, and clicking cancel aborts it, drops the tile, and unblocks the reply button (B-172)', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    let capturedSignal: AbortSignal | undefined;
+    mockUploadMedia.mockImplementation(
+      (_file, _onProgress, options) =>
+        new Promise((_resolve, reject) => {
+          capturedSignal = options?.signal;
+          options?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The media upload was aborted.', 'AbortError'));
+          });
+        }),
+    );
+
+    const view = renderThread();
+    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+
+    const input = view.container.querySelector('input[type="file"]');
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+
+    const cancelBtn = await screen.findByLabelText('Cancel upload');
+    fireEvent.click(cancelBtn);
+
+    expect(capturedSignal?.aborted).toBe(true);
+    await waitFor(() => expect(view.container.querySelector('img')).toBeNull());
+    expect(screen.queryByText(/Failed/i)).not.toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText('Post your reply…');
+    fireEvent.change(textarea, { target: { value: 'No stuck attachment' } });
+    expect(screen.getByRole('button', { name: 'Reply' })).toBeEnabled();
+  });
+
+  it('aborts any still-uploading attachment on unmount (B-172)', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    let capturedSignal: AbortSignal | undefined;
+    mockUploadMedia.mockImplementation(
+      (_file, _onProgress, options) =>
+        new Promise(() => {
+          capturedSignal = options?.signal;
+        }),
+    );
+
+    const view = renderThread();
+    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+
+    const input = view.container.querySelector('input[type="file"]');
+    fireEvent.change(input as Element, {
+      target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+
+    view.unmount();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 });

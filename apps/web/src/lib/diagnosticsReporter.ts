@@ -4,6 +4,7 @@ import {
   DIAGNOSTICS_SCREENSHOT_MAX_CHARS,
   MAX_DIAGNOSTICS_BREADCRUMBS,
   MAX_DIAGNOSTICS_BUNDLE_BYTES,
+  redactDiagnosticsText,
   type DiagnosticsBundle,
 } from '@patches/domain';
 import { SESSION_REFRESHED_EVENT, type SessionRefreshedDetail } from '@patches/client';
@@ -18,6 +19,15 @@ import { SESSION_REFRESHED_EVENT, type SessionRefreshedDetail } from '@patches/c
  * reload before reporting keeps the trail — restored on boot, written back in one
  * synchronous flush on `pagehide`. The mirror only ever round-trips crumbs the collectors
  * already produced; validation on read discards anything wider than that.
+ *
+ * B-171: `sessionStorage` is cleartext, so every `detail` is run through
+ * `@patches/domain`'s `redactDiagnosticsText` — the same rules the bundle-build path uses
+ * — **before** it ever reaches the in-memory ring, not only when a bundle is built. That
+ * keeps a single source of truth for what "looks like a secret" while closing the window
+ * where a `console.error` carrying a bearer token or JWT sat in cleartext storage between
+ * capture and report. Bundle-build redaction stays in place too (defence in depth), and a
+ * stored value is re-redacted on restore so a mirror written by a pre-B-171 build can never
+ * widen what a fresh session would have captured.
  */
 
 const RING_CAPACITY = MAX_DIAGNOSTICS_BREADCRUMBS;
@@ -36,6 +46,12 @@ function now(): string {
   return new Date().toISOString();
 }
 
+/** Redact-then-bound a breadcrumb's free text — applied on every write and every restore
+ * (B-171), never only when a bundle is built. */
+function redactedBreadcrumbDetail(detail: string): string {
+  return redactDiagnosticsText(detail).slice(0, DIAGNOSTICS_BREADCRUMB_DETAIL_MAX_CHARS);
+}
+
 export function recordWebBreadcrumb(
   kind: WebBreadcrumb['kind'],
   detail: string,
@@ -44,7 +60,7 @@ export function recordWebBreadcrumb(
   breadcrumbs.push({
     at,
     kind,
-    detail: detail.slice(0, DIAGNOSTICS_BREADCRUMB_DETAIL_MAX_CHARS),
+    detail: redactedBreadcrumbDetail(detail),
   });
   if (breadcrumbs.length > RING_CAPACITY) {
     breadcrumbs = breadcrumbs.slice(breadcrumbs.length - RING_CAPACITY);
@@ -140,10 +156,13 @@ function parsePersistedBreadcrumbs(
     const { at, kind, detail } = crumb as Record<string, unknown>;
     if (typeof at !== 'string' || typeof detail !== 'string') return undefined;
     if (!isWebBreadcrumbKind(kind)) return undefined;
+    // Re-redact on restore (B-171): a mirror written by a build that predates redact-on-write
+    // (or any other path that bypassed it) must never widen what a fresh capture would have
+    // stored — restoring is not a way around the same rules a live write goes through.
     restored.push({
       at,
       kind,
-      detail: detail.slice(0, DIAGNOSTICS_BREADCRUMB_DETAIL_MAX_CHARS),
+      detail: redactedBreadcrumbDetail(detail),
     });
   }
   return { crumbs: restored.slice(-RING_CAPACITY), routeCounter };
