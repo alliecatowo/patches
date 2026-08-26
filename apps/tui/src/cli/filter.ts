@@ -29,7 +29,7 @@ const USAGE = `Usage: patches filter <list|create|delete|export|import> [options
   patches filter import [--apply]   (reads JSON from stdin; dry-run without --apply)
 
 Term kinds: substring, word, tag, actor, domain.
-Scopes: home, local, tag-feed, community-feed, notifications, search, message-requests.
+Scopes: home, local, tag-feed, community-feed, notifications, search.
 Filters are always literal text — no regular expressions (spec §198.2).
 `;
 
@@ -48,7 +48,6 @@ const SCOPE_ALIASES: Readonly<Record<string, FilterScope>> = {
   'community-feed': FILTER_SCOPE.COMMUNITY_FEED,
   notifications: FILTER_SCOPE.NOTIFICATIONS,
   search: FILTER_SCOPE.SEARCH,
-  'message-requests': FILTER_SCOPE.MESSAGE_REQUESTS,
 };
 
 const ACTION_ALIASES: Readonly<Record<string, FilterAction>> = {

@@ -42,19 +42,11 @@ export function filterTermKindFromProto(value: FilterTermKind): DbFilterTermKind
 
 /**
  * A-051 (spec §198.3): `NOTIFICATIONS` (enforced by `NotificationsService.listNotifications`)
- * and `MESSAGE_REQUESTS` are the two scopes with no list-item UI to attach a `filtered_by` hint
- * to — neither RPC's response shape carries one. `MESSAGE_REQUESTS`'s own enforcement point
- * (`MessagesService.listMessageRequests`) was removed by ADR 0030 §B-095 along with the rest of
- * the server-visible DM message-request flow; the scope value itself is left in place (never
- * reuse a removed enum value/number, spec §153) but is currently unenforced by any RPC. A
- * filter/list-subscription action of `collapse` or `warn` is accepted and stored for these
- * scopes exactly like any other, but only ever behaves as `hide` there; `collapse`/`warn`
- * are a silent no-op, matching every other client-presentation action that never fails
- * validation server-side. This is intentional, not a gap: rejecting `collapse`/`warn` at write
- * time would need the write path to know which scopes were selected on the same filter as a
- * scope requiring `hide`-only semantics, which single-`action`-per-filter (`filters.proto`)
- * does not support without duplicating filters. See both services' `listNotifications`/
- * `listMessageRequests` doc comments for the enforcement side.
+ * is the one scope with no list-item UI to attach a `filtered_by` hint to — its RPC's response
+ * shape carries none. `MESSAGE_REQUESTS`, the other such scope, was removed outright by B-126
+ * once ADR 0030 §B-095 deleted the server-visible DM message-request flow it scoped; its
+ * protobuf enum value/number is separately `reserved`, never reused (spec §153,
+ * `patches/v1/filters.proto`).
  */
 const SCOPE_TO_PROTO: Readonly<Record<DbFilterScope, FilterScope>> = Object.freeze({
   HOME: FilterScope.FILTER_SCOPE_HOME,
@@ -63,7 +55,6 @@ const SCOPE_TO_PROTO: Readonly<Record<DbFilterScope, FilterScope>> = Object.free
   COMMUNITY_FEED: FilterScope.FILTER_SCOPE_COMMUNITY_FEED,
   NOTIFICATIONS: FilterScope.FILTER_SCOPE_NOTIFICATIONS,
   SEARCH: FilterScope.FILTER_SCOPE_SEARCH,
-  MESSAGE_REQUESTS: FilterScope.FILTER_SCOPE_MESSAGE_REQUESTS,
 });
 
 const PROTO_TO_SCOPE: Readonly<Partial<Record<FilterScope, DbFilterScope>>> = Object.freeze({
@@ -73,7 +64,6 @@ const PROTO_TO_SCOPE: Readonly<Partial<Record<FilterScope, DbFilterScope>>> = Ob
   [FilterScope.FILTER_SCOPE_COMMUNITY_FEED]: 'COMMUNITY_FEED',
   [FilterScope.FILTER_SCOPE_NOTIFICATIONS]: 'NOTIFICATIONS',
   [FilterScope.FILTER_SCOPE_SEARCH]: 'SEARCH',
-  [FilterScope.FILTER_SCOPE_MESSAGE_REQUESTS]: 'MESSAGE_REQUESTS',
 });
 
 export function filterScopeToProto(scope: DbFilterScope): FilterScope {
