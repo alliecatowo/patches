@@ -1,0 +1,297 @@
+/**
+ * The web app's E2EE manager (B-102 follow-up): one module-level owner of the vault,
+ * the enrolled identity, and the session runtime — the browser analogue of the TUI's
+ * `app/e2ee-send.ts` pipeline, bound to `@patches/client`'s Connect transport.
+ *
+ * Ownership rules carried over unchanged (ADR 0020 §4):
+ *   - ONE vault per tab per account, opened once; faults (corrupt/rollback) are sticky
+ *     and coarse — the UI shows an inaccessible-history state with an explicit reset,
+ *     never a silent wipe;
+ *   - an enrolled identity is required before any send/receive (`E2eeNotEnrolledError`
+ *     fixed copy otherwise);
+ *   - signing out does NOT wipe the vault — the vault is account-scoped storage, and
+ *     wipe is an explicit, labeled destructive act.
+ *
+ * Conversation **creation** fails closed here, for two independent and documented
+ * reasons (both also bind the TUI, which is why neither client wires a working create):
+ *   1. B-124: establishing the first session needs peer prekey bundles in the
+ *      crypto-native encoding X3DH verifies, which the node cannot serve (see
+ *      `transports.ts`).
+ *   2. The wire contract itself: `CreateE2eeConversation` mints the conversation id
+ *      server-side *after* the client composes the initial message — but every
+ *      envelope's AEAD associated data binds the conversation id the *recipient* will
+ *      read off the wire (`packages/crypto`'s `encodeDeviceEnvelopeAssociatedData`
+ *      requires it non-empty). A client cannot seal an initial envelope for an id it
+ *      cannot know; inventing one would produce envelopes no recipient can ever open.
+ *      This manager refuses to do that (fail closed) rather than shipping un-openable
+ *      ciphertext.
+ */
+import { useSyncExternalStore } from 'react';
+
+import { api } from '../api/client.js';
+
+import {
+  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+  webE2eeSessionSetupAvailable,
+} from './availability.js';
+import type { InboxRow } from './runtime.js';
+import { E2eeNotEnrolledError } from './runtime.js';
+import { E2eeSessionRuntime } from './runtime-session.js';
+import type { LocalDeviceIdentity } from './local-identity.js';
+import {
+  createRatchetSessionVault,
+  type RatchetSessionVault,
+  type WebVaultAccount,
+} from './vault.js';
+import { VaultCorruptionError, VaultRollbackError } from './vault-errors.js';
+import {
+  ENROLLMENT_PEER_WARNING_COPY,
+  enrollThisDevice,
+  loadStoredEnrollment,
+  type EnrollOutcome,
+} from './enrollment.js';
+import {
+  createWebE2eeTransports,
+  createWebEnrollmentTransport,
+  type E2eeApiSurface,
+} from './transports.js';
+
+/** Fixed, content-free copy for every state and failure (ADR 0020 §4 / spec §194). */
+export const WEB_E2EE_COPY = {
+  vaultFault:
+    'The encrypted message history stored in this browser cannot be opened. It may have ' +
+    'been restored from an older backup. Resetting deletes this browser’s E2EE history ' +
+    'and enrolls a fresh device; conversations stay on the node.',
+  notEnrolled: 'This browser has no enrolled messaging device yet.',
+  enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
+  sendFailed: 'The message could not be delivered.',
+  pollFailed: 'Could not fetch new encrypted messages.',
+  createUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+  sessionUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+  peerWarning: ENROLLMENT_PEER_WARNING_COPY,
+} as const;
+
+export type WebE2eeStatus =
+  | { readonly kind: 'signed-out' }
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'not-enrolled' }
+  | { readonly kind: 'enrolling' }
+  | { readonly kind: 'enrolled' }
+  | { readonly kind: 'refused'; readonly copy: string }
+  | { readonly kind: 'fault'; readonly copy: string };
+
+/** Error with fixed user copy for create/send/enroll failures (content-free by rule). */
+export class WebE2eeUnavailableError extends Error {
+  constructor(copy: string) {
+    super(copy);
+    this.name = new.target.name;
+  }
+}
+
+export interface WebE2eeManagerOptions {
+  /** The app's Connect API surface; defaults to the real singleton (`api/client.ts`). */
+  readonly api?: E2eeApiSurface | undefined;
+  /** Injectable clock (tests). */
+  readonly nowMs?: (() => number) | undefined;
+}
+
+type Listener = () => void;
+
+class WebE2eeManager {
+  private status: WebE2eeStatus = { kind: 'signed-out' };
+  private readonly listeners = new Set<Listener>();
+  private vault: RatchetSessionVault | undefined;
+  private identity: LocalDeviceIdentity | undefined;
+  private runtime: E2eeSessionRuntime | undefined;
+  /** The account the open vault belongs to (set by `setActor`, read by `enroll`). */
+  private actorId: string | undefined;
+  private readonly api: E2eeApiSurface;
+  private readonly nowMs: (() => number) | undefined;
+
+  constructor(options: WebE2eeManagerOptions = {}) {
+    this.api = options.api ?? api;
+    this.nowMs = options.nowMs;
+  }
+
+  getStatus(): WebE2eeStatus {
+    return this.status;
+  }
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private setStatus(next: WebE2eeStatus): void {
+    this.status = next;
+    for (const listener of this.listeners) listener();
+  }
+
+  private release(): void {
+    this.vault?.close();
+    this.vault = undefined;
+    this.identity = undefined;
+    this.runtime = undefined;
+    this.actorId = undefined;
+  }
+
+  /** Called by the session layer on sign-in/sign-out/actor switch. */
+  async setActor(actor: { readonly id: string } | null): Promise<void> {
+    if (actor === null) {
+      this.release();
+      this.setStatus({ kind: 'signed-out' });
+      return;
+    }
+    this.release();
+    this.setStatus({ kind: 'loading' });
+    try {
+      const account: WebVaultAccount = { origin: location.origin, actorId: actor.id };
+      const vault = await createRatchetSessionVault({ account });
+      const stored = await loadStoredEnrollment(vault);
+      if (stored === undefined || !stored.submitted) {
+        // Keep the vault open: enroll() runs against THIS instance (single-owner rule).
+        this.vault = vault;
+        this.actorId = actor.id;
+        this.setStatus({ kind: 'not-enrolled' });
+        return;
+      }
+      this.bind(vault, stored.identity);
+      this.setStatus({ kind: 'enrolled' });
+    } catch {
+      // Sticky, coarse, content-free fault — never the error itself (spec §194).
+      this.release();
+      this.setStatus({ kind: 'fault', copy: WEB_E2EE_COPY.vaultFault });
+    }
+  }
+
+  private bind(vault: RatchetSessionVault, identity: LocalDeviceIdentity): void {
+    const transports = createWebE2eeTransports({ api: this.api, identity });
+    this.vault = vault;
+    this.identity = identity;
+    this.runtime = new E2eeSessionRuntime({
+      vault,
+      identity,
+      sendTransport: transports,
+      mailboxTransport: transports,
+      ...(this.nowMs === undefined ? {} : { nowMs: this.nowMs }),
+    });
+  }
+
+  /** Runs device enrollment for the signed-in actor (idempotent, resumable). */
+  async enroll(): Promise<EnrollOutcome> {
+    if (this.status.kind === 'enrolled' && this.identity !== undefined) {
+      return { status: 'already-enrolled', identity: this.identity };
+    }
+    if (this.status.kind !== 'not-enrolled' && this.status.kind !== 'refused') {
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.notEnrolled);
+    }
+    if (this.vault === undefined || this.identity !== undefined || this.actorId === undefined) {
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.notEnrolled);
+    }
+    const actorId = this.actorId;
+    this.setStatus({ kind: 'enrolling' });
+    try {
+      const outcome = await enrollThisDevice({
+        actorId,
+        transport: createWebEnrollmentTransport({ api: this.api }),
+        vault: this.vault,
+        ...(this.nowMs === undefined ? {} : { nowMs: this.nowMs }),
+      });
+      if (outcome.status === 'refused') {
+        this.setStatus({ kind: 'refused', copy: outcome.copy });
+        return outcome;
+      }
+      this.bind(this.vault, outcome.identity);
+      this.setStatus({ kind: 'enrolled' });
+      return outcome;
+    } catch (error) {
+      // The record (if any) is durable in the vault; a retry resumes it verbatim. The
+      // vault stays open in `not-enrolled` so the button can be pressed again.
+      this.setStatus({ kind: 'not-enrolled' });
+      if (error instanceof WebE2eeUnavailableError) throw error;
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.enrollFailed);
+    }
+  }
+
+  async send(conversationId: string, body: string): Promise<void> {
+    const runtime = this.requireRuntime();
+    if (!webE2eeSessionSetupAvailable()) {
+      // Refuse before composing anything: no session can be established, so this would
+      // fail at fanout every time (B-132). The honest answer lives here, not in the UI.
+      throw new WebE2eeUnavailableError(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
+    }
+    try {
+      await runtime.send(conversationId, body, crypto.randomUUID());
+    } catch (error) {
+      if (error instanceof WebE2eeUnavailableError || error instanceof E2eeNotEnrolledError) {
+        throw error;
+      }
+      // Transport/protocol failures surface as fixed copy; the staged-commit protocol
+      // has already handled state recovery internally (audit P1-1).
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
+    }
+  }
+
+  async poll(conversationId: string): Promise<readonly InboxRow[]> {
+    const runtime = this.requireRuntime();
+    const result = await runtime.pollMailbox({ conversationId });
+    return result.rows;
+  }
+
+  /**
+   * Creating an E2EE conversation from the browser fails closed today — see the module
+   * header for both blockers (B-124 prekey claims, and the conversation-id-in-AD gap in
+   * `CreateE2eeConversation` itself). Existing conversations send/receive normally.
+   */
+  async createConversation(): Promise<never> {
+    this.requireRuntime();
+    throw new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable);
+  }
+
+  /** Explicit, labeled destructive reset (also the only exit from a sticky fault). */
+  async wipe(): Promise<void> {
+    const vault = this.vault;
+    this.release();
+    if (vault !== undefined) {
+      try {
+        await vault.wipe();
+      } finally {
+        vault.close();
+      }
+    }
+    this.setStatus({ kind: 'not-enrolled' });
+  }
+
+  private requireRuntime(): E2eeSessionRuntime {
+    if (this.runtime === undefined || this.identity === undefined) {
+      throw new E2eeNotEnrolledError();
+    }
+    return this.runtime;
+  }
+}
+
+export type WebE2ee = WebE2eeManager;
+
+export function createWebE2eeManager(options?: WebE2eeManagerOptions): WebE2ee {
+  return new WebE2eeManager(options);
+}
+
+let singleton: WebE2eeManager | undefined;
+
+/** The app's one manager. */
+export function webE2ee(): WebE2eeManager {
+  if (singleton === undefined) singleton = createWebE2eeManager();
+  return singleton;
+}
+
+/** React binding: re-renders on every status transition. */
+export function useWebE2eeStatus(): WebE2eeStatus {
+  const manager = webE2ee();
+  return useSyncExternalStore(
+    (listener) => manager.subscribe(listener),
+    () => manager.getStatus(),
+    () => manager.getStatus(),
+  );
+}
