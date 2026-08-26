@@ -176,9 +176,11 @@ jobs:
           echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Run migrations against the Neon branch
-        # `pnpm build` first: migration:run imports @patches/config's dist, which the
-        # setup action's install alone does not produce (CI's integration job builds too).
-        run: pnpm build && pnpm db:migrate
+        # Scoped turbo build — `@patches/database` + its workspace deps (config, proto,
+        # …) — not the full 21-workspace `pnpm build`: migrations only need the
+        # database package's dist, and this slice is usually restored warm from the
+        # setup action's turbo cache (saves ~30-40s per preview deploy).
+        run: pnpm --filter @patches/database... build && pnpm db:migrate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           DATABASE_SSL: 'true'
@@ -208,6 +210,20 @@ jobs:
             || echo "Fly app patches-pr-${PR_NUMBER} already exists (or create was refused) — continuing."
         env:
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
+
+      # B-154 root cause: a freshly created app has NO IP addresses (flyctl stopped
+      # auto-allocating), and without a shared IPv4 there is no <app>.fly.dev DNS —
+      # the Connect edge is unreachable from browsers and every login fails with
+      # "can't connect to backend" while the machine itself is perfectly healthy.
+      # Allocate the free org-shared IPv4 idempotently; re-runs are no-ops.
+      - name: Ensure shared IPv4 (DNS for <app>.fly.dev)
+        run: |
+          set -euo pipefail
+          if flyctl ips list --app "patches-pr-${PR_NUMBER}" 2>/dev/null | grep -q "v4"; then
+            echo "IPv4 already allocated."
+          else
+            flyctl ips allocate-v4 --shared --app "patches-pr-${PR_NUMBER}"
+          fi
 
       # Capability detection (documented matrix, never a silent failure): the ONLY
       # optional capability is media, gated on the five R2_PREVIEW_* secrets being
@@ -262,15 +278,10 @@ jobs:
       - name: Generate preview fly config
         run: node infra/preview/make-preview-config.mjs --pr "$PR_NUMBER"
 
-      - name: Deploy to Fly
-        run: |
-          set -euo pipefail
-          # --ha=false: exactly one machine per process group (cost guard — two
-          # total: server + worker). --strategy immediate: replace them in place
-          # rather than briefly running doubles.
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
-            --remote-only --ha=false --strategy immediate --yes \
-            --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+      - name: Build server + worker on the runner (turbo-cached)
+        # The same turbo cache the CI jobs restore (setup action) makes unchanged
+        # packages FULL TURBO replays; only what this PR changed actually compiles.
+        run: pnpm exec turbo run build --filter=@patches/server --filter=@patches/worker
 
       # Optional web-preview capability, gated on the Cloudflare credentials exactly
       # like the R2 media path: all-or-none. The detect step always runs (it only
@@ -292,10 +303,10 @@ jobs:
           fi
 
       - name: Build web client for preview
-        # Same `pnpm --filter @patches/web... build` shape as production web.yml; the
-        # `...` also builds the web's workspace deps. The Connect edge is on :8443
-        # (infra/preview/fly-preview.toml), so the API base must name that port — not
-        # :443, which is the gRPC service.
+        # MUST run before the pnpm-deploy staging below: `pnpm deploy --prod` prunes
+        # devDependencies from the workspace's virtual store, which deletes build
+        # tools (e.g. @patches/markup's tsup) that `@patches/web...` still needs
+        # (observed 2026-08-26: "tsup: not found" when this ran after staging).
         if: env.PREVIEW_WEB == 'enabled'
         run: pnpm --filter @patches/web... build
         env:
@@ -303,6 +314,8 @@ jobs:
           GITHUB_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
 
       - name: Deploy web preview to Cloudflare Pages
+        # Also before the pnpm-deploy staging: staging prunes root devDeps too, and
+        # wrangler is a root devDependency (observed: "Command wrangler not found").
         id: web_deploy
         if: env.PREVIEW_WEB == 'enabled'
         env:
@@ -321,6 +334,43 @@ jobs:
           echo "web_url=$web_url" >> "$GITHUB_OUTPUT"
           echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Stage self-contained app dirs (pnpm deploy)
+        run: |
+          set -euo pipefail
+          ctx="infra/preview/.image-context"
+          rm -rf "$ctx" && mkdir -p "$ctx"
+          pnpm --filter @patches/server deploy --prod --legacy "$ctx/server"
+          pnpm --filter @patches/worker deploy --prod --legacy "$ctx/worker"
+          cp infra/docker/migrate.mjs "$ctx/migrate.mjs"
+
+      - name: Assemble image (COPY-only — no toolchain in CI docker)
+        run: >-
+          docker build -f infra/docker/Dockerfile.prebuilt
+          -t "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+          --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+          infra/preview/.image-context
+
+      # Fly's documented CI pattern (fly.io/docs/blueprints/using-the-fly-docker-registry):
+      # build with your own caches, push to the app's private registry path, deploy by
+      # ref. `flyctl auth docker` honors FLY_API_TOKEN; the per-app registry path is
+      # org-scoped so no extra credentials exist to rotate.
+      - name: Push image to the Fly registry
+        run: |
+          set -euo pipefail
+          flyctl auth docker
+          docker push "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
+
+      - name: Deploy prebuilt image to Fly
+        # Built on the runner from the restored pnpm/turbo caches (Fly's remote
+        # builders share none of those, and their cold path measured ~1m50s per
+        # deploy). Process groups, checks, and autostop all come from the generated
+        # fly config as before.
+        run: |
+          set -euo pipefail
+          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+            --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
+            --ha=false --strategy immediate --yes
+
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
         # apps/server/src/transport/connect/cors.ts), so the preview web would be
@@ -336,8 +386,64 @@ jobs:
           pr="${{ github.event.pull_request.number || inputs.pr_number }}"
           web_url="${{ steps.web_deploy.outputs.web_url }}"
           branch_alias="https://pr-${pr}.patches-web.pages.dev"
-          flyctl secrets set --app "patches-pr-${pr}" \
-            "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null
+          # The deploy a few steps up just replaced both machines; setting a secret
+          # immediately can race "machine is replacing: concurrent update in
+          # progress". Retry with backoff instead of failing the preview over it.
+          for i in $(seq 1 6); do
+            if flyctl secrets set --app "patches-pr-${pr}" \
+                 "WEB_ORIGINS=${branch_alias},${web_url}" >/dev/null 2>"$RUNNER_TEMP/cors-err.txt"; then
+              echo "WEB_ORIGINS set (attempt ${i})."; exit 0
+            fi
+            if ! grep -q "concurrent update in progress" "$RUNNER_TEMP/cors-err.txt"; then
+              cat "$RUNNER_TEMP/cors-err.txt" >&2; exit 1
+            fi
+            echo "machines still replacing (attempt ${i}/6); waiting 10s"; sleep 10
+          done
+          cat "$RUNNER_TEMP/cors-err.txt" >&2; exit 1
+
+      - name: Verify web↔backend connectivity (healthz + CORS preflight)
+        # B-154: a partner hit "can't connect to the backend" on a preview web URL.
+        # That instance was a merged-PR teardown window (backend gone, Pages orphan —
+        # now fixed in teardown), but this probe proves the LIVE path every deploy:
+        # the Pages origin must get CORS approval from the Connect edge and healthz
+        # must answer, exactly as the browser client's login fetch does.
+        if: env.PREVIEW_WEB == 'enabled'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          origin="https://pr-${pr}.patches-web.pages.dev"
+          # The HTTP/Connect edge is :8443 — :443 is the gRPC service (spec of
+          # infra/preview/fly-preview.toml); healthz lives behind the HTTP one.
+          edge="https://patches-pr-${pr}.fly.dev:8443"
+          health=""
+          # Autostopped server machines take a few seconds to wake on the first
+          # request, and a brand-new app's DNS can take a minute — probe with short
+          # intervals rather than paying a flat 15s sleep per attempt.
+          for i in $(seq 1 20); do
+            if health="$(curl -fsS --max-time 10 "${edge}/healthz" 2>/dev/null)"; then break; fi
+            echo "healthz not reachable yet (attempt ${i}/20); waiting 5s"; sleep 5
+          done
+          [ -n "$health" ] || { echo "healthz never became reachable" >&2; exit 1; }
+          echo "healthz: ${health}" | head -c 200; echo
+          echo "CORS preflight from ${origin}:"
+          preflight="$(curl -fsS --max-time 30 -o /dev/null -w '%{http_code}' \
+            -X OPTIONS "${edge}/patches.v1.AuthService/Login" \
+            -H "Origin: ${origin}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type')"
+          echo "preflight status: ${preflight}"
+          allow="$(curl -fsS --max-time 30 -o /dev/null -w '%{header_json}' \
+            -X OPTIONS "${edge}/patches.v1.AuthService/Login" \
+            -H "Origin: ${origin}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);process.stdout.write((h["access-control-allow-origin"]??[]).join(","))})')"
+          echo "access-control-allow-origin: ${allow}"
+          case ",${allow}," in *",${origin}"*) ;; *) echo "CORS preflight did not allow the Pages origin" >&2; exit 1 ;; esac
+          echo "connectivity OK" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Post preview URL comment on the PR (edit existing)
         env:
@@ -407,7 +513,7 @@ jobs:
           rm -f "$body_file"
 
   teardown:
-    name: teardown (destroy Fly app + Neon branch)
+    name: teardown (destroy Fly app + Neon branch + Pages preview)
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     concurrency:
@@ -427,9 +533,16 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
-      # Both steps are best-effort on purpose: a PR closed before the first
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24.19.0
+
+      # Best-effort on purpose throughout (B-154): a PR closed before the first
       # successful deploy (or from a fork, where secrets are unavailable) has
-      # nothing to destroy, and that must not fail this job.
+      # nothing to destroy, and that must not fail this job. The Pages sweep uses
+      # the repo's wrangler devDependency + the deploy step's auth pattern.
       - name: Destroy Fly app (patches-pr-<N>)
         id: fly_destroy
         continue-on-error: true
@@ -440,6 +553,14 @@ jobs:
         continue-on-error: true
         run: neon branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
 
+      - name: Delete Cloudflare Pages deployments (pr-<N>)
+        id: pages_delete
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm install --frozen-lockfile --silent && node infra/preview/preview-sweep.mjs --pr "$PR_NUMBER"
+
       - name: Teardown summary
         if: always()
         run: |
@@ -448,8 +569,10 @@ jobs:
             echo "## Preview teardown (PR #${PR_NUMBER})"
             echo "- Fly app \`patches-pr-${PR_NUMBER}\`: ${FLY_RESULT}"
             echo "- Neon branch \`pr-${PR_NUMBER}\`: ${NEON_RESULT}"
-            echo "- If either failed, the Neon branch's 7-day expiry is the fail-safe; see manual teardown in docs/operations/preview-environments.md."
+            echo "- Cloudflare Pages deployments \`pr-${PR_NUMBER}\`: ${PAGES_RESULT}"
+            echo "- If anything failed, the Neon branch's 7-day expiry is the fail-safe; see manual teardown in docs/operations/preview-environments.md."
           } >> "$GITHUB_STEP_SUMMARY"
         env:
           FLY_RESULT: ${{ steps.fly_destroy.outcome == 'success' && 'destroyed' || 'FAILED (or nothing to destroy)' }}
           NEON_RESULT: ${{ steps.neon_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}
+          PAGES_RESULT: ${{ steps.pages_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}

@@ -1,9 +1,12 @@
 import { screenshotWithinGuard } from './diagnosticsReporter.js';
 
 /**
- * Opt-in, user-granted screenshot capture for the web issue reporter (B-112): one
- * frame of `getDisplayMedia`, downscaled to ≤1280px wide on a canvas and attached as
- * a size-guarded PNG data URL. Native APIs only — no html2canvas (no new heavy deps).
+ * Screenshot attachment for the web issue reporter: the user picks an image from the
+ * device's own picker (photo library on iOS PWA, files on desktop), and it is
+ * downscaled to ≤1280px wide on a canvas and attached as a size-guarded PNG data
+ * URL. Live `getDisplayMedia` capture was removed deliberately (2026-08-26): it does
+ * not exist on iOS Safari, and on desktop it could only ever capture the reporter
+ * itself — the reporter covers the screen you would want to photograph.
  */
 
 export const SCREENSHOT_MAX_WIDTH = 1280;
@@ -12,103 +15,44 @@ export const SCREENSHOT_MAX_WIDTH = 1280;
 export const SCREENSHOT_WIDTH_LADDER = [1280, 960, 640] as const;
 
 export type CaptureResult =
-  { ok: true; dataUrl: string } | { ok: false; reason: 'unsupported' | 'denied' | 'too-large' };
+  { ok: true; dataUrl: string } | { ok: false; reason: 'unsupported' | 'too-large' | 'unreadable' };
 
-/** Pure helper: the capture width for a source video track (never upscaled). */
+/** Pure helper: the draw width for a source image (never upscaled). */
 export function scaledWidth(sourceWidth: number, maxWidth = SCREENSHOT_MAX_WIDTH): number {
   if (!Number.isFinite(sourceWidth) || sourceWidth <= 0) return maxWidth;
   return Math.min(Math.floor(sourceWidth), maxWidth);
 }
 
-/** The minimal view of a decoded frame the drawer needs. */
-export interface CapturedFrame {
-  readonly videoWidth: number;
-  readonly videoHeight: number;
-}
-
-export interface CaptureDeps {
-  getDisplayMedia?: (constraints?: MediaStreamConstraints) => Promise<MediaStream>;
-  /** Opens the stream and resolves once a first frame is decodable. Must be released by the caller. */
-  openFrame?: (stream: MediaStream) => Promise<CapturedFrame & { release: () => void }>;
-  /** Draws the captured frame at `width` and returns its PNG data URL. */
-  drawFrame?: (frame: CapturedFrame, width: number) => string;
-}
-
-function defaultDrawFrame(frame: CapturedFrame, width: number): string {
-  const aspect =
-    frame.videoHeight > 0 && frame.videoWidth > 0 ? frame.videoHeight / frame.videoWidth : 0.5625;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = Math.max(1, Math.round(width * aspect));
-  const context = canvas.getContext('2d');
-  if (context === null) throw new Error('canvas 2d context unavailable');
-  context.drawImage(
-    frame as CapturedFrame & { drawImage?: unknown } as unknown as CanvasImageSource,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-  return canvas.toDataURL('image/png');
-}
-
-async function defaultOpenFrame(
-  stream: MediaStream,
-): Promise<CapturedFrame & { release: () => void }> {
-  const video = document.createElement('video');
-  video.srcObject = stream;
-  video.muted = true;
-  // Play must settle before drawImage has real pixels; jsdom never gets this far.
-  await video.play();
-  // One tick for the compositor — a same-tick draw can race the first decoded frame.
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  return {
-    videoWidth: video.videoWidth,
-    videoHeight: video.videoHeight,
-    release: () => {
-      video.srcObject = null;
-    },
-  };
-}
-
 /**
- * Asks the user to share a screen/tab/window via the browser's own picker, captures a
- * single frame, downscales it through {@link SCREENSHOT_WIDTH_LADDER} until it fits
- * {@link DIAGNOSTICS_SCREENSHOT_MAX_CHARS}, and always stops every track. Never
- * captures without the explicit permission prompt.
+ * Attach a user-chosen image file as the report screenshot: decoded, downscaled
+ * through {@link SCREENSHOT_WIDTH_LADDER}, and size-guarded against
+ * {@link DIAGNOSTICS_SCREENSHOT_MAX_CHARS} exactly like the old live capture.
  */
-export async function captureScreenshotDataUrl(deps: CaptureDeps = {}): Promise<CaptureResult> {
-  const getDisplayMedia =
-    deps.getDisplayMedia ??
-    (typeof navigator !== 'undefined' && navigator.mediaDevices !== undefined
-      ? navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
-      : undefined);
-  if (getDisplayMedia === undefined) return { ok: false, reason: 'unsupported' };
-  const openFrame = deps.openFrame ?? defaultOpenFrame;
-  const drawFrame = deps.drawFrame ?? defaultDrawFrame;
-
-  let stream: MediaStream;
+export async function fileToScreenshotDataUrl(file: File): Promise<CaptureResult> {
+  if (!file.type.startsWith('image/')) return { ok: false, reason: 'unsupported' };
+  let bitmap: ImageBitmap;
   try {
-    stream = await getDisplayMedia({ video: true });
+    bitmap = await createImageBitmap(file);
   } catch {
-    return { ok: false, reason: 'denied' };
+    return { ok: false, reason: 'unreadable' };
   }
-
   try {
-    let frame: Awaited<ReturnType<typeof openFrame>> | undefined;
-    try {
-      frame = await openFrame(stream);
-      for (const width of SCREENSHOT_WIDTH_LADDER) {
-        const dataUrl = drawFrame(frame, scaledWidth(frame.videoWidth || width, width));
-        if (screenshotWithinGuard(dataUrl)) return { ok: true, dataUrl };
-      }
-      return { ok: false, reason: 'too-large' };
-    } finally {
-      frame?.release();
+    const drawAt = (width: number): string => {
+      const scale = bitmap.width > 0 ? width / bitmap.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (context === null) throw new Error('canvas 2d context unavailable');
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/png');
+    };
+    for (const width of SCREENSHOT_WIDTH_LADDER) {
+      const dataUrl = drawAt(scaledWidth(bitmap.width, width));
+      if (screenshotWithinGuard(dataUrl)) return { ok: true, dataUrl };
     }
-  } catch {
-    return { ok: false, reason: 'denied' };
+    return { ok: false, reason: 'too-large' };
   } finally {
-    for (const track of stream.getTracks()) track.stop();
+    bitmap.close();
   }
 }

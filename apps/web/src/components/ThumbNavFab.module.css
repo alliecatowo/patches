@@ -177,6 +177,114 @@
   color: var(--accent);
 }
 
+/*
+ * Stacked layout (fan-style preference): the same six actions as a right-aligned
+ * vertical list rising from the FAB. Each row keeps the 44px icon touch target
+ * and shows its label inline; DOM order matches the radial sweep (post first).
+ */
+.stackedMenu {
+  position: absolute;
+  bottom: 64px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  z-index: 50;
+}
+
+.stackedItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 3px 12px 3px 4px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  color: var(--fg);
+  text-decoration: none;
+  animation: popStackedItem 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.stackedItem:hover {
+  background: var(--bg-card);
+  border-color: var(--border-hover);
+  color: var(--accent);
+}
+
+.stackedItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Items rise into place from the FAB with the same stagger as the radial fan. */
+@keyframes popStackedItem {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.stackedIconBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  transition:
+    transform 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.stackedItem:hover .stackedIconBtn {
+  border-color: var(--border-hover);
+  color: var(--accent);
+}
+
+.stackedItem:active .stackedIconBtn {
+  transform: scale(0.94);
+}
+
+.stackedLabel {
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+
+.stackedPostItem .stackedIconBtn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.stackedPostItem .stackedLabel {
+  color: var(--accent);
+}
+
+.stackedReportItem .stackedIconBtn {
+  color: var(--accent, #6b46c1);
+  border-color: var(--accent, #6b46c1);
+}
+
 .badge {
   position: absolute;
   top: -2px;
@@ -234,6 +342,9 @@
   .radialItem,
   .radialIconBtn,
   .radialLabel,
+  .stackedItem,
+  .stackedIconBtn,
+  .stackedLabel,
   .mainFab {
     animation: none;
     transition: none;

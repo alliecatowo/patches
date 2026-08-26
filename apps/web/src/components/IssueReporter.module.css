@@ -133,3 +133,12 @@
   color: var(--danger, red);
   font-size: 0.85rem;
 }
+
+/* B-149: iOS taps on these controls must land as plain taps — no double-tap-zoom
+   delay or long-press callout that WebKit can reinterpret as an undo gesture. */
+.chip,
+.navEntry,
+.controlButton,
+.primaryButton {
+  touch-action: manipulation;
+}

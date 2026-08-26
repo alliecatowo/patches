@@ -1,0 +1,36 @@
+# Prebuilt deploy image for CI preview deploys (B-154 follow-up, 2026-08-26).
+#
+# Unlike infra/docker/Dockerfile (self-contained: fetch + build inside Docker — for
+# local `podman build` and Fly's remote builders), this variant only ASSEMBLES an
+# image from app directories that were already built and `pnpm deploy`-staged on the
+# CI runner. The heavy work (pnpm install + turbo build) then rides the runner's
+# restored pnpm-store and turbo caches, which Fly's remote builders cannot share —
+# cutting ~1m+ off every preview deploy.
+#
+# Build context is the staging dir infra/preview/.image-context/ (server/, worker/,
+# migrate.mjs) — see the preview workflow's stage step. Runtime parity with the main
+# Dockerfile's runtime stage is deliberate: same base image, same user, same layout.
+ARG NODE_IMAGE=node:24.19.0-slim
+FROM ${NODE_IMAGE} AS runtime
+ARG PATCHES_BUILD_SHA
+ENV NODE_ENV=production \
+    PATCHES_BUILD_SHA=${PATCHES_BUILD_SHA}
+WORKDIR /app
+
+# node:*-slim images already create a `node` user (uid/gid 1000) in every variant.
+COPY --chown=node:node server ./server
+COPY --chown=node:node worker ./worker
+
+# Runs database migrations (fly.toml release_command / CI migration step). Same
+# placement rationale as the main Dockerfile: inside server/ so it resolves
+# @patches/database from the deployed app's own node_modules.
+COPY --chown=node:node migrate.mjs ./server/migrate.mjs
+
+USER node
+
+# gRPC behind Fly's TLS-terminating edge; see infra/preview/fly-preview.toml.
+EXPOSE 50051
+
+# Fly overrides per process group via [processes]; this CMD only matters for
+# running the image directly without an explicit command.
+CMD ["node", "server/dist/main.js"]

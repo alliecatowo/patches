@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { captureScreenshotDataUrl, scaledWidth, SCREENSHOT_WIDTH_LADDER } from './screenshot.js';
+import { fileToScreenshotDataUrl, scaledWidth, SCREENSHOT_WIDTH_LADDER } from './screenshot.js';
 
 describe('scaledWidth', () => {
   it('downscales to the cap and never upscales', () => {
@@ -9,74 +9,80 @@ describe('scaledWidth', () => {
     expect(scaledWidth(800)).toBe(800);
   });
 
-  it('falls back to the cap for nonsensical video dimensions', () => {
+  it('falls back to the cap for nonsensical dimensions', () => {
     expect(scaledWidth(0)).toBe(1280);
     expect(scaledWidth(Number.NaN)).toBe(1280);
   });
 });
 
-describe('captureScreenshotDataUrl', () => {
-  it('reports unsupported when getDisplayMedia is unavailable (jsdom)', async () => {
-    const result = await captureScreenshotDataUrl();
-    expect(result).toEqual({ ok: false, reason: 'unsupported' });
+describe('fileToScreenshotDataUrl', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('walks the width ladder until the PNG fits the guard', async () => {
-    const widths: number[] = [];
-    const stream = { getTracks: () => [{ stop: (): void => undefined }] };
-    const result = await captureScreenshotDataUrl({
-      getDisplayMedia: () => Promise.resolve(stream as unknown as MediaStream),
-      openFrame: (opened) =>
-        Promise.resolve({
-          videoWidth: 2560,
-          videoHeight: 1440,
-          release: () => undefined,
-          ...(opened === undefined ? {} : {}),
-        }),
-      drawFrame: (_frame, width) => {
-        widths.push(width);
-        return width > 640
-          ? `data:image/png;base64,${'A'.repeat(300_000)}`
-          : 'data:image/png;base64,AAAA';
-      },
+  it('rejects non-image files as unsupported', async () => {
+    const file = new File(['hello'], 'notes.txt', { type: 'text/plain' });
+    await expect(fileToScreenshotDataUrl(file)).resolves.toEqual({
+      ok: false,
+      reason: 'unsupported',
     });
-    expect(result).toEqual({ ok: true, dataUrl: 'data:image/png;base64,AAAA' });
-    // 2560-wide source: every rung of the ladder is tried at its own width.
-    expect(widths).toEqual([...SCREENSHOT_WIDTH_LADDER]);
   });
 
-  it('never upscales a narrow source', async () => {
-    const widths: number[] = [];
-    const stream = { getTracks: () => [{ stop: (): void => undefined }] };
-    await captureScreenshotDataUrl({
-      getDisplayMedia: () => Promise.resolve(stream as unknown as MediaStream),
-      openFrame: () =>
-        Promise.resolve({ videoWidth: 500, videoHeight: 300, release: () => undefined }),
-      drawFrame: (_frame, width) => {
-        widths.push(width);
-        return 'data:image/png;base64,AAAA';
-      },
+  it('reports unreadable when the image cannot be decoded', async () => {
+    const file = new File(['not really a png'], 'broken.png', { type: 'image/png' });
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('decode failed')));
+    await expect(fileToScreenshotDataUrl(file)).resolves.toEqual({
+      ok: false,
+      reason: 'unreadable',
     });
-    expect(widths).toEqual([500]);
   });
 
-  it('stops every track even when drawing fails', async () => {
-    let stopped = 0;
-    const stream = { getTracks: () => [{ stop: (): number => (stopped += 1) }] };
-    const result = await captureScreenshotDataUrl({
-      getDisplayMedia: () => Promise.resolve(stream as unknown as MediaStream),
-      drawFrame: () => {
-        throw new Error('decode race');
-      },
+  it('downscales through the ladder until the PNG fits the guard', async () => {
+    const file = new File(['png'], 'shot.png', { type: 'image/png' });
+    const attemptWidths: number[] = [];
+    const close = vi.fn();
+    const bitmap = { width: 4000, height: 3000, close } as unknown as ImageBitmap;
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue(bitmap));
+    // jsdom canvas has no 2d context — fake one whose data URL only fits the guard
+    // once the width ladder descends past a threshold.
+    const originalCreateElement = document.createElement.bind(document);
+    const createElement = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      const element = originalCreateElement(tag);
+      if (tag === 'canvas') {
+        const canvas = element as unknown as {
+          width: number;
+          height: number;
+          getContext: (contextId: string) => CanvasRenderingContext2D | null;
+          toDataURL: (type: string) => string;
+        };
+        canvas.getContext = (contextId: string) =>
+          contextId === '2d'
+            ? ({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+            : null;
+        canvas.toDataURL = () => {
+          const width = attemptWidths.at(-1) ?? SCREENSHOT_WIDTH_LADDER[0];
+          // Guard is 200_000 chars (DIAGNOSTICS_SCREENSHOT_MAX_CHARS): scale the fake
+          // PNG so 1280 and 960 exceed it and only 640 fits.
+          return `data:image/png;base64,${'A'.repeat(width * 250)}`;
+        };
+        let storedWidth = 1;
+        Object.defineProperty(element, 'width', {
+          get: () => storedWidth,
+          set: (value: number) => {
+            storedWidth = value;
+            attemptWidths.push(value);
+          },
+          configurable: true,
+        });
+      }
+      return element;
     });
-    expect(result).toEqual({ ok: false, reason: 'denied' });
-    expect(stopped).toBe(1);
-  });
 
-  it('reports denied when the user cancels the picker', async () => {
-    const result = await captureScreenshotDataUrl({
-      getDisplayMedia: () => Promise.reject(new DOMException('dismissed', 'NotAllowedError')),
-    });
-    expect(result).toEqual({ ok: false, reason: 'denied' });
+    const result = await fileToScreenshotDataUrl(file);
+    if (!result.ok) throw new Error(`expected ok, got ${JSON.stringify(result)}`);
+    expect(result.dataUrl.startsWith('data:image/png;base64,')).toBe(true);
+    expect(attemptWidths.at(-1)).toBe(SCREENSHOT_WIDTH_LADDER[2]);
+    expect(close).toHaveBeenCalled();
+    createElement.mockRestore();
   });
 });
