@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements one scoped task from tasks.md end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently.
+description: Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently.
 model: sonnet
 effort: medium
 maxThinkingTokens: 8192
@@ -35,7 +35,7 @@ stage explicit paths.
 ## Finishing
 
 - Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. Spawn `verifier` for a full-gate run when your change crosses package boundaries; spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
-- Commit as soon as one coherent slice is green, and keep going. Stage only your assigned paths (never `git add -A`), Conventional Commits scoped to the package. Update affected docs and tick the task in `tasks.md` in the same change.
+- Commit as soon as one coherent slice is green, and keep going. Stage only your assigned paths (never `git add -A`), Conventional Commits scoped to the package. If your task ID is a real GitHub issue, reference it in the PR (`Fixes #<n>`) so Status moves to Done automatically on merge. Update affected docs in the same change; you can't reach the GitHub Project board yourself (`mcp__*` is disallowed), so report the task ID (and issue number, if any) as done and let the orchestrator set its Status if it wasn't a `Fixes #N` issue.
 - Can't finish: commit what's green and report done / left / paths you own / next concrete step — a partial, honest handoff beats grinding on.
 
 ## Report

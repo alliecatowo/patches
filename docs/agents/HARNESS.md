@@ -44,7 +44,7 @@ This repository supports Codex, Claude, and other clients through the same contr
   Do not keep an implementation worker alive only to preserve context.
 - Review is independent and stronger than implementation; verification is a separate evidence
   step when the blast radius warrants it. Neither review nor verification silently changes code.
-- Work originates in an explicit user request, `tasks.md`, or the authoritative spec. Agents may
+- Work originates in an explicit user request, the [GitHub Project board](https://github.com/users/alliecatowo/projects/5), or the authoritative spec. Agents may
   report a discovered follow-up, but do not create work by guessing.
 - The hard rules in `AGENTS.md`/`CLAUDE.md` and `INITIAL_VISION.md` apply to every client and
   delegation level. A harness improvement cannot weaken them; a genuine conflict needs the ADR

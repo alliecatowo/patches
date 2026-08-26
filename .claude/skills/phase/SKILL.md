@@ -12,7 +12,7 @@ allowedTools: Read, Edit, Grep, Agent
 ## 1. Read
 
 - `docs/product/roadmap.md`'s section for this phase (success criteria) and the matching spec section (`INITIAL_VISION.md` §134–141 for phase details, plus the acceptance checklist §157–160 that applies).
-- `tasks.md`'s section for this phase — the existing `P<n>-<nnn>` items are a starting outline, not necessarily granular enough to hand to an implementer directly.
+- The [Patches GitHub Project board](https://github.com/users/alliecatowo/projects/5) filtered to this Phase (`projects_list`/`projects_get`) — the existing `P<n>-<nnn>` items (issues or drafts) are a starting outline, not necessarily granular enough to hand to an implementer directly. Fall back to `tasks.md`'s section for this phase if the board or `project` scope is unavailable.
 
 ## 2. Expand into concrete tasks with disjoint file sets
 
@@ -22,7 +22,7 @@ For each `P<n>-<nnn>` item, break it down until each piece:
 - doesn't require another piece to land first within the same fan-out wave (sequence waves if there's a real dependency, e.g. entities before services before controllers before TUI),
 - has an obvious "done" (a file exists, a test passes, an RPC responds).
 
-Add the expanded items to `tasks.md` under the phase section via `/task add` (reuse the same `P<n>-<nnn>` numbering, don't invent a new prefix).
+Add the expanded items to the Project board via `/task add` with Phase set to this phase (reuse the same `P<n>-<nnn>` numbering, don't invent a new prefix). `/task add` promotes each to a real issue since it's about to be assigned to an implementer.
 
 ## 3. Route models
 
@@ -32,11 +32,11 @@ Use `docs/agents/MODEL_ROUTING.md`. Default: `implementer` (sonnet) for the work
 
 One `Agent` call per task, all in a single message so they run concurrently. Each brief must include:
 
-- **Task ID** and the exact acceptance criteria (copy from tasks.md/roadmap, don't paraphrase loosely)
+- **Task ID** and the exact acceptance criteria (copy from the board item/roadmap, don't paraphrase loosely)
 - **Read list**: which `docs/research/*.md` and `.claude/rules/*.md` apply
 - **Allowed paths**: the exact disjoint file set — be explicit that other agents own everything else, and that `git add -A` is forbidden
 - **Verification**: `pnpm verify` (or scoped) must pass before it reports done
-- **Commit rules**: Conventional Commits, only its own paths staged
+- **Commit rules**: Conventional Commits, only its own paths staged, PR references the issue it closes (`Fixes #<n>`) so Status moves automatically
 - **Report format**: task ID, files touched, verification result, deviations, follow-ups, learnings (matches `implementer`'s own report format — just reinforce it)
 
 Only fan out tasks that are genuinely independent in this wave; sequence dependent ones into a later message after the first wave reports back.

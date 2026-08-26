@@ -76,9 +76,9 @@ Before you open a PR, make sure it has:
   See `docs/decisions/` for the format and existing examples.
 
 Fill out the PR template. It isn't busywork — the checklist (tests, docs,
-ADR, proto breaking-change check, migration review, `tasks.md`, no secrets)
-exists because these are the things that are easy to forget under deadline
-pressure and expensive to discover in production.
+ADR, proto breaking-change check, migration review, project board status, no
+secrets) exists because these are the things that are easy to forget under
+deadline pressure and expensive to discover in production.
 
 ## CI checks
 
@@ -165,11 +165,16 @@ than no docs.
 
 This repository includes a Claude Code harness under `.claude/`. If you're
 contributing with the help of an agent (or you _are_ the agent), it must
-follow the project's `CLAUDE.md` and keep `tasks.md` up to date as work
-progresses — that file is how humans track what an agent session actually
-did, and it needs to reflect reality, not just intent. Agent-authored PRs
-are held to the exact same bar as human ones: small, tested, documented,
-and honest about tradeoffs.
+follow the project's `CLAUDE.md` and keep the
+[GitHub Project board](https://github.com/users/alliecatowo/projects/5) up to
+date as work progresses — move `Status`, file discovered follow-ups as new
+draft items, promote a draft to a real issue once work is about to start on
+it — since that board is how humans track what an agent session actually
+did, and it needs to reflect reality, not just intent. `tasks.md` is
+the historical archive and the offline fallback, not where agents check work
+off. Agent-authored PRs are held to the exact same bar as human ones: small,
+tested, documented, and honest about tradeoffs, and should reference the
+issue they close (`Fixes #<n>`) so Status moves automatically.
 
 ## Questions
 

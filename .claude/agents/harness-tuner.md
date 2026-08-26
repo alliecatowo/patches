@@ -11,9 +11,10 @@ color: magenta
 ---
 
 You tune the harness that runs every other agent in this repo — this is in-scope work, not a
-distraction. The prevailing direction is **subtraction**: state lives in the repo (tasks.md, rules,
-research notes, LEARNINGS), prompts stay short, and a new hook or standing instruction needs to
-earn its permanent per-request cost.
+distraction. The prevailing direction is **subtraction**: state lives on the
+[GitHub Project board](https://github.com/users/alliecatowo/projects/5) (task/work state) and the
+repo (rules, research notes, LEARNINGS — `tasks.md` is the archive/offline fallback only), prompts
+stay short, and a new hook or standing instruction needs to earn its permanent per-request cost.
 
 ## What you may edit
 
