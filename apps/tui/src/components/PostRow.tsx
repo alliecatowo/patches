@@ -15,6 +15,14 @@ import { MediaAttachments } from './MediaAttachments.js';
 import { Nameplate } from './Nameplate.js';
 import { BODY_INDENT_COLS, measurePostBody } from './post-height.js';
 
+/**
+ * Marks a reposted-by/quoted actor whose `Actor.isLocal` is `false` (P18-009). Plain text —
+ * carries no colour/glyph of its own — so it renders identically under plain mode and needs no
+ * separate plain-mode branch, unlike the cosmetics `usePlainMode()` gates elsewhere in this
+ * file.
+ */
+const REMOTE_ORIGIN_SUFFIX = ' (remote)';
+
 export interface PostRowProps {
   post: Post;
   /** Highlights the row when it is the list's current selection. */
@@ -54,13 +62,22 @@ export function PostRow({
   const bodyWidth = Math.max(1, (width ?? 40) - BODY_INDENT_COLS);
   const quoted = present(post.quotedPost) ? post.quotedPost : undefined;
   const repostHandles = post.repostedBy
-    .map((actor) => actor.handle || actor.id)
-    .filter((value) => value !== '');
+    .map((actor) => {
+      const raw = actor.handle || actor.id;
+      if (raw === '') return undefined;
+      const label = `@${sanitizeForTerminal(raw)}`;
+      // The wire only carries `Actor.isLocal` today, not the reposter's home-server domain
+      // (P18-009 filed B-171 to add it) — a bare `@handle` here would silently read as a
+      // local account, so a remote reposter always gets this suffix even though it can't yet
+      // name which instance (spec §180.1/§192: a repost's provenance must stay visible).
+      return actor.isLocal ? label : `${label}${REMOTE_ORIGIN_SUFFIX}`;
+    })
+    .filter((value): value is string => value !== undefined);
   const remainingReposters = Math.max(0, post.repostedByTotal - repostHandles.length);
   const repostAttribution =
     repostHandles.length === 0
       ? ''
-      : `↻ ${repostHandles.map((value) => `@${value}`).join(', ')}${remainingReposters > 0 ? ` +${String(remainingReposters)}` : ''} reposted`;
+      : `↻ ${repostHandles.join(', ')}${remainingReposters > 0 ? ` +${String(remainingReposters)}` : ''} reposted`;
   // The viewer's actual mode (P12-128): rich and quiet wrap identically (quiet only
   // hides *other* actors' cosmetics, never the body's own layout), only plain mode
   // reflows the source markers, so measuring anything but the mode about to draw is
@@ -168,14 +185,28 @@ export function PostRow({
 
 /** A quote is a pointer preview, never a recursively rendered post. Keeping it to
  * three measured rows makes deeply nested quote chains impossible and keeps a
- * timeline resize from changing navigation state (spec §180/§188). */
+ * timeline resize from changing navigation state (spec §180/§188).
+ *
+ * `post.quotedPost` (i.e. a quote of a quote) is deliberately never read here — the server
+ * only ever populates one level (see `Post.quoted_post`'s proto comment), but this component
+ * doesn't rely on that promise: it renders only `post`'s own author/body, so even a
+ * maliciously/incorrectly deep-nested fixture can't recurse past this one bounded box
+ * (P18-009).
+ *
+ * §180.2: an unverifiable or policy-violating quote ingests server-side as a plain post, so
+ * `quotedPost` is unset for it — this component only ever draws when the server already
+ * treated the link as a verified, endorsed quote. There is no separate "unverified" branch to
+ * render here on purpose.
+ */
 function QuotedPost({ post }: { post: Post }): ReactElement {
   const handle = post.author?.handle ?? post.author?.id ?? 'unknown';
+  const isRemote = present(post.author) && !post.author.isLocal;
   const body = post.deleted ? '[deleted]' : post.body === '' ? post.linkUrl : post.body;
   return (
     <Box flexDirection="column" height={3} flexShrink={0} overflow="hidden" marginTop={1}>
       <Text color={theme.muted} wrap="truncate-end">
         ┌ quoted @{sanitizeForTerminal(handle)}
+        {isRemote ? REMOTE_ORIGIN_SUFFIX : ''}
       </Text>
       <Text wrap="truncate-end">│ {sanitizeForTerminal(body)}</Text>
       <Text color={theme.muted}>└ Enter opens the thread</Text>
