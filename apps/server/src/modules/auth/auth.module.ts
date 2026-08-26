@@ -28,6 +28,7 @@ import { TokenService } from './token.service.js';
  * directly (via `common/rate-limit/window-rate-limiter.ts`) for repost/quote/edit throttling
  * rather than joining auth's own closed `RateLimitAction` union.
  */
+// nestjs-doctor-ignore-next-line performance/no-unused-module-exports -- AuthGuard is consumed two ways the scanner can't see: @UseGuards(AuthGuard) class references in feature-module controllers, and PublicReadGuard (APP_GUARD, app.module.ts) which constructor-injects it via AppModule's AuthModule import
 @Module({
   controllers: [AuthController],
   providers: [

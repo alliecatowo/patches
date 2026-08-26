@@ -93,7 +93,7 @@ export class E2eeController implements E2eeServiceController {
     return Promise.resolve(this.capability.getCapability());
   }
 
-  async publishIdentityRoot(
+  publishIdentityRoot(
     @Payload() request: PublishIdentityRootRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -101,13 +101,11 @@ export class E2eeController implements E2eeServiceController {
     return this.identityRoots.publishIdentityRoot(requireSession(session).actorId, request);
   }
 
-  async getIdentityRoot(
-    @Payload() request: GetIdentityRootRequest,
-  ): Promise<GetIdentityRootResponse> {
+  getIdentityRoot(@Payload() request: GetIdentityRootRequest): Promise<GetIdentityRootResponse> {
     return this.identityRoots.getIdentityRoot(request);
   }
 
-  async enrollDevice(
+  enrollDevice(
     @Payload() request: EnrollDeviceRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -115,7 +113,7 @@ export class E2eeController implements E2eeServiceController {
     return this.deviceRosters.enrollDevice(requireSession(session).actorId, request);
   }
 
-  async revokeDevice(
+  revokeDevice(
     @Payload() request: RevokeDeviceRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -123,7 +121,7 @@ export class E2eeController implements E2eeServiceController {
     return this.deviceRosters.revokeDevice(requireSession(session).actorId, request);
   }
 
-  async publishDeviceRoster(
+  publishDeviceRoster(
     @Payload() request: PublishDeviceRosterRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -131,19 +129,17 @@ export class E2eeController implements E2eeServiceController {
     return this.deviceRosters.publishDeviceRoster(requireSession(session).actorId, request);
   }
 
-  async getDeviceRoster(
-    @Payload() request: GetDeviceRosterRequest,
-  ): Promise<GetDeviceRosterResponse> {
+  getDeviceRoster(@Payload() request: GetDeviceRosterRequest): Promise<GetDeviceRosterResponse> {
     return this.deviceRosters.getDeviceRoster(request);
   }
 
-  async listDeviceRosters(
+  listDeviceRosters(
     @Payload() request: ListDeviceRostersRequest,
   ): Promise<ListDeviceRostersResponse> {
     return this.deviceRosters.listDeviceRosters(request);
   }
 
-  async uploadPrekeys(
+  uploadPrekeys(
     @Payload() request: UploadPrekeysRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -151,7 +147,7 @@ export class E2eeController implements E2eeServiceController {
     return this.prekeys.uploadPrekeys(requireSession(session).actorId, request);
   }
 
-  async getPrekeyInventory(
+  getPrekeyInventory(
     @Payload() request: GetPrekeyInventoryRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -159,7 +155,7 @@ export class E2eeController implements E2eeServiceController {
     return this.prekeys.getPrekeyInventory(requireSession(session).actorId, request);
   }
 
-  async claimPrekeyBundles(
+  claimPrekeyBundles(
     @Payload() request: ClaimPrekeyBundlesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -168,7 +164,7 @@ export class E2eeController implements E2eeServiceController {
   }
 
   @UseGuards(RequirePrivacyAckGuard)
-  async createE2EeConversation(
+  createE2EeConversation(
     @Payload() request: CreateE2eeConversationRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -176,7 +172,7 @@ export class E2eeController implements E2eeServiceController {
     return this.conversations.createE2eeConversation(requireSession(session).actorId, request);
   }
 
-  async getE2EeConversationState(
+  getE2EeConversationState(
     @Payload() request: GetE2eeConversationStateRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -184,7 +180,7 @@ export class E2eeController implements E2eeServiceController {
     return this.conversations.getE2eeConversationState(requireSession(session).actorId, request);
   }
 
-  async addE2EeMember(
+  addE2EeMember(
     @Payload() request: AddE2eeMemberRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -192,7 +188,7 @@ export class E2eeController implements E2eeServiceController {
     return this.groups.addE2eeMember(requireSession(session).actorId, request);
   }
 
-  async removeE2EeMember(
+  removeE2EeMember(
     @Payload() request: RemoveE2eeMemberRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -200,7 +196,7 @@ export class E2eeController implements E2eeServiceController {
     return this.groups.removeE2eeMember(requireSession(session).actorId, request);
   }
 
-  async listE2EeGroupControlEvents(
+  listE2EeGroupControlEvents(
     @Payload() request: ListE2eeGroupControlEventsRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -209,7 +205,7 @@ export class E2eeController implements E2eeServiceController {
   }
 
   @UseGuards(RequirePrivacyAckGuard)
-  async sendEnvelopes(
+  sendEnvelopes(
     @Payload() request: SendEnvelopesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -217,7 +213,7 @@ export class E2eeController implements E2eeServiceController {
     return this.conversations.sendEnvelopes(requireSession(session).actorId, request);
   }
 
-  async listMailboxEnvelopes(
+  listMailboxEnvelopes(
     @Payload() request: ListMailboxEnvelopesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -225,7 +221,7 @@ export class E2eeController implements E2eeServiceController {
     return this.conversations.listMailboxEnvelopes(requireSession(session).actorId, request);
   }
 
-  async acknowledgeEnvelopes(
+  acknowledgeEnvelopes(
     @Payload() request: AcknowledgeEnvelopesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
@@ -233,7 +229,7 @@ export class E2eeController implements E2eeServiceController {
     return this.conversations.acknowledgeEnvelopes(requireSession(session).actorId, request);
   }
 
-  async attachReportEvidence(
+  attachReportEvidence(
     @Payload() request: AttachReportEvidenceRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,

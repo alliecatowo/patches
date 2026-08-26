@@ -990,7 +990,7 @@ export class AuthService {
    * Links or logs in a GITHUB credential by its numeric account id (spec §167 — never the
    * login name, which GitHub lets an account holder change and someone else re-register).
    */
-  private async completeGitHubLogin(
+  private completeGitHubLogin(
     githubAccountId: string,
     callerUserId: string | null,
   ): Promise<SessionEnvelope> {
@@ -1129,7 +1129,7 @@ export class AuthService {
    * stays separate from credential — this never populates a profile field). Mirrors
    * {@link completeGitHubLogin} exactly, generalized to any configured provider.
    */
-  private async completeOidcLogin(
+  private completeOidcLogin(
     providerId: string,
     subject: string,
     callerUserId: string | null,
@@ -1233,15 +1233,16 @@ export class AuthService {
    * called {@link approveDeviceLink} — the browser calling this never supplies or chooses that
    * account itself.
    */
-  async pollDeviceLink(rawDeviceCode: string): Promise<DeviceLinkPollResult> {
+  pollDeviceLink(rawDeviceCode: string): Promise<DeviceLinkPollResult> {
     this.rateLimit.consumePeer('device_link_poll', getRequestContext()?.peer);
 
     const deviceCode = parseInput(opaqueCodeSchema, rawDeviceCode);
     const attempt = this.deviceLinks.get(deviceCode);
-    if (attempt === undefined) return { status: 'EXPIRED' };
+    if (attempt === undefined) return Promise.resolve({ status: 'EXPIRED' });
 
-    if (!this.deviceLinks.tryConsumePoll(deviceCode)) return { status: 'SLOW_DOWN' };
-    if (attempt.approvedUserId === null) return { status: 'PENDING' };
+    if (!this.deviceLinks.tryConsumePoll(deviceCode))
+      return Promise.resolve({ status: 'SLOW_DOWN' });
+    if (attempt.approvedUserId === null) return Promise.resolve({ status: 'PENDING' });
 
     // Single-use from here regardless of what happens below: a device code that has already
     // been approved must never be resolved into a second session.

@@ -24,6 +24,7 @@ export function loadDotEnv(): void {
   const startDir = typeof __dirname === 'string' ? __dirname : process.cwd();
   let current = startDir;
   for (;;) {
+    // nestjs-doctor-ignore-next-line performance/no-sync-io -- boot-path only, runs before the event loop serves traffic
     if (existsSync(join(current, 'pnpm-workspace.yaml'))) break;
     const parent = dirname(current);
     if (parent === current) return; // no repo root found; nothing to load

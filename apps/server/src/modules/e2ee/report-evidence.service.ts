@@ -58,7 +58,7 @@ export class E2eeReportEvidenceService {
 
   /** See `loadReportEvidenceForModeration`'s doc comment — moderator-only, not currently
    * reachable from any RPC; the transaction boundary matches `attachReportEvidence` above. */
-  async getReportEvidenceForModeration(
+  getReportEvidenceForModeration(
     reportId: string,
     moderatorUserId: string,
   ): Promise<E2eeModerationEvidenceView> {

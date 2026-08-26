@@ -89,7 +89,7 @@ export async function labelsForPosts(
 /** Same visibility rule as {@link labelsForPosts}, for a single subject already known to be a
  * post or an actor — used by `ListLabelsOnSubject` when the caller isn't the subject
  * (subscription-scoped, not self-inspection). */
-export async function subscriberVisibleLabelerIds(
+export function subscriberVisibleLabelerIds(
   manager: EntityManager,
   viewerActorId: string,
 ): Promise<string[]> {

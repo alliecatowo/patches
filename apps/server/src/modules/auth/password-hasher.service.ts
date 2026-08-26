@@ -39,7 +39,7 @@ export class PasswordHasher {
     this.options = { algorithm: ARGON2ID, ...config.argon2Options };
   }
 
-  async hash(password: string): Promise<string> {
+  hash(password: string): Promise<string> {
     return argon2Hash(password, this.options);
   }
 
@@ -60,7 +60,7 @@ export class PasswordHasher {
     return argon2Verify(storedHash, password, this.options).catch(() => false);
   }
 
-  private async dummy(): Promise<string> {
+  private dummy(): Promise<string> {
     this.dummyHash ??= this.hash('argon2id-timing-equalizer-not-a-real-password');
     return this.dummyHash;
   }

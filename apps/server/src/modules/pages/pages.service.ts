@@ -116,7 +116,7 @@ export class PageService {
    * declared schema version (§171) before anything is written; always inserts a new immutable
    * `page_revisions` row rather than mutating one in place.
    */
-  async updatePage(actorId: string, documentBytes: Uint8Array): Promise<UpdatePageResult> {
+  updatePage(actorId: string, documentBytes: Uint8Array): Promise<UpdatePageResult> {
     const parsed = parseStrictDocument(parseJsonDocument(documentBytes));
     const serialized = serializePage(parsed);
     const byteSize = Buffer.byteLength(serialized, 'utf8');
@@ -248,7 +248,7 @@ export class PageService {
 
   /** Owner only (moderator removal is a documented follow-up — see `docs/architecture/pages
    * .md`). Idempotent: removing an already-removed entry just returns it. */
-  async removeGuestbookEntry(actorId: string, entryIdRaw: string): Promise<GuestbookEntryView> {
+  removeGuestbookEntry(actorId: string, entryIdRaw: string): Promise<GuestbookEntryView> {
     const entryId = parseInput(uuidInputSchema, entryIdRaw);
 
     return this.dataSource.transaction(async (manager) => {

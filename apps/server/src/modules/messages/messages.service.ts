@@ -232,7 +232,7 @@ export class MessagesService {
   /** Counts logical messages sent by anyone but the viewer, after the viewer's last-read
    * marker (ADR 0030 §B-095 — `E2eeLogicalMessage` is metadata-only, so this counts arrivals
    * the node knows exist without ever knowing what they say). */
-  private async unreadCountFor(
+  private unreadCountFor(
     manager: EntityManager,
     conversationId: string,
     membership: ConversationMember,

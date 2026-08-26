@@ -76,7 +76,7 @@ function buildMetadata(context: HandlerContext): Metadata {
 
 /** Promisified `Client#makeUnaryRequest` with identity (de)serializers — the internal call
  * carries the exact bytes protobuf-es produced/expects, untouched (ADR 0016 §3). */
-async function callUnary(
+function callUnary(
   client: Client,
   path: string,
   requestBytes: Uint8Array,

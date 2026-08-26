@@ -31,7 +31,9 @@ export function readServerVersion(startDir: string = moduleDirectory()): string 
 
   for (;;) {
     const candidate = join(current, 'package.json');
+    // nestjs-doctor-ignore-next-line performance/no-sync-io -- boot-path only: one-time version probe from a useFactory at module init, before the event loop serves traffic
     if (existsSync(candidate)) {
+      // nestjs-doctor-ignore-next-line performance/no-sync-io -- boot-path only: one-time version probe from a useFactory at module init, before the event loop serves traffic
       const parsed = packageJsonSchema.safeParse(JSON.parse(readFileSync(candidate, 'utf8')));
       if (parsed.success && parsed.data.name === PACKAGE_NAME) {
         return formatServerVersion(parsed.data.version, process.env['PATCHES_BUILD_SHA']);

@@ -17,7 +17,7 @@ import {
  * expanded exactly once; the embedded post is projected with `includeQuotes=false` so a quote
  * chain can never recurse on the wire (§180.2).
  */
-export async function toPostViews(
+export function toPostViews(
   manager: EntityManager,
   posts: readonly Post[],
   viewerActorId?: string,
@@ -150,7 +150,7 @@ async function groupedPostCount(
   return new Map(rows.map((row) => [row.postId, Number(row.count)]));
 }
 
-async function loadCommunities(
+function loadCommunities(
   manager: EntityManager,
   posts: readonly Post[],
 ): Promise<Map<string, CommunitySummaryView>> {

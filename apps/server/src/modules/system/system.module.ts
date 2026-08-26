@@ -18,6 +18,7 @@ import { SystemService } from './system.service.js';
 @Module({
   controllers: [SystemController, NodeController, HealthController],
   providers: [SystemService, NodeService, serverVersionProvider, HealthService, ReadinessState],
-  exports: [SystemService, HealthService, ReadinessState],
+  // No exports: every consumer is same-module (controllers above) or resolves via
+  // `app.get()` (ReadinessState in main.ts), neither of which needs a module export.
 })
 export class SystemModule {}

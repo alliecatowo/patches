@@ -5,7 +5,14 @@ import { DataSource } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
 import { buildActorDocument, type ActivityStreamsDocument } from '../activitystreams/documents.js';
+import { acceptsActivityJson } from '../http/content-negotiation.js';
 import { KeyService } from './key.service.js';
+
+export type ActorDocumentRejectionReason = 'NOT_ACCEPTABLE' | 'UNKNOWN_ACTOR';
+
+export type ActorDocumentResult =
+  | { readonly found: true; readonly document: ActivityStreamsDocument }
+  | { readonly found: false; readonly reason: ActorDocumentRejectionReason };
 
 /** `docs/architecture/federation.md` §7.5 (P8-007): the Page manifest URL this node exposes
  * for an actor's Page, when it has a public one. Content lives on `PageRevision.document`
@@ -23,9 +30,24 @@ export class ActorDocumentService {
     private readonly keys: KeyService,
   ) {}
 
+  /** `GET /users/:handle` (P8-001) end to end: not-acceptable when the request's `Accept`
+   * header can't be satisfied by an AS2 JSON representation, unknown-actor when no local,
+   * non-deleted actor has the (normalized) handle, the actor document otherwise. Statuses
+   * stay in the controller. */
+  async resolveForRequest(
+    handle: string,
+    accept: string | undefined,
+  ): Promise<ActorDocumentResult> {
+    if (!acceptsActivityJson(accept)) return { found: false, reason: 'NOT_ACCEPTABLE' };
+    const document = await this.buildForHandle(handle.toLowerCase());
+    return document === undefined
+      ? { found: false, reason: 'UNKNOWN_ACTOR' }
+      : { found: true, document };
+  }
+
   /** `GET /users/:handle` (P8-001). `undefined` if no local, non-deleted actor has this
    * (normalized) handle. */
-  async buildForHandle(handleNormalized: string): Promise<ActivityStreamsDocument | undefined> {
+  buildForHandle(handleNormalized: string): Promise<ActivityStreamsDocument | undefined> {
     return this.dataSource.transaction(async (manager) => {
       const actor = await manager
         .getRepository(Actor)

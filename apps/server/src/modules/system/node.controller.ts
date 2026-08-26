@@ -24,7 +24,7 @@ export class NodeController implements NodeServiceController {
     return this.node.getNodeInfo();
   }
 
-  async getNodePolicy(_request: GetNodePolicyRequest): Promise<GetNodePolicyResponse> {
+  getNodePolicy(_request: GetNodePolicyRequest): Promise<GetNodePolicyResponse> {
     return this.node.getNodePolicy();
   }
 }

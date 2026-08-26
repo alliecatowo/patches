@@ -14,6 +14,7 @@ import { SuspensionTolerantAuthGuard } from './suspension-tolerant-auth.guard.js
  * `ReactionModule`). No longer imports `MessagesModule` — `ReportMessage`'s snapshot-evidence
  * boundary was removed by ADR 0030 §B-095 along with the plaintext DM machinery it snapshotted.
  */
+// nestjs-doctor-ignore-next-line performance/no-unused-module-exports -- appeals module binds this guard via @UseGuards(SuspensionTolerantAuthGuard), a class-token reference the static module graph cannot see
 @Module({
   imports: [AuthModule, PostModule],
   controllers: [ModerationController],

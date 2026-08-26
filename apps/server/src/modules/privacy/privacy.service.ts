@@ -105,10 +105,7 @@ export class PrivacyService {
     private readonly tokens: TokenService,
   ) {}
 
-  async acknowledgePrivacyNotice(
-    actorId: string,
-    noticeVersionRaw: number,
-  ): Promise<PrivacyPrefsView> {
+  acknowledgePrivacyNotice(actorId: string, noticeVersionRaw: number): Promise<PrivacyPrefsView> {
     const noticeVersion = parseInput(noticeVersionInputSchema, noticeVersionRaw);
 
     return this.dataSource.transaction(async (manager) => {
@@ -129,7 +126,7 @@ export class PrivacyService {
   /** Partial update of the caller's own prefs, driven by `update_mask` — same pattern as
    * `ActorService.updateProfile` (spec: `privacy.proto`'s `UpdatePrivacyPrefsRequest` doc). A
    * field not named in the mask is left untouched even if set on the request. */
-  async updatePrivacyPrefs(input: UpdatePrivacyPrefsInput): Promise<PrivacyPrefsView> {
+  updatePrivacyPrefs(input: UpdatePrivacyPrefsInput): Promise<PrivacyPrefsView> {
     const paths = new Set(input.updateMask);
 
     return this.dataSource.transaction(async (manager) => {

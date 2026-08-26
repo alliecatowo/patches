@@ -57,7 +57,7 @@ export function toIdentityRootView(root: E2eeIdentityRootEntity): E2eeIdentityRo
 }
 
 /** Loads the actor's newest roster row, or `null` if none has been published yet. */
-export async function loadCurrentRosterRow(
+export function loadCurrentRosterRow(
   manager: EntityManager,
   actorId: string,
 ): Promise<E2eeDeviceRosterEntity | null> {

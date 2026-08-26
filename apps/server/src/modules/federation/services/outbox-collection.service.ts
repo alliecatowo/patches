@@ -4,6 +4,7 @@ import { Actor, Post } from '@patches/database';
 import { DataSource, IsNull } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
+import { AppError } from '../../../common/errors/app-error.js';
 import { decodeCursor, encodeCursor } from '../../feeds/pagination.js';
 import {
   buildOutboxCollection,
@@ -27,12 +28,41 @@ const OUTBOX_PAGE_SIZE = 20;
  * `first` always points here rather than at an empty `?page=` query string. */
 export const OUTBOX_FIRST_PAGE_MARKER = 'true';
 
+export type OutboxRejectionReason = 'INVALID_CURSOR' | 'UNKNOWN_ACTOR';
+
+export type OutboxResult =
+  | { readonly found: true; readonly document: ActivityStreamsDocument }
+  | { readonly found: false; readonly reason: OutboxRejectionReason };
+
 @Injectable()
 export class OutboxCollectionService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: AppConfigService,
   ) {}
+
+  /** `GET /users/:handle/outbox[?page=…]` (P8-002, B-027) end to end — the `OrderedCollection`
+   * summary ({@link buildCollection}) or one keyset page ({@link buildPage}) when `page` is
+   * present, with a malformed `page` cursor surfaced as a client error instead of a thrown
+   * `AppError`. Statuses stay in the controller. */
+  async resolve(handle: string, page: string | undefined): Promise<OutboxResult> {
+    const handleNormalized = handle.toLowerCase();
+    let document: ActivityStreamsDocument | undefined;
+    try {
+      document =
+        page === undefined
+          ? await this.buildCollection(handleNormalized)
+          : await this.buildPage(handleNormalized, page);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'VALIDATION_ERROR') {
+        return { found: false, reason: 'INVALID_CURSOR' };
+      }
+      throw error;
+    }
+    return document === undefined
+      ? { found: false, reason: 'UNKNOWN_ACTOR' }
+      : { found: true, document };
+  }
 
   /** `GET /users/:handle/outbox` (P8-002, B-027) — the `OrderedCollection` summary
    * (`totalItems` + a `first` link into {@link buildPage}). `undefined` if no local actor has

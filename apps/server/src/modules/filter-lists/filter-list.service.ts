@@ -194,7 +194,7 @@ export class FilterListService {
     });
   }
 
-  async getFilterList(idRaw: string): Promise<FilterListView> {
+  getFilterList(idRaw: string): Promise<FilterListView> {
     const id = parseInput(uuidInputSchema, idRaw);
     return this.loadViewOrThrow(this.dataSource.manager, id);
   }

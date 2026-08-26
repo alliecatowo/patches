@@ -401,7 +401,7 @@ export class PostService {
    * rendering a repost always resolves through the underlying, now-tombstoned post) and its
    * edit history (spec §186.1 — `ListPostEdits` stops serving rows once `deletedAt` is set,
    * see that method). */
-  async deletePost(actorId: string, postId: string): Promise<PostView> {
+  deletePost(actorId: string, postId: string): Promise<PostView> {
     const id = parseInput(uuidInputSchema, postId);
 
     return this.dataSource.transaction(async (manager) => {
@@ -570,7 +570,7 @@ export class PostService {
    * position vacates the one that was there. Pinning never affects any feed's ordering (spec
    * §184.1) — this only ever touches `pinned_posts`.
    */
-  async pinPost(actorId: string, postIdRaw: string, position: number): Promise<PostView> {
+  pinPost(actorId: string, postIdRaw: string, position: number): Promise<PostView> {
     const postId = parseInput(uuidInputSchema, postIdRaw);
     if (!Number.isInteger(position) || position < 0 || position >= MAX_PINNED_POSTS) {
       throw AppError.validation(`position must be between 0 and ${String(MAX_PINNED_POSTS - 1)}.`);

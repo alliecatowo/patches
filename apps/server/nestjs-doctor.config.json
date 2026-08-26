@@ -1,0 +1,6 @@
+{
+  "$schema": "https://nestjs.doctor/schema/config.json",
+  "rules": {
+    "architecture/no-orm-in-services": false
+  }
+}

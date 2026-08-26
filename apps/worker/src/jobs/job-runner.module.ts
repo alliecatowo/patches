@@ -18,6 +18,7 @@ import { JobDispatcher } from './job-dispatcher.js';
 import { AuthCodeEmailDeliveryService } from './auth-code-email-delivery.service.js';
 import { JobRunner } from './job-runner.js';
 
+// nestjs-doctor-ignore-next-line performance/no-unused-module-exports -- resolved via app.get(JobRunner) in the worker's main.ts bootstrap
 @Module({
   imports: [DatabaseModule, EmailModule, StorageModule],
   providers: [

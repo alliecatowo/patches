@@ -59,7 +59,7 @@ const DEVICE_ID_PATTERN = /^[0-9a-f-]{8,64}$/i;
 export class E2eeDeviceRosterService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async enrollDevice(actorId: string, request: EnrollDeviceRequest): Promise<EnrollDeviceResponse> {
+  enrollDevice(actorId: string, request: EnrollDeviceRequest): Promise<EnrollDeviceResponse> {
     const certProto = request.certificate;
     const rosterProto = request.roster;
     const signedPrekeyProto = request.signedPrekey;
@@ -154,7 +154,7 @@ export class E2eeDeviceRosterService {
     });
   }
 
-  async revokeDevice(actorId: string, request: RevokeDeviceRequest): Promise<RevokeDeviceResponse> {
+  revokeDevice(actorId: string, request: RevokeDeviceRequest): Promise<RevokeDeviceResponse> {
     const rosterProto = request.roster;
     if (rosterProto === undefined) throw AppError.validation('The next signed roster is required.');
     if (request.deviceId.length === 0) throw AppError.validation('A device id is required.');
@@ -197,7 +197,7 @@ export class E2eeDeviceRosterService {
     });
   }
 
-  async publishDeviceRoster(
+  publishDeviceRoster(
     actorId: string,
     request: PublishDeviceRosterRequest,
   ): Promise<PublishDeviceRosterResponse> {
@@ -285,7 +285,7 @@ function buildCertificateView(
   };
 }
 
-async function verifyAndSaveSignedPrekey(
+function verifyAndSaveSignedPrekey(
   manager: EntityManager,
   device: E2eeDeviceIdentityEntity,
   certView: E2eeDeviceCertificateView,

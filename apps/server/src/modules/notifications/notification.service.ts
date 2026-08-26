@@ -168,7 +168,7 @@ export class NotificationsService {
     return result.affected ?? 0;
   }
 
-  async getUnreadCount(recipientActorId: string): Promise<number> {
+  getUnreadCount(recipientActorId: string): Promise<number> {
     return this.dataSource
       .getRepository(Notification)
       .countBy({ recipientActorId, readAt: IsNull() });

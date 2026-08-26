@@ -242,12 +242,12 @@ export class InboxService {
     }
   }
 
-  private async dispatch(
+  private dispatch(
     manager: EntityManager,
     type: string,
     activity: Record<string, unknown>,
     sender: Actor,
-  ): Promise<(() => Promise<void>) | undefined> {
+  ): Promise<(() => Promise<void>) | undefined> | undefined {
     const labels = { type, domain: sender.homeServer ?? undefined };
     switch (type) {
       case 'Follow':
@@ -664,11 +664,11 @@ export class InboxService {
    * profile. Anything else is silently ignored, same posture as every other unrecognized
    * shape in this file.
    */
-  private async handleUpdate(
+  private handleUpdate(
     manager: EntityManager,
     activity: Record<string, unknown>,
     sender: Actor,
-  ): Promise<undefined> {
+  ): Promise<undefined> | undefined {
     const object = activity.object;
     if (typeof object !== 'object' || object === null) return undefined;
     const objectRecord = object as Record<string, unknown>;

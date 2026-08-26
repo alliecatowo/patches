@@ -70,7 +70,7 @@ export class E2eeRetentionSweepHandler implements JobHandler {
     }
   }
 
-  private async deleteBatch(
+  private deleteBatch(
     entity: ObjectType<{ id: string }>,
     predicate: string,
     timestampColumn: string,

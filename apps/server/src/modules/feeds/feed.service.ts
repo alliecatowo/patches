@@ -227,7 +227,7 @@ export class FeedService {
     };
   }
 
-  async listLocalFeed(cursorRaw: string, limit: number, viewerActorId?: string): Promise<FeedPage> {
+  listLocalFeed(cursorRaw: string, limit: number, viewerActorId?: string): Promise<FeedPage> {
     const qb = this.baseQuery(viewerActorId).andWhere('post.isLocal = true');
     // §197.5: `show_in_local_feed = false` keeps an actor's (still-public) posts off the
     // node's local timeline specifically — every other listing is unaffected.
@@ -251,7 +251,7 @@ export class FeedService {
   /** A profile timeline — deliberately unfiltered (spec §198.3: "threads and profiles are
    * deliberately not filterable in v1"; there is no `PROFILE`/`ACTOR` value in
    * `FILTER_SCOPES`). A viewer who opened this actor's page asked for it. */
-  async listActorPosts(
+  listActorPosts(
     actorId: string,
     cursorRaw: string,
     limit: number,
