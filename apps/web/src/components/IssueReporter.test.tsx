@@ -205,10 +205,7 @@ describe('IssueReporter', () => {
   });
 
   it('explains an unsupported file instead of silently doing nothing (B-150)', async () => {
-    vi.stubGlobal(
-      'createImageBitmap',
-      vi.fn().mockRejectedValue(new Error('decode failed')),
-    );
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('decode failed')));
     renderReporter();
     fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
