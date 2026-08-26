@@ -313,6 +313,27 @@ jobs:
           VITE_PATCHES_API_BASE: https://patches-pr-${{ github.event.pull_request.number || inputs.pr_number }}.fly.dev:8443
           GITHUB_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
 
+      - name: Deploy web preview to Cloudflare Pages
+        # Also before the pnpm-deploy staging: staging prunes root devDeps too, and
+        # wrangler is a root devDependency (observed: "Command wrangler not found").
+        id: web_deploy
+        if: env.PREVIEW_WEB == 'enabled'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          # `--branch pr-<N>` keeps each PR's deploys on one Pages branch. Capture the
+          # live `https://<hash>-patches-web.pages.dev` URL wrangler prints into a step
+          # output (tee keeps it visible in the log for debugging).
+          web_url="$(pnpm exec wrangler pages deploy apps/web/dist \
+            --project-name patches-web \
+            --branch "pr-${{ github.event.pull_request.number || inputs.pr_number }}" \
+            2>&1 | tee /dev/stderr | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -n 1)"
+          [ -n "$web_url" ] || { echo "wrangler did not print a *.pages.dev URL" >&2; exit 1; }
+          echo "web_url=$web_url" >> "$GITHUB_OUTPUT"
+          echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Stage self-contained app dirs (pnpm deploy)
         run: |
           set -euo pipefail
@@ -349,25 +370,6 @@ jobs:
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
             --ha=false --strategy immediate --yes
-
-      - name: Deploy web preview to Cloudflare Pages
-        id: web_deploy
-        if: env.PREVIEW_WEB == 'enabled'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          # `--branch pr-<N>` keeps each PR's deploys on one Pages branch. Capture the
-          # live `https://<hash>-patches-web.pages.dev` URL wrangler prints into a step
-          # output (tee keeps it visible in the log for debugging).
-          web_url="$(pnpm exec wrangler pages deploy apps/web/dist \
-            --project-name patches-web \
-            --branch "pr-${{ github.event.pull_request.number || inputs.pr_number }}" \
-            2>&1 | tee /dev/stderr | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -n 1)"
-          [ -n "$web_url" ] || { echo "wrangler did not print a *.pages.dev URL" >&2; exit 1; }
-          echo "web_url=$web_url" >> "$GITHUB_OUTPUT"
-          echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
