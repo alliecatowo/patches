@@ -10,12 +10,13 @@ allowedTools: Read, Bash(grep:*), Bash(sed -n:*), mcp__github__projects_list, mc
 The [Patches GitHub Project board](https://github.com/users/alliecatowo/projects/5) (user-level
 Project v2, owner `alliecatowo`, project number 5) is the live task board. Items are a mix of real
 GitHub issues on `alliecatowo/patches` (preferred — closeable by a PR, auto-moves Status to Done)
-and draft items not yet promoted, with fields Status (Todo | Blocked | In Progress | Done), Phase
-(Phase 12 — TUI | Phase 13 — E2EE | Phase 15 — Auth | Phase 17 — Scale | Phase 19 — Observability |
-Phase 20 — Live bugs | Phase 21 — Web DX | Backlog), Priority (P0 — Critical | P1 — High | P2 —
-Normal | P3 — Low), Kind (Bug | Feature | Infra / CI | Security | Perf / Scale | Docs | Harness |
-Refactor / Test), Task ID (text, `P<phase>-<nnn>` / `H-<nnn>` / `B-<nnn>` / `A-<nnn>` / `O-<nnn>` /
-`S-<nnn>` / `MCP-<nnn>`), Blocked by (text, comma-separated Task IDs), Order (number). Access via
+and draft items not yet promoted, with fields Status (Todo | Blocked | In Progress | Done), Area
+(TUI | Messaging | Auth | Scale | Observability | Live bugs | Web | Backlog), Priority (P0 —
+Critical | P1 — High | P2 — Normal | P3 — Low), Kind (Bug | Feature | Infra / CI | Security |
+Perf / Scale | Docs | Harness | Refactor / Test), Task ID (text, `P<phase>-<nnn>` / `H-<nnn>` /
+`B-<nnn>` / `A-<nnn>` / `O-<nnn>` / `S-<nnn>` / `MCP-<nnn>`), Blocked by (text, comma-separated
+Task IDs), Order (number). The Task ID belongs in its field, never in the title — the issue number
+identifies the item, and a `B-204 — ` prefix just competes with it. Access via
 the `github` MCP server: `projects_list`/`projects_get` to read, `projects_write` to write,
 `issue_write` to create/update issues. `tasks.md` is the historical archive (447 completed items)
 and the offline fallback when the MCP server or the `project` OAuth scope is unavailable — nobody
