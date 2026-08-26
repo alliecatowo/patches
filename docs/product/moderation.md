@@ -119,15 +119,19 @@ Actual `patches-admin --help` output (`pnpm --filter @patches/admin build && nod
 apps/admin/dist/main.js --help`):
 
 ```text
+Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--json]
+
   invite create [--max-uses N] [--expires <iso>]
   invite list
   invite revoke <id>
 
   user list
   user show <handle>
-  user suspend <handle> --reason <text>
+  user suspend <handle> --reason <text> [--reason-category <category>]
   user unsuspend <handle>
-  user delete <handle> [--reason <text>]
+  user delete <handle> [--reason <text>] [--reason-category <category>]
+  user deletion-status <handle>
+  user cancel-deletion <handle>
 
   report list [--status open]
   report show <id>
@@ -147,6 +151,11 @@ apps/admin/dist/main.js --help`):
   appeal list [--status open]
   appeal inspect <id>
   appeal resolve <id> --outcome <upheld|overturned|modified> --reason <text>
+
+  labeler vocabulary list [--json]
+  labeler vocabulary set-mandatory <value> [--off]
+
+Every mutating command needs an operator: --as <handle>, or set PATCHES_ADMIN_OPERATOR.
 ```
 
 `report resolve --action none` is how a report is dismissed — there is no separate `dismiss`

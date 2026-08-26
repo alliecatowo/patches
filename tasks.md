@@ -480,7 +480,7 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 
 <!-- H-022 split-out, 2026-08-25 -->
 
-- [ ] B-171 — Stale `--help` transcript in `docs/product/moderation.md`: the fenced block under "Moderator tooling" (claims to be actual `patches-admin --help` output) is missing the `user deletion-status <handle>`/`user cancel-deletion <handle>` lines and the `--reason-category` flag on `user suspend`/`user delete`, same drift H-022 fixed in `apps/admin/src/main.ts`'s real usage text. Out of H-022's owned paths (product docs, not `apps/admin`/`docs/operations`); re-run the actual `--help` invocation the doc already cites and paste its real output.
+- [x] B-171 — Stale `--help` transcript in `docs/product/moderation.md`: the fenced block under "Moderator tooling" (claims to be actual `patches-admin --help` output) is missing the `user deletion-status <handle>`/`user cancel-deletion <handle>` lines and the `--reason-category` flag on `user suspend`/`user delete`, same drift H-022 fixed in `apps/admin/src/main.ts`'s real usage text. Out of H-022's owned paths (product docs, not `apps/admin`/`docs/operations`); re-run the actual `--help` invocation the doc already cites and paste its real output. _(landed 2026-08-25: ran `pnpm --filter @patches/admin build && node apps/admin/dist/main.js --help`, captured actual current output including `user deletion-status <handle>`, `user cancel-deletion <handle>`, and `--reason-category` flags on `user suspend`/`user delete`, plus new `labeler vocabulary list/set-mandatory` commands; replaced the entire stale block in `docs/product/moderation.md`)_
 
 <!-- Owner product-direction capture 2026-08-24 -->
 
