@@ -278,7 +278,7 @@ below rather than picked here.
 - **New (P19-012):** file a task to decide required-check vs. on-demand-trigger for the
   migration test harness in "Migration test harness" above, then implement it as a GitHub
   Actions workflow once that's decided and Neon CI credentials exist (see
-  `docs/operations/ci.md`). Filed as P19-016 in `tasks.md`.
+  `docs/operations/ci.md`). Filed as P19-024 in `tasks.md`.
 - **New (P19-012):** the harness's step 5 schema-diff check assumes `neon branches
 schema-diff` output is stable/parseable enough to gate CI on; verify its exact output
   format (text vs. `-o json`) against a real project before wiring a pass/fail check on it
