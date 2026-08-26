@@ -1,10 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, within } from 'storybook/test';
 
+import { scenario } from '../../.storybook/decorators.js';
 import { localFeedFixture } from '../../.storybook/fixtures.js';
-import { setStoryNodeInfo, setStoryLocalFeed } from '../../.storybook/mocks/apiClient.js';
+import { setStoryLocalFeed, setStoryNodeInfo } from '../../.storybook/mocks/apiClient.js';
 import { HomeRoute } from './HomeRoute.js';
 
 const meta = {
+  title: 'Routes/Home',
   component: HomeRoute,
   parameters: {
     layout: 'fullscreen',
@@ -21,29 +24,40 @@ type Story = StoryObj<typeof meta>;
  */
 export const PublicLocalFeed: Story = {
   decorators: [
-    (Story) => {
+    scenario(() => {
       setStoryNodeInfo(true);
       setStoryLocalFeed(localFeedFixture());
-      return <Story />;
-    },
+    }),
   ],
 };
 
 export const InviteOnlyNode: Story = {
   decorators: [
-    (Story) => {
+    scenario(() => {
       setStoryNodeInfo(false);
-      return <Story />;
-    },
+    }),
   ],
 };
 
 export const EmptyLocalFeed: Story = {
   decorators: [
-    (Story) => {
+    scenario(() => {
       setStoryNodeInfo(true);
       setStoryLocalFeed([]);
-      return <Story />;
-    },
+    }),
   ],
+};
+
+/** The timeline's empty state is stated as such — never as a failed load. */
+export const EmptyStateCopy: Story = {
+  decorators: [
+    scenario(() => {
+      setStoryNodeInfo(true);
+      setStoryLocalFeed([]);
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(await canvas.findByText('No posts on this node yet.')).toBeInTheDocument();
+  },
 };

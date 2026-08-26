@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { RichBody } from './RichBody.js';
 
 const meta = {
+  title: 'Design System/RichBody',
   component: RichBody,
   parameters: {
     layout: 'padded',

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { EditWallDialog } from './EditWallDialog.js';
 
 const meta = {
+  title: 'Patterns/Edit Wall Dialog',
   component: EditWallDialog,
   parameters: {
     layout: 'fullscreen',

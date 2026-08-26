@@ -4,6 +4,7 @@ import { gradientNameplate, makeActor, singleColorNameplate } from '../../.story
 import { Nameplate } from './Nameplate.js';
 
 const meta = {
+  title: 'Design System/Nameplate',
   component: Nameplate,
   argTypes: {
     handle: { control: 'text' },

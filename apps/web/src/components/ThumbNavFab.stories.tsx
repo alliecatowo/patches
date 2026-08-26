@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ThumbNavFab } from './ThumbNavFab.js';
 
 const meta = {
+  title: 'Design System/ThumbNavFab',
   component: ThumbNavFab,
   parameters: {
     layout: 'fullscreen',

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, userEvent, within } from 'storybook/test';
 
 import {
   gradientNameplate,
@@ -15,6 +16,7 @@ registerStorybookMedia('tile-aurora', photoDataUri('aurora', '#6b46c1'));
 registerStorybookMedia('tile-forest', photoDataUri('forest', '#2f855a'));
 
 const meta = {
+  title: 'Design System/PostCard',
   component: PostCard,
   parameters: {
     layout: 'padded',
@@ -47,6 +49,15 @@ export const ContentWarning: Story = {
       body: 'The body stays collapsed behind the CW button until it is expanded.',
       contentWarning: 'spoiler: phase 3 plans',
     }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Collapsed by default: the warning row is visible, the body is not…
+    const reveal = await canvas.findByText(/show post/);
+    expect(canvas.queryByText(/collapsed behind the CW button/)).not.toBeInTheDocument();
+    // …and one tap reveals it in place.
+    await userEvent.click(reveal);
+    expect(await canvas.findByText(/collapsed behind the CW button/)).toBeInTheDocument();
   },
 };
 
