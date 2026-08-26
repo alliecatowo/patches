@@ -1,12 +1,12 @@
 import type { PageBlock, RenderablePageBlock } from '@patches/domain';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type JSX } from 'react';
+import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { decodePageDocument } from '../lib/page.js';
 import { CloseIcon, TrashIcon } from './icons/Icons.js';
-import { useToast } from './ToastProvider.js';
 import styles from './EditWallDialog.module.css';
 
 export interface EditWallDialogProps {
@@ -80,7 +80,6 @@ export function EditWallDialog({
 }: EditWallDialogProps): JSX.Element | null {
   const queryClient = useQueryClient();
   const onError = useErrorToast();
-  const toast = useToast();
 
   const [blocks, setBlocks] = useState<PageBlock[]>(() => extractInitialBlocks(currentDocument));
   const [rawDoc, setRawDoc] = useState<RawPageDocument | null>(() =>
@@ -161,7 +160,7 @@ export function EditWallDialog({
       return await api.pages.updatePage({ document: encoded });
     },
     onSuccess: async () => {
-      toast.pushToast({ message: 'Wall updated', tone: 'info' });
+      toast('Wall updated');
       await queryClient.invalidateQueries({ queryKey: ['page', handle] });
       onClose();
     },

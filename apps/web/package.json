@@ -33,6 +33,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router-dom": "catalog:",
+    "sonner": "catalog:",
     "workbox-core": "catalog:",
     "workbox-precaching": "catalog:",
     "workbox-routing": "catalog:",

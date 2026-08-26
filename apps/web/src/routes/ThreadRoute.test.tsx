@@ -49,8 +49,8 @@ vi.mock('../hooks/useSession.js', () => ({
   useSession: () => mockUseSession(),
 }));
 
-vi.mock('../components/ToastProvider.js', () => ({
-  useToast: () => ({ pushToast: vi.fn() }),
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { error: vi.fn() }),
 }));
 
 function renderThread(): ReturnType<typeof render> {

@@ -7,20 +7,17 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import { PostCard } from './PostCard.js';
-import { ToastProvider } from './ToastProvider.js';
 
 function renderPostCard(post: Post, focused = false): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <MemoryRouter initialEntries={['/']}>
-          <Routes>
-            <Route path="/" element={<PostCard post={post} focused={focused} />} />
-            <Route path="/p/:id" element={<div>Thread Page</div>} />
-          </Routes>
-        </MemoryRouter>
-      </ToastProvider>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<PostCard post={post} focused={focused} />} />
+          <Route path="/p/:id" element={<div>Thread Page</div>} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>
   );
   return render(tree);

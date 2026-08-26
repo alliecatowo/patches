@@ -2,6 +2,7 @@ import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@patches/client/connect';
 import { createPatchesApi, SessionManager } from '@patches/client';
 import { AuthService, type Session } from '@patches/proto/es';
+import { toast } from 'sonner';
 
 import { LocalStorageCredentialStore } from './credentialStore.js';
 import { clearActorSession, setActorSession } from './session.js';
@@ -56,6 +57,19 @@ export async function establishSession(session: Session): Promise<void> {
 export async function signOut(): Promise<void> {
   await sessionManager.clear();
   clearActorSession();
+}
+
+/**
+ * B-161: a session-expiry sign-out (failed refresh, see `authInterceptor` below) happens
+ * outside any component — there's no `navigate()` to call — and leaves whatever route was
+ * on screen rendering as if still signed in until the user next interacts with it. A
+ * toast plus a hard redirect (this module has no router instance to call `.navigate()`
+ * on without a circular import through `router.tsx` -> `RootLayout.tsx` -> here) makes
+ * the sign-out visible immediately instead of silently.
+ */
+function notifySessionExpired(): void {
+  toast.error('Your session has expired. Please sign in again.');
+  window.location.assign('/login');
 }
 
 /**
@@ -124,6 +138,7 @@ const authInterceptor: Interceptor = (next) => async (req) => {
     // no longer valid — sign out locally so the UI stops presenting stale state.
     if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
       await signOut();
+      notifySessionExpired();
     }
     throw error;
   }

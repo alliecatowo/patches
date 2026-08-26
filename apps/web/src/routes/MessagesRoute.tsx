@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
 import { DmNotice, securityModeLabel } from '../components/DmNotice.js';
 import { PlusIcon } from '../components/icons/Icons.js';
-import { useToast } from '../components/ToastProvider.js';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import styles from './MessagesRoute.module.css';
@@ -17,7 +17,6 @@ const START_CONVERSATION_HINT =
 
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
-  const toast = useToast();
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -31,7 +30,7 @@ export function MessagesRoute(): JSX.Element {
         <button
           type="button"
           className={styles['newMsgBtn']}
-          onClick={() => toast.pushToast({ message: START_CONVERSATION_HINT, tone: 'info' })}
+          onClick={() => toast(START_CONVERSATION_HINT)}
           aria-label="New direct message"
         >
           <PlusIcon size={16} />

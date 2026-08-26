@@ -2,6 +2,7 @@ import { FilterAction, type Post } from '@patches/proto/es';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -28,7 +29,6 @@ import { Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
 import { ReportPostControl } from './ReportPostControl.js';
 import { RichBody } from './RichBody.js';
-import { useToast } from './ToastProvider.js';
 
 export interface PostCardProps {
   post: Post;
@@ -42,7 +42,6 @@ export interface PostCardProps {
 export function PostCard({ post, focused = false }: PostCardProps): JSX.Element {
   const session = useSession();
   const onError = useErrorToast();
-  const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -99,10 +98,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
         ? await api.reactions.unbookmarkPost({ postId: post.id })
         : await api.reactions.bookmarkPost({ postId: post.id });
       if (response.viewerState) setViewerState(response.viewerState);
-      toast.pushToast({
-        message: wasBookmarked ? 'Removed from bookmarks' : 'Saved to bookmarks',
-        tone: 'info',
-      });
+      toast(wasBookmarked ? 'Removed from bookmarks' : 'Saved to bookmarks');
     } catch (error) {
       setViewerState((v) => (v ? { ...v, bookmarked: wasBookmarked } : v));
       onError(error);
@@ -137,10 +133,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     try {
       if (wasPinned) await api.posts.unpinPost({ postId: post.id });
       else await api.posts.pinPost({ postId: post.id, position: 0 });
-      toast.pushToast({
-        message: wasPinned ? 'Post unpinned' : 'Post pinned to profile',
-        tone: 'info',
-      });
+      toast(wasPinned ? 'Post unpinned' : 'Post pinned to profile');
     } catch (error) {
       setPinned(wasPinned);
       onError(error);
@@ -165,9 +158,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     // Fallback: Copy link to clipboard
     try {
       await navigator.clipboard.writeText(postUrl);
-      toast.pushToast({ message: 'Post link copied to clipboard', tone: 'info' });
+      toast('Post link copied to clipboard');
     } catch {
-      toast.pushToast({ message: `Post URL: ${postUrl}`, tone: 'info' });
+      toast(`Post URL: ${postUrl}`);
     }
   };
 
@@ -177,7 +170,7 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     try {
       await api.posts.deletePost({ id: post.id });
       setDeleted(true);
-      toast.pushToast({ message: 'Post deleted', tone: 'info' });
+      toast('Post deleted');
     } catch (error) {
       onError(error);
     }

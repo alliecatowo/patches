@@ -6,6 +6,7 @@ import {
   MAX_DIAGNOSTICS_BUNDLE_BYTES,
   type DiagnosticsBundle,
 } from '@patches/domain';
+import { SESSION_REFRESHED_EVENT, type SessionRefreshedDetail } from '@patches/client';
 
 /**
  * The web app's issue-reporter feed (B-112): automatic window/console-error and route
@@ -23,7 +24,7 @@ const RING_CAPACITY = MAX_DIAGNOSTICS_BREADCRUMBS;
 
 export interface WebBreadcrumb {
   at: string;
-  kind: 'window-error' | 'unhandled-rejection' | 'console-error' | 'route';
+  kind: 'window-error' | 'unhandled-rejection' | 'console-error' | 'route' | 'session-refreshed';
   detail: string;
 }
 
@@ -96,7 +97,8 @@ function isWebBreadcrumbKind(value: unknown): value is WebBreadcrumb['kind'] {
     value === 'window-error' ||
     value === 'unhandled-rejection' ||
     value === 'console-error' ||
-    value === 'route'
+    value === 'route' ||
+    value === 'session-refreshed'
   );
 }
 
@@ -203,6 +205,16 @@ export function installGlobalCollectors(): void {
   });
   window.addEventListener('unhandledrejection', (event) => {
     recordWebBreadcrumb('unhandled-rejection', errorDetail(event.reason));
+  });
+  // B-169's SESSION_REFRESHED_EVENT had no listener anywhere in the app; recording it
+  // here gives the shake-to-report trail visibility into silent token refreshes (or their
+  // absence) leading up to an auth-shaped bug report, without ever carrying the token.
+  window.addEventListener(SESSION_REFRESHED_EVENT, (event) => {
+    const { expiresAt } = (event as CustomEvent<SessionRefreshedDetail>).detail;
+    recordWebBreadcrumb(
+      'session-refreshed',
+      expiresAt === undefined ? 'expiry unknown' : `expires ${new Date(expiresAt).toISOString()}`,
+    );
   });
   const originalConsoleError = console.error.bind(console);
   console.error = (...args: unknown[]) => {

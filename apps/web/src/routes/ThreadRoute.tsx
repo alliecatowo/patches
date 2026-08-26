@@ -3,12 +3,12 @@ import { PostVisibility, QuotePolicy } from '@patches/proto/es';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
 import { CloseIcon, ImageIcon } from '../components/icons/Icons.js';
 import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
 import { PostCard } from '../components/PostCard.js';
-import { useToast } from '../components/ToastProvider.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useSession } from '../hooks/useSession.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
@@ -25,7 +25,6 @@ export function ThreadRoute(): JSX.Element {
   const session = useSession();
   const queryClient = useQueryClient();
   const onError = useErrorToast();
-  const toast = useToast();
 
   const [replyBody, setReplyBody] = useState('');
   const [uploads, setUploads] = useState<MediaUploadHandle[]>([]);
@@ -104,7 +103,7 @@ export function ThreadRoute(): JSX.Element {
     onSuccess: async () => {
       setReplyBody('');
       setUploads([]);
-      toast.pushToast({ message: 'Reply posted', tone: 'info' });
+      toast('Reply posted');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['post', postId, 'replies'] }),
         queryClient.invalidateQueries({ queryKey: ['post', postId] }),

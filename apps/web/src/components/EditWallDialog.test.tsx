@@ -17,8 +17,8 @@ vi.mock('../api/client.js', () => ({
   } as unknown as PatchesApi,
 }));
 
-vi.mock('./ToastProvider.js', () => ({
-  useToast: () => ({ pushToast: vi.fn() }),
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { error: vi.fn() }),
 }));
 
 function renderDialog(props: Parameters<typeof EditWallDialog>[0]): ReturnType<typeof render> {

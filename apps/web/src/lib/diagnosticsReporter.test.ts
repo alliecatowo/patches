@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SESSION_REFRESHED_EVENT, type SessionRefreshedDetail } from '@patches/client';
 import { MAX_DIAGNOSTICS_BREADCRUMBS } from '@patches/domain';
 
 import {
@@ -39,6 +40,18 @@ describe('web diagnostics reporter', () => {
     window.dispatchEvent(new ErrorEvent('error', { message: 'boom: render died' }));
     const kinds = webBreadcrumbs().map((crumb) => crumb.kind);
     expect(kinds).toContain('window-error');
+  });
+
+  it('records a breadcrumb when the session is silently refreshed (B-169)', () => {
+    installGlobalCollectors();
+    window.dispatchEvent(
+      new CustomEvent<SessionRefreshedDetail>(SESSION_REFRESHED_EVENT, {
+        detail: { expiresAt: Date.UTC(2026, 0, 1) },
+      }),
+    );
+    const last = webBreadcrumbs().at(-1);
+    expect(last?.kind).toBe('session-refreshed');
+    expect(last?.detail).toContain('2026-01-01');
   });
 
   it('records unhandled rejections', async () => {

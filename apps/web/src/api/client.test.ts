@@ -89,3 +89,48 @@ describe('authInterceptor', () => {
     expect(headers[0]?.get('authorization')).toBe('Bearer access-profile');
   });
 });
+
+/**
+ * B-161: `signOut()` alone left the UI showing stale signed-in state with no feedback
+ * until the user happened to navigate. When a refresh attempt itself comes back
+ * Unauthenticated (the refresh token is dead, not just the access token), the app must
+ * both surface a toast and leave the login route as the next place the user lands.
+ */
+describe('session expiry', () => {
+  const originalFetch = global.fetch;
+  const mockToastError = vi.fn();
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.resetModules();
+    mockToastError.mockReset();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
+  });
+
+  it('toasts and redirects to /login when the refresh token itself is Unauthenticated', async () => {
+    vi.doMock('sonner', () => ({ toast: { error: mockToastError } }));
+    const assignMock = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign: assignMock });
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ code: 'unauthenticated', message: 'token expired' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+
+    const { api, sessionManager } = await import('./client.js');
+    await sessionManager.setSession({ accessToken: 'access-1', refreshToken: 'refresh-1' });
+
+    await api.actors.getActorByHandle({ handle: 'allie' }).catch(() => undefined);
+
+    expect(mockToastError).toHaveBeenCalledWith(expect.stringContaining('session') as string);
+    expect(assignMock).toHaveBeenCalledWith('/login');
+    expect(await sessionManager.getAccessToken()).toBeUndefined();
+  });
+});
