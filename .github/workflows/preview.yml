@@ -553,6 +553,11 @@ jobs:
         continue-on-error: true
         run: neon branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
 
+      # `continue-on-error` stays true at the job level (a PR with no successful deploy has
+      # nothing to sweep, and that's not a failure) but the script itself now fails loudly
+      # (non-zero exit) on anything that isn't the well-formed `--json` shape it expects
+      # (B-173) — a wrangler output change no longer silently matches zero rows. That
+      # distinction surfaces below as this step's `outcome` in the job summary.
       - name: Delete Cloudflare Pages deployments (pr-<N>)
         id: pages_delete
         continue-on-error: true
