@@ -1,8 +1,9 @@
 import { FollowState, type Relationship } from '@patches/proto/es';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { JSX } from 'react';
 
 import { api } from '../api/client.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useSession } from '../hooks/useSession.js';
 
@@ -18,11 +19,16 @@ export function FollowButton({ actorId }: { actorId: string }): JSX.Element | nu
     enabled: session !== null && !isSelf,
   });
 
-  const mutation = useMutation({
-    mutationFn: async (follow: boolean): Promise<{ relationship?: Relationship | undefined }> =>
+  // B-164: navigating away from this profile mid-toggle must not later write a stale
+  // relationship into the cache or toast a failure for a button that's no longer on screen.
+  const mutation = useAbortableMutation({
+    mutationFn: async (
+      follow: boolean,
+      signal,
+    ): Promise<{ relationship?: Relationship | undefined }> =>
       follow
-        ? await api.socialGraph.followActor({ actorId })
-        : await api.socialGraph.unfollowActor({ actorId }),
+        ? await api.socialGraph.followActor({ actorId }, { signal })
+        : await api.socialGraph.unfollowActor({ actorId }, { signal }),
     onSuccess: (response) => {
       queryClient.setQueryData(['relationship', actorId], { relationship: response.relationship });
     },

@@ -1,6 +1,6 @@
 import { describeError } from '@patches/client';
 import { PasswordAuthMode } from '@patches/proto/es';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -9,6 +9,7 @@ import { DeviceLinkButton } from '../components/DeviceLinkButton.js';
 import { GitHubLoginButton } from '../components/GitHubLoginButton.js';
 import { OidcLoginButton } from '../components/OidcLoginButton.js';
 import { PasskeyLoginButton } from '../components/PasskeyLoginButton.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from './AuthForm.module.css';
 
 export function LoginRoute(): JSX.Element {
@@ -31,8 +32,11 @@ export function LoginRoute(): JSX.Element {
   });
   const passwordAuthOff = authPolicyQuery.data?.passwordAuth === PasswordAuthMode.OFF;
 
-  const loginMutation = useMutation({
-    mutationFn: () => api.auth.login({ emailOrHandle, password }),
+  // B-164: leaving `/login` (e.g. via the "Register" link) before either RPC settles must
+  // not later establish a session and redirect out from under the screen navigated to.
+  const loginMutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) =>
+      api.auth.login({ emailOrHandle, password }, { signal }),
     onSuccess: async (response) => {
       if (response.session) await establishSession(response.session);
       const from = (location.state as { from?: string } | null)?.from ?? '/';
@@ -40,8 +44,9 @@ export function LoginRoute(): JSX.Element {
     },
   });
 
-  const recoveryMutation = useMutation({
-    mutationFn: () => api.auth.recoveryLogin({ emailOrHandle, code: recoveryCode }),
+  const recoveryMutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) =>
+      api.auth.recoveryLogin({ emailOrHandle, code: recoveryCode }, { signal }),
     onSuccess: async (response) => {
       if (response.session) await establishSession(response.session);
       const from = (location.state as { from?: string } | null)?.from ?? '/';

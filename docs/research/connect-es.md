@@ -298,6 +298,24 @@ Source: github.com/connectrpc/examples-es/blob/main/vanilla-node/client.ts (offi
 github.com/connectrpc/connect-es/blob/main/packages/connect/src/call-options.ts (source, read directly);
 connectrpc.com/docs/node (doc summary, httpVersion '1.1'/'2' confirmed)
 
+### 8a. Aborting `CallOptions.signal` surfaces as `Code.Canceled` (B-164)
+
+Confirmed by reading the installed package directly (`@connectrpc/connect@2.1.2`,
+`dist/cjs/connect-error.js`): `ConnectError.from(reason)` special-cases a `DOMException`/
+error whose `name` is `"AbortError"` or `"TimeoutError"` (the shape `fetch` and
+`AbortSignal.timeout()` throw) and converts it to `new ConnectError(reason.message,
+Code.Canceled)` — not `Code.Unknown`. So a mutation that passes its own `AbortController`'s
+`signal` via `CallOptions.signal` and then calls `.abort()` gets back a `ConnectError` with
+`code === Code.Canceled` from the call promise's rejection, on both `connect-web` and
+`connect-node` transports (the translation lives in the transport-agnostic `connect-error.js`,
+not either transport package). `describeError` (`packages/client/src/errors.ts`) already has a
+`Code.Canceled` branch ("Request cancelled.") — a caller that wants to _swallow_ an
+intentional unmount-triggered abort (rather than show that copy) needs to check the code
+itself before calling `describeError`, e.g. `apps/web/src/hooks/useAbortableMutation.ts`,
+which instead skips the callback entirely once its owning component has unmounted.
+
+Source: `node_modules/.pnpm/@connectrpc+connect@2.1.2_@bufbuild+protobuf@2.14.0/node_modules/@connectrpc/connect/dist/cjs/connect-error.js` (installed package, read directly)
+
 ## 9. Error propagation — `ConnectError` metadata
 
 Confirmed by reading `packages/connect/src/connect-error.ts` in connect-es (main):

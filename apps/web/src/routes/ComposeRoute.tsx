@@ -1,6 +1,6 @@
 import { describeError } from '@patches/client';
 import { PostVisibility, QuotePolicy, type Post } from '@patches/proto/es';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -13,6 +13,7 @@ import {
 } from '../components/icons/Icons.js';
 import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
 import { RichBody } from '../components/RichBody.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ComposeRoute.module.css';
 
@@ -217,29 +218,39 @@ export function ComposeRoute(): JSX.Element {
     }, 0);
   };
 
-  const mutation = useMutation({
-    mutationFn: async (): Promise<{ post?: Post | undefined }> => {
+  // B-164: navigating away from `/compose` (e.g. the browser back button) before this
+  // resolves must not later clear the draft and redirect out from under whatever screen
+  // the viewer moved to — distinct from `uploadControllersRef`'s own abort-on-unmount
+  // above, which only covers the media PUTs, not this post-create/edit call.
+  const mutation = useAbortableMutation({
+    mutationFn: async (_variables: void, signal): Promise<{ post?: Post | undefined }> => {
       const mediaIds = uploads.filter((u) => u.status === 'ready').map((u) => u.mediaId);
       if (editId !== '') {
-        return await api.posts.editPost({
-          id: editId,
-          body,
-          contentWarning: cwEnabled ? contentWarning : '',
-          mediaIds,
-        });
+        return await api.posts.editPost(
+          {
+            id: editId,
+            body,
+            contentWarning: cwEnabled ? contentWarning : '',
+            mediaIds,
+          },
+          { signal },
+        );
       }
-      return await api.posts.createPost({
-        clientRequestId: crypto.randomUUID(),
-        body,
-        linkUrl: '',
-        visibility: PostVisibility.PUBLIC,
-        inReplyToId: replyTo,
-        mediaIds,
-        contentWarning: cwEnabled ? contentWarning : '',
-        quotedPostId: quoteId,
-        communityId: '',
-        quotePolicy: QuotePolicy.ANYONE,
-      });
+      return await api.posts.createPost(
+        {
+          clientRequestId: crypto.randomUUID(),
+          body,
+          linkUrl: '',
+          visibility: PostVisibility.PUBLIC,
+          inReplyToId: replyTo,
+          mediaIds,
+          contentWarning: cwEnabled ? contentWarning : '',
+          quotedPostId: quoteId,
+          communityId: '',
+          quotePolicy: QuotePolicy.ANYONE,
+        },
+        { signal },
+      );
     },
     onSuccess: (response) => {
       try {

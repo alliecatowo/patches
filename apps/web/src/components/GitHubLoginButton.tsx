@@ -1,10 +1,10 @@
 import { describeError } from '@patches/client';
 import { GitHubLoginStatus } from '@patches/proto/es';
-import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
+import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from '../routes/AuthForm.module.css';
 
 interface DeviceLink {
@@ -72,8 +72,12 @@ export function GitHubLoginButton({
     [clearScheduledPoll],
   );
 
-  const beginMutation = useMutation({
-    mutationFn: () => api.auth.beginGitHubLogin({}),
+  // B-164: navigating away right after clicking "Sign in with GitHub" but before this
+  // resolves must not schedule an orphaned poll loop that later calls `establishSession`
+  // and `navigate` for a screen that's gone (`cancelledRef` above only guards the poll
+  // loop's own steps, not this initial call).
+  const beginMutation = useAbortableMutation({
+    mutationFn: (_variables: void, signal) => api.auth.beginGitHubLogin({}, { signal }),
     onSuccess: (response) => {
       setTerminal(null);
       setCopied(false);
