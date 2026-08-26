@@ -32,7 +32,13 @@ const refreshTransport = createConnectTransport({ baseUrl: BASE_URL, useBinaryFo
  * `authInterceptor` and every explicit sign-in/out flow in this app go through this
  * instance instead.
  */
-export const sessionManager = new SessionManager({ transport: refreshTransport, credentialStore });
+export const sessionManager = new SessionManager({
+  transport: refreshTransport,
+  credentialStore,
+  // Cross-tab sync (B-169): sign-in/out/refresh in one tab now propagates to the
+  // others via the storage event on exactly this key.
+  storageKey: credentialStore.storageKey,
+});
 
 /** Persists a `Session` proto (from `Login`/`Register`) into both the token store and the
  * actor snapshot the UI renders from. */

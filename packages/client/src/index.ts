@@ -9,8 +9,12 @@ export { createPatchesApi, type CreatePatchesApiOptions, type PatchesApi } from 
 export {
   SessionManager,
   InMemoryCredentialStore,
+  SESSION_REFRESHED_EVENT,
+  decodeJwtExpiry,
   type CredentialStore,
   type SessionManagerOptions,
+  type SessionRefreshedDetail,
+  type SessionSnapshot,
   type StoredSession,
 } from './session.js';
 export {

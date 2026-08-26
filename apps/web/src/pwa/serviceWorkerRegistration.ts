@@ -1,10 +1,10 @@
 /**
- * Register the Service Worker in production / supported browser environments.
+ * Register the Workbox service worker that vite-plugin-pwa builds into `dist/sw.js`.
  */
 
 /**
- * B-153: the worker updates silently (`skipWaiting` + `clients.claim` in sw.js), and the
- * `patches:sw-updated` event this module dispatches had no listener — so a tab opened
+ * B-153: the worker updates silently (`skipWaiting` + `clients.claim` in sw.ts), and
+ * a `patches:sw-updated` event was never listened to by anyone — so a tab opened
  * before a deploy kept running the pre-deploy bundle against the new server until the
  * user manually reloaded (the partner's "timeline dead until sign-out/in" was exactly
  * that: a full reload, not the auth flow, is what fixed it). When an updated worker has
@@ -23,10 +23,10 @@ function reloadOnceOnControllerChange(): void {
 }
 
 export function registerServiceWorker(): void {
-  // An explicit development escape hatch keeps a stale production worker from intercepting a
-  // Vite visual/debug session. It is compiled away from production builds unless deliberately
-  // set there, and deployment configuration never sets this value.
-  if (import.meta.env.DEV && import.meta.env['VITE_PATCHES_DISABLE_SERVICE_WORKER'] === '1') {
+  // vite-plugin-pwa builds the worker for production only (devOptions disabled), so
+  // dev serves no /sw.js — registering there would only 404 and, worse, could let a
+  // stale production worker intercept a Vite debug session.
+  if (import.meta.env.DEV) {
     return;
   }
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
@@ -42,7 +42,6 @@ export function registerServiceWorker(): void {
           if (installingWorker) {
             installingWorker.addEventListener('statechange', () => {
               if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                window.dispatchEvent(new CustomEvent('patches:sw-updated'));
                 navigator.serviceWorker.addEventListener(
                   'controllerchange',
                   reloadOnceOnControllerChange,

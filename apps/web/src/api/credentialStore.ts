@@ -14,6 +14,11 @@ export class LocalStorageCredentialStore implements CredentialStore {
     this.key = `patches.web.credentials.${nodeBaseUrl}.v1`;
   }
 
+  /** The storage key — feeds `SessionManager`'s cross-tab `storage` listener (B-169). */
+  get storageKey(): string {
+    return this.key;
+  }
+
   load(): Promise<StoredSession | undefined> {
     if (typeof window === 'undefined') return Promise.resolve(undefined);
     const raw = window.localStorage.getItem(this.key);
