@@ -62,7 +62,7 @@ export class ModerationService {
    * in either direction (spec §62 — "B should not follow A", "existing follow relationship
    * should be removed").
    */
-  async blockActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
+  blockActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
     if (targetActorId === actorId) throw AppError.validation('You cannot block yourself.');
 
@@ -94,7 +94,7 @@ export class ModerationService {
   }
 
   /** Idempotent: unblocking an actor the caller has not blocked is not an error. */
-  async unblockActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
+  unblockActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
     return this.dataSource.transaction(async (manager) => {
       await manager
@@ -106,7 +106,7 @@ export class ModerationService {
 
   /** Idempotent: muting an already-muted actor is not an error. Does not touch any existing
    * follow (spec §63 — "does not remove follow automatically"). */
-  async muteActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
+  muteActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
     if (targetActorId === actorId) throw AppError.validation('You cannot mute yourself.');
 
@@ -130,7 +130,7 @@ export class ModerationService {
   }
 
   /** Idempotent: unmuting an actor the caller has not muted is not an error. */
-  async unmuteActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
+  unmuteActor(actorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
     return this.dataSource.transaction(async (manager) => {
       await manager

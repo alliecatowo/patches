@@ -2,7 +2,14 @@ import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { ServerResponse } from 'node:http';
 
 import { JRD_JSON_CONTENT_TYPE } from '../federation.constants.js';
-import { WebfingerService } from '../services/webfinger.service.js';
+import { WebfingerService, type WebfingerRejectionReason } from '../services/webfinger.service.js';
+
+const RESPONSE_BY_REJECTION: Readonly<
+  Record<WebfingerRejectionReason, { status: number; body?: string }>
+> = {
+  MISSING_RESOURCE: { status: 400, body: 'Missing "resource" query parameter.' },
+  UNKNOWN_RESOURCE: { status: 404 },
+};
 
 /** RFC 7033 (P8-001). Registered unconditionally on the federation HTTP app — reachable only
  * when that app is running, i.e. only when `FEDERATION_ENABLED=true` (`main.ts`). */
@@ -15,19 +22,15 @@ export class WebfingerController {
     @Query('resource') resource: string | undefined,
     @Res() res: ServerResponse,
   ): Promise<void> {
-    if (resource === undefined) {
-      res.statusCode = 400;
-      res.end('Missing "resource" query parameter.');
+    const result = await this.webfinger.resolveResource(resource);
+    if (result.resolved) {
+      res.statusCode = 200;
+      res.setHeader('content-type', JRD_JSON_CONTENT_TYPE);
+      res.end(JSON.stringify(result.jrd));
       return;
     }
-    const jrd = await this.webfinger.resolve(resource);
-    if (jrd === undefined) {
-      res.statusCode = 404;
-      res.end();
-      return;
-    }
-    res.statusCode = 200;
-    res.setHeader('content-type', JRD_JSON_CONTENT_TYPE);
-    res.end(JSON.stringify(jrd));
+    const response = RESPONSE_BY_REJECTION[result.reason];
+    res.statusCode = response.status;
+    res.end(response.body);
   }
 }

@@ -82,7 +82,7 @@ export class FilterService {
     private readonly rateLimits: DbRateLimitStore,
   ) {}
 
-  async createFilter(input: CreateFilterInput): Promise<FilterView> {
+  createFilter(input: CreateFilterInput): Promise<FilterView> {
     const parsed: ParsedNewFilter = {
       name: parseFilterName(input.name),
       terms: parseFilterTerms(

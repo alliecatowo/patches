@@ -366,8 +366,8 @@ export class ActivityPubFederationGateway implements FederationGateway {
    * practice (every remote actor upsert sets it), but an unknown domain is never treated as
    * blocked purely by absence; `DeliveryService`'s own pre-delivery check still applies to
    * whatever inbox URL this resolves to either way. */
-  private async isActorDomainBlocked(manager: EntityManager, actor: Actor): Promise<boolean> {
-    if (actor.homeServer === null) return false;
+  private isActorDomainBlocked(manager: EntityManager, actor: Actor): Promise<boolean> {
+    if (actor.homeServer === null) return Promise.resolve(false);
     return this.domainBlocks.isBlocked(manager, actor.homeServer);
   }
 

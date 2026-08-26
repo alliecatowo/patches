@@ -41,7 +41,7 @@ export interface StoredPasskeyCredential {
  */
 @Injectable()
 export class PasskeyVerifierService {
-  async generateRegistrationOptions(input: {
+  generateRegistrationOptions(input: {
     rpID: string;
     rpName: string;
     userID: Uint8Array;
@@ -67,7 +67,7 @@ export class PasskeyVerifierService {
     });
   }
 
-  async verifyRegistrationResponse(input: {
+  verifyRegistrationResponse(input: {
     response: RegistrationResponseJSON;
     expectedChallenge: string;
     expectedOrigin: string;
@@ -76,7 +76,7 @@ export class PasskeyVerifierService {
     return verifyRegistrationResponse(input);
   }
 
-  async generateAuthenticationOptions(input: {
+  generateAuthenticationOptions(input: {
     rpID: string;
   }): Promise<PublicKeyCredentialRequestOptionsJSON> {
     // No `allowCredentials`: discoverable-credential ("usernameless") login — the credential
@@ -84,7 +84,7 @@ export class PasskeyVerifierService {
     return generateAuthenticationOptions({ rpID: input.rpID, userVerification: 'preferred' });
   }
 
-  async verifyAuthenticationResponse(input: {
+  verifyAuthenticationResponse(input: {
     response: AuthenticationResponseJSON;
     expectedChallenge: string;
     expectedOrigin: string;

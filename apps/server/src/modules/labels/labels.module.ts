@@ -13,6 +13,7 @@ import { LabelService } from './label.service.js';
   imports: [AuthModule],
   controllers: [LabelController],
   providers: [LabelService, LabelSeedService],
-  exports: [LabelService],
+  // No exports: `LabelService` is consumed only within this module; feeds/label-lookup
+  // call it as a plain function import, not through the DI graph.
 })
 export class LabelsModule {}

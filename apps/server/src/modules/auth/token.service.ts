@@ -236,7 +236,7 @@ export class TokenService {
     return { userId: sub, actorId, sessionId, expiresAt: new Date(exp * 1000) };
   }
 
-  private async privateKey(): ReturnType<typeof importPKCS8> {
+  private privateKey(): ReturnType<typeof importPKCS8> {
     this.signingKey ??= importPKCS8(
       requireKey(this.config.jwtPrivateKeyPem, 'JWT_PRIVATE_KEY'),
       JWT_ALGORITHM,
@@ -244,7 +244,7 @@ export class TokenService {
     return this.signingKey;
   }
 
-  private async publicKey(): ReturnType<typeof importSPKI> {
+  private publicKey(): ReturnType<typeof importSPKI> {
     this.verificationKey ??= importSPKI(
       requireKey(this.config.jwtPublicKeyPem, 'JWT_PUBLIC_KEY'),
       JWT_ALGORITHM,

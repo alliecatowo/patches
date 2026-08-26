@@ -10,6 +10,7 @@ import { MessagesService } from './messages.service.js';
   imports: [AuthModule],
   controllers: [MessagesController],
   providers: [MessagesService],
-  exports: [MessagesService],
+  // No exports: `MessagesService` has no cross-module injectors (e2ee references it in
+  // comments only; ADR 0020 §13 keeps messages local-only).
 })
 export class MessagesModule {}

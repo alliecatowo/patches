@@ -29,6 +29,7 @@ import { WebfingerController } from './http/webfinger.controller.js';
  * and a body-consuming middleware on every route would read the request stream out from under
  * `expressConnectMiddleware` before it gets a chance to.
  */
+// nestjs-doctor-ignore-next-line performance/no-orphan-modules -- conditionally imported in app.module.ts's `imports` spread (`...(federationHttpEnabled ? [FederationHttpModule] : [])`, ADR 0016 §4), invisible to static module-graph analysis
 @Module({
   imports: [FederationModule, PagesModule],
   controllers: [

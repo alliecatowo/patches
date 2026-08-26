@@ -122,7 +122,7 @@ export class ActorService {
   /** Partial update of the caller's own profile, driven by `update_mask` (spec: `actors.proto`'s
    * `UpdateProfileRequest` doc). A field not named in the mask is left untouched even if set on
    * the request — that is the whole point of a `FieldMask` over plain optional fields. */
-  async updateProfile(input: UpdateProfileInput): Promise<ActorProfile> {
+  updateProfile(input: UpdateProfileInput): Promise<ActorProfile> {
     const paths = new Set(input.updateMask);
     const patch: Partial<
       Pick<Actor, 'displayName' | 'bio' | 'locationText' | 'websiteUrl' | 'nameplate'>
@@ -212,12 +212,12 @@ export class ActorService {
   }
 
   /** Cursor-paginated list of actors following `actorId` (spec §49). */
-  async listFollowers(actorId: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
+  listFollowers(actorId: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
     return this.listRelatedActors('followeeActorId', 'followerActor', actorId, cursorRaw, limit);
   }
 
   /** Cursor-paginated list of actors `actorId` follows (spec §49). */
-  async listFollowing(actorId: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
+  listFollowing(actorId: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
     return this.listRelatedActors('followerActorId', 'followeeActor', actorId, cursorRaw, limit);
   }
 

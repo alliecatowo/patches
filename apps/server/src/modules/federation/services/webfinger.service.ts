@@ -9,6 +9,20 @@ import { localActorUri } from '../activitystreams/uris.js';
 
 const RESOURCE_PATTERN = /^acct:([^@]+)(?:@(.+))?$/i;
 
+/** The JRD this node emits for a local actor — `buildWebfingerJrd`'s document plus the actor
+ * URI in `aliases`. */
+export interface WebfingerJrd {
+  subject: string;
+  links: unknown[];
+  aliases?: string[];
+}
+
+export type WebfingerRejectionReason = 'MISSING_RESOURCE' | 'UNKNOWN_RESOURCE';
+
+export type WebfingerResult =
+  | { readonly resolved: true; readonly jrd: WebfingerJrd }
+  | { readonly resolved: false; readonly reason: WebfingerRejectionReason };
+
 @Injectable()
 export class WebfingerService {
   constructor(
@@ -19,9 +33,7 @@ export class WebfingerService {
   /** `GET /.well-known/webfinger?resource=acct:handle@domain` (RFC 7033, P8-001). `undefined`
    * for a malformed resource, a domain this node does not answer for, or an unknown/deleted
    * local actor — every case renders as a plain `404`, never leaking which one. */
-  async resolve(
-    resource: string,
-  ): Promise<{ subject: string; links: unknown[]; aliases?: string[] } | undefined> {
+  async resolve(resource: string): Promise<WebfingerJrd | undefined> {
     const match = RESOURCE_PATTERN.exec(resource);
     if (match === null) return undefined;
     const [, handle, domain] = match;
@@ -39,6 +51,18 @@ export class WebfingerService {
       ...jrd,
       aliases: [actorUri],
     };
+  }
+
+  /** `GET /.well-known/webfinger` (RFC 7033, P8-001) end to end: a request without a
+   * `resource` parameter is a client error; every unresolvable resource — malformed, wrong
+   * domain, unknown/deleted actor ({@link resolve}) — is the same plain not-found, never
+   * leaking which one. Statuses stay in the controller. */
+  async resolveResource(resource: string | undefined): Promise<WebfingerResult> {
+    if (resource === undefined) return { resolved: false, reason: 'MISSING_RESOURCE' };
+    const jrd = await this.resolve(resource);
+    return jrd === undefined
+      ? { resolved: false, reason: 'UNKNOWN_RESOURCE' }
+      : { resolved: true, jrd };
   }
 
   private nodeHost(): string {

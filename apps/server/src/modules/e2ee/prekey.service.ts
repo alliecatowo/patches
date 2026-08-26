@@ -68,10 +68,7 @@ interface ClaimedOneTimePrekey {
 export class E2eePrekeyService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async uploadPrekeys(
-    actorId: string,
-    request: UploadPrekeysRequest,
-  ): Promise<UploadPrekeysResponse> {
+  uploadPrekeys(actorId: string, request: UploadPrekeysRequest): Promise<UploadPrekeysResponse> {
     if (request.deviceId.length === 0) throw AppError.validation('A device id is required.');
 
     return this.dataSource.transaction(async (manager) => {
@@ -233,7 +230,7 @@ export class E2eePrekeyService {
     };
   }
 
-  async claimPrekeyBundles(
+  claimPrekeyBundles(
     actorId: string,
     request: ClaimPrekeyBundlesRequest,
   ): Promise<ClaimPrekeyBundlesResponse> {

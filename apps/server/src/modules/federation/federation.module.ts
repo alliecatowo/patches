@@ -94,6 +94,7 @@ class LazyFederationGateway implements FederationGateway {
  * unrouted — when federation is off (ADR 0016 §4; ADR 0016 also changed *how* that HTTP
  * surface reaches the network — see `main.ts`).
  */
+// nestjs-doctor-ignore-next-line performance/no-unused-module-exports -- the consumers (FederationHttpModule's controllers: ActorDocumentService, InboxService, PeerRateLimiter, FederationMetrics, OutboxCollection) sit in a conditionally-imported module (ADR 0016 §4) whose edges the static graph drops
 @Module({
   imports: [NotificationsModule, PagesModule, TagsModule],
   providers: [
@@ -121,7 +122,6 @@ class LazyFederationGateway implements FederationGateway {
   exports: [
     FEDERATION_GATEWAY,
     RemoteActorService,
-    RemoteObjectService,
     ActorDocumentService,
     WebfingerService,
     InboxService,

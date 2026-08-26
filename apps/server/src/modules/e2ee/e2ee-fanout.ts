@@ -146,7 +146,7 @@ function targetKey(actorId: string, deviceId: string): string {
  * doc comment). Ordered by primary key so two concurrent fanout accepts over an overlapping
  * member set always request their shared locks in the same order and cannot deadlock each other;
  * `FOR SHARE` locks from different transactions do not conflict with each other regardless. */
-async function lockMemberDeviceRows(
+function lockMemberDeviceRows(
   manager: EntityManager,
   memberActorIds: readonly string[],
 ): Promise<E2eeDeviceIdentityEntity[]> {

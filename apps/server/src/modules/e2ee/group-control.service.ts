@@ -167,7 +167,7 @@ export class E2eeGroupService {
     });
   }
 
-  async removeE2eeMember(
+  removeE2eeMember(
     actorId: string,
     request: RemoveE2eeMemberRequest,
   ): Promise<RemoveE2eeMemberResponse> {
@@ -304,7 +304,7 @@ export class E2eeGroupService {
 /** The current membership of `conversationId`: every member row, active (`leftAt IS NULL`)
  * and past. Load-first so the caller can check the signer, find the subject's row for an
  * add-after-remove, and bound the size, from one committed snapshot. */
-async function loadMembers(
+function loadMembers(
   manager: EntityManager,
   conversationId: string,
 ): Promise<ConversationMemberEntity[]> {

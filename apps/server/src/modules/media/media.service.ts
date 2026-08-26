@@ -68,10 +68,7 @@ export class MediaService {
     return { mediaId: id, uploadUrl: url, expiresAt };
   }
 
-  async finalizeMediaUpload(
-    actorId: string,
-    mediaIdRaw: string,
-  ): Promise<FinalizeMediaUploadResult> {
+  finalizeMediaUpload(actorId: string, mediaIdRaw: string): Promise<FinalizeMediaUploadResult> {
     const mediaId = parseInput(uuidInputSchema, mediaIdRaw);
 
     return this.dataSource.transaction(async (manager) => {

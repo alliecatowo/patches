@@ -55,7 +55,7 @@ export class LabelService {
     private readonly rateLimits: DbRateLimitStore,
   ) {}
 
-  async createLabeler(
+  createLabeler(
     actorId: string,
     communityIdRaw: string,
     vocabularyEntries: Parameters<typeof parseVocabulary>[0],
@@ -125,7 +125,7 @@ export class LabelService {
    * `tag.service.ts#muteTag` documents. The node's own labeler cannot be operated through this
    * RPC at all (§200.5, §208) — nothing in a caller's gRPC session carries node-operator
    * authority, only an actor id. */
-  async applyLabel(actorId: string, input: ApplyLabelInput): Promise<LabelView> {
+  applyLabel(actorId: string, input: ApplyLabelInput): Promise<LabelView> {
     const labelerId = parseInput(uuidInputSchema, input.labelerId);
     const subject = parseSubject(input.subjectActorId, input.subjectPostId);
     const value = parseLabelValue(input.value);
@@ -187,7 +187,7 @@ export class LabelService {
 
   /** Sets `retracted_at` rather than deleting the row — retraction preserves history (§200.1).
    * Idempotent: retracting an already-retracted label returns it unchanged. */
-  async retractLabel(actorId: string, labelIdRaw: string): Promise<LabelView> {
+  retractLabel(actorId: string, labelIdRaw: string): Promise<LabelView> {
     const labelId = parseInput(uuidInputSchema, labelIdRaw);
     return this.dataSource.transaction(async (manager) => {
       const label = await manager.getRepository(Label).findOne({ where: { id: labelId } });
@@ -283,7 +283,7 @@ export class LabelService {
    * subscription — that is the entire point of self-inspection, seeing labelers you don't
    * subscribe to. Otherwise this is exactly {@link labelsForPosts}'s subscription-scoped rule,
    * generalized to an actor subject too. */
-  async listLabelsOnSubject(
+  listLabelsOnSubject(
     viewerActorId: string,
     subjectActorIdRaw: string,
     subjectPostIdRaw: string,
@@ -349,7 +349,7 @@ export class LabelService {
   /** `Post.labels` (spec §203): populated only for labelers `viewerActorId` subscribes to
    * (plus the node's own labeler, subscribed by default). Delegates to the shared,
    * non-DI query `feeds/post-batch.ts` also calls directly (see `label-lookup.ts`'s doc). */
-  async labelsForPosts(
+  labelsForPosts(
     postIds: readonly string[],
     viewerActorId: string | undefined,
   ): Promise<Map<string, LabelView[]>> {

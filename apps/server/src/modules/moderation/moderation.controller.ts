@@ -193,7 +193,7 @@ export class ModerationController implements ModerationServiceController {
 
   /** Unauthenticated public transparency log (spec §201.4) — see `ModerationService.
    * listModerationLog`'s doc comment for exactly which entries exist today. */
-  async listModerationLog(
+  listModerationLog(
     @Payload() request: ListModerationLogRequest,
   ): Promise<ListModerationLogResponse> {
     return this.moderation.listModerationLog(request.cursor, request.limit);
@@ -203,7 +203,7 @@ export class ModerationController implements ModerationServiceController {
    * `AuthGuard` — a suspended account is precisely who needs to read this and file an appeal
    * (see that guard's doc comment). */
   @UseGuards(SuspensionTolerantAuthGuard)
-  async listMyModerationNotices(
+  listMyModerationNotices(
     @Payload() request: ListMyModerationNoticesRequest,
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,

@@ -4,8 +4,15 @@ import { Controller, Get, Headers, Param, Res } from '@nestjs/common';
 
 import { PageService } from '../../pages/pages.service.js';
 import { ACTIVITY_JSON_CONTENT_TYPE } from '../federation.constants.js';
-import { acceptsActivityJson } from './content-negotiation.js';
-import { ActorDocumentService } from '../services/actor-document.service.js';
+import {
+  ActorDocumentService,
+  type ActorDocumentRejectionReason,
+} from '../services/actor-document.service.js';
+
+const STATUS_BY_REJECTION: Readonly<Record<ActorDocumentRejectionReason, number>> = {
+  NOT_ACCEPTABLE: 406,
+  UNKNOWN_ACTOR: 404,
+};
 
 /** Actor document + Page-manifest fetch target (P8-001, P8-007). */
 @Controller('users')
@@ -21,20 +28,15 @@ export class ActorController {
     @Headers('accept') accept: string | undefined,
     @Res() res: ServerResponse,
   ): Promise<void> {
-    if (!acceptsActivityJson(accept)) {
-      res.statusCode = 406;
-      res.end();
+    const result = await this.actorDocuments.resolveForRequest(handle, accept);
+    if (result.found) {
+      res.statusCode = 200;
+      res.setHeader('content-type', ACTIVITY_JSON_CONTENT_TYPE);
+      res.end(JSON.stringify(result.document));
       return;
     }
-    const document = await this.actorDocuments.buildForHandle(handle.toLowerCase());
-    if (document === undefined) {
-      res.statusCode = 404;
-      res.end();
-      return;
-    }
-    res.statusCode = 200;
-    res.setHeader('content-type', ACTIVITY_JSON_CONTENT_TYPE);
-    res.end(JSON.stringify(document));
+    res.statusCode = STATUS_BY_REJECTION[result.reason];
+    res.end();
   }
 
   /** `docs/architecture/federation.md` §7.5: the URL the actor document's `pageManifest`

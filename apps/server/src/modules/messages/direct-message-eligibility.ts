@@ -15,7 +15,7 @@ import type { EntityManager } from 'typeorm';
  * flow is designed. This is deliberately the *narrower* of the two possible readings — nobody
  * gains reach they did not already have.
  */
-export async function mayMessageDirectly(
+export function mayMessageDirectly(
   manager: EntityManager,
   callerId: string,
   targetId: string,

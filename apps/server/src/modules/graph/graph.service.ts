@@ -172,7 +172,7 @@ export class GraphService {
    * pending follow request the caller has outstanding toward this actor (§197.5) — this is
    * the RPC a client calls for "cancel my follow request", too, since there is nothing left to
    * follow/unfollow once a request is withdrawn either way. */
-  async unfollowActor(viewerActorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
+  unfollowActor(viewerActorId: string, targetActorIdRaw: string): Promise<RelationshipView> {
     const targetActorId = parseActorId(targetActorIdRaw);
 
     return this.dataSource.transaction(async (manager) => {

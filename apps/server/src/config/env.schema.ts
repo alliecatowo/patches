@@ -541,6 +541,7 @@ export const envSchema = envObjectSchema
     if (value.PRIVACY_NOTICE_FILE === undefined) return value;
 
     try {
+      // nestjs-doctor-ignore-next-line performance/no-sync-io -- boot-path only: zod transforms are synchronous, this runs once during env validation before the event loop serves traffic
       const fileSummary = readFileSync(value.PRIVACY_NOTICE_FILE, 'utf8').trim();
       return { ...value, PRIVACY_NOTICE_SUMMARY: fileSummary };
     } catch (error) {

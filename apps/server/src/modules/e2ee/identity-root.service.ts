@@ -32,7 +32,7 @@ import { appendRoster, toIdentityRootView } from './roster-chain.js';
 export class E2eeIdentityRootService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async publishIdentityRoot(
+  publishIdentityRoot(
     actorId: string,
     request: PublishIdentityRootRequest,
   ): Promise<PublishIdentityRootResponse> {

@@ -59,28 +59,36 @@ export const FEDERATION_GATEWAY = Symbol('FEDERATION_GATEWAY');
 /** Stage F0 default (`docs/architecture/federation.md` §4) and what every node runs when
  * `FEDERATION_ENABLED=false` (the default, spec §176). */
 export class NoopFederationGateway implements FederationGateway {
-  async publishPost(): Promise<void> {
-    // intentionally empty — see class doc comment
+  publishPost(): Promise<void> {
+    // intentionally a no-op — see class doc comment
+    return Promise.resolve();
   }
-  async publishDelete(): Promise<void> {
-    // intentionally empty
+  publishDelete(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async followRemoteActor(): Promise<void> {
-    // intentionally empty
+  followRemoteActor(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async unfollowRemoteActor(): Promise<void> {
-    // intentionally empty
+  unfollowRemoteActor(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async likeRemotePost(): Promise<void> {
-    // intentionally empty
+  likeRemotePost(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async unlikeRemotePost(): Promise<void> {
-    // intentionally empty
+  unlikeRemotePost(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async announceRemotePost(): Promise<void> {
-    // intentionally empty
+  announceRemotePost(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
-  async unannounceRemotePost(): Promise<void> {
-    // intentionally empty
+  unannounceRemotePost(): Promise<void> {
+    // intentionally a no-op
+    return Promise.resolve();
   }
 }

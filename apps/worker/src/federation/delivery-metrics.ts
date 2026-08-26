@@ -74,6 +74,6 @@ export const deliveryMetrics = new DeliveryMetricsRegistry();
  * Returns the current count of `PENDING` jobs in the outbox.
  * Used by `JobRunner` to push the `workerQueueDepth` gauge.
  */
-export async function getQueueDepth(manager: EntityManager): Promise<number> {
+export function getQueueDepth(manager: EntityManager): Promise<number> {
   return manager.getRepository(OutboxJob).count({ where: { status: 'PENDING' } });
 }
