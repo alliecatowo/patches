@@ -33,6 +33,12 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm --filter @patches/web exec playwright install --with-deps chromium
 
+      # Storybook bundles workspace deps like @patches/markup/@patches/client from their
+      # tsup-built dist/ — build them (deps only, not @patches/web itself) like web.yml's
+      # `--filter @patches/web... build` does for the production bundle.
+      - name: Build workspace dependencies
+        run: pnpm --filter @patches/web^... build
+
       - name: Build the Storybook bundle
         run: pnpm --filter @patches/web run storybook:build
 
