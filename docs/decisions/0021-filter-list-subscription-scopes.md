@@ -8,7 +8,8 @@
 `INITIAL_VISION.md` §199.1 describes a filter-list subscription as choosing "an action and scopes
 the subscriber chooses" — the same per-scope narrowing a personal filter already has via
 `filter_scopes` (§198.1, a join table keyed to `FILTER_SCOPES`: `HOME`, `LOCAL`, `TAG_FEED`,
-`COMMUNITY_FEED`, `NOTIFICATIONS`, `SEARCH`, `MESSAGE_REQUESTS`). The shipped P14-001 proto
+`COMMUNITY_FEED`, `NOTIFICATIONS`, `SEARCH`, and — at the time — `MESSAGE_REQUESTS`, since
+removed by B-126 once ADR 0030 §B-095 deleted the flow it scoped). The shipped P14-001 proto
 contract (`SubscribeFilterListRequest`) omitted the field, so `loadEffectiveFilterRules`
 (`apps/server/src/modules/filters/filter-matching.ts`) applied every list-derived rule to every
 scope regardless of what the subscriber actually wanted — a real gap against §199.1, not a

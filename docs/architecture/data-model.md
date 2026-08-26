@@ -1348,11 +1348,11 @@ A viewer-owned, subtractive-only filter (§198.1). `name` and `filter_terms.valu
 at the application layer: never logged, never shown to a moderator, included in the §197.3
 export, deleted with the account or the filter itself.
 
-| Table           | Column                                                           | Notes                                                                                                            |
-| --------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `filters`       | `id, actor_id, name, action, expires_at, created_at, updated_at` | `action` CHECK ∈ `{HIDE, COLLAPSE, WARN}`; `INDEX(actor_id)`                                                     |
-| `filter_scopes` | `filter_id, scope`                                               | composite PK; `scope` CHECK ∈ `{HOME, LOCAL, TAG_FEED, COMMUNITY_FEED, NOTIFICATIONS, SEARCH, MESSAGE_REQUESTS}` |
-| `filter_terms`  | `id, filter_id, kind, value, created_at`                         | `kind` CHECK ∈ `{SUBSTRING, WORD, TAG, ACTOR, DOMAIN}`; `INDEX(filter_id)`                                       |
+| Table           | Column                                                           | Notes                                                                                                                                                         |
+| --------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filters`       | `id, actor_id, name, action, expires_at, created_at, updated_at` | `action` CHECK ∈ `{HIDE, COLLAPSE, WARN}`; `INDEX(actor_id)`                                                                                                  |
+| `filter_scopes` | `filter_id, scope`                                               | composite PK; `scope` CHECK ∈ `{HOME, LOCAL, TAG_FEED, COMMUNITY_FEED, NOTIFICATIONS, SEARCH}` (B-126 dropped `MESSAGE_REQUESTS`, dead since ADR 0030 §B-095) |
+| `filter_terms`  | `id, filter_id, kind, value, created_at`                         | `kind` CHECK ∈ `{SUBSTRING, WORD, TAG, ACTOR, DOMAIN}`; `INDEX(filter_id)`                                                                                    |
 
 All three cascade-delete with `filters`/`actors`.
 
