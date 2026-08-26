@@ -58,4 +58,39 @@ describe('PostCard', () => {
     fireEvent.click(card);
     expect(screen.getByText('Thread Page')).toBeInTheDocument();
   });
+
+  it('applies the author nameplate colour and glyph to the display name (B-129)', () => {
+    const nameplated = {
+      ...mockPost,
+      author: {
+        ...mockPost.author,
+        nameplate: {
+          $typeName: 'patches.v1.Nameplate',
+          nameColor: '#FF69B4',
+          glyph: '✿',
+          badges: [],
+          avatarFrame: '',
+          statusLine: '',
+          profileBorder: '',
+        },
+      },
+    } as unknown as Post;
+    renderPostCard(nameplated);
+
+    // The display name's colour lives on the CosmeticText span wrapping it inside the
+    // profile link, and the glyph rides along (aria-hidden — decorative).
+    const displayName = screen.getByText('Allie');
+    expect(displayName.closest('a')).not.toBeNull();
+    expect(displayName).toHaveStyle({ color: '#FF69B4' });
+    // Twice: once beside the display name, once on the @handle Nameplate.
+    expect(screen.getAllByText('✿')).toHaveLength(2);
+  });
+
+  it('leaves the display name untouched when the author has no nameplate', () => {
+    renderPostCard(mockPost);
+    const displayName = screen.getByText('Allie');
+    expect(displayName.closest('a')).not.toBeNull();
+    // No inline colour — the plain stylesheet value applies.
+    expect(displayName).not.toHaveStyle({ color: '#FF69B4' });
+  });
 });

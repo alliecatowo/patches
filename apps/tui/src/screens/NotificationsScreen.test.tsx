@@ -1,9 +1,11 @@
 import type { Actor, Notification } from '../api/wire/types.js';
+import type { Timestamp } from '@bufbuild/protobuf/wkt';
+import { NOTIFICATION_TYPE } from '../api/wire/enums.js';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
-import { NotificationsScreen } from './NotificationsScreen.js';
+import { groupNotifications, NotificationsScreen } from './NotificationsScreen.js';
 import { makeActor, makeNotification } from '../test/wire-fixtures.js';
 
 function actor(handle: string): Actor {
@@ -58,5 +60,108 @@ describe('NotificationsScreen FOLLOW_REQUEST rows (§197.5)', () => {
     await vi.waitFor(() => expect(lastFrame()).toContain('carol'));
     stdin.write('\r');
     await vi.waitFor(() => expect(onOpenAuthor).toHaveBeenCalledWith(actor('carol')));
+  });
+});
+
+describe('NotificationsScreen MESSAGE rows (B-098, §187/§194)', () => {
+  const messageNotification = (conversationId: string, createdAt?: Timestamp): Notification =>
+    notification({
+      type: NOTIFICATION_TYPE.MESSAGE,
+      conversationId,
+      postId: '',
+      actor: actor('dana'),
+      ...(createdAt === undefined ? {} : { createdAt }),
+    });
+
+  it('renders sender handle + "sent you a message" and no body preview', async () => {
+    const api = buildApi({
+      listNotifications: vi.fn().mockResolvedValue({
+        notifications: [messageNotification('conv-1')],
+        page: { hasMore: false, cursor: '' },
+      }),
+    });
+    const { lastFrame } = render(
+      <NotificationsScreen
+        api={api}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token')}
+        onOpenPost={() => undefined}
+        onOpenConversation={() => undefined}
+        onOpenAuthor={() => undefined}
+      />,
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain('dana'));
+    expect(lastFrame()).toContain('sent you a message');
+    // §194: nothing beyond handle + fixed verb + time is ever on screen — there is no
+    // body field to leak, and the row must not invent one (no preview placeholder).
+    expect(lastFrame()).not.toContain('preview');
+  });
+
+  it('Enter opens the conversation thread through onOpenConversation', async () => {
+    const onOpenConversation = vi.fn();
+    const api = buildApi({
+      listNotifications: vi.fn().mockResolvedValue({
+        notifications: [messageNotification('conv-7')],
+        page: { hasMore: false, cursor: '' },
+      }),
+    });
+    const { lastFrame, stdin } = render(
+      <NotificationsScreen
+        api={api}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token')}
+        onOpenPost={() => undefined}
+        onOpenConversation={onOpenConversation}
+        onOpenAuthor={() => undefined}
+      />,
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain('dana'));
+    stdin.write('\r');
+    await vi.waitFor(() => expect(onOpenConversation).toHaveBeenCalledWith('conv-7'));
+  });
+
+  it('without an onOpenConversation wiring, Enter falls back to the sender profile', async () => {
+    const onOpenAuthor = vi.fn();
+    const api = buildApi({
+      listNotifications: vi.fn().mockResolvedValue({
+        notifications: [messageNotification('conv-7')],
+        page: { hasMore: false, cursor: '' },
+      }),
+    });
+    const { lastFrame, stdin } = render(
+      <NotificationsScreen
+        api={api}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token')}
+        onOpenPost={() => undefined}
+        onOpenAuthor={onOpenAuthor}
+      />,
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain('dana'));
+    stdin.write('\r');
+    await vi.waitFor(() => expect(onOpenAuthor).toHaveBeenCalledWith(actor('dana')));
+  });
+
+  it('MESSAGE rows from different conversations never collapse into one group', () => {
+    const first = messageNotification('conv-1');
+    const second = messageNotification('conv-2');
+    const groups = groupNotifications([first, second]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.conversationId).toBe('conv-1');
+    expect(groups[1]?.conversationId).toBe('conv-2');
+  });
+
+  it('repeat MESSAGE rows for the same conversation collapse into one group', () => {
+    // Grouping requires both rows' createdAt inside GROUP_WINDOW_MS (10 min).
+    const now: Timestamp = {
+      seconds: BigInt(Math.floor(Date.now() / 1000)),
+      nanos: 0,
+      $typeName: 'google.protobuf.Timestamp',
+    };
+    const first = messageNotification('conv-1', now);
+    const second = messageNotification('conv-1', now);
+    const groups = groupNotifications([first, second]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.notifications).toHaveLength(2);
   });
 });

@@ -152,6 +152,27 @@ export class Actor {
   @Column({ type: 'jsonb', nullable: true })
   declare nameplate: Record<string, unknown> | null;
 
+  /**
+   * The four rapid-personalization columns (owner request 2026-08-25) — real columns, not
+   * more keys in the `nameplate` jsonb: a banner URL alone may be 2,048 chars, which cannot
+   * coexist with §173's 2 KiB serialized-jsonb budget for the nameplate. All purely
+   * cosmetic (§184.3); null = unset, which every client must render as "no customization".
+   */
+  @Column({ type: 'text', nullable: true })
+  declare profileBannerUrl: string | null;
+
+  /** Wire enum name of `ProfileFrame` without the prefix (`'BORDER'`), or null. */
+  @Column({ type: 'varchar', length: 31, nullable: true })
+  declare profileFrame: string | null;
+
+  /** Wire enum name of `NameTagStyle` without the prefix (`'BADGE'`), or null. */
+  @Column({ type: 'varchar', length: 31, nullable: true })
+  declare nameTagStyle: string | null;
+
+  /** `#RRGGBB`, or null. */
+  @Column({ type: 'varchar', length: 31, nullable: true })
+  declare accentColor: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;
 

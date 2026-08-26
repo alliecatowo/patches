@@ -34,6 +34,8 @@ import { AddPgStatStatements1787190000000 } from './1787190000000-AddPgStatState
 import { AddPostsFts1787190000001 } from './1787190000001-AddPostsFts.js';
 import { FilterListSubscriptionScopesDefaultReconciliation1787658107141 } from './1787658107141-FilterListSubscriptionScopesDefaultReconciliation.js';
 import { RemoveLegacyServerVisibleDms1787660000000 } from './1787660000000-RemoveLegacyServerVisibleDms.js';
+import { ActorPersonalization1787669032825 } from './1787669032825-ActorPersonalization.js';
+import { DropOrphanedLegacyMessageTrigger1787670000000 } from './1787670000000-DropOrphanedLegacyMessageTrigger.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -84,4 +86,6 @@ export const ALL_MIGRATIONS = [
   AddE2eeIssuedPrekeyLedger1787617557448,
   FilterListSubscriptionScopesDefaultReconciliation1787658107141,
   RemoveLegacyServerVisibleDms1787660000000,
+  ActorPersonalization1787669032825,
+  DropOrphanedLegacyMessageTrigger1787670000000,
 ];

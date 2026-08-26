@@ -1,7 +1,8 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describeError, isSignInRequired } from '@patches/client';
+import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { useState, type CSSProperties, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -22,6 +23,49 @@ import { NotFoundRoute } from './NotFoundRoute.js';
 import styles from './ProfileRoute.module.css';
 
 type Tab = 'posts' | 'wall' | 'followers' | 'following';
+
+/** The frame enum as a `data-frame` value the CSS can select on (`'none'` for unset/NONE —
+ * §184.3 degradation: anything the client cannot render is plain). */
+function frameData(actor: { profileFrame: ProfileFrame }): string {
+  switch (actor.profileFrame) {
+    case ProfileFrame.BORDER:
+      return 'border';
+    case ProfileFrame.GLOW:
+      return 'glow';
+    case ProfileFrame.GRADIENT:
+      return 'gradient';
+    default:
+      return 'none';
+  }
+}
+
+/** §104 client-side scheme allowlist for a URL about to reach a real DOM sink (`<img src>`).
+ * The server already rejects a non-http(s) `profile_banner_url` at write time
+ * (`profileBannerUrlSchema`), but B-136c wants the same check at the render boundary too —
+ * a value from an older/misbehaving federated node, a direct DB edit, or a future write path
+ * that forgets the server-side check must not get a second, silent chance to reach `src` with
+ * a `data:`/`javascript:` payload. `URL` throws on a relative/unparseable string, which this
+ * treats the same as an unsafe scheme (a bannerless profile, never a bare-relative `<img>`). */
+function isSafeImageUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
+  switch (actor.nameTagStyle) {
+    case NameTagStyle.BADGE:
+      return 'badge';
+    case NameTagStyle.RIBBON:
+      return 'ribbon';
+    case NameTagStyle.PILLED:
+      return 'pilled';
+    default:
+      return 'none';
+  }
+}
 
 /** `/@handle` — profile, posts, and the actor's Page "wall". */
 export function ProfileRoute(): JSX.Element {
@@ -109,9 +153,35 @@ export function ProfileRoute(): JSX.Element {
   const wallSubPage = pageView?.pages[0];
   const activeBlocks = wallSubPage?.blocks ?? [];
 
+  // Rapid personalization (B-130): accent colour becomes a CSS custom property the profile
+  // chrome can consume (`var(--profile-accent, var(--accent))` in the module CSS) — absent
+  // when unset, so every consumer falls back to the site default with no special case.
+  // `?.`/truthiness (not `!== ''`) so a partial/mock actor missing the fields entirely
+  // degrades the same way as an explicit empty string.
+  const rawProfileBannerUrl = actor.profileBannerUrl?.trim() ?? '';
+  const profileBannerUrl =
+    rawProfileBannerUrl !== '' && isSafeImageUrl(rawProfileBannerUrl) ? rawProfileBannerUrl : '';
+  const accentColor = actor.accentColor?.trim() ?? '';
+  const profileStyle = (
+    accentColor === '' ? {} : { '--profile-accent': accentColor }
+  ) as CSSProperties & Record<`--${string}`, string>;
+
   return (
-    <div>
-      <div className={styles['header']}>
+    <div style={profileStyle}>
+      {profileBannerUrl !== '' ? (
+        <img
+          className={styles['banner']}
+          src={profileBannerUrl}
+          alt=""
+          aria-hidden="true"
+          onError={(event) => {
+            // A dead banner URL degrades to "no banner" (zero height) rather than a broken
+            // image glyph at the top of the profile (§184.3: cosmetics never break the page).
+            event.currentTarget.style.display = 'none';
+          }}
+        />
+      ) : null}
+      <div className={styles['header']} data-frame={frameData(actor)}>
         <div className={styles['topRow']}>
           {actor.avatar?.url ? (
             <img className={styles['avatar']} src={actor.avatar.url} alt="" aria-hidden="true" />
@@ -140,8 +210,10 @@ export function ProfileRoute(): JSX.Element {
           </div>
         </div>
         <ModerationActions actorId={actor.id} />
-        <h1 className={styles['displayName']}>{actor.displayName || actor.handle}</h1>
-        <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
+        <div className={styles['nameTagRow']} data-name-tag={nameTagData(actor)}>
+          <h1 className={styles['displayName']}>{actor.displayName || actor.handle}</h1>
+          <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
+        </div>
         {actor.bio !== '' ? (
           <div className={styles['bio']}>
             <RichBody source={actor.bio} />

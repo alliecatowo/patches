@@ -36,6 +36,8 @@ export type {
   ListFollowingResponse,
   MediaRef,
   Nameplate,
+  NameTagStyle,
+  ProfileFrame,
   ResolveActorRequest,
   ResolveActorResponse,
   SearchActorsRequest,

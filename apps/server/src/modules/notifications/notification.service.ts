@@ -8,7 +8,7 @@ import {
   Post,
   type NotificationType as DbNotificationType,
 } from '@patches/database';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, MoreThan, type FindOptionsWhere } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { toActorSummary } from '../auth/auth.dto.js';
@@ -38,6 +38,18 @@ export interface ListNotificationsResult {
   nextCursor: string;
   hasMore: boolean;
 }
+
+/**
+ * B-098/B-110: MESSAGE notifications are throttled to at most one row per recipient per
+ * conversation per minute. The `(recipient, type, conversation)` partial unique index
+ * already collapses repeats while one is unread, but a recipient who reads between a
+ * rapid sender's messages re-arms that dedupe — this window is what keeps a fanout-abusing
+ * sender from flooding the notification list in that gap (and it also collapses bursts
+ * from *different* senders in one group conversation, matching the index's per-
+ * conversation, not per-sender, semantics). Content-free by construction: the check reads
+ * only ids and `created_at`.
+ */
+export const MESSAGE_NOTIFICATION_MIN_INTERVAL_MS = 60_000;
 
 @Injectable()
 export class NotificationsService {
@@ -211,6 +223,18 @@ export class NotificationsService {
     actorId: string,
     conversationId: string | null,
   ): Promise<void> {
+    if (conversationId !== null) {
+      const recentWhere: FindOptionsWhere<Notification> = {
+        recipientActorId,
+        type: 'MESSAGE',
+        conversationId,
+        createdAt: MoreThan(new Date(Date.now() - MESSAGE_NOTIFICATION_MIN_INTERVAL_MS)),
+      };
+      const recent = await this.dataSource
+        .getRepository(Notification)
+        .findOne({ where: recentWhere });
+      if (recent !== null) return;
+    }
     await this.create(
       'MESSAGE',
       recipientActorId,

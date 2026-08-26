@@ -13,6 +13,9 @@ export interface NameplateProps {
   /** Color to use when the actor has no nameplate colour of its own (e.g. a
    * selection highlight) — a nameplate colour always wins over this. */
   fallbackColor?: string | undefined;
+  /** Renders this text instead of `@handle` — B-130: a display name in a profile
+   * context gets the same nameplate treatment (colour + glyph) as the handle. */
+  text?: string | undefined;
 }
 
 /**
@@ -33,17 +36,20 @@ export function Nameplate({
   nameplate,
   bold = false,
   fallbackColor,
+  text,
 }: NameplateProps): ReactElement {
   const plain = usePlainMode();
   const color = plain
     ? fallbackColor
     : ((present(nameplate) ? gradientFirstStop(nameplate.nameColor) : undefined) ?? fallbackColor);
   const glyph = plain || !present(nameplate) ? '' : sanitizeForTerminal(nameplate.glyph);
+  const label = text !== undefined ? sanitizeForTerminal(text) : `@${sanitizeForTerminal(handle)}`;
   // `Text`'s `color` prop type has no `undefined` member (exactOptionalPropertyTypes
   // requires actually omitting the prop, not passing `color={undefined}`).
   return (
     <Text {...(color === undefined ? {} : { color })} bold={bold}>
-      {glyph === '' ? '' : `${glyph} `}@{sanitizeForTerminal(handle)}
+      {glyph === '' ? '' : `${glyph} `}
+      {label}
     </Text>
   );
 }

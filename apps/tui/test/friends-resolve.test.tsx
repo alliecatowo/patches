@@ -1,6 +1,7 @@
 import type { PatchesPage } from '@patches/domain';
 import { describe, expect, it } from 'vitest';
 
+import { NAME_TAG_STYLE, PROFILE_FRAME } from '../src/api/wire/enums.js';
 import { createFakeApi, expectFrame, flush, KEY, renderApp, waitForFrame } from './harness.js';
 
 /**
@@ -101,6 +102,10 @@ describe('Resolve a remote actor by acct (B-028)', () => {
       nameplate: undefined,
       flair: undefined,
       pinnedPostIds: [],
+      profileBannerUrl: '',
+      profileFrame: PROFILE_FRAME.UNSPECIFIED,
+      nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
+      accentColor: '',
     });
 
     const { press, lastFrame, unmount } = renderApp({ fake });

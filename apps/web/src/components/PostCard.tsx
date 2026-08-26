@@ -25,7 +25,7 @@ import {
 } from './icons/Icons.js';
 import { MediaImage } from './MediaImage.js';
 import { MediaLightbox, type LightboxImage } from './MediaLightbox.js';
-import { Nameplate } from './Nameplate.js';
+import { CosmeticText, Nameplate } from './Nameplate.js';
 import styles from './PostCard.module.css';
 import { ReportPostControl } from './ReportPostControl.js';
 import { RichBody } from './RichBody.js';
@@ -277,7 +277,11 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
 
         <div className={styles['headerRow']}>
           <Link to={`/@${post.author?.handle ?? ''}`} className={styles['displayName']}>
-            {post.author?.displayName || post.author?.handle}
+            {/* B-129: the actor's nameplate colour/glyph applies to the display name in
+                every card, not just the @handle — same §184.3 rule, presentation only. */}
+            <CosmeticText nameplate={post.author?.nameplate}>
+              {post.author?.displayName || post.author?.handle}
+            </CosmeticText>
           </Link>
           <Link to={`/@${post.author?.handle ?? ''}`} className={styles['nameplateLink']}>
             <Nameplate handle={post.author?.handle ?? ''} nameplate={post.author?.nameplate} />
@@ -413,7 +417,9 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
                   <div className={styles['quoted']}>
                     <div className={styles['quotedHeader']}>
                       <strong>
-                        {post.quotedPost.author?.displayName || post.quotedPost.author?.handle}
+                        <CosmeticText nameplate={post.quotedPost.author?.nameplate}>
+                          {post.quotedPost.author?.displayName || post.quotedPost.author?.handle}
+                        </CosmeticText>
                       </strong>
                       <span className={styles['time']}>@{post.quotedPost.author?.handle}</span>
                     </div>

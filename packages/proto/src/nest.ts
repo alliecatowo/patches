@@ -39,7 +39,12 @@ export type {
 } from './generated/patches/v1/actors.js';
 export {
   ACTOR_SERVICE_NAME,
+  // The two rapid-personalization enums are re-exported as *values* (not in the type
+  // block above — re-exporting the same name in both is a TS2300 duplicate): an enum
+  // carries its own type, so the value export satisfies both positions.
   ActorServiceControllerMethods,
+  NameTagStyle,
+  ProfileFrame,
 } from './generated/patches/v1/actors.js';
 
 export type {

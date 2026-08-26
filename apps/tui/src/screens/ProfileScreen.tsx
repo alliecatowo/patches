@@ -1,5 +1,5 @@
 import { present } from '../api/present.js';
-import { FOLLOW_STATE } from '../api/wire/enums.js';
+import { FOLLOW_STATE, NAME_TAG_STYLE, PROFILE_FRAME } from '../api/wire/enums.js';
 import type { Actor, Relationship } from '../api/wire/types.js';
 import { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -37,6 +37,52 @@ function borderStyleFor(profileBorder: string): BorderStyle {
   return (BORDER_STYLES as readonly string[]).includes(profileBorder)
     ? (profileBorder as BorderStyle)
     : 'round';
+}
+
+/**
+ * B-130 rapid personalization: the `ProfileFrame` enum as an Ink border. An explicit frame
+ * (BORDER/GLOW/GRADIENT) wins over the older free-text `Nameplate.profile_border` below —
+ * the enum is the newer, typed vocabulary; the free string remains for profiles that set
+ * it before the enum existed. UNSPECIFIED/NONE (and anything unrecognized) render no frame
+ * of this kind (§184.3 degradation).
+ */
+function frameBorderStyle(frame: PROFILE_FRAME): BorderStyle | undefined {
+  switch (frame) {
+    case PROFILE_FRAME.BORDER:
+      return 'single';
+    case PROFILE_FRAME.GLOW:
+      return 'double';
+    case PROFILE_FRAME.GRADIENT:
+      return 'bold';
+    default:
+      return undefined;
+  }
+}
+
+/** Name-tag suffix glyphs — one narrow character per style, gated on plain mode at the
+ * call site like every other decoration. */
+function nameTagGlyph(style: NAME_TAG_STYLE): string {
+  switch (style) {
+    case NAME_TAG_STYLE.BADGE:
+      return '◆';
+    case NAME_TAG_STYLE.RIBBON:
+      return '»';
+    case NAME_TAG_STYLE.PILLED:
+      return '◌';
+    default:
+      return '';
+  }
+}
+
+/** The banner placeholder is a text description (the TUI does not fetch profile banners):
+ * the host, or the raw string if it does not parse as a URL. */
+function bannerHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    // Not a parseable URL — describe what was stored rather than dropping the line.
+    return sanitizeForTerminal(url);
+  }
 }
 
 export interface ProfileScreenProps {
@@ -358,23 +404,47 @@ export function ProfileScreen({
   const hasAvatarFrame = !plain && present(actor.nameplate) && actor.nameplate.avatarFrame !== '';
   const hasProfileBorder =
     !plain && present(actor.nameplate) && actor.nameplate.profileBorder !== '';
+  // B-130 rapid personalization — all purely cosmetic (§184.3), all degraded: no banner →
+  // no line, no frame → the plain profile box (or the older free-text border), no accent →
+  // the theme default. A hex passed straight to Ink's `color` is downsampled by chalk to
+  // the terminal's actual colour depth (truecolor → 256 → 16), same as a nameplate colour.
+  const accent = !plain && actor.accentColor !== '' ? actor.accentColor : undefined;
+  const frameBorder = !plain ? frameBorderStyle(actor.profileFrame) : undefined;
+  const borderStyle =
+    frameBorder ??
+    (hasProfileBorder && present(actor.nameplate)
+      ? borderStyleFor(actor.nameplate.profileBorder)
+      : undefined);
+  const tagGlyph = !plain ? nameTagGlyph(actor.nameTagStyle) : '';
+  const displayName =
+    actor.displayName === '' ? `@${actor.handle}` : sanitizeForTerminal(actor.displayName);
 
   return (
     <Box flexDirection="column">
       <Box
         flexDirection="column"
-        {...(hasProfileBorder && present(actor.nameplate)
+        {...(borderStyle !== undefined
           ? {
-              borderStyle: borderStyleFor(actor.nameplate.profileBorder),
-              borderColor: theme.accent,
+              borderStyle,
+              borderColor: accent ?? theme.accent,
               paddingX: 1,
             }
           : {})}
       >
-        <Text color={theme.accent} bold>
+        {!plain && actor.profileBannerUrl !== '' ? (
+          <Text color={theme.muted}>░░ banner: {bannerHost(actor.profileBannerUrl)} ░░</Text>
+        ) : null}
+        <Text color={accent ?? theme.accent} bold>
           {hasAvatarFrame ? '‹ ' : ''}
-          {actor.displayName === '' ? `@${actor.handle}` : sanitizeForTerminal(actor.displayName)}
+          <Nameplate
+            handle={actor.handle}
+            nameplate={actor.nameplate ?? undefined}
+            text={displayName}
+            bold
+            fallbackColor={accent ?? theme.accent}
+          />
           {hasAvatarFrame ? ' ›' : ''}
+          {tagGlyph === '' ? '' : ` ${tagGlyph}`}
         </Text>
         <Nameplate handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
         {!plain && present(actor.nameplate) && actor.nameplate.statusLine !== '' ? (

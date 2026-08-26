@@ -78,19 +78,66 @@ export const acctSchema = z
   .max(320, 'acct is too long')
   .regex(/^[^@\s]+@[^@\s]+$/, 'acct must be in the form user@domain');
 
+/** `#RRGGBB`, or two `#RRGGBB` stops separated by a comma (a "start,end" gradient pair — see
+ * `apps/tui/src/components/Nameplate.tsx`'s `gradientFirstStop` and
+ * `apps/web/src/components/Nameplate.tsx`'s `nameplateColor`, the two renderers that consume
+ * this string). This field reaches the web client's `linear-gradient(90deg, ${stop}, ${stop})`
+ * and `color: ${stop}` CSS verbatim (B-136b) — the length cap alone let anything through
+ * (`javascript:`-style CSS expressions, `url(...)`, arbitrary function calls), so this is a
+ * strict allowlist that REJECTS a malformed value rather than trying to sanitize it into a
+ * safe one. Named CSS colours are deliberately not accepted — expanding the allowlist means
+ * expanding this regex, not adding a colour-name table with all of *its* own edge cases. */
+const NAME_COLOR_STOP = '#[0-9a-fA-F]{6}';
+const NAME_COLOR_PATTERN = new RegExp(`^${NAME_COLOR_STOP}(\\s*,\\s*${NAME_COLOR_STOP})?$`);
+
 /**
  * Client-writable nameplate fields (spec §173). `badges` is deliberately absent from this
  * schema — it is server-attested only, and `ActorService.updateProfile` never reads a client-
  * supplied value for it (see the caller).
  */
 export const nameplateInputSchema = z.object({
-  nameColor: z.string().trim().max(NAME_COLOR_MAX_LENGTH).optional(),
+  nameColor: z
+    .string()
+    .trim()
+    .max(NAME_COLOR_MAX_LENGTH)
+    .refine((value) => value === '' || NAME_COLOR_PATTERN.test(value), {
+      message: 'name_color must be #RRGGBB, or two #RRGGBB stops separated by a comma.',
+    })
+    .optional(),
   glyph: z.string().trim().max(GLYPH_MAX_LENGTH).optional(),
   avatarFrame: z.string().trim().max(AVATAR_FRAME_MAX_LENGTH).optional(),
   statusLine: z.string().trim().max(STATUS_LINE_MAX_LENGTH).optional(),
   profileBorder: z.string().trim().max(PROFILE_BORDER_MAX_LENGTH).optional(),
 });
 export type NameplateInput = z.infer<typeof nameplateInputSchema>;
+
+/** Rapid personalization (owner request 2026-08-25). Same 2,048-char budget as
+ * `website_url`; http(s)-only comes from `safeUrlSchema` (§104). An empty string (field
+ * cleared) is allowed through by the caller, not this schema. */
+export const PROFILE_BANNER_URL_MAX_LENGTH = WEBSITE_URL_MAX_LENGTH;
+export const profileBannerUrlSchema = safeUrlSchema(
+  PROFILE_BANNER_URL_MAX_LENGTH,
+  'profile banner URL',
+);
+
+/** `#RRGGBB` only — no named colours, no alpha, no gradients (the nameplate's own
+ * `name_color` stays the gradient-capable field). */
+export const accentColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'accent_color must be a #RRGGBB hex string.');
+
+/** Storable `ProfileFrame` values — the wire enum names without the prefix. UNSPECIFIED is
+ * deliberately absent: a caller must pick an explicit value (NONE clears), never "unset"
+ * (that's omitting the mask path). */
+export const PROFILE_FRAMES = ['NONE', 'BORDER', 'GLOW', 'GRADIENT'] as const;
+export type ProfileFrameValue = (typeof PROFILE_FRAMES)[number];
+export const profileFrameSchema = z.enum(PROFILE_FRAMES);
+
+/** Storable `NameTagStyle` values, same rules as `PROFILE_FRAMES`. */
+export const NAME_TAG_STYLES = ['NONE', 'BADGE', 'RIBBON', 'PILLED'] as const;
+export type NameTagStyleValue = (typeof NAME_TAG_STYLES)[number];
+export const nameTagStyleSchema = z.enum(NAME_TAG_STYLES);
 
 const UNSAFE_GLYPH = /[\p{Cc}\p{Cf}\p{M}\u200B-\u200F\u202A-\u202E\u2060-\u206F]/u;
 const DOUBLE_WIDTH =

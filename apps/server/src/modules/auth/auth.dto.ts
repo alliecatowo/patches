@@ -4,6 +4,7 @@ import type {
   CredentialType,
 } from '@patches/database';
 
+import { toNameplateSummary, type NameplateSummary } from '../actors/actor.dto.js';
 import type { IssuedTokens } from './token.service.js';
 
 /**
@@ -27,6 +28,10 @@ export interface ActorSummary {
   /** `null` for a local actor (spec §163) — the mapper turns this into the wire's empty
    * string, same convention as `PostSummary`'s `originServer`. */
   homeServer: string | null;
+  /** The actor's presentation, when customized (B-129: nameplates must render wherever a
+   * name appears, feeds included — the column is always loaded, so this costs no extra
+   * query). Null means "never customized", same as `ActorProfile.nameplate`. */
+  nameplate: NameplateSummary | null;
 }
 
 export interface SessionEnvelope {
@@ -67,6 +72,7 @@ export function toActorSummary(actor: ActorEntity): ActorSummary {
     isLocal: actor.isLocal,
     joinedAt: actor.createdAt,
     homeServer: actor.homeServer,
+    nameplate: toNameplateSummary(actor.nameplate),
   };
 }
 

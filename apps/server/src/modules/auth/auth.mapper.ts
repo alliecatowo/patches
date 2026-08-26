@@ -1,5 +1,6 @@
 import type { CredentialType as DbCredentialType } from '@patches/database';
 import { dateToTimestamp } from '@patches/proto';
+import { NameTagStyle, ProfileFrame } from '@patches/proto/nest';
 import type { Actor, Credential, OidcProviderInfo, Session } from '@patches/proto';
 import {
   CredentialType,
@@ -8,6 +9,7 @@ import {
   OidcLoginStatus,
   PasswordAuthMode,
 } from '@patches/proto/nest';
+import { toProtoNameplate } from '../actors/actor.mapper.js';
 
 import type { ActorSummary, CredentialSummary, SessionEnvelope } from './auth.dto.js';
 import type {
@@ -74,9 +76,16 @@ export function credentialTypeFromProto(value: CredentialType): AddableCredentia
 }
 
 /**
- * `counts`, `avatar` and `nameplate` are left unset rather than zeroed/empty: this is the
- * caller's own actor as seen by the auth surface, and `ActorService` owns the social/identity
- * projection. A zeroed `counts` would assert "no followers" where the truth is "not loaded".
+ * `counts` and `avatar` are left unset rather than zeroed/empty: this is the caller's own
+ * actor as seen by the auth surface, and `ActorService` owns the social/identity
+ * projection. A zeroed `counts` would assert "no followers" where the truth is "not
+ * loaded".
+ *
+ * `nameplate` *is* set (B-129): every embedded actor serialized through this mapper —
+ * `Post.author` in feeds/threads/search, repost attribution, notification actors — must
+ * carry the actor's presentation so nameplates render wherever a name appears (spec §173).
+ * It is bounded (≤ 2 KiB serialized, written only through `UpdateProfile`), so the payload
+ * cost of embedding it is capped by construction.
  */
 export function toProtoActor(actor: ActorSummary): Actor {
   return {
@@ -90,11 +99,17 @@ export function toProtoActor(actor: ActorSummary): Actor {
     isLocal: actor.isLocal,
     joinedAt: dateToTimestamp(actor.joinedAt),
     counts: undefined,
-    nameplate: undefined,
-    // Same "not loaded here" reasoning as `counts`/`nameplate` above (P11-001).
+    nameplate: actor.nameplate === null ? undefined : toProtoNameplate(actor.nameplate),
+    // Same "not loaded here" reasoning as `counts` above (P11-001) — and the
+    // rapid-personalization fields (banner/frame/tag/accent) stay profile-projection-only
+    // by the same logic: feeds need the name, not the banner.
     flair: undefined,
     pinnedPostIds: [],
     homeServer: actor.homeServer ?? '',
+    profileBannerUrl: '',
+    profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
+    nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
+    accentColor: '',
   };
 }
 

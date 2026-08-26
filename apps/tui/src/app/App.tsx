@@ -2361,6 +2361,7 @@ export function App({
           <MessagesScreen
             api={messagesApi}
             isActive={active}
+            initialConversationId={target.conversationId}
             viewerActorId={session.userId}
             dmRetentionDays={dmRetentionDays}
             glyphSet={glyphSet}
@@ -2392,6 +2393,9 @@ export function App({
             isActive={listActive}
             ensureAccessToken={ensureAccessToken}
             onOpenPost={openThread}
+            onOpenConversation={(conversationId) =>
+              setStack((s) => push(s, { screen: 'messages', conversationId }))
+            }
             onOpenAuthor={(actor) => openProfile(actor.id, actor)}
             onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
           />
@@ -2719,6 +2723,12 @@ export function App({
                                   onOpenPost={(postId) => {
                                     setDrawerRequested(false);
                                     openThread(postId);
+                                  }}
+                                  onOpenConversation={(conversationId) => {
+                                    setDrawerRequested(false);
+                                    setStack((s) =>
+                                      push(s, { screen: 'messages', conversationId }),
+                                    );
                                   }}
                                   onOpenAuthor={(actor) => {
                                     setDrawerRequested(false);

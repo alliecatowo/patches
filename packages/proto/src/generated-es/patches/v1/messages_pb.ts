@@ -340,7 +340,10 @@ export const DirectMessageService: GenService<{
     output: typeof GetConversationResponseSchema;
   };
   /**
-   * Idempotent: leaving a conversation the caller isn't in is not an error.
+   * Always rejected with `UNIMPLEMENTED` (ADR 0030 §B-095): every conversation is `E2EE_V1`,
+   * so leaving is a group-control transition — a silent `left_at` flip would desync the
+   * membership epoch and roster chain every other member verifies. Self-removal goes through
+   * `E2eeService.RemoveE2eeMember` with `actor_id` set to the caller.
    *
    * @generated from rpc patches.v1.DirectMessageService.LeaveConversation
    */

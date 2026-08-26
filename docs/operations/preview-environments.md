@@ -7,13 +7,20 @@ to end.** The workflow (`.github/workflows/preview.yml`), config template
 they make was syntax-checked against current tooling (see "Verification status" at
 the bottom). But no real preview has been deployed from this environment — there
 are no Fly/Neon credentials here. Do not treat the first green run as a formality:
-expect the items labeled **unexecuted** below to need one round of fixes.
+expect the items labeled **unexecuted** below to need one round of fixes. The
+**teardown** side has since been exercised for real (2026-08-25, B-145 cleanup):
+`flyctl apps destroy patches-pr-61 --yes` and `wrangler pages deployment delete
+<id>` (12 stale `pr-*` Cloudflare Pages deployments) both ran against live
+infrastructure and succeeded — the **deploy** side (Fly app create + Neon branch
+create) remains unexecuted from any environment so far.
 
-Every open PR targeting a mainline branch (`main`, `swarm/e2ee-federation-niceties`)
-gets a temporary environment:
+**B-145 (2026-08-25, owner decision): previews are manual-dispatch ONLY.** Running a
+full preview stack on every PR event (open/sync/reopen/close) cost more than it was
+worth — `.github/workflows/preview.yml` no longer has a `pull_request` trigger at
+all. A preview must be explicitly requested, and explicitly torn down:
 
 ```text
-pull request opened/synchronized/reopened
+Actions -> Preview -> Run workflow -> pr_number=<N>, action=deploy
     |
     Neon branch pr-<N>  (created or reused; 7-day expiry as a fail-safe)
     pnpm db:migrate     (from the runner, against the branch's connection string)
@@ -21,11 +28,18 @@ pull request opened/synchronized/reopened
     |
     PR comment: preview URL + capability matrix   (edited in place, never duplicated)
     |
-pull request closed
+    (whenever you're done)
+    |
+Actions -> Preview -> Run workflow -> pr_number=<N>, action=teardown
     |
     flyctl apps destroy patches-pr-<N>   (best-effort, continue-on-error)
     neon branches delete pr-<N>          (best-effort, continue-on-error)
 ```
+
+No PR gets a preview automatically, and one that does is **not** torn down when the
+PR closes — the 7-day Neon branch expiry is the only automatic backstop for a
+forgotten `action=teardown`; the Fly app itself has no equivalent auto-expiry (see
+"Known gaps" below).
 
 Stack: one Fly app (`patches-pr-<N>`, region `iad`) with **both production process
 groups** — server (public gRPC + HTTP/Connect) and worker (job loop) — plus one
@@ -172,22 +186,24 @@ immediate` replaces machines in place instead of briefly running doubles.
 
 ## Manual operations
 
-### Trigger a deploy by hand
+### Trigger a deploy
 
-Actions tab → **Preview** → **Run workflow** → `pr_number` (the PR must be open).
-Useful when only the workflow changed, or a deploy failed transiently. The dispatch
-resolves the PR's current head commit itself.
+There is no other way to get a preview now (B-145): Actions tab → **Preview** →
+**Run workflow** → `pr_number` (the PR must be open) → `action: deploy`. The
+dispatch resolves the PR's current head commit itself.
 
-### Manual teardown
+### Tear a preview down
+
+Actions tab → **Preview** → **Run workflow** → `pr_number` → `action: teardown`.
+Equivalent to running these directly (verified command shapes: `flyctl apps destroy
+<name> --yes` per the fly.io command reference; `neon branches delete <id|name>
+--project-id` per the installed CLI 3.6.0 — used live 2026-08-25 to remove the
+leftover `patches-pr-61` app from the old per-PR-event era):
 
 ```bash
 flyctl apps destroy patches-pr-<N> --yes
 neon branches delete pr-<N> --project-id "$NEON_PROJECT_ID"   # CLI: neon (npm), alias neonctl
 ```
-
-(Both verified command shapes: `flyctl apps destroy <name> --yes` per the fly.io
-command reference; `neon branches delete <id|name> --project-id` per the installed
-CLI 3.6.0. **Unexecuted against a live preview from this environment.**)
 
 ### Manual psql access (optional fallback)
 
@@ -285,25 +301,25 @@ repo's own first-deploy transcript (`docs/operations/deployment.md`). Steps mark
 
 ## Known gaps
 
-- **Fork PRs**: the deploy job skips them (`head.repo.fork == false` guard) — GitHub
-  never exposes the required secrets to fork `pull_request` runs, so a deploy could
-  only fail. Teardown still runs best-effort (there is normally nothing to remove).
-- **Retargeted PRs**: `edited` is not a trigger; a PR moved away from a mainline
-  branch keeps its preview until it closes. Use manual teardown.
-- **Racing close**: a `closed` event arriving mid-deploy does not cancel the deploy
-  (separate concurrency groups by design); the finished preview is then orphaned
-  until manual teardown or the 7-day Neon expiry (Fly side: see "Orphans").
+- **Fork PRs**: `workflow_dispatch` already requires write access to this repo, so a
+  fork PR's untrusted code never runs with these secrets — no separate fork guard is
+  needed now (the old `pull_request` trigger's fork check was removed with B-145).
+- **Nothing tears a preview down automatically**: by design (B-145) — a preview
+  outlives its PR closing unless someone explicitly dispatches `action=teardown`.
+  The 7-day Neon branch expiry is the only automatic backstop; the Fly app has no
+  equivalent and will run (and bill) indefinitely if forgotten.
 - **Orphans**: `fly apps destroy` failures survive silently (best-effort by design).
   Occasionally list and reap: `flyctl apps list | grep '^patches-pr-'`.
 - **Sessions reset per push**: throwaway JWT keys are regenerated every deploy.
 - **Worker has no autostop** (by design — see design decision): while a preview is
-  open, its worker machine bills continuously. Close PRs promptly; that is the
-  intended control.
+  open, its worker machine bills continuously. Tear it down (`action=teardown`)
+  promptly once you're done; that is now the entire control, since nothing else
+  will do it for you.
 - **Media capability is set at secret-config time**, not per-run toggling: the
   matrix reflects whatever `R2_PREVIEW_*` secrets exist when the deploy runs.
-- **Preview of the preview machinery itself**: changes to `preview.yml` or the
-  template only take effect on the _next_ PR event; use `workflow_dispatch` to
-  re-run against an open PR.
+- **Preview of the preview machinery itself**: every deploy is already a manual
+  `workflow_dispatch`, so a changed `preview.yml` or template takes effect on the
+  very next dispatch — no PR-event lag to account for.
 
 ## Related documents
 

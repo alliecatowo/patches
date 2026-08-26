@@ -69,7 +69,8 @@ describe('Nameplate decoration (B-022)', () => {
     await flush();
     press(KEY.enter);
 
-    const frame = await expectFrame(lastFrame, '‹ Alice ›');
+    // The glyph renders inside the avatar-frame brackets (B-129): `‹ ★ Alice ›`.
+    const frame = await expectFrame(lastFrame, '★ Alice');
     expect(frame).toContain('[verified]');
     expect(frame).toContain('building patches');
     expect(frame).toContain('╭'); // round border corner
