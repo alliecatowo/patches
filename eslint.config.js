@@ -138,6 +138,28 @@ export default defineConfig([
     },
   },
   {
+    // B-192: apps/web/src/e2ee/** ships in the browser Vite bundle — a node:* builtin
+    // has no browser equivalent and either crashes at runtime or drags in a polyfill.
+    // Direct-import guard only; see import-graph.test.ts (same directory) for the
+    // transitive check across this app's own relative-import graph.
+    files: ['apps/web/src/e2ee/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/e2ee/**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message:
+                'apps/web/src/e2ee/** ships to the browser bundle — node:* builtins are not available there (B-192).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/sw.js', '**/service-worker.js'],
     languageOptions: { globals: { ...globals.serviceworker } },
   },
