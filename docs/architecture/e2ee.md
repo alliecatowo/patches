@@ -195,6 +195,11 @@ No job, outbox row, notification, backup, analytics event, search index, excepti
 metric, or moderator view may carry an E2EE body. Notifications carry a generic new-message signal
 and a conversation identifier — nothing else.
 
+The two DM freshness metrics instrumenting ADR 0032's T1/T2 (`patches_e2ee_envelope_list_age_seconds`,
+`patches_read_rpc_poll_total` — `docs/operations/capacity.md#dm-freshness-metrics-adr-0032-p19-020`)
+follow this same rule: an envelope-age duration and a two-value poll/non-poll boolean, never an
+actor id, conversation id, device id, message id, or body.
+
 ## 5. Franking and reporter-disclosed evidence
 
 Franking is what keeps abuse reports actionable when the node cannot read the conversation. It has

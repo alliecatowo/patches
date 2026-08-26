@@ -117,7 +117,45 @@ accept the higher real ceiling — but do it knowingly.
 4. **A circuit that keeps reopening** — the job type has a real dependency failure. Fix the
    dependency; raising the threshold only delays the symptom.
 
+## DM freshness metrics (ADR 0032, P19-020)
+
+**Status: implemented.** `docs/decisions/0032-dm-delivery-stays-poll-based.md` names two
+measured re-open gates for DM streaming, T1 (latency) and T2 (load). These two `prom-client`
+instruments (`packages/observability/src/metrics.ts`, registered on the same `/metrics`
+endpoint as every other metric in this doc) are what make them checkable:
+
+- **`patches_e2ee_envelope_list_age_seconds`** (Histogram, no labels) — observed once per
+  mailbox envelope returned by `ListMailboxEnvelopes`
+  (`apps/server/src/modules/e2ee/e2ee-conversation.service.ts`), with the value `list time minus
+the envelope's received_at`. This is a **conservative proxy** for T1's "wall-clock from
+  `SendEnvelopes` commit to the recipient's first `ListMailboxEnvelopes` that returns it", not an
+  exact measurement of it: the server keeps no per-envelope "already listed" marker (adding one
+  would be new per-envelope state), so an envelope that stays unacknowledged across several polls
+  — the documented behaviour for every conversation other than the one currently open, ADR 0032
+  fact 5 — is observed again, with a larger age, on every poll that still returns it. Its mass is
+  therefore always at or above true first-delivery latency, never below, so a p95 read against it
+  never _understates_ a T1 problem, but a rising p95 can also mean "more envelopes sitting
+  unacknowledged" rather than "delivery got slower" — read it alongside the counter below.
+  Buckets (`[1, 2, 5, 10, 15, 30, 45, 60, 90, 120, 300, 600]` seconds) are chosen so the
+  published ~5s in-thread and ~60s focused-elsewhere SLA points, and T1's 90s trip threshold,
+  each land in their own bucket.
+- **`patches_read_rpc_poll_total`** (Counter, label `is_dm_poll` ∈ `{true, false}`) — incremented
+  once per `read`-classified RPC (`RpcMetricsInterceptor`,
+  `apps/server/src/common/interceptors/rpc-metrics.interceptor.ts`), labeled by whether the RPC
+  is `ListMailboxEnvelopes` or `GetUnreadCount` (the fixed two-method allowlist ADR 0032 T2 calls
+  "DM/notification poll RPCs"). DM-poll share of read volume, the number T2 names, is
+  `sum(rate(patches_read_rpc_poll_total{is_dm_poll="true"}[5m])) /
+sum(rate(patches_read_rpc_poll_total[5m]))`. T2 also needs `ListMailboxEnvelopes` p95 duration,
+  already covered by the existing `patches_rpc_duration_seconds{method=~".*ListMailboxEnvelopes"}`
+  above.
+
+Both instruments are aggregate-only by construction (§183.4, §194): the histogram has no label
+at all, and the counter's only label is a bounded two-value boolean derived from a fixed method
+allowlist — never from request content, an actor id, a conversation id, or a device id.
+
 ## Related
 
 - `docs/operations/deployment.md` — how the node is deployed.
 - `docs/architecture/api.md` — the RPC surface these classes cover.
+- `docs/decisions/0032-dm-delivery-stays-poll-based.md` — the DM freshness SLA and the T1/T2
+  re-open gates these metrics instrument.

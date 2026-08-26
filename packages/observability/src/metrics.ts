@@ -55,6 +55,52 @@ export const e2eeRetentionRunsTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+/**
+ * ADR 0032 T1 instrument. Observes, for every mailbox envelope returned by a
+ * `ListMailboxEnvelopes` response, the wall-clock gap between the envelope's `received_at` and
+ * "now" (the moment it was listed).
+ *
+ * This is **not** exactly "time to first delivery": the server keeps no per-envelope
+ * already-listed marker (adding one would be new per-envelope state, which this instrument is
+ * deliberately not introducing), so an envelope that stays unacknowledged across several polls —
+ * the documented behaviour for conversations other than the one currently open, ADR 0032 fact 5
+ * — is observed again, with a larger age, on every poll that still returns it. The metric is
+ * therefore a **conservative proxy**: its mass is always at or above the true first-delivery
+ * latency, never below, so it never *understates* a T1 freshness problem, but a rising p95 can
+ * also mean "more envelopes are sitting unacknowledged" rather than "delivery got slower". Read
+ * it alongside `patches_read_rpc_poll_total` (T2) rather than alone.
+ *
+ * No labels: adding a per-conversation/actor/device dimension here is exactly what §183.4/§194
+ * forbid, and the histogram's own bucket distribution is the signal T1 needs.
+ *
+ * Buckets: the published SLA is ~5s in-thread and ~60s while focused elsewhere
+ * (`docs/decisions/0032-dm-delivery-stays-poll-based.md`), and T1 trips at a p95 over 90s — the
+ * set below resolves that whole 1s-120s range at roughly 1.5-2x steps so 5s and 60s are never in
+ * the same bucket, plus a couple of wide tail buckets for the pathological case.
+ */
+export const e2eeEnvelopeListAgeSeconds = new Histogram({
+  name: 'patches_e2ee_envelope_list_age_seconds',
+  help: 'Age (list time minus received_at) of a mailbox envelope at the moment ListMailboxEnvelopes returns it. Conservative proxy for ADR 0032 T1 first-delivery latency, see doc comment.',
+  buckets: [1, 2, 5, 10, 15, 30, 45, 60, 90, 120, 300, 600],
+  registers: [metricsRegistry],
+});
+
+/**
+ * ADR 0032 T2 instrument. One increment per `read`-classified RPC (per `classifyRpc`), labeled
+ * with whether that RPC is DM/notification polling. `is_dm_poll` has exactly two values
+ * (`'true'`/`'false'`) — bounded cardinality by construction, never derived from request data.
+ *
+ * `sum(rate(patches_read_rpc_poll_total{is_dm_poll="true"}[5m])) /
+ *  sum(rate(patches_read_rpc_poll_total[5m]))` is DM-poll share of read RPC volume, the number
+ * T2 names.
+ */
+export const readRpcPollTotal = new Counter({
+  name: 'patches_read_rpc_poll_total',
+  help: 'Count of read-classified RPCs, labeled by whether the RPC is DM/notification polling (ADR 0032 T2).',
+  labelNames: ['is_dm_poll'] as const,
+  registers: [metricsRegistry],
+});
+
 export type MetricsRegistry = typeof metricsRegistry;
 
 export function registerCustomMetrics(customRegistry: Registry): void {
@@ -65,4 +111,6 @@ export function registerCustomMetrics(customRegistry: Registry): void {
   customRegistry.registerMetric(httpRequestsTotal);
   customRegistry.registerMetric(e2eeRetentionDeletedTotal);
   customRegistry.registerMetric(e2eeRetentionRunsTotal);
+  customRegistry.registerMetric(e2eeEnvelopeListAgeSeconds);
+  customRegistry.registerMetric(readRpcPollTotal);
 }

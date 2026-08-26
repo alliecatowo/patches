@@ -8,6 +8,8 @@ export {
   httpRequestsTotal,
   e2eeRetentionDeletedTotal,
   e2eeRetentionRunsTotal,
+  e2eeEnvelopeListAgeSeconds,
+  readRpcPollTotal,
   type MetricsRegistry,
   registerCustomMetrics,
 } from './metrics.js';
