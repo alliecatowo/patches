@@ -3,6 +3,18 @@
 **Status:** Accepted
 **Date:** 2026-08-18
 
+> **Later note (2026-08-25):** two factual premises below are stale. Line 18's "React Native's
+> `fetch` is an XHR polyfill and **cannot stream** (connect-es#199)" and line 104's "No server
+> streaming for browsers/RN" were both true when written and are no longer true: `connect-es#199`
+> is closed, Expo SDK ≥52 ships a streaming `expo/fetch`, browsers support server-streaming, and
+> `@connectrpc/connect-express` — the adapter this node actually uses — already serves Connect
+> server-streaming over HTTP/1.1. This does not mean the decision was wrong when made; the rest of
+> this ADR (unary-only edge, byte-level proxy, guards against streaming/`map`/`oneof`) stands.
+> Verified in `docs/research/connect-streaming.md`; the correction is recorded in
+> [0032](./0032-dm-delivery-stays-poll-based.md) (see "Correcting two stale premises in ADR
+> 0016"). This body is left otherwise unedited, per this repo's convention that an ADR is a dated
+> record.
+
 ## Context
 
 Phase 10 adds a web client (P10-001) and a React Native client (P10-002). Browsers cannot speak
