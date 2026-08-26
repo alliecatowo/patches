@@ -43,4 +43,31 @@ describe('E2eeRateLimitService (audit P1)', () => {
     );
     expect(keys).toContain('e2ee_envelope:peer:unknown');
   });
+
+  describe('consumeMailboxPoll (P19-019 part 3 — ListMailboxEnvelopes had no budget at all)', () => {
+    it('enforces a subject-only window, no peer-keyed companion', async () => {
+      const store = storeReturning(1);
+      const service = new E2eeRateLimitService(store);
+      await service.consumeMailboxPoll('actor');
+
+      const keys = (store.increment as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) =>
+        String(call[0]),
+      );
+      expect(keys).toEqual(['e2ee_mailbox_poll:subject:actor']);
+    });
+
+    it('allows the ADR 0032 5s-poll cadence (12/minute) with headroom before throttling', async () => {
+      // 12/minute is one device's steady-state rate under the ADR 0032 poll cadence; the budget
+      // must not trip a caller sitting exactly at that rate.
+      const service = new E2eeRateLimitService(storeReturning(12));
+      await expect(service.consumeMailboxPoll('actor')).resolves.toBeUndefined();
+    });
+
+    it('throws RATE_LIMITED once the per-minute budget is exceeded', async () => {
+      const service = new E2eeRateLimitService(storeReturning(61));
+      await expect(service.consumeMailboxPoll('actor')).rejects.toMatchObject({
+        code: 'RATE_LIMITED',
+      });
+    });
+  });
 });

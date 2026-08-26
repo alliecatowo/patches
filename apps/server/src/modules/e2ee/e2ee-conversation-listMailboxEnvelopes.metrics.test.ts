@@ -13,14 +13,19 @@ import type { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import type { NotificationsService } from '../notifications/notification.service.js';
 import type { NodeFrankingKeyRing } from './report-evidence.js';
 
-// `listMailboxEnvelopes` recomputes the franking transcript digest per envelope rather than
-// persisting it (see the function's own doc comment) — irrelevant to this metrics test, so it's
-// stubbed rather than driving the real digest computation through a mocked EntityManager.
+// `listMailboxEnvelopes` recomputes the franking transcript digest per distinct logical message
+// on the page rather than persisting it (see `transcriptDigestsForStoredMessages`'s own doc
+// comment) — irrelevant to this metrics test, so it's stubbed rather than driving the real
+// digest computation through a mocked EntityManager.
 vi.mock('./e2ee-fanout.js', async (importOriginal) => {
   const actual = await importOriginal<typeof E2eeFanoutModule>();
   return {
     ...actual,
-    transcriptDigestForStoredMessage: vi.fn(() => Promise.resolve({ digest: new Uint8Array(0) })),
+    transcriptDigestsForStoredMessages: vi.fn((_manager: unknown, messages: { id: string }[]) =>
+      Promise.resolve(
+        new Map(messages.map((message) => [message.id, { digest: new Uint8Array(0) }])),
+      ),
+    ),
   };
 });
 
@@ -37,6 +42,7 @@ function fakeEnvelopeRow(receivedAt: Date): Record<string, unknown> {
     openingCiphertext: Buffer.alloc(0),
     ciphertextDigest: Buffer.alloc(0),
     logicalMessage: {
+      id: 'message-1',
       conversationId: 'conversation-1',
       epoch: 1,
       senderActorId: 'sender-1',
@@ -80,7 +86,7 @@ function serviceWith(dataSource: DataSource): E2eeConversationService {
     dataSource,
     {} as unknown as NodeFrankingKeyRing,
     {} as E2eeRuntimeApprovalPolicy,
-    {} as E2eeRateLimitService,
+    { consumeMailboxPoll: vi.fn(() => Promise.resolve()) } as unknown as E2eeRateLimitService,
     { notifyMessage: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService,
   );
 }

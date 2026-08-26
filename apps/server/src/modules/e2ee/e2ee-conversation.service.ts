@@ -37,7 +37,7 @@ import { mayMessageDirectly } from '../messages/direct-message-eligibility.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import {
   acceptE2eeLogicalMessage,
-  transcriptDigestForStoredMessage,
+  transcriptDigestsForStoredMessages,
   type AcceptedLogicalMessage,
 } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
@@ -381,6 +381,12 @@ export class E2eeConversationService {
     request: ListMailboxEnvelopesRequest,
   ): Promise<ListMailboxEnvelopesResponse> {
     if (request.deviceId.length === 0) throw AppError.validation('device_id is required.');
+
+    // ADR 0032 commits every open TUI thread to a 5 s poll of this exact RPC; budgeted before
+    // any query runs (same ordering `sendEnvelopes` above uses) so a caller that ignores the
+    // cadence learns that without the mailbox query and per-message digest work running first.
+    await this.rateLimits.consumeMailboxPoll(actorId);
+
     // Not gated on `revokedAt IS NULL`, deliberately, same as `acknowledgeEnvelopes` below: a
     // device revoked after mail already arrived for it must still be able to read (and then
     // acknowledge) what it durably received before revocation stopped *future* delivery
@@ -414,43 +420,51 @@ export class E2eeConversationService {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
 
-    const envelopes = await Promise.all(
-      page.map(async (envelope): Promise<E2eeMailboxEnvelopeProto> => {
-        // `transcript_digest` is never a persisted column (see the function's own doc comment);
-        // recomputed per envelope from this device's own logical message row.
-        const { digest } = await transcriptDigestForStoredMessage(
-          this.dataSource.manager,
-          envelope.logicalMessage,
-        );
-        // ADR 0032 T1 instrument (`e2eeEnvelopeListAgeSeconds`'s own doc comment has the full
-        // "why this and not exact first-delivery latency" reasoning): a duration value only,
-        // no envelope/conversation/actor/device id ever reaches this metric.
-        e2eeEnvelopeListAgeSeconds.observe((Date.now() - envelope.receivedAt.getTime()) / 1000);
-        return {
-          envelopeId: envelope.id,
-          logicalMessageId: envelope.logicalMessageId,
-          conversationId: envelope.logicalMessage.conversationId,
-          membershipEpoch: envelope.logicalMessage.epoch,
-          senderActorId: envelope.logicalMessage.senderActorId,
-          senderDeviceId: envelope.logicalMessage.senderDeviceId,
-          recipientDeviceId: request.deviceId,
-          encryptedHeader: envelope.encryptedHeader,
-          ciphertext: envelope.ciphertext,
-          openingCiphertext: envelope.openingCiphertext,
-          ciphertextDigest: envelope.ciphertextDigest,
-          frankingCommitment: envelope.logicalMessage.frankingCommitment,
-          frankingTag: {
-            profile: envelope.logicalMessage.frankingProfile,
-            keyEra: envelope.logicalMessage.frankingKeyEra,
-            tag: envelope.logicalMessage.frankingTag,
-            transcriptDigest: digest,
-          },
-          fanoutDigest: envelope.logicalMessage.fanoutDigest,
-          acceptedAt: dateToTimestamp(envelope.logicalMessage.acceptedAt),
-          receivedAt: dateToTimestamp(envelope.receivedAt),
-        };
-      }),
+    // `transcript_digest` is never a persisted column (see `transcriptDigestsForStoredMessages`'s
+    // own doc comment); one query for every distinct logical message on this page rather than
+    // one query per envelope (P19-019 part 2 — the previous per-envelope loop was an N+1: up to
+    // `limit` round trips per poll, every ~5 s, per device).
+    const digestsByMessageId = await transcriptDigestsForStoredMessages(
+      this.dataSource.manager,
+      page.map((envelope) => envelope.logicalMessage),
     );
+
+    const envelopes = page.map((envelope): E2eeMailboxEnvelopeProto => {
+      const forThisMessage = digestsByMessageId.get(envelope.logicalMessageId);
+      if (forThisMessage === undefined) {
+        // Unreachable: every envelope on this page contributed its own `logicalMessage` to the
+        // batch above, so its id is always a key in the returned map.
+        throw AppError.internal('No transcript digest computed for a listed envelope.');
+      }
+      const { digest } = forThisMessage;
+      // ADR 0032 T1 instrument (`e2eeEnvelopeListAgeSeconds`'s own doc comment has the full
+      // "why this and not exact first-delivery latency" reasoning): a duration value only,
+      // no envelope/conversation/actor/device id ever reaches this metric.
+      e2eeEnvelopeListAgeSeconds.observe((Date.now() - envelope.receivedAt.getTime()) / 1000);
+      return {
+        envelopeId: envelope.id,
+        logicalMessageId: envelope.logicalMessageId,
+        conversationId: envelope.logicalMessage.conversationId,
+        membershipEpoch: envelope.logicalMessage.epoch,
+        senderActorId: envelope.logicalMessage.senderActorId,
+        senderDeviceId: envelope.logicalMessage.senderDeviceId,
+        recipientDeviceId: request.deviceId,
+        encryptedHeader: envelope.encryptedHeader,
+        ciphertext: envelope.ciphertext,
+        openingCiphertext: envelope.openingCiphertext,
+        ciphertextDigest: envelope.ciphertextDigest,
+        frankingCommitment: envelope.logicalMessage.frankingCommitment,
+        frankingTag: {
+          profile: envelope.logicalMessage.frankingProfile,
+          keyEra: envelope.logicalMessage.frankingKeyEra,
+          tag: envelope.logicalMessage.frankingTag,
+          transcriptDigest: digest,
+        },
+        fanoutDigest: envelope.logicalMessage.fanoutDigest,
+        acceptedAt: dateToTimestamp(envelope.logicalMessage.acceptedAt),
+        receivedAt: dateToTimestamp(envelope.receivedAt),
+      };
+    });
 
     return {
       envelopes,

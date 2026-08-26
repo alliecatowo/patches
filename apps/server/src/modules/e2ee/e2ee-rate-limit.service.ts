@@ -43,6 +43,19 @@ const REPORT_EVIDENCE_BUDGETS: readonly WindowBudget[] = [
   { windowMs: HOUR_MS, limit: REPORT_EVIDENCE_PER_HOUR },
 ];
 
+/** `ListMailboxEnvelopes` poll budget, per actor, per minute (P19-019 part 3 — every other
+ * `E2eeService` write path has a budget; this read had none). ADR 0032 commits every open TUI
+ * thread to polling this exact RPC every 5 s while active — 12 requests/minute for one device —
+ * so a budget sized like a write path (e.g. `dmSendPerMinute`'s 20) would throttle a single
+ * legitimate device by itself. 60/minute is 5x that single-device baseline: enough headroom for
+ * an actor with a couple of concurrent devices plus the occasional retry, while still bounding a
+ * caller that ignores the cadence outright. No hourly companion budget — at 60/minute the minute
+ * window already caps the hourly total at 3,600, so a separate hourly bucket could only ever be
+ * redundant with it, never tighter. No peer-keyed companion either (unlike `ENVELOPE_BUDGETS`):
+ * this poll reads the caller's own mailbox, not a peer's, so there is no peer identity to key
+ * against. */
+const MAILBOX_POLL_PER_MINUTE = 60;
+
 /**
  * Database-backed, per-actor **and** per-peer budgets for `E2eeService`'s abuse-sensitive
  * write paths (ADR 0020 §3/§5: "block/request/rate-limit rules still apply"; audit P1 — none
@@ -74,6 +87,19 @@ export class E2eeRateLimitService {
   /** `AttachReportEvidence` — reporter-disclosed plaintext ingestion. */
   async consumeReportEvidence(actorId: string, peer: string | undefined, now = new Date()) {
     await this.consume('e2ee_report_evidence', REPORT_EVIDENCE_BUDGETS, actorId, peer, now);
+  }
+
+  /** `ListMailboxEnvelopes` — see `MAILBOX_POLL_PER_MINUTE`'s doc comment for the cadence this
+   * is sized against. Subject-keyed only, no peer. */
+  async consumeMailboxPoll(actorId: string, now = new Date()) {
+    await enforceWindowRateLimit(
+      this.store,
+      'e2ee_mailbox_poll',
+      actorId,
+      MAILBOX_POLL_PER_MINUTE,
+      MINUTE_MS,
+      now,
+    );
   }
 
   private async consume(

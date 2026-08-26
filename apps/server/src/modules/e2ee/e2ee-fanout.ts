@@ -187,34 +187,87 @@ async function lockActiveMemberActorIds(
 }
 
 /**
- * Recomputes `E2eeFrankingTag.transcript_digest` for an already-persisted logical message —
- * every reader that echoes a stored tag back onto the wire needs this, not just the dedup-replay
- * path below, since the digest itself is never a persisted column (same "recompute on read"
- * reasoning `e2ee.mapper.ts#toProtoCertificate` documents for `certificateDigest`). Digest order
- * follows plain `.find()` order, matching `report-evidence.ts#attachReportEvidence`'s own
- * re-derivation — both read the same rows the same (unordered) way, so they agree with each
- * other even though neither claims a specific canonical DB row order.
+ * The batched form of {@link transcriptDigestForStoredMessage} — one query for every message in
+ * `storedMessages` instead of one query per message (the N+1 `ListMailboxEnvelopes` used to run,
+ * P19-019 part 2: a page of up to `limit` envelopes recomputed this per envelope, each a
+ * round trip). `WHERE logical_message_id IN (...)` hits the same
+ * `(logical_message_id, recipient_device_identity_id)` unique index a single-message
+ * `WHERE logical_message_id = ...` would, and Postgres evaluates a `= ANY(array)` index
+ * condition as a per-element probe of that index in array order — so each message's own subset
+ * of the combined result comes back in exactly the order a standalone query for that one message
+ * would have returned, and the per-message digest this computes is byte-for-byte what the old
+ * one-query-per-message loop computed. Callers that don't care about order should still pass
+ * `storedMessages` in a stable order (e.g. page order) since duplicate message ids are just
+ * redundant work, not a correctness risk — the grouping below is keyed by id regardless of input
+ * order.
+ */
+export async function transcriptDigestsForStoredMessages(
+  manager: EntityManager,
+  storedMessages: readonly E2eeLogicalMessageEntity[],
+): Promise<
+  ReadonlyMap<string, { readonly digest: Buffer; readonly recipientDeviceIds: readonly string[] }>
+> {
+  const result = new Map<
+    string,
+    { readonly digest: Buffer; readonly recipientDeviceIds: readonly string[] }
+  >();
+  if (storedMessages.length === 0) return result;
+
+  const ids = [...new Set(storedMessages.map((message) => message.id))];
+  const envelopes = await manager
+    .getRepository(E2eeMailboxEnvelopeEntity)
+    .createQueryBuilder('envelope')
+    .innerJoinAndSelect('envelope.recipientDeviceIdentity', 'recipientDeviceIdentity')
+    .where('envelope.logicalMessageId IN (:...ids)', { ids })
+    .getMany();
+
+  const byMessageId = new Map<string, E2eeMailboxEnvelopeEntity[]>();
+  for (const envelope of envelopes) {
+    const bucket = byMessageId.get(envelope.logicalMessageId);
+    if (bucket === undefined) byMessageId.set(envelope.logicalMessageId, [envelope]);
+    else bucket.push(envelope);
+  }
+
+  for (const stored of storedMessages) {
+    if (result.has(stored.id)) continue; // duplicate input, already computed
+    const group = byMessageId.get(stored.id) ?? [];
+    const digest = e2eeDigest(
+      encodeReportTranscript(
+        reportTranscriptFor(
+          stored,
+          group.map((envelope) => toBytes(envelope.ciphertextDigest)),
+        ),
+      ),
+    );
+    result.set(stored.id, {
+      digest: Buffer.from(digest),
+      recipientDeviceIds: group.map((envelope) => envelope.recipientDeviceIdentity.deviceId),
+    });
+  }
+  return result;
+}
+
+/**
+ * Recomputes `E2eeFrankingTag.transcript_digest` for a single already-persisted logical message
+ * — every reader that echoes a stored tag back onto the wire needs this, not just the dedup-
+ * replay path below, since the digest itself is never a persisted column (same "recompute on
+ * read" reasoning `e2ee.mapper.ts#toProtoCertificate` documents for `certificateDigest`). A one-
+ * message call to {@link transcriptDigestsForStoredMessages} — callers computing this for more
+ * than one message in the same request (e.g. a mailbox page) should call that directly instead,
+ * to get one query rather than one per message.
  */
 export async function transcriptDigestForStoredMessage(
   manager: EntityManager,
   stored: E2eeLogicalMessageEntity,
 ): Promise<{ readonly digest: Buffer; readonly recipientDeviceIds: readonly string[] }> {
-  const envelopes = await manager.getRepository(E2eeMailboxEnvelopeEntity).find({
-    where: { logicalMessageId: stored.id },
-    relations: { recipientDeviceIdentity: true },
-  });
-  const digest = e2eeDigest(
-    encodeReportTranscript(
-      reportTranscriptFor(
-        stored,
-        envelopes.map((envelope) => toBytes(envelope.ciphertextDigest)),
-      ),
-    ),
-  );
-  return {
-    digest: Buffer.from(digest),
-    recipientDeviceIds: envelopes.map((envelope) => envelope.recipientDeviceIdentity.deviceId),
-  };
+  const result = await transcriptDigestsForStoredMessages(manager, [stored]);
+  const forThisMessage = result.get(stored.id);
+  if (forThisMessage === undefined) {
+    // Unreachable: `transcriptDigestsForStoredMessages` always sets an entry for every id in
+    // its input, `stored.id` included, even when that message currently has zero envelope rows.
+    throw AppError.internal('transcriptDigestsForStoredMessages returned no entry for its input.');
+  }
+  return forThisMessage;
 }
 
 /** Reconstructs an `AcceptedLogicalMessage` from an already-persisted logical message row, for
