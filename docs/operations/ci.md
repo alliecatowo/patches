@@ -221,6 +221,22 @@ the cancel endpoint while `gh run list` still shows them queued. Those zombies c
 deleted (`DELETE /actions/runs/:id` returns 403) and simply age out; they do not block
 newly dispatched runs.
 
+### `workflow_run` deploys run _main's_ workflow against an _older_ checkout
+
+`web.yml`, `site.yml` and `deploy.yml` all trigger on `workflow_run` after CI completes,
+and check out `ref: ${{ github.event.workflow_run.head_sha }}`. GitHub always uses the
+workflow **definition** from the default branch, so a run can execute a step that main has
+but the checked-out commit does not.
+
+Seen 2026-08-26: the `dist:check` step B-201 added to `web.yml` fired against a replayed
+run for a commit that predated the `dist:check` script, and failed with
+`[ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT] None of the selected packages has a "dist:check"
+script`. It is self-limiting — every commit from B-201 onward has the script — but it bites
+any time a backlogged or manually re-run deploy targets an older sha. If you add a workflow
+step that invokes a **new** package script, expect replayed runs for older commits to fail
+until they age out, and don't mistake it for a broken gate. `workflow_dispatch` against
+`main` is the clean way to force a deploy of current `main` when this happens.
+
 ## Reproducing CI locally
 
 ```bash
