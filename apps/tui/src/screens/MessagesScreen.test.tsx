@@ -9,11 +9,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { stripSgr } from '../../test/ansi.js';
 import { flush } from '../../test/harness.js';
 import {
+  dmFreshnessCopy,
   MessagesScreen,
   UNREVIEWED_DEV_E2EE_WARNING,
   VAULT_FAULT_COPY,
   type MessagesScreenApi,
 } from './MessagesScreen.js';
+import { TUI_CONVERSATION_LIST_POLL_MS, TUI_THREAD_MAIL_POLL_MS } from '../app/poll-intervals.js';
 import {
   makeActor,
   makeConversation,
@@ -339,4 +341,101 @@ describe('MessagesScreen', () => {
       expect(frame).not.toContain('No conversations yet.');
     },
   );
+
+  it(
+    "P19-016: bumping refreshToken (the shell's Ctrl+R) refetches the conversation list " +
+      'on top of its normal poll, without a second binding',
+    async () => {
+      const api = fakeApi();
+      api.listConversations.mockResolvedValue(
+        create(ListConversationsResponseSchema, { conversations: [] }),
+      );
+      // A poll interval long enough that only the manual refresh should fire a second
+      // call inside the test's timeout.
+      const { lastFrame, rerender } = render(
+        <MessagesScreen api={api} isActive conversationListPollMs={60_000} refreshToken={0} />,
+      );
+      await waitForFrame(lastFrame, 'No conversations yet.');
+      const initialCalls = api.listConversations.mock.calls.length;
+
+      rerender(
+        <MessagesScreen api={api} isActive conversationListPollMs={60_000} refreshToken={1} />,
+      );
+      await waitForCondition(
+        () => api.listConversations.mock.calls.length > initialCalls,
+        'a Ctrl+R-triggered conversation-list refetch',
+      );
+    },
+  );
+
+  it(
+    'P19-016: bumping refreshToken while a thread is open refetches the conversation ' +
+      'and re-drains the end-to-end mailbox',
+    async () => {
+      const api = fakeApi();
+      const existing = conversation('conversation-1');
+      api.listConversations.mockResolvedValue(
+        create(ListConversationsResponseSchema, { conversations: [existing] }),
+      );
+      api.getConversation.mockResolvedValue(
+        create(GetConversationResponseSchema, { conversation: existing }),
+      );
+      const receiveE2ee = vi.fn().mockResolvedValue([]);
+
+      const { lastFrame, stdin, rerender } = render(
+        <MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} refreshToken={0} />,
+      );
+      await waitForFrame(lastFrame, '@alice');
+      stdin.write(KEY.enter);
+      await waitForFrame(lastFrame, '[E2EE]');
+
+      const conversationCallsBefore = api.getConversation.mock.calls.length;
+      const mailboxCallsBefore = receiveE2ee.mock.calls.length;
+
+      rerender(<MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} refreshToken={1} />);
+      await waitForCondition(
+        () => api.getConversation.mock.calls.length > conversationCallsBefore,
+        'a Ctrl+R-triggered conversation refetch',
+      );
+      await waitForCondition(
+        () => receiveE2ee.mock.calls.length > mailboxCallsBefore,
+        'a Ctrl+R-triggered mailbox drain',
+      );
+    },
+  );
+
+  it('states the DM freshness SLA on both surfaces, tied to the ADR 0032 constants', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [existing] }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
+
+    // Ink wraps a long `Text` across frame rows, so compare against the
+    // newline-collapsed frame rather than a literal substring match.
+    const oneLine = (frame: string): string =>
+      frame.replaceAll('\n', ' ').replaceAll(/ {2,}/g, ' ');
+
+    const { lastFrame, stdin } = render(<MessagesScreen api={api} isActive />);
+    const list = oneLine(await waitForFrame(lastFrame, '@alice'));
+    expect(list).toContain(dmFreshnessCopy('list', TUI_CONVERSATION_LIST_POLL_MS));
+    expect(list).toContain('Nothing arrives while this client is closed.');
+
+    // "[E2EE]" alone is already present on the *list* row (every conversation here is
+    // E2EE), so waiting on it would resolve on the stale pre-Enter frame — "Draft:"
+    // only exists once the thread view has actually rendered.
+    stdin.write(KEY.enter);
+    const thread = oneLine(await waitForFrame(lastFrame, 'Draft:'));
+    expect(thread).toContain(dmFreshnessCopy('thread', TUI_THREAD_MAIL_POLL_MS));
+    expect(thread).toContain('Nothing arrives while this client is closed.');
+  });
+
+  it('never implies push, live, instant, or realtime delivery in the freshness copy itself', () => {
+    const forbidden = /\blive\b|\binstant(ly)?\b|\brealtime\b|push notification/i;
+    expect(dmFreshnessCopy('list', TUI_CONVERSATION_LIST_POLL_MS)).not.toMatch(forbidden);
+    expect(dmFreshnessCopy('thread', TUI_THREAD_MAIL_POLL_MS)).not.toMatch(forbidden);
+  });
 });

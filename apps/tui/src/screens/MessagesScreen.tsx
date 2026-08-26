@@ -176,6 +176,15 @@ export interface MessagesScreenProps {
    * already uses for `MarkNotificationsRead`).
    */
   onReadStateChanged?: (() => void) | undefined;
+  /**
+   * P19-016: the shell's global `Ctrl+R` (`App.tsx`'s `manualRefresh`, documented in
+   * `keymap.ts` as "shows what is new"). Bumping this forces an immediate re-check of
+   * whichever DM surface is open — the conversation list's page 1, or the open thread's
+   * conversation state and end-to-end mailbox — on top of (not instead of) their normal
+   * `conversationListPollMs`/`mailPollMs` ticks. §194 forbids inventing a second binding
+   * for this, so this reuses the one key the ribbon already promises does this everywhere.
+   */
+  refreshToken?: number | undefined;
 }
 
 interface Page<T> {
@@ -350,6 +359,20 @@ function retentionCopyFor(dmRetentionDays: number | undefined): string | undefin
   return `This node automatically deletes messages older than ${String(dmRetentionDays)} day${dmRetentionDays === 1 ? '' : 's'}.`;
 }
 
+/**
+ * P19-016: `keymap.ts` documents `Ctrl+R` globally as "shows what is new" — this states,
+ * on the surfaces where it applies, exactly what that means for DMs: a poll-based check
+ * that only ever runs while the client is open, never a delivery push. The interval is
+ * always the caller's actual `pollMs` (which defaults to the ADR 0032 constant in
+ * `poll-intervals.ts`), never a restated literal, so this can't drift from what the
+ * screen is really doing.
+ */
+export function dmFreshnessCopy(surface: 'list' | 'thread', pollMs: number): string {
+  const seconds = Math.round(pollMs / 1000);
+  const where = surface === 'list' ? 'this list is open' : 'this thread is open';
+  return `Checks for new messages while ${where}, about every ${String(seconds)}s — press Ctrl+R to check now. Nothing arrives while this client is closed.`;
+}
+
 type View = 'list' | 'thread' | 'transcript';
 
 interface PendingMessage {
@@ -457,6 +480,7 @@ export function MessagesScreen({
   mailPollMs = TUI_THREAD_MAIL_POLL_MS,
   conversationListPollMs = TUI_CONVERSATION_LIST_POLL_MS,
   onReadStateChanged,
+  refreshToken,
 }: MessagesScreenProps): ReactElement {
   const { rows } = useContentSize();
   const { isRawModeSupported } = useStdin();
@@ -526,12 +550,15 @@ export function MessagesScreen({
       })),
     [api],
   );
+  // `Ctrl+R` is folded into the same tick the periodic list poll bumps (rather than a
+  // second dependency) so `useKeysetList`'s effect only ever has one reason to refetch:
+  // both counters only ever increase, so their sum changes exactly when either does.
   const conversations = useKeysetList(
     true,
     'conversations',
     fetchConversations,
     'Could not load conversations.',
-    conversationListRefreshTick,
+    conversationListRefreshTick + (refreshToken ?? 0),
   );
 
   // P19-017 / ADR 0032: the conversation list refreshes on `conversationListPollMs`
@@ -567,7 +594,10 @@ export function MessagesScreen({
     return () => {
       cancelled = true;
     };
-  }, [api, conversationId, view]);
+    // `refreshToken` (P19-016's `Ctrl+R`) re-runs this on demand; the thread has no
+    // periodic conversation-state poll of its own, so a manual refresh is the only way
+    // to pick up a membership/mode change without closing and reopening the thread.
+  }, [api, conversationId, view, refreshToken]);
 
   // --- peer security re-checks (P13-010 interstitials) ----------------------
   // While an end-to-end thread is open, compare the peer's identity root and device
@@ -681,7 +711,9 @@ export function MessagesScreen({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [e2eeThreadOpen, conversationId, receiveE2ee, mailPollMs]);
+    // `refreshToken` (`Ctrl+R`, P19-016) restarts this effect: an immediate drain plus a
+    // fresh interval, on top of the normal `mailPollMs` cadence rather than instead of it.
+  }, [e2eeThreadOpen, conversationId, receiveE2ee, mailPollMs, refreshToken]);
 
   function loadTranscript(id: string): void {
     closeE2eeThreadWatch();
@@ -938,6 +970,9 @@ export function MessagesScreen({
 
       {view === 'list' ? (
         <Box marginTop={1} flexDirection="column">
+          <Text color={theme.muted} wrap="wrap">
+            {dmFreshnessCopy('list', conversationListPollMs)}
+          </Text>
           {conversations.error === undefined ? null : (
             <Text color={theme.error}>{conversations.error}</Text>
           )}
@@ -983,6 +1018,9 @@ export function MessagesScreen({
                 }`}
           </Text>
           {threadDisclosure === undefined ? null : <Text color={theme.ok}>{threadDisclosure}</Text>}
+          <Text color={theme.muted} wrap="wrap">
+            {dmFreshnessCopy('thread', mailPollMs)}
+          </Text>
           {threadIsE2ee ? (
             <Text color={peerVerified ? theme.ok : theme.warn}>
               {peerVerified

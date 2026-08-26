@@ -2375,6 +2375,7 @@ export function App({
               setStack((s) => push(s, { screen: 'safetyNumber', targetActorId: actorId }))
             }
             onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
+            refreshToken={feedNonce}
           />
         );
       case 'bookmarks':
@@ -2776,6 +2777,7 @@ export function App({
                                   onReadStateChanged={() =>
                                     setUnreadNonce((current) => current + 1)
                                   }
+                                  refreshToken={feedNonce}
                                 />
                               )}
                             </Drawer>

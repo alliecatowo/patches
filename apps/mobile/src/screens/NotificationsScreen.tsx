@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { api } from '../api/client.js';
+import { DM_ARRIVAL_NOTE } from '../lib/dmFreshness.js';
 import { formatRelativeTime } from '../lib/format.js';
 
 function describe(notification: Notification): string {
@@ -83,6 +84,7 @@ export function NotificationsScreen(): JSX.Element {
           <Text style={styles.markRead}>Mark all read</Text>
         </TouchableOpacity>
       </View>
+      <Text style={styles.note}>{DM_ARRIVAL_NOTE}</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={items}
@@ -120,6 +122,7 @@ const styles = StyleSheet.create({
   title: { color: '#fff', fontSize: 18, fontWeight: '700' },
   markRead: { color: '#7c9cff' },
   error: { color: '#ff6b6b', padding: 12 },
+  note: { color: '#888', fontSize: 12, paddingHorizontal: 14, paddingTop: 10 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
