@@ -1,25 +1,27 @@
 /**
- * Client-side readers for the node's canonical identity transcripts (ADR 0020 §2) —
- * web port of the TUI module, field-for-field identical encoders/decoders (the bytes
- * are the wire contract with the node, so any divergence is an interop bug).
+ * Client-side writers for the node's canonical identity transcripts (ADR 0020 §2) —
+ * web port of the TUI module, field-for-field identical encoders (the bytes are the
+ * wire contract with the node, so any divergence is an interop bug).
  *
  * `certificate_bytes` / `roster_bytes` are the authoritative content every signature
  * covers, and the concrete encoding is owned today by the node's codec
- * (`apps/server/src/modules/e2ee/e2ee.codec.ts`). The *reader* (and the prekey-bundle
- * *writer* the enrollment flow needs) live client-side, pinned to the server's layout
- * by construction.
+ * (`apps/server/src/modules/e2ee/e2ee.codec.ts`). The *writer* half (the enrollment flow
+ * needs to produce these bytes for its own certificate/roster/prekey-bundle signatures)
+ * lives here, pinned to the server's layout by construction.
  *
- * Why bother: `verifyDeviceCertificate` requires the caller to have confirmed that the
- * node's decoded convenience fields agree with the signed transcript
- * (`decodedMatchesTranscript`), and an honest `true` needs these bytes decoded. Skipping
- * the decode and passing `true` anyway would be exactly the "trusts a server-supplied
- * decoding" move ADR 0020 §14.2 forbids.
+ * B-188 removed this module's *reader* half (`decodeCertificateTranscript`,
+ * `decodeRosterTranscript`, `wireCertificateMatchesTranscript`,
+ * `wireRosterMatchesTranscript`): verifying a *peer's* device certificate/roster against
+ * these node-canonical bytes was unreachable dead code — `transports.ts`'s
+ * `claimPrekeyBundles` fails closed before any peer material is ever fetched (B-124), so
+ * nothing ever called them. Unlike the writer half (exercised on every enrollment), an
+ * uncalled verifier only rots silently against the server codec instead of failing a
+ * test. If that peer-verification capability becomes reachable again (B-124 lands), the
+ * reader belongs back here re-derived from the current server codec, not resurrected
+ * from history.
  */
-import { ByteReader, ByteWriter, KEY_BYTES, sha256Hash } from '@patches/crypto';
-import { bytesEqual, type Bytes } from '@patches/domain';
-import type { E2eeDeviceCertificate, E2eeDeviceRoster } from '@patches/proto/es';
-
-import { toDate } from './wire-time.js';
+import { ByteWriter, KEY_BYTES } from '@patches/crypto';
+import type { Bytes } from '@patches/domain';
 
 /** Same constant as the server codec's `CERTIFICATE_TRANSCRIPT_DOMAIN`. */
 const CERTIFICATE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-device-cert';
@@ -47,8 +49,8 @@ export interface DecodedCertificateTranscript {
 
 /**
  * The node's certificate transcript encoder — field-for-field the server codec's
- * `encodeCertificateTranscript`. Kept beside the reader so a test can produce authentic
- * transcripts and pin this client's verification to what the node actually signs.
+ * `encodeCertificateTranscript`. The enrollment flow uses this to build the bytes its
+ * own root signature covers.
  */
 export function encodeCertificateTranscript(fields: DecodedCertificateTranscript): Bytes {
   const writer = new ByteWriter()
@@ -62,39 +64,6 @@ export function encodeCertificateTranscript(fields: DecodedCertificateTranscript
     .u32(fields.supportedProtocolVersions.length);
   for (const version of fields.supportedProtocolVersions) writer.string(version);
   return writer.u64(fields.createdAtMs).u64(fields.expiresAtMs).finish();
-}
-
-export function decodeCertificateTranscript(bytes: Bytes): DecodedCertificateTranscript {
-  const reader = new ByteReader(bytes);
-  const domain = reader.string();
-  if (domain !== CERTIFICATE_TRANSCRIPT_DOMAIN) {
-    throw new Error('Certificate transcript has the wrong domain separator.');
-  }
-  const actorId = reader.string();
-  const deviceId = reader.string();
-  const rootGeneration = reader.u32();
-  const certificateVersion = reader.u32();
-  const signingPublicKey = reader.fixed(32);
-  const agreementPublicKey = reader.fixed(32);
-  const versionCount = reader.u32();
-  const supportedProtocolVersions: string[] = [];
-  for (let index = 0; index < versionCount; index += 1) {
-    supportedProtocolVersions.push(reader.string());
-  }
-  const createdAtMs = reader.u64();
-  const expiresAtMs = reader.u64();
-  reader.end();
-  return {
-    actorId,
-    deviceId,
-    rootGeneration,
-    certificateVersion,
-    signingPublicKey,
-    agreementPublicKey,
-    supportedProtocolVersions,
-    createdAtMs,
-    expiresAtMs,
-  };
 }
 
 export interface DecodedRosterEntryTranscript {
@@ -141,39 +110,6 @@ export function encodeRosterTranscript(fields: DecodedRosterTranscript): Bytes {
   return writer.finish();
 }
 
-export function decodeRosterTranscript(bytes: Bytes): DecodedRosterTranscript {
-  const reader = new ByteReader(bytes);
-  const domain = reader.string();
-  if (domain !== ROSTER_TRANSCRIPT_DOMAIN) {
-    throw new Error('Roster transcript has the wrong domain separator.');
-  }
-  const actorId = reader.string();
-  const sequence = BigInt(reader.u64());
-  const rootGeneration = reader.u32();
-  const previousDigest = reader.fixed(32);
-  const entryCount = reader.u32();
-  const entries: DecodedRosterEntryTranscript[] = [];
-  for (let index = 0; index < entryCount; index += 1) {
-    const deviceId = reader.string();
-    const certificateDigest = reader.fixed(32);
-    const active = reader.u8() === 1;
-    const addedAtMs = reader.u64();
-    // The revoked-at pair is fixed-width on the wire (flag byte + u64), always present.
-    const hasRevokedAt = reader.u8() === 1;
-    const revokedAtMsValue = reader.u64();
-    const revokedAtMs = hasRevokedAt ? revokedAtMsValue : undefined;
-    entries.push({
-      deviceId,
-      certificateDigest,
-      active,
-      addedAtMs,
-      ...(revokedAtMs === undefined ? {} : { revokedAtMs }),
-    });
-  }
-  reader.end();
-  return { actorId, sequence, rootGeneration, previousDigest, entries };
-}
-
 export interface PrekeyBundleTranscriptFields {
   readonly certificateDigest: Bytes;
   readonly agreementPublicKey: Bytes;
@@ -218,73 +154,4 @@ export function encodePrekeyBundleTranscript(fields: PrekeyBundleTranscriptField
     .u64(fields.signedPrekeyCreatedAtMs)
     .u64(fields.signedPrekeyExpiresAtMs)
     .finish();
-}
-
-/**
- * True when every decoded convenience field of the served certificate agrees with what
- * its own signed transcript says. Any disagreement — or any malformed transcript — is a
- * failed match, never an exception leaking into trust decisions.
- */
-export function wireCertificateMatchesTranscript(certificate: E2eeDeviceCertificate): boolean {
-  if (certificate.certificateBytes.length === 0) return false;
-  let decoded: DecodedCertificateTranscript;
-  try {
-    decoded = decodeCertificateTranscript(certificate.certificateBytes);
-  } catch {
-    return false;
-  }
-  if (!bytesEqual(sha256Hash(certificate.certificateBytes), certificate.certificateDigest)) {
-    return false;
-  }
-  if (
-    !bytesEqual(decoded.signingPublicKey, certificate.signingPublicKey) ||
-    !bytesEqual(decoded.agreementPublicKey, certificate.agreementPublicKey) ||
-    decoded.rootGeneration !== certificate.rootGeneration ||
-    decoded.certificateVersion !== certificate.certificateVersion ||
-    decoded.actorId !== certificate.actorId ||
-    decoded.deviceId !== certificate.deviceId ||
-    decoded.createdAtMs !== (toDate(certificate.createdAt)?.getTime() ?? -1) ||
-    decoded.expiresAtMs !== (toDate(certificate.expiresAt)?.getTime() ?? -1)
-  ) {
-    return false;
-  }
-  return (
-    decoded.supportedProtocolVersions.join('\u0000') ===
-    certificate.supportedProtocolVersions.join('\u0000')
-  );
-}
-
-/**
- * True when the roster's decoded entry view matches its signed transcript. Same rule as
- * above: the convenience fields the node serves alongside `roster_bytes` are checked
- * against the bytes, never trusted on their own.
- */
-export function wireRosterMatchesTranscript(roster: E2eeDeviceRoster): boolean {
-  if (roster.rosterBytes.length === 0) return false;
-  let decoded: DecodedRosterTranscript;
-  try {
-    decoded = decodeRosterTranscript(roster.rosterBytes);
-  } catch {
-    return false;
-  }
-  if (
-    !bytesEqual(sha256Hash(roster.rosterBytes), roster.digest) ||
-    decoded.actorId !== roster.actorId ||
-    decoded.sequence !== roster.sequence ||
-    decoded.rootGeneration !== roster.rootGeneration ||
-    !bytesEqual(decoded.previousDigest, roster.previousDigest) ||
-    decoded.entries.length !== roster.entries.length
-  ) {
-    return false;
-  }
-  return decoded.entries.every((entry, index) => {
-    const wireEntry = roster.entries[index];
-    if (wireEntry === undefined) return false;
-    return (
-      entry.deviceId === wireEntry.deviceId &&
-      bytesEqual(entry.certificateDigest, wireEntry.certificateDigest) &&
-      entry.active === wireEntry.active &&
-      entry.addedAtMs === (toDate(wireEntry.addedAt)?.getTime() ?? Number.NaN)
-    );
-  });
 }

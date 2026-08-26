@@ -19,6 +19,7 @@ import {
   ENROLLMENT_RECORD_KEY,
   ENROLLMENT_REFUSAL_COPY,
   decodeStoredEnrollment,
+  disposeStoredEnrollment,
   encodeStoredEnrollment,
   enrollThisDevice,
   generateEnrollment,
@@ -290,5 +291,21 @@ describe('stored enrollment codec', () => {
 
     expect(record.createdRoot).toBe(false);
     expect(publishRootRequestFromRecord(record)).toBeUndefined();
+  });
+});
+
+describe('disposeStoredEnrollment', () => {
+  it('zeroizes the account root private key in place and leaves everything else untouched', () => {
+    const { record } = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW_MS });
+    const rootPublicBefore = [...record.rootPublic];
+    const deviceIdBefore = record.identity.deviceId;
+
+    disposeStoredEnrollment(record);
+
+    expect([...record.rootPrivate]).toEqual(new Array(record.rootPrivate.length).fill(0));
+    // Best-effort hygiene only (ADR 0020 §4): it must not corrupt the rest of the record,
+    // which callers may still read (e.g. `record.identity` after a resume-path load).
+    expect([...record.rootPublic]).toEqual(rootPublicBefore);
+    expect(record.identity.deviceId).toBe(deviceIdBefore);
   });
 });

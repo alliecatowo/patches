@@ -293,6 +293,14 @@ export class E2eeSessionRuntime {
             acknowledged.push(envelope.envelopeId);
             continue;
           }
+          // A non-replay failure (malformed envelope, ratchet desync, decrypt failure)
+          // stops processing the REST OF THIS PAGE, not just this envelope — `error`
+          // stays undefined (that variable is reserved for the page-fetch try/catch
+          // above), so the outer loop below still runs its `error !== undefined` check
+          // as false and, if `page.nextCursor` is non-empty, moves on to fetch the next
+          // page rather than aborting the whole drain. Envelopes already acknowledged
+          // earlier in this page keep their commits; this one and everything after it
+          // in the current page stay unacknowledged and redeliver on a later poll.
           break;
         }
       }
