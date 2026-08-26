@@ -295,19 +295,29 @@ jobs:
       - name: Assemble image (COPY-only — no toolchain in CI docker)
         run: >-
           docker build -f infra/docker/Dockerfile.prebuilt
-          -t "patches-pr-${PR_NUMBER}:ci"
+          -t "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
           --build-arg PATCHES_BUILD_SHA="${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
           infra/preview/.image-context
+
+      # Fly's documented CI pattern (fly.io/docs/blueprints/using-the-fly-docker-registry):
+      # build with your own caches, push to the app's private registry path, deploy by
+      # ref. `flyctl auth docker` honors FLY_API_TOKEN; the per-app registry path is
+      # org-scoped so no extra credentials exist to rotate.
+      - name: Push image to the Fly registry
+        run: |
+          set -euo pipefail
+          flyctl auth docker
+          docker push "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
 
       - name: Deploy prebuilt image to Fly
         # Built on the runner from the restored pnpm/turbo caches (Fly's remote
         # builders share none of those, and their cold path measured ~1m50s per
-        # deploy). --image deploys the local image; process groups, checks, and
-        # autostop all come from the generated fly config as before.
+        # deploy). Process groups, checks, and autostop all come from the generated
+        # fly config as before.
         run: |
           set -euo pipefail
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
-            --image "patches-pr-${PR_NUMBER}:ci" \
+            --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
             --ha=false --strategy immediate --yes
 
       # Optional web-preview capability, gated on the Cloudflare credentials exactly
