@@ -33,9 +33,16 @@ let density: DensityPreference = readPreference(DENSITY_STORAGE_KEY, DENSITIES, 
 const fanListeners = new Set<Listener>();
 const densityListeners = new Set<Listener>();
 
+/**
+ * Only `data-density` is applied here (consumed by `:root[data-density='compact']` in
+ * `index.css`). The fan/quick-menu style has no document-level CSS consumer — the radial vs.
+ * stacked switch reads `getFanStyle()` directly and renders via `ThumbNavFab.tsx`'s own
+ * `data-layout` attribute on the menu element instead (B-184: a `data-fan-style` attribute
+ * used to be set here too, but no selector anywhere read it — dropped rather than wired up,
+ * since `data-layout` already does the real job).
+ */
 function applyToDocument(): void {
   if (typeof document === 'undefined') return;
-  document.documentElement.setAttribute('data-fan-style', fanStyle);
   document.documentElement.setAttribute('data-density', density);
 }
 

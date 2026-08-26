@@ -39,7 +39,6 @@ describe('interface preferences', () => {
 
     expect(getFanStyle()).toBe('radial');
     expect(getDensityPreference()).toBe('compact');
-    expect(document.documentElement).toHaveAttribute('data-fan-style', 'radial');
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
     expect(fanListener).toHaveBeenCalledOnce();
     expect(densityListener).toHaveBeenCalledOnce();
@@ -59,7 +58,6 @@ describe('interface preferences', () => {
     );
 
     expect(getFanStyle()).toBe('stacked');
-    expect(document.documentElement).toHaveAttribute('data-fan-style', 'stacked');
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
   });
@@ -78,7 +76,6 @@ describe('interface preferences', () => {
 
     expect(getFanStyle()).toBe('stacked');
     expect(getDensityPreference()).toBe('cozy');
-    expect(document.documentElement).toHaveAttribute('data-fan-style', 'stacked');
     expect(document.documentElement).toHaveAttribute('data-density', 'cozy');
     expect(fanListener).toHaveBeenCalledOnce();
     expect(densityListener).toHaveBeenCalledOnce();
@@ -96,7 +93,6 @@ describe('interface preferences', () => {
     setDensityPreference('compact');
     expect(window.localStorage.getItem('patches.web.fan-style.v1')).toBe('radial');
     expect(window.localStorage.getItem('patches.web.density.v1')).toBe('compact');
-    expect(document.documentElement).toHaveAttribute('data-fan-style', 'radial');
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
   });
 });

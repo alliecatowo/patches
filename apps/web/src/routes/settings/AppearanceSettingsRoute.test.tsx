@@ -99,7 +99,6 @@ describe('AppearanceSettingsRoute', () => {
 
     expect(getFanStyle()).toBe('radial');
     expect(getDensityPreference()).toBe('compact');
-    expect(document.documentElement).toHaveAttribute('data-fan-style', 'radial');
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
   });
 

@@ -93,4 +93,110 @@ describe('PostCard', () => {
     // No inline colour — the plain stylesheet value applies.
     expect(displayName).not.toHaveStyle({ color: '#FF69B4' });
   });
+
+  // B-180: spec §163's canonical `@handle@domain` identity for a remote reposter/quoted
+  // author, now that B-179 put `Actor.home_server`/`Post.origin_server` on the wire —
+  // mirrors `apps/tui/src/components/PostRow.tsx`'s remote-origin handling.
+  describe('remote origin attribution (B-180)', () => {
+    it('renders a remote reposter as plain @handle@home_server, undecorated', () => {
+      const reposted = {
+        ...mockPost,
+        repostedByTotal: 1,
+        repostedBy: [
+          {
+            $typeName: 'patches.v1.Actor',
+            id: 'actor-remote',
+            handle: 'nomad',
+            homeServer: 'other.example',
+            displayName: 'Nomad',
+            pinnedPostIds: [],
+          },
+        ],
+      } as unknown as Post;
+      renderPostCard(reposted);
+      expect(screen.getByText('@nomad@other.example')).toBeInTheDocument();
+    });
+
+    it('renders a local reposter (empty home_server) with no domain suffix', () => {
+      const reposted = {
+        ...mockPost,
+        repostedByTotal: 1,
+        repostedBy: [
+          {
+            $typeName: 'patches.v1.Actor',
+            id: 'actor-local',
+            handle: 'sam',
+            homeServer: '',
+            displayName: 'Sam',
+            pinnedPostIds: [],
+          },
+        ],
+      } as unknown as Post;
+      renderPostCard(reposted);
+      expect(screen.getByText('@sam')).toBeInTheDocument();
+      expect(screen.queryByText(/@sam@/)).not.toBeInTheDocument();
+    });
+
+    it('renders a one-level remote quote embed as plain @handle@home_server', () => {
+      const quoting = {
+        ...mockPost,
+        quotedPost: {
+          $typeName: 'patches.v1.Post',
+          id: 'quoted-1',
+          body: 'A quoted remote post',
+          originServer: 'other.example',
+          author: {
+            $typeName: 'patches.v1.Actor',
+            id: 'actor-remote-2',
+            handle: 'traveler',
+            homeServer: 'other.example',
+            displayName: 'Traveler',
+            pinnedPostIds: [],
+          },
+          media: [],
+          repostedBy: [],
+          repostedByTotal: 0,
+          tags: [],
+          mentions: [],
+          labels: [],
+          deleted: false,
+          contentWarning: '',
+        },
+      } as unknown as Post;
+      renderPostCard(quoting);
+      expect(screen.getByText('A quoted remote post')).toBeInTheDocument();
+      expect(screen.getByText('@traveler@other.example')).toBeInTheDocument();
+    });
+
+    it('renders a one-level local quote embed with no domain suffix', () => {
+      const quoting = {
+        ...mockPost,
+        quotedPost: {
+          $typeName: 'patches.v1.Post',
+          id: 'quoted-2',
+          body: 'A quoted local post',
+          originServer: '',
+          author: {
+            $typeName: 'patches.v1.Actor',
+            id: 'actor-local-2',
+            handle: 'homebody',
+            homeServer: '',
+            displayName: 'Homebody',
+            pinnedPostIds: [],
+          },
+          media: [],
+          repostedBy: [],
+          repostedByTotal: 0,
+          tags: [],
+          mentions: [],
+          labels: [],
+          deleted: false,
+          contentWarning: '',
+        },
+      } as unknown as Post;
+      renderPostCard(quoting);
+      expect(screen.getByText('A quoted local post')).toBeInTheDocument();
+      expect(screen.getByText('@homebody')).toBeInTheDocument();
+    });
+  });
 });
