@@ -294,3 +294,35 @@ The server build accepts `PATCHES_BUILD_SHA` and exposes `<version>+<short-sha>`
 These make source/deployment skew diagnosable after the next release. Local verification passed
 17 web test files / 66 tests. Live login/profile behavior is still **Status: planned until
 B-063 deploys and smoke-tests this revision**.
+
+## Storybook (component workbench, H-029 phase 1)
+
+Storybook 10 (`react-vite` builder) renders a curated set of `src/**/*.stories.tsx` in
+isolation from the deployable app. Commands, all from the repo root:
+
+```
+pnpm --filter @patches/web run storybook        # dev UI on :6006
+pnpm --filter @patches/web run storybook:build  # static bundle -> apps/web/storybook-static/
+pnpm --filter @patches/web run test-storybook   # headless chromium smoke of every story
+```
+
+- **Isolation from production:** stories are outside the `index.html` entry graph and
+  Storybook builds to `storybook-static/`, never `dist/`; `turbo run build` never sees it
+  (the scripts are separate from `build`). Verified by byte-identical `dist/` hashes
+  before/after landing it. `apps/web/vite.config.ts` is untouched — Storybook uses its
+  own minimal `.storybook/vite.config.ts`.
+- **No network, ever:** `.storybook/vite.config.ts` aliases `src/api/client.ts` to the
+  deterministic mock in `.storybook/mocks/apiClient.ts`. An un-mocked RPC fails loudly
+  in the story instead of silently hitting a real node.
+- **Viewport matrix:** the toolbar's presets are exactly the owner's three — Mobile PWA
+  375×667, Tablet 768×1024, Desktop 1280×800. They resize the story iframe only; they do
+  **not** emulate touch, `deviceScaleFactor`, or `display-mode: standalone` (real touch
+  stays in the Playwright E2E suite). `ThumbNavFab.stories.tsx` demonstrates the
+  ≥721px media-query behavior across presets.
+- **A11y:** `@storybook/addon-a11y` surfaces axe violations in the panel. Project-wide
+  `parameters.a11y.test = 'todo'` — violations never fail a check in phase 1; promote
+  per-component to `'error'` as they are fixed.
+- **CI:** `.github/workflows/storybook.yml` builds the bundle and runs the smoke on PRs.
+  It is a separate workflow and therefore **non-required** — it never appears in `ci-ok`.
+
+Visual regression (Lost Pixel) is a planned later phase and intentionally absent.
