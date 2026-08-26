@@ -197,7 +197,9 @@ mutual follow is the only path to first contact until an E2EE-native request flo
 Blocking bars contact in either direction and reveals nothing to the blocked party (§62's
 no-oracle rule). Groups cap at 8 members; an actor cannot be added to a group with someone who
 has blocked them or whom they have blocked. There are no read receipts and no typing
-indicators. Unread state is per-viewer; delivery is poll-based, no push infra.
+indicators. Unread state is per-viewer; delivery is poll-based, no push infra and no streaming RPC
+— ADR [0032](../decisions/0032-dm-delivery-stays-poll-based.md) records that deferral, the
+freshness SLA it commits to, and the measured triggers that would reopen it.
 `E2eeService.AttachReportEvidence` is the one deliberate exception to "the node never sees a
 body": a reporter explicitly selects and submits plaintext as evidence, retained for the
 lifetime of the report and no longer. DMs are not federated in v0 (ADR 0020 §13, unchanged).

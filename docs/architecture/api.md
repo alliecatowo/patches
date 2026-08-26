@@ -420,8 +420,15 @@ arm of §183.2 has no backing store any more, so mutual follow is currently the 
 first contact. Groups are capped at eight, and block failures do not expose a recipient oracle.
 Unread state is per viewer without read receipts.
 
-No push infrastructure until a mobile client exists — the TUI polls while active and
-supports manual refresh.
+No push infrastructure and no streaming RPC: DM delivery is poll-based, decided deliberately in
+ADR [0032](../decisions/0032-dm-delivery-stays-poll-based.md), which also publishes the freshness
+SLA and the measured triggers that would reopen it. Current cadence: 5 s while a TUI thread is open
+(`apps/tui/src/screens/MessagesScreen.tsx:424`), 60 s for the TUI unread badge
+(`apps/tui/src/hooks/useUnreadCount.ts:5`), 30 s for web's badge
+(`apps/web/src/routes/RootLayout.tsx:46`). Two surfaces do **not** meet that SLA yet — the TUI and
+web conversation lists are fetched once per mount and never refresh (`MessagesScreen.tsx:458`;
+`apps/web/src/routes/MessagesRoute.tsx:22-25`) — tracked as P19-017. §56's "and refresh manually"
+is likewise not yet wired to DM screens (P19-016).
 
 `Conversation.security_mode` is read-only and fixed at creation. Every conversation is
 `CONVERSATION_SECURITY_MODE_E2EE_V1`; `CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE` is
