@@ -110,6 +110,26 @@ if (refusal !== null) {
 
 try {
   process.stdout.write(gh(mergeArgs));
-} catch {
-  die(`\`gh pr merge\` failed for PR #${prNumber}.`);
+} catch (mergeError) {
+  // `gh pr merge --delete-branch` exits non-zero when it merged fine but could not
+  // delete the *local* branch — which is routine here, since a worker's git worktree
+  // usually still has that branch checked out. Reporting that as a merge failure sent
+  // the caller off investigating a merge that had already succeeded, so re-read the
+  // PR's real state before deciding.
+  const output = String(
+    (mergeError instanceof Error && 'stderr' in mergeError ? mergeError.stderr : '') ||
+      (mergeError instanceof Error ? mergeError.message : ''),
+  );
+  let mergedAnyway = false;
+  try {
+    mergedAnyway = JSON.parse(gh(['pr', 'view', prNumber, '--json', 'state'])).state === 'MERGED';
+  } catch {
+    // Couldn't re-read it — fall through and report the original failure.
+  }
+  if (!mergedAnyway) die(`\`gh pr merge\` failed for PR #${prNumber}.`);
+  process.stdout.write(
+    `merge-pr: PR #${prNumber} is MERGED. \`gh\` still exited non-zero:\n` +
+      `${output.trim().split('\n').slice(0, 3).join('\n')}\n` +
+      `  Treating this as success. Remove the worktree holding the branch to silence it.\n`,
+  );
 }
