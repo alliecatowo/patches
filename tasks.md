@@ -509,6 +509,8 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 
 ## Backlog / discovered
 
+- [x] H-032 — **An admin merge silently bypassed the required `ci-ok` check.** `main`'s `protect-main` ruleset gained a `required_status_checks` rule for `ci-ok` on 2026-08-26 (owner request: "we need to wait for ci before merge"), but the ruleset already granted the `admin` repository role `bypass_mode: always` — and both the owner and any agent acting on the owner's `gh` token are admins, so `gh pr merge` continued to merge red or entirely un-run PRs without saying so. Keeping the bypass is correct (a required check that never reports would otherwise brick `main` — three runs sat zombie-`queued` for ~50 minutes that same afternoon and could not be deleted, `DELETE /actions/runs/:id` → 403), but it must be **explicit**. _(landed 2026-08-26: `infra/scripts/merge-pr.mjs` + `mise run merge-pr -- <n>`, which reads the PR's `statusCheckRollup` and refuses unless a check named `ci-ok` is `COMPLETED`/`SUCCESS`, distinguishing "no checks reported at all" from "still running" from "concluded FAILURE". `--bypass "<reason>"` is required to override, a reason is mandatory, and the reason is printed and written into the merge commit body so a bypass is not retrospectively indistinguishable from a normal merge. Documented in `docs/operations/ci.md` under Branch protection. Owner suggested lefthook for this — lefthook only runs local **git** hooks and never sees a GitHub merge, so a wrapper task is the honest place for the gate; noted here so the option isn't re-litigated.)_
+
 ### Owner directives 2026-08-25 (evening) — supersede prior deferrals
 
 <!-- Owner statements this session, recorded verbatim in intent so no agent re-litigates them:

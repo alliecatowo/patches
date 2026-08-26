@@ -192,6 +192,35 @@ locally, but the quiesced live rollout has not run, so the completion variable m
 unset/false and the workflow must remain a no-op. Cloudflare publish workflows are likewise
 implemented but have not published this revision.
 
+### Merging: `mise run merge-pr`
+
+`main`'s `protect-main` ruleset requires `ci-ok` **and** grants the `admin` repository
+role `bypass_mode: always`. That bypass is deliberate — a required check that can never
+report (a stalled Actions queue, a run that is created but never dispatched) would
+otherwise leave `main` unmergeable with no way out. The cost is that an admin merging
+through `gh pr merge` is never told the gate was skipped.
+
+`mise run merge-pr -- <pr-number>` closes that gap locally. It reads the PR's
+`statusCheckRollup`, and refuses unless a check named `ci-ok` has `COMPLETED` with
+`SUCCESS`, naming what it actually saw (no checks at all, still running, or a non-success
+conclusion). To use the bypass you have to ask for it by name:
+
+```sh
+mise run merge-pr -- 125                                    # merges only if ci-ok is green
+mise run merge-pr -- 125 --bypass "Actions queue stalled"   # merges anyway, loudly
+```
+
+A bypass prints a banner and records the reason in the merge commit body, so the decision
+is visible afterwards rather than indistinguishable from a normal merge. `--bypass` with
+no reason is rejected. The script is `infra/scripts/merge-pr.mjs`; it shells out to `gh`,
+so it inherits whatever `gh` is authenticated as.
+
+Note that a _stale_ required check is not the same as a missing one: GitHub has been
+observed leaving runs `queued` for tens of minutes and surfacing them as `completed` to
+the cancel endpoint while `gh run list` still shows them queued. Those zombies cannot be
+deleted (`DELETE /actions/runs/:id` returns 403) and simply age out; they do not block
+newly dispatched runs.
+
 ## Reproducing CI locally
 
 ```bash
