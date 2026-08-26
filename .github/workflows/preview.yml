@@ -493,7 +493,7 @@ jobs:
               "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",
               "| Real email | off (console provider: verification codes are accepted then dropped — **sign in with an existing account** from the cloned data) |",
               "",
-              "**Data warning:** the preview database is a Neon branch of production — public content is readable logged-out (`PUBLIC_READ=true`); as on every Patches node, v0 DMs are server-visible (never encrypted/private) to this node's operator.",
+              "**Data warning:** the preview database is a Neon branch of production — public content is readable logged-out (`PUBLIC_READ=true`); as on every Patches node, v0 DMs are server-visible (never encrypted/private) to the operator of this node.",
               "",
               "Destroyed automatically when this PR closes.",
             ].join("\n");
