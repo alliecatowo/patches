@@ -283,6 +283,36 @@ jobs:
         # packages FULL TURBO replays; only what this PR changed actually compiles.
         run: pnpm exec turbo run build --filter=@patches/server --filter=@patches/worker
 
+      # Optional web-preview capability, gated on the Cloudflare credentials exactly
+      # like the R2 media path: all-or-none. The detect step always runs (it only
+      # reads secret/var presence and sets PREVIEW_WEB for the capability matrix);
+      # the build/deploy/CORS steps below are additionally guarded by an `if:` so
+      # they are skipped entirely — never fail — when the credentials are absent.
+      - name: Detect optional web preview capability (Cloudflare Pages)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "PREVIEW_WEB=enabled" >> "$GITHUB_ENV"
+            echo "Web preview capability: enabled (Cloudflare API token + account id detected)." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PREVIEW_WEB=disabled" >> "$GITHUB_ENV"
+            echo "Web preview capability: disabled (CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID not set — apps/web is not previewed)." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build web client for preview
+        # MUST run before the pnpm-deploy staging below: `pnpm deploy --prod` prunes
+        # devDependencies from the workspace's virtual store, which deletes build
+        # tools (e.g. @patches/markup's tsup) that `@patches/web...` still needs
+        # (observed 2026-08-26: "tsup: not found" when this ran after staging).
+        if: env.PREVIEW_WEB == 'enabled'
+        run: pnpm --filter @patches/web... build
+        env:
+          VITE_PATCHES_API_BASE: https://patches-pr-${{ github.event.pull_request.number || inputs.pr_number }}.fly.dev:8443
+          GITHUB_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
+
       - name: Stage self-contained app dirs (pnpm deploy)
         run: |
           set -euo pipefail
@@ -319,36 +349,6 @@ jobs:
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
             --ha=false --strategy immediate --yes
-
-      # Optional web-preview capability, gated on the Cloudflare credentials exactly
-      # like the R2 media path: all-or-none. The detect step always runs (it only
-      # reads secret/var presence and sets PREVIEW_WEB for the capability matrix);
-      # the build/deploy/CORS steps below are additionally guarded by an `if:` so
-      # they are skipped entirely — never fail — when the credentials are absent.
-      - name: Detect optional web preview capability (Cloudflare Pages)
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "PREVIEW_WEB=enabled" >> "$GITHUB_ENV"
-            echo "Web preview capability: enabled (Cloudflare API token + account id detected)." | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "PREVIEW_WEB=disabled" >> "$GITHUB_ENV"
-            echo "Web preview capability: disabled (CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID not set — apps/web is not previewed)." | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Build web client for preview
-        # Same `pnpm --filter @patches/web... build` shape as production web.yml; the
-        # `...` also builds the web's workspace deps. The Connect edge is on :8443
-        # (infra/preview/fly-preview.toml), so the API base must name that port — not
-        # :443, which is the gRPC service.
-        if: env.PREVIEW_WEB == 'enabled'
-        run: pnpm --filter @patches/web... build
-        env:
-          VITE_PATCHES_API_BASE: https://patches-pr-${{ github.event.pull_request.number || inputs.pr_number }}.fly.dev:8443
-          GITHUB_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
 
       - name: Deploy web preview to Cloudflare Pages
         id: web_deploy
