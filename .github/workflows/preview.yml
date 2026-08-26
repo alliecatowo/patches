@@ -12,7 +12,12 @@
 #              accepts it (an unset/empty WEB_ORIGINS denies every cross-origin
 #              browser request). Finally post/update a `<!-- patches-preview -->` PR
 #              comment carrying the capability matrix.
-# teardown job (closed): destroy the Fly app and delete the Neon branch, best-effort.
+# teardown job (closed — merged or not — or manual dispatch action=teardown): destroy
+#              the Fly app, delete the Neon branch, and sweep this PR's Cloudflare
+#              Pages deployments. Best-effort per resource and idempotent (an
+#              already-destroyed stack is a success), but honest in aggregate (B-204):
+#              any resource that errors for a reason other than "already gone" turns
+#              the run red instead of being swallowed by continue-on-error.
 #
 # Required secrets (repository or `preview` environment — Settings → Secrets):
 #   FLY_API_TOKEN      flyctl token allowed to create/destroy apps in the target org
@@ -50,7 +55,12 @@
 #   FLY_PREVIEW_ORG    Fly org for preview apps (default: personal)
 #
 # Fork PRs are skipped by the deploy job's `if:` — GitHub never exposes these
-# secrets to `pull_request` runs from forks, so a deploy there can only fail.
+# secrets to `pull_request` runs from forks, so a deploy there can only fail. The
+# teardown job skips forks and bot-authored PRs for the same reason: no secrets
+# means no stack was ever deployed, so there is nothing to destroy (and its honest
+# verdict would otherwise fail loudly on every fork-PR close). Manual dispatch
+# (`action=teardown`) still works for any PR number — dispatch requires write
+# access, so it always runs with secrets.
 # Nothing here touches mainline (`main`, `swarm/e2ee-federation-niceties`) deploys.
 
 name: Preview
@@ -62,9 +72,17 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: PR number to (re)deploy a preview for (must be open)
+        description: PR number to act on (deploy requires it open; teardown works either way)
         required: true
         type: number
+      action:
+        description: What to do with that PR's preview stack
+        required: false
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - teardown
 
 permissions:
   contents: read
@@ -77,16 +95,21 @@ jobs:
     # bot-authored PRs — dependabot/renovate runs get NO secrets (GitHub withholds
     # them from Dependabot-triggered workflows), so a deploy there can only die at
     # the first Neon/flyctl call with "Cannot run interactive auth in CI" (observed
-    # 2026-08-25, PR #80). workflow_dispatch: always allowed; the resolve step below
-    # fails fast on a missing or closed PR.
+    # 2026-08-25, PR #80). workflow_dispatch: allowed for action=deploy (the
+    # default); the resolve step below fails fast on a missing or closed PR.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.action != 'closed' && github.event.pull_request.head.repo.fork == false &&
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.event.pull_request.head.repo.fork == false &&
        github.event.pull_request.user.type != 'Bot')
     runs-on: ubuntu-latest
     concurrency:
-      # One in-flight deploy per PR; a new push cancels the superseded deploy.
-      group: preview-deploy-${{ github.event.pull_request.number || inputs.pr_number }}
+      # ONE concurrency group per PR stack, shared with the teardown job (B-204):
+      # a new push cancels the superseded deploy, and a close-teardown entering the
+      # group cancels any in-flight or PENDING deploy of the same PR instead of
+      # racing it (separate groups previously let a deploy finish after teardown
+      # and re-orphan the whole stack — the 2026-08-26 incident).
+      group: preview-stack-${{ github.event.pull_request.number || inputs.pr_number }}
       cancel-in-progress: true
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -514,13 +537,26 @@ jobs:
 
   teardown:
     name: teardown (destroy Fly app + Neon branch + Pages preview)
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Runs automatically when the PR closes (merged or not) and manually via
+    # workflow_dispatch action=teardown — which works for closed PRs too; that is
+    # the documented orphan-recovery path. Fork/bot closes are skipped: no secrets
+    # means no stack was ever deployed (see the header note).
+    if: >-
+      (github.event_name == 'pull_request' && github.event.action == 'closed' &&
+       github.event.pull_request.head.repo.fork == false &&
+       github.event.pull_request.user.type != 'Bot') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'teardown')
     runs-on: ubuntu-latest
     concurrency:
-      group: preview-teardown-${{ github.event.pull_request.number }}
-      cancel-in-progress: false
+      # The SAME per-PR group as the deploy job (B-204). Entering teardown cancels
+      # any in-flight or pending deploy for this PR — deploying to a closed PR is
+      # pointless, and racing one re-orphans the stack. Symmetrically, an incoming
+      # deploy (reopened PR, dispatch) cancels a running teardown, which is safe
+      # because every teardown step is idempotent.
+      group: preview-stack-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: true
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -539,45 +575,163 @@ jobs:
         with:
           runtime: node@24.19.0
 
-      # Best-effort on purpose throughout (B-154): a PR closed before the first
-      # successful deploy (or from a fork, where secrets are unavailable) has
-      # nothing to destroy, and that must not fail this job. The Pages sweep uses
-      # the repo's wrangler devDependency + the deploy step's auth pattern.
+      # Best-effort per resource, honest in aggregate (B-204, fixing B-154's silent
+      # swallow): each step records an `outcome` output (destroyed/deleted |
+      # already-gone | skipped-no-credentials | error) and never aborts its siblings
+      # — one missing resource must not hide the others. The verdict step below
+      # fails the job iff any outcome is a real error. Existence is probed via
+      # structured JSON (apps list / branches list) rather than scraping CLI error
+      # text, so "already gone" never depends on error wording (B-173 philosophy).
+      # A PR closed before the first successful deploy simply reports already-gone
+      # three times and stays green.
       - name: Destroy Fly app (patches-pr-<N>)
         id: fly_destroy
         continue-on-error: true
-        run: flyctl apps destroy "patches-pr-${PR_NUMBER}" --yes
+        run: |
+          set -euo pipefail
+          app="patches-pr-${PR_NUMBER}"
+          listed="$(flyctl apps list --json)" || {
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+            echo "flyctl apps list failed — cannot tell whether ${app} exists" >&2
+            exit 0
+          }
+          probe="$(printf '%s' "$listed" | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const name = process.argv[1];
+              let apps;
+              try {
+                apps = JSON.parse(s);
+              } catch (err) {
+                process.stderr.write("flyctl apps list emitted invalid JSON: " + String(err) + "\n");
+                process.exit(1);
+              }
+              if (!Array.isArray(apps)) {
+                process.stderr.write("flyctl apps list JSON was not an array: " + s.slice(0, 200) + "\n");
+                process.exit(1);
+              }
+              process.stdout.write(apps.some((a) => a && typeof a === "object" && (a.Name === name || a.ID === name)) ? "present" : "absent");
+            });
+          ' "$app")"
+          if [ "$probe" = "present" ]; then
+            if flyctl apps destroy "$app" --yes; then
+              echo "outcome=destroyed" >> "$GITHUB_OUTPUT"
+            else
+              echo "outcome=error" >> "$GITHUB_OUTPUT"
+              echo "flyctl apps destroy ${app} failed" >&2
+              exit 0
+            fi
+          else
+            echo "Fly app ${app} not found — nothing to destroy."
+            echo "outcome=already-gone" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Delete Neon branch (pr-<N>)
         id: neon_delete
         continue-on-error: true
-        run: neon branches delete "pr-${PR_NUMBER}" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null
+        run: |
+          set -euo pipefail
+          branch="pr-${PR_NUMBER}"
+          listed="$(neon branches list --project-id "$NEON_PROJECT_ID" --output json --no-color)" || {
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+            echo "neon branches list failed — cannot tell whether branch ${branch} exists" >&2
+            exit 0
+          }
+          probe="$(printf '%s' "$listed" | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const name = process.argv[1];
+              let doc;
+              try {
+                doc = JSON.parse(s);
+              } catch (err) {
+                process.stderr.write("neon branches list emitted invalid JSON: " + String(err) + "\n");
+                process.exit(1);
+              }
+              const branches = Array.isArray(doc) ? doc : doc && Array.isArray(doc.branches) ? doc.branches : null;
+              if (branches === null) {
+                process.stderr.write("neon branches list JSON had neither array nor branches[] shape: " + s.slice(0, 200) + "\n");
+                process.exit(1);
+              }
+              process.stdout.write(branches.some((b) => b && typeof b === "object" && (b.name === name || (b.branch && typeof b.branch === "object" && b.branch.name === name))) ? "present" : "absent");
+            });
+          ' "$branch")"
+          if [ "$probe" = "present" ]; then
+            if neon branches delete "$branch" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null; then
+              echo "outcome=deleted" >> "$GITHUB_OUTPUT"
+            else
+              echo "outcome=error" >> "$GITHUB_OUTPUT"
+              echo "neon branches delete ${branch} failed" >&2
+              exit 0
+            fi
+          else
+            echo "Neon branch ${branch} not found — nothing to delete."
+            echo "outcome=already-gone" >> "$GITHUB_OUTPUT"
+          fi
 
-      # `continue-on-error` stays true at the job level (a PR with no successful deploy has
-      # nothing to sweep, and that's not a failure) but the script itself now fails loudly
-      # (non-zero exit) on anything that isn't the well-formed `--json` shape it expects
-      # (B-173) — a wrangler output change no longer silently matches zero rows. That
-      # distinction surfaces below as this step's `outcome` in the job summary.
+      # The Pages sweep keeps B-173's structured wrangler parsing inside
+      # preview-sweep.mjs untouched: malformed wrangler output fails the script,
+      # which lands here as outcome=error (red run), never as a silent zero-row
+      # sweep. Zero deployments on the branch is the script's own "nothing to
+      # clean" success — mapped to already-gone below.
       - name: Delete Cloudflare Pages deployments (pr-<N>)
         id: pages_delete
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm install --frozen-lockfile --silent && node infra/preview/preview-sweep.mjs --pr "$PR_NUMBER"
-
-      - name: Teardown summary
-        if: always()
         run: |
           set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "Cloudflare credentials absent — the web-preview capability is off, so this workflow never published Pages deployments for pr-${PR_NUMBER}."
+            echo "outcome=skipped-no-credentials" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          log="$RUNNER_TEMP/pages-sweep.log"
+          if pnpm install --frozen-lockfile --silent && node infra/preview/preview-sweep.mjs --pr "$PR_NUMBER" | tee "$log"; then
+            if grep -q '^done: 0 deployment' "$log"; then
+              echo "outcome=already-gone" >> "$GITHUB_OUTPUT"
+            else
+              echo "outcome=deleted" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+            echo "Pages sweep for pr-${PR_NUMBER} failed" >&2
+            exit 0
+          fi
+
+      - name: Teardown verdict and summary
+        if: always()
+        env:
+          FLY_OUTCOME: ${{ steps.fly_destroy.outputs.outcome }}
+          NEON_OUTCOME: ${{ steps.neon_delete.outputs.outcome }}
+          PAGES_OUTCOME: ${{ steps.pages_delete.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          describe() {
+            case "$1" in
+              destroyed) printf 'destroyed' ;;
+              deleted) printf 'deleted' ;;
+              already-gone) printf 'already gone (nothing to delete) — ok' ;;
+              skipped-no-credentials) printf 'skipped (Cloudflare credentials not configured)' ;;
+              *) printf 'ERROR (see the step above)' ;;
+            esac
+          }
           {
             echo "## Preview teardown (PR #${PR_NUMBER})"
-            echo "- Fly app \`patches-pr-${PR_NUMBER}\`: ${FLY_RESULT}"
-            echo "- Neon branch \`pr-${PR_NUMBER}\`: ${NEON_RESULT}"
-            echo "- Cloudflare Pages deployments \`pr-${PR_NUMBER}\`: ${PAGES_RESULT}"
-            echo "- If anything failed, the Neon branch's 7-day expiry is the fail-safe; see manual teardown in docs/operations/preview-environments.md."
+            echo "- Fly app \`patches-pr-${PR_NUMBER}\`: $(describe "${FLY_OUTCOME:-missing}")"
+            echo "- Neon branch \`pr-${PR_NUMBER}\`: $(describe "${NEON_OUTCOME:-missing}")"
+            echo "- Cloudflare Pages deployments \`pr-${PR_NUMBER}\`: $(describe "${PAGES_OUTCOME:-missing}")"
+            echo "- Teardown is idempotent: a re-run (dispatch action=teardown) treats already-gone as success. The Neon branch's 7-day expiry remains the backstop for lost close events; manual teardown is documented in docs/operations/preview-environments.md."
           } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          FLY_RESULT: ${{ steps.fly_destroy.outcome == 'success' && 'destroyed' || 'FAILED (or nothing to destroy)' }}
-          NEON_RESULT: ${{ steps.neon_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}
-          PAGES_RESULT: ${{ steps.pages_delete.outcome == 'success' && 'deleted' || 'FAILED (or nothing to delete)' }}
+          errors=0
+          for outcome in "$FLY_OUTCOME" "$NEON_OUTCOME" "$PAGES_OUTCOME"; do
+            case "$outcome" in
+              destroyed | deleted | already-gone | skipped-no-credentials) ;;
+              *)
+                errors=1
+                echo "teardown resource reported outcome '${outcome:-<none>}'; failing this job so the failure stays visible" >&2
+                ;;
+            esac
+          done
+          exit "$errors"
