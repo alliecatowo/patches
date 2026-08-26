@@ -1,5 +1,5 @@
-# Builds the browser client from the exact main commit that passed CI and, once the
-# production environment is configured, publishes it to Cloudflare Pages.
+# Builds the browser client from the exact main commit that passed CI and publishes it
+# to Cloudflare Pages. Also dispatchable by hand to re-publish the current main.
 
 name: Web
 
@@ -8,28 +8,34 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: web-${{ github.event.workflow_run.head_sha }}
+  group: web-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: build + deploy (Cloudflare Pages)
     if: >-
+      github.event_name == 'workflow_dispatch' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     environment: production
+    env:
+      # workflow_run carries the CI-verified commit; workflow_dispatch carries its own ref.
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: ./.github/actions/setup
 
@@ -37,7 +43,7 @@ jobs:
         run: pnpm --filter @patches/web... build
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
-          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_SHA: ${{ env.TARGET_SHA }}
 
       # B-168: fails the job (and therefore blocks the deploy step below) if any built
       # JS chunk exceeds apps/web/bundle-budget.json's thresholds. Runs against the
@@ -50,7 +56,7 @@ jobs:
         run: pnpm --filter @patches/web run bundle:analyze
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
-          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_SHA: ${{ env.TARGET_SHA }}
 
       - name: Upload bundle report
         if: always()
@@ -59,6 +65,25 @@ jobs:
           name: web-bundle-report
           path: apps/web/dist-analyze/bundle-report.html
           if-no-files-found: warn
+
+      # B-198: without this, a missing WEB_DEPLOY_ENABLED made the whole workflow report
+      # green while never publishing anything — the live site silently froze for a week.
+      # Neither branch fails the job; the summary is what makes the skip legible.
+      - name: Report deploy gate
+        run: |
+          if [ "${WEB_DEPLOY_ENABLED}" = "true" ]; then
+            echo "Deploying ${TARGET_SHA} to Cloudflare Pages (project patches-web)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Web deploy SKIPPED"
+              echo
+              echo "\`vars.WEB_DEPLOY_ENABLED\` is \`${WEB_DEPLOY_ENABLED:-<unset>}\`, not \`true\`, so"
+              echo "**nothing was published**. https://patches-web.pages.dev still serves the"
+              echo "previous deploy. See docs/operations/web.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          WEB_DEPLOY_ENABLED: ${{ vars.WEB_DEPLOY_ENABLED }}
 
       - name: Deploy to Cloudflare Pages
         if: ${{ vars.WEB_DEPLOY_ENABLED == 'true' }}
