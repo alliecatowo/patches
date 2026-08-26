@@ -5,5 +5,6 @@ export default defineProject({
     name: 'config',
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    maxWorkers: '50%',
   },
 });

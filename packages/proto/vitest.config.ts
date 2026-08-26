@@ -8,5 +8,6 @@ export default defineProject({
     // Scoped to src on purpose: without it, compiled copies in dist/ get
     // collected too and every test runs twice.
     include: ['src/**/*.test.ts'],
+    maxWorkers: '50%',
   },
 });

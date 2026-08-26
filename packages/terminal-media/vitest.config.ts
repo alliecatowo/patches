@@ -5,5 +5,6 @@ export default defineProject({
     name: 'terminal-media',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'node',
+    maxWorkers: '50%',
   },
 });

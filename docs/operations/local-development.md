@@ -120,8 +120,45 @@ Notes:
 pre-commit hook (`lefthook.yml`, B-008) that runs Prettier and ESLint against **staged
 files only** — it is deliberately narrower than `pnpm verify` (no build/typecheck/test),
 so it stays fast enough that nobody reaches for `git commit --no-verify` out of
-impatience. `pnpm verify` (`/verify`) remains the actual required gate before pushing —
-CI runs it regardless of what the local hook catches.
+impatience.
+
+The **pre-push** hook is the test gate, and (B-178/B-127, 2026-08-26) it deliberately runs
+a _scoped_ equivalent of `pnpm verify`, not `pnpm verify` itself:
+
+```yaml
+pnpm format:check &&
+pnpm lint &&
+pnpm exec turbo run typecheck --affected --concurrency=4 &&
+pnpm exec turbo run test --affected --concurrency=4 --continue=dependencies-successful
+```
+
+Three differences from plain `pnpm verify` (`turbo run test`/`typecheck` with turbo's
+defaults), each earned by a reproduced failure, not a guess:
+
+- **`--affected`** limits typecheck/test to packages changed since `origin/main` (plus their
+  dependents) instead of all 30+ workspaces. This is the actual speed lever — a typical
+  single-package change only re-runs a handful of tasks instead of the whole monorepo.
+- **`--concurrency=4`** bounds how many packages' typecheck/test tasks turbo runs at once, so
+  their vitest worker pools don't pile on top of each other (each vitest project also caps
+  itself at `maxWorkers: '50%'` — see the individual `vitest.config.ts`/`.mts` files). This
+  machine routinely runs several agent worktrees' full verifies concurrently (see
+  `docs/agents/LEARNINGS.md`); unbounded parallelism here compounds that contention on top
+  of whatever else is running.
+- **`--continue=dependencies-successful`** replaces turbo's default `--continue=never`
+  (cancel every other in-flight task the instant one fails). The default is what actually
+  produced B-178's "worker test flake blames five packages" symptom: cancelling
+  `@patches/server#test`/`@patches/tui#test` mid-run prints the same
+  `[ELIFECYCLE] Test failed` line a _real_ failure would, with no way to tell a killed task
+  from a broken one from the log alone (reproduced locally via
+  `turbo run test --force` with one injected failure in `@patches/worker`). Letting every
+  affected task run to completion means the final `Failed:` summary — and every task's own
+  printed test failures — names only what's actually broken.
+
+CI (`.github/workflows/ci.yml`) is unaffected by any of this — it still runs the full,
+unscoped `pnpm build && pnpm test` (and `pnpm typecheck`, `pnpm lint`) on every PR and stays
+the actual required gate for `main` (see `docs/operations/ci.md`). This hook only has to
+catch problems before a slower, occasionally shared-box-contended CI run does; it does not
+replace it.
 
 Already ran `mise run setup` and skipped installing the hook, or cloned before B-008
 landed? Install it separately:

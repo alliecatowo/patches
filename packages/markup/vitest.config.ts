@@ -5,5 +5,6 @@ export default defineProject({
     name: 'markup',
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    maxWorkers: '50%',
   },
 });

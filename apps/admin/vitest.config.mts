@@ -11,5 +11,6 @@ export default defineProject({
     environment: 'node',
     globals: false,
     include: ['src/**/*.test.ts'],
+    maxWorkers: '50%',
   },
 });

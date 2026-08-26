@@ -11,5 +11,6 @@ export default defineProject({
     globals: false,
     setupFiles: ['./test/support/unit-env.ts'],
     include: ['src/**/*.test.ts'],
+    maxWorkers: '50%',
   },
 });

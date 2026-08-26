@@ -294,3 +294,16 @@ pins the 5.9.x line).
 'pull_request'` — a push to `main` always runs to completion rather than being
   cancelled by whatever pushes next, since `main` needs a completed status check on
   every commit.
+
+## Local pre-push vs CI (B-178/B-127)
+
+The lefthook `pre-push` hook (`lefthook.yml`) does **not** run plain `pnpm verify`/`pnpm
+test` — it runs a `--affected`-scoped, concurrency-bounded, `--continue=dependencies-
+successful` turbo invocation instead (documented in full in
+`docs/operations/local-development.md`'s "Git hooks" section). That divergence is
+deliberate and scoped to the local hook only: `ci.yml`'s `build-test` job still runs the
+full, unscoped `pnpm build && pnpm test` (and `quality` still runs the full
+`pnpm format:check && pnpm lint && pnpm typecheck`) against every package on every PR, and
+`ci-ok` remains the single required status check for `main`. Local pre-push exists to catch
+problems before a push, not to replace CI as the actual gate — narrowing its scope to move
+faster/more reliably on a shared dev box is safe precisely because CI's scope didn't change.
