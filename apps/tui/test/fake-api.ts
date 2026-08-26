@@ -43,6 +43,8 @@ import {
   type GetActorRequest as GetActorRequestInit,
   type GetActorResponse,
   type GetAuthPolicyResponse,
+  type GetConversationRequest as GetConversationRequestInit,
+  type GetConversationResponse,
   type GetMediaDownloadRequest as GetMediaDownloadRequestInit,
   type GetMediaDownloadResponse,
   type GetPageRequest as GetPageRequestInit,
@@ -71,6 +73,8 @@ import {
   type ListGuestbookResponse,
   type ListHomeFeedRequest as ListHomeFeedRequestInit,
   type ListHomeFeedResponse,
+  type ListConversationsRequest as ListConversationsRequestInit,
+  type ListConversationsResponse,
   type ListCredentialsResponse,
   type ListLocalFeedRequest as ListLocalFeedRequestInit,
   type ListLocalFeedResponse,
@@ -88,6 +92,8 @@ import {
   type ListRepliesResponse,
   type LoginRequest as LoginRequestInit,
   type LoginResponse,
+  type MarkConversationReadRequest as MarkConversationReadRequestInit,
+  type MarkConversationReadResponse,
   type MarkNotificationsReadRequest as MarkNotificationsReadRequestInit,
   type MarkNotificationsReadResponse,
   type MediaAttachment,
@@ -158,6 +164,7 @@ type FinalizeMediaUploadRequest = Full<FinalizeMediaUploadRequestInit>;
 type FollowActorRequest = Full<FollowActorRequestInit>;
 type GetActorByHandleRequest = Full<GetActorByHandleRequestInit>;
 type GetActorRequest = Full<GetActorRequestInit>;
+type GetConversationRequest = Full<GetConversationRequestInit>;
 type GetMediaDownloadRequest = Full<GetMediaDownloadRequestInit>;
 type GetPageRequest = Full<GetPageRequestInit>;
 type GetPostRequest = Full<GetPostRequestInit>;
@@ -167,6 +174,7 @@ type LikePostRequest = Full<LikePostRequestInit>;
 type ListActorPostsRequest = Full<ListActorPostsRequestInit>;
 type ListBlocksRequest = Full<ListBlocksRequestInit>;
 type ListBookmarksRequest = Full<ListBookmarksRequestInit>;
+type ListConversationsRequest = Full<ListConversationsRequestInit>;
 type ListFollowersRequest = Full<ListFollowersRequestInit>;
 type ListFollowingRequest = Full<ListFollowingRequestInit>;
 type ListGuestbookRequest = Full<ListGuestbookRequestInit>;
@@ -179,6 +187,7 @@ type ListPageRevisionsRequest = Full<ListPageRevisionsRequestInit>;
 type ListPostLikersRequest = Full<ListPostLikersRequestInit>;
 type ListRepliesRequest = Full<ListRepliesRequestInit>;
 type LoginRequest = Full<LoginRequestInit>;
+type MarkConversationReadRequest = Full<MarkConversationReadRequestInit>;
 type MarkNotificationsReadRequest = Full<MarkNotificationsReadRequestInit>;
 type MuteActorRequest = Full<MuteActorRequestInit>;
 type RefreshSessionRequest = Full<RefreshSessionRequestInit>;
@@ -501,6 +510,18 @@ export class FakeApiHandle {
         this.markNotificationsRead(request, accessToken),
       getUnreadCount: (request: GetUnreadCountRequest, accessToken: string) =>
         this.getUnreadCount(request, accessToken),
+      // P19-017: previously absent entirely — `MessagesScreen`'s `listConversations`
+      // call threw (not a fake network error, a `TypeError` from calling `undefined`),
+      // which `useKeysetList` swallowed into its error state. Every shell-layout test
+      // that opens the DM drawer was unknowingly asserting on that masked failure's
+      // fallback text rather than a genuine empty-inbox response. Fixed here rather
+      // than in those tests: an honest empty conversation list, not a hidden fault.
+      listConversations: (request: ListConversationsRequest, accessToken: string) =>
+        this.listConversations(request, accessToken),
+      getConversation: (request: GetConversationRequest, accessToken: string) =>
+        this.getConversation(request, accessToken),
+      markConversationRead: (request: MarkConversationReadRequest, accessToken: string) =>
+        this.markConversationRead(request, accessToken),
       blockActor: (request: BlockActorRequest, accessToken: string) =>
         this.blockActor(request, accessToken),
       unblockActor: (request: UnblockActorRequest, accessToken: string) =>
@@ -1457,6 +1478,50 @@ export class FakeApiHandle {
       (notification) => notification.readAt === undefined,
     ).length;
     return Promise.resolve({ $typeName: 'patches.v1.GetUnreadCountResponse', count });
+  }
+
+  // ---- DirectMessageService (spec §183, §194; ADR 0030/B-095, ADR 0032) ----
+  // No test in this file seeds a conversation; every reachable conversation is
+  // `E2EE_V1` and message bodies never travel through this service (`E2eeService`
+  // owns those). These handlers exist so `MessagesScreen`'s list/thread-metadata
+  // polling (P19-017) sees a genuine empty inbox rather than an unstubbed method
+  // throwing and being swallowed into the screen's poll-failed state.
+
+  private listConversations(
+    _request: ListConversationsRequest,
+    accessToken: string,
+  ): Promise<ListConversationsResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    return Promise.resolve({
+      $typeName: 'patches.v1.ListConversationsResponse',
+      conversations: [],
+      page: { $typeName: 'patches.v1.PageInfo', nextCursor: '', hasMore: false },
+    });
+  }
+
+  private getConversation(
+    _request: GetConversationRequest,
+    accessToken: string,
+  ): Promise<GetConversationResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    return Promise.resolve({ $typeName: 'patches.v1.GetConversationResponse' });
+  }
+
+  private markConversationRead(
+    _request: MarkConversationReadRequest,
+    accessToken: string,
+  ): Promise<MarkConversationReadResponse> {
+    const session = this.requireSession(accessToken);
+    if (session === undefined) {
+      return Promise.reject(grpcError(GrpcStatus.UNAUTHENTICATED, 'access token unknown/expired'));
+    }
+    return Promise.resolve({ $typeName: 'patches.v1.MarkConversationReadResponse' });
   }
 
   // ---- ModerationService (spec §55, §61–64) ----

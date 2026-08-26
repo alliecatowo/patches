@@ -24,6 +24,7 @@ import { ProfileMenu } from '../components/ProfileMenu.js';
 import { ThumbNavFab } from '../components/ThumbNavFab.js';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { useSession } from '../hooks/useSession.js';
+import { WEB_UNREAD_BADGE_POLL_MS } from '../lib/poll-intervals.js';
 import { useAppBadge } from '../pwa/useAppBadge.js';
 import styles from './RootLayout.module.css';
 
@@ -43,7 +44,9 @@ export function RootLayout(): JSX.Element {
     queryKey: ['notifications', 'unread-count', session?.actor.id],
     queryFn: () => api.notifications.getUnreadCount({}),
     enabled: session !== null,
-    refetchInterval: 30_000,
+    // ADR 0032 §1's published unread-badge SLA; single source of truth in
+    // `lib/poll-intervals.ts` (P19-021).
+    refetchInterval: WEB_UNREAD_BADGE_POLL_MS,
   });
 
   const unreadCount = unreadQuery.data?.count ?? 0;

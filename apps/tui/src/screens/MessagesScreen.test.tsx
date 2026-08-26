@@ -66,6 +66,15 @@ async function waitForFrame(lastFrame: () => string | undefined, text: string): 
   return frame;
 }
 
+/** Polls a predicate rather than a frame, same bounded-wait shape as `waitForFrame`. */
+async function waitForCondition(predicate: () => boolean, label: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 describe('MessagesScreen', () => {
   it(
     'renders no legacy server-visible disclosure and stays inside the accurate-language ' +
@@ -273,4 +282,61 @@ describe('MessagesScreen', () => {
     // fake a local zero over a failed mark-read.
     expect(back).toContain('3 unread');
   });
+
+  it(
+    'refreshes the conversation list on conversationListPollMs while it is the open, ' +
+      'active screen (P19-017, ADR 0032)',
+    async () => {
+      const api = fakeApi();
+      api.listConversations.mockResolvedValue(
+        create(ListConversationsResponseSchema, { conversations: [] }),
+      );
+      const { lastFrame } = render(
+        <MessagesScreen api={api} isActive conversationListPollMs={20} />,
+      );
+      await waitForFrame(lastFrame, 'No conversations yet.');
+      const initialCalls = api.listConversations.mock.calls.length;
+      await waitForCondition(
+        () => api.listConversations.mock.calls.length > initialCalls,
+        'a second conversation-list poll',
+      );
+    },
+  );
+
+  it('stops polling the conversation list once the screen is no longer active', async () => {
+    const api = fakeApi();
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [] }),
+    );
+    const { lastFrame, rerender } = render(
+      <MessagesScreen api={api} isActive conversationListPollMs={20} />,
+    );
+    await waitForFrame(lastFrame, 'No conversations yet.');
+
+    rerender(<MessagesScreen api={api} isActive={false} conversationListPollMs={20} />);
+    const callsAtInactive = api.listConversations.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(api.listConversations.mock.calls.length).toBe(callsAtInactive);
+  });
+
+  it(
+    'a failed background list refresh keeps the last-known conversations and states the ' +
+      'failure — it is never mistaken for "No conversations yet." (P19-017)',
+    async () => {
+      const api = fakeApi();
+      const existing = conversation('conversation-1');
+      api.listConversations.mockResolvedValueOnce(
+        create(ListConversationsResponseSchema, { conversations: [existing] }),
+      );
+      const { lastFrame } = render(
+        <MessagesScreen api={api} isActive conversationListPollMs={20} />,
+      );
+      await waitForFrame(lastFrame, '@alice');
+
+      api.listConversations.mockRejectedValueOnce(new Error('network down'));
+      const frame = await waitForFrame(lastFrame, 'Could not load conversations.');
+      expect(frame).toContain('@alice');
+      expect(frame).not.toContain('No conversations yet.');
+    },
+  );
 });
