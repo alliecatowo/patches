@@ -31,6 +31,7 @@ import {
   enrollRequestFromRecord,
   enrollThisDevice,
   loadStoredEnrollment,
+  publishRootRequestFromRecord,
   saveStoredEnrollment,
   generateEnrollment,
   type EnrollmentTransport,
@@ -219,10 +220,24 @@ describe('enrollment record codec', () => {
 // Orchestration
 // ---------------------------------------------------------------------------
 
+describe('publishRootRequestFromRecord', () => {
+  it('has no bootstrap root to republish for a record that did not create one', () => {
+    const { record } = generateEnrollment({
+      actorId: ACTOR_ID,
+      root: { privateKey: new Uint8Array(32).fill(1), publicKey: new Uint8Array(32).fill(2) },
+      nowMs: NOW,
+    });
+    expect(record.createdRoot).toBe(false);
+    expect(publishRootRequestFromRecord(record)).toBeUndefined();
+  });
+});
+
 interface TransportSpy {
   capabilityCalls: number;
   identityRootCalls: number;
   publishCalls: number[];
+  /** The identity root submitted at each `publishIdentityRoot` call. */
+  publishedRoots: ({ publicKey?: Uint8Array; selfSignature?: Uint8Array } | undefined)[];
   /** The vault contents observed at each `enrollDevice` call. */
   vaultAtEnrollCall: (Uint8Array | undefined)[];
   enrollCalls: { deviceIds: string[] }[];
@@ -234,6 +249,10 @@ function fakeTransport(
     readonly capabilityState?: number | undefined;
     readonly protocolVersions?: string[] | undefined;
     readonly remoteRoot?: boolean | undefined;
+    /** Public key the node reports as this account's published root (implies `remoteRoot`). */
+    readonly remoteRootPublicKey?: Uint8Array | undefined;
+    /** Failure `GetIdentityRoot` raises instead of answering (a network blip, not absence). */
+    readonly identityRootError?: Error | undefined;
     readonly failEnrollOnce?: boolean | undefined;
   },
 ): { transport: EnrollmentTransport; spy: TransportSpy } {
@@ -241,6 +260,7 @@ function fakeTransport(
     capabilityCalls: 0,
     identityRootCalls: 0,
     publishCalls: [],
+    publishedRoots: [],
     vaultAtEnrollCall: [],
     enrollCalls: [],
   };
@@ -259,11 +279,15 @@ function fakeTransport(
     getIdentityRoot(actorId: string) {
       state.identityRootCalls += 1;
       expect(actorId).toBe(ACTOR_ID);
-      if (options?.remoteRoot === true) {
+      if (options?.identityRootError !== undefined) {
+        return Promise.reject(options.identityRootError);
+      }
+      const publicKey = options?.remoteRootPublicKey;
+      if (publicKey !== undefined || options?.remoteRoot === true) {
         return Promise.resolve({
           actorId,
           generation: 1,
-          publicKey: new Uint8Array(32).fill(7),
+          publicKey: publicKey ?? new Uint8Array(32).fill(7),
           rootBytes: new Uint8Array(8),
           selfSignature: new Uint8Array(64),
         } as never);
@@ -272,6 +296,7 @@ function fakeTransport(
     },
     publishIdentityRoot(request) {
       state.publishCalls.push(request.identityRoot?.generation ?? -1);
+      state.publishedRoots.push(request.identityRoot);
       return Promise.resolve({});
     },
     async enrollDevice(request) {
@@ -363,7 +388,7 @@ describe('enrollThisDevice orchestration', () => {
     expect(spy.identityRootCalls).toBe(0);
   });
 
-  it('refuses every non-usable capability state, including a failed probe', async () => {
+  it('refuses every non-usable capability state the node actually reports', async () => {
     for (const state of [
       E2EE_CAPABILITY_STATE.UNSPECIFIED,
       E2EE_CAPABILITY_STATE.DISABLED,
@@ -378,7 +403,9 @@ describe('enrollThisDevice orchestration', () => {
       const outcome = await enrollThisDevice({ actorId: ACTOR_ID, transport, vault });
       expect(outcome.status).toBe('refused');
     }
-    // A probe that throws is treated like "capability unknown" — refused, not guessed.
+  });
+
+  it('surfaces a failed capability probe instead of claiming the node disabled E2EE', async () => {
     const vault = freshVault();
     const failingProbe: EnrollmentTransport = {
       getCapability: () => Promise.reject(new Error('down')),
@@ -386,8 +413,35 @@ describe('enrollThisDevice orchestration', () => {
       publishIdentityRoot: () => Promise.resolve({}),
       enrollDevice: () => Promise.resolve({}),
     };
-    const outcome = await enrollThisDevice({ actorId: ACTOR_ID, transport: failingProbe, vault });
-    expect(outcome.status).toBe('refused');
+    await expect(
+      enrollThisDevice({ actorId: ACTOR_ID, transport: failingProbe, vault }),
+    ).rejects.toThrow('down');
+    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+  });
+
+  it('does NOT mint or persist anything when the identity-root lookup fails', async () => {
+    const vault = freshVault();
+    const { transport, spy } = fakeTransport(vault, {
+      identityRootError: new Error('network down'),
+    });
+    await expect(enrollThisDevice({ actorId: ACTOR_ID, transport, vault })).rejects.toThrow(
+      'network down',
+    );
+    // The point of the hardening: a failed request is not an answer. Nothing was minted,
+    // nothing persisted, and no fresh account root was published.
+    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+    expect(spy.publishCalls).toHaveLength(0);
+    expect(spy.enrollCalls).toHaveLength(0);
+
+    // The retry re-asks rather than reusing the failure as "no root published".
+    const retry = fakeTransport(vault);
+    const outcome = await enrollThisDevice({
+      actorId: ACTOR_ID,
+      transport: retry.transport,
+      vault,
+    });
+    expect(retry.spy.identityRootCalls).toBe(1);
+    expect(outcome.status).toBe('enrolled');
   });
 
   it('requires the node to speak patches-e2ee-v1', async () => {
@@ -426,7 +480,8 @@ describe('enrollThisDevice orchestration', () => {
     const partial = await loadStoredEnrollment(vault);
     expect(partial?.submitted).toBe(false);
 
-    const retry = fakeTransport(vault);
+    // The first attempt's root DID land, so the node now serves it back.
+    const retry = fakeTransport(vault, { remoteRootPublicKey: partial?.rootPublic });
     const outcome = await enrollThisDevice({
       actorId: ACTOR_ID,
       transport: retry.transport,
@@ -436,9 +491,77 @@ describe('enrollThisDevice orchestration', () => {
     expect(outcome.status).toBe('enrolled');
     // Identical device material across attempts.
     expect(retry.spy.enrollCalls[0]?.deviceIds[0]).toBe(failing.spy.enrollCalls[0]?.deviceIds[0]);
+    // The remote root is re-checked on the resume, and recognised as ours.
+    expect(retry.spy.identityRootCalls).toBe(1);
     // The bootstrap publish happened exactly once across both attempts.
     expect(failing.spy.publishCalls).toEqual([1]);
     expect(retry.spy.publishCalls).toHaveLength(0);
+  });
+
+  it('republishes the identical bootstrap root when the first publish never landed', async () => {
+    const vault = freshVault();
+    const failing = fakeTransport(vault, { failEnrollOnce: true });
+    await expect(
+      enrollThisDevice({
+        actorId: ACTOR_ID,
+        transport: failing.transport,
+        vault,
+        nowMs: () => NOW,
+      }),
+    ).rejects.toThrow('transport unavailable');
+    const partial = await loadStoredEnrollment(vault);
+    expect(partial?.submitted).toBe(false);
+    if (partial === undefined) return;
+
+    // The node reports no root: whatever happened to the first publish, this device must
+    // not enroll against an authority the node never received.
+    const retry = fakeTransport(vault);
+    const outcome = await enrollThisDevice({
+      actorId: ACTOR_ID,
+      transport: retry.transport,
+      vault,
+      nowMs: () => NOW + 5_000,
+    });
+
+    expect(outcome.status).toBe('enrolled');
+    expect(retry.spy.publishCalls).toEqual([1]);
+    const expected = publishRootRequestFromRecord(partial);
+    // Same root, byte for byte — never a second one minted at the later clock.
+    expect([...(expected?.identityRoot?.publicKey ?? [])]).toEqual([...partial.rootPublic]);
+    expect(retry.spy.publishedRoots[0]?.publicKey).toEqual(expected?.identityRoot?.publicKey);
+    expect(retry.spy.publishedRoots[0]?.selfSignature).toEqual(
+      expected?.identityRoot?.selfSignature,
+    );
+  });
+
+  it('refuses when another device published a different root while the record sat unsubmitted', async () => {
+    const vault = freshVault();
+    const failing = fakeTransport(vault, { failEnrollOnce: true });
+    await expect(
+      enrollThisDevice({
+        actorId: ACTOR_ID,
+        transport: failing.transport,
+        vault,
+        nowMs: () => NOW,
+      }),
+    ).rejects.toThrow('transport unavailable');
+
+    const retry = fakeTransport(vault, { remoteRootPublicKey: new Uint8Array(32).fill(9) });
+    const outcome = await enrollThisDevice({
+      actorId: ACTOR_ID,
+      transport: retry.transport,
+      vault,
+      nowMs: () => NOW + 5_000,
+    });
+
+    expect(outcome.status).toBe('refused');
+    if (outcome.status !== 'refused') return;
+    expect(outcome.reason).toBe('remote-root');
+    expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.remoteRoot);
+    // Never adopted: no device enrolled under an authority key this machine does not hold.
+    expect(retry.spy.enrollCalls).toHaveLength(0);
+    expect(retry.spy.publishCalls).toHaveLength(0);
+    expect((await loadStoredEnrollment(vault))?.submitted).toBe(false);
   });
 });
 
