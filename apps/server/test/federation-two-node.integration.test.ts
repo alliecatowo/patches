@@ -371,51 +371,41 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
       ).toBeGreaterThan(0);
     }, 60_000);
 
-    // KNOWN BUG, reported not fixed here (outside this task's owned/forbidden files):
-    // `PostService.createPost`'s new-post branch calls `this.federation.publishPost(manager,
-    // id)` *before* `this.tagExtraction.extractAndAttach(manager, id, ...)`
-    // (`apps/server/src/modules/posts/post.service.ts`, inside the `dataSource.transaction`
-    // in `createPost`). `publishPost` reads `post_tags` to build the outbound Note's `tag`
-    // array, so at that point in the transaction it always sees zero rows — no post's
-    // Hashtag ever reaches a federated peer, regardless of anything in P18-004's
-    // `handleAnnounce`/`handleCreate` (both are correct; this never reaches them with any
-    // tags to ingest). `it.fails` below asserts the *intended* behavior and is expected to
-    // keep failing until `post.service.ts` runs tag extraction before `publishPost` — if this
-    // ever starts passing on its own, `it.fails` itself will fail, flagging the fix landed.
-    it.fails(
-      "P18-008: a federated post's Hashtag tags land in the local tag feed",
-      async () => {
-        const erin = await registerFreshActor(nodeA, 'erin');
-        const frank = await registerFreshActor(nodeB, 'frank');
+    // P18-011: this lab caught a real ordering bug — `PostService.createPost`'s new-post
+    // branch ran `this.federation.publishPost` before `this.tagExtraction.extractAndAttach`,
+    // so `publishPost`'s `post_tags` read (P18-006) always saw zero rows and shipped a
+    // tagless Note. Fixed by swapping the order in `post.service.ts`; this now asserts the
+    // real (previously broken) behavior.
+    it("P18-008: a federated post's Hashtag tags land in the local tag feed", async () => {
+      const erin = await registerFreshActor(nodeA, 'erin');
+      const frank = await registerFreshActor(nodeB, 'frank');
 
-        const hostB = new URL(nodeB.publicOrigin).host;
-        const frankOnA = await discoverRemoteActor(nodeA.dataSource, frank.handle, hostB);
-        await followAndAccept(nodeA, nodeB, erin.accessToken, frankOnA.id);
+      const hostB = new URL(nodeB.publicOrigin).host;
+      const frankOnA = await discoverRemoteActor(nodeA.dataSource, frank.handle, hostB);
+      await followAndAccept(nodeA, nodeB, erin.accessToken, frankOnA.id);
 
-        const tagName = `patcheslab${testSuffix()}`;
-        const created = await createAndDeliverPost(nodeB, frank.accessToken, {
-          body: `federation lab check #${tagName} today`,
-        });
+      const tagName = `patcheslab${testSuffix()}`;
+      const created = await createAndDeliverPost(nodeB, frank.accessToken, {
+        body: `federation lab check #${tagName} today`,
+      });
 
-        const homeFeed = await callUnary<ListHomeFeedRequest, ListHomeFeedResponse>(
-          nodeA.feeds.listHomeFeed.bind(nodeA.feeds),
-          { cursor: '', limit: 20 },
-          { accessToken: erin.accessToken },
-        );
-        // A federated post gets its own freshly-minted local id on ingestion (`handleCreate`),
-        // never the origin's id — match on body, exactly as the P8-008 test above does.
-        const federatedPost = homeFeed.posts.find((post) => post.body === created.post?.body);
-        expect(federatedPost).toBeDefined();
+      const homeFeed = await callUnary<ListHomeFeedRequest, ListHomeFeedResponse>(
+        nodeA.feeds.listHomeFeed.bind(nodeA.feeds),
+        { cursor: '', limit: 20 },
+        { accessToken: erin.accessToken },
+      );
+      // A federated post gets its own freshly-minted local id on ingestion (`handleCreate`),
+      // never the origin's id — match on body, exactly as the P8-008 test above does.
+      const federatedPost = homeFeed.posts.find((post) => post.body === created.post?.body);
+      expect(federatedPost).toBeDefined();
 
-        const tagFeed = await callUnary<ListTagFeedRequest, ListTagFeedResponse>(
-          nodeA.feeds.listTagFeed.bind(nodeA.feeds),
-          { tag: tagName, cursor: '', limit: 20 },
-          { accessToken: erin.accessToken },
-        );
-        expect(tagFeed.posts.some((post) => post.id === federatedPost?.id)).toBe(true);
-      },
-      30_000,
-    );
+      const tagFeed = await callUnary<ListTagFeedRequest, ListTagFeedResponse>(
+        nodeA.feeds.listTagFeed.bind(nodeA.feeds),
+        { tag: tagName, cursor: '', limit: 20 },
+        { accessToken: erin.accessToken },
+      );
+      expect(tagFeed.posts.some((post) => post.id === federatedPost?.id)).toBe(true);
+    }, 30_000);
 
     it('P18-008: a quote of a remote post and a local-from-remote quote each record a quote_authorizations row', async () => {
       const grace = await registerFreshActor(nodeA, 'grace');

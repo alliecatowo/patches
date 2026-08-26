@@ -103,17 +103,17 @@ a process with an empty heap, it cannot be a memoized JS value from the first ca
 be `buildAnnounceUndoAnnounce` re-reading the (still-persisted) `reposts` row — the B-079
 regression class this test exists to catch.
 
-**Known bug found by this round trip (reported, not fixed — outside P18-008's owned/forbidden
-files):** the tag-feed example is `it.fails(...)`. `PostService.createPost`'s new-post branch
-(`apps/server/src/modules/posts/post.service.ts`, inside `createPost`'s `dataSource
-.transaction`) calls `this.federation.publishPost(manager, id)` _before_ `this.tagExtraction
-.extractAndAttach(manager, id, ...)`. `publishPost` reads `post_tags` to build the outbound
-Note's `tag` array, so at that point in the transaction it always sees zero rows — no post's
-`Hashtag` ever reaches a federated peer, regardless of anything in `handleAnnounce`/
-`handleCreate` (P18-004/P18-007), which are both correct and simply never receive a tag to
-ingest. A fix would swap the two calls' order in `post.service.ts`. The test asserts the
-_intended_ behavior and is expected to keep failing until that lands; if it ever starts
-passing, `it.fails` itself fails, flagging the fix.
+**Bug found by this round trip, fixed in P18-011:** the tag-feed example caught
+`PostService.createPost`'s new-post branch (`apps/server/src/modules/posts/post.service.ts`,
+inside `createPost`'s `dataSource.transaction`) calling `this.federation.publishPost(manager,
+id)` _before_ `this.tagExtraction.extractAndAttach(manager, id, ...)`. `publishPost` reads
+`post_tags` to build the outbound Note's `tag` array, so at that point in the transaction it
+always saw zero rows — no post's `Hashtag` ever reached a federated peer, regardless of
+anything in `handleAnnounce`/`handleCreate` (P18-004/P18-007), which are both correct and
+simply never received a tag to ingest. The fix swaps the two calls' order in
+`post.service.ts`; tag extraction never throws (it catches persistence/extraction-system
+failures and returns `[]`, §181/§148), so the reorder cannot turn a tag-extraction failure
+into a dropped post. The test now asserts the real (fixed) behavior as a normal `it(...)`.
 
 Run the whole file (same command as above, includes the P18-008 examples):
 
@@ -124,23 +124,23 @@ TEST_DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_server 
   --config vitest.integration.config.mts federation-two-node
 ```
 
-#### Verified run (2026-08-25)
+#### Verified run (2026-08-25, post-P18-011 fix)
 
 ```
- RUN  v4.1.11 /home/allie/develop/patches-agent-wt/1787721536-881301/apps/server
+ RUN  v4.1.11 /home/allie/develop/patches-agent-wt/1787722809-959882/apps/server
 
 
  Test Files  1 passed (1)
-      Tests  3 passed | 1 expected fail (4)
-   Start at  22:35:24
-   Duration  11.27s (transform 1.70s, setup 632ms, import 2.25s, tests 8.29s, environment 0ms)
+      Tests  4 passed (4)
+   Start at  22:42:18
+   Duration  10.78s (transform 1.43s, setup 500ms, import 2.18s, tests 8.01s, environment 0ms)
 ```
 
-The 3 passing examples: the original P8-008 Follow/Create/Delete round trip, the P18-008
-repost/unrepost Announce-id-stability round trip (including the node A process restart), and
-the P18-008 quote round trip (quote of remote + local-from-remote, both recording a `VERIFIED`
-`quote_authorizations` row with `claimedPolicy: 'ANYONE'`). The 1 expected failure is the
-tag-feed example documenting the bug above.
+The 4 passing examples: the original P8-008 Follow/Create/Delete round trip, the P18-008
+repost/unrepost Announce-id-stability round trip (including the node A process restart), the
+P18-008 tag-feed round trip (now passing after the P18-011 ordering fix above), and the P18-008
+quote round trip (quote of remote + local-from-remote, both recording a `VERIFIED`
+`quote_authorizations` row with `claimedPolicy: 'ANYONE'`).
 
 ## Manual two-node lab (B-029)
 
