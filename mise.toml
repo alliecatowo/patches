@@ -168,6 +168,10 @@ pnpm --filter @patches/web run dist:check
 pnpm exec wrangler pages deploy apps/web/dist --project-name patches-web --branch main --commit-dirty=true
 """
 
+[tasks."merge-pr"]
+description = "Merge a PR only once the required `ci-ok` check is actually green — `mise run merge-pr -- <n>`. `main`'s protect-main ruleset grants repository admins an always-on bypass, so an admin can merge a red or never-run PR without noticing; this makes that bypass explicit (`--bypass \"<reason>\"`), and records the reason in the merge commit. See docs/operations/ci.md"
+run = "node \"$MISE_PROJECT_ROOT/infra/scripts/merge-pr.mjs\""
+
 [tasks.spike]
 description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R rerender, d delete, q quit)"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
