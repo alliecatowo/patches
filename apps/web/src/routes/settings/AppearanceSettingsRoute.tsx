@@ -137,6 +137,10 @@ export function AppearanceSettingsRoute(): JSX.Element {
             Radial fan
           </label>
         </fieldset>
+        <p className={styles['hint']}>
+          The quick menu is the floating button on narrow screens. On a wide window the sidebar
+          handles navigation and the button is hidden, so this setting has no visible effect here.
+        </p>
         <fieldset className={styles['choiceGroup']}>
           <legend>Timeline density</legend>
           <label>

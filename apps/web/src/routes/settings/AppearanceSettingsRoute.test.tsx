@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -234,5 +237,24 @@ describe('AppearanceSettingsRoute', () => {
 
     renderRoute();
     expect(screen.getByText(/Shake to report is enabled/)).toBeInTheDocument();
+  });
+
+  // B-183: the quick-menu setting is real and propagates live, but `ThumbNavFab` is hidden
+  // outright above 720px while /settings/appearance is reachable from the desktop sidebar —
+  // so a desktop user changes it and sees nothing, and reports it as broken. The hint and the
+  // media query are one contract: if either side moves, this fails rather than silently
+  // reverting the surface to a lie.
+  it('says the quick-menu setting only affects the narrow-screen floating button', () => {
+    renderRoute();
+
+    expect(
+      screen.getByText(/only affects|floating button on narrow screens|hidden/i),
+    ).toBeInTheDocument();
+
+    // vitest's cwd is the `apps/web` workspace root.
+    const css = readFileSync(resolve('src/components/ThumbNavFab.module.css'), 'utf8');
+    expect(css).toMatch(
+      /@media\s*\(min-width:\s*721px\)\s*\{\s*\.fabContainer\s*\{\s*display:\s*none/,
+    );
   });
 });
