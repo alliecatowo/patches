@@ -383,9 +383,12 @@ hook now copies the main checkout's `.env` into each new worktree before the fir
 build. General rule: anything in `globalDependencies` that isn't checked in must be
 materialized identically in every checkout sharing the cache, or the "shared" cache
 silently isn't.
+
 ## 2026-08-25 — `tasks.md` drifts behind the code, and the drift costs whole agent runs
+
 **Learning:** In one session, four separate tickets turned out to be substantially or entirely
 implemented before anyone started work on them:
+
 - **P15-008** — an agent was dispatched to build it; it already existed.
 - **B-098** (message notifications) — the wiring had landed under **B-110**, itself labelled in
   `tasks.md` as an "obsolete duplicate of canonical B-098". Only a missing mute-suppression test
@@ -393,12 +396,13 @@ implemented before anyone started work on them:
 - **B-101** (TUI E2EE runtime) — read as "the client half of the protocol doesn't exist yet"; ~80%
   was merged under other PRs, and the genuinely-open part was a _different_ problem (B-124).
 - **B-109** (envelope/prekey retention sweep) — fully implemented, tests and all, ticket untouched.
-The failure is asymmetric and expensive in one direction: a ticket that _understates_ what exists
-sends an agent to rebuild working code, and rebuilt code is worse than the original because it has
-no history behind its edge cases. A ticket that overstates costs one grep.
-**Action taken:** briefs now tell the agent to verify the board against the code first, and to
-rewrite a stale ticket in place rather than either ticking it blindly or building over it.
-Rules of thumb:
+  The failure is asymmetric and expensive in one direction: a ticket that _understates_ what exists
+  sends an agent to rebuild working code, and rebuilt code is worse than the original because it has
+  no history behind its edge cases. A ticket that overstates costs one grep.
+  **Action taken:** briefs now tell the agent to verify the board against the code first, and to
+  rewrite a stale ticket in place rather than either ticking it blindly or building over it.
+  Rules of thumb:
+
 1. **Before planning slices, grep for the ticket's own key symbols.** If the ticket names
    `createVaultE2eeSender`, `grep -rn createVaultE2eeSender` before deciding it doesn't exist. This
    costs one tool call and has now saved four agent runs.
