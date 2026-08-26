@@ -12,6 +12,7 @@ import {
   type ConversationKind as DbConversationKind,
 } from '@patches/database';
 import { E2EE_GROUP_MAX_MEMBERS, E2EE_PROTOCOL_V1 } from '@patches/domain';
+import { e2eeEnvelopeListAgeSeconds } from '@patches/observability/metrics';
 import { dateToTimestamp } from '@patches/proto';
 import {
   ConversationSecurityMode,
@@ -421,6 +422,10 @@ export class E2eeConversationService {
           this.dataSource.manager,
           envelope.logicalMessage,
         );
+        // ADR 0032 T1 instrument (`e2eeEnvelopeListAgeSeconds`'s own doc comment has the full
+        // "why this and not exact first-delivery latency" reasoning): a duration value only,
+        // no envelope/conversation/actor/device id ever reaches this metric.
+        e2eeEnvelopeListAgeSeconds.observe((Date.now() - envelope.receivedAt.getTime()) / 1000);
         return {
           envelopeId: envelope.id,
           logicalMessageId: envelope.logicalMessageId,
