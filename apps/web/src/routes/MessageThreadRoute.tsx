@@ -14,8 +14,8 @@ import type { InboxRow } from '../e2ee/runtime.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
-import { useToast } from '../components/ToastProvider.js';
 import styles from './MessagesRoute.module.css';
+import { toast } from 'sonner';
 
 const POLL_INTERVAL_MS = 8_000;
 
@@ -33,7 +33,6 @@ export function MessageThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const conversationId = id ?? '';
   const session = useSession();
-  const toast = useToast();
   const e2eeStatus = useE2ee(session);
 
   const conversationQuery = useQuery({
@@ -101,11 +100,9 @@ export function MessageThreadRoute(): JSX.Element {
       setRows((previous) => [...previous, local]);
       setDraft('');
     } catch (error) {
-      toast.pushToast({
-        message:
-          error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed,
-        tone: 'error',
-      });
+      toast.error(
+        error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed,
+      );
     } finally {
       setSending(false);
     }
@@ -114,16 +111,22 @@ export function MessageThreadRoute(): JSX.Element {
   return (
     <div className={styles['thread']}>
       {securityMode === ConversationSecurityMode.E2EE_V1 ? (
-        <p role="note" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+        <p
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
           {requiredConversationDisclosure('E2EE_V1')}
         </p>
       ) : null}
 
       {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
-        <div role="note" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+        <div
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
           <p>
-            {WEB_E2EE_COPY.notEnrolled} This browser can be enrolled as a messaging device from
-            the Messages list.
+            {WEB_E2EE_COPY.notEnrolled} This browser can be enrolled as a messaging device from the
+            Messages list.
           </p>
         </div>
       ) : null}
@@ -136,7 +139,10 @@ export function MessageThreadRoute(): JSX.Element {
         </div>
       )}
       {e2eeStatus.kind === 'fault' ? (
-        <div role="alert" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+        <div
+          role="alert"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
           <p>{e2eeStatus.copy}</p>
         </div>
       ) : null}
@@ -188,10 +194,7 @@ export function MessageThreadRoute(): JSX.Element {
             style={{ flex: 1, resize: 'vertical' }}
             placeholder={sessionSetupAvailable ? 'Write a message…' : 'Sending is unavailable'}
           />
-          <button
-            type="submit"
-            disabled={!sessionSetupAvailable || sending || draft.trim() === ''}
-          >
+          <button type="submit" disabled={!sessionSetupAvailable || sending || draft.trim() === ''}>
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>

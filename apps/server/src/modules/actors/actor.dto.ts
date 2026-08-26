@@ -111,8 +111,10 @@ function nameTagStyleOf(raw: string | null): NameTagStyleValue | null {
  * "field absent" instead of a 500. Exported because the embedded-actor summary
  * (`auth.dto.ts`'s `ActorSummary`, B-129: nameplates must render in feeds) reuses it.
  */
-export function toNameplateSummary(raw: Record<string, unknown> | null): NameplateSummary | null {
-  if (raw === null) return null;
+export function toNameplateSummary(
+  raw: Record<string, unknown> | null | undefined,
+): NameplateSummary | null {
+  if (raw === null || raw === undefined) return null;
   const string = (value: unknown): string => (typeof value === 'string' ? value : '');
   const stringArray = (value: unknown): string[] =>
     Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];

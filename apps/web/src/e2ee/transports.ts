@@ -16,7 +16,7 @@
  */
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { Client, Transport } from '@connectrpc/connect';
-import { E2eeService } from '@patches/proto/es';
+import type { E2eeService } from '@patches/proto/es';
 
 import type { SignedDeviceRoster } from '@patches/crypto';
 import type { LocalDeviceIdentity } from './local-identity.js';
@@ -184,7 +184,8 @@ export function bindConversationCreate(api: E2eeApiSurface): E2eeConversationCre
 // ---------------------------------------------------------------------------
 
 export interface CreateWebEnrollmentTransportOptions {
-  readonly api: E2eeApiSurface | (Pick<E2eeApiSurface, 'e2ee'> & { readonly transport?: Transport });
+  readonly api:
+    E2eeApiSurface | (Pick<E2eeApiSurface, 'e2ee'> & { readonly transport?: Transport });
 }
 
 /** Implements `EnrollmentTransport` over the Connect client, including the one error

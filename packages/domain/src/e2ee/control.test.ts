@@ -255,7 +255,15 @@ describe('E2EE control envelope codec (B-093/B-100)', () => {
       createdAtMs: 1,
       messageIds: ['msg-1'],
     });
-    expectContractError(() => decodeControlEnvelope(good.subarray(0, good.length - 1)), 'truncat');
+    // Truncating by exactly one byte can land inside the final string part's *content*
+    // (fatal-UTF-8 error) or inside its length prefix / past its end (truncated error) —
+    // both are E2eeContractError rejections of the same truncation.
+    expect(() => decodeControlEnvelope(good.subarray(0, good.length - 1))).toThrow(
+      E2eeContractError,
+    );
+    expect(() => decodeControlEnvelope(good.subarray(0, good.length - 1))).toThrow(
+      /truncated|not valid UTF-8/,
+    );
     const padded = new Uint8Array(good.length + 1);
     padded.set(good, 0);
     expectContractError(() => decodeControlEnvelope(padded), 'trailing');

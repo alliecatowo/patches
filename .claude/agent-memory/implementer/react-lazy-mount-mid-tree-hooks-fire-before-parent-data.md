@@ -7,7 +7,7 @@ metadata:
 
 When a parent only renders `<Child prop={query.data?.field} />` inside a branch gated on the same
 condition that flips `enabled: true` on that query (e.g. a tab switch), the child's first mount
-happens at the exact moment the fetch *starts*, not after it resolves. A `useState(() =>
+happens at the exact moment the fetch _starts_, not after it resolves. A `useState(() =>
 deriveFrom(prop))` initializer in that child permanently freezes on the pre-fetch value — it only
 runs once, and the child doesn't unmount/remount on data arrival since it stays in the tree via a
 `return null` early exit rather than being removed.

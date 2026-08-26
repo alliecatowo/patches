@@ -46,11 +46,7 @@ export {
   decodeRatchetState,
 } from '@patches/crypto';
 
-export {
-  aeadEncrypt,
-  aeadDecrypt,
-  hkdfSha256,
-} from '@patches/crypto';
+export { aeadEncrypt, aeadDecrypt, hkdfSha256 } from '@patches/crypto';
 
 export type {
   CertifiedDevice,

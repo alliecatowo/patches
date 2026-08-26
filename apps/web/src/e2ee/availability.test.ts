@@ -6,10 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from './availability.js';
+import { WEB_E2EE_SESSION_UNAVAILABLE_COPY, webE2eeSessionSetupAvailable } from './availability.js';
 import { WEB_E2EE_COPY } from './web-e2ee.js';
 
 describe('web E2EE availability copy', () => {

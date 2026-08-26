@@ -57,7 +57,6 @@ import {
   openSealedVaultBlob,
   parseSealedVaultBlob,
   sealVaultBlob,
-  type VaultDocument,
   type VaultSessionRecord,
 } from './vault-format.js';
 import { VaultCorruptionError, VaultRollbackError, VaultTransactionError } from './vault-errors.js';
@@ -155,10 +154,7 @@ function fromBase64(value: string, expectedLength: number): Uint8Array | undefin
 /** Loads (or creates once, ever) the account's wrapping secret. A malformed stored
  * value is treated as absent only when no vault exists yet; once a vault exists the
  * secret must decode, otherwise the vault would be silently unreadable-by-choice. */
-function loadOrCreateSecret(
-  account: WebVaultAccount,
-  storage: VaultBrowserStorage,
-): Uint8Array {
+function loadOrCreateSecret(account: WebVaultAccount, storage: VaultBrowserStorage): Uint8Array {
   const stored = storage.getItem(secretKey(account));
   if (stored !== null) {
     const parsed = fromBase64(stored, SECRET_BYTES);
@@ -193,10 +189,7 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy;
 }
 
-export async function deriveWrappingKey(
-  secret: Uint8Array,
-  salt: Uint8Array,
-): Promise<Uint8Array> {
+export async function deriveWrappingKey(secret: Uint8Array, salt: Uint8Array): Promise<Uint8Array> {
   if (typeof crypto === 'undefined' || crypto.subtle === undefined) {
     // No environment for the reviewed derivation path — refuse rather than substituting
     // an unreviewed KDF on the fly.
@@ -251,7 +244,9 @@ function databaseName(account: WebVaultAccount): string {
 function requestDone<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.addEventListener('success', () => resolve(request.result));
-    request.addEventListener('error', () => reject(request.error ?? new Error('IndexedDB failure')));
+    request.addEventListener('error', () =>
+      reject(request.error ?? new Error('IndexedDB failure')),
+    );
   });
 }
 
@@ -359,7 +354,11 @@ export class IndexedDbRatchetVaultStore implements RatchetVaultStore {
 
     // Salt first: created once, ever, beside the vault.
     const salt = await withStateStore(this.db, 'readwrite', async (store) => {
-      const stored = await requestDone<Uint8Array | undefined>(store.get(SALT_KEY));
+      // IDBObjectStore.get's built-in typing always returns IDBRequest<any> regardless of
+      // what's stored; this cast asserts the shape this vault itself wrote at SALT_KEY.
+      const stored = await requestDone<Uint8Array | undefined>(
+        store.get(SALT_KEY) as IDBRequest<Uint8Array | undefined>,
+      );
       if (stored !== undefined) return stored;
       const fresh = randomBytes(SALT_BYTES);
       store.put(fresh, SALT_KEY);
@@ -374,8 +373,9 @@ export class IndexedDbRatchetVaultStore implements RatchetVaultStore {
     );
     zeroize(wrappingKey);
 
+    // Same IDBObjectStore.get typing gap as above: cast to the shape this vault wrote.
     const blob = await withStateStore(this.db, 'readonly', (store) =>
-      requestDone<Uint8Array | undefined>(store.get(DOC_KEY)),
+      requestDone<Uint8Array | undefined>(store.get(DOC_KEY) as IDBRequest<Uint8Array | undefined>),
     );
 
     const anchor = readAnchor(this.account, this.storage);
@@ -436,17 +436,36 @@ export class IndexedDbRatchetVaultStore implements RatchetVaultStore {
     this.generation = generation;
     // Anchor after the vault commit: an anchor that lags weakens rollback detection for
     // one generation; an anchor that leads would false-positive a healthy vault.
-    writeAnchor(this.account, this.storage, Math.max(readAnchor(this.account, this.storage), generation));
+    writeAnchor(
+      this.account,
+      this.storage,
+      Math.max(readAnchor(this.account, this.storage), generation),
+    );
   }
 
-  async listSessions(): Promise<string[]> {
-    this.assertUsable();
-    return [...this.sessions.keys()];
+  listSessions(): Promise<string[]> {
+    // Not async: assertUsable's throw must surface as a rejection (callers await this),
+    // which a synchronous throw from a non-async function would bypass.
+    try {
+      this.assertUsable();
+    } catch (err) {
+      return Promise.reject(
+        err instanceof Error ? err : new VaultTransactionError('The vault is not usable.'),
+      );
+    }
+    return Promise.resolve([...this.sessions.keys()]);
   }
 
-  async getRecord(sessionId: string): Promise<Uint8Array | undefined> {
-    this.assertUsable();
-    return this.sessions.get(sessionId)?.live.slice();
+  getRecord(sessionId: string): Promise<Uint8Array | undefined> {
+    // Same rejection-not-throw requirement as listSessions above.
+    try {
+      this.assertUsable();
+    } catch (err) {
+      return Promise.reject(
+        err instanceof Error ? err : new VaultTransactionError('The vault is not usable.'),
+      );
+    }
+    return Promise.resolve(this.sessions.get(sessionId)?.live.slice());
   }
 
   /** Applies one map mutation durably: commit, then zeroize whatever the commit

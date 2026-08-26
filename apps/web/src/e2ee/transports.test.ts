@@ -29,9 +29,7 @@ const identity = {
 
 describe('createWebEnrollmentTransport — getIdentityRoot', () => {
   it('reports absence when the node answers NOT_FOUND', async () => {
-    const getIdentityRoot = vi.fn(() =>
-      Promise.reject(new ConnectError('no root', Code.NotFound)),
-    );
+    const getIdentityRoot = vi.fn(() => Promise.reject(new ConnectError('no root', Code.NotFound)));
 
     const transport = createWebEnrollmentTransport({ api: apiWith({ getIdentityRoot }) });
 

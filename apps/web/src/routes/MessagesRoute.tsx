@@ -177,9 +177,7 @@ export function E2eePanel({
   }
   return (
     <div role="note" style={panelStyle}>
-      <p>
-        {requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.
-      </p>
+      <p>{requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.</p>
       {webE2eeSessionSetupAvailable() ? null : <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>}
     </div>
   );

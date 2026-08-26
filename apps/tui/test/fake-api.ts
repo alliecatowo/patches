@@ -704,6 +704,8 @@ export class FakeApiHandle {
       $typeName: 'patches.v1.Actor',
       id: user.id,
       handle: user.handle,
+      // fake-api only models local users; a federated one would carry its home node's domain.
+      homeServer: '',
       displayName: user.displayName,
       bio: user.bio,
       locationText: user.locationText ?? '',
@@ -746,6 +748,7 @@ export class FakeApiHandle {
       $typeName: 'patches.v1.Post',
       id,
       author: this.toActor(user),
+      originServer: '',
       body,
       postType: POST_TYPE.NOTE,
       linkUrl: '',

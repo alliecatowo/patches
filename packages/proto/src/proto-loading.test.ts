@@ -285,12 +285,21 @@ describe('proto files', () => {
 
   it('reserves the retired legacy conversation security mode (ADR 0030 §B-095, spec §153)', () => {
     const pkg = loadPatchesPackage();
-    const mode = pkg.ConversationSecurityMode as Record<string, number | string>;
-    expect(mode.CONVERSATION_SECURITY_MODE_E2EE_V1).toBe(2);
-    expect(mode.CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE).toBeUndefined();
+    // proto-loader exposes top-level enums as their raw EnumDescriptorProto reflection
+    // object (`{ format, type, fileDescriptorProtos }`); the name→number mapping lives in
+    // `type.value` (`[{ name, number }, …]`). Assert against THAT, not the descriptor.
+    const descriptor = pkg.ConversationSecurityMode as {
+      type: { value: { name: string; number: number }[] };
+    };
+    const values = Object.fromEntries(descriptor.type.value.map((v) => [v.name, v.number]));
+    expect(values).toMatchObject({
+      CONVERSATION_SECURITY_MODE_UNSPECIFIED: 0,
+      CONVERSATION_SECURITY_MODE_E2EE_V1: 2,
+    });
+    expect(values.CONVERSATION_SECURITY_MODE_LEGACY_SERVER_VISIBLE).toBeUndefined();
     // Number 1 stays reserved on the wire: neither name→number nor the reverse mapping may
     // resolve it, and no future value may quietly claim it.
-    expect(mode[1]).toBeUndefined();
+    expect(Object.values(descriptor.type.value).map((v) => v.number)).not.toContain(1);
   });
 
   it('pins the wire protocol version and metadata keys', () => {

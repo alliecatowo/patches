@@ -15,6 +15,7 @@ function actorSummaryFixture(overrides: Partial<ActorSummary> = {}): ActorSummar
     isLocal: true,
     joinedAt: new Date('2024-01-01T00:00:00Z'),
     homeServer: null,
+    nameplate: null,
     ...overrides,
   };
 }

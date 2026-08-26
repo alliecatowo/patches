@@ -55,7 +55,12 @@ import {
   type KeyPair,
 } from '@patches/crypto';
 import { E2EE_ONE_TIME_PREKEY_TARGET, E2EE_PROTOCOL_V1 } from '@patches/domain';
-import { E2eeDeviceStatus, type EnrollDeviceRequest, type E2eeIdentityRoot, type PublishIdentityRootRequest } from '@patches/proto/es';
+import {
+  E2eeDeviceStatus,
+  type EnrollDeviceRequest,
+  type E2eeIdentityRoot,
+  type PublishIdentityRootRequest,
+} from '@patches/proto/es';
 
 import { fromDate } from './wire-time.js';
 import type { LocalDeviceIdentity } from './local-identity.js';

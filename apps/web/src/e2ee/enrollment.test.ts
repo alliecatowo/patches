@@ -226,9 +226,7 @@ describe('enrollThisDevice — resuming a persisted record', () => {
 
     expect(outcome.status).toBe('enrolled');
     expect(transport.publishIdentityRoot).toHaveBeenCalledTimes(1);
-    const republished = transport.publishIdentityRoot.mock.calls[0]?.[0] as
-      | PublishIdentityRootRequest
-      | undefined;
+    const republished = transport.publishIdentityRoot.mock.calls[0]?.[0];
     const expected = publishRootRequestFromRecord(record);
     expect([...(republished?.identityRoot?.publicKey ?? [])]).toEqual([...record.rootPublic]);
     expect([...(republished?.identityRoot?.selfSignature ?? [])]).toEqual([

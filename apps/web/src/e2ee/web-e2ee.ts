@@ -30,10 +30,7 @@ import { useSyncExternalStore } from 'react';
 
 import { api } from '../api/client.js';
 
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from './availability.js';
+import { WEB_E2EE_SESSION_UNAVAILABLE_COPY, webE2eeSessionSetupAvailable } from './availability.js';
 import type { InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
@@ -43,7 +40,6 @@ import {
   type RatchetSessionVault,
   type WebVaultAccount,
 } from './vault.js';
-import { VaultCorruptionError, VaultRollbackError } from './vault-errors.js';
 import {
   ENROLLMENT_PEER_WARNING_COPY,
   enrollThisDevice,
@@ -245,9 +241,9 @@ class WebE2eeManager {
    * header for both blockers (B-124 prekey claims, and the conversation-id-in-AD gap in
    * `CreateE2eeConversation` itself). Existing conversations send/receive normally.
    */
-  async createConversation(): Promise<never> {
+  createConversation(): Promise<never> {
     this.requireRuntime();
-    throw new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable);
+    return Promise.reject(new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable));
   }
 
   /** Explicit, labeled destructive reset (also the only exit from a sticky fault). */

@@ -11,7 +11,7 @@ import { MessageThreadRoute } from './MessageThreadRoute.js';
 
 const mockGetConversation =
   vi.fn<(...args: unknown[]) => Promise<{ conversation?: Conversation }>>();
-const mockPushToast = vi.fn();
+const mockToastError = vi.fn<(...args: unknown[]) => void>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
 
@@ -28,8 +28,10 @@ vi.mock('../hooks/useSession.js', () => ({
   useSession: () => mockUseSession(),
 }));
 
-vi.mock('../components/ToastProvider.js', () => ({
-  useToast: (): { pushToast: typeof mockPushToast } => ({ pushToast: mockPushToast }),
+vi.mock('sonner', () => ({
+  toast: Object.assign((...args: unknown[]) => mockToastError(...args), {
+    error: (...args: unknown[]) => mockToastError(...args),
+  }),
 }));
 
 vi.mock('../e2ee/use-e2ee.js', () => ({
@@ -73,7 +75,7 @@ function noteText(): string {
 describe('MessageThreadRoute (B-132: the composer never promises what it cannot do)', () => {
   beforeEach(() => {
     mockGetConversation.mockReset();
-    mockPushToast.mockReset();
+    mockToastError.mockReset();
     mockUseSession.mockReset();
     mockUseE2ee.mockReset();
     mockUseSession.mockReturnValue({ actor: { id: 'actor-me', handle: 'allie' } });
