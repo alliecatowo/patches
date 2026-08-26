@@ -126,6 +126,12 @@ catalog:
   '@tanstack/react-query-devtools': ^5.102.3
   web-vitals: ^6.2.0
   fake-indexeddb: ^6.2.5
+  storybook: 10.5.10
+  '@storybook/react-vite': 10.5.10
+  '@storybook/addon-vitest': 10.5.10
+  '@storybook/addon-a11y': 10.5.10
+  '@vitest/browser': 4.1.11
+  '@vitest/browser-playwright': 4.1.11
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:

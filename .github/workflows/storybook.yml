@@ -1,0 +1,56 @@
+# Storybook for apps/web (H-029 phase 1): builds the component-workbench bundle and runs
+# the addon-vitest browser-mode smoke over every story. Deliberately NON-REQUIRED — it is
+# a separate workflow, so it never appears in ci.yml's `ci-ok` aggregation and cannot
+# block a merge (docs/operations/ci.md documents ci-ok as the single required check).
+# The production web pipeline is untouched: Storybook builds to storybook-static/, never
+# dist/, and is absent from turbo's `build` task graph.
+
+name: Storybook
+
+on:
+  pull_request:
+  # Same rationale as ci.yml: lets a stalled PR event be recovered by hand against the
+  # PR's head branch without waiting for delivery.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storybook-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  storybook:
+    name: storybook (build + smoke, non-required)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Vitest browser mode drives Playwright's chromium headlessly (no Storybook server
+      # is booted — the addon runs stories as portable-story tests).
+      - name: Install Playwright chromium
+        run: pnpm --filter @patches/web exec playwright install --with-deps chromium
+
+      # Storybook bundles workspace deps like @patches/markup/@patches/client from their
+      # tsup-built dist/ — build them (deps only, not @patches/web itself) like web.yml's
+      # `--filter @patches/web... build` does for the production bundle.
+      - name: Build workspace dependencies
+        run: pnpm --filter @patches/web^... build
+
+      - name: Build the Storybook bundle
+        run: pnpm --filter @patches/web run storybook:build
+
+      - name: Storybook smoke tests (vitest browser mode, all stories)
+        run: pnpm --filter @patches/web run test-storybook
+
+      # Failure-only: the built bundle is only interesting for debugging a red run.
+      - name: Upload Storybook bundle (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: storybook-static
+          path: apps/web/storybook-static
+          if-no-files-found: ignore
+          retention-days: 7

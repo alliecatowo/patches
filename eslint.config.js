@@ -10,6 +10,7 @@ export default defineConfig([
   globalIgnores([
     '**/dist/**',
     '**/build/**',
+    '**/storybook-static/**',
     '**/coverage/**',
     '**/.turbo/**',
     '**/node_modules/**',
