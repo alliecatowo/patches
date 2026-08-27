@@ -54,7 +54,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
 - **`agents/`** — guidance for AI implementation agents working in this repository:
   `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`,
-  `CONTEXT_ECONOMY.md`.
+  `CONTEXT_ECONOMY.md`, `HANDOFF.md`, `HANDOFF-e2ee-web.md`.
 
 ## Where to start
 

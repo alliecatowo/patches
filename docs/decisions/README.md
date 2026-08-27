@@ -55,6 +55,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0032](./0032-dm-delivery-stays-poll-based.md)                   | DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate                 | Accepted           |
 | [0033](./0033-one-e2ee-identity-transcript-family.md)            | One E2EE identity transcript family, owned by `@patches/crypto` (amends ADR 0020 §14.1)               | Accepted           |
 | [0034](./0034-shared-client-e2ee-runtime.md)                     | The duplicated client E2EE runtime is hoisted into `@patches/e2ee-client`, but only after B-124       | Accepted           |
+| [0035](./0035-reserve-e2ee-conversation-before-first-message.md) | An E2EE conversation is reserved before its first message, never with it                              | Accepted           |
 
 ## Template
 
