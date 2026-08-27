@@ -1,4 +1,4 @@
-import { assertRosterSucceeds } from '@patches/domain';
+import { activeDeviceIds, assertRosterSucceeds } from '@patches/domain';
 import { describe, expect, it } from 'vitest';
 
 import { rosterViewFromWire } from './chain.js';
@@ -8,10 +8,12 @@ import {
   DeviceLinkError,
   listLinkOffers,
   pollLinkedEnrollment,
+  refreshOwnRoster,
+  revokeLinkedDevice,
   rotateMessagingRoot,
 } from './device-link.js';
-import { enrollThisDevice, loadStoredEnrollment } from './enrollment.js';
-import { createFakeE2eeNode, fakeTransport, memoryVault } from './test-support.js';
+import { enrollThisDevice, loadStoredEnrollment, saveStoredEnrollment } from './enrollment.js';
+import { createFakeE2eeNode, fakeTransport, memoryVault, setFakeRoster } from './test-support.js';
 
 describe('device-link (ADR 0037)', () => {
   it('links a second device end to end: begin -> list -> approve -> poll', async () => {
@@ -264,5 +266,184 @@ describe('device-link (ADR 0037)', () => {
     expect(second.linkId).toBe(first.linkId);
     expect(second.sas).toBe(first.sas);
     expect(transportB.beginDeviceLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshOwnRoster persists a digest change once the served roster moves forward, and is a no-op once converged', async () => {
+    const actorId = 'actor-refresh';
+    const nowMs = Date.UTC(2026, 0, 1);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+
+    const transport1 = fakeTransport({ actorId, node });
+    const vault1 = memoryVault();
+    await enrollThisDevice({ actorId, transport: transport1, vault: vault1, nowMs: now });
+    const storedAtSeq1 = await loadStoredEnrollment(vault1, now());
+    if (storedAtSeq1 === undefined) throw new Error('test setup: device 1 must be enrolled');
+
+    const transport2 = fakeTransport({ actorId, node });
+    const vault2 = memoryVault();
+    const begin = await beginDeviceLinkOffer({
+      actorId,
+      transport: transport2,
+      vault: vault2,
+      nowMs: now,
+    });
+    await approveLinkOffer({
+      actorId,
+      linkId: begin.linkId,
+      transport: transport1,
+      vault: vault1,
+      nowMs: now,
+    });
+    // `approveLinkOffer` already persisted vault1's own roster forward (issue #277) — simulate
+    // a device that missed a persisted refresh (e.g. a snapshot loaded before the fix, or one
+    // that has been offline) by re-seeding the pre-link record into a FRESH vault, while the
+    // node still serves the post-link roster.
+    const staleVault = memoryVault();
+    await saveStoredEnrollment(staleVault, storedAtSeq1);
+
+    const result = await refreshOwnRoster({
+      actorId,
+      transport: transport1,
+      vault: staleVault,
+      nowMs: now,
+    });
+    expect(result.changed).toBe(true);
+    expect(result.sequence).toBe(2n);
+    expect(result.selfActive).toBe(true);
+
+    const reloaded = await loadStoredEnrollment(staleVault, now());
+    expect(reloaded?.identity.ownRoster.sequence).toBe(2);
+
+    // Already converged: a second refresh against the same served roster changes nothing.
+    const second = await refreshOwnRoster({
+      actorId,
+      transport: transport1,
+      vault: staleVault,
+      nowMs: now,
+    });
+    expect(second.changed).toBe(false);
+    expect(second.sequence).toBe(2n);
+  });
+
+  it('refreshOwnRoster rejects a served roster older than the one already verified (rollback)', async () => {
+    const actorId = 'actor-refresh-rollback';
+    const nowMs = Date.UTC(2026, 0, 1);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+
+    const transport1 = fakeTransport({ actorId, node });
+    const vault1 = memoryVault();
+    await enrollThisDevice({ actorId, transport: transport1, vault: vault1, nowMs: now });
+    const seq1Root = await transport1.getIdentityRoot(actorId);
+    const seq1Response = await transport1.getDeviceRoster(actorId);
+    if (seq1Root === undefined || seq1Response.roster === undefined) {
+      throw new Error('test setup: device 1 must have a served root/roster');
+    }
+
+    const transport2 = fakeTransport({ actorId, node });
+    const vault2 = memoryVault();
+    const begin = await beginDeviceLinkOffer({
+      actorId,
+      transport: transport2,
+      vault: vault2,
+      nowMs: now,
+    });
+    await approveLinkOffer({
+      actorId,
+      linkId: begin.linkId,
+      transport: transport1,
+      vault: vault1,
+      nowMs: now,
+    });
+    const storedAtSeq2 = await loadStoredEnrollment(vault1, now());
+    expect(storedAtSeq2?.identity.ownRoster.sequence).toBe(2);
+
+    // A node that (bug or attack) still serves the pre-link (sequence 1) root/roster to this
+    // already-converged device is a rollback — never trusted, even though the served bytes are
+    // themselves genuinely root-signed.
+    const rollbackNode = createFakeE2eeNode();
+    rollbackNode.rootByActor.set(actorId, seq1Root);
+    setFakeRoster(rollbackNode, actorId, seq1Response.roster, seq1Response.certificates);
+    const rollbackTransport = fakeTransport({ actorId, node: rollbackNode });
+
+    await expect(
+      refreshOwnRoster({ actorId, transport: rollbackTransport, vault: vault1, nowMs: now }),
+    ).rejects.toThrow(/rollback/);
+  });
+
+  it("revokeLinkedDevice marks exactly one device inactive, converges the authority's own roster, and refuses non-authority/self-revoke callers", async () => {
+    const actorId = 'actor-revoke';
+    const nowMs = Date.UTC(2026, 0, 1);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+
+    const transport1 = fakeTransport({ actorId, node });
+    const vault1 = memoryVault();
+    await enrollThisDevice({ actorId, transport: transport1, vault: vault1, nowMs: now });
+    const stored1 = await loadStoredEnrollment(vault1, now());
+    if (stored1 === undefined) throw new Error('test setup: device 1 must be enrolled');
+
+    const transport2 = fakeTransport({ actorId, node });
+    const vault2 = memoryVault();
+    const begin = await beginDeviceLinkOffer({
+      actorId,
+      transport: transport2,
+      vault: vault2,
+      nowMs: now,
+    });
+    await approveLinkOffer({
+      actorId,
+      linkId: begin.linkId,
+      transport: transport1,
+      vault: vault1,
+      nowMs: now,
+    });
+    await pollLinkedEnrollment({ actorId, transport: transport2, vault: vault2, nowMs: now });
+    const stored2 = await loadStoredEnrollment(vault2, now());
+    if (stored2 === undefined) throw new Error('test setup: device 2 must be linked');
+
+    // Device 2 does not hold the root key: it cannot revoke anything.
+    await expect(
+      revokeLinkedDevice({
+        actorId,
+        deviceId: stored1.identity.deviceId,
+        transport: transport2,
+        vault: vault2,
+        nowMs: now,
+      }),
+    ).rejects.toMatchObject({ reason: 'not-authority' });
+
+    // The authority cannot revoke itself.
+    await expect(
+      revokeLinkedDevice({
+        actorId,
+        deviceId: stored1.identity.deviceId,
+        transport: transport1,
+        vault: vault1,
+        nowMs: now,
+      }),
+    ).rejects.toMatchObject({ reason: 'cannot-revoke-self' });
+
+    const result = await revokeLinkedDevice({
+      actorId,
+      deviceId: stored2.identity.deviceId,
+      transport: transport1,
+      vault: vault1,
+      nowMs: now,
+    });
+    expect(result.rosterSequence).toBe(3n);
+
+    const served = await transport1.getDeviceRoster(actorId);
+    if (served.roster === undefined) throw new Error('actor must still have a served roster');
+    const view = rosterViewFromWire(served.roster);
+    expect(activeDeviceIds(view)).toEqual([stored1.identity.deviceId]);
+    const revokedEntry = view.entries.find((entry) => entry.deviceId === stored2.identity.deviceId);
+    expect(revokedEntry?.active).toBe(false);
+    expect(revokedEntry?.revokedAt).toBeDefined();
+
+    // Issue #277: the authority's own stored roster converges too, not just the served one.
+    const reloadedAuthority = await loadStoredEnrollment(vault1, now());
+    expect(reloadedAuthority?.identity.ownRoster.sequence).toBe(3);
   });
 });

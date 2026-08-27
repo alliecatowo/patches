@@ -397,5 +397,9 @@ export function createWebEnrollmentTransport(
     async cancelDeviceLink(linkId) {
       await api.e2ee.cancelDeviceLink({ linkId });
     },
+
+    async revokeDevice(request) {
+      await api.e2ee.revokeDevice(request);
+    },
   };
 }
