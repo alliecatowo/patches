@@ -199,10 +199,31 @@ jobs:
       - name: Assert no pending migrations (second run must be a no-op)
         run: pnpm db:migrate
 
+      # The revert gate proves the last migration's `down()` works. One sanctioned
+      # exception: a migration may declare itself IRREVERSIBLE BY DESIGN (ADR 0033 §5's
+      # clean break — the deleted rows were signed under an encoding nothing can produce
+      # anymore, so there is nothing to restore them to). Such a migration's `down()`
+      # throws with the literal marker "irreversible by design"; that exact failure (and
+      # only that failure — any other revert error still fails this job) satisfies the
+      # gate. Nothing was reverted in that case, so the re-apply step below is skipped.
       - name: Revert last migration (prove down works)
-        run: pnpm db:revert
+        id: revert
+        run: |
+          set +e
+          output=$(pnpm db:revert 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -ne 0 ]; then
+            if echo "$output" | grep -q "irreversible by design"; then
+              echo "deliberately-irreversible" >> "$GITHUB_OUTPUT"
+            else
+              exit 1
+            fi
+          fi
 
       - name: Re-apply migration (prove up works again)
+        if: steps.revert.outputs.deliberately-irreversible != 'true'
         run: pnpm db:migrate
 
       - run: pnpm test:integration
