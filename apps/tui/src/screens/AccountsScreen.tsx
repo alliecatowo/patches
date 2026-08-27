@@ -39,7 +39,17 @@ export interface AccountsScreenProps {
   onOpenDevices?: (() => void) | undefined;
   /** B-107: runs device enrollment through the shell's vault-backed sender. */
   onEnrollE2ee?:
-    (() => Promise<{ ok: boolean; copy: string; peerWarning?: string | undefined }>) | undefined;
+    | (() => Promise<{
+        ok: boolean;
+        copy: string;
+        peerWarning?: string | undefined;
+        needsAuthority?: boolean | undefined;
+      }>)
+    | undefined;
+  /** ADR 0037 §2: fires instead of an error message when `onEnrollE2ee` finds a
+   * published root this device cannot reach — the shell navigates to the link/rotate
+   * chooser (`LinkThisDeviceScreen`) rather than this screen rendering a dead end. */
+  onNeedsAuthority?: (() => void) | undefined;
   onLogout: () => void;
   onResendVerification: () => void;
   onBack: () => void;
@@ -128,6 +138,7 @@ export function AccountsScreen({
   e2eeCapabilityState,
   onOpenDevices,
   onEnrollE2ee,
+  onNeedsAuthority,
   onLogout,
   onResendVerification,
   onBack,
@@ -149,6 +160,11 @@ export function AccountsScreen({
     if (onEnrollE2ee === undefined) return;
     setE2eeFlow({ status: 'running' });
     const outcome = await onEnrollE2ee();
+    if (outcome.needsAuthority === true) {
+      setE2eeFlow({ status: 'idle' });
+      onNeedsAuthority?.();
+      return;
+    }
     if (outcome.ok) {
       setE2eeFlow({
         status: 'done',

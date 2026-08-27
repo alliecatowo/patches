@@ -44,6 +44,7 @@ export type Screen =
   | 'moderationLog'
   | 'devices'
   | 'safetyNumber'
+  | 'linkThisDevice'
   | 'issueReport';
 
 /** The two screens that can sit at the bottom of the navigation stack (spec §68). */
@@ -1368,5 +1369,6 @@ export const SCREEN_TITLES: Readonly<Record<Screen, string>> = {
   moderationLog: 'Moderation log',
   devices: 'Devices',
   safetyNumber: 'Safety number',
+  linkThisDevice: 'Link this device',
   issueReport: 'Report an issue',
 };

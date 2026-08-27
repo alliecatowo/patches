@@ -35,6 +35,18 @@ import {
   type EnrollOutcome,
   type EnrollmentTransport,
 } from '../e2ee/enrollment.js';
+import {
+  approveLinkOffer,
+  beginDeviceLinkOffer,
+  listLinkOffers,
+  pollLinkedEnrollment,
+  rotateMessagingRoot,
+  type ApproveLinkOfferResult,
+  type BeginDeviceLinkOfferResult,
+  type PendingLinkOfferSummary,
+  type PollLinkedEnrollmentResult,
+  type RotateMessagingRootResult,
+} from '../e2ee/device-link.js';
 
 /** Sticky, content-free vault faults surfaced verbatim as inaccessible-history states. */
 export type E2eeVaultFault = 'corrupt' | 'rollback';
@@ -93,6 +105,33 @@ export interface EnrollThroughVaultInput {
   readonly transport: EnrollmentTransport;
 }
 
+/** ADR 0037 §2: present only when this device holds the CURRENTLY served root's private
+ * key locally (an imported recovery archive) — see `rotateMessagingRoot`'s own doc. */
+export interface RotatePreviousRoot {
+  readonly privateKey: Uint8Array;
+  readonly publicKey: Uint8Array;
+}
+
+export interface RotateRootThroughVaultInput extends EnrollThroughVaultInput {
+  readonly previousRoot?: RotatePreviousRoot;
+}
+
+export interface ApproveLinkOfferThroughVaultInput extends EnrollThroughVaultInput {
+  readonly linkId: string;
+}
+
+/** A link/rotation result paired with the device id this sender is now bound to, when
+ * the operation newly bound one — `undefined` when nothing changed (e.g. still pending). */
+export interface LinkPollOutcome {
+  readonly result: PollLinkedEnrollmentResult;
+  readonly deviceId?: string;
+}
+
+export interface RotateRootOutcome {
+  readonly result: RotateMessagingRootResult;
+  readonly deviceId?: string;
+}
+
 export interface VaultE2eeSender {
   /** The sticky fault from opening, if any — rendered as an explicit
    * inaccessible-history banner until the viewer explicitly wipes and resets. */
@@ -117,6 +156,19 @@ export interface VaultE2eeSender {
    * identity. Idempotent: an already-submitted enrollment short-circuits.
    */
   enroll(input: EnrollThroughVaultInput): Promise<EnrollOutcome>;
+  /** ADR 0037 §1 step 1: posts this device's link offer through this sender's OWN vault
+   * (the offer material must survive a crash the same way enrollment material does). */
+  beginLink(input: EnrollThroughVaultInput): Promise<BeginDeviceLinkOfferResult>;
+  /** ADR 0037 §1 step 4: polls for the authority's approval. On `'enrolled'`, binds the
+   * newly-certified identity exactly as `enroll()` does. */
+  pollLink(input: EnrollThroughVaultInput): Promise<LinkPollOutcome>;
+  /** ADR 0037 §2: mints and publishes the next root generation, then binds the result. */
+  rotateRoot(input: RotateRootThroughVaultInput): Promise<RotateRootOutcome>;
+  /** ADR 0037 §1 step 2: this account's pending link offers, authority-only. */
+  listPendingLinks(input: EnrollThroughVaultInput): Promise<readonly PendingLinkOfferSummary[]>;
+  /** ADR 0037 §1 step 3: signs and relays the new device's certificate after the caller
+   * has already confirmed the SAS out of band. */
+  approveLink(input: ApproveLinkOfferThroughVaultInput): Promise<ApproveLinkOfferResult>;
   /** Destroys local E2EE state through the live store and forgets this instance. */
   wipe(): Promise<void>;
   close(): void;
@@ -223,6 +275,58 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
         await bindSubmitted();
       }
       return outcome;
+    },
+    async beginLink(input): Promise<BeginDeviceLinkOfferResult> {
+      const store = await ensureOpen();
+      return beginDeviceLinkOffer({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+    },
+    async pollLink(input): Promise<LinkPollOutcome> {
+      const store = await ensureOpen();
+      const result = await pollLinkedEnrollment({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+      if (result !== 'enrolled') return { result };
+      const identity = await bindSubmitted();
+      return { result, ...(identity === undefined ? {} : { deviceId: identity.deviceId }) };
+    },
+    async rotateRoot(input): Promise<RotateRootOutcome> {
+      const store = await ensureOpen();
+      const result = await rotateMessagingRoot({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+        ...(input.previousRoot === undefined ? {} : { previousRoot: input.previousRoot }),
+      });
+      const identity = await bindSubmitted();
+      return { result, ...(identity === undefined ? {} : { deviceId: identity.deviceId }) };
+    },
+    async listPendingLinks(input): Promise<readonly PendingLinkOfferSummary[]> {
+      const store = await ensureOpen();
+      return listLinkOffers({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+    },
+    async approveLink(input): Promise<ApproveLinkOfferResult> {
+      const store = await ensureOpen();
+      return approveLinkOffer({
+        actorId: input.actorId,
+        linkId: input.linkId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
     },
     async send(conversationId, body): Promise<void> {
       const active = await ensureRuntime();
