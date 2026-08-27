@@ -13,6 +13,8 @@ import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
+import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
+import { useDeviceLinkVault } from '../components/e2ee/useDeviceLinkVault.js';
 import styles from './MessagesRoute.module.css';
 
 const panelStyle = {
@@ -55,7 +57,10 @@ export function MessagesRoute(): JSX.Element {
   const session = useSession();
   const e2eeStatus = useE2ee(session);
   const [enrolling, setEnrolling] = useState(false);
+  const [needsAuthority, setNeedsAuthority] = useState(false);
   const navigate = useNavigate();
+  const actorId = session?.actor.id;
+  const deviceLinkVault = useDeviceLinkVault(needsAuthority ? actorId : undefined);
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -78,7 +83,9 @@ export function MessagesRoute(): JSX.Element {
       const outcome = await webE2ee().enroll();
       if (outcome.status === 'enrolled') {
         toast(WEB_E2EE_COPY.peerWarning);
-      } else if (outcome.status === 'refused' || outcome.status === 'needs-authority') {
+      } else if (outcome.status === 'needs-authority') {
+        setNeedsAuthority(true);
+      } else if (outcome.status === 'refused') {
         toast.error(outcome.copy);
       }
     } catch (error) {
@@ -88,6 +95,17 @@ export function MessagesRoute(): JSX.Element {
     } finally {
       setEnrolling(false);
     }
+  }
+
+  async function handleNeedsAuthorityResolved(resolution: 'enrolled' | 'cancelled'): Promise<void> {
+    setNeedsAuthority(false);
+    if (resolution !== 'enrolled' || actorId === undefined) return;
+    // `NeedsAuthorityFlow` wrote the enrollment record through its own vault connection
+    // (`useDeviceLinkVault`); the manager's own vault handle is private, so a round trip
+    // through the public `setActor` is the only way to make it re-read what was just
+    // written (see `useDeviceLinkVault.ts`'s doc comment).
+    await webE2ee().setActor(null);
+    await webE2ee().setActor({ id: actorId });
   }
 
   async function handleNewMessage(): Promise<void> {
@@ -120,12 +138,25 @@ export function MessagesRoute(): JSX.Element {
         ) : null}
       </div>
 
-      <E2eePanel
-        status={e2eeStatus}
-        enrolling={enrolling}
-        onEnroll={() => void handleEnroll()}
-        onWipe={() => void webE2ee().wipe()}
-      />
+      {needsAuthority && actorId !== undefined && deviceLinkVault.vault !== undefined ? (
+        <NeedsAuthorityFlow
+          actorId={actorId}
+          vault={deviceLinkVault.vault}
+          transport={deviceLinkVault.transport}
+          onResolved={(resolution) => void handleNeedsAuthorityResolved(resolution)}
+        />
+      ) : needsAuthority ? (
+        <p role="status" style={panelStyle}>
+          Preparing…
+        </p>
+      ) : (
+        <E2eePanel
+          status={e2eeStatus}
+          enrolling={enrolling}
+          onEnroll={() => void handleEnroll()}
+          onWipe={() => void webE2ee().wipe()}
+        />
+      )}
 
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
       {query.isError && query.data === undefined ? (
