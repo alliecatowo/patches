@@ -1,36 +1,43 @@
-import { assertFrankingProfileApproved, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
+import {
+  assertFrankingProfileApproved,
+  E2EE_APPROVED_FRANKING_PROFILES,
+  E2eeContractError,
+} from '@patches/domain';
 
 /**
  * Runtime approval boundary for the E2EE franking profile.
  *
- * The domain-level approval list remains the source of truth for production. ADR 0027 permits
- * one tightly-scoped exception solely for an explicitly configured owner-authorized disposable
- * node. Runtime NODE_ENV is deliberately not the trust classification, so the exception is
- * represented by this injected policy instead of a mutable global or a direct `process.env`
- * check in the fanout path.
+ * `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` is the sole production authority on
+ * which profiles may ever be approved (ADR 0020 §14.8, ADR 0036 Amendment). This class adds
+ * only a narrowing operator: an operator may set `E2EE_APPROVED_FRANKING_PROFILES` (env) to
+ * approve a *subset* of the domain list — a kill switch — but `env.schema.ts`'s boot-time check
+ * rejects any env value naming a profile the domain constant doesn't already approve, so an env
+ * value can never widen the set (#253).
  */
 export class E2eeRuntimeApprovalPolicy {
-  readonly #unreviewedDevelopmentMode: boolean;
+  readonly #envApprovedProfiles: ReadonlySet<string> | undefined;
 
-  readonly #approvedProfiles: ReadonlySet<string>;
-
-  constructor(unreviewedDevelopmentMode: boolean, approvedProfiles: readonly string[] = []) {
-    this.#approvedProfiles = new Set(approvedProfiles);
-    this.#unreviewedDevelopmentMode = unreviewedDevelopmentMode;
-  }
-
-  get isUnreviewedDevelopmentMode(): boolean {
-    return this.#unreviewedDevelopmentMode;
+  constructor(envApprovedProfiles: readonly string[] = []) {
+    this.#envApprovedProfiles =
+      envApprovedProfiles.length > 0 ? new Set(envApprovedProfiles) : undefined;
   }
 
   isProfileApproved(profile: string): boolean {
-    return this.#approvedProfiles.has(profile);
+    return (
+      E2EE_APPROVED_FRANKING_PROFILES.includes(profile) &&
+      (this.#envApprovedProfiles === undefined || this.#envApprovedProfiles.has(profile))
+    );
   }
 
   assertProfileApproved(profile: string): void {
     if (this.isProfileApproved(profile)) return;
-    if (this.#unreviewedDevelopmentMode && profile === E2EE_FRANKING_PROFILE_V1) return;
+    // Reuses the domain assertion's message when the domain constant itself doesn't approve the
+    // profile; when the domain approves it but this node's env narrowing excludes it, that needs
+    // its own message since `assertFrankingProfileApproved` would not throw.
     assertFrankingProfileApproved(profile);
+    throw new E2eeContractError(
+      `Franking profile "${profile}" is excluded by this node's E2EE_APPROVED_FRANKING_PROFILES override.`,
+    );
   }
 }
 

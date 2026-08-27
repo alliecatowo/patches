@@ -22,10 +22,7 @@ describe('E2eeRuntimeApprovalModule', () => {
   let policy: E2eeRuntimeApprovalPolicy;
 
   beforeAll(async () => {
-    // NODE_ENV keeps normal deployment logging/optimization behavior; ADR 0027's explicit
-    // owner opt-in, rather than NODE_ENV, authorizes this disposable node's isolated-test state.
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('E2EE_UNREVIEWED_DEV_MODE', 'true');
     vi.stubEnv('DATABASE_URL', 'postgres://patches:patches@127.0.0.1:5432/patches');
     vi.stubEnv(
       'JWT_PRIVATE_KEY',
@@ -63,10 +60,10 @@ describe('E2eeRuntimeApprovalModule', () => {
   });
 
   it('uses the env-configured shared policy for both the capability and send approval gate', () => {
-    expect(policy.isUnreviewedDevelopmentMode).toBe(true);
+    expect(policy.isProfileApproved('patches-franking-v1')).toBe(true);
     expect(() => policy.assertProfileApproved('patches-franking-v1')).not.toThrow();
     expect(capability.getCapability().capability?.state).toBe(
-      E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
+      E2eeCapabilityState.E2EE_CAPABILITY_STATE_ENABLED,
     );
   });
 

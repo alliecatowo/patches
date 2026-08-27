@@ -114,8 +114,8 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   currentEra: () => TEST_FRANKING_ERA,
 };
 
-/** ADR 0027 test seam: does not change the frozen production approval list. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy(true);
+/** The shipped franking profile is approved by default (ADR 0036 Amendment); no test seam needed. */
+const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy();
 
 const ZERO_32 = new Uint8Array(32);
 const ZERO_DIGEST = Buffer.alloc(32);

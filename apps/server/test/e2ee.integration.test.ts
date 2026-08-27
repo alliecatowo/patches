@@ -47,8 +47,8 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   currentEra: () => TEST_FRANKING_ERA,
 };
 
-/** ADR 0027 test seam: this does not change the frozen production approval list. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy(true);
+/** The shipped franking profile is approved by default (ADR 0036 Amendment); no test seam needed. */
+const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy();
 
 interface TestEnvelope {
   recipientActorId: string;
@@ -793,16 +793,19 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     describe('SendEnvelopes/CreateE2eeConversation fanout (ADR 0020 §7, P13-007)', () => {
-      it('keeps the default runtime policy fail-closed before accepting an E2EE message', async () => {
+      it('keeps a narrowed runtime policy fail-closed before accepting an E2EE message', async () => {
         const sender = await newActor();
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
+        // An operator narrowing that excludes the shipped profile (#253's kill-switch use
+        // case) — the domain constant still approves it, so this exercises the accept path's
+        // enforcement, not the ADR 0036 default.
         const defaultPolicyConversations = new E2eeConversationService(
           dataSource,
           testFrankingKeyRing,
-          new E2eeRuntimeApprovalPolicy(false),
+          new E2eeRuntimeApprovalPolicy(['some-other-domain-approved-profile']),
           new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
           new NotificationsService(dataSource),
         );
@@ -828,7 +831,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               buildEnvelope(recipient.actorId, recipientDevice.deviceId),
             ]),
           }),
-        ).rejects.toThrow('independent review');
+        ).rejects.toThrow('excluded by');
 
         // The rejected send left no trace: membership is unchanged (the reservation's own
         // members, no more), and the conversation stays unmessaged/invisible (ADR 0035 §5).
