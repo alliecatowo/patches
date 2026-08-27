@@ -40,6 +40,7 @@ import {
   signDeviceRoster,
   signMessagingRoot,
   signPreKeyBundle,
+  sortRosterEntries,
   verifyCertifiedDevice,
   verifyMessagingRoot,
   verifyRosterSnapshot,
@@ -51,7 +52,9 @@ import {
   generateKeyAgreementKeyPair,
   generateSigningKeyPair,
   randomBytes,
+  type DeviceRosterEntryTranscript,
   type KeyPair,
+  type VerifiedRosterSnapshot,
 } from '@patches/crypto';
 import {
   E2EE_DEVICE_CERTIFICATE_VERSION,
@@ -251,14 +254,36 @@ export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): Stored
 
 export interface GenerateEnrollmentInput {
   readonly actorId: string;
-  /** Present when resuming around an existing authority; absent on first-device bootstrap.
-   * `createdAtMs` must be the ALREADY-PUBLISHED root's own creation time — required to
-   * reconstruct the exact `VerifiedMessagingRoot` `signDeviceCertificate`'s caller must
-   * hold (ADR 0033 §3: no verifier accepts a caller-supplied decoding). */
+  /**
+   * Present when resuming (linking) around an existing authority; absent on first-device
+   * bootstrap. `createdAtMs` and `generation` must be the ALREADY-PUBLISHED root's own
+   * values — required to reconstruct the exact `VerifiedMessagingRoot`
+   * `signDeviceCertificate`'s caller must hold (ADR 0033 §3: no verifier accepts a
+   * caller-supplied decoding; Ed25519 signing is deterministic, so re-signing the same
+   * fields with the same key reproduces the same published root bytes rather than
+   * minting a new one).
+   */
   readonly root?: {
     readonly privateKey: Uint8Array;
     readonly publicKey: Uint8Array;
     readonly createdAtMs: number;
+    /** Defaults to 1 (an account's first root generation) for callers that only ever
+     * reconstruct that root — e.g. re-minting a peer's identity from its own already
+     * self-signed material in a test. A linking caller passes the real generation. */
+    readonly generation?: number;
+    /** The account's most recently published roster, or `undefined` if this authority
+     * has never published one — the new device becomes sequence 1. Every existing entry
+     * (active or revoked) is carried forward verbatim; linking must never drop a device
+     * from the roster (spec §14.4). */
+    readonly currentRoster?: VerifiedRosterSnapshot | undefined;
+    /** Certificates for every entry `currentRoster` lists, so the rebuilt roster can be
+     * re-verified locally — the linking device holds none of its peers' certificates.
+     * The caller obtains these from `GetDeviceRoster`. Omit/empty when `currentRoster`
+     * is `undefined`. */
+    readonly certificates?: readonly {
+      readonly certificateBytes: Uint8Array;
+      readonly rootSignature: Uint8Array;
+    }[];
   };
   readonly nowMs: number;
 }
@@ -295,9 +320,10 @@ export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnr
     ...generateSigningKeyPair(),
     createdAtMs,
   };
+  const rootGeneration = input.root?.generation ?? ROOT_GENERATION;
   const signedRoot = signMessagingRoot(rootKeys.privateKey, {
     actorId: input.actorId,
-    generation: ROOT_GENERATION,
+    generation: rootGeneration,
     publicKey: rootKeys.publicKey,
     createdAtMs: rootKeys.createdAtMs,
   });
@@ -315,7 +341,7 @@ export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnr
   const signedCertificate = signDeviceCertificate(rootKeys.privateKey, {
     actorId: input.actorId,
     deviceId,
-    rootGeneration: ROOT_GENERATION,
+    rootGeneration,
     rootPublicKey: rootKeys.publicKey,
     certificateVersion: E2EE_DEVICE_CERTIFICATE_VERSION,
     signingPublicKey: signing.publicKey,
@@ -332,27 +358,44 @@ export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnr
   });
 
   const addedAtMs = createdAtMs;
+  // Non-bootstrap: carry every existing entry forward verbatim (§14.4 — linking must
+  // never drop a device) and chain onto the account's current roster. Bootstrap has no
+  // prior roster, so this collapses to the original sequence-1/genesis-digest values.
+  const currentRoster = input.root?.currentRoster;
+  const sequence = currentRoster !== undefined ? currentRoster.sequence + 1 : ROSTER_SEQUENCE;
+  const previousDigest =
+    currentRoster !== undefined ? currentRoster.rosterDigest : new Uint8Array(KEY_BYTES);
+  const carriedEntries: DeviceRosterEntryTranscript[] =
+    currentRoster === undefined
+      ? []
+      : currentRoster.entries.map((entry) => ({
+          deviceId: entry.deviceId,
+          certificateDigest: entry.certificateDigest,
+          active: entry.active,
+          addedAtMs: entry.addedAtMs,
+          ...(entry.revokedAtMs === undefined ? {} : { revokedAtMs: entry.revokedAtMs }),
+        }));
+  const newEntry: DeviceRosterEntryTranscript = {
+    deviceId,
+    certificateDigest: signedCertificate.certificateDigest,
+    active: true,
+    addedAtMs,
+  };
   const signedRoster = signDeviceRoster(rootKeys.privateKey, {
     actorId: input.actorId,
-    rootGeneration: ROOT_GENERATION,
+    rootGeneration,
     rootPublicKey: rootKeys.publicKey,
-    sequence: ROSTER_SEQUENCE,
-    previousDigest: new Uint8Array(KEY_BYTES),
+    sequence,
+    previousDigest,
     createdAtMs,
-    entries: [
-      {
-        deviceId,
-        certificateDigest: signedCertificate.certificateDigest,
-        active: true,
-        addedAtMs,
-      },
-    ],
+    entries: sortRosterEntries([...carriedEntries, newEntry]),
   });
   const ownRoster = verifyRosterSnapshot({
     rosterBytes: signedRoster.rosterBytes,
     rootSignature: signedRoster.rootSignature,
     root,
     certificates: [
+      ...(input.root?.certificates ?? []),
       {
         certificateBytes: signedCertificate.certificateBytes,
         rootSignature: signedCertificate.rootSignature,
@@ -470,6 +513,9 @@ function buildEnrollRequest(identity: LocalDeviceIdentity): EnrollDeviceRequest 
         certificateDigest: entry.certificateDigest,
         active: entry.active,
         addedAt: fromDate(new Date(entry.addedAtMs)),
+        ...(entry.revokedAtMs === undefined
+          ? {}
+          : { revokedAt: fromDate(new Date(entry.revokedAtMs)) }),
       })),
       createdAt: fromDate(new Date(roster.createdAtMs)),
     },
