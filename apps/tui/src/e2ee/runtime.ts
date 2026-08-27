@@ -7,7 +7,7 @@
  * Hard rule (ADR 0020 §4 / spec §194): no key material, ratchet counters, or message
  * content ever reaches an error or log line. Every failure carries fixed copy.
  */
-import type { PreKeyBundle, SignedDeviceRoster } from '@patches/crypto';
+import type { VerifiedPreKeyBundle, VerifiedRosterSnapshot } from '@patches/crypto';
 
 /** Vault session id for one device pair inside one conversation (`\u0000` is id-safe). */
 export function sessionIdFor(conversationId: string, actorId: string, deviceId: string): string {
@@ -21,13 +21,6 @@ export function sessionIdFor(conversationId: string, actorId: string, deviceId: 
 export class E2eeNotEnrolledError extends Error {
   constructor() {
     super('This client has no enrolled messaging device yet.');
-    this.name = new.target.name;
-  }
-}
-
-export class E2eeSetupUnavailableError extends Error {
-  constructor() {
-    super('Encrypted session setup material is unavailable right now. Try again.');
     this.name = new.target.name;
   }
 }
@@ -59,9 +52,9 @@ export interface FanoutPlan {
 export interface ClaimedPeerBundle {
   readonly actorId: string;
   readonly deviceId: string;
-  /** Crypto-native and already verified by the transport adapter. */
-  readonly bundle: PreKeyBundle;
-  readonly roster: SignedDeviceRoster;
+  /** Already verified by the transport adapter (ADR 0033 §3: a branded, unforgeable value). */
+  readonly bundle: VerifiedPreKeyBundle;
+  readonly roster: VerifiedRosterSnapshot;
 }
 
 /** Send-side seam the shell binds to authenticated `E2eeService` RPCs. */
@@ -104,8 +97,8 @@ export interface E2eeMailboxTransport {
     readonly nextCursor: string;
   }>;
   acknowledge(envelopeIds: readonly string[]): Promise<void>;
-  /** The peer's crypto-native signed roster, already chain-verified by the adapter. */
-  loadPeerRoster(actorId: string): Promise<SignedDeviceRoster>;
+  /** The peer's signed roster snapshot, already verified by the adapter. */
+  loadPeerRoster(actorId: string): Promise<VerifiedRosterSnapshot>;
 }
 
 /** Structural shape of `E2eeMailboxEnvelope` (wire type mirrored for tests). */

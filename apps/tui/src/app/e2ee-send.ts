@@ -185,7 +185,7 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
     if (binding !== undefined) return binding.identity;
     if (options.buildTransports === undefined) return undefined;
     const store = await ensureOpen();
-    const record = await loadStoredEnrollment(store);
+    const record = await loadStoredEnrollment(store, (options.nowMs ?? Date.now)());
     if (record?.submitted !== true) return undefined;
     binding = { identity: record.identity, transports: options.buildTransports(record.identity) };
     runtime = undefined;

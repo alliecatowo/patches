@@ -4,24 +4,26 @@
  * centrally by `api/client.ts`'s interceptor — unlike the TUI, no per-call access token
  * is threaded here.
  *
- * Honesty note on session setup (ADR 0020 §5, B-124): X3DH verifies peer material
- * through `@patches/crypto`'s *crypto-native* transcript encoders, while the node stores
- * and serves the *node-canonical* encodings (`e2ee.codec.ts`; see
- * `./node-transcripts.ts`). Converting between them requires signatures this client
- * provably cannot mint — a peer's root signature needs the peer's root private key — so
- * until those encoders are unified in `@patches/domain` (the B-124 hoist), claiming peer
- * prekey bundles fails closed with the runtime's fixed copy instead of half-verifying.
- * Everything without that dependency — fanout plans, envelope submission, the mailbox,
- * acknowledgements, and this device's own roster — is bound for real.
+ * Session setup (ADR 0033/0034): `@patches/crypto` owns the one identity transcript
+ * family the node also signs and serves, so a peer's prekey bundle and roster claimed
+ * here are re-verified with the same decoder/verifier the node used to accept them —
+ * `claimPrekeyBundles` and `loadPeerRoster` are real RPC + verification chains, not a
+ * fail-closed stub.
  */
 import { Code, ConnectError } from '@connectrpc/connect';
 import type { Client, Transport } from '@connectrpc/connect';
 import type { E2eeService } from '@patches/proto/es';
 
-import type { SignedDeviceRoster } from '@patches/crypto';
+import {
+  verifyMessagingRoot,
+  verifyPreKeyBundle,
+  verifyRosterSnapshot,
+  type VerifiedMessagingRoot,
+  type VerifiedRosterSnapshot,
+} from '@patches/crypto';
+import { E2eeContractError } from '@patches/domain';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import {
-  E2eeSetupUnavailableError,
   type ClaimedPeerBundle,
   type E2eeMailboxTransport,
   type E2eeSendTransport,
@@ -37,6 +39,39 @@ export interface E2eeApiSurface {
 }
 
 const MAILBOX_PAGE_LIMIT = 50;
+
+/** Fetches and verifies one actor's messaging root + current device roster snapshot. */
+async function loadVerifiedRoster(
+  api: E2eeApiSurface,
+  actorId: string,
+  nowMs: number,
+): Promise<VerifiedRosterSnapshot> {
+  const rootResponse = await api.e2ee.getIdentityRoot({ actorId });
+  const wireRoot = rootResponse.identityRoot;
+  if (wireRoot === undefined) {
+    throw new E2eeContractError('That actor has no published messaging identity root.');
+  }
+  const root: VerifiedMessagingRoot = verifyMessagingRoot({
+    rootBytes: wireRoot.rootBytes,
+    selfSignature: wireRoot.selfSignature,
+    nowMs,
+  });
+  const rosterResponse = await api.e2ee.getDeviceRoster({ actorId });
+  const wireRoster = rosterResponse.roster;
+  if (wireRoster === undefined) {
+    throw new E2eeContractError('That actor has no published device roster.');
+  }
+  return verifyRosterSnapshot({
+    rosterBytes: wireRoster.rosterBytes,
+    rootSignature: wireRoster.rootSignature,
+    root,
+    certificates: rosterResponse.certificates.map((certificate) => ({
+      certificateBytes: certificate.certificateBytes,
+      rootSignature: certificate.rootSignature,
+    })),
+    nowMs,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Send/receive seams for the vault-backed runtime
@@ -69,12 +104,38 @@ export function createWebE2eeTransports(
       };
     },
 
-    claimPrekeyBundles(): Promise<readonly ClaimedPeerBundle[]> {
-      // See the module header: converting node-served bundle material into the
-      // crypto-native shapes X3DH authenticates is impossible from this side alone.
-      // Failing closed beats half-verifying (ADR 0020 §14.2); no inventory is consumed
-      // (the claim RPC is never even issued).
-      return Promise.reject(new E2eeSetupUnavailableError());
+    async claimPrekeyBundles(request): Promise<readonly ClaimedPeerBundle[]> {
+      const nowMs = Date.now();
+      const rosterByActor = new Map<string, VerifiedRosterSnapshot>();
+      for (const actorId of request.actorIds) {
+        rosterByActor.set(actorId, await loadVerifiedRoster(api, actorId, nowMs));
+      }
+      const response = await api.e2ee.claimPrekeyBundles({
+        conversationId: request.conversationId,
+        actorIds: [...request.actorIds],
+      });
+      return response.bundles.map((bundle) => {
+        const roster = rosterByActor.get(bundle.actorId);
+        const certificate = bundle.deviceCertificate;
+        const signedPrekey = bundle.signedPrekey;
+        if (roster === undefined || certificate === undefined || signedPrekey === undefined) {
+          throw new E2eeContractError('Claimed prekey bundle is missing required fields.');
+        }
+        const oneTimePreKey =
+          bundle.oneTimePrekey === undefined || bundle.oneTimePrekeyExhausted
+            ? undefined
+            : { id: Number(bundle.oneTimePrekey.keyId), publicKey: bundle.oneTimePrekey.publicKey };
+        const verified = verifyPreKeyBundle({
+          bundleBytes: bundle.bundleBytes,
+          deviceSignature: bundle.deviceSignature,
+          certificateBytes: certificate.certificateBytes,
+          certificateRootSignature: certificate.rootSignature,
+          ...(oneTimePreKey === undefined ? {} : { oneTimePreKey }),
+          roster,
+          nowMs,
+        });
+        return { actorId: bundle.actorId, deviceId: bundle.deviceId, bundle: verified, roster };
+      });
     },
 
     async sendEnvelopes(request: SendEnvelopesRequestLike): Promise<unknown> {
@@ -123,11 +184,9 @@ export function createWebE2eeTransports(
       });
     },
 
-    loadPeerRoster(actorId: string): Promise<SignedDeviceRoster> {
+    loadPeerRoster(actorId: string): Promise<VerifiedRosterSnapshot> {
       if (actorId !== identity.actorId) {
-        // Peer chains are verified through the node-canonical bytes elsewhere; the
-        // crypto-native roster X3DH demands cannot be derived for another actor.
-        return Promise.reject(new E2eeSetupUnavailableError());
+        return loadVerifiedRoster(api, actorId, Date.now());
       }
       // This device's own roster is locally held and root-signed by this vault.
       return Promise.resolve(identity.ownRoster);
@@ -153,26 +212,18 @@ export interface E2eeConversationCreateTransport {
 
 export function bindConversationCreate(api: E2eeApiSurface): E2eeConversationCreateTransport {
   return {
+    // ADR 0035: `CreateE2eeConversationRequest` no longer carries the first message —
+    // the node reserves the conversation id, invisible until a real `SendEnvelopes`
+    // lands into it, because the envelope AD binds a conversation id that used to not
+    // exist yet when the client sealed it. `input.message` stays part of this seam's
+    // input shape so a caller can seal its envelopes against the id this call returns
+    // and immediately follow up with `sendEnvelopes` — composing that two-step send is
+    // the caller's job, not this transport's.
     async createE2eeConversation(input) {
       const response = await api.e2ee.createE2eeConversation({
         clientRequestId: input.clientRequestId,
         senderDeviceId: input.senderDeviceId,
         recipientActorIds: [...input.recipientActorIds],
-        message: {
-          membershipEpoch: input.message.membershipEpoch,
-          frankingCommitment: input.message.frankingCommitment,
-          frankingProfile: input.message.frankingProfile,
-          fanoutDigest: input.message.fanoutDigest,
-          logicalMessageId: input.message.logicalMessageId,
-          deviceEnvelopes: input.message.deviceEnvelopes.map((envelope) => ({
-            recipientActorId: envelope.recipientActorId,
-            recipientDeviceId: envelope.recipientDeviceId,
-            encryptedHeader: envelope.encryptedHeader,
-            ciphertext: envelope.ciphertext,
-            openingCiphertext: envelope.openingCiphertext,
-            ciphertextDigest: envelope.ciphertextDigest,
-          })),
-        },
       });
       return { conversationId: response.conversationId };
     },

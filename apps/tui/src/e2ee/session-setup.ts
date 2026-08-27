@@ -1,19 +1,23 @@
 /**
- * Session bootstrap: prekey-claim → X3DH → first envelope (ADR 0020 §5, §8).
+ * Session bootstrap: prekey-claim → X3DH → first envelope (ADR 0020 §5, §8). The TUI's
+ * copy of this module; byte-identical framing to the web client's (both clients must
+ * recognize each other's initial envelopes, so the framing is definitionally shared).
  *
  * The Double Ratchet's header-encrypted profile hides ratchet keys and counters from
  * the node *after* setup. Setup itself still has to reach the responder: which signed
  * and one-time prekeys the initiator consumed, the ephemeral public key, and the
  * initiator's transcript signature. The proto reserves `E2eeDeviceEnvelope.
  * encrypted_header` for exactly this ("for an initial (X3DH) message this carries the
- * setup header"); the concrete framing is defined here because no shared encoder exists
- * yet — a four-byte magic plus a length-prefixed setup block prepended to the ordinary
- * encrypted ratchet header, so every later message on the same session stays a bare
- * ratchet header and a receiver can tell the two apart deterministically.
+ * setup header"); the concrete framing is a four-byte magic plus a length-prefixed
+ * setup block prepended to the ordinary encrypted ratchet header, so every later
+ * message on the same session stays a bare ratchet header and a receiver can tell the
+ * two apart deterministically.
  *
  * Everything cryptographic — verification, derivation, zeroization — stays inside
  * `@patches/crypto`'s reviewed `initiateX3dh`/`respondX3dh`; this module only frames
- * bytes and wires inputs into those functions.
+ * bytes and wires inputs into those functions. Prekey ids are `u64` on the wire here
+ * (ADR 0033 §2: "prekey ids are u64 everywhere"), matching the X3DH handshake
+ * transcript's own encoding.
  */
 import {
   ByteReader,
@@ -24,17 +28,17 @@ import {
   initializeResponderRatchet,
   initiateX3dh,
   respondX3dh,
-  type CertifiedDevice,
   type DoubleRatchetState,
   type InitiateX3dhResult,
-  type PreKeyBundle,
   type RespondX3dhResult,
-  type SignedDeviceRoster,
+  type VerifiedCertifiedDevice,
+  type VerifiedPreKeyBundle,
+  type VerifiedRosterSnapshot,
   type X3dhHandshake,
 } from '@patches/crypto';
 import { E2eeContractError } from '@patches/domain';
 
-import type { LocalDeviceIdentity } from './local-identity.js';
+import { selfPrekeyBundle, type LocalDeviceIdentity } from './local-identity.js';
 
 const SETUP_MAGIC = new Uint8Array([0x50, 0x45, 0x53, 0x48]); // "PESH"
 const SETUP_VERSION = 1;
@@ -55,11 +59,11 @@ function encodeSetupBlock(identity: LocalDeviceIdentity, handshake: X3dhHandshak
     .fixed(handshake.initiatorRosterDigest, 32)
     .fixed(handshake.responderRosterDigest, 32)
     .fixed(handshake.ephemeralPublicKey, 32)
-    .u32(handshake.signedPreKeyId)
+    .u64(handshake.signedPreKeyId)
     .fixed(handshake.signedPreKeyPublicKey, 32)
     .u8(hasOneTime ? 1 : 0);
   if (hasOneTime && handshake.oneTimePreKeyPublicKey !== undefined) {
-    writer.u32(handshake.oneTimePreKeyId ?? 0).fixed(handshake.oneTimePreKeyPublicKey, 32);
+    writer.u64(handshake.oneTimePreKeyId ?? 0).fixed(handshake.oneTimePreKeyPublicKey, 32);
   }
   return writer.fixed(handshake.initiatorSignature, 64).finish();
 }
@@ -74,12 +78,12 @@ function decodeSetupBlock(bytes: Uint8Array): InitialSetupBlock {
     initiatorRosterDigest: reader.fixed(32),
     responderRosterDigest: reader.fixed(32),
     ephemeralPublicKey: reader.fixed(32),
-    signedPreKeyId: reader.u32(),
+    signedPreKeyId: reader.u64(),
     signedPreKeyPublicKey: reader.fixed(32),
   };
   const hasOneTime = reader.u8() === 1;
   const oneTime = hasOneTime
-    ? { oneTimePreKeyId: reader.u32(), oneTimePreKeyPublicKey: reader.fixed(32) }
+    ? { oneTimePreKeyId: reader.u64(), oneTimePreKeyPublicKey: reader.fixed(32) }
     : {};
   const initiatorSignature = reader.fixed(64);
   reader.end();
@@ -132,6 +136,13 @@ export interface EstablishedInitiatorSession {
   readonly usedOneTimePreKey: boolean;
 }
 
+function handshakeDeviceOf(device: VerifiedCertifiedDevice): {
+  readonly certificateBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+} {
+  return { certificateBytes: device.certificateBytes, rootSignature: device.rootSignature };
+}
+
 /**
  * Runs the initiator half of X3DH against a verified peer bundle and initializes the
  * sending ratchet. `identity` supplies the local roster/certificate material
@@ -139,8 +150,8 @@ export interface EstablishedInitiatorSession {
  */
 export function establishInitiatorSession(input: {
   readonly identity: LocalDeviceIdentity;
-  readonly peerBundle: PreKeyBundle;
-  readonly peerRoster: SignedDeviceRoster;
+  readonly peerBundle: VerifiedPreKeyBundle;
+  readonly peerRoster: VerifiedRosterSnapshot;
   readonly nowMs: number;
 }): EstablishedInitiatorSession {
   const initiated: InitiateX3dhResult = initiateX3dh({
@@ -160,7 +171,7 @@ export function establishInitiatorSession(input: {
     state = initializeInitiatorRatchet(
       initiated.secrets,
       initiated.initiatorRatchetKey,
-      input.peerBundle.signedPreKey.publicKey,
+      input.peerBundle.signedPrekeyPublicKey,
     );
   } finally {
     // `initializeInitiatorRatchet` cloned what it needs; dispose the rest of the derived
@@ -202,49 +213,52 @@ export interface EstablishedResponderSession {
  *
  * The initiator device is taken from `initiatorRoster` (already verified by the caller),
  * never from the unauthenticated setup block, which names it only so the roster entry can
- * be located.
+ * be located. `identity`'s own bundle is re-verified here (through
+ * {@link selfPrekeyBundle}) for whichever one-time prekey the setup block names, rather
+ * than trusted from a value the caller precomputed.
  */
 export function establishResponderSession(input: {
   readonly identity: LocalDeviceIdentity;
-  readonly selfBundle: PreKeyBundle;
   readonly setup: InitialSetupBlock;
-  readonly initiatorRoster: SignedDeviceRoster;
+  readonly initiatorRoster: VerifiedRosterSnapshot;
   readonly nowMs: number;
 }): EstablishedResponderSession {
-  const { setup } = input;
+  const { setup, identity } = input;
   const initiator = findRosterDevice(
     input.initiatorRoster,
     setup.senderDeviceId,
     setup.senderActorId,
   );
-  if (
-    setup.handshake.signedPreKeyId !== input.identity.signedPreKey.id ||
-    setup.handshake.oneTimePreKeyId !== input.selfBundle.oneTimePreKey?.id
-  ) {
+  if (setup.handshake.signedPreKeyId !== identity.signedPreKey.id) {
     throw new E2eeContractError('Initial message names prekeys this device does not hold.');
   }
   const oneTime =
     setup.handshake.oneTimePreKeyId === undefined
       ? undefined
-      : input.identity.oneTimePreKeys.find(
+      : identity.oneTimePreKeys.find(
           (candidate) => candidate.id === setup.handshake.oneTimePreKeyId,
         );
   if ((oneTime === undefined) !== (setup.handshake.oneTimePreKeyId === undefined)) {
     throw new E2eeContractError('Initial message names prekeys this device does not hold.');
   }
+  const selfBundle = selfPrekeyBundle(
+    identity,
+    oneTime === undefined ? undefined : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey },
+    input.nowMs,
+  );
   const handshake: X3dhHandshake = {
     ...setup.handshake,
-    initiator,
-    responder: input.identity.selfDevice,
+    initiator: handshakeDeviceOf(initiator),
+    responder: handshakeDeviceOf(identity.selfDevice),
   };
   const responded: RespondX3dhResult = respondX3dh({
-    responderKeys: input.identity.keys,
-    responderBundle: input.selfBundle,
-    responderRoster: input.identity.ownRoster,
+    responderKeys: identity.keys,
+    responderBundle: selfBundle,
+    responderRoster: identity.ownRoster,
     initiatorRoster: input.initiatorRoster,
     signedPreKey: {
-      id: input.identity.signedPreKey.id,
-      keyPair: input.identity.signedPreKey.keyPair,
+      id: identity.signedPreKey.id,
+      keyPair: identity.signedPreKey.keyPair,
     },
     ...(oneTime === undefined
       ? {}
@@ -267,14 +281,12 @@ export function establishResponderSession(input: {
 }
 
 function findRosterDevice(
-  roster: SignedDeviceRoster,
+  roster: VerifiedRosterSnapshot,
   deviceId: string,
   actorId: string,
-): CertifiedDevice {
-  const device = roster.roster.devices.find(
-    (candidate) => candidate.certificate.deviceId === deviceId,
-  );
-  if (device === undefined || device.certificate.userId !== actorId) {
+): VerifiedCertifiedDevice {
+  const device = roster.devices.find((candidate) => candidate.deviceId === deviceId);
+  if (device === undefined || device.actorId !== actorId) {
     throw new E2eeContractError('Initial message names a device absent from the verified roster.');
   }
   return device;
