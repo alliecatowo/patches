@@ -36,7 +36,7 @@ import {
 
 import { E2EE_DEVICE_REVOKED_COPY, refreshOwnRoster } from './device-link.js';
 import type { EnrollmentTransport } from './enrollment.js';
-import { loadStoredEnrollment } from './enrollment.js';
+import { loadStoredEnrollment, saveStoredEnrollment } from './enrollment.js';
 import { parseHistoryTransfer } from './history-transfer.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { maintainPrekeys } from './prekey-maintenance.js';
@@ -448,6 +448,9 @@ export class E2eeSessionRuntime {
 
     let state: DoubleRatchetState;
     let message: { encryptedHeader: Uint8Array; ciphertext: Uint8Array };
+    // Set only on the branch below that actually spends a one-time prekey; consumed after the
+    // resulting state is durably committed (see the commit past `openDeviceEnvelope`).
+    let consumedOneTimePreKeyId: number | undefined;
     if (isInitialEnvelopeHeader(envelope.encryptedHeader)) {
       const { setup, ratchetHeader } = splitInitialHeader(envelope.encryptedHeader);
       message = { encryptedHeader: ratchetHeader, ciphertext: envelope.ciphertext };
@@ -469,6 +472,7 @@ export class E2eeSessionRuntime {
           previousSignedPreKeys: storedForRetainedKeys?.previousSignedPreKeys,
         });
         state = established.state;
+        consumedOneTimePreKeyId = established.consumedOneTimePreKeyId;
       }
     } else {
       if (storedState === undefined) {
@@ -504,6 +508,15 @@ export class E2eeSessionRuntime {
     // Commit the receive-side advance BEFORE acknowledging (ADR 0020 §4).
     await this.vault.applyUpdate(sessionId, opened.state);
 
+    // ADR 0020 §5: the one-time private key answers exactly one handshake. Removed only now,
+    // strictly after the session commit above — a crash before that commit leaves the prekey in
+    // place so the handshake can still be re-derived on retry; a crash after commit but before
+    // this removal at worst leaves one already-spent key on disk, which the next attempt to use
+    // it fails harmlessly (there is no un-derived session left for it to open).
+    if (consumedOneTimePreKeyId !== undefined) {
+      await this.consumeOneTimePreKey(consumedOneTimePreKeyId);
+    }
+
     let payload: ReturnType<typeof decodePayload>;
     try {
       payload = decodePayload(opened.output.plaintext);
@@ -535,6 +548,31 @@ export class E2eeSessionRuntime {
     } catch {
       return { kind: 'undisplayable', id: envelope.envelopeId };
     }
+  }
+
+  /**
+   * Drops a spent one-time prekey from both the in-memory identity — so this runtime never
+   * offers it to `establishResponderSession` again this process — and the vault-persisted
+   * enrollment record, so it stays dropped across restarts (issue #153, ADR 0020 §5). Reloads
+   * the stored record fresh rather than reusing an earlier snapshot, since
+   * `ensurePrekeysMaintained`/`ensureFreshOwnRoster` may have written to it since this envelope's
+   * handshake began. No stored record (never enrolled, or a vault carrying only session state)
+   * is a no-op past the in-memory update — there is nothing durable to correct.
+   */
+  private async consumeOneTimePreKey(id: number): Promise<void> {
+    this.identity = {
+      ...this.identity,
+      oneTimePreKeys: this.identity.oneTimePreKeys.filter((prekey) => prekey.id !== id),
+    };
+    const stored = await loadStoredEnrollment(this.vault, this.nowMs());
+    if (stored === undefined) return;
+    await saveStoredEnrollment(this.vault, {
+      ...stored,
+      identity: {
+        ...stored.identity,
+        oneTimePreKeys: stored.identity.oneTimePreKeys.filter((prekey) => prekey.id !== id),
+      },
+    });
   }
 }
 
