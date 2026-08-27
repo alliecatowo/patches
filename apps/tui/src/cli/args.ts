@@ -24,7 +24,8 @@ export type Command =
   | 'labelers'
   | 'appeal'
   | 'modlog'
-  | 'recovery-codes';
+  | 'recovery-codes'
+  | 'e2ee';
 
 const SUBCOMMANDS: readonly Command[] = [
   'register',
@@ -46,6 +47,7 @@ const SUBCOMMANDS: readonly Command[] = [
   'appeal',
   'modlog',
   'recovery-codes',
+  'e2ee',
 ];
 
 export interface ParsedArgs {
@@ -173,6 +175,7 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
       case 'appeal':
       case 'modlog':
       case 'recovery-codes':
+      case 'e2ee':
         result.command = argument;
         break;
       case '--insecure':
@@ -262,6 +265,7 @@ Usage:
   patches labelers <command>   subscribe to labelers and set per-value actions
   patches appeal <command>     file and track appeals against a moderation notice
   patches modlog                this node's public, anonymized moderation log
+  patches e2ee <command>       export/import an encrypted-messaging recovery archive
   patches --version            print the client version
 
 Options:
