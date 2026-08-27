@@ -9,6 +9,12 @@ import {
   type AddE2eeMemberResponse,
   type AttachReportEvidenceRequest,
   type AttachReportEvidenceResponse,
+  type E2eeServiceBeginDeviceLinkRequest,
+  type E2eeServiceBeginDeviceLinkResponse,
+  type E2eeServiceCancelDeviceLinkRequest,
+  type E2eeServiceCancelDeviceLinkResponse,
+  type E2eeServiceListPendingDeviceLinksRequest,
+  type E2eeServiceListPendingDeviceLinksResponse,
   type ClaimPrekeyBundlesRequest,
   type ClaimPrekeyBundlesResponse,
   type CreateE2eeConversationRequest,
@@ -53,6 +59,7 @@ import { CurrentSession } from '../auth/session-context.js';
 import { type AccessTokenClaims } from '../auth/token.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
 import { E2eeCapabilityService } from './e2ee-capability.service.js';
+import { E2eeDeviceLinkService } from './device-link.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeGroupService } from './group-control.service.js';
 import { E2eeIdentityRootService } from './identity-root.service.js';
@@ -80,6 +87,7 @@ export class E2eeController implements E2eeServiceController {
   constructor(
     private readonly identityRoots: E2eeIdentityRootService,
     private readonly deviceRosters: E2eeDeviceRosterService,
+    private readonly deviceLinks: E2eeDeviceLinkService,
     private readonly prekeys: E2eePrekeyService,
     private readonly conversations: E2eeConversationService,
     private readonly groups: E2eeGroupService,
@@ -137,6 +145,30 @@ export class E2eeController implements E2eeServiceController {
     @Payload() request: ListDeviceRostersRequest,
   ): Promise<ListDeviceRostersResponse> {
     return this.deviceRosters.listDeviceRosters(request);
+  }
+
+  beginDeviceLink(
+    @Payload() request: E2eeServiceBeginDeviceLinkRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<E2eeServiceBeginDeviceLinkResponse> {
+    return this.deviceLinks.beginDeviceLink(requireSession(session).actorId, request);
+  }
+
+  listPendingDeviceLinks(
+    @Payload() request: E2eeServiceListPendingDeviceLinksRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<E2eeServiceListPendingDeviceLinksResponse> {
+    return this.deviceLinks.listPendingDeviceLinks(requireSession(session).actorId, request);
+  }
+
+  cancelDeviceLink(
+    @Payload() request: E2eeServiceCancelDeviceLinkRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<E2eeServiceCancelDeviceLinkResponse> {
+    return this.deviceLinks.cancelDeviceLink(requireSession(session).actorId, request);
   }
 
   uploadPrekeys(
