@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { credentials as grpcCredentials } from '@grpc/grpc-js';
 import { Code, ConnectError, createClient } from '@connectrpc/connect';
@@ -14,7 +14,7 @@ import {
   type RegisterResponse,
 } from '@patches/proto';
 import { AuthService, SystemService } from '@patches/proto/es';
-import { createTestUser } from '@patches/testkit';
+import { createTestUser, mintInvite as testkitMintInvite } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -63,17 +63,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       await dataSource.destroy();
     });
 
-    function sha256Hex(value: string): string {
-      return createHash('sha256').update(value, 'utf8').digest('hex');
-    }
-
-    async function mintInvite(): Promise<string> {
-      const code = `invite-${randomUUID()}`;
-      await dataSource.query(
-        'INSERT INTO invites (code_hash, created_by_user_id, max_uses, uses) VALUES ($1, $2, $3, 0)',
-        [sha256Hex(code), inviterUserId, 1],
-      );
-      return code;
+    function mintInvite(): Promise<string> {
+      return testkitMintInvite(dataSource.manager, inviterUserId);
     }
 
     /** Registers a fresh account over gRPC (not the thing under test) and returns its

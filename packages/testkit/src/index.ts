@@ -2,4 +2,5 @@ export { createTestDataSource, assertTestDatabaseUrl } from './create-test-data-
 export { withTransactionRollback } from './with-transaction-rollback.js';
 export { truncateAll } from './truncate-all.js';
 export { randomHandle, randomEmail } from './random.js';
+export { waitFor } from './wait-for.js';
 export * from './factories/index.js';
