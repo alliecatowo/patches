@@ -216,14 +216,14 @@ jobs:
           echo "$output"
           if [ "$status" -ne 0 ]; then
             if echo "$output" | grep -q "irreversible by design"; then
-              echo "deliberately-irreversible" >> "$GITHUB_OUTPUT"
+              echo "deliberately_irreversible=true" >> "$GITHUB_OUTPUT"
             else
               exit 1
             fi
           fi
 
       - name: Re-apply migration (prove up works again)
-        if: steps.revert.outputs.deliberately-irreversible != 'true'
+        if: steps.revert.outputs.deliberately_irreversible != 'true'
         run: pnpm db:migrate
 
       - run: pnpm test:integration
