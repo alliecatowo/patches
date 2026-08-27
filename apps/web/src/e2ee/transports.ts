@@ -380,5 +380,22 @@ export function createWebEnrollmentTransport(
     async enrollDevice(request) {
       await api.e2ee.enrollDevice(request);
     },
+
+    async getDeviceRoster(actorId) {
+      const response = await api.e2ee.getDeviceRoster({ actorId });
+      return { roster: response.roster, certificates: response.certificates };
+    },
+
+    async beginDeviceLink(request) {
+      return api.e2ee.beginDeviceLink(request);
+    },
+
+    async listPendingDeviceLinks() {
+      return api.e2ee.listPendingDeviceLinks({});
+    },
+
+    async cancelDeviceLink(linkId) {
+      await api.e2ee.cancelDeviceLink({ linkId });
+    },
   };
 }
