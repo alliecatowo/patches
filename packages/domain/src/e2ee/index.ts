@@ -125,16 +125,6 @@ export type {
 } from './control.js';
 
 export {
-  assertGroupMembershipBounds,
-  assertMembershipChain,
-  assertMembershipEventShape,
-  assertMembershipSucceeds,
-  membershipGenesisPreviousDigest,
-  verifyMembershipEventSignature,
-} from './membership.js';
-export type { E2eeMembershipAction, E2eeMembershipEventView } from './membership.js';
-
-export {
   assertCiphertextDigestsMatchCiphertexts,
   assertEnvelopeShape,
   assertFanoutCovers,

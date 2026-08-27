@@ -18,6 +18,28 @@ if (ledgerIndex === -1) {
   throw new Error(`${LEDGER_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`);
 }
 
+// Same "locate BY NAME" reasoning as the ledger migration above: this row-deleting migration
+// (ADR 0033 §5) must stay excluded from this file's scoped chain regardless of what lands
+// after it in `ALL_MIGRATIONS` — a positional `-1` (the actual chain tip) silently stopped
+// excluding it the moment `DropE2eeConversationMembershipEvents…` was appended (#270).
+const IRREVERSIBLE_TIP_MIGRATION_NAME = 'Adr0033IdentityTranscriptCleanBreak1787800000000';
+const irreversibleTipIndex = ALL_MIGRATIONS.findIndex(
+  (m) => m.name === IRREVERSIBLE_TIP_MIGRATION_NAME,
+);
+if (irreversibleTipIndex === -1) {
+  throw new Error(
+    `${IRREVERSIBLE_TIP_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+  );
+}
+
+// Everything from the ledger onward except the irreversible migration itself — not
+// `ALL_MIGRATIONS.slice(ledgerIndex, irreversibleTipIndex)`, which silently dropped anything
+// appended after it (e.g. `DropE2eeConversationMembershipEvents…`, #270) too.
+const scopedMigrations = [
+  ...ALL_MIGRATIONS.slice(ledgerIndex, irreversibleTipIndex),
+  ...ALL_MIGRATIONS.slice(irreversibleTipIndex + 1),
+];
+
 if (!testDatabaseUrl) {
   console.warn(
     '[packages/database] Skipping Phase 13 E2EE schema tests: TEST_DATABASE_URL is not set.',
@@ -73,24 +95,24 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     // target migration rather than mutating an already-initialized source.
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
-    // The ledger and everything appended after it, in order — the final state must be
-    // fully migrated ("no pending migration" assertion below). Stops one short of the very
-    // tip: `Adr0033IdentityTranscriptCleanBreak…` (ADR 0033 §5) deletes every row in these
-    // same E2EE tables regardless of encoding, which would erase this file's own pre-ledger
-    // fixture before the assertions below ever see it. That migration is orthogonal to what
-    // this file tests (the ledger's dependency-safe FK/index backfill) and is exercised in
-    // full elsewhere (`app-meta.integration.test.ts`, `phase1-schema.integration.test.ts`,
-    // both of which run the complete, unscoped `ALL_MIGRATIONS` chain via `createDataSource`).
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex, -1) });
+    // The ledger and everything appended after it, in order, minus the irreversible migration
+    // — the final state must be fully migrated ("no pending migration" assertion below).
+    // `Adr0033IdentityTranscriptCleanBreak…` (ADR 0033 §5) deletes every row in these same
+    // E2EE tables regardless of encoding, which would erase this file's own pre-ledger fixture
+    // before the assertions below ever see it. That migration is orthogonal to what this file
+    // tests (the ledger's dependency-safe FK/index backfill) and is exercised in full elsewhere
+    // (`app-meta.integration.test.ts`, `phase1-schema.integration.test.ts`, both of which run
+    // the complete, unscoped `ALL_MIGRATIONS` chain via `createDataSource`).
+    dataSource.setOptions({ migrations: scopedMigrations });
     await dataSource.initialize();
     await dataSource.runMigrations();
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
     // Same scoped chain as above, not the default full `ALL_MIGRATIONS` — every `it` below
-    // (including the undo/redo round trip) must stay within `[ledgerIndex, -1)`, or
-    // `runMigrations()`/`undoLastMigration()` would reach the excluded tip migration and wipe
-    // this file's fixture out from under it.
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex, -1) });
+    // (including the undo/redo round trip) must stay within `scopedMigrations`, or
+    // `runMigrations()`/`undoLastMigration()` would reach the excluded irreversible migration
+    // and wipe this file's fixture out from under it.
+    dataSource.setOptions({ migrations: scopedMigrations });
     await dataSource.initialize();
   });
 
@@ -103,7 +125,6 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'e2ee_%' ORDER BY table_name`,
     );
     expect(rows.map((row) => row.table_name)).toEqual([
-      'e2ee_conversation_membership_events',
       'e2ee_device_identities',
       'e2ee_device_rosters',
       'e2ee_group_control_events',
@@ -178,9 +199,9 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
   it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
     // Undo from the ledger onward (migrations after the ledger pop first), so the
     // DB ends at the pre-ledger schema — exactly what the assertions below expect. This
-    // dataSource's configured chain stops one short of `ALL_MIGRATIONS` (see the comment in
-    // `beforeAll`), so the undo count is one fewer too.
-    for (let i = ALL_MIGRATIONS.length - 1 - ledgerIndex; i > 0; i--) {
+    // dataSource's configured chain is `scopedMigrations` (see the comment in `beforeAll`),
+    // so the undo count matches that scoped chain's length.
+    for (let i = scopedMigrations.length; i > 0; i--) {
       await dataSource.undoLastMigration();
     }
 

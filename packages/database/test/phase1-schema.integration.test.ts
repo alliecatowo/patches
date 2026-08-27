@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
+import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 import { Actor } from '../src/entities/actor.entity.js';
 import { Credential } from '../src/entities/credential.entity.js';
 import { Post } from '../src/entities/post.entity.js';
@@ -217,13 +218,29 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     ).rejects.toThrow(/chk_invites_uses_within_max/);
   });
 
-  it('refuses to undo the tip migration (ADR 0033 §5: irreversible by design) and reports no pending migrations', async () => {
+  it('refuses to undo the ADR 0033 migration (irreversible by design), reversing anything after it first', async () => {
+    // Located BY NAME, not position — this migration doesn't have to stay the chain tip (#270
+    // appended `DropE2eeConversationMembershipEvents…` after it), only irreversible.
+    const IRREVERSIBLE_MIGRATION_NAME = 'Adr0033IdentityTranscriptCleanBreak1787800000000';
+    const irreversibleIndex = ALL_MIGRATIONS.findIndex(
+      (m) => m.name === IRREVERSIBLE_MIGRATION_NAME,
+    );
+    if (irreversibleIndex === -1) {
+      throw new Error(
+        `${IRREVERSIBLE_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+      );
+    }
     const executor = new MigrationExecutor(dataSource);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
-    // The last migration on the chain (`Adr0033IdentityTranscriptCleanBreak…`) throws from
-    // `down()` on purpose; TypeORM rolls the attempted undo back in its own transaction, so
-    // nothing is left pending either way.
+    // Undo everything appended after the irreversible migration first, so it becomes the tip.
+    for (let i = ALL_MIGRATIONS.length - 1 - irreversibleIndex; i > 0; i--) {
+      await dataSource.undoLastMigration();
+    }
+    // `down()` throws on purpose; TypeORM rolls the attempted undo back in its own
+    // transaction, so nothing is left pending from this attempt either way.
     await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible by design/);
-    expect(await executor.getPendingMigrations()).toHaveLength(0);
+    expect(await executor.getPendingMigrations()).toHaveLength(
+      ALL_MIGRATIONS.length - 1 - irreversibleIndex,
+    );
   });
 });

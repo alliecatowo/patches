@@ -37,6 +37,7 @@ import { RemoveLegacyServerVisibleDms1787660000000 } from './1787660000000-Remov
 import { ActorPersonalization1787669032825 } from './1787669032825-ActorPersonalization.js';
 import { DropOrphanedLegacyMessageTrigger1787670000000 } from './1787670000000-DropOrphanedLegacyMessageTrigger.js';
 import { Phase13GroupMembership1787241965646 } from './1787241965646-Phase13GroupMembership.js';
+import { DropE2eeConversationMembershipEvents1787815392235 } from './1787815392235-DropE2eeConversationMembershipEvents.js';
 import { RemoveFilterScopeMessageRequests1787661000000 } from './1787661000000-RemoveFilterScopeMessageRequests.js';
 import { E2eeIdentityRootTranscript1787790938656 } from './1787790938656-E2eeIdentityRootTranscript.js';
 import { ReserveE2eeConversationSchema1787792202409 } from './1787792202409-ReserveE2eeConversationSchema.js';
@@ -98,4 +99,5 @@ export const ALL_MIGRATIONS = [
   E2eeIdentityRootTranscript1787790938656,
   ReserveE2eeConversationSchema1787792202409,
   Adr0033IdentityTranscriptCleanBreak1787800000000,
+  DropE2eeConversationMembershipEvents1787815392235,
 ];
