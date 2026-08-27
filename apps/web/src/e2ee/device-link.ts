@@ -291,6 +291,13 @@ export async function pollLinkedEnrollment(
     rootPrivate: undefined,
     rootPublic: cryptoRoot.publicKey,
     identity,
+    // Issue #278: this device's own inventory starts at exactly the ids the authority
+    // handed it (`pending.oneTimePreKeys`, minted by `beginDeviceLinkOffer`) — the next
+    // locally-minted id must continue past every one of those, never restart at 1.
+    nextOneTimePrekeyId:
+      pending.oneTimePreKeys.reduce((max, prekey) => Math.max(max, prekey.id), 0) + 1,
+    previousSignedPreKeys: [],
+    pendingPrekeyUpload: undefined,
   };
   await saveStoredEnrollment(input.vault, record);
   await deletePendingLinkOffer(input.vault);

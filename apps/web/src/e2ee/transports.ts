@@ -401,5 +401,14 @@ export function createWebEnrollmentTransport(
     async revokeDevice(request) {
       await api.e2ee.revokeDevice(request);
     },
+
+    // One-time prekey replenishment + signed-prekey rotation (ADR 0020 §5, issue #278).
+    async getPrekeyInventory(deviceId) {
+      return api.e2ee.getPrekeyInventory({ deviceId });
+    },
+
+    async uploadPrekeys(request) {
+      return api.e2ee.uploadPrekeys(request);
+    },
   };
 }
