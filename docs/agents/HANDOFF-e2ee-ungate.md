@@ -46,14 +46,24 @@ crypto changes. See orchestrator brief for full scope (7 numbered steps).
 11. [done] infra/scripts/e2ee-lab.sh: rewrote header (no more B-108/prod-rollout-flip section,
     no more "post-canary env" framing) and the one body echo/env-var block that set
     E2EE_APPROVED_FRANKING_PROFILES/E2EE_V1_ENABLED explicitly (now inert defaults suffice).
-12. [in progress] docs: docs/operations/deployment.md, docs/operations/local-development.md
-    (next), then ADR 0036 amendment header (dated 2026-08-26, supersedes §§1-2 + capability
-    ladder, retains §4.3 standing disclosures), then CLAUDE.md if it asserts something false.
+12. [done] docs: docs/operations/deployment.md, docs/operations/local-development.md, and the
+    ADR 0036 Amendment section (dated 2026-08-26, supersedes §§1-2 + the capability ladder,
+    retains §4.3 standing disclosures, leaves the rest of the ADR intact). CLAUDE.md's hard-rule
+    line about "v0 DMs are server-visible" is a _different_, larger, already-tracked item
+    (issue #198 / ADR 0036 §4.1) — not touched, per the coordinator's explicit scoping to only
+    fix CLAUDE.md if it asserts something false about _gating_ specifically.
     docs/architecture/e2ee.md already done (status line, §5 approved-profile paragraph, §7
     rollout-states section rewritten to 2-state DISABLED/ENABLED).
-13. [ ] mise run check domain / server / tui (one at a time — this run already went green for
-        domain+server+tui before the coordinator's message; re-verify server/tui after `pnpm -w
-build` on packages/domain if stale-dts errors show up). Commit, report sha.
+13. [done] `mise run check domain` / `check server` / `check tui`, one at a time, plus
+    `pnpm --filter @patches/domain build` to refresh dist (the coordinator flagged this as a
+    likely stale-dts issue; it was). domain and server are fully green. tui's typecheck fails
+    only inside `apps/tui/src/e2ee/**` and `apps/tui/test/e2ee-{enrollment,runtime}.test.ts`
+    (missing `@patches/crypto` exports like `certifyDevice`/`rosterDigest`/`CertifiedDevice`) —
+    confirmed via `git diff --stat` that none of those files are in my diff; this is another
+    agent's in-flight ADR 0033 crypto rebuild (forbidden path), not caused by this change.
+    `MessagesScreen.test.tsx` runs green standalone (13/13) and eslint/prettier are clean on
+    every file I touched.
+14. [done] Committed at 99366ad4 on branch agent/wt-1787795579-2508888. Task complete.
 
 ## Verified
 
