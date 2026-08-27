@@ -15,6 +15,7 @@ import type { Client, Transport } from '@connectrpc/connect';
 import type { E2eeService } from '@patches/proto/es';
 
 import {
+  bytesEqual,
   verifyMessagingRoot,
   verifyPreKeyBundle,
   verifyRosterSnapshot,
@@ -23,6 +24,7 @@ import {
 } from '@patches/crypto';
 import { E2eeContractError } from '@patches/domain';
 import type { LocalDeviceIdentity } from './local-identity.js';
+import { loadPeerIdentityPin, savePeerIdentityPin, type PeerPinVaultAccess } from './vault.js';
 import {
   type ClaimedPeerBundle,
   type E2eeMailboxTransport,
@@ -40,28 +42,77 @@ export interface E2eeApiSurface {
 
 const MAILBOX_PAGE_LIMIT = 50;
 
-/** Fetches and verifies one actor's messaging root + current device roster snapshot. */
+/**
+ * Fetches and verifies one actor's messaging root + current device roster snapshot,
+ * enforcing the client-side pinning contract (ADR 0033 §2/§3; review C1/C2):
+ *
+ *   * **Roster freshness (C1).** The vault pins the last-verified `(rosterSequence,
+ *     rosterDigest)` per peer. A genuinely root-signed but *stale* roster — the node's
+ *     cheapest way to make a revoked device look active again — is rejected: sequence may
+ *     never go backwards, and the same sequence with a different digest is a fork.
+ *   * **Root substitution (C2).** A served root that differs from the pinned one must be
+ *     a planned rotation: countersigned by the *verified pinned* root, one generation
+ *     later, different key (`verifyMessagingRoot` enforces all three). A brand-new
+ *     self-signed root with no countersignature fails closed. First contact is TOFU —
+ *     there is nothing to pin against yet.
+ *
+ * Verification success re-pins, so the pin always reflects bytes this client actually
+ * verified.
+ */
 async function loadVerifiedRoster(
   api: E2eeApiSurface,
   actorId: string,
   nowMs: number,
+  pinVault: PeerPinVaultAccess,
+  onPeerIdentityEvent?: (event: PeerIdentityEvent) => void,
 ): Promise<VerifiedRosterSnapshot> {
   const rootResponse = await api.e2ee.getIdentityRoot({ actorId });
   const wireRoot = rootResponse.identityRoot;
   if (wireRoot === undefined) {
     throw new E2eeContractError('That actor has no published messaging identity root.');
   }
-  const root: VerifiedMessagingRoot = verifyMessagingRoot({
-    rootBytes: wireRoot.rootBytes,
-    selfSignature: wireRoot.selfSignature,
-    nowMs,
-  });
+  const pin = await loadPeerIdentityPin(pinVault, actorId);
+  let root: VerifiedMessagingRoot;
+  if (pin === undefined) {
+    // First contact (TOFU): no anchor exists, so no rotation proof is checkable. The
+    // `first-seen` identity event is the honest disclosure for this case, not a silently
+    // accepted root.
+    root = verifyMessagingRoot({
+      rootBytes: wireRoot.rootBytes,
+      selfSignature: wireRoot.selfSignature,
+      nowMs,
+    });
+  } else {
+    // Re-verify the pinned root bytes: `verifyMessagingRoot`'s branded result cannot be
+    // constructed from a stored public key alone, so the pin stores the signed bytes.
+    const pinnedRoot = verifyMessagingRoot({
+      rootBytes: pin.rootBytes,
+      selfSignature: pin.selfSignature,
+      nowMs,
+    });
+    if (bytesEqual(wireRoot.rootBytes, pin.rootBytes)) {
+      root = pinnedRoot;
+    } else {
+      root = verifyMessagingRoot({
+        rootBytes: wireRoot.rootBytes,
+        selfSignature: wireRoot.selfSignature,
+        ...(wireRoot.previousRootSignature.length === 0
+          ? {}
+          : { previousRootSignature: wireRoot.previousRootSignature }),
+        previousRoot: pinnedRoot,
+        nowMs,
+      });
+      // A rotation that passed the countersignature check is verified against the peer's
+      // previous key — worth showing, not just trusting silently.
+      onPeerIdentityEvent?.({ kind: 'rotated', actorId });
+    }
+  }
   const rosterResponse = await api.e2ee.getDeviceRoster({ actorId });
   const wireRoster = rosterResponse.roster;
   if (wireRoster === undefined) {
     throw new E2eeContractError('That actor has no published device roster.');
   }
-  return verifyRosterSnapshot({
+  const roster = verifyRosterSnapshot({
     rosterBytes: wireRoster.rosterBytes,
     rootSignature: wireRoster.rootSignature,
     root,
@@ -71,6 +122,26 @@ async function loadVerifiedRoster(
     })),
     nowMs,
   });
+  if (pin !== undefined) {
+    if (roster.sequence < pin.rosterSequence) {
+      throw new E2eeContractError(
+        `Node served roster sequence ${String(roster.sequence)} below the pinned ${String(pin.rosterSequence)}; this is a rollback.`,
+      );
+    }
+    if (
+      roster.sequence === pin.rosterSequence &&
+      !bytesEqual(roster.rosterDigest, pin.rosterDigest)
+    ) {
+      throw new E2eeContractError('Node served a different roster at the pinned sequence.');
+    }
+  }
+  await savePeerIdentityPin(pinVault, actorId, {
+    rootBytes: wireRoot.rootBytes,
+    selfSignature: wireRoot.selfSignature,
+    rosterSequence: roster.sequence,
+    rosterDigest: roster.rosterDigest,
+  });
+  return roster;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +151,22 @@ async function loadVerifiedRoster(
 export interface CreateWebE2eeTransportsOptions {
   readonly api: E2eeApiSurface;
   readonly identity: LocalDeviceIdentity;
+  /** The account's vault — peer identity pins live beside the ratchets (C1/C2). */
+  readonly pinVault: PeerPinVaultAccess;
+  /**
+   * Identity-pinning lifecycle events for the thread-level verification surface (C2).
+   * `first-seen` is TOFU first contact (identity not yet verifiable against a pin);
+   * `rotated` is a rotation that *passed* the countersignature check. The TUI needs no
+   * analogue: it surfaces identity through its safety-number screen and roster-change
+   * copy already.
+   */
+  readonly onPeerIdentityEvent?: (event: PeerIdentityEvent) => void;
 }
+
+/** What the thread screen tells the user about a peer's pinned identity (C2). */
+export type PeerIdentityEvent =
+  | { readonly kind: 'first-seen'; readonly actorId: string }
+  | { readonly kind: 'rotated'; readonly actorId: string };
 
 export function createWebE2eeTransports(
   options: CreateWebE2eeTransportsOptions,
@@ -107,8 +193,14 @@ export function createWebE2eeTransports(
     async claimPrekeyBundles(request): Promise<readonly ClaimedPeerBundle[]> {
       const nowMs = Date.now();
       const rosterByActor = new Map<string, VerifiedRosterSnapshot>();
+      const firstSeen: string[] = [];
       for (const actorId of request.actorIds) {
-        rosterByActor.set(actorId, await loadVerifiedRoster(api, actorId, nowMs));
+        const pin = await loadPeerIdentityPin(options.pinVault, actorId);
+        if (pin === undefined) firstSeen.push(actorId);
+        rosterByActor.set(actorId, await loadVerifiedRoster(api, actorId, nowMs, options.pinVault));
+      }
+      for (const actorId of firstSeen) {
+        options.onPeerIdentityEvent?.({ kind: 'first-seen', actorId });
       }
       const response = await api.e2ee.claimPrekeyBundles({
         conversationId: request.conversationId,
@@ -134,7 +226,15 @@ export function createWebE2eeTransports(
           roster,
           nowMs,
         });
-        return { actorId: bundle.actorId, deviceId: bundle.deviceId, bundle: verified, roster };
+        // M3: address envelopes with the *transcript-verified* ids, never the node's
+        // convenience fields — a swapped wire deviceId would otherwise seal the envelope
+        // for one device under another's keys (silent per-device delivery denial).
+        return {
+          actorId: verified.actorId,
+          deviceId: verified.deviceId,
+          bundle: verified,
+          roster,
+        };
       });
     },
 
@@ -186,7 +286,13 @@ export function createWebE2eeTransports(
 
     loadPeerRoster(actorId: string): Promise<VerifiedRosterSnapshot> {
       if (actorId !== identity.actorId) {
-        return loadVerifiedRoster(api, actorId, Date.now());
+        return loadVerifiedRoster(
+          api,
+          actorId,
+          Date.now(),
+          options.pinVault,
+          options.onPeerIdentityEvent,
+        );
       }
       // This device's own roster is locally held and root-signed by this vault.
       return Promise.resolve(identity.ownRoster);

@@ -7,6 +7,13 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it, vi } from 'vitest';
 
+import {
+  countersignMessagingRoot,
+  generateSigningKeyPair,
+  signDeviceCertificate,
+  signDeviceRoster,
+  signMessagingRoot,
+} from '@patches/crypto';
 import { generateEnrollment } from './enrollment.js';
 import {
   createWebE2eeTransports,
@@ -14,6 +21,7 @@ import {
   type E2eeApiSurface,
 } from './transports.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
+import type { PeerPinVaultAccess } from './vault.js';
 
 // Minted against the REAL clock (not the fixed `NOW` fixture): `createWebE2eeTransports`'s
 // `claimPrekeyBundles`/`loadPeerRoster` verify a fetched peer identity against
@@ -39,18 +47,30 @@ function wireIdentityRoot(identity: typeof peerIdentity): { identityRoot: unknow
   };
 }
 
-function wireDeviceRoster(identity: typeof peerIdentity): unknown {
+function wireDeviceRoster(
+  identity: typeof peerIdentity,
+  override?: {
+    rosterBytes: Uint8Array;
+    rootSignature: Uint8Array;
+    rosterDigest: Uint8Array;
+    sequence: bigint;
+  },
+): unknown {
   const roster = identity.ownRoster;
   const device = identity.selfDevice;
+  const bytes = override?.rosterBytes ?? roster.rosterBytes;
+  const signature = override?.rootSignature ?? roster.rootSignature;
+  const digest = override?.rosterDigest ?? roster.rosterDigest;
+  const sequence = override?.sequence ?? BigInt(roster.sequence);
   return {
     roster: {
       actorId: roster.actorId,
-      sequence: BigInt(roster.sequence),
+      sequence,
       rootGeneration: roster.rootGeneration,
       previousDigest: roster.previousDigest,
-      digest: roster.rosterDigest,
-      rosterBytes: roster.rosterBytes,
-      rootSignature: roster.rootSignature,
+      digest,
+      rosterBytes: bytes,
+      rootSignature: signature,
       entries: roster.entries.map((entry) => ({
         deviceId: entry.deviceId,
         certificateDigest: entry.certificateDigest,
@@ -89,6 +109,19 @@ function wireClaimResponse(identity: typeof peerIdentity): unknown {
  * fixture from having to construct a whole Connect client. */
 function apiWith(e2ee: Record<string, unknown>): E2eeApiSurface {
   return { e2ee } as unknown as E2eeApiSurface;
+}
+
+/** In-memory opaque-record store: the REAL `loadPeerIdentityPin`/`savePeerIdentityPin`
+ * run over it, so tests exercise the actual pin codec, not a parallel test double. */
+function memoryPinVault(): PeerPinVaultAccess {
+  const records = new Map<string, Uint8Array>();
+  return {
+    getOpaqueRecord: (key: string) => Promise.resolve(records.get(key)),
+    putOpaqueRecord: (key: string, value: Uint8Array) => {
+      records.set(key, value);
+      return Promise.resolve();
+    },
+  };
 }
 
 const identity = {
@@ -163,6 +196,7 @@ describe('createWebE2eeTransports', () => {
     const transports = createWebE2eeTransports({
       api: apiWith({ getIdentityRoot, getDeviceRoster, claimPrekeyBundles }),
       identity,
+      pinVault: memoryPinVault(),
     });
 
     const claimed = await transports.claimPrekeyBundles({
@@ -181,6 +215,7 @@ describe('createWebE2eeTransports', () => {
     const transports = createWebE2eeTransports({
       api: apiWith({ getIdentityRoot, getDeviceRoster }),
       identity,
+      pinVault: memoryPinVault(),
     });
 
     await expect(transports.loadPeerRoster('actor-me')).resolves.toBe(identity.ownRoster);
@@ -201,6 +236,7 @@ describe('createWebE2eeTransports', () => {
     const transports = createWebE2eeTransports({
       api: apiWith({ getE2eeConversationState }),
       identity,
+      pinVault: memoryPinVault(),
     });
 
     const plan = await transports.loadFanoutPlan('conv-1');
@@ -221,6 +257,7 @@ describe('createWebE2eeTransports', () => {
     const transports = createWebE2eeTransports({
       api: apiWith({ acknowledgeEnvelopes }),
       identity,
+      pinVault: memoryPinVault(),
     });
     const ids: readonly string[] = ['e1', 'e2'];
 
@@ -236,11 +273,201 @@ describe('createWebE2eeTransports', () => {
     const transports = createWebE2eeTransports({
       api: apiWith({ listMailboxEnvelopes }),
       identity,
+      pinVault: memoryPinVault(),
     });
 
     await expect(transports.listMailboxPage('')).resolves.toEqual({
       envelopes: [],
       nextCursor: '',
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Peer-identity pinning (review C1/C2): the security proof that a malicious
+  // node cannot serve a stale-but-genuinely-signed roster or a substituted
+  // root. Every byte is signed by real keys — each attack is mounted exactly
+  // as the node would mount it.
+  // -------------------------------------------------------------------------
+
+  it('rejects a genuinely-signed roster older than the pinned one (C1 rollback)', async () => {
+    const nowMs = Date.now();
+    const rootKeys = generateSigningKeyPair();
+    const minted = generateEnrollment({
+      actorId: 'actor-peer',
+      nowMs,
+      root: { ...rootKeys, createdAtMs: nowMs - 1000 },
+    }).record.identity;
+    // Roster v2: same entries, sequence 2, chained from v1's digest, signed by the same
+    // real root — a legitimate later roster the node could honestly serve.
+    const v2 = signDeviceRoster(rootKeys.privateKey, {
+      actorId: minted.ownRoster.actorId,
+      rootGeneration: minted.ownRoster.rootGeneration,
+      rootPublicKey: minted.ownRoster.rootPublicKey,
+      sequence: 2,
+      previousDigest: minted.ownRoster.rosterDigest,
+      createdAtMs: nowMs - 500,
+      entries: minted.ownRoster.entries,
+    });
+    const getDeviceRoster = vi
+      .fn()
+      .mockReturnValueOnce(
+        Promise.resolve(
+          wireDeviceRoster(minted, {
+            rosterBytes: v2.rosterBytes,
+            rootSignature: v2.rootSignature,
+            rosterDigest: v2.rosterDigest,
+            sequence: 2n,
+          }),
+        ),
+      )
+      .mockReturnValueOnce(Promise.resolve(wireDeviceRoster(minted)));
+    const transports = createWebE2eeTransports({
+      api: apiWith({
+        getIdentityRoot: vi.fn(() => Promise.resolve(wireIdentityRoot(minted))),
+        getDeviceRoster,
+      }),
+      identity,
+      pinVault: memoryPinVault(),
+    });
+
+    // First load: TOFU pins sequence 2.
+    await expect(transports.loadPeerRoster('actor-peer')).resolves.toBeDefined();
+    // Second load serves v1 (sequence 1 < pinned 2) — a rollback.
+    await expect(transports.loadPeerRoster('actor-peer')).rejects.toThrow('rollback');
+  });
+
+  it('rejects a substituted root with no countersignature by the pinned root (C2)', async () => {
+    const nowMs = Date.now();
+    const minted = generateEnrollment({ actorId: 'actor-peer', nowMs }).record.identity;
+    const attackerRoot = generateEnrollment({ actorId: 'actor-peer', nowMs }).record.identity;
+    const getDeviceRoster = vi
+      .fn()
+      .mockReturnValueOnce(Promise.resolve(wireDeviceRoster(minted)))
+      .mockReturnValueOnce(Promise.resolve(wireDeviceRoster(minted)));
+    const getIdentityRoot = vi
+      .fn()
+      .mockReturnValueOnce(Promise.resolve(wireIdentityRoot(minted)))
+      // The node swaps in a different self-signed root for the same actor: real keys,
+      // real self-signature, no previous-root countersignature.
+      .mockReturnValueOnce(Promise.resolve(wireIdentityRoot(attackerRoot)));
+    const transports = createWebE2eeTransports({
+      api: apiWith({ getIdentityRoot, getDeviceRoster }),
+      identity,
+      pinVault: memoryPinVault(),
+    });
+
+    await transports.loadPeerRoster('actor-peer');
+    await expect(transports.loadPeerRoster('actor-peer')).rejects.toThrow(
+      'previous-root signature',
+    );
+  });
+
+  it('accepts a countersigned rotation, re-pins, and reports the rotation (C2)', async () => {
+    const nowMs = Date.now();
+    const root1 = generateSigningKeyPair();
+    const minted = generateEnrollment({
+      actorId: 'actor-peer',
+      nowMs,
+      root: { ...root1, createdAtMs: nowMs - 10_000 },
+    }).record.identity;
+    // The successor: generation 2, different key, self-signed AND countersigned by root1.
+    const root2 = generateSigningKeyPair();
+    const rotatedRoot = signMessagingRoot(root2.privateKey, {
+      actorId: 'actor-peer',
+      generation: 2,
+      publicKey: root2.publicKey,
+      createdAtMs: nowMs - 1000,
+    });
+    const countersignature = countersignMessagingRoot(root1.privateKey, rotatedRoot.rootBytes);
+    // A device certificate and roster that bind the NEW root (generation 2), reusing
+    // minted2's device keys so the prekey inventory stays consistent.
+    const minted2 = generateEnrollment({
+      actorId: 'actor-peer',
+      nowMs,
+      root: { ...root2, createdAtMs: nowMs },
+    }).record.identity;
+    const certificate2 = signDeviceCertificate(root2.privateKey, {
+      actorId: 'actor-peer',
+      deviceId: minted2.deviceId,
+      rootGeneration: 2,
+      rootPublicKey: root2.publicKey,
+      certificateVersion: minted2.selfDevice.certificateVersion,
+      signingPublicKey: minted2.keys.signing.publicKey,
+      agreementPublicKey: minted2.keys.agreement.publicKey,
+      supportedProtocolVersions: minted2.selfDevice.supportedProtocolVersions,
+      createdAtMs: nowMs - 1000,
+      expiresAtMs: nowMs + 60 * 60 * 1000,
+    });
+    const roster2 = signDeviceRoster(root2.privateKey, {
+      actorId: 'actor-peer',
+      rootGeneration: 2,
+      rootPublicKey: root2.publicKey,
+      sequence: 2,
+      previousDigest: minted.ownRoster.rosterDigest,
+      createdAtMs: nowMs - 500,
+      entries: [
+        {
+          deviceId: minted2.deviceId,
+          certificateDigest: certificate2.certificateDigest,
+          active: true,
+          addedAtMs: nowMs,
+        },
+      ],
+    });
+    const rotatedWire = {
+      identityRoot: {
+        actorId: 'actor-peer',
+        generation: 2,
+        publicKey: root2.publicKey,
+        rootBytes: rotatedRoot.rootBytes,
+        selfSignature: rotatedRoot.selfSignature,
+        previousRootSignature: countersignature,
+      },
+    };
+    const rotatedRosterWire = {
+      roster: {
+        actorId: 'actor-peer',
+        sequence: 2n,
+        rootGeneration: 2,
+        previousDigest: minted.ownRoster.rosterDigest,
+        digest: roster2.rosterDigest,
+        rosterBytes: roster2.rosterBytes,
+        rootSignature: roster2.rootSignature,
+        entries: [
+          {
+            deviceId: minted2.deviceId,
+            certificateDigest: certificate2.certificateDigest,
+            active: true,
+          },
+        ],
+      },
+      certificates: [
+        {
+          certificateBytes: certificate2.certificateBytes,
+          rootSignature: certificate2.rootSignature,
+        },
+      ],
+    };
+    const getIdentityRoot = vi
+      .fn()
+      .mockReturnValueOnce(Promise.resolve(wireIdentityRoot(minted)))
+      .mockReturnValueOnce(Promise.resolve(rotatedWire));
+    const getDeviceRoster = vi
+      .fn()
+      .mockReturnValueOnce(Promise.resolve(wireDeviceRoster(minted)))
+      .mockReturnValueOnce(Promise.resolve(rotatedRosterWire));
+    const events: { kind: string; actorId: string }[] = [];
+    const transports = createWebE2eeTransports({
+      api: apiWith({ getIdentityRoot, getDeviceRoster }),
+      identity,
+      pinVault: memoryPinVault(),
+      onPeerIdentityEvent: (event) => events.push(event),
+    });
+
+    await transports.loadPeerRoster('actor-peer');
+    expect(events).toEqual([]);
+
+    await expect(transports.loadPeerRoster('actor-peer')).resolves.toBeDefined();
+    expect(events).toEqual([{ kind: 'rotated', actorId: 'actor-peer' }]);
   });
 });

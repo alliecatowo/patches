@@ -52,6 +52,7 @@ import {
   createWebE2eeTransports,
   createWebEnrollmentTransport,
   type E2eeApiSurface,
+  type PeerIdentityEvent,
 } from './transports.js';
 
 /** Fixed, content-free copy for every state and failure (ADR 0020 §4 / spec §194). */
@@ -115,6 +116,15 @@ class WebE2eeManager {
   private setActorSeq = 0;
   private readonly api: E2eeApiSurface;
   private readonly nowMs: (() => number) | undefined;
+  /**
+   * Peer-identity events from the transports (C2's verification surface): `first-seen`
+   * for TOFU contact, `rotated` for a countersignature-verified rotation. One entry per
+   * (actor, kind), latest wins — this is a disclosure list, not a log. Cleared with the
+   * account on `setActor`.
+   */
+  private identityEvents = new Map<string, PeerIdentityEvent>();
+  /** Cached snapshot so `useSyncExternalStore` sees a stable reference between events. */
+  private identityEventsSnapshot: readonly PeerIdentityEvent[] = [];
 
   constructor(options: WebE2eeManagerOptions = {}) {
     this.api = options.api ?? api;
@@ -123,6 +133,17 @@ class WebE2eeManager {
 
   getStatus(): WebE2eeStatus {
     return this.status;
+  }
+
+  /** Identity-pinning disclosures for the thread screen (C2). */
+  getIdentityEvents(): readonly PeerIdentityEvent[] {
+    return this.identityEventsSnapshot;
+  }
+
+  private noteIdentityEvent(event: PeerIdentityEvent): void {
+    this.identityEvents.set(`${event.kind}:${event.actorId}`, event);
+    this.identityEventsSnapshot = [...this.identityEvents.values()];
+    for (const listener of this.listeners) listener();
   }
 
   subscribe(listener: Listener): () => void {
@@ -143,6 +164,8 @@ class WebE2eeManager {
     this.identity = undefined;
     this.runtime = undefined;
     this.actorId = undefined;
+    this.identityEvents = new Map();
+    this.identityEventsSnapshot = [];
   }
 
   /** Called by the session layer on sign-in/sign-out/actor switch. */
@@ -200,7 +223,12 @@ class WebE2eeManager {
   }
 
   private bind(vault: RatchetSessionVault, identity: LocalDeviceIdentity): void {
-    const transports = createWebE2eeTransports({ api: this.api, identity });
+    const transports = createWebE2eeTransports({
+      api: this.api,
+      identity,
+      pinVault: vault,
+      onPeerIdentityEvent: (event) => this.noteIdentityEvent(event),
+    });
     this.vault = vault;
     this.identity = identity;
     this.runtime = new E2eeSessionRuntime({
@@ -358,5 +386,15 @@ export function useWebE2eeStatus(): WebE2eeStatus {
     (listener) => manager.subscribe(listener),
     () => manager.getStatus(),
     () => manager.getStatus(),
+  );
+}
+
+/** React binding for the identity-pinning disclosures (C2): re-renders on each event. */
+export function usePeerIdentityEvents(): readonly PeerIdentityEvent[] {
+  const manager = webE2ee();
+  return useSyncExternalStore(
+    (listener) => manager.subscribe(listener),
+    () => manager.getIdentityEvents(),
+    () => manager.getIdentityEvents(),
   );
 }

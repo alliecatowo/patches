@@ -8,7 +8,12 @@ import { ConversationSecurityMode } from '@patches/proto/es';
 import { requiredConversationDisclosure } from '@patches/domain';
 import type { InboxRow } from '../e2ee/runtime.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
-import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
+import {
+  webE2ee,
+  usePeerIdentityEvents,
+  WEB_E2EE_COPY,
+  WebE2eeUnavailableError,
+} from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import styles from './MessagesRoute.module.css';
@@ -49,6 +54,13 @@ export function MessageThreadRoute(): JSX.Element {
   const disclosedByConversation = securityMode === ConversationSecurityMode.E2EE_V1;
 
   const otherMembers = conversation?.members.filter((member) => member.leftAt === undefined) ?? [];
+  const identityEvents = usePeerIdentityEvents();
+  // C2's verification surface: pinning makes an unproven root substitution fail closed,
+  // and these banners are the honest disclosure for the two states pinning cannot remove —
+  // first contact (TOFU) and a rotation that verified against the peer's previous key.
+  const memberIdentityEvents = identityEvents.filter((event) =>
+    otherMembers.some((member) => member.actor?.id === event.actorId),
+  );
 
   const [rows, setRows] = useState<readonly InboxRow[]>([]);
   const seenIds = useRef(new Set<string>());
@@ -123,6 +135,19 @@ export function MessageThreadRoute(): JSX.Element {
         </p>
       ) : null}
 
+      {memberIdentityEvents.map((event) => (
+        <p
+          key={event.kind + event.actorId}
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
+          {event.kind === 'first-seen'
+            ? 'This is the first message to this identity on this device — it is not verified yet. ' +
+              'Confirm it with them out-of-band before trusting this conversation.'
+            : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
+        </p>
+      ))}
+
       {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
         <div
           role="note"
@@ -162,7 +187,7 @@ export function MessageThreadRoute(): JSX.Element {
             <p>No decrypted messages yet on this device.</p>
           </div>
         ) : null}
-        <MessageRows rows={rows} alreadyDisclosed={disclosedByConversation} />
+        <MessageRows rows={rows} />
         {notice === null ? null : (
           <div className={styles['emptyThread']}>
             <p>{notice}</p>
@@ -196,30 +221,19 @@ export function MessageThreadRoute(): JSX.Element {
 }
 
 /**
- * The message rows AND the §183.1 disclosure as one unit: `rows` come from
- * `webE2ee().poll()` and render independently of `conversationQuery` (which can fail or
- * never settle). `alreadyDisclosed` only suppresses the duplicate paragraph when the
- * conversation-derived one above is already on screen — rows are never rendered without
- * a disclosure somewhere, including when `conversationQuery` never resolves.
+ * The message rows. `rows` come from `webE2ee().poll()` and can arrive before
+ * `conversationQuery` settles, so `securityMode` (and therefore whether the parent's
+ * `disclosedByConversation` panel is on screen yet) may still be unknown here even once `rows`
+ * is non-empty. Spec §183.1/§194 forbids asserting encryption that isn't confirmed, so this
+ * renders only the rows themselves and never its own disclosure — it has no independent way
+ * to confirm the mode, and guessing `E2EE_V1` to fill that gap is exactly the false claim the
+ * rule forbids. The confirmed disclosure lives solely in the parent, once `securityMode`
+ * resolves.
  */
-function MessageRows({
-  rows,
-  alreadyDisclosed,
-}: {
-  rows: readonly InboxRow[];
-  alreadyDisclosed: boolean;
-}): JSX.Element | null {
+function MessageRows({ rows }: { rows: readonly InboxRow[] }): JSX.Element | null {
   if (rows.length === 0) return null;
   return (
     <>
-      {alreadyDisclosed ? null : (
-        <p
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          {requiredConversationDisclosure('E2EE_V1')}
-        </p>
-      )}
       {rows.map((row) => (
         <MessageRow key={row.id} row={row} />
       ))}

@@ -26,6 +26,18 @@ const buttonStyle = {
 } as const;
 
 /**
+ * List-level panel copy. Must hold regardless of any individual row's `security_mode` —
+ * the list can mix `E2EE_V1` and `LEGACY_SERVER_VISIBLE` conversations (ADR 0020 §11), so a
+ * blanket `requiredConversationDisclosure('E2EE_V1')` here would assert encryption for rows
+ * that don't have it (spec §183.1/§194). Each row's own `securityModeLabel` below is the only
+ * per-conversation truth this screen states. Local rather than in `@patches/domain`
+ * beside `requiredConversationDisclosure` because it is list chrome, not a mandated
+ * per-conversation disclosure.
+ */
+const CONVERSATION_LIST_NEUTRAL_NOTE =
+  'Each conversation below shows its own security mode. This node always sees who you message and when.';
+
+/**
  * P19-017: extends this client's poll-failure house rule to the conversation list —
  * nothing about a failed `ListConversations` poll may be mistaken for a genuinely empty
  * inbox. Shown whenever the query is in an error state, whether or not a prior
@@ -168,12 +180,12 @@ function ConversationList({
         </p>
       ) : null}
       <p role="note" style={panelStyle}>
-        {requiredConversationDisclosure('E2EE_V1')}
+        {CONVERSATION_LIST_NEUTRAL_NOTE}
       </p>
       {conversations.map((conversation) => {
         const other = conversation.members.find((m) => m.actor?.id !== viewerActorId)?.actor;
-        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) —
-        // the panel above stays neutral because the list mixes states.
+        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) — the only
+        // per-conversation claim this list makes; the panel above stays genuinely neutral.
         const modeLabel = securityModeLabel(conversation.securityMode);
         return (
           <Link key={conversation.id} to={`/messages/${conversation.id}`} className={styles['row']}>

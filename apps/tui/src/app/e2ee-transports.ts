@@ -10,6 +10,7 @@
  */
 import { Code } from '@connectrpc/connect';
 import {
+  bytesEqual,
   verifyMessagingRoot,
   verifyPreKeyBundle,
   verifyRosterSnapshot,
@@ -22,6 +23,11 @@ import { grpcStatusCode } from '../api/errors.js';
 import type { PatchesApi } from '../api/client.js';
 import type { EnrollmentCapability, EnrollmentTransport } from '../e2ee/enrollment.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
+import {
+  loadPeerIdentityPin,
+  savePeerIdentityPin,
+  type PeerPinVaultAccess,
+} from '../e2ee/ratchet-vault.js';
 import {
   type ClaimedPeerBundle,
   type E2eeMailboxTransport,
@@ -50,12 +56,30 @@ export type E2eeApiSurface = Pick<
   | 'acknowledgeEnvelopes'
 >;
 
-/** Fetches and verifies one actor's messaging root + current device roster snapshot. */
+/**
+ * Fetches and verifies one actor's messaging root + current device roster snapshot,
+ * enforcing the client-side pinning contract (ADR 0033 §2/§3; review C1/C2):
+ *
+ *   * **Roster freshness (C1).** The vault pins the last-verified `(rosterSequence,
+ *     rosterDigest)` per peer. A genuinely root-signed but *stale* roster — the node's
+ *     cheapest way to make a revoked device look active again — is rejected: sequence may
+ *     never go backwards, and the same sequence with a different digest is a fork.
+ *   * **Root substitution (C2).** A served root that differs from the pinned one must be
+ *     a planned rotation: countersigned by the *verified pinned* root, one generation
+ *     later, different key (`verifyMessagingRoot` enforces all three). A brand-new
+ *     self-signed root with no countersignature fails closed. First contact is TOFU —
+ *     the safety-number screen is the human check there, not a silent accept.
+ *
+ * Verification success re-pins, so the pin always reflects bytes this client actually
+ * verified. (The web twin adds a `first-seen`/`rotated` event callback for its banner
+ * surface; the TUI surfaces identity through SafetyNumberScreen and roster-change copy.)
+ */
 async function loadVerifiedRoster(
   api: E2eeApiSurface,
   accessToken: () => Promise<string>,
   actorId: string,
   nowMs: number,
+  pinVault: PeerPinVaultAccess,
 ): Promise<VerifiedRosterSnapshot> {
   const token = await accessToken();
   const rootResponse = await api.getIdentityRoot({ actorId }, token);
@@ -63,17 +87,42 @@ async function loadVerifiedRoster(
   if (wireRoot === undefined) {
     throw new E2eeContractError('That actor has no published messaging identity root.');
   }
-  const root: VerifiedMessagingRoot = verifyMessagingRoot({
-    rootBytes: wireRoot.rootBytes,
-    selfSignature: wireRoot.selfSignature,
-    nowMs,
-  });
+  const pin = await loadPeerIdentityPin(pinVault, actorId);
+  let root: VerifiedMessagingRoot;
+  if (pin === undefined) {
+    root = verifyMessagingRoot({
+      rootBytes: wireRoot.rootBytes,
+      selfSignature: wireRoot.selfSignature,
+      nowMs,
+    });
+  } else {
+    // Re-verify the pinned root bytes: `verifyMessagingRoot`'s branded result cannot be
+    // constructed from a stored public key alone, so the pin stores the signed bytes.
+    const pinnedRoot = verifyMessagingRoot({
+      rootBytes: pin.rootBytes,
+      selfSignature: pin.selfSignature,
+      nowMs,
+    });
+    if (bytesEqual(wireRoot.rootBytes, pin.rootBytes)) {
+      root = pinnedRoot;
+    } else {
+      root = verifyMessagingRoot({
+        rootBytes: wireRoot.rootBytes,
+        selfSignature: wireRoot.selfSignature,
+        ...(wireRoot.previousRootSignature.length === 0
+          ? {}
+          : { previousRootSignature: wireRoot.previousRootSignature }),
+        previousRoot: pinnedRoot,
+        nowMs,
+      });
+    }
+  }
   const rosterResponse = await api.getDeviceRoster({ actorId }, token);
   const wireRoster = rosterResponse.roster;
   if (wireRoster === undefined) {
     throw new E2eeContractError('That actor has no published device roster.');
   }
-  return verifyRosterSnapshot({
+  const roster = verifyRosterSnapshot({
     rosterBytes: wireRoster.rosterBytes,
     rootSignature: wireRoster.rootSignature,
     root,
@@ -83,6 +132,26 @@ async function loadVerifiedRoster(
     })),
     nowMs,
   });
+  if (pin !== undefined) {
+    if (roster.sequence < pin.rosterSequence) {
+      throw new E2eeContractError(
+        `Node served roster sequence ${String(roster.sequence)} below the pinned ${String(pin.rosterSequence)}; this is a rollback.`,
+      );
+    }
+    if (
+      roster.sequence === pin.rosterSequence &&
+      !bytesEqual(roster.rosterDigest, pin.rosterDigest)
+    ) {
+      throw new E2eeContractError('Node served a different roster at the pinned sequence.');
+    }
+  }
+  await savePeerIdentityPin(pinVault, actorId, {
+    rootBytes: wireRoot.rootBytes,
+    selfSignature: wireRoot.selfSignature,
+    rosterSequence: roster.sequence,
+    rosterDigest: roster.rosterDigest,
+  });
+  return roster;
 }
 
 const MAILBOX_PAGE_LIMIT = 50;
@@ -96,6 +165,8 @@ export interface CreateE2eeTransportsOptions {
   /** Resolves the current access token (refreshing as needed). */
   readonly accessToken: () => Promise<string>;
   readonly identity: LocalDeviceIdentity;
+  /** The account's vault — peer identity pins live beside the ratchets (C1/C2). */
+  readonly pinVault: PeerPinVaultAccess;
 }
 
 export function createE2eeTransports(
@@ -127,7 +198,7 @@ export function createE2eeTransports(
       for (const actorId of request.actorIds) {
         rosterByActor.set(
           actorId,
-          await loadVerifiedRoster(api, options.accessToken, actorId, nowMs),
+          await loadVerifiedRoster(api, options.accessToken, actorId, nowMs, options.pinVault),
         );
       }
       const accessToken = await options.accessToken();
@@ -155,7 +226,15 @@ export function createE2eeTransports(
           roster,
           nowMs,
         });
-        return { actorId: bundle.actorId, deviceId: bundle.deviceId, bundle: verified, roster };
+        // M3: address envelopes with the *transcript-verified* ids, never the node's
+        // convenience fields — a swapped wire deviceId would otherwise seal the envelope
+        // for one device under another's keys (silent per-device delivery denial).
+        return {
+          actorId: verified.actorId,
+          deviceId: verified.deviceId,
+          bundle: verified,
+          roster,
+        };
       });
     },
 
@@ -212,7 +291,7 @@ export function createE2eeTransports(
 
     loadPeerRoster(actorId: string): Promise<VerifiedRosterSnapshot> {
       if (actorId !== identity.actorId) {
-        return loadVerifiedRoster(api, options.accessToken, actorId, Date.now());
+        return loadVerifiedRoster(api, options.accessToken, actorId, Date.now(), options.pinVault);
       }
       // This device's own roster is locally held and root-signed by this vault.
       return Promise.resolve(identity.ownRoster);

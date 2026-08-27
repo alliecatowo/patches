@@ -689,6 +689,7 @@ describe('createE2eeTransports adapter', () => {
       api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const plan: FanoutPlan = await transports.loadFanoutPlan('conv-1');
     expect(plan.conversationId).toBe('conv-1');
@@ -712,6 +713,7 @@ describe('createE2eeTransports adapter', () => {
       api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const claimed = await transports.claimPrekeyBundles({
       conversationId: 'c',
@@ -732,6 +734,7 @@ describe('createE2eeTransports adapter', () => {
       api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const own = await transports.loadPeerRoster(ACTOR_ID);
     expect(own.devices[0]?.deviceId).toBe(identityFixture.deviceId);
@@ -770,6 +773,7 @@ describe('createE2eeTransports adapter', () => {
       } as unknown as Partial<E2eeApiSurface>),
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const page = await transports.listMailboxPage('');
     expect(page.nextCursor).toBe('cursor-next');
@@ -810,7 +814,20 @@ describe('createEnrollmentTransport adapter', () => {
 
 import { createVaultE2eeSender } from '../src/app/e2ee-send.js';
 import type { E2eeTransports } from '../src/app/e2ee-send.js';
-import type { RatchetSessionVault } from '../src/e2ee/ratchet-vault.js';
+import type { RatchetSessionVault, PeerPinVaultAccess } from '../src/e2ee/ratchet-vault.js';
+
+/** In-memory opaque-record store: the REAL `loadPeerIdentityPin`/`savePeerIdentityPin`
+ * run over it, so transport tests exercise the actual pin codec, not a double. */
+function memoryPinVault(): PeerPinVaultAccess {
+  const records = new Map<string, Uint8Array>();
+  return {
+    getOpaqueRecord: (key: string) => Promise.resolve(records.get(key)?.slice()),
+    putOpaqueRecord: (key: string, value: Uint8Array) => {
+      records.set(key, value.slice());
+      return Promise.resolve();
+    },
+  };
+}
 
 function stubTransports(): E2eeTransports {
   return {

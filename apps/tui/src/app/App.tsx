@@ -21,7 +21,7 @@ import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
-import { wipeE2eeState } from '../e2ee/ratchet-vault.js';
+import { wipeE2eeState, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
 import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { verifyActorChain } from '../e2ee/chain.js';
 import { verifyGroupControlEvents } from '../e2ee/group-control.js';
@@ -559,11 +559,12 @@ export function App({
         // B-107: once an identity exists (restored or freshly enrolled), this builds
         // its authenticated transports. Kept here — not inside e2ee-send — so the
         // vault layer stays transport-free.
-        buildTransports: (identity: LocalDeviceIdentity) =>
+        buildTransports: (identity: LocalDeviceIdentity, vault: RatchetSessionVault) =>
           createE2eeTransports({
             api,
             accessToken: ensureAccessToken,
             identity,
+            pinVault: vault,
           }),
       });
       e2eeSenderRef.current = { key, sender: created };
