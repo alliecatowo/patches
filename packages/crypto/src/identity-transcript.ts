@@ -9,7 +9,7 @@
  * integer, a boolean byte outside `{0,1}`, a wrong domain/version/tag, or trailing bytes fails
  * closed rather than accepting bytes the encoder could never have produced.
  */
-import { ByteReader, ByteWriter, compareUtf8Bytes } from './codec.js';
+import { ByteReader, ByteWriter, bytesEqual, compareUtf8Bytes } from './codec.js';
 import { MalformedInputError } from './errors.js';
 import { KEY_BYTES } from './types.js';
 
@@ -32,10 +32,17 @@ export const E2EE_IDENTITY_TRANSCRIPT_TAGS = {
 export type E2eeIdentityTranscriptTag =
   (typeof E2EE_IDENTITY_TRANSCRIPT_TAGS)[keyof typeof E2EE_IDENTITY_TRANSCRIPT_TAGS];
 
-const MAX_IDENTIFIER_CHARS = 256;
+const MAX_IDENTIFIER_BYTES = 256;
+
+const utf8Encoder = new TextEncoder();
 
 function requireIdentifier(value: string, label: string): void {
-  if (value.length === 0 || value.length > MAX_IDENTIFIER_CHARS) {
+  // Bounded by UTF-8 bytes, not UTF-16 code units: the bound exists so a transcript's
+  // worst-case encoded size is known, and `value.length` would under-count astral
+  // characters (2 code units, up to 4 bytes) — an identifier up to 256 *code units*
+  // of 4-byte characters would encode to 512 bytes.
+  const bytes = utf8Encoder.encode(value);
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IDENTIFIER_BYTES) {
     throw new MalformedInputError(`${label} is invalid.`);
   }
 }
@@ -260,6 +267,13 @@ function assertDeviceRoster(fields: DeviceRosterTranscript): void {
   requireKeyBytes(fields.rootPublicKey, 'Roster rootPublicKey');
   requirePositiveCounter(fields.sequence, 'Roster sequence');
   requireKeyBytes(fields.previousDigest, 'Roster previousDigest');
+  // T3's documented layout (ADR 0033 §2): sequence 1 is the roster's genesis, so it has no
+  // prior digest to chain from — `previousDigest` must be all-zero. Enforced here because
+  // this function runs on both encode and decode, so a decoder can never accept bytes the
+  // encoder's own contract forbids.
+  if (fields.sequence === 1 && !bytesEqual(fields.previousDigest, new Uint8Array(KEY_BYTES))) {
+    throw new MalformedInputError('Roster previousDigest must be all-zero at sequence 1.');
+  }
   requireTimestampMs(fields.createdAtMs, 'Roster createdAtMs');
   requireStrictlyAscending(
     fields.entries.map((entry) => entry.deviceId),

@@ -105,6 +105,7 @@ function handWrittenRoster(overrides: {
   version?: number;
   tag?: number;
   sequence?: Uint8Array;
+  previousDigest?: Uint8Array;
   entries?: readonly RawRosterEntry[];
 }): Uint8Array {
   const entries = overrides.entries ?? [rawEntry('device-a')];
@@ -116,7 +117,7 @@ function handWrittenRoster(overrides: {
     .u32(roster.rootGeneration)
     .fixed(roster.rootPublicKey, 32)
     .fixed(overrides.sequence ?? Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 1), 8)
-    .fixed(roster.previousDigest, 32)
+    .fixed(overrides.previousDigest ?? roster.previousDigest, 32)
     .u64(roster.createdAtMs)
     .u32(entries.length);
   for (const entry of entries) {
@@ -229,6 +230,16 @@ describe('identity transcript codec: encoder constraints', () => {
       'duplicate',
     );
   });
+
+  it('rejects a sequence-1 roster with a non-zero previousDigest', () => {
+    expect(() =>
+      encodeDeviceRosterTranscript({ ...roster, sequence: 1, previousDigest: bytes(9) }),
+    ).toThrow('all-zero at sequence 1');
+    // Sequence > 1 is unaffected: a non-zero previousDigest is exactly what it's for.
+    expect(() =>
+      encodeDeviceRosterTranscript({ ...roster, sequence: 2, previousDigest: bytes(9) }),
+    ).not.toThrow();
+  });
 });
 
 describe('identity transcript codec: decoder fails closed', () => {
@@ -306,5 +317,21 @@ describe('identity transcript codec: decoder fails closed', () => {
         handWrittenRoster({ sequence: Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0) }),
       ),
     ).toThrow('sequence must be a positive integer');
+  });
+
+  it('rejects a sequence-1 roster with a non-zero previousDigest, even hand-written', () => {
+    expect(() =>
+      decodeDeviceRosterTranscript(handWrittenRoster({ previousDigest: bytes(9) })),
+    ).toThrow('all-zero at sequence 1');
+    // Sequence 2 with the same non-zero digest decodes fine — the constraint is specific to
+    // sequence 1, not previousDigest in general.
+    expect(() =>
+      decodeDeviceRosterTranscript(
+        handWrittenRoster({
+          sequence: Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 2),
+          previousDigest: bytes(9),
+        }),
+      ),
+    ).not.toThrow();
   });
 });

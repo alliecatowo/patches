@@ -33,7 +33,7 @@ import {
   type PreKeyBundleTranscript,
 } from './identity-transcript.js';
 import { sha256Hash, sign, verifyStrict } from './primitives.js';
-import { KEY_BYTES, SIGNATURE_BYTES, type KeyPair, type OneTimePreKey } from './types.js';
+import { KEY_BYTES, SIGNATURE_BYTES, type OneTimePreKey } from './types.js';
 
 const SAFETY_NUMBER_CONTEXT = 'patches-e2ee-v1/safety-number';
 
@@ -82,8 +82,15 @@ function requireKeyLength(value: Uint8Array, label: string): void {
   if (value.length !== KEY_BYTES) throw new CertificateError(`${label} has an invalid length.`);
 }
 
+const identifierUtf8Encoder = new TextEncoder();
+
 function requireIdentifier(value: string, label: string): void {
-  if (value.length === 0 || value.length > 256) throw new CertificateError(`${label} is invalid.`);
+  // UTF-8 byte bound, matching the transcript codec's `requireIdentifier` (256 bytes,
+  // not 256 UTF-16 code units — see `identity-transcript.ts` for why).
+  const bytes = identifierUtf8Encoder.encode(value);
+  if (bytes.byteLength === 0 || bytes.byteLength > 256) {
+    throw new CertificateError(`${label} is invalid.`);
+  }
 }
 
 /** SHA-256 over a canonical identity transcript; this is what roster entries reference. */
@@ -466,11 +473,4 @@ export function safetyNumber(
     digits += value.toString().padStart(10, '0').slice(-10);
   }
   return digits;
-}
-
-export function generateDevicePrivateKeys(
-  signing: KeyPair,
-  agreement: KeyPair,
-): { readonly signing: KeyPair; readonly agreement: KeyPair } {
-  return { signing, agreement };
 }

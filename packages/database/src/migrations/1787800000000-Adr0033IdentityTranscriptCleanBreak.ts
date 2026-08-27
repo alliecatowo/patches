@@ -17,11 +17,22 @@ import { type MigrationInterface, type QueryRunner } from 'typeorm';
  * Deleted, in FK order (`e2ee_mailbox_envelopes` → … → `e2ee_identity_roots`): every table whose
  * rows are signed under the old transcript encoding. Not deleted: `conversations` (a conversation
  * survives re-enrollment — its `security_mode` doesn't depend on any identity transcript),
- * `e2ee_node_franking_keys` (node-owned, encoding-independent), and `e2ee_report_evidence`/
- * `e2ee_report_evidence_items` (evidence is never destroyed by a schema change, ADR 0033 §5's own
- * text — verified empty on the live node 2026-08-26, but `up()` still fails loudly rather than
- * deleting if a row exists, so a future re-run against a database that *does* hold evidence stops
- * cold instead of destroying it).
+ * `e2ee_node_franking_keys` (node-owned, encoding-independent), and `e2ee_report_evidence`
+ * (evidence is never destroyed by a schema change, ADR 0033 §5's own text — verified empty on the
+ * live node 2026-08-26, but `up()` still fails loudly rather than deleting if a row exists, so a
+ * future re-run against a database that *does* hold evidence stops cold instead of destroying it).
+ * `e2ee_report_evidence_items` is protected transitively, not by its own guard: its `report_id` FK
+ * is non-nullable with `onDelete: 'CASCADE'` to `e2ee_report_evidence`
+ * (`e2ee-report-evidence-item.entity.ts`), so an empty `e2ee_report_evidence` guarantees an empty
+ * `e2ee_report_evidence_items` — there is no row in that table that could lack a parent.
+ *
+ * Known residue, stated rather than hidden: `e2ee_conversation_membership_events` rows survive
+ * (their table is not transcript-signed), but any carrying a non-zero `root_signature`/
+ * `root_generation` were made under roots this migration deletes, so they become permanently
+ * unverifiable. Zero-impact on this node — no non-GENESIS epoch row exists (session bootstrap
+ * never succeeded pre-ADR 0033) — and deleting audit history instead would be worse. If a future
+ * node ever re-runs an equivalent clean break with live epochs, it must decide the fate of those
+ * rows explicitly rather than inherit this note.
  *
  * Irreversible by design: `down()` throws. There is nothing to restore *to* — the old encoding is
  * gone from every process that could read it back.
