@@ -210,6 +210,39 @@ describe('device-link (ADR 0037)', () => {
     expect(() => assertRosterSucceeds(rotationView, finalView)).not.toThrow();
   });
 
+  it('rotates from a root that has no roster at all: genesis roster, generation +1', async () => {
+    // A published root with no roster is a real state (all devices lost/purged before any
+    // roster landed, or a root republished after a failed enrollment). It must still rotate.
+    const actorId = 'actor-rotate-no-roster';
+    const nowMs = Date.UTC(2026, 0, 1);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+
+    const transport1 = fakeTransport({ actorId, node });
+    await enrollThisDevice({ actorId, transport: transport1, vault: memoryVault(), nowMs: now });
+    node.rosterByActor.delete(actorId);
+
+    const transport2 = fakeTransport({ actorId, node });
+    const result = await rotateMessagingRoot({
+      actorId,
+      transport: transport2,
+      vault: memoryVault(),
+      nowMs: now,
+    });
+
+    expect(result.generation).toBe(2);
+    const publishCall = transport2.publishIdentityRoot.mock.calls[0]?.[0];
+    const rotationRosterWire = publishCall?.roster;
+    expect(rotationRosterWire).toBeDefined();
+    const rotationView = rosterViewFromWire(
+      rotationRosterWire as NonNullable<typeof rotationRosterWire>,
+    );
+    expect(rotationView.sequence).toBe(1n);
+    expect(rotationView.entries).toHaveLength(0);
+    expect(() => assertRosterSucceeds(null, rotationView)).not.toThrow();
+    expect(transport2.enrollDevice).toHaveBeenCalledTimes(1);
+  });
+
   it('marks a rotation planned when the previous root key is supplied and matches the served root', async () => {
     const actorId = 'actor-rotate-planned';
     const nowMs = Date.UTC(2026, 0, 1);

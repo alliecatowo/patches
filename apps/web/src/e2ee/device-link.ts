@@ -554,18 +554,24 @@ export async function rotateMessagingRoot(
     selfSignature: rootWire.selfSignature,
     nowMs,
   });
+  // A root with no roster is a real state (an account whose devices were all lost or purged
+  // before any roster was published, or a root republished after a failed enrollment). It is
+  // still a published identity, so rotation must proceed from a genesis roster rather than
+  // telling the user there is nothing to rotate.
   const rosterResponse = await input.transport.getDeviceRoster(input.actorId);
-  if (rosterResponse.roster === undefined) throw new DeviceLinkError('no-remote-root');
-  const servedRoster = verifyRosterSnapshot({
-    rosterBytes: rosterResponse.roster.rosterBytes,
-    rootSignature: rosterResponse.roster.rootSignature,
-    root: servedRoot,
-    certificates: rosterResponse.certificates.map((certificate) => ({
-      certificateBytes: certificate.certificateBytes,
-      rootSignature: certificate.rootSignature,
-    })),
-    nowMs,
-  });
+  const servedRoster =
+    rosterResponse.roster === undefined
+      ? undefined
+      : verifyRosterSnapshot({
+          rosterBytes: rosterResponse.roster.rosterBytes,
+          rootSignature: rosterResponse.roster.rootSignature,
+          root: servedRoot,
+          certificates: rosterResponse.certificates.map((certificate) => ({
+            certificateBytes: certificate.certificateBytes,
+            rootSignature: certificate.rootSignature,
+          })),
+          nowMs,
+        });
 
   const previousRoot = input.previousRoot;
   const planned =
@@ -592,20 +598,23 @@ export async function rotateMessagingRoot(
       : { previousRootSignature, previousRoot: servedRoot }),
   });
 
-  const carriedEntries: DeviceRosterEntryTranscript[] = servedRoster.entries.map((entry) => ({
-    deviceId: entry.deviceId,
-    certificateDigest: entry.certificateDigest,
-    active: false,
-    addedAtMs: entry.addedAtMs,
-    revokedAtMs: entry.revokedAtMs ?? nowMs,
-  }));
-  const rotationSequence = servedRoster.sequence + 1;
+  const carriedEntries: DeviceRosterEntryTranscript[] = (servedRoster?.entries ?? []).map(
+    (entry) => ({
+      deviceId: entry.deviceId,
+      certificateDigest: entry.certificateDigest,
+      active: false,
+      addedAtMs: entry.addedAtMs,
+      revokedAtMs: entry.revokedAtMs ?? nowMs,
+    }),
+  );
+  const rotationSequence = servedRoster === undefined ? 1 : servedRoster.sequence + 1;
   const signedRotationRoster = signDeviceRoster(newRootKeys.privateKey, {
     actorId: input.actorId,
     rootGeneration: newGeneration,
     rootPublicKey: newRootKeys.publicKey,
     sequence: rotationSequence,
-    previousDigest: servedRoster.rosterDigest,
+    previousDigest:
+      servedRoster === undefined ? new Uint8Array(KEY_BYTES) : servedRoster.rosterDigest,
     createdAtMs: nowMs,
     entries: sortRosterEntries(carriedEntries),
   });
