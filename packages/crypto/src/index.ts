@@ -1,5 +1,6 @@
 export * from './codec.js';
 export * from './device-envelope.js';
+export * from './device-link.js';
 export * from './double-ratchet.js';
 export * from './errors.js';
 export * from './franking.js';

@@ -13,6 +13,14 @@ import {
   sealDeviceEnvelope,
 } from './device-envelope.js';
 import {
+  decodeDeviceLinkOffer,
+  deviceLinkSas,
+  encodeDeviceLinkOffer,
+  signDeviceLinkOffer,
+  verifyDeviceLinkOffer,
+  type DeviceLinkOfferFields,
+} from './device-link.js';
+import {
   commitFranking,
   createNodeReportTag,
   type FrankingCommitmentContext,
@@ -47,6 +55,7 @@ import {
 } from './testing/fixtures.js';
 import type { DoubleRatchetState, EncryptedRatchetMessage } from './types.js';
 import deviceEnvelopeVector from './vectors/device-envelope.json' with { type: 'json' };
+import deviceLinkVector from './vectors/device-link.json' with { type: 'json' };
 import identityVector from './vectors/identity-transcripts.json' with { type: 'json' };
 import doubleRatchetVector from './vectors/double-ratchet-session.json' with { type: 'json' };
 import frankingVector from './vectors/franking.json' with { type: 'json' };
@@ -307,5 +316,57 @@ describe('vector replay: ADR 0025 device envelope', () => {
     );
     expect(opened.output.plaintext).toEqual(plaintext);
     expect(toHex(opened.output.openingKey)).toBe(deviceEnvelopeVector.openingKeyHex);
+  });
+});
+
+describe('vector replay: ADR 0037 device-link offer', () => {
+  const devicePrivateKey = fromHex(deviceLinkVector.keys.deviceSigningPrivateKeyHex);
+  const offerFields: DeviceLinkOfferFields = {
+    actorId: deviceLinkVector.offer.fields.actorId,
+    deviceId: deviceLinkVector.offer.fields.deviceId,
+    signingPublicKey: fromHex(deviceLinkVector.offer.fields.signingPublicKeyHex),
+    agreementPublicKey: fromHex(deviceLinkVector.offer.fields.agreementPublicKeyHex),
+    supportedProtocolVersions: deviceLinkVector.offer.fields.supportedProtocolVersions,
+    createdAtMs: deviceLinkVector.offer.fields.createdAtMs,
+    expiresAtMs: deviceLinkVector.offer.fields.expiresAtMs,
+  };
+
+  it('reproduces the recorded transcript bytes, signature, and SAS', () => {
+    expect(toHex(encodeDeviceLinkOffer(offerFields))).toBe(deviceLinkVector.offer.transcriptHex);
+    const signed = signDeviceLinkOffer(devicePrivateKey, offerFields);
+    expect(toHex(signed.offerBytes)).toBe(deviceLinkVector.offer.transcriptHex);
+    expect(toHex(signed.deviceSignature)).toBe(deviceLinkVector.offer.deviceSignatureHex);
+    expect(deviceLinkSas(signed.offerBytes, offerFields.actorId)).toBe(deviceLinkVector.sas.value);
+  });
+
+  it('decodes the recorded bytes back to the recorded field set', () => {
+    expect(decodeDeviceLinkOffer(fromHex(deviceLinkVector.offer.transcriptHex))).toEqual(
+      offerFields,
+    );
+  });
+
+  it('verifies the recorded offer at the recorded time', () => {
+    const verified = verifyDeviceLinkOffer({
+      offerBytes: fromHex(deviceLinkVector.offer.transcriptHex),
+      deviceSignature: fromHex(deviceLinkVector.offer.deviceSignatureHex),
+      nowMs: deviceLinkVector.offer.verifiedAtMs,
+    });
+    expect(verified.actorId).toBe(offerFields.actorId);
+    expect(verified.deviceId).toBe(offerFields.deviceId);
+  });
+
+  it('rejects every recorded negative case', () => {
+    expect(deviceLinkVector.rejected.length).toBeGreaterThan(0);
+    for (const negative of deviceLinkVector.rejected) {
+      expect(
+        () =>
+          verifyDeviceLinkOffer({
+            offerBytes: fromHex(negative.offerHex),
+            deviceSignature: fromHex(negative.signatureHex),
+            nowMs: negative.nowMs,
+          }),
+        negative.name,
+      ).toThrow();
+    }
   });
 });
