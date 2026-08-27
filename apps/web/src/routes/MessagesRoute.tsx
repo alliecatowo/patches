@@ -11,10 +11,9 @@ import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
-import { useE2ee } from '../e2ee/use-e2ee.js';
+import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
-import { useDeviceLinkVault } from '../components/e2ee/useDeviceLinkVault.js';
 import styles from './MessagesRoute.module.css';
 
 const panelStyle = {
@@ -60,7 +59,7 @@ export function MessagesRoute(): JSX.Element {
   const [needsAuthority, setNeedsAuthority] = useState(false);
   const navigate = useNavigate();
   const actorId = session?.actor.id;
-  const deviceLinkVault = useDeviceLinkVault(needsAuthority ? actorId : undefined);
+  const deviceLinkVault = useE2eeVaultAccess(e2eeStatus);
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -100,12 +99,11 @@ export function MessagesRoute(): JSX.Element {
   async function handleNeedsAuthorityResolved(resolution: 'enrolled' | 'cancelled'): Promise<void> {
     setNeedsAuthority(false);
     if (resolution !== 'enrolled' || actorId === undefined) return;
-    // `NeedsAuthorityFlow` wrote the enrollment record through its own vault connection
-    // (`useDeviceLinkVault`); the manager's own vault handle is private, so a round trip
-    // through the public `setActor` is the only way to make it re-read what was just
-    // written (see `useDeviceLinkVault.ts`'s doc comment).
-    await webE2ee().setActor(null);
-    await webE2ee().setActor({ id: actorId });
+    // `NeedsAuthorityFlow` wrote the enrollment record through the manager's own vault
+    // (`withVault`, via `deviceLinkVault` below) — `reloadEnrollment` re-reads it in
+    // place, queued behind that write, without the old setActor(null)/setActor({id})
+    // round trip that also transiently dropped identity/runtime for every consumer.
+    await webE2ee().reloadEnrollment();
   }
 
   async function handleNewMessage(): Promise<void> {
@@ -138,7 +136,10 @@ export function MessagesRoute(): JSX.Element {
         ) : null}
       </div>
 
-      {needsAuthority && actorId !== undefined && deviceLinkVault.vault !== undefined ? (
+      {needsAuthority &&
+      actorId !== undefined &&
+      deviceLinkVault.vault !== undefined &&
+      deviceLinkVault.transport !== undefined ? (
         <NeedsAuthorityFlow
           actorId={actorId}
           vault={deviceLinkVault.vault}

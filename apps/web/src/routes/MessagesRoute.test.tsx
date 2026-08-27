@@ -14,6 +14,15 @@ const mockListConversations =
 const mockUseSession = vi.fn<() => unknown>();
 const mockToast = vi.fn<(...args: unknown[]) => void>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
+const mockUseE2eeVaultAccess = vi.fn<
+  () => {
+    vault: undefined;
+    actorId: undefined;
+    transport: undefined;
+    ready: boolean;
+    error: boolean;
+  }
+>();
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -34,6 +43,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('../e2ee/use-e2ee.js', () => ({
   useE2ee: () => mockUseE2ee(),
+  useE2eeVaultAccess: () => mockUseE2eeVaultAccess(),
 }));
 
 function conversation(id: string, handle: string): Conversation {
@@ -67,6 +77,14 @@ describe('MessagesRoute', () => {
     mockToast.mockReset();
     mockUseE2ee.mockReset();
     mockUseE2ee.mockReturnValue({ kind: 'enrolled' });
+    mockUseE2eeVaultAccess.mockReset();
+    mockUseE2eeVaultAccess.mockReturnValue({
+      vault: undefined,
+      actorId: undefined,
+      transport: undefined,
+      ready: false,
+      error: false,
+    });
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-me', handle: 'allie' } as unknown as Actor,
     });
