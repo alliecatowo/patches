@@ -14,22 +14,29 @@
  * two apart deterministically.
  *
  * Everything cryptographic — verification, derivation, zeroization — stays inside
- * `@patches/crypto`'s reviewed `initiateX3dh`/`respondX3dh`; this module only frames
- * bytes and wires inputs into those functions. Prekey ids are `u64` on the wire here
- * (ADR 0033 §2: "prekey ids are u64 everywhere"), matching the X3DH handshake
- * transcript's own encoding.
+ * `@patches/crypto`'s reviewed `initiateX3dh`/`respondX3dh`; this module only wires
+ * inputs into those functions. Prekey ids are `u64` on the wire (ADR 0033 §2: "prekey
+ * ids are u64 everywhere"), matching the X3DH handshake transcript's own encoding. The
+ * setup-block framing itself (`SETUP_MAGIC`/`SETUP_VERSION`, the writer call sequence)
+ * lives in `@patches/crypto`'s `setup-block.ts`, pinned by a cross-client vector
+ * (ADR 0034 Stage 0(a)) — this module only translates its `MalformedInputError` into
+ * this runtime's `E2eeContractError` vocabulary.
  */
 import {
-  ByteReader,
-  ByteWriter,
   concatBytes,
   disposeX3dhSecrets,
+  encodeInitialFraming as cryptoEncodeInitialFraming,
+  encodeSetupBlock,
   initializeInitiatorRatchet,
   initializeResponderRatchet,
   initiateX3dh,
+  isInitialEnvelopeHeader as cryptoIsInitialEnvelopeHeader,
+  MalformedInputError,
   respondX3dh,
+  splitInitialHeader as cryptoSplitInitialHeader,
   verifyPreKeyBundle,
   type DoubleRatchetState,
+  type InitialSetupBlock,
   type InitiateX3dhResult,
   type RespondX3dhResult,
   type VerifiedCertifiedDevice,
@@ -45,72 +52,10 @@ import {
   type LocalPreviousSignedPreKey,
 } from './local-identity.js';
 
-const SETUP_MAGIC = new Uint8Array([0x50, 0x45, 0x53, 0x48]); // "PESH"
-const SETUP_VERSION = 1;
-
-/** The setup block an initial envelope carries alongside its ratchet header. */
-export interface InitialSetupBlock {
-  readonly senderActorId: string;
-  readonly senderDeviceId: string;
-  readonly handshake: Omit<X3dhHandshake, 'initiator' | 'responder'>;
-}
-
-function encodeSetupBlock(identity: LocalDeviceIdentity, handshake: X3dhHandshake): Uint8Array {
-  const hasOneTime = handshake.oneTimePreKeyId !== undefined;
-  const writer = new ByteWriter()
-    .u8(SETUP_VERSION)
-    .string(identity.actorId)
-    .string(identity.deviceId)
-    .fixed(handshake.initiatorRosterDigest, 32)
-    .fixed(handshake.responderRosterDigest, 32)
-    .fixed(handshake.ephemeralPublicKey, 32)
-    .u64(handshake.signedPreKeyId)
-    .fixed(handshake.signedPreKeyPublicKey, 32)
-    .u8(hasOneTime ? 1 : 0);
-  if (hasOneTime && handshake.oneTimePreKeyPublicKey !== undefined) {
-    writer.u64(handshake.oneTimePreKeyId ?? 0).fixed(handshake.oneTimePreKeyPublicKey, 32);
-  }
-  return writer.fixed(handshake.initiatorSignature, 64).finish();
-}
-
-function decodeSetupBlock(bytes: Uint8Array): InitialSetupBlock {
-  const reader = new ByteReader(bytes);
-  const version = reader.u8();
-  if (version !== SETUP_VERSION) throw new E2eeContractError('Unsupported setup-header version.');
-  const senderActorId = reader.string();
-  const senderDeviceId = reader.string();
-  const base = {
-    initiatorRosterDigest: reader.fixed(32),
-    responderRosterDigest: reader.fixed(32),
-    ephemeralPublicKey: reader.fixed(32),
-    signedPreKeyId: reader.u64(),
-    signedPreKeyPublicKey: reader.fixed(32),
-  };
-  const hasOneTime = reader.u8() === 1;
-  const oneTime = hasOneTime
-    ? { oneTimePreKeyId: reader.u64(), oneTimePreKeyPublicKey: reader.fixed(32) }
-    : {};
-  const initiatorSignature = reader.fixed(64);
-  reader.end();
-  return {
-    senderActorId,
-    senderDeviceId,
-    handshake: {
-      protocol: 'patches-e2ee-v1',
-      version: 1,
-      algorithm: 'X25519+Ed25519+HKDF-SHA256+XChaCha20-Poly1305+DR-HE-r4',
-      ...base,
-      ...oneTime,
-      initiatorSignature,
-    },
-  };
-}
+export type { InitialSetupBlock } from '@patches/crypto';
 
 export function isInitialEnvelopeHeader(headerBytes: Uint8Array): boolean {
-  return (
-    headerBytes.length >= SETUP_MAGIC.length &&
-    SETUP_MAGIC.every((byte, index) => headerBytes[index] === byte)
-  );
+  return cryptoIsInitialEnvelopeHeader(headerBytes);
 }
 
 /**
@@ -121,17 +66,12 @@ export function splitInitialHeader(headerBytes: Uint8Array): {
   readonly setup: InitialSetupBlock;
   readonly ratchetHeader: Uint8Array;
 } {
-  if (!isInitialEnvelopeHeader(headerBytes)) {
-    throw new E2eeContractError('Initial header is missing its framing.');
+  try {
+    return cryptoSplitInitialHeader(headerBytes);
+  } catch (error) {
+    if (error instanceof MalformedInputError) throw new E2eeContractError(error.message);
+    throw error;
   }
-  const reader = new ByteReader(headerBytes.subarray(SETUP_MAGIC.length));
-  const setupLength = reader.u32();
-  const rest = headerBytes.subarray(SETUP_MAGIC.length + 4);
-  if (setupLength > rest.length) throw new E2eeContractError('Initial header is truncated.');
-  return {
-    setup: decodeSetupBlock(rest.subarray(0, setupLength)),
-    ratchetHeader: rest.slice(setupLength),
-  };
 }
 
 export interface EstablishedInitiatorSession {
@@ -185,15 +125,9 @@ export function establishInitiatorSession(input: {
   }
   return {
     state,
-    setupPrefix: encodeInitialFraming(setupBlock),
+    setupPrefix: cryptoEncodeInitialFraming(setupBlock),
     usedOneTimePreKey: initiated.usedOneTimePreKey,
   };
-}
-
-function encodeInitialFraming(setupBlock: Uint8Array): Uint8Array {
-  const length = new Uint8Array(4);
-  new DataView(length.buffer).setUint32(0, setupBlock.length, false);
-  return concatBytes(SETUP_MAGIC, length, setupBlock);
 }
 
 /**
