@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -57,5 +57,24 @@ describe('FileRecentQueriesStore', () => {
     expect(await reopened.load()).toEqual(['rust release']);
     const raw = await readFile(path, 'utf8');
     expect(JSON.parse(raw)).toEqual(['rust release']);
+  });
+
+  it('treats a truncated or corrupt recall file as empty instead of rejecting', async () => {
+    const path = join(dir, 'recent-searches.json');
+    await writeFile(path, '', 'utf8');
+    expect(await new FileRecentQueriesStore(path).load()).toEqual([]);
+    await writeFile(path, '["half-written', 'utf8');
+    expect(await new FileRecentQueriesStore(path).load()).toEqual([]);
+  });
+
+  it('writes atomically: a concurrent reader never observes a partial document', async () => {
+    const path = join(dir, 'recent-searches.json');
+    const store = new FileRecentQueriesStore(path);
+    await store.add('seed');
+    const writes = Array.from({ length: 25 }, (_, index) => store.add(`query ${index}`));
+    const reads = Array.from({ length: 25 }, () => store.load());
+    const results = await Promise.all([...writes, ...reads]);
+    for (const result of results) expect(Array.isArray(result)).toBe(true);
+    expect(await readdir(dir)).toEqual(['recent-searches.json']);
   });
 });
