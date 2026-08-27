@@ -260,7 +260,7 @@ class WebE2eeManager {
         vault: this.vault,
         ...(this.nowMs === undefined ? {} : { nowMs: this.nowMs }),
       });
-      if (outcome.status === 'refused') {
+      if (outcome.status === 'refused' || outcome.status === 'needs-authority') {
         this.setStatus({ kind: 'refused', copy: outcome.copy });
         return outcome;
       }

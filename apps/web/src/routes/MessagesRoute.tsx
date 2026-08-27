@@ -78,7 +78,7 @@ export function MessagesRoute(): JSX.Element {
       const outcome = await webE2ee().enroll();
       if (outcome.status === 'enrolled') {
         toast(WEB_E2EE_COPY.peerWarning);
-      } else if (outcome.status === 'refused') {
+      } else if (outcome.status === 'refused' || outcome.status === 'needs-authority') {
         toast.error(outcome.copy);
       }
     } catch (error) {
