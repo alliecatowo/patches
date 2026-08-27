@@ -8,7 +8,16 @@ import { E2EE_DEVICE_STATUS_SCHEMA, enumWireName } from '../api/wire/enums.js';
 import type { ActiveSession } from '../auth/session.js';
 import { theme } from '../theme/index.js';
 import { Loading } from '../components/Loading.js';
+import { DeviceLinkError } from '../e2ee/device-link.js';
 import { ENROLLMENT_REFUSAL_COPY } from '../e2ee/enrollment.js';
+
+/** One row of `onListPendingLinks` — ADR 0037 §1 step 2's authority-side offer view. */
+export interface PendingLinkRow {
+  readonly linkId: string;
+  readonly deviceId: string;
+  readonly sas: string;
+  readonly expiresAtMs: number;
+}
 
 export interface DevicesScreenProps {
   api: PatchesApi;
@@ -36,9 +45,36 @@ export interface DevicesScreenProps {
   e2eeCapabilityState?: number | undefined;
   /** B-107: runs device enrollment through the shell's vault-backed sender. */
   onEnrollE2ee?:
-    (() => Promise<{ ok: boolean; copy: string; peerWarning?: string | undefined }>) | undefined;
+    | (() => Promise<{
+        ok: boolean;
+        copy: string;
+        peerWarning?: string | undefined;
+        needsAuthority?: boolean | undefined;
+      }>)
+    | undefined;
+  /** ADR 0037 §2: fires instead of an error message when `onEnrollE2ee` finds a
+   * published root this device cannot reach. */
+  onNeedsAuthority?: (() => void) | undefined;
+  /** ADR 0037 §1 step 2: this account's pending link offers, authority-only — throws
+   * {@link DeviceLinkError} `'not-authority'` when this device holds no root key. */
+  onListPendingLinks?: (() => Promise<readonly PendingLinkRow[]>) | undefined;
+  /** ADR 0037 §1 step 3: approves a pending link after the SAS comparison matched. */
+  onApproveLink?: ((linkId: string) => Promise<void>) | undefined;
+  /** ADR 0037 §1 step 2: discards a link whose SAS did NOT match — never retried. */
+  onDiscardLink?: ((linkId: string) => Promise<void>) | undefined;
   onBack: () => void;
 }
+
+/** ADR 0037 §1 step 2's mismatch copy — surfaced verbatim, never a generic error. */
+const LINK_MISMATCH_COPY = 'The node showed this device different keys. Nothing was approved.';
+
+/** Shown in the pending-links section (never the generic `DEVICE_LINK_ERROR_COPY` text)
+ * when this device does not hold the messaging identity root. */
+const NOT_AUTHORITY_SECTION_COPY =
+  'This device cannot approve links: it does not hold the messaging identity root.';
+
+/** ADR 0037 §1: how long a link offer is polled for (spec: "at most 10 minutes"). */
+const PENDING_LINKS_REFRESH_MS = 5_000;
 
 interface DeviceEntry {
   deviceId: string;
@@ -78,6 +114,21 @@ type EnrollFlow =
   | { status: 'done'; message: string; peerWarning?: string | undefined }
   | { status: 'error'; message: string };
 
+type PendingLinksState =
+  | { status: 'idle' }
+  | { status: 'ready'; links: readonly PendingLinkRow[] }
+  | { status: 'not-authority' }
+  | { status: 'error'; message: string };
+
+/** ADR 0037 §1 step 2/3: the approve-or-discard ceremony for one pending link row. */
+type LinkApprovalFlow =
+  | { status: 'idle' }
+  | { status: 'confirming'; link: PendingLinkRow }
+  | { status: 'approving'; link: PendingLinkRow }
+  | { status: 'discarding'; link: PendingLinkRow }
+  | { status: 'done'; message: string }
+  | { status: 'error'; message: string };
+
 function loadDevices(api: PatchesApi, session: ActiveSession): Promise<DeviceEntry[]> {
   const actorId = session.actor?.id;
   if (actorId === undefined) return Promise.resolve([]);
@@ -112,12 +163,20 @@ export function DevicesScreen({
   thisDeviceId,
   e2eeCapabilityState,
   onEnrollE2ee,
+  onNeedsAuthority,
+  onListPendingLinks,
+  onApproveLink,
+  onDiscardLink,
   onBack,
 }: DevicesScreenProps): ReactElement {
   const [state, setState] = useState<DevicesState>({ status: 'loading' });
   const [revokeFlow, setRevokeFlow] = useState<RevokeFlow>({ status: 'idle' });
   const [enrollFlow, setEnrollFlow] = useState<EnrollFlow>({ status: 'idle' });
   const [selectedDevice, setSelectedDevice] = useState(0);
+  const [pendingLinks, setPendingLinks] = useState<PendingLinksState>({ status: 'idle' });
+  const [selectedLink, setSelectedLink] = useState(0);
+  const [linkApproval, setLinkApproval] = useState<LinkApprovalFlow>({ status: 'idle' });
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +193,63 @@ export function DevicesScreen({
       cancelled = true;
     };
   }, [api, session]);
+
+  /** ADR 0037 §1 step 2: refresh on focus and every `PENDING_LINKS_REFRESH_MS` while
+   * this screen is visible — an offer is only useful for the ten minutes it lives. */
+  useEffect(() => {
+    if (!isActive || onListPendingLinks === undefined) return;
+    let cancelled = false;
+    function refresh(): void {
+      setNowMs(Date.now());
+      onListPendingLinks?.()
+        .then((links) => {
+          if (!cancelled) setPendingLinks({ status: 'ready', links });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          if (error instanceof DeviceLinkError && error.reason === 'not-authority') {
+            setPendingLinks({ status: 'not-authority' });
+            return;
+          }
+          setPendingLinks({
+            status: 'error',
+            message: describeGrpcError(error, api.target).title,
+          });
+        });
+    }
+    refresh();
+    const timer = setInterval(refresh, PENDING_LINKS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isActive, onListPendingLinks, api.target]);
+
+  async function approveLink(link: PendingLinkRow): Promise<void> {
+    if (onApproveLink === undefined) return;
+    setLinkApproval({ status: 'approving', link });
+    try {
+      await onApproveLink(link.linkId);
+      setLinkApproval({ status: 'done', message: `Linked device ${link.deviceId}.` });
+      const links = await onListPendingLinks?.();
+      if (links !== undefined) setPendingLinks({ status: 'ready', links });
+    } catch (error) {
+      setLinkApproval({ status: 'error', message: describeGrpcError(error, api.target).title });
+    }
+  }
+
+  async function discardLink(link: PendingLinkRow): Promise<void> {
+    if (onDiscardLink === undefined) return;
+    setLinkApproval({ status: 'discarding', link });
+    try {
+      await onDiscardLink(link.linkId);
+      setLinkApproval({ status: 'done', message: LINK_MISMATCH_COPY });
+      const links = await onListPendingLinks?.();
+      if (links !== undefined) setPendingLinks({ status: 'ready', links });
+    } catch (error) {
+      setLinkApproval({ status: 'error', message: describeGrpcError(error, api.target).title });
+    }
+  }
 
   async function revokeDevice(device: DeviceEntry): Promise<void> {
     setRevokeFlow({ status: 'revoking', device });
@@ -173,6 +289,13 @@ export function DevicesScreen({
     if (onEnrollE2ee === undefined) return;
     setEnrollFlow({ status: 'running' });
     const outcome = await onEnrollE2ee();
+    if (outcome.needsAuthority === true) {
+      // ADR 0037 §2: not a dead end — hand off to the link/rotate chooser instead of
+      // rendering `outcome.copy` as an error.
+      setEnrollFlow({ status: 'idle' });
+      onNeedsAuthority?.();
+      return;
+    }
     if (outcome.ok) {
       setEnrollFlow({
         status: 'done',
@@ -210,7 +333,21 @@ export function DevicesScreen({
           setEnrollFlow({ status: 'idle' });
           return;
         }
+        if (linkApproval.status !== 'idle') {
+          setLinkApproval({ status: 'idle' });
+          return;
+        }
         onBack();
+        return;
+      }
+      if (linkApproval.status === 'confirming') {
+        if (input === 'y') void approveLink(linkApproval.link);
+        else if (input === 'n' || key.return) void discardLink(linkApproval.link);
+        return;
+      }
+      if (linkApproval.status === 'approving' || linkApproval.status === 'discarding') return;
+      if (linkApproval.status === 'done' || linkApproval.status === 'error') {
+        setLinkApproval({ status: 'idle' });
         return;
       }
       if (revokeFlow.status === 'confirming') {
@@ -266,6 +403,21 @@ export function DevicesScreen({
         thisDeviceId === undefined
       ) {
         setEnrollFlow({ status: 'confirming' });
+        return;
+      }
+      if (pendingLinks.status === 'ready' && pendingLinks.links.length > 0) {
+        if (input === 'J') {
+          setSelectedLink((index) => Math.min(index + 1, pendingLinks.links.length - 1));
+          return;
+        }
+        if (input === 'K') {
+          setSelectedLink((index) => Math.max(index - 1, 0));
+          return;
+        }
+        if (input === 'a' && onApproveLink !== undefined && onDiscardLink !== undefined) {
+          const link = pendingLinks.links[selectedLink];
+          if (link !== undefined) setLinkApproval({ status: 'confirming', link });
+        }
       }
     },
     { isActive },
@@ -318,6 +470,59 @@ export function DevicesScreen({
             may have been revoked elsewhere.
           </Text>
         ) : null}
+      </Box>
+      {onListPendingLinks !== undefined && (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold>Pending link requests</Text>
+          {pendingLinks.status === 'not-authority' && (
+            <Text color={theme.muted} wrap="wrap">
+              {NOT_AUTHORITY_SECTION_COPY}
+            </Text>
+          )}
+          {pendingLinks.status === 'error' && (
+            <Text color={theme.error} wrap="wrap">
+              {pendingLinks.message}
+            </Text>
+          )}
+          {pendingLinks.status === 'ready' && pendingLinks.links.length === 0 && (
+            <Text color={theme.muted}>No pending link requests.</Text>
+          )}
+          {pendingLinks.status === 'ready' &&
+            pendingLinks.links.map((link, index) => {
+              const selected = index === selectedLink;
+              const remainingMs = Math.max(0, link.expiresAtMs - nowMs);
+              const remainingMinutes = Math.ceil(remainingMs / 60_000);
+              return (
+                <Text
+                  key={link.linkId}
+                  color={selected ? theme.accent : theme.muted}
+                  bold={selected}
+                >
+                  {selected ? '› ' : '  '}
+                  {link.deviceId.slice(0, 8)} · {link.sas} · expires in {String(remainingMinutes)}m
+                </Text>
+              );
+            })}
+        </Box>
+      )}
+      <Box marginTop={1} flexDirection="column">
+        {linkApproval.status === 'confirming' && (
+          <Text color={theme.warn} wrap="wrap">
+            Does the code on the other device match? [y/N]
+          </Text>
+        )}
+        {linkApproval.status === 'approving' && <Loading label="Approving device link..." />}
+        {linkApproval.status === 'discarding' && <Loading label="Discarding device link..." />}
+        {linkApproval.status === 'done' && (
+          <Text color={theme.ok} wrap="wrap">
+            {linkApproval.message}
+          </Text>
+        )}
+        {linkApproval.status === 'error' && (
+          <Text color={theme.error} wrap="wrap">
+            {linkApproval.message}
+          </Text>
+        )}
       </Box>
       <Box marginTop={1} flexDirection="column">
         {revokeFlow.status === 'confirming' && (
@@ -378,7 +583,9 @@ export function DevicesScreen({
         )}
         {revokeFlow.status === 'idle' && enrollFlow.status === 'idle' && (
           <Text color={theme.muted}>
-            j/k select · v revoke{showEnrollHint ? ' · e enroll this device' : ''} · Esc back
+            j/k select · v revoke{showEnrollHint ? ' · e enroll this device' : ''}
+            {onApproveLink !== undefined ? ' · J/K select link · a approve/discard link' : ''} · Esc
+            back
           </Text>
         )}
       </Box>
