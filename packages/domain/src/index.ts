@@ -88,6 +88,25 @@ export type {
   DiagnosticsEventInput,
 } from './diagnostics.js';
 
+// B-182 — Web Vitals ingest contract, shared by `apps/web/src/lib/webVitals.ts` (producer)
+// and `apps/server/src/modules/observability/` (validator), so the route-pattern allow-list
+// used for cardinality control can never drift between the two.
+export {
+  isKnownWebVitalsRoutePattern,
+  pathToRoutePattern,
+  webVitalsPayloadSchema,
+  webVitalsSampleSchema,
+  WEB_VITALS_MAX_BUILD_VERSION_LENGTH,
+  WEB_VITALS_MAX_ID_LENGTH,
+  WEB_VITALS_MAX_METRIC_VALUE,
+  WEB_VITALS_MAX_SAMPLES_PER_PAYLOAD,
+  WEB_VITALS_METRIC_NAMES,
+  WEB_VITALS_NAVIGATION_TYPES,
+  WEB_VITALS_RATINGS,
+  WEB_VITALS_ROUTE_PATTERNS,
+} from './web-vitals.js';
+export type { WebVitalsMetricName, WebVitalsPayload, WebVitalsSample } from './web-vitals.js';
+
 export { BLOCK_SCHEMAS, BLOCK_TYPES, lenientPageBlockSchema, pageBlockSchema } from './blocks.js';
 export type { PageBlock, RenderablePageBlock, UnknownPageBlock } from './blocks.js';
 
