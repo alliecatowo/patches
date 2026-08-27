@@ -57,6 +57,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0034](./0034-shared-client-e2ee-runtime.md)                          | The duplicated client E2EE runtime is hoisted into `@patches/e2ee-client`, but only after B-124       | Accepted           |
 | [0035](./0035-reserve-e2ee-conversation-before-first-message.md)      | An E2EE conversation is reserved before its first message, never with it                              | Accepted           |
 | [0036](./0036-shipping-e2ee-conditions-capability-states-and-copy.md) | Shipping E2EE: the conditions, the capability ladder, and the copy that survives it                   | Accepted           |
+| [0037](./0037-e2ee-device-linking-and-root-rotation.md)               | E2EE device linking (SAS-authenticated, authority-signed) and client-reachable root rotation          | Accepted           |
 
 ## Template
 
