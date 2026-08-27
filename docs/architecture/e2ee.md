@@ -331,6 +331,11 @@ primitives; that is not an audit of Patches' composition. JavaScript cannot guar
 execution or complete zeroization, so wiping is best-effort. Cross-client vectors and independent
 security review and remediation remain hard ship gates.
 
+`apps/server/test/e2ee-prekey-claim-race.integration.test.ts` drives `ClaimPrekeyBundles`'
+`FOR UPDATE SKIP LOCKED` claim path with genuinely concurrent claimants against real Postgres,
+proving no one-time prekey is ever handed to two callers and that the per-device drain budget
+holds even while prekeys remain unconsumed (issue #273c).
+
 ## 9. Client runtime status (B-101)
 
 The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol composition) and
