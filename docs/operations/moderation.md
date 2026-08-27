@@ -66,6 +66,8 @@ domain review-list <file>
 appeal list [--status open]
 appeal inspect <id>
 appeal resolve <id> --outcome <upheld|overturned|modified> --reason <text>
+
+audit-log list [--actor <id>] [--admin <id>] [--since <iso>] [--limit N]
 ```
 
 - **`invite create`** prints the raw invite code **once** — only its SHA-256 hash is ever
@@ -111,6 +113,15 @@ spam|illegal_content|ncii|infrastructure_abuse|other` — the bounded, **publish
   action did. It does **not** automatically reverse anything: overturning a suspension does
   not unsuspend the account — run `user unsuspend` yourself. Refuses if the appeal isn't
   currently `OPEN`.
+- **`audit-log list`** (§158, #172) reads `admin_audit_log` directly — the general-purpose
+  companion to the incidental audit-log lookup `appeal inspect` already did for report-driven
+  suspensions only. `--actor <id>` filters on the row's subject (`subject_id` — the account,
+  invite, post, job, or domain the action was about), `--admin <id>` on `admin_user_id` (the
+  operator who ran the command), `--since <iso>` on `created_at`. Always newest-first
+  (`ORDER BY created_at DESC`) with a plain `LIMIT` (default 50) — no `--offset`/`--page`
+  (spec §153). Prints exactly `time`/`admin`/`action`/`target`/`reason`; `reason` is
+  `metadata.reason` when the writing command set one (`user.suspend`, `domain.block`, ...)
+  and blank otherwise — the full `metadata` blob isn't printed even under `--json`.
 
 ## Moderation notices, appeals, and the public log (Amendment C, spec §201)
 
@@ -208,6 +219,7 @@ DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise r
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- domain unblock doc-example.test --as <existing-handle>
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- appeal list --as <existing-handle>
 DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- appeal inspect <appeal-id> --as <existing-handle>
+DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_admin mise run admin -- audit-log list --limit 5
 ```
 
 The full command surface (including `suspend`/`unsuspend`/`delete`, `report resolve` with

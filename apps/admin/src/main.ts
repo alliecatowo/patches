@@ -4,6 +4,7 @@ import 'reflect-metadata';
 import { optionalStringOption, parseArgs, type ParsedArgs } from './cli/arg-parser.js';
 import { createAdminContext, type AdminContext } from './context.js';
 import { runAppealCommand } from './commands/appeal.js';
+import { runAuditLogCommand } from './commands/audit-log.js';
 import { runDomainCommand } from './commands/domain.js';
 import { runInviteCommand } from './commands/invite.js';
 import { runJobsCommand } from './commands/jobs.js';
@@ -65,6 +66,8 @@ async function dispatch(
       return runAppealCommand(action, args, context);
     case 'labeler':
       return runLabelerCommand(action, args, context);
+    case 'audit-log':
+      return runAuditLogCommand(action, args, context);
     default:
       printUsage();
       process.exitCode = 1;
@@ -109,6 +112,8 @@ Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--j
 
   labeler vocabulary list [--json]
   labeler vocabulary set-mandatory <value> [--off]
+
+  audit-log list [--actor <id>] [--admin <id>] [--since <iso>] [--limit N] [--json]
 
 Every mutating command needs an operator: --as <handle>, or set PATCHES_ADMIN_OPERATOR.
 `);

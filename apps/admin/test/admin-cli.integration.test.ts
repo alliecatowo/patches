@@ -27,6 +27,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { requirePositional } from '../src/cli/arg-parser.js';
 import { hashInviteCode } from '../src/cli/crypto.js';
 import { runAppealCommand } from '../src/commands/appeal.js';
+import { runAuditLogCommand } from '../src/commands/audit-log.js';
 import { runDomainCommand } from '../src/commands/domain.js';
 import { runInviteCommand } from '../src/commands/invite.js';
 import { runJobsCommand } from '../src/commands/jobs.js';
@@ -1111,6 +1112,128 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             ctx,
           ),
         ).rejects.toThrow(/--outcome must be one of/);
+      });
+    });
+
+    describe('audit-log list (spec §158, #172)', () => {
+      it('filters by --admin/--actor/--since, honors --limit, orders newest first, and prints only time/admin/action/target/reason', async () => {
+        const { user: adminA } = await createTestUser(dataSource.manager, {
+          handle: `auditadmina${Date.now()}`,
+        });
+        const { user: adminB } = await createTestUser(dataSource.manager, {
+          handle: `auditadminb${Date.now()}`,
+        });
+        const { user: subject } = await createTestUser(dataSource.manager, {
+          handle: `auditsubject${Date.now()}`,
+        });
+
+        await appendAdminAuditLog(dataSource.manager, {
+          adminUserId: adminA.id,
+          action: 'user.suspend',
+          subjectType: 'USER',
+          subjectId: subject.id,
+          metadata: { reason: 'first strike' },
+        });
+
+        const since = new Date();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // No `metadata` at all — exercises the "no reason to give" blank case.
+        await appendAdminAuditLog(dataSource.manager, {
+          adminUserId: adminB.id,
+          action: 'user.unsuspend',
+          subjectType: 'USER',
+          subjectId: subject.id,
+        });
+
+        const ctx = await context(undefined);
+
+        const jsonCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          { positionals: ['audit-log', 'list'], options: { actor: subject.id, json: true } },
+          ctx,
+        );
+        jsonCapture.restore();
+        const rows = JSON.parse(jsonCapture.text()) as Array<Record<string, unknown>>;
+        expect(rows.length).toBeGreaterThanOrEqual(2);
+        expect(Object.keys(rows[0] ?? {}).sort()).toEqual(
+          ['time', 'admin', 'action', 'target', 'reason'].sort(),
+        );
+        expect(rows[0]?.action).toBe('user.unsuspend');
+        expect(rows[0]?.reason).toBe('');
+        expect(rows[0]?.admin).toBe(adminB.id);
+        expect(rows[1]?.action).toBe('user.suspend');
+        expect(rows[1]?.reason).toBe('first strike');
+        expect(rows[1]?.target).toBe(`USER:${subject.id}`);
+
+        const adminCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { admin: adminA.id, actor: subject.id, json: true },
+          },
+          ctx,
+        );
+        adminCapture.restore();
+        const adminRows = JSON.parse(adminCapture.text()) as Array<Record<string, unknown>>;
+        expect(adminRows).toHaveLength(1);
+        expect(adminRows[0]?.action).toBe('user.suspend');
+
+        const sinceCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: subject.id, since: since.toISOString(), json: true },
+          },
+          ctx,
+        );
+        sinceCapture.restore();
+        const sinceRows = JSON.parse(sinceCapture.text()) as Array<Record<string, unknown>>;
+        expect(sinceRows).toHaveLength(1);
+        expect(sinceRows[0]?.action).toBe('user.unsuspend');
+
+        const limitCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: subject.id, limit: '1', json: true },
+          },
+          ctx,
+        );
+        limitCapture.restore();
+        const limitRows = JSON.parse(limitCapture.text()) as Array<Record<string, unknown>>;
+        expect(limitRows).toHaveLength(1);
+        expect(limitRows[0]?.action).toBe('user.unsuspend');
+
+        // The table renderer's header has exactly the documented columns, in order.
+        const tableCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          { positionals: ['audit-log', 'list'], options: { actor: subject.id, limit: '1' } },
+          ctx,
+        );
+        tableCapture.restore();
+        const header = tableCapture.text().split('\n')[0] ?? '';
+        expect(header.split(/\s{2,}/)).toEqual(['time', 'admin', 'action', 'target', 'reason']);
+      });
+
+      it('prints "(none)" for a filter that matches nothing', async () => {
+        const ctx = await context(undefined);
+        const capture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: '00000000-0000-0000-0000-000000000000' },
+          },
+          ctx,
+        );
+        capture.restore();
+        expect(capture.text()).toBe('(none)\n');
       });
     });
 
