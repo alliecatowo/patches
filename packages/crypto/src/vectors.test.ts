@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fromHex, toHex } from './codec.js';
+import { concatBytes, fromHex, toHex } from './codec.js';
 import {
   decodeRatchetState,
   encodeRatchetState,
@@ -49,16 +49,25 @@ import {
   signPreKeyBundle,
 } from './identity.js';
 import {
+  decodeSetupBlock,
+  encodeInitialFraming,
+  encodeSetupBlock,
+  splitInitialHeader,
+  type InitialSetupBlock,
+} from './setup-block.js';
+import {
   deterministicSource,
   establishedFixture,
   establishedRatchetPair,
 } from './testing/fixtures.js';
+import { E2EE_ALGORITHM, E2EE_PROTOCOL, E2EE_VERSION, type X3dhHandshake } from './types.js';
 import type { DoubleRatchetState, EncryptedRatchetMessage } from './types.js';
 import deviceEnvelopeVector from './vectors/device-envelope.json' with { type: 'json' };
 import deviceLinkVector from './vectors/device-link.json' with { type: 'json' };
 import identityVector from './vectors/identity-transcripts.json' with { type: 'json' };
 import doubleRatchetVector from './vectors/double-ratchet-session.json' with { type: 'json' };
 import frankingVector from './vectors/franking.json' with { type: 'json' };
+import setupBlockVector from './vectors/setup-block.json' with { type: 'json' };
 import x3dhVector from './vectors/x3dh-handshake.json' with { type: 'json' };
 
 const encoder = new TextEncoder();
@@ -367,6 +376,85 @@ describe('vector replay: ADR 0037 device-link offer', () => {
           }),
         negative.name,
       ).toThrow();
+    }
+  });
+});
+
+describe('vector replay: ADR 0034 Stage 0(a) setup-block framing (issue #155)', () => {
+  interface SetupBlockHandshakeFields {
+    readonly initiatorRosterDigestHex: string;
+    readonly responderRosterDigestHex: string;
+    readonly ephemeralPublicKeyHex: string;
+    readonly signedPreKeyId: number;
+    readonly signedPreKeyPublicKeyHex: string;
+    readonly oneTimePreKeyId: number | null;
+    readonly oneTimePreKeyPublicKeyHex: string | null;
+    readonly initiatorSignatureHex: string;
+  }
+
+  // `encodeSetupBlock` reads only the fields below off `X3dhHandshake`; `initiator`/`responder`
+  // are certificate material the setup-block framing never touches, so empty placeholders satisfy
+  // the type without misrepresenting what this vector pins.
+  const placeholderDevice = {
+    certificateBytes: new Uint8Array(0),
+    rootSignature: new Uint8Array(0),
+  };
+
+  function handshakeOf(fields: SetupBlockHandshakeFields): X3dhHandshake {
+    return {
+      protocol: E2EE_PROTOCOL,
+      version: E2EE_VERSION,
+      algorithm: E2EE_ALGORITHM,
+      initiator: placeholderDevice,
+      responder: placeholderDevice,
+      initiatorRosterDigest: fromHex(fields.initiatorRosterDigestHex),
+      responderRosterDigest: fromHex(fields.responderRosterDigestHex),
+      ephemeralPublicKey: fromHex(fields.ephemeralPublicKeyHex),
+      signedPreKeyId: fields.signedPreKeyId,
+      signedPreKeyPublicKey: fromHex(fields.signedPreKeyPublicKeyHex),
+      ...(fields.oneTimePreKeyId === null
+        ? {}
+        : {
+            oneTimePreKeyId: fields.oneTimePreKeyId,
+            oneTimePreKeyPublicKey: fromHex(fields.oneTimePreKeyPublicKeyHex ?? ''),
+          }),
+      initiatorSignature: fromHex(fields.initiatorSignatureHex),
+    };
+  }
+
+  it.each(['withOneTimePreKey', 'withoutOneTimePreKey'] as const)(
+    'reproduces the recorded setup block and envelope framing (%s)',
+    (caseName) => {
+      const vector = setupBlockVector[caseName];
+      const handshake = handshakeOf(vector.handshake);
+
+      const setupBlock = encodeSetupBlock(setupBlockVector.identity, handshake);
+      expect(toHex(setupBlock)).toBe(vector.setupBlockHex);
+
+      const decoded: InitialSetupBlock = decodeSetupBlock(setupBlock);
+      expect(decoded.senderActorId).toBe(setupBlockVector.identity.actorId);
+      expect(decoded.senderDeviceId).toBe(setupBlockVector.identity.deviceId);
+      expect(toHex(decoded.handshake.initiatorSignature)).toBe(
+        vector.handshake.initiatorSignatureHex,
+      );
+
+      const framed = encodeInitialFraming(setupBlock);
+      const envelope = concatBytes(framed, fromHex(vector.ratchetHeaderHex));
+      expect(toHex(envelope)).toBe(vector.envelopeHeaderHex);
+
+      const split = splitInitialHeader(envelope);
+      expect(toHex(split.ratchetHeader)).toBe(vector.ratchetHeaderHex);
+      expect(split.setup.senderActorId).toBe(setupBlockVector.identity.actorId);
+    },
+  );
+
+  it('rejects every recorded negative case', () => {
+    expect(setupBlockVector.rejected.length).toBeGreaterThan(0);
+    for (const negative of setupBlockVector.rejected) {
+      const input = fromHex(negative.inputHex);
+      const decode =
+        negative.decoder === 'decodeSetupBlock' ? decodeSetupBlock : splitInitialHeader;
+      expect(() => decode(input), negative.name).toThrow();
     }
   });
 });

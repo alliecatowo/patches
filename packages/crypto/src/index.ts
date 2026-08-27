@@ -7,6 +7,7 @@ export * from './franking.js';
 export * from './identity.js';
 export * from './identity-transcript.js';
 export * from './primitives.js';
+export * from './setup-block.js';
 export * from './transcript-domains.js';
 export * from './types.js';
 export * from './x3dh.js';
