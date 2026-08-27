@@ -89,6 +89,19 @@ sequenceDiagram
     P->>P: identity change? pause sends, require re-verification
 ```
 
+Server-side, every roster-writing transaction (`EnrollDevice`, `RevokeDevice`,
+`PublishDeviceRoster`, and the rotation branch of `PublishIdentityRoot`) takes a `pessimistic_write`
+lock on the actor's active identity-root row before appending, so two concurrent writers serialise
+onto the same append point instead of racing to insert the same next sequence — the loser now sees
+`E2EE_ROSTER_CONFLICT`, not an unmapped Postgres `23505` (issue #267). The node also refuses to
+append a roster naming a device it holds no certificate for: every entry not already present in the
+previous roster must match an unrevoked `E2eeDeviceIdentity` row by certificate digest, closing off
+a phantom-device roster that would otherwise pass chain verification but serve peers a device with
+no certificate or prekeys (issue #268). `EnrollDevice`, `RevokeDevice`, `PublishDeviceRoster`,
+`PublishIdentityRoot`, and `UploadPrekeys` are now rate-limited per actor and per peer (20/hour,
+`E2eeRateLimitService.consumeIdentityWrite`) — previously unbounded write paths whose signature
+verification and roster growth cost is otherwise free to spam (issue #269).
+
 A malicious node can still refuse to serve a roster or serve a stale one. It cannot forge one, and
 a client that verifies forward from its last known sequence detects a rollback or a split view.
 Safety-number comparison over an out-of-band channel remains the authentication control for first

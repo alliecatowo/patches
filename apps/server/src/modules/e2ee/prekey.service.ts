@@ -29,6 +29,7 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 import { AppError } from '../../common/errors/app-error.js';
 import { saveOneTimePrekeys } from './device-roster.service.js';
 import { e2eeDigest, e2eeSignatureVerifier } from './e2ee-crypto.adapter.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import {
   assertBytesEqual,
   encodePrekeyBundleTranscript,
@@ -66,10 +67,19 @@ interface ClaimedOneTimePrekey {
  */
 @Injectable()
 export class E2eePrekeyService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rateLimits: E2eeRateLimitService,
+  ) {}
 
-  uploadPrekeys(actorId: string, request: UploadPrekeysRequest): Promise<UploadPrekeysResponse> {
+  async uploadPrekeys(
+    actorId: string,
+    request: UploadPrekeysRequest,
+    peer: string | undefined = undefined,
+  ): Promise<UploadPrekeysResponse> {
     if (request.deviceId.length === 0) throw AppError.validation('A device id is required.');
+
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
 
     return this.dataSource.transaction(async (manager) => {
       const device = await manager.getRepository(E2eeDeviceIdentityEntity).findOne({

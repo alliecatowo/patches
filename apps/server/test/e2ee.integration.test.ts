@@ -378,9 +378,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
     beforeAll(async () => {
       dataSource = await createServerTestDataSource();
-      identityRoots = new E2eeIdentityRootService(dataSource);
-      deviceRosters = new E2eeDeviceRosterService(dataSource);
-      prekeys = new E2eePrekeyService(dataSource);
+      identityRoots = new E2eeIdentityRootService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      deviceRosters = new E2eeDeviceRosterService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      prekeys = new E2eePrekeyService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
