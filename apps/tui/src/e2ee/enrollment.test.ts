@@ -1,7 +1,7 @@
 /**
  * Enrollment flow tests, centred on B-131: a failed identity-root lookup must never be
  * read as "this account has no root yet". Minting an identity root on the strength of a
- * request that never completed — and persisting it — wedges the browser permanently
+ * request that never completed — and persisting it — wedges the device permanently
  * against a server that disagrees, which no retry can undo.
  */
 import { create } from '@bufbuild/protobuf';
@@ -33,7 +33,8 @@ import {
   type EnrollmentCapability,
   type EnrollmentTransport,
 } from './enrollment.js';
-import type { RatchetSessionVault, VaultOpenInfo } from './vault.js';
+import type { RatchetSessionVault } from './ratchet-vault.js';
+import type { VaultOpenInfo } from './vault-store.js';
 
 const ACTOR_ID = 'actor-me';
 const NOW_MS = 1_770_000_000_000;
@@ -48,7 +49,7 @@ function memoryVault(): RatchetSessionVault & { readonly records: Map<string, Ui
   return {
     records,
     open: (): Promise<VaultOpenInfo> =>
-      Promise.resolve({ generation: 0, adoptedStagedSessions: [] }),
+      Promise.resolve({ generation: 0, adoptedStagedSessions: [], discardedTempFiles: [] }),
     listSessions: () => Promise.resolve([...records.keys()]),
     getSession: (): Promise<DoubleRatchetState | undefined> => unused(),
     stageSend: (): Promise<void> => unused(),
@@ -172,7 +173,7 @@ describe('enrollThisDevice — identity-root preflight (B-131)', () => {
     expect(vault.records.size).toBe(0);
   });
 
-  it('refuses when the account already publishes a root this browser does not hold', async () => {
+  it('refuses when the account already publishes a root this device does not hold', async () => {
     transport.getIdentityRoot.mockResolvedValue(publishedRoot(new Uint8Array(32).fill(4)));
 
     const outcome = await run(transport, vault);

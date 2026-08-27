@@ -89,6 +89,19 @@ sequenceDiagram
     P->>P: identity change? pause sends, require re-verification
 ```
 
+Server-side, every roster-writing transaction (`EnrollDevice`, `RevokeDevice`,
+`PublishDeviceRoster`, and the rotation branch of `PublishIdentityRoot`) takes a `pessimistic_write`
+lock on the actor's active identity-root row before appending, so two concurrent writers serialise
+onto the same append point instead of racing to insert the same next sequence — the loser now sees
+`E2EE_ROSTER_CONFLICT`, not an unmapped Postgres `23505` (issue #267). The node also refuses to
+append a roster naming a device it holds no certificate for: every entry not already present in the
+previous roster must match an unrevoked `E2eeDeviceIdentity` row by certificate digest, closing off
+a phantom-device roster that would otherwise pass chain verification but serve peers a device with
+no certificate or prekeys (issue #268). `EnrollDevice`, `RevokeDevice`, `PublishDeviceRoster`,
+`PublishIdentityRoot`, and `UploadPrekeys` are now rate-limited per actor and per peer (20/hour,
+`E2eeRateLimitService.consumeIdentityWrite`) — previously unbounded write paths whose signature
+verification and roster growth cost is otherwise free to spam (issue #269).
+
 A malicious node can still refuse to serve a roster or serve a stale one. It cannot forge one, and
 a client that verifies forward from its last known sequence detects a rollback or a split view.
 Safety-number comparison over an out-of-band channel remains the authentication control for first
@@ -318,6 +331,11 @@ primitives; that is not an audit of Patches' composition. JavaScript cannot guar
 execution or complete zeroization, so wiping is best-effort. Cross-client vectors and independent
 security review and remediation remain hard ship gates.
 
+`apps/server/test/e2ee-prekey-claim-race.integration.test.ts` drives `ClaimPrekeyBundles`'
+`FOR UPDATE SKIP LOCKED` claim path with genuinely concurrent claimants against real Postgres,
+proving no one-time prekey is ever handed to two callers and that the per-device drain budget
+holds even while prekeys remain unconsumed (issue #273c).
+
 ## 9. Client runtime status (B-101)
 
 The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol composition) and
@@ -365,3 +383,32 @@ delivery path may cross `FederationGateway` or ActivityPub, even when public fed
 for other content. Federated key discovery, cross-node envelopes, and remote moderation evidence are
 out of scope and need separate owner sign-off, a threat model spanning independently operated nodes,
 and a new ADR. See [`federation.md`](./federation.md).
+
+**Ship gate:** `apps/server/src/modules/e2ee/federation-isolation.test.ts` checks this
+statically (no e2ee/federation source file imports the other side, or `@patches/crypto` from the
+federation side) and at runtime (`FEDERATION_GATEWAY` is unresolvable from `E2eeController`'s DI
+graph, and a force-registered spy under that token is never called by `getE2EeCapability` or
+`sendEnvelopes`).
+
+## Ship-gate status (2026-08-27)
+
+Reconciliation of ADR 0020 §12's 11 ship gates against what actually exists in the repo today.
+Statuses are not softened for anything below.
+
+| Gate                                            | Status   | Evidence (file paths / test names)                                                                                                                                                                                                                                                                |
+| ----------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Double Ratchet vectors                       | DONE     | `packages/crypto/src/double-ratchet.test.ts`, `packages/crypto/src/double-ratchet.property.test.ts`, `packages/crypto/src/vectors.test.ts`, `packages/crypto/src/device-envelope.test.ts`                                                                                                         |
+| 2. Certs/rosters/safety numbers/identity-change | PARTIAL  | Domain + roster-chain tests exist; roster append is now row-locked and requires certified devices (#267/#268) — `apps/server/src/modules/e2ee/roster-chain.test.ts`, `apps/server/src/modules/e2ee/device-roster.service.test.ts`. No adversarial-server test suite for the safety-number screen. |
+| 3. Prekey atomicity/concurrency                 | DONE     | `apps/server/test/e2ee-prekey-claim-race.integration.test.ts` (40 concurrent claimants, no double hand-out)                                                                                                                                                                                       |
+| 4. Vault crash/rollback                         | PARTIAL  | TUI `apps/tui/src/e2ee/vault-store.test.ts` covers crash windows, rollback, corruption, and the single-owner lock. Web vault tests do not cover the same matrix.                                                                                                                                  |
+| 5. Sesame fanout / two-device interop           | PARTIAL  | Own-device fanout is implemented (`apps/server/src/modules/e2ee/e2ee-fanout.ts`); no two-live-device interop test yet (#273a).                                                                                                                                                                    |
+| 6. No-plaintext assertions                      | DONE     | `apps/server/test/e2ee-privacy-scan.integration.test.ts`; DB trigger `trg_conversations_immutable_security_mode` (`packages/database/src/migrations/1787134230745-Phase13E2ee.ts`) makes `conversations.security_mode` immutable after creation.                                                  |
+| 7. Franking independent review                  | NOT DONE | ADR 0036 substituted an internal adversarial audit; no third party has reviewed the construction.                                                                                                                                                                                                 |
+| 8. Backup/recovery/rotation/revocation          | PARTIAL  | Recovery archive export/import CLI landed (`apps/tui/src/cli/e2ee-recovery.ts`, `apps/tui/src/e2ee/recovery-restore.e2e.test.ts`); device linking and root rotation per ADR 0037 in progress (#265, #266); web has the seam but no UI yet.                                                        |
+| 9. Threat model + independent security audit    | NOT DONE | Policy-waived by ADR 0036; nothing external exists.                                                                                                                                                                                                                                               |
+| 10. Legacy/E2EE separation                      | PARTIAL  | Separation is enforced (see gate 6). `PURGE_ACCOUNT` E2EE-row deletion was not located inside the `e2ee` module; `apps/server/src/modules/privacy/privacy.service.ts` is the only match for `purgeAccount`/`PURGE_ACCOUNT`, so cross-module coverage for E2EE-specific rows is UNVERIFIED.        |
+| 11. Federation isolation                        | DONE     | `apps/server/src/modules/e2ee/federation-isolation.test.ts`                                                                                                                                                                                                                                       |
+
+**Stage status (ADR 0020 §11):** stages 1–4 done; stage 5 in progress (#265, #266, #272, #273);
+stage 6 policy-substituted per ADR 0036; stage 7 not live — E2EE conversations are opt-in via
+`CreateE2eeConversation`, not the default.

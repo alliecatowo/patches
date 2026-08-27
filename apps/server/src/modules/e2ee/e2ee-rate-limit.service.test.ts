@@ -44,6 +44,42 @@ describe('E2eeRateLimitService (audit P1)', () => {
     expect(keys).toContain('e2ee_envelope:peer:unknown');
   });
 
+  describe('consumeIdentityWrite (issue #269 — no budget on identity/roster/prekey writes)', () => {
+    it('enforces per-actor and per-peer hourly windows', async () => {
+      const store = storeReturning(1);
+      const service = new E2eeRateLimitService(store);
+      await service.consumeIdentityWrite('actor', 'peer-1');
+
+      const keys = (store.increment as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) =>
+        String(call[0]),
+      );
+      expect(keys).toContain('e2ee_identity_write:subject:actor');
+      expect(keys).toContain('e2ee_identity_write:peer:peer-1');
+    });
+
+    it('allows a caller within the 20/hour budget', async () => {
+      const service = new E2eeRateLimitService(storeReturning(20));
+      await expect(service.consumeIdentityWrite('actor', 'peer-1')).resolves.toBeUndefined();
+    });
+
+    it('throws RATE_LIMITED once the per-actor hourly budget is exceeded', async () => {
+      const service = new E2eeRateLimitService(storeReturning(21));
+      await expect(service.consumeIdentityWrite('actor', 'peer-1')).rejects.toMatchObject({
+        code: 'RATE_LIMITED',
+      });
+    });
+
+    it('keys an absent peer under the shared unknown bucket rather than skipping the check', async () => {
+      const store = storeReturning(1);
+      const service = new E2eeRateLimitService(store);
+      await service.consumeIdentityWrite('actor', undefined);
+      const keys = (store.increment as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) =>
+        String(call[0]),
+      );
+      expect(keys).toContain('e2ee_identity_write:peer:unknown');
+    });
+  });
+
   describe('consumeMailboxPoll (P19-019 part 3 — ListMailboxEnvelopes had no budget at all)', () => {
     it('enforces a subject-only window, no peer-keyed companion', async () => {
       const store = storeReturning(1);

@@ -43,6 +43,16 @@ const REPORT_EVIDENCE_BUDGETS: readonly WindowBudget[] = [
   { windowMs: HOUR_MS, limit: REPORT_EVIDENCE_PER_HOUR },
 ];
 
+/** `EnrollDevice`/`RevokeDevice`/`PublishDeviceRoster`/`PublishIdentityRoot`/`UploadPrekeys` —
+ * the identity/roster/prekey write paths audit P1/issue #269 found with no budget at all. Each
+ * append is a signature verify plus insert served to every peer via `ListDeviceRosters`/
+ * `GetDeviceRoster`, so it gets a low, rare-by-design budget like `GROUP_CONTROL_BUDGETS` rather
+ * than a send-shaped one. */
+const IDENTITY_WRITE_PER_HOUR = 20;
+const IDENTITY_WRITE_BUDGETS: readonly WindowBudget[] = [
+  { windowMs: HOUR_MS, limit: IDENTITY_WRITE_PER_HOUR },
+];
+
 /** `ListMailboxEnvelopes` poll budget, per actor, per minute (P19-019 part 3 — every other
  * `E2eeService` write path has a budget; this read had none). ADR 0032 commits every open TUI
  * thread to polling this exact RPC every 5 s while active — 12 requests/minute for one device —
@@ -89,6 +99,12 @@ export class E2eeRateLimitService {
   /** `AttachReportEvidence` — reporter-disclosed plaintext ingestion. */
   async consumeReportEvidence(actorId: string, peer: string | undefined, now = new Date()) {
     await this.consume('e2ee_report_evidence', REPORT_EVIDENCE_BUDGETS, actorId, peer, now);
+  }
+
+  /** `EnrollDevice`/`RevokeDevice`/`PublishDeviceRoster`/`PublishIdentityRoot`/`UploadPrekeys` —
+   * see `IDENTITY_WRITE_BUDGETS`'s doc comment. */
+  async consumeIdentityWrite(actorId: string, peer: string | undefined, now = new Date()) {
+    await this.consume('e2ee_identity_write', IDENTITY_WRITE_BUDGETS, actorId, peer, now);
   }
 
   /** `ListMailboxEnvelopes` — see `MAILBOX_POLL_PER_MINUTE`'s doc comment for the cadence this
