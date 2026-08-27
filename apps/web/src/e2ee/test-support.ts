@@ -480,6 +480,15 @@ export function fakeMessagingSendTransport(
             nowMs: now,
           });
           out.push({ actorId: claimActorId, deviceId, bundle, roster });
+          // A one-time prekey is one-time even at the node's own prekey store (issue #153):
+          // once handed to a claim, it must never be offered to a second one. Mirrors the
+          // consuming half of what `runtime-session.ts`'s responder side now does locally.
+          if (oneTime !== undefined) {
+            node.messagingIdentities.set(deviceId, {
+              ...identity,
+              oneTimePreKeys: identity.oneTimePreKeys.filter((prekey) => prekey.id !== oneTime.id),
+            });
+          }
         }
       }
       return Promise.resolve(out);
