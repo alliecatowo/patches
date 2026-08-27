@@ -115,9 +115,21 @@ apply to this mode and no other (§194).
 2026-08-24): per-device identity certificates and signed device rosters, X3DH session setup,
 the full Double Ratchet with encrypted headers, franking with mandatory recipient-side
 verification, encrypted reports via `ReportE2eeMessage` plus reporter-disclosed evidence (§183.4,
-[ADR 0025](../decisions/0025-franking-commitment-binding.md)), and the terminal client's
-send/receive runtime. The web view has **no crypto runtime**: E2EE conversations are labeled
-there and open in the terminal client, which is where you read and send them.
+[ADR 0025](../decisions/0025-franking-commitment-binding.md)), and a send/receive runtime in
+both the terminal client and the web client (ADR 0033 unified the identity transcript family
+both share; ADR 0035 made conversation creation reachable from either). Each browser tab is its
+own messaging device, enrolled and certified the same way a terminal session is.
+
+A second device (a phone alongside a laptop, for example) is added by **linking**, never by
+copying the account's root key to it: the new device shows a short numeric code, an existing
+device that already holds the account's messaging identity compares it and approves, and only
+then is the new device certified ([ADR 0037](../decisions/0037-e2ee-device-linking-and-root-rotation.md)
+§1). If no such device is reachable — every enrolled device lost, no recovery archive — the only
+honest recovery path is **starting a new messaging identity**: every contact is warned of the
+change, and message history on the lost devices is not recoverable (§2). Both actions, plus
+exporting and importing an optional offline recovery archive of the account's messaging identity
+(issue #272), are reachable from the web client's `/settings/devices` screen and the terminal
+client's `patches e2ee` commands.
 
 What end-to-end encryption does not hide from the node: who messages whom, when, how much
 (coarse ciphertext-size buckets), device/prekey inventory activity, and ordinary request
