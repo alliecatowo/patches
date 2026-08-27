@@ -1,3 +1,4 @@
+import { DEVICE_LINK_OFFER_DOMAIN, DEVICE_LINK_SAS_DOMAIN } from './device-link.js';
 import { E2EE_IDENTITY_TRANSCRIPT_DOMAIN } from './identity-transcript.js';
 import { E2EE_PROTOCOL } from './types.js';
 
@@ -26,4 +27,6 @@ export const CRYPTO_TRANSCRIPT_DOMAINS: readonly string[] = Object.freeze([
   'patches-e2ee-v1/franking/commitment',
   'patches-e2ee-v1/franking/report',
   'patches-e2ee-v1/franking/envelope-ad',
+  DEVICE_LINK_OFFER_DOMAIN,
+  DEVICE_LINK_SAS_DOMAIN,
 ]);
