@@ -288,11 +288,12 @@ export class E2eeSessionRuntime {
           acknowledged.push(envelope.envelopeId);
         } catch (caught) {
           if (isReplayDuplicate(caught)) {
-            // Already processed and committed before a lost ack — safe to acknowledge
+            // Already processed and committed before a lost ack \u2014 safe to acknowledge
             // again so the mailbox drains; nothing is rendered twice.
             acknowledged.push(envelope.envelopeId);
             continue;
           }
+          error = 'Envelope processing failed';
           break;
         }
       }
