@@ -12,7 +12,7 @@ import {
   type PublishIdentityRootRequest,
 } from '@patches/proto/es';
 import { E2EE_PROTOCOL_V1 } from '@patches/domain';
-import type { DoubleRatchetState } from '@patches/crypto';
+import { generateSigningKeyPair, type DoubleRatchetState } from '@patches/crypto';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
@@ -120,7 +120,7 @@ describe('enrollThisDevice — identity-root preflight (B-131)', () => {
     expect(transport.enrollDevice).toHaveBeenCalledTimes(1);
     const stored = vault.records.get(ENROLLMENT_RECORD_KEY);
     expect(stored).toBeDefined();
-    expect(decodeStoredEnrollment(stored ?? new Uint8Array()).submitted).toBe(true);
+    expect(decodeStoredEnrollment(stored ?? new Uint8Array(), NOW_MS).submitted).toBe(true);
   });
 
   it('does NOT mint or persist anything when the root lookup fails', async () => {
@@ -196,7 +196,7 @@ describe('enrollThisDevice — resuming a persisted record', () => {
     await expect(run(transport, vault)).rejects.toThrow('enroll failed');
     const stored = vault.records.get(ENROLLMENT_RECORD_KEY);
     expect(stored).toBeDefined();
-    expect(decodeStoredEnrollment(stored ?? new Uint8Array()).submitted).toBe(false);
+    expect(decodeStoredEnrollment(stored ?? new Uint8Array(), NOW_MS).submitted).toBe(false);
     transport.getIdentityRoot.mockClear();
     transport.publishIdentityRoot.mockClear();
     transport.enrollDevice.mockClear();
@@ -205,7 +205,7 @@ describe('enrollThisDevice — resuming a persisted record', () => {
 
   it('re-checks the remote root on resume rather than skipping straight to enroll', async () => {
     const before = await seedUnsubmittedRecord();
-    const record = decodeStoredEnrollment(before);
+    const record = decodeStoredEnrollment(before, NOW_MS);
     transport.getIdentityRoot.mockResolvedValue(publishedRoot(record.rootPublic));
 
     const outcome = await run(transport, vault);
@@ -220,7 +220,7 @@ describe('enrollThisDevice — resuming a persisted record', () => {
 
   it('republishes the identical bootstrap root when the first publish never landed', async () => {
     const before = await seedUnsubmittedRecord();
-    const record = decodeStoredEnrollment(before);
+    const record = decodeStoredEnrollment(before, NOW_MS);
     transport.getIdentityRoot.mockResolvedValue(undefined);
 
     const outcome = await run(transport, vault);
@@ -268,24 +268,30 @@ describe('stored enrollment codec', () => {
   it('round-trips every field the resume path depends on', () => {
     const { record } = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW_MS });
 
-    const decoded = decodeStoredEnrollment(encodeStoredEnrollment(record));
+    const decoded = decodeStoredEnrollment(encodeStoredEnrollment(record), NOW_MS + 60_000);
 
     expect(decoded.submitted).toBe(record.submitted);
     expect(decoded.createdRoot).toBe(record.createdRoot);
-    expect(decoded.rootGeneration).toBe(record.rootGeneration);
     expect([...decoded.rootPublic]).toEqual([...record.rootPublic]);
     expect([...decoded.rootPrivate]).toEqual([...record.rootPrivate]);
     expect(decoded.identity.deviceId).toBe(record.identity.deviceId);
     expect(decoded.identity.oneTimePreKeys.length).toBe(record.identity.oneTimePreKeys.length);
-    expect(decoded.wire.rosterSequence).toBe(record.wire.rosterSequence);
-    expect([...decoded.wire.certificateBytes]).toEqual([...record.wire.certificateBytes]);
-    expect([...decoded.wire.bundleSignature]).toEqual([...record.wire.bundleSignature]);
+    expect(decoded.identity.ownRoster.sequence).toBe(record.identity.ownRoster.sequence);
+    expect([...decoded.identity.selfDevice.certificateBytes]).toEqual([
+      ...record.identity.selfDevice.certificateBytes,
+    ]);
+    expect([...decoded.identity.ownBundle.deviceSignature]).toEqual([
+      ...record.identity.ownBundle.deviceSignature,
+    ]);
   });
 
   it('has no bootstrap root to republish for a record that did not create one', () => {
     const { record } = generateEnrollment({
       actorId: ACTOR_ID,
-      root: { privateKey: new Uint8Array(32).fill(1), publicKey: new Uint8Array(32).fill(2) },
+      // A real keypair, not two arbitrary fills: since ADR 0033 `generateEnrollment`
+      // re-verifies the root it mints through `verifyMessagingRoot`, a public key that
+      // does not correspond to the private key fails its own self-signature check.
+      root: { ...generateSigningKeyPair(), createdAtMs: NOW_MS - 60_000 },
       nowMs: NOW_MS,
     });
 

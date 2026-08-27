@@ -1,21 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  commitFranking,
-  createFrankingOpeningKey,
-  certifyDevice,
-  createSignedPreKey,
-  generateKeyAgreementKeyPair,
-  generateSigningKeyPair,
-  rosterDigest,
-  sealDeviceEnvelope,
-  signDeviceRoster,
-  type CertifiedDevice,
-  type DevicePrivateKeys,
-  type DoubleRatchetState,
-  type PreKeyBundle,
-  type SignedDeviceRoster,
-} from '@patches/crypto';
+import { commitFranking, createFrankingOpeningKey, sealDeviceEnvelope } from '@patches/crypto';
+import type { DoubleRatchetState, VerifiedPreKeyBundle } from '@patches/crypto';
 import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 
 import { encodeChatPlaintext, encodeHistoryPlaintext, sessionIdFor } from '../src/e2ee/runtime.js';
@@ -30,69 +16,21 @@ import { E2eeSessionRuntime } from '../src/e2ee/runtime-session.js';
 import { TypedRatchetVault } from '../src/e2ee/ratchet-vault.js';
 import { MemoryVaultStore } from '../src/e2ee/vault-store.js';
 import { buildHistoryTransfer } from '../src/e2ee/history-transfer.js';
-import { selfPrekeyBundle, type LocalDeviceIdentity } from '../src/e2ee/local-identity.js';
+import type { LocalDeviceIdentity } from '../src/e2ee/local-identity.js';
+import { testLocalIdentity } from '../src/e2ee/test-support.js';
 
 // ---------------------------------------------------------------------------
-// Crypto-native identities: both sides are built from @patches/crypto primitives, so
-// X3DH transcripts round-trip byte-for-byte between two runtimes (the same convention
-// packages/crypto's own fixtures use).
+// Both sides are built from `@patches/crypto` primitives via the shared test helper, so
+// X3DH transcripts round-trip byte-for-byte between two runtimes.
 // ---------------------------------------------------------------------------
 
 interface TestIdentity {
   readonly local: LocalDeviceIdentity;
-  readonly bundle: PreKeyBundle;
+  readonly bundle: VerifiedPreKeyBundle;
 }
 
 function testIdentity(actorId: string, deviceId: string): TestIdentity {
-  const root = generateSigningKeyPair();
-  const signing = generateSigningKeyPair();
-  const agreement = generateKeyAgreementKeyPair();
-  const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
-  const device: CertifiedDevice = certifyDevice(root.privateKey, {
-    protocol: 'patches-e2ee-v1',
-    version: 1,
-    userId: actorId,
-    deviceId,
-    signingPublicKey: signing.publicKey,
-    agreementPublicKey: agreement.publicKey,
-    generation: 1,
-    createdAtMs: 1,
-    expiresAtMs,
-  });
-  const ownRoster: SignedDeviceRoster = signDeviceRoster(root.privateKey, {
-    protocol: 'patches-e2ee-v1',
-    version: 1,
-    userId: actorId,
-    rootPublicKey: root.publicKey,
-    sequence: 1,
-    previousDigest: new Uint8Array(32),
-    devices: [device],
-    createdAtMs: 1,
-  });
-  const signedPreKeyPair = generateKeyAgreementKeyPair();
-  const digest = rosterDigest(ownRoster.roster);
-  const signedPreKey = createSignedPreKey(signing.privateKey, device, digest, {
-    id: 7,
-    publicKey: signedPreKeyPair.publicKey,
-    createdAtMs: 1,
-    expiresAtMs,
-  });
-  const local: LocalDeviceIdentity = {
-    actorId,
-    deviceId,
-    keys: { signing, agreement } satisfies DevicePrivateKeys,
-    selfDevice: device,
-    ownRoster,
-    signedPreKey: {
-      id: signedPreKey.id,
-      keyPair: signedPreKeyPair,
-      createdAtMs: signedPreKey.createdAtMs,
-      expiresAtMs: signedPreKey.expiresAtMs,
-      signature: signedPreKey.signature,
-    },
-    oneTimePreKeys: [{ id: 91, keyPair: generateKeyAgreementKeyPair() }],
-  };
-  return { local, bundle: selfPrekeyBundle(local) };
+  return testLocalIdentity(actorId, deviceId);
 }
 
 const ALICE_IDENTITY = testIdentity('actor-alice', 'device-alice');

@@ -169,7 +169,7 @@ class WebE2eeManager {
         vault.close();
         return;
       }
-      const stored = await loadStoredEnrollment(vault);
+      const stored = await loadStoredEnrollment(vault, Date.now());
       if (seq !== this.setActorSeq) {
         vault.close();
         return;

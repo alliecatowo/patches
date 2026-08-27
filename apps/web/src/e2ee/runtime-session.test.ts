@@ -14,26 +14,26 @@
  *   - responder-side session establishment from an inbound initial envelope (`:340-356`).
  *
  * Identities are built with the same primitives `enrollment.ts` uses in production
- * (`certifyDevice`, `signDeviceRoster`, `createSignedPreKey`), so sessions here run the
- * real X3DH/Double Ratchet code, not a stand-in.
+ * (`signDeviceCertificate`, `signDeviceRoster`, `signPreKeyBundle`), so sessions here run
+ * the real X3DH/Double Ratchet code, not a stand-in.
  */
 import 'fake-indexeddb/auto';
 
 import {
-  certifyDevice,
   commitFranking,
   createFrankingOpeningKey,
-  createSignedPreKey,
   generateKeyAgreementKeyPair,
   generateSigningKeyPair,
-  rosterDigest,
   sealDeviceEnvelope,
+  signDeviceCertificate,
   signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  verifyCertifiedDevice,
+  verifyMessagingRoot,
+  verifyRosterSnapshot,
   E2EE_PROTOCOL,
-  E2EE_VERSION,
   KEY_BYTES,
-  type CertifiedDevice,
-  type DeviceCertificate,
 } from '@patches/crypto';
 import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 import { describe, expect, it } from 'vitest';
@@ -72,36 +72,82 @@ function buildIdentity(actorId: string, deviceId: string): LocalDeviceIdentity {
   const rootKeys = generateSigningKeyPair();
   const signing = generateSigningKeyPair();
   const agreement = generateKeyAgreementKeyPair();
-  const certificate: DeviceCertificate = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
+  const createdAtMs = NOW;
+  const expiresAtMs = NOW + 30 * 24 * 60 * 60 * 1_000;
+
+  const signedRoot = signMessagingRoot(rootKeys.privateKey, {
+    actorId,
+    generation: 1,
+    publicKey: rootKeys.publicKey,
+    createdAtMs,
+  });
+  const root = verifyMessagingRoot({
+    rootBytes: signedRoot.rootBytes,
+    selfSignature: signedRoot.selfSignature,
+    nowMs: NOW,
+  });
+
+  const signedCertificate = signDeviceCertificate(rootKeys.privateKey, {
+    actorId,
     deviceId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeys.publicKey,
+    certificateVersion: 1,
     signingPublicKey: signing.publicKey,
     agreementPublicKey: agreement.publicKey,
-    generation: 1,
-    createdAtMs: NOW,
-    expiresAtMs: NOW + 30 * 24 * 60 * 60 * 1_000,
-  };
-  const selfDevice: CertifiedDevice = certifyDevice(rootKeys.privateKey, certificate);
-  const ownRoster = signDeviceRoster(rootKeys.privateKey, {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs,
+  });
+  const selfDevice = verifyCertifiedDevice({
+    certificateBytes: signedCertificate.certificateBytes,
+    rootSignature: signedCertificate.rootSignature,
+    root,
+    nowMs: NOW,
+  });
+
+  const signedRoster = signDeviceRoster(rootKeys.privateKey, {
+    actorId,
+    rootGeneration: 1,
     rootPublicKey: rootKeys.publicKey,
     sequence: 1,
     previousDigest: new Uint8Array(KEY_BYTES),
-    devices: [selfDevice],
-    createdAtMs: NOW,
+    createdAtMs,
+    entries: [
+      {
+        deviceId,
+        certificateDigest: signedCertificate.certificateDigest,
+        active: true,
+        addedAtMs: createdAtMs,
+      },
+    ],
   });
-  const ownDigest = rosterDigest(ownRoster.roster);
+  const ownRoster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
+    root,
+    certificates: [
+      {
+        certificateBytes: signedCertificate.certificateBytes,
+        rootSignature: signedCertificate.rootSignature,
+      },
+    ],
+    nowMs: NOW,
+  });
+
+  const signedPreKeyId = 1;
   const signedPreKeyPair = generateKeyAgreementKeyPair();
-  const signedPreKeyStatement = createSignedPreKey(signing.privateKey, selfDevice, ownDigest, {
-    id: 1,
-    publicKey: signedPreKeyPair.publicKey,
-    createdAtMs: NOW,
-    expiresAtMs: NOW + 7 * 24 * 60 * 60 * 1_000,
+  const signedPreKeyExpiresAtMs = NOW + 7 * 24 * 60 * 60 * 1_000;
+  const signedBundle = signPreKeyBundle(signing.privateKey, {
+    actorId,
+    deviceId,
+    certificateDigest: signedCertificate.certificateDigest,
+    signedPrekeyId: signedPreKeyId,
+    signedPrekeyPublicKey: signedPreKeyPair.publicKey,
+    createdAtMs,
+    expiresAtMs: signedPreKeyExpiresAtMs,
   });
+
   return {
     actorId,
     deviceId,
@@ -109,21 +155,29 @@ function buildIdentity(actorId: string, deviceId: string): LocalDeviceIdentity {
     selfDevice,
     ownRoster,
     signedPreKey: {
-      id: signedPreKeyStatement.id,
+      id: signedPreKeyId,
       keyPair: signedPreKeyPair,
-      createdAtMs: signedPreKeyStatement.createdAtMs,
-      expiresAtMs: signedPreKeyStatement.expiresAtMs,
-      signature: signedPreKeyStatement.signature,
+      createdAtMs,
+      expiresAtMs: signedPreKeyExpiresAtMs,
+    },
+    ownBundle: {
+      bundleBytes: signedBundle.bundleBytes,
+      deviceSignature: signedBundle.deviceSignature,
     },
     oneTimePreKeys: [{ id: 1, keyPair: generateKeyAgreementKeyPair() }],
   };
 }
 
 function claimedBundle(identity: LocalDeviceIdentity): ClaimedPeerBundle {
+  const oneTime = identity.oneTimePreKeys[0];
   return {
     actorId: identity.actorId,
     deviceId: identity.deviceId,
-    bundle: selfPrekeyBundle(identity),
+    bundle: selfPrekeyBundle(
+      identity,
+      oneTime === undefined ? undefined : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey },
+      NOW,
+    ),
     roster: identity.ownRoster,
   };
 }
@@ -210,9 +264,16 @@ function sealInitialEnvelope(params: {
   readonly body: string;
   readonly envelopeId: string;
 }): E2eeMailboxEnvelopeLike {
+  const recipientOneTime = params.recipient.oneTimePreKeys[0];
   const established = establishInitiatorSession({
     identity: params.sender,
-    peerBundle: selfPrekeyBundle(params.recipient),
+    peerBundle: selfPrekeyBundle(
+      params.recipient,
+      recipientOneTime === undefined
+        ? undefined
+        : { id: recipientOneTime.id, publicKey: recipientOneTime.keyPair.publicKey },
+      NOW,
+    ),
     peerRoster: params.recipient.ownRoster,
     nowMs: NOW,
   });
@@ -356,9 +417,16 @@ describe('E2eeSessionRuntime.send — staged-commit recovery on transport failur
     const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
 
     const first = await createRatchetSessionVault({ account });
+    const peerOneTime = peer.oneTimePreKeys[0];
     const established = establishInitiatorSession({
       identity: self,
-      peerBundle: selfPrekeyBundle(peer),
+      peerBundle: selfPrekeyBundle(
+        peer,
+        peerOneTime === undefined
+          ? undefined
+          : { id: peerOneTime.id, publicKey: peerOneTime.keyPair.publicKey },
+        NOW,
+      ),
       peerRoster: peer.ownRoster,
       nowMs: NOW,
     });

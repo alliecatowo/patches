@@ -1,15 +1,18 @@
 import {
-  certifyDevice,
-  createSignedPreKey,
   generateKeyAgreementKeyPair,
   generateSigningKeyPair,
   initializeInitiatorRatchet,
   randomBytes,
-  rosterDigest,
+  signDeviceCertificate,
   signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  verifyCertifiedDevice,
+  verifyMessagingRoot,
+  verifyRosterSnapshot,
   type DoubleRatchetState,
   type KeyPair,
-  type PreKeyBundle,
+  type VerifiedPreKeyBundle,
   type X3dhSecrets,
 } from '@patches/crypto';
 
@@ -220,58 +223,104 @@ export function failAdvanceOnce(provider: {
 export function testLocalIdentity(
   actorId: string,
   deviceId: string,
-): { readonly local: LocalDeviceIdentity; readonly bundle: PreKeyBundle } {
-  const root = generateSigningKeyPair();
+): { readonly local: LocalDeviceIdentity; readonly bundle: VerifiedPreKeyBundle } {
+  const nowMs = Date.now();
+  const createdAtMs = 1;
+  const expiresAtMs = nowMs + 24 * 60 * 60 * 1000;
+  const rootKeys = generateSigningKeyPair();
   const signing = generateSigningKeyPair();
   const agreement = generateKeyAgreementKeyPair();
-  const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
-  const selfDevice = certifyDevice(root.privateKey, {
-    protocol: 'patches-e2ee-v1',
-    version: 1,
-    userId: actorId,
+
+  const signedRoot = signMessagingRoot(rootKeys.privateKey, {
+    actorId,
+    generation: 1,
+    publicKey: rootKeys.publicKey,
+    createdAtMs,
+  });
+  const root = verifyMessagingRoot({
+    rootBytes: signedRoot.rootBytes,
+    selfSignature: signedRoot.selfSignature,
+    nowMs,
+  });
+
+  const signedCertificate = signDeviceCertificate(rootKeys.privateKey, {
+    actorId,
     deviceId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeys.publicKey,
+    certificateVersion: 1,
     signingPublicKey: signing.publicKey,
     agreementPublicKey: agreement.publicKey,
-    generation: 1,
-    createdAtMs: 1,
+    supportedProtocolVersions: ['patches-e2ee-v1'],
+    createdAtMs,
     expiresAtMs,
   });
-  const ownRoster = signDeviceRoster(root.privateKey, {
-    protocol: 'patches-e2ee-v1',
-    version: 1,
-    userId: actorId,
-    rootPublicKey: root.publicKey,
+  const selfDevice = verifyCertifiedDevice({
+    certificateBytes: signedCertificate.certificateBytes,
+    rootSignature: signedCertificate.rootSignature,
+    root,
+    nowMs,
+  });
+
+  const signedRoster = signDeviceRoster(rootKeys.privateKey, {
+    actorId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeys.publicKey,
     sequence: 1,
     previousDigest: new Uint8Array(32),
-    devices: [selfDevice],
-    createdAtMs: 1,
+    createdAtMs,
+    entries: [
+      {
+        deviceId,
+        certificateDigest: signedCertificate.certificateDigest,
+        active: true,
+        addedAtMs: createdAtMs,
+      },
+    ],
   });
+  const ownRoster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
+    root,
+    certificates: [
+      {
+        certificateBytes: signedCertificate.certificateBytes,
+        rootSignature: signedCertificate.rootSignature,
+      },
+    ],
+    nowMs,
+  });
+
+  const signedPreKeyId = 7;
   const signedPreKeyPair = generateKeyAgreementKeyPair();
-  const signedPreKey = createSignedPreKey(
-    signing.privateKey,
-    selfDevice,
-    rosterDigest(ownRoster.roster),
-    {
-      id: 7,
-      publicKey: signedPreKeyPair.publicKey,
-      createdAtMs: 1,
-      expiresAtMs,
-    },
-  );
+  const signedBundle = signPreKeyBundle(signing.privateKey, {
+    actorId,
+    deviceId,
+    certificateDigest: signedCertificate.certificateDigest,
+    signedPrekeyId: signedPreKeyId,
+    signedPrekeyPublicKey: signedPreKeyPair.publicKey,
+    createdAtMs,
+    expiresAtMs,
+  });
+
+  const oneTimePreKey = { id: 91, keyPair: generateKeyAgreementKeyPair() };
   const local: LocalDeviceIdentity = {
     actorId,
     deviceId,
     keys: { signing, agreement },
     selfDevice,
     ownRoster,
-    signedPreKey: {
-      id: signedPreKey.id,
-      keyPair: signedPreKeyPair,
-      createdAtMs: signedPreKey.createdAtMs,
-      expiresAtMs: signedPreKey.expiresAtMs,
-      signature: signedPreKey.signature,
+    signedPreKey: { id: signedPreKeyId, keyPair: signedPreKeyPair, createdAtMs, expiresAtMs },
+    ownBundle: {
+      bundleBytes: signedBundle.bundleBytes,
+      deviceSignature: signedBundle.deviceSignature,
     },
-    oneTimePreKeys: [{ id: 91, keyPair: generateKeyAgreementKeyPair() }],
+    oneTimePreKeys: [oneTimePreKey],
   };
-  return { local, bundle: selfPrekeyBundle(local) };
+  const bundle = selfPrekeyBundle(
+    local,
+    { id: oneTimePreKey.id, publicKey: oneTimePreKey.keyPair.publicKey },
+    nowMs,
+  );
+  return { local, bundle };
 }

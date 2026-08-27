@@ -7,13 +7,83 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it, vi } from 'vitest';
 
-import { E2eeSetupUnavailableError } from './runtime.js';
+import { generateEnrollment } from './enrollment.js';
 import {
   createWebE2eeTransports,
   createWebEnrollmentTransport,
   type E2eeApiSurface,
 } from './transports.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
+
+// Minted against the REAL clock (not the fixed `NOW` fixture): `createWebE2eeTransports`'s
+// `claimPrekeyBundles`/`loadPeerRoster` verify a fetched peer identity against
+// `Date.now()`, not an injectable test clock, so this certificate's validity window must
+// actually cover the moment the test runs.
+const peerIdentity = generateEnrollment({ actorId: 'actor-peer', nowMs: Date.now() }).record
+  .identity;
+
+/** Maps a locally-verified identity back into the wire shapes the node would serve for
+ * it (the inverse of `enrollment.ts`'s `buildEnrollRequest`), so a fake transport hands
+ * the adapter real, verifiable bytes instead of stubbing verification away. */
+function wireIdentityRoot(identity: typeof peerIdentity): { identityRoot: unknown } {
+  const root = identity.ownRoster.root;
+  return {
+    identityRoot: {
+      actorId: root.actorId,
+      generation: root.generation,
+      publicKey: root.publicKey,
+      rootBytes: root.rootBytes,
+      selfSignature: root.selfSignature,
+      previousRootSignature: new Uint8Array(0),
+    },
+  };
+}
+
+function wireDeviceRoster(identity: typeof peerIdentity): unknown {
+  const roster = identity.ownRoster;
+  const device = identity.selfDevice;
+  return {
+    roster: {
+      actorId: roster.actorId,
+      sequence: BigInt(roster.sequence),
+      rootGeneration: roster.rootGeneration,
+      previousDigest: roster.previousDigest,
+      digest: roster.rosterDigest,
+      rosterBytes: roster.rosterBytes,
+      rootSignature: roster.rootSignature,
+      entries: roster.entries.map((entry) => ({
+        deviceId: entry.deviceId,
+        certificateDigest: entry.certificateDigest,
+        active: entry.active,
+      })),
+    },
+    certificates: [
+      { certificateBytes: device.certificateBytes, rootSignature: device.rootSignature },
+    ],
+  };
+}
+
+function wireClaimResponse(identity: typeof peerIdentity): unknown {
+  const device = identity.selfDevice;
+  return {
+    bundles: [
+      {
+        actorId: identity.actorId,
+        deviceId: identity.deviceId,
+        deviceCertificate: {
+          certificateBytes: device.certificateBytes,
+          rootSignature: device.rootSignature,
+        },
+        signedPrekey: { keyId: BigInt(identity.signedPreKey.id) },
+        oneTimePrekey: undefined,
+        oneTimePrekeyExhausted: true,
+        bundleBytes: identity.ownBundle.bundleBytes,
+        deviceSignature: identity.ownBundle.deviceSignature,
+      },
+    ],
+    rosters: [],
+  };
+}
 
 /** The seams only ever call the handful of RPCs stubbed per test; the cast keeps the
  * fixture from having to construct a whole Connect client. */
@@ -86,31 +156,36 @@ describe('createWebEnrollmentTransport — getCapability', () => {
 });
 
 describe('createWebE2eeTransports', () => {
-  it('fails closed on peer prekey claims without issuing the RPC (B-124)', async () => {
-    const claim = vi.fn();
+  it('claims and verifies a real peer prekey bundle (ADR 0033)', async () => {
+    const getIdentityRoot = vi.fn(() => Promise.resolve(wireIdentityRoot(peerIdentity)));
+    const getDeviceRoster = vi.fn(() => Promise.resolve(wireDeviceRoster(peerIdentity)));
+    const claimPrekeyBundles = vi.fn(() => Promise.resolve(wireClaimResponse(peerIdentity)));
     const transports = createWebE2eeTransports({
-      api: apiWith({ claimPrekeyBundles: claim }),
+      api: apiWith({ getIdentityRoot, getDeviceRoster, claimPrekeyBundles }),
       identity,
     });
 
-    await expect(
-      transports.claimPrekeyBundles({ conversationId: 'c', actorIds: ['actor-peer'] }),
-    ).rejects.toBeInstanceOf(E2eeSetupUnavailableError);
-    // No inventory is consumed by a claim that cannot be verified.
-    expect(claim).not.toHaveBeenCalled();
+    const claimed = await transports.claimPrekeyBundles({
+      conversationId: 'c',
+      actorIds: ['actor-peer'],
+    });
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.actorId).toBe('actor-peer');
+    expect(claimed[0]?.deviceId).toBe(peerIdentity.deviceId);
+    expect(claimPrekeyBundles).toHaveBeenCalled();
   });
 
-  it('does not promise a retry in its setup-unavailable copy (B-132)', () => {
-    expect(new E2eeSetupUnavailableError().message).not.toMatch(/try again/i);
-  });
-
-  it('serves this device its own roster but refuses a peer roster', async () => {
-    const transports = createWebE2eeTransports({ api: apiWith({}), identity });
+  it('serves this device its own roster and verifies a real peer roster over the wire', async () => {
+    const getIdentityRoot = vi.fn(() => Promise.resolve(wireIdentityRoot(peerIdentity)));
+    const getDeviceRoster = vi.fn(() => Promise.resolve(wireDeviceRoster(peerIdentity)));
+    const transports = createWebE2eeTransports({
+      api: apiWith({ getIdentityRoot, getDeviceRoster }),
+      identity,
+    });
 
     await expect(transports.loadPeerRoster('actor-me')).resolves.toBe(identity.ownRoster);
-    await expect(transports.loadPeerRoster('actor-peer')).rejects.toBeInstanceOf(
-      E2eeSetupUnavailableError,
-    );
+    const peer = await transports.loadPeerRoster('actor-peer');
+    expect(peer.devices[0]?.deviceId).toBe(peerIdentity.deviceId);
   });
 
   it('keeps every active device of every member in the fanout plan (ADR 0020 §7)', async () => {

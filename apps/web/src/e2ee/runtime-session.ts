@@ -28,10 +28,14 @@ import {
   sealDeviceEnvelope,
   sha256Hash,
 } from '@patches/crypto';
-import { canonicalFanoutTranscript, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
+import {
+  canonicalFanoutTranscript,
+  E2eeContractError,
+  E2EE_FRANKING_PROFILE_V1,
+} from '@patches/domain';
 
 import { parseHistoryTransfer } from './history-transfer.js';
-import { selfPrekeyBundle, type LocalDeviceIdentity } from './local-identity.js';
+import type { LocalDeviceIdentity } from './local-identity.js';
 import type { RatchetSessionVault } from './vault.js';
 import type { DoubleRatchetState, RatchetTransition } from '@patches/crypto';
 import type { OpenedDeviceEnvelope } from '@patches/crypto';
@@ -46,7 +50,6 @@ import {
   decodePayload,
   encodeChatPlaintext,
   epochToNumber,
-  E2eeSetupUnavailableError,
   sessionIdFor,
   type E2eeMailboxEnvelopeLike,
   type E2eeMailboxTransport,
@@ -234,7 +237,9 @@ export class E2eeSessionRuntime {
     const peer = claimed.find(
       (candidate) => candidate.actorId === target.actorId && candidate.deviceId === target.deviceId,
     );
-    if (peer === undefined) throw new E2eeSetupUnavailableError();
+    if (peer === undefined) {
+      throw new E2eeContractError('The node did not return a prekey bundle for a fanout target.');
+    }
     const established = establishInitiatorSession({
       identity: this.identity,
       peerBundle: peer.bundle,
@@ -243,7 +248,8 @@ export class E2eeSessionRuntime {
     });
     await this.vault.applyUpdate(sessionId, established.state);
     const stored = await this.vault.getSession(sessionId);
-    if (stored === undefined) throw new E2eeSetupUnavailableError();
+    if (stored === undefined)
+      throw new Error('Session vault did not persist a just-committed session.');
     return {
       state: stored,
       setupPrefix: established.setupPrefix,
@@ -353,7 +359,6 @@ export class E2eeSessionRuntime {
         const initiatorRoster = await this.mailboxTransport.loadPeerRoster(setup.senderActorId);
         const established = establishResponderSession({
           identity: this.identity,
-          selfBundle: selfPrekeyBundle(this.identity),
           setup,
           initiatorRoster,
           nowMs: this.nowMs(),
