@@ -77,7 +77,8 @@ function wireCertificateMatchesTranscript(
     return false;
   }
   return (
-    decoded.supportedProtocolVersions.join(' ') === certificate.supportedProtocolVersions.join(' ')
+    decoded.supportedProtocolVersions.join('\0') ===
+    certificate.supportedProtocolVersions.join('\0')
   );
 }
 
