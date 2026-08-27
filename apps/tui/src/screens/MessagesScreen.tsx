@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { ConnectError } from '@connectrpc/connect';
 import {
+  E2EE_UNREVIEWED_DEV_MODE_WARNING,
   mayDescribeAsEndToEndEncrypted,
   requiredConversationDisclosure,
   type ConversationSecurityMode as DomainConversationSecurityMode,
@@ -47,9 +48,12 @@ import type { GlyphSetName } from '../theme/themes/types.js';
  * ADR 0027: when the node's capability RPC reports `ISOLATED_TEST_ONLY`, every surface
  * that lets you create or read one of these conversations shows this, persistently. It
  * is a development-mode statement, never an external-review claim.
+ *
+ * Re-exported rather than declared: the string itself lives in `@patches/domain` so the
+ * web client renders the same bytes instead of a second literal that has to agree with
+ * this one by coincidence (#249).
  */
-export const UNREVIEWED_DEV_E2EE_WARNING =
-  'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.';
+export const UNREVIEWED_DEV_E2EE_WARNING = E2EE_UNREVIEWED_DEV_MODE_WARNING;
 
 /** The vault-fault banners (P13-010): lost history is stated as lost, never as empty. */
 export const VAULT_FAULT_COPY = {

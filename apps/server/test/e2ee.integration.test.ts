@@ -10,6 +10,7 @@ import {
   canonicalFanoutTranscript,
   canonicalGroupControlTranscript,
   E2EE_FRANKING_PROFILE_V1,
+  verifyIdentityRoot,
 } from '@patches/domain';
 import { createTestFollow, createTestUser } from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,6 +18,7 @@ import type { DataSource } from 'typeorm';
 
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
+import { e2eeSignatureVerifier } from '../src/modules/e2ee/e2ee-crypto.adapter.js';
 import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
 import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import { MessagesService } from '../src/modules/messages/messages.service.js';
@@ -437,6 +439,39 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
       expect(inventory.oneTimePrekeyCount).toBe(5);
       expect(inventory.oneTimePrekeysExhausted).toBe(false);
+    });
+
+    it('GetIdentityRoot serves the exact published root_bytes/self_signature a peer can verify (issue #251)', async () => {
+      const actor = await newActor();
+      const published = signedIdentityRoot(actor);
+      await identityRoots.publishIdentityRoot(actor.actorId, {
+        identityRoot: published,
+        roster: undefined,
+      });
+
+      const { identityRoot } = await identityRoots.getIdentityRoot({ actorId: actor.actorId });
+      expect(identityRoot).toBeDefined();
+      expect(identityRoot?.rootBytes.length).toBeGreaterThan(0);
+      expect(identityRoot?.selfSignature.length).toBeGreaterThan(0);
+      // The peer-facing RPC must round-trip the exact bytes that were published, not a
+      // node-side re-derivation — that's what a peer client's own verification is against.
+      expect(Buffer.from(identityRoot?.rootBytes ?? [])).toEqual(published.rootBytes);
+      expect(Buffer.from(identityRoot?.selfSignature ?? [])).toEqual(published.selfSignature);
+
+      // And a peer, with only the served proto in hand, can actually run the verification
+      // `e2ee.proto`'s doc comment on `root_bytes` promises is possible.
+      expect(() =>
+        verifyIdentityRoot(
+          {
+            actorId: identityRoot?.actorId ?? '',
+            generation: identityRoot?.generation ?? 0,
+            publicKey: new Uint8Array(identityRoot?.publicKey ?? []),
+            rootBytes: new Uint8Array(identityRoot?.rootBytes ?? []),
+            selfSignature: new Uint8Array(identityRoot?.selfSignature ?? []),
+          },
+          { verifier: e2eeSignatureVerifier },
+        ),
+      ).not.toThrow();
     });
 
     it('rejects EnrollDevice when the certificate does not match its signed transcript', async () => {

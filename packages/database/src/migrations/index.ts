@@ -38,6 +38,7 @@ import { ActorPersonalization1787669032825 } from './1787669032825-ActorPersonal
 import { DropOrphanedLegacyMessageTrigger1787670000000 } from './1787670000000-DropOrphanedLegacyMessageTrigger.js';
 import { Phase13GroupMembership1787241965646 } from './1787241965646-Phase13GroupMembership.js';
 import { RemoveFilterScopeMessageRequests1787661000000 } from './1787661000000-RemoveFilterScopeMessageRequests.js';
+import { E2eeIdentityRootTranscript1787790938656 } from './1787790938656-E2eeIdentityRootTranscript.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -92,4 +93,5 @@ export const ALL_MIGRATIONS = [
   DropOrphanedLegacyMessageTrigger1787670000000,
   Phase13GroupMembership1787241965646,
   RemoveFilterScopeMessageRequests1787661000000,
+  E2eeIdentityRootTranscript1787790938656,
 ];

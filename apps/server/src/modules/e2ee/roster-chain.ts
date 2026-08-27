@@ -47,10 +47,11 @@ export function toIdentityRootView(root: E2eeIdentityRootEntity): E2eeIdentityRo
     actorId: root.actorId,
     generation: root.generation,
     publicKey: toBytes(root.publicKey),
-    // The row only stores the public key, not the self-signed transcript: identity-root
-    // signature verification happens once, at `PublishIdentityRoot` time, against the request's
-    // own `rootBytes`/`selfSignature`. A stored root is never re-verified against itself here —
-    // `rootBytes`/`selfSignature` are not persisted because nothing downstream needs them again.
+    // Identity-root signature verification happens once, at `PublishIdentityRoot` time, against
+    // the request's own `rootBytes`/`selfSignature`. A stored root is never re-verified against
+    // itself here, so this node-internal view doesn't need them — the columns are persisted (see
+    // `e2ee.mapper.ts#toProtoIdentityRoot`) because a *peer* client verifying this actor's chain
+    // does need them, over `GetIdentityRoot`.
     rootBytes: new Uint8Array(0),
     selfSignature: new Uint8Array(0),
   };
