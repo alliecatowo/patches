@@ -104,6 +104,10 @@ export function buildExportDocument(
   nowMs: number,
 ): E2eeRecoveryArchiveDocument {
   const root = enrollment.identity.ownRoster.root;
+  if (enrollment.rootPrivate === undefined) {
+    // A linked device (ADR 0037 §1) never holds the root; only an authority device can export.
+    throw new RecoveryArchiveError('This device does not hold the messaging identity root.');
+  }
   return {
     actorId,
     rootGeneration: root.generation,

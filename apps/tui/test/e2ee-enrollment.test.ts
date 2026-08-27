@@ -481,9 +481,9 @@ describe('enrollThisDevice orchestration', () => {
     const vault = freshVault();
     const { transport, spy } = fakeTransport(vault, { remoteRoot: true });
     const outcome = await enrollThisDevice({ actorId: ACTOR_ID, transport, vault });
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
     expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
     expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
     expect(spy.publishCalls).toHaveLength(0);
@@ -578,9 +578,9 @@ describe('enrollThisDevice orchestration', () => {
       nowMs: () => NOW + 5_000,
     });
 
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
     expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
     // Never adopted: no device enrolled under an authority key this machine does not hold.
     expect(retry.spy.enrollCalls).toHaveLength(0);
