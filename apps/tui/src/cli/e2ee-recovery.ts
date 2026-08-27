@@ -48,6 +48,7 @@ import {
   openCredentialStore,
   reportAuthError,
 } from './auth-shared.js';
+import { runE2eeApproveLink, runE2eeLink, runE2eeRotateRoot } from './e2ee-link.js';
 import type { CliIo } from './io.js';
 
 /** The fixed copy ADR 0020 §10 requires wherever a recovery code is shown. */
@@ -384,13 +385,18 @@ export async function runE2ee(rest: readonly string[], deps: E2eeRecoveryDeps): 
   const [subcommand, ...remaining] = rest;
   if (subcommand === '-h' || subcommand === '--help' || subcommand === undefined) {
     deps.io.stdout(
-      'Usage: patches e2ee <export-recovery|import-recovery> [options]\n\n' +
+      'Usage: patches e2ee <export-recovery|import-recovery|link|approve-link|rotate-root> ' +
+        '[options]\n\n' +
         `${EXPORT_USAGE}\n${IMPORT_USAGE}`,
     );
     return subcommand === undefined ? 1 : 0;
   }
   if (subcommand === 'export-recovery') return runE2eeExportRecovery(remaining, deps);
   if (subcommand === 'import-recovery') return runE2eeImportRecovery(remaining, deps);
+  // ADR 0037 §1–§2: device linking and root rotation (issues #265/#266).
+  if (subcommand === 'link') return runE2eeLink(remaining, deps);
+  if (subcommand === 'approve-link') return runE2eeApproveLink(remaining, deps);
+  if (subcommand === 'rotate-root') return runE2eeRotateRoot(remaining, deps);
   deps.io.stderr(`Unknown e2ee subcommand: ${subcommand}\n`);
   return 1;
 }
