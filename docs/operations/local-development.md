@@ -86,13 +86,10 @@ Notes:
   `AUTH_CODE_DELIVERY_*` keyring for ADR 0026's encrypted verification/reset-email outbox.
   Paste the complete output into the local environment so the server and worker receive the
   same delivery key; never reuse its production key locally.
-- E2EE is an always-on feature (ADR 0036 Amendment, 2026-08-26 owner override) — no dev-mode
-  flag to set. `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` approves the shipped
-  `patches-franking-v1` profile by default, so `GetE2eeCapability` reports `ENABLED` on any node
-  with a franking signing key for its current era. `E2EE_APPROVED_FRANKING_PROFILES` (env) is an
-  optional operator narrowing/kill-switch — it can only shrink the domain-approved set, never
-  widen it (a boot-time check rejects an env value naming a profile the domain constant doesn't
-  approve).
+- E2EE is an always-on feature (ADR 0036 Amendments, 2026-08-26 owner override) — no dev-mode
+  flag and no approval env var exist. The v1 franking profile is the shipped construction, so
+  `GetE2eeCapability` reports `ENABLED` on any node with a franking signing key for its current
+  era.
 - `R2_*` variables can point at either a real R2 dev bucket or a local MinIO instance
   (matching MinIO's S3-compatible endpoint/credentials shape).
 - In local development, email sending should point at Mailpit's SMTP endpoint rather than

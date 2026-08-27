@@ -83,3 +83,12 @@ packages/database/src/migrations/**.
 Note: e2ee-fanout.ts and e2ee-conversation.service.ts both call
 `approvalPolicy.assertProfileApproved(profile)` — kept that method name/signature so those
 (forbidden/unowned) files need no changes.
+
+## Postscript (2026-08-26, later the same day) — superseded by ADR 0036 Amendment 2
+
+The machinery this handoff describes no longer exists. Owner directive: no approval-list
+gating that's hard to reason about — `E2EE_APPROVED_FRANKING_PROFILES` (constant and env),
+`assertFrankingProfileApproved`, and `E2eeRuntimeApprovalPolicy`/`E2eeRuntimeApprovalModule`
+are deleted; `E2eeCapabilityService` reports ENABLED iff a current-era franking signing key
+exists, and the fanout core rejects any non-shipped profile string directly. See ADR 0036
+Amendment 2 and the §7-review fix commits on feat/b124-one-identity-transcript-family.

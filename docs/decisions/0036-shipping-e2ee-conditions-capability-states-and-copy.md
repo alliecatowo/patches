@@ -11,6 +11,27 @@
 epic #250
 **Needs explicit owner sign-off before step 9 of §7 executes:** the §2.3 substitution for ADR 0020 §12.9.
 
+## Amendment 2 (2026-08-26, owner directive — the approval machinery itself is deleted)
+
+Hours after the first amendment, the owner directed that the remaining configuration surface be
+removed outright: _"fuck franking profiles … no config to death gating that's hard to reason
+about. why would there be franking profiles that … aren't approved?"_ The question is fair — an
+approval list whose every entry is approved, guarded by an env var that can only narrow a list
+that never needs narrowing, is configuration cosplaying as a control. It is now gone:
+
+- `E2EE_APPROVED_FRANKING_PROFILES` (the domain constant) and `assertFrankingProfileApproved` no
+  longer exist. There is exactly one franking construction, `E2EE_FRANKING_PROFILE_V1`; it ships
+  by existing. A v2 construction still arrives through an ADR, and _that_ ADR decides whether a
+  list exists — not a feature branch.
+- `E2EE_APPROVED_FRANKING_PROFILES` (env), its boot-time narrowing check, and
+  `E2eeRuntimeApprovalPolicy`/`E2eeRuntimeApprovalModule` are deleted. The first amendment's
+  "retained, unchanged" clause above is itself superseded by this one.
+- `E2eeCapabilityService` reports `ENABLED` iff a signing key exists for the current franking
+  era — the one remaining condition is operational (does the node have its key), not political.
+- The fanout core still rejects any profile string other than the shipped one before dedup or
+  any write (`e2ee-fanout.ts`), so a client naming a nonexistent profile fails closed exactly
+  as before; what's gone is only the belief that an operator could ever have toggled it.
+
 ## Amendment (2026-08-26, owner override — same day as the decision above)
 
 Later the same day, the owner overrode the staged plan this ADR records, for the same reason

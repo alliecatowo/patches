@@ -1,11 +1,11 @@
 # End-to-end encrypted direct messages
 
-**Status: always-on feature.** [ADR 0036's Amendment](../decisions/0036-shipping-e2ee-conditions-capability-states-and-copy.md)
-(2026-08-26, owner override) supersedes the staged-rollout plan below: the reference node is
-pre-alpha, invite-only, with no real conversations, so `packages/domain`'s
-`E2EE_APPROVED_FRANKING_PROFILES` approves the shipped profile by default and `GetE2eeCapability`
-reports `ENABLED` whenever the node has a signing key for its current franking-key era —
-`DISABLED` otherwise. There is no separate "unreviewed dev mode" flag or banner anymore.
+**Status: always-on feature.** [ADR 0036's Amendments](../decisions/0036-shipping-e2ee-conditions-capability-states-and-copy.md)
+(2026-08-26, owner override) supersede the staged-rollout plan below: the reference node is
+pre-alpha, invite-only, with no real conversations, so `GetE2eeCapability` reports `ENABLED`
+whenever the node has a signing key for its current franking-key era — `DISABLED` otherwise.
+There is no approval list, no env narrowing, and no "unreviewed dev mode" flag anymore
+(Amendment 2): the v1 franking profile ships by existing, and a v2 still requires an ADR.
 
 [ADR 0020](../decisions/0020-e2ee-direct-messages.md) is still binding for the protocol contract
 this document records — the sections below describing the review-gated rollout ladder are
@@ -251,13 +251,11 @@ Rules the implementation must keep, all enforced in `packages/domain/src/e2ee/fr
   is the required sentence: reporter-selected context is not the whole context, and the tag is not
   proof to anyone outside this node.
 
-`E2EE_APPROVED_FRANKING_PROFILES` in `packages/domain/src/e2ee/modes.ts` approves the shipped
-`patches-franking-v1` profile by default (ADR 0036 Amendment). It remains the sole production
-authority: adding a _second_ profile still requires amending an ADR rather than editing the
-constant in a feature branch, and `apps/server`'s `E2EE_APPROVED_FRANKING_PROFILES` env var may
-only narrow this list (an operator kill switch), never widen it — a boot-time check in
-`apps/server/src/config/env.schema.ts` rejects any env value naming a profile the domain constant
-doesn't already approve.
+The franking profile is a fixed construction, not node configuration (ADR 0036 Amendment 2):
+`E2EE_FRANKING_PROFILE_V1` in `packages/domain/src/e2ee/modes.ts` is the shipped profile, there
+is no approval list to be on, and the fanout core rejects any other profile string before dedup
+or any database write. Adding a _second_ profile still requires amending an ADR rather than
+editing code in a feature branch.
 
 ## 6. What clients must say
 

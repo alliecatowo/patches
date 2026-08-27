@@ -213,10 +213,10 @@ GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-s
 NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
 EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
 
-**E2EE is always-on** (ADR 0036 Amendment, 2026-08-26 owner override) — there is no dev-mode
-flag to set on this node. `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` approves the
-shipped `patches-franking-v1` profile by default, so `GetE2eeCapability` reports `ENABLED` as
-soon as the node has a franking signing key for its current era (`e2ee_node_franking_keys`).
+**E2EE is always-on** (ADR 0036 Amendments, 2026-08-26 owner override) — there is no dev-mode
+flag, approval list, or narrowing env var. The v1 franking profile is the shipped construction,
+so `GetE2eeCapability` reports `ENABLED` as soon as the node has a franking signing key for its
+current era (`e2ee_node_franking_keys`).
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
