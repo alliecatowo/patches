@@ -140,7 +140,7 @@ const SCENARIOS: readonly Scenario[] = [
       app.press('c');
       await expectFrame(app, 'New Post');
       app.press('Golden frame compose draft.');
-      await flush();
+      await expectFrame(app, 'Golden frame compose draft.');
     },
   },
   {
@@ -178,6 +178,15 @@ describe('Golden frames (P12-123)', () => {
         const app = renderAppInWindow(size.columns, size.rows, { fake });
         try {
           await scenario.reach(app);
+          // `useUnreadCount` (apps/tui/src/hooks/useUnreadCount.ts) refetches on every
+          // screenKey change, including the final one each scenario lands on — every
+          // committed fixture bakes in the seeded '✉ 1' badge, so the frame is only
+          // deterministic once that fetch has settled. A scenario's own `reach` may
+          // resolve (e.g. static 'New Post' copy rendering) before that unrelated
+          // promise chain does, especially the `compose` scenario whose steps don't
+          // otherwise wait on real elapsed time (issue #284): wait for the badge here,
+          // once, for every scenario, instead of each `reach` re-deriving it.
+          await expectFrame(app, '✉ 1');
           const frame = stripSgr(app.lastFrame() ?? '');
           const lines = frame.split('\n');
 
