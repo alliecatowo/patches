@@ -88,6 +88,29 @@ describe('X3DH over verified identity material', () => {
     ).toThrow(AuthenticationError);
   });
 
+  it('responderBundleNowMs backdates only the responder bundle window, never the initiator checks', () => {
+    const fixture = establishedFixture(5);
+    const respond = (nowMs: number, responderBundleNowMs?: number) =>
+      respondX3dh({
+        responderKeys: fixture.bob.keys,
+        responderBundle: fixture.bobPrekeys.bundle,
+        responderRoster: fixture.bob.roster,
+        initiatorRoster: fixture.alice.roster,
+        signedPreKey: fixture.bobPrekeys.signedPreKey,
+        oneTimePreKey: fixture.bobPrekeys.oneTimePreKey,
+        handshake: fixture.initiated.handshake,
+        nowMs,
+        ...(responderBundleNowMs === undefined ? {} : { responderBundleNowMs }),
+      });
+    // Bundle expired at 20_000: a plain late response fails ...
+    expect(() => respond(30_000)).toThrow(AuthenticationError);
+    // ... but a retained (rotated-out) bundle judged at the moment it was current succeeds.
+    expect(respond(30_000, FIXTURE_NOW).secrets).toEqual(fixture.responded.secrets);
+    // The initiator certificate expires at 1_000_000; backdating the responder bundle must not
+    // resurrect an initiator whose certificate has since lapsed.
+    expect(() => respond(2_000_000, FIXTURE_NOW)).toThrow(AuthenticationError);
+  });
+
   it('binds prekey ids as u64, above the old u32 ceiling', () => {
     const bob = userFixture('bob', 11);
     const alice = userFixture('alice', 1);

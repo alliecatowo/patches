@@ -296,16 +296,14 @@ export function establishResponderSession(input: {
       ? {}
       : { oneTimePreKey: { id: oneTime.id, keyPair: oneTime.keyPair } }),
     handshake,
-    // `respondX3dh` re-checks `responderBundle`'s own validity window against this `nowMs`
-    // (ADR 0033 §3 — a `Verified*` value proves signatures, not that it is still current).
-    // For a retained bundle that window is its ORIGINAL one, already expired by the real
-    // wall clock by the time rotation retains it at all; re-checking it against the real
-    // clock here would defeat the whole point of retention. Use the moment the retained
-    // bundle was still the current one instead — everything it names (this device's own
-    // cert/roster membership, the initiator's) was already true then, and the initiator
-    // roster's activity check below still runs against the FRESHLY fetched roster, so a
-    // revocation between then and now is still caught regardless of which `nowMs` is used.
-    nowMs: retainedSignedPreKey === undefined ? input.nowMs : retainedSignedPreKey.createdAtMs,
+    // The initiator is ALWAYS judged at the real clock (certificate lifetime, roster
+    // membership, revocation). Only the responder's own retained bundle — whose original
+    // 7-day window is long past by the time rotation retains it — is checked at the moment
+    // it was still current (ADR 0020 §5 retention); see `responderBundleNowMs`.
+    nowMs: input.nowMs,
+    ...(retainedSignedPreKey === undefined
+      ? {}
+      : { responderBundleNowMs: retainedSignedPreKey.createdAtMs }),
   });
   let state: DoubleRatchetState;
   try {
