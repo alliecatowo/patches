@@ -73,6 +73,7 @@ import type {
   E2eeServiceListPendingDeviceLinksResponse,
   E2eeSignedPrekey,
   PublishIdentityRootRequest,
+  RevokeDeviceRequest,
 } from '@patches/proto/es';
 
 import { fromDate, toDate } from '../api/wire/time.js';
@@ -166,6 +167,9 @@ export interface EnrollmentTransport {
   listPendingDeviceLinks(): Promise<E2eeServiceListPendingDeviceLinksResponse>;
   /** Discards a pending offer (ADR 0037 §1, §3.4). */
   cancelDeviceLink(linkId: string): Promise<unknown>;
+  /** Marks one device inactive on a root-signed roster S+1 the caller already built
+   * (issue #277 comment — authority-only; the node checks the signature, not who calls). */
+  revokeDevice(request: RevokeDeviceRequest): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------

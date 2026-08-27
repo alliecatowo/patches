@@ -52,6 +52,7 @@ export type E2eeApiSurface = Pick<
   | 'beginDeviceLink'
   | 'listPendingDeviceLinks'
   | 'cancelDeviceLink'
+  | 'revokeDevice'
   | 'getE2eeConversationState'
   | 'claimPrekeyBundles'
   | 'sendEnvelopes'
@@ -368,6 +369,11 @@ export function createEnrollmentTransport(
     async cancelDeviceLink(linkId) {
       const accessToken = await options.accessToken();
       await options.api.cancelDeviceLink({ linkId }, accessToken);
+    },
+
+    async revokeDevice(request) {
+      const accessToken = await options.accessToken();
+      await options.api.revokeDevice(request, accessToken);
     },
   };
 }

@@ -1,32 +1,16 @@
 /**
- * Two-device interop + convergence (issue #273 part a): actor A bootstrap-enrolls A1, links a
- * second device A2 (ADR 0037 §1), and actor B bootstrap-enrolls B1 — all through the same public
- * runtime API a real client uses (`enrollThisDevice`, `beginDeviceLinkOffer`/`listLinkOffers`/
- * `approveLinkOffer`/`pollLinkedEnrollment`), against the shared in-memory fake node
- * (`test-support.js`).
+ * Two-device interop + convergence (issue #273 part a, issue #277): actor A bootstrap-enrolls
+ * A1, links a second device A2 (ADR 0037 §1), and actor B bootstrap-enrolls B1 — all through the
+ * same public runtime API a real client uses (`enrollThisDevice`, `beginDeviceLinkOffer`/
+ * `listLinkOffers`/`approveLinkOffer`/`pollLinkedEnrollment`/`revokeLinkedDevice`), against the
+ * shared in-memory fake node (`test-support.js`).
  *
- * Steps 3 (own-device fanout: B1 sends one message that both A1 and A2 decrypt) and 4 (A1
- * revokes A2, B1's next send addresses only A1, A2 refuses to send) are NOT implemented here —
- * both are blocked by missing public API, not stubbed around:
- *
- *   - Step 3 fails closed for a real reason, asserted below: `enrollThisDevice`'s signed prekey
- *     bundle (`local-identity.ts`'s `selfPrekeyBundle`, called from `enrollment.ts`'s
- *     `generateEnrollment`) commits to the roster digest AT THE MOMENT the bundle is signed.
- *     `apps/tui/src/e2ee/` has no exported function that re-signs and republishes a device's own
- *     prekey bundle after a later roster change (e.g. `approveLinkOffer` adding A2) — so once A2
- *     links, A1's already-signed bundle keeps citing the pre-link (sequence 1) roster digest
- *     forever, and `@patches/crypto`'s `initiateX3dh` → `assertBundleMatchesRoster`
- *     (`packages/crypto/src/x3dh.ts:134-142`) rejects any handshake against it as soon as the
- *     node's served roster moves past sequence 1 — even though A1 was never revoked. This is
- *     reproduced exactly below.
- *   - Step 4 additionally needs a function that signs a NEW roster revoking exactly one device
- *     while leaving others active. `apps/tui/src/e2ee/device-link.ts` has no such export:
- *     `rotateMessagingRoot` is the closest analog, but it mints an entirely new root generation
- *     and marks EVERY existing device inactive (full identity rotation, ADR 0037 §2), not a
- *     single-device revoke. `RevokeDeviceRequest.roster` (packages/proto/src/generated/patches/
- *     v1/e2ee.ts) documents that the caller must supply this root-signed roster; the TUI's own
- *     `DevicesScreen.tsx` `revokeDevice` calls `api.revokeDevice({ deviceId }, accessToken)` with
- *     no roster at all, so the real client path itself does not build one anywhere.
+ * The second case below exercises the full own-device-fanout + roster-convergence + revocation
+ * path (#273 steps 3–4): `E2eeSessionRuntime` now refreshes each device's own roster from the
+ * vault (`refreshOwnRoster`, `device-link.ts`) before every send/receive, converging every own
+ * device on the SAME served roster digest a peer that fetched it fresh binds into the X3DH
+ * handshake transcript — the digest mismatch this case used to pin (issue #277's Sesame gap) no
+ * longer occurs.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -36,8 +20,10 @@ import { rosterViewFromWire } from './chain.js';
 import {
   approveLinkOffer,
   beginDeviceLinkOffer,
+  E2EE_DEVICE_REVOKED_COPY,
   listLinkOffers,
   pollLinkedEnrollment,
+  revokeLinkedDevice,
 } from './device-link.js';
 import { enrollThisDevice, loadStoredEnrollment } from './enrollment.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
@@ -161,7 +147,7 @@ describe('two-device E2EE interop (#273)', () => {
     expect(() => assertRosterNotRolledBack(rosterSeq2View.sequence, rosterSeq2View)).not.toThrow();
   });
 
-  it('blocks the own-device fanout after linking: A1 cannot complete X3DH because its signed prekey bundle still commits to the pre-link roster digest, and no public API re-signs it', async () => {
+  it("own-device fanout + roster convergence end to end (#273/#277): B1 reaches both of A's devices, A1 replies, A1 revokes A2, and A2 refuses to send afterward", async () => {
     const nowMs = Date.UTC(2026, 0, 1);
     const now = () => nowMs;
     const node = createFakeE2eeNode();
@@ -176,7 +162,6 @@ describe('two-device E2EE interop (#273)', () => {
     });
     const storedA1 = await loadStoredEnrollment(vaultA1, now());
     if (storedA1 === undefined) throw new Error('A1 must have a stored enrollment');
-    // Registers A1's bundle exactly as `enrollThisDevice` signed it — at roster sequence 1.
     registerMessagingDevice(node, storedA1.identity);
 
     const transportB1 = fakeTransport({ actorId: ACTOR_B, node });
@@ -218,6 +203,50 @@ describe('two-device E2EE interop (#273)', () => {
     if (storedA2 === undefined) throw new Error('A2 must have a stored enrollment after linking');
     registerMessagingDevice(node, storedA2.identity);
 
+    // #277: `approveLinkOffer` must have persisted A1's own roster forward to sequence 2 too —
+    // not just the new device's.
+    const storedA1AfterLink = await loadStoredEnrollment(vaultA1, now());
+    if (storedA1AfterLink === undefined) throw new Error('A1 must still have a stored enrollment');
+    expect(storedA1AfterLink.identity.ownRoster.sequence).toBe(2);
+
+    const runtimeA1 = new E2eeSessionRuntime({
+      vault: vaultA1,
+      identity: storedA1AfterLink.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: ACTOR_A,
+        deviceId: storedA1.identity.deviceId,
+        participantActorIds: [ACTOR_A, ACTOR_B],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA1.identity.deviceId,
+        nowMs: now,
+      }),
+      transport: transportA1,
+      refreshIntervalMs: 0,
+      nowMs: now,
+    });
+    const runtimeA2 = new E2eeSessionRuntime({
+      vault: vaultA2,
+      identity: storedA2.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: ACTOR_A,
+        deviceId: storedA2.identity.deviceId,
+        participantActorIds: [ACTOR_A, ACTOR_B],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA2.identity.deviceId,
+        nowMs: now,
+      }),
+      transport: transportA2,
+      refreshIntervalMs: 0,
+      nowMs: now,
+    });
     const runtimeB1 = new E2eeSessionRuntime({
       vault: vaultB1,
       identity: storedB1.identity,
@@ -233,18 +262,65 @@ describe('two-device E2EE interop (#273)', () => {
         deviceId: storedB1.identity.deviceId,
         nowMs: now,
       }),
+      transport: transportB1,
+      refreshIntervalMs: 0,
       nowMs: now,
     });
 
-    // B1's fanout plan already covers both of A's active devices (own-device fanout is
-    // server-side, computed here from the node's current roster) — the send fails on the crypto
-    // layer, not on target selection.
-    await expect(runtimeB1.send(CONV, 'hello A', 'req-b-1')).rejects.toThrow(
-      'Cryptographic authentication failed.',
-    );
-    // Nothing reached either of A's mailboxes: the whole fanout fails closed together, it does
-    // not partially deliver to A2 while silently dropping A1.
-    expect(node.mailboxesByDevice.get(storedA1.identity.deviceId) ?? []).toHaveLength(0);
+    // --- 3: B1 sends; the own-device fanout reaches both of A's active devices, and both
+    // decrypt the identical plaintext (the fake node records the actual recipient device ids). ---
+    await runtimeB1.send(CONV, 'hello A', 'req-b-1');
+    expect(node.mailboxesByDevice.get(storedA1.identity.deviceId) ?? []).toHaveLength(1);
+    expect(node.mailboxesByDevice.get(storedA2.identity.deviceId) ?? []).toHaveLength(1);
+
+    const pollA1First = await runtimeA1.pollMailbox({ conversationId: CONV });
+    expect(pollA1First.error).toBeUndefined();
+    expect(pollA1First.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'hello A', senderLabel: `@${ACTOR_B}` }),
+    ]);
+    const pollA2First = await runtimeA2.pollMailbox({ conversationId: CONV });
+    expect(pollA2First.error).toBeUndefined();
+    expect(pollA2First.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'hello A', senderLabel: `@${ACTOR_B}` }),
+    ]);
+
+    // --- 4: A1 replies; it lands on B1, and A2 receives A1's own-device copy. ---
+    await runtimeA1.send(CONV, 'hi B', 'req-a1-1');
+    expect(node.mailboxesByDevice.get(storedB1.identity.deviceId) ?? []).toHaveLength(1);
+    expect(node.mailboxesByDevice.get(storedA2.identity.deviceId) ?? []).toHaveLength(1);
+
+    const pollB1 = await runtimeB1.pollMailbox({ conversationId: CONV });
+    expect(pollB1.error).toBeUndefined();
+    expect(pollB1.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'hi B', senderLabel: `@${ACTOR_A}` }),
+    ]);
+    const pollA2Second = await runtimeA2.pollMailbox({ conversationId: CONV });
+    expect(pollA2Second.error).toBeUndefined();
+    expect(pollA2Second.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'hi B', senderLabel: 'you' }),
+    ]);
+
+    // --- 5: A1 (authority) revokes A2. ---
+    const revocation = await revokeLinkedDevice({
+      actorId: ACTOR_A,
+      deviceId: storedA2.identity.deviceId,
+      transport: transportA1,
+      vault: vaultA1,
+      nowMs: now,
+    });
+    expect(revocation.rosterSequence).toBe(3n);
+
+    // --- 6: B1's next send addresses only A1 — the node's active roster for A dropped A2. ---
+    await runtimeB1.send(CONV, 'still here?', 'req-b-2');
+    expect(node.mailboxesByDevice.get(storedA1.identity.deviceId) ?? []).toHaveLength(1);
+    // A2's mailbox stays empty (step 4's message was already drained by `pollA2Second` above):
+    // A2 is no longer a fanout target, so nothing new arrives for it either.
     expect(node.mailboxesByDevice.get(storedA2.identity.deviceId) ?? []).toHaveLength(0);
+
+    // --- 7: A2's own runtime observes the revocation on its next roster refresh and refuses
+    // to send, producing no envelope. ---
+    await expect(runtimeA2.send(CONV, 'can I still talk?', 'req-a2-1')).rejects.toThrow(
+      E2EE_DEVICE_REVOKED_COPY,
+    );
   });
 });

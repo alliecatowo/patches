@@ -9,6 +9,7 @@ import {
   signPreKeyBundle,
   verifyCertifiedDevice,
   verifyMessagingRoot,
+  verifyPreKeyBundle,
   verifyRosterSnapshot,
   type DoubleRatchetState,
   type KeyPair,
@@ -343,6 +344,7 @@ import {
   type E2eeServiceListPendingDeviceLinksResponse,
   type EnrollDeviceRequest,
   type PublishIdentityRootRequest,
+  type RevokeDeviceRequest,
 } from '@patches/proto/es';
 import { vi, type Mock } from 'vitest';
 import { activeDeviceIds, E2EE_PROTOCOL_V1 } from '@patches/domain';
@@ -453,6 +455,7 @@ export interface FakeTransport extends EnrollmentTransport {
   >;
   readonly listPendingDeviceLinks: Mock<() => Promise<E2eeServiceListPendingDeviceLinksResponse>>;
   readonly cancelDeviceLink: Mock<(linkId: string) => Promise<unknown>>;
+  readonly revokeDevice: Mock<(request: RevokeDeviceRequest) => Promise<unknown>>;
 }
 
 let fakeLinkIdCounter = 0;
@@ -540,6 +543,13 @@ export function fakeTransport(options: { actorId: string; node?: FakeE2eeNode })
         actorId,
         existing.filter((candidate) => candidate.linkId !== linkId),
       );
+      return Promise.resolve(undefined);
+    }),
+    revokeDevice: vi.fn<(request: RevokeDeviceRequest) => Promise<unknown>>((request) => {
+      const roster = request.roster;
+      if (roster === undefined) throw new Error('fake node: RevokeDevice with no roster');
+      const existing = node.rosterByActor.get(actorId);
+      node.rosterByActor.set(actorId, { roster, certificates: existing?.certificates ?? [] });
       return Promise.resolve(undefined);
     }),
   };
@@ -648,13 +658,24 @@ export function fakeMessagingSendTransport(
           const identity = node.messagingIdentities.get(deviceId);
           if (identity === undefined) continue;
           const oneTime = identity.oneTimePreKeys[0];
-          const bundle = selfPrekeyBundle(
-            identity,
-            oneTime === undefined
-              ? undefined
-              : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey },
-            now,
-          );
+          // Verifies the device's own already-signed bundle bytes against the FRESHLY served
+          // roster (`roster`, above) rather than `identity.ownRoster` — mirrors the real
+          // client's `claimPrekeyBundles` (`app/e2ee-transports.ts`), which never trusts a
+          // registered device's possibly-stale own snapshot for this. `identity.ownRoster` here
+          // is only ever `registerMessagingDevice`'s one-time-frozen snapshot from whenever that
+          // device last called it — using it would reintroduce issue #277's staleness inside the
+          // fake node itself.
+          const bundle = verifyPreKeyBundle({
+            bundleBytes: identity.ownBundle.bundleBytes,
+            deviceSignature: identity.ownBundle.deviceSignature,
+            certificateBytes: identity.selfDevice.certificateBytes,
+            certificateRootSignature: identity.selfDevice.rootSignature,
+            ...(oneTime === undefined
+              ? {}
+              : { oneTimePreKey: { id: oneTime.id, publicKey: oneTime.keyPair.publicKey } }),
+            roster,
+            nowMs: now,
+          });
           out.push({ actorId: claimActorId, deviceId, bundle, roster });
         }
       }

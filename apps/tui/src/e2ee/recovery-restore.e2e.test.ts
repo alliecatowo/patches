@@ -98,6 +98,7 @@ function fakeTransport(state: FakeNodeState): EnrollmentTransport {
     beginDeviceLink: () => Promise.reject(new Error('not used by the restore flow')),
     listPendingDeviceLinks: () => Promise.reject(new Error('not used by the restore flow')),
     cancelDeviceLink: () => Promise.reject(new Error('not used by the restore flow')),
+    revokeDevice: () => Promise.reject(new Error('not used by the restore flow')),
     enrollDevice: (request: EnrollDeviceRequest): Promise<unknown> => {
       state.enrollRequests.push(request);
       if (request.roster !== undefined) {

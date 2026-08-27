@@ -21,6 +21,7 @@ import {
   E2eeDeviceLinkOfferSchema,
   E2eeServiceBeginDeviceLinkRequestSchema,
   PublishIdentityRootRequestSchema,
+  RevokeDeviceRequestSchema,
   type E2eeDeviceLinkOffer,
 } from '@patches/proto/es';
 import {
@@ -47,7 +48,7 @@ import {
   type DeviceRosterEntryTranscript,
   type KeyPair,
 } from '@patches/crypto';
-import { E2EE_DEVICE_CERTIFICATE_VERSION } from '@patches/domain';
+import { assertRosterNotRolledBack, E2EE_DEVICE_CERTIFICATE_VERSION } from '@patches/domain';
 
 import { verifyActorChain } from './chain.js';
 import { fromDate } from '../api/wire/time.js';
@@ -81,6 +82,107 @@ async function loadPendingLinkOfferWithFields(
   const fields = decodeExistingOfferFields(record.offerBytes);
   if (fields === undefined) return undefined;
   return { ...record, deviceId: fields.deviceId, offerExpiresAtMs: fields.expiresAtMs };
+}
+
+// ---------------------------------------------------------------------------
+// Own-roster convergence (issue #277) — every device re-syncs its OWN stored roster
+// snapshot against whatever the node currently serves, instead of trusting the snapshot
+// it happened to hold at enrollment/link time forever.
+// ---------------------------------------------------------------------------
+
+export interface RefreshOwnRosterInput {
+  readonly actorId: string;
+  readonly transport: EnrollmentTransport;
+  readonly vault: RatchetSessionVault;
+  readonly nowMs: () => number;
+}
+
+export interface RefreshOwnRosterResult {
+  /** True when the served roster digest differed from the stored one and was persisted. */
+  readonly changed: boolean;
+  readonly sequence: bigint;
+  /** False when the served roster lists this device inactive (revoked) — the caller must
+   * refuse to send with {@link E2EE_DEVICE_REVOKED_COPY} rather than seal an envelope a
+   * peer would never trust. */
+  readonly selfActive: boolean;
+}
+
+/**
+ * Fetches this account's currently served root + device roster, verifies the whole chain
+ * through `chain.ts` (never the node's decoded convenience view alone), rejects a served
+ * roster older than the one this device already verified (`assertRosterNotRolledBack` —
+ * a stale-looking-active roster is exactly how a node could resurrect a revoked device),
+ * and — only when the digest actually moved forward — persists the new roster (and this
+ * device's own certificate, if the node re-served a different one) into the stored
+ * enrollment atomically. `session-setup.ts`'s X3DH binds the roster digest into the
+ * handshake transcript (ADR 0020 §7/§8), so every own device must converge on the SAME
+ * served digest before it can complete a handshake with a peer that fetched it fresh.
+ */
+export async function refreshOwnRoster(
+  input: RefreshOwnRosterInput,
+): Promise<RefreshOwnRosterResult> {
+  const nowMs = input.nowMs();
+  const stored = await loadStoredEnrollment(input.vault, nowMs);
+  if (stored === undefined) {
+    throw new Error('refreshOwnRoster requires an already-enrolled device.');
+  }
+
+  const rootWire = await input.transport.getIdentityRoot(input.actorId);
+  if (rootWire === undefined || rootWire.publicKey.length === 0) {
+    throw new DeviceLinkError('no-remote-root');
+  }
+  const rosterResponse = await input.transport.getDeviceRoster(input.actorId);
+  if (rosterResponse.roster === undefined) throw new DeviceLinkError('no-remote-root');
+
+  const chain = verifyActorChain({
+    rootWire,
+    rosterWire: rosterResponse.roster,
+    certificatesWire: rosterResponse.certificates,
+    now: new Date(nowMs),
+  });
+  assertRosterNotRolledBack(BigInt(stored.identity.ownRoster.sequence), chain.roster);
+  const selfActive = chain.activeDevices.has(stored.identity.deviceId);
+
+  const cryptoRoot = verifyMessagingRoot({
+    rootBytes: rootWire.rootBytes,
+    selfSignature: rootWire.selfSignature,
+    nowMs,
+  });
+  const servedRoster = verifyRosterSnapshot({
+    rosterBytes: rosterResponse.roster.rosterBytes,
+    rootSignature: rosterResponse.roster.rootSignature,
+    root: cryptoRoot,
+    certificates: rosterResponse.certificates.map((certificate) => ({
+      certificateBytes: certificate.certificateBytes,
+      rootSignature: certificate.rootSignature,
+    })),
+    nowMs,
+  });
+
+  const changed = !bytesEqual(servedRoster.rosterDigest, stored.identity.ownRoster.rosterDigest);
+  if (!changed) {
+    return { changed: false, sequence: BigInt(servedRoster.sequence), selfActive };
+  }
+
+  const selfCertificateWire = rosterResponse.certificates.find(
+    (candidate) => candidate.deviceId === stored.identity.deviceId,
+  );
+  const selfDevice =
+    selfCertificateWire === undefined
+      ? stored.identity.selfDevice
+      : verifyCertifiedDevice({
+          certificateBytes: selfCertificateWire.certificateBytes,
+          rootSignature: selfCertificateWire.rootSignature,
+          root: cryptoRoot,
+          nowMs,
+        });
+
+  const updated: StoredEnrollment = {
+    ...stored,
+    identity: { ...stored.identity, ownRoster: servedRoster, selfDevice },
+  };
+  await saveStoredEnrollment(input.vault, updated);
+  return { changed: true, sequence: BigInt(servedRoster.sequence), selfActive };
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +487,16 @@ export async function approveLinkOffer(
   await input.transport.enrollDevice(generated.enrollRequest);
   await input.transport.cancelDeviceLink(input.linkId);
 
+  // Issue #277: the roster just published (`generated.record.identity.ownRoster`) is the
+  // account's new roster — this authority device's own stored roster must converge on it
+  // too, or its NEXT own send/receive still X3DHs against the pre-link digest a peer that
+  // fetched fresh will never match.
+  const updatedAuthorityRecord: StoredEnrollment = {
+    ...stored,
+    identity: { ...stored.identity, ownRoster: generated.record.identity.ownRoster },
+  };
+  await saveStoredEnrollment(input.vault, updatedAuthorityRecord);
+
   return {
     deviceId: offer.deviceId,
     rosterSequence: BigInt(generated.record.identity.ownRoster.sequence),
@@ -541,6 +653,125 @@ export async function rotateMessagingRoot(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Single-device revocation (issue #277 comment) — the authority signs roster S+1 with
+// exactly ONE entry marked inactive, unlike `rotateMessagingRoot`'s full-identity reset.
+// ---------------------------------------------------------------------------
+
+export interface RevokeLinkedDeviceInput {
+  readonly actorId: string;
+  readonly deviceId: string;
+  readonly transport: EnrollmentTransport;
+  readonly vault: RatchetSessionVault;
+  readonly nowMs: () => number;
+}
+
+export interface RevokeLinkedDeviceResult {
+  readonly rosterSequence: bigint;
+}
+
+/**
+ * Signs and publishes roster S+1 with `deviceId` marked inactive (`revokedAtMs = now`),
+ * every other entry carried forward verbatim (§14.4), and persists the new roster into
+ * this (authority) device's own stored enrollment before returning — the revoked device's
+ * next `refreshOwnRoster` sees itself inactive there and its runtime refuses to send.
+ * Authority-only, same gate as `approveLinkOffer`/`listLinkOffers`; revoking THIS device
+ * is refused rather than mailed through — a device can never sign itself out from under
+ * the caller mid-call, and the actual "I don't trust this computer anymore" path is
+ * `rotateMessagingRoot` (a full identity change) or acting from a different device.
+ */
+export async function revokeLinkedDevice(
+  input: RevokeLinkedDeviceInput,
+): Promise<RevokeLinkedDeviceResult> {
+  const nowMs = input.nowMs();
+  const stored = await requireAuthority(input.vault, nowMs);
+  if (input.deviceId === stored.identity.deviceId) {
+    throw new DeviceLinkError('cannot-revoke-self');
+  }
+
+  const rootWire = await input.transport.getIdentityRoot(input.actorId);
+  if (rootWire === undefined || rootWire.publicKey.length === 0) {
+    throw new DeviceLinkError('not-authority');
+  }
+  const cryptoRoot = verifyMessagingRoot({
+    rootBytes: rootWire.rootBytes,
+    selfSignature: rootWire.selfSignature,
+    nowMs,
+  });
+  if (!bytesEqual(cryptoRoot.publicKey, stored.rootPublic)) {
+    throw new DeviceLinkError('not-authority');
+  }
+  const rosterResponse = await input.transport.getDeviceRoster(input.actorId);
+  if (rosterResponse.roster === undefined) throw new DeviceLinkError('not-authority');
+  const currentRoster = verifyRosterSnapshot({
+    rosterBytes: rosterResponse.roster.rosterBytes,
+    rootSignature: rosterResponse.roster.rootSignature,
+    root: cryptoRoot,
+    certificates: rosterResponse.certificates.map((certificate) => ({
+      certificateBytes: certificate.certificateBytes,
+      rootSignature: certificate.rootSignature,
+    })),
+    nowMs,
+  });
+  const targetEntry = currentRoster.entries.find((entry) => entry.deviceId === input.deviceId);
+  if (targetEntry === undefined || !targetEntry.active) {
+    throw new DeviceLinkError('device-not-found');
+  }
+
+  const carriedEntries: DeviceRosterEntryTranscript[] = currentRoster.entries.map((entry) =>
+    entry.deviceId === input.deviceId
+      ? {
+          deviceId: entry.deviceId,
+          certificateDigest: entry.certificateDigest,
+          active: false,
+          addedAtMs: entry.addedAtMs,
+          revokedAtMs: nowMs,
+        }
+      : {
+          deviceId: entry.deviceId,
+          certificateDigest: entry.certificateDigest,
+          active: entry.active,
+          addedAtMs: entry.addedAtMs,
+          ...(entry.revokedAtMs === undefined ? {} : { revokedAtMs: entry.revokedAtMs }),
+        },
+  );
+  const sequence = currentRoster.sequence + 1;
+  const signedRoster = signDeviceRoster(stored.rootPrivate, {
+    actorId: input.actorId,
+    rootGeneration: currentRoster.rootGeneration,
+    rootPublicKey: cryptoRoot.publicKey,
+    sequence,
+    previousDigest: currentRoster.rosterDigest,
+    createdAtMs: nowMs,
+    entries: sortRosterEntries(carriedEntries),
+  });
+  const verifiedRoster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
+    root: cryptoRoot,
+    certificates: rosterResponse.certificates.map((certificate) => ({
+      certificateBytes: certificate.certificateBytes,
+      rootSignature: certificate.rootSignature,
+    })),
+    nowMs,
+  });
+
+  await input.transport.revokeDevice(
+    create(RevokeDeviceRequestSchema, {
+      deviceId: input.deviceId,
+      roster: buildRosterWire(verifiedRoster),
+    }),
+  );
+
+  const updated: StoredEnrollment = {
+    ...stored,
+    identity: { ...stored.identity, ownRoster: verifiedRoster },
+  };
+  await saveStoredEnrollment(input.vault, updated);
+
+  return { rosterSequence: BigInt(verifiedRoster.sequence) };
+}
+
 /** Offer validity window (ADR 0037 §1: "at most 10 minutes"). */
 const LINK_OFFER_LIFETIME_MS = 10 * 60 * 1_000;
 
@@ -548,7 +779,12 @@ const LINK_OFFER_LIFETIME_MS = 10 * 60 * 1_000;
 // Errors — fixed copy only, never key/offer bytes (spec §194)
 // ---------------------------------------------------------------------------
 
-export type DeviceLinkErrorReason = 'not-authority' | 'offer-unavailable' | 'no-remote-root';
+export type DeviceLinkErrorReason =
+  | 'not-authority'
+  | 'offer-unavailable'
+  | 'no-remote-root'
+  | 'cannot-revoke-self'
+  | 'device-not-found';
 
 /** Fixed, non-key-leaking copy for every {@link DeviceLinkError} reason (ADR 0037 §2's ethos
  * applied to the narrower link/rotation failures). */
@@ -560,6 +796,10 @@ export const DEVICE_LINK_ERROR_COPY: Readonly<Record<DeviceLinkErrorReason, stri
     'That device-link request is no longer available — it may have expired or already been ' +
     'used. Ask the other device to start linking again.',
   'no-remote-root': 'This account has no published messaging identity to link against or rotate.',
+  'cannot-revoke-self':
+    'This device cannot revoke itself. Revoke it from a different enrolled device, or start a ' +
+    'new messaging identity from this one instead.',
+  'device-not-found': 'That device is not an active entry on this account’s roster.',
 };
 
 export class DeviceLinkError extends Error {
@@ -570,6 +810,12 @@ export class DeviceLinkError extends Error {
     this.reason = reason;
   }
 }
+
+/** Fixed copy a revoked device's runtime shows instead of sending (issue #277) — never a
+ * raw crypto/authentication error, and never key or roster bytes (spec §194). */
+export const E2EE_DEVICE_REVOKED_COPY =
+  'This device has been revoked from this account and can no longer send messages. Link it ' +
+  'again from an active device, or start a new messaging identity, to use it here.';
 
 // ---------------------------------------------------------------------------
 // Pending link offer — the new device's own resumable state (ADR 0037 §1)
