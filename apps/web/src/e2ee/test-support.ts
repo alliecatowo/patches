@@ -78,10 +78,13 @@ export function publishedRoot(actorId: string, publicKey: Uint8Array): E2eeIdent
 export interface FakeE2eeNode {
   readonly rosterByActor: Map<string, EnrollmentDeviceRoster>;
   readonly pendingOffersByActor: Map<string, E2eeDeviceLinkOffer[]>;
+  /** Backs `getIdentityRoot`/`publishIdentityRoot` (ADR 0037 §2's `rotateMessagingRoot`) —
+   * absent until some transport bound to this node calls `publishIdentityRoot`. */
+  readonly rootByActor: Map<string, E2eeIdentityRoot>;
 }
 
 export function createFakeE2eeNode(): FakeE2eeNode {
-  return { rosterByActor: new Map(), pendingOffersByActor: new Map() };
+  return { rosterByActor: new Map(), pendingOffersByActor: new Map(), rootByActor: new Map() };
 }
 
 /** Publishes (replaces) one actor's served roster + certificates on the fake node —
@@ -125,15 +128,43 @@ export function fakeTransport(options: { actorId: string; node?: FakeE2eeNode })
     getCapability: vi.fn<() => Promise<EnrollmentCapability | undefined>>(() =>
       Promise.resolve(USABLE_CAPABILITY),
     ),
-    getIdentityRoot: vi.fn<(actorId: string) => Promise<E2eeIdentityRoot | undefined>>(() =>
-      Promise.resolve(undefined),
+    getIdentityRoot: vi.fn<(actorId: string) => Promise<E2eeIdentityRoot | undefined>>(
+      (forActorId) => Promise.resolve(node.rootByActor.get(forActorId)),
     ),
-    publishIdentityRoot: vi.fn<(request: PublishIdentityRootRequest) => Promise<unknown>>(() =>
-      Promise.resolve(undefined),
+    // Fakes the server's persistence only (not its verification — that is exactly what
+    // `enrollThisDevice`/`device-link.ts` already re-verify client-side before calling this).
+    // A rotation's `PublishIdentityRoot` call carries the new root plus roster S+1 (every prior
+    // entry inactive, no new device yet — the node's own real `appendRoster` requires an active
+    // entry's device to already have a saved certificate, which the following `EnrollDevice`
+    // call provides); bootstrap's generation-1 call carries no roster at all.
+    publishIdentityRoot: vi.fn<(request: PublishIdentityRootRequest) => Promise<unknown>>(
+      (request) => {
+        const root = request.identityRoot;
+        if (root === undefined) throw new Error('fake node: PublishIdentityRoot with no root');
+        node.rootByActor.set(actorId, root);
+        if (request.roster !== undefined) {
+          const existing = node.rosterByActor.get(actorId);
+          node.rosterByActor.set(actorId, {
+            roster: request.roster,
+            certificates: existing?.certificates ?? [],
+          });
+        }
+        return Promise.resolve(undefined);
+      },
     ),
-    enrollDevice: vi.fn<(request: EnrollDeviceRequest) => Promise<unknown>>(() =>
-      Promise.resolve(undefined),
-    ),
+    enrollDevice: vi.fn<(request: EnrollDeviceRequest) => Promise<unknown>>((request) => {
+      const certificate = request.certificate;
+      const roster = request.roster;
+      if (certificate === undefined || roster === undefined) {
+        throw new Error('fake node: EnrollDevice missing certificate or roster');
+      }
+      const existing = node.rosterByActor.get(actorId);
+      node.rosterByActor.set(actorId, {
+        roster,
+        certificates: [...(existing?.certificates ?? []), certificate],
+      });
+      return Promise.resolve(undefined);
+    }),
     getDeviceRoster: vi.fn<(actorId: string) => Promise<EnrollmentDeviceRoster>>((forActorId) =>
       Promise.resolve(
         node.rosterByActor.get(forActorId) ?? { roster: undefined, certificates: [] },
