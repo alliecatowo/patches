@@ -4,102 +4,40 @@
  * request that never completed — and persisting it — wedges the device permanently
  * against a server that disagrees, which no retry can undo.
  */
-import { create } from '@bufbuild/protobuf';
-import {
-  E2eeIdentityRootSchema,
-  type E2eeIdentityRoot,
-  type EnrollDeviceRequest,
-  type PublishIdentityRootRequest,
-} from '@patches/proto/es';
-import { assertRosterSucceeds, E2EE_PROTOCOL_V1, type E2eeDeviceRosterView } from '@patches/domain';
+import { assertRosterSucceeds, type E2eeDeviceRosterView } from '@patches/domain';
 import {
   signDeviceRoster,
   signingKeyPairFromPrivate,
   verifyRosterSnapshot,
-  type DoubleRatchetState,
   type VerifiedRosterSnapshot,
 } from '@patches/crypto';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   ENROLLMENT_RECORD_KEY,
   ENROLLMENT_REFUSAL_COPY,
+  NEEDS_AUTHORITY_COPY,
   decodeStoredEnrollment,
   disposeStoredEnrollment,
   encodeStoredEnrollment,
   enrollThisDevice,
   generateEnrollment,
   publishRootRequestFromRecord,
-  type EnrollmentCapability,
-  type EnrollmentTransport,
 } from './enrollment.js';
+import {
+  fakeTransport,
+  memoryVault,
+  publishedRoot as publishedRootFor,
+  type FakeTransport,
+} from './test-support.js';
+import type { EnrollmentTransport } from './enrollment.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
-import type { VaultOpenInfo } from './vault-store.js';
 
 const ACTOR_ID = 'actor-me';
 const NOW_MS = 1_770_000_000_000;
 
-/** Only the opaque-record half of the vault is exercised by enrollment; the ratchet
- * methods throw so an accidental dependency on them fails loudly instead of silently. */
-function memoryVault(): RatchetSessionVault & { readonly records: Map<string, Uint8Array> } {
-  const records = new Map<string, Uint8Array>();
-  const unused = (): never => {
-    throw new Error('enrollment must not touch ratchet session state');
-  };
-  return {
-    records,
-    open: (): Promise<VaultOpenInfo> =>
-      Promise.resolve({ generation: 0, adoptedStagedSessions: [], discardedTempFiles: [] }),
-    listSessions: () => Promise.resolve([...records.keys()]),
-    getSession: (): Promise<DoubleRatchetState | undefined> => unused(),
-    stageSend: (): Promise<void> => unused(),
-    confirmSend: (): Promise<void> => unused(),
-    applyUpdate: (): Promise<void> => unused(),
-    deleteSession: (): Promise<void> => unused(),
-    getOpaqueRecord: (key) => Promise.resolve(records.get(key)),
-    putOpaqueRecord: (key, value) => {
-      records.set(key, value.slice());
-      return Promise.resolve();
-    },
-    wipe: () => {
-      records.clear();
-      return Promise.resolve();
-    },
-    close: () => undefined,
-  };
-}
-
-const usableCapability: EnrollmentCapability = {
-  state: 3,
-  supportedProtocolVersions: [E2EE_PROTOCOL_V1],
-};
-
-interface FakeTransport extends EnrollmentTransport {
-  readonly getCapability: Mock<() => Promise<EnrollmentCapability | undefined>>;
-  readonly getIdentityRoot: Mock<(actorId: string) => Promise<E2eeIdentityRoot | undefined>>;
-  readonly publishIdentityRoot: Mock<(request: PublishIdentityRootRequest) => Promise<unknown>>;
-  readonly enrollDevice: Mock<(request: EnrollDeviceRequest) => Promise<unknown>>;
-}
-
-function fakeTransport(): FakeTransport {
-  return {
-    getCapability: vi.fn<() => Promise<EnrollmentCapability | undefined>>(() =>
-      Promise.resolve(usableCapability),
-    ),
-    getIdentityRoot: vi.fn<(actorId: string) => Promise<E2eeIdentityRoot | undefined>>(() =>
-      Promise.resolve(undefined),
-    ),
-    publishIdentityRoot: vi.fn<(request: PublishIdentityRootRequest) => Promise<unknown>>(() =>
-      Promise.resolve(undefined),
-    ),
-    enrollDevice: vi.fn<(request: EnrollDeviceRequest) => Promise<unknown>>(() =>
-      Promise.resolve(undefined),
-    ),
-  };
-}
-
-function publishedRoot(publicKey: Uint8Array): E2eeIdentityRoot {
-  return create(E2eeIdentityRootSchema, { actorId: ACTOR_ID, generation: 1, publicKey });
+function publishedRoot(publicKey: Uint8Array): ReturnType<typeof publishedRootFor> {
+  return publishedRootFor(ACTOR_ID, publicKey);
 }
 
 function run(
@@ -114,7 +52,7 @@ describe('enrollThisDevice — identity-root preflight (B-131)', () => {
   let vault: ReturnType<typeof memoryVault>;
 
   beforeEach(() => {
-    transport = fakeTransport();
+    transport = fakeTransport({ actorId: ACTOR_ID });
     vault = memoryVault();
   });
 
@@ -179,9 +117,9 @@ describe('enrollThisDevice — identity-root preflight (B-131)', () => {
     const outcome = await run(transport, vault);
 
     expect(outcome).toEqual({
-      status: 'refused',
-      reason: 'remote-root',
-      copy: ENROLLMENT_REFUSAL_COPY.remoteRoot,
+      status: 'needs-authority',
+      copy: NEEDS_AUTHORITY_COPY.summary,
+      options: ['link', 'rotate', 'cancel'],
     });
     expect(vault.records.size).toBe(0);
     expect(transport.enrollDevice).not.toHaveBeenCalled();
@@ -193,7 +131,7 @@ describe('enrollThisDevice — resuming a persisted record', () => {
   let vault: ReturnType<typeof memoryVault>;
 
   beforeEach(() => {
-    transport = fakeTransport();
+    transport = fakeTransport({ actorId: ACTOR_ID });
     vault = memoryVault();
   });
 
@@ -249,9 +187,9 @@ describe('enrollThisDevice — resuming a persisted record', () => {
     const outcome = await run(transport, vault);
 
     expect(outcome).toEqual({
-      status: 'refused',
-      reason: 'remote-root',
-      copy: ENROLLMENT_REFUSAL_COPY.remoteRoot,
+      status: 'needs-authority',
+      copy: NEEDS_AUTHORITY_COPY.summary,
+      options: ['link', 'rotate', 'cancel'],
     });
     expect(transport.enrollDevice).not.toHaveBeenCalled();
   });
@@ -280,7 +218,10 @@ describe('stored enrollment codec', () => {
     expect(decoded.submitted).toBe(record.submitted);
     expect(decoded.createdRoot).toBe(record.createdRoot);
     expect([...decoded.rootPublic]).toEqual([...record.rootPublic]);
-    expect([...decoded.rootPrivate]).toEqual([...record.rootPrivate]);
+    // Bootstrap always holds a root private key.
+    expect(record.rootPrivate).toBeDefined();
+    expect(decoded.rootPrivate).toBeDefined();
+    expect([...(decoded.rootPrivate ?? [])]).toEqual([...(record.rootPrivate ?? [])]);
     expect(decoded.identity.deviceId).toBe(record.identity.deviceId);
     expect(decoded.identity.oneTimePreKeys.length).toBe(record.identity.oneTimePreKeys.length);
     expect(decoded.identity.ownRoster.sequence).toBe(record.identity.ownRoster.sequence);
@@ -340,6 +281,7 @@ describe('generateEnrollment — linking a second device onto an existing roster
   it('advances sequence by 1, chains the digest, and carries every prior entry forward', () => {
     const bootstrap = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW_MS });
     const rootPrivate = bootstrap.record.rootPrivate;
+    if (rootPrivate === undefined) throw new Error('bootstrap record must hold a root private key');
     const rootPublic = bootstrap.record.rootPublic;
     const root = bootstrap.record.identity.ownRoster.root;
     const firstDeviceCertificate = {
@@ -429,7 +371,10 @@ describe('disposeStoredEnrollment', () => {
 
     disposeStoredEnrollment(record);
 
-    expect([...record.rootPrivate]).toEqual(new Array(record.rootPrivate.length).fill(0));
+    const rootPrivateAfter = record.rootPrivate;
+    if (rootPrivateAfter === undefined)
+      throw new Error('bootstrap record must hold a root private key');
+    expect([...rootPrivateAfter]).toEqual(new Array(rootPrivateAfter.length).fill(0));
     // Best-effort hygiene only (ADR 0020 §4): it must not corrupt the rest of the record,
     // which callers may still read (e.g. `record.identity` after a resume-path load).
     expect([...record.rootPublic]).toEqual(rootPublicBefore);

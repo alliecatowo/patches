@@ -49,6 +49,9 @@ export type E2eeApiSurface = Pick<
   | 'publishIdentityRoot'
   | 'enrollDevice'
   | 'getDeviceRoster'
+  | 'beginDeviceLink'
+  | 'listPendingDeviceLinks'
+  | 'cancelDeviceLink'
   | 'getE2eeConversationState'
   | 'claimPrekeyBundles'
   | 'sendEnvelopes'
@@ -344,6 +347,27 @@ export function createEnrollmentTransport(
     async enrollDevice(request) {
       const accessToken = await options.accessToken();
       await options.api.enrollDevice(request, accessToken);
+    },
+
+    async getDeviceRoster(actorId) {
+      const accessToken = await options.accessToken();
+      const response = await options.api.getDeviceRoster({ actorId }, accessToken);
+      return { roster: response.roster, certificates: response.certificates };
+    },
+
+    async beginDeviceLink(request) {
+      const accessToken = await options.accessToken();
+      return options.api.beginDeviceLink(request, accessToken);
+    },
+
+    async listPendingDeviceLinks() {
+      const accessToken = await options.accessToken();
+      return options.api.listPendingDeviceLinks({}, accessToken);
+    },
+
+    async cancelDeviceLink(linkId) {
+      const accessToken = await options.accessToken();
+      await options.api.cancelDeviceLink({ linkId }, accessToken);
     },
   };
 }
