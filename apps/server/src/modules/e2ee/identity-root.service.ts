@@ -18,6 +18,7 @@ import { DataSource, IsNull } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { e2eeSignatureVerifier } from './e2ee-crypto.adapter.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { requireTimestamp, toBytes } from './e2ee.codec.js';
 import { toProtoIdentityRoot, toProtoRoster } from './e2ee.mapper.js';
 import { appendRoster, toIdentityRootView } from './roster-chain.js';
@@ -30,11 +31,15 @@ import { appendRoster, toIdentityRootView } from './roster-chain.js';
  */
 @Injectable()
 export class E2eeIdentityRootService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rateLimits: E2eeRateLimitService,
+  ) {}
 
-  publishIdentityRoot(
+  async publishIdentityRoot(
     actorId: string,
     request: PublishIdentityRootRequest,
+    peer: string | undefined = undefined,
   ): Promise<PublishIdentityRootResponse> {
     const rootProto = request.identityRoot;
     if (rootProto === undefined) throw AppError.validation('An identity root is required.');
@@ -65,9 +70,18 @@ export class E2eeIdentityRootService {
       throw error;
     }
 
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
+
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(E2eeIdentityRootEntity);
-      const current = await repo.findOne({ where: { actorId, rotatedAt: IsNull() } });
+      // `pessimistic_write` (issue #267): serialises concurrent `PublishIdentityRoot` rotations
+      // for this actor onto the same row, the same way `loadActiveRoot(..., { lock: true })`
+      // does for `EnrollDevice`/`RevokeDevice`/`PublishDeviceRoster` — the rotation branch below
+      // calls `appendRoster` too.
+      const current = await repo.findOne({
+        where: { actorId, rotatedAt: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
       const previousView = current === null ? null : toIdentityRootView(current);
 
       let change;

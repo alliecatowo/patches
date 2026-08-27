@@ -1,9 +1,11 @@
 import { generateSigningKeyPair, sha256Hash, sign } from '@patches/crypto';
+import { E2eeDeviceIdentity as E2eeDeviceIdentityEntity } from '@patches/database';
 import type { E2eeIdentityRootView } from '@patches/domain';
 import { describe, expect, it, vi } from 'vitest';
 import type { EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { e2eeDigest } from './e2ee-crypto.adapter.js';
 import { encodeRosterTranscript } from './e2ee.codec.js';
 import { appendRoster } from './roster-chain.js';
 
@@ -66,16 +68,34 @@ function signedRosterProto(input: {
   };
 }
 
-function fakeManager(previousRosterRow: unknown): EntityManager {
+function fakeManager(
+  previousRosterRow: unknown,
+  options?: {
+    readonly deviceRows?: readonly { deviceId: string; certificateBytes: Buffer }[];
+    readonly saveError?: unknown;
+  },
+): EntityManager {
   const rosterRepo = {
     findOne: vi.fn().mockResolvedValue(previousRosterRow),
     create: vi.fn((input: unknown) => input),
-    save: vi.fn((input: Record<string, unknown>) =>
-      Promise.resolve({ id: 'roster-row-id', ...input }),
+    save:
+      options?.saveError === undefined
+        ? vi.fn((input: Record<string, unknown>) =>
+            Promise.resolve({ id: 'roster-row-id', ...input }),
+          )
+        : vi.fn().mockRejectedValue(options.saveError),
+  };
+  const deviceRepo = {
+    findOne: vi.fn(({ where }: { where: { deviceId: string } }) =>
+      Promise.resolve(
+        (options?.deviceRows ?? []).find((row) => row.deviceId === where.deviceId) ?? null,
+      ),
     ),
   };
   return {
-    getRepository: vi.fn(() => rosterRepo),
+    getRepository: vi.fn((entity: unknown) =>
+      entity === E2eeDeviceIdentityEntity ? deviceRepo : rosterRepo,
+    ),
   } as unknown as EntityManager;
 }
 
@@ -216,5 +236,97 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
     ];
     const manager = fakeManager(null);
     await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('rejects a new roster entry for a device this node has no certificate for (#268)', async () => {
+    const certificateDigest = sha256Hash(new Uint8Array([1, 2, 3]));
+    const proto = signedRosterProto({
+      privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
+      actorId: 'actor-1',
+      sequence: 1n,
+      rootGeneration: 1,
+      previousDigest: zero32,
+      entries: [{ deviceId: 'phantom-device', certificateDigest, active: true }],
+    });
+    // No matching `E2eeDeviceIdentity` row for `phantom-device` at all.
+    const manager = fakeManager(null);
+    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+  });
+
+  it('rejects a new roster entry whose certificate digest does not match the saved device row (#268)', async () => {
+    const certificateBytes = Buffer.from([9, 9, 9]);
+    const proto = signedRosterProto({
+      privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
+      actorId: 'actor-1',
+      sequence: 1n,
+      rootGeneration: 1,
+      previousDigest: zero32,
+      // Digest does not match `certificateBytes` below.
+      entries: [
+        { deviceId: 'device-1', certificateDigest: sha256Hash(new Uint8Array([1])), active: true },
+      ],
+    });
+    const manager = fakeManager(null, {
+      deviceRows: [{ deviceId: 'device-1', certificateBytes }],
+    });
+    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+  });
+
+  it('accepts a new roster entry whose certificate digest matches an already-saved device row (#268)', async () => {
+    const certificateBytes = Buffer.from([4, 5, 6]);
+    const certificateDigest = e2eeDigest(certificateBytes);
+    const proto = signedRosterProto({
+      privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
+      actorId: 'actor-1',
+      sequence: 1n,
+      rootGeneration: 1,
+      previousDigest: zero32,
+      entries: [{ deviceId: 'device-1', certificateDigest, active: true }],
+    });
+    const manager = fakeManager(null, {
+      deviceRows: [{ deviceId: 'device-1', certificateBytes }],
+    });
+    const result = await appendRoster(manager, 'actor-1', proto, root);
+    expect(result.entries).toHaveLength(1);
+  });
+
+  it('maps a raw Postgres unique-violation on insert to E2EE_ROSTER_CONFLICT (#267)', async () => {
+    const proto = signedRosterProto({
+      privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
+      actorId: 'actor-1',
+      sequence: 1n,
+      rootGeneration: 1,
+      previousDigest: zero32,
+      entries: [],
+    });
+    const manager = fakeManager(null, {
+      saveError: { code: '23505', constraint: 'idx_e2ee_device_rosters_actor_id_sequence' },
+    });
+    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toMatchObject({
+      code: 'E2EE_ROSTER_CONFLICT',
+    });
+  });
+
+  it('rethrows an unrelated insert error instead of mapping it to E2EE_ROSTER_CONFLICT', async () => {
+    const proto = signedRosterProto({
+      privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
+      actorId: 'actor-1',
+      sequence: 1n,
+      rootGeneration: 1,
+      previousDigest: zero32,
+      entries: [],
+    });
+    const error = { code: '23503', constraint: 'fk_e2ee_device_rosters_actor_id' };
+    const manager = fakeManager(null, { saveError: error });
+    await expect(appendRoster(manager, 'actor-1', proto, root)).rejects.toBe(error);
   });
 });
