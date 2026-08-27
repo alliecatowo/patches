@@ -152,7 +152,7 @@ the old encoder simply never caught).
 
 ## Commit
 
-TBD — see final report for sha.
+`1fa53ca9` on `agent/wt-1787793800-2463043` (branched from `feat/b124-one-identity-transcript-family`).
 
 ## Learnings worth flagging
 
