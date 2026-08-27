@@ -848,6 +848,46 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(mailbox.envelopes).toHaveLength(0);
       });
 
+      it('a bare reservation writes no notification and stays invisible to every member, including its creator (ADR 0035 §3.5, §5)', async () => {
+        const sender = await newActor();
+        const recipient = await newActor();
+        const { device: senderDevice } = await enrollFirstDevice(sender, 0);
+        await enrollFirstDevice(recipient, 0);
+        await allowDirectMessaging(sender.actorId, recipient.actorId);
+
+        const reserved = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice.deviceId,
+        });
+
+        // Silence is structural: `#notifyRecipients` runs only from `sendEnvelopes`, which a
+        // bare reservation never calls. Asserting zero rows here pins that a future refactor
+        // cannot reintroduce notify-on-create without failing a test.
+        expect(
+          await dataSource.getRepository(NotificationEntity).count({
+            where: { conversationId: reserved.conversationId },
+          }),
+        ).toBe(0);
+
+        const messages = new MessagesService(dataSource);
+        // Invisible to the recipient...
+        await expect(
+          messages.getConversation(recipient.actorId, reserved.conversationId),
+        ).rejects.toMatchObject({ code: 'CONVERSATION_NOT_FOUND' });
+        // ...and, per ADR 0035 §5, invisible to its own creator too — a reservation appearing
+        // in the creator's own list before it holds a message would be a coarse typing
+        // indicator (spec §183.3).
+        await expect(
+          messages.getConversation(sender.actorId, reserved.conversationId),
+        ).rejects.toMatchObject({ code: 'CONVERSATION_NOT_FOUND' });
+
+        const recipientList = await messages.listConversations(recipient.actorId, '', 20);
+        expect(recipientList.items.some((item) => item.id === reserved.conversationId)).toBe(false);
+        const senderList = await messages.listConversations(sender.actorId, '', 20);
+        expect(senderList.items.some((item) => item.id === reserved.conversationId)).toBe(false);
+      });
+
       it('creates an E2EE conversation, delivering to the recipient device but never to the sender’s own sending device', async () => {
         const sender = await newActor();
         const recipient = await newActor();
