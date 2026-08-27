@@ -365,3 +365,9 @@ delivery path may cross `FederationGateway` or ActivityPub, even when public fed
 for other content. Federated key discovery, cross-node envelopes, and remote moderation evidence are
 out of scope and need separate owner sign-off, a threat model spanning independently operated nodes,
 and a new ADR. See [`federation.md`](./federation.md).
+
+**Ship gate:** `apps/server/src/modules/e2ee/federation-isolation.test.ts` checks this
+statically (no e2ee/federation source file imports the other side, or `@patches/crypto` from the
+federation side) and at runtime (`FEDERATION_GATEWAY` is unresolvable from `E2eeController`'s DI
+graph, and a force-registered spy under that token is never called by `getE2EeCapability` or
+`sendEnvelopes`).
