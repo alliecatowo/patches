@@ -8,13 +8,18 @@ export {
   createTestCredential,
   createTestInvite,
   createTestUser,
+  mintInvite,
 } from './identity.js';
 export type {
   CreateTestActorOptions,
   CreateTestCredentialOptions,
   CreateTestInviteOptions,
   CreateTestUserOptions,
+  MintInviteOptions,
 } from './identity.js';
+
+export { createTestPasswordCredential } from './credentials.js';
+export type { CreateTestPasswordCredentialOptions } from './credentials.js';
 
 export { createTestPost } from './content.js';
 export type { CreateTestPostOptions } from './content.js';

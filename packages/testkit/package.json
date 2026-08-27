@@ -24,6 +24,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@node-rs/argon2": "catalog:",
     "@patches/config": "workspace:*",
     "@patches/database": "workspace:*",
     "@patches/domain": "workspace:*",

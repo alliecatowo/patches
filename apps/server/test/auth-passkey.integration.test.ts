@@ -1,12 +1,12 @@
 import { createServer as createFreePortProbe } from 'node:net';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { credentials as grpcCredentials, status as GrpcStatus } from '@grpc/grpc-js';
 import { type NestExpressApplication } from '@nestjs/platform-express';
 import { type MicroserviceOptions } from '@nestjs/microservices';
 import { Test } from '@nestjs/testing';
 import { Notification } from '@patches/database';
-import { createTestUser } from '@patches/testkit';
+import { createTestUser, mintInvite as testkitMintInvite } from '@patches/testkit';
 import {
   type AuthGrpcClient,
   type BeginPasskeyLoginRequest,
@@ -237,12 +237,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       const { user: inviter } = await createTestUser(dataSource.manager, {
         handle: `inviter${suffix()}`,
       });
-      const code = `invite-${randomUUID()}`;
-      await dataSource.query(
-        'INSERT INTO invites (code_hash, created_by_user_id, max_uses, uses) VALUES ($1, $2, 1, 0)',
-        [createHash('sha256').update(code, 'utf8').digest('hex'), inviter.id],
-      );
-      return code;
+      return testkitMintInvite(dataSource.manager, inviter.id);
     }
 
     async function register(): Promise<{ accessToken: string; actorId: string }> {

@@ -1219,6 +1219,9 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@node-rs/argon2':
+        specifier: 'catalog:'
+        version: 2.1.0
       '@patches/config':
         specifier: workspace:*
         version: link:../config

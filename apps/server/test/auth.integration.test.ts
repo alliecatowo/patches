@@ -63,7 +63,11 @@ import {
   type VerifyEmailResponse,
 } from '@patches/proto';
 import { CredentialType, PasswordAuthMode } from '@patches/proto/nest';
-import { createTestUser } from '@patches/testkit';
+import {
+  createTestPasswordCredential,
+  createTestUser,
+  mintInvite as testkitMintInvite,
+} from '@patches/testkit';
 import { Not, type DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -123,18 +127,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       return randomUUID().replace(/-/g, '').slice(0, 10);
     }
 
-    function sha256Hex(value: string): string {
-      return createHash('sha256').update(value, 'utf8').digest('hex');
-    }
-
-    /** Mints a usable invite code and stores only its hash, exactly as `patches-admin` would. */
-    async function mintInvite(maxUses = 1): Promise<string> {
-      const code = `invite-${randomUUID()}`;
-      await dataSource.query(
-        'INSERT INTO invites (code_hash, created_by_user_id, max_uses, uses) VALUES ($1, $2, $3, 0)',
-        [sha256Hex(code), inviterUserId, maxUses],
-      );
-      return code;
+    /** Mints a usable invite code against this suite's `inviterUserId`. */
+    function mintInvite(maxUses = 1): Promise<string> {
+      return testkitMintInvite(dataSource.manager, inviterUserId, { maxUses });
     }
 
     async function register(overrides: Partial<RegisterRequest> = {}): Promise<RegisterResponse> {
@@ -515,6 +510,25 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           password: 'login-by-email-please',
         });
         expect(session?.actor?.handle).toBe(handle);
+      });
+
+      it('logs in a DB-seeded account, proving createTestPasswordCredential() writes a real hash', async () => {
+        // `createTestCredential()` (the ordinary, fast factory) stores an obviously-fake
+        // `$argon2id$fake$...` string that `PasswordHasher.verify()` can never parse as a
+        // match — a test that seeds a user that way and then calls `Login` would always get
+        // UNAUTHENTICATED, indistinguishably from a wrong password. Only
+        // `createTestPasswordCredential()`'s real Argon2id hash can pass this RPC.
+        const handle = `dbseeded${suffix()}`;
+        const { user, actor } = await createTestUser(dataSource.manager, { handle });
+        const { password } = await createTestPasswordCredential(dataSource.manager, {
+          userId: user.id,
+        });
+
+        const { session } = await callUnary<LoginRequest, LoginResponse>(auth.login.bind(auth), {
+          emailOrHandle: handle,
+          password,
+        });
+        expect(session?.actor?.id).toBe(actor.id);
       });
 
       it('answers a wrong password and an unknown account identically', async () => {
