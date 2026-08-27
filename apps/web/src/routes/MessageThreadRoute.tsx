@@ -6,13 +6,14 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
 import { requiredConversationDisclosure } from '@patches/domain';
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from '../e2ee/availability.js';
 import type { InboxRow } from '../e2ee/runtime.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
-import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
+import {
+  webE2ee,
+  usePeerIdentityEvents,
+  WEB_E2EE_COPY,
+  WebE2eeUnavailableError,
+} from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import styles from './MessagesRoute.module.css';
@@ -26,9 +27,8 @@ const POLL_INTERVAL_MS = 8_000;
  * device's mailbox (`webE2ee().poll`), and sends go through the sealed-envelope fanout
  * (`webE2ee().send`). Nothing plaintext ever touches the wire here.
  *
- * The composer is gated on session setup actually being possible (`availability.ts`,
- * B-132): while it is not, send is disabled and the fixed copy says so, instead of
- * offering a control whose every press fails.
+ * The composer is live: ADR 0033 unified the identity transcripts and ADR 0035 made
+ * conversation creation a reserve, so this browser can establish a real session and send.
  */
 export function MessageThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +54,13 @@ export function MessageThreadRoute(): JSX.Element {
   const disclosedByConversation = securityMode === ConversationSecurityMode.E2EE_V1;
 
   const otherMembers = conversation?.members.filter((member) => member.leftAt === undefined) ?? [];
+  const identityEvents = usePeerIdentityEvents();
+  // C2's verification surface: pinning makes an unproven root substitution fail closed,
+  // and these banners are the honest disclosure for the two states pinning cannot remove —
+  // first contact (TOFU) and a rotation that verified against the peer's previous key.
+  const memberIdentityEvents = identityEvents.filter((event) =>
+    otherMembers.some((member) => member.actor?.id === event.actorId),
+  );
 
   const [rows, setRows] = useState<readonly InboxRow[]>([]);
   const seenIds = useRef(new Set<string>());
@@ -62,7 +69,6 @@ export function MessageThreadRoute(): JSX.Element {
   const [sending, setSending] = useState(false);
 
   const enrolled = e2eeStatus.kind === 'enrolled';
-  const sessionSetupAvailable = webE2eeSessionSetupAvailable();
 
   useEffect(() => {
     if (!enrolled || conversationId === '') return;
@@ -95,7 +101,7 @@ export function MessageThreadRoute(): JSX.Element {
 
   async function handleSend(): Promise<void> {
     const body = draft.trim();
-    if (body === '' || sending || !sessionSetupAvailable) return;
+    if (body === '' || sending) return;
     setSending(true);
     try {
       await webE2ee().send(conversationId, body);
@@ -129,6 +135,19 @@ export function MessageThreadRoute(): JSX.Element {
         </p>
       ) : null}
 
+      {memberIdentityEvents.map((event) => (
+        <p
+          key={event.kind + event.actorId}
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
+          {event.kind === 'first-seen'
+            ? 'This is the first message to this identity on this device — it is not verified yet. ' +
+              'Confirm it with them out-of-band before trusting this conversation.'
+            : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
+        </p>
+      ))}
+
       {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
         <div
           role="note"
@@ -140,14 +159,6 @@ export function MessageThreadRoute(): JSX.Element {
           </p>
         </div>
       ) : null}
-      {sessionSetupAvailable ? null : (
-        <div
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>
-        </div>
-      )}
       {e2eeStatus.kind === 'fault' ? (
         <div
           role="alert"
@@ -170,14 +181,13 @@ export function MessageThreadRoute(): JSX.Element {
         ) : null}
         {rows.length === 0 &&
         enrolled &&
-        sessionSetupAvailable &&
         !conversationQuery.isPending &&
         otherMembers.length > 0 ? (
           <div className={styles['emptyThread']}>
             <p>No decrypted messages yet on this device.</p>
           </div>
         ) : null}
-        <MessageRows rows={rows} alreadyDisclosed={disclosedByConversation} />
+        <MessageRows rows={rows} />
         {notice === null ? null : (
           <div className={styles['emptyThread']}>
             <p>{notice}</p>
@@ -198,11 +208,10 @@ export function MessageThreadRoute(): JSX.Element {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={2}
-            disabled={!sessionSetupAvailable}
             style={{ flex: 1, resize: 'vertical' }}
-            placeholder={sessionSetupAvailable ? 'Write a message…' : 'Sending is unavailable'}
+            placeholder="Write a message…"
           />
-          <button type="submit" disabled={!sessionSetupAvailable || sending || draft.trim() === ''}>
+          <button type="submit" disabled={sending || draft.trim() === ''}>
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>
@@ -212,30 +221,19 @@ export function MessageThreadRoute(): JSX.Element {
 }
 
 /**
- * The message rows AND the §183.1 disclosure as one unit: `rows` come from
- * `webE2ee().poll()` and render independently of `conversationQuery` (which can fail or
- * never settle). `alreadyDisclosed` only suppresses the duplicate paragraph when the
- * conversation-derived one above is already on screen — rows are never rendered without
- * a disclosure somewhere, including when `conversationQuery` never resolves.
+ * The message rows. `rows` come from `webE2ee().poll()` and can arrive before
+ * `conversationQuery` settles, so `securityMode` (and therefore whether the parent's
+ * `disclosedByConversation` panel is on screen yet) may still be unknown here even once `rows`
+ * is non-empty. Spec §183.1/§194 forbids asserting encryption that isn't confirmed, so this
+ * renders only the rows themselves and never its own disclosure — it has no independent way
+ * to confirm the mode, and guessing `E2EE_V1` to fill that gap is exactly the false claim the
+ * rule forbids. The confirmed disclosure lives solely in the parent, once `securityMode`
+ * resolves.
  */
-function MessageRows({
-  rows,
-  alreadyDisclosed,
-}: {
-  rows: readonly InboxRow[];
-  alreadyDisclosed: boolean;
-}): JSX.Element | null {
+function MessageRows({ rows }: { rows: readonly InboxRow[] }): JSX.Element | null {
   if (rows.length === 0) return null;
   return (
     <>
-      {alreadyDisclosed ? null : (
-        <p
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          {requiredConversationDisclosure('E2EE_V1')}
-        </p>
-      )}
       {rows.map((row) => (
         <MessageRow key={row.id} row={row} />
       ))}

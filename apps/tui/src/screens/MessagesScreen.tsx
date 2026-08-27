@@ -6,11 +6,7 @@ import {
   requiredConversationDisclosure,
   type ConversationSecurityMode as DomainConversationSecurityMode,
 } from '@patches/domain';
-import {
-  CONVERSATION_SECURITY_MODE,
-  E2EE_CAPABILITY_STATE,
-  E2EE_GROUP_CHANGE_KIND,
-} from '../api/wire/enums.js';
+import { CONVERSATION_SECURITY_MODE, E2EE_GROUP_CHANGE_KIND } from '../api/wire/enums.js';
 import type {
   Conversation,
   GetConversationRequest,
@@ -42,14 +38,6 @@ import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
-
-/**
- * ADR 0027: when the node's capability RPC reports `ISOLATED_TEST_ONLY`, every surface
- * that lets you create or read one of these conversations shows this, persistently. It
- * is a development-mode statement, never an external-review claim.
- */
-export const UNREVIEWED_DEV_E2EE_WARNING =
-  'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.';
 
 /** The vault-fault banners (P13-010): lost history is stated as lost, never as empty. */
 export const VAULT_FAULT_COPY = {
@@ -137,9 +125,9 @@ export interface MessagesScreenProps {
    */
   verifiedPeers?: ReadonlySet<string> | undefined;
   /**
-   * This node's `GetE2eeCapability` state. Drives ADR 0027's persistent development-mode
-   * warning; omitted when the shell has not fetched capability yet, which renders nothing
-   * rather than guessing (same honesty rule as `dmRetentionDays`).
+   * This node's `GetE2eeCapability` state (ENABLED/DISABLED since ADR 0036's owner override —
+   * E2EE is no longer a staged rollout). Accepted for the shell's own use (e.g. `App.tsx`'s
+   * `e2eeAdvertised`); this screen no longer renders anything from it directly.
    */
   e2eeCapabilityState?: number | undefined;
   /**
@@ -472,7 +460,6 @@ export function MessagesScreen({
   dmRetentionDays,
   onOpenSafetyNumber,
   verifiedPeers,
-  e2eeCapabilityState,
   sendE2ee,
   e2eeVaultFault,
   securityPollMs = TUI_THREAD_SECURITY_POLL_MS,
@@ -946,15 +933,9 @@ export function MessagesScreen({
       : undefined;
 
   const peerVerified = peerId !== undefined && (verifiedPeers?.has(peerId) ?? false);
-  const unreviewedDevWarning = e2eeCapabilityState === E2EE_CAPABILITY_STATE.ISOLATED_TEST_ONLY;
 
   return (
     <Box flexDirection="column">
-      {unreviewedDevWarning ? (
-        <Text color={theme.warn} bold>
-          {UNREVIEWED_DEV_E2EE_WARNING}
-        </Text>
-      ) : null}
       {e2eeVaultFault === undefined ? null : (
         <Box flexDirection="column">
           <Text color={theme.error} wrap="wrap">
@@ -1037,9 +1018,6 @@ export function MessagesScreen({
             <Text color={theme.error} wrap="wrap">
               ⚠ {ROSTER_CHANGED_COPY}
             </Text>
-          ) : null}
-          {unreviewedDevWarning && threadIsE2ee ? (
-            <Text color={theme.warn}>{UNREVIEWED_DEV_E2EE_WARNING}</Text>
           ) : null}
           {threadError === undefined ? null : (
             <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>

@@ -208,16 +208,15 @@ set (media/email disabled until dashboard-only credentials are fetched — `task
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`,
 `RESEND_API_KEY`.
 
-Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production E2EE_UNREVIEWED_DEV_MODE=true LOG_LEVEL=log
+Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production LOG_LEVEL=log
 GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-social.fly.dev
 NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
 EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
 
-**ADR 0027 disposable-node E2EE opt-in** — this owner-authorized no-user node deliberately sets
-`E2EE_UNREVIEWED_DEV_MODE=true`. This permits only the isolated-test `patches-franking-v1` path;
-it does not add a globally approved profile or describe the protocol as reviewed or secure.
-`NODE_ENV=production` remains required for normal runtime behavior and is not a deployment trust
-classification. Remove the flag before the node handles non-disposable data or real users.
+**E2EE is always-on** (ADR 0036 Amendments, 2026-08-26 owner override) — there is no dev-mode
+flag, approval list, or narrowing env var. The v1 franking profile is the shipped construction,
+so `GetE2eeCapability` reports `ENABLED` as soon as the node has a franking signing key for its
+current era (`e2ee_node_franking_keys`).
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`

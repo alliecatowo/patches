@@ -28,47 +28,6 @@ export interface DevicePrivateKeys {
   readonly agreement: KeyPair;
 }
 
-export interface DeviceCertificate {
-  readonly protocol: typeof E2EE_PROTOCOL;
-  readonly version: typeof E2EE_VERSION;
-  readonly userId: string;
-  readonly deviceId: string;
-  readonly signingPublicKey: Uint8Array;
-  readonly agreementPublicKey: Uint8Array;
-  readonly generation: number;
-  readonly createdAtMs: number;
-  readonly expiresAtMs: number;
-}
-
-export interface CertifiedDevice {
-  readonly certificate: DeviceCertificate;
-  readonly rootSignature: Uint8Array;
-}
-
-export interface DeviceRoster {
-  readonly protocol: typeof E2EE_PROTOCOL;
-  readonly version: typeof E2EE_VERSION;
-  readonly userId: string;
-  readonly rootPublicKey: Uint8Array;
-  readonly sequence: number;
-  readonly previousDigest: Uint8Array;
-  readonly devices: readonly CertifiedDevice[];
-  readonly createdAtMs: number;
-}
-
-export interface SignedDeviceRoster {
-  readonly roster: DeviceRoster;
-  readonly rootSignature: Uint8Array;
-}
-
-export interface SignedPreKey {
-  readonly id: number;
-  readonly publicKey: Uint8Array;
-  readonly createdAtMs: number;
-  readonly expiresAtMs: number;
-  readonly signature: Uint8Array;
-}
-
 export interface OneTimePreKey {
   readonly id: number;
   readonly publicKey: Uint8Array;
@@ -79,21 +38,22 @@ export interface PrivatePreKey {
   readonly keyPair: KeyPair;
 }
 
-export interface PreKeyBundle {
-  readonly protocol: typeof E2EE_PROTOCOL;
-  readonly version: typeof E2EE_VERSION;
-  readonly certifiedDevice: CertifiedDevice;
-  readonly rosterDigest: Uint8Array;
-  readonly signedPreKey: SignedPreKey;
-  readonly oneTimePreKey?: OneTimePreKey;
+/**
+ * A device certificate exactly as it travels on the wire: the canonical T2 transcript bytes plus
+ * the messaging root's signature over them. The X3DH transcript embeds this pair directly, so
+ * neither side ever re-encodes a decoded certificate to reproduce what the other side signed.
+ */
+export interface HandshakeCertifiedDevice {
+  readonly certificateBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
 }
 
 export interface X3dhHandshake {
   readonly protocol: typeof E2EE_PROTOCOL;
   readonly version: typeof E2EE_VERSION;
   readonly algorithm: typeof E2EE_ALGORITHM;
-  readonly initiator: CertifiedDevice;
-  readonly responder: CertifiedDevice;
+  readonly initiator: HandshakeCertifiedDevice;
+  readonly responder: HandshakeCertifiedDevice;
   readonly initiatorRosterDigest: Uint8Array;
   readonly responderRosterDigest: Uint8Array;
   readonly ephemeralPublicKey: Uint8Array;

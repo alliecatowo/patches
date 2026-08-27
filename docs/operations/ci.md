@@ -55,8 +55,13 @@ does, in order:
    `packages/database` hadn't defined yet at the time this workflow was written —
    **reconcile this assertion once that script exists**, e.g. by grepping `db:show`'s
    output for a real "0 pending" marker if one turns out to be easy to match).
-5. `pnpm db:revert` — proves the down migration works.
-6. `pnpm db:migrate` — proves the up migration works again.
+5. `pnpm db:revert` — proves the down migration works. A migration whose `down()`
+   throws with the literal marker "irreversible by design" (ADR 0033 §5's clean break
+   is the first) satisfies this step by declaration: the revert must still have failed
+   with exactly that error, and any other revert failure fails the job. The re-apply
+   step below is skipped in that case — nothing was reverted.
+6. `pnpm db:migrate` — proves the up migration works again (skipped when step 5 ended
+   at a deliberately-irreversible migration, since nothing was reverted).
 
 Before any of that, a "Create per-project test databases" step provisions
 `patches_test_server`, `patches_test_worker`, `patches_test_admin`, and

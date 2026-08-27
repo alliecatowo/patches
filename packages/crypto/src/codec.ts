@@ -150,6 +150,23 @@ export function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
+/**
+ * Orders two strings by their UTF-8 byte sequences. Canonical encoders must never order with
+ * `String.prototype.localeCompare`: its result depends on the host's ICU version and locale data,
+ * so two clients encoding the same facts could disagree on ordering and produce different bytes
+ * for one signature (ADR 0033 §2).
+ */
+export function compareUtf8Bytes(left: string, right: string): number {
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  const shared = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < shared; index += 1) {
+    const difference = (leftBytes[index] ?? 0) - (rightBytes[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
 export function toHex(value: Uint8Array): string {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

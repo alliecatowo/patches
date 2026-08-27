@@ -77,8 +77,13 @@ export interface CreateVaultE2eeSenderOptions {
    * B-107: builds the authenticated transports once an enrolled identity is known —
    * either restored from this vault at startup or produced by `enroll()`. Without it a
    * restored identity stays dormant (the pre-enrollment behavior), never half-bound.
+   * Receives the open vault: the transports enforce peer-identity pinning (C1/C2)
+   * through it, so a builder cannot forget to hand it over.
    */
-  readonly buildTransports?: (identity: LocalDeviceIdentity) => E2eeTransports;
+  readonly buildTransports?: (
+    identity: LocalDeviceIdentity,
+    vault: RatchetSessionVault,
+  ) => E2eeTransports;
 }
 
 export interface EnrollThroughVaultInput {
@@ -185,9 +190,12 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
     if (binding !== undefined) return binding.identity;
     if (options.buildTransports === undefined) return undefined;
     const store = await ensureOpen();
-    const record = await loadStoredEnrollment(store);
+    const record = await loadStoredEnrollment(store, (options.nowMs ?? Date.now)());
     if (record?.submitted !== true) return undefined;
-    binding = { identity: record.identity, transports: options.buildTransports(record.identity) };
+    binding = {
+      identity: record.identity,
+      transports: options.buildTransports(record.identity, store),
+    };
     runtime = undefined;
     return binding.identity;
   }

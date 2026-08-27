@@ -47,10 +47,11 @@ export function toIdentityRootView(root: E2eeIdentityRootEntity): E2eeIdentityRo
     actorId: root.actorId,
     generation: root.generation,
     publicKey: toBytes(root.publicKey),
-    // The row only stores the public key, not the self-signed transcript: identity-root
-    // signature verification happens once, at `PublishIdentityRoot` time, against the request's
-    // own `rootBytes`/`selfSignature`. A stored root is never re-verified against itself here —
-    // `rootBytes`/`selfSignature` are not persisted because nothing downstream needs them again.
+    // Identity-root signature verification happens once, at `PublishIdentityRoot` time, against
+    // the request's own `rootBytes`/`selfSignature`. A stored root is never re-verified against
+    // itself here, so this node-internal view doesn't need them — the columns are persisted (see
+    // `e2ee.mapper.ts#toProtoIdentityRoot`) because a *peer* client verifying this actor's chain
+    // does need them, over `GetIdentityRoot`.
     rootBytes: new Uint8Array(0),
     selfSignature: new Uint8Array(0),
   };
@@ -130,6 +131,7 @@ export async function appendRoster(
   }
   const entries = rosterProto.entries.map(toRosterEntryView);
   const sequence = BigInt(rosterProto.sequence);
+  const createdAt = requireTimestamp(rosterProto.createdAt, 'Roster createdAt');
   const nextView: E2eeDeviceRosterView = {
     actorId,
     sequence,
@@ -139,19 +141,23 @@ export async function appendRoster(
     rosterBytes: toBytes(rosterProto.rosterBytes),
     rootSignature: toBytes(rosterProto.rootSignature),
     entries,
-    createdAt: new Date(),
+    createdAt,
   };
 
-  // `entries`/`sequence`/`previousDigest` are a decoded convenience view alongside the
-  // authoritative `rosterBytes` (proto doc comment on `E2eeDeviceRoster`) — nothing in
+  // `entries`/`sequence`/`previousDigest`/`createdAt` are a decoded convenience view alongside
+  // the authoritative `rosterBytes` (proto doc comment on `E2eeDeviceRoster`) — nothing in
   // `@patches/domain` checks that the two agree, so this node does, the same way
-  // `verifyDeviceCertificate`'s `decodedMatchesTranscript` does for certificates.
+  // `verifyDeviceCertificate`'s `decodedMatchesTranscript` does for certificates. `rootPublicKey`
+  // is bound into the roster transcript (ADR 0033 §2), so it comes from the verified root, not
+  // the request — a request cannot forge which root a roster names.
   assertBytesEqual(
     encodeRosterTranscript({
       actorId,
       sequence,
       rootGeneration: nextView.rootGeneration,
+      rootPublicKey: root.publicKey,
       previousDigest: nextView.previousDigest,
+      createdAt,
       entries,
     }),
     nextView.rosterBytes,
@@ -187,6 +193,9 @@ export async function appendRoster(
     digest: Buffer.from(nextView.digest),
     rosterBytes: Buffer.from(nextView.rosterBytes),
     rootSignature: Buffer.from(nextView.rootSignature),
+    // The client-signed value bound into `rosterBytes` (ADR 0033 §2), not an ORM-assigned insert
+    // time — the served `E2eeDeviceRoster.created_at` must agree with what the signature covers.
+    createdAt,
   });
   const saved = await manager.getRepository(E2eeDeviceRosterEntity).save(row);
   return { row: saved, entries };

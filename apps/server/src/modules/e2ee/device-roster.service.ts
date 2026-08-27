@@ -79,7 +79,7 @@ export class E2eeDeviceRosterService {
 
       const certView = buildCertificateView(certProto);
       assertBytesEqual(
-        encodeCertificateTranscript(certView),
+        encodeCertificateTranscript({ ...certView, rootPublicKey: rootView.publicKey }),
         certView.certificateBytes,
         'Device certificate fields do not match the signed certificate transcript.',
       );
@@ -304,14 +304,6 @@ function verifyAndSaveSignedPrekey(
 
   const transcript = encodePrekeyBundleTranscript({
     certificateDigest,
-    agreementPublicKey: certView.agreementPublicKey,
-    // Pinned to the empty string, matching `prekey.service.ts`'s `rotateSignedPrekey`/
-    // `buildBundle` exactly: a device's advertised protocol versions are not a persisted
-    // column (see `e2ee.codec.ts`'s top-of-file comment), so a later `UploadPrekeys` rotation
-    // or `ClaimPrekeyBundles` re-derivation could never reconstruct whatever value was signed
-    // here at enroll time. Every signer/verifier in this module must agree on one fixed
-    // placeholder rather than three call sites guessing independently.
-    protocolVersion: '',
     actorId: certView.actorId,
     deviceId: certView.deviceId,
     signedPrekeyId: keyId,

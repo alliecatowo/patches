@@ -690,19 +690,18 @@ export interface ClaimPrekeyBundlesResponse {
 }
 
 export interface CreateE2eeConversationRequest {
-  /** Idempotency key (spec §45). Retrying must not create a second conversation. */
+  /** Idempotency key (spec §45). Retrying returns the same conversation id and creates nothing. */
   clientRequestId: string;
   /**
    * Excludes the caller. 1 recipient makes a direct conversation, 2–7 a group (8 members
    * including the caller, spec §183.3).
    */
   recipientActorIds: string[];
-  senderDeviceId: string;
   /**
-   * The first logical message, already fanned out. There is no plaintext `initial_body`
-   * counterpart to `CreateConversationRequest` here, and there must never be one.
+   * Must name an active certified device of the caller. Reserving a conversation you have no
+   * device to send from is a client bug, caught here rather than at the first send.
    */
-  message: E2eeLogicalMessage | undefined;
+  senderDeviceId: string;
 }
 
 export interface CreateE2eeConversationResponse {
@@ -712,9 +711,6 @@ export interface CreateE2eeConversationResponse {
    * rather than the mode it asked for before it renders any encryption wording.
    */
   securityMode: ConversationSecurityMode;
-  logicalMessageId: string;
-  acceptedAt: Timestamp | undefined;
-  frankingTag: E2eeFrankingTag | undefined;
 }
 
 export interface GetE2eeConversationStateRequest {
@@ -1058,10 +1054,12 @@ export interface E2eeServiceClient {
   ): Observable<ClaimPrekeyBundlesResponse>;
 
   /**
-   * Creates an `E2EE_V1` conversation together with its first logical message. Separate from
-   * `DirectMessageService.CreateConversation` because that RPC takes an `initial_body` string:
-   * there is no plaintext body to give it here, and adding an "empty body means encrypted" mode
-   * to it would put the two security modes behind one ambiguous call.
+   * Reserves an `E2EE_V1` conversation: establishes membership and returns its id, carrying no
+   * message (ADR 0035). Every envelope's AEAD associated data binds the conversation id the
+   * recipient reads off the wire, so a client cannot seal an initial envelope for an id it does
+   * not yet have. The first message is an ordinary `SendEnvelopes` into the id this RPC returns.
+   * The conversation is invisible to every actor, including its creator, until that first
+   * message is accepted (ADR 0035 §5).
    */
 
   createE2EeConversation(
@@ -1315,10 +1313,12 @@ export interface E2eeServiceController {
     | ClaimPrekeyBundlesResponse;
 
   /**
-   * Creates an `E2EE_V1` conversation together with its first logical message. Separate from
-   * `DirectMessageService.CreateConversation` because that RPC takes an `initial_body` string:
-   * there is no plaintext body to give it here, and adding an "empty body means encrypted" mode
-   * to it would put the two security modes behind one ambiguous call.
+   * Reserves an `E2EE_V1` conversation: establishes membership and returns its id, carrying no
+   * message (ADR 0035). Every envelope's AEAD associated data binds the conversation id the
+   * recipient reads off the wire, so a client cannot seal an initial envelope for an id it does
+   * not yet have. The first message is an ordinary `SendEnvelopes` into the id this RPC returns.
+   * The conversation is invisible to every actor, including its creator, until that first
+   * message is accepted (ADR 0035 §5).
    */
 
   createE2EeConversation(

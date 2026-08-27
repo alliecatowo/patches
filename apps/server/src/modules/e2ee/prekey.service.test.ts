@@ -46,6 +46,7 @@ function certificateBytes(): Buffer {
       actorId: 'target',
       deviceId: 'device-1',
       rootGeneration: 2,
+      rootPublicKey: new Uint8Array(32).fill(9),
       certificateVersion: 1,
       signingPublicKey: new Uint8Array(32).fill(1),
       agreementPublicKey: new Uint8Array(32).fill(2),

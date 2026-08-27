@@ -51,28 +51,6 @@ export class AppConfigService {
     return this.get('GRPC_REFLECTION');
   }
 
-  /** ADR 0027's owner-authorized, explicitly unreviewed E2EE isolated-test exception. */
-  get e2eeApprovedFrankingProfiles(): string[] {
-    const raw = this.get('E2EE_APPROVED_FRANKING_PROFILES');
-    return raw
-      .split(',')
-      .map((v) => v.trim())
-      .filter((v) => v.length > 0);
-  }
-
-  get e2eeUnreviewedDevMode(): boolean {
-    return this.get('E2EE_UNREVIEWED_DEV_MODE');
-  }
-
-  /**
-   * B-108 / P13-014: the final canary→ENABLED disclosure flip. True only when the operator
-   * has set `E2EE_V1_ENABLED` after the interop lab passed — never a substitute for an
-   * approved franking profile (see `e2eeApprovedFrankingProfiles`).
-   */
-  get e2eeV1Enabled(): boolean {
-    return this.get('E2EE_V1_ENABLED');
-  }
-
   /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
   get trustProxyHeaders(): boolean {
     return this.get('TRUST_PROXY_HEADERS');

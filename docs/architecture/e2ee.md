@@ -1,15 +1,16 @@
 # End-to-end encrypted direct messages
 
-**Status: protocol core, wire/domain contract, and node implementation complete; independent review
-pending; production capability `DISABLED`.**
+**Status: always-on feature.** [ADR 0036's Amendments](../decisions/0036-shipping-e2ee-conditions-capability-states-and-copy.md)
+(2026-08-26, owner override) supersede the staged-rollout plan below: the reference node is
+pre-alpha, invite-only, with no real conversations, so `GetE2eeCapability` reports `ENABLED`
+whenever the node has a signing key for its current franking-key era — `DISABLED` otherwise.
+There is no approval list, no env narrowing, and no "unreviewed dev mode" flag anymore
+(Amendment 2): the v1 franking profile ships by existing, and a v2 still requires an ADR.
 
-[ADR 0020](../decisions/0020-e2ee-direct-messages.md) is binding. This document records the
-boundary and the contract — it is still not a claim that E2EE is available. Every `E2eeService`
-RPC (`packages/proto/proto/patches/v1/e2ee.proto`) has a real `apps/server` implementation
-exercised by integration tests, but the node keeps the capability fail-closed: with the reviewed
-franking-profile list empty, sends are refused unless ADR 0027's explicit
-`E2EE_UNREVIEWED_DEV_MODE=true` test mode is set on isolated, owner-authorized infrastructure, and
-the rollout state stays `DISABLED`.
+[ADR 0020](../decisions/0020-e2ee-direct-messages.md) is still binding for the protocol contract
+this document records — the sections below describing the review-gated rollout ladder are
+historical/superseded (see the ADR 0036 amendment) but the wire/domain contract, franking, and
+standing disclosures they document remain accurate.
 
 Where to look:
 
@@ -250,10 +251,11 @@ Rules the implementation must keep, all enforced in `packages/domain/src/e2ee/fr
   is the required sentence: reporter-selected context is not the whole context, and the tag is not
   proof to anyone outside this node.
 
-`E2EE_APPROVED_FRANKING_PROFILES` in `packages/domain/src/e2ee/modes.ts` is deliberately **empty**.
-It is ADR 0020 §12.7's independent-review gate in mechanical form: no profile can be operated in
-production until a reviewed construction is added to that list, and adding one requires amending the
-ADR rather than editing a constant in a feature branch.
+The franking profile is a fixed construction, not node configuration (ADR 0036 Amendment 2):
+`E2EE_FRANKING_PROFILE_V1` in `packages/domain/src/e2ee/modes.ts` is the shipped profile, there
+is no approval list to be on, and the fanout core rejects any other profile string before dedup
+or any database write. Adding a _second_ profile still requires amending an ADR rather than
+editing code in a feature branch.
 
 ## 6. What clients must say
 
@@ -278,29 +280,26 @@ Additional client obligations: pause sends and require re-verification on any id
 surface safety numbers; never present a franking tag as third-party proof; and state plainly that
 revocation cannot retract what a device already holds and is never a remote wipe.
 
-## 7. Rollout states
+## 7. Capability states
+
+**Superseded by ADR 0036's Amendment (2026-08-26 owner override).** `GetE2eeCapability` now
+reports only two states in practice:
 
 ```mermaid
 stateDiagram-v2
     [*] --> DISABLED
-    DISABLED --> ISOLATED_TEST_ONLY: isolated test node only
-    ISOLATED_TEST_ONLY --> EXTERNAL_REVIEW_PENDING: implementation complete
-    EXTERNAL_REVIEW_PENDING --> EXPERIMENTAL_CANARY: independent review passed
-    EXPERIMENTAL_CANARY --> ENABLED: canary complete
-    note right of EXTERNAL_REVIEW_PENDING
-        Still not a product.
-        No automatic downgrade
-        from any state.
-    end note
+    DISABLED --> ENABLED: signing key present for the current franking-key era
+    ENABLED --> DISABLED: signing key rotated out with no successor
 ```
 
-The production capability is `DISABLED`. `ISOLATED_TEST_ONLY` is valid only on an explicitly
-isolated test node. `EXPERIMENTAL_CANARY` and `ENABLED` are post-review states and must not be
-selected until ADR 0020 §12's automated gates and P13-014's independent review and remediation are
-complete. Enabling the capability never downgrades an existing conversation, and disabling it never
-converts one. Since ADR 0030/B-095 there is no plaintext fallback: a node with the capability
-`DISABLED` offers no DM function at all rather than falling back to a server-visible mode —
-production DMs stay dark until the ship-gates above pass (ADR 0030 §"Application 1").
+`ENABLED` iff the node has a franking profile it's allowed to use (see §5) and a signing key for
+its current era; `DISABLED` otherwise. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` remain
+defined in the proto enum (never reuse a field/enum number, spec §153) but nothing produces them
+— they are reserved for an honest home for a future unreviewed protocol change (a v2 franking
+profile, a v2 transcript family), not for this node's day-to-day operation. Enabling the
+capability never downgrades an existing conversation, and disabling it never converts one. Since
+ADR 0030/B-095 there is no plaintext fallback: a node with capability `DISABLED` offers no DM
+function at all rather than falling back to a server-visible mode.
 
 ## 8. Cryptographic boundary
 

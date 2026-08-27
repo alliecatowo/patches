@@ -13,58 +13,31 @@ import {
 } from '@patches/domain';
 import { E2eeCapabilityState, type GetE2eeCapabilityResponse } from '@patches/proto/nest';
 
-import { AppConfigService } from '../../config/app-config.service.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
-import {
-  E2EE_RUNTIME_APPROVAL_POLICY,
-  type E2eeRuntimeApprovalPolicy,
-} from './e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
 
 /**
- * The one configuration read the rollout disclosure needs (B-108): whether the operator has
- * flipped the final `E2EE_V1_ENABLED` gate. Structural on purpose so tests can pass a
- * one-getter stand-in; the DI binding is the `AppConfigService` class token, which satisfies it.
- */
-interface E2eeV1RolloutConfig {
-  readonly e2eeV1Enabled: boolean;
-}
-
-/**
- * Computes E2EE rollout disclosure from the same runtime policy the fanout accept path uses.
- * Keeping this application decision out of the gRPC controller prevents a transport-specific
- * capability claim from drifting from the actual pre-write approval gate.
+ * Reports whether this node can genuinely serve E2EE (ADR 0036 Amendment 2: E2EE is an
+ * always-on feature — the franking profile is a fixed construction, not node configuration,
+ * so the only remaining condition is operational: a signing key for the current era).
+ *
+ * `ENABLED` iff the node has a franking key for its current era; otherwise `DISABLED`.
+ * `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` are retained in the proto enum (never reuse
+ * a field/enum number, spec §153) but are no longer produced — see `packages/domain/src/e2ee/
+ * modes.ts`'s doc comment on `E2EE_CAPABILITY_STATES`.
  */
 @Injectable()
 export class E2eeCapabilityService {
-  constructor(
-    @Inject(NODE_FRANKING_KEY_RING) private readonly keys: NodeFrankingKeyRing,
-    @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
-    private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
-    // Optional so existing direct constructions (tests) compile unchanged; DI always supplies
-    // it, and an absent config fails closed to the pre-B-108 canary disclosure.
-    @Inject(AppConfigService) private readonly config?: E2eeV1RolloutConfig,
-  ) {}
+  constructor(@Inject(NODE_FRANKING_KEY_RING) private readonly keys: NodeFrankingKeyRing) {}
 
   getCapability(): GetE2eeCapabilityResponse {
     const signingEra = this.keys.currentEra();
-    const profileApproved = this.approvalPolicy.isProfileApproved(E2EE_FRANKING_PROFILE_V1);
-    if (
-      (profileApproved || this.approvalPolicy.isUnreviewedDevelopmentMode) &&
-      signingEra !== undefined &&
-      this.keys.keyForEra(signingEra) !== undefined
-    ) {
-      // B-108's final gate: an env-approved operator flip reports ENABLED, but only on top of
-      // an approved profile — it can never dress an unreviewed node up as a reviewed product.
-      // Canary and enabled accept identical send traffic; this is disclosure, not a new gate.
-      const canaryComplete = profileApproved && (this.config?.e2eeV1Enabled ?? false);
+    const canServe = signingEra !== undefined && this.keys.keyForEra(signingEra) !== undefined;
+
+    if (canServe) {
       return {
         capability: {
-          state: canaryComplete
-            ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_ENABLED
-            : profileApproved
-              ? E2eeCapabilityState.E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY
-              : E2eeCapabilityState.E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY,
+          state: E2eeCapabilityState.E2EE_CAPABILITY_STATE_ENABLED,
           supportedProtocolVersions: [E2EE_PROTOCOL_V1],
           maxActiveDevicesPerActor: E2EE_MAX_ACTIVE_DEVICES_PER_ACTOR,
           maxGroupMembers: E2EE_GROUP_MAX_MEMBERS,

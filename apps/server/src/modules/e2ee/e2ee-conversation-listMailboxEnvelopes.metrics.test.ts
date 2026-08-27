@@ -8,7 +8,6 @@ import type { DataSource, EntityManager } from 'typeorm';
 
 import { E2eeConversationService } from './e2ee-conversation.service.js';
 import type * as E2eeFanoutModule from './e2ee-fanout.js';
-import type { E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 import type { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import type { NotificationsService } from '../notifications/notification.service.js';
 import type { NodeFrankingKeyRing } from './report-evidence.js';
@@ -85,7 +84,6 @@ function serviceWith(dataSource: DataSource): E2eeConversationService {
   return new E2eeConversationService(
     dataSource,
     {} as unknown as NodeFrankingKeyRing,
-    {} as E2eeRuntimeApprovalPolicy,
     { consumeMailboxPoll: vi.fn(() => Promise.resolve()) } as unknown as E2eeRateLimitService,
     { notifyMessage: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService,
   );

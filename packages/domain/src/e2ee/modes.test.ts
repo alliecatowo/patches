@@ -27,26 +27,32 @@ describe('E2EE domain contract', () => {
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
         capabilityState: 'EXTERNAL_REVIEW_PENDING',
-        isolatedTestNode: false,
+        participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
+      }),
+    ).toThrow('not enabled');
+    // The unreachable-in-practice rollout states (ADR 0036 Amendment) also gate closed, not
+    // open — only `ENABLED` is honoured.
+    expect(() =>
+      assertConversationModeNegotiation({
+        requestedMode: 'E2EE_V1',
+        capabilityState: 'EXPERIMENTAL_CANARY',
         participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
       }),
     ).toThrow('not enabled');
     expect(() =>
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
-        capabilityState: 'EXPERIMENTAL_CANARY',
-        isolatedTestNode: false,
+        capabilityState: 'ENABLED',
         participantProtocols: [E2EE_PROTOCOL_V1, null],
       }),
     ).toThrow('Every participant');
   });
 
-  it('permits E2EE only on isolated test nodes or post-review rollout states', () => {
+  it('permits E2EE once the node capability is enabled', () => {
     expect(() =>
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
-        capabilityState: 'ISOLATED_TEST_ONLY',
-        isolatedTestNode: true,
+        capabilityState: 'ENABLED',
         participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
       }),
     ).not.toThrow();

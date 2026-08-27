@@ -56,7 +56,6 @@ import {
 import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
 import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
-import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { E2eeReportEvidenceService } from '../src/modules/e2ee/report-evidence.service.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
@@ -113,9 +112,6 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   knownEras: () => [TEST_FRANKING_ERA],
   currentEra: () => TEST_FRANKING_ERA,
 };
-
-/** ADR 0027 test seam: does not change the frozen production approval list. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy(true);
 
 const ZERO_32 = new Uint8Array(32);
 const ZERO_DIGEST = Buffer.alloc(32);
@@ -218,6 +214,34 @@ function buildLogicalMessage(envelopes: readonly TestEnvelope[], options: { epoc
   };
 }
 
+/**
+ * ADR 0035: `CreateE2eeConversation` reserves a conversation (no message); the first message is
+ * an ordinary `SendEnvelopes` into the id it returns. The merged result carries `conversationId`
+ * plus every `SendEnvelopesResponse` field (`logicalMessageId`, `frankingTag`, `acceptedAt`,
+ * `fanoutDigest`, `acceptedRecipientDeviceIds`), so existing `.conversationId`/`.logicalMessageId`
+ * assertions keep working unchanged.
+ */
+async function reserveAndSend(
+  conversations: E2eeConversationService,
+  senderActorId: string,
+  recipientActorIds: readonly string[],
+  senderDeviceId: string,
+  message: ReturnType<typeof buildLogicalMessage>,
+) {
+  const reserved = await conversations.createE2eeConversation(senderActorId, {
+    clientRequestId: randomUUID(),
+    recipientActorIds: [...recipientActorIds],
+    senderDeviceId,
+  });
+  const sent = await conversations.sendEnvelopes(senderActorId, {
+    conversationId: reserved.conversationId,
+    clientRequestId: randomUUID(),
+    senderDeviceId,
+    message,
+  });
+  return { ...sent, conversationId: reserved.conversationId };
+}
+
 interface TestActorKeys {
   actorId: string;
   rootPrivateKey: Uint8Array;
@@ -270,6 +294,7 @@ function signedCertificate(actor: TestActorKeys, device: DeviceKeys, now: Date) 
       actorId: actor.actorId,
       deviceId: device.deviceId,
       rootGeneration: 1,
+      rootPublicKey: actor.rootPublicKey,
       certificateVersion: 1,
       signingPublicKey: device.signingPublicKey,
       agreementPublicKey: device.agreementPublicKey,
@@ -308,7 +333,9 @@ function signedRoster(
       actorId: actor.actorId,
       sequence,
       rootGeneration: 1,
+      rootPublicKey: actor.rootPublicKey,
       previousDigest,
+      createdAt: now,
       entries: entries.map((entry) => ({ ...entry, addedAt: now, revokedAt: undefined })),
     }),
   );
@@ -327,7 +354,7 @@ function signedRoster(
       addedAt: ts(now),
       revokedAt: undefined,
     })),
-    createdAt: undefined,
+    createdAt: ts(now),
   };
 }
 
@@ -343,8 +370,6 @@ function signedPrekeyBundle(
   const publicKey = generateSigningKeyPair().publicKey;
   const transcript = encodePrekeyBundleTranscript({
     certificateDigest,
-    agreementPublicKey: device.agreementPublicKey,
-    protocolVersion: '',
     actorId: actor.actorId,
     deviceId: device.deviceId,
     signedPrekeyId: keyId,
@@ -601,7 +626,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
-        unreviewedTestPolicy,
         // No-op budgets: this suite exercises privacy/leak invariants, not §188 windows.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
         // A REAL NotificationsService, deliberately: the MESSAGE notifications an E2EE arrival
@@ -643,11 +667,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         followeeActorId: e2eeSender.actorId,
       });
 
-      const first = await conversations.createE2eeConversation(e2eeSender.actorId, {
-        clientRequestId: randomUUID(),
-        recipientActorIds: [e2eeRecipient.actorId],
-        senderDeviceId: e2eeSenderDevice.deviceId,
-        message: buildLogicalMessage([
+      const first = await reserveAndSend(
+        conversations,
+        e2eeSender.actorId,
+        [e2eeRecipient.actorId],
+        e2eeSenderDevice.deviceId,
+        buildLogicalMessage([
           canaryEnvelope(
             e2eeRecipient.actorId,
             e2eeRecipientDevice.deviceId,
@@ -655,7 +680,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             keyCanary,
           ),
         ]),
-      });
+      );
       e2eeConversationId = first.conversationId;
 
       // Group transition: a third member joins at epoch 2 (writes the signed transcript).
@@ -671,11 +696,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         followerActorId: secondRecipient.actorId,
         followeeActorId: e2eeSender.actorId,
       });
-      const groupCreated = await conversations.createE2eeConversation(e2eeSender.actorId, {
-        clientRequestId: randomUUID(),
-        recipientActorIds: [e2eeRecipient.actorId, secondRecipient.actorId],
-        senderDeviceId: e2eeSenderDevice.deviceId,
-        message: buildLogicalMessage([
+      const groupCreated = await reserveAndSend(
+        conversations,
+        e2eeSender.actorId,
+        [e2eeRecipient.actorId, secondRecipient.actorId],
+        e2eeSenderDevice.deviceId,
+        buildLogicalMessage([
           canaryEnvelope(
             e2eeRecipient.actorId,
             e2eeRecipientDevice.deviceId,
@@ -689,7 +715,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             keyCanary,
           ),
         ]),
-      });
+      );
       e2eeConversationId = groupCreated.conversationId;
 
       const newcomer = await newActor();
@@ -933,11 +959,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         { accessToken: mutingRecipient.accessToken },
       );
 
-      const created = await conversations.createE2eeConversation(mutedSender.actorId, {
-        clientRequestId: randomUUID(),
-        recipientActorIds: [mutingRecipient.actorId],
-        senderDeviceId: mutedSenderDevice.deviceId,
-        message: buildLogicalMessage([
+      const created = await reserveAndSend(
+        conversations,
+        mutedSender.actorId,
+        [mutingRecipient.actorId],
+        mutedSenderDevice.deviceId,
+        buildLogicalMessage([
           canaryEnvelope(
             mutingRecipient.actorId,
             mutingRecipientDevice.deviceId,
@@ -945,7 +972,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             keyCanary,
           ),
         ]),
-      });
+      );
 
       // The message itself still landed (mute is not eligibility): a real logical message
       // and mailbox envelope exist for the muting recipient's device.

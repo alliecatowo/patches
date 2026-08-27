@@ -12,11 +12,7 @@ import {
   type E2eeReportEvidenceItemView,
   type FrankingVerifier,
 } from './franking.js';
-import {
-  assertFrankingProfileApproved,
-  E2EE_APPROVED_FRANKING_PROFILES,
-  E2EE_FRANKING_PROFILE_V1,
-} from './modes.js';
+import { E2EE_FRANKING_PROFILE_V1 } from './modes.js';
 import { fakeDigest, seededBytes } from './testing.js';
 import { bytesEqual, E2EE_DIGEST_BYTES, type Bytes } from './types.js';
 
@@ -92,20 +88,10 @@ function item(
   };
 }
 
-describe('the franking ship gate', () => {
-  it('approves no profile yet, so E2EE cannot be enabled in production', () => {
-    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([]);
-    expect(() => assertFrankingProfileApproved(E2EE_FRANKING_PROFILE_V1)).toThrow(
-      'independent review',
-    );
-    expect(() => assertFrankingProfileApproved(TEST_PROFILE)).toThrow('independent review');
-  });
-
-  it('keeps the approved-profile list immutable at runtime', () => {
-    expect(() => {
-      (E2EE_APPROVED_FRANKING_PROFILES as string[]).push(TEST_PROFILE);
-    }).toThrow();
-    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([]);
+describe('the franking profile', () => {
+  it('is exactly one fixed v1 identifier — no approval list exists to consult', () => {
+    expect(E2EE_FRANKING_PROFILE_V1).toBe('patches-franking-v1');
+    expect(TEST_PROFILE).not.toBe(E2EE_FRANKING_PROFILE_V1);
   });
 });
 

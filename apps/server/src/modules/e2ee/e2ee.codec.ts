@@ -1,48 +1,27 @@
-import { ByteReader, ByteWriter, KEY_BYTES } from '@patches/crypto';
+import {
+  decodeDeviceCertificateTranscript,
+  decodeDeviceRosterTranscript,
+  decodePreKeyBundleTranscript,
+  encodeDeviceCertificateTranscript,
+  encodeDeviceRosterTranscript,
+  encodePreKeyBundleTranscript,
+  type DeviceRosterEntryTranscript,
+} from '@patches/crypto';
 import { bytesEqual, type Bytes, type E2eeRosterEntryView } from '@patches/domain';
 import { timestampToDate } from '@patches/proto';
 
 import { AppError } from '../../common/errors/app-error.js';
 
 /**
- * Canonical transcripts for `E2eeDeviceCertificate.certificate_bytes`,
- * `E2eeDeviceRoster.roster_bytes`, and the signed-prekey-bundle signature (ADR 0020 §2, §5,
- * §14.14.2). `packages/proto/proto/patches/v1/e2ee.proto` states that `certificate_bytes` and
- * `roster_bytes` are "the exact canonical bytes" a signature covers but deliberately leaves the
- * concrete encoding to the implementation, the same way `@patches/domain`'s
- * `canonicalFanoutTranscript` owns the fanout encoding.
- *
- * This node owns *this* encoding: every client that wants `EnrollDevice`/`PublishDeviceRoster`/
- * `UploadPrekeys` to succeed against this node must produce `certificate_bytes`/`roster_bytes`/
- * `prekey_bundle_bytes` that match it byte-for-byte (checked below via `decodedMatchesTranscript`
- * checks the same way `@patches/domain/certificates.ts` documents). It is *not* yet hoisted into
- * `@patches/domain` for every client to share — that package is owned by a different concurrent
- * task in this change and this module cannot edit it. Follow-up: move this codec into
- * `@patches/domain` once a client (P13-010, TUI) needs to produce these bytes itself, so there is
- * one encoder instead of a second one that has to agree with this file by coincidence.
- *
- * Every persisted entity in `packages/database` stores the *authoritative* bytes
- * (`certificate_bytes`, `roster_bytes`, the prekey-bundle `signature`) but not the decoded
- * convenience fields the wire messages also carry (`certificate_version`,
- * `supported_protocol_versions`, roster `entries`) — those columns don't exist. This codec is
- * therefore also how the node reconstructs them on read: decoding is safe here specifically
- * because the node itself enforced, on write, that encoding these same fields reproduces the
- * stored bytes exactly.
- *
- * **Domain separators are node-local on purpose** (2026-08 audit fix): these transcripts cover
- * structurally similar material to `@patches/crypto`'s root-signed identity contexts
- * (`CERTIFICATE_CONTEXT`/`ROSTER_CONTEXT`), and both encoders used to share the exact same
- * prefix strings — two independent encoders whose signatures were mutually verifiable across
- * trust contexts, held apart only by the 1 MiB field caps. The node's strings are now distinct
- * (`e2ee.codec.test.ts` asserts the disjointness against the exported client constants).
- * Rotated pre-production with zero enrolled devices, per ADR 0030; any dev row carrying an
- * old-domain transcript now fails closed in {@link decodeCertificateTranscript}/
- * {@link decodeRosterTranscript} rather than half-verifying.
+ * This node's proto/`Date` adaptation over ADR 0033's single canonical identity transcript
+ * family, which now lives entirely in `@patches/crypto` (`identity-transcript.ts`). This module
+ * owns no encoding of its own: it converts between the wire's `google.protobuf.Timestamp` /
+ * `Date` fields and `@patches/crypto`'s millisecond-number fields, and between `@patches/domain`'s
+ * `E2eeRosterEntryView` shape and `@patches/crypto`'s `DeviceRosterEntryTranscript` shape, then
+ * delegates every encode/decode to the shared codec. A malformed stored transcript is reported as
+ * an `AppError` here rather than the raw `MalformedInputError` `@patches/crypto` throws, so the
+ * gRPC error mapper sees a code it knows what to do with.
  */
-
-export const CERTIFICATE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-device-cert';
-export const ROSTER_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/node-roster-canonical';
-const PREKEY_BUNDLE_TRANSCRIPT_DOMAIN = 'patches-e2ee-v1/signed-prekey-bundle';
 
 function msFromDate(value: Date, label: string): number {
   const ms = value.getTime();
@@ -73,6 +52,8 @@ export interface CertificateTranscriptFields {
   readonly actorId: string;
   readonly deviceId: string;
   readonly rootGeneration: number;
+  /** The exact root key that must have signed this certificate (ADR 0033 §2). */
+  readonly rootPublicKey: Bytes;
   readonly certificateVersion: number;
   readonly signingPublicKey: Bytes;
   readonly agreementPublicKey: Bytes;
@@ -82,51 +63,34 @@ export interface CertificateTranscriptFields {
 }
 
 export function encodeCertificateTranscript(fields: CertificateTranscriptFields): Bytes {
-  const writer = new ByteWriter()
-    .string(CERTIFICATE_TRANSCRIPT_DOMAIN)
-    .string(fields.actorId)
-    .string(fields.deviceId)
-    .u32(fields.rootGeneration)
-    .u32(fields.certificateVersion)
-    .fixed(fields.signingPublicKey, KEY_BYTES)
-    .fixed(fields.agreementPublicKey, KEY_BYTES)
-    .u32(fields.supportedProtocolVersions.length);
-  for (const version of fields.supportedProtocolVersions) writer.string(version);
-  return writer
-    .u64(msFromDate(fields.createdAt, 'Certificate createdAt'))
-    .u64(msFromDate(fields.expiresAt, 'Certificate expiresAt'))
-    .finish();
+  return encodeDeviceCertificateTranscript({
+    actorId: fields.actorId,
+    deviceId: fields.deviceId,
+    rootGeneration: fields.rootGeneration,
+    rootPublicKey: fields.rootPublicKey,
+    certificateVersion: fields.certificateVersion,
+    signingPublicKey: fields.signingPublicKey,
+    agreementPublicKey: fields.agreementPublicKey,
+    supportedProtocolVersions: fields.supportedProtocolVersions,
+    createdAtMs: msFromDate(fields.createdAt, 'Certificate createdAt'),
+    expiresAtMs: msFromDate(fields.expiresAt, 'Certificate expiresAt'),
+  });
 }
 
 export function decodeCertificateTranscript(bytes: Bytes): CertificateTranscriptFields {
   try {
-    const reader = new ByteReader(bytes);
-    const domain = reader.string();
-    if (domain !== CERTIFICATE_TRANSCRIPT_DOMAIN) {
-      throw AppError.validation('Certificate transcript has the wrong domain separator.');
-    }
-    const actorId = reader.string();
-    const deviceId = reader.string();
-    const rootGeneration = reader.u32();
-    const certificateVersion = reader.u32();
-    const signingPublicKey = reader.fixed(32);
-    const agreementPublicKey = reader.fixed(32);
-    const versionCount = reader.u32();
-    const supportedProtocolVersions: string[] = [];
-    for (let i = 0; i < versionCount; i += 1) supportedProtocolVersions.push(reader.string());
-    const createdAt = new Date(reader.u64());
-    const expiresAt = new Date(reader.u64());
-    reader.end();
+    const decoded = decodeDeviceCertificateTranscript(bytes);
     return {
-      actorId,
-      deviceId,
-      rootGeneration,
-      certificateVersion,
-      signingPublicKey,
-      agreementPublicKey,
-      supportedProtocolVersions,
-      createdAt,
-      expiresAt,
+      actorId: decoded.actorId,
+      deviceId: decoded.deviceId,
+      rootGeneration: decoded.rootGeneration,
+      rootPublicKey: decoded.rootPublicKey,
+      certificateVersion: decoded.certificateVersion,
+      signingPublicKey: decoded.signingPublicKey,
+      agreementPublicKey: decoded.agreementPublicKey,
+      supportedProtocolVersions: decoded.supportedProtocolVersions,
+      createdAt: new Date(decoded.createdAtMs),
+      expiresAt: new Date(decoded.expiresAtMs),
     };
   } catch (error) {
     throw AppError.validation('Stored device certificate transcript is corrupt.', { cause: error });
@@ -138,81 +102,78 @@ export interface RosterTranscriptFields {
   readonly actorId: string;
   readonly sequence: bigint;
   readonly rootGeneration: number;
+  /** The exact root key that must have signed this roster (ADR 0033 §2). */
+  readonly rootPublicKey: Bytes;
   readonly previousDigest: Bytes;
+  readonly createdAt: Date;
   readonly entries: readonly E2eeRosterEntryView[];
+}
+
+function toDeviceRosterEntryTranscript(entry: E2eeRosterEntryView): DeviceRosterEntryTranscript {
+  const revokedAt = entry.revokedAt;
+  return {
+    deviceId: entry.deviceId,
+    certificateDigest: entry.certificateDigest,
+    active: entry.active,
+    addedAtMs: msFromDate(entry.addedAt, 'Roster entry addedAt'),
+    ...(revokedAt === null || revokedAt === undefined
+      ? {}
+      : { revokedAtMs: msFromDate(revokedAt, 'Roster entry revokedAt') }),
+  };
+}
+
+function fromDeviceRosterEntryTranscript(entry: DeviceRosterEntryTranscript): E2eeRosterEntryView {
+  return {
+    deviceId: entry.deviceId,
+    certificateDigest: entry.certificateDigest,
+    active: entry.active,
+    addedAt: new Date(entry.addedAtMs),
+    revokedAt: entry.revokedAtMs === undefined ? undefined : new Date(entry.revokedAtMs),
+  };
 }
 
 export function encodeRosterTranscript(fields: RosterTranscriptFields): Bytes {
   if (fields.sequence < 0n || fields.sequence > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw AppError.validation('Roster sequence is out of range.');
   }
-  const writer = new ByteWriter()
-    .string(ROSTER_TRANSCRIPT_DOMAIN)
-    .string(fields.actorId)
-    .u64(Number(fields.sequence))
-    .u32(fields.rootGeneration)
-    .fixed(fields.previousDigest, KEY_BYTES)
-    .u32(fields.entries.length);
-  for (const entry of fields.entries) {
-    writer
-      .string(entry.deviceId)
-      .fixed(entry.certificateDigest, KEY_BYTES)
-      .u8(entry.active ? 1 : 0)
-      .u64(msFromDate(entry.addedAt, 'Roster entry addedAt'));
-    const revokedAt = entry.revokedAt;
-    if (revokedAt === null || revokedAt === undefined) {
-      writer.u8(0).u64(0);
-    } else {
-      writer.u8(1).u64(msFromDate(revokedAt, 'Roster entry revokedAt'));
-    }
-  }
-  return writer.finish();
+  return encodeDeviceRosterTranscript({
+    actorId: fields.actorId,
+    rootGeneration: fields.rootGeneration,
+    rootPublicKey: fields.rootPublicKey,
+    sequence: Number(fields.sequence),
+    previousDigest: fields.previousDigest,
+    createdAtMs: msFromDate(fields.createdAt, 'Roster createdAt'),
+    entries: fields.entries.map(toDeviceRosterEntryTranscript),
+  });
 }
 
 export function decodeRosterTranscript(bytes: Bytes): RosterTranscriptFields {
   try {
-    const reader = new ByteReader(bytes);
-    const domain = reader.string();
-    if (domain !== ROSTER_TRANSCRIPT_DOMAIN) {
-      throw AppError.validation('Roster transcript has the wrong domain separator.');
-    }
-    const actorId = reader.string();
-    const sequence = BigInt(reader.u64());
-    const rootGeneration = reader.u32();
-    const previousDigest = reader.fixed(32);
-    const entryCount = reader.u32();
-    const entries: E2eeRosterEntryView[] = [];
-    for (let i = 0; i < entryCount; i += 1) {
-      const deviceId = reader.string();
-      const certificateDigest = reader.fixed(32);
-      const active = reader.u8() === 1;
-      const addedAt = new Date(reader.u64());
-      const hasRevokedAt = reader.u8() === 1;
-      const revokedAtMs = reader.u64();
-      entries.push({
-        deviceId,
-        certificateDigest,
-        active,
-        addedAt,
-        revokedAt: hasRevokedAt ? new Date(revokedAtMs) : undefined,
-      });
-    }
-    reader.end();
-    return { actorId, sequence, rootGeneration, previousDigest, entries };
+    const decoded = decodeDeviceRosterTranscript(bytes);
+    return {
+      actorId: decoded.actorId,
+      sequence: BigInt(decoded.sequence),
+      rootGeneration: decoded.rootGeneration,
+      rootPublicKey: decoded.rootPublicKey,
+      previousDigest: decoded.previousDigest,
+      createdAt: new Date(decoded.createdAtMs),
+      entries: decoded.entries.map(fromDeviceRosterEntryTranscript),
+    };
   } catch (error) {
     throw AppError.validation('Stored device roster transcript is corrupt.', { cause: error });
   }
 }
 
 /**
- * Fields of the signed-prekey bundle transcript, matching `E2eeSignedPrekey`'s doc comment:
- * "certificate digest, agreement key, ids, protocol/KDF versions, creation, and expiry" — not
- * the one-time prekeys, which are unsigned and rotate independently of this transcript.
+ * Fields of the signed-prekey bundle transcript (ADR 0033 §2, T4). No longer binds
+ * `agreementPublicKey` or `protocolVersion` — both were already committed to by
+ * `certificateDigest`, and `protocolVersion` was a documented kludge pinned to `''` because a
+ * device's advertised versions were never a persisted column. No roster digest either: a device
+ * signature covering a roster snapshot would force every device to re-sign every prekey on every
+ * roster change of its own account, so roster membership is enforced by the verifier instead.
  */
 export interface PrekeyBundleTranscriptFields {
   readonly certificateDigest: Bytes;
-  readonly agreementPublicKey: Bytes;
-  readonly protocolVersion: string;
   readonly actorId: string;
   readonly deviceId: string;
   readonly signedPrekeyId: bigint;
@@ -225,21 +186,32 @@ export function encodePrekeyBundleTranscript(fields: PrekeyBundleTranscriptField
   if (fields.signedPrekeyId < 0n || fields.signedPrekeyId > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw AppError.validation('Signed prekey id is out of range.');
   }
-  // `ByteWriter#fixed`'s required width parameter is the only thing making this a signed
-  // transcript rather than one that is injective only because three unrelated `octet_length(...)
-  // = 32` CHECK constraints happen to also hold two layers away in the database (ADR 0024 B-051).
-  return new ByteWriter()
-    .string(PREKEY_BUNDLE_TRANSCRIPT_DOMAIN)
-    .fixed(fields.certificateDigest, KEY_BYTES)
-    .fixed(fields.agreementPublicKey, KEY_BYTES)
-    .string(fields.protocolVersion)
-    .string(fields.actorId)
-    .string(fields.deviceId)
-    .u64(Number(fields.signedPrekeyId))
-    .fixed(fields.signedPrekeyPublicKey, KEY_BYTES)
-    .u64(msFromDate(fields.signedPrekeyCreatedAt, 'Signed prekey createdAt'))
-    .u64(msFromDate(fields.signedPrekeyExpiresAt, 'Signed prekey expiresAt'))
-    .finish();
+  return encodePreKeyBundleTranscript({
+    actorId: fields.actorId,
+    deviceId: fields.deviceId,
+    certificateDigest: fields.certificateDigest,
+    signedPrekeyId: Number(fields.signedPrekeyId),
+    signedPrekeyPublicKey: fields.signedPrekeyPublicKey,
+    createdAtMs: msFromDate(fields.signedPrekeyCreatedAt, 'Signed prekey createdAt'),
+    expiresAtMs: msFromDate(fields.signedPrekeyExpiresAt, 'Signed prekey expiresAt'),
+  });
+}
+
+export function decodePrekeyBundleTranscript(bytes: Bytes): PrekeyBundleTranscriptFields {
+  try {
+    const decoded = decodePreKeyBundleTranscript(bytes);
+    return {
+      certificateDigest: decoded.certificateDigest,
+      actorId: decoded.actorId,
+      deviceId: decoded.deviceId,
+      signedPrekeyId: BigInt(decoded.signedPrekeyId),
+      signedPrekeyPublicKey: decoded.signedPrekeyPublicKey,
+      signedPrekeyCreatedAt: new Date(decoded.createdAtMs),
+      signedPrekeyExpiresAt: new Date(decoded.expiresAtMs),
+    };
+  } catch (error) {
+    throw AppError.validation('Stored prekey bundle transcript is corrupt.', { cause: error });
+  }
 }
 
 /** Throws `AppError('E2EE_CERTIFICATE_INVALID', ...)` unless `left` and `right` are equal. */

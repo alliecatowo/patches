@@ -88,7 +88,6 @@ export function harnessProcessEnvironment(
     FEDERATION_ENABLED: 'false',
     FEDERATION_STANCE: 'disabled',
     CAN_CREATE_COMMUNITY: 'false',
-    E2EE_UNREVIEWED_DEV_MODE: 'false',
     OIDC_PROVIDERS: '[]',
     OTEL_ENABLED: 'false',
     METRICS_ENABLED: 'false',

@@ -68,10 +68,13 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
     expect(found.value).toEqual({ id: 'test-instance' });
   });
 
-  it('round-trips the issued-prekey ledger migration and leaves no pending migration', async () => {
-    await dataSource.undoLastMigration();
-    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(1);
-    await dataSource.runMigrations();
+  it('refuses to undo the tip migration (ADR 0033 §5: irreversible by design) and leaves no pending migration', async () => {
+    // The last migration on the chain (`Adr0033IdentityTranscriptCleanBreak…`) throws from
+    // `down()` on purpose — its `up()` deletes rows signed under a retired identity transcript
+    // encoding, and there is nothing to restore them to. TypeORM rolls the attempted undo back
+    // in its own transaction, so the migrations table is untouched and the schema stays fully
+    // migrated either way.
+    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible by design/);
     expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
   });
 });

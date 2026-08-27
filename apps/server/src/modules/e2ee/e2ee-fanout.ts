@@ -36,7 +36,6 @@ import { e2eeDigest } from './e2ee-crypto.adapter.js';
 import { toBytes } from './e2ee.codec.js';
 import { loadCurrentGroupControl } from './group-control.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
-import { type E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 
 /**
  * `SendEnvelopes`/`CreateE2eeConversation`'s shared fanout-accept core (ADR 0020 §7, §14.14.5,
@@ -111,7 +110,6 @@ export interface AcceptLogicalMessageInput {
   readonly clientRequestId: string;
   readonly message: E2eeLogicalMessageProto | undefined;
   readonly keys: NodeFrankingKeyRing;
-  readonly approvalPolicy: E2eeRuntimeApprovalPolicy;
 }
 
 function toDeviceEnvelopeView(proto: {
@@ -345,13 +343,11 @@ export async function acceptE2eeLogicalMessage(
     throw AppError.validation('A sender device id is required.');
   }
 
-  // ADR 0020 §12.7 is a ship gate, not merely a capability-advertisement gate. Enforce it
-  // at the shared accept core before dedup lookup or any database write so create, send, and
-  // replay all remain closed even if a node operator configures signing keys prematurely.
-  try {
-    input.approvalPolicy.assertProfileApproved(input.message.frankingProfile);
-  } catch (error) {
-    wrapFanoutError(error);
+  // The profile is a fixed construction, not node configuration (ADR 0036 Amendment 2):
+  // there is exactly one shipped profile and no override, so this check closes create,
+  // send, and replay against any other profile string before dedup lookup or any write.
+  if (input.message.frankingProfile !== E2EE_FRANKING_PROFILE_V1) {
+    wrapFanoutError(new E2eeContractError('Unknown franking profile.'));
   }
 
   const existing = await manager.getRepository(E2eeLogicalMessageEntity).findOne({
@@ -420,12 +416,6 @@ export async function acceptE2eeLogicalMessage(
     wrapFanoutError(error);
   }
 
-  if (input.message.frankingProfile !== E2EE_FRANKING_PROFILE_V1) {
-    throw new AppError(
-      'E2EE_FANOUT_REJECTED',
-      `Unknown franking profile "${input.message.frankingProfile}".`,
-    );
-  }
   if (toBytes(input.message.frankingCommitment).length !== E2EE_DIGEST_BYTES) {
     throw new AppError(
       'E2EE_FANOUT_REJECTED',

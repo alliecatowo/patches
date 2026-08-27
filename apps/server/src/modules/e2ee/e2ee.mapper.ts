@@ -30,11 +30,13 @@ export function toProtoIdentityRoot(root: E2eeIdentityRootEntity): E2eeIdentityR
     actorId: root.actorId,
     generation: root.generation,
     publicKey: root.publicKey,
-    // Not persisted (see `roster-chain.ts#toIdentityRootView`) — the canonical transcript that
-    // proved possession at publish time is not needed again after verification.
-    rootBytes: Buffer.alloc(0),
-    selfSignature: Buffer.alloc(0),
-    previousRootSignature: Buffer.alloc(0),
+    // A peer client, not this node, is the verifier here (`GetIdentityRoot` is peer-facing) — it
+    // has no other way to check the root's self-signature, so the stored transcript bytes must
+    // round-trip exactly. `?? Buffer.alloc(0)` only fires for rows published before these columns
+    // existed; ADR 0033 §5 wipes them in a separate, independently-sequenced migration (#251).
+    rootBytes: root.rootBytes ?? Buffer.alloc(0),
+    selfSignature: root.selfSignature ?? Buffer.alloc(0),
+    previousRootSignature: root.previousRootSignature ?? Buffer.alloc(0),
     createdAt: dateToTimestamp(root.createdAt),
     rotatedAt: root.rotatedAt === null ? undefined : dateToTimestamp(root.rotatedAt),
   };

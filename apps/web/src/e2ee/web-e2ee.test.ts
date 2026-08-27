@@ -6,11 +6,10 @@
  */
 import 'fake-indexeddb/auto';
 
-import { E2EE_PROTOCOL, E2EE_VERSION } from '@patches/crypto';
-import type { CertifiedDevice, DeviceCertificate, SignedDeviceRoster } from '@patches/crypto';
+import { E2EE_PROTOCOL } from '@patches/crypto';
+import type { VerifiedCertifiedDevice, VerifiedRosterSnapshot } from '@patches/crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from './availability.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import { createWebE2eeManager, WEB_E2EE_COPY, WebE2eeUnavailableError } from './web-e2ee.js';
@@ -38,34 +37,49 @@ function freshActorId(): string {
 function stubIdentity(actorId: string): LocalDeviceIdentity {
   const key32 = (): Uint8Array => new Uint8Array(32);
   const key64 = (): Uint8Array => new Uint8Array(64);
-  const certificate: DeviceCertificate = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
-    deviceId: `${actorId}-device`,
+  const deviceId = `${actorId}-device`;
+  // Placeholder (not cryptographically meaningful) `Verified*` shapes — real branding
+  // can only be produced by `@patches/crypto`'s verifiers, but these tests never run
+  // one, so a structural cast is the honest equivalent of the old plain-object fixture.
+  const selfDevice = {
+    actorId,
+    deviceId,
+    rootGeneration: 1,
+    rootPublicKey: key32(),
+    certificateVersion: 1,
     signingPublicKey: key32(),
     agreementPublicKey: key32(),
-    generation: 1,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
     createdAtMs: 0,
     expiresAtMs: 1,
-  };
-  const selfDevice: CertifiedDevice = { certificate, rootSignature: key64() };
-  const ownRoster: SignedDeviceRoster = {
-    roster: {
-      protocol: E2EE_PROTOCOL,
-      version: E2EE_VERSION,
-      userId: actorId,
-      rootPublicKey: key32(),
-      sequence: 1,
-      previousDigest: key32(),
-      devices: [selfDevice],
+    certificateBytes: new Uint8Array(1),
+    rootSignature: key64(),
+    certificateDigest: key32(),
+  } as unknown as VerifiedCertifiedDevice;
+  const ownRoster = {
+    actorId,
+    rootGeneration: 1,
+    rootPublicKey: key32(),
+    sequence: 1,
+    previousDigest: key32(),
+    createdAtMs: 0,
+    entries: [{ deviceId, certificateDigest: key32(), active: true, addedAtMs: 0 }],
+    rosterBytes: new Uint8Array(1),
+    rootSignature: key64(),
+    rosterDigest: key32(),
+    root: {
+      actorId,
+      generation: 1,
+      publicKey: key32(),
+      rootBytes: new Uint8Array(1),
+      selfSignature: key64(),
       createdAtMs: 0,
     },
-    rootSignature: key64(),
-  };
+    devices: [selfDevice],
+  } as unknown as VerifiedRosterSnapshot;
   return {
     actorId,
-    deviceId: certificate.deviceId,
+    deviceId,
     keys: {
       signing: { publicKey: key32(), privateKey: key32() },
       agreement: { publicKey: key32(), privateKey: key32() },
@@ -77,8 +91,8 @@ function stubIdentity(actorId: string): LocalDeviceIdentity {
       keyPair: { publicKey: key32(), privateKey: key32() },
       createdAtMs: 0,
       expiresAtMs: 1,
-      signature: key64(),
     },
+    ownBundle: { bundleBytes: new Uint8Array(1), deviceSignature: key64() },
     oneTimePreKeys: [],
   };
 }
@@ -264,16 +278,19 @@ describe('WebE2eeManager.send — refuses while session setup is unavailable (B-
     await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(E2eeNotEnrolledError);
   });
 
-  it('refuses once enrolled, with the fixed unavailable copy, never reaching the runtime', async () => {
+  it('no longer refuses before reaching the runtime: session setup is possible now', async () => {
+    // Pre-ADR-0033 this rejected unconditionally with fixed "unavailable" copy, because no
+    // browser could establish a session. That condition is gone, so `send` must actually
+    // attempt the fanout — a failure here comes from the stub transport, not from a
+    // pre-emptive refusal.
     const manager = createWebE2eeManager({ api: fakeApi });
     const actor = { id: freshActorId() };
     await manager.setActor(actor);
     const vault = openedVaultOf(manager);
     manager['bind'](vault, stubIdentity(`${actor.id}-device-sender`));
 
-    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(WebE2eeUnavailableError);
-    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(
-      WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+    await expect(manager.send('conversation-1', 'hello')).rejects.not.toThrow(
+      /does not work in the web client/i,
     );
   });
 });

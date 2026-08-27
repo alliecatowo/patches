@@ -11,10 +11,9 @@ import {
   transcriptDigestForStoredMessage,
   transcriptDigestsForStoredMessages,
 } from './e2ee-fanout.js';
-import { E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 
-describe('acceptE2eeLogicalMessage franking review gate', () => {
-  it('rejects every create/send/replay accept before database access while no profile is approved', async () => {
+describe('acceptE2eeLogicalMessage franking profile gate', () => {
+  it('rejects every create/send/replay accept before database access when the profile is not the shipped one', async () => {
     const getRepository = vi.fn();
     const manager = { getRepository } as unknown as EntityManager;
 
@@ -25,7 +24,7 @@ describe('acceptE2eeLogicalMessage franking review gate', () => {
       clientRequestId: 'request-id',
       message: {
         membershipEpoch: '1',
-        frankingProfile: E2EE_FRANKING_PROFILE_V1,
+        frankingProfile: 'unapproved-franking-profile',
         frankingCommitment: Buffer.alloc(32),
         fanoutDigest: Buffer.alloc(32),
         deviceEnvelopes: [],
@@ -35,13 +34,12 @@ describe('acceptE2eeLogicalMessage franking review gate', () => {
         keyForEra: () => Buffer.alloc(32),
         knownEras: () => [1],
       },
-      approvalPolicy: new E2eeRuntimeApprovalPolicy(false),
     });
 
     await expect(result).rejects.toMatchObject({
       code: 'E2EE_FANOUT_REJECTED',
     });
-    await expect(result).rejects.toThrow('independent review');
+    await expect(result).rejects.toThrow('Unknown franking profile');
     expect(getRepository).not.toHaveBeenCalled();
   });
 });

@@ -199,8 +199,7 @@ export const ERROR_CODES = [
   /** `E2eeService.SendEnvelopes`/`CreateE2eeConversation`: this node has no franking key to sign
    * an acceptance tag under (`NodeFrankingKeyRing.currentEra()` returned `undefined`). Distinct
    * from a fanout failure — the send was otherwise valid, but the node cannot issue the receipt
-   * ADR 0020 §9 requires. Unreachable in production while `E2EE_APPROVED_FRANKING_PROFILES` is
-   * empty (P13-015/P13-016 must land persisted key custody first). */
+   * ADR 0020 §9 requires. */
   'E2EE_FRANKING_UNAVAILABLE',
   /** `E2eeService.AddE2eeMember`/`RemoveE2eeMember` (P13-008, ADR 0020 §7): a submitted
    * group-control event's device signature does not verify, its digest does not cover its

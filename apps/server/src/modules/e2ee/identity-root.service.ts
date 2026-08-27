@@ -103,6 +103,12 @@ export class E2eeIdentityRootService {
           actorId,
           generation: rootProto.generation,
           publicKey: Buffer.from(nextView.publicKey),
+          rootBytes: Buffer.from(nextView.rootBytes),
+          selfSignature: Buffer.from(nextView.selfSignature),
+          previousRootSignature:
+            nextView.previousRootSignature === undefined
+              ? null
+              : Buffer.from(nextView.previousRootSignature),
           createdAt,
           rotatedAt: null,
         }),

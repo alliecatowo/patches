@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
@@ -11,10 +11,6 @@ import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from '../e2ee/availability.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import styles from './MessagesRoute.module.css';
@@ -30,6 +26,18 @@ const buttonStyle = {
 } as const;
 
 /**
+ * List-level panel copy. Must hold regardless of any individual row's `security_mode` —
+ * the list can mix `E2EE_V1` and `LEGACY_SERVER_VISIBLE` conversations (ADR 0020 §11), so a
+ * blanket `requiredConversationDisclosure('E2EE_V1')` here would assert encryption for rows
+ * that don't have it (spec §183.1/§194). Each row's own `securityModeLabel` below is the only
+ * per-conversation truth this screen states. Local rather than in `@patches/domain`
+ * beside `requiredConversationDisclosure` because it is list chrome, not a mandated
+ * per-conversation disclosure.
+ */
+const CONVERSATION_LIST_NEUTRAL_NOTE =
+  'Each conversation below shows its own security mode. This node always sees who you message and when.';
+
+/**
  * P19-017: extends this client's poll-failure house rule to the conversation list —
  * nothing about a failed `ListConversations` poll may be mistaken for a genuinely empty
  * inbox. Shown whenever the query is in an error state, whether or not a prior
@@ -38,16 +46,16 @@ const buttonStyle = {
 export const DM_LIST_POLL_FAILED_COPY = 'Could not load conversations.';
 
 /**
- * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, and this browser
- * can now hold its own enrolled messaging device. Enrollment is real and works; actually
- * moving messages does not yet, because no session can be established from a browser
- * (`e2ee/availability.ts`, B-132/B-124). The panel and the "New Message" control say that
- * outright rather than implying a retry would help.
+ * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, this browser holds
+ * its own enrolled messaging device, and — since ADR 0033 unified the identity transcripts
+ * and ADR 0035 made creation a reserve — it can establish a real session and send. "New
+ * Message" reserves a conversation and sends the first message into it.
  */
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
   const e2eeStatus = useE2ee(session);
   const [enrolling, setEnrolling] = useState(false);
+  const navigate = useNavigate();
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -81,9 +89,13 @@ export function MessagesRoute(): JSX.Element {
   }
 
   async function handleNewMessage(): Promise<void> {
-    // Fails closed with fixed copy until session setup exists (availability.ts).
+    const recipient = window.prompt('Recipient actor id')?.trim();
+    if (recipient === undefined || recipient === '') return;
+    const body = window.prompt('First message')?.trim();
+    if (body === undefined || body === '') return;
     try {
-      await webE2ee().createConversation();
+      const conversationId = await webE2ee().createConversation([recipient], body);
+      void navigate(`/messages/${conversationId}`);
     } catch (error) {
       toast(error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed);
     }
@@ -98,7 +110,6 @@ export function MessagesRoute(): JSX.Element {
             type="button"
             className={styles['newMsgBtn']}
             onClick={() => void handleNewMessage()}
-            disabled={!webE2eeSessionSetupAvailable()}
             aria-label="New direct message"
           >
             <PlusIcon size={16} />
@@ -169,12 +180,12 @@ function ConversationList({
         </p>
       ) : null}
       <p role="note" style={panelStyle}>
-        {requiredConversationDisclosure('E2EE_V1')}
+        {CONVERSATION_LIST_NEUTRAL_NOTE}
       </p>
       {conversations.map((conversation) => {
         const other = conversation.members.find((m) => m.actor?.id !== viewerActorId)?.actor;
-        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) —
-        // the panel above stays neutral because the list mixes states.
+        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) — the only
+        // per-conversation claim this list makes; the panel above stays genuinely neutral.
         const modeLabel = securityModeLabel(conversation.securityMode);
         return (
           <Link key={conversation.id} to={`/messages/${conversation.id}`} className={styles['row']}>
@@ -225,7 +236,6 @@ export function E2eePanel({
           {requiredConversationDisclosure('E2EE_V1')} {WEB_E2EE_COPY.notEnrolled}
         </p>
         {refusal}
-        {webE2eeSessionSetupAvailable() ? null : <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>}
         <button
           type="button"
           onClick={onEnroll}
@@ -250,7 +260,6 @@ export function E2eePanel({
   return (
     <div role="note" style={panelStyle}>
       <p>{requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.</p>
-      {webE2eeSessionSetupAvailable() ? null : <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>}
     </div>
   );
 }

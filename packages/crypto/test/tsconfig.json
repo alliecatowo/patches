@@ -1,0 +1,13 @@
+{
+  // The registry test reads this package's sources from disk, so it is Node-only and lives
+  // outside the package's browser-portable tsconfig (`types: []` forbids node builtins there by
+  // design). Same pattern as `scripts/tsconfig.json`; this config exists so typescript-eslint's
+  // project service can type the test.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2023"]
+  },
+  "include": ["./*.ts", "../src/**/*.ts"]
+}
