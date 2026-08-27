@@ -13,6 +13,7 @@ import { readDotEnvFile } from '@patches/config';
 import { Logger as PinoLoggerService } from 'nestjs-pino';
 import { validateEnv } from './config/env.schema.js';
 import { createGrpcMicroservice } from './grpc-options.js';
+import { webVitalsCorsMiddleware } from './modules/observability/web-vitals-cors.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
 import { configureProxyTrust, mountConnectEdge } from './transport/connect/connect.middleware.js';
 
@@ -142,6 +143,10 @@ async function bootstrap(): Promise<void> {
     webOrigins: env.WEB_ORIGINS,
     grpcMaxMessageBytes: env.GRPC_MAX_MESSAGE_BYTES,
   });
+  // B-182: same `webOrigins` allow-list as the Connect edge, scoped to its own route instead
+  // of `/patches.v1.*` — see `web-vitals-cors.ts`'s doc comment for why this route needs its
+  // own CORS preflight handling at all.
+  app.use(webVitalsCorsMiddleware(env.WEB_ORIGINS));
 
   // S-001 (`docs/operations/capacity.md`): raw Node `http.Server` tuning for the always-on
   // HTTP listener — the only edge with a directly internet-facing socket (gRPC sits behind

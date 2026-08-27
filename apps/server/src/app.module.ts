@@ -27,6 +27,7 @@ import { MediaModule } from './modules/media/media.module.js';
 import { MessagesModule } from './modules/messages/messages.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
+import { WebVitalsModule } from './modules/observability/web-vitals.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
 import { PostModule } from './modules/posts/post.module.js';
 import { PrivacyModule } from './modules/privacy/privacy.module.js';
@@ -80,6 +81,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     LabelsModule,
     PrivacyModule,
     FederationModule,
+    WebVitalsModule,
     PinoLoggerModule.forRoot(),
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
   ],

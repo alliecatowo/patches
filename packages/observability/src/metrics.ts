@@ -101,6 +101,46 @@ export const readRpcPollTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+/**
+ * B-182 — browser-reported Core Web Vitals (B-166's client), folded into three
+ * `prom-client` histograms (one per metric, since CLS/INP/LCP have unrelated units and
+ * therefore unrelated sensible bucket boundaries) labeled only by `route`. `route` is never
+ * the raw request payload's string verbatim — the ingest controller/service validates it
+ * against `@patches/domain`'s `WEB_VITALS_ROUTE_PATTERNS` allow-list *before* this module
+ * ever sees it, so the label's cardinality is bounded by that fixed pattern set, not by
+ * anything a client can freely choose (Prometheus label cardinality is otherwise an easy
+ * denial-of-service vector for an unauthenticated ingest endpoint).
+ *
+ * Bucket boundaries follow each metric's own published "good"/"needs improvement"/"poor"
+ * thresholds (web.dev, 2024): CLS is a unitless layout-shift score (good ≤0.1, poor >0.25);
+ * INP and LCP are milliseconds (INP good ≤200ms, poor >500ms; LCP good ≤2500ms, poor
+ * >4000ms) — each bucket set brackets its own good/poor split finely and tapers into a wide
+ * tail for pathological outliers, mirroring `e2eeEnvelopeListAgeSeconds`'s approach above.
+ */
+export const webVitalsCls = new Histogram({
+  name: 'patches_web_vitals_cls',
+  help: 'Browser-reported Cumulative Layout Shift score, labeled by route pattern.',
+  labelNames: ['route'] as const,
+  buckets: [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 0.75, 1, 1.5, 2],
+  registers: [metricsRegistry],
+});
+
+export const webVitalsInpMs = new Histogram({
+  name: 'patches_web_vitals_inp_ms',
+  help: 'Browser-reported Interaction to Next Paint, in milliseconds, labeled by route pattern.',
+  labelNames: ['route'] as const,
+  buckets: [50, 100, 200, 300, 500, 800, 1000, 1800, 3000, 5000, 10000],
+  registers: [metricsRegistry],
+});
+
+export const webVitalsLcpMs = new Histogram({
+  name: 'patches_web_vitals_lcp_ms',
+  help: 'Browser-reported Largest Contentful Paint, in milliseconds, labeled by route pattern.',
+  labelNames: ['route'] as const,
+  buckets: [500, 1000, 1800, 2500, 3000, 4000, 5000, 8000, 12000, 20000],
+  registers: [metricsRegistry],
+});
+
 export type MetricsRegistry = typeof metricsRegistry;
 
 export function registerCustomMetrics(customRegistry: Registry): void {
@@ -113,4 +153,7 @@ export function registerCustomMetrics(customRegistry: Registry): void {
   customRegistry.registerMetric(e2eeRetentionRunsTotal);
   customRegistry.registerMetric(e2eeEnvelopeListAgeSeconds);
   customRegistry.registerMetric(readRpcPollTotal);
+  customRegistry.registerMetric(webVitalsCls);
+  customRegistry.registerMetric(webVitalsInpMs);
+  customRegistry.registerMetric(webVitalsLcpMs);
 }

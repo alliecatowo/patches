@@ -1,13 +1,13 @@
 /**
  * B-166 — Core Web Vitals collection (CLS, LCP, INP).
  *
- * There is no browser-facing metrics ingest endpoint on the server yet (the only
- * `/metrics` surfaces are Prometheus *scrape* endpoints — pull, not push — see
- * `packages/observability/src/metrics-server.ts`); a server ingest RPC/route is filed as
- * B-178. Until it lands, this module only ever sends anywhere when the deploy sets
- * `VITE_WEB_VITALS_ENDPOINT` — unset (the default for every environment today) means the
- * web-vitals observers are never even installed, so there is zero behavioural change out
- * of the box.
+ * B-182 landed the server-side ingest (`apps/server/src/modules/observability/`), a plain
+ * unauthenticated HTTP POST route (not a Connect/gRPC RPC — `sendBeacon` cannot set custom
+ * headers or emit Connect's request framing, and this module already speaks plain JSON, so a
+ * matching plain route is the only shape the beacon path can actually reach). This module
+ * still only sends anywhere when the deploy sets `VITE_WEB_VITALS_ENDPOINT` — unset (the
+ * default until the build pipeline is wired to point it at that route) means the web-vitals
+ * observers are never even installed, so there is zero behavioural change out of the box.
  *
  * FID is intentionally absent: `web-vitals` 6.x (installed here) dropped `onFID` entirely
  * in favour of `onINP` (Google deprecated FID in 2024), so there is nothing to fake.
@@ -16,65 +16,15 @@
  * metrics"): the payload never carries the concrete URL, a handle, a post id, or any
  * other user content — `pathToRoutePattern` maps the live pathname down to the same
  * route *shape* `router.tsx` defines (`/p/:id`, not `/p/abc123`) before it ever reaches
- * the buffer.
+ * the buffer. That function (and the allow-list the server validates `route` against) now
+ * lives in `@patches/domain` — a single shared definition so client and server can never
+ * disagree about which route patterns are valid.
  */
+import { pathToRoutePattern, type WebVitalsPayload, type WebVitalsSample } from '@patches/domain';
 import { onCLS, onINP, onLCP, type Metric } from 'web-vitals';
 
-export interface WebVitalsSample {
-  readonly name: 'CLS' | 'INP' | 'LCP';
-  readonly value: number;
-  readonly rating: Metric['rating'];
-  readonly id: string;
-}
-
-export interface WebVitalsPayload {
-  readonly route: string;
-  readonly navigationType: Metric['navigationType'];
-  readonly buildVersion: string;
-  readonly samples: readonly WebVitalsSample[];
-}
-
-/** Static top-level routes from `router.tsx` that carry no identifying segment. */
-const STATIC_ROUTES = new Set([
-  '',
-  'report',
-  'login',
-  'register',
-  'search',
-  'notifications',
-  'bookmarks',
-  'compose',
-  'appeals',
-  'messages',
-  'moderation/log',
-]);
-
-/** Parameterized routes from `router.tsx`, checked in order; first match wins. */
-const PARAM_ROUTES: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /^p\/[^/]+$/, replacement: '/p/:id' },
-  { pattern: /^page\/[^/]+\/[^/]+$/, replacement: '/page/:handle/:slug' },
-  { pattern: /^page\/[^/]+$/, replacement: '/page/:handle' },
-  { pattern: /^t\/[^/]+$/, replacement: '/t/:tag' },
-  { pattern: /^c\/[^/]+$/, replacement: '/c/:id' },
-  { pattern: /^messages\/[^/]+$/, replacement: '/messages/:id' },
-  { pattern: /^settings(\/[^/]+)?$/, replacement: '/settings/:section' },
-];
-
-/**
- * Reduces a live pathname to the route *pattern* it matches, never the concrete path —
- * a path segment can be a handle or a post id, both identifying (§194). Falls back to
- * `/:handle` for the single-segment profile route and `/:unknown` for anything that
- * doesn't match a known shape, rather than ever forwarding the raw segment.
- */
-export function pathToRoutePattern(pathname: string): string {
-  const trimmed = pathname.replace(/^\/+|\/+$/g, '');
-  if (STATIC_ROUTES.has(trimmed)) return `/${trimmed}`;
-  for (const { pattern, replacement } of PARAM_ROUTES) {
-    if (pattern.test(trimmed)) return replacement;
-  }
-  if (trimmed !== '' && !trimmed.includes('/')) return '/:handle';
-  return '/:unknown';
-}
+export { pathToRoutePattern };
+export type { WebVitalsPayload, WebVitalsSample };
 
 function webVitalsEndpoint(): string | undefined {
   const endpoint = import.meta.env['VITE_WEB_VITALS_ENDPOINT'] as string | undefined;
@@ -139,7 +89,8 @@ function flush(endpoint: string): void {
 /**
  * Installs the CLS/LCP/INP observers and wires the batched flush. No-ops entirely (never
  * installs a single listener) when `VITE_WEB_VITALS_ENDPOINT` is unset, so this is a pure
- * pay-for-what-you-use feature until B-178 lands a real ingest endpoint.
+ * pay-for-what-you-use feature until the build pipeline sets that variable to the B-182
+ * ingest route.
  */
 export function initWebVitals(): void {
   if (installed) return;
