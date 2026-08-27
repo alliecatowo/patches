@@ -331,6 +331,14 @@ function fakeTransport(
     revokeDevice() {
       return Promise.reject(new Error('fake transport: RevokeDevice not wired for this suite'));
     },
+    getPrekeyInventory() {
+      return Promise.reject(
+        new Error('fake transport: GetPrekeyInventory not wired for this suite'),
+      );
+    },
+    uploadPrekeys() {
+      return Promise.reject(new Error('fake transport: UploadPrekeys not wired for this suite'));
+    },
   };
   return { transport, spy: state };
 }
@@ -440,6 +448,8 @@ describe('enrollThisDevice orchestration', () => {
       listPendingDeviceLinks: () => Promise.resolve({ offers: [] } as never),
       cancelDeviceLink: () => Promise.resolve({}),
       revokeDevice: () => Promise.reject(new Error('not wired for this suite')),
+      getPrekeyInventory: () => Promise.reject(new Error('not wired for this suite')),
+      uploadPrekeys: () => Promise.reject(new Error('not wired for this suite')),
     };
     await expect(
       enrollThisDevice({ actorId: ACTOR_ID, transport: failingProbe, vault }),

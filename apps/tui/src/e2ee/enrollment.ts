@@ -72,14 +72,18 @@ import type {
   E2eeServiceBeginDeviceLinkResponse,
   E2eeServiceListPendingDeviceLinksResponse,
   E2eeSignedPrekey,
+  GetPrekeyInventoryResponse,
   PublishIdentityRootRequest,
   RevokeDeviceRequest,
+  UploadPrekeysRequest,
+  UploadPrekeysResponse,
 } from '@patches/proto/es';
 
 import { fromDate, toDate } from '../api/wire/time.js';
 import type {
   LocalDeviceIdentity,
   LocalOneTimePreKey,
+  LocalPreviousSignedPreKey,
   LocalSignedPreKeyBundle,
 } from './local-identity.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
@@ -170,6 +174,11 @@ export interface EnrollmentTransport {
   /** Marks one device inactive on a root-signed roster S+1 the caller already built
    * (issue #277 comment — authority-only; the node checks the signature, not who calls). */
   revokeDevice(request: RevokeDeviceRequest): Promise<unknown>;
+  /** This device's own remaining one-time-prekey count and signed-prekey age (ADR 0020 §5,
+   * issue #278) — read by `prekey-maintenance.ts` on every maintenance attempt. */
+  getPrekeyInventory(deviceId: string): Promise<GetPrekeyInventoryResponse>;
+  /** Tops up one-time prekeys and/or rotates the signed prekey (ADR 0020 §5, issue #278). */
+  uploadPrekeys(request: UploadPrekeysRequest): Promise<UploadPrekeysResponse>;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +188,20 @@ export interface EnrollmentTransport {
 /** Reserved vault record key. The leading NUL cannot occur in a real session id
  * (`sessionIdFor` composes UUID conversation ids), so the runtime can never collide. */
 export const ENROLLMENT_RECORD_KEY = '\0patches-e2ee-enrollment';
+
+/**
+ * A one-time/signed-prekey batch this device minted and persisted but has not yet confirmed
+ * the node accepted (ADR 0020 §5, issue #278's crash-safety contract): staged strictly BEFORE
+ * `UploadPrekeys` is called, and cleared strictly AFTER it resolves. A process that dies in
+ * between resumes by re-sending exactly this batch — never minting a second one, which would
+ * collide with the node's immutable per-device issued-id ledger.
+ */
+export interface PendingPrekeyUpload {
+  /** Empty when this batch is a rotation-only upload. */
+  readonly oneTimePrekeyIds: readonly number[];
+  /** `undefined` when this batch is a replenish-only upload. */
+  readonly signedPreKeyId: number | undefined;
+}
 
 export interface StoredEnrollment {
   /** True once `EnrollDevice` resolved successfully at least once. */
@@ -193,6 +216,18 @@ export interface StoredEnrollment {
   readonly rootPrivate: Uint8Array | undefined;
   readonly rootPublic: Uint8Array;
   readonly identity: LocalDeviceIdentity;
+  /**
+   * Next id `prekey-maintenance.ts` mints a locally-generated one-time prekey under (ADR 0020
+   * §5, issue #278) — monotonic for the life of this device, independent of which currently-held
+   * `identity.oneTimePreKeys` entries the node has already consumed or this device has since
+   * forgotten, so an id the node's immutable per-device ledger already saw is never reissued.
+   */
+  readonly nextOneTimePrekeyId: number;
+  /** Signed prekeys retired by rotation, retained until their mailbox-latency window elapses
+   * (ADR 0020 §5, issue #278) — see `LocalPreviousSignedPreKey`. */
+  readonly previousSignedPreKeys: readonly LocalPreviousSignedPreKey[];
+  /** See {@link PendingPrekeyUpload}. `undefined` when no upload is outstanding. */
+  readonly pendingPrekeyUpload: PendingPrekeyUpload | undefined;
 }
 
 function writeKey(writer: ByteWriter, key: KeyPair): void {
@@ -223,8 +258,15 @@ function readKey(reader: ByteReader): KeyPair {
  * ever have exactly one active entry). `identity.ownRoster.devices` already holds every active
  * entry's verified certificate (it is what `verifyRosterSnapshot` itself built), so encoding
  * just serializes the ones that are not this device's own (already written above).
+ *
+ * v3 -> v4 (issue #278, ADR 0020 §5): append `nextOneTimePrekeyId`, retained
+ * `previousSignedPreKeys`, and an outstanding `pendingPrekeyUpload` — everything
+ * `prekey-maintenance.ts` needs to replenish/rotate crash-safely. v1–v3 records predate prekey
+ * maintenance entirely: `nextOneTimePrekeyId` defaults to one past the highest id already held
+ * (never lower — that would risk reissuing an id the node's ledger has already seen),
+ * `previousSignedPreKeys` defaults to empty, and no upload can be outstanding.
  */
-const STORED_ENROLLMENT_VERSION = 3;
+const STORED_ENROLLMENT_VERSION = 4;
 
 export function encodeStoredEnrollment(record: StoredEnrollment): Uint8Array {
   const identity = record.identity;
@@ -261,6 +303,24 @@ export function encodeStoredEnrollment(record: StoredEnrollment): Uint8Array {
     writer.bytes(device.certificateBytes);
     writer.fixed(device.rootSignature, SIGNATURE_BYTES);
   }
+  writer.u32(record.nextOneTimePrekeyId);
+  writer.u32(record.previousSignedPreKeys.length);
+  for (const previous of record.previousSignedPreKeys) {
+    writer.u32(previous.id);
+    writeKey(writer, previous.keyPair);
+    writer.u64(previous.createdAtMs).u64(previous.expiresAtMs);
+    writer.bytes(previous.bundleBytes);
+    writer.fixed(previous.deviceSignature, SIGNATURE_BYTES);
+    writer.u64(previous.retiredAtMs);
+  }
+  const pendingUpload = record.pendingPrekeyUpload;
+  writer.u8(pendingUpload === undefined ? 0 : 1);
+  if (pendingUpload !== undefined) {
+    writer.u32(pendingUpload.oneTimePrekeyIds.length);
+    for (const id of pendingUpload.oneTimePrekeyIds) writer.u32(id);
+    writer.u8(pendingUpload.signedPreKeyId === undefined ? 0 : 1);
+    if (pendingUpload.signedPreKeyId !== undefined) writer.u32(pendingUpload.signedPreKeyId);
+  }
   return writer.finish();
 }
 
@@ -269,7 +329,7 @@ export function encodeStoredEnrollment(record: StoredEnrollment): Uint8Array {
 export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): StoredEnrollment {
   const reader = new ByteReader(bytes);
   const version = reader.u8();
-  if (version !== 1 && version !== 2 && version !== 3) {
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) {
     throw new Error('Unsupported enrollment record version.');
   }
   const submitted = reader.u8() === 1;
@@ -302,13 +362,45 @@ export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): Stored
   // certificate — this device's own is always sufficient for them, since their roster could
   // only ever have exactly one active entry.
   const otherCertificates: { certificateBytes: Uint8Array; rootSignature: Uint8Array }[] = [];
-  if (version === 3) {
+  if (version === 3 || version === 4) {
     const otherCount = reader.u32();
     for (let index = 0; index < otherCount; index += 1) {
       otherCertificates.push({
         certificateBytes: reader.bytes(),
         rootSignature: reader.fixed(SIGNATURE_BYTES),
       });
+    }
+  }
+  let nextOneTimePrekeyId = oneTimePreKeys.reduce((max, prekey) => Math.max(max, prekey.id), 0) + 1;
+  const previousSignedPreKeys: LocalPreviousSignedPreKey[] = [];
+  let pendingPrekeyUpload: PendingPrekeyUpload | undefined;
+  if (version === 4) {
+    nextOneTimePrekeyId = reader.u32();
+    const previousCount = reader.u32();
+    for (let index = 0; index < previousCount; index += 1) {
+      const id = reader.u32();
+      const keyPair = readKey(reader);
+      const createdAtMs = reader.u64();
+      const expiresAtMs = reader.u64();
+      const prevBundleBytes = reader.bytes();
+      const prevDeviceSignature = reader.fixed(SIGNATURE_BYTES);
+      const retiredAtMs = reader.u64();
+      previousSignedPreKeys.push({
+        id,
+        keyPair,
+        createdAtMs,
+        expiresAtMs,
+        bundleBytes: prevBundleBytes,
+        deviceSignature: prevDeviceSignature,
+        retiredAtMs,
+      });
+    }
+    if (reader.u8() === 1) {
+      const idCount = reader.u32();
+      const oneTimePrekeyIds: number[] = [];
+      for (let index = 0; index < idCount; index += 1) oneTimePrekeyIds.push(reader.u32());
+      const signedPreKeyId = reader.u8() === 1 ? reader.u32() : undefined;
+      pendingPrekeyUpload = { oneTimePrekeyIds, signedPreKeyId };
     }
   }
   reader.end();
@@ -346,7 +438,16 @@ export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): Stored
     ownBundle: { bundleBytes, deviceSignature: bundleSignature },
     oneTimePreKeys,
   };
-  return { submitted, createdRoot, rootPrivate, rootPublic, identity };
+  return {
+    submitted,
+    createdRoot,
+    rootPrivate,
+    rootPublic,
+    identity,
+    nextOneTimePrekeyId,
+    previousSignedPreKeys,
+    pendingPrekeyUpload,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +763,11 @@ export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnr
     rootPrivate: rootKeys.privateKey,
     rootPublic: rootKeys.publicKey,
     identity,
+    // Issue #278: this device's own next locally-minted one-time-prekey id continues past
+    // every id enrollment just minted — never restarts at 1 on a later replenishment.
+    nextOneTimePrekeyId: oneTimePreKeys.reduce((max, prekey) => Math.max(max, prekey.id), 0) + 1,
+    previousSignedPreKeys: [],
+    pendingPrekeyUpload: undefined,
   };
 
   return { record, publishRootRequest, enrollRequest: buildEnrollRequest(identity) };

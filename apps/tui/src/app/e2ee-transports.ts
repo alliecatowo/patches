@@ -58,6 +58,8 @@ export type E2eeApiSurface = Pick<
   | 'sendEnvelopes'
   | 'listMailboxEnvelopes'
   | 'acknowledgeEnvelopes'
+  | 'getPrekeyInventory'
+  | 'uploadPrekeys'
 >;
 
 /**
@@ -374,6 +376,16 @@ export function createEnrollmentTransport(
     async revokeDevice(request) {
       const accessToken = await options.accessToken();
       await options.api.revokeDevice(request, accessToken);
+    },
+
+    async getPrekeyInventory(deviceId) {
+      const accessToken = await options.accessToken();
+      return options.api.getPrekeyInventory({ deviceId }, accessToken);
+    },
+
+    async uploadPrekeys(request) {
+      const accessToken = await options.accessToken();
+      return options.api.uploadPrekeys(request, accessToken);
     },
   };
 }

@@ -345,6 +345,9 @@ function buildMethods(sdk: PatchesSdk) {
     sendEnvelopes: requiredToken(sdk.e2ee.sendEnvelopes),
     listMailboxEnvelopes: requiredToken(sdk.e2ee.listMailboxEnvelopes),
     acknowledgeEnvelopes: requiredToken(sdk.e2ee.acknowledgeEnvelopes),
+    // One-time prekey replenishment + signed-prekey rotation (ADR 0020 §5, issue #278).
+    getPrekeyInventory: requiredToken(sdk.e2ee.getPrekeyInventory),
+    uploadPrekeys: requiredToken(sdk.e2ee.uploadPrekeys),
   };
 }
 

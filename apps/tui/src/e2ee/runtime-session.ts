@@ -39,6 +39,7 @@ import type { EnrollmentTransport } from './enrollment.js';
 import { loadStoredEnrollment } from './enrollment.js';
 import { parseHistoryTransfer } from './history-transfer.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
+import { maintainPrekeys } from './prekey-maintenance.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
 import type { DoubleRatchetState, RatchetTransition } from '@patches/crypto';
 import type { OpenedDeviceEnvelope } from '@patches/crypto';
@@ -89,6 +90,11 @@ export interface E2eeRuntimeOptions {
  * order of magnitude without adding a refresh round trip to every single send/receive. */
 const DEFAULT_ROSTER_REFRESH_INTERVAL_MS = 30_000;
 
+/** Prekey maintenance cadence (ADR 0020 §5, issue #278): at most once per this interval per
+ * process, since a `GetPrekeyInventory` round trip on every single send would be wasteful and
+ * the underlying thresholds (20 remaining, 7 days) tolerate this much slack trivially. */
+const DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS = 10 * 60_000;
+
 interface PreparedSession {
   readonly state: DoubleRatchetState;
   /** Present only when the next envelope is the session's initial (X3DH) message. */
@@ -109,6 +115,9 @@ export class E2eeSessionRuntime {
   private readonly refreshIntervalMs: number;
   /** Epoch ms at which the next `refreshOwnRoster` call is due; 0 forces one immediately. */
   private nextRosterRefreshMs = 0;
+  /** Epoch ms at which the next `maintainPrekeys` call is due; 0 forces one immediately
+   * (issue #278). */
+  private nextPrekeyMaintenanceMs = 0;
   /** True once a refresh has observed this device revoked (issue #277 comment). Sticky
    * for the life of this runtime instance until a later refresh observes it active again
    * (e.g. re-linked under a fresh roster) — never cleared by anything except a refresh. */
@@ -150,10 +159,36 @@ export class E2eeSessionRuntime {
     this.deviceRevoked = !result.selfActive;
   }
 
+  /**
+   * Replenishes one-time prekeys and rotates the signed prekey when due, at most once per
+   * `DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS` (ADR 0020 §5, issue #278) — a no-op when no
+   * `transport` was supplied, matching `ensureFreshOwnRoster`'s opt-in shape. Best-effort: a
+   * failure here (a transient network error, a rate-limited node) must never block sending a
+   * message — the next scheduled attempt, or the node's own drain-rate limits in the meantime,
+   * cover a missed cycle.
+   */
+  private async ensurePrekeysMaintained(): Promise<void> {
+    if (this.transport === undefined) return;
+    const now = this.nowMs();
+    if (now < this.nextPrekeyMaintenanceMs) return;
+    this.nextPrekeyMaintenanceMs = now + DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS;
+    try {
+      await maintainPrekeys({
+        identity: this.identity,
+        transport: this.transport,
+        vault: this.vault,
+        nowMs: this.nowMs,
+      });
+    } catch {
+      // See doc comment: best-effort by design, never surfaced to the sender.
+    }
+  }
+
   // ------------------------------- send -----------------------------------
 
   async send(conversationId: string, body: string, clientRequestId: string): Promise<void> {
     await this.ensureFreshOwnRoster();
+    await this.ensurePrekeysMaintained();
     if (this.deviceRevoked) {
       throw new Error(E2EE_DEVICE_REVOKED_COPY);
     }
@@ -421,11 +456,17 @@ export class E2eeSessionRuntime {
         state = storedState;
       } else {
         const initiatorRoster = await this.mailboxTransport.loadPeerRoster(setup.senderActorId);
+        // Issue #278: a rotated signed prekey may still be named by an initial message an
+        // initiator sealed just before rotation reached them — `loadStoredEnrollment` (not the
+        // in-memory `this.identity`, which never carries retained material) is the source of
+        // truth for what is still retained.
+        const storedForRetainedKeys = await loadStoredEnrollment(this.vault, this.nowMs());
         const established = establishResponderSession({
           identity: this.identity,
           setup,
           initiatorRoster,
           nowMs: this.nowMs(),
+          previousSignedPreKeys: storedForRetainedKeys?.previousSignedPreKeys,
         });
         state = established.state;
       }

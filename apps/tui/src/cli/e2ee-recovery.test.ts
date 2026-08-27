@@ -101,6 +101,9 @@ describe('buildExportDocument', () => {
       rootPrivate: generateSigningKeyPair().privateKey,
       rootPublic: local.ownRoster.root.publicKey,
       identity: local,
+      nextOneTimePrekeyId: 1,
+      previousSignedPreKeys: [],
+      pendingPrekeyUpload: undefined,
     };
 
     const document = buildExportDocument(ACTOR_ID, enrollment, NOW_MS);
@@ -156,7 +159,16 @@ describe('buildRestoredEnrollmentRecord', () => {
     // The record type itself has no field for ratchet state, skipped keys, or old device
     // keys — it holds only a freshly generated device identity plus the restored root.
     expect(Object.keys(record).sort()).toEqual(
-      ['createdRoot', 'identity', 'rootPrivate', 'rootPublic', 'submitted'].sort(),
+      [
+        'createdRoot',
+        'identity',
+        'nextOneTimePrekeyId',
+        'pendingPrekeyUpload',
+        'previousSignedPreKeys',
+        'rootPrivate',
+        'rootPublic',
+        'submitted',
+      ].sort(),
     );
     expect(Object.keys(record.identity).sort()).toEqual(
       [

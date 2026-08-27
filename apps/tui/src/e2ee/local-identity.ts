@@ -30,6 +30,24 @@ export interface LocalOneTimePreKey {
 }
 
 /**
+ * A signed prekey this device retired by rotation (ADR 0020 §5, issue #278), kept only long
+ * enough to open an initial message a peer sealed against it before rotation reached them —
+ * the mailbox's max latency window (`E2EE_MAILBOX_MAX_LATENCY_MS`). `bundleBytes`/
+ * `deviceSignature` are the exact signed transcript this device published for the key while it
+ * was current — retained verbatim, since `session-setup.ts` re-verifies against them rather
+ * than trusting a bare keypair (ADR 0033 §3 applies to retained material too).
+ */
+export interface LocalPreviousSignedPreKey {
+  readonly id: number;
+  readonly keyPair: KeyPair;
+  readonly createdAtMs: number;
+  readonly expiresAtMs: number;
+  readonly bundleBytes: Uint8Array;
+  readonly deviceSignature: Uint8Array;
+  readonly retiredAtMs: number;
+}
+
+/**
  * This device's own signed prekey-bundle transcript (T4) and the device signature over
  * it — the raw material {@link selfPrekeyBundle} re-verifies on every call, so even
  * locally minted material is never trusted without running the same check a peer's

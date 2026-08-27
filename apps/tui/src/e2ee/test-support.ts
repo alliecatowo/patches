@@ -335,6 +335,8 @@ import {
   E2eeIdentityRootSchema,
   E2eeServiceBeginDeviceLinkResponseSchema,
   E2eeServiceListPendingDeviceLinksResponseSchema,
+  GetPrekeyInventoryResponseSchema,
+  UploadPrekeysResponseSchema,
   type E2eeDeviceCertificate,
   type E2eeDeviceLinkOffer,
   type E2eeDeviceRoster,
@@ -343,13 +345,22 @@ import {
   type E2eeServiceBeginDeviceLinkResponse,
   type E2eeServiceListPendingDeviceLinksResponse,
   type EnrollDeviceRequest,
+  type GetPrekeyInventoryResponse,
   type PublishIdentityRootRequest,
   type RevokeDeviceRequest,
+  type UploadPrekeysRequest,
+  type UploadPrekeysResponse,
 } from '@patches/proto/es';
 import { vi, type Mock } from 'vitest';
-import { activeDeviceIds, E2EE_PROTOCOL_V1 } from '@patches/domain';
+import {
+  activeDeviceIds,
+  E2EE_ONE_TIME_PREKEY_REPLENISH_THRESHOLD,
+  E2EE_ONE_TIME_PREKEY_TARGET,
+  E2EE_PROTOCOL_V1,
+} from '@patches/domain';
 
 import { rosterViewFromWire } from './chain.js';
+import { toDate } from '../api/wire/time.js';
 import type {
   EnrollmentCapability,
   EnrollmentDeviceRoster,
@@ -408,6 +419,20 @@ export function publishedRoot(actorId: string, publicKey: Uint8Array): E2eeIdent
 /** One in-memory "node": rosters by actor, and pending link offers by actor — enough
  * state for `beginDeviceLinkOffer` -> `approveLinkOffer` -> `pollLinkedEnrollment` to run
  * end to end against fakes without a real server (ADR 0037 §1). */
+/**
+ * A device's server-side prekey bookkeeping (issue #278) — the fake's stand-in for the node's
+ * `E2eeSignedPrekeyEntity`/`E2eeOneTimePrekeyKeyIdEntity` rows. `issuedOneTimePrekeyIds` is the
+ * immutable per-device ledger the real server enforces (`E2eeOneTimePrekeyKeyIdEntity`'s primary
+ * key): once an id lands here, `uploadPrekeys` below refuses it a second time, regardless of
+ * whether it is still "unconsumed".
+ */
+export interface FakePrekeyState {
+  readonly issuedOneTimePrekeyIds: Set<string>;
+  readonly unconsumedOneTimePrekeyIds: Set<string>;
+  signedPrekeyId: bigint;
+  signedPrekeyCreatedAtMs: number;
+}
+
 export interface FakeE2eeNode {
   readonly rosterByActor: Map<string, EnrollmentDeviceRoster>;
   readonly pendingOffersByActor: Map<string, E2eeDeviceLinkOffer[]>;
@@ -420,6 +445,10 @@ export interface FakeE2eeNode {
    * fake's stand-in for the node's own prekey store, so `claimPrekeyBundles` has bundles to
    * hand out for every active device of a claimed actor. */
   readonly messagingIdentities: Map<string, LocalDeviceIdentity>;
+  /** Backs `getPrekeyInventory`/`uploadPrekeys` (issue #278) — seeded by `enrollDevice` from
+   * whatever the enrolling device submitted, and mutated only by `uploadPrekeys` and the
+   * `consumeOneTimePrekeys` test helper below. */
+  readonly prekeyState: Map<string, FakePrekeyState>;
 }
 
 export function createFakeE2eeNode(): FakeE2eeNode {
@@ -429,7 +458,23 @@ export function createFakeE2eeNode(): FakeE2eeNode {
     rootByActor: new Map(),
     mailboxesByDevice: new Map(),
     messagingIdentities: new Map(),
+    prekeyState: new Map(),
   };
+}
+
+/** Test-only simulation of the node handing out (claiming) one-time prekeys — removes up to
+ * `count` arbitrary ids from the device's unconsumed set without touching the issued-id ledger,
+ * mirroring what `ClaimPrekeyBundles` does server-side. Used to build a "remaining ≤ threshold"
+ * fixture without hand-rolling ledger state. */
+export function consumeOneTimePrekeys(node: FakeE2eeNode, deviceId: string, count: number): void {
+  const state = node.prekeyState.get(deviceId);
+  if (state === undefined) throw new Error('fake node: consumeOneTimePrekeys for unknown device');
+  let remaining = count;
+  for (const id of state.unconsumedOneTimePrekeyIds) {
+    if (remaining <= 0) break;
+    state.unconsumedOneTimePrekeyIds.delete(id);
+    remaining -= 1;
+  }
 }
 
 /** Publishes (replaces) one actor's served roster + certificates on the fake node —
@@ -456,6 +501,8 @@ export interface FakeTransport extends EnrollmentTransport {
   readonly listPendingDeviceLinks: Mock<() => Promise<E2eeServiceListPendingDeviceLinksResponse>>;
   readonly cancelDeviceLink: Mock<(linkId: string) => Promise<unknown>>;
   readonly revokeDevice: Mock<(request: RevokeDeviceRequest) => Promise<unknown>>;
+  readonly getPrekeyInventory: Mock<(deviceId: string) => Promise<GetPrekeyInventoryResponse>>;
+  readonly uploadPrekeys: Mock<(request: UploadPrekeysRequest) => Promise<UploadPrekeysResponse>>;
 }
 
 let fakeLinkIdCounter = 0;
@@ -509,6 +556,19 @@ export function fakeTransport(options: { actorId: string; node?: FakeE2eeNode })
         roster,
         certificates: [...(existing?.certificates ?? []), certificate],
       });
+      // Issue #278: seeds this device's prekey bookkeeping from exactly what it enrolled with,
+      // so `getPrekeyInventory`/`uploadPrekeys` see the same starting inventory a real node
+      // would have persisted from the same `EnrollDeviceRequest`.
+      const signedPrekey = request.signedPrekey;
+      if (signedPrekey !== undefined) {
+        const issued = new Set(request.oneTimePrekeys.map((prekey) => String(prekey.keyId)));
+        node.prekeyState.set(certificate.deviceId, {
+          issuedOneTimePrekeyIds: issued,
+          unconsumedOneTimePrekeyIds: new Set(issued),
+          signedPrekeyId: signedPrekey.keyId,
+          signedPrekeyCreatedAtMs: toDate(signedPrekey.createdAt)?.getTime() ?? Date.now(),
+        });
+      }
       return Promise.resolve(undefined);
     }),
     getDeviceRoster: vi.fn<(actorId: string) => Promise<EnrollmentDeviceRoster>>((forActorId) =>
@@ -552,6 +612,67 @@ export function fakeTransport(options: { actorId: string; node?: FakeE2eeNode })
       node.rosterByActor.set(actorId, { roster, certificates: existing?.certificates ?? [] });
       return Promise.resolve(undefined);
     }),
+    getPrekeyInventory: vi.fn<(deviceId: string) => Promise<GetPrekeyInventoryResponse>>(
+      (deviceId) => {
+        const state = node.prekeyState.get(deviceId);
+        if (state === undefined) {
+          throw new Error('fake node: GetPrekeyInventory for unknown device');
+        }
+        const count = state.unconsumedOneTimePrekeyIds.size;
+        return Promise.resolve(
+          create(GetPrekeyInventoryResponseSchema, {
+            oneTimePrekeyCount: count,
+            oneTimePrekeyTarget: E2EE_ONE_TIME_PREKEY_TARGET,
+            replenishThreshold: E2EE_ONE_TIME_PREKEY_REPLENISH_THRESHOLD,
+            oneTimePrekeysExhausted: count === 0,
+            // The fake never independently ages a key past due — `maintainPrekeys` decides
+            // rotation from the identity's own `createdAtMs` against the caller's injected
+            // clock, never from this flag, so it is always safe to report false here.
+            signedPrekeyRotationDue: false,
+          }),
+        );
+      },
+    ),
+    uploadPrekeys: vi.fn<(request: UploadPrekeysRequest) => Promise<UploadPrekeysResponse>>(
+      (request) => {
+        const state = node.prekeyState.get(request.deviceId);
+        if (state === undefined) {
+          throw new Error('fake node: UploadPrekeys for unknown device');
+        }
+        const signedPrekey = request.signedPrekey;
+        if (signedPrekey !== undefined) {
+          // Mirrors the real server's `rotateSignedPrekey`: a rotated id must strictly advance.
+          if (signedPrekey.keyId <= state.signedPrekeyId) {
+            throw new Error('fake node: a rotated signed prekey must advance the device key id');
+          }
+          state.signedPrekeyId = signedPrekey.keyId;
+          state.signedPrekeyCreatedAtMs = toDate(signedPrekey.createdAt)?.getTime() ?? Date.now();
+        }
+        // Mirrors the real server's immutable per-device ledger: an id, once issued, is never
+        // accepted again — checked BEFORE any of this batch is applied, so a batch containing
+        // even one reused id is rejected atomically, like the real transaction.
+        for (const prekey of request.oneTimePrekeys) {
+          if (state.issuedOneTimePrekeyIds.has(String(prekey.keyId))) {
+            throw new Error('fake node: one-time prekey ids must be unique per device');
+          }
+        }
+        const capacity = E2EE_ONE_TIME_PREKEY_TARGET - state.unconsumedOneTimePrekeyIds.size;
+        if (request.oneTimePrekeys.length > capacity) {
+          throw new Error('fake node: one-time prekey upload exceeds inventory capacity');
+        }
+        for (const prekey of request.oneTimePrekeys) {
+          const id = String(prekey.keyId);
+          state.issuedOneTimePrekeyIds.add(id);
+          state.unconsumedOneTimePrekeyIds.add(id);
+        }
+        return Promise.resolve(
+          create(UploadPrekeysResponseSchema, {
+            oneTimePrekeyCount: state.unconsumedOneTimePrekeyIds.size,
+            ...(signedPrekey === undefined ? {} : { signedPrekey }),
+          }),
+        );
+      },
+    ),
   };
 }
 
