@@ -1,8 +1,13 @@
-# tasks.md — live task board
+# tasks.md — task archive and offline fallback
+
+**The live board is the GitHub Project ["Patches"](https://github.com/users/alliecatowo/projects/5)** — pick work and move
+`Status` there, via the `github` MCP server (`projects_list`/`projects_get`/`projects_write`). This file is the historical
+record of completed work and the fallback when that server or the `project` OAuth scope is unavailable. Don't tick items
+off here.
 
 Conventions: `- [ ] ID — description` · IDs are `P<phase>-<nnn>` (H = harness, B = backlog/discovered, A = audit findings).
-Check off with `- [x]`. Add a trailing `(#issue)` when mirrored to GitHub. Keep the newest audit findings at the top of
-**Backlog**. When a phase's tasks are all done, run `/audit` before starting the next phase. Managed via `/task`.
+The ID is the join key to the board's `Task ID` field. Keep the newest audit findings at the top of **Backlog**. When a
+phase's tasks are all done, run `/audit` before starting the next phase. Managed via `/task`.
 
 ## Harness
 
@@ -454,8 +459,9 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 
 ## Phase 20 — live bugs from owner testing 2026-08-26 (web PWA, highest priority)
 
-<!-- Owner + partner testing on iOS PWA. tasks.md is the canonical board until an external
-     tracker is set up — do not duplicate these into GitHub issues. -->
+<!-- Owner + partner testing on iOS PWA. These now live on the canonical board
+     (https://github.com/users/alliecatowo/projects/5) as draft items — work them there.
+     Kept here as the archived record; don't tick them off in this file. -->
 
 - [x] B-148 — **Web nav-style preference never applies**: selecting "stacked" instead of "radial" in settings leaves the nav radial for everyone — the menu is always radial regardless of the saved preference (`apps/web/src/hooks/useInterfacePreferences.ts`, `apps/web/src/lib/interfacePreferences.ts`, `apps/web/src/components/ThumbNavFab.tsx`). Find where the preference is read vs where ThumbNavFab picks its variant — likely the pref is persisted but never consumed (or consumed under a different key than the one the settings screen writes).
 - [x] B-149 — **iOS PWA: the report-issue entry triggers an undo-typing action** — tapping report-issue (or its attach-screenshot control) in the iOS installed-PWA fires an undo/redo typing action instead of the intended UI. Suspect a keyboard/`contentEditable`/input-focus interaction or a shake-gesture ("shake to undo") triggered by focus loss; verify on iOS Safari PWA specifically, since the control works in desktop browsers.
@@ -491,7 +497,8 @@ ADR 0019 is binding (`INITIAL_VISION.md` §196–§210). §205's TUI-first-but-w
 
 ## Phase 21 — web DX / robustness backlog (owner triage 2026-08-26)
 
-<!-- tasks.md is the canonical board until an external tracker is set up. Suggested
+<!-- These now live on the canonical board (https://github.com/users/alliecatowo/projects/5)
+     as draft items — work them there; this file is the archived record. Suggested
      order per owner: PWA plugin → sonner → RQ devtools → cross-tab session → upload
      retry → diagnostics persistence → route error boundaries → web vitals → bundle
      analyzer CI. -->

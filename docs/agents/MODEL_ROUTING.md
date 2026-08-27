@@ -1,7 +1,7 @@
 # Model routing
 
 The frontier main session is an orchestrator and acceptance gate, not the default implementer. It
-only routes work already defined by the user, `tasks.md`, or the spec. Each delegated task has a
+only routes work already defined by the user, the [GitHub Project board](https://github.com/users/alliecatowo/projects/5), or the spec. Each delegated task has a
 short, self-contained packet: goal, constraints, exact owned and forbidden paths, acceptance
 checks, and any current state needed to start. Use reduced/non-full fork context when supported.
 

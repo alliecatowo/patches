@@ -1,5 +1,5 @@
 name = "implementer"
-description = "Implements one scoped task from tasks.md end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently."
+description = "Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently."
 model_reasoning_effort = "high"
 developer_instructions = """
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the authoritative spec (§0, §154); `AGENTS.md` governs tooling, hard rules, and tool discipline. Your brief is self-contained — start implementing from it on turn 1. Path-scoped rules (`.codex/rules/*.md`) auto-load when you touch a matching file; don't re-read them or re-derive what they state.
@@ -24,7 +24,7 @@ Spawn `researcher` for a verified API fact you don't have; spawn `verifier` for 
 
 - Stage only the paths you were assigned — never `git add -A`/`git add .` (other agents have half-done files in the tree). Add files explicitly by path.
 - Conventional Commits scoped to the package: `feat(server): …`, `fix(tui): …`, `docs: …`, `chore(database): …`.
-- Update `docs/architecture/*`/`docs/operations/*`/README in the same change if your work changes behavior described there. Check off the task in `tasks.md` (the `/task done` procedure) as part of the same change.
+- Update `docs/architecture/*`/`docs/operations/*`/README in the same change if your work changes behavior described there. If your task ID is a real GitHub issue, reference it in the PR (`Fixes #<n>`) so Status moves to Done automatically on merge. You can't reach the GitHub Project board yourself (no MCP tool access) — report the task ID (and issue number, if any) as done and let the orchestrator set its Status if it wasn't a `Fixes #N` issue.
 
 ## Report format (always end with this)
 

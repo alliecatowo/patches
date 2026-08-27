@@ -26,7 +26,7 @@ protobuf request → controller (transport adapter) → application service → 
 ## Working agreement
 
 1. Feature branches, atomic Conventional Commits. Stage explicit paths — never `git add -A`, since other agents have half-done files in the same tree.
-2. `tasks.md` is the live board. Pick from it, tick what you finish, file what you discover (`/task`).
+2. The GitHub Project ("Patches", https://github.com/users/alliecatowo/projects/5) is the live board — a mix of real GitHub issues (preferred; a merged PR with `Fixes #N` closes one and auto-moves Status to Done) and draft items not yet promoted. Pick work from it, move `Status` as you go, file what you discover as a new draft item (Status Todo, Kind + Priority set) instead of editing `tasks.md`, and convert a draft to an issue (`gh issue create` + add to board, or the `convertProjectV2DraftIssueItemToIssue` mutation) once work is about to start on it or a PR will close it. Set `Status=Blocked` and list prerequisite IDs in `Blocked by` for dependencies. `tasks.md` is now the historical archive (447 completed items) and the offline fallback when the project-board MCP tools or `project` OAuth scope are unavailable. Reference the issue you close in your PR (`Fixes #<n>`) so Status moves automatically.
 3. Read `docs/research/<tech>.md` before using a risky API; if the note is missing or wrong, fix it.
 4. Every change leaves the repo green (`mise run verify`).
 5. Update docs in the same change as the code. Never document a command you haven't run.
@@ -42,7 +42,7 @@ protobuf request → controller (transport adapter) → application service → 
 
 ## Delegation
 
-The frontier main session is the orchestrator and acceptance gate: it turns explicit work into bounded tasks, delegates product/harness edits when a worker can safely own them, reviews results, and integrates. It must not invent or automatically claim tasks; `tasks.md`, the user, and the spec define work. Parallel workers get exact owned and forbidden paths and preserve unrelated work.
+The frontier main session is the orchestrator and acceptance gate: it turns explicit work into bounded tasks, delegates product/harness edits when a worker can safely own them, reviews results, and integrates. It must not invent or automatically claim tasks; the GitHub Project board, the user, and the spec define work. Parallel workers get exact owned and forbidden paths and preserve unrelated work.
 
 Use the cheapest adequate available capability class, not a presumed model name: Haiku-equivalent for mechanical checks and narrow diagnostics; Sonnet-equivalent for normal implementation, tests, docs, and research; Opus-equivalent for architecture, security/crypto, hard debugging, and high-risk final review. A worker may delegate an independent mechanical subtask downward, not create a second coordinator. Briefs are short and self-contained (goal, constraints, paths, acceptance checks); use reduced/non-full context for workers when the runtime supports it. An independent reviewer must be strictly stronger than the implementer; verifier runs the relevant checks, while the implementer fixes failures. After two equivalent failures, change approach or escalate. See `docs/agents/MODEL_ROUTING.md` and `docs/agents/HARNESS.md`; never weaken hard rules or expand scope silently.
 

@@ -170,7 +170,7 @@ expressive. Open architecture: the TUI is one client of a versioned protobuf API
 This repo is developed with an AI agent harness (`CLAUDE.md`, `.claude/`, `docs/agents/`) that
 records learnings and improves itself as the project grows. Humans and agents follow the same
 rules: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md),
-[`SECURITY.md`](SECURITY.md). Task board: [`tasks.md`](tasks.md).
+[`SECURITY.md`](SECURITY.md). Task board: the [Patches GitHub Project](https://github.com/users/alliecatowo/projects/5) (`tasks.md` is the historical archive of completed work and the offline fallback).
 
 ## License
 
