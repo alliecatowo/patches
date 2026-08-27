@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { CERTIFICATE_CONTEXT, ROSTER_CONTEXT } from '@patches/crypto';
-
 import { AppError } from '../../common/errors/app-error.js';
 import {
-  CERTIFICATE_TRANSCRIPT_DOMAIN,
   decodeCertificateTranscript,
   decodeRosterTranscript,
   encodeCertificateTranscript,
   encodePrekeyBundleTranscript,
   encodeRosterTranscript,
-  ROSTER_TRANSCRIPT_DOMAIN,
 } from './e2ee.codec.js';
 
 function bytes(seed: number, length = 32): Uint8Array {
@@ -24,6 +20,7 @@ describe('e2ee.codec certificate transcript', () => {
     actorId: 'actor-1',
     deviceId: 'device-1',
     rootGeneration: 1,
+    rootPublicKey: bytes(9),
     certificateVersion: 1,
     signingPublicKey: bytes(1),
     agreementPublicKey: bytes(2),
@@ -32,26 +29,13 @@ describe('e2ee.codec certificate transcript', () => {
     expiresAt: new Date('2026-06-01T00:00:00.000Z'),
   };
 
-  /**
-   * Regression (2026-08 audit): this encoder and `@patches/crypto`'s root-signed identity
-   * encoders used the *same* domain separator strings for structurally similar transcripts, so
-   * signatures were mutually verifiable across trust contexts up to the field-size caps. The
-   * node's domains are now distinct, and this pins the disjointness against the exported client
-   * constants rather than two copies of two literals.
-   */
-  it('uses transcript domains disjoint from the client-side identity contexts', () => {
-    expect(CERTIFICATE_TRANSCRIPT_DOMAIN).not.toBe(CERTIFICATE_CONTEXT);
-    expect(ROSTER_TRANSCRIPT_DOMAIN).not.toBe(ROSTER_CONTEXT);
-    expect(CERTIFICATE_TRANSCRIPT_DOMAIN.startsWith('patches-e2ee-v1/node-')).toBe(true);
-    expect(ROSTER_TRANSCRIPT_DOMAIN.startsWith('patches-e2ee-v1/node-')).toBe(true);
-  });
-
   it('round-trips through encode/decode', () => {
     const encoded = encodeCertificateTranscript(fields);
     const decoded = decodeCertificateTranscript(encoded);
     expect(decoded.actorId).toBe(fields.actorId);
     expect(decoded.deviceId).toBe(fields.deviceId);
     expect(decoded.rootGeneration).toBe(fields.rootGeneration);
+    expect([...decoded.rootPublicKey]).toEqual([...fields.rootPublicKey]);
     expect(decoded.certificateVersion).toBe(fields.certificateVersion);
     expect([...decoded.signingPublicKey]).toEqual([...fields.signingPublicKey]);
     expect([...decoded.agreementPublicKey]).toEqual([...fields.agreementPublicKey]);
@@ -89,18 +73,23 @@ describe('e2ee.codec roster transcript', () => {
     },
   ];
 
-  it('round-trips entries and rootGeneration through encode/decode', () => {
+  it('round-trips entries, rootGeneration, rootPublicKey, and createdAt through encode/decode', () => {
+    const createdAt = new Date('2026-01-03T00:00:00.000Z');
     const encoded = encodeRosterTranscript({
       actorId: 'actor-1',
       sequence: 2n,
       rootGeneration: 3,
+      rootPublicKey: bytes(9),
       previousDigest: bytes(5),
+      createdAt,
       entries,
     });
     const decoded = decodeRosterTranscript(encoded);
     expect(decoded.actorId).toBe('actor-1');
     expect(decoded.sequence).toBe(2n);
     expect(decoded.rootGeneration).toBe(3);
+    expect([...decoded.rootPublicKey]).toEqual([...bytes(9)]);
+    expect(decoded.createdAt.getTime()).toBe(createdAt.getTime());
     expect(decoded.entries).toHaveLength(2);
     expect(decoded.entries[0]?.active).toBe(true);
     expect(decoded.entries[1]?.active).toBe(false);
@@ -113,8 +102,6 @@ describe('e2ee.codec prekey bundle transcript', () => {
   it('changes when the signed prekey id changes (anti-replay binding)', () => {
     const base = {
       certificateDigest: bytes(6),
-      agreementPublicKey: bytes(7),
-      protocolVersion: 'patches-e2ee-v1',
       actorId: 'actor-1',
       deviceId: 'device-1',
       signedPrekeyId: 1n,
@@ -130,8 +117,6 @@ describe('e2ee.codec prekey bundle transcript', () => {
   it('refuses a wrong-width digest or key rather than silently shifting every later field (ADR 0024 B-051)', () => {
     const base = {
       certificateDigest: bytes(6),
-      agreementPublicKey: bytes(7),
-      protocolVersion: 'patches-e2ee-v1',
       actorId: 'actor-1',
       deviceId: 'device-1',
       signedPrekeyId: 1n,
@@ -139,14 +124,11 @@ describe('e2ee.codec prekey bundle transcript', () => {
       signedPrekeyCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
       signedPrekeyExpiresAt: new Date('2026-01-08T00:00:00.000Z'),
     };
-    // Before B-051, these three `fixed()` fields were unvalidated in the encoder and injective
-    // only because three unrelated `octet_length(...) = 32` database CHECK constraints happened
-    // to hold for every persisted caller — a signed transcript should not depend on that.
+    // Before B-051, these `fixed()` fields were unvalidated in the encoder and injective only
+    // because unrelated `octet_length(...) = 32` database CHECK constraints happened to hold for
+    // every persisted caller — a signed transcript should not depend on that.
     expect(() =>
       encodePrekeyBundleTranscript({ ...base, certificateDigest: bytes(6, 31) }),
-    ).toThrow();
-    expect(() =>
-      encodePrekeyBundleTranscript({ ...base, agreementPublicKey: bytes(7, 33) }),
     ).toThrow();
     expect(() =>
       encodePrekeyBundleTranscript({ ...base, signedPrekeyPublicKey: bytes(8, 16) }),

@@ -217,12 +217,13 @@ describe.skipIf(!testDatabaseUrl)('Phase 1 schema (integration, real Postgres)',
     ).rejects.toThrow(/chk_invites_uses_within_max/);
   });
 
-  it('round-trips the last migration and reports no pending migrations', async () => {
+  it('refuses to undo the tip migration (ADR 0033 §5: irreversible by design) and reports no pending migrations', async () => {
     const executor = new MigrationExecutor(dataSource);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
-    await dataSource.undoLastMigration();
-    expect(await executor.getPendingMigrations()).toHaveLength(1);
-    await dataSource.runMigrations();
+    // The last migration on the chain (`Adr0033IdentityTranscriptCleanBreak…`) throws from
+    // `down()` on purpose; TypeORM rolls the attempted undo back in its own transaction, so
+    // nothing is left pending either way.
+    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible by design/);
     expect(await executor.getPendingMigrations()).toHaveLength(0);
   });
 });

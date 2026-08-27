@@ -15,9 +15,13 @@ interface FakeEntryProto {
   revokedAt: undefined;
 }
 
+const ROSTER_CREATED_AT_SECONDS = 1780000000;
+const ROSTER_CREATED_AT_TIMESTAMP = { seconds: String(ROSTER_CREATED_AT_SECONDS), nanos: 0 };
+
 /** Builds a genuinely signed roster proto message the way a real client would. */
 function signedRosterProto(input: {
   privateKey: Uint8Array;
+  rootPublicKey: Uint8Array;
   actorId: string;
   sequence: bigint;
   rootGeneration: number;
@@ -36,7 +40,9 @@ function signedRosterProto(input: {
     actorId: input.actorId,
     sequence: input.sequence,
     rootGeneration: input.rootGeneration,
+    rootPublicKey: input.rootPublicKey,
     previousDigest: input.previousDigest,
+    createdAt: new Date(ROSTER_CREATED_AT_SECONDS * 1000),
     entries: entries.map((entry) => ({
       deviceId: entry.deviceId,
       certificateDigest: entry.certificateDigest,
@@ -56,7 +62,7 @@ function signedRosterProto(input: {
     rosterBytes: Buffer.from(rosterBytes),
     rootSignature: Buffer.from(rootSignature),
     entries,
-    createdAt: undefined,
+    createdAt: ROSTER_CREATED_AT_TIMESTAMP,
   };
 }
 
@@ -87,6 +93,7 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
   it('accepts the genesis roster (sequence 1, all-zero previousDigest)', async () => {
     const proto = signedRosterProto({
       privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
       actorId: 'actor-1',
       sequence: 1n,
       rootGeneration: 1,
@@ -110,7 +117,9 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
           actorId: 'actor-1',
           sequence: 1n,
           rootGeneration: 1,
+          rootPublicKey: keys.publicKey,
           previousDigest: zero32,
+          createdAt: new Date(ROSTER_CREATED_AT_SECONDS * 1000),
           entries: [],
         }),
       ),
@@ -119,6 +128,7 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
     };
     const proto = signedRosterProto({
       privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
       actorId: 'actor-1',
       sequence: 2n,
       rootGeneration: 1,
@@ -137,7 +147,9 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
       actorId: 'actor-1',
       sequence: 1n,
       rootGeneration: 1,
+      rootPublicKey: keys.publicKey,
       previousDigest: zero32,
+      createdAt: new Date(ROSTER_CREATED_AT_SECONDS * 1000),
       entries: [],
     });
     const previousRow = {
@@ -151,6 +163,7 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
     };
     const proto = signedRosterProto({
       privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
       actorId: 'actor-1',
       sequence: 3n, // should be 2
       rootGeneration: 1,
@@ -166,6 +179,7 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
   it('rejects a roster with an invalid root signature', async () => {
     const proto = signedRosterProto({
       privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
       actorId: 'actor-1',
       sequence: 1n,
       rootGeneration: 1,
@@ -182,6 +196,7 @@ describe('appendRoster (ADR 0020 §2, §14.14.4)', () => {
   it('rejects entries that do not match the signed roster transcript', async () => {
     const proto = signedRosterProto({
       privateKey: keys.privateKey,
+      rootPublicKey: keys.publicKey,
       actorId: 'actor-1',
       sequence: 1n,
       rootGeneration: 1,
