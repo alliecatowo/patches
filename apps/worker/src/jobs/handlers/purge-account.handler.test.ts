@@ -2,6 +2,7 @@ import {
   AdminAuditLog,
   Actor,
   E2eeDeviceIdentity,
+  E2eeDeviceLinkOffer,
   E2eeDeviceRoster,
   E2eeGroupControlEvent,
   E2eeIdentityRoot,
@@ -115,6 +116,7 @@ describe('PurgeAccountHandler E2EE scope (audit P1)', () => {
       ),
     ).toEqual([deviceId]);
     expect(criteriaFor(E2eeDeviceIdentity)).toContainEqual({ actorId });
+    expect(criteriaFor(E2eeDeviceLinkOffer)).toContainEqual({ actorId });
     expect(criteriaFor(E2eeDeviceRoster)).toContainEqual({ actorId });
     expect(criteriaFor(E2eeIdentityRoot)).toContainEqual({ actorId });
     expect(criteriaFor(E2eeLogicalMessage)).toContainEqual({ senderActorId: actorId });
