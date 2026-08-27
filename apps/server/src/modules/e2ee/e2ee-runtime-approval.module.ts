@@ -7,7 +7,7 @@ import {
   E2eeRuntimeApprovalPolicy,
 } from './e2ee-runtime-approval-policy.js';
 
-/** The one server-wide instance of ADR 0027's runtime approval decision. */
+/** The one server-wide instance of the E2EE franking-profile runtime approval decision. */
 @Module({
   imports: [AppConfigModule],
   providers: [
@@ -15,10 +15,7 @@ import {
       provide: E2EE_RUNTIME_APPROVAL_POLICY,
       inject: [AppConfigService],
       useFactory: (config: AppConfigService) =>
-        new E2eeRuntimeApprovalPolicy(
-          config.e2eeUnreviewedDevMode,
-          config.e2eeApprovedFrankingProfiles,
-        ),
+        new E2eeRuntimeApprovalPolicy(config.e2eeApprovedFrankingProfiles),
     },
   ],
   exports: [E2EE_RUNTIME_APPROVAL_POLICY],

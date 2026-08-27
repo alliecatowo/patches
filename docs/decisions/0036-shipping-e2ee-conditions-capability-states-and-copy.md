@@ -11,6 +11,43 @@
 epic #250
 **Needs explicit owner sign-off before step 9 of §7 executes:** the §2.3 substitution for ADR 0020 §12.9.
 
+## Amendment (2026-08-26, owner override — same day as the decision above)
+
+Later the same day, the owner overrode the staged plan this ADR records, for the same reason
+stated in the Context below (a pre-alpha, invite-only node with six test accounts and zero real
+conversations does not need a multi-week staged rollout designed for real users): E2EE ships as
+an ordinary always-on feature. Concretely, **superseded**:
+
+- §1's nine conditions (S1–S9) and §2's review-gate discharge mechanism (the three-reviewer
+  adversarial review, ADR 0037) — no longer a precondition for anything, because there is no
+  rollout ladder left to climb. Nothing here says the work S1–S9 named is worthless; it is simply
+  no longer gating.
+- §3's four-state capability ladder and §7's eleven-step sequencing. The node now reports
+  `ENABLED` whenever it has an approved franking profile and a signing key for its current era,
+  and `DISABLED` otherwise. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` remain defined in the
+  proto enum (never reuse a field/enum number, spec §153) as a home for a future unreviewed
+  protocol change, but nothing produces them.
+- §3.4's table and §3.5's canary-triggered disposability sunset — moot once there is no canary
+  state to reach; `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` now includes
+  `patches-franking-v1` directly, not as a step gated on ADR 0037.
+- `E2EE_UNREVIEWED_DEV_MODE` (the flag, its `ISOLATED_TEST_ONLY`-warning wiring, and ADR 0027's
+  scope for it) is deleted end to end, not merely defaulted off — §3.3 point 3's "remains the
+  only widening mechanism" no longer applies because there is nothing left for it to widen past.
+
+**Retained, unchanged:** §3.3's fix to the environment-widening hole (`E2EE_APPROVED_FRANKING_PROFILES`
+(env) may only narrow the domain constant, never widen it) — implemented directly rather than as
+a "lands now, at ISOLATED_TEST_ONLY" interim step, since there is no longer an interim state to
+land it at. §4.2's per-state notice table collapses to just `DISABLED`/`ENABLED` (empty), for the
+same reason. §4.3's standing disclosures — the always-true facts about routing metadata, reporter
+disclosure, node-forgeable receipts, server-served device lists, irrecoverable loss, and the
+browser key tier — are **retained in full and remain mandatory**; nothing in this Amendment
+touches them, and no new warning text is introduced. §4.1's §183.1/CLAUDE.md finding is unaffected
+by this Amendment and is tracked separately (issue #198).
+
+The rest of this ADR below is left intact as the record of what was considered and why — including
+why a staged ladder originally looked like the right shape for this decision. It is superseded,
+not deleted, so a reader can see the reasoning that preceded the override.
+
 ## Context
 
 On 2026-08-26 the owner said, of the current E2EE posture:

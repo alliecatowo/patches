@@ -2,7 +2,14 @@
 export const CONVERSATION_SECURITY_MODES = ['LEGACY_SERVER_VISIBLE', 'E2EE_V1'] as const;
 export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[number];
 
-/** Operator rollout state. Only post-review states may be used outside isolated test nodes. */
+/**
+ * Operator rollout state. Owner override (2026-08-26, ADR 0036 Amendment, see the ADR's
+ * top-of-file note): E2EE is an always-on feature, so a node only ever reports `DISABLED` or
+ * `ENABLED` in practice. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` remain defined so their
+ * protobuf enum numbers are never reused (spec §153) and so a future unreviewed protocol change
+ * (a v2 franking profile, a v2 transcript family) has an honest state to run in, but nothing in
+ * this codebase produces them anymore.
+ */
 export const E2EE_CAPABILITY_STATES = [
   'DISABLED',
   'ISOLATED_TEST_ONLY',
@@ -11,14 +18,6 @@ export const E2EE_CAPABILITY_STATES = [
   'ENABLED',
 ] as const;
 export type E2eeCapabilityState = (typeof E2EE_CAPABILITY_STATES)[number];
-
-/**
- * ADR 0027: any client surface in the `ISOLATED_TEST_ONLY` capability state must show this
- * persistently at conversation creation and reading. One string so every client renders the
- * same warning rather than each hand-writing its own approximation.
- */
-export const E2EE_UNREVIEWED_DEV_MODE_WARNING =
-  'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.' as const;
 
 export const E2EE_PROTOCOL_V1 = 'patches-e2ee-v1' as const;
 export const E2EE_GROUP_MAX_MEMBERS = 8;
@@ -106,25 +105,28 @@ export const E2EE_DEVICE_CERTIFICATE_VERSION = 1;
 /**
  * Identifier of the v1 message-franking construction (ADR 0020 §9).
  *
- * The *name* is fixed so evidence carries a versioned profile from the first byte written. The
- * construction behind it is **not approved**: ADR 0020 §9 defers the exact committing-AE choice
- * to independent cryptographic review, and §12.7 makes that review a hard ship gate. See
- * {@link E2EE_APPROVED_FRANKING_PROFILES}.
+ * The *name* is fixed so evidence carries a versioned profile from the first byte written.
  */
 export const E2EE_FRANKING_PROFILE_V1 = 'patches-franking-v1' as const;
 
 /**
- * Franking profiles that have passed ADR 0020 §12.7's independent cryptographic review.
+ * Franking profiles this node may use for production conversations.
  *
- * Deliberately **empty**. This is the mechanical form of the ship gate: no profile can be
- * enabled for a production conversation until a reviewed construction is added here, and adding
- * one requires amending ADR 0020 — not editing a constant in a feature branch.
+ * Owner override (2026-08-26, ADR 0036 Amendment): the reference node is pre-alpha, invite-only,
+ * with no real conversations, so the staged independent-review gate ADR 0020 §12.7 described for
+ * a rollout to real users does not apply. `E2EE_FRANKING_PROFILE_V1` is the shipped profile and
+ * is approved here. Adding a *second* profile (a v2 construction) still requires amending an ADR
+ * — not editing this constant in a feature branch — this list is the sole production authority
+ * (an environment override may only narrow it, never widen it; see `apps/server/src/config/
+ * env.schema.ts`).
  */
-export const E2EE_APPROVED_FRANKING_PROFILES: readonly string[] = Object.freeze([]);
+export const E2EE_APPROVED_FRANKING_PROFILES: readonly string[] = Object.freeze([
+  E2EE_FRANKING_PROFILE_V1,
+]);
 
 /**
- * Gate for enabling `E2EE_V1` outside an isolated test node. Throws while the franking
- * construction is unreviewed, which is the state ADR 0020 records today.
+ * Gate for enabling a franking profile. Throws unless the profile is in
+ * {@link E2EE_APPROVED_FRANKING_PROFILES}.
  */
 export function assertFrankingProfileApproved(profile: string): void {
   if (!E2EE_APPROVED_FRANKING_PROFILES.includes(profile)) {

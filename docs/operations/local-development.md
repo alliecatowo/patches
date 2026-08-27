@@ -64,7 +64,6 @@ JWT_PRIVATE_KEY
 JWT_PUBLIC_KEY
 AUTH_CODE_DELIVERY_ACTIVE_KEY_ID
 AUTH_CODE_DELIVERY_KEYS
-E2EE_UNREVIEWED_DEV_MODE
 
 R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID
@@ -87,14 +86,13 @@ Notes:
   `AUTH_CODE_DELIVERY_*` keyring for ADR 0026's encrypted verification/reset-email outbox.
   Paste the complete output into the local environment so the server and worker receive the
   same delivery key; never reuse its production key locally.
-- `E2EE_UNREVIEWED_DEV_MODE` defaults to `false`. ADR 0027 permits an owner to set it to `true`
-  only on a disposable node with no real users, solely to exercise the externally unreviewed
-  `patches-franking-v1` path. It is the node-level opt-in; `NODE_ENV` controls runtime behavior
-  and is not a deployment trust classification, so the disposable Fly node keeps
-  `NODE_ENV=production`. Every client that exposes that isolated-test capability must
-  persistently show:
-  **“Unreviewed development E2EE — for testing only; do not use for sensitive
-  conversations.”**
+- E2EE is an always-on feature (ADR 0036 Amendment, 2026-08-26 owner override) — no dev-mode
+  flag to set. `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` approves the shipped
+  `patches-franking-v1` profile by default, so `GetE2eeCapability` reports `ENABLED` on any node
+  with a franking signing key for its current era. `E2EE_APPROVED_FRANKING_PROFILES` (env) is an
+  optional operator narrowing/kill-switch — it can only shrink the domain-approved set, never
+  widen it (a boot-time check rejects an env value naming a profile the domain constant doesn't
+  approve).
 - `R2_*` variables can point at either a real R2 dev bucket or a local MinIO instance
   (matching MinIO's S3-compatible endpoint/credentials shape).
 - In local development, email sending should point at Mailpit's SMTP endpoint rather than

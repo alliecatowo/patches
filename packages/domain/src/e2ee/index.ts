@@ -34,7 +34,6 @@ export {
   E2EE_PROTOCOL_V1,
   E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
   E2EE_SIGNED_PREKEY_ROTATION_MS,
-  E2EE_UNREVIEWED_DEV_MODE_WARNING,
   E2eeContractError,
   mayDescribeAsEndToEndEncrypted,
   requiredConversationDisclosure,

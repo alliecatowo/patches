@@ -93,11 +93,9 @@ function item(
 }
 
 describe('the franking ship gate', () => {
-  it('approves no profile yet, so E2EE cannot be enabled in production', () => {
-    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([]);
-    expect(() => assertFrankingProfileApproved(E2EE_FRANKING_PROFILE_V1)).toThrow(
-      'independent review',
-    );
+  it('approves the shipped v1 profile and rejects everything else', () => {
+    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([E2EE_FRANKING_PROFILE_V1]);
+    expect(() => assertFrankingProfileApproved(E2EE_FRANKING_PROFILE_V1)).not.toThrow();
     expect(() => assertFrankingProfileApproved(TEST_PROFILE)).toThrow('independent review');
   });
 
@@ -105,7 +103,7 @@ describe('the franking ship gate', () => {
     expect(() => {
       (E2EE_APPROVED_FRANKING_PROFILES as string[]).push(TEST_PROFILE);
     }).toThrow();
-    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([]);
+    expect(E2EE_APPROVED_FRANKING_PROFILES).toEqual([E2EE_FRANKING_PROFILE_V1]);
   });
 });
 

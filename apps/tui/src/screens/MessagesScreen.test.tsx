@@ -11,7 +11,6 @@ import { flush } from '../../test/harness.js';
 import {
   dmFreshnessCopy,
   MessagesScreen,
-  UNREVIEWED_DEV_E2EE_WARNING,
   VAULT_FAULT_COPY,
   type MessagesScreenApi,
 } from './MessagesScreen.js';
@@ -104,7 +103,6 @@ describe('MessagesScreen', () => {
         // honest: nothing outside these named exceptions may claim encryption/security/
         // privacy that isn't backed by `mayDescribeAsEndToEndEncrypted`.
         const withoutE2eeCopy = source
-          .replaceAll(UNREVIEWED_DEV_E2EE_WARNING, '')
           .replaceAll(VAULT_FAULT_COPY.corrupt, '')
           .replaceAll(VAULT_FAULT_COPY.rollback, '')
           // `cli/dm.ts`'s `DM_NOTICE`/`E2EE_REFUSAL` mirror
