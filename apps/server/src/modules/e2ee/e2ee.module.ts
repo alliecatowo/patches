@@ -12,7 +12,6 @@ import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { DatabaseNodeFrankingKeyRing, NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
 import { E2eePrekeyService } from './prekey.service.js';
 import { E2eeReportEvidenceService } from './report-evidence.service.js';
-import { E2eeRuntimeApprovalModule } from './e2ee-runtime-approval.module.js';
 
 /**
  * `patches.v1.E2eeService`'s account-root/device/prekey lifecycle (ADR 0020, P13-004/P13-005).
@@ -29,7 +28,7 @@ import { E2eeRuntimeApprovalModule } from './e2ee-runtime-approval.module.js';
  * the notification type this module's DM predecessor used to own.
  */
 @Module({
-  imports: [AuthModule, E2eeRuntimeApprovalModule, NotificationsModule],
+  imports: [AuthModule, NotificationsModule],
   controllers: [E2eeController],
   providers: [
     E2eeIdentityRootService,

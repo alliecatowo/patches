@@ -39,10 +39,6 @@ import { decodeCertificateTranscript } from './e2ee.codec.js';
 import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { loadCurrentGroupControl } from './group-control.js';
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
-import {
-  E2EE_RUNTIME_APPROVAL_POLICY,
-  type E2eeRuntimeApprovalPolicy,
-} from './e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
 import { loadCurrentRosterRow } from './roster-chain.js';
 
@@ -66,8 +62,6 @@ export class E2eeConversationService {
     // `NodeFrankingKeyRing` is an interface, so a bare, undecorated parameter would make Nest
     // try to resolve it as a provider token and fail to boot.
     @Inject(NODE_FRANKING_KEY_RING) keys: NodeFrankingKeyRing,
-    @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
-    private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
     private readonly rateLimits: E2eeRateLimitService,
     // Concrete class, not an interface: `design:paramtypes` has to carry a real token Nest can
     // resolve, so this parameter must never be widened to an interface without `@Inject`.
@@ -354,7 +348,6 @@ export class E2eeConversationService {
         clientRequestId: request.clientRequestId,
         message: request.message,
         keys: this.#keys,
-        approvalPolicy: this.approvalPolicy,
       });
     });
 

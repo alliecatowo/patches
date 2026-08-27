@@ -14,35 +14,25 @@ import {
 import { E2eeCapabilityState, type GetE2eeCapabilityResponse } from '@patches/proto/nest';
 
 import { NODE_FRANKING_KEY_RING } from './node-franking-key-ring.js';
-import {
-  E2EE_RUNTIME_APPROVAL_POLICY,
-  type E2eeRuntimeApprovalPolicy,
-} from './e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from './report-evidence.js';
 
 /**
- * Reports whether this node can genuinely serve E2EE (ADR 0036 Amendment: owner override,
- * 2026-08-26 — E2EE is an always-on feature, not a staged rollout).
+ * Reports whether this node can genuinely serve E2EE (ADR 0036 Amendment 2: E2EE is an
+ * always-on feature — the franking profile is a fixed construction, not node configuration,
+ * so the only remaining condition is operational: a signing key for the current era).
  *
- * `ENABLED` iff the node has a franking profile it's allowed to use and a signing key for its
- * current era; otherwise `DISABLED`. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` are retained
- * in the proto enum (never reuse a field/enum number, spec §153) but are no longer produced —
- * see `packages/domain/src/e2ee/modes.ts`'s doc comment on `E2EE_CAPABILITY_STATES`.
+ * `ENABLED` iff the node has a franking key for its current era; otherwise `DISABLED`.
+ * `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` are retained in the proto enum (never reuse
+ * a field/enum number, spec §153) but are no longer produced — see `packages/domain/src/e2ee/
+ * modes.ts`'s doc comment on `E2EE_CAPABILITY_STATES`.
  */
 @Injectable()
 export class E2eeCapabilityService {
-  constructor(
-    @Inject(NODE_FRANKING_KEY_RING) private readonly keys: NodeFrankingKeyRing,
-    @Inject(E2EE_RUNTIME_APPROVAL_POLICY)
-    private readonly approvalPolicy: E2eeRuntimeApprovalPolicy,
-  ) {}
+  constructor(@Inject(NODE_FRANKING_KEY_RING) private readonly keys: NodeFrankingKeyRing) {}
 
   getCapability(): GetE2eeCapabilityResponse {
     const signingEra = this.keys.currentEra();
-    const canServe =
-      this.approvalPolicy.isProfileApproved(E2EE_FRANKING_PROFILE_V1) &&
-      signingEra !== undefined &&
-      this.keys.keyForEra(signingEra) !== undefined;
+    const canServe = signingEra !== undefined && this.keys.keyForEra(signingEra) !== undefined;
 
     if (canServe) {
       return {

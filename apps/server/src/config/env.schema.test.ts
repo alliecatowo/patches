@@ -116,19 +116,6 @@ describe('validateEnv', () => {
     expect(env.DATABASE_URL).toBe('postgres://patches:patches@127.0.0.1:5432/patches');
   });
 
-  it('accepts an E2EE_APPROVED_FRANKING_PROFILES value that narrows the domain-approved list', () => {
-    expect(
-      validateEnv({ E2EE_APPROVED_FRANKING_PROFILES: 'patches-franking-v1' })
-        .E2EE_APPROVED_FRANKING_PROFILES,
-    ).toBe('patches-franking-v1');
-  });
-
-  it('refuses to boot when E2EE_APPROVED_FRANKING_PROFILES names a profile the domain constant does not approve (#253)', () => {
-    expect(() => validateEnv({ E2EE_APPROVED_FRANKING_PROFILES: 'patches-franking-v2' })).toThrow(
-      ConfigError,
-    );
-  });
-
   it('requires the JWT signing keys in production', () => {
     try {
       validateEnv({

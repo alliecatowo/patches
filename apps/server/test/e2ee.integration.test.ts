@@ -30,7 +30,6 @@ import {
 import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
-import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
@@ -46,9 +45,6 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   knownEras: () => [TEST_FRANKING_ERA],
   currentEra: () => TEST_FRANKING_ERA,
 };
-
-/** The shipped franking profile is approved by default (ADR 0036 Amendment); no test seam needed. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy();
 
 interface TestEnvelope {
   recipientActorId: string;
@@ -91,9 +87,11 @@ function buildLogicalMessage(
     commitment?: Buffer;
     commitmentOverride?: Buffer;
     epoch?: bigint;
+    profile?: string;
   } = {},
 ) {
   const commitment = options.commitment ?? Buffer.from(sha256Hash(randomBytes(16)));
+  const profile = options.profile ?? E2EE_FRANKING_PROFILE_V1;
   const view = envelopes.map((envelope) => ({
     recipientActorId: envelope.recipientActorId,
     recipientDeviceId: envelope.recipientDeviceId,
@@ -112,7 +110,7 @@ function buildLogicalMessage(
   return {
     membershipEpoch: (options.epoch ?? 1n).toString(),
     frankingCommitment: options.commitmentOverride ?? commitment,
-    frankingProfile: E2EE_FRANKING_PROFILE_V1,
+    frankingProfile: profile,
     fanoutDigest: Buffer.from(fanoutDigest),
     deviceEnvelopes: [...envelopes],
   };
@@ -386,7 +384,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
-        unreviewedTestPolicy,
         // No-op budgets: this suite exercises fanout/protocol behavior, not §188 windows
         // (covered by e2ee-rate-limit.service.test.ts), and would blow through them.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
@@ -793,27 +790,17 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     describe('SendEnvelopes/CreateE2eeConversation fanout (ADR 0020 §7, P13-007)', () => {
-      it('keeps a narrowed runtime policy fail-closed before accepting an E2EE message', async () => {
+      it('rejects an unknown franking profile fail-closed before accepting an E2EE message', async () => {
         const sender = await newActor();
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
-        // An operator narrowing that excludes the shipped profile (#253's kill-switch use
-        // case) — the domain constant still approves it, so this exercises the accept path's
-        // enforcement, not the ADR 0036 default.
-        const defaultPolicyConversations = new E2eeConversationService(
-          dataSource,
-          testFrankingKeyRing,
-          new E2eeRuntimeApprovalPolicy(['some-other-domain-approved-profile']),
-          new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
-          new NotificationsService(dataSource),
-        );
-
-        // ADR 0035: reservation carries no message, so it does not consult the runtime
-        // approval policy at all — it succeeds regardless. The policy gate is inside
-        // `acceptE2eeLogicalMessage`, which only runs on `SendEnvelopes`.
-        const reserved = await defaultPolicyConversations.createE2eeConversation(sender.actorId, {
+        // The profile is a fixed construction (ADR 0036 Amendment 2) — no operator override
+        // exists, so the accept path's only failure mode is a client naming anything else.
+        // ADR 0035: reservation carries no message, so it is unaffected — the profile gate is
+        // inside `acceptE2eeLogicalMessage`, which only runs on `SendEnvelopes`.
+        const reserved = await conversations.createE2eeConversation(sender.actorId, {
           clientRequestId: randomUUID(),
           recipientActorIds: [recipient.actorId],
           senderDeviceId: senderDevice.deviceId,
@@ -823,15 +810,16 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           .countBy({ actorId: sender.actorId });
 
         await expect(
-          defaultPolicyConversations.sendEnvelopes(sender.actorId, {
+          conversations.sendEnvelopes(sender.actorId, {
             conversationId: reserved.conversationId,
             clientRequestId: randomUUID(),
             senderDeviceId: senderDevice.deviceId,
-            message: buildLogicalMessage([
-              buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-            ]),
+            message: buildLogicalMessage(
+              [buildEnvelope(recipient.actorId, recipientDevice.deviceId)],
+              { profile: 'some-other-profile' },
+            ),
           }),
-        ).rejects.toThrow('excluded by');
+        ).rejects.toThrow('Unknown franking profile');
 
         // The rejected send left no trace: membership is unchanged (the reservation's own
         // members, no more), and the conversation stays unmessaged/invisible (ADR 0035 §5).

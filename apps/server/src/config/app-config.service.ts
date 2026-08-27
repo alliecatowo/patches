@@ -51,19 +51,6 @@ export class AppConfigService {
     return this.get('GRPC_REFLECTION');
   }
 
-  /**
-   * Operator narrowing of `packages/domain`'s `E2EE_APPROVED_FRANKING_PROFILES` — empty means
-   * "use the full domain-approved list" (env.schema.ts's boot-time check guarantees every entry
-   * here is already in the domain list, so this can only narrow, never widen it).
-   */
-  get e2eeApprovedFrankingProfiles(): string[] {
-    const raw = this.get('E2EE_APPROVED_FRANKING_PROFILES');
-    return raw
-      .split(',')
-      .map((v) => v.trim())
-      .filter((v) => v.length > 0);
-  }
-
   /** Use proxy headers (`fly-client-ip` / `x-forwarded-for`) as the peer address (A-039). */
   get trustProxyHeaders(): boolean {
     return this.get('TRUST_PROXY_HEADERS');

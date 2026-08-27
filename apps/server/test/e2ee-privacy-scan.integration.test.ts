@@ -56,7 +56,6 @@ import {
 import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
 import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
-import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { E2eeReportEvidenceService } from '../src/modules/e2ee/report-evidence.service.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
@@ -113,9 +112,6 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   knownEras: () => [TEST_FRANKING_ERA],
   currentEra: () => TEST_FRANKING_ERA,
 };
-
-/** The shipped franking profile is approved by default (ADR 0036 Amendment); no test seam needed. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy();
 
 const ZERO_32 = new Uint8Array(32);
 const ZERO_DIGEST = Buffer.alloc(32);
@@ -630,7 +626,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
-        unreviewedTestPolicy,
         // No-op budgets: this suite exercises privacy/leak invariants, not §188 windows.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
         // A REAL NotificationsService, deliberately: the MESSAGE notifications an E2EE arrival

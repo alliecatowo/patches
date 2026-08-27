@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DataSource, EntityManager } from 'typeorm';
 
 import { E2eeConversationService } from './e2ee-conversation.service.js';
-import type { E2eeRuntimeApprovalPolicy } from './e2ee-runtime-approval-policy.js';
 import type { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import type { NotificationsService } from '../notifications/notification.service.js';
 import type { NodeFrankingKeyRing } from './report-evidence.js';
@@ -30,7 +29,6 @@ function serviceWith(
   return new E2eeConversationService(
     dataSource as DataSource,
     {} as unknown as NodeFrankingKeyRing,
-    {} as E2eeRuntimeApprovalPolicy,
     rateLimits,
     notifications,
   );

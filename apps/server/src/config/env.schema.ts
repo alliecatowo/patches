@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import {
   ACCOUNT_DELETION_GRACE_PERIOD_DAYS_DEFAULT,
   APPEAL_WINDOW_DAYS_DEFAULT,
-  E2EE_APPROVED_FRANKING_PROFILES,
   MAX_POST_CHARS,
   MAX_POST_CHARS_NODE_CEILING,
 } from '@patches/domain';
@@ -78,15 +77,6 @@ const envObjectSchema = z.object({
    * exposing its full schema to anything that can reach the port.
    */
   GRPC_REFLECTION: booleanish().default(false),
-  /**
-   * Owner-approved franking profiles (ADR 0036 Amendment): `packages/domain`'s
-   * `E2EE_APPROVED_FRANKING_PROFILES` is the sole production authority on which profiles may
-   * ever be approved. This env var is an operator **narrowing** control only — a kill switch
-   * and subset selector, never a way to approve a profile the domain constant doesn't. Empty
-   * (the default) means "use the full domain list"; the `superRefine` below rejects any listed
-   * profile the domain constant doesn't already approve, so it can never widen the set (#253).
-   */
-  E2EE_APPROVED_FRANKING_PROFILES: z.string().default(''),
   /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
@@ -485,21 +475,6 @@ const envObjectSchema = z.object({
 
 export const envSchema = envObjectSchema
   .superRefine((value, ctx) => {
-    // #253: an env-listed profile absent from the domain constant must fail boot, not be
-    // silently honoured — the domain constant is the sole authority on approval, this var may
-    // only narrow it.
-    for (const profile of value.E2EE_APPROVED_FRANKING_PROFILES.split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)) {
-      if (!E2EE_APPROVED_FRANKING_PROFILES.includes(profile)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['E2EE_APPROVED_FRANKING_PROFILES'],
-          message: `"${profile}" is not in packages/domain's E2EE_APPROVED_FRANKING_PROFILES — this env var may only narrow the domain-approved set, never widen it`,
-        });
-      }
-    }
-
     if (value.AUTH_CODE_DELIVERY_KEYS[value.AUTH_CODE_DELIVERY_ACTIVE_KEY_ID] === undefined) {
       ctx.addIssue({
         code: 'custom',

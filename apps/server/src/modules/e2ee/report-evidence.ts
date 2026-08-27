@@ -51,9 +51,7 @@ export interface NodeFrankingKeyRing {
   /**
    * Which era `SendEnvelopes`/`CreateE2eeConversation` (`e2ee-fanout.ts`) sign new tags under.
    * `undefined` means this node has no franking key to sign with at all, which the fanout path
-   * treats as "cannot accept a send" rather than silently issuing an unkeyed or wrong-era tag —
-   * consistent with `E2EE_APPROVED_FRANKING_PROFILES` being empty today (ADR 0020 §12.7): no
-   * node actually reaches this method with `E2EE_V1` enabled yet.
+   * treats as "cannot accept a send" rather than silently issuing an unkeyed or wrong-era tag.
    */
   currentEra(): number | undefined;
 }
@@ -66,8 +64,7 @@ export interface NodeFrankingKeyRing {
  * `E2eeModule`'s providers. It remains useful for unit tests and the fanout integration-test
  * fixture that want a synchronous, no-database key ring with a fixed known key. `knownEras()` is
  * empty when unset, so every item fails closed to `UNKNOWN_KEY_ERA` rather than silently
- * verifying against nothing — not that this matters in production anymore, since
- * `E2EE_APPROVED_FRANKING_PROFILES` is still empty and `E2EE_V1` stays disabled regardless.
+ * verifying against nothing.
  */
 export class EnvNodeFrankingKeyRing implements NodeFrankingKeyRing {
   readonly #keys: ReadonlyMap<number, Uint8Array>;
