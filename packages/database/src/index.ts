@@ -61,6 +61,7 @@ export { Conversation } from './entities/conversation.entity.js';
 export { ConversationMember } from './entities/conversation-member.entity.js';
 export { E2eeIdentityRoot } from './entities/e2ee-identity-root.entity.js';
 export { E2eeDeviceIdentity } from './entities/e2ee-device-identity.entity.js';
+export { E2eeDeviceLinkOffer } from './entities/e2ee-device-link-offer.entity.js';
 export { E2eeDeviceRoster } from './entities/e2ee-device-roster.entity.js';
 export { E2eeSignedPrekey } from './entities/e2ee-signed-prekey.entity.js';
 export { E2eeOneTimePrekey } from './entities/e2ee-one-time-prekey.entity.js';
