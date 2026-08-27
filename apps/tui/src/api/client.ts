@@ -327,6 +327,12 @@ function buildMethods(sdk: PatchesSdk) {
     publishIdentityRoot: requiredToken(sdk.e2ee.publishIdentityRoot),
     enrollDevice: requiredToken(sdk.e2ee.enrollDevice),
     getDeviceRoster: optionalToken(sdk.e2ee.getDeviceRoster),
+    // ADR 0037 §1: the offer relay for device linking — a new device posts an offer,
+    // the authority device lists and reviews its own pending offers, either side can
+    // cancel one before it is consumed by `enrollDevice` or expires on its own.
+    beginDeviceLink: requiredToken(sdk.e2ee.beginDeviceLink),
+    listPendingDeviceLinks: requiredToken(sdk.e2ee.listPendingDeviceLinks),
+    cancelDeviceLink: requiredToken(sdk.e2ee.cancelDeviceLink),
     revokeDevice: requiredToken(sdk.e2ee.revokeDevice),
     // Capability is published pre-enrollment so a client can discover availability
     // before offering anything (spec §183) — no access token required.
