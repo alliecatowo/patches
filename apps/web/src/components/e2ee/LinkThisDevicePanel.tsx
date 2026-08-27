@@ -12,9 +12,9 @@ import {
   DeviceLinkError,
   DEVICE_LINK_ERROR_COPY,
 } from '../../e2ee/device-link.js';
-import { NEEDS_AUTHORITY_COPY } from '../../e2ee/enrollment.js';
 import type { EnrollmentTransport } from '../../e2ee/enrollment.js';
 import type { RatchetSessionVault } from '../../e2ee/vault.js';
+import styles from './deviceLink.module.css';
 
 /** ADR 0037 §1: how often the new device checks whether the authority has approved yet. */
 const LINK_POLL_MS = 3_000;
@@ -82,15 +82,26 @@ export function LinkThisDevicePanel(props: LinkThisDevicePanelProps): JSX.Elemen
   }, [state.kind, actorId, transport, vault, onEnrolled, pollIntervalMs]);
 
   if (state.kind === 'starting') {
-    return <p role="status">Preparing this device…</p>;
+    return (
+      <div className={styles['card']} role="status">
+        <p className={styles['statusLine']}>
+          <span className={styles['spinner']} aria-hidden="true" />
+          Preparing this device…
+        </p>
+      </div>
+    );
   }
 
   if (state.kind === 'error') {
     return (
-      <div role="alert">
-        <p>{state.copy}</p>
-        <button type="button" onClick={onCancel}>
-          {NEEDS_AUTHORITY_COPY.cancel}
+      <div className={styles['card']} role="alert">
+        <p className={styles['alertText']}>{state.copy}</p>
+        <button
+          type="button"
+          className={`${styles['optionButton']} ${styles['tertiary']}`}
+          onClick={onCancel}
+        >
+          Cancel linking
         </button>
       </div>
     );
@@ -98,41 +109,48 @@ export function LinkThisDevicePanel(props: LinkThisDevicePanelProps): JSX.Elemen
 
   if (state.kind === 'expired') {
     return (
-      <div role="alert">
-        <p>{LINK_PANEL_EXPIRED_COPY}</p>
-        <button
-          type="button"
-          onClick={() => {
-            setState({ kind: 'starting' });
-            setAttempt((n) => n + 1);
-          }}
-        >
-          Try again
-        </button>
-        <button type="button" onClick={onCancel}>
-          {NEEDS_AUTHORITY_COPY.cancel}
-        </button>
+      <div className={styles['card']} role="alert">
+        <p className={styles['alertText']}>{LINK_PANEL_EXPIRED_COPY}</p>
+        <div className={styles['optionStack']}>
+          <button
+            type="button"
+            className={`${styles['optionButton']} ${styles['secondary']}`}
+            onClick={() => {
+              setState({ kind: 'starting' });
+              setAttempt((n) => n + 1);
+            }}
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            className={`${styles['optionButton']} ${styles['tertiary']}`}
+            onClick={onCancel}
+          >
+            Cancel linking
+          </button>
+        </div>
       </div>
     );
   }
 
   const groups = state.sas.split('-');
   return (
-    <div role="group" aria-label="Link this device">
-      <p>{LINK_PANEL_INSTRUCTION_COPY}</p>
-      <p
-        aria-label="Safety code"
-        style={{
-          fontFamily: 'monospace',
-          fontSize: '1.75rem',
-          letterSpacing: '0.12em',
-          fontWeight: 600,
-        }}
-      >
+    <div className={styles['card']} role="group" aria-label="Link this device">
+      <p className={styles['instruction']}>{LINK_PANEL_INSTRUCTION_COPY}</p>
+      <p aria-label="Safety code" className={styles['sasCode']}>
         {groups.join('  ')}
       </p>
-      <button type="button" onClick={onCancel}>
-        {NEEDS_AUTHORITY_COPY.cancel}
+      <p className={styles['statusLine']} role="status">
+        <span className={styles['spinner']} aria-hidden="true" />
+        Waiting for approval…
+      </p>
+      <button
+        type="button"
+        className={`${styles['optionButton']} ${styles['tertiary']}`}
+        onClick={onCancel}
+      >
+        Cancel linking
       </button>
     </div>
   );

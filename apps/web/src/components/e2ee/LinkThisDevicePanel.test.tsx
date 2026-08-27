@@ -46,6 +46,8 @@ describe('LinkThisDevicePanel', () => {
     const groups = sasText.trim().split(/\s+/);
     expect(groups).toHaveLength(5);
     for (const group of groups) expect(group).toMatch(/^\d{4}$/);
+    expect(screen.getByText(/waiting for approval/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel linking' })).toBeInTheDocument();
 
     const offers = await listLinkOffers({
       actorId: ACTOR_ID,
@@ -90,7 +92,9 @@ describe('LinkThisDevicePanel', () => {
       vi.setSystemTime(Date.now() + 11 * 60 * 1000);
       await vi.advanceTimersByTimeAsync(100);
 
-      await vi.waitFor(() => expect(screen.getByText('Try again')).toBeInTheDocument());
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument(),
+      );
     } finally {
       vi.useRealTimers();
     }
