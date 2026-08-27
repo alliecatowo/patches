@@ -1,0 +1,165 @@
+/* Shared card/button styling for the needs-authority chooser, rotate confirmation, and
+ * link-this-device panel (ADR 0037 §1-2). Reuses the same tokens as AuthForm.module.css /
+ * ProfileMenu.module.css rather than inventing a new visual language. */
+
+.card {
+  max-width: 420px;
+  margin: 1.5rem auto;
+  padding: 1.25rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.body {
+  margin: 0 0 1rem;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.optionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.optionButton {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.optionButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.optionButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.secondary {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+
+.tertiary {
+  background: none;
+  color: var(--fg-muted);
+  border: 1px solid transparent;
+}
+
+.tertiary:hover:not(:disabled) {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+.danger {
+  background: var(--danger);
+  color: var(--accent-fg);
+  border: none;
+}
+
+.danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.optionDesc {
+  margin: 0;
+  padding-left: 0.1rem;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  line-height: 1.35;
+}
+
+.alertText {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin: 0 0 0.85rem;
+}
+
+.instruction {
+  margin: 0 0 0.75rem;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.sasCode {
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  margin: 0 0 1rem;
+}
+
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: deviceLinkSpin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@keyframes deviceLinkSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
