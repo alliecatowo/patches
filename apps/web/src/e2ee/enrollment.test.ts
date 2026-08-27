@@ -12,7 +12,7 @@ import {
   type PublishIdentityRootRequest,
 } from '@patches/proto/es';
 import { E2EE_PROTOCOL_V1 } from '@patches/domain';
-import { generateSigningKeyPair, type DoubleRatchetState } from '@patches/crypto';
+import { signingKeyPairFromPrivate, type DoubleRatchetState } from '@patches/crypto';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
@@ -286,12 +286,18 @@ describe('stored enrollment codec', () => {
   });
 
   it('has no bootstrap root to republish for a record that did not create one', () => {
+    // A resumed (non-bootstrap) root must be a real, self-consistent keypair —
+    // `generateEnrollment` immediately re-verifies everything it mints (ADR 0033 §3), so a
+    // mismatched fixture keypair fails signature verification rather than being silently
+    // accepted.
+    const fixedRoot = signingKeyPairFromPrivate(new Uint8Array(32).fill(1));
     const { record } = generateEnrollment({
       actorId: ACTOR_ID,
-      // A real keypair, not two arbitrary fills: since ADR 0033 `generateEnrollment`
-      // re-verifies the root it mints through `verifyMessagingRoot`, a public key that
-      // does not correspond to the private key fails its own self-signature check.
-      root: { ...generateSigningKeyPair(), createdAtMs: NOW_MS - 60_000 },
+      root: {
+        privateKey: fixedRoot.privateKey,
+        publicKey: fixedRoot.publicKey,
+        createdAtMs: NOW_MS - 60_000,
+      },
       nowMs: NOW_MS,
     });
 
