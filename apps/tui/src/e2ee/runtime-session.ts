@@ -294,11 +294,16 @@ export class E2eeSessionRuntime {
           acknowledged.push(envelope.envelopeId);
         } catch (caught) {
           if (isReplayDuplicate(caught)) {
-            // Already processed and committed before a lost ack \u2014 safe to acknowledge
+            // Already processed and committed before a lost ack — safe to acknowledge
             // again so the mailbox drains; nothing is rendered twice.
             acknowledged.push(envelope.envelopeId);
             continue;
           }
+          // A non-replay failure (malformed envelope, ratchet desync, decrypt failure)
+          // stops the entire mailbox drain — set error so the outer loop aborts instead
+          // of fetching the next page. Envelopes already acknowledged earlier in this
+          // page keep their commits; this one and everything after it in the current
+          // page stay unacknowledged and redeliver on a later poll.
           error = 'Envelope processing failed';
           break;
         }
