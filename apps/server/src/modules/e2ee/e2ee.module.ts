@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { NotificationsModule } from '../notifications/notification.module.js';
 import { E2eeCapabilityService } from './e2ee-capability.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
+import { E2eeDeviceLinkService } from './device-link.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeController } from './e2ee.controller.js';
 import { E2eeGroupService } from './group-control.service.js';
@@ -33,6 +34,7 @@ import { E2eeReportEvidenceService } from './report-evidence.service.js';
   providers: [
     E2eeIdentityRootService,
     E2eeDeviceRosterService,
+    E2eeDeviceLinkService,
     E2eePrekeyService,
     E2eeCapabilityService,
     E2eeConversationService,

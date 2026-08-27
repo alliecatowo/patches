@@ -38,6 +38,7 @@ import type { FederationGateway } from '../federation/federation-gateway.js';
 import { FEDERATION_GATEWAY } from '../federation/federation-gateway.js';
 import { E2eeCapabilityService } from './e2ee-capability.service.js';
 import { E2eeConversationService } from './e2ee-conversation.service.js';
+import { E2eeDeviceLinkService } from './device-link.service.js';
 import { E2eeDeviceRosterService } from './device-roster.service.js';
 import { E2eeController } from './e2ee.controller.js';
 import { E2eeGroupService } from './group-control.service.js';
@@ -153,6 +154,7 @@ describe('E2eeController runtime never reaches FederationGateway (ADR 0020 §13)
       providers: [
         { provide: E2eeIdentityRootService, useValue: {} },
         { provide: E2eeDeviceRosterService, useValue: {} },
+        { provide: E2eeDeviceLinkService, useValue: {} },
         { provide: E2eePrekeyService, useValue: {} },
         { provide: E2eeConversationService, useValue: {} },
         { provide: E2eeGroupService, useValue: {} },
@@ -198,6 +200,7 @@ describe('E2eeController runtime never reaches FederationGateway (ADR 0020 §13)
       providers: [
         { provide: E2eeIdentityRootService, useValue: {} },
         { provide: E2eeDeviceRosterService, useValue: {} },
+        { provide: E2eeDeviceLinkService, useValue: {} },
         { provide: E2eePrekeyService, useValue: {} },
         {
           provide: E2eeConversationService,
