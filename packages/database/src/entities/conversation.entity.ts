@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -23,6 +24,17 @@ import {
 @Entity({ name: 'conversations' })
 @Check('chk_conversations_kind', checkIn('kind', CONVERSATION_KINDS))
 @Check('chk_conversations_security_mode', checkIn('security_mode', CONVERSATION_SECURITY_MODES))
+// ADR 0035 §4's replay anchor. Partial: NULL `creation_client_request_id` (every conversation
+// not created through a reservation) is excluded, matching Postgres's own "NULL never equals
+// NULL" uniqueness semantics.
+@Index(
+  'uq_conversations_creator_client_request_id',
+  ['createdByActorId', 'creationClientRequestId'],
+  {
+    unique: true,
+    where: '"creation_client_request_id" IS NOT NULL',
+  },
+)
 export class Conversation {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
@@ -49,9 +61,24 @@ export class Conversation {
   declare createdAt: Date;
 
   /** Denormalized for `ListConversations`'s ordering (most-recently-active first) — updated
-   * by `DirectMessageService` on every `SendMessage`. */
-  @Column({ type: 'timestamptz' })
-  declare lastMessageAt: Date;
+   * by `DirectMessageService` on every `SendMessage`. NULL from `CreateE2eeConversation`'s
+   * reservation (ADR 0035 §5) until `acceptE2eeLogicalMessage` sets it on the first accepted
+   * message: a reserved-but-unmessaged conversation is invisible to every actor, including its
+   * creator, because surfacing it early is a coarse typing indicator (spec §183.3 forbids
+   * leaking presence). `MessagesService` filters and treats NULL as not-found accordingly. */
+  @Column({ type: 'timestamptz', nullable: true })
+  declare lastMessageAt: Date | null;
+
+  /** ADR 0035 §4's idempotency anchor for `CreateE2eeConversation`, independent of
+   * `e2ee_logical_messages`' own `(sender_actor_id, client_request_id)` anchor: a reservation
+   * writes no logical message, so without this column a retried reservation would create a
+   * second conversation. NULL for every conversation created before this ADR and for anything
+   * not created through the reservation RPC; the partial unique index on
+   * `(created_by_actor_id, creation_client_request_id) WHERE creation_client_request_id IS NOT
+   * NULL` tolerates that. Scoped to the creator, not global, so two different actors may reuse
+   * the same client-minted string. */
+  @Column({ type: 'text', nullable: true })
+  declare creationClientRequestId: string | null;
 
   /** `E2EE_V1` only (ADR 0020 §7, ADR 0026, P13-008); always `'1'` for `LEGACY_SERVER_VISIBLE`.
    * Denormalized from `E2eeConversationMembershipEvent`'s newest row so a fanout accept can lock

@@ -43,6 +43,10 @@ export class MessagesService {
       .leftJoinAndSelect('conversation.createdByActor', 'createdByActor')
       .where('member.actorId = :actorId', { actorId })
       .andWhere('member.leftAt IS NULL')
+      // ADR 0035 §5: a conversation reserved by `CreateE2eeConversation` but never messaged is
+      // invisible to every member, including its creator — surfacing it early is a coarse
+      // typing indicator (spec §183.3 forbids leaking presence).
+      .andWhere('conversation.lastMessageAt IS NOT NULL')
       .orderBy('conversation.lastMessageAt', 'DESC')
       .addOrderBy('conversation.id', 'DESC')
       .take(take + 1);
@@ -75,10 +79,14 @@ export class MessagesService {
       if (view !== null) items.push(view);
     }
 
-    const { nextCursor } = pageInfoFor(page, hasMore, (row) => ({
-      createdAt: row.conversation.lastMessageAt,
-      id: row.conversation.id,
-    }));
+    const { nextCursor } = pageInfoFor(page, hasMore, (row) => {
+      const { lastMessageAt } = row.conversation;
+      if (lastMessageAt === null) {
+        // Unreachable: the query above filters `lastMessageAt IS NOT NULL`.
+        throw AppError.internal('Listed conversation has no last_message_at.');
+      }
+      return { createdAt: lastMessageAt, id: row.conversation.id };
+    });
     return { items, nextCursor, hasMore };
   }
 
@@ -192,6 +200,12 @@ export class MessagesService {
       if (await this.blockedEitherDirection(manager, viewerActorId, other.actorId)) return null;
     }
 
+    // ADR 0035 §5: a reservation with no accepted message yet (`lastMessageAt` still NULL) is
+    // not a visible product state for anyone, including its creator — treated identically to
+    // "not found"/"not a member" rather than as a distinguishable empty conversation.
+    const { lastMessageAt } = conversation;
+    if (lastMessageAt === null) return null;
+
     const unreadCount = await this.unreadCountFor(manager, conversation.id, viewerMembership);
 
     return {
@@ -209,7 +223,7 @@ export class MessagesService {
         muted: member.muted,
       })),
       createdAt: conversation.createdAt,
-      lastMessageAt: conversation.lastMessageAt,
+      lastMessageAt,
       unreadCount,
     };
   }

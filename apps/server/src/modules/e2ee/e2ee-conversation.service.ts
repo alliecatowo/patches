@@ -7,7 +7,6 @@ import {
   ConversationMember as ConversationMemberEntity,
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
-  E2eeLogicalMessage as E2eeLogicalMessageEntity,
   E2eeMailboxEnvelope as E2eeMailboxEnvelopeEntity,
   type ConversationKind as DbConversationKind,
 } from '@patches/database';
@@ -35,11 +34,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { mayMessageDirectly } from '../messages/direct-message-eligibility.js';
 import { NotificationsService } from '../notifications/notification.service.js';
-import {
-  acceptE2eeLogicalMessage,
-  transcriptDigestsForStoredMessages,
-  type AcceptedLogicalMessage,
-} from './e2ee-fanout.js';
+import { acceptE2eeLogicalMessage, transcriptDigestsForStoredMessages } from './e2ee-fanout.js';
 import { decodeCertificateTranscript } from './e2ee.codec.js';
 import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { loadCurrentGroupControl } from './group-control.js';
@@ -81,6 +76,10 @@ export class E2eeConversationService {
     this.#keys = keys;
   }
 
+  // ADR 0035: `CreateE2eeConversation` reserves a conversation — it establishes membership and
+  // returns the id, and carries no message. The former one-shot form asked a client to seal an
+  // initial envelope for a conversation id it could not yet know, which no honest client could
+  // do; the first message is now an ordinary `sendEnvelopes` into the id this method returns.
   async createE2eeConversation(
     actorId: string,
     request: CreateE2eeConversationRequest,
@@ -101,35 +100,22 @@ export class E2eeConversationService {
         `An E2EE conversation may have at most ${String(E2EE_GROUP_MAX_MEMBERS)} members including you.`,
       );
     }
-
-    // Idempotent replay before touching anything else, matching `MessagesService.createConversation`'s
-    // own "same client_request_id, same result" contract (spec §45) — a retry must not create a
-    // second conversation. Delegating straight to `acceptE2eeLogicalMessage` (rather than
-    // hand-building the response here) reuses its exact dedup/replay reconstruction, including
-    // `transcript_digest`, instead of a second implementation that has to agree with it.
-    const existing = await this.dataSource.getRepository(E2eeLogicalMessageEntity).findOne({
-      where: { senderActorId: actorId, clientRequestId: request.clientRequestId },
-    });
-    if (existing !== null) {
-      return this.dataSource.transaction(async (manager) => {
-        const accepted = await acceptE2eeLogicalMessage(manager, {
-          conversationId: existing.conversationId,
-          senderActorId: actorId,
-          senderDeviceId: request.senderDeviceId,
-          clientRequestId: request.clientRequestId,
-          message: request.message,
-          keys: this.#keys,
-          approvalPolicy: this.approvalPolicy,
-        });
-        return this.#toCreateResponse(existing.conversationId, accepted);
-      });
+    if (request.senderDeviceId.length === 0) {
+      throw AppError.validation('sender_device_id is required.');
     }
 
-    // Dedup replay first, budgets second, transaction last — a retried send never burns
-    // budget twice.
+    // Replay before touching budget or authorization (ADR 0035 §4, spec §45) — a retry must not
+    // create a second conversation or burn budget twice. `client_request_id` is scoped to the
+    // creator, independent of `e2ee_logical_messages`' own replay anchor: a reservation writes
+    // no logical message, so that anchor never covers it.
+    const replayed = await this.dataSource.getRepository(ConversationEntity).findOne({
+      where: { createdByActorId: actorId, creationClientRequestId: request.clientRequestId },
+    });
+    if (replayed !== null) return this.#toReservationResponse(replayed);
+
     await this.rateLimits.consumeConversationCreate(actorId, peer);
 
-    const created = await this.dataSource.transaction(async (manager) => {
+    return this.dataSource.transaction(async (manager) => {
       const kind: DbConversationKind = recipientIds.length === 1 ? 'DIRECT' : 'GROUP';
 
       const recipients = await manager
@@ -157,40 +143,68 @@ export class E2eeConversationService {
         if (!(await mayMessageDirectly(manager, actorId, recipientId))) throw actorNotFound();
       }
 
-      const conversation = await manager.getRepository(ConversationEntity).save(
-        manager.getRepository(ConversationEntity).create({
-          kind,
-          securityMode: 'E2EE_V1',
-          createdByActorId: actorId,
-          lastMessageAt: new Date(),
-        }),
-      );
+      // The sender-device check ADR 0035 moves up: it used to run inside
+      // `acceptE2eeLogicalMessage`, which no longer runs for a reservation. This is the
+      // caller's own device, so it is not an oracle about anyone else.
+      const senderDevice = await manager.getRepository(E2eeDeviceIdentityEntity).findOne({
+        where: { actorId, deviceId: request.senderDeviceId },
+      });
+      const now = new Date();
+      if (
+        senderDevice === null ||
+        senderDevice.revokedAt !== null ||
+        senderDevice.expiresAt.getTime() <= now.getTime()
+      ) {
+        throw new AppError(
+          'E2EE_DEVICE_NOT_FOUND',
+          'The sending device is not an active certified device of this actor.',
+        );
+      }
+
+      let conversation: ConversationEntity;
+      try {
+        conversation = await manager.getRepository(ConversationEntity).save(
+          manager.getRepository(ConversationEntity).create({
+            kind,
+            securityMode: 'E2EE_V1',
+            createdByActorId: actorId,
+            // Reserved, unmessaged conversations are invisible to every actor, including their
+            // creator, until `acceptE2eeLogicalMessage` sets this on the first accepted message
+            // (ADR 0035 §5 — an early-visible empty conversation is a coarse typing indicator,
+            // which spec §183.3 forbids).
+            lastMessageAt: null,
+            creationClientRequestId: request.clientRequestId,
+          }),
+        );
+      } catch (error) {
+        // `uq_conversations_creator_client_request_id` — a concurrent duplicate reservation
+        // raced us to the insert. The other transaction is authoritative; replay its result
+        // rather than erroring (ADR 0035 §4, same shape `acceptE2eeLogicalMessage` uses for its
+        // own raced insert).
+        const raced = await manager.getRepository(ConversationEntity).findOne({
+          where: { createdByActorId: actorId, creationClientRequestId: request.clientRequestId },
+        });
+        if (raced === null) throw error;
+        return this.#toReservationResponse(raced);
+      }
+
       await manager
         .getRepository(ConversationMemberEntity)
         .insert(allIds.map((memberId) => ({ conversationId: conversation.id, actorId: memberId })));
 
-      const accepted = await acceptE2eeLogicalMessage(manager, {
-        conversationId: conversation.id,
-        senderActorId: actorId,
-        senderDeviceId: request.senderDeviceId,
-        clientRequestId: request.clientRequestId,
-        message: request.message,
-        keys: this.#keys,
-        approvalPolicy: this.approvalPolicy,
-      });
-
-      return { response: this.#toCreateResponse(conversation.id, accepted), accepted };
+      // Nothing else. No `e2ee_logical_messages` row, no `e2ee_mailbox_envelopes` rows, no
+      // `e2ee_group_control_events` row, and — because `#notifyRecipients` is called only on a
+      // non-replay accepted message, which this is not — no notification. A reservation is
+      // silent by construction, not by a flag someone can flip (ADR 0035 §3.5).
+      return this.#toReservationResponse(conversation);
     });
+  }
 
-    // Content-free MESSAGE notification (spec §187, ADR 0030 §B-095) — recipientIds is
-    // already the exact "every other member" set for a brand-new conversation, so no
-    // extra membership query is needed the way `sendEnvelopes` (an existing conversation)
-    // requires below.
-    if (!created.accepted.replay) {
-      await this.#notifyRecipients(recipientIds, actorId, created.response.conversationId);
-    }
-
-    return created.response;
+  #toReservationResponse(conversation: ConversationEntity): CreateE2eeConversationResponse {
+    return {
+      conversationId: conversation.id,
+      securityMode: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
+    };
   }
 
   /**
@@ -237,19 +251,6 @@ export class E2eeConversationService {
     return members
       .filter((member) => member.actorId !== senderActorId)
       .map((member) => member.actorId);
-  }
-
-  #toCreateResponse(
-    conversationId: string,
-    accepted: AcceptedLogicalMessage,
-  ): CreateE2eeConversationResponse {
-    return {
-      conversationId,
-      securityMode: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
-      logicalMessageId: accepted.logicalMessageId,
-      acceptedAt: dateToTimestamp(accepted.acceptedAt),
-      frankingTag: accepted.frankingTag,
-    };
   }
 
   async getE2eeConversationState(

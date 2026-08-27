@@ -75,10 +75,12 @@ service E2eeService {
   // most one one-time prekey per device per call, and rate-limits draining (ADR 0020 §5).
   rpc ClaimPrekeyBundles(ClaimPrekeyBundlesRequest) returns (ClaimPrekeyBundlesResponse);
 
-  // Creates an `E2EE_V1` conversation together with its first logical message. Separate from
-  // `DirectMessageService.CreateConversation` because that RPC takes an `initial_body` string:
-  // there is no plaintext body to give it here, and adding an "empty body means encrypted" mode
-  // to it would put the two security modes behind one ambiguous call.
+  // Reserves an `E2EE_V1` conversation: establishes membership and returns its id, carrying no
+  // message (ADR 0035). Every envelope's AEAD associated data binds the conversation id the
+  // recipient reads off the wire, so a client cannot seal an initial envelope for an id it does
+  // not yet have. The first message is an ordinary `SendEnvelopes` into the id this RPC returns.
+  // The conversation is invisible to every actor, including its creator, until that first
+  // message is accepted (ADR 0035 §5).
   rpc CreateE2eeConversation(CreateE2eeConversationRequest) returns (CreateE2eeConversationResponse);
 
   // Everything a sender needs to build a correct fanout: the membership epoch, the members, and
@@ -780,18 +782,23 @@ message ClaimPrekeyBundlesResponse {
 }
 
 message CreateE2eeConversationRequest {
-  // Idempotency key (spec §45). Retrying must not create a second conversation.
+  // Idempotency key (spec §45). Retrying returns the same conversation id and creates nothing.
   string client_request_id = 1;
 
   // Excludes the caller. 1 recipient makes a direct conversation, 2–7 a group (8 members
   // including the caller, spec §183.3).
   repeated string recipient_actor_ids = 2;
 
+  // Must name an active certified device of the caller. Reserving a conversation you have no
+  // device to send from is a client bug, caught here rather than at the first send.
   string sender_device_id = 3;
 
-  // The first logical message, already fanned out. There is no plaintext `initial_body`
-  // counterpart to `CreateConversationRequest` here, and there must never be one.
-  E2eeLogicalMessage message = 4;
+  // Removed by ADR 0035. This RPC used to carry the first `E2eeLogicalMessage`, which was
+  // impossible to seal: the envelope AD binds the conversation id, and the node minted it
+  // after the client composed. The first message is a `SendEnvelopes` into the reserved id.
+  // Never reuse this number or name (spec §153).
+  reserved 4;
+  reserved "message";
 }
 
 message CreateE2eeConversationResponse {
@@ -801,9 +808,11 @@ message CreateE2eeConversationResponse {
   // rather than the mode it asked for before it renders any encryption wording.
   ConversationSecurityMode security_mode = 2;
 
-  string logical_message_id = 3;
-  google.protobuf.Timestamp accepted_at = 4;
-  E2eeFrankingTag franking_tag = 5;
+  // Removed by ADR 0035 with the request's `message`: this RPC accepts no message, so it
+  // issues no logical message id, no acceptance time, and no franking tag. Those come from
+  // the `SendEnvelopes` that carries the first message. Never reuse these numbers or names.
+  reserved 3, 4, 5;
+  reserved "logical_message_id", "accepted_at", "franking_tag";
 }
 
 message GetE2eeConversationStateRequest {
