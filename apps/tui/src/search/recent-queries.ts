@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -58,14 +59,25 @@ export class FileRecentQueriesStore implements RecentQueriesStore {
       if (isErrnoException(error) && error.code === 'ENOENT') return [];
       throw error;
     }
-    const parsed: unknown = JSON.parse(raw);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // A truncated or corrupt recall file (a crash mid-write, or a reader racing a writer) is
+      // worth an empty history, not a rejected promise that no caller can act on.
+      return [];
+    }
     return isStringArray(parsed) ? parsed.slice(0, RECENT_QUERY_LIMIT) : [];
   }
 
   async add(query: string): Promise<readonly string[]> {
     const next = withRecalled(await this.load(), query);
     await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    // Write-then-rename so a concurrent `load` sees either the old file or the new one, never
+    // a half-written JSON document.
+    const temp = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    await rename(temp, this.path);
     return next;
   }
 }
