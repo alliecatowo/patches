@@ -3,21 +3,29 @@
  * from `index.ts` — this module never ships in `dist`, it only exists to keep every test file
  * deriving the same synthetic identities/handshakes from the same small set of seed rules.
  */
-import { certifyDevice, createSignedPreKey, rosterDigest, signDeviceRoster } from '../identity.js';
 import { initializeInitiatorRatchet, initializeResponderRatchet } from '../double-ratchet.js';
+import {
+  signDeviceCertificate,
+  signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  verifyCertifiedDevice,
+  verifyMessagingRoot,
+  verifyPreKeyBundle,
+  verifyRosterSnapshot,
+  type VerifiedCertifiedDevice,
+  type VerifiedMessagingRoot,
+  type VerifiedPreKeyBundle,
+  type VerifiedRosterSnapshot,
+} from '../identity.js';
 import { keyAgreementKeyPairFromPrivate, signingKeyPairFromPrivate } from '../primitives.js';
 import {
   E2EE_PROTOCOL,
-  E2EE_VERSION,
-  type CertifiedDevice,
   type DevicePrivateKeys,
-  type DeviceRoster,
   type DoubleRatchetState,
   type KeyPair,
-  type PreKeyBundle,
   type PrivatePreKey,
   type RatchetRandomSource,
-  type SignedDeviceRoster,
 } from '../types.js';
 import {
   initiateX3dh,
@@ -27,6 +35,7 @@ import {
 } from '../x3dh.js';
 
 export const FIXTURE_NOW = 10_000;
+export const FIXTURE_CERTIFICATE_VERSION = 1;
 
 /** A raw 32-byte scalar built from a single repeated seed byte (`value` wraps mod 256). */
 export function fixtureBytes(value: number): Uint8Array {
@@ -34,47 +43,79 @@ export function fixtureBytes(value: number): Uint8Array {
 }
 
 export interface UserFixture {
-  readonly root: KeyPair;
+  readonly rootKeyPair: KeyPair;
   readonly keys: DevicePrivateKeys;
-  readonly device: CertifiedDevice;
-  readonly roster: SignedDeviceRoster;
+  readonly root: VerifiedMessagingRoot;
+  readonly device: VerifiedCertifiedDevice;
+  readonly roster: VerifiedRosterSnapshot;
 }
 
-export function userFixture(userId: string, seed: number): UserFixture {
-  const root = signingKeyPairFromPrivate(fixtureBytes(seed));
+export function userFixture(actorId: string, seed: number): UserFixture {
+  const rootKeyPair = signingKeyPairFromPrivate(fixtureBytes(seed));
   const signing = signingKeyPairFromPrivate(fixtureBytes(seed + 1));
   const agreement = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 2));
-  const device = certifyDevice(root.privateKey, {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId,
-    deviceId: `${userId}-device`,
+
+  const signedRoot = signMessagingRoot(rootKeyPair.privateKey, {
+    actorId,
+    generation: 1,
+    publicKey: rootKeyPair.publicKey,
+    createdAtMs: 1,
+  });
+  const root = verifyMessagingRoot({ ...signedRoot, nowMs: FIXTURE_NOW });
+
+  const certificate = signDeviceCertificate(rootKeyPair.privateKey, {
+    actorId,
+    deviceId: `${actorId}-device`,
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
+    certificateVersion: FIXTURE_CERTIFICATE_VERSION,
     signingPublicKey: signing.publicKey,
     agreementPublicKey: agreement.publicKey,
-    generation: 1,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
     createdAtMs: 1,
     expiresAtMs: 1_000_000,
   });
-  const rosterValue: DeviceRoster = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId,
-    rootPublicKey: root.publicKey,
+  const device = verifyCertifiedDevice({
+    certificateBytes: certificate.certificateBytes,
+    rootSignature: certificate.rootSignature,
+    root,
+    nowMs: FIXTURE_NOW,
+  });
+
+  const signedRoster = signDeviceRoster(rootKeyPair.privateKey, {
+    actorId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
     sequence: 1,
     previousDigest: new Uint8Array(32),
-    devices: [device],
     createdAtMs: 1,
-  };
-  return {
+    entries: [
+      {
+        deviceId: device.deviceId,
+        certificateDigest: certificate.certificateDigest,
+        active: true,
+        addedAtMs: 1,
+      },
+    ],
+  });
+  const roster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
     root,
-    keys: { signing, agreement },
-    device,
-    roster: signDeviceRoster(root.privateKey, rosterValue),
-  };
+    certificates: [
+      {
+        certificateBytes: certificate.certificateBytes,
+        rootSignature: certificate.rootSignature,
+      },
+    ],
+    nowMs: FIXTURE_NOW,
+  });
+
+  return { rootKeyPair, keys: { signing, agreement }, root, device, roster };
 }
 
 export interface BundleFixture {
-  readonly bundle: PreKeyBundle;
+  readonly bundle: VerifiedPreKeyBundle;
   readonly signedPreKey: PrivatePreKey;
   readonly oneTimePreKey: PrivatePreKey;
 }
@@ -82,23 +123,27 @@ export interface BundleFixture {
 export function bundleFixture(user: UserFixture, seed: number): BundleFixture {
   const signedPreKey = { id: 71, keyPair: keyAgreementKeyPairFromPrivate(fixtureBytes(seed)) };
   const oneTimePreKey = { id: 91, keyPair: keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 1)) };
-  const digest = rosterDigest(user.roster.roster);
+  const signed = signPreKeyBundle(user.keys.signing.privateKey, {
+    actorId: user.device.actorId,
+    deviceId: user.device.deviceId,
+    certificateDigest: user.device.certificateDigest,
+    signedPrekeyId: signedPreKey.id,
+    signedPrekeyPublicKey: signedPreKey.keyPair.publicKey,
+    createdAtMs: 1,
+    expiresAtMs: 20_000,
+  });
   return {
     signedPreKey,
     oneTimePreKey,
-    bundle: {
-      protocol: E2EE_PROTOCOL,
-      version: E2EE_VERSION,
-      certifiedDevice: user.device,
-      rosterDigest: digest,
-      signedPreKey: createSignedPreKey(user.keys.signing.privateKey, user.device, digest, {
-        id: signedPreKey.id,
-        publicKey: signedPreKey.keyPair.publicKey,
-        createdAtMs: 1,
-        expiresAtMs: 20_000,
-      }),
+    bundle: verifyPreKeyBundle({
+      bundleBytes: signed.bundleBytes,
+      deviceSignature: signed.deviceSignature,
+      certificateBytes: user.device.certificateBytes,
+      certificateRootSignature: user.device.rootSignature,
       oneTimePreKey: { id: oneTimePreKey.id, publicKey: oneTimePreKey.keyPair.publicKey },
-    },
+      roster: user.roster,
+      nowMs: FIXTURE_NOW,
+    }),
   };
 }
 

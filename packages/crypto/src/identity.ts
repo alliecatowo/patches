@@ -1,291 +1,434 @@
-import { ByteWriter, bytesEqual } from './codec.js';
-import { CertificateError, PreKeyError, RosterRollbackError } from './errors.js';
-import { sha256Hash, sign, verifyStrict } from './primitives.js';
+/**
+ * Identity minting and verification over the one canonical transcript family (ADR 0033 §3).
+ *
+ * Every `verify*` takes raw bytes plus signatures plus an already-verified predecessor. There is
+ * no field on any input type into which a caller could place its own decoding, honest or
+ * otherwise: each verifier decodes the served bytes with the single codec, checks the signature
+ * over exactly those bytes, checks the decoded view against the verified predecessor, checks the
+ * validity window, and *returns* the re-derived fields.
+ *
+ * The results are branded with a module-private `unique symbol`, so no code outside this module
+ * can construct one. `initiateX3dh`/`respondX3dh` accept only `Verified*` values, which makes
+ * "run X3DH against unverified peer material" a compile error rather than a convention.
+ *
+ * Roster *chain* rules (sequence advances by exactly one, `previousDigest` chains, no drop, no
+ * re-point, no un-revoke, no rollback) live in `@patches/domain`'s `assertRosterChain` and are
+ * deliberately not duplicated here: one rule, one place.
+ */
+import { ByteWriter, bytesEqual, compareUtf8Bytes, toHex } from './codec.js';
+import { CertificateError, PreKeyError } from './errors.js';
 import {
-  E2EE_ALGORITHM,
-  E2EE_PROTOCOL,
-  E2EE_VERSION,
-  KEY_BYTES,
-  SIGNATURE_BYTES,
-  type CertifiedDevice,
-  type DeviceCertificate,
-  type DeviceRoster,
-  type KeyPair,
-  type PreKeyBundle,
-  type SignedDeviceRoster,
-  type SignedPreKey,
-} from './types.js';
+  decodeDeviceCertificateTranscript,
+  decodeDeviceRosterTranscript,
+  decodeMessagingRootTranscript,
+  decodePreKeyBundleTranscript,
+  encodeDeviceCertificateTranscript,
+  encodeDeviceRosterTranscript,
+  encodeMessagingRootTranscript,
+  encodePreKeyBundleTranscript,
+  type DeviceCertificateTranscript,
+  type DeviceRosterEntryTranscript,
+  type DeviceRosterTranscript,
+  type MessagingRootTranscript,
+  type PreKeyBundleTranscript,
+} from './identity-transcript.js';
+import { sha256Hash, sign, verifyStrict } from './primitives.js';
+import { KEY_BYTES, SIGNATURE_BYTES, type KeyPair, type OneTimePreKey } from './types.js';
+
+const SAFETY_NUMBER_CONTEXT = 'patches-e2ee-v1/safety-number';
 
 /**
- * Client-side identity transcript domains. Exported for one reason: the node's own
- * certificate/roster transcript encoder (`apps/server` `e2ee.codec.ts`) signs over structurally
- * similar material, and the audit found both encoders using these exact strings — two encoders,
- * same domain separators, so a signature could verify across trust contexts up to the field-size
- * caps. These are exported so that disjointness is asserted by a test in the server package
- * instead of resting on two copies of two literals staying different by luck.
+ * Phantom brand. `declare const` means it exists only in the type system, so a `Verified*` value
+ * is an ordinary object at runtime that only this module's verifiers can produce a *typed*
+ * reference to — the property name is unnameable outside this file.
  */
-export const CERTIFICATE_CONTEXT = 'patches-e2ee-v1/device-certificate';
-export const ROSTER_CONTEXT = 'patches-e2ee-v1/device-roster';
-const PREKEY_CONTEXT = 'patches-e2ee-v1/signed-prekey';
-const SAFETY_NUMBER_CONTEXT = 'patches-e2ee-v1/safety-number';
-const ZERO_DIGEST = new Uint8Array(32);
+declare const VERIFIED_IDENTITY_BRAND: unique symbol;
 
-function requireKey(value: Uint8Array, label: string): void {
-  if (value.length !== KEY_BYTES) throw new CertificateError(`${label} has an invalid length.`);
+/**
+ * The shape a verifier actually builds: every field of the branded result except the phantom
+ * brand, which has no runtime representation to build. The four `brand*` helpers below are the
+ * only places the brand is attached, and each is a concrete (non-generic) assertion from a fully
+ * checked value — so a verifier that forgets a field or gets one's type wrong is still a compile
+ * error at the call site rather than being swallowed by a wide cast.
+ */
+type Unbranded<T extends { readonly [VERIFIED_IDENTITY_BRAND]: string }> = Omit<
+  T,
+  typeof VERIFIED_IDENTITY_BRAND
+>;
+
+function brandMessagingRoot(value: Unbranded<VerifiedMessagingRoot>): VerifiedMessagingRoot {
+  return value as VerifiedMessagingRoot;
 }
 
-function requireSignature(value: Uint8Array, label: string): void {
+function brandCertifiedDevice(value: Unbranded<VerifiedCertifiedDevice>): VerifiedCertifiedDevice {
+  return value as VerifiedCertifiedDevice;
+}
+
+function brandRosterSnapshot(value: Unbranded<VerifiedRosterSnapshot>): VerifiedRosterSnapshot {
+  return value as VerifiedRosterSnapshot;
+}
+
+function brandPreKeyBundle(value: Unbranded<VerifiedPreKeyBundle>): VerifiedPreKeyBundle {
+  return value as VerifiedPreKeyBundle;
+}
+
+function requireSignatureBytes(value: Uint8Array, label: string): void {
   if (value.length !== SIGNATURE_BYTES) {
     throw new CertificateError(`${label} has an invalid length.`);
   }
 }
 
-function requireIdentity(value: string, label: string): void {
+function requireKeyLength(value: Uint8Array, label: string): void {
+  if (value.length !== KEY_BYTES) throw new CertificateError(`${label} has an invalid length.`);
+}
+
+function requireIdentifier(value: string, label: string): void {
   if (value.length === 0 || value.length > 256) throw new CertificateError(`${label} is invalid.`);
 }
 
-function compareDevices(left: CertifiedDevice, right: CertifiedDevice): number {
-  const idOrder = left.certificate.deviceId.localeCompare(right.certificate.deviceId, 'en');
-  return idOrder === 0 ? left.certificate.generation - right.certificate.generation : idOrder;
+/** SHA-256 over a canonical identity transcript; this is what roster entries reference. */
+export function identityTranscriptDigest(transcriptBytes: Uint8Array): Uint8Array {
+  return sha256Hash(transcriptBytes);
 }
 
-export function encodeDeviceCertificate(certificate: DeviceCertificate): Uint8Array {
-  requireIdentity(certificate.userId, 'User id');
-  requireIdentity(certificate.deviceId, 'Device id');
-  requireKey(certificate.signingPublicKey, 'Signing public key');
-  requireKey(certificate.agreementPublicKey, 'Agreement public key');
-  if (certificate.protocol !== E2EE_PROTOCOL || certificate.version !== E2EE_VERSION) {
-    throw new CertificateError('Unsupported certificate protocol.');
-  }
-  if (certificate.generation < 1 || !Number.isSafeInteger(certificate.generation)) {
-    throw new CertificateError('Device generation is invalid.');
-  }
-  if (
-    !Number.isSafeInteger(certificate.createdAtMs) ||
-    !Number.isSafeInteger(certificate.expiresAtMs) ||
-    certificate.createdAtMs < 0 ||
-    certificate.expiresAtMs <= certificate.createdAtMs
-  ) {
-    throw new CertificateError('Certificate validity interval is invalid.');
-  }
-  return new ByteWriter()
-    .string(CERTIFICATE_CONTEXT)
-    .string(certificate.protocol)
-    .u8(certificate.version)
-    .string(E2EE_ALGORITHM)
-    .string(certificate.userId)
-    .string(certificate.deviceId)
-    .fixed(certificate.signingPublicKey, KEY_BYTES)
-    .fixed(certificate.agreementPublicKey, KEY_BYTES)
-    .u32(certificate.generation)
-    .u64(certificate.createdAtMs)
-    .u64(certificate.expiresAtMs)
-    .finish();
+// ---------------------------------------------------------------------------
+// Minting
+// ---------------------------------------------------------------------------
+
+export interface SignedMessagingRoot {
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
 }
 
-export function certifyDevice(
+export function signMessagingRoot(
   rootPrivateKey: Uint8Array,
-  certificate: DeviceCertificate,
-): CertifiedDevice {
-  return { certificate, rootSignature: sign(rootPrivateKey, encodeDeviceCertificate(certificate)) };
+  fields: MessagingRootTranscript,
+): SignedMessagingRoot {
+  const rootBytes = encodeMessagingRootTranscript(fields);
+  return { rootBytes, selfSignature: sign(rootPrivateKey, rootBytes) };
 }
 
-export function verifyCertifiedDevice(
-  device: CertifiedDevice,
-  rootPublicKey: Uint8Array,
-  nowMs: number,
-): void {
-  requireKey(rootPublicKey, 'Root public key');
-  requireSignature(device.rootSignature, 'Root signature');
-  if (nowMs < device.certificate.createdAtMs || nowMs >= device.certificate.expiresAtMs) {
-    throw new CertificateError('Device certificate is not currently valid.');
-  }
-  if (
-    !verifyStrict(rootPublicKey, encodeDeviceCertificate(device.certificate), device.rootSignature)
-  ) {
-    throw new CertificateError('Device certificate signature is invalid.');
-  }
+/** The additional signature a *previous* root produces over a planned rotation's new root bytes. */
+export function countersignMessagingRoot(
+  previousRootPrivateKey: Uint8Array,
+  rootBytes: Uint8Array,
+): Uint8Array {
+  return sign(previousRootPrivateKey, rootBytes);
 }
 
-export function encodeCertifiedDevice(device: CertifiedDevice): Uint8Array {
-  requireSignature(device.rootSignature, 'Root signature');
-  return new ByteWriter()
-    .bytes(encodeDeviceCertificate(device.certificate))
-    .fixed(device.rootSignature, SIGNATURE_BYTES)
-    .finish();
+export interface SignedDeviceCertificate {
+  readonly certificateBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly certificateDigest: Uint8Array;
 }
 
-export function encodeDeviceRoster(roster: DeviceRoster): Uint8Array {
-  if (roster.protocol !== E2EE_PROTOCOL || roster.version !== E2EE_VERSION) {
-    throw new CertificateError('Unsupported roster protocol.');
-  }
-  requireIdentity(roster.userId, 'User id');
-  requireKey(roster.rootPublicKey, 'Root public key');
-  requireKey(roster.previousDigest, 'Previous roster digest');
-  if (roster.sequence < 1 || !Number.isSafeInteger(roster.sequence)) {
-    throw new CertificateError('Roster sequence is invalid.');
-  }
-  if (!Number.isSafeInteger(roster.createdAtMs) || roster.createdAtMs < 0) {
-    throw new CertificateError('Roster creation time is invalid.');
-  }
-  const devices = [...roster.devices].sort(compareDevices);
-  const seen = new Set<string>();
-  const writer = new ByteWriter()
-    .string(ROSTER_CONTEXT)
-    .string(roster.protocol)
-    .u8(roster.version)
-    .string(E2EE_ALGORITHM)
-    .string(roster.userId)
-    .fixed(roster.rootPublicKey, KEY_BYTES)
-    .u32(roster.sequence)
-    .fixed(roster.previousDigest, KEY_BYTES)
-    .u64(roster.createdAtMs)
-    .u32(devices.length);
-  for (const device of devices) {
-    const key = `${device.certificate.deviceId}:${String(device.certificate.generation)}`;
-    if (seen.has(key)) throw new CertificateError('Roster contains a duplicate device generation.');
-    seen.add(key);
-    writer.bytes(encodeCertifiedDevice(device));
-  }
-  return writer.finish();
+export function signDeviceCertificate(
+  rootPrivateKey: Uint8Array,
+  fields: DeviceCertificateTranscript,
+): SignedDeviceCertificate {
+  const certificateBytes = encodeDeviceCertificateTranscript(fields);
+  return {
+    certificateBytes,
+    rootSignature: sign(rootPrivateKey, certificateBytes),
+    certificateDigest: identityTranscriptDigest(certificateBytes),
+  };
 }
 
-export function rosterDigest(roster: DeviceRoster): Uint8Array {
-  return sha256Hash(encodeDeviceRoster(roster));
+export interface SignedDeviceRoster {
+  readonly rosterBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly rosterDigest: Uint8Array;
 }
 
 export function signDeviceRoster(
   rootPrivateKey: Uint8Array,
-  roster: DeviceRoster,
+  fields: DeviceRosterTranscript,
 ): SignedDeviceRoster {
-  return { roster, rootSignature: sign(rootPrivateKey, encodeDeviceRoster(roster)) };
-}
-
-export function verifyDeviceRoster(
-  signed: SignedDeviceRoster,
-  previous: SignedDeviceRoster | undefined,
-  nowMs: number,
-): void {
-  verifyRosterSnapshot(signed, nowMs);
-  const { roster } = signed;
-  if (previous === undefined) {
-    if (roster.sequence !== 1 || !bytesEqual(roster.previousDigest, ZERO_DIGEST)) {
-      throw new RosterRollbackError('Initial roster does not start the signed digest chain.');
-    }
-    return;
-  }
-  if (
-    roster.userId !== previous.roster.userId ||
-    !bytesEqual(roster.rootPublicKey, previous.roster.rootPublicKey) ||
-    roster.sequence !== previous.roster.sequence + 1 ||
-    !bytesEqual(roster.previousDigest, rosterDigest(previous.roster))
-  ) {
-    throw new RosterRollbackError('Roster does not extend the previously trusted roster.');
-  }
-}
-
-/** Verify a trusted roster snapshot without asserting where it sits in the local digest chain. */
-export function verifyRosterSnapshot(signed: SignedDeviceRoster, nowMs: number): void {
-  const { roster } = signed;
-  requireSignature(signed.rootSignature, 'Roster signature');
-  if (!verifyStrict(roster.rootPublicKey, encodeDeviceRoster(roster), signed.rootSignature)) {
-    throw new CertificateError('Roster signature is invalid.');
-  }
-  for (const device of roster.devices) {
-    if (device.certificate.userId !== roster.userId) {
-      throw new CertificateError('Roster contains a device for another user.');
-    }
-    verifyCertifiedDevice(device, roster.rootPublicKey, nowMs);
-  }
-}
-
-function encodeSignedPreKeyStatement(
-  certifiedDevice: CertifiedDevice,
-  rosterDigestValue: Uint8Array,
-  preKey: Omit<SignedPreKey, 'signature'>,
-): Uint8Array {
-  requireKey(rosterDigestValue, 'Roster digest');
-  requireKey(preKey.publicKey, 'Signed prekey');
-  if (
-    !Number.isSafeInteger(preKey.id) ||
-    preKey.id < 1 ||
-    !Number.isSafeInteger(preKey.createdAtMs) ||
-    !Number.isSafeInteger(preKey.expiresAtMs) ||
-    preKey.expiresAtMs <= preKey.createdAtMs
-  ) {
-    throw new PreKeyError('Signed prekey metadata is invalid.');
-  }
-  return new ByteWriter()
-    .string(PREKEY_CONTEXT)
-    .string(E2EE_PROTOCOL)
-    .u8(E2EE_VERSION)
-    .string(E2EE_ALGORITHM)
-    .bytes(encodeCertifiedDevice(certifiedDevice))
-    .fixed(rosterDigestValue, KEY_BYTES)
-    .u32(preKey.id)
-    .fixed(preKey.publicKey, KEY_BYTES)
-    .u64(preKey.createdAtMs)
-    .u64(preKey.expiresAtMs)
-    .finish();
-}
-
-export function createSignedPreKey(
-  signingPrivateKey: Uint8Array,
-  certifiedDevice: CertifiedDevice,
-  rosterDigestValue: Uint8Array,
-  preKey: Omit<SignedPreKey, 'signature'>,
-): SignedPreKey {
+  const rosterBytes = encodeDeviceRosterTranscript(fields);
   return {
-    ...preKey,
-    signature: sign(
-      signingPrivateKey,
-      encodeSignedPreKeyStatement(certifiedDevice, rosterDigestValue, preKey),
-    ),
+    rosterBytes,
+    rootSignature: sign(rootPrivateKey, rosterBytes),
+    rosterDigest: identityTranscriptDigest(rosterBytes),
   };
 }
 
-export function verifyPreKeyBundle(
-  bundle: PreKeyBundle,
-  signedRoster: SignedDeviceRoster,
-  nowMs: number,
-): void {
-  if (bundle.protocol !== E2EE_PROTOCOL || bundle.version !== E2EE_VERSION) {
-    throw new PreKeyError('Unsupported prekey protocol.');
+export interface SignedPreKeyBundle {
+  readonly bundleBytes: Uint8Array;
+  readonly deviceSignature: Uint8Array;
+}
+
+export function signPreKeyBundle(
+  deviceSigningPrivateKey: Uint8Array,
+  fields: PreKeyBundleTranscript,
+): SignedPreKeyBundle {
+  const bundleBytes = encodePreKeyBundleTranscript(fields);
+  return { bundleBytes, deviceSignature: sign(deviceSigningPrivateKey, bundleBytes) };
+}
+
+// ---------------------------------------------------------------------------
+// Verified results
+// ---------------------------------------------------------------------------
+
+export interface VerifiedMessagingRoot extends MessagingRootTranscript {
+  readonly [VERIFIED_IDENTITY_BRAND]: 'messaging-root';
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
+  /** Present only when a planned rotation was countersigned by the verified previous root. */
+  readonly previousRootSignature?: Uint8Array | undefined;
+}
+
+export interface VerifiedCertifiedDevice extends DeviceCertificateTranscript {
+  readonly [VERIFIED_IDENTITY_BRAND]: 'certified-device';
+  readonly certificateBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly certificateDigest: Uint8Array;
+}
+
+export interface VerifiedRosterSnapshot extends DeviceRosterTranscript {
+  readonly [VERIFIED_IDENTITY_BRAND]: 'roster-snapshot';
+  readonly rosterBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly rosterDigest: Uint8Array;
+  readonly root: VerifiedMessagingRoot;
+  /** The served certificates, each verified against `root` and matched to an entry by digest. */
+  readonly devices: readonly VerifiedCertifiedDevice[];
+}
+
+export interface VerifiedPreKeyBundle extends PreKeyBundleTranscript {
+  readonly [VERIFIED_IDENTITY_BRAND]: 'prekey-bundle';
+  readonly bundleBytes: Uint8Array;
+  readonly deviceSignature: Uint8Array;
+  readonly device: VerifiedCertifiedDevice;
+  /** Digest of the roster this bundle's certificate was proved to be an active entry of. */
+  readonly rosterDigest: Uint8Array;
+  readonly oneTimePreKey?: OneTimePreKey | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Verifiers
+// ---------------------------------------------------------------------------
+
+export interface VerifyMessagingRootInput {
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
+  /**
+   * A planned rotation is additionally signed by the previous root over the same bytes. ADR 0033
+   * §3 lists only `previousRootSignature`, but a signature is uncheckable without the key that
+   * made it, and silently accepting an unchecked one would be worse than not taking it at all —
+   * so the already-verified predecessor root travels with it and the pair is all-or-nothing.
+   */
+  readonly previousRootSignature?: Uint8Array | undefined;
+  readonly previousRoot?: VerifiedMessagingRoot | undefined;
+  readonly nowMs: number;
+}
+
+export function verifyMessagingRoot(input: VerifyMessagingRootInput): VerifiedMessagingRoot {
+  const fields = decodeMessagingRootTranscript(input.rootBytes);
+  requireSignatureBytes(input.selfSignature, 'Messaging root self signature');
+  if (!verifyStrict(fields.publicKey, input.rootBytes, input.selfSignature)) {
+    throw new CertificateError('Messaging root self signature is invalid.');
   }
-  verifyRosterSnapshot(signedRoster, nowMs);
-  if (!bytesEqual(bundle.rosterDigest, rosterDigest(signedRoster.roster))) {
-    throw new PreKeyError('Prekey bundle carries an untrusted roster digest.');
+  if (input.nowMs < fields.createdAtMs) {
+    throw new CertificateError('Messaging root is not yet valid.');
   }
-  const encodedDevice = encodeCertifiedDevice(bundle.certifiedDevice);
-  const rosterDevice = signedRoster.roster.devices.find((candidate) =>
-    bytesEqual(encodeCertifiedDevice(candidate), encodedDevice),
+  if ((input.previousRootSignature === undefined) !== (input.previousRoot === undefined)) {
+    throw new CertificateError('A previous-root signature requires the verified previous root.');
+  }
+  if (input.previousRootSignature !== undefined && input.previousRoot !== undefined) {
+    requireSignatureBytes(input.previousRootSignature, 'Previous root signature');
+    if (
+      input.previousRoot.actorId !== fields.actorId ||
+      fields.generation !== input.previousRoot.generation + 1 ||
+      bytesEqual(fields.publicKey, input.previousRoot.publicKey)
+    ) {
+      throw new CertificateError('Messaging root does not extend the previous root.');
+    }
+    if (!verifyStrict(input.previousRoot.publicKey, input.rootBytes, input.previousRootSignature)) {
+      throw new CertificateError('Previous-root signature is invalid.');
+    }
+  }
+  return brandMessagingRoot({
+    ...fields,
+    rootBytes: input.rootBytes,
+    selfSignature: input.selfSignature,
+    ...(input.previousRootSignature === undefined
+      ? {}
+      : { previousRootSignature: input.previousRootSignature }),
+  });
+}
+
+export interface VerifyCertifiedDeviceInput {
+  readonly certificateBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly root: VerifiedMessagingRoot;
+  readonly nowMs: number;
+}
+
+export function verifyCertifiedDevice(input: VerifyCertifiedDeviceInput): VerifiedCertifiedDevice {
+  const fields = decodeDeviceCertificateTranscript(input.certificateBytes);
+  requireSignatureBytes(input.rootSignature, 'Certificate root signature');
+  if (!verifyStrict(input.root.publicKey, input.certificateBytes, input.rootSignature)) {
+    throw new CertificateError('Device certificate signature is invalid.');
+  }
+  if (
+    fields.actorId !== input.root.actorId ||
+    fields.rootGeneration !== input.root.generation ||
+    !bytesEqual(fields.rootPublicKey, input.root.publicKey)
+  ) {
+    throw new CertificateError('Device certificate does not bind the verified messaging root.');
+  }
+  if (input.nowMs < fields.createdAtMs || input.nowMs >= fields.expiresAtMs) {
+    throw new CertificateError('Device certificate is not currently valid.');
+  }
+  return brandCertifiedDevice({
+    ...fields,
+    certificateBytes: input.certificateBytes,
+    rootSignature: input.rootSignature,
+    certificateDigest: identityTranscriptDigest(input.certificateBytes),
+  });
+}
+
+export interface VerifyRosterSnapshotInput {
+  readonly rosterBytes: Uint8Array;
+  readonly rootSignature: Uint8Array;
+  readonly root: VerifiedMessagingRoot;
+  /**
+   * T3 commits to certificates by digest only, so the served certificates are supplied here and
+   * re-verified. Every *active* entry must be matched by exactly one supplied certificate whose
+   * SHA-256 equals the entry's digest; a supplied certificate matching no entry is rejected; an
+   * inactive entry may be unmatched, since the node need not still serve a revoked device's
+   * certificate.
+   */
+  readonly certificates: readonly {
+    readonly certificateBytes: Uint8Array;
+    readonly rootSignature: Uint8Array;
+  }[];
+  readonly nowMs: number;
+}
+
+export function verifyRosterSnapshot(input: VerifyRosterSnapshotInput): VerifiedRosterSnapshot {
+  const fields = decodeDeviceRosterTranscript(input.rosterBytes);
+  requireSignatureBytes(input.rootSignature, 'Roster root signature');
+  if (!verifyStrict(input.root.publicKey, input.rosterBytes, input.rootSignature)) {
+    throw new CertificateError('Roster signature is invalid.');
+  }
+  if (
+    fields.actorId !== input.root.actorId ||
+    fields.rootGeneration !== input.root.generation ||
+    !bytesEqual(fields.rootPublicKey, input.root.publicKey)
+  ) {
+    throw new CertificateError('Roster does not bind the verified messaging root.');
+  }
+  if (input.nowMs < fields.createdAtMs) {
+    throw new CertificateError('Roster is not yet valid.');
+  }
+
+  const entriesByDigest = new Map<string, DeviceRosterEntryTranscript>();
+  for (const entry of fields.entries) entriesByDigest.set(toHex(entry.certificateDigest), entry);
+
+  const devices: VerifiedCertifiedDevice[] = [];
+  const suppliedDigests = new Set<string>();
+  for (const supplied of input.certificates) {
+    const device = verifyCertifiedDevice({
+      certificateBytes: supplied.certificateBytes,
+      rootSignature: supplied.rootSignature,
+      root: input.root,
+      nowMs: input.nowMs,
+    });
+    const key = toHex(device.certificateDigest);
+    if (suppliedDigests.has(key)) {
+      throw new CertificateError('The same device certificate was supplied twice.');
+    }
+    const entry = entriesByDigest.get(key);
+    if (entry === undefined) {
+      throw new CertificateError('A supplied device certificate matches no roster entry.');
+    }
+    if (entry.deviceId !== device.deviceId) {
+      throw new CertificateError('A roster entry names a different device than its certificate.');
+    }
+    suppliedDigests.add(key);
+    devices.push(device);
+  }
+  for (const entry of fields.entries) {
+    if (entry.active && !suppliedDigests.has(toHex(entry.certificateDigest))) {
+      throw new CertificateError('An active roster entry has no matching device certificate.');
+    }
+  }
+
+  return brandRosterSnapshot({
+    ...fields,
+    rosterBytes: input.rosterBytes,
+    rootSignature: input.rootSignature,
+    rosterDigest: identityTranscriptDigest(input.rosterBytes),
+    root: input.root,
+    devices,
+  });
+}
+
+/** True when `certificateDigest` is an **active** entry of the verified roster snapshot. */
+export function rosterHasActiveCertificate(
+  roster: VerifiedRosterSnapshot,
+  certificateDigest: Uint8Array,
+): boolean {
+  return roster.entries.some(
+    (entry) => entry.active && bytesEqual(entry.certificateDigest, certificateDigest),
   );
-  if (rosterDevice === undefined) throw new PreKeyError('Prekey device is absent from the roster.');
-  const { signedPreKey } = bundle;
-  if (nowMs < signedPreKey.createdAtMs || nowMs >= signedPreKey.expiresAtMs) {
+}
+
+export interface VerifyPreKeyBundleInput {
+  readonly bundleBytes: Uint8Array;
+  readonly deviceSignature: Uint8Array;
+  readonly certificateBytes: Uint8Array;
+  readonly certificateRootSignature: Uint8Array;
+  readonly oneTimePreKey?: OneTimePreKey | undefined;
+  readonly roster: VerifiedRosterSnapshot;
+  readonly nowMs: number;
+}
+
+export function verifyPreKeyBundle(input: VerifyPreKeyBundleInput): VerifiedPreKeyBundle {
+  const device = verifyCertifiedDevice({
+    certificateBytes: input.certificateBytes,
+    rootSignature: input.certificateRootSignature,
+    root: input.roster.root,
+    nowMs: input.nowMs,
+  });
+  const fields = decodePreKeyBundleTranscript(input.bundleBytes);
+  requireSignatureBytes(input.deviceSignature, 'Prekey bundle signature');
+  if (!verifyStrict(device.signingPublicKey, input.bundleBytes, input.deviceSignature)) {
+    throw new PreKeyError('Prekey bundle signature is invalid.');
+  }
+  if (
+    fields.actorId !== device.actorId ||
+    fields.deviceId !== device.deviceId ||
+    !bytesEqual(fields.certificateDigest, device.certificateDigest)
+  ) {
+    throw new PreKeyError('Prekey bundle does not bind the verified device certificate.');
+  }
+  if (fields.actorId !== input.roster.actorId) {
+    throw new PreKeyError('Prekey bundle belongs to another actor than the verified roster.');
+  }
+  if (!rosterHasActiveCertificate(input.roster, fields.certificateDigest)) {
+    throw new PreKeyError('Prekey device is not an active entry of the verified roster.');
+  }
+  if (input.nowMs < fields.createdAtMs || input.nowMs >= fields.expiresAtMs) {
     throw new PreKeyError('Signed prekey is not currently valid.');
   }
-  const statement = encodeSignedPreKeyStatement(bundle.certifiedDevice, bundle.rosterDigest, {
-    id: signedPreKey.id,
-    publicKey: signedPreKey.publicKey,
-    createdAtMs: signedPreKey.createdAtMs,
-    expiresAtMs: signedPreKey.expiresAtMs,
-  });
-  if (
-    !verifyStrict(
-      bundle.certifiedDevice.certificate.signingPublicKey,
-      statement,
-      signedPreKey.signature,
-    )
-  ) {
-    throw new PreKeyError('Signed prekey signature is invalid.');
-  }
-  if (bundle.oneTimePreKey !== undefined) {
-    if (!Number.isSafeInteger(bundle.oneTimePreKey.id) || bundle.oneTimePreKey.id < 1) {
+  if (input.oneTimePreKey !== undefined) {
+    if (!Number.isSafeInteger(input.oneTimePreKey.id) || input.oneTimePreKey.id < 1) {
       throw new PreKeyError('One-time prekey id is invalid.');
     }
-    requireKey(bundle.oneTimePreKey.publicKey, 'One-time prekey');
+    if (input.oneTimePreKey.publicKey.length !== KEY_BYTES) {
+      throw new PreKeyError('One-time prekey has an invalid length.');
+    }
   }
+  return brandPreKeyBundle({
+    ...fields,
+    bundleBytes: input.bundleBytes,
+    deviceSignature: input.deviceSignature,
+    device,
+    rosterDigest: input.roster.rosterDigest,
+    ...(input.oneTimePreKey === undefined ? {} : { oneTimePreKey: input.oneTimePreKey }),
+  });
 }
 
 /** Stable 60-digit root-key fingerprint; clients display it in twelve groups of five. */
@@ -295,14 +438,14 @@ export function safetyNumber(
   secondUserId: string,
   secondRootPublicKey: Uint8Array,
 ): string {
-  requireIdentity(firstUserId, 'First user id');
-  requireIdentity(secondUserId, 'Second user id');
-  requireKey(firstRootPublicKey, 'First root public key');
-  requireKey(secondRootPublicKey, 'Second root public key');
+  requireIdentifier(firstUserId, 'First user id');
+  requireIdentifier(secondUserId, 'Second user id');
+  requireKeyLength(firstRootPublicKey, 'First root public key');
+  requireKeyLength(secondRootPublicKey, 'Second root public key');
   const ordered = [
     { id: firstUserId, key: firstRootPublicKey },
     { id: secondUserId, key: secondRootPublicKey },
-  ].sort((left, right) => left.id.localeCompare(right.id, 'en'));
+  ].sort((left, right) => compareUtf8Bytes(left.id, right.id));
   const first = ordered[0];
   const second = ordered[1];
   if (first === undefined || second === undefined)

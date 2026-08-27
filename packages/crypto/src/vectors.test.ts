@@ -19,12 +19,35 @@ import {
   type FrankingReportTranscript,
 } from './franking.js';
 import {
+  decodeDeviceCertificateTranscript,
+  decodeDeviceRosterTranscript,
+  decodeMessagingRootTranscript,
+  decodePreKeyBundleTranscript,
+  encodeDeviceCertificateTranscript,
+  encodeDeviceRosterTranscript,
+  encodeMessagingRootTranscript,
+  encodePreKeyBundleTranscript,
+  type DeviceCertificateTranscript,
+  type DeviceRosterEntryTranscript,
+  type DeviceRosterTranscript,
+  type MessagingRootTranscript,
+  type PreKeyBundleTranscript,
+} from './identity-transcript.js';
+import {
+  identityTranscriptDigest,
+  signDeviceCertificate,
+  signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+} from './identity.js';
+import {
   deterministicSource,
   establishedFixture,
   establishedRatchetPair,
 } from './testing/fixtures.js';
 import type { DoubleRatchetState, EncryptedRatchetMessage } from './types.js';
 import deviceEnvelopeVector from './vectors/device-envelope.json' with { type: 'json' };
+import identityVector from './vectors/identity-transcripts.json' with { type: 'json' };
 import doubleRatchetVector from './vectors/double-ratchet-session.json' with { type: 'json' };
 import frankingVector from './vectors/franking.json' with { type: 'json' };
 import x3dhVector from './vectors/x3dh-handshake.json' with { type: 'json' };
@@ -37,6 +60,129 @@ const encoder = new TextEncoder();
  * means either an unintentional protocol regression (fix the code) or a deliberate change (run
  * `pnpm exec tsx packages/crypto/scripts/generate-vectors.ts` and review the resulting diff).
  */
+describe('vector replay: canonical identity transcripts', () => {
+  const rootPrivateKey = fromHex(identityVector.keys.rootPrivateKeyHex);
+  const devicePrivateKey = fromHex(identityVector.keys.deviceSigningPrivateKeyHex);
+
+  const rootFields: MessagingRootTranscript = {
+    actorId: identityVector.messagingRoot.fields.actorId,
+    generation: identityVector.messagingRoot.fields.generation,
+    publicKey: fromHex(identityVector.messagingRoot.fields.publicKeyHex),
+    createdAtMs: identityVector.messagingRoot.fields.createdAtMs,
+  };
+  const certificateFields: DeviceCertificateTranscript = {
+    actorId: identityVector.deviceCertificate.fields.actorId,
+    deviceId: identityVector.deviceCertificate.fields.deviceId,
+    rootGeneration: identityVector.deviceCertificate.fields.rootGeneration,
+    rootPublicKey: fromHex(identityVector.deviceCertificate.fields.rootPublicKeyHex),
+    certificateVersion: identityVector.deviceCertificate.fields.certificateVersion,
+    signingPublicKey: fromHex(identityVector.deviceCertificate.fields.signingPublicKeyHex),
+    agreementPublicKey: fromHex(identityVector.deviceCertificate.fields.agreementPublicKeyHex),
+    supportedProtocolVersions: identityVector.deviceCertificate.fields.supportedProtocolVersions,
+    createdAtMs: identityVector.deviceCertificate.fields.createdAtMs,
+    expiresAtMs: identityVector.deviceCertificate.fields.expiresAtMs,
+  };
+  const rosterFields: DeviceRosterTranscript = {
+    actorId: identityVector.deviceRoster.fields.actorId,
+    rootGeneration: identityVector.deviceRoster.fields.rootGeneration,
+    rootPublicKey: fromHex(identityVector.deviceRoster.fields.rootPublicKeyHex),
+    sequence: identityVector.deviceRoster.fields.sequence,
+    previousDigest: fromHex(identityVector.deviceRoster.fields.previousDigestHex),
+    createdAtMs: identityVector.deviceRoster.fields.createdAtMs,
+    entries: identityVector.deviceRoster.fields.entries.map(
+      (entry): DeviceRosterEntryTranscript => ({
+        deviceId: entry.deviceId,
+        certificateDigest: fromHex(entry.certificateDigestHex),
+        active: entry.active,
+        addedAtMs: entry.addedAtMs,
+        ...(entry.revokedAtMs === null ? {} : { revokedAtMs: entry.revokedAtMs }),
+      }),
+    ),
+  };
+  const bundleFields: PreKeyBundleTranscript = {
+    actorId: identityVector.preKeyBundle.fields.actorId,
+    deviceId: identityVector.preKeyBundle.fields.deviceId,
+    certificateDigest: fromHex(identityVector.preKeyBundle.fields.certificateDigestHex),
+    signedPrekeyId: identityVector.preKeyBundle.fields.signedPrekeyId,
+    signedPrekeyPublicKey: fromHex(identityVector.preKeyBundle.fields.signedPrekeyPublicKeyHex),
+    createdAtMs: identityVector.preKeyBundle.fields.createdAtMs,
+    expiresAtMs: identityVector.preKeyBundle.fields.expiresAtMs,
+  };
+
+  it('reproduces the recorded bytes, digests, and signatures for all four transcripts', () => {
+    const root = signMessagingRoot(rootPrivateKey, rootFields);
+    expect(toHex(root.rootBytes)).toBe(identityVector.messagingRoot.transcriptHex);
+    expect(toHex(identityTranscriptDigest(root.rootBytes))).toBe(
+      identityVector.messagingRoot.digestHex,
+    );
+    expect(toHex(root.selfSignature)).toBe(identityVector.messagingRoot.selfSignatureHex);
+
+    const certificate = signDeviceCertificate(rootPrivateKey, certificateFields);
+    expect(toHex(certificate.certificateBytes)).toBe(
+      identityVector.deviceCertificate.transcriptHex,
+    );
+    expect(toHex(certificate.certificateDigest)).toBe(identityVector.deviceCertificate.digestHex);
+    expect(toHex(certificate.rootSignature)).toBe(
+      identityVector.deviceCertificate.rootSignatureHex,
+    );
+
+    const roster = signDeviceRoster(rootPrivateKey, rosterFields);
+    expect(toHex(roster.rosterBytes)).toBe(identityVector.deviceRoster.transcriptHex);
+    expect(toHex(roster.rosterDigest)).toBe(identityVector.deviceRoster.digestHex);
+    expect(toHex(roster.rootSignature)).toBe(identityVector.deviceRoster.rootSignatureHex);
+
+    const bundle = signPreKeyBundle(devicePrivateKey, bundleFields);
+    expect(toHex(bundle.bundleBytes)).toBe(identityVector.preKeyBundle.transcriptHex);
+    expect(toHex(identityTranscriptDigest(bundle.bundleBytes))).toBe(
+      identityVector.preKeyBundle.digestHex,
+    );
+    expect(toHex(bundle.deviceSignature)).toBe(identityVector.preKeyBundle.deviceSignatureHex);
+  });
+
+  it('decodes the recorded bytes back to the recorded field sets', () => {
+    expect(
+      decodeMessagingRootTranscript(fromHex(identityVector.messagingRoot.transcriptHex)),
+    ).toEqual(rootFields);
+    expect(
+      decodeDeviceCertificateTranscript(fromHex(identityVector.deviceCertificate.transcriptHex)),
+    ).toEqual(certificateFields);
+    expect(
+      decodeDeviceRosterTranscript(fromHex(identityVector.deviceRoster.transcriptHex)),
+    ).toEqual(rosterFields);
+    expect(
+      decodePreKeyBundleTranscript(fromHex(identityVector.preKeyBundle.transcriptHex)),
+    ).toEqual(bundleFields);
+    // Re-encoding a decoded view must reproduce the same bytes: one fact, one encoding.
+    expect(toHex(encodeMessagingRootTranscript(rootFields))).toBe(
+      identityVector.messagingRoot.transcriptHex,
+    );
+    expect(toHex(encodeDeviceCertificateTranscript(certificateFields))).toBe(
+      identityVector.deviceCertificate.transcriptHex,
+    );
+    expect(toHex(encodeDeviceRosterTranscript(rosterFields))).toBe(
+      identityVector.deviceRoster.transcriptHex,
+    );
+    expect(toHex(encodePreKeyBundleTranscript(bundleFields))).toBe(
+      identityVector.preKeyBundle.transcriptHex,
+    );
+  });
+
+  it('rejects every recorded negative case', () => {
+    const decoders: Record<string, (value: Uint8Array) => unknown> = {
+      messagingRoot: decodeMessagingRootTranscript,
+      deviceCertificate: decodeDeviceCertificateTranscript,
+      deviceRoster: decodeDeviceRosterTranscript,
+      preKeyBundle: decodePreKeyBundleTranscript,
+    };
+    expect(identityVector.rejected.length).toBeGreaterThan(0);
+    for (const negative of identityVector.rejected) {
+      const decode = decoders[negative.transcript];
+      if (decode === undefined) throw new Error(`Unknown vector transcript ${negative.transcript}`);
+      expect(() => decode(fromHex(negative.inputHex)), negative.name).toThrow();
+    }
+  });
+});
+
 describe('vector replay: X3DH handshake', () => {
   it('reproduces the recorded transcript-bound X3DH outputs', () => {
     const fixture = establishedFixture(x3dhVector.seed);

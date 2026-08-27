@@ -1,15 +1,35 @@
 /**
  * One-off generator for `src/vectors/*.json`. Not part of the build or the verify pipeline —
  * regenerate deliberately (`pnpm exec tsx packages/crypto/scripts/generate-vectors.ts` from the
- * repo root) whenever a protocol change intentionally alters the wire bytes, and re-review the
- * diff. `src/vectors.test.ts` replays the checked-in JSON on every `pnpm test` run to catch
- * unintentional drift.
+ * repo root) whenever a protocol change intentionally alters the wire bytes, then run
+ * `pnpm exec prettier --write packages/crypto/src/vectors` (the JSON is checked in formatted) and
+ * re-review the diff. `src/vectors.test.ts` replays the checked-in JSON on every `pnpm test` run
+ * to catch unintentional drift.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { toHex } from '../src/codec.js';
+import { ByteWriter, toHex } from '../src/codec.js';
+import {
+  E2EE_IDENTITY_TRANSCRIPT_DOMAIN,
+  E2EE_IDENTITY_TRANSCRIPT_TAGS,
+  E2EE_IDENTITY_TRANSCRIPT_VERSION,
+  type DeviceCertificateTranscript,
+  type DeviceRosterTranscript,
+  type MessagingRootTranscript,
+  type PreKeyBundleTranscript,
+} from '../src/identity-transcript.js';
+import {
+  identityTranscriptDigest,
+  signDeviceCertificate,
+  signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+} from '../src/identity.js';
+import { keyAgreementKeyPairFromPrivate, signingKeyPairFromPrivate } from '../src/primitives.js';
+import { fixtureBytes } from '../src/testing/fixtures.js';
+import { E2EE_PROTOCOL } from '../src/types.js';
 import {
   decodeRatchetState,
   encodeRatchetState,
@@ -40,6 +60,216 @@ const encoder = new TextEncoder();
 
 function writeJson(name: string, value: unknown): void {
   writeFileSync(join(vectorsDir, name), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+/**
+ * ADR 0033 §6: the one canonical identity transcript family, for one deterministic seed, plus a
+ * table of hex inputs any conforming decoder must reject. Private keys are included because they
+ * are synthetic fixture scalars and a second implementation needs them to reproduce the
+ * signatures, not only the bytes.
+ */
+function generateIdentityTranscriptsVector(): void {
+  const seed = 404;
+  const rootKeyPair = signingKeyPairFromPrivate(fixtureBytes(seed));
+  const deviceSigning = signingKeyPairFromPrivate(fixtureBytes(seed + 1));
+  const deviceAgreement = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 2));
+  const signedPrekey = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 3));
+  const createdAtMs = 1_700_000_000_000;
+
+  const rootFields: MessagingRootTranscript = {
+    actorId: 'actor-vector',
+    generation: 1,
+    publicKey: rootKeyPair.publicKey,
+    createdAtMs,
+  };
+  const root = signMessagingRoot(rootKeyPair.privateKey, rootFields);
+
+  const certificateFields: DeviceCertificateTranscript = {
+    actorId: rootFields.actorId,
+    deviceId: 'device-vector-a',
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
+    certificateVersion: 1,
+    signingPublicKey: deviceSigning.publicKey,
+    agreementPublicKey: deviceAgreement.publicKey,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs: createdAtMs + 86_400_000,
+  };
+  const certificate = signDeviceCertificate(rootKeyPair.privateKey, certificateFields);
+
+  const rosterFields: DeviceRosterTranscript = {
+    actorId: rootFields.actorId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
+    sequence: 1,
+    previousDigest: new Uint8Array(32),
+    createdAtMs,
+    entries: [
+      {
+        deviceId: certificateFields.deviceId,
+        certificateDigest: certificate.certificateDigest,
+        active: true,
+        addedAtMs: createdAtMs,
+      },
+      {
+        deviceId: 'device-vector-b',
+        certificateDigest: sha256Hash(encoder.encode('vector-revoked-device-certificate')),
+        active: false,
+        addedAtMs: createdAtMs,
+        revokedAtMs: createdAtMs + 1_000,
+      },
+    ],
+  };
+  const roster = signDeviceRoster(rootKeyPair.privateKey, rosterFields);
+
+  const bundleFields: PreKeyBundleTranscript = {
+    actorId: rootFields.actorId,
+    deviceId: certificateFields.deviceId,
+    certificateDigest: certificate.certificateDigest,
+    signedPrekeyId: 2 ** 33 + 7,
+    signedPrekeyPublicKey: signedPrekey.publicKey,
+    createdAtMs,
+    expiresAtMs: createdAtMs + 604_800_000,
+  };
+  const bundle = signPreKeyBundle(deviceSigning.privateKey, bundleFields);
+
+  const domainByteLength = encoder.encode(E2EE_IDENTITY_TRANSCRIPT_DOMAIN).length;
+  const versionOffset = 4 + domainByteLength;
+  const tagOffset = versionOffset + 1;
+  const mutated = (offset: number, value: number): Uint8Array => {
+    const copy = roster.rosterBytes.slice();
+    copy[offset] = value;
+    return copy;
+  };
+  const descendingEntries = ((): Uint8Array => {
+    const writer = new ByteWriter()
+      .string(E2EE_IDENTITY_TRANSCRIPT_DOMAIN)
+      .u8(E2EE_IDENTITY_TRANSCRIPT_VERSION)
+      .u8(E2EE_IDENTITY_TRANSCRIPT_TAGS.deviceRoster)
+      .string(rosterFields.actorId)
+      .u32(rosterFields.rootGeneration)
+      .fixed(rosterFields.rootPublicKey, 32)
+      .u64(rosterFields.sequence)
+      .fixed(rosterFields.previousDigest, 32)
+      .u64(rosterFields.createdAtMs)
+      .u32(2);
+    for (const deviceId of ['device-vector-b', 'device-vector-a']) {
+      writer
+        .string(deviceId)
+        .fixed(certificate.certificateDigest, 32)
+        .u8(1)
+        .u64(createdAtMs)
+        .u8(0)
+        .u64(0);
+    }
+    return writer.finish();
+  })();
+  const trailing = new Uint8Array(roster.rosterBytes.length + 1);
+  trailing.set(roster.rosterBytes, 0);
+
+  writeJson('identity-transcripts.json', {
+    description:
+      'The one canonical E2EE identity transcript family (ADR 0033 §2) for a single fixed seed: ' +
+      'messaging root (T1), device certificate (T2), device roster (T3), and prekey bundle (T4), ' +
+      'each with its exact transcript bytes, SHA-256 digest, and signature — plus hex inputs a ' +
+      'conforming decoder must reject. Replayed by src/vectors.test.ts.',
+    seed,
+    keys: {
+      rootPrivateKeyHex: toHex(rootKeyPair.privateKey),
+      rootPublicKeyHex: toHex(rootKeyPair.publicKey),
+      deviceSigningPrivateKeyHex: toHex(deviceSigning.privateKey),
+      deviceSigningPublicKeyHex: toHex(deviceSigning.publicKey),
+      deviceAgreementPublicKeyHex: toHex(deviceAgreement.publicKey),
+      signedPrekeyPublicKeyHex: toHex(signedPrekey.publicKey),
+    },
+    messagingRoot: {
+      fields: {
+        actorId: rootFields.actorId,
+        generation: rootFields.generation,
+        publicKeyHex: toHex(rootFields.publicKey),
+        createdAtMs: rootFields.createdAtMs,
+      },
+      transcriptHex: toHex(root.rootBytes),
+      digestHex: toHex(identityTranscriptDigest(root.rootBytes)),
+      selfSignatureHex: toHex(root.selfSignature),
+    },
+    deviceCertificate: {
+      fields: {
+        actorId: certificateFields.actorId,
+        deviceId: certificateFields.deviceId,
+        rootGeneration: certificateFields.rootGeneration,
+        rootPublicKeyHex: toHex(certificateFields.rootPublicKey),
+        certificateVersion: certificateFields.certificateVersion,
+        signingPublicKeyHex: toHex(certificateFields.signingPublicKey),
+        agreementPublicKeyHex: toHex(certificateFields.agreementPublicKey),
+        supportedProtocolVersions: certificateFields.supportedProtocolVersions,
+        createdAtMs: certificateFields.createdAtMs,
+        expiresAtMs: certificateFields.expiresAtMs,
+      },
+      transcriptHex: toHex(certificate.certificateBytes),
+      digestHex: toHex(certificate.certificateDigest),
+      rootSignatureHex: toHex(certificate.rootSignature),
+    },
+    deviceRoster: {
+      fields: {
+        actorId: rosterFields.actorId,
+        rootGeneration: rosterFields.rootGeneration,
+        rootPublicKeyHex: toHex(rosterFields.rootPublicKey),
+        sequence: rosterFields.sequence,
+        previousDigestHex: toHex(rosterFields.previousDigest),
+        createdAtMs: rosterFields.createdAtMs,
+        entries: rosterFields.entries.map((entry) => ({
+          deviceId: entry.deviceId,
+          certificateDigestHex: toHex(entry.certificateDigest),
+          active: entry.active,
+          addedAtMs: entry.addedAtMs,
+          revokedAtMs: entry.revokedAtMs ?? null,
+        })),
+      },
+      transcriptHex: toHex(roster.rosterBytes),
+      digestHex: toHex(roster.rosterDigest),
+      rootSignatureHex: toHex(roster.rootSignature),
+    },
+    preKeyBundle: {
+      fields: {
+        actorId: bundleFields.actorId,
+        deviceId: bundleFields.deviceId,
+        certificateDigestHex: toHex(bundleFields.certificateDigest),
+        signedPrekeyId: bundleFields.signedPrekeyId,
+        signedPrekeyPublicKeyHex: toHex(bundleFields.signedPrekeyPublicKey),
+        createdAtMs: bundleFields.createdAtMs,
+        expiresAtMs: bundleFields.expiresAtMs,
+      },
+      transcriptHex: toHex(bundle.bundleBytes),
+      digestHex: toHex(identityTranscriptDigest(bundle.bundleBytes)),
+      deviceSignatureHex: toHex(bundle.deviceSignature),
+    },
+    rejected: [
+      {
+        name: 'wrong tag',
+        transcript: 'deviceRoster',
+        inputHex: toHex(mutated(tagOffset, E2EE_IDENTITY_TRANSCRIPT_TAGS.preKeyBundle)),
+      },
+      {
+        name: 'wrong version',
+        transcript: 'deviceRoster',
+        inputHex: toHex(mutated(versionOffset, 2)),
+      },
+      {
+        name: 'wrong domain',
+        transcript: 'deviceRoster',
+        // Last byte of 'patches-e2ee/identity-v1' -> '2'; same length, so only the domain differs.
+        inputHex: toHex(mutated(4 + domainByteLength - 1, 0x32)),
+      },
+      {
+        name: 'non-ascending entries',
+        transcript: 'deviceRoster',
+        inputHex: toHex(descendingEntries),
+      },
+      { name: 'trailing bytes', transcript: 'deviceRoster', inputHex: toHex(trailing) },
+    ],
+  });
 }
 
 function generateX3dhVector(): void {
@@ -239,10 +469,12 @@ function generateDeviceEnvelopeVector(): void {
   });
 }
 
+generateIdentityTranscriptsVector();
 generateX3dhVector();
 generateDoubleRatchetVector();
 generateFrankingVector();
 generateDeviceEnvelopeVector();
 process.stdout.write(
-  'Wrote src/vectors/{x3dh-handshake,double-ratchet-session,franking,device-envelope}.json\n',
+  'Wrote src/vectors/{identity-transcripts,x3dh-handshake,double-ratchet-session,franking,' +
+    'device-envelope}.json\n',
 );

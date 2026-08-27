@@ -67,7 +67,7 @@ describe('revision-4 Double Ratchet with encrypted headers', () => {
     expect(aliceState.receivingRatchetPublicKey).toEqual(bobState.sendingRatchetKey.publicKey);
 
     expect(toHex(first.output.encryptedHeader)).toHaveLength(162);
-    expect(toHex(first.output.ciphertext)).toBe('0719a473292479e5b2a3053f8812c0629cac27b3fe');
+    expect(toHex(first.output.ciphertext)).toBe('534c29a1b073a167f100ff3e0f967a44abd10c7760');
   });
 
   it('handles bounded out-of-order delivery and rejects replay', () => {

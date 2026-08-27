@@ -13,7 +13,6 @@ export class AuthenticationError extends E2eeProtocolError {
   }
 }
 export class CertificateError extends E2eeProtocolError {}
-export class RosterRollbackError extends E2eeProtocolError {}
 export class PreKeyError extends E2eeProtocolError {}
 export class RatchetStateError extends E2eeProtocolError {}
 export class TooManySkippedMessagesError extends E2eeProtocolError {}
