@@ -1,12 +1,11 @@
 import type { PatchesApi } from '@patches/client';
 import { ConversationSecurityMode, type Actor, type Conversation } from '@patches/proto/es';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { DM_LIST_POLL_FAILED_COPY, MessagesRoute } from './MessagesRoute.js';
 
@@ -92,25 +91,25 @@ describe('MessagesRoute', () => {
     expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
   });
 
-  it('disables "New Message" while no session can be established (B-132)', async () => {
+  it('offers "New Message" as a live control now that sessions can be established', async () => {
+    // Was disabled under B-132 because no browser could establish a session. ADR 0033
+    // removed that condition, so the control has to actually work rather than sit greyed
+    // out behind copy explaining why it never will.
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
     await screen.findByText('No conversations yet.');
 
-    const newMessage = screen.getByLabelText('New direct message');
-    expect(newMessage).toBeDisabled();
-    fireEvent.click(newMessage);
-    // A disabled control must not pretend to have tried.
-    expect(mockToast).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('New direct message')).toBeEnabled();
   });
 
-  it('states plainly on the enrolled panel that messaging does not work here yet', async () => {
+  it('no longer tells an enrolled user that messaging does not work here', async () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
     renderMessages();
     await screen.findByText('No conversations yet.');
 
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(/does not work in the web client/i)).toBeNull();
+    expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
   });
 
   it('offers enrollment without claiming it enables messaging', async () => {
@@ -121,7 +120,7 @@ describe('MessagesRoute', () => {
     await screen.findByText('No conversations yet.');
 
     expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
   });
 
   it('polls the conversation list every WEB_DM_POLL_MS while mounted (ADR 0032, P19-021)', async () => {

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
@@ -11,10 +11,6 @@ import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from '../e2ee/availability.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import styles from './MessagesRoute.module.css';
@@ -38,16 +34,16 @@ const buttonStyle = {
 export const DM_LIST_POLL_FAILED_COPY = 'Could not load conversations.';
 
 /**
- * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, and this browser
- * can now hold its own enrolled messaging device. Enrollment is real and works; actually
- * moving messages does not yet, because no session can be established from a browser
- * (`e2ee/availability.ts`, B-132/B-124). The panel and the "New Message" control say that
- * outright rather than implying a retry would help.
+ * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, this browser holds
+ * its own enrolled messaging device, and — since ADR 0033 unified the identity transcripts
+ * and ADR 0035 made creation a reserve — it can establish a real session and send. "New
+ * Message" reserves a conversation and sends the first message into it.
  */
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
   const e2eeStatus = useE2ee(session);
   const [enrolling, setEnrolling] = useState(false);
+  const navigate = useNavigate();
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -81,9 +77,13 @@ export function MessagesRoute(): JSX.Element {
   }
 
   async function handleNewMessage(): Promise<void> {
-    // Fails closed with fixed copy until session setup exists (availability.ts).
+    const recipient = window.prompt('Recipient actor id')?.trim();
+    if (recipient === undefined || recipient === '') return;
+    const body = window.prompt('First message')?.trim();
+    if (body === undefined || body === '') return;
     try {
-      await webE2ee().createConversation();
+      const conversationId = await webE2ee().createConversation([recipient], body);
+      void navigate(`/messages/${conversationId}`);
     } catch (error) {
       toast(error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed);
     }
@@ -98,7 +98,6 @@ export function MessagesRoute(): JSX.Element {
             type="button"
             className={styles['newMsgBtn']}
             onClick={() => void handleNewMessage()}
-            disabled={!webE2eeSessionSetupAvailable()}
             aria-label="New direct message"
           >
             <PlusIcon size={16} />
@@ -225,7 +224,6 @@ export function E2eePanel({
           {requiredConversationDisclosure('E2EE_V1')} {WEB_E2EE_COPY.notEnrolled}
         </p>
         {refusal}
-        {webE2eeSessionSetupAvailable() ? null : <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>}
         <button
           type="button"
           onClick={onEnroll}
@@ -250,7 +248,6 @@ export function E2eePanel({
   return (
     <div role="note" style={panelStyle}>
       <p>{requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.</p>
-      {webE2eeSessionSetupAvailable() ? null : <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>}
     </div>
   );
 }

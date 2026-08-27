@@ -10,7 +10,6 @@ import { E2EE_PROTOCOL } from '@patches/crypto';
 import type { VerifiedCertifiedDevice, VerifiedRosterSnapshot } from '@patches/crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from './availability.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import { createWebE2eeManager, WEB_E2EE_COPY, WebE2eeUnavailableError } from './web-e2ee.js';
@@ -279,16 +278,19 @@ describe('WebE2eeManager.send — refuses while session setup is unavailable (B-
     await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(E2eeNotEnrolledError);
   });
 
-  it('refuses once enrolled, with the fixed unavailable copy, never reaching the runtime', async () => {
+  it('no longer refuses before reaching the runtime: session setup is possible now', async () => {
+    // Pre-ADR-0033 this rejected unconditionally with fixed "unavailable" copy, because no
+    // browser could establish a session. That condition is gone, so `send` must actually
+    // attempt the fanout — a failure here comes from the stub transport, not from a
+    // pre-emptive refusal.
     const manager = createWebE2eeManager({ api: fakeApi });
     const actor = { id: freshActorId() };
     await manager.setActor(actor);
     const vault = openedVaultOf(manager);
     manager['bind'](vault, stubIdentity(`${actor.id}-device-sender`));
 
-    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(WebE2eeUnavailableError);
-    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(
-      WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+    await expect(manager.send('conversation-1', 'hello')).rejects.not.toThrow(
+      /does not work in the web client/i,
     );
   });
 });
