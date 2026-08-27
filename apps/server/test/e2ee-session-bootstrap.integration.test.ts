@@ -28,6 +28,8 @@ import {
   type VerifiedRosterSnapshot,
 } from '@patches/crypto';
 import { canonicalFanoutTranscript, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
+import { E2eeDeviceStatus } from '@patches/proto/nest';
+import type { DbRateLimitStore } from '../src/modules/auth/db-rate-limit-store.service.js';
 import { createTestFollow, createTestUser } from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
@@ -35,7 +37,6 @@ import type { DataSource } from 'typeorm';
 import { E2eeConversationService } from '../src/modules/e2ee/e2ee-conversation.service.js';
 import { E2eeDeviceRosterService } from '../src/modules/e2ee/device-roster.service.js';
 import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.service.js';
-import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { NotificationsService } from '../src/modules/notifications/notification.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
@@ -152,7 +153,7 @@ function buildCertificate(actor: TestActor, device: TestDevice, now: Date) {
     certificateBytes: Buffer.from(signed.certificateBytes),
     rootSignature: Buffer.from(signed.rootSignature),
     certificateDigest: Buffer.from(signed.certificateDigest),
-    status: 0,
+    status: E2eeDeviceStatus.E2EE_DEVICE_STATUS_ACTIVE,
     revokedAt: undefined,
   };
 }
@@ -229,11 +230,21 @@ function buildSignedPrekey(
   };
 }
 
-function oneTimePrekeys(count: number, startId: number): { keyId: string; publicKey: Buffer }[] {
-  return Array.from({ length: count }, (_, i) => ({
-    keyId: String(startId + i),
-    publicKey: Buffer.from(generateKeyAgreementKeyPair().publicKey),
-  }));
+/** Full one-time prekey material — the private half must survive so the responder side
+ * of the 4-DH (one-time-prekey) branch can actually run (M7: the helper used to discard
+ * it, which made the production handshake path structurally untestable here). */
+function oneTimePrekeys(
+  count: number,
+  startId: number,
+): { keyId: string; publicKey: Buffer; keyPair: KeyPair }[] {
+  return Array.from({ length: count }, (_, i) => {
+    const keyPair = generateKeyAgreementKeyPair();
+    return {
+      keyId: String(startId + i),
+      publicKey: Buffer.from(keyPair.publicKey),
+      keyPair,
+    };
+  });
 }
 
 describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
@@ -253,8 +264,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
-        new E2eeRuntimeApprovalPolicy(),
-        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+        // Increment-only stub: this suite exercises the RPC chain, not the §188 windows.
+        new E2eeRateLimitService({
+          increment: () => Promise.resolve(0),
+        } as unknown as DbRateLimitStore),
         new NotificationsService(dataSource),
       );
     }, 60_000);
@@ -280,11 +293,19 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     /** Enrolls one real device for `actor` through `EnrollDevice`, returning the device's
-     * private key material for the crypto steps below. */
+     * private key material for the crypto steps below. `oneTimePrekeyCount` controls which
+     * X3DH branch the session exercises: 0 → 3-DH (signed prekey only), ≥1 → 4-DH. */
     async function enrollDevice(
       actor: TestActor,
       now: Date,
-    ): Promise<{ device: TestDevice; signedPrekeyId: number; agreementKeyPair: KeyPair }> {
+      oneTimePrekeyCount = 0,
+    ): Promise<{
+      device: TestDevice;
+      signedPrekeyId: number;
+      agreementKeyPair: KeyPair;
+      prekeyBundleBytes: Buffer;
+      oneTimePreKeys: { id: number; keyPair: KeyPair }[];
+    }> {
       await identityRoots.publishIdentityRoot(actor.actorId, buildIdentityRootRequest(actor, now));
 
       const device: TestDevice = {
@@ -303,21 +324,27 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         agreementKeyPair,
         now,
       );
+      const oneTime = oneTimePrekeys(oneTimePrekeyCount, 1);
 
       await deviceRosters.enrollDevice(actor.actorId, {
         certificate,
         roster,
         signedPrekey: bundle.signedPrekey,
-        // No one-time prekeys: this test's acceptance criterion is session bootstrap
-        // itself (ADR 0033 §7), not the one-time-prekey exhaustion path, which
-        // `e2ee.integration.test.ts` already covers. `ClaimPrekeyBundles` falls back to
-        // the signed prekey alone, exactly as it does for any exhausted device.
-        oneTimePrekeys: oneTimePrekeys(0, 1),
+        // With no one-time prekeys, `ClaimPrekeyBundles` falls back to the signed prekey
+        // alone, exactly as it does for any exhausted device; the 4-DH case below enrolls
+        // one and exercises the path real clients take against a freshly enrolled peer.
+        oneTimePrekeys: oneTime.map(({ keyId, publicKey }) => ({ keyId, publicKey })),
         prekeyBundleBytes: bundle.prekeyBundleBytes,
         prekeyBundleSignature: bundle.prekeyBundleSignature,
-      } as never);
+      });
 
-      return { device, signedPrekeyId, agreementKeyPair };
+      return {
+        device,
+        signedPrekeyId,
+        agreementKeyPair,
+        prekeyBundleBytes: bundle.prekeyBundleBytes,
+        oneTimePreKeys: oneTime.map(({ keyId, keyPair }) => ({ id: Number(keyId), keyPair })),
+      };
     }
 
     /** Runs the real client verifier chain over `GetIdentityRoot` + `GetDeviceRoster`: the
@@ -349,7 +376,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
     }
 
-    it('establishes a real X3DH session between two enrolled devices and decrypts what was sent', async () => {
+    /** The full §7 flow — reserve, X3DH, seal, send, deliver, respond, open — for one
+     * enrolled one-time-prekey count, so the 3-DH and 4-DH branches run the identical
+     * RPC chain and differ only in the handshake branch they take. */
+    async function exerciseSessionBootstrap(options: {
+      readonly oneTimePrekeys: number;
+      readonly plaintext: string;
+    }): Promise<void> {
       const now = new Date();
       const alice = await newActor();
       const bob = await newActor();
@@ -360,7 +393,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         device: bobDevice,
         signedPrekeyId: bobSignedPrekeyId,
         agreementKeyPair: bobAgreementKeyPair,
-      } = await enrollDevice(bob, now);
+        prekeyBundleBytes: bobMintedBundleBytes,
+        oneTimePreKeys: bobOneTimePreKeys,
+      } = await enrollDevice(bob, now, options.oneTimePrekeys);
       await allowDirectMessaging(alice.actorId, bob.actorId);
 
       const nowMs = Date.now();
@@ -387,6 +422,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       );
       expect(bobBundleWire).toBeDefined();
       if (bobBundleWire === undefined) return;
+      // m10: the served bundle bytes ARE the bytes this test minted at enrollment —
+      // this is what makes reusing one verification result for both sides sound below.
+      expect(Buffer.from(bobBundleWire.bundleBytes).equals(bobMintedBundleBytes)).toBe(true);
       const bobCertificate = bobBundleWire.deviceCertificate;
       expect(bobCertificate).toBeDefined();
       if (bobCertificate === undefined) return;
@@ -406,6 +444,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         roster: bobRoster,
         nowMs,
       });
+      // The branch must match what this run enrolled: one-time prekeys are claimed and
+      // consumed first-come-first-served, so a freshly enrolled count ≥1 must appear.
+      if (options.oneTimePrekeys === 0) {
+        expect(bobOneTimePreKey).toBeUndefined();
+      } else {
+        expect(bobOneTimePreKey).toBeDefined();
+      }
 
       // CreateE2eeConversation: a bare ADR 0035 reservation, no message.
       const reserved = await conversations.createE2eeConversation(alice.actorId, {
@@ -437,7 +482,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       // "frame before disposal" ordering constraint).
 
       // Seal one real device envelope: X3DH-derived ratchet, real franking commitment.
-      const plaintext = new TextEncoder().encode('hello bob, this is a real e2ee session');
+      const plaintext = new TextEncoder().encode(options.plaintext);
       const context: FrankingCommitmentContext = {
         frankingProfile: E2EE_FRANKING_PROFILE_V1,
         conversationId: reserved.conversationId,
@@ -512,23 +557,32 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(delivered.logicalMessageId).toBe(logicalMessageId);
 
       // Bob's side of the same handshake, run through `respondX3dh` against his own
-      // verified bundle/roster — never against Alice's in-memory values. `bobVerifiedBundle`
-      // is Alice's claimed-and-verified copy of exactly the same served bundle bytes, so
-      // reusing it here is reusing the verification result, not skipping Bob's own check —
-      // both sides ran `verifyPreKeyBundle` over the identical wire bytes.
+      // verified bundle/roster — never against Alice's in-memory values. One
+      // `verifyPreKeyBundle` ran, over the served wire bytes, and the assertion above
+      // proved those bytes are exactly the ones this test minted — so handing Bob's
+      // responder the same verified value is reusing the verification result over
+      // identical bytes, not skipping a check. (Bob's self-claim path is exercised by
+      // the client enrollment suites, not here.)
       const bobVerifiedDevice = bobRoster.devices.find(
         (candidate) => candidate.deviceId === bobDevice.deviceId,
       );
       expect(bobVerifiedDevice).toBeDefined();
-      // No one-time prekey was enrolled, so `ClaimPrekeyBundles` fell back to the signed
-      // prekey alone — `respondX3dh` is called with no `oneTimePreKey` to match.
-      expect(bobOneTimePreKey).toBeUndefined();
+      // The responder must supply the private half of whichever prekey the claim
+      // consumed — the one-time key when the 4-DH branch ran, nothing extra for 3-DH.
+      const bobClaimedOneTimeKey =
+        bobOneTimePreKey === undefined
+          ? undefined
+          : bobOneTimePreKeys.find((key) => key.id === bobOneTimePreKey.id);
+      if (bobOneTimePreKey !== undefined) {
+        expect(bobClaimedOneTimeKey).toBeDefined();
+      }
       const responded = respondX3dh({
         responderKeys: bobDevice.keys,
         responderBundle: bobVerifiedBundle,
         responderRoster: bobRoster,
         initiatorRoster: aliceRoster,
         signedPreKey: { id: bobSignedPrekeyId, keyPair: bobAgreementKeyPair },
+        ...(bobClaimedOneTimeKey === undefined ? {} : { oneTimePreKey: bobClaimedOneTimeKey }),
         handshake: initiated.handshake,
         nowMs,
       });
@@ -554,9 +608,21 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
       void opened.state;
 
-      expect(new TextDecoder().decode(opened.output.plaintext)).toBe(
-        'hello bob, this is a real e2ee session',
-      );
-    }, 60_000);
+      expect(new TextDecoder().decode(opened.output.plaintext)).toBe(options.plaintext);
+    }
+
+    it('establishes a real 3-DH X3DH session (signed prekey only) and decrypts what was sent', async () => {
+      await exerciseSessionBootstrap({
+        oneTimePrekeys: 0,
+        plaintext: 'hello bob, this is a real e2ee session',
+      });
+    }, 120_000);
+
+    it('establishes a real 4-DH X3DH session (one-time prekey consumed) and decrypts what was sent (M7)', async () => {
+      await exerciseSessionBootstrap({
+        oneTimePrekeys: 1,
+        plaintext: 'hello bob, this one consumed your one-time prekey',
+      });
+    }, 120_000);
   },
 );
