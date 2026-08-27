@@ -273,6 +273,47 @@ E2EE — for testing only; do not use for sensitive conversations.”** Treat it
 disposable. That warning is not an external-review or security claim, and it does not replace
 the conversation's routing-metadata disclosure.
 
+### Device linking and identity recovery
+
+Because DMs are end-to-end encrypted, a second device needs to either be linked by a device
+that already holds the account's messaging identity, or — if no such device is reachable — used
+to mint a brand-new identity. Both are headless CLI commands (ADR 0037), so they work over
+plain stdout with no images or Kitty dependency:
+
+```bash
+patches e2ee link                    # run on the NEW device
+patches e2ee approve-link [<link-id>]  # run on a device that already holds the identity
+patches e2ee rotate-root             # last resort: no device holds the identity anymore
+patches e2ee export-recovery [--out <path>]
+patches e2ee import-recovery <path>
+```
+
+- `patches e2ee link` starts a link offer for the current device and prints a five-group,
+  four-digit short authentication string (SAS), e.g. `0412-3399-0007-4021-1888`. Compare it
+  against the same code shown by `patches e2ee approve-link` on a device that already has the
+  account's messaging identity, then approve it there. This command polls until the offer is
+  approved, expires (10 minutes), or you press Ctrl-C.
+- `patches e2ee approve-link [<link-id>]` lists this account's pending link requests (or just
+  one, if a link id is given), shows each one's SAS, and asks `Does the code on the other device
+match? [y/N]` before approving — a mismatch is discarded, never retried silently. Only a
+  device that holds the account's messaging-root key (the authority device) can run this;
+  running it non-interactively without a terminal refuses rather than guessing.
+- `patches e2ee rotate-root` is the recovery path for when no device holds the account's
+  messaging identity anymore. It mints a brand-new identity generation after an explicit `y`
+  confirmation — every contact you message afterward sees a hard identity-change warning, and
+  message history on any device other than this one is not recoverable, so this is not something
+  to run casually.
+- `patches e2ee export-recovery [--out <path>]` (default `./patches-recovery-archive.pvearc`)
+  seals this device's messaging-root key and current device roster into a recovery archive under
+  a freshly generated recovery code, printed exactly once — write down the code and store the
+  archive file somewhere separate from it. `patches e2ee import-recovery <path>` opens that
+  archive, prompts for the recovery code (not echoed), and prepares this device to become a
+  messaging authority again; it does not finish enrollment by itself, so open the TUI's
+  Accounts → Devices screen afterward to enroll the device.
+
+None of these commands ever print a private key, offer, or signature — only the SAS, device ids,
+and fixed status copy.
+
 ### Blocking, muting, and reporting
 
 From a profile: `B` blocks (removes any existing follow in either direction), `M` mutes
