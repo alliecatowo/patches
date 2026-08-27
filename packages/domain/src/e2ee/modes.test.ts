@@ -9,6 +9,7 @@ import {
   E2EE_PROTOCOL_V1,
   E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
   E2EE_SIGNED_PREKEY_ROTATION_MS,
+  E2EE_UNREVIEWED_DEV_MODE_WARNING,
 } from './modes.js';
 
 describe('E2EE domain contract', () => {
@@ -60,5 +61,11 @@ describe('E2EE domain contract', () => {
     expect(() => assertE2eeGroupBounds(8, 64)).not.toThrow();
     expect(() => assertE2eeGroupBounds(9, 64)).toThrow('membership');
     expect(() => assertE2eeGroupBounds(8, 65)).toThrow('fanout');
+  });
+
+  it('pins the ADR 0027 unreviewed-dev-mode warning byte-for-byte', () => {
+    expect(E2EE_UNREVIEWED_DEV_MODE_WARNING).toBe(
+      'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.',
+    );
   });
 });

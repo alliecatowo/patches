@@ -12,6 +12,14 @@ export const E2EE_CAPABILITY_STATES = [
 ] as const;
 export type E2eeCapabilityState = (typeof E2EE_CAPABILITY_STATES)[number];
 
+/**
+ * ADR 0027: any client surface in the `ISOLATED_TEST_ONLY` capability state must show this
+ * persistently at conversation creation and reading. One string so every client renders the
+ * same warning rather than each hand-writing its own approximation.
+ */
+export const E2EE_UNREVIEWED_DEV_MODE_WARNING =
+  'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.' as const;
+
 export const E2EE_PROTOCOL_V1 = 'patches-e2ee-v1' as const;
 export const E2EE_GROUP_MAX_MEMBERS = 8;
 export const E2EE_MAX_ACTIVE_DEVICES_PER_ACTOR = 8;
