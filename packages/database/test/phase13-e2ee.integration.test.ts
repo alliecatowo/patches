@@ -74,12 +74,23 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
     // The ledger and everything appended after it, in order — the final state must be
-    // fully migrated ("no pending migration" assertion below).
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex) });
+    // fully migrated ("no pending migration" assertion below). Stops one short of the very
+    // tip: `Adr0033IdentityTranscriptCleanBreak…` (ADR 0033 §5) deletes every row in these
+    // same E2EE tables regardless of encoding, which would erase this file's own pre-ledger
+    // fixture before the assertions below ever see it. That migration is orthogonal to what
+    // this file tests (the ledger's dependency-safe FK/index backfill) and is exercised in
+    // full elsewhere (`app-meta.integration.test.ts`, `phase1-schema.integration.test.ts`,
+    // both of which run the complete, unscoped `ALL_MIGRATIONS` chain via `createDataSource`).
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex, -1) });
     await dataSource.initialize();
     await dataSource.runMigrations();
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
+    // Same scoped chain as above, not the default full `ALL_MIGRATIONS` — every `it` below
+    // (including the undo/redo round trip) must stay within `[ledgerIndex, -1)`, or
+    // `runMigrations()`/`undoLastMigration()` would reach the excluded tip migration and wipe
+    // this file's fixture out from under it.
+    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex, -1) });
     await dataSource.initialize();
   });
 
@@ -166,8 +177,10 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
 
   it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
     // Undo from the ledger onward (migrations after the ledger pop first), so the
-    // DB ends at the pre-ledger schema — exactly what the assertions below expect.
-    for (let i = ALL_MIGRATIONS.length - ledgerIndex; i > 0; i--) {
+    // DB ends at the pre-ledger schema — exactly what the assertions below expect. This
+    // dataSource's configured chain stops one short of `ALL_MIGRATIONS` (see the comment in
+    // `beforeAll`), so the undo count is one fewer too.
+    for (let i = ALL_MIGRATIONS.length - 1 - ledgerIndex; i > 0; i--) {
       await dataSource.undoLastMigration();
     }
 
