@@ -17,6 +17,7 @@ import {
   ENROLLMENT_PEER_WARNING_COPY,
   ENROLLMENT_RECORD_KEY,
   ENROLLMENT_REFUSAL_COPY,
+  NEEDS_AUTHORITY_COPY,
   decodeStoredEnrollment,
   encodeStoredEnrollment,
   enrollRequestFromRecord,
@@ -145,11 +146,14 @@ describe('generateEnrollment (B-107, ADR 0033)', () => {
     expect(bootstrapRequest).toBeDefined();
     expect(bootstrapRequest?.identityRoot?.generation ?? -1).toBe(1);
 
+    const bootstrapRootPrivate = generated.record.rootPrivate;
+    if (bootstrapRootPrivate === undefined)
+      throw new Error('bootstrap record must hold a root private key');
     const linked = generateEnrollment({
       actorId: ACTOR_ID,
       nowMs: NOW,
       root: {
-        privateKey: generated.record.rootPrivate,
+        privateKey: bootstrapRootPrivate,
         publicKey: generated.record.rootPublic,
         createdAtMs: generated.record.identity.ownRoster.root.createdAtMs,
       },
@@ -312,6 +316,29 @@ function fakeTransport(
       }
       return {};
     },
+    getDeviceRoster() {
+      return Promise.resolve({ roster: undefined, certificates: [] });
+    },
+    beginDeviceLink() {
+      return Promise.reject(new Error('fake transport: BeginDeviceLink not wired for this suite'));
+    },
+    listPendingDeviceLinks() {
+      return Promise.resolve({ offers: [] } as never);
+    },
+    cancelDeviceLink() {
+      return Promise.resolve({});
+    },
+    revokeDevice() {
+      return Promise.reject(new Error('fake transport: RevokeDevice not wired for this suite'));
+    },
+    getPrekeyInventory() {
+      return Promise.reject(
+        new Error('fake transport: GetPrekeyInventory not wired for this suite'),
+      );
+    },
+    uploadPrekeys() {
+      return Promise.reject(new Error('fake transport: UploadPrekeys not wired for this suite'));
+    },
   };
   return { transport, spy: state };
 }
@@ -416,6 +443,13 @@ describe('enrollThisDevice orchestration', () => {
       getIdentityRoot: () => Promise.resolve(undefined),
       publishIdentityRoot: () => Promise.resolve({}),
       enrollDevice: () => Promise.resolve({}),
+      getDeviceRoster: () => Promise.resolve({ roster: undefined, certificates: [] }),
+      beginDeviceLink: () => Promise.reject(new Error('not wired for this suite')),
+      listPendingDeviceLinks: () => Promise.resolve({ offers: [] } as never),
+      cancelDeviceLink: () => Promise.resolve({}),
+      revokeDevice: () => Promise.reject(new Error('not wired for this suite')),
+      getPrekeyInventory: () => Promise.reject(new Error('not wired for this suite')),
+      uploadPrekeys: () => Promise.reject(new Error('not wired for this suite')),
     };
     await expect(
       enrollThisDevice({ actorId: ACTOR_ID, transport: failingProbe, vault }),
@@ -461,10 +495,10 @@ describe('enrollThisDevice orchestration', () => {
     const vault = freshVault();
     const { transport, spy } = fakeTransport(vault, { remoteRoot: true });
     const outcome = await enrollThisDevice({ actorId: ACTOR_ID, transport, vault });
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
-    expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.remoteRoot);
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
+    expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
     expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
     expect(spy.publishCalls).toHaveLength(0);
   });
@@ -558,10 +592,10 @@ describe('enrollThisDevice orchestration', () => {
       nowMs: () => NOW + 5_000,
     });
 
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
-    expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.remoteRoot);
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
+    expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
     // Never adopted: no device enrolled under an authority key this machine does not hold.
     expect(retry.spy.enrollCalls).toHaveLength(0);
     expect(retry.spy.publishCalls).toHaveLength(0);

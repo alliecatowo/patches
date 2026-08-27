@@ -18,6 +18,7 @@ import { ConversationMember } from './conversation-member.entity.js';
 import { Credential } from './credential.entity.js';
 import { DomainBlock } from './domain-block.entity.js';
 import { E2eeDeviceIdentity } from './e2ee-device-identity.entity.js';
+import { E2eeDeviceLinkOffer } from './e2ee-device-link-offer.entity.js';
 import { E2eeDeviceRoster } from './e2ee-device-roster.entity.js';
 import { E2eeGroupControlEvent } from './e2ee-group-control-event.entity.js';
 import { E2eeIdentityRoot } from './e2ee-identity-root.entity.js';
@@ -132,6 +133,7 @@ export const ALL_ENTITIES = [
   ConversationMember,
   E2eeIdentityRoot,
   E2eeDeviceIdentity,
+  E2eeDeviceLinkOffer,
   E2eeDeviceRoster,
   E2eeSignedPrekey,
   E2eeOneTimePrekey,

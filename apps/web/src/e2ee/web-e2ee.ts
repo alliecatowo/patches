@@ -46,6 +46,7 @@ import {
   enrollThisDevice,
   loadStoredEnrollment,
   type EnrollOutcome,
+  type EnrollmentTransport,
 } from './enrollment.js';
 import {
   bindConversationCreate,
@@ -170,6 +171,15 @@ class WebE2eeManager {
 
   /** Called by the session layer on sign-in/sign-out/actor switch. */
   async setActor(actor: { readonly id: string } | null): Promise<void> {
+    if (actor !== null && actor.id === this.lastActorId && this.vault !== undefined) {
+      // Already the bound actor with an open vault (ADR 0020 §4: one connection at a
+      // time) — a second consumer binding to the actor this manager already holds open
+      // (e.g. a settings route mounted alongside the messages route) must not tear down
+      // and reopen a live connection just to reach the same state. `reloadEnrollment()`
+      // is the seam for picking up a write another flow made to the stored record; this
+      // is a no-op join, not a refresh.
+      return;
+    }
     const seq = (this.setActorSeq += 1);
     if (actor === null) {
       this.release();
@@ -203,6 +213,7 @@ class WebE2eeManager {
         this.setStatus({ kind: 'not-enrolled' });
         return;
       }
+      this.actorId = actor.id;
       this.bind(vault, stored.identity);
       // `bind` only needs `stored.identity` going forward; the account root private key
       // this load pulled off disk has no further use in this manager and must not sit in
@@ -260,7 +271,7 @@ class WebE2eeManager {
         vault: this.vault,
         ...(this.nowMs === undefined ? {} : { nowMs: this.nowMs }),
       });
-      if (outcome.status === 'refused') {
+      if (outcome.status === 'refused' || outcome.status === 'needs-authority') {
         this.setStatus({ kind: 'refused', copy: outcome.copy });
         return outcome;
       }
@@ -355,6 +366,73 @@ class WebE2eeManager {
     }
     this.release();
     this.setStatus({ kind: 'not-enrolled' });
+  }
+
+  /** FIFO queue backing `withVault`/`reloadEnrollment`: two callers reading or writing
+   * the stored enrollment record (a `withVault` caller and this manager's own
+   * `reloadEnrollment`) never interleave on the vault's one open connection.
+   * `send`/`poll` don't need this — they only exercise the ratchet session runtime,
+   * never the stored enrollment record. */
+  private operationChain: Promise<unknown> = Promise.resolve();
+
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.operationChain.then(fn, fn);
+    this.operationChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /**
+   * The narrow public seam settings/device-link UI needs (issue #279): hands `fn` this
+   * manager's OWN open vault/actor/enrollment-transport instead of opening a second
+   * IndexedDB connection to the same account (ADR 0020 §4 — one connection at a time),
+   * and queues `fn` behind any other `withVault`/`reloadEnrollment` call so two callers
+   * never read or write the stored enrollment record at once. Rejects with
+   * `WebE2eeUnavailableError` if this browser has no open vault for a signed-in actor
+   * right now (signed-out/loading/fault).
+   */
+  async withVault<T>(
+    fn: (ctx: {
+      readonly vault: RatchetSessionVault;
+      readonly actorId: string;
+      readonly transport: EnrollmentTransport;
+    }) => Promise<T>,
+  ): Promise<T> {
+    return this.enqueue(async () => {
+      if (this.vault === undefined || this.actorId === undefined) {
+        throw new WebE2eeUnavailableError(WEB_E2EE_COPY.notEnrolled);
+      }
+      return fn({
+        vault: this.vault,
+        actorId: this.actorId,
+        transport: createWebEnrollmentTransport({ api: this.api }),
+      });
+    });
+  }
+
+  /**
+   * Re-reads the stored enrollment record after an external `withVault` caller (link,
+   * rotate, or recovery-archive import) wrote a new one. Replaces the old
+   * `setActor(null)`/`setActor({id})` round trip, which also transiently dropped
+   * `identity`/`runtime` and reported `loading`/`not-enrolled` to every other consumer of
+   * this manager for no reason other than forcing a reread. A no-op if this manager has
+   * no open vault right now. Queued behind any in-flight `withVault` call so it never
+   * reads a half-written record.
+   */
+  async reloadEnrollment(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.vault === undefined || this.actorId === undefined) return;
+      const stored = await loadStoredEnrollment(this.vault, Date.now());
+      if (stored === undefined || !stored.submitted) {
+        this.setStatus({ kind: 'not-enrolled' });
+        return;
+      }
+      this.bind(this.vault, stored.identity);
+      disposeStoredEnrollment(stored);
+      this.setStatus({ kind: 'enrolled' });
+    });
   }
 
   private requireRuntime(): E2eeSessionRuntime {

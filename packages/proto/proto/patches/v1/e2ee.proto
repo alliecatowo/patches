@@ -52,6 +52,22 @@ service E2eeService {
   // plaintext the device already holds, and it is never a remote wipe (ADR 0020 §10).
   rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
 
+  // A new device (`N`) posts its link offer: a device-signed transcript naming its keys and
+  // prekey bundle, none of it root-signed (ADR 0037 §1). The node stores it for at most 10
+  // minutes, keyed by a random `link_id`, at most 3 pending offers per actor, and never decodes
+  // it on the authority device's behalf — `ListPendingDeviceLinks` returns the same opaque
+  // `offer_bytes` the authority re-verifies for itself.
+  rpc BeginDeviceLink(E2eeServiceBeginDeviceLinkRequest) returns (E2eeServiceBeginDeviceLinkResponse);
+
+  // The caller's own pending link offers, for the authority device to review, decode, and
+  // re-verify before it computes and displays the SAS (ADR 0037 §1). Never another actor's
+  // offers — a pending offer is not a device and never appears in a roster.
+  rpc ListPendingDeviceLinks(E2eeServiceListPendingDeviceLinksRequest) returns (E2eeServiceListPendingDeviceLinksResponse);
+
+  // Discards a pending offer before it is consumed by `EnrollDevice` or expires on its own
+  // (ADR 0037 §1, §3.4). An offer is never reused once cancelled, consumed, or expired.
+  rpc CancelDeviceLink(E2eeServiceCancelDeviceLinkRequest) returns (E2eeServiceCancelDeviceLinkResponse);
+
   // Appends the next roster to the caller's append-only roster log. Rejected unless it is
   // exactly `current.sequence + 1` and chains to the current digest.
   rpc PublishDeviceRoster(PublishDeviceRosterRequest) returns (PublishDeviceRosterResponse);
@@ -680,6 +696,71 @@ message RevokeDeviceResponse {
   // erase keys or plaintext the device already obtained, and it is not a remote wipe.
   uint32 deleted_one_time_prekey_count = 2;
 }
+
+// A new device's offer to be linked into an existing actor's roster, signed by the new device's
+// own key but never by the root (ADR 0037 §1). One more member of the ADR 0033 transcript
+// family: `offer_bytes` is the only authoritative content, encoded by `@patches/crypto` with the
+// same length-prefixed, domain-separated layout as the identity transcripts. The node never
+// decodes `offer_bytes` on the authority's behalf — every field below is a convenience view the
+// authority device must re-verify against `offer_bytes` itself before it trusts anything,
+// including the SAS it displays.
+message E2eeDeviceLinkOffer {
+  // Node-minted, random, unique per offer. Opaque; never derived from actor or device ids.
+  string link_id = 1;
+
+  string actor_id = 2;
+  string device_id = 3;
+
+  // The canonical transcript `device_signature` covers: domain, version, actor id, device id,
+  // signing and agreement public keys, supported protocol versions, created-at and expires-at.
+  bytes offer_bytes = 4;
+
+  // Ed25519 signature by the new device's own signing key over `offer_bytes`, strict RFC 8032.
+  // Proves the new device holds the private key it is offering — nothing more. It is never a
+  // substitute for root certification, which only `EnrollDevice` grants.
+  bytes device_signature = 5;
+
+  E2eeSignedPrekey signed_prekey = 6;
+
+  // Initial inventory, up to `E2eeCapability.one_time_prekey_target`.
+  repeated E2eeOneTimePrekey one_time_prekeys = 7;
+
+  // Canonical transcript and device signature covering the prekey bundle, passed through
+  // verbatim to `EnrollDevice` once the authority signs. The node never revalidates it here.
+  bytes prekey_bundle_bytes = 8;
+  bytes prekey_bundle_signature = 9;
+
+  google.protobuf.Timestamp created_at = 10;
+
+  // Always `created_at` + 10 minutes (ADR 0037 §1). An expired offer is deleted, never served,
+  // and never silently retried.
+  google.protobuf.Timestamp expires_at = 11;
+}
+
+// Invariant: `offer.link_id`, `offer.created_at`, and `offer.expires_at` are ignored on input —
+// the node mints all three. A caller that sets them is not granted them back.
+message E2eeServiceBeginDeviceLinkRequest {
+  E2eeDeviceLinkOffer offer = 1;
+}
+
+message E2eeServiceBeginDeviceLinkResponse {
+  string link_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message E2eeServiceListPendingDeviceLinksRequest {}
+
+// Invariant: only the calling actor's own pending offers, in no particular authenticated order —
+// the authority device re-verifies and re-derives the SAS for each before displaying it.
+message E2eeServiceListPendingDeviceLinksResponse {
+  repeated E2eeDeviceLinkOffer offers = 1;
+}
+
+message E2eeServiceCancelDeviceLinkRequest {
+  string link_id = 1;
+}
+
+message E2eeServiceCancelDeviceLinkResponse {}
 
 message PublishDeviceRosterRequest {
   E2eeDeviceRoster roster = 1;

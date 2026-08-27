@@ -50,6 +50,7 @@ import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { DevicesScreen } from '../screens/DevicesScreen.js';
+import { LinkThisDeviceScreen } from '../screens/LinkThisDeviceScreen.js';
 import { SafetyNumberScreen } from '../screens/SafetyNumberScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
 import { FilterListsScreen } from '../screens/FilterListsScreen.js';
@@ -603,6 +604,9 @@ export function App({
     readonly ok: boolean;
     readonly copy: string;
     readonly peerWarning?: string | undefined;
+    /** ADR 0037 §2: a published root exists this device cannot reach — the caller
+     * navigates to `LinkThisDeviceScreen` instead of rendering `copy` as a dead end. */
+    readonly needsAuthority?: boolean;
   }> {
     if (session === undefined) return { ok: false, copy: 'You are not signed in.' };
     const sender = e2eeSenderFor(session);
@@ -625,6 +629,9 @@ export function App({
         setE2eeEnrolledDeviceId(outcome.identity.deviceId);
         return { ok: true, copy: 'This device is already enrolled for encrypted messages.' };
       }
+      if (outcome.status === 'needs-authority') {
+        return { ok: false, copy: outcome.copy, needsAuthority: true };
+      }
       return { ok: false, copy: outcome.copy };
     } catch (error) {
       return { ok: false, copy: describeGrpcError(error, api.target).title };
@@ -632,6 +639,91 @@ export function App({
       // Vault faults are sticky: mirror whatever the attempt left behind.
       setE2eeVaultFault(sender.fault());
     }
+  }
+  /** ADR 0037 §1 step 1 — `LinkThisDeviceScreen`'s "link" choice. */
+  async function beginDeviceLinkForCurrentAccount(): Promise<{
+    readonly linkId: string;
+    readonly sas: string;
+    readonly expiresAtMs: number;
+  }> {
+    if (session === undefined) throw new Error('You are not signed in.');
+    const sender = e2eeSenderFor(session);
+    try {
+      return await sender.beginLink({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §1 step 4 — one poll of `LinkThisDeviceScreen`'s waiting state. */
+  async function pollDeviceLinkForCurrentAccount(): Promise<'pending' | 'enrolled' | 'expired'> {
+    if (session === undefined) return 'expired';
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.pollLink({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.deviceId !== undefined) setE2eeEnrolledDeviceId(outcome.deviceId);
+      return outcome.result;
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §2 — `LinkThisDeviceScreen`'s "rotate" choice, always an unverified reset
+   * here (this build has no recovery-archive import wired into the chooser yet, #272). */
+  async function rotateMessagingRootForCurrentAccount(): Promise<{
+    readonly generation: number;
+    readonly planned: boolean;
+  }> {
+    if (session === undefined) throw new Error('You are not signed in.');
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.rotateRoot({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.deviceId !== undefined) setE2eeEnrolledDeviceId(outcome.deviceId);
+      return outcome.result;
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §1 step 2 — DevicesScreen's "Pending link requests" section. */
+  async function listPendingDeviceLinksForCurrentAccount(): Promise<
+    readonly {
+      readonly linkId: string;
+      readonly deviceId: string;
+      readonly sas: string;
+      readonly expiresAtMs: number;
+    }[]
+  > {
+    if (session === undefined) return [];
+    const sender = e2eeSenderFor(session);
+    return sender.listPendingLinks({
+      actorId: actorIdFor(session),
+      transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+    });
+  }
+  /** ADR 0037 §1 step 3 — approves a pending link after the viewer confirms the SAS. */
+  async function approveDeviceLinkForCurrentAccount(linkId: string): Promise<void> {
+    if (session === undefined) return;
+    const sender = e2eeSenderFor(session);
+    await sender.approveLink({
+      actorId: actorIdFor(session),
+      linkId,
+      transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+    });
+  }
+  /** ADR 0037 §1 step 2: "the node showed this device different keys" — a mismatched
+   * SAS is discarded, never retried silently. Cancelling needs no root key, only the
+   * relay RPC, so this bypasses the vault-backed sender entirely. */
+  async function discardDeviceLinkForCurrentAccount(linkId: string): Promise<void> {
+    await createEnrollmentTransport({ api, accessToken: ensureAccessToken }).cancelDeviceLink(
+      linkId,
+    );
   }
   async function sendViaVault(conversationId: string, body: string): Promise<void> {
     if (session === undefined) return;
@@ -2157,6 +2249,21 @@ export function App({
             thisDeviceId={e2eeEnrolledDeviceId}
             e2eeCapabilityState={e2eeCapabilityState}
             onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
+            onNeedsAuthority={() => navigate({ screen: 'linkThisDevice' })}
+            onListPendingLinks={() => listPendingDeviceLinksForCurrentAccount()}
+            onApproveLink={(linkId) => approveDeviceLinkForCurrentAccount(linkId)}
+            onDiscardLink={(linkId) => discardDeviceLinkForCurrentAccount(linkId)}
+            onBack={back}
+          />
+        );
+      case 'linkThisDevice':
+        return session === undefined ? null : (
+          <LinkThisDeviceScreen
+            isActive={active}
+            onBeginLink={() => beginDeviceLinkForCurrentAccount()}
+            onPollLink={() => pollDeviceLinkForCurrentAccount()}
+            onRotateRoot={() => rotateMessagingRootForCurrentAccount()}
+            onDone={() => back()}
             onBack={back}
           />
         );
@@ -2430,6 +2537,7 @@ export function App({
             e2eeEnrolledDeviceId={e2eeEnrolledDeviceId}
             onOpenDevices={() => navigate({ screen: 'devices' })}
             onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
+            onNeedsAuthority={() => navigate({ screen: 'linkThisDevice' })}
             onLogout={() => void logout()}
             onResendVerification={() => void resendVerificationEmail()}
             onBack={back}

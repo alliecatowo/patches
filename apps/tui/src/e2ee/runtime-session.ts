@@ -34,8 +34,12 @@ import {
   E2EE_FRANKING_PROFILE_V1,
 } from '@patches/domain';
 
+import { E2EE_DEVICE_REVOKED_COPY, refreshOwnRoster } from './device-link.js';
+import type { EnrollmentTransport } from './enrollment.js';
+import { loadStoredEnrollment } from './enrollment.js';
 import { parseHistoryTransfer } from './history-transfer.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
+import { maintainPrekeys } from './prekey-maintenance.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
 import type { DoubleRatchetState, RatchetTransition } from '@patches/crypto';
 import type { OpenedDeviceEnvelope } from '@patches/crypto';
@@ -70,7 +74,26 @@ export interface E2eeRuntimeOptions {
    * setup is the only place time is consulted — the ratchet itself is timeless.
    */
   readonly nowMs?: (() => number) | undefined;
+  /**
+   * Enrollment transport seam (issue #277): when present, `send`/`pollMailbox` refresh
+   * this device's OWN stored roster (`refreshOwnRoster`) at most once per
+   * `refreshIntervalMs`, instead of trusting the roster snapshot captured when this
+   * runtime was constructed forever. Omitted, the runtime behaves exactly as before —
+   * kept optional so existing callers/tests need no changes.
+   */
+  readonly transport?: EnrollmentTransport | undefined;
+  /** Own-roster refresh cadence (issue #277). Defaults to 30 seconds; injectable for tests. */
+  readonly refreshIntervalMs?: number | undefined;
 }
+
+/** Default own-roster refresh cadence (issue #277) — matches the mailbox poll cadence
+ * order of magnitude without adding a refresh round trip to every single send/receive. */
+const DEFAULT_ROSTER_REFRESH_INTERVAL_MS = 30_000;
+
+/** Prekey maintenance cadence (ADR 0020 §5, issue #278): at most once per this interval per
+ * process, since a `GetPrekeyInventory` round trip on every single send would be wasteful and
+ * the underlying thresholds (20 remaining, 7 days) tolerate this much slack trivially. */
+const DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 
 interface PreparedSession {
   readonly state: DoubleRatchetState;
@@ -82,10 +105,23 @@ interface PreparedSession {
 
 export class E2eeSessionRuntime {
   private readonly vault: RatchetSessionVault;
-  private readonly identity: LocalDeviceIdentity;
+  /** Mutable (issue #277): `ensureFreshOwnRoster` replaces this with the reloaded stored
+   * identity whenever the served roster digest has moved forward. */
+  private identity: LocalDeviceIdentity;
   private readonly sendTransport: E2eeSendTransport;
   private readonly mailboxTransport: E2eeMailboxTransport;
   private readonly nowMs: () => number;
+  private readonly transport: EnrollmentTransport | undefined;
+  private readonly refreshIntervalMs: number;
+  /** Epoch ms at which the next `refreshOwnRoster` call is due; 0 forces one immediately. */
+  private nextRosterRefreshMs = 0;
+  /** Epoch ms at which the next `maintainPrekeys` call is due; 0 forces one immediately
+   * (issue #278). */
+  private nextPrekeyMaintenanceMs = 0;
+  /** True once a refresh has observed this device revoked (issue #277 comment). Sticky
+   * for the life of this runtime instance until a later refresh observes it active again
+   * (e.g. re-linked under a fresh roster) — never cleared by anything except a refresh. */
+  private deviceRevoked = false;
 
   constructor(options: E2eeRuntimeOptions) {
     this.vault = options.vault;
@@ -93,11 +129,69 @@ export class E2eeSessionRuntime {
     this.sendTransport = options.sendTransport;
     this.mailboxTransport = options.mailboxTransport;
     this.nowMs = options.nowMs ?? ((): number => Date.now());
+    this.transport = options.transport;
+    this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_ROSTER_REFRESH_INTERVAL_MS;
+  }
+
+  /**
+   * Re-syncs this device's own roster from the vault at most once per
+   * `refreshIntervalMs` (issue #277) — a no-op when no `transport` was supplied, so a
+   * caller that omits it gets exactly today's constructor-time-snapshot behavior. When
+   * the served digest moved forward, reloads the full stored identity (fresh keys the
+   * decode step re-verifies, not just the roster field) so every later X3DH in this
+   * runtime binds the SAME digest a peer that just fetched it would.
+   */
+  private async ensureFreshOwnRoster(): Promise<void> {
+    if (this.transport === undefined) return;
+    const now = this.nowMs();
+    if (now < this.nextRosterRefreshMs) return;
+    this.nextRosterRefreshMs = now + this.refreshIntervalMs;
+    const result = await refreshOwnRoster({
+      actorId: this.identity.actorId,
+      transport: this.transport,
+      vault: this.vault,
+      nowMs: this.nowMs,
+    });
+    if (result.changed) {
+      const stored = await loadStoredEnrollment(this.vault, now);
+      if (stored !== undefined) this.identity = stored.identity;
+    }
+    this.deviceRevoked = !result.selfActive;
+  }
+
+  /**
+   * Replenishes one-time prekeys and rotates the signed prekey when due, at most once per
+   * `DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS` (ADR 0020 §5, issue #278) — a no-op when no
+   * `transport` was supplied, matching `ensureFreshOwnRoster`'s opt-in shape. Best-effort: a
+   * failure here (a transient network error, a rate-limited node) must never block sending a
+   * message — the next scheduled attempt, or the node's own drain-rate limits in the meantime,
+   * cover a missed cycle.
+   */
+  private async ensurePrekeysMaintained(): Promise<void> {
+    if (this.transport === undefined) return;
+    const now = this.nowMs();
+    if (now < this.nextPrekeyMaintenanceMs) return;
+    this.nextPrekeyMaintenanceMs = now + DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS;
+    try {
+      await maintainPrekeys({
+        identity: this.identity,
+        transport: this.transport,
+        vault: this.vault,
+        nowMs: this.nowMs,
+      });
+    } catch {
+      // See doc comment: best-effort by design, never surfaced to the sender.
+    }
   }
 
   // ------------------------------- send -----------------------------------
 
   async send(conversationId: string, body: string, clientRequestId: string): Promise<void> {
+    await this.ensureFreshOwnRoster();
+    await this.ensurePrekeysMaintained();
+    if (this.deviceRevoked) {
+      throw new Error(E2EE_DEVICE_REVOKED_COPY);
+    }
     const plan = await this.sendTransport.loadFanoutPlan(conversationId);
     const epoch = epochToNumber(plan.membershipEpoch);
     const selfKey = `${this.identity.actorId}\u0000${this.identity.deviceId}`;
@@ -269,6 +363,11 @@ export class E2eeSessionRuntime {
   async pollMailbox(filter?: {
     readonly conversationId?: string | undefined;
   }): Promise<PollResult> {
+    // Issue #277: keeps this device's own roster converging on the mailbox poll cadence
+    // too, not only on send — the responder half of X3DH (`establishResponderSession`)
+    // binds `identity.ownRoster` into the handshake it verifies exactly like the
+    // initiator half does.
+    await this.ensureFreshOwnRoster();
     const conversationFilter = filter?.conversationId;
     const rows: InboxRow[] = [];
     const acknowledged: string[] = [];
@@ -357,11 +456,17 @@ export class E2eeSessionRuntime {
         state = storedState;
       } else {
         const initiatorRoster = await this.mailboxTransport.loadPeerRoster(setup.senderActorId);
+        // Issue #278: a rotated signed prekey may still be named by an initial message an
+        // initiator sealed just before rotation reached them — `loadStoredEnrollment` (not the
+        // in-memory `this.identity`, which never carries retained material) is the source of
+        // truth for what is still retained.
+        const storedForRetainedKeys = await loadStoredEnrollment(this.vault, this.nowMs());
         const established = establishResponderSession({
           identity: this.identity,
           setup,
           initiatorRoster,
           nowMs: this.nowMs(),
+          previousSignedPreKeys: storedForRetainedKeys?.previousSignedPreKeys,
         });
         state = established.state;
       }

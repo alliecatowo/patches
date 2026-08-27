@@ -12,6 +12,12 @@ import { fileURLToPath } from 'node:url';
 
 import { ByteWriter, toHex } from '../src/codec.js';
 import {
+  deviceLinkSas,
+  signDeviceLinkOffer,
+  verifyDeviceLinkOffer,
+  type DeviceLinkOfferFields,
+} from '../src/device-link.js';
+import {
   E2EE_IDENTITY_TRANSCRIPT_DOMAIN,
   E2EE_IDENTITY_TRANSCRIPT_TAGS,
   E2EE_IDENTITY_TRANSCRIPT_VERSION,
@@ -469,12 +475,110 @@ function generateDeviceEnvelopeVector(): void {
   });
 }
 
+/**
+ * ADR 0037 §1: a fixed device-link offer, its device signature, the SAS derived from its bytes,
+ * and hex inputs a conforming decoder/verifier must reject.
+ */
+function generateDeviceLinkVector(): void {
+  const seed = 606;
+  const deviceSigning = signingKeyPairFromPrivate(fixtureBytes(seed));
+  const deviceAgreement = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 1));
+  const createdAtMs = 1_700_000_000_000;
+  const expiresAtMs = createdAtMs + 600_000;
+
+  const offerFields: DeviceLinkOfferFields = {
+    actorId: 'actor-vector',
+    deviceId: 'device-vector-link',
+    signingPublicKey: deviceSigning.publicKey,
+    agreementPublicKey: deviceAgreement.publicKey,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs,
+  };
+  const signed = signDeviceLinkOffer(deviceSigning.privateKey, offerFields);
+  // Verified here only to prove the fixture round-trips before it is committed; the recorded
+  // vector itself is replayed from the raw bytes by `src/vectors.test.ts`.
+  verifyDeviceLinkOffer({
+    offerBytes: signed.offerBytes,
+    deviceSignature: signed.deviceSignature,
+    nowMs: createdAtMs + 1_000,
+  });
+  const sas = deviceLinkSas(signed.offerBytes, offerFields.actorId);
+
+  const domainByteLength = encoder.encode('patches-e2ee-v1/device-link-offer').length;
+  const versionOffset = 4 + domainByteLength;
+  const tamperedSignature = signed.deviceSignature.slice();
+  tamperedSignature[0] = (tamperedSignature[0] ?? 0) ^ 0xff;
+  const trailing = new Uint8Array(signed.offerBytes.length + 1);
+  trailing.set(signed.offerBytes, 0);
+  const wrongVersion = signed.offerBytes.slice();
+  wrongVersion[versionOffset] = 2;
+
+  writeJson('device-link.json', {
+    description:
+      'ADR 0037 §1 device-link offer transcript for a single fixed seed: the offer fields, ' +
+      'transcript bytes, device signature, and derived SAS — plus hex/signature inputs a ' +
+      'conforming verifier must reject. Replayed by src/vectors.test.ts.',
+    seed,
+    keys: {
+      deviceSigningPrivateKeyHex: toHex(deviceSigning.privateKey),
+      deviceSigningPublicKeyHex: toHex(deviceSigning.publicKey),
+      deviceAgreementPublicKeyHex: toHex(deviceAgreement.publicKey),
+    },
+    offer: {
+      fields: {
+        actorId: offerFields.actorId,
+        deviceId: offerFields.deviceId,
+        signingPublicKeyHex: toHex(offerFields.signingPublicKey),
+        agreementPublicKeyHex: toHex(offerFields.agreementPublicKey),
+        supportedProtocolVersions: offerFields.supportedProtocolVersions,
+        createdAtMs: offerFields.createdAtMs,
+        expiresAtMs: offerFields.expiresAtMs,
+      },
+      transcriptHex: toHex(signed.offerBytes),
+      deviceSignatureHex: toHex(signed.deviceSignature),
+      verifiedAtMs: createdAtMs + 1_000,
+    },
+    sas: {
+      actorId: offerFields.actorId,
+      value: sas,
+    },
+    rejected: [
+      {
+        name: 'tampered signature',
+        offerHex: toHex(signed.offerBytes),
+        signatureHex: toHex(tamperedSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+      {
+        name: 'expired offer',
+        offerHex: toHex(signed.offerBytes),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: expiresAtMs,
+      },
+      {
+        name: 'trailing bytes',
+        offerHex: toHex(trailing),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+      {
+        name: 'wrong version',
+        offerHex: toHex(wrongVersion),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+    ],
+  });
+}
+
 generateIdentityTranscriptsVector();
 generateX3dhVector();
 generateDoubleRatchetVector();
 generateFrankingVector();
 generateDeviceEnvelopeVector();
+generateDeviceLinkVector();
 process.stdout.write(
   'Wrote src/vectors/{identity-transcripts,x3dh-handshake,double-ratchet-session,franking,' +
-    'device-envelope}.json\n',
+    'device-envelope,device-link}.json\n',
 );

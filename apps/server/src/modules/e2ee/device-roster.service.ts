@@ -28,6 +28,7 @@ import {
 import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { deleteDeviceLinkOffer } from './device-link.service.js';
 import { e2eeDigest, e2eeSignatureVerifier } from './e2ee-crypto.adapter.js';
 import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import {
@@ -134,6 +135,9 @@ export class E2eeDeviceRosterService {
         }),
       );
 
+      // Not a device link is not an error here — ordinary bootstrap enrollment simply has no
+      // matching offer row (ADR 0037 §1 step 3).
+      await deleteDeviceLinkOffer(manager, actorId, certView.deviceId);
       const { row: rosterRow, entries } = await appendRoster(
         manager,
         actorId,

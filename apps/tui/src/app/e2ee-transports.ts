@@ -49,11 +49,17 @@ export type E2eeApiSurface = Pick<
   | 'publishIdentityRoot'
   | 'enrollDevice'
   | 'getDeviceRoster'
+  | 'beginDeviceLink'
+  | 'listPendingDeviceLinks'
+  | 'cancelDeviceLink'
+  | 'revokeDevice'
   | 'getE2eeConversationState'
   | 'claimPrekeyBundles'
   | 'sendEnvelopes'
   | 'listMailboxEnvelopes'
   | 'acknowledgeEnvelopes'
+  | 'getPrekeyInventory'
+  | 'uploadPrekeys'
 >;
 
 /**
@@ -344,6 +350,42 @@ export function createEnrollmentTransport(
     async enrollDevice(request) {
       const accessToken = await options.accessToken();
       await options.api.enrollDevice(request, accessToken);
+    },
+
+    async getDeviceRoster(actorId) {
+      const accessToken = await options.accessToken();
+      const response = await options.api.getDeviceRoster({ actorId }, accessToken);
+      return { roster: response.roster, certificates: response.certificates };
+    },
+
+    async beginDeviceLink(request) {
+      const accessToken = await options.accessToken();
+      return options.api.beginDeviceLink(request, accessToken);
+    },
+
+    async listPendingDeviceLinks() {
+      const accessToken = await options.accessToken();
+      return options.api.listPendingDeviceLinks({}, accessToken);
+    },
+
+    async cancelDeviceLink(linkId) {
+      const accessToken = await options.accessToken();
+      await options.api.cancelDeviceLink({ linkId }, accessToken);
+    },
+
+    async revokeDevice(request) {
+      const accessToken = await options.accessToken();
+      await options.api.revokeDevice(request, accessToken);
+    },
+
+    async getPrekeyInventory(deviceId) {
+      const accessToken = await options.accessToken();
+      return options.api.getPrekeyInventory({ deviceId }, accessToken);
+    },
+
+    async uploadPrekeys(request) {
+      const accessToken = await options.accessToken();
+      return options.api.uploadPrekeys(request, accessToken);
     },
   };
 }

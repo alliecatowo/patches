@@ -28,6 +28,7 @@ import {
   initializeResponderRatchet,
   initiateX3dh,
   respondX3dh,
+  verifyPreKeyBundle,
   type DoubleRatchetState,
   type InitiateX3dhResult,
   type RespondX3dhResult,
@@ -38,7 +39,11 @@ import {
 } from '@patches/crypto';
 import { E2eeContractError } from '@patches/domain';
 
-import { selfPrekeyBundle, type LocalDeviceIdentity } from './local-identity.js';
+import {
+  selfPrekeyBundle,
+  type LocalDeviceIdentity,
+  type LocalPreviousSignedPreKey,
+} from './local-identity.js';
 
 const SETUP_MAGIC = new Uint8Array([0x50, 0x45, 0x53, 0x48]); // "PESH"
 const SETUP_VERSION = 1;
@@ -216,12 +221,18 @@ export interface EstablishedResponderSession {
  * be located. `identity`'s own bundle is re-verified here (through
  * {@link selfPrekeyBundle}) for whichever one-time prekey the setup block names, rather
  * than trusted from a value the caller precomputed.
+ *
+ * `previousSignedPreKeys` (ADR 0020 §5, issue #278) covers the case where this device rotated
+ * its signed prekey after an initiator claimed the OLD one but before their initial envelope
+ * arrived — still legitimate within the mailbox's max-latency window, and refused here only once
+ * `prekey-maintenance.ts` has pruned the retained key past it.
  */
 export function establishResponderSession(input: {
   readonly identity: LocalDeviceIdentity;
   readonly setup: InitialSetupBlock;
   readonly initiatorRoster: VerifiedRosterSnapshot;
   readonly nowMs: number;
+  readonly previousSignedPreKeys?: readonly LocalPreviousSignedPreKey[] | undefined;
 }): EstablishedResponderSession {
   const { setup, identity } = input;
   const initiator = findRosterDevice(
@@ -229,7 +240,13 @@ export function establishResponderSession(input: {
     setup.senderDeviceId,
     setup.senderActorId,
   );
-  if (setup.handshake.signedPreKeyId !== identity.signedPreKey.id) {
+  const isCurrentSignedPreKey = setup.handshake.signedPreKeyId === identity.signedPreKey.id;
+  const retainedSignedPreKey = isCurrentSignedPreKey
+    ? undefined
+    : (input.previousSignedPreKeys ?? []).find(
+        (candidate) => candidate.id === setup.handshake.signedPreKeyId,
+      );
+  if (!isCurrentSignedPreKey && retainedSignedPreKey === undefined) {
     throw new E2eeContractError('Initial message names prekeys this device does not hold.');
   }
   const oneTime =
@@ -241,11 +258,29 @@ export function establishResponderSession(input: {
   if ((oneTime === undefined) !== (setup.handshake.oneTimePreKeyId === undefined)) {
     throw new E2eeContractError('Initial message names prekeys this device does not hold.');
   }
-  const selfBundle = selfPrekeyBundle(
-    identity,
-    oneTime === undefined ? undefined : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey },
-    input.nowMs,
-  );
+  const oneTimeForBundle =
+    oneTime === undefined ? undefined : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey };
+  const signedPreKeyMaterial =
+    retainedSignedPreKey === undefined
+      ? { id: identity.signedPreKey.id, keyPair: identity.signedPreKey.keyPair }
+      : { id: retainedSignedPreKey.id, keyPair: retainedSignedPreKey.keyPair };
+  const selfBundle =
+    retainedSignedPreKey === undefined
+      ? selfPrekeyBundle(identity, oneTimeForBundle, input.nowMs)
+      : verifyPreKeyBundle({
+          bundleBytes: retainedSignedPreKey.bundleBytes,
+          deviceSignature: retainedSignedPreKey.deviceSignature,
+          certificateBytes: identity.selfDevice.certificateBytes,
+          certificateRootSignature: identity.selfDevice.rootSignature,
+          ...(oneTimeForBundle === undefined ? {} : { oneTimePreKey: oneTimeForBundle }),
+          roster: identity.ownRoster,
+          // The retained bundle's own signed validity window, not the real wall clock: it is
+          // long past its original `expiresAtMs` by the time it is retained at all (rotation
+          // only happens once the *current* prekey is already due), and that gate exists to stop
+          // a NEW initiator from being handed a stale bundle, not to stop this device from
+          // finishing a handshake an initiator already legitimately started against it.
+          nowMs: retainedSignedPreKey.createdAtMs,
+        });
   const handshake: X3dhHandshake = {
     ...setup.handshake,
     initiator: handshakeDeviceOf(initiator),
@@ -256,15 +291,19 @@ export function establishResponderSession(input: {
     responderBundle: selfBundle,
     responderRoster: identity.ownRoster,
     initiatorRoster: input.initiatorRoster,
-    signedPreKey: {
-      id: identity.signedPreKey.id,
-      keyPair: identity.signedPreKey.keyPair,
-    },
+    signedPreKey: signedPreKeyMaterial,
     ...(oneTime === undefined
       ? {}
       : { oneTimePreKey: { id: oneTime.id, keyPair: oneTime.keyPair } }),
     handshake,
+    // The initiator is ALWAYS judged at the real clock (certificate lifetime, roster
+    // membership, revocation). Only the responder's own retained bundle — whose original
+    // 7-day window is long past by the time rotation retains it — is checked at the moment
+    // it was still current (ADR 0020 §5 retention); see `responderBundleNowMs`.
     nowMs: input.nowMs,
+    ...(retainedSignedPreKey === undefined
+      ? {}
+      : { responderBundleNowMs: retainedSignedPreKey.createdAtMs }),
   });
   let state: DoubleRatchetState;
   try {

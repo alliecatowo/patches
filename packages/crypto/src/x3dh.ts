@@ -232,6 +232,15 @@ export interface RespondX3dhInput {
   readonly oneTimePreKey?: PrivatePreKey;
   readonly handshake: X3dhHandshake;
   readonly nowMs: number;
+  /**
+   * Clock used ONLY for the responder's own bundle validity window. A responder answering an
+   * initial message sealed against a signed prekey it has since rotated out (ADR 0020 §5: the
+   * previous private key is retained for the 30-day mailbox window) presents that retained
+   * bundle, whose original 7-day window is long past. Backdating this one check is what lets
+   * the handshake finish; everything about the *initiator* (certificate lifetime, roster
+   * membership, revocation) is still judged at `nowMs`, never at a past instant.
+   */
+  readonly responderBundleNowMs?: number;
 }
 
 export interface RespondX3dhResult {
@@ -262,7 +271,11 @@ export function disposeX3dhSecrets(secrets: X3dhSecrets, initiatorEphemeral?: Ke
 
 export function respondX3dh(input: RespondX3dhInput): RespondX3dhResult {
   assertDeviceKeysMatch(input.responderKeys, input.responderBundle.device);
-  assertBundleMatchesRoster(input.responderBundle, input.responderRoster, input.nowMs);
+  assertBundleMatchesRoster(
+    input.responderBundle,
+    input.responderRoster,
+    input.responderBundleNowMs ?? input.nowMs,
+  );
   const handshake = input.handshake;
   const bundle = input.responderBundle;
   if (

@@ -380,5 +380,35 @@ export function createWebEnrollmentTransport(
     async enrollDevice(request) {
       await api.e2ee.enrollDevice(request);
     },
+
+    async getDeviceRoster(actorId) {
+      const response = await api.e2ee.getDeviceRoster({ actorId });
+      return { roster: response.roster, certificates: response.certificates };
+    },
+
+    async beginDeviceLink(request) {
+      return api.e2ee.beginDeviceLink(request);
+    },
+
+    async listPendingDeviceLinks() {
+      return api.e2ee.listPendingDeviceLinks({});
+    },
+
+    async cancelDeviceLink(linkId) {
+      await api.e2ee.cancelDeviceLink({ linkId });
+    },
+
+    async revokeDevice(request) {
+      await api.e2ee.revokeDevice(request);
+    },
+
+    // One-time prekey replenishment + signed-prekey rotation (ADR 0020 §5, issue #278).
+    async getPrekeyInventory(deviceId) {
+      return api.e2ee.getPrekeyInventory({ deviceId });
+    },
+
+    async uploadPrekeys(request) {
+      return api.e2ee.uploadPrekeys(request);
+    },
   };
 }

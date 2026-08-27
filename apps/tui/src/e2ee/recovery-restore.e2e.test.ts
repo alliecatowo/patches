@@ -94,6 +94,13 @@ function fakeTransport(state: FakeNodeState): EnrollmentTransport {
       state.identityRoot = request.identityRoot ?? create(E2eeIdentityRootSchema);
       return Promise.resolve(undefined);
     },
+    getDeviceRoster: () => Promise.reject(new Error('not used by the restore flow')),
+    beginDeviceLink: () => Promise.reject(new Error('not used by the restore flow')),
+    listPendingDeviceLinks: () => Promise.reject(new Error('not used by the restore flow')),
+    cancelDeviceLink: () => Promise.reject(new Error('not used by the restore flow')),
+    revokeDevice: () => Promise.reject(new Error('not used by the restore flow')),
+    getPrekeyInventory: () => Promise.reject(new Error('not used by the restore flow')),
+    uploadPrekeys: () => Promise.reject(new Error('not used by the restore flow')),
     enrollDevice: (request: EnrollDeviceRequest): Promise<unknown> => {
       state.enrollRequests.push(request);
       if (request.roster !== undefined) {

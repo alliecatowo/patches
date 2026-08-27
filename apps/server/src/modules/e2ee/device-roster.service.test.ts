@@ -164,6 +164,8 @@ describe('E2eeDeviceRosterService (issues #267, #268, #269)', () => {
               findOne: vi.fn().mockResolvedValue(null),
               insert: vi.fn().mockResolvedValue(undefined),
               count: vi.fn().mockResolvedValue(0),
+              // `deleteDeviceLinkOffer` (ADR 0037 §1 step 3) runs inside enrollDevice.
+              delete: vi.fn().mockResolvedValue({ affected: 0 }),
             },
       ),
     } as unknown as EntityManager;

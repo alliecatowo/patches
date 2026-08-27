@@ -11,8 +11,9 @@ import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
-import { useE2ee } from '../e2ee/use-e2ee.js';
+import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
+import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
 import styles from './MessagesRoute.module.css';
 
 const panelStyle = {
@@ -55,7 +56,10 @@ export function MessagesRoute(): JSX.Element {
   const session = useSession();
   const e2eeStatus = useE2ee(session);
   const [enrolling, setEnrolling] = useState(false);
+  const [needsAuthority, setNeedsAuthority] = useState(false);
   const navigate = useNavigate();
+  const actorId = session?.actor.id;
+  const deviceLinkVault = useE2eeVaultAccess(e2eeStatus);
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -78,6 +82,8 @@ export function MessagesRoute(): JSX.Element {
       const outcome = await webE2ee().enroll();
       if (outcome.status === 'enrolled') {
         toast(WEB_E2EE_COPY.peerWarning);
+      } else if (outcome.status === 'needs-authority') {
+        setNeedsAuthority(true);
       } else if (outcome.status === 'refused') {
         toast.error(outcome.copy);
       }
@@ -88,6 +94,16 @@ export function MessagesRoute(): JSX.Element {
     } finally {
       setEnrolling(false);
     }
+  }
+
+  async function handleNeedsAuthorityResolved(resolution: 'enrolled' | 'cancelled'): Promise<void> {
+    setNeedsAuthority(false);
+    if (resolution !== 'enrolled' || actorId === undefined) return;
+    // `NeedsAuthorityFlow` wrote the enrollment record through the manager's own vault
+    // (`withVault`, via `deviceLinkVault` below) — `reloadEnrollment` re-reads it in
+    // place, queued behind that write, without the old setActor(null)/setActor({id})
+    // round trip that also transiently dropped identity/runtime for every consumer.
+    await webE2ee().reloadEnrollment();
   }
 
   async function handleNewMessage(): Promise<void> {
@@ -120,12 +136,28 @@ export function MessagesRoute(): JSX.Element {
         ) : null}
       </div>
 
-      <E2eePanel
-        status={e2eeStatus}
-        enrolling={enrolling}
-        onEnroll={() => void handleEnroll()}
-        onWipe={() => void webE2ee().wipe()}
-      />
+      {needsAuthority &&
+      actorId !== undefined &&
+      deviceLinkVault.vault !== undefined &&
+      deviceLinkVault.transport !== undefined ? (
+        <NeedsAuthorityFlow
+          actorId={actorId}
+          vault={deviceLinkVault.vault}
+          transport={deviceLinkVault.transport}
+          onResolved={(resolution) => void handleNeedsAuthorityResolved(resolution)}
+        />
+      ) : needsAuthority ? (
+        <p role="status" style={panelStyle}>
+          Preparing…
+        </p>
+      ) : (
+        <E2eePanel
+          status={e2eeStatus}
+          enrolling={enrolling}
+          onEnroll={() => void handleEnroll()}
+          onWipe={() => void webE2ee().wipe()}
+        />
+      )}
 
       {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
       {query.isError && query.data === undefined ? (
