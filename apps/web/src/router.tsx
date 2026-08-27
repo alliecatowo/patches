@@ -187,6 +187,14 @@ export const router = createBrowserRouter([
               })),
             errorElement: <LazyRouteBoundary />,
           },
+          {
+            path: 'devices',
+            lazy: () =>
+              import('./routes/settings/DevicesRoute.js').then((m) => ({
+                Component: m.DevicesRoute,
+              })),
+            errorElement: <LazyRouteBoundary />,
+          },
         ],
       },
       {
