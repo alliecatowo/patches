@@ -17,7 +17,27 @@ pre-commit:
       run: pnpm exec eslint {staged_files} --cache --cache-location node_modules/.cache/eslint/
 
 # Pushes are the test gate; commits stay cheap.
+#
+# Scoped to `--affected` (packages changed vs `origin/main`, plus their dependents), not the
+# full monorepo `pnpm verify` (B-178/B-127, 2026-08-26): this box regularly runs several agent
+# worktrees' full verifies concurrently, and turbo's default `--continue=never` cancels every
+# other in-flight test task the instant one fails, printing a misleading "[ELIFECYCLE] Test
+# failed" for packages that were merely killed mid-run, not actually broken (reproduced via
+# `turbo run test --force`: an injected failure in @patches/worker alone made @patches/server
+# and @patches/tui's test tasks print the same ELIFECYCLE line). `--continue=dependencies-
+# successful` lets every task finish and report its own real result; `--concurrency` bounds how
+# many packages' test/typecheck tasks run at once so their vitest worker pools don't oversub-
+# scribe the box on top of each other (each vitest project also caps itself at `maxWorkers:
+# '50%'`, see the individual vitest.config.ts/.mts files). `--affected` is the speed lever: CI
+# (.github/workflows/ci.yml, unrelated to this file) still runs the full, unscoped
+# `pnpm build && pnpm test` on every PR and is the actual required gate for `main` — this hook
+# only has to catch problems before a slow, occasionally-contended CI run does, not replace it.
+# See docs/operations/local-development.md "Git hooks" and docs/operations/ci.md.
 pre-push:
   commands:
     verify:
-      run: pnpm verify
+      run: >-
+        pnpm format:check &&
+        pnpm lint &&
+        pnpm exec turbo run typecheck --affected --concurrency=4 &&
+        pnpm exec turbo run test --affected --concurrency=4 --continue=dependencies-successful

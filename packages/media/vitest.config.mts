@@ -5,5 +5,6 @@ export default defineProject({
     name: 'media',
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    maxWorkers: '50%',
   },
 });

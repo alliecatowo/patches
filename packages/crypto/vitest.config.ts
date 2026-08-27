@@ -5,5 +5,6 @@ export default defineProject({
     name: 'crypto',
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    maxWorkers: '50%',
   },
 });

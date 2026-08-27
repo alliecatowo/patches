@@ -9,5 +9,6 @@ export default defineProject({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    maxWorkers: '50%',
   },
 });
