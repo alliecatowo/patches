@@ -1,12 +1,8 @@
 # P9-001: builds the VitePress docs/marketing site (site/) and deploys it to Cloudflare
-# Pages via wrangler. Follows the same pattern as deploy.yml: triggers via `workflow_run`
-# after the `CI` workflow completes successfully on `main`. The actual
-# `wrangler pages deploy` step stays guarded
-# behind `vars.SITE_DEPLOY_ENABLED`, a repo/environment variable that stays unset until the
-# `patches-site` Cloudflare Pages project + `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`
-# secrets exist — so this workflow runs (and reports green, building the site) on every
-# `main` build starting now, but is a safe no-op deploy-wise until that variable is flipped
-# on. See docs/operations/site.md.
+# Pages via wrangler. Follows the same pattern as web.yml: triggers via `workflow_run`
+# after the `CI` workflow completes successfully on `main`, plus `workflow_dispatch` for a
+# manual re-publish. The actual `wrangler pages deploy` step stays guarded behind
+# `vars.SITE_DEPLOY_ENABLED`. See docs/operations/site.md.
 
 name: Site
 
@@ -15,12 +11,13 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: site-${{ github.event.workflow_run.head_sha }}
+  group: site-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -28,23 +25,45 @@ jobs:
     name: build + deploy (Cloudflare Pages)
     # Only a successful push CI run for this repository's main branch is trusted to publish.
     if: >-
+      github.event_name == 'workflow_dispatch' || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     environment: production
     env:
-      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+      # workflow_run carries the CI-verified commit; workflow_dispatch carries its own ref.
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: ./.github/actions/setup
 
       - name: Build the site
         run: pnpm site:build
+
+      # B-198/#140: without this, a missing or shadowed SITE_DEPLOY_ENABLED made the whole
+      # workflow report green while never publishing anything, exactly the defect web.yml hit
+      # first. Neither branch fails the job; the summary is what makes a skip legible.
+      - name: Report deploy gate
+        run: |
+          if [ "${SITE_DEPLOY_ENABLED}" = "true" ]; then
+            echo "Deploying ${TARGET_SHA} to Cloudflare Pages (project patches-site)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Site deploy SKIPPED"
+              echo
+              echo "\`vars.SITE_DEPLOY_ENABLED\` is \`${SITE_DEPLOY_ENABLED:-<unset>}\`, not \`true\`, so"
+              echo "**nothing was published**. https://patches-site.pages.dev still serves the"
+              echo "previous deploy. See docs/operations/site.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+        env:
+          SITE_DEPLOY_ENABLED: ${{ vars.SITE_DEPLOY_ENABLED }}
 
       - name: Deploy to Cloudflare Pages
         if: ${{ vars.SITE_DEPLOY_ENABLED == 'true' }}
@@ -56,10 +75,7 @@ jobs:
       # B-203: same guard as web.yml's — a successful `wrangler pages deploy` only proves
       # Cloudflare accepted the upload, not that the live page changed. Polls the homepage
       # footer's `Built from <a href=".../commit/<sha>">` (site/.vitepress/config.mts's
-      # commitSha()) for TARGET_SHA. Currently unreachable in practice: SITE_DEPLOY_ENABLED
-      # is unset (see docs/operations/site.md, Cloudflare deploy for site/ is manual today),
-      # so this only starts running once that variable is flipped on alongside the deploy
-      # step above.
+      # commitSha()) for TARGET_SHA.
       - name: Verify deployed site matches this commit
         if: ${{ vars.SITE_DEPLOY_ENABLED == 'true' }}
         run: pnpm --filter @patches/site run verify:deploy
