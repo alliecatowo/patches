@@ -2,13 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler"
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // tsup.config.ts/vitest.config.ts are linted via eslint.config.js's
+  // `allowDefaultProject: ['**/*.config.{ts,mts,cts}']` (B-005) rather than being
+  // `include`d here — they aren't part of this package's actual TS program. The dts build
+  // uses `tsconfig.build.json` (excludes `*.test.ts`), same split as `packages/media`.
+  "include": ["src"]
 }
