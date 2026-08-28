@@ -4,6 +4,7 @@ import { DomainBlock, Labeler } from '@patches/database';
 import {
   ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS,
   ACCOUNT_EXPORT_MAX_READY_ARCHIVES,
+  evaluateFeatureFlags,
   MAX_APPEAL_STATEMENT_CHARS,
   MAX_FILTER_LIST_ENTRIES,
   MAX_FILTER_LIST_EXCEPTIONS_PER_LIST,
@@ -12,10 +13,12 @@ import {
   MAX_FILTER_TERMS_PER_FILTER,
   MAX_FILTERS_PER_ACTOR,
   MAX_LABELER_SUBSCRIPTIONS_PER_ACTOR,
+  type FeatureFlagKind as DomainFeatureFlagKind,
 } from '@patches/domain';
 import {
   DomainPolicyAction,
   FederationStance,
+  FeatureFlagKind,
   type GetNodeInfoResponse,
   type GetNodePolicyResponse,
   RegistrationMode,
@@ -108,6 +111,11 @@ export class NodeService {
         dmRetentionDays: SERVER_VISIBLE_DM_RETENTION_DAYS,
       },
       publicRead: this.config.publicRead,
+      featureFlags: evaluateFeatureFlags(this.config.featureFlagOverrides).map((flag) => ({
+        name: flag.name,
+        enabled: flag.enabled,
+        kind: toProtoFeatureFlagKind(flag.kind),
+      })),
     };
   }
 
@@ -187,5 +195,16 @@ export class NodeService {
           ? FederationStance.FEDERATION_STANCE_OPEN_WITH_BLOCKLIST
           : FederationStance.FEDERATION_STANCE_DISABLED;
     }
+  }
+}
+
+/** `@patches/domain`'s `FeatureFlagKind` ('cosmetic' | 'rollout') to the wire enum (spec
+ * §184.3, issue #142). */
+function toProtoFeatureFlagKind(kind: DomainFeatureFlagKind): FeatureFlagKind {
+  switch (kind) {
+    case 'cosmetic':
+      return FeatureFlagKind.FEATURE_FLAG_KIND_COSMETIC;
+    case 'rollout':
+      return FeatureFlagKind.FEATURE_FLAG_KIND_ROLLOUT;
   }
 }

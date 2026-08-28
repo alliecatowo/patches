@@ -324,6 +324,12 @@ export class AppConfigService {
     return this.get('PUBLIC_READ');
   }
 
+  /** Feature flag overrides (spec §184.3, issue #142) keyed by declared flag name — fed into
+   * `@patches/domain`'s `evaluateFeatureFlags` by `NodeService.getNodeInfo`. */
+  get featureFlagOverrides(): ReadonlyMap<string, boolean> {
+    return this.get('FEATURE_FLAGS');
+  }
+
   /** P15-002: whether this node currently accepts the PASSWORD credential type. Default
    * `'optional'`. See `AuthService`'s `PASSWORD_AUTH_DISABLED` checks and
    * `AuthService.GetAuthPolicy`. */

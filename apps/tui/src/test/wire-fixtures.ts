@@ -637,6 +637,7 @@ export function makeGetNodeInfoResponse(
     registrationMode: REGISTRATION_MODE.UNSPECIFIED,
     capabilities: [],
     publicRead: true,
+    featureFlags: [],
     ...overrides,
   };
 }

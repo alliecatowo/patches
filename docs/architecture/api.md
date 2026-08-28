@@ -777,6 +777,11 @@ The TUI sends client version and protocol version metadata on every call
 (`x-patches-client-version`). The server rejects impossibly old clients with a
 useful, actionable error rather than a generic failure.
 
+The full versioning **policy** — what `patches.v1` guarantees, how a future `v2` would coexist
+with it, and what "breaking" means precisely — is [`api-versioning.md`](./api-versioning.md)
+(issue #203, [ADR 0038](../decisions/0038-api-versioning-policy.md)); this section stays the
+short RPC-level summary.
+
 Protobuf compatibility rules (Buf, §41):
 
 - `buf breaking` runs in CI and **must** reject breaking changes against `main`
