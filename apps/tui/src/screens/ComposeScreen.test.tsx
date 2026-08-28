@@ -136,6 +136,10 @@ function baseApi(overrides: Partial<PatchesApi> = {}): PatchesApi {
       .fn()
       .mockResolvedValue({ actors: [], page: { nextCursor: '', hasMore: false } }),
     searchTags: vi.fn().mockResolvedValue({ tags: [], page: { nextCursor: '', hasMore: false } }),
+    listFollowing: vi
+      .fn()
+      .mockResolvedValue({ actors: [], page: { nextCursor: '', hasMore: false } }),
+    getRelationship: vi.fn().mockResolvedValue({ relationship: undefined }),
     ...overrides,
   } as unknown as PatchesApi;
 }
@@ -154,6 +158,7 @@ describe('ComposeScreen', () => {
     const { stdin } = render(
       <ComposeScreen
         api={api}
+        viewerActorId="viewer-1"
         draft={draft({ body: 'hello world' })}
         onChange={() => undefined}
         onCancel={() => undefined}
@@ -176,6 +181,7 @@ describe('ComposeScreen', () => {
     const { lastFrame } = render(
       <ComposeScreen
         api={api}
+        viewerActorId="viewer-1"
         draft={draft({ body: '123456789' })} // 9/10 = 90%
         onChange={() => undefined}
         onCancel={() => undefined}
@@ -193,6 +199,7 @@ describe('ComposeScreen', () => {
     const { stdin, lastFrame } = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft()}
         onChange={onChange}
         onCancel={() => undefined}
@@ -217,6 +224,7 @@ describe('ComposeScreen', () => {
     const { stdin, lastFrame } = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft({ body: '**bold** text' })}
         onChange={() => undefined}
         onCancel={() => undefined}
@@ -238,6 +246,7 @@ describe('ComposeScreen', () => {
     const full = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft({ body: many })}
         onChange={() => undefined}
         onCancel={() => undefined}
@@ -255,6 +264,7 @@ describe('ComposeScreen', () => {
     const compact = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft({ body: many })}
         onChange={() => undefined}
         onCancel={() => undefined}
@@ -281,6 +291,7 @@ describe('ComposeScreen', () => {
       const { stdin, lastFrame } = render(
         <ComposeScreen
           api={baseApi()}
+          viewerActorId="viewer-1"
           draft={draft({ body: 'hi' })}
           onChange={onChange}
           onCancel={() => undefined}
@@ -323,6 +334,7 @@ describe('ComposeScreen', () => {
     const { stdin } = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft()}
         onChange={onChange}
         onCancel={() => undefined}
@@ -359,6 +371,7 @@ describe('ComposeScreen', () => {
         <ControlledComposeScreen
           initialDraft={draft()}
           api={baseApi()}
+          viewerActorId="viewer-1"
           onCancel={() => undefined}
           ensureAccessToken={() => Promise.resolve('token')}
           onSubmitted={() => undefined}
@@ -397,6 +410,7 @@ describe('ComposeScreen', () => {
           <ControlledComposeScreen
             initialDraft={draft()}
             api={baseApi()}
+            viewerActorId="viewer-1"
             onCancel={() => undefined}
             ensureAccessToken={() => Promise.resolve('token')}
             onSubmitted={() => undefined}
@@ -426,6 +440,7 @@ describe('ComposeScreen', () => {
     const { stdin, lastFrame } = render(
       <ComposeScreen
         api={api}
+        viewerActorId="viewer-1"
         draft={draft({ body: 'hi @bo' })}
         onChange={onChange}
         onCancel={() => undefined}
@@ -449,6 +464,7 @@ describe('ComposeScreen', () => {
     const { lastFrame, stdin } = render(
       <ComposeScreen
         api={api}
+        viewerActorId="viewer-1"
         mode="edit"
         postId="post-1"
         draft={draft({ body: 'revised body', contentWarning: 'spoilers' })}
@@ -479,6 +495,7 @@ describe('ComposeScreen', () => {
     const { stdin } = render(
       <ComposeScreen
         api={baseApi()}
+        viewerActorId="viewer-1"
         draft={draft({ body: 'unsent' })}
         onChange={() => undefined}
         onCancel={onCancel}

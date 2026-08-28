@@ -2577,6 +2577,7 @@ export function App({
         return session === undefined ? null : (
           <ComposeScreen
             api={api}
+            viewerActorId={session.userId}
             draft={draft}
             onChange={updateDraft}
             onCancel={back}
@@ -2590,6 +2591,7 @@ export function App({
         return session === undefined ? null : (
           <ComposeScreen
             api={api}
+            viewerActorId={session.userId}
             mode="edit"
             postId={target.postId}
             draft={draft}
@@ -2665,6 +2667,7 @@ export function App({
     ) : overlayEntry.id === 'quick-post' && session !== undefined ? (
       <ComposeScreen
         api={api}
+        viewerActorId={session.userId}
         compact
         rows={Math.min(QUICK_POST_ROWS, regionRows)}
         columns={Math.min(QUICK_POST_COLUMNS, Math.max(20, contentColumns - 8))}
