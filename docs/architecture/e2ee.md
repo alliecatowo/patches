@@ -358,6 +358,23 @@ The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol compositi
   state, and only then acknowledges. `openDeviceEnvelope` is the only source of plaintext in the
   client, so franking verification is structural rather than a policy a caller could skip. A failure
   renders a neutral placeholder and is still acknowledged: never shown, never silent.
+- **Receive-fault classification and quarantine (issue #260).** `pollMailbox` splits every failure
+  while processing one envelope into two causes rather than fail-stopping on all of them equally. A
+  fault local to this device (vault I/O, the stored enrollment record, or a mailbox round trip)
+  raises `E2eeReceiveUnavailableError` and stops the drain without acknowledging: the same envelope
+  may open perfectly once the local fault clears, so skipping it would be a silent drop. An envelope
+  this device can never open — a structural/contract violation caught before any ratchet step (a bad
+  membership epoch, an initial header naming prekeys or a device this side never had), or a
+  session/ratchet decryption that fails deterministically — is instead quarantined: a content-free
+  note (envelope id, conversation id, a closed-vocabulary reason of `malformed` or `undecryptable`,
+  and a timestamp — never ciphertext, key material, or any fragment of a body) is recorded locally,
+  the envelope is acknowledged so the mailbox keeps draining past it, and a `quarantined` row with
+  the fixed copy "A message could not be decrypted on this device and was skipped." renders in that
+  conversation's thread in both clients. One drain quarantines at most `MAX_QUARANTINED_PER_DRAIN`
+  (16) envelopes; past that it stops with its own fixed copy rather than grinding through an
+  unbounded flood of bad — possibly injected — envelopes in a single pass. If the quarantine note
+  itself cannot be recorded, the drain fail-stops on that envelope unacknowledged rather than
+  skipping it with no local trace that anything was skipped.
 - **Verification on read.** `chain.ts` re-verifies every served identity root, roster, and active
   device certificate against the authoritative `*_bytes` with strict RFC 8032 semantics, and
   `group-control.ts` verifies the membership transcript against those rosters.

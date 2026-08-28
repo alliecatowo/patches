@@ -45,6 +45,9 @@ import { E2eeSessionRuntime } from './runtime-session.js';
 import {
   encodeChatPlaintext,
   sessionIdFor,
+  E2EE_QUARANTINE_LIMIT_COPY,
+  E2EE_RECEIVE_UNAVAILABLE_COPY,
+  MAX_QUARANTINED_PER_DRAIN,
   type ClaimedPeerBundle,
   type E2eeMailboxEnvelopeLike,
   type E2eeMailboxTransport,
@@ -643,6 +646,107 @@ describe('E2eeSessionRuntime.pollMailbox', () => {
     expect(result.error).toBe('Could not fetch new encrypted messages.');
     vault.close();
   });
+
+  it('quarantines a structurally invalid envelope (issue #260) and keeps draining past it', async () => {
+    const self = buildIdentity('erin5', 'dev-e5');
+    const peer = buildIdentity('frank5', 'dev-f5');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    // A membership epoch above the accepted u32 range fails `epochToNumber`'s contract check
+    // before any ratchet step runs — deterministic and envelope-caused.
+    const malformed: E2eeMailboxEnvelopeLike = { ...envelope, membershipEpoch: 0x1_0000_0000n };
+    const mailbox = queueMailbox([[malformed]], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.error).toBeUndefined();
+    expect(result.rows).toEqual([{ kind: 'quarantined', id: 'env-1', reason: 'malformed' }]);
+    // Quarantined envelopes are still acknowledged so the mailbox keeps draining.
+    expect(mailbox.state.acked).toEqual(['env-1']);
+    vault.close();
+  });
+
+  it('fail-stops without acknowledging on a local vault fault, never quarantining a decryptable envelope', async () => {
+    const self = buildIdentity('erin6', 'dev-e6');
+    const peer = buildIdentity('frank6', 'dev-f6');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    const acked: string[] = [];
+    const runtime = new E2eeSessionRuntime({
+      vault: {
+        ...vault,
+        getSession: () => Promise.reject(new Error('vault I/O exploded')),
+      },
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: {
+        listMailboxPage: () => Promise.resolve({ envelopes: [envelope], nextCursor: '' }),
+        acknowledge: (ids) => {
+          acked.push(...ids);
+          return Promise.resolve(undefined);
+        },
+        loadPeerRoster: () => Promise.resolve(peer.ownRoster),
+      },
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    // A fault local to this device (not the envelope) fail-stops unacknowledged, so the same
+    // envelope can redeliver and open once the fault clears — never quarantined.
+    expect(result.rows).toEqual([]);
+    expect(result.error).toBe(E2EE_RECEIVE_UNAVAILABLE_COPY);
+    expect(acked).toEqual([]);
+    vault.close();
+  });
+
+  it('bounds one drain to MAX_QUARANTINED_PER_DRAIN quarantined envelopes, leaving the rest queued', async () => {
+    const self = buildIdentity('erin7', 'dev-e7');
+    const peer = buildIdentity('frank7', 'dev-f7');
+    const vault = await openVault();
+    const envelopes: E2eeMailboxEnvelopeLike[] = [];
+    for (let index = 0; index < MAX_QUARANTINED_PER_DRAIN + 1; index += 1) {
+      const sealed = sealInitialEnvelope({
+        sender: peer,
+        recipient: self,
+        body: 'hi',
+        envelopeId: `env-${String(index)}`,
+      });
+      envelopes.push({ ...sealed, membershipEpoch: 0x1_0000_0000n });
+    }
+    const mailbox = queueMailbox([envelopes], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.rows).toHaveLength(MAX_QUARANTINED_PER_DRAIN);
+    expect(mailbox.state.acked).toHaveLength(MAX_QUARANTINED_PER_DRAIN);
+    expect(result.error).toBe(E2EE_QUARANTINE_LIMIT_COPY);
+    vault.close();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -777,8 +881,14 @@ describe('E2eeSessionRuntime — one-time prekey consumption on responder establ
     ]);
     const secondPoll = await runtimeB.pollMailbox({ conversationId: convSecond });
 
-    expect(secondPoll.rows).toEqual([]);
-    expect(secondPoll.error).toBe('Envelope processing failed');
+    // Issue #260: a reused one-time prekey is a structural/contract violation caught before
+    // any ratchet step (`establishResponderSession` throws `E2eeContractError`) — deterministic
+    // and envelope-caused, so it is quarantined (content-free, acknowledged) rather than
+    // fail-stopping the whole mailbox behind it.
+    expect(secondPoll.rows).toEqual([
+      { kind: 'quarantined', id: 'env-153a-replay', reason: 'malformed' },
+    ]);
+    expect(secondPoll.error).toBeUndefined();
     const secondSessionId = sessionIdFor(convSecond, alice, storedA.identity.deviceId);
     expect(await vaultB.getSession(secondSessionId)).toBeUndefined();
 

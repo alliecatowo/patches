@@ -51,16 +51,24 @@ import {
   withInitialFraming,
 } from './session-setup.js';
 import {
+  createInMemoryQuarantineStore,
   decodePayload,
   encodeChatPlaintext,
   epochToNumber,
   sessionIdFor,
+  E2eeReceiveUnavailableError,
+  E2EE_QUARANTINE_LIMIT_COPY,
+  E2EE_RECEIVE_UNAVAILABLE_COPY,
+  MAX_QUARANTINED_PER_DRAIN,
   type E2eeMailboxEnvelopeLike,
   type E2eeMailboxTransport,
   type E2eeSendTransport,
   type FanoutTarget,
   type InboxRow,
   type PollResult,
+  type QuarantineReason,
+  type QuarantineStore,
+  type QuarantinedEnvelopeRecord,
 } from './runtime.js';
 
 export interface E2eeRuntimeOptions {
@@ -84,6 +92,12 @@ export interface E2eeRuntimeOptions {
   readonly transport?: EnrollmentTransport | undefined;
   /** Own-roster refresh cadence (issue #277). Defaults to 30 seconds; injectable for tests. */
   readonly refreshIntervalMs?: number | undefined;
+  /**
+   * Where quarantine notes for undecryptable envelopes are kept (issue #260). Defaults to a
+   * process-lifetime in-memory store; a shell that wants the notes to survive a restart passes
+   * its own. Notes are content-free by construction, so no adapter of this needs to be secret.
+   */
+  readonly quarantineStore?: QuarantineStore | undefined;
 }
 
 /** Default own-roster refresh cadence (issue #277) — matches the mailbox poll cadence
@@ -113,6 +127,7 @@ export class E2eeSessionRuntime {
   private readonly nowMs: () => number;
   private readonly transport: EnrollmentTransport | undefined;
   private readonly refreshIntervalMs: number;
+  private readonly quarantineStore: QuarantineStore;
   /** Epoch ms at which the next `refreshOwnRoster` call is due; 0 forces one immediately. */
   private nextRosterRefreshMs = 0;
   /** Epoch ms at which the next `maintainPrekeys` call is due; 0 forces one immediately
@@ -131,6 +146,16 @@ export class E2eeSessionRuntime {
     this.nowMs = options.nowMs ?? ((): number => Date.now());
     this.transport = options.transport;
     this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_ROSTER_REFRESH_INTERVAL_MS;
+    this.quarantineStore = options.quarantineStore ?? createInMemoryQuarantineStore();
+  }
+
+  /**
+   * The content-free notes for envelopes this device quarantined (issue #260), optionally
+   * narrowed to one conversation, so a thread can still show the gap on a later poll that
+   * quarantined nothing. Never carries ciphertext, keys, or any fragment of a body.
+   */
+  listQuarantined(conversationId?: string): Promise<readonly QuarantinedEnvelopeRecord[]> {
+    return this.quarantineStore.list(conversationId);
   }
 
   /**
@@ -359,6 +384,12 @@ export class E2eeSessionRuntime {
    * commit (ADR 0020 §4), batched once per drain. With `conversationId` given, only that
    * conversation's envelopes are processed (and acknowledged); everything else stays
    * queued for whichever thread opens next.
+   *
+   * Failure handling splits by cause (issue #260, revising B-193's blanket fail-stop):
+   * a fault local to this device stops the drain unacknowledged, so nothing decryptable is
+   * ever skipped, while an envelope this device can never open is quarantined — noted
+   * content-free, surfaced as a `quarantined` row, acknowledged, and drained past — bounded
+   * at `MAX_QUARANTINED_PER_DRAIN` per pass.
    */
   async pollMailbox(filter?: {
     readonly conversationId?: string | undefined;
@@ -373,6 +404,7 @@ export class E2eeSessionRuntime {
     const acknowledged: string[] = [];
     let cursor = '';
     let error: string | undefined;
+    let quarantinedThisDrain = 0;
     for (;;) {
       let page: Awaited<ReturnType<E2eeMailboxTransport['listMailboxPage']>>;
       try {
@@ -402,13 +434,39 @@ export class E2eeSessionRuntime {
             acknowledged.push(envelope.envelopeId);
             continue;
           }
-          // A non-replay failure (malformed envelope, ratchet desync, decrypt failure)
-          // stops the entire mailbox drain — set error so the outer loop aborts instead
-          // of fetching the next page. Envelopes already acknowledged earlier in this
-          // page keep their commits; this one and everything after it in the current
-          // page stay unacknowledged and redeliver on a later poll.
-          error = 'Envelope processing failed';
-          break;
+          if (caught instanceof E2eeReceiveUnavailableError) {
+            // The fault is this device's (vault, stored enrollment, a mailbox round trip),
+            // not the envelope's, so the same envelope may open perfectly once it clears:
+            // fail-stop WITHOUT acknowledging. Envelopes acknowledged earlier in this page
+            // keep their commits; this one and the rest redeliver on a later poll.
+            error = E2EE_RECEIVE_UNAVAILABLE_COPY;
+            break;
+          }
+          // Issue #260: this envelope is undecryptable on this device and will be exactly as
+          // undecryptable on every future poll, so the old unconditional fail-stop wedged the
+          // whole mailbox forever behind one bad — possibly injected — envelope. Instead:
+          // note it locally (content-free), surface a row, acknowledge past it, keep draining.
+          if (quarantinedThisDrain >= MAX_QUARANTINED_PER_DRAIN) {
+            error = E2EE_QUARANTINE_LIMIT_COPY;
+            break;
+          }
+          const reason = quarantineReasonFor(caught);
+          try {
+            await this.quarantineStore.record({
+              envelopeId: envelope.envelopeId,
+              conversationId: envelope.conversationId,
+              reason,
+              atMs: this.nowMs(),
+            });
+          } catch {
+            // The quarantine could not be recorded: leave the envelope unacknowledged rather
+            // than skipping it with no local trace that anything was skipped at all.
+            error = E2EE_RECEIVE_UNAVAILABLE_COPY;
+            break;
+          }
+          quarantinedThisDrain += 1;
+          rows.push({ kind: 'quarantined', id: envelope.envelopeId, reason });
+          acknowledged.push(envelope.envelopeId);
         }
       }
       if (error !== undefined || page.nextCursor === '') break;
@@ -423,6 +481,24 @@ export class E2eeSessionRuntime {
       }
     }
     return { rows, ...(error === undefined ? {} : { error }) };
+  }
+
+  /**
+   * Runs one receive step whose failure would be a property of THIS DEVICE (vault I/O, the
+   * stored enrollment record, a mailbox round trip) rather than of the envelope, and reports
+   * it as `E2eeReceiveUnavailableError`. This classification is what keeps issue #260's
+   * quarantine honest: only deterministic, envelope-caused failures are ever skipped past,
+   * and a transient local fault still fail-stops the drain with nothing acknowledged.
+   */
+  private async localReceiveStep<T>(step: () => Promise<T>): Promise<T> {
+    try {
+      return await step();
+    } catch (error) {
+      // A replay is a property of the envelope, not of this device — the drain's own replay
+      // branch acknowledges it, so it must never be rewritten into a local fault.
+      if (error instanceof ReplayedMessageError) throw error;
+      throw new E2eeReceiveUnavailableError();
+    }
   }
 
   private async processEnvelope(envelope: E2eeMailboxEnvelopeLike): Promise<InboxRow | undefined> {
@@ -448,7 +524,7 @@ export class E2eeSessionRuntime {
       envelope.senderActorId,
       envelope.senderDeviceId,
     );
-    const storedState = await this.vault.getSession(sessionId);
+    const storedState = await this.localReceiveStep(() => this.vault.getSession(sessionId));
 
     let state: DoubleRatchetState;
     let message: { encryptedHeader: Uint8Array; ciphertext: Uint8Array };
@@ -462,12 +538,16 @@ export class E2eeSessionRuntime {
         // Redelivery of an initial message after its session was already committed.
         state = storedState;
       } else {
-        const initiatorRoster = await this.mailboxTransport.loadPeerRoster(setup.senderActorId);
+        const initiatorRoster = await this.localReceiveStep(() =>
+          this.mailboxTransport.loadPeerRoster(setup.senderActorId),
+        );
         // Issue #278: a rotated signed prekey may still be named by an initial message an
         // initiator sealed just before rotation reached them — `loadStoredEnrollment` (not the
         // in-memory `this.identity`, which never carries retained material) is the source of
         // truth for what is still retained.
-        const storedForRetainedKeys = await loadStoredEnrollment(this.vault, this.nowMs());
+        const storedForRetainedKeys = await this.localReceiveStep(() =>
+          loadStoredEnrollment(this.vault, this.nowMs()),
+        );
         const established = establishResponderSession({
           identity: this.identity,
           setup,
@@ -510,7 +590,7 @@ export class E2eeSessionRuntime {
     }
 
     // Commit the receive-side advance BEFORE acknowledging (ADR 0020 §4).
-    await this.vault.applyUpdate(sessionId, opened.state);
+    await this.localReceiveStep(() => this.vault.applyUpdate(sessionId, opened.state));
 
     // ADR 0020 §5: the one-time private key answers exactly one handshake. Removed only now,
     // strictly after the session commit above — a crash before that commit leaves the prekey in
@@ -568,18 +648,31 @@ export class E2eeSessionRuntime {
       ...this.identity,
       oneTimePreKeys: this.identity.oneTimePreKeys.filter((prekey) => prekey.id !== id),
     };
-    const stored = await loadStoredEnrollment(this.vault, this.nowMs());
-    if (stored === undefined) return;
-    await saveStoredEnrollment(this.vault, {
-      ...stored,
-      identity: {
-        ...stored.identity,
-        oneTimePreKeys: stored.identity.oneTimePreKeys.filter((prekey) => prekey.id !== id),
-      },
+    await this.localReceiveStep(async () => {
+      const stored = await loadStoredEnrollment(this.vault, this.nowMs());
+      if (stored === undefined) return;
+      await saveStoredEnrollment(this.vault, {
+        ...stored,
+        identity: {
+          ...stored.identity,
+          oneTimePreKeys: stored.identity.oneTimePreKeys.filter((prekey) => prekey.id !== id),
+        },
+      });
     });
   }
 }
 
 function isReplayDuplicate(error: unknown): boolean {
   return error instanceof ReplayedMessageError;
+}
+
+/**
+ * Classifies an envelope-caused failure (issue #260) for the content-free quarantine note.
+ * `E2eeContractError` covers every structural/contract check that runs before a ratchet step
+ * (a bad membership epoch, an initial header naming prekeys or a device this side never had) —
+ * anything else reaching this point already survived those checks and failed inside the
+ * ratchet/AEAD machinery itself.
+ */
+function quarantineReasonFor(error: unknown): QuarantineReason {
+  return error instanceof E2eeContractError ? 'malformed' : 'undecryptable';
 }
