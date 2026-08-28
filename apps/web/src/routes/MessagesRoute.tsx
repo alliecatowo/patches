@@ -1,56 +1,35 @@
 import type { Actor } from '@patches/proto/es';
-import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { api } from '../api/client.js';
-import { ActorTypeahead } from '../components/ActorTypeahead.js';
-import { securityModeLabel } from '../components/DmNotice.js';
-import { PlusIcon } from '../components/icons/Icons.js';
 import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
-import { formatRelativeTime } from '../lib/format.js';
-import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
 import flowStyles from '../components/e2ee/messagesFlow.module.css';
-import styles from './MessagesRoute.module.css';
+import { ChatShell } from '../messages/ChatShell.js';
+import {
+  ConversationListPane,
+  DM_LIST_POLL_FAILED_COPY,
+} from '../messages/ConversationListPane.js';
+import {
+  NewConversationPanel,
+  type NewConversationPhase,
+} from '../messages/NewConversationPanel.js';
+import { useConversationsQuery } from '../messages/useConversationsQuery.js';
 
-/** #298: new-conversation flow state — pick a recipient by handle/name, then write the
- * opening message. Never an id prompt. */
-type ComposeState =
-  | { readonly phase: 'closed' }
-  | { readonly phase: 'pick' }
-  | { readonly phase: 'message'; readonly recipient: Actor };
+export { DM_LIST_POLL_FAILED_COPY };
 
-/**
- * List-level panel copy. Must hold regardless of any individual row's `security_mode` —
- * the list can mix `E2EE_V1` and `LEGACY_SERVER_VISIBLE` conversations (ADR 0020 §11), so a
- * blanket `requiredConversationDisclosure('E2EE_V1')` here would assert encryption for rows
- * that don't have it (spec §183.1/§194). Each row's own `securityModeLabel` below is the only
- * per-conversation truth this screen states. Local rather than in `@patches/domain`
- * beside `requiredConversationDisclosure` because it is list chrome, not a mandated
- * per-conversation disclosure.
- */
-const CONVERSATION_LIST_NEUTRAL_NOTE =
-  'Each conversation below shows its own security mode. This node always sees who you message and when.';
+type ComposeState = { readonly phase: 'closed' } | NewConversationPhase;
 
 /**
- * P19-017: extends this client's poll-failure house rule to the conversation list —
- * nothing about a failed `ListConversations` poll may be mistaken for a genuinely empty
- * inbox. Shown whenever the query is in an error state, whether or not a prior
- * successful fetch left conversations on screen.
- */
-export const DM_LIST_POLL_FAILED_COPY = 'Could not load conversations.';
-
-/**
- * Conversations list. Since B-095/B-096 every conversation is `E2EE_V1`, this browser holds
- * its own enrolled messaging device, and — since ADR 0033 unified the identity transcripts
- * and ADR 0035 made creation a reserve — it can establish a real session and send. "New
- * Message" reserves a conversation and sends the first message into it.
+ * `/messages` — the chat shell (#321): conversation list on the left/top, and the invitation
+ * to pick someone (or, once picked, the opening-message composer) on the right/detail pane.
+ * Enrollment/needs-authority states render as an inline banner above the shell, never a
+ * separate page or popup.
  */
 export function MessagesRoute(): JSX.Element {
   const session = useSession();
@@ -58,26 +37,13 @@ export function MessagesRoute(): JSX.Element {
   const [enrolling, setEnrolling] = useState(false);
   const [needsAuthority, setNeedsAuthority] = useState(false);
   const [compose, setCompose] = useState<ComposeState>({ phase: 'closed' });
-  const [composeBody, setComposeBody] = useState('');
   const [sendingCompose, setSendingCompose] = useState(false);
+  const [composeFailed, setComposeFailed] = useState(false);
   const navigate = useNavigate();
   const actorId = session?.actor.id;
   const deviceLinkVault = useE2eeVaultAccess(e2eeStatus);
 
-  const query = useQuery({
-    queryKey: ['conversations'],
-    queryFn: () => api.messages.listConversations({ cursor: '', limit: 30 }),
-    // ADR 0032 §1: the DM list updates within 60s while the tab is focused; single
-    // source of truth in `lib/poll-intervals.ts` (P19-021). `refetchIntervalInBackground`
-    // stays at its TanStack Query default (`false`), which already suspends this
-    // interval while the tab is hidden/unfocused — see `docs/research/tanstack-query.md`.
-    refetchInterval: WEB_DM_POLL_MS,
-    // Re-enabled for this query only; the app-wide default in `main.tsx` stays off.
-    // A DM inbox that silently misses new messages while backgrounded is exactly the
-    // gap ADR 0032 closes, so tabbing back in should refresh immediately rather than
-    // wait up to another `WEB_DM_POLL_MS`.
-    refetchOnWindowFocus: true,
-  });
+  const query = useConversationsQuery();
 
   async function handleEnroll(): Promise<void> {
     setEnrolling(true);
@@ -102,28 +68,24 @@ export function MessagesRoute(): JSX.Element {
   async function handleNeedsAuthorityResolved(resolution: 'enrolled' | 'cancelled'): Promise<void> {
     setNeedsAuthority(false);
     if (resolution !== 'enrolled' || actorId === undefined) return;
-    // `NeedsAuthorityFlow` wrote the enrollment record through the manager's own vault
-    // (`withVault`, via `deviceLinkVault` below) — `reloadEnrollment` re-reads it in
-    // place, queued behind that write, without the old setActor(null)/setActor({id})
-    // round trip that also transiently dropped identity/runtime for every consumer.
     await webE2ee().reloadEnrollment();
   }
 
   function handleRecipientSelected(recipient: Actor): void {
-    setComposeBody('');
+    setComposeFailed(false);
     setCompose({ phase: 'message', recipient });
   }
 
-  async function handleSendCompose(): Promise<void> {
+  async function handleSendCompose(body: string): Promise<void> {
     if (compose.phase !== 'message') return;
-    const body = composeBody.trim();
-    if (body === '') return;
     setSendingCompose(true);
+    setComposeFailed(false);
     try {
       const conversationId = await webE2ee().createConversation([compose.recipient.id], body);
       setCompose({ phase: 'closed' });
       void navigate(`/messages/${conversationId}`);
     } catch (error) {
+      setComposeFailed(true);
       toast(error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed);
     } finally {
       setSendingCompose(false);
@@ -132,34 +94,6 @@ export function MessagesRoute(): JSX.Element {
 
   return (
     <div>
-      <div className={styles['headerRow']}>
-        <h1>Messages</h1>
-        {e2eeStatus.kind === 'enrolled' ? (
-          <button
-            type="button"
-            className={styles['newMsgBtn']}
-            onClick={() => setCompose({ phase: 'pick' })}
-            aria-label="New direct message"
-          >
-            <PlusIcon size={16} />
-            <span>New Message</span>
-          </button>
-        ) : null}
-      </div>
-
-      {compose.phase === 'closed' || actorId === undefined ? null : (
-        <ComposePanel
-          state={compose}
-          body={composeBody}
-          sending={sendingCompose}
-          viewerActorId={actorId}
-          onBodyChange={setComposeBody}
-          onRecipientSelected={handleRecipientSelected}
-          onSend={() => void handleSendCompose()}
-          onCancel={() => setCompose({ phase: 'closed' })}
-        />
-      )}
-
       {needsAuthority &&
       actorId !== undefined &&
       deviceLinkVault.vault !== undefined &&
@@ -186,83 +120,38 @@ export function MessagesRoute(): JSX.Element {
         />
       )}
 
-      {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
-      {query.isError && query.data === undefined ? (
-        <p role="alert" style={{ padding: '1rem', color: 'var(--fg-muted)' }}>
-          {DM_LIST_POLL_FAILED_COPY}
-        </p>
-      ) : null}
-      {query.data === undefined ? null : (
-        <ConversationList
-          conversations={query.data.conversations}
-          viewerActorId={session?.actor.id}
-          pollFailed={query.isError}
-        />
-      )}
+      <ChatShell
+        mobilePane={compose.phase === 'closed' ? 'list' : 'detail'}
+        detailTitle="Messages"
+        list={
+          <ConversationListPane
+            conversations={query.data?.conversations}
+            viewerActorId={actorId}
+            isPending={query.isPending}
+            pollFailed={query.isError}
+            canCompose={e2eeStatus.kind === 'enrolled'}
+            onNewMessage={() => setCompose({ phase: 'pick' })}
+          />
+        }
+        detail={
+          compose.phase === 'closed' || actorId === undefined ? (
+            <p style={{ margin: 'auto', color: 'var(--fg-muted)' }}>
+              Select a conversation, or start a new one.
+            </p>
+          ) : (
+            <NewConversationPanel
+              state={compose}
+              viewerActorId={actorId}
+              sending={sendingCompose}
+              failed={composeFailed}
+              onRecipientSelected={handleRecipientSelected}
+              onSend={(body) => void handleSendCompose(body)}
+              onCancel={() => setCompose({ phase: 'closed' })}
+            />
+          )
+        }
+      />
     </div>
-  );
-}
-
-type ConversationsResult = Awaited<ReturnType<typeof api.messages.listConversations>>;
-type ConversationRow = ConversationsResult['conversations'][number];
-
-/**
- * The conversation rows AND the §183.1 disclosure as one unit: it is structurally
- * impossible to render a row here without the disclosure appearing above it, in every
- * `E2eePanel` status (including `fault`, which is sticky — see `web-e2ee.ts:158-162`).
- */
-function ConversationList({
-  conversations,
-  viewerActorId,
-  pollFailed,
-}: {
-  conversations: readonly ConversationRow[];
-  viewerActorId: string | undefined;
-  /** P19-017: the most recent `ListConversations` poll failed. An empty list under a
-   * failed poll is never claimed as "no conversations yet" — that would assert a fact
-   * this fetch didn't actually confirm. */
-  pollFailed: boolean;
-}): JSX.Element | null {
-  if (conversations.length === 0) {
-    return (
-      <p
-        role={pollFailed ? 'alert' : undefined}
-        style={{ padding: '1rem', color: 'var(--fg-muted)' }}
-      >
-        {pollFailed ? DM_LIST_POLL_FAILED_COPY : 'No conversations yet.'}
-      </p>
-    );
-  }
-  return (
-    <>
-      {pollFailed ? (
-        <p role="alert" className={flowStyles['note']} style={{ padding: '0 1rem' }}>
-          {DM_LIST_POLL_FAILED_COPY} Showing the last known list.
-        </p>
-      ) : null}
-      <p role="note" className={flowStyles['note']} style={{ padding: '0 1rem' }}>
-        {CONVERSATION_LIST_NEUTRAL_NOTE}
-      </p>
-      {conversations.map((conversation) => {
-        const other = conversation.members.find((m) => m.actor?.id !== viewerActorId)?.actor;
-        // Mode labels are facts read off the wire (`security_mode`, ADR 0020 §11) — the only
-        // per-conversation claim this list makes; the panel above stays genuinely neutral.
-        const modeLabel = securityModeLabel(conversation.securityMode);
-        return (
-          <Link key={conversation.id} to={`/messages/${conversation.id}`} className={styles['row']}>
-            <span className={conversation.unreadCount > 0 ? styles['unread'] : ''}>
-              @{other?.handle ?? 'conversation'}
-            </span>
-            {modeLabel === undefined ? null : (
-              <span className={styles['modeLabel']}>{modeLabel}</span>
-            )}
-            <div className={styles['preview']}>
-              {formatRelativeTime(conversation.lastMessageAt)}
-            </div>
-          </Link>
-        );
-      })}
-    </>
   );
 }
 
@@ -332,90 +221,6 @@ export function E2eePanel({
       className={`${flowStyles['card']} ${flowStyles['inline']} ${flowStyles['note']}`}
     >
       <p>{requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.</p>
-    </div>
-  );
-}
-
-/** New-conversation picker (#298/#300): pick a recipient by handle/name, then write the
- * opening message — no id prompt, one shared card/button component set with the rest of
- * the messages surface. */
-function ComposePanel({
-  state,
-  body,
-  sending,
-  viewerActorId,
-  onBodyChange,
-  onRecipientSelected,
-  onSend,
-  onCancel,
-}: {
-  state: Extract<ComposeState, { phase: 'pick' | 'message' }>;
-  body: string;
-  sending: boolean;
-  viewerActorId: string;
-  onBodyChange: (value: string) => void;
-  onRecipientSelected: (actor: Actor) => void;
-  onSend: () => void;
-  onCancel: () => void;
-}): JSX.Element {
-  if (state.phase === 'pick') {
-    return (
-      <div
-        className={`${flowStyles['card']} ${flowStyles['inline']}`}
-        role="group"
-        aria-label="New message"
-      >
-        <h2 className={flowStyles['title']}>New message</h2>
-        <p className={flowStyles['body']}>Who do you want to message</p>
-        <ActorTypeahead
-          viewerActorId={viewerActorId}
-          excludeActorIds={[viewerActorId]}
-          onSelect={onRecipientSelected}
-        />
-        <button
-          type="button"
-          className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div
-      className={`${flowStyles['card']} ${flowStyles['inline']}`}
-      role="group"
-      aria-label="New message"
-    >
-      <h2 className={flowStyles['title']}>Message @{state.recipient.handle}</h2>
-      <textarea
-        aria-label="Message body"
-        className={flowStyles['searchInput']}
-        value={body}
-        onChange={(event) => onBodyChange(event.target.value)}
-        rows={3}
-        placeholder="Write a message…"
-        autoFocus
-      />
-      <div className={flowStyles['optionStack']}>
-        <button
-          type="button"
-          className={`${flowStyles['optionButton']} ${flowStyles['primary']}`}
-          onClick={onSend}
-          disabled={sending || body.trim() === ''}
-        >
-          {sending ? 'Sending…' : 'Send'}
-        </button>
-        <button
-          type="button"
-          className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
-          onClick={onCancel}
-          disabled={sending}
-        >
-          Cancel
-        </button>
-      </div>
     </div>
   );
 }

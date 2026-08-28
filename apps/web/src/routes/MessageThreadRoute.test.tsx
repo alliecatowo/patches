@@ -10,6 +10,8 @@ import { MessageThreadRoute } from './MessageThreadRoute.js';
 
 const mockGetConversation =
   vi.fn<(...args: unknown[]) => Promise<{ conversation?: Conversation }>>();
+const mockListConversations =
+  vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
 const mockToastError = vi.fn<(...args: unknown[]) => void>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
@@ -19,6 +21,8 @@ vi.mock('../api/client.js', () => ({
     messages: {
       getConversation: (...args: unknown[]): Promise<{ conversation?: Conversation }> =>
         mockGetConversation(...args),
+      listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
+        mockListConversations(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -74,6 +78,8 @@ function noteText(): string {
 describe('MessageThreadRoute (B-132: the composer never promises what it cannot do)', () => {
   beforeEach(() => {
     mockGetConversation.mockReset();
+    mockListConversations.mockReset();
+    mockListConversations.mockResolvedValue({ conversations: [] });
     mockToastError.mockReset();
     mockUseSession.mockReset();
     mockUseE2ee.mockReset();

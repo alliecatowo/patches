@@ -1,0 +1,79 @@
+.shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  height: calc(100vh - 52px);
+}
+
+.listPane {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailPane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailEmpty {
+  margin: auto;
+  text-align: center;
+  color: var(--fg-muted);
+  padding: 2rem;
+}
+
+/* Stacked navigation below tablet width: only one pane shows at a time (spec: mobile/PWA
+   list -> thread with back), controlled by the `mobileShowDetail` prop rather than a media
+   query alone, since the router — not viewport width — decides which pane is "current". */
+@media (max-width: 768px) {
+  .shell {
+    grid-template-columns: 1fr;
+    height: calc(100vh - 52px - var(--sab));
+  }
+
+  .shell[data-mobile-pane='list'] .detailPane {
+    display: none;
+  }
+
+  .shell[data-mobile-pane='detail'] .listPane {
+    display: none;
+  }
+
+  .listPane {
+    border-right: none;
+  }
+}
+
+.backRow {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .backRow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+}
+
+.backLink {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

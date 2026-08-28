@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
@@ -15,38 +14,41 @@ import {
   WebE2eeUnavailableError,
 } from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
+import { ChatShell } from '../messages/ChatShell.js';
+import { ConversationListPane } from '../messages/ConversationListPane.js';
+import { Composer } from '../messages/Composer.js';
+import { MessageList } from '../messages/MessageList.js';
+import { useConversationsQuery } from '../messages/useConversationsQuery.js';
+import { useQuery } from '@tanstack/react-query';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
-import styles from './MessagesRoute.module.css';
 import { toast } from 'sonner';
 
 const POLL_INTERVAL_MS = 8_000;
 
 /**
- * `/messages/:id` — an E2EE conversation thread. The node serves only metadata
- * (`GetConversation`); bodies are decrypted in this browser through the enrolled
- * device's mailbox (`webE2ee().poll`), and sends go through the sealed-envelope fanout
- * (`webE2ee().send`). Nothing plaintext ever touches the wire here.
- *
- * The composer is live: ADR 0033 unified the identity transcripts and ADR 0035 made
- * conversation creation a reserve, so this browser can establish a real session and send.
+ * `/messages/:id` — an E2EE conversation thread rendered inside the two-pane chat shell
+ * (#321): conversation list on the left, this thread on the right; stacked with a back link
+ * below tablet width. The node serves only metadata (`GetConversation`); bodies are decrypted
+ * in this browser through the enrolled device's mailbox (`webE2ee().poll`), and sends go
+ * through the sealed-envelope fanout (`webE2ee().send`). Nothing plaintext ever touches the
+ * wire here.
  */
 export function MessageThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const conversationId = id ?? '';
   const session = useSession();
   const e2eeStatus = useE2ee(session);
+  const navigate = useNavigate();
+  const actorId = session?.actor.id;
 
+  const conversationsQuery = useConversationsQuery();
   const conversationQuery = useQuery({
     queryKey: ['conversation', conversationId],
     queryFn: () => api.messages.getConversation({ id: conversationId }),
     enabled: conversationId !== '',
     // ADR 0032 §1: thread metadata updates within 60s while the tab is focused; single
-    // source of truth in `lib/poll-intervals.ts` (P19-021). `refetchIntervalInBackground`
-    // stays at its TanStack Query default (`false`), which already suspends this
-    // interval while the tab is hidden/unfocused (`docs/research/tanstack-query.md`).
+    // source of truth in `lib/poll-intervals.ts` (P19-021).
     refetchInterval: WEB_DM_POLL_MS,
-    // Re-enabled for this query only; the app-wide default in `main.tsx` stays off —
-    // matches the same call in `MessagesRoute.tsx` and for the same reason.
     refetchOnWindowFocus: true,
   });
   const conversation = conversationQuery.data?.conversation;
@@ -55,9 +57,6 @@ export function MessageThreadRoute(): JSX.Element {
 
   const otherMembers = conversation?.members.filter((member) => member.leftAt === undefined) ?? [];
   const identityEvents = usePeerIdentityEvents();
-  // C2's verification surface: pinning makes an unproven root substitution fail closed,
-  // and these banners are the honest disclosure for the two states pinning cannot remove —
-  // first contact (TOFU) and a rotation that verified against the peer's previous key.
   const memberIdentityEvents = identityEvents.filter((event) =>
     otherMembers.some((member) => member.actor?.id === event.actorId),
   );
@@ -65,7 +64,8 @@ export function MessageThreadRoute(): JSX.Element {
   const [rows, setRows] = useState<readonly InboxRow[]>([]);
   const seenIds = useRef(new Set<string>());
   const [notice, setNotice] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  const [sendFailed, setSendFailed] = useState(false);
+  const [lastDraft, setLastDraft] = useState('');
   const [sending, setSending] = useState(false);
 
   const enrolled = e2eeStatus.kind === 'enrolled';
@@ -99,10 +99,9 @@ export function MessageThreadRoute(): JSX.Element {
     };
   }, [enrolled, conversationId]);
 
-  async function handleSend(): Promise<void> {
-    const body = draft.trim();
-    if (body === '' || sending) return;
+  async function handleSend(body: string): Promise<void> {
     setSending(true);
+    setLastDraft(body);
     try {
       await webE2ee().send(conversationId, body);
       const local: InboxRow = {
@@ -114,8 +113,9 @@ export function MessageThreadRoute(): JSX.Element {
       };
       seenIds.current.add(local.id);
       setRows((previous) => [...previous, local]);
-      setDraft('');
+      setSendFailed(false);
     } catch (error) {
+      setSendFailed(true);
       toast.error(
         error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed,
       );
@@ -125,161 +125,100 @@ export function MessageThreadRoute(): JSX.Element {
   }
 
   return (
-    <div className={styles['thread']}>
-      {disclosedByConversation ? (
-        <p
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          {requiredConversationDisclosure('E2EE_V1')}
-        </p>
-      ) : null}
+    <ChatShell
+      mobilePane="detail"
+      detailTitle="Messages"
+      list={
+        <ConversationListPane
+          conversations={conversationsQuery.data?.conversations}
+          viewerActorId={actorId}
+          isPending={conversationsQuery.isPending}
+          pollFailed={conversationsQuery.isError}
+          activeConversationId={conversationId}
+          canCompose={enrolled}
+          onNewMessage={() => void navigate('/messages')}
+        />
+      }
+      detail={
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {disclosedByConversation ? (
+            <p
+              role="note"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+            >
+              {requiredConversationDisclosure('E2EE_V1')}
+            </p>
+          ) : null}
 
-      {memberIdentityEvents.map((event) => (
-        <p
-          key={event.kind + event.actorId}
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          {event.kind === 'first-seen'
-            ? 'This is the first message to this identity on this device — it is not verified yet. ' +
-              'Confirm it with them out-of-band before trusting this conversation.'
-            : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
-        </p>
-      ))}
+          {memberIdentityEvents.map((event) => (
+            <p
+              key={event.kind + event.actorId}
+              role="note"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+            >
+              {event.kind === 'first-seen'
+                ? 'This is the first message to this identity on this device — it is not verified yet. ' +
+                  'Confirm it with them out-of-band before trusting this conversation.'
+                : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
+            </p>
+          ))}
 
-      {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
-        <div
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          <p>
-            {WEB_E2EE_COPY.notEnrolled} This browser can be enrolled as a messaging device from the
-            Messages list.
-          </p>
+          {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
+            <div
+              role="note"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+            >
+              <p>
+                {WEB_E2EE_COPY.notEnrolled} This browser can be enrolled as a messaging device from
+                the Messages list.
+              </p>
+            </div>
+          ) : null}
+          {e2eeStatus.kind === 'fault' ? (
+            <div
+              role="alert"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+            >
+              <p>{e2eeStatus.copy}</p>
+            </div>
+          ) : null}
+
+          {conversationQuery.isPending && rows.length === 0 ? (
+            <div style={{ margin: 'auto', color: 'var(--fg-muted)' }}>
+              <p>Loading…</p>
+            </div>
+          ) : null}
+          {!conversationQuery.isPending && otherMembers.length === 0 && rows.length === 0 ? (
+            <div style={{ margin: 'auto', color: 'var(--fg-muted)' }}>
+              <p>This conversation could not be loaded.</p>
+            </div>
+          ) : null}
+          {rows.length === 0 &&
+          enrolled &&
+          !conversationQuery.isPending &&
+          otherMembers.length > 0 ? (
+            <div style={{ margin: 'auto', color: 'var(--fg-muted)' }}>
+              <p>No decrypted messages yet on this device.</p>
+            </div>
+          ) : null}
+          {rows.length > 0 ? (
+            <MessageList rows={rows} initialUnreadCount={conversation?.unreadCount ?? 0} />
+          ) : null}
+          {notice === null ? null : (
+            <div style={{ margin: 'auto', color: 'var(--fg-muted)' }}>
+              <p>{notice}</p>
+            </div>
+          )}
+
+          {enrolled ? (
+            <Composer
+              status={sending ? 'sending' : sendFailed ? 'failed' : undefined}
+              onSend={(body) => void handleSend(body)}
+              onRetry={() => void handleSend(lastDraft)}
+            />
+          ) : null}
         </div>
-      ) : null}
-      {e2eeStatus.kind === 'fault' ? (
-        <div
-          role="alert"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          <p>{e2eeStatus.copy}</p>
-        </div>
-      ) : null}
-
-      <div className={styles['messages']}>
-        {conversationQuery.isPending && rows.length === 0 ? (
-          <div className={styles['emptyThread']}>
-            <p>Loading…</p>
-          </div>
-        ) : null}
-        {!conversationQuery.isPending && otherMembers.length === 0 && rows.length === 0 ? (
-          <div className={styles['emptyThread']}>
-            <p>This conversation could not be loaded.</p>
-          </div>
-        ) : null}
-        {rows.length === 0 &&
-        enrolled &&
-        !conversationQuery.isPending &&
-        otherMembers.length > 0 ? (
-          <div className={styles['emptyThread']}>
-            <p>No decrypted messages yet on this device.</p>
-          </div>
-        ) : null}
-        <MessageRows rows={rows} />
-        {notice === null ? null : (
-          <div className={styles['emptyThread']}>
-            <p>{notice}</p>
-          </div>
-        )}
-      </div>
-
-      {enrolled ? (
-        <form
-          className={styles['composer']}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSend();
-          }}
-        >
-          <textarea
-            aria-label="Message body"
-            className={styles['composerInput']}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            rows={2}
-            placeholder="Write a message…"
-          />
-          <button
-            type="submit"
-            className={styles['sendBtn']}
-            disabled={sending || draft.trim() === ''}
-          >
-            {sending ? 'Sending…' : 'Send'}
-          </button>
-        </form>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The message rows. `rows` come from `webE2ee().poll()` and can arrive before
- * `conversationQuery` settles, so `securityMode` (and therefore whether the parent's
- * `disclosedByConversation` panel is on screen yet) may still be unknown here even once `rows`
- * is non-empty. Spec §183.1/§194 forbids asserting encryption that isn't confirmed, so this
- * renders only the rows themselves and never its own disclosure — it has no independent way
- * to confirm the mode, and guessing `E2EE_V1` to fill that gap is exactly the false claim the
- * rule forbids. The confirmed disclosure lives solely in the parent, once `securityMode`
- * resolves.
- */
-function MessageRows({ rows }: { rows: readonly InboxRow[] }): JSX.Element | null {
-  if (rows.length === 0) return null;
-  return (
-    <>
-      {rows.map((row) => (
-        <MessageRow key={row.id} row={row} />
-      ))}
-    </>
-  );
-}
-
-function MessageRow({ row }: { row: InboxRow }): JSX.Element {
-  if (row.kind === 'message') {
-    return (
-      <div
-        className={`${styles['bubble']} ${row.sentByViewer ? styles['mine'] : styles['theirs']}`}
-      >
-        <span className={styles['senderHandle']}>
-          {row.senderLabel === 'you' ? 'you' : row.senderLabel}
-        </span>
-        <p className={styles['bubbleBody']}>{row.body}</p>
-      </div>
-    );
-  }
-  if (row.kind === 'unverifiable') {
-    return (
-      <div style={{ padding: '0.5rem 1rem', color: 'var(--fg-muted)' }}>
-        <p>A message from {row.senderLabel} could not be verified and is not shown.</p>
-      </div>
-    );
-  }
-  if (row.kind === 'history') {
-    return (
-      <div style={{ padding: '0.5rem 1rem', color: 'var(--fg-muted)' }}>
-        <p>History re-delivered by {row.fromLabel}:</p>
-        {row.entries.map((entry, index) => (
-          <p key={index} style={{ margin: '0.15rem 0 0' }}>
-            {entry.senderLabel}: {entry.body}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div style={{ padding: '0.5rem 1rem', color: 'var(--fg-muted)' }}>
-      <p>This message cannot be displayed on this device.</p>
-    </div>
+      }
+    />
   );
 }
