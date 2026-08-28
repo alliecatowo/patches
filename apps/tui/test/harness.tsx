@@ -119,6 +119,35 @@ export async function waitForFrame(
   return frame;
 }
 
+/**
+ * Like `waitForFrame`, but only returns once `predicate` holds on two consecutive
+ * observations `graceMs` apart — a predicate that goes true for one poll and then
+ * false again (a screen mid-transition between two states that both happen to
+ * satisfy it, e.g. a full-takeover compose layout settling into a centred overlay
+ * once `ContentSizeProvider`'s measurement effect commits) still resolves `waitFor
+ * Frame` on the first true poll, so a caller that snapshots `lastFrame()` right
+ * after can capture that transient instead of the settled frame it was waiting
+ * for. Golden-frame capture needs the settled frame specifically.
+ */
+export async function waitForStableFrame(
+  lastFrame: () => string | undefined,
+  predicate: (frame: string) => boolean,
+  timeoutMs = 2000,
+  graceMs = 40,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const remaining = Math.max(1, deadline - Date.now());
+    const frame = await waitForFrame(lastFrame, predicate, remaining);
+    await new Promise((resolve) => setTimeout(resolve, graceMs));
+    const after = stripSgr(lastFrame() ?? '');
+    if (after === frame) return after;
+    if (Date.now() >= deadline) {
+      throw new Error(`waitForStableFrame: timed out after ${timeoutMs}ms. Last frame:\n${after}`);
+    }
+  }
+}
+
 /** Shorthand: waits until the frame contains `text`, returns the frame. */
 export async function expectFrame(
   lastFrame: () => string | undefined,

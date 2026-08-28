@@ -24,8 +24,7 @@ const DM_POLL_METHODS: ReadonlySet<string> = new Set(['ListMailboxEnvelopes', 'G
 @Injectable()
 export class RpcMetricsInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    const grpcMethod = context.getArgByIndex(1) as GrpcMethodInfo | undefined;
+    const grpcMethod = context.getArgByIndex<GrpcMethodInfo | undefined>(1);
     const methodName = grpcMethod?.method ?? 'unknown';
 
     // Same fully-qualified `Service/Method` source RpcBudgetInterceptor already classifies

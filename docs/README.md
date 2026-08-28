@@ -49,6 +49,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`product/tui-design-vision.md`](./product/tui-design-vision.md) — the TUI's design vision (layout, themes, flows)
   - [`product/moderation.md`](./product/moderation.md) — community guidelines, enforcement, appeals, decentralized moderation
   - [`product/privacy.md`](./product/privacy.md) — the draft privacy notice
+  - [`product/identity-chrome.md`](./product/identity-chrome.md) — nameplate rendering rules, kept identical web ↔ TUI
+  - [`product/ux-audit-2026-08.md`](./product/ux-audit-2026-08.md) — density & action-ownership audit findings
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).

@@ -43,6 +43,7 @@ import { RemoveFilterScopeMessageRequests1787661000000 } from './1787661000000-R
 import { E2eeIdentityRootTranscript1787790938656 } from './1787790938656-E2eeIdentityRootTranscript.js';
 import { ReserveE2eeConversationSchema1787792202409 } from './1787792202409-ReserveE2eeConversationSchema.js';
 import { Adr0033IdentityTranscriptCleanBreak1787800000000 } from './1787800000000-Adr0033IdentityTranscriptCleanBreak.js';
+import { E2eeRequireIdentityRootTranscript1787880585000 } from './1787880585000-E2eeRequireIdentityRootTranscript.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -102,4 +103,5 @@ export const ALL_MIGRATIONS = [
   Adr0033IdentityTranscriptCleanBreak1787800000000,
   DropE2eeConversationMembershipEvents1787815392235,
   E2eeDeviceLinkOffers1787816106996,
+  E2eeRequireIdentityRootTranscript1787880585000,
 ];

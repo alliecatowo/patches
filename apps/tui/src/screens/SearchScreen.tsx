@@ -180,7 +180,7 @@ export function SearchScreen({
         setStatus({
           status: 'error',
           error: {
-            title: 'This node has federation disabled.',
+            title: 'This server does not connect to other servers.',
             hint: '',
             retryable: false,
             code: GrpcStatus.Unimplemented,

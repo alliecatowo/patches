@@ -303,7 +303,7 @@ export function PrivacyScreen({
           <Text bold>Privacy notice (v{String(policy.value.privacyNoticeVersion)})</Text>
           <Text wrap="wrap">
             {sanitizeForTerminal(policy.value.privacyNoticeSummary) ||
-              'This node publishes no privacy notice.'}
+              'This server has not published a privacy notice.'}
           </Text>
           <Text color={notAcknowledged ? theme.warn : theme.ok}>
             {notAcknowledged ? 'Not yet acknowledged — press a.' : 'Acknowledged.'}

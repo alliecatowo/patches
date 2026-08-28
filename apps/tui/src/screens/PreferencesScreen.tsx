@@ -112,15 +112,14 @@ const ROW_LABELS: Readonly<Record<Row, string>> = {
 const ROW_HELP: Readonly<Record<Row, string>> = {
   theme: 'Applied live. Esc restores the theme you arrived with.',
   glyphs: 'unicode/nerd/ascii — never required: every control has a word alongside a glyph.',
-  plain: 'Strips every colour, glyph and border — including your own (spec §173).',
-  quiet: 'Hides other actors’ cosmetics; your own decoration stays (spec §185).',
+  plain: 'Strips every colour, glyph and border — including your own.',
+  quiet: 'Hides other people’s cosmetics; your own decoration stays.',
   linear: 'One column, no overlays or drawers, indexed rows — implies plain mode.',
   images: 'h/l cycles auto/pixel/ascii/box/off — see the line below for what each does.',
   privacy: 'Enter opens the privacy notice, discoverability, export and deletion (:privacy).',
-  filters: 'Enter opens your bring-your-own filter rules (:filters, spec §198).',
-  filterLists:
-    'Enter opens shareable filter lists to browse, subscribe to, or publish (:lists, spec §199).',
-  labelers: 'Enter opens labeler subscriptions and per-value actions (:labelers, spec §200).',
+  filters: 'Enter opens your bring-your-own filter rules (:filters).',
+  filterLists: 'Enter opens shareable filter lists to browse, subscribe to, or publish (:lists).',
+  labelers: 'Enter opens labeler subscriptions and per-value actions (:labelers).',
 };
 
 /** One-line description of what each `images` row value actually draws — shown live
