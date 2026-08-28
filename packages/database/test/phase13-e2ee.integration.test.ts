@@ -32,13 +32,30 @@ if (irreversibleTipIndex === -1) {
   );
 }
 
-// Everything from the ledger onward except the irreversible migration itself — not
-// `ALL_MIGRATIONS.slice(ledgerIndex, irreversibleTipIndex)`, which silently dropped anything
-// appended after it (e.g. `DropE2eeConversationMembershipEvents…`, #270) too.
-const scopedMigrations = [
-  ...ALL_MIGRATIONS.slice(ledgerIndex, irreversibleTipIndex),
-  ...ALL_MIGRATIONS.slice(irreversibleTipIndex + 1),
-];
+// Excluded by name, same reasoning as the irreversible tip above: this file's pre-ledger fixture
+// (see `beforeAll`) inserts an `e2ee_identity_roots` row with no `root_bytes`/`self_signature`
+// (those columns don't exist yet at the pre-ledger schema point this fixture targets), which is
+// exactly the transcript-less shape `E2eeRequireIdentityRootTranscript…` purges (issue #297). This
+// file only tests the ledger's dependency-safe FK/index backfill, not identity-root transcript
+// enforcement — that migration's own behavior is exercised directly by "enforces key lengths and
+// one active root/device/signed-prekey per identity" below, which inserts a fully-populated root.
+const TRANSCRIPT_REQUIRED_MIGRATION_NAME = 'E2eeRequireIdentityRootTranscript1787880585000';
+const transcriptRequiredIndex = ALL_MIGRATIONS.findIndex(
+  (m) => m.name === TRANSCRIPT_REQUIRED_MIGRATION_NAME,
+);
+if (transcriptRequiredIndex === -1) {
+  throw new Error(
+    `${TRANSCRIPT_REQUIRED_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+  );
+}
+
+// Everything from the ledger onward except the two row-purging migrations above — not a single
+// two-way split, since both exclusions must independently survive future migrations landing
+// after either of them in `ALL_MIGRATIONS` (see each comment above).
+const EXCLUDED_INDEXES = new Set([irreversibleTipIndex, transcriptRequiredIndex]);
+const scopedMigrations = ALL_MIGRATIONS.filter(
+  (_, index) => index >= ledgerIndex && !EXCLUDED_INDEXES.has(index),
+);
 
 if (!testDatabaseUrl) {
   console.warn(
@@ -67,6 +84,9 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `INSERT INTO actors (id, handle, handle_normalized, is_local) VALUES ($1, $2, $2, true)`,
       [actorId, `preledger_${randomUUID().slice(0, 8)}`],
     );
+    // Pre-ledger schema predates the `root_bytes`/`self_signature` columns entirely (added by
+    // `E2eeIdentityRootTranscript…`, which runs later in `scopedMigrations` below) — this insert
+    // must stay column-minimal to match the schema at this point in the chain.
     await dataSource.query(
       `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key) VALUES ($1, $2, 1, $3)`,
       [rootId, actorId, Buffer.alloc(32, 1)],
@@ -269,19 +289,19 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     );
     const rootId = randomUUID();
     await dataSource.query(
-      `INSERT INTO "e2ee_identity_roots" ("id", "actor_id", "generation", "public_key") VALUES ($1, $2, 1, $3)`,
-      [rootId, actorId, Buffer.alloc(32, 1)],
+      `INSERT INTO "e2ee_identity_roots" ("id", "actor_id", "generation", "public_key", "root_bytes", "self_signature") VALUES ($1, $2, 1, $3, $4, $5)`,
+      [rootId, actorId, Buffer.alloc(32, 1), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
     );
     await expect(
       dataSource.query(
-        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key") VALUES ($1, 2, $2)`,
-        [actorId, Buffer.alloc(32, 2)],
+        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "root_bytes", "self_signature") VALUES ($1, 2, $2, $3, $4)`,
+        [actorId, Buffer.alloc(32, 2), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
       ),
     ).rejects.toThrow(/idx_e2ee_identity_roots_actor_id"/);
     await expect(
       dataSource.query(
-        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "rotated_at") VALUES ($1, 2, $2, now())`,
-        [actorId, Buffer.alloc(31, 2)],
+        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "root_bytes", "self_signature", "rotated_at") VALUES ($1, 2, $2, $3, $4, now())`,
+        [actorId, Buffer.alloc(31, 2), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
       ),
     ).rejects.toThrow(/chk_e2ee_identity_roots_key_length/);
 

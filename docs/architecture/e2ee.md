@@ -60,6 +60,9 @@ Three signed objects, each verified by the client rather than asserted by the no
 1. **Messaging identity root** — a long-lived Ed25519 key, separate from every login credential,
    whose public key is the stable input to the actor's safety number. It self-signs its own
    transcript (proof of possession); a rotation may additionally be signed by the previous root.
+   Transcript-less roots (published by a pre-transcript web build) were purged on 2026-08-28 and
+   `e2ee_identity_roots.root_bytes`/`self_signature` are now `NOT NULL` — no legacy tolerance
+   (issue #297).
 2. **Device certificate** — the root's signature over a canonical transcript binding actor id,
    device id, the device's Ed25519 **signing** key, its X25519 **agreement** key, validity window,
    protocol capabilities, and version. This binding is the fix for the spike's critical finding

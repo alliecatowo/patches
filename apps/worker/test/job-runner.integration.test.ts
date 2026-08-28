@@ -310,8 +310,8 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       purgedAt: null,
     });
     await dataSource.query(
-      `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key) VALUES ($1, $2, 1, $3)`,
-      [rootId, actor.id, Buffer.alloc(32, 1)],
+      `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key, root_bytes, self_signature) VALUES ($1, $2, 1, $3, $4, $5)`,
+      [rootId, actor.id, Buffer.alloc(32, 1), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
     );
     await dataSource.query(
       `INSERT INTO e2ee_device_identities (id, actor_id, identity_root_id, device_id, generation, signing_public_key, agreement_public_key, certificate_bytes, root_signature, certificate_created_at, expires_at)
