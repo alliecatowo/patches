@@ -25,7 +25,6 @@ import {
   nameTagStyleSchema,
   parseActorFlairDocument,
   parseInput,
-  profileBannerUrlSchema,
   profileFrameSchema,
   searchQuerySchema,
   uuidInputSchema,
@@ -45,7 +44,6 @@ export interface UpdateProfileInput {
   websiteUrl?: string;
   nameplate?: NameplateInput;
   flairDocument?: string;
-  profileBannerUrl?: string | undefined;
   profileFrame?: string | undefined;
   nameTagStyle?: string | undefined;
   accentColor?: string | undefined;
@@ -143,7 +141,6 @@ export class ActorService {
         | 'locationText'
         | 'websiteUrl'
         | 'nameplate'
-        | 'profileBannerUrl'
         | 'profileFrame'
         | 'nameTagStyle'
         | 'accentColor'
@@ -168,13 +165,9 @@ export class ActorService {
       const raw = (input.websiteUrl ?? '').trim();
       patch.websiteUrl = raw.length === 0 ? null : parseInput(websiteUrlSchema, raw);
     }
-    // Rapid personalization (owner request 2026-08-25): four purely-cosmetic fields, same
-    // field-mask semantics as above — empty string clears a URL/colour to `null`; the enum
+    // Rapid personalization (owner request 2026-08-25): purely-cosmetic fields, same
+    // field-mask semantics as above — empty string clears a colour to `null`; the enum
     // schemas reject UNSPECIFIED so a caller clears those with an explicit NONE.
-    if (paths.has('profile_banner_url')) {
-      const raw = (input.profileBannerUrl ?? '').trim();
-      patch.profileBannerUrl = raw.length === 0 ? null : parseInput(profileBannerUrlSchema, raw);
-    }
     if (paths.has('accent_color')) {
       const raw = (input.accentColor ?? '').trim();
       patch.accentColor = raw.length === 0 ? null : parseInput(accentColorSchema, raw);

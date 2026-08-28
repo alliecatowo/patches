@@ -108,7 +108,6 @@ export function makeActor(overrides: Partial<Actor> = {}): Actor {
     flair: undefined,
     pinnedPostIds: [],
     homeServer: '',
-    profileBannerUrl: '',
     profileFrame: PROFILE_FRAME.UNSPECIFIED,
     nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
     accentColor: '',

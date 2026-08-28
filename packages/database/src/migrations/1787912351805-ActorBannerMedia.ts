@@ -4,8 +4,9 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * Direct-to-R2 uploaded banner (owner request 2026-08-28, #324): additive nullable
  * `banner_media_id` column + FK on `actors`, same shape as the existing `avatar_media_id`
  * (`onDelete: 'SET NULL'` — a deleted media row un-sets the banner rather than blocking).
- * `profile_banner_url` (the legacy URL text field) is left in place; new writes go through
- * `MediaService` instead.
+ * `profile_banner_url` (the legacy URL text field) was left in place at the time; it was
+ * dropped by a later migration (`DropLegacyProfileBannerUrl`, owner rule 2026-08-28: no
+ * v0.0.1+ legacy paths) once this column became the only banner write/read path.
  *
  * Generated via `pnpm db:generate`, then hand-trimmed: the generator also emitted drift from
  * other agents' in-progress entity edits in this shared tree (a `posts.tsv` column, an

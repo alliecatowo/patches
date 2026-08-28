@@ -161,10 +161,13 @@ message Actor {
   // the actor's home node's domain for a remote actor — render `@handle@home_server`. Never
   // this node's own domain; a local actor's node is only ever the caller's own (`Session.node`).
   string home_server = 14;
-  // Profile banner image URL (http/https only, max 2,048 chars — same rule as
-  // `website_url`, spec §58/§104). Empty means no banner, and a client must reserve no
-  // space for it then (§184.3 degradation).
-  string profile_banner_url = 15;
+
+  // No v0.0.1+ legacy paths (owner rule 2026-08-28): the URL-text `profile_banner_url` this
+  // number/name used to name is gone — direct-to-R2 `banner` (field 19) replaced it before
+  // any release, so there was never a compatibility surface to keep. Reserved so the number
+  // is never reused (spec §153) even though nothing ever shipped depending on it.
+  reserved 15;
+  reserved "profile_banner_url";
 
   // Profile-level frame effect. UNSPECIFIED/NONE render plain.
   ProfileFrame profile_frame = 16;
@@ -175,8 +178,8 @@ message Actor {
   // Profile accent colour, `#RRGGBB`. Empty means the client default.
   string accent_color = 18;
 
-  // Direct-to-R2 uploaded banner (spec §29–32, §54, `MediaService`), replacing the legacy
-  // `profile_banner_url` text field for new writes — see `UpdateProfileRequest.banner_media_id`.
+  // Direct-to-R2 uploaded banner (spec §29–32, §54, `MediaService`) — the only banner field
+  // (no v0.0.1+ legacy paths, owner rule 2026-08-28); see `UpdateProfileRequest.banner_media_id`.
   // `media_id` empty means "no uploaded banner"; `url` is empty until resolved via
   // `MediaService.GetMediaDownload` (clients resolve it themselves, same as `avatar`/post
   // attachments — the server never inlines a presigned URL here).
@@ -218,11 +221,15 @@ message UpdateProfileRequest {
   // Applied when `"flair"` is in `update_mask` (spec §189, §190).
   ActorFlair flair = 7;
 
-  // The four rapid-personalization fields (owner request 2026-08-25) — each applied when
-  // its own snake_case name is in `update_mask`. `profile_banner_url` must be http(s) and
-  // ≤ 2,048 chars (empty clears it); `accent_color` must be `#RRGGBB` (empty clears it);
+  // The rapid-personalization fields (owner request 2026-08-25) — each applied when its own
+  // snake_case name is in `update_mask`. `accent_color` must be `#RRGGBB` (empty clears it);
   // the enum fields reject UNSPECIFIED (pick NONE to clear).
-  string profile_banner_url = 8;
+  //
+  // No v0.0.1+ legacy paths (owner rule 2026-08-28): field 8 was the URL-text
+  // `profile_banner_url` this request used before `banner_media_id` (13) existed — reserved,
+  // never reused (spec §153).
+  reserved 8;
+  reserved "profile_banner_url";
   ProfileFrame profile_frame = 9;
   NameTagStyle name_tag_style = 10;
   string accent_color = 11;

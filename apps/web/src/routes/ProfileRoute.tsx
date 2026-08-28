@@ -40,21 +40,6 @@ function frameData(actor: { profileFrame: ProfileFrame }): string {
   }
 }
 
-/** §104 client-side scheme allowlist for a URL about to reach a real DOM sink (`<img src>`).
- * The server already rejects a non-http(s) `profile_banner_url` at write time
- * (`profileBannerUrlSchema`), but B-136c wants the same check at the render boundary too —
- * a value from an older/misbehaving federated node, a direct DB edit, or a future write path
- * that forgets the server-side check must not get a second, silent chance to reach `src` with
- * a `data:`/`javascript:` payload. `URL` throws on a relative/unparseable string, which this
- * treats the same as an unsafe scheme (a bannerless profile, never a bare-relative `<img>`). */
-function isSafeImageUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
   switch (actor.nameTagStyle) {
     case NameTagStyle.BADGE:
@@ -157,11 +142,8 @@ export function ProfileRoute(): JSX.Element {
   // Rapid personalization (B-130): accent colour becomes a CSS custom property the profile
   // chrome can consume (`var(--profile-accent, var(--accent))` in the module CSS) — absent
   // when unset, so every consumer falls back to the site default with no special case.
-  // `?.`/truthiness (not `!== ''`) so a partial/mock actor missing the fields entirely
+  // `?.`/truthiness (not `!== ''`) so a partial/mock actor missing the field entirely
   // degrades the same way as an explicit empty string.
-  const rawProfileBannerUrl = actor.profileBannerUrl?.trim() ?? '';
-  const profileBannerUrl =
-    rawProfileBannerUrl !== '' && isSafeImageUrl(rawProfileBannerUrl) ? rawProfileBannerUrl : '';
   const accentColor = actor.accentColor?.trim() ?? '';
   const profileStyle = (
     accentColor === '' ? {} : { '--profile-accent': accentColor }
@@ -170,22 +152,11 @@ export function ProfileRoute(): JSX.Element {
   return (
     <div style={profileStyle}>
       {
-        // Direct-to-R2 uploaded banner (#324) takes priority over the legacy URL field —
-        // resolved client-side via `MediaImage`/`GetMediaDownload`, never a server-inlined URL.
+        // Direct-to-R2 uploaded banner (#324) — resolved client-side via
+        // `MediaImage`/`GetMediaDownload`, never a server-inlined URL (no v0.0.1+ legacy
+        // paths, owner rule 2026-08-28: the URL-text banner field was dropped entirely).
         actor.banner?.mediaId ? (
           <MediaImage mediaId={actor.banner.mediaId} altText="" className={styles['banner']} />
-        ) : profileBannerUrl !== '' ? (
-          <img
-            className={styles['banner']}
-            src={profileBannerUrl}
-            alt=""
-            aria-hidden="true"
-            onError={(event) => {
-              // A dead banner URL degrades to "no banner" (zero height) rather than a broken
-              // image glyph at the top of the profile (§184.3: cosmetics never break the page).
-              event.currentTarget.style.display = 'none';
-            }}
-          />
         ) : null
       }
       <div className={styles['header']} data-frame={frameData(actor)}>

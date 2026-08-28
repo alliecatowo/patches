@@ -734,7 +734,6 @@ export class FakeApiHandle {
       avatar: undefined,
       isLocal: true,
       joinedAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
-      profileBannerUrl: '',
       profileFrame: PROFILE_FRAME.UNSPECIFIED,
       nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
       accentColor: '',

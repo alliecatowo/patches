@@ -74,17 +74,6 @@ function nameTagGlyph(style: NAME_TAG_STYLE): string {
   }
 }
 
-/** The banner placeholder is a text description (the TUI does not fetch profile banners):
- * the host, or the raw string if it does not parse as a URL. */
-function bannerHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    // Not a parseable URL — describe what was stored rather than dropping the line.
-    return sanitizeForTerminal(url);
-  }
-}
-
 export interface ProfileScreenProps {
   api: PatchesApi;
   actorId: string;
@@ -404,10 +393,11 @@ export function ProfileScreen({
   const hasAvatarFrame = !plain && present(actor.nameplate) && actor.nameplate.avatarFrame !== '';
   const hasProfileBorder =
     !plain && present(actor.nameplate) && actor.nameplate.profileBorder !== '';
-  // B-130 rapid personalization — all purely cosmetic (§184.3), all degraded: no banner →
-  // no line, no frame → the plain profile box (or the older free-text border), no accent →
-  // the theme default. A hex passed straight to Ink's `color` is downsampled by chalk to
-  // the terminal's actual colour depth (truecolor → 256 → 16), same as a nameplate colour.
+  // B-130 rapid personalization — all purely cosmetic (§184.3), all degraded: no frame →
+  // the plain profile box (or the older free-text border), no accent → the theme default.
+  // A hex passed straight to Ink's `color` is downsampled by chalk to the terminal's
+  // actual colour depth (truecolor → 256 → 16), same as a nameplate colour. The TUI does
+  // not render the R2 `banner` image at all (text-only client).
   const accent = !plain && actor.accentColor !== '' ? actor.accentColor : undefined;
   const frameBorder = !plain ? frameBorderStyle(actor.profileFrame) : undefined;
   const borderStyle =
@@ -431,9 +421,6 @@ export function ProfileScreen({
             }
           : {})}
       >
-        {!plain && actor.profileBannerUrl !== '' ? (
-          <Text color={theme.muted}>░░ banner: {bannerHost(actor.profileBannerUrl)} ░░</Text>
-        ) : null}
         <Text color={accent ?? theme.accent} bold>
           {hasAvatarFrame ? '‹ ' : ''}
           <Nameplate
