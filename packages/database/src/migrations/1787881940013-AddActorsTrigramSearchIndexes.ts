@@ -16,9 +16,11 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * the prefix `LIKE` on `handle_normalized` regardless of collation, so both predicates in the
  * existing `OR` get an index-backed `BitmapOr` plan instead of a sequential scan.
  *
- * Not entity-managed (no `@Index` in `actor.entity.ts`) — same posture as `idx_posts_tsv` in
- * `AddPostsFts`: TypeORM's decorator-driven diffing has no vocabulary for a GIN index with a
- * non-default operator class, so it stays a hand-written, unmanaged index.
+ * Declared in `actor.entity.ts` as `@Index(name, { synchronize: false })` — TypeORM's
+ * decorator-driven diffing has no vocabulary for a GIN index with a non-default operator
+ * class, so it can never be declared column-accurately, but naming it with
+ * `synchronize: false` still tells `migration:generate` the index is intentional and to
+ * leave it alone instead of proposing a drop.
  */
 export class AddActorsTrigramSearchIndexes1787881940013 implements MigrationInterface {
   name = 'AddActorsTrigramSearchIndexes1787881940013';

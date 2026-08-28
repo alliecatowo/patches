@@ -36,6 +36,13 @@ import { User } from './user.entity.js';
 // auth/**`, which is out of this task's file scope (see docs/agents/LEARNINGS.md / this
 // task's report).
 @Index(['handleNormalized', 'clientRequestId'], { unique: true })
+// #223: GIN trigram indexes for `ActorService.searchActors` (`AddActorsTrigramSearchIndexes`
+// migration). `synchronize: false` names them so `migration:generate` knows they exist and
+// leaves them alone — TypeORM's `@Index` decorator has no vocabulary for a non-default
+// operator class (`gin_trgm_ops`), so they can never be declared column-accurately; without
+// this, every `db:generate` run proposes dropping and can't correctly recreate them.
+@Index('idx_actors_handle_normalized_trgm', { synchronize: false })
+@Index('idx_actors_display_name_trgm', { synchronize: false })
 export class Actor {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;
