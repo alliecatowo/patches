@@ -219,8 +219,14 @@ describe('E2eeSessionRuntime — one-time prekey consumption on responder establ
     ]);
     const secondPoll = await runtimeB.pollMailbox({ conversationId: convSecond });
 
-    expect(secondPoll.rows).toEqual([]);
-    expect(secondPoll.error).toBe('Envelope processing failed');
+    // Issue #260: a reused one-time prekey is a structural/contract violation caught before
+    // any ratchet step (`establishResponderSession` throws `E2eeContractError`) — deterministic
+    // and envelope-caused, so it is quarantined (content-free, acknowledged) rather than
+    // fail-stopping the whole mailbox behind it.
+    expect(secondPoll.rows).toEqual([
+      { kind: 'quarantined', id: 'env-153a-replay', reason: 'malformed' },
+    ]);
+    expect(secondPoll.error).toBeUndefined();
     const secondSessionId = sessionIdFor(convSecond, alice, storedA.identity.deviceId);
     expect(await vaultB.getSession(secondSessionId)).toBeUndefined();
   });

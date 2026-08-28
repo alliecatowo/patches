@@ -10,6 +10,7 @@
  * content ever reaches an error or log line. Every failure carries fixed copy.
  */
 import type { VerifiedPreKeyBundle, VerifiedRosterSnapshot } from '@patches/crypto';
+import { E2eeContractError } from '@patches/domain';
 
 /** Vault session id for one device pair inside one conversation (`\u0000` is id-safe). */
 export function sessionIdFor(conversationId: string, actorId: string, deviceId: string): string {
@@ -30,6 +31,24 @@ export class E2eeNotEnrolledError extends Error {
 export class E2eeMessageTooLargeError extends Error {
   constructor() {
     super('That message is too large to send encrypted.');
+    this.name = new.target.name;
+  }
+}
+
+/** Fixed copy for a local receive fault; also the drain's `PollResult.error` in that case. */
+export const E2EE_RECEIVE_UNAVAILABLE_COPY =
+  'Could not process new encrypted messages on this device.';
+
+/**
+ * A receive attempt failed for a reason local to this device — the vault, the stored
+ * enrollment record, or a mailbox round trip — rather than because the envelope itself is
+ * bad. The drain fail-stops on this without acknowledging (B-193's original behavior,
+ * narrowed by issue #260 to exactly this case), because the same envelope may open
+ * perfectly once the local fault clears; skipping it would be a silent drop.
+ */
+export class E2eeReceiveUnavailableError extends Error {
+  constructor() {
+    super(E2EE_RECEIVE_UNAVAILABLE_COPY);
     this.name = new.target.name;
   }
 }
@@ -193,7 +212,8 @@ export function decodePayload(inner: Uint8Array): DecodedPayload {
 export function epochToNumber(epoch: bigint): number {
   // The commitment transcript encodes the epoch at u64 but rejects values above the u32
   // ceiling (`MEMBERSHIP_EPOCH_U32_MAX`); stay inside the same accepted range.
-  if (epoch < 0n || epoch > 0xffff_ffffn) throw new Error('Membership epoch is invalid.');
+  if (epoch < 0n || epoch > 0xffff_ffffn)
+    throw new E2eeContractError('Membership epoch is invalid.');
   return Number(epoch);
 }
 
@@ -228,11 +248,95 @@ export interface InboxUndisplayableRow {
   readonly id: string;
 }
 
+/**
+ * An envelope this device could not open at all (issue #260): quarantined, acknowledged so
+ * the mailbox keeps draining, and surfaced here so the gap is visible rather than silent.
+ */
+export interface InboxQuarantinedRow {
+  readonly kind: 'quarantined';
+  readonly id: string;
+  readonly reason: QuarantineReason;
+}
+
 export type InboxRow =
-  InboxMessageRow | InboxUnverifiableRow | InboxHistoryRow | InboxUndisplayableRow;
+  | InboxMessageRow
+  | InboxUnverifiableRow
+  | InboxHistoryRow
+  | InboxUndisplayableRow
+  | InboxQuarantinedRow;
+
+/** Required copy for `InboxQuarantinedRow` — content-free, and never claims what was lost. */
+export const E2EE_QUARANTINED_MESSAGE_COPY =
+  'A message could not be decrypted on this device and was skipped.';
 
 export interface PollResult {
   readonly rows: readonly InboxRow[];
   /** Fixed-copy failure description; polling continues on the next interval. */
   readonly error?: string | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Quarantine of undecryptable envelopes (issue #260)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why an envelope was quarantined. A closed vocabulary on purpose: a reason is stored
+ * locally and shown to the user, so it can never carry ciphertext, key material, ratchet
+ * counters, or any fragment of a body (ADR 0020 §4).
+ */
+export type QuarantineReason =
+  /** The envelope failed a structural/contract check before any ratchet step. */
+  | 'malformed'
+  /** Session setup or ratchet decryption failed deterministically for this envelope. */
+  | 'undecryptable';
+
+/**
+ * Bound on how many envelopes one drain may quarantine (issue #260). Past it the drain stops
+ * with `E2EE_QUARANTINE_LIMIT_COPY` instead of acknowledging an unbounded run of undecryptable
+ * envelopes in a single pass — a flood is a signal, not something to grind through silently.
+ */
+export const MAX_QUARANTINED_PER_DRAIN = 16;
+
+/** Fixed copy when a drain hits `MAX_QUARANTINED_PER_DRAIN`. */
+export const E2EE_QUARANTINE_LIMIT_COPY =
+  'Too many messages could not be decrypted on this device; the rest stay queued.';
+
+/** Content-free local note that one envelope was skipped and acknowledged. */
+export interface QuarantinedEnvelopeRecord {
+  readonly envelopeId: string;
+  readonly conversationId: string;
+  readonly reason: QuarantineReason;
+  readonly atMs: number;
+}
+
+/**
+ * Where quarantine notes are kept. `record` rejecting fails the drain closed — the envelope
+ * stays unacknowledged rather than vanishing with no local trace of it.
+ */
+export interface QuarantineStore {
+  record(entry: QuarantinedEnvelopeRecord): Promise<void>;
+  /** All notes, or only those for one conversation, oldest first. */
+  list(conversationId?: string): Promise<readonly QuarantinedEnvelopeRecord[]>;
+}
+
+/**
+ * Process-lifetime default store. Deliberately not the encrypted vault: a quarantine note
+ * carries no secret, and keeping it out of the vault means recording one can never block on,
+ * or corrupt, the staged-commit protocol that protects ratchet state.
+ */
+export function createInMemoryQuarantineStore(): QuarantineStore {
+  const entries: QuarantinedEnvelopeRecord[] = [];
+  return {
+    record(entry: QuarantinedEnvelopeRecord): Promise<void> {
+      entries.push(entry);
+      return Promise.resolve();
+    },
+    list(conversationId?: string): Promise<readonly QuarantinedEnvelopeRecord[]> {
+      return Promise.resolve(
+        conversationId === undefined
+          ? [...entries]
+          : entries.filter((entry) => entry.conversationId === conversationId),
+      );
+    },
+  };
 }

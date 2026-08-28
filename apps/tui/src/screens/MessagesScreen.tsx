@@ -33,7 +33,7 @@ import {
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import { E2eeNotEnrolledError, E2EE_QUARANTINED_MESSAGE_COPY } from '../e2ee/runtime.js';
 import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
@@ -1048,6 +1048,13 @@ export function MessagesScreen({
               return (
                 <Text key={row.id} color={theme.muted} wrap="wrap">
                   A delivered message could not be displayed.
+                </Text>
+              );
+            }
+            if (row.kind === 'quarantined') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  {E2EE_QUARANTINED_MESSAGE_COPY}
                 </Text>
               );
             }
