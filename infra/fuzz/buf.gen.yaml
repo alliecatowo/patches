@@ -1,0 +1,31 @@
+# Java gRPC stubs for the EvoMaster RPC driver (H-026, docs/operations/fuzzing.md).
+#
+# Regenerate ONLY when packages/proto/proto changes:
+#   mise run fuzz:stubs
+# (equivalently, from the repo root:
+#   buf generate --template infra/fuzz/buf.gen.yaml
+# Both `out:` paths and the input `directory:` are relative to that invocation dir.)
+#
+# Output is CHECKED IN under infra/fuzz/proto-java/ so CI and local runs never need
+# network access to the Buf registry. This template is deliberately separate from
+# packages/proto/buf.gen.yaml (the TS product surface): different plugins, different
+# consumers, different freshness gate — the proto CI job must not fail on this file's
+# output being stale, and vice versa.
+#
+# Plugin versions are pinned exactly (H-026 safety rule): they must match the
+# protobuf-java / grpc-java versions pinned in infra/fuzz/evo/pom.xml — protoc gencode
+# refuses to load on an older runtime (RuntimeVersion check), and grpc-java stub
+# gencode tracks the grpc-java release line.
+version: v2
+clean: true
+plugins:
+  # protoc-gen-java v30.2 → requires com.google.protobuf:protobuf-java 4.30.2 at runtime
+  - remote: buf.build/protocolbuffers/java:v30.2
+    out: infra/fuzz/proto-java
+  # protoc-gen-grpc-java v1.71.0 → io.grpc:grpc-protobuf/grpc-stub 1.71.0 at runtime
+  - remote: buf.build/grpc/java:v1.71.0
+    out: infra/fuzz/proto-java
+inputs:
+  # Resolved relative to the invocation directory — the mise task always runs buf
+  # from the repo root with --template infra/fuzz/buf.gen.yaml.
+  - directory: packages/proto
