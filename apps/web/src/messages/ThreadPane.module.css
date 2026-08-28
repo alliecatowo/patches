@@ -1,0 +1,8 @@
+/** The thread pane's own column: header, standing notices, scrolling log, sticky composer. */
+.thread {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface);
+}

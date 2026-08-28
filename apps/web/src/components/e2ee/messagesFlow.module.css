@@ -1,73 +1,114 @@
-/* Shared card/button styling across the messages surface: enrollment, needs-authority chooser,
- * rotate confirmation, link-this-device panel, and the new-conversation picker (ADR 0037 §1-2,
- * #300). Reuses the same tokens as AuthForm.module.css / ProfileMenu.module.css rather than
- * inventing a new visual language. */
+/**
+ * The messaging flows that need a decision: enrollment, the needs-authority chooser, the
+ * rotate confirmation, device linking, and the new-conversation picker (ADR 0037 §1-2, #300).
+ *
+ * #336: these are *inline panels inside the pane they belong to*, not cards dropped over the
+ * layout — same geometry and tokens as `components/ui/Panel`, so the whole messaging surface
+ * reads as one component set. Class names are unchanged on purpose: the copy and behaviour of
+ * these flows are fixed by ADR 0037 and must not move while their appearance does.
+ */
 
 .card {
-  max-width: 420px;
-  margin: 1.5rem auto;
-  padding: 1.25rem;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 26rem;
+  margin: auto;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    animation: messagesFlowIn var(--motion-slow) var(--ease-out) both;
+  }
+}
+
+@keyframes messagesFlowIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .title {
-  margin: 0 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 700;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 
 .body {
-  margin: 0 0 1rem;
-  color: var(--fg-muted);
-  font-size: 0.9rem;
-  line-height: 1.4;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
+/* The three outcomes as a ranked stack: one full-width control per decision, each with its
+   consequence directly under it. A row of three equal buttons would imply they are
+   interchangeable, and one of them replaces the account's messaging identity. */
 .optionStack {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--space-4);
 }
 
 .option {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: var(--space-1);
 }
 
 .optionButton {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-lg);
   width: 100%;
-  padding: 0.6rem 0.9rem;
-  border-radius: var(--radius);
-  font-size: 0.92rem;
-  font-weight: 600;
-  text-align: left;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
   cursor: pointer;
   transition:
-    background-color 0.12s ease,
-    opacity 0.12s ease;
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .optionButton:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
 }
 
+.optionButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .optionButton:disabled {
-  opacity: 0.6;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .primary {
   background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
+  color: var(--text-on-accent);
+  box-shadow: var(--elevation-1);
 }
 
 .primary:hover:not(:disabled) {
@@ -75,72 +116,86 @@
 }
 
 .secondary {
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--line);
 }
 
 .secondary:hover:not(:disabled) {
-  background: var(--bg-subtle);
+  background: var(--surface-sunken);
+  border-color: var(--accent);
 }
 
 .tertiary {
-  background: none;
-  color: var(--fg-muted);
-  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .tertiary:hover:not(:disabled) {
-  color: var(--fg);
-  text-decoration: underline;
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  text-decoration: none;
 }
 
 .danger {
   background: var(--danger);
-  color: var(--accent-fg);
-  border: none;
+  color: var(--text-on-accent);
 }
 
 .danger:hover:not(:disabled) {
-  opacity: 0.9;
+  background: color-mix(in srgb, var(--danger) 85%, black);
 }
 
 .optionDesc {
   margin: 0;
-  padding-left: 0.1rem;
-  font-size: 0.8rem;
-  color: var(--fg-muted);
-  line-height: 1.35;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+  text-align: center;
 }
 
 .alertText {
-  color: var(--danger);
-  font-size: 0.85rem;
-  margin: 0 0 0.85rem;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
 }
 
 .instruction {
-  margin: 0 0 0.75rem;
-  color: var(--fg-muted);
-  font-size: 0.9rem;
-  line-height: 1.4;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
+/* The SAS is the one thing on screen that has to be read aloud digit by digit. */
 .sasCode {
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   font-family: var(--font-mono);
-  font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  margin: 0 0 1rem;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.1em;
+  text-align: center;
+  word-spacing: 0.2em;
+  color: var(--text-primary);
 }
 
 .statusLine {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  margin: 0 0 1rem;
-  color: var(--fg-muted);
-  font-size: 0.85rem;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .spinner {
@@ -148,7 +203,7 @@
   height: 16px;
   flex-shrink: 0;
   border-radius: var(--radius-full);
-  border: 2px solid var(--border);
+  border: 2px solid var(--line);
   border-top-color: var(--accent);
   animation: deviceLinkSpin 0.8s linear infinite;
 }
@@ -165,88 +220,87 @@
   }
 }
 
-/* #300: the standing (non-modal) status panels on the Messages list — enrollment prompt,
- * enrolled/fault notes — use the same card as the modal flows above so the whole surface
- * reads as one component set instead of two. `.inline` drops the card's own margin since
- * these render inline in the route rather than centered as a dialog. */
+/* `.inline` is the non-modal placement: a panel that sits in the flow of a route rather than
+   centring itself in a pane. */
 .inline {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
 }
 
 .note {
-  margin: 0 0 1rem;
-  color: var(--fg-muted);
-  font-size: 0.85rem;
-  line-height: 1.4;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .explanation {
-  margin: 0.35rem 0 0.85rem;
-  color: var(--fg-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
-/* New-conversation picker (#298): a typeahead over handle/display name, followers/following
- * shown first when the query is empty. */
+/* New-conversation picker (#298). */
 .searchInput {
   width: 100%;
   box-sizing: border-box;
-  padding: 0.55rem 0.8rem;
-  margin: 0 0 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 0.92rem;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 .searchInput:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .resultList {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 2px;
   max-height: 260px;
   overflow-y: auto;
-  margin: 0 0 1rem;
 }
 
 .resultRow {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.1rem;
+  gap: 1px;
   width: 100%;
-  padding: 0.5rem 0.7rem;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  background: none;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.12s ease;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 .resultRow:hover,
 .resultRow:focus-visible {
-  background: var(--bg-subtle);
-  border-color: var(--border);
+  background: var(--accent-soft);
 }
 
 .resultRow:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
 }
 
 .resultHandle {
-  font-weight: 700;
-  font-size: 0.9rem;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
 }
 
 .resultName {
-  color: var(--fg-muted);
-  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
 }
