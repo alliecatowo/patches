@@ -134,16 +134,15 @@ kill_timeout = "30s"
     grace_period = "10s"
     processes = ["server"]
 
-# Auto-scaling per process group
-[services.scaling]
-  # server: min=1, max=3
-  min_machines = 1
-  max_machines = 3
-
-[services.scaling.worker]
-  # worker: min=1, max=2
-  min_machines = 1
-  max_machines = 2
+# Autoscaling is planned, not configured (docs/operations/deployment.md's deploy checklist):
+# `min_machines`/`max_machines` and a `[services.scaling]` table are not part of the fly.toml
+# schema — `flyctl config validate` accepts them silently (Fly ignores unrecognised keys) and
+# `fly scale show` confirms nothing is applied. `services` is an array of tables
+# (`[[services]]` above), so a bare `[services.scaling]` would in any case attach to the last
+# `[[services]]` entry (the internal metrics service), not a top-level section. The documented
+# per-service knobs are `auto_stop_machines`/`auto_start_machines`/`min_machines_running`
+# (`docs/research/fly-io.md`); wire those up under the relevant `[[services]]` block when this
+# is picked up, not a `.scaling` subtable.
 
 # VM sizing per process group
 [[vm]]
