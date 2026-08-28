@@ -206,6 +206,7 @@ export {
 
 export type {
   DomainPolicyEntry,
+  FeatureFlag,
   GetNodeInfoRequest,
   GetNodeInfoResponse,
   GetNodePolicyRequest,
@@ -220,6 +221,7 @@ export type {
 export {
   DomainPolicyAction,
   FederationStance,
+  FeatureFlagKind,
   NODE_SERVICE_NAME,
   NodeServiceControllerMethods,
   RegistrationMode,
