@@ -1,5 +1,5 @@
 import { describeError } from '@patches/client';
-import { PostVisibility, QuotePolicy, type Post } from '@patches/proto/es';
+import { PostVisibility, QuotePolicy, type Actor, type Post } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,9 +12,18 @@ import {
   SparklesIcon,
 } from '../components/icons/Icons.js';
 import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
+import { MentionAutocomplete } from '../components/MentionAutocomplete.js';
 import { RichBody } from '../components/RichBody.js';
 import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
+import { useDebouncedValue } from '../hooks/useDebouncedValue.js';
+import { useMentionQuery } from '../hooks/useMentionQuery.js';
+import { useSession } from '../hooks/useSession.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
+import {
+  applyMentionSelection,
+  findMentionTrigger,
+  type MentionTrigger,
+} from '../lib/mentionTrigger.js';
 import styles from './ComposeRoute.module.css';
 
 const MAX_MEDIA = 4;
@@ -58,6 +67,7 @@ function loadInitialDraft(draftKey: string, editId: string): StoredDraft {
  */
 export function ComposeRoute(): JSX.Element {
   const navigate = useNavigate();
+  const session = useSession();
   const [params] = useSearchParams();
   const replyTo = params.get('replyTo') ?? '';
   const quoteId = params.get('quote') ?? '';
@@ -74,6 +84,10 @@ export function ComposeRoute(): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [loadedEditId, setLoadedEditId] = useState('');
+  // `@`-mention autocomplete (§219): `mentionTrigger` is non-null exactly when the caret sits
+  // inside an in-progress `@query`; `mentionActiveIndex` is the keyboard-highlighted candidate.
+  const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   // In-flight uploads' abort switches, keyed by the same `File` identity `uploads`
   // entries are matched on. Not reactive state on purpose — aborting doesn't itself
   // need a render, only the `uploads` update that follows it does (B-172).
@@ -218,6 +232,34 @@ export function ComposeRoute(): JSX.Element {
     }, 0);
   };
 
+  // §219: recomputes whether the caret sits inside an in-progress `@query` — called after
+  // every change/click/keyup that could move the caret, not only on typing, so arrow-key or
+  // mouse caret moves close (or re-open) the dropdown the same way typing does.
+  const updateMentionTrigger = (textarea: HTMLTextAreaElement, value: string): void => {
+    const caret = textarea.selectionStart ?? value.length;
+    setMentionTrigger(findMentionTrigger(value, caret));
+    setMentionActiveIndex(0);
+  };
+
+  const debouncedMentionQuery = useDebouncedValue(mentionTrigger?.query ?? '', 200);
+  const { candidates: mentionCandidates } = useMentionQuery(
+    debouncedMentionQuery,
+    session?.actor.id,
+  );
+  const mentionOpen = mentionTrigger !== null && mentionCandidates.length > 0;
+
+  const selectMention = (actor: Actor): void => {
+    const textarea = textareaRef.current;
+    if (!textarea || mentionTrigger === null) return;
+    const { text, caret } = applyMentionSelection(body, mentionTrigger, actor.handle);
+    setBody(text);
+    setMentionTrigger(null);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    }, 0);
+  };
+
   // B-164: navigating away from `/compose` (e.g. the browser back button) before this
   // resolves must not later clear the draft and redirect out from under whatever screen
   // the viewer moved to — distinct from `uploadControllersRef`'s own abort-on-unmount
@@ -338,14 +380,51 @@ export function ComposeRoute(): JSX.Element {
           <RichBody source={body || '*Nothing to preview yet.*'} />
         </div>
       ) : (
-        <textarea
-          ref={textareaRef}
-          className={styles['textarea']}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={replyTo ? 'Write a reply…' : "What's on your mind?"}
-          autoFocus
-        />
+        <div className={styles['textareaWrap']}>
+          <textarea
+            ref={textareaRef}
+            className={styles['textarea']}
+            value={body}
+            onChange={(e) => {
+              setBody(e.target.value);
+              updateMentionTrigger(e.target, e.target.value);
+            }}
+            onClick={(e) => updateMentionTrigger(e.currentTarget, e.currentTarget.value)}
+            onKeyUp={(e) => {
+              if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+                updateMentionTrigger(e.currentTarget, e.currentTarget.value);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (!mentionOpen) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionActiveIndex((i) => (i + 1) % mentionCandidates.length);
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionActiveIndex(
+                  (i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length,
+                );
+              } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                const active = mentionCandidates[mentionActiveIndex];
+                if (active) selectMention(active);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionTrigger(null);
+              }
+            }}
+            placeholder={replyTo ? 'Write a reply…' : "What's on your mind?"}
+            autoFocus
+          />
+          {mentionOpen ? (
+            <MentionAutocomplete
+              candidates={mentionCandidates}
+              activeIndex={mentionActiveIndex}
+              onSelect={selectMention}
+            />
+          ) : null}
+        </div>
       )}
 
       {/* Image previews */}

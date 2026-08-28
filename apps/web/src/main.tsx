@@ -10,6 +10,7 @@ import './index.css';
 import './lib/theme.js';
 import { useSessionKeepAlive } from './hooks/useSessionKeepAlive.js';
 import { installGlobalCollectors } from './lib/diagnosticsReporter.js';
+import { log } from './lib/log.js';
 import { initWebVitals } from './lib/webVitals.js';
 import { registerServiceWorker } from './pwa/serviceWorkerRegistration.js';
 import { router } from './router.js';
@@ -58,8 +59,10 @@ initWebVitals();
 Object.assign(window, {
   __PATCHES_WEB__: { version: __PATCHES_WEB_VERSION__, builtAt: __PATCHES_WEB_BUILT_AT__ },
 });
-// eslint-disable-next-line no-console -- intentional one-line boot banner with the build version
-console.info(`patches web ${__PATCHES_WEB_VERSION__} (built ${__PATCHES_WEB_BUILT_AT__})`);
+log('info', 'patches web boot', {
+  version: __PATCHES_WEB_VERSION__,
+  builtAt: __PATCHES_WEB_BUILT_AT__,
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

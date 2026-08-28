@@ -124,11 +124,25 @@ export default defineConfig([
     },
   },
   {
-    // Vite/React 19 web client — runs in the browser, not Node.
+    // Vite/React 19 web client — runs in the browser, not Node. B-141: route logging through
+    // `apps/web/src/lib/log.ts` instead of scattered `console.*` calls.
     files: ['apps/web/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat.recommended],
     languageOptions: {
       globals: { ...globals.browser },
+    },
+    rules: {
+      'no-console': 'error',
+    },
+  },
+  {
+    // B-141: `log.ts` is the wrapper `no-console` above funnels every other call site through.
+    // `diagnosticsReporter.ts` doesn't log via console — it captures/restores the real
+    // `console.error` to feed the issue-reporter breadcrumb ring — so it needs the same
+    // console access without being a logging call site itself.
+    files: ['apps/web/src/lib/log.ts', 'apps/web/src/lib/diagnosticsReporter.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
   {
