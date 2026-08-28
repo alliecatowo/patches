@@ -20,6 +20,7 @@ import {
   type UpdateProfileResponse,
 } from '@patches/proto';
 import { NameTagStyle, ProfileFrame } from '@patches/proto/nest';
+import { Media } from '@patches/database';
 import { createTestFollow, createTestPost, createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -128,6 +129,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
       nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
       accentColor: '',
+      avatarMediaId: '',
+      bannerMediaId: '',
     } as const;
 
     describe('UpdateProfile', () => {
@@ -264,6 +267,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             profileFrame: ProfileFrame.PROFILE_FRAME_GRADIENT,
             nameTagStyle: NameTagStyle.NAME_TAG_STYLE_PILLED,
             accentColor: '#10B981',
+            avatarMediaId: '',
+            bannerMediaId: '',
             updateMask: fieldMask([
               'profile_banner_url',
               'profile_frame',
@@ -298,6 +303,8 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             profileFrame: ProfileFrame.PROFILE_FRAME_NONE,
             nameTagStyle: NameTagStyle.NAME_TAG_STYLE_NONE,
             accentColor: '',
+            avatarMediaId: '',
+            bannerMediaId: '',
             updateMask: fieldMask([
               'profile_banner_url',
               'profile_frame',
@@ -319,7 +326,122 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         expect(cleared.actor?.nameTagStyle).toBe(NameTagStyle.NAME_TAG_STYLE_NONE);
         expect(cleared.actor?.accentColor).toBe('');
       });
+    });
 
+    describe('UpdateProfile — avatar/banner uploads (#324)', () => {
+      it("writes and clears the caller's own READY media as avatar/banner", async () => {
+        const media = dataSource.getRepository(Media);
+        const avatar = await media.save(
+          media.create({ id: randomUUID(), ownerActorId: alice.actorId, state: 'READY' }),
+        );
+        const banner = await media.save(
+          media.create({ id: randomUUID(), ownerActorId: alice.actorId, state: 'READY' }),
+        );
+
+        await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            ...noPersonalization,
+            avatarMediaId: avatar.id,
+            bannerMediaId: banner.id,
+            updateMask: fieldMask(['avatar_media_id', 'banner_media_id']),
+          },
+          { accessToken: alice.accessToken },
+        );
+
+        const withMedia = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: alice.actorId },
+        );
+        expect(withMedia.actor?.avatar?.mediaId).toBe(avatar.id);
+        expect(withMedia.actor?.banner?.mediaId).toBe(banner.id);
+
+        await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            ...noPersonalization,
+            avatarMediaId: '',
+            bannerMediaId: '',
+            updateMask: fieldMask(['avatar_media_id', 'banner_media_id']),
+          },
+          { accessToken: alice.accessToken },
+        );
+
+        const cleared = await callUnary<GetActorRequest, GetActorResponse>(
+          actors.getActor.bind(actors),
+          { id: alice.actorId },
+        );
+        // `@grpc/proto-loader` decodes an unset message-typed field as `null`, not `undefined`
+        // (LEARNINGS: proto-loader-null-message-fields) — ts-proto's type only claims the
+        // latter.
+        expect(cleared.actor?.avatar).toBeFalsy();
+        expect(cleared.actor?.banner).toBeFalsy();
+      });
+
+      it("rejects a media id that isn't the caller's own with INVALID_ARGUMENT", async () => {
+        const media = dataSource.getRepository(Media);
+        const somebodyElses = await media.save(
+          media.create({ id: randomUUID(), ownerActorId: bob.actorId, state: 'READY' }),
+        );
+
+        const error = await expectRejection<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            ...noPersonalization,
+            avatarMediaId: somebodyElses.id,
+            bannerMediaId: '',
+            updateMask: fieldMask(['avatar_media_id']),
+          },
+          { accessToken: alice.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+
+      it('rejects media still processing (not READY) with INVALID_ARGUMENT', async () => {
+        const media = dataSource.getRepository(Media);
+        const stillProcessing = await media.save(
+          media.create({ id: randomUUID(), ownerActorId: alice.actorId, state: 'PROCESSING' }),
+        );
+
+        const error = await expectRejection<UpdateProfileRequest, UpdateProfileResponse>(
+          actors.updateProfile.bind(actors),
+          {
+            displayName: '',
+            bio: '',
+            locationText: '',
+            websiteUrl: '',
+            nameplate: undefined,
+            flair: undefined,
+            ...noPersonalization,
+            avatarMediaId: stillProcessing.id,
+            bannerMediaId: '',
+            updateMask: fieldMask(['avatar_media_id']),
+          },
+          { accessToken: alice.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.INVALID_ARGUMENT);
+      });
+    });
+
+    describe('UpdateProfile — rapid personalization rejections', () => {
       it.each([
         [
           'a non-http(s) banner URL',

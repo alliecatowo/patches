@@ -10,12 +10,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mockGetActorByHandle = vi.fn();
 const mockGetPage = vi.fn();
 const mockUpdatePage = vi.fn();
+const mockGetMediaDownload = vi.fn();
 const mockUseSession = vi.fn<() => { actor: { id: string } } | null>();
 
 vi.mock('../api/client.js', () => ({
   api: {
     actors: { getActorByHandle: mockGetActorByHandle },
     pages: { getPage: mockGetPage, updatePage: mockUpdatePage },
+    media: { getMediaDownload: mockGetMediaDownload },
   } as unknown as PatchesApi,
 }));
 
@@ -52,6 +54,7 @@ describe('ProfileRoute', () => {
     mockGetActorByHandle.mockReset();
     mockGetPage.mockReset();
     mockUpdatePage.mockReset();
+    mockGetMediaDownload.mockReset();
     mockUseSession.mockReset();
   });
 
@@ -118,6 +121,36 @@ describe('ProfileRoute', () => {
 
     expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('renders an uploaded avatar/banner via MediaService.GetMediaDownload (#324)', async () => {
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+        avatar: { mediaId: 'avatar-media-1', url: '' },
+        banner: { mediaId: 'banner-media-1', url: '' },
+      } as Actor,
+    });
+    mockGetMediaDownload.mockImplementation(({ mediaId }: { mediaId: string }) =>
+      Promise.resolve({ downloadUrl: `https://r2.example.com/${mediaId}` }),
+    );
+
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        document.querySelector('img[src="https://r2.example.com/avatar-media-1"]'),
+      ).not.toBeNull();
+      expect(
+        document.querySelector('img[src="https://r2.example.com/banner-media-1"]'),
+      ).not.toBeNull();
+    });
   });
 
   it('uses account-not-found copy only for a genuine NOT_FOUND response', async () => {

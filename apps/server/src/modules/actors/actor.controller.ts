@@ -89,6 +89,8 @@ export class ActorController implements ActorServiceController {
       profileFrame: wireEnumName(request.profileFrame, 'PROFILE_FRAME_'),
       nameTagStyle: wireEnumName(request.nameTagStyle, 'NAME_TAG_STYLE_'),
       accentColor: request.accentColor,
+      avatarMediaId: request.avatarMediaId,
+      bannerMediaId: request.bannerMediaId,
       updateMask: fieldMaskPaths(request.updateMask),
     });
     return { actor: toProtoActor(profile) };

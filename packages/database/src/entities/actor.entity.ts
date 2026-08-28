@@ -86,6 +86,15 @@ export class Actor {
   @JoinColumn({ name: 'avatar_media_id' })
   declare avatarMedia: Media | null;
 
+  /** Direct-to-R2 uploaded banner (spec §29–32), same shape/ownership rules as `avatarMediaId`
+   * — replaces `profileBannerUrl` for new writes; that column stays for existing rows. */
+  @Column({ type: 'uuid', nullable: true })
+  declare bannerMediaId: string | null;
+
+  @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'banner_media_id' })
+  declare bannerMedia: Media | null;
+
   @Column({ type: 'boolean', default: true })
   declare isLocal: boolean;
 
