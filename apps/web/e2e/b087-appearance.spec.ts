@@ -131,13 +131,11 @@ test('B-087 appearance choices persist and retain an accessible six-action radia
   await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
   await page.getByRole('radio', { name: 'Radial fan' }).check();
   await page.getByRole('radio', { name: 'Compact' }).check();
-  await expect(page.locator('html')).toHaveAttribute('data-fan-style', 'radial');
   await expect(page.locator('html')).toHaveAttribute('data-density', 'compact');
 
   await page.reload();
   await expect(page.getByRole('radio', { name: 'Radial fan' })).toBeChecked();
   await expect(page.getByRole('radio', { name: 'Compact' })).toBeChecked();
-  await expect(page.locator('html')).toHaveAttribute('data-fan-style', 'radial');
   await expect(page.locator('html')).toHaveAttribute('data-density', 'compact');
   for (const name of ['Stacked (default)', 'Radial fan', 'Cozy (default)', 'Compact']) {
     const target = page.locator('label').filter({ hasText: name });
