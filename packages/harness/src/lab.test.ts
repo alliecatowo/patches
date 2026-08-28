@@ -12,14 +12,19 @@ import {
   canonicalRepoRoot,
   cleanupProcessesAndState,
   databaseUrl,
+  findForeignHarnessOwner,
+  findPortOwnerPid,
   harnessProcessEnvironment,
+  inspectForeignProcess,
   inspectRecordedProcess,
   isHarnessDatabaseName,
   isSafeHarnessRunDirectory,
   openAppendOnlyLog,
+  parsePortOwnerPid,
   pathsFor,
   prepareRunDirectory,
   readState,
+  stopForeignProcess,
   stopRecordedProcess,
   stopAllRecordedProcesses,
   waitForProcessSurvival,
@@ -293,5 +298,92 @@ describe('harness lab safety boundaries', () => {
       }),
     ).rejects.toMatchObject({ code: 'EEXIST' });
     expect(await readFile(collision, 'utf8')).toBe('belongs to another writer');
+  });
+});
+
+describe('cross-worktree port ownership', () => {
+  it('parses a pid out of `ss -H -tlnp` output and rejects an empty/unmatched one', () => {
+    expect(
+      parsePortOwnerPid(
+        'LISTEN 0 4096 127.0.0.1:50058 0.0.0.0:* users:(("node",pid=12345,fd=23))\n',
+      ),
+    ).toBe(12345);
+    expect(parsePortOwnerPid('')).toBeUndefined();
+  });
+
+  it('findPortOwnerPid delegates to the injected ss runner', async () => {
+    const run = vi.fn().mockResolvedValue('users:(("node",pid=999,fd=1))');
+    await expect(
+      findPortOwnerPid(50058, { run, readCwd: () => Promise.resolve(undefined) }),
+    ).resolves.toBe(999);
+    expect(run).toHaveBeenCalledWith(50058);
+  });
+
+  it('findForeignHarnessOwner resolves pid and root together, and undefined root when cwd is unreadable', async () => {
+    await expect(
+      findForeignHarnessOwner({
+        run: () => Promise.resolve('pid=555'),
+        readCwd: () => Promise.resolve('/home/other/patches-wt-2'),
+      }),
+    ).resolves.toEqual({ pid: 555, root: '/home/other/patches-wt-2' });
+    await expect(
+      findForeignHarnessOwner({
+        run: () => Promise.resolve('pid=555'),
+        readCwd: () => Promise.resolve(undefined),
+      }),
+    ).resolves.toEqual({ pid: 555, root: undefined });
+    await expect(
+      findForeignHarnessOwner({
+        run: () => Promise.resolve(''),
+        readCwd: () => Promise.resolve(undefined),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('inspectForeignProcess proves ownership by command line alone (no run-id nonce available)', async () => {
+    await expect(
+      inspectForeignProcess(101, 'apps/server/dist/main.js', {
+        probe: () => undefined,
+        readProcFile: () => Promise.resolve('node\0apps/server/dist/main.js\0'),
+      }),
+    ).resolves.toBe('owned-running');
+    await expect(
+      inspectForeignProcess(101, 'apps/server/dist/main.js', {
+        probe: () => undefined,
+        readProcFile: () => Promise.resolve('node\0some-other-script.js\0'),
+      }),
+    ).resolves.toBe('unowned');
+    await expect(
+      inspectForeignProcess(101, 'apps/server/dist/main.js', {
+        probe: () => {
+          throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+        },
+        readProcFile: () => Promise.resolve(''),
+      }),
+    ).resolves.toBe('stopped');
+  });
+
+  it('stopForeignProcess only signals a pid whose command line matches, and reports failure otherwise', async () => {
+    const signalGroup = vi.fn();
+    const stopped = await stopForeignProcess(101, 'apps/server/dist/main.js', {
+      inspect: () => Promise.resolve('owned-running'),
+      signalGroup,
+      delay: () => Promise.resolve(),
+      termPolls: 1,
+      killPolls: 1,
+    });
+    // The stub inspect always reports owned-running, so this call never observes "stopped"
+    // and exhausts its poll budget — proving the signal was actually sent without needing a
+    // real process to kill.
+    expect(signalGroup).toHaveBeenNthCalledWith(1, 101, 'SIGTERM');
+    expect(signalGroup).toHaveBeenNthCalledWith(2, 101, 'SIGKILL');
+    expect(stopped).toBe(false);
+
+    const refused = await stopForeignProcess(101, 'apps/server/dist/main.js', {
+      inspect: () => Promise.resolve('unowned'),
+      signalGroup,
+      delay: () => Promise.resolve(),
+    });
+    expect(refused).toBe(false);
   });
 });
