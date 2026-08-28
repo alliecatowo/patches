@@ -32,8 +32,14 @@ import { api } from '../api/client.js';
 import { connectCodeName } from '../lib/connect-error.js';
 import { logger } from '../lib/log.js';
 
-import type { InboxRow } from './runtime.js';
+import type { InboxMessageRow, InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
+import {
+  loadOwnMessages,
+  mergeOwnMessages,
+  ownMessageRow,
+  recordOwnMessage,
+} from './own-messages.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import {
@@ -295,11 +301,35 @@ class WebE2eeManager {
     }
   }
 
-  async send(conversationId: string, body: string): Promise<void> {
+  /**
+   * Seals `body` to the conversation's fanout and durably records it locally, returning
+   * the row the thread should render for it.
+   *
+   * The local record is the point (issue #332): this device is never in its own fanout,
+   * so no envelope will ever redeliver the message to the person who wrote it. Without
+   * the vault row the sender's half of the thread is in-memory echo that a reload erases.
+   */
+  async send(conversationId: string, body: string): Promise<InboxMessageRow> {
     const runtime = this.requireRuntime();
+    const vault = this.requireVault();
+    const clientMessageId = crypto.randomUUID();
+    const sentAtMs = (this.nowMs ?? Date.now)();
     try {
-      await runtime.send(conversationId, body, crypto.randomUUID());
+      await runtime.send(conversationId, body, clientMessageId);
     } catch (error) {
+      // A failed send is exactly when losing the viewer's own text hurts most, so record
+      // it as undelivered. Best-effort: a vault that cannot be written must not mask the
+      // send error the caller has to see.
+      try {
+        await recordOwnMessage(vault, conversationId, {
+          clientMessageId,
+          body,
+          sentAtMs,
+          deliveryState: 'failed',
+        });
+      } catch {
+        // Ids only would still be noise here; the send error below is the actionable one.
+      }
       if (error instanceof WebE2eeUnavailableError || error instanceof E2eeNotEnrolledError) {
         throw error;
       }
@@ -307,6 +337,9 @@ class WebE2eeManager {
       // has already handled state recovery internally (audit P1-1).
       throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
     }
+    const record = { clientMessageId, body, sentAtMs, deliveryState: 'sent' } as const;
+    await recordOwnMessage(vault, conversationId, record);
+    return ownMessageRow(record);
   }
 
   /**
@@ -331,13 +364,19 @@ class WebE2eeManager {
   async poll(conversationId: string): Promise<readonly InboxRow[]> {
     return this.enqueue(async () => {
       const runtime = this.requireRuntime();
+      const vault = this.requireVault();
       const result = await runtime.pollMailbox({ conversationId });
       const drained = this.drained.get(conversationId) ?? [];
       if (result.rows.length > 0) {
         drained.push(...result.rows);
         this.drained.set(conversationId, drained);
       }
-      return [...drained];
+      // The vault's own-message rows are the only copy of what this device sent, and a
+      // fresh page load starts with an empty drain cache — merging here is what makes a
+      // sender's half of the thread survive a reload (issue #332).
+      const own = await loadOwnMessages(vault, conversationId);
+      if (own.length === 0) return [...drained];
+      return mergeOwnMessages(own, drained);
     });
   }
 
@@ -373,25 +412,23 @@ class WebE2eeManager {
       });
       throw new WebE2eeUnavailableError(`${WEB_E2EE_COPY.createFailed} (${code})`);
     }
+    const clientMessageId = crypto.randomUUID();
+    const sentAtMs = (this.nowMs ?? Date.now)();
     try {
-      await runtime.send(conversationId, body, crypto.randomUUID());
+      await runtime.send(conversationId, body, clientMessageId);
     } catch (error) {
       if (error instanceof E2eeNotEnrolledError) throw error;
       throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
     }
     // A device is not in its own fanout, so nothing will ever redeliver this message to the
-    // person who just wrote it. Without this echo the caller lands on a thread that says "no
-    // decrypted messages yet on this device" about the message they are watching being sent
-    // — the same local-echo `MessageThreadRoute` adds for every subsequent send.
-    this.drained.set(conversationId, [
-      {
-        kind: 'message',
-        id: `local-${crypto.randomUUID()}`,
-        senderLabel: 'you',
-        body,
-        sentByViewer: true,
-      },
-    ]);
+    // person who just wrote it. The vault row is the durable copy that survives a reload;
+    // `poll()` merges it back into the thread on every subsequent load (issue #332).
+    await recordOwnMessage(this.requireVault(), conversationId, {
+      clientMessageId,
+      body,
+      sentAtMs,
+      deliveryState: 'sent',
+    });
     return conversationId;
   }
 
@@ -489,6 +526,13 @@ class WebE2eeManager {
       disposeStoredEnrollment(stored);
       this.setStatus({ kind: 'enrolled' });
     });
+  }
+
+  /** The open vault behind the bound runtime. Separate from `requireRuntime` only so the
+   * own-message store can be reached without going through the ratchet session. */
+  private requireVault(): RatchetSessionVault {
+    if (this.vault === undefined || this.runtime === undefined) throw new E2eeNotEnrolledError();
+    return this.vault;
   }
 
   private requireRuntime(): E2eeSessionRuntime {
