@@ -165,7 +165,8 @@ describe('MessagesScreen end-to-end seams (B-101)', () => {
   it('maps an unenrolled send failure to the enrolled-device copy, not "message lost"', async () => {
     const conv = e2eeConversation('conv-e2ee');
     const api = fakeApi(conv);
-    const sendE2ee = vi.fn<(conversationId: string, body: string) => Promise<void>>();
+    const sendE2ee =
+      vi.fn<(conversationId: string, body: string) => Promise<E2eeReceivedRow | undefined>>();
     sendE2ee.mockRejectedValue(new E2eeNotEnrolledError());
 
     const { lastFrame, stdin } = render(

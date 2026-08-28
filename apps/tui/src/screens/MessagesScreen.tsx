@@ -135,7 +135,8 @@ export interface MessagesScreenProps {
    * shell's vault-backed stage → send → confirm pipeline. Absent means this shell has no
    * such pipeline, and composing shows why instead of silently using the plaintext RPC.
    */
-  sendE2ee?: ((conversationId: string, body: string) => Promise<void>) | undefined;
+  sendE2ee?:
+    ((conversationId: string, body: string) => Promise<E2eeReceivedRow | undefined>) | undefined;
   /** Set once the account's local vault failed to open — history is inaccessible, and
    * the screen says exactly that rather than rendering an empty-but-fine list. */
   e2eeVaultFault?: 'corrupt' | 'rollback' | undefined;
@@ -824,8 +825,17 @@ export function MessagesScreen({
     setDraft('');
     setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
     try {
-      await sendE2ee(conversationId, body);
+      const sentRow = await sendE2ee(conversationId, body);
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
+      // A device is never in its own fanout (issue #332), so no mailbox drain will ever
+      // return this message: the row the send pipeline stored in the vault is the only
+      // copy. Dropping the pending row without adopting it would make the viewer's own
+      // text vanish the instant the send succeeded.
+      if (sentRow !== undefined) {
+        setE2eeRows((current) =>
+          current.some((row) => row.id === sentRow.id) ? current : [...current, sentRow],
+        );
+      }
     } catch (error) {
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
       setDraft(body);
@@ -1034,6 +1044,9 @@ export function MessagesScreen({
                 <Text key={row.id}>
                   <Text color={theme.muted}>{sanitizeForTerminal(row.senderLabel)}: </Text>
                   {sanitizeForTerminal(row.body)}
+                  {row.deliveryFailed === true ? (
+                    <Text color={theme.error}> · not delivered</Text>
+                  ) : null}
                 </Text>
               );
             }

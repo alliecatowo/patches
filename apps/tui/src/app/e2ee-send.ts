@@ -22,8 +22,14 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { E2eeMailboxTransport, E2eeSendTransport } from '../e2ee/runtime.js';
+import type { E2eeMailboxTransport, E2eeSendTransport, InboxMessageRow } from '../e2ee/runtime.js';
 import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import {
+  loadOwnMessages,
+  mergeOwnMessages,
+  ownMessageRow,
+  recordOwnMessage,
+} from '../e2ee/own-messages.js';
 import { E2eeSessionRuntime } from '../e2ee/runtime-session.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { createRatchetSessionVault, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
@@ -138,10 +144,17 @@ export interface VaultE2eeSender {
   fault(): E2eeVaultFault | undefined;
   /** Whether an enrolled messaging identity is bound (gates send and mailbox polling). */
   enrolled(): boolean;
-  send(conversationId: string, body: string): Promise<void>;
+  /**
+   * Sends `body` and durably records it as this device's own message (issue #332),
+   * resolving the row the thread should render for it. A failed send is recorded too,
+   * marked undelivered, so the viewer's text survives the failure.
+   */
+  send(conversationId: string, body: string): Promise<InboxMessageRow>;
   /**
    * Drains this account's encrypted mailbox (optionally only `conversationId`'s
-   * envelopes) and returns render-ready rows. Requires an enrolled identity.
+   * envelopes) and returns render-ready rows. A conversation-scoped drain also merges
+   * this device's stored own messages, which no fanout will ever redeliver. Requires an
+   * enrolled identity.
    */
   pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult>;
   /**
@@ -328,18 +341,51 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
         nowMs: options.nowMs ?? Date.now,
       });
     },
-    async send(conversationId, body): Promise<void> {
+    async send(conversationId, body): Promise<InboxMessageRow> {
       const active = await ensureRuntime();
+      const store = await ensureOpen();
+      const clientMessageId = randomUUID();
+      const sentAtMs = (options.nowMs ?? Date.now)();
       try {
-        await active.send(conversationId, body, randomUUID());
+        await active.send(conversationId, body, clientMessageId);
       } catch (error) {
         noteFault(error);
+        // A device is not in its own fanout (issue #332): if this is not written the
+        // viewer's own text is gone, and a failed send is exactly when losing it hurts
+        // most. Best-effort — a vault that cannot be written must not mask the send
+        // error that the caller has to see.
+        try {
+          await recordOwnMessage(store, conversationId, {
+            clientMessageId,
+            body,
+            sentAtMs,
+            deliveryState: 'failed',
+          });
+        } catch (writeError) {
+          noteFault(writeError);
+        }
         throw error;
       }
+      const record = {
+        clientMessageId,
+        body,
+        sentAtMs,
+        deliveryState: 'sent',
+      } as const;
+      await recordOwnMessage(store, conversationId, record);
+      return ownMessageRow(record);
     },
     async pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult> {
       const active = await ensureRuntime();
-      return active.pollMailbox({ ...(conversationId === undefined ? {} : { conversationId }) });
+      const result = await active.pollMailbox({
+        ...(conversationId === undefined ? {} : { conversationId }),
+      });
+      if (conversationId === undefined) return result;
+      // Own messages are per-conversation, so they merge only into a thread-scoped
+      // drain — an account-wide drain has no single conversation to attribute them to.
+      const own = await loadOwnMessages(await ensureOpen(), conversationId);
+      if (own.length === 0) return result;
+      return { ...result, rows: mergeOwnMessages(own, result.rows) };
     },
     async wipe(): Promise<void> {
       // Route the wipe through the LIVE store (audit P1-2): the same object that holds
