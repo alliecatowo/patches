@@ -455,3 +455,11 @@ Rules of thumb:
   from a worktree that doesn't own it. Reuse the running lab instead of killing it.
 - Testing Library's 1 s `waitFor` default flakes on the loaded CI runner; `asyncUtilTimeout: 5000`
   in `apps/web/src/test/setup.ts` (#328) only affects tests that would otherwise fail.
+
+## 2026-08-28 — `mise run lab` state is per-worktree, ports and DB are global
+
+- Harness state (`infra/lab/.run/harness`) lives in the worktree that ran `up`, but :50058/:8088
+  and `patches_harness_lab` are machine-global. A second worktree's `up` reports "degraded" while
+  the first's server keeps the port; `down` from any other tree stops nothing. Rule: before `up`,
+  `ss -ltnp 'sport = :50058'` and run `down` from the owning worktree (or kill that pid).
+  Recorded from #343; a `lab:down --any` that resolves the owner by port is a small follow-up.
