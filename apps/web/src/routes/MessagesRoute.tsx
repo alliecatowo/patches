@@ -2,7 +2,7 @@ import type { Actor } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
@@ -15,6 +15,10 @@ import { formatRelativeTime } from '../lib/format.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
+import {
+  checkRecipientAvailability,
+  describeRecipientAvailability,
+} from '../e2ee/recipient-availability.js';
 import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
 import flowStyles from '../components/e2ee/messagesFlow.module.css';
 import styles from './MessagesRoute.module.css';
@@ -60,9 +64,34 @@ export function MessagesRoute(): JSX.Element {
   const [compose, setCompose] = useState<ComposeState>({ phase: 'closed' });
   const [composeBody, setComposeBody] = useState('');
   const [sendingCompose, setSendingCompose] = useState(false);
+  const [composeError, setComposeError] = useState<string | undefined>(undefined);
   const navigate = useNavigate();
   const actorId = session?.actor.id;
   const deviceLinkVault = useE2eeVaultAccess(e2eeStatus);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const toHandle = searchParams.get('to') ?? '';
+
+  // #323: `/messages?to=<handle>` is the profile "Message" button's entry point — it opens
+  // exactly the compose flow the in-list picker opens, rather than a second code path that
+  // can rot on its own. The handle is resolved to an actor here because everything
+  // downstream (`createConversation`, the availability probe) is id-addressed.
+  const recipientQuery = useQuery({
+    queryKey: ['actor-by-handle', toHandle],
+    queryFn: () => api.actors.getActorByHandle({ handle: toHandle }),
+    enabled: toHandle !== '',
+  });
+  const linkedRecipient = recipientQuery.data?.actor;
+  // Adjusted during render on a changed value rather than in an effect — React's documented
+  // pattern, and the same one `useE2eeVaultAccess` uses; `react-hooks/set-state-in-effect`
+  // rejects the effect form. Only ever opens a *closed* panel, so a user who cancelled
+  // (which also drops `?to=`) or who already started typing is never reset under them.
+  const [lastLinkedRecipient, setLastLinkedRecipient] = useState(linkedRecipient);
+  if (linkedRecipient !== lastLinkedRecipient) {
+    setLastLinkedRecipient(linkedRecipient);
+    if (linkedRecipient !== undefined && compose.phase === 'closed') {
+      setCompose({ phase: 'message', recipient: linkedRecipient });
+    }
+  }
 
   const query = useQuery({
     queryKey: ['conversations'],
@@ -114,17 +143,29 @@ export function MessagesRoute(): JSX.Element {
     setCompose({ phase: 'message', recipient });
   }
 
+  function handleComposeClosed(): void {
+    setCompose({ phase: 'closed' });
+    // Drops `?to=` so the effect above cannot reopen the panel the user just dismissed, and
+    // so a reload of this URL is a plain conversation list.
+    if (toHandle !== '') setSearchParams({}, { replace: true });
+  }
+
   async function handleSendCompose(): Promise<void> {
     if (compose.phase !== 'message') return;
     const body = composeBody.trim();
     if (body === '') return;
+    setComposeError(undefined);
     setSendingCompose(true);
     try {
       const conversationId = await webE2ee().createConversation([compose.recipient.id], body);
-      setCompose({ phase: 'closed' });
+      handleComposeClosed();
       void navigate(`/messages/${conversationId}`);
     } catch (error) {
-      toast(error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed);
+      // `createConversation` already names the node's refusal code and logs it structurally;
+      // an alert-role line keeps it on screen instead of in a toast that scrolls away (#320).
+      setComposeError(
+        error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed,
+      );
     } finally {
       setSendingCompose(false);
     }
@@ -153,10 +194,11 @@ export function MessagesRoute(): JSX.Element {
           body={composeBody}
           sending={sendingCompose}
           viewerActorId={actorId}
+          error={composeError}
           onBodyChange={setComposeBody}
           onRecipientSelected={handleRecipientSelected}
           onSend={() => void handleSendCompose()}
-          onCancel={() => setCompose({ phase: 'closed' })}
+          onCancel={handleComposeClosed}
         />
       )}
 
@@ -344,6 +386,7 @@ function ComposePanel({
   body,
   sending,
   viewerActorId,
+  error,
   onBodyChange,
   onRecipientSelected,
   onSend,
@@ -353,33 +396,23 @@ function ComposePanel({
   body: string;
   sending: boolean;
   viewerActorId: string;
+  error: string | undefined;
   onBodyChange: (value: string) => void;
   onRecipientSelected: (actor: Actor) => void;
   onSend: () => void;
   onCancel: () => void;
 }): JSX.Element {
-  if (state.phase === 'pick') {
+  if (state.phase === 'message') {
     return (
-      <div
-        className={`${flowStyles['card']} ${flowStyles['inline']}`}
-        role="group"
-        aria-label="New message"
-      >
-        <h2 className={flowStyles['title']}>New message</h2>
-        <p className={flowStyles['body']}>Who do you want to message</p>
-        <ActorTypeahead
-          viewerActorId={viewerActorId}
-          excludeActorIds={[viewerActorId]}
-          onSelect={onRecipientSelected}
-        />
-        <button
-          type="button"
-          className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
+      <ComposeMessagePanel
+        recipient={state.recipient}
+        body={body}
+        sending={sending}
+        error={error}
+        onBodyChange={onBodyChange}
+        onSend={onSend}
+        onCancel={onCancel}
+      />
     );
   }
   return (
@@ -388,7 +421,75 @@ function ComposePanel({
       role="group"
       aria-label="New message"
     >
-      <h2 className={flowStyles['title']}>Message @{state.recipient.handle}</h2>
+      <h2 className={flowStyles['title']}>New message</h2>
+      <p className={flowStyles['body']}>Who do you want to message</p>
+      <ActorTypeahead
+        viewerActorId={viewerActorId}
+        excludeActorIds={[viewerActorId]}
+        onSelect={onRecipientSelected}
+      />
+      <button
+        type="button"
+        className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
+        onClick={onCancel}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The opening-message step, split out so the recipient-availability probe (#320) is a plain
+ * unconditional hook on a component that only exists once a recipient is chosen.
+ *
+ * The probe is what turns the node's uniform `not_found` refusal into something actionable:
+ * §183.2 gates a first conversation on a mutual follow, and two enrolled accounts that don't
+ * follow each other back were the whole owner-reported P0. It reads only what the viewer can
+ * already see about their own edges — see `recipient-availability.ts` for why that is not a
+ * new oracle.
+ */
+function ComposeMessagePanel({
+  recipient,
+  body,
+  sending,
+  error,
+  onBodyChange,
+  onSend,
+  onCancel,
+}: {
+  recipient: Actor;
+  body: string;
+  sending: boolean;
+  error: string | undefined;
+  onBodyChange: (value: string) => void;
+  onSend: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const availabilityQuery = useQuery({
+    queryKey: ['recipient-availability', recipient.id],
+    queryFn: () => checkRecipientAvailability(recipient.id),
+  });
+  const availability = availabilityQuery.data ?? { kind: 'unknown' as const };
+  const blockedReason = describeRecipientAvailability(availability, recipient.handle);
+
+  return (
+    <div
+      className={`${flowStyles['card']} ${flowStyles['inline']}`}
+      role="group"
+      aria-label="New message"
+    >
+      <h2 className={flowStyles['title']}>Message @{recipient.handle}</h2>
+      {blockedReason === undefined ? null : (
+        <p role="note" className={flowStyles['note']}>
+          {blockedReason}
+        </p>
+      )}
+      {error === undefined ? null : (
+        <p role="alert" className={flowStyles['note']}>
+          {error}
+        </p>
+      )}
       <textarea
         aria-label="Message body"
         className={flowStyles['searchInput']}
@@ -403,7 +504,9 @@ function ComposePanel({
           type="button"
           className={`${flowStyles['optionButton']} ${flowStyles['primary']}`}
           onClick={onSend}
-          disabled={sending || body.trim() === ''}
+          // A probe that could not answer (`unknown`) never blocks the attempt — the node is
+          // still the authority, and a probe outage must not become a second refusal.
+          disabled={sending || body.trim() === '' || blockedReason !== undefined}
         >
           {sending ? 'Sending…' : 'Send'}
         </button>

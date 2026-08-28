@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
@@ -63,7 +63,6 @@ export function MessageThreadRoute(): JSX.Element {
   );
 
   const [rows, setRows] = useState<readonly InboxRow[]>([]);
-  const seenIds = useRef(new Set<string>());
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -77,11 +76,18 @@ export function MessageThreadRoute(): JSX.Element {
       try {
         const fresh = await webE2ee().poll(conversationId);
         if (cancelled) return;
+        // Dedupe against the rows this updater is actually given, never against a ref.
+        // A `setState` updater must be pure: React may call it more than once for a single
+        // update, and a version that mutated an external `seenIds` set marked every row as
+        // already-seen on the first call and then dropped it on the second — the surviving
+        // return value. Nothing rendered, and because `poll()` acknowledges what it drains,
+        // the message was gone for good.
         setRows((previous) => {
+          const seen = new Set(previous.map((row) => row.id));
           const merged = [...previous];
           for (const row of fresh) {
-            if (seenIds.current.has(row.id)) continue;
-            seenIds.current.add(row.id);
+            if (seen.has(row.id)) continue;
+            seen.add(row.id);
             merged.push(row);
           }
           return merged;
@@ -112,7 +118,6 @@ export function MessageThreadRoute(): JSX.Element {
         body,
         sentByViewer: true,
       };
-      seenIds.current.add(local.id);
       setRows((previous) => [...previous, local]);
       setDraft('');
     } catch (error) {
