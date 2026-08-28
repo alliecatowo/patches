@@ -92,7 +92,15 @@ export interface SendEnvelopesRequestLike {
 
 /** Receive-side seam the shell binds to authenticated `E2eeService` RPCs. */
 export interface E2eeMailboxTransport {
-  listMailboxPage(cursor: string): Promise<{
+  /**
+   * `conversationId`, when given, is a server-side filter (issue #152): only that
+   * conversation's envelopes are matched and paged, so an open thread's poll no longer walks
+   * every other conversation's queued mail just to skip it client-side.
+   */
+  listMailboxPage(
+    cursor: string,
+    conversationId?: string,
+  ): Promise<{
     readonly envelopes: readonly E2eeMailboxEnvelopeLike[];
     readonly nextCursor: string;
   }>;

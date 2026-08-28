@@ -376,7 +376,11 @@ export class E2eeSessionRuntime {
     for (;;) {
       let page: Awaited<ReturnType<E2eeMailboxTransport['listMailboxPage']>>;
       try {
-        page = await this.mailboxTransport.listMailboxPage(cursor);
+        // #152: ask the node to filter server-side when this poll is scoped to one
+        // conversation, instead of paging the whole mailbox and discarding the rest below —
+        // the discard loop stays as defense-in-depth against a transport that ignores the
+        // filter (e.g. in tests), not as the primary filtering mechanism anymore.
+        page = await this.mailboxTransport.listMailboxPage(cursor, conversationFilter);
       } catch {
         error = 'Could not fetch new encrypted messages.';
         break;
