@@ -15,6 +15,7 @@ import {
   deleteVaultKeyringEntry,
   vaultDatabaseFilePath,
   vaultKeyFilePath,
+  vaultPassphraseFilePath,
   type KeyringModuleLike,
 } from './vault-key-providers.js';
 import type { NO_KEYRING } from './vault-key-providers.js';
@@ -237,12 +238,19 @@ export interface CreateRatchetSessionVaultOptions {
   readonly keyring?: KeyringModuleLike | typeof NO_KEYRING | undefined;
   readonly keyFilePath?: string;
   readonly warn?: (message: string) => void;
+  /** Opts into the passphrase-KDF fallback tier (issue #212) instead of the guarded
+   * plaintext-file tier when no OS keyring is available. */
+  readonly passphrase?: {
+    readonly getPassphrase: () => Promise<string>;
+    readonly path?: string;
+  };
 }
 
 /**
- * OS keyring → real encrypted file vault; explicitly opted-in guarded key file → real
- * file vault with a loud warning; otherwise an in-memory vault that persists nothing,
- * so the default on a keyring-less box never silently stores secrets.
+ * OS keyring → real encrypted file vault; explicitly opted-in passphrase-KDF tier or
+ * guarded key file → real file vault (loud warning either way); otherwise an in-memory
+ * vault that persists nothing, so the default on a keyring-less box never silently
+ * stores secrets.
  */
 export async function createRatchetSessionVault(
   options: CreateRatchetSessionVaultOptions,
@@ -254,6 +262,7 @@ export async function createRatchetSessionVault(
     ...(options.keyFilePath === undefined ? {} : { keyFilePath: options.keyFilePath }),
     ...(options.fileOperations === undefined ? {} : { fileOperations: options.fileOperations }),
     ...(options.warn === undefined ? {} : { warn: options.warn }),
+    ...(options.passphrase === undefined ? {} : { passphrase: options.passphrase }),
   });
   if (!keyProvider.persistent) {
     return new TypedRatchetVault(new MemoryVaultStore());
@@ -278,28 +287,33 @@ export interface WipeE2eeStateOptions {
   readonly account: VaultAccount;
   readonly vaultPath?: string;
   readonly keyFilePath?: string;
+  readonly passphraseFilePath?: string;
   readonly fileOperations?: VaultFileOperations;
   readonly keyring?: KeyringModuleLike | typeof NO_KEYRING | undefined;
 }
 
 /**
  * Destroys one account's local E2EE state without needing the wrapping key: the vault
- * database, any temp/lock files, the guarded key file if present, the keyring
- * entry (wrapping key + generation anchor), and the guarded-key provider's own torn temp
- * writes beside the key file (audit P2-1: `GuardedFileVaultKeyProvider` commits its key
- * record through a `${path}.{pid}.{uuid}.tmp` sibling, so a wipe that removed only the
- * vault-side temps could still leave wrapping-key material on disk). Idempotent —
- * wiping an absent state is a no-op, and logout/device-revocation flows should call this
- * on every path.
+ * database, any temp/lock files, the guarded key file if present, the passphrase-tier
+ * wrapped-key file if present, the keyring entry (wrapping key + generation anchor), and
+ * both file tiers' own torn temp writes beside their key files (audit P2-1:
+ * `GuardedFileVaultKeyProvider` commits its key record through a
+ * `${path}.{pid}.{uuid}.tmp` sibling, so a wipe that removed only the vault-side temps
+ * could still leave wrapping-key material on disk — the same applies to
+ * `PassphraseVaultKeyProvider`'s wrapped record). Idempotent — wiping an absent state is
+ * a no-op, and logout/device-revocation flows should call this on every path.
  */
 export async function wipeE2eeState(options: WipeE2eeStateOptions): Promise<void> {
   const operations = options.fileOperations ?? defaultVaultFileOperations();
   const vaultPath = options.vaultPath ?? vaultDatabaseFilePath(options.account);
   const keyFilePath = options.keyFilePath ?? vaultKeyFilePath(options.account);
+  const passphraseFilePath = options.passphraseFilePath ?? vaultPassphraseFilePath(options.account);
   await sweepTempSiblings(operations, vaultPath);
   await operations.rm(vaultPath, { force: true });
   await sweepTempSiblings(operations, keyFilePath);
   await operations.rm(keyFilePath, { force: true });
+  await sweepTempSiblings(operations, passphraseFilePath);
+  await operations.rm(passphraseFilePath, { force: true });
   await deleteVaultKeyringEntry(options.account, options.keyring);
 }
 

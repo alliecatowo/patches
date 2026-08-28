@@ -319,7 +319,7 @@ function useKeysetList<T>(
 }
 
 function actorLabel(actor: { handle: string; displayName: string } | null | undefined): string {
-  if (!present(actor)) return 'unknown actor';
+  if (!present(actor)) return 'unknown account';
   const handle = sanitizeForTerminal(actor.handle);
   const displayName = sanitizeForTerminal(actor.displayName);
   return displayName === '' ? `@${handle}` : `${displayName} (@${handle})`;

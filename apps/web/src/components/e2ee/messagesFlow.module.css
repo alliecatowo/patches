@@ -1,6 +1,7 @@
-/* Shared card/button styling for the needs-authority chooser, rotate confirmation, and
- * link-this-device panel (ADR 0037 §1-2). Reuses the same tokens as AuthForm.module.css /
- * ProfileMenu.module.css rather than inventing a new visual language. */
+/* Shared card/button styling across the messages surface: enrollment, needs-authority chooser,
+ * rotate confirmation, link-this-device panel, and the new-conversation picker (ADR 0037 §1-2,
+ * #300). Reuses the same tokens as AuthForm.module.css / ProfileMenu.module.css rather than
+ * inventing a new visual language. */
 
 .card {
   max-width: 420px;
@@ -162,4 +163,90 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* #300: the standing (non-modal) status panels on the Messages list — enrollment prompt,
+ * enrolled/fault notes — use the same card as the modal flows above so the whole surface
+ * reads as one component set instead of two. `.inline` drops the card's own margin since
+ * these render inline in the route rather than centered as a dialog. */
+.inline {
+  margin: 0 0 1rem;
+}
+
+.note {
+  margin: 0 0 1rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.explanation {
+  margin: 0.35rem 0 0.85rem;
+  color: var(--fg-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+/* New-conversation picker (#298): a typeahead over handle/display name, followers/following
+ * shown first when the query is empty. */
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.8rem;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.92rem;
+}
+
+.searchInput:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 0 1rem;
+}
+
+.resultRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+
+.resultRow:hover,
+.resultRow:focus-visible {
+  background: var(--bg-subtle);
+  border-color: var(--border);
+}
+
+.resultRow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.resultHandle {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.resultName {
+  color: var(--fg-muted);
+  font-size: 0.78rem;
 }

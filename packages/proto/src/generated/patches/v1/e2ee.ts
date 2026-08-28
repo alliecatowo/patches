@@ -906,6 +906,14 @@ export interface ListMailboxEnvelopesRequest {
   /** Opaque keyset cursor over `(received_at, id)` ascending. Never an offset (spec §153). */
   cursor: string;
   limit: number;
+  /**
+   * P19-XXX (issue #152): optional server-side filter to one conversation. Unset (empty
+   * string) preserves the prior whole-mailbox behavior. When set, only that conversation's
+   * envelopes are matched *and paged* — the node no longer walks and skips every other
+   * conversation's queued mail on every poll of an open thread, which previously left those
+   * envelopes permanently unacknowledged and re-listed on every 5 s cycle.
+   */
+  conversationId?: string | undefined;
 }
 
 export interface ListMailboxEnvelopesResponse {

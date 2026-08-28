@@ -273,10 +273,15 @@ export function createE2eeTransports(
       );
     },
 
-    async listMailboxPage(cursor: string) {
+    async listMailboxPage(cursor: string, conversationId?: string) {
       const accessToken = await options.accessToken();
       const response = await api.listMailboxEnvelopes(
-        { deviceId: identity.deviceId, cursor, limit: MAILBOX_PAGE_LIMIT },
+        {
+          deviceId: identity.deviceId,
+          cursor,
+          limit: MAILBOX_PAGE_LIMIT,
+          conversationId: conversationId ?? '',
+        },
         accessToken,
       );
       return {

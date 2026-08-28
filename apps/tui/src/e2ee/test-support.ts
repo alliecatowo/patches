@@ -843,8 +843,15 @@ export function fakeMessagingMailboxTransport(options: {
   const { node, deviceId } = options;
   const nowMs = options.nowMs ?? ((): number => Date.now());
   return {
-    listMailboxPage: (cursor) => {
-      const box = fakeMailboxFor(node, deviceId);
+    listMailboxPage: (cursor, conversationId) => {
+      // Mirrors the real node's server-side `conversation_id` filter (issue #152): applied
+      // before paging, not after, so a scoped poll's fake "page" is honestly smaller too.
+      const box =
+        conversationId === undefined
+          ? fakeMailboxFor(node, deviceId)
+          : fakeMailboxFor(node, deviceId).filter(
+              (envelope) => envelope.conversationId === conversationId,
+            );
       const start = cursor === '' ? 0 : Number(cursor);
       const page = box.slice(start, start + 50);
       const next = start + page.length;

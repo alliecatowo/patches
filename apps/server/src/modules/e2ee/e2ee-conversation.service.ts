@@ -404,6 +404,21 @@ export class E2eeConversationService {
       .orderBy('envelope.receivedAt', 'ASC')
       .addOrderBy('envelope.id', 'ASC')
       .take(take + 1);
+    // #152: filter to one conversation server-side so an open thread's 5 s poll stops
+    // walking (and re-fetching, forever) every other conversation's queued mail just to
+    // discard it client-side.
+    // proto3 `optional` scalars can arrive as either `undefined` or `null` depending on the
+    // decoder (`@grpc/proto-loader` vs ts-proto's own type) — check both rather than trusting
+    // the TS type alone.
+    if (
+      request.conversationId !== undefined &&
+      (request.conversationId as string | null) !== null &&
+      request.conversationId.length > 0
+    ) {
+      qb.andWhere('message.conversationId = :conversationId', {
+        conversationId: request.conversationId,
+      });
+    }
     if (cursor !== undefined) {
       qb.andWhere('("envelope"."received_at", "envelope"."id") > (:receivedAt, :id)', {
         receivedAt: cursor.createdAt,

@@ -27,6 +27,7 @@ import {
 import { TextEditor } from '../components/input/TextEditor.js';
 import { FilePicker } from '../components/pickers/FilePicker.js';
 import type { ComposeDraft } from '../compose/draft-store.js';
+import { mentionCandidates } from '../compose/mention-candidates.js';
 import { detectPastedImagePaths } from '../compose/paste-attach.js';
 import { extractMentions } from '../format/rich-text.js';
 import { RichBody } from '../format/rich-text.js';
@@ -73,6 +74,9 @@ function artPreviewModeFor(kind: TerminalMediaRenderer['kind']): ImageRenderMode
 
 export interface ComposeScreenProps {
   api: PatchesApi;
+  /** The signed-in actor's own id (§219) — used to prefix-match the mention popover against
+   * the viewer's own follows before falling back to `SearchActors`. */
+  viewerActorId: string;
   /**
    * `'compose'` (default) creates a new post/reply/quote via `CreatePost`. `'edit'`
    * revises an existing post of the viewer's own via `EditPost` (P12-125) — the caller
@@ -157,6 +161,7 @@ const OVER_LIMIT_ERROR: FriendlyError = {
  */
 export function ComposeScreen({
   api,
+  viewerActorId,
   mode = 'compose',
   postId,
   draft,
@@ -231,9 +236,15 @@ export function ComposeScreen({
   const suggestionSource = useMemo<AutocompleteSource<Suggestion> | null>(() => {
     if (trigger === null) return null;
     if (trigger.kind === 'mention') {
-      return async (query) => {
-        const response = await api.searchActors({ query, cursor: '', limit: 8 });
-        return response.actors.map((actor) => ({
+      return async (query, signal) => {
+        const actors = await mentionCandidates(
+          api,
+          ensureAccessToken,
+          viewerActorId,
+          query,
+          signal,
+        );
+        return actors.map((actor) => ({
           key: actor.id,
           insertValue: actor.handle,
           label:
@@ -251,7 +262,7 @@ export function ComposeScreen({
         label: `#${tag.name}`,
       }));
     };
-  }, [api, trigger]);
+  }, [api, trigger, ensureAccessToken, viewerActorId]);
 
   function acceptSuggestion(item: Suggestion): void {
     if (trigger === null) return;

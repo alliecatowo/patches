@@ -53,7 +53,7 @@ export function SafetyNumberScreen({
     session.actor?.id === undefined
       ? {
           status: 'error',
-          error: { title: 'No actor ID on session.', hint: '', retryable: false, code: 0 },
+          error: { title: 'No account on this session.', hint: '', retryable: false, code: 0 },
         }
       : { status: 'loading' },
   );

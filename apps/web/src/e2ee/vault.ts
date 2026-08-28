@@ -807,6 +807,76 @@ export async function savePeerIdentityPin(
   await vault.putOpaqueRecord(PEER_PIN_RECORD_KEY, encodePeerPins(pins));
 }
 
+// ---------------------------------------------------------------------------
+// Safety-number verification state (issue #168): session-independent, per-peer "I
+// compared this number out-of-band" mark. Session-scoped in the TUI (`v` in
+// `SafetyNumberScreen`); the vault gives the web client somewhere durable to keep it
+// across reloads instead, since a browser tab has no equivalent of a running process's
+// in-memory session. Stores a boolean only — never the number itself, which is always
+// recomputed from verified chain material (never trusted from storage).
+// ---------------------------------------------------------------------------
+
+const SAFETY_NUMBER_RECORD_VERSION = 1;
+
+/** The reserved vault record key safety-number verification marks are stored under. */
+export const SAFETY_NUMBER_RECORD_KEY = '\0patches-e2ee-safety-number-verified';
+
+/** The slice of the vault this store needs — same shape as `PeerPinVaultAccess`. */
+export interface SafetyNumberVaultAccess {
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
+}
+
+function encodeVerifiedActorIds(actorIds: ReadonlySet<string>): Uint8Array {
+  const writer = new ByteWriter().u8(SAFETY_NUMBER_RECORD_VERSION).u32(actorIds.size);
+  for (const actorId of actorIds) writer.string(actorId);
+  return writer.finish();
+}
+
+function decodeVerifiedActorIds(bytes: Uint8Array): Set<string> {
+  const reader = new ByteReader(bytes);
+  if (reader.u8() !== SAFETY_NUMBER_RECORD_VERSION) {
+    throw new VaultCorruptionError();
+  }
+  const count = reader.u32();
+  const actorIds = new Set<string>();
+  for (let index = 0; index < count; index += 1) actorIds.add(reader.string());
+  reader.end();
+  return actorIds;
+}
+
+async function loadVerifiedActorIds(vault: SafetyNumberVaultAccess): Promise<Set<string>> {
+  const bytes = await vault.getOpaqueRecord(SAFETY_NUMBER_RECORD_KEY);
+  if (bytes === undefined) return new Set();
+  try {
+    return decodeVerifiedActorIds(bytes);
+  } catch {
+    // A corrupted mark set must never be silently read back as "nothing verified" or
+    // "everything verified" — either would misstate what the user actually confirmed.
+    throw new VaultCorruptionError();
+  }
+}
+
+/** True only if this peer's safety number was previously marked verified. */
+export async function isSafetyNumberVerified(
+  vault: SafetyNumberVaultAccess,
+  actorId: string,
+): Promise<boolean> {
+  return (await loadVerifiedActorIds(vault)).has(actorId);
+}
+
+/** Marks (or unmarks) a peer's safety number as compared out-of-band. */
+export async function setSafetyNumberVerified(
+  vault: SafetyNumberVaultAccess,
+  actorId: string,
+  verified: boolean,
+): Promise<void> {
+  const actorIds = await loadVerifiedActorIds(vault);
+  if (verified) actorIds.add(actorId);
+  else actorIds.delete(actorId);
+  await vault.putOpaqueRecord(SAFETY_NUMBER_RECORD_KEY, encodeVerifiedActorIds(actorIds));
+}
+
 export async function createRatchetSessionVault(
   options: CreateWebVaultOptions,
 ): Promise<RatchetSessionVault> {

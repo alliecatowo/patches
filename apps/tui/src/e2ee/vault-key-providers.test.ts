@@ -6,6 +6,7 @@ import {
   GuardedFileVaultKeyProvider,
   KeyringVaultKeyProvider,
   NO_KEYRING,
+  PassphraseVaultKeyProvider,
   VAULT_KEYRING_SERVICE,
   createVaultKeyProvider,
   vaultAccountKey,
@@ -157,6 +158,144 @@ describe('GuardedFileVaultKeyProvider', () => {
   });
 });
 
+describe('PassphraseVaultKeyProvider', () => {
+  const keyPath = '/cfg/patches/e2ee/keys/test.pkey';
+
+  function make(overrides: { allowInsecure?: boolean; passphrase?: string } = {}) {
+    const fs = new MemoryVaultFs();
+    const warnings: string[] = [];
+    const passphrase = overrides.passphrase ?? 'correct horse battery staple';
+    const provider = new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: overrides.allowInsecure ?? true,
+      getPassphrase: () => Promise.resolve(passphrase),
+      path: keyPath,
+      fileOperations: fs,
+      warn: (message) => warnings.push(message),
+    });
+    return { provider, fs, warnings };
+  }
+
+  it('refuses to construct without explicit opt-in', () => {
+    expect(() => make({ allowInsecure: false })).toThrow(/allow-insecure-credential-file/);
+  });
+
+  it('warns that the tier is weaker than a keyring and never mentions plaintext key storage', () => {
+    const { warnings } = make();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('passphrase');
+  });
+
+  it('round-trips the key and generation across instances given the same passphrase', async () => {
+    const { provider, fs } = make();
+    const first = await provider.loadOrCreate();
+    await provider.advanceGeneration(3);
+    const second = await new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('correct horse battery staple'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    }).loadOrCreate();
+    expect(second.wrappingKey).toEqual(first.wrappingKey);
+    expect(second.generation).toBe(3);
+  });
+
+  it('never writes the raw wrapping key or the passphrase to disk in the clear', async () => {
+    const { provider, fs } = make({ passphrase: 'a very secret passphrase indeed' });
+    const { wrappingKey } = await provider.loadOrCreate();
+    const raw = fs.files.get(keyPath);
+    expect(raw).toBeDefined();
+    const text = new TextDecoder().decode(raw ?? new Uint8Array());
+    expect(text).not.toContain('a very secret passphrase indeed');
+    expect(text).not.toContain(Buffer.from(wrappingKey).toString('base64'));
+    const parsed = JSON.parse(text) as { salt: string; nonce: string; wrapped: string };
+    expect(parsed.salt).toBeTruthy();
+    expect(parsed.nonce).toBeTruthy();
+    expect(parsed.wrapped).toBeTruthy();
+  });
+
+  it('fails closed on the wrong passphrase rather than regenerating a key', async () => {
+    const { fs } = make({ passphrase: 'the real passphrase' });
+    const provider = new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('the real passphrase'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    });
+    await provider.loadOrCreate();
+
+    const wrongProvider = new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('a wrong guess'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    });
+    await expect(wrongProvider.loadOrCreate()).rejects.toBeInstanceOf(VaultCorruptionError);
+  });
+
+  it('changePassphrase re-wraps the same key under a new passphrase without touching it', async () => {
+    const { provider, fs } = make({ passphrase: 'old passphrase' });
+    const original = await provider.loadOrCreate();
+    await provider.changePassphrase('new passphrase');
+
+    const reopened = await new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('new passphrase'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    }).loadOrCreate();
+    expect(reopened.wrappingKey).toEqual(original.wrappingKey);
+    expect(reopened.generation).toBe(original.generation);
+
+    const staleAttempt = new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('old passphrase'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    });
+    await expect(staleAttempt.loadOrCreate()).rejects.toBeInstanceOf(VaultCorruptionError);
+  });
+
+  it('changePassphrase requires a previously loaded key', async () => {
+    const { provider } = make();
+    await expect(provider.changePassphrase('anything')).rejects.toThrow(
+      /requires an already-loaded vault key/,
+    );
+  });
+
+  it('sweeps temps on delete so no wrapped key record is left behind', async () => {
+    const { provider, fs } = make();
+    await provider.loadOrCreate();
+    fs.files.set(`${keyPath}.99.abc.tmp`, new TextEncoder().encode('leftover'));
+    await provider.delete();
+    expect([...fs.files.keys()]).toEqual([]);
+  });
+
+  it('fails closed on a malformed key file', async () => {
+    const { fs } = make();
+    fs.files.set(keyPath, new TextEncoder().encode('{oops'));
+    const provider = new PassphraseVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecure: true,
+      getPassphrase: () => Promise.resolve('anything'),
+      path: keyPath,
+      fileOperations: fs,
+      warn: () => undefined,
+    });
+    await expect(provider.loadOrCreate()).rejects.toBeInstanceOf(VaultCorruptionError);
+  });
+});
+
 describe('EphemeralVaultKeyProvider', () => {
   it('is non-persistent and mints a fresh key per process instance', async () => {
     const a = new EphemeralVaultKeyProvider();
@@ -189,6 +328,19 @@ describe('createVaultKeyProvider', () => {
       warn: () => undefined,
     });
     expect(provider).toBeInstanceOf(GuardedFileVaultKeyProvider);
+  });
+
+  it('prefers the passphrase tier over the guarded file when both are opted into', async () => {
+    const fs = new MemoryVaultFs();
+    const provider = await createVaultKeyProvider({
+      account: TEST_ACCOUNT,
+      allowInsecureFile: true,
+      keyring: NO_KEYRING,
+      fileOperations: fs,
+      warn: () => undefined,
+      passphrase: { getPassphrase: () => Promise.resolve('a passphrase'), path: '/cfg/p.pkey' },
+    });
+    expect(provider).toBeInstanceOf(PassphraseVaultKeyProvider);
   });
 
   it('defaults to the ephemeral provider with a warning when nothing secure exists', async () => {

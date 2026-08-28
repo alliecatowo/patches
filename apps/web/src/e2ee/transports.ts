@@ -263,11 +263,12 @@ export function createWebE2eeTransports(
       });
     },
 
-    async listMailboxPage(cursor: string) {
+    async listMailboxPage(cursor: string, conversationId?: string) {
       const response = await api.e2ee.listMailboxEnvelopes({
         deviceId: identity.deviceId,
         cursor,
         limit: MAILBOX_PAGE_LIMIT,
+        conversationId: conversationId ?? '',
       });
       return {
         envelopes: response.envelopes,

@@ -12,7 +12,7 @@ import { rotateMessagingRoot, DeviceLinkError } from '../../e2ee/device-link.js'
 import { NEEDS_AUTHORITY_COPY } from '../../e2ee/enrollment.js';
 import type { EnrollmentTransport } from '../../e2ee/enrollment.js';
 import type { RatchetSessionVault } from '../../e2ee/vault.js';
-import styles from './deviceLink.module.css';
+import styles from './messagesFlow.module.css';
 import { LinkThisDevicePanel } from './LinkThisDevicePanel.js';
 
 export type NeedsAuthorityResolution = 'enrolled' | 'cancelled';

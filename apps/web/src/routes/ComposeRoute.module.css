@@ -91,6 +91,10 @@
   color: var(--fg);
 }
 
+.textareaWrap {
+  position: relative;
+}
+
 .textarea {
   width: 100%;
   min-height: 160px;

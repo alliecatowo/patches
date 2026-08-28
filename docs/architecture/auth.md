@@ -438,14 +438,14 @@ credential is lost.
 Every credential type × client × operation, audited against the actual client code (not just
 the RPC surface):
 
-| Type             | Web: list / add / revoke                                                                                                           | TUI: list / add / revoke                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `PASSWORD`       | yes / no add UI (no `AddCredential(PASSWORD)` form) / yes                                                                          | yes / no add UI / yes (`AccountsScreen`, matches by credential id since a password credential has no `identifier`) |
-| `SSH_PUBLIC_KEY` | yes / N/A — a browser has no local SSH agent to prove possession with / yes                                                        | yes / yes (`BeginSshEnrollment` possession proof, agent + `~/.ssh/*.pub` discovery) / yes                          |
-| `PASSKEY`        | yes / yes (`BeginPasskeyRegistration`/`CompletePasskeyRegistration`, `CredentialsRoute`) / yes                                     | N/A — no browser relying party on a terminal, and none is planned (ADR 0011, ADR 0022)                             |
-| `RECOVERY_CODE`  | yes / yes (`GenerateRecoveryCodes`, shown once) / self-consuming, never a manual revoke                                            | yes / yes (`patches recovery-codes` CLI) / self-consuming                                                          |
-| `GITHUB`         | yes / yes — `CredentialsRoute`'s "Link another account" section reuses `GitHubLoginButton` in `mode="link"` (P15-007) / yes        | yes / no linking flow yet (`AccountsScreen`'s add flow only discovers SSH keys) / yes (`AccountsScreen`, P15-007)  |
-| `OIDC`           | yes / yes — same section, `OidcLoginButton` in `mode="link"`, one per `GetAuthPolicyResponse.oidc_providers` entry (P15-007) / yes | yes / no linking flow yet / yes (P15-007)                                                                          |
+| Type             | Web: list / add / revoke                                                                                                           | TUI: list / add / revoke                                                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSWORD`       | yes / no add UI (no `AddCredential(PASSWORD)` form) / yes                                                                          | yes / no add UI / yes (`AccountsScreen`, matches by credential id since a password credential has no `identifier`)                                                                                                                     |
+| `SSH_PUBLIC_KEY` | yes / N/A — a browser has no local SSH agent to prove possession with / yes                                                        | yes / yes (`BeginSshEnrollment` possession proof, agent + `~/.ssh/*.pub` discovery) / yes                                                                                                                                              |
+| `PASSKEY`        | yes / yes (`BeginPasskeyRegistration`/`CompletePasskeyRegistration`, `CredentialsRoute`) / yes                                     | N/A — no browser relying party on a terminal, and none is planned (ADR 0011, ADR 0022)                                                                                                                                                 |
+| `RECOVERY_CODE`  | yes / yes (`GenerateRecoveryCodes`, shown once) / self-consuming, never a manual revoke                                            | yes / yes (`patches recovery-codes` CLI) / self-consuming                                                                                                                                                                              |
+| `GITHUB`         | yes / yes — `CredentialsRoute`'s "Link another account" section reuses `GitHubLoginButton` in `mode="link"` (P15-007) / yes        | yes / yes — `AccountsScreen`'s `a` add flow offers `g` GitHub alongside SSH when `GetAuthPolicyResponse.github_auth` is set, driving the same `BeginGitHubLogin`/`PollGitHubLogin` device flow (#57) / yes (`AccountsScreen`, P15-007) |
+| `OIDC`           | yes / yes — same section, `OidcLoginButton` in `mode="link"`, one per `GetAuthPolicyResponse.oidc_providers` entry (P15-007) / yes | yes / yes — same add flow's `o` option, one entry per `oidc_providers` (a picker when there's more than one), driving `BeginOidcLogin`/`PollOidcLogin` (#57) / yes (P15-007)                                                           |
 
 Where a cell is N/A, the reason is architectural, not a gap: SSH-key adding on the web has no
 browser API that reaches a local SSH agent, and passkeys need a WebAuthn relying party a
@@ -483,9 +483,13 @@ unit test against a mocked transport (`apps/web/src/api/client.test.ts`) asserti
 token is attached to `BeginGitHubLogin`/`ListCredentials` when signed in and withheld from
 `Login`, but has not been exercised end-to-end against a live node.
 
-**TUI GitHub/OIDC linking remains unbuilt** (`AccountsScreen`'s add flow only discovers local
-SSH keys) — filed as its own follow-up rather than folded into this table's "done" column; see
-`tasks.md`.
+**TUI GitHub/OIDC linking (issue #182).** This section previously said TUI linking was unbuilt;
+that was stale documentation, not the actual gap — `AccountsScreen`'s `a` add flow has offered
+`s` SSH / `g` GitHub / `o` OIDC (skipping straight to SSH discovery when the node offers neither)
+since #57, including the OIDC provider picker and both device-flow pollers. The credential-
+manager parity table above is corrected accordingly. The remaining, deliberately-N/A cells
+(SSH-key add on web, passkey add on the TUI) are architectural, not gaps — see the paragraph
+above the table.
 
 ## 13. Security checklist for Phase 1 review
 

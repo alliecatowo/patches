@@ -248,21 +248,24 @@ to browse followers and following.
 
 ### Direct messages
 
-DMs are terminal-client-only in v0 — web and mobile have no crypto runtime, so they cannot
-start or read a conversation (the web profile's "Message" button explains this rather than
-pretending to work). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
-server-readable mode this client used to support is retired and can no longer exist. `Ctrl+D`
-toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
-full-screen `g d` isn't wired into the shell yet). The first line is always the same
+Both the terminal client and the web client hold a crypto runtime and can start, read, and send
+into a conversation (ADR 0033 unified the identity transcripts and ADR 0035 made conversation
+creation a reserve). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
+server-readable mode this client used to support is retired and can no longer exist. In the
+terminal, `Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the
+dedicated full-screen `g d` isn't wired into the shell yet); on the web, `/messages` and
+`/messages/:id` are the list and thread routes. Starting a new conversation is a handle/display-name
+search — never a raw id — that surfaces the people you already follow first when the query is
+empty and falls back to node-wide search once you type; a conversation still requires a mutual
+follow, so there is no message-request flow to fall back on. The first line is always the same
 disclosure — **"End-to-end encrypted. This node cannot read these messages, but it can see
 who you message and when."** — because that's true of every conversation; the second clause
 is the honest part of the claim and is never dropped. Nothing in this client ever calls a DM
-"encrypted," "secure," or "private" outside that fixed sentence. Starting a new conversation
-requires a mutual follow — there is no message-request flow to fall back on. Sending is
-optimistic: your message appears immediately, marked as sending; if it fails to actually send,
-the draft comes back into the compose field instead of silently vanishing, so you can just try
-again. Node policy honestly reports `0` (indefinite retention, B-061); any future automatic
-message deletion will be displayed on this screen when configured.
+"encrypted," "secure," or "private" outside that fixed sentence. Sending is optimistic: your
+message appears immediately, marked as sending; if it fails to actually send, the draft comes
+back into the compose field instead of silently vanishing, so you can just try again. Node
+policy honestly reports `0` (indefinite retention, B-061); any future automatic message
+deletion will be displayed on this screen when configured.
 
 Production E2EE is not yet a reviewed capability (independent review pending, ADR 0020 §12,
 P13-014) — the default node keeps DMs switched off entirely (there is no plaintext fallback to

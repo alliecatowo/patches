@@ -17,12 +17,21 @@ const mockUploadMedia =
       options?: { signal?: AbortSignal },
     ) => Promise<string>
   >();
+const mockSearchActors = vi.fn().mockResolvedValue({ actors: [], page: undefined });
+const mockListFollowing = vi.fn().mockResolvedValue({ actors: [], page: undefined });
+const mockGetRelationship = vi.fn().mockResolvedValue({ relationship: undefined });
 
 vi.mock('../api/client.js', () => ({
   api: {
     posts: { createPost: mockCreatePost },
     node: { getNodeInfo: mockGetNodeInfo },
+    actors: { searchActors: mockSearchActors, listFollowing: mockListFollowing },
+    socialGraph: { getRelationship: mockGetRelationship },
   } as unknown as PatchesApi,
+}));
+
+vi.mock('../hooks/useSession.js', () => ({
+  useSession: () => ({ actor: { id: 'viewer-1', handle: 'viewer' } }),
 }));
 
 vi.mock('../lib/mediaUpload.js', () => ({
@@ -62,6 +71,9 @@ describe('ComposeRoute', () => {
     window.localStorage.clear();
     mockCreatePost.mockReset();
     mockUploadMedia.mockReset();
+    mockSearchActors.mockReset().mockResolvedValue({ actors: [], page: undefined });
+    mockListFollowing.mockReset().mockResolvedValue({ actors: [], page: undefined });
+    mockGetRelationship.mockReset().mockResolvedValue({ relationship: undefined });
   });
 
   it('restores draft text from localStorage on mount', () => {
@@ -100,6 +112,57 @@ describe('ComposeRoute', () => {
 
     fireEvent.click(cwBtn);
     expect(screen.getByPlaceholderText('Content warning description…')).toBeInTheDocument();
+  });
+
+  it('shows @-mention suggestions only after an explicit @ prefix and inserts the handle on select (§219)', async () => {
+    mockListFollowing.mockResolvedValue({
+      actors: [{ id: 'a1', handle: 'alice', displayName: 'Alice', avatar: undefined }],
+      page: undefined,
+    });
+    renderCompose();
+    const textarea = screen.getByPlaceholderText("What's on your mind?");
+
+    // A bare word never triggers the dropdown.
+    fireEvent.change(textarea, { target: { value: 'hello al' } });
+    fireEvent.click(textarea);
+    expect(screen.queryByRole('listbox', { name: 'Mention suggestions' })).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: 'hello @al', selectionStart: 9 } });
+    (textarea as HTMLTextAreaElement).setSelectionRange(9, 9);
+    fireEvent.click(textarea);
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox', { name: 'Mention suggestions' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('@alice')).toBeInTheDocument();
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea).toHaveValue('hello @alice ');
+  });
+
+  it('drops a blocked/muted actor from mention suggestions (§219)', async () => {
+    mockListFollowing.mockResolvedValue({
+      actors: [{ id: 'a1', handle: 'alice', displayName: 'Alice', avatar: undefined }],
+      page: undefined,
+    });
+    mockGetRelationship.mockResolvedValue({
+      relationship: { state: 0, followedBy: false, blocking: true, muting: false },
+    });
+    renderCompose();
+    const textarea = screen.getByPlaceholderText("What's on your mind?");
+
+    fireEvent.change(textarea, { target: { value: '@al' } });
+    (textarea as HTMLTextAreaElement).setSelectionRange(3, 3);
+    fireEvent.click(textarea);
+
+    await waitFor(() => {
+      expect(mockGetRelationship).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('listbox', { name: 'Mention suggestions' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('resets the file input after picking so the same file can be re-picked', async () => {
