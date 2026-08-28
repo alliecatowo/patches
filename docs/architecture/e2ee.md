@@ -364,8 +364,35 @@ The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol compositi
 - **History transfer** is parsed and rendered as labelled re-delivered provenance and never re-enters
   any session state.
 - **Vault lifecycle.** Wipe routes through the live store, drops the cached instance, unbinds the
-  enrolled identity, and clears the sticky fault; both the vault file and the guarded key file sweep
-  their own crash-orphaned temporaries on open.
+  enrolled identity, and clears the sticky fault; the vault file and both persistent key-provider
+  tiers below sweep their own crash-orphaned temporaries on open.
+- **Vault wrapping-key tiers (`apps/tui/src/e2ee/vault-key-providers.ts`, `createVaultKeyProvider`,
+  spec §37, issue #212).** Three tiers, most to least preferred, none silently weaker than the last:
+  1. **OS keyring** (`KeyringVaultKeyProvider`, via `@napi-rs/keyring`) — the default whenever a
+     keyring is reachable.
+  2. **Passphrase-KDF** (`PassphraseVaultKeyProvider`, explicit opt-in) — when no keyring exists,
+     derives a key-encryption-key from a user-supplied passphrase with Argon2id
+     (`m=19456 KiB, t=2, p=1`, matching the OWASP baseline `apps/server`'s password hasher already
+     uses — `docs/research/infra-and-security-libs.md` §5) and uses it to AEAD-wrap
+     (XChaCha20-Poly1305) a randomly generated wrapping key. Only the wrapped record and a random
+     salt/nonce are ever written to disk; the passphrase and the raw wrapping key are not. Changing
+     the passphrase (`changePassphrase`) re-wraps the same key under a new salt/KEK without
+     touching the vault it protects. A wrong passphrase fails AEAD verification and is treated
+     identically to a corrupted record — `VaultCorruptionError`, never a silent fresh key.
+  3. **Guarded plaintext file** (`GuardedFileVaultKeyProvider`, explicit opt-in via
+     `--allow-insecure-credential-file` / `PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1`) — the raw
+     wrapping key in a 0600 file beside the vault, weaker than either tier above and says so on
+     every construction.
+
+  If neither fallback is opted into, `createVaultKeyProvider` falls through to
+  `EphemeralVaultKeyProvider`: a key persists only for that process's lifetime, so a keyring-less
+  box never silently stores secrets it wasn't told to. `createVaultKeyProvider` selects the
+  passphrase tier over the guarded file when both are supplied — it is the strictly stronger of the
+  two persistent fallbacks. **Follow-up:** the interactive prompt that supplies
+  `PassphraseVaultKeyProvider`'s `getPassphrase` callback at vault open/create is not yet wired into
+  the running app's boot flow (`apps/tui/src/app/App.tsx`) — Ink owns raw-mode stdin there, and a
+  second stdin consumer needs its own design pass rather than a rushed addition. The provider and
+  factory option are complete and tested; only that call site remains.
 
 **The one open blocker is session bootstrap against a peer.** Identity material exists in two
 transcript families that sign the same facts under different encodings: the _crypto-native_ family

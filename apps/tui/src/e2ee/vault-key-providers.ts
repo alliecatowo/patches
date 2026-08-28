@@ -1,4 +1,11 @@
-import { randomBytes } from '@patches/crypto';
+import {
+  aeadDecrypt,
+  aeadEncrypt,
+  HEADER_NONCE_BYTES,
+  KEY_BYTES,
+  randomBytes,
+} from '@patches/crypto';
+import { hashRaw, type Algorithm } from '@node-rs/argon2';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -227,6 +234,58 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 }
 
 /**
+ * Removes orphaned `${path}.{pid}.{uuid}.tmp` temporaries left by a process that died
+ * between `openWriteExclusive` and `rename` — shared by every tier that commits a key
+ * record through the same durable-write pattern. Each temporary may hold key material
+ * (plaintext for the guarded tier, an AEAD-wrapped record for the passphrase tier), so
+ * an interrupted rotation must not leave copies lying around indefinitely. Best-effort:
+ * a key that cannot be swept must still not block opening the vault.
+ */
+async function sweepKeyTemporaries(operations: VaultFileOperations, path: string): Promise<void> {
+  const directory = dirname(path);
+  let names: string[];
+  try {
+    names = await operations.readdir(directory);
+  } catch {
+    return;
+  }
+  const prefix = `${basename(path)}.`;
+  for (const name of names) {
+    if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+    try {
+      await operations.rm(join(directory, name), { force: true });
+    } catch {
+      // Swept on the next open instead of failing an otherwise healthy vault.
+    }
+  }
+}
+
+/** Atomically (write-temp, fsync, rename, fsync-directory) commits `bytes` to `path`,
+ * sweeping crash-orphaned temporaries first — shared by every key-record tier. */
+async function writeKeyRecordFile(
+  operations: VaultFileOperations,
+  path: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const directory = dirname(path);
+  await operations.mkdir(directory, { recursive: true, mode: 0o700 });
+  await sweepKeyTemporaries(operations, path);
+  const temporary = `${path}.${String(process.pid)}.${globalThis.crypto.randomUUID()}.tmp`;
+  try {
+    const handle = await operations.openWriteExclusive(temporary, 0o600);
+    await handle.writeFile(bytes);
+    await handle.sync();
+    await handle.close();
+    await operations.chmod(temporary, 0o600);
+    await operations.rename(temporary, path);
+    await operations.syncDirectory(directory);
+  } catch (error) {
+    await operations.rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+/**
  * The fallback when no OS keyring exists: the wrapping key in a 0600 file behind the
  * same explicit opt-in as `FileCredentialStore`. Weaker than the keyring (the key sits
  * next to the vault it encrypts) and says so loudly on construction.
@@ -253,55 +312,12 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
     );
   }
 
-  /**
-   * Removes orphaned temporaries left in the key directory by a process that died
-   * between `openWriteExclusive` and `rename`. Each one holds a *plaintext wrapping
-   * key*, so an interrupted rotation must not leave copies of it lying around
-   * indefinitely — the in-process `catch` below only covers crashes this process
-   * survives. Called on every read and write path; failures are non-fatal because a
-   * key that cannot be swept must still not block opening the vault.
-   */
-  private async sweepTemporaries(): Promise<void> {
-    const directory = dirname(this.path);
-    let names: string[];
-    try {
-      names = await this.operations.readdir(directory);
-    } catch {
-      // Directory missing or unreadable: nothing to sweep, and the caller's own
-      // mkdir/read handles the real error.
-      return;
-    }
-    const prefix = `${basename(this.path)}.`;
-    for (const name of names) {
-      if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
-      try {
-        await this.operations.rm(join(directory, name), { force: true });
-      } catch {
-        // Best effort: a stubborn temp is swept on the next open rather than
-        // failing an otherwise healthy vault.
-      }
-    }
-  }
-
   private async writeRecord(state: VaultKeyState): Promise<void> {
-    const directory = dirname(this.path);
-    await this.operations.mkdir(directory, { recursive: true, mode: 0o700 });
-    await this.sweepTemporaries();
-    const temporary = `${this.path}.${String(process.pid)}.${globalThis.crypto.randomUUID()}.tmp`;
-    try {
-      const handle = await this.operations.openWriteExclusive(temporary, 0o600);
-      await handle.writeFile(
-        new TextEncoder().encode(`${encodeKeyRecord(state.wrappingKey, state.generation)}\n`),
-      );
-      await handle.sync();
-      await handle.close();
-      await this.operations.chmod(temporary, 0o600);
-      await this.operations.rename(temporary, this.path);
-      await this.operations.syncDirectory(directory);
-    } catch (error) {
-      await this.operations.rm(temporary, { force: true });
-      throw error;
-    }
+    await writeKeyRecordFile(
+      this.operations,
+      this.path,
+      new TextEncoder().encode(`${encodeKeyRecord(state.wrappingKey, state.generation)}\n`),
+    );
   }
 
   private async readRecord(): Promise<VaultKeyState | undefined> {
@@ -320,7 +336,7 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
     if (existing !== undefined) {
       // The common path never writes, so this is the only place an orphan from a
       // previously crashed rotation gets cleaned up.
-      await this.sweepTemporaries();
+      await sweepKeyTemporaries(this.operations, this.path);
       return existing;
     }
     const state = { wrappingKey: randomBytes(32), generation: 0 };
@@ -342,7 +358,240 @@ export class GuardedFileVaultKeyProvider implements VaultKeyProvider {
   async delete(): Promise<void> {
     await this.operations.rm(this.path, { force: true });
     // A wipe that left a temp behind would leave the wrapping key recoverable.
-    await this.sweepTemporaries();
+    await sweepKeyTemporaries(this.operations, this.path);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Passphrase-KDF provider (explicit opt-in fallback, issue #212)
+// ---------------------------------------------------------------------------
+
+/** The passphrase tier's wrapped-key file. Same directory as the guarded file tier's
+ * key file, different extension — the two tiers never collide on one account. */
+export function vaultPassphraseFilePath(account: VaultAccount): string {
+  return join(e2eeConfigDir(), 'keys', `${vaultAccountKey(account)}.pkey`);
+}
+
+const PASSPHRASE_RECORD_VERSION = 1;
+const PASSPHRASE_SALT_BYTES = 16;
+// OWASP Password Storage Cheat Sheet baseline for Argon2id (m=19456 KiB, t=2, p=1),
+// matching apps/server's password hasher — docs/research/infra-and-security-libs.md §5.
+const ARGON2ID = 2 as Algorithm; // Algorithm.Argon2id's value; const enum can't be read under isolatedModules
+const PASSPHRASE_ARGON2_MEMORY_COST = 19_456;
+const PASSPHRASE_ARGON2_TIME_COST = 2;
+const PASSPHRASE_ARGON2_PARALLELISM = 1;
+
+interface StoredPassphraseRecord {
+  readonly v: 1;
+  /** base64, `PASSPHRASE_SALT_BYTES` — Argon2id salt. Not secret; only needs to be unique. */
+  readonly salt: string;
+  /** base64, `HEADER_NONCE_BYTES` — XChaCha20-Poly1305 nonce for the wrapped record. */
+  readonly nonce: string;
+  /** base64 AEAD ciphertext of `encodeKeyRecord(wrappingKey, generation)`. The wrapping
+   * key never appears in this file except behind this seal. */
+  readonly wrapped: string;
+}
+
+async function derivePassphraseKek(passphrase: string, salt: Uint8Array): Promise<Uint8Array> {
+  const raw = await hashRaw(passphrase, {
+    algorithm: ARGON2ID,
+    memoryCost: PASSPHRASE_ARGON2_MEMORY_COST,
+    timeCost: PASSPHRASE_ARGON2_TIME_COST,
+    parallelism: PASSPHRASE_ARGON2_PARALLELISM,
+    outputLen: KEY_BYTES,
+    salt,
+  });
+  return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+}
+
+function encodeStoredPassphraseRecord(record: StoredPassphraseRecord): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify(record)}\n`);
+}
+
+function decodeStoredPassphraseRecord(raw: string): StoredPassphraseRecord {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new VaultCorruptionError();
+  }
+  const record = parsed as Partial<StoredPassphraseRecord> | null;
+  if (
+    record === null ||
+    typeof record !== 'object' ||
+    record.v !== PASSPHRASE_RECORD_VERSION ||
+    typeof record.salt !== 'string' ||
+    typeof record.nonce !== 'string' ||
+    typeof record.wrapped !== 'string'
+  ) {
+    throw new VaultCorruptionError();
+  }
+  return { v: 1, salt: record.salt, nonce: record.nonce, wrapped: record.wrapped };
+}
+
+export interface PassphraseVaultKeyProviderOptions {
+  readonly account: VaultAccount;
+  /** Must be true — gated the same explicit way as `GuardedFileVaultKeyProvider`. */
+  readonly allowInsecure: boolean;
+  /**
+   * Obtains the passphrase from the user — the UI seam a real prompt (terminal or Ink)
+   * binds to. Called on every `loadOrCreate()`; this provider never retains the
+   * passphrase itself beyond the synchronous derivation call, and never writes it or
+   * the derived key to disk in the clear (only an AEAD-wrapped key record is stored).
+   */
+  readonly getPassphrase: () => Promise<string>;
+  readonly path?: string;
+  readonly fileOperations?: VaultFileOperations;
+  readonly warn?: (message: string) => void;
+}
+
+/**
+ * The passphrase-KDF fallback tier (issue #212): when no OS keyring exists, this
+ * derives an Argon2id key-encryption-key (KEK) from a user-supplied passphrase and uses
+ * it to AEAD-wrap a randomly generated wrapping key, storing only the wrapped record —
+ * never the passphrase, never the raw key. Changing the passphrase
+ * (`changePassphrase`) re-wraps the same wrapping key under a new KEK/salt; it never
+ * needs to touch the vault contents the wrapping key protects.
+ *
+ * Weaker than the OS keyring (an attacker with filesystem access and the passphrase can
+ * recover the key; a weak passphrase is brute-forceable despite Argon2id), but stronger
+ * than `GuardedFileVaultKeyProvider`: the file on disk alone is useless without the
+ * passphrase, which this provider never persists anywhere.
+ */
+export class PassphraseVaultKeyProvider implements VaultKeyProvider {
+  readonly persistent = true;
+  private readonly path: string;
+  private readonly operations: VaultFileOperations;
+  private readonly getPassphrase: () => Promise<string>;
+  private readonly warn: (message: string) => void;
+  /** Cached from the last successful `loadOrCreate`/`advanceGeneration`, so
+   * `changePassphrase` can re-wrap without re-deriving from the old passphrase. */
+  private cached: VaultKeyState | undefined;
+
+  constructor(options: PassphraseVaultKeyProviderOptions) {
+    if (!options.allowInsecure) {
+      throw new Error(
+        'Deriving the E2EE vault key from a passphrase requires --allow-insecure-credential-file ' +
+          'or PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1.',
+      );
+    }
+    this.path = options.path ?? vaultPassphraseFilePath(options.account);
+    this.operations = options.fileOperations ?? defaultVaultFileOperations();
+    this.getPassphrase = options.getPassphrase;
+    this.warn = options.warn ?? ((message) => process.stderr.write(`${message}\n`));
+    this.warn(
+      `patches: no OS keyring is available — deriving the E2EE vault key from a passphrase, ` +
+        `wrapped record stored at ${this.path}. Losing the passphrase loses this device's ` +
+        'encrypted history; it is never recoverable from the file alone.',
+    );
+  }
+
+  private async readRecord(): Promise<StoredPassphraseRecord | undefined> {
+    let raw: Uint8Array;
+    try {
+      raw = await this.operations.readFile(this.path);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
+      throw error;
+    }
+    return decodeStoredPassphraseRecord(new TextDecoder().decode(raw).trim());
+  }
+
+  private async writeState(state: VaultKeyState, passphrase: string): Promise<void> {
+    const salt = randomBytes(PASSPHRASE_SALT_BYTES);
+    const nonce = randomBytes(HEADER_NONCE_BYTES);
+    const kek = await derivePassphraseKek(passphrase, salt);
+    try {
+      const wrapped = aeadEncrypt(
+        kek,
+        nonce,
+        new TextEncoder().encode(encodeKeyRecord(state.wrappingKey, state.generation)),
+        new TextEncoder().encode(this.path),
+      );
+      await writeKeyRecordFile(
+        this.operations,
+        this.path,
+        encodeStoredPassphraseRecord({
+          v: PASSPHRASE_RECORD_VERSION,
+          salt: Buffer.from(salt).toString('base64'),
+          nonce: Buffer.from(nonce).toString('base64'),
+          wrapped: Buffer.from(wrapped).toString('base64'),
+        }),
+      );
+    } finally {
+      zeroizeKey(kek);
+    }
+  }
+
+  private async unwrap(record: StoredPassphraseRecord, passphrase: string): Promise<VaultKeyState> {
+    const salt = new Uint8Array(Buffer.from(record.salt, 'base64'));
+    const nonce = new Uint8Array(Buffer.from(record.nonce, 'base64'));
+    const wrapped = new Uint8Array(Buffer.from(record.wrapped, 'base64'));
+    const kek = await derivePassphraseKek(passphrase, salt);
+    try {
+      const plaintext = aeadDecrypt(kek, nonce, wrapped, new TextEncoder().encode(this.path));
+      return decodeKeyRecord(new TextDecoder().decode(plaintext));
+    } catch {
+      // A wrong passphrase and a corrupted/tampered record are indistinguishable from
+      // AEAD failure alone; both fail closed the same way (never regenerate a key).
+      throw new VaultCorruptionError();
+    } finally {
+      zeroizeKey(kek);
+    }
+  }
+
+  async loadOrCreate(): Promise<VaultKeyState> {
+    const existing = await this.readRecord();
+    if (existing !== undefined) {
+      await sweepKeyTemporaries(this.operations, this.path);
+      const passphrase = await this.getPassphrase();
+      const state = await this.unwrap(existing, passphrase);
+      this.cached = state;
+      return { wrappingKey: state.wrappingKey.slice(), generation: state.generation };
+    }
+    const passphrase = await this.getPassphrase();
+    const state = { wrappingKey: randomBytes(32), generation: 0 };
+    await this.writeState(state, passphrase);
+    this.cached = state;
+    return { wrappingKey: state.wrappingKey.slice(), generation: state.generation };
+  }
+
+  async advanceGeneration(generation: number): Promise<void> {
+    const existing = await this.readRecord();
+    if (existing === undefined) return;
+    const passphrase = await this.getPassphrase();
+    const state = await this.unwrap(existing, passphrase);
+    if (generation <= state.generation) {
+      zeroizeKey(state.wrappingKey);
+      return;
+    }
+    const next = { wrappingKey: state.wrappingKey, generation };
+    await this.writeState(next, passphrase);
+    // `next` reuses `state.wrappingKey` and becomes the new cache — it must survive for
+    // a later `changePassphrase`/`delete`, unlike the guarded-file tier's fire-and-forget
+    // write, so it is deliberately not zeroized here.
+    this.cached = next;
+  }
+
+  /**
+   * Re-wraps the existing wrapping key under a newly derived KEK for `newPassphrase`.
+   * Requires `loadOrCreate` (or `advanceGeneration`) to have run first in this process —
+   * the rotation path never re-derives from the *old* passphrase a second time, since
+   * this provider never retains it. The vault's contents are untouched: only the small
+   * wrapped-key record is rewritten.
+   */
+  async changePassphrase(newPassphrase: string): Promise<void> {
+    if (this.cached === undefined) {
+      throw new Error('changePassphrase requires an already-loaded vault key.');
+    }
+    await this.writeState(this.cached, newPassphrase);
+  }
+
+  async delete(): Promise<void> {
+    zeroizeKey(this.cached?.wrappingKey ?? new Uint8Array(0));
+    this.cached = undefined;
+    await this.operations.rm(this.path, { force: true });
+    await sweepKeyTemporaries(this.operations, this.path);
   }
 }
 
@@ -391,6 +640,16 @@ export interface CreateVaultKeyProviderOptions {
   readonly keyFilePath?: string;
   readonly fileOperations?: VaultFileOperations;
   readonly warn?: (message: string) => void;
+  /**
+   * Opts into the passphrase-KDF fallback tier (issue #212) instead of the guarded
+   * plaintext-file tier when no OS keyring is available. Presence of this option is
+   * itself the explicit opt-in — same rule as `allowInsecureFile`, a separate and
+   * stronger persistent fallback, so when both are supplied this one wins.
+   */
+  readonly passphrase?: {
+    readonly getPassphrase: () => Promise<string>;
+    readonly path?: string;
+  };
 }
 
 export async function createVaultKeyProvider(
@@ -404,6 +663,16 @@ export async function createVaultKeyProvider(
     });
   }
   const warn = options.warn ?? ((message) => process.stderr.write(`${message}\n`));
+  if (options.passphrase !== undefined) {
+    return new PassphraseVaultKeyProvider({
+      account: options.account,
+      allowInsecure: true,
+      getPassphrase: options.passphrase.getPassphrase,
+      ...(options.passphrase.path === undefined ? {} : { path: options.passphrase.path }),
+      ...(options.fileOperations === undefined ? {} : { fileOperations: options.fileOperations }),
+      warn,
+    });
+  }
   if (options.allowInsecureFile) {
     return new GuardedFileVaultKeyProvider({
       account: options.account,
@@ -414,8 +683,8 @@ export async function createVaultKeyProvider(
     });
   }
   warn(
-    'patches: no OS keyring is available and --allow-insecure-credential-file was not given — ' +
-      'encrypted sessions will not survive after this command exits.',
+    'patches: no OS keyring is available and neither --allow-insecure-credential-file nor a ' +
+      'passphrase was given — encrypted sessions will not survive after this command exits.',
   );
   return new EphemeralVaultKeyProvider();
 }
