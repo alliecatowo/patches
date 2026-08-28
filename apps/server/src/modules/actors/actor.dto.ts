@@ -56,6 +56,9 @@ export interface ActorProfile {
   profileFrame: ProfileFrameValue | null;
   nameTagStyle: NameTagStyleValue | null;
   accentColor: string | null;
+  /** Direct-to-R2 uploaded avatar/banner media ids (#324) — `null` = unset. */
+  avatarMediaId: string | null;
+  bannerMediaId: string | null;
 }
 
 export function toActorProfile(
@@ -89,6 +92,8 @@ export function toActorProfile(
     profileFrame: profileFrameOf(actor.profileFrame),
     nameTagStyle: nameTagStyleOf(actor.nameTagStyle),
     accentColor: actor.accentColor,
+    avatarMediaId: actor.avatarMediaId,
+    bannerMediaId: actor.bannerMediaId,
   };
 }
 

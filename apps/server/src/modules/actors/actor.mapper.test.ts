@@ -22,6 +22,8 @@ function profileFixture(overrides: Partial<ActorProfile>): ActorProfile {
     profileFrame: null,
     nameTagStyle: null,
     accentColor: null,
+    avatarMediaId: null,
+    bannerMediaId: null,
     ...overrides,
   };
 }

@@ -158,6 +158,14 @@ export interface Actor {
   nameTagStyle: NameTagStyle;
   /** Profile accent colour, `#RRGGBB`. Empty means the client default. */
   accentColor: string;
+  /**
+   * Direct-to-R2 uploaded banner (spec §29–32, §54, `MediaService`), replacing the legacy
+   * `profile_banner_url` text field for new writes — see `UpdateProfileRequest.banner_media_id`.
+   * `media_id` empty means "no uploaded banner"; `url` is empty until resolved via
+   * `MediaService.GetMediaDownload` (clients resolve it themselves, same as `avatar`/post
+   * attachments — the server never inlines a presigned URL here).
+   */
+  banner: MediaRef | undefined;
 }
 
 export interface GetActorRequest {
@@ -206,6 +214,15 @@ export interface UpdateProfileRequest {
   profileFrame: ProfileFrame;
   nameTagStyle: NameTagStyle;
   accentColor: string;
+  /**
+   * Direct-to-R2 media uploads (spec §29–32, §54): the `media_id` from a completed
+   * `MediaService.BeginMediaUpload`/`FinalizeMediaUpload` round-trip. Applied when the
+   * matching snake_case name is in `update_mask`; empty clears the image. The server
+   * rejects a `media_id` that doesn't belong to the caller or hasn't reached `READY`
+   * (same ownership/readiness check `PostService` uses for post attachments).
+   */
+  avatarMediaId: string;
+  bannerMediaId: string;
 }
 
 export interface UpdateProfileResponse {
