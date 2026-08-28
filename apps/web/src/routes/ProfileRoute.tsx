@@ -11,6 +11,7 @@ import { ActorList } from '../components/ActorList.js';
 import { EditWallDialog } from '../components/EditWallDialog.js';
 import { FollowButton } from '../components/FollowButton.js';
 import { MessageIcon } from '../components/icons/Icons.js';
+import { MediaImage } from '../components/MediaImage.js';
 import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PageBlocks } from '../components/PageBlocks.js';
@@ -168,28 +169,39 @@ export function ProfileRoute(): JSX.Element {
 
   return (
     <div style={profileStyle}>
-      {profileBannerUrl !== '' ? (
-        <img
-          className={styles['banner']}
-          src={profileBannerUrl}
-          alt=""
-          aria-hidden="true"
-          onError={(event) => {
-            // A dead banner URL degrades to "no banner" (zero height) rather than a broken
-            // image glyph at the top of the profile (§184.3: cosmetics never break the page).
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-      ) : null}
+      {
+        // Direct-to-R2 uploaded banner (#324) takes priority over the legacy URL field —
+        // resolved client-side via `MediaImage`/`GetMediaDownload`, never a server-inlined URL.
+        actor.banner?.mediaId ? (
+          <MediaImage mediaId={actor.banner.mediaId} altText="" className={styles['banner']} />
+        ) : profileBannerUrl !== '' ? (
+          <img
+            className={styles['banner']}
+            src={profileBannerUrl}
+            alt=""
+            aria-hidden="true"
+            onError={(event) => {
+              // A dead banner URL degrades to "no banner" (zero height) rather than a broken
+              // image glyph at the top of the profile (§184.3: cosmetics never break the page).
+              event.currentTarget.style.display = 'none';
+            }}
+          />
+        ) : null
+      }
       <div className={styles['header']} data-frame={frameData(actor)}>
         <div className={styles['topRow']}>
-          {actor.avatar?.url ? (
-            <img className={styles['avatar']} src={actor.avatar.url} alt="" aria-hidden="true" />
-          ) : (
-            <div className={styles['avatarPlaceholder']}>
-              {actor.handle.slice(0, 1).toUpperCase()}
-            </div>
-          )}
+          {
+            // Banner overlaps the avatar's bottom edge (#324) — handled purely in CSS
+            // (`.avatar`'s negative top margin in ProfileRoute.module.css), same DOM shape
+            // for both the uploaded and placeholder states.
+            actor.avatar?.mediaId ? (
+              <MediaImage mediaId={actor.avatar.mediaId} altText="" className={styles['avatar']} />
+            ) : (
+              <div className={styles['avatarPlaceholder']}>
+                {actor.handle.slice(0, 1).toUpperCase()}
+              </div>
+            )
+          }
           <div className={styles['actionButtonGroup']}>
             {session && session.actor.id !== actor.id ? (
               <button

@@ -141,3 +141,13 @@ export type {
 // The E2EE DM contract (ADR 0020, P13-001). One barrel, re-exported wholesale: the
 // authoritative export list lives in `./e2ee/index.ts` so the surface is described once.
 export * from './e2ee/index.js';
+
+// Feature flags / remote config (spec §184.3, issue #142) — see `docs/architecture/
+// rollouts.md` for the policy this evaluates against.
+export {
+  evaluateFeatureFlags,
+  FEATURE_FLAG_DEFINITIONS,
+  type FeatureFlag,
+  type FeatureFlagDefinition,
+  type FeatureFlagKind,
+} from './feature-flags.js';

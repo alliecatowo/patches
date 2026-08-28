@@ -191,6 +191,19 @@ describe('validateEnv', () => {
     expect(validateEnv({ PUBLIC_READ: '0' })).toMatchObject({ PUBLIC_READ: false });
   });
 
+  it('defaults FEATURE_FLAGS to no overrides and parses name=bool pairs (spec §184.3, issue #142)', () => {
+    expect(validateEnv({})).toMatchObject({ FEATURE_FLAGS: new Map() });
+    expect(
+      validateEnv({ FEATURE_FLAGS: 'new_theme=true, broken=notabool, =true, no_value=' }),
+    ).toMatchObject({
+      FEATURE_FLAGS: new Map([
+        ['new_theme', true],
+        ['broken', false],
+        ['no_value', false],
+      ]),
+    });
+  });
+
   it('defaults PASSWORD_AUTH to optional and accepts off/required overrides (P15-002)', () => {
     expect(validateEnv({})).toMatchObject({ PASSWORD_AUTH: 'optional' });
     expect(validateEnv({ PASSWORD_AUTH: 'off' })).toMatchObject({ PASSWORD_AUTH: 'off' });

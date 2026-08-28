@@ -13,6 +13,10 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/overview.md`](./architecture/overview.md)
   - [`architecture/data-model.md`](./architecture/data-model.md)
   - [`architecture/api.md`](./architecture/api.md)
+  - [`architecture/api-versioning.md`](./architecture/api-versioning.md) — what `patches.v1`
+    guarantees, how a `v2` would coexist, version discovery (issue #203, ADR 0038)
+  - [`architecture/rollouts.md`](./architecture/rollouts.md) — reversible capability gates:
+    which of the three mechanisms to use and how to roll one back (issue #202)
   - [`architecture/social.md`](./architecture/social.md)
   - [`architecture/auth.md`](./architecture/auth.md)
   - [`architecture/pages.md`](./architecture/pages.md)

@@ -18,6 +18,15 @@
   object-fit: cover;
 }
 
+/* Avatar overlaps the banner's bottom edge (#324) — only when a banner actually rendered;
+ * a bannerless profile keeps the avatar flush in `.header`'s normal flow. */
+.banner + .header .avatar,
+.banner + .header .avatarPlaceholder {
+  margin-top: -2.5rem;
+  border-width: 3px;
+  border-color: var(--bg);
+}
+
 .header[data-frame='border'] .avatar,
 .header[data-frame='border'] .avatarPlaceholder {
   border: 3px solid var(--profile-accent, var(--accent));

@@ -378,6 +378,29 @@ const envObjectSchema = z.object({
   PUBLIC_READ: booleanish().default(true),
 
   /**
+   * Feature flags / remote config (spec §184.3, issue #142): comma-separated `name=true`/
+   * `name=false` overrides against `@patches/domain`'s `FEATURE_FLAG_DEFINITIONS`, published
+   * via `NodeService.GetNodeInfo`'s `feature_flags`. An override for a name that isn't declared
+   * in `FEATURE_FLAG_DEFINITIONS` is ignored (`evaluateFeatureFlags`) rather than rejected at
+   * boot — an operator downgrading before a flag ships stays bootable. Default empty: every
+   * flag serves its own `defaultEnabled`.
+   */
+  FEATURE_FLAGS: z
+    .string()
+    .default('')
+    .transform((value) => {
+      const overrides = new Map<string, boolean>();
+      for (const entry of value.split(',')) {
+        const trimmed = entry.trim();
+        if (trimmed.length === 0) continue;
+        const [name, rawValue] = trimmed.split('=');
+        if (name === undefined || rawValue === undefined || name.trim().length === 0) continue;
+        overrides.set(name.trim(), rawValue.trim().toLowerCase() === 'true');
+      }
+      return overrides;
+    }),
+
+  /**
    * P15-002: whether this node accepts the PASSWORD credential at all, published to clients via
    * `AuthService.GetAuthPolicy`. `off` makes `Login`, a password-carrying `Register`, and
    * `AddCredential(PASSWORD)` all reject with `PASSWORD_AUTH_DISABLED` — see `AuthService`'s

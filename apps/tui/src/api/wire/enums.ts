@@ -29,6 +29,7 @@ export {
   E2eeCapabilityState as E2EE_CAPABILITY_STATE,
   E2eeDeviceStatus as E2EE_DEVICE_STATUS,
   E2eeGroupChangeKind as E2EE_GROUP_CHANGE_KIND,
+  FeatureFlagKind as FEATURE_FLAG_KIND,
   FederationStance as FEDERATION_STANCE,
   FilterAction as FILTER_ACTION,
   FilterScope as FILTER_SCOPE,
