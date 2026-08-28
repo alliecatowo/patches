@@ -9,6 +9,7 @@ export default defineProject({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
-    maxWorkers: '50%',
+    // #302: overridable so scripts/bounded.sh can cap worker pools under concurrent agent load.
+    maxWorkers: process.env.VITEST_MAX_WORKERS ? Number(process.env.VITEST_MAX_WORKERS) : '50%',
   },
 });

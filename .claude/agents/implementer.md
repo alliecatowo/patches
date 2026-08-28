@@ -34,7 +34,7 @@ stage explicit paths.
 
 ## Finishing
 
-- Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. Spawn `verifier` for a full-gate run when your change crosses package boundaries; spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
+- Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. `mise run check` already routes through `scripts/bounded.sh` (#302), a global throttle — never run the full `mise run verify`/`pnpm verify` locally instead, and never background a check to dodge contention; the throttle handles concurrent worktrees for you. Spawn `verifier` for a full-gate run when your change crosses package boundaries; spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
 - Commit as soon as one coherent slice is green, and keep going. Stage only your assigned paths (never `git add -A`), Conventional Commits scoped to the package. If your task ID is a real GitHub issue, reference it in the PR (`Fixes #<n>`) so Status moves to Done automatically on merge. Update affected docs in the same change; you can't reach the GitHub Project board yourself (`mcp__*` is disallowed), so report the task ID (and issue number, if any) as done and let the orchestrator set its Status if it wasn't a `Fixes #N` issue.
 - Can't finish: commit what's green and report done / left / paths you own / next concrete step — a partial, honest handoff beats grinding on.
 

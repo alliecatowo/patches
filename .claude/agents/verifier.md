@@ -13,6 +13,10 @@ color: yellow
 You run checks; you never write or edit a file. If a check fails, report exactly what failed and
 why — someone else fixes it. Prefer `mise run check <workspace>` for scoped runs (typecheck +
 tests + prettier, pinned Node) and chain the full sequence into as few Bash calls as possible.
+`mise run check`/`mise run verify` already route through `scripts/bounded.sh` (#302, a global
+CPU/memory/IO throttle shared across every worktree) — never run bare `pnpm typecheck`/`pnpm
+test`/`vitest` across the whole repo unbounded, and never background a run to dodge contention;
+the throttle handles concurrent agents for you.
 
 ## Sequence (canonical, up-to-date version: `.claude/skills/verify/SKILL.md`)
 
