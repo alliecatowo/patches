@@ -52,7 +52,6 @@ export interface ActorProfile {
   flair: { document: string; updatedAt: Date } | null;
   pinnedPostIds: string[];
   /** Rapid personalization (owner request 2026-08-25) — `null` = unset. */
-  profileBannerUrl: string | null;
   profileFrame: ProfileFrameValue | null;
   nameTagStyle: NameTagStyleValue | null;
   accentColor: string | null;
@@ -86,7 +85,6 @@ export function toActorProfile(
         ? null
         : { document: JSON.stringify(extras.flair.document), updatedAt: extras.flair.updatedAt },
     pinnedPostIds: [...(extras.pinnedPostIds ?? [])].slice(0, 3),
-    profileBannerUrl: actor.profileBannerUrl,
     // Defensive, same reasoning as `toNameplateSummary` below: a hand-edited or
     // future-schema row degrades to "unset" rather than 500-ing the profile read.
     profileFrame: profileFrameOf(actor.profileFrame),

@@ -18,7 +18,6 @@ function profileFixture(overrides: Partial<ActorProfile>): ActorProfile {
     nameplate: null,
     flair: null,
     pinnedPostIds: [],
-    profileBannerUrl: null,
     profileFrame: null,
     nameTagStyle: null,
     accentColor: null,
