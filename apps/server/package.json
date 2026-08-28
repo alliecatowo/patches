@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:perf": "vitest run --config vitest.perf.config.mts",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
