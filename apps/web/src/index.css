@@ -1,3 +1,6 @@
+/* Design tokens (#336) — derived roles/scales layered on the theme primitives below. */
+@import './styles/tokens.css';
+
 :root {
   --font-mono:
     ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;

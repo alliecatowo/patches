@@ -1,0 +1,139 @@
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.row:hover {
+  background: var(--surface-raised);
+  text-decoration: none;
+}
+
+.row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
+}
+
+.active {
+  background: var(--accent-soft);
+}
+
+.active:hover {
+  background: var(--accent-soft-strong);
+}
+
+/* The active rail reads as "you are here" without borrowing the unread dot's colour weight. */
+.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.static {
+  cursor: default;
+}
+
+.static:hover {
+  background: transparent;
+}
+
+.leading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emphasised .title {
+  font-weight: var(--weight-bold);
+}
+
+.meta {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.emphasised .meta {
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.bottomLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.subtitle {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emphasised .subtitle {
+  color: var(--text-primary);
+}
+
+.trailing {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* The unread marker. The exact count stays in the accessible name rather than as visible
+   digits — at 9px the numeral was unreadable and the row's bold treatment already carries it. */
+.unreadDot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  flex-shrink: 0;
+}

@@ -1,0 +1,156 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- sizes ---- */
+.sm {
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.md {
+  min-height: var(--control-height-md);
+  padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.lg {
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-5);
+  font-size: var(--text-base);
+}
+
+/* ---- variants ---- */
+.primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: var(--elevation-1);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.secondary {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border-color: var(--line);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--accent);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.danger {
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+}
+
+/* ---- modifiers ---- */
+.fullWidth {
+  width: 100%;
+}
+
+.iconOnly {
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.iconOnly.sm {
+  width: var(--control-height-sm);
+}
+
+.iconOnly.md {
+  width: var(--control-height-md);
+}
+
+.iconOnly.lg {
+  width: var(--control-height-lg);
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.spinner {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 2px solid color-mix(in srgb, currentcolor 30%, transparent);
+  border-top-color: currentcolor;
+  animation: uiButtonSpin 0.7s linear infinite;
+}
+
+@keyframes uiButtonSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+/**
+ * A row of related actions. `stacked` is the needs-authority pattern: one full-width button
+ * per decision so the three outcomes read as a ranked list, not a toolbar (#336, ADR 0037 §2).
+ */
+.group {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.groupStacked {
+  flex-direction: column;
+  align-items: stretch;
+}
