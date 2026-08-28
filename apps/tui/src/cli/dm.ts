@@ -140,7 +140,7 @@ function oneLine(value: string): string {
 }
 
 function actorLabel(actor: { handle: string; displayName: string } | null | undefined): string {
-  if (!present(actor)) return 'unknown actor';
+  if (!present(actor)) return 'unknown account';
   const handle = oneLine(actor.handle);
   const displayName = oneLine(actor.displayName);
   return displayName === '' ? `@${handle}` : `${displayName} (@${handle})`;
