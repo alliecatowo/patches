@@ -177,11 +177,11 @@ description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
 
 [tasks.verify]
-description = "format + lint + typecheck + unit tests (the pre-commit gate)"
-run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
+description = "format + lint + typecheck + unit tests (the full gate — PR CI runs this; prefer `mise run check <workspace>` locally, see #302)"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/bounded.sh pnpm verify"
 
 [tasks.check]
-description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains."
+description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains. Routed through `scripts/bounded.sh` (#302): bounded CPU/memory/IO, safe to run from several worktrees at once — never run the full `verify` locally instead."
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -190,22 +190,26 @@ name="${1:?usage: mise run check <workspace>   e.g. tui, web, server, @patches/t
 case "$name" in @patches/*) pkg="$name" ;; *) pkg="@patches/$name" ;; esac
 dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(execSync("pnpm ls -r --depth -1 --json",{encoding:"utf8"}));const m=l.find(p=>p.name===process.argv[1]);if(!m){console.error("unknown workspace: "+process.argv[1]);process.exit(1)}process.stdout.write(m.path)' "$pkg")"
   echo "→ $pkg  ($dir)"
+  start=$(date +%s)
   # typecheck+test in one turbo invocation: dependency-ordered, parallel, and cached —
-  # an unchanged workspace replays in ~0s instead of re-running vitest every time.
-  pnpm exec turbo run typecheck test --filter="$pkg" --output-logs=errors-only
+  # an unchanged workspace replays in ~0s instead of re-running vitest every time. Skips
+  # rebuilding unchanged dependency packages via turbo's own content-hash cache (no separate
+  # stamp file needed: `^build`'s inputs are unchanged, so turbo replays it instead of rerunning).
+  scripts/bounded.sh pnpm exec turbo run typecheck test --filter="$pkg" --output-logs=errors-only
 # eslint was missing here until 2026-08-20, so agents kept reporting a workspace green
 # and then tripping lefthook's eslint at commit time (import-type, no-misused-promises,
 # no-empty-object-type). The pre-commit hook must never be the first place lint runs.
-pnpm exec eslint "$dir" --cache --cache-location node_modules/.cache/eslint/
-pnpm exec prettier --check "$dir"
-echo "✓ $pkg is green"
+scripts/bounded.sh pnpm exec eslint "$dir" --cache --cache-location node_modules/.cache/eslint/
+scripts/bounded.sh pnpm exec prettier --check "$dir"
+elapsed=$(( $(date +%s) - start ))
+echo "ok $pkg ${elapsed}s"
 """
 
 [tasks.test]
 description = "All tests including integration (needs the compose stack)"
 # `pnpm test` is now `turbo run test` (unit tests only, cached); the integration projects
 # are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
-run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && pnpm test && pnpm test:integration"
+run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && scripts/bounded.sh pnpm test && scripts/bounded.sh pnpm test:integration"
 
 [tasks.down]
 description = "Stop the compose stack"

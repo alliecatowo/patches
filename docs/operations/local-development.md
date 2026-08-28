@@ -113,19 +113,26 @@ Notes:
 
 `mise run setup` installs a [lefthook](https://github.com/evilmartians/lefthook)
 pre-commit hook (`lefthook.yml`, B-008) that runs Prettier and ESLint against **staged
-files only** — it is deliberately narrower than `pnpm verify` (no build/typecheck/test),
-so it stays fast enough that nobody reaches for `git commit --no-verify` out of
-impatience.
+files only**, plus (#302) a `tsc --noEmit` typecheck scoped to just the workspace(s) a
+staged `.ts`/`.tsx`/`.mts`/`.cts` file belongs to (`scripts/precommit-typecheck.sh`) — it
+is still deliberately narrower than `pnpm verify` (no build/test), so it stays fast enough
+that nobody reaches for `git commit --no-verify` out of impatience.
 
 The **pre-push** hook is the test gate, and (B-178/B-127, 2026-08-26) it deliberately runs
 a _scoped_ equivalent of `pnpm verify`, not `pnpm verify` itself:
 
 ```yaml
-pnpm format:check &&
-pnpm lint &&
-pnpm exec turbo run typecheck --affected --concurrency=4 &&
-pnpm exec turbo run test --affected --concurrency=4 --continue=dependencies-successful
+scripts/bounded.sh pnpm format:check &&
+scripts/bounded.sh pnpm lint &&
+scripts/bounded.sh pnpm exec turbo run typecheck --affected --concurrency=4 &&
+scripts/bounded.sh pnpm exec turbo run test --affected --concurrency=4 --continue=dependencies-successful
 ```
+
+Every command in both hooks (and `mise run check`/`verify`/`test`) routes through
+`scripts/bounded.sh` (#302) — a global flock-based slot throttle plus nice/ionice and an
+optional systemd-run cgroup scope, so several agent worktrees committing/pushing/checking
+at once can't overload the box. See `docs/agents/HARNESS.md` "Resource-bounded
+verification".
 
 Three differences from plain `pnpm verify` (`turbo run test`/`typecheck` with turbo's
 defaults), each earned by a reproduced failure, not a guess:

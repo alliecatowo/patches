@@ -21,7 +21,11 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "incremental": false,
+    // #302: per-package build-info cache (${configDir}, TS 5.5+) so `tsc --noEmit`
+    // (typecheck) and build both skip unchanged files instead of re-checking the whole
+    // program every `mise run check` — already gitignored (.turbo/, *.tsbuildinfo).
+    "incremental": true,
+    "tsBuildInfoFile": "${configDir}/.turbo/tsbuildinfo/tsconfig.tsbuildinfo",
     "types": ["node"]
   }
 }

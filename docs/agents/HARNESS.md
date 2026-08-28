@@ -1,5 +1,34 @@
 # Agent harness contract
 
+## Resource-bounded verification (#302)
+
+Up to ~8 agent worktrees can run `mise run check`/`verify`/`build` and vitest/tsc concurrently on
+one box, which has crashed both the workstation and the Claude Code process. Every heavy task
+routes through `scripts/bounded.sh <command> [args...]` — `mise run check`, `mise run verify`,
+`mise run test`, and the lefthook pre-commit/pre-push hooks all use it already. Workers never need
+to think about contention:
+
+- **Use `mise run check <workspace>` for scoped work; never run the full `mise run verify`/`pnpm
+verify` locally.** CI (`.github/workflows/ci.yml`) is still the full, unscoped gate — that's
+  what `verify` is for; a worktree doing scoped implementation work should not replay it.
+- **Never background a check to dodge contention** (`&`, `nohup`, a detached shell) — the
+  throttle already queues bounded work safely; backgrounding just adds an unbounded process
+  outside the slot system.
+- `scripts/bounded.sh` acquires one of `PATCHES_CHECK_SLOTS` flock-based slots (default
+  `max(2, nproc/4)`, so 4 on a 16-core box), runs the command `nice -n 10 ionice -c2 -n7`, and —
+  when `systemd-run --user` is available — inside a cgroup scope with `MemoryMax`
+  (`PATCHES_CHECK_MEM`, default `3G`) and `CPUWeight=50`. If every slot is busy it waits on the
+  last slot (bounded by `PATCHES_CHECK_WAIT_TIMEOUT`, default 600s) and logs that it's waiting,
+  rather than queuing unboundedly or silently hanging.
+- `VITEST_MAX_WORKERS` (default 2) and `NODE_OPTIONS=--max-old-space-size=2048` are exported by
+  the wrapper and honored by every `vitest.config.*`'s `maxWorkers`; override either per-invocation
+  if a task genuinely needs more headroom.
+- Tiers get heavier moving up: pre-commit is staged-file prettier/eslint plus `tsc --noEmit` for
+  only the touched workspace(s) (`scripts/precommit-typecheck.sh`); `mise run check <ws>` is that
+  workspace only, incremental (`tsconfig.base.json`'s `${configDir}` `tsBuildInfoFile`) and
+  turbo-cached; pre-push is `--affected` workspaces vs `origin/main`; PR CI stays the full gate.
+  See `docs/operations/local-development.md` "Git hooks" and `docs/operations/ci.md`.
+
 ## Direct action surface
 
 `mise run lab:action -- <verb> ...` drives the isolated lab through `@patches/client/grpc` and
