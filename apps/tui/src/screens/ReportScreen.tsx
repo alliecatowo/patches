@@ -131,7 +131,7 @@ export function ReportScreen({
   return (
     <Box flexDirection="column">
       <Text color={theme.accent}>
-        Report {target.type === 'post' ? 'post' : 'actor'}: {sanitizeForTerminal(target.label)}
+        Report {target.type === 'post' ? 'post' : 'account'}: {sanitizeForTerminal(target.label)}
       </Text>
       <Box marginTop={1} flexDirection="column">
         {REASONS.map((reason, index) => (

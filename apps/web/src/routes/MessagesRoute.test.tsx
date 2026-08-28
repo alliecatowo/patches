@@ -1,7 +1,7 @@
 import type { PatchesApi } from '@patches/client';
 import { ConversationSecurityMode, type Actor, type Conversation } from '@patches/proto/es';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,8 @@ import { DM_LIST_POLL_FAILED_COPY, MessagesRoute } from './MessagesRoute.js';
 
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
+const mockListFollowing = vi.fn<(...args: unknown[]) => Promise<{ actors: Actor[] }>>();
+const mockSearchActors = vi.fn<(...args: unknown[]) => Promise<{ actors: Actor[] }>>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockToast = vi.fn<(...args: unknown[]) => void>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
@@ -29,6 +31,11 @@ vi.mock('../api/client.js', () => ({
     messages: {
       listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
         mockListConversations(...args),
+    },
+    actors: {
+      listFollowing: (...args: unknown[]): Promise<{ actors: Actor[] }> =>
+        mockListFollowing(...args),
+      searchActors: (...args: unknown[]): Promise<{ actors: Actor[] }> => mockSearchActors(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -73,6 +80,10 @@ function renderMessages(): { queryClient: QueryClient } & ReturnType<typeof rend
 describe('MessagesRoute', () => {
   beforeEach(() => {
     mockListConversations.mockReset();
+    mockListFollowing.mockReset();
+    mockListFollowing.mockResolvedValue({ actors: [] });
+    mockSearchActors.mockReset();
+    mockSearchActors.mockResolvedValue({ actors: [] });
     mockUseSession.mockReset();
     mockToast.mockReset();
     mockUseE2ee.mockReset();
@@ -128,6 +139,29 @@ describe('MessagesRoute', () => {
 
     expect(screen.queryByText(/does not work in the web client/i)).toBeNull();
     expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
+  });
+
+  it('opens a handle/name typeahead for a new conversation instead of an id prompt (#298)', async () => {
+    mockListConversations.mockResolvedValue({ conversations: [] });
+    mockSearchActors.mockResolvedValue({
+      actors: [{ id: 'actor-violet', handle: 'violet', displayName: 'Violet' } as unknown as Actor],
+    });
+    const windowPrompt = vi.spyOn(window, 'prompt');
+
+    renderMessages();
+    await screen.findByText('No conversations yet.');
+
+    fireEvent.click(screen.getByLabelText('New direct message'));
+    expect(await screen.findByLabelText('Search by handle or name')).toBeInTheDocument();
+    expect(windowPrompt).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Search by handle or name'), {
+      target: { value: 'vio' },
+    });
+    fireEvent.click(await screen.findByRole('option', { name: /@violet/ }));
+
+    expect(await screen.findByLabelText('Message body')).toBeInTheDocument();
+    expect(screen.getByText('Message @violet')).toBeInTheDocument();
   });
 
   it('offers enrollment without claiming it enables messaging', async () => {

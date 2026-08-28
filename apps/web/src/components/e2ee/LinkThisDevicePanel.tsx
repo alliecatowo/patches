@@ -14,7 +14,7 @@ import {
 } from '../../e2ee/device-link.js';
 import type { EnrollmentTransport } from '../../e2ee/enrollment.js';
 import type { RatchetSessionVault } from '../../e2ee/vault.js';
-import styles from './deviceLink.module.css';
+import styles from './messagesFlow.module.css';
 
 /** ADR 0037 §1: how often the new device checks whether the authority has approved yet. */
 const LINK_POLL_MS = 3_000;
