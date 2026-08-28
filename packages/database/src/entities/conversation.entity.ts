@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -23,6 +24,17 @@ import {
 @Entity({ name: 'conversations' })
 @Check('chk_conversations_kind', checkIn('kind', CONVERSATION_KINDS))
 @Check('chk_conversations_security_mode', checkIn('security_mode', CONVERSATION_SECURITY_MODES))
+// ADR 0035 §4's replay anchor. Partial: NULL `creation_client_request_id` (every conversation
+// not created through a reservation) is excluded, matching Postgres's own "NULL never equals
+// NULL" uniqueness semantics.
+@Index(
+  'uq_conversations_creator_client_request_id',
+  ['createdByActorId', 'creationClientRequestId'],
+  {
+    unique: true,
+    where: '"creation_client_request_id" IS NOT NULL',
+  },
+)
 export class Conversation {
   @PrimaryGeneratedColumn('uuid')
   declare id: string;

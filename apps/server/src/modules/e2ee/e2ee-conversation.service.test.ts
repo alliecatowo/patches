@@ -1,7 +1,8 @@
 import {
   Actor as ActorEntity,
   Block as BlockEntity,
-  E2eeLogicalMessage as E2eeLogicalMessageEntity,
+  Conversation as ConversationEntity,
+  E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   Follow as FollowEntity,
 } from '@patches/database';
 import { describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,10 @@ import type { NodeFrankingKeyRing } from './report-evidence.js';
 
 function recipientActor(id: string): Partial<ActorEntity> {
   return { id, deletedAt: null, isLocal: true };
+}
+
+function activeDevice(): Partial<E2eeDeviceIdentityEntity> {
+  return { revokedAt: null, expiresAt: new Date(Date.now() + 86_400_000) };
 }
 
 function serviceWith(
@@ -50,7 +55,10 @@ function permissiveRepo(): Record<string, ReturnType<typeof vi.fn>> {
   };
 }
 
-function managerWithFirstContact(options: { readonly mutualFollow: boolean }): EntityManager {
+function managerWithFirstContact(options: {
+  readonly mutualFollow: boolean;
+  readonly deviceAvailable?: boolean;
+}): EntityManager {
   const permissive = permissiveRepo();
   return {
     getRepository(entity: unknown) {
@@ -60,6 +68,12 @@ function managerWithFirstContact(options: { readonly mutualFollow: boolean }): E
       if (entity === BlockEntity) return { findOne: vi.fn().mockResolvedValue(null) };
       if (entity === FollowEntity)
         return { findOne: vi.fn().mockResolvedValue(options.mutualFollow ? { id: 'f' } : null) };
+      if (entity === E2eeDeviceIdentityEntity)
+        return {
+          findOne: vi
+            .fn()
+            .mockResolvedValue(options.deviceAvailable === false ? null : activeDevice()),
+        };
       return permissive;
     },
   } as unknown as EntityManager;
@@ -73,6 +87,8 @@ function dataSourceFor(manager: EntityManager): {
   return {
     consume,
     dataSource: {
+      // No replay by default: `CreateE2eeConversation`'s own top-level `getRepository` lookup
+      // (before the transaction) for `conversations` keyed on `creationClientRequestId`.
       getRepository: () => ({ findOne: vi.fn().mockResolvedValue(null) }),
       transaction: (body: (manager: EntityManager) => Promise<unknown>) => body(manager),
     },
@@ -92,7 +108,6 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
       clientRequestId: 'req-1',
       recipientActorIds: ['recipient'],
       senderDeviceId: 'device-1',
-      message: undefined,
     });
 
     await expect(result).rejects.toMatchObject({ code: 'E2EE_CONVERSATION_NOT_FOUND' });
@@ -104,38 +119,58 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
     'admits a create when first contact is allowed (mutualFollow=$mutualFollow)',
     async (options) => {
       const { dataSource } = dataSourceFor(managerWithFirstContact(options));
-      const result = serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(actorId, {
-        clientRequestId: 'req-1',
-        recipientActorIds: ['recipient'],
-        senderDeviceId: 'device-1',
-        message: undefined,
-      });
-      // Eligibility passes; the run continues into fanout accept and stops on the missing
-      // logical message payload — proving the eligibility gate was passed, not short-circuited.
-      await expect(result).rejects.toThrow('logical message is required');
+      const result = await serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(
+        actorId,
+        {
+          clientRequestId: 'req-1',
+          recipientActorIds: ['recipient'],
+          senderDeviceId: 'device-1',
+        },
+      );
+      // Reservation succeeds outright now — ADR 0035 removed the fanout this used to fall
+      // through into, so passing eligibility is the whole story for a reserve.
+      expect(result.conversationId).toBe('generated-id');
+      expect(result.securityMode).toBe('CONVERSATION_SECURITY_MODE_E2EE_V1');
     },
   );
 
-  it('never burns budget on an idempotent replay', async () => {
+  it('rejects a reservation naming a revoked or expired sender device', async () => {
+    const { dataSource } = dataSourceFor(
+      managerWithFirstContact({ mutualFollow: true, deviceAvailable: false }),
+    );
+    const result = serviceWith(dataSource, limiterFrom(vi.fn())).createE2eeConversation(actorId, {
+      clientRequestId: 'req-1',
+      recipientActorIds: ['recipient'],
+      senderDeviceId: 'device-1',
+    });
+    await expect(result).rejects.toMatchObject({ code: 'E2EE_DEVICE_NOT_FOUND' });
+  });
+
+  it('replays an existing reservation by client_request_id without re-running authorization or budget', async () => {
     const consume = vi.fn();
     const existingFindOne = vi.fn().mockResolvedValue({
-      conversationId: '00000000-0000-4000-8000-000000000001',
+      id: 'existing-conversation-id',
+      securityMode: 'E2EE_V1',
     });
     const dataSource = {
       getRepository: (entity: unknown) => ({
-        findOne:
-          entity === E2eeLogicalMessageEntity ? existingFindOne : vi.fn().mockResolvedValue(null),
+        findOne: entity === ConversationEntity ? existingFindOne : vi.fn().mockResolvedValue(null),
       }),
-      transaction: (body: (manager: EntityManager) => Promise<unknown>) =>
-        body(managerWithFirstContact({ mutualFollow: false })),
+      // A replay must never open a transaction — proven by throwing if it does.
+      transaction: () => Promise.reject(new Error('replay must not open a transaction')),
     };
-    const result = serviceWith(dataSource, limiterFrom(consume)).createE2eeConversation(actorId, {
-      clientRequestId: 'replayed-request',
-      recipientActorIds: ['recipient'],
-      senderDeviceId: 'device-1',
-      message: undefined,
+    const result = await serviceWith(dataSource, limiterFrom(consume)).createE2eeConversation(
+      actorId,
+      {
+        clientRequestId: 'replayed-request',
+        recipientActorIds: ['recipient'],
+        senderDeviceId: 'device-1',
+      },
+    );
+    expect(result).toEqual({
+      conversationId: 'existing-conversation-id',
+      securityMode: 'CONVERSATION_SECURITY_MODE_E2EE_V1',
     });
-    await expect(result).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(consume).not.toHaveBeenCalled();
   });
 
@@ -146,7 +181,6 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
         clientRequestId: 'fresh-request',
         recipientActorIds: ['recipient'],
         senderDeviceId: 'device-1',
-        message: undefined,
       })
       .catch(() => undefined);
     expect(consume).toHaveBeenCalledTimes(1);
@@ -154,11 +188,30 @@ describe('E2eeConversationService first-contact eligibility (audit P1)', () => {
   });
 });
 
-describe('MESSAGE notification on an E2EE arrival (ADR 0030, §183.1)', () => {
-  it('passes nothing but ids to NotificationsService, and never on a failed accept', async () => {
+describe('CreateE2eeConversation is a silent reservation (ADR 0035 §3.5)', () => {
+  it('never notifies anyone on a successful reservation', async () => {
     const notifyMessage = vi.fn(() => Promise.resolve());
     const notifications = { notifyMessage } as unknown as NotificationsService;
     const { dataSource } = dataSourceFor(managerWithFirstContact({ mutualFollow: true }));
+
+    const result = await serviceWith(
+      dataSource,
+      { consumeConversationCreate: vi.fn() } as unknown as E2eeRateLimitService,
+      notifications,
+    ).createE2eeConversation('00000000-0000-4000-8000-00000000000a', {
+      clientRequestId: 'req-1',
+      recipientActorIds: ['recipient'],
+      senderDeviceId: 'device-1',
+    });
+
+    expect(result.conversationId).toBe('generated-id');
+    expect(notifyMessage).not.toHaveBeenCalled();
+  });
+
+  it('passes nothing but ids to NotificationsService, and never on a failed authorization', async () => {
+    const notifyMessage = vi.fn(() => Promise.resolve());
+    const notifications = { notifyMessage } as unknown as NotificationsService;
+    const { dataSource } = dataSourceFor(managerWithFirstContact({ mutualFollow: false }));
 
     await serviceWith(
       dataSource,
@@ -169,12 +222,11 @@ describe('MESSAGE notification on an E2EE arrival (ADR 0030, §183.1)', () => {
         clientRequestId: 'req-1',
         recipientActorIds: ['recipient'],
         senderDeviceId: 'device-1',
-        message: undefined,
       })
       .catch(() => undefined);
 
-    // The accept above fails on the missing logical message, so no arrival happened and no
-    // notification may be written — a notification is evidence a message landed.
+    // Not a mutual follow, so eligibility fails before any conversation is created — no
+    // notification is written either way.
     expect(notifyMessage).not.toHaveBeenCalled();
   });
 });

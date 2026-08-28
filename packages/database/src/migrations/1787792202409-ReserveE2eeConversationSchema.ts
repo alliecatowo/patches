@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { type MigrationInterface, type QueryRunner } from 'typeorm';
 
 /**
  * ADR 0035 §4/§7: `CreateE2eeConversation` becomes a reservation with its own idempotency

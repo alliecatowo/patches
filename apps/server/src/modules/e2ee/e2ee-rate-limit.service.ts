@@ -74,7 +74,9 @@ export class E2eeRateLimitService {
     await this.consume('e2ee_envelope', ENVELOPE_BUDGETS, actorId, peer, now);
   }
 
-  /** `CreateE2eeConversation` — also accepts one logical message, plus establishes contact. */
+  /** `CreateE2eeConversation` — reserves a conversation and establishes first contact (ADR
+   * 0035); carries no message, budgeted the same as before since authorization work is
+   * unchanged. */
   async consumeConversationCreate(actorId: string, peer: string | undefined, now = new Date()) {
     await this.consume('e2ee_conversation_create', ENVELOPE_BUDGETS, actorId, peer, now);
   }

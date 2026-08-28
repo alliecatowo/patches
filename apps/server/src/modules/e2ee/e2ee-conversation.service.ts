@@ -80,19 +80,6 @@ export class E2eeConversationService {
   // returns the id, and carries no message. The former one-shot form asked a client to seal an
   // initial envelope for a conversation id it could not yet know, which no honest client could
   // do; the first message is now an ordinary `sendEnvelopes` into the id this method returns.
-  //
-  // KNOWN GAP (tracked for follow-up, out of this change's owned paths — `packages/database`):
-  // ADR 0035 §4 requires a durable `client_request_id` idempotency anchor on `conversations`
-  // itself (a new nullable `creation_client_request_id` column + partial unique index), and §5
-  // requires `last_message_at` to become nullable so a reservation stays invisible via
-  // `MessagesService.listConversations`/`getConversation` until its first message is accepted.
-  // Neither is implementable without a `packages/database` migration and entity change, which
-  // this change is scoped out of. Until that migration lands: a retried reservation currently
-  // creates a second `conversations` row (no replay anchor exists to catch it), and a reserved
-  // conversation is visible in `ListConversations` immediately rather than only after its first
-  // message (the `lastMessageAt` column cannot be left NULL, so it is set at reservation time).
-  // Every other part of this ADR — no message, no fanout, no notification, uniform
-  // `actorNotFound()`, the sender-device check moved up — is implemented in full below.
   async createE2eeConversation(
     actorId: string,
     request: CreateE2eeConversationRequest,
@@ -116,6 +103,15 @@ export class E2eeConversationService {
     if (request.senderDeviceId.length === 0) {
       throw AppError.validation('sender_device_id is required.');
     }
+
+    // Replay before touching budget or authorization (ADR 0035 §4, spec §45) — a retry must not
+    // create a second conversation or burn budget twice. `client_request_id` is scoped to the
+    // creator, independent of `e2ee_logical_messages`' own replay anchor: a reservation writes
+    // no logical message, so that anchor never covers it.
+    const replayed = await this.dataSource.getRepository(ConversationEntity).findOne({
+      where: { createdByActorId: actorId, creationClientRequestId: request.clientRequestId },
+    });
+    if (replayed !== null) return this.#toReservationResponse(replayed);
 
     await this.rateLimits.consumeConversationCreate(actorId, peer);
 
@@ -165,14 +161,33 @@ export class E2eeConversationService {
         );
       }
 
-      const conversation = await manager.getRepository(ConversationEntity).save(
-        manager.getRepository(ConversationEntity).create({
-          kind,
-          securityMode: 'E2EE_V1',
-          createdByActorId: actorId,
-          lastMessageAt: now,
-        }),
-      );
+      let conversation: ConversationEntity;
+      try {
+        conversation = await manager.getRepository(ConversationEntity).save(
+          manager.getRepository(ConversationEntity).create({
+            kind,
+            securityMode: 'E2EE_V1',
+            createdByActorId: actorId,
+            // Reserved, unmessaged conversations are invisible to every actor, including their
+            // creator, until `acceptE2eeLogicalMessage` sets this on the first accepted message
+            // (ADR 0035 §5 — an early-visible empty conversation is a coarse typing indicator,
+            // which spec §183.3 forbids).
+            lastMessageAt: null,
+            creationClientRequestId: request.clientRequestId,
+          }),
+        );
+      } catch (error) {
+        // `uq_conversations_creator_client_request_id` — a concurrent duplicate reservation
+        // raced us to the insert. The other transaction is authoritative; replay its result
+        // rather than erroring (ADR 0035 §4, same shape `acceptE2eeLogicalMessage` uses for its
+        // own raced insert).
+        const raced = await manager.getRepository(ConversationEntity).findOne({
+          where: { createdByActorId: actorId, creationClientRequestId: request.clientRequestId },
+        });
+        if (raced === null) throw error;
+        return this.#toReservationResponse(raced);
+      }
+
       await manager
         .getRepository(ConversationMemberEntity)
         .insert(allIds.map((memberId) => ({ conversationId: conversation.id, actorId: memberId })));
@@ -181,11 +196,15 @@ export class E2eeConversationService {
       // `e2ee_group_control_events` row, and — because `#notifyRecipients` is called only on a
       // non-replay accepted message, which this is not — no notification. A reservation is
       // silent by construction, not by a flag someone can flip (ADR 0035 §3.5).
-      return {
-        conversationId: conversation.id,
-        securityMode: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
-      };
+      return this.#toReservationResponse(conversation);
     });
+  }
+
+  #toReservationResponse(conversation: ConversationEntity): CreateE2eeConversationResponse {
+    return {
+      conversationId: conversation.id,
+      securityMode: ConversationSecurityMode.CONVERSATION_SECURITY_MODE_E2EE_V1,
+    };
   }
 
   /**
