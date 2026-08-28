@@ -725,11 +725,16 @@ export function App({
       linkId,
     );
   }
-  async function sendViaVault(conversationId: string, body: string): Promise<void> {
-    if (session === undefined) return;
+  /** Resolves the row for the just-sent message (issue #332): a device is not in its own
+   * fanout, so this stored row is the only copy the thread will ever get. */
+  async function sendViaVault(
+    conversationId: string,
+    body: string,
+  ): Promise<E2eeReceivedRow | undefined> {
+    if (session === undefined) return undefined;
     const sender = e2eeSenderFor(session);
     try {
-      await sender.send(conversationId, body);
+      return await sender.send(conversationId, body);
     } finally {
       setE2eeVaultFault(sender.fault());
     }

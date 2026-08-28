@@ -150,6 +150,22 @@ counts to the owning device only (another actor's count is an availability oracl
 replenishes below the threshold, and a claim against an exhausted inventory falls back to the signed
 prekey with reduced forward secrecy for that first message, exactly as X3DH describes.
 
+### A device is not in its own fanout, so it keeps its own sent messages
+
+A sender never addresses an envelope to itself, so the node holds nothing that could redeliver an
+outgoing message to the person who wrote it. Both clients therefore write each outgoing message —
+plaintext body, client message id, local send time, and whether delivery succeeded — into the same
+authenticated vault that holds ratchet state, in one reserved opaque record per conversation
+(`apps/web/src/e2ee/own-messages.ts` and its TUI twin `apps/tui/src/e2ee/own-messages.ts`; ADR 0020
+§4 already names plaintext-history material as vault-resident). Loading a thread merges those rows
+ahead of what the mailbox drain returned: own rows are ordered by the local clock, and received rows
+keep delivery order, because ADR 0020 §8 deliberately keeps send time out of node-visible metadata,
+so there is no shared clock to interleave against. A failed send is stored too, marked undelivered
+rather than discarded. Retention is the newest 500 per conversation, the record is erased by a vault
+wipe with everything else, and it never leaves the device: multi-device sync of own messages stays
+out of scope (ADR 0020 §7), so a second device shows only the peer's half of a thread it did not
+write.
+
 Mailbox reads are keyset-paginated on `(received_at, envelope_id)` ascending, strictly after the
 cursor. There is no offset, no page number, and no `sort`/`order` parameter anywhere in the schema —
 spec §153 and Amendment B (§194). A mailbox has exactly one order: oldest first.

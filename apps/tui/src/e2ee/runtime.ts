@@ -221,11 +221,15 @@ export function epochToNumber(epoch: bigint): number {
 
 export interface InboxMessageRow {
   readonly kind: 'message';
-  /** Stable dedupe key: the delivering envelope's id. */
+  /** Stable dedupe key: the delivering envelope's id, or `own:<clientMessageId>` for a
+   * message this device sent and stored locally (issue #332, `own-messages.ts`). */
   readonly id: string;
   readonly senderLabel: string;
   readonly body: string;
   readonly sentByViewer: boolean;
+  /** Own messages only: the send did not reach the node. The body is kept so it can be
+   * re-read or copied; delivery is not claimed. */
+  readonly deliveryFailed?: boolean | undefined;
 }
 
 export interface InboxUnverifiableRow {

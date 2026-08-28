@@ -95,10 +95,17 @@ test('two enrolled accounts exchange a first message in both directions', async 
   await alice.page.getByRole('textbox', { name: 'Message body' }).fill(firstMessage);
   await alice.page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(alice.page).toHaveURL(/\/messages\/[0-9a-f-]{36}$/, { timeout: 30_000 });
-  // A device is not in its own fanout, so the sender only ever sees a local echo of what it
-  // wrote — but it must see one, rather than a thread claiming it holds nothing.
+  // A device is not in its own fanout, so nothing will ever redeliver this message to the
+  // person who wrote it — but the thread must still show it, rather than claiming it holds
+  // nothing.
   await expect(alice.page.getByText(firstMessage)).toBeVisible();
   await saveJourneyScreenshot(alice.page, testInfo, 'a-sent');
+
+  // Issue #332: the echo above used to be in-memory only, so a reload emptied the sender's
+  // half of her own thread. It now comes back out of this browser's vault.
+  await alice.page.reload();
+  await expect(alice.page.getByText(firstMessage)).toBeVisible({ timeout: 30_000 });
+  await saveJourneyScreenshot(alice.page, testInfo, 'a-sent-after-reload');
 
   // --- Bob polls it up and replies. ---
   await bob.page.goto('/messages');

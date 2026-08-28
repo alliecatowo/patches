@@ -110,15 +110,11 @@ export function MessageThreadRoute(): JSX.Element {
     if (body === '' || sending) return;
     setSending(true);
     try {
-      await webE2ee().send(conversationId, body);
-      const local: InboxRow = {
-        kind: 'message',
-        id: `local-${crypto.randomUUID()}`,
-        senderLabel: 'you',
-        body,
-        sentByViewer: true,
-      };
-      setRows((previous) => [...previous, local]);
+      // The row comes back from the manager rather than being minted here so its id is
+      // the durable `own:<clientMessageId>` one the next poll will merge from the vault —
+      // an echo with a fresh local id would render twice after a reload (issue #332).
+      const sent = await webE2ee().send(conversationId, body);
+      setRows((previous) => [...previous, sent]);
       setDraft('');
     } catch (error) {
       toast.error(
@@ -268,6 +264,10 @@ function MessageRow({ row }: { row: InboxRow }): JSX.Element {
           {row.senderLabel === 'you' ? 'you' : row.senderLabel}
         </span>
         <p className={styles['bubbleBody']}>{row.body}</p>
+        {row.deliveryFailed === true ? (
+          // The body is kept and readable; delivery is simply not claimed (issue #332).
+          <span className={styles['senderHandle']}>not delivered</span>
+        ) : null}
       </div>
     );
   }
