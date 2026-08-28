@@ -9,6 +9,7 @@ import { formatRelativeTime } from '../lib/format.js';
 import { safePageHref } from '../lib/page.js';
 import { GuestbookEntryActions, GuestbookSignForm } from './GuestbookControls.js';
 import { MediaImage } from './MediaImage.js';
+import { CosmeticText, Nameplate } from './Nameplate.js';
 import { PostTimeline } from './PostTimeline.js';
 import styles from './PageBlocks.module.css';
 
@@ -327,8 +328,14 @@ function FriendsBlock({
               {actor.handle.slice(0, 1).toUpperCase()}
             </div>
           )}
-          <span className={styles['actorName']}>{actor.displayName || actor.handle}</span>
-          <span className={styles['actorHandle']}>@{actor.handle}</span>
+          <span className={styles['actorName']}>
+            <CosmeticText nameplate={actor.nameplate}>
+              {actor.displayName || actor.handle}
+            </CosmeticText>
+          </span>
+          <span className={styles['actorHandle']}>
+            <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
+          </span>
         </Link>
       ))}
     </div>
@@ -373,7 +380,9 @@ function GuestbookBlock({
           <div className={styles['guestbookMeta']}>
             {entry.author ? (
               <Link to={`/@${entry.author.handle}`} className={styles['guestbookAuthor']}>
-                {entry.author.displayName || `@${entry.author.handle}`}
+                <CosmeticText nameplate={entry.author.nameplate}>
+                  {entry.author.displayName || `@${entry.author.handle}`}
+                </CosmeticText>
               </Link>
             ) : (
               <span className={styles['muted']}>a remote guest</span>
