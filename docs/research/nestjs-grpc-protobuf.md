@@ -36,6 +36,11 @@ Notes:
 
 ### `packages/proto/buf.gen.yaml` (v2) — local ts-proto plugin
 
+The sample below is copied verbatim from the repo's real `packages/proto/buf.gen.yaml`
+(re-verified 2026-08-27) — earlier revisions of this note recommended `useDate=true` and
+`stringEnums=false`, which is **wrong for this stack** and was reverted; see the inline
+comments for why.
+
 ```yaml
 version: v2
 clean: true
@@ -43,15 +48,42 @@ plugins:
   - local: node_modules/.bin/protoc-gen-ts_proto
     out: src/generated
     opt:
+      # `nestJs=true` forces outputEncodeMethods/outputJsonMethods/outputClientImpl
+      # to false: the output is types + Nest decorators only. Wire (de)serialization
+      # is done at runtime by @grpc/proto-loader on both server and client.
       - nestJs=true
       - addGrpcMetadata=true
-      - useDate=true
+      # `useDate=false` + `forceLong=string` (NOT `useDate=true`): proto-loader is the
+      # actual (de)serializer here and it does not convert google.protobuf.Timestamp to
+      # a JS Date — it yields `{seconds, nanos}` with `seconds` as a string under
+      # `longs: String`. Generating `Date` would be a lie about the runtime shape. See
+      # `timestampToDate`/`dateToTimestamp` in `packages/proto/src/index.ts`.
+      - useDate=false
+      - forceLong=string
       - esModuleInterop=true
       - importSuffix=.js
       - snakeToCamel=keys_json
       - env=node
       - useOptionals=none
-      - stringEnums=false
+      # `stringEnums=true` (NOT the `false` default): proto-loader is the actual
+      # runtime (de)serializer here (same reasoning as useDate/forceLong above), and it
+      # always *decodes* enum fields to their string name (e.g. "POST_TYPE_NOTE"),
+      # never the numeric wire value. `stringEnums=false` would generate a TS numeric
+      # enum whose members never match what's actually on the object at runtime — a
+      # silent `1 !== "POST_TYPE_NOTE"` landmine.
+      - stringEnums=true
+    strategy: all
+  # ADR 0016: the Connect/web edge's schema (`@patches/proto/es`), generated
+  # independently and never imported by the ts-proto output above. protobuf-es keeps
+  # its own canonical wire representation (numeric enums, bigint Timestamp.seconds)
+  # rather than mirroring the proto-loader-shaped options above.
+  - local: node_modules/.bin/protoc-gen-es
+    out: src/generated-es
+    opt:
+      - target=ts
+      # NodeNext module resolution requires an explicit import extension;
+      # protoc-gen-es omits one by default (TS2835 otherwise).
+      - import_extension=js
     strategy: all
 inputs:
   - directory: proto

@@ -292,7 +292,13 @@ node apps/tui/dist/cli.js ping
 - [x] Neon switch (production `DATABASE_URL` migrated off Fly Postgres 2026-08-18, A-041 —
       see "Production database" above).
 - [ ] Autoscaling / `[[vm]]` sizing tuned for real traffic (**planned** — default single
-      Machine per process group so far).
+      Machine per process group so far, confirmed via `flyctl scale show --app patches-social`
+      2026-08-27: `server` and `worker` each at count 1, no scaling configured. An earlier
+      `infra/fly/fly.toml` had an invalid `[services.scaling]` block that `flyctl config
+  validate` silently accepted but never applied — removed rather than fixed, since the
+      correct per-service knobs (`auto_stop_machines`/`auto_start_machines`/
+      `min_machines_running`, `docs/research/fly-io.md`) haven't been tuned against real
+      traffic yet either).
 - [ ] Log drain wired up (**planned** — `fly logs`/dashboard live-tail only today).
 
 ## Process groups (`infra/fly/fly.toml`)
@@ -548,6 +554,17 @@ infrastructure:
   fits the project's minimal-infrastructure bias (spec §153's no-unnecessary-managed-service
   posture, applied here by extension). Revisit if log-based alerting proves insufficient
   once there's real production traffic.
+- `packages/observability`'s `initializeTelemetry` (used for OTel tracing, a separate concern
+  from this error-monitoring decision) has no Sentry-specific code path — it only reads the
+  generic `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` env vars. An operator who
+  wants traces routed to Sentry's OTLP ingestion (currently an open-beta Sentry feature, not
+  GA) sets those two vars to Sentry's documented values themselves — see
+  `docs/research/sentry-otlp.md` (verified 2026-08-27) for the exact endpoint shape
+  (`https://o<orgId>.ingest.sentry.io/api/<projectId>/integration/otlp/v1/traces`) and auth
+  header (`x-sentry-auth: sentry sentry_key=<public-key>`, not a bearer token). An earlier
+  revision of `instrumentation.ts` hardcoded a wrong endpoint/header pair behind a `sentryDsn`
+  option; that branch was removed rather than fixed, since the generic OTLP path already
+  covers this and Sentry's beta API shape may still change.
 - Nothing here has been exercised against a live Fly log drain — there is no deployed node
   in this environment to point a drain at. The application-side structured logging itself
   is implemented and covered by existing server/worker tests; only the drain/alerting setup

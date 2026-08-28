@@ -302,6 +302,20 @@ await hash(password, {
 await verify(hashed, password);
 ```
 
+**Caveat (verified against `apps/server/src/modules/auth/password-hasher.service.ts`,
+2026-08-27):** the sample above reads `Algorithm.Argon2id` as an _enum member value_, but
+`Algorithm` is declared as an ambient `const enum` in `@node-rs/argon2`'s `.d.ts`. This repo
+enables `isolatedModules` (required by SWC, which the build uses), and `isolatedModules`
+forbids reading a member off a `const enum` — the sample above fails to build here. The
+working pattern is a `type`-only import of `Algorithm` plus a literal cast:
+
+```ts
+import { hash, verify, type Algorithm } from '@node-rs/argon2';
+const ARGON2ID = 2 as Algorithm; // Algorithm.Argon2id's value; see caveat above
+await hash(password, { algorithm: ARGON2ID, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+await verify(hashed, password);
+```
+
 ```ts
 // argon2 (ranisalt) — default is already argon2id, but library default is m=65536,t=3,p=4
 import * as argon2 from 'argon2';
