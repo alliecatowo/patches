@@ -52,7 +52,7 @@ export function PrivacyNoticeBanner(): JSX.Element | null {
         fontSize: '0.9rem',
       }}
     >
-      This node&apos;s privacy notice changed — <Link to="/settings/privacy">review it</Link>.
+      This server&apos;s privacy notice changed — <Link to="/settings/privacy">review it</Link>.
     </p>
   );
 }
