@@ -4,54 +4,45 @@
 infinite-scroll tricks, no ads, no votes or karma. A feed sorted by time, always — the server
 gives you your social world, the client decides how to arrange it.
 
-![Patches TUI: home feed, thread, reply, and notifications, recorded against the live node](docs/media/hero.gif)
+[![CI](https://img.shields.io/github/actions/workflow/status/alliecatowo/patches/ci.yml?branch=main&label=CI)](https://github.com/alliecatowo/patches/actions/workflows/ci.yml)
+[![Deploy](https://img.shields.io/github/actions/workflow/status/alliecatowo/patches/deploy.yml?branch=main&label=deploy)](https://github.com/alliecatowo/patches/actions/workflows/deploy.yml)
+[![Web](https://img.shields.io/github/actions/workflow/status/alliecatowo/patches/web.yml?branch=main&label=web)](https://github.com/alliecatowo/patches/actions/workflows/web.yml)
+[![License](https://img.shields.io/github/license/alliecatowo/patches)](LICENSE)
+[![Node](https://img.shields.io/badge/node-24.19.0-339933?logo=node.js&logoColor=white)](mise.toml)
+[![pnpm](https://img.shields.io/badge/pnpm-11.22.0-F69220?logo=pnpm&logoColor=white)](mise.toml)
 
 People, posts, and image attachments; replies, reposts, and quotes; tags and communities;
 flair and pinned posts; a personal terminal "Page" for every actor; and a small, real
 federation lab. The first-class client is a terminal app built with Ink/React; a responsive
 web client is a full peer, not an afterthought.
 
-> **Status:** the single-node social product (spec Phases 0–8) plus social depth
-> (reposts/quotes, tags, communities, flair, edit history — Amendment B) and privacy/filters/
-> decentralized moderation (Amendment C) are implemented, and the flagship node
-> **patches-social.fly.dev** is live. Direct messages are the one big exception — see
-> [Honest status](#honest-status) below before you go looking for them. Full detail:
-> [`docs/product/roadmap.md`](docs/product/roadmap.md).
-
 <p>
-  <img src="docs/media/home.png" alt="Home feed" width="32%" />
-  <img src="docs/media/thread.png" alt="Thread view" width="32%" />
-  <img src="docs/media/profile.png" alt="Profile view" width="32%" />
+  <img src="docs/media/web/desktop-home.png" alt="Web client: home feed" width="49%" />
+  <img src="docs/media/hero.gif" alt="Patches TUI: home feed, thread, reply, and notifications" width="49%" />
 </p>
 
-## Honest status
+## What works today
 
-This project runs on an "only document what actually works" rule, so here's the unvarnished
-version:
+- **The core social loop is live** on `patches-social.fly.dev`: register/login (password or
+  SSH key), post, reply, like, bookmark, follow, home/local feeds, notifications, and image
+  attachments (Kitty graphics protocol with a plain-text fallback elsewhere).
+- **Social depth (Amendment B) is implemented**: reposts and quotes, tags, communities, flair,
+  ≤3 pinned posts, per-actor Pages with a guestbook, profile walls, and edit history.
+- **Privacy, filters, and decentralized moderation (Amendment C) are implemented**: blocking,
+  muting, reporting, filter lists, labelers, and moderator/owner enforcement tooling
+  (`patches-admin`).
+- **The web client (`apps/web`) is a full responsive peer**, not a cut-down mirror: theming,
+  PWA install + app badging, profile wall editing, and the same chronological/no-scores rules
+  as the TUI.
+- **Direct messages do not work yet.** The protocol (per-device identity, session setup,
+  message fanout) is implemented and integration-tested, but two real accounts still cannot
+  complete a session handshake with each other (tracked as B-124 in
+  [`tasks.md`](tasks.md)). v0 DMs are **server-visible**, not encrypted, secure, or private —
+  see "Messaging (E2EE — in progress)" below.
+- **Federation is a local two-node lab only** (`mise run fed:lab`); the flagship node does not
+  federate with the outside world yet.
 
-- **Working on the live node today:** register/login (password or SSH key), post, reply,
-  like, bookmark, repost/quote, follow, home/local feeds, tags, communities, notifications,
-  image attachments (Kitty graphics protocol with a plain-text fallback elsewhere), flair,
-  pinned posts, profile Pages with a guestbook, and blocking/muting/reporting.
-- **Direct messages do not work yet.** The DM protocol — per-device identity, session setup,
-  and message fanout — is implemented and covered by integration tests, but the step where
-  two real accounts establish a session with each other is still blocked by an open bug
-  (device-identity encoding mismatch, tracked as B-124 in [`tasks.md`](tasks.md)). No client,
-  live or local, can currently send a working DM. When this ships, expect it to be described
-  plainly and specifically, not as a generic "secure messaging" claim — see
-  [`docs/architecture/e2ee.md`](docs/architecture/e2ee.md) for the real state of the protocol
-  and what's still gated.
-- **The hosted web build** at [patches-web.pages.dev](https://patches-web.pages.dev) deploys
-  from `main` on a gate, not on every commit — if something there looks off, its footer prints
-  the exact commit it's running (`patches web <version>+<short-sha>`); compare that against
-  `git log` on `main` rather than trusting a claim frozen in this README.
-- **Federation** runs today only as a local two-node lab (`mise run fed:lab`); the flagship
-  node does not federate with the outside world yet.
-- **The live node is invite-only.** Ask Allie for a code, or run the whole stack locally
-  (below) and invite yourself.
-
-For everything else, [`docs/product/roadmap.md`](docs/product/roadmap.md) tracks what's
-implemented, in progress, or planned, phase by phase.
+For the full phase-by-phase status, see [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
 ## Try the live node
 
@@ -79,11 +70,131 @@ but not live yet — the release-tarball install above is the only supported pat
 walkthrough, including how to drive two accounts side by side to see follow/reply/notify in
 action: [`docs/operations/try-it.md`](docs/operations/try-it.md).
 
-## Using Patches
+The live node is invite-only — ask Allie for a code, or run the whole stack locally (below) and
+invite yourself.
 
-For end users: installing the `patches` terminal client, connecting to a node,
-registering/signing in, and the in-app keybindings, see
-[`docs/user-guide.md`](docs/user-guide.md).
+<details>
+<summary><strong>Terminal client (TUI)</strong></summary>
+
+Built with Ink 7 (React for the terminal). Kitty/Ghostty-class terminals get inline image
+attachments via the Kitty graphics protocol; every other terminal falls back to plain text —
+the TUI never assumes graphics support.
+
+<p>
+  <img src="docs/media/home.png" alt="TUI home feed" width="32%" />
+  <img src="docs/media/thread.png" alt="TUI thread view" width="32%" />
+  <img src="docs/media/profile.png" alt="TUI profile view" width="32%" />
+</p>
+<p>
+  <img src="docs/media/cli.gif" alt="TUI CLI walkthrough" width="49%" />
+  <img src="docs/media/compose.gif" alt="TUI compose flow" width="49%" />
+</p>
+
+The screenshots above are VHS-scripted recordings against the live node (`mise run demos`,
+`infra/demos/`). For a source-of-truth view of
+exactly what the TUI renders today — the same byte-for-byte fixtures CI diffs on every pull
+request — see [`docs/media/tui/frames.md`](docs/media/tui/frames.md), generated from
+`apps/tui/test/golden/*.txt` by `mise run screenshots:tui` (there is no PNG/SVG renderer for
+Ink frames in this repo, and this project doesn't add a dependency just to make one — see
+[Regenerating this media](#regenerating-this-media)).
+
+More: [`docs/user-guide.md`](docs/user-guide.md) (keybindings, connecting to a node),
+[`docs/architecture/tui.md`](docs/architecture/tui.md) (what's built).
+
+</details>
+
+<details>
+<summary><strong>Web PWA</strong></summary>
+
+`apps/web` (Vite + React 19 + Connect-Web) is a full responsive peer of the TUI, not a
+read-only mirror: the same chronological feed, no engagement ranking, no scores. It installs
+as a PWA (manifest, app badging for unread counts, mobile safe-area insets) and supports
+light/dark/custom themes, profile wall editing, and followers/following screens.
+
+Desktop (1280×800) and mobile (390×844) captures, generated from the lab harness by
+`apps/web/e2e/readme-screenshots.spec.ts` — see [Regenerating this media](#regenerating-this-media):
+
+<p>
+  <img src="docs/media/web/desktop-home.png" alt="Web: home feed (desktop)" width="49%" />
+  <img src="docs/media/web/desktop-thread.png" alt="Web: thread (desktop)" width="49%" />
+</p>
+<p>
+  <img src="docs/media/web/desktop-profile.png" alt="Web: profile (desktop)" width="32%" />
+  <img src="docs/media/web/desktop-settings.png" alt="Web: settings (desktop)" width="32%" />
+  <img src="docs/media/web/mobile-home.png" alt="Web: home feed (mobile)" width="16%" />
+  <img src="docs/media/web/mobile-thread.png" alt="Web: thread (mobile)" width="16%" />
+  <img src="docs/media/web/mobile-profile.png" alt="Web: profile (mobile)" width="16%" />
+  <img src="docs/media/web/mobile-settings.png" alt="Web: settings (mobile)" width="16%" />
+</p>
+
+More: [`docs/operations/web.md`](docs/operations/web.md), [`apps/web/README.md`](apps/web/README.md).
+
+</details>
+
+<details>
+<summary><strong>Messaging (E2EE — in progress)</strong></summary>
+
+<p>
+  <img src="docs/media/web/desktop-messages.png" alt="Web: messages screen (desktop)" width="49%" />
+  <img src="docs/media/web/mobile-messages.png" alt="Web: messages screen (mobile)" width="16%" />
+</p>
+
+**v0 direct messages are server-visible, never encrypted, secure, or private** — this project
+never calls them otherwise (spec §183.1, CLAUDE.md Amendment B). The real end-to-end-encrypted
+protocol (per-device identity, X3DH-class session setup, Signal-style Double Ratchet with
+encrypted headers, franking for abuse reports) is designed and largely built —
+[`docs/architecture/e2ee.md`](docs/architecture/e2ee.md) documents the actual, current state —
+but two real accounts cannot yet complete a session handshake with each other end to end
+(blocked on B-124, a client identity-transcript unification, tracked in
+[`tasks.md`](tasks.md)). No client, live or local, can currently send a working DM. When this
+ships, it will be described specifically (protocol name, what it protects, what the node can
+still see), never as a generic "secure messaging" claim.
+
+</details>
+
+<details>
+<summary><strong>Federation seam</strong></summary>
+
+Federation is a seam, not a feature yet: `FederationGateway` → `NoopFederationGateway` in v0,
+swapped per-call for `ActivityPubFederationGateway` only inside the local two-node lab
+(`mise run fed:lab`) — WebFinger, actor documents, inbox/outbox, and `Follow`/`Like`/`Create`
+delivery between two Patches nodes on your machine. No remote HTTP request is ever made
+outside that lab today, and DMs never cross the federation seam at all, encrypted or not (ADR
+0020 §13).
+
+More: [`docs/architecture/federation.md`](docs/architecture/federation.md),
+[`docs/operations/federation.md`](docs/operations/federation.md).
+
+</details>
+
+<details>
+<summary><strong>Agent harness &amp; tooling</strong></summary>
+
+This repo is developed with an AI agent harness — `CLAUDE.md` is the authoritative entry
+point (hard rules, layering, working agreement), `.claude/` holds agent/rule/hook
+configuration, and `docs/agents/` records how the harness works and what it has learned:
+
+- [`docs/agents/HARNESS.md`](docs/agents/HARNESS.md) — how agents are dispatched and scoped.
+- [`docs/agents/MODEL_ROUTING.md`](docs/agents/MODEL_ROUTING.md) — which capability class
+  (mechanical / implementation / architecture) a task needs.
+- [`docs/agents/PACKAGE_CONVENTIONS.md`](docs/agents/PACKAGE_CONVENTIONS.md) — adding a
+  dependency, script, or package correctly.
+- [`docs/agents/LEARNINGS.md`](docs/agents/LEARNINGS.md) — accumulated non-obvious lessons
+  (`/retro`).
+- [`docs/agents/CONTEXT_ECONOMY.md`](docs/agents/CONTEXT_ECONOMY.md) — `mise run usage`.
+
+</details>
+
+<details>
+<summary><strong>Contributing</strong></summary>
+
+Humans and agents follow the same rules: [`CLAUDE.md`](CLAUDE.md) for architecture/tooling,
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for workflow, [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md),
+and [`SECURITY.md`](SECURITY.md). Task board: the
+[Patches GitHub Project](https://github.com/users/alliecatowo/projects/5) (`tasks.md` is the
+historical archive of completed work and the offline fallback).
+
+</details>
 
 ## Development
 
@@ -134,6 +245,21 @@ Everyday commands:
 More: [`docs/operations/local-development.md`](docs/operations/local-development.md),
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Regenerating this media
+
+Both README media sets are regenerated by scripted captures, never hand-made, so they can't
+silently drift from what the product actually does:
+
+```bash
+mise run screenshots:tui   # rewrites docs/media/tui/frames.md from apps/tui/test/golden/*.txt
+mise run screenshots:web   # kills stray :4173/:8088/:50058, starts the lab harness, runs
+                            # apps/web/e2e/readme-screenshots.spec.ts, writes docs/media/web/*.png
+mise run screenshots       # both, in order
+```
+
+See [`scripts/screenshots/regenerate-tui.sh`](scripts/screenshots/regenerate-tui.sh) and
+[`scripts/screenshots/regenerate-web.sh`](scripts/screenshots/regenerate-web.sh).
+
 ## Repository layout
 
 ```
@@ -153,6 +279,7 @@ packages/markup         Safe Markdown-subset rendering for Pages/community rules
 packages/terminal-media  Terminal image rendering (Kitty graphics protocol + fallback)
 packages/testkit        Test database helpers and factories
 infra/                  compose stack (postgres, mailpit, optional minio); infra/docker (Dockerfile); infra/fly (fly.toml, live deploy)
+scripts/                repo-wide scripts (README media regeneration)
 docs/                    product principles & roadmap, architecture, ADRs, operations, research
 ```
 
@@ -164,13 +291,6 @@ there never will be. No votes, karma, or scores. Text and images are first-class
 expressive. Open architecture: the TUI is one client of a versioned protobuf API. Read
 [`docs/product/principles.md`](docs/product/principles.md) and the full spec in
 [`INITIAL_VISION.md`](INITIAL_VISION.md) for the rest.
-
-## Contributing & agents
-
-This repo is developed with an AI agent harness (`CLAUDE.md`, `.claude/`, `docs/agents/`) that
-records learnings and improves itself as the project grows. Humans and agents follow the same
-rules: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md),
-[`SECURITY.md`](SECURITY.md). Task board: the [Patches GitHub Project](https://github.com/users/alliecatowo/projects/5) (`tasks.md` is the historical archive of completed work and the offline fallback).
 
 ## License
 

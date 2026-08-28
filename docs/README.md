@@ -55,6 +55,12 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
 - **`agents/`** — guidance for AI implementation agents working in this repository:
   `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`,
   `CONTEXT_ECONOMY.md`, `HANDOFF-e2ee-web.md`.
+- **`media/`** — README screenshots and recordings. `media/web/*.png` (desktop/mobile web PWA
+  captures) and `media/tui/frames.md` (TUI golden-frame text captures) are generated, not
+  hand-made — see `../scripts/screenshots/` and the README's "Regenerating this media"
+  section (`mise run screenshots`). The top-level `hero.gif`/`home.png`/etc. are VHS-scripted
+  TUI captures against the live node (`mise run demos`, `infra/demos/`), predating the
+  golden-frame script.
 
 ## Where to start
 
