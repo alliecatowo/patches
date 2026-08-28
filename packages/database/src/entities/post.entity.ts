@@ -47,6 +47,11 @@ import {
 // `WHERE client_request_id IS NOT NULL` predicate is needed — PostgreSQL treats NULLs as
 // distinct in a unique index, so posts without an idempotency key never collide.
 @Index(['authorActorId', 'clientRequestId'], { unique: true })
+// Full-text search (P19-006, §112): `tsv` is a generated `STORED` column, added by raw SQL
+// in `AddPostsFts` because a generated column's `typeorm_metadata` bookkeeping row must be
+// hand-written on creation — declared here too so `migration:generate` sees the same shape
+// the migration already produced and doesn't propose dropping it.
+@Index(['tsv'], { type: 'gin' })
 @Check('chk_posts_post_type', checkIn('post_type', POST_TYPES))
 @Check('chk_posts_visibility', checkIn('visibility', POST_VISIBILITIES))
 // A LINK post must carry its URL. The full §23 rule ("a post has text, an image, or a
@@ -174,4 +179,22 @@ export class Post {
   @ManyToOne(() => Community, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'community_id' })
   declare community: Community | null;
+
+  /**
+   * Postgres-generated `tsvector`, never written by application code (`insert`/`update`
+   * false — the database computes it, `save()` must not try to). Excluded from default
+   * `SELECT`s (`select: false`) since nothing reads it through the entity; search queries
+   * hit it directly via `idx_posts_tsv`. See `AddPostsFts1787190000001` for the migration
+   * that created it (a generated `STORED` column needs a hand-written `typeorm_metadata`
+   * row, which `migration:generate` cannot emit on its own).
+   */
+  @Column({
+    type: 'tsvector',
+    asExpression: "to_tsvector('english', COALESCE(body, ''))",
+    generatedType: 'STORED',
+    select: false,
+    insert: false,
+    update: false,
+  })
+  declare tsv: string;
 }
