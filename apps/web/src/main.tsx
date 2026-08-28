@@ -93,6 +93,14 @@ createRoot(container).render(
             color: 'var(--fg)',
             fontFamily: 'var(--font-sans)',
           },
+          // Styles the action button of `showActionToast` (components/ui/Toast.ts) so an
+          // action toast reads as an intentional control, not sonner's default plain link.
+          actionButtonStyle: {
+            background: 'var(--accent)',
+            color: 'var(--accent-fg)',
+            borderRadius: 'var(--radius-full)',
+            fontWeight: 600,
+          },
         }}
       />
       {import.meta.env.DEV && <ReactQueryDevtoolsInDev />}

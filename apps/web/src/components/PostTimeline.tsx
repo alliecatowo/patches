@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type JSX } from 'react';
 
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { PostCard } from './PostCard.js';
-import { PullToRefresh } from './PullToRefresh.js';
+import { PullToRefresh } from './ui/PullToRefresh.js';
 import styles from './PostTimeline.module.css';
 
 export interface PostPage {

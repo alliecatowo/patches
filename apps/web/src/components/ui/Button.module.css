@@ -27,6 +27,14 @@
   transform: scale(0.97);
 }
 
+/* A toggle control (like, bookmark, pin) sets `aria-pressed` natively — this is the one
+   state class that isn't a `variant`/`size` prop, since it composes with any of them. */
+.button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
 .button:disabled {
   opacity: 0.45;
   cursor: not-allowed;

@@ -1,0 +1,19 @@
+.nameplatePreview {
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--text-lg);
+}
+
+.colorFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.colorFields > * {
+  flex: 1;
+  min-width: 200px;
+}

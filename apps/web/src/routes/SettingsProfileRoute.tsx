@@ -1,13 +1,20 @@
 import { describeError } from '@patches/client';
-import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
+import { NameTagStyle, NameplateSchema, ProfileFrame } from '@patches/proto/es';
+import { create } from '@bufbuild/protobuf';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 import { setActorSession } from '../api/session.js';
+import { ColorPicker } from '../components/ui/ColorPicker.js';
+import { Nameplate } from '../components/Nameplate.js';
+import { Panel } from '../components/ui/Panel.js';
+import { Button, ButtonGroup } from '../components/ui/Button.js';
 import { ImageUploadField } from '../components/ImageUploadField.js';
 import { useSession } from '../hooks/useSession.js';
+import { THEME_CATALOG } from '../lib/theme.js';
 import styles from './AuthForm.module.css';
+import settingsStyles from './SettingsProfileRoute.module.css';
 
 interface FormState {
   displayName: string;
@@ -21,6 +28,34 @@ interface FormState {
   profileFrame: ProfileFrame;
   nameTagStyle: NameTagStyle;
   accentColor: string;
+}
+
+/** The theme catalog's accent swatches, deduplicated — the same "quick pick" set a `ColorPicker`
+ * offers everywhere colour customization touches a theme, so nameplate/accent colour never
+ * invents its own palette. */
+const THEME_SWATCHES: readonly string[] = Array.from(
+  new Set(THEME_CATALOG.map((theme) => theme.preview.accent)),
+);
+
+type NameplateMode = 'solid' | 'gradient';
+
+interface ParsedNameColor {
+  readonly mode: NameplateMode;
+  readonly a: string;
+  readonly b: string;
+}
+
+/** `Nameplate.nameColor` is one hex for a solid colour, or `"#a,#b"` for a two-stop gradient
+ * (spec §173) — this is the one place that format is parsed back apart for editing. */
+function parseNameColor(value: string): ParsedNameColor {
+  const stops = value
+    .split(',')
+    .map((stop) => stop.trim())
+    .filter((stop) => stop !== '');
+  if (stops.length >= 2) {
+    return { mode: 'gradient', a: stops[0] ?? '', b: stops[1] ?? '' };
+  }
+  return { mode: 'solid', a: stops[0] ?? '', b: stops[0] ?? '' };
 }
 
 /** `/settings/profile` — display name, bio, and nameplate cosmetics (never gate function,
@@ -118,6 +153,32 @@ export function SettingsProfileRoute(): JSX.Element {
   const setNameTag = (style: NameTagStyle): void =>
     setForm((current) => (current ? { ...current, nameTagStyle: style } : current));
 
+  const parsedName = parseNameColor(form.nameColor);
+
+  const setNameplateMode = (mode: NameplateMode): void =>
+    setForm((current) => {
+      if (!current) return current;
+      const parsed = parseNameColor(current.nameColor);
+      if (mode === 'solid') return { ...current, nameColor: parsed.a };
+      const b = parsed.b !== '' && parsed.b !== parsed.a ? parsed.b : '#22d3ee';
+      const a = parsed.a !== '' ? parsed.a : '#6b46c1';
+      return { ...current, nameColor: `${a},${b}` };
+    });
+
+  const setNameplateStopA = (hex: string): void =>
+    setForm((current) => {
+      if (!current) return current;
+      const parsed = parseNameColor(current.nameColor);
+      return { ...current, nameColor: parsed.mode === 'gradient' ? `${hex},${parsed.b}` : hex };
+    });
+
+  const setNameplateStopB = (hex: string): void =>
+    setForm((current) => {
+      if (!current) return current;
+      const parsed = parseNameColor(current.nameColor);
+      return { ...current, nameColor: `${parsed.a},${hex}` };
+    });
+
   return (
     <div className={styles['wrap']}>
       <h1>Edit profile</h1>
@@ -151,17 +212,57 @@ export function SettingsProfileRoute(): JSX.Element {
           <label htmlFor="settings-website">Website</label>
           <input id="settings-website" value={form.websiteUrl} onChange={set('websiteUrl')} />
         </div>
-        <div className={styles['field']}>
-          <label htmlFor="settings-color">
-            Nameplate colour (hex, or two hex codes separated by a comma for a gradient)
-          </label>
-          <input
-            id="settings-color"
-            value={form.nameColor}
-            onChange={set('nameColor')}
-            placeholder="#6b46c1"
-          />
-        </div>
+
+        <Panel
+          eyebrow="Cosmetic"
+          title="Nameplate colour"
+          description="Purely decorative — never sent to feed ranking or moderation, and never required to post or read (§184.3)."
+        >
+          <div className={settingsStyles['nameplatePreview']}>
+            <Nameplate
+              handle={session.actor.handle}
+              nameplate={create(NameplateSchema, { nameColor: form.nameColor, glyph: form.glyph })}
+              bold
+            />
+          </div>
+          <ButtonGroup label="Nameplate style">
+            <Button
+              type="button"
+              size="sm"
+              variant={parsedName.mode === 'solid' ? 'primary' : 'secondary'}
+              aria-pressed={parsedName.mode === 'solid'}
+              onClick={() => setNameplateMode('solid')}
+            >
+              Solid
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={parsedName.mode === 'gradient' ? 'primary' : 'secondary'}
+              aria-pressed={parsedName.mode === 'gradient'}
+              onClick={() => setNameplateMode('gradient')}
+            >
+              Gradient
+            </Button>
+          </ButtonGroup>
+          <div className={settingsStyles['colorFields']}>
+            <ColorPicker
+              label={parsedName.mode === 'gradient' ? 'Start colour' : 'Colour'}
+              value={parsedName.a}
+              onChange={setNameplateStopA}
+              swatches={THEME_SWATCHES}
+            />
+            {parsedName.mode === 'gradient' ? (
+              <ColorPicker
+                label="End colour"
+                value={parsedName.b}
+                onChange={setNameplateStopB}
+                swatches={THEME_SWATCHES}
+              />
+            ) : null}
+          </div>
+        </Panel>
+
         <div className={styles['field']}>
           <label htmlFor="settings-glyph">Nameplate glyph (one character)</label>
           <input id="settings-glyph" value={form.glyph} onChange={set('glyph')} />
@@ -215,17 +316,18 @@ export function SettingsProfileRoute(): JSX.Element {
           </select>
         </div>
         <div className={styles['field']}>
-          <label htmlFor="settings-accent">Accent colour (hex)</label>
-          <input
-            id="settings-accent"
+          <ColorPicker
+            label="Accent colour"
             value={form.accentColor}
-            onChange={set('accentColor')}
-            placeholder="#10B981"
+            onChange={(hex) =>
+              setForm((current) => (current ? { ...current, accentColor: hex } : current))
+            }
+            swatches={THEME_SWATCHES}
           />
         </div>
-        <button type="submit" className={styles['submit']} disabled={mutation.isPending}>
+        <Button type="submit" variant="primary" fullWidth loading={mutation.isPending}>
           {mutation.isPending ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </form>
     </div>
   );

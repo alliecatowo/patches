@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { PostTimeline } from '../components/PostTimeline.js';
+import { Panel } from '../components/ui/Panel.js';
 import { useSession } from '../hooks/useSession.js';
 import styles from './HomeRoute.module.css';
 
@@ -49,16 +50,16 @@ export function HomeRoute(): JSX.Element {
   if (publicReadClosed) {
     return (
       <div className={styles['inviteOnly']}>
-        <h2>This server is invite-only</h2>
-        <p>
-          The person who runs this server has closed reading to signed-out visitors. Sign in if you
-          already have an account, or create one with an invite code if someone here has sent you
-          one.
-        </p>
-        <p>
-          <Link to="/login">Sign in</Link> or{' '}
-          <Link to="/register">create an account with an invite</Link>.
-        </p>
+        <Panel
+          title="This server is invite-only"
+          description="The person who runs this server has closed reading to signed-out visitors. Sign in if you already have an account, or create one with an invite code if someone here has sent you one."
+          centered
+        >
+          <p>
+            <Link to="/login">Sign in</Link> or{' '}
+            <Link to="/register">create an account with an invite</Link>.
+          </p>
+        </Panel>
       </div>
     );
   }

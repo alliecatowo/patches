@@ -17,6 +17,8 @@ import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
+import { Button } from '../components/ui/Button.js';
+import { Skeleton } from '../components/ui/Skeleton.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
 import { NotFoundRoute } from './NotFoundRoute.js';
@@ -101,13 +103,12 @@ export function ProfileRoute(): JSX.Element {
     return (
       <div className={styles['header']}>
         <div className={styles['topRow']}>
-          <div className={`${styles['avatarPlaceholder']} skeleton-shimmer`} />
+          <Skeleton variant="circle" width="88px" />
         </div>
-        <div className="skeleton-shimmer" style={{ height: 24, width: '40%', borderRadius: 4 }} />
-        <div
-          className="skeleton-shimmer"
-          style={{ height: 16, width: '70%', borderRadius: 4, marginTop: 8 }}
-        />
+        <Skeleton variant="text" width="40%" height="24px" />
+        <div style={{ marginTop: 8 }}>
+          <Skeleton variant="text" width="70%" height="16px" />
+        </div>
       </div>
     );
   }
@@ -175,18 +176,19 @@ export function ProfileRoute(): JSX.Element {
           }
           <div className={styles['actionButtonGroup']}>
             {session && session.actor.id !== actor.id ? (
-              <button
+              <Button
                 type="button"
-                className={styles['messageBtn']}
+                variant="secondary"
+                size="sm"
+                icon={<MessageIcon size={16} />}
                 // #323: the one compose flow, reached by handle. `/messages` owns resolving
                 // it, probing whether this actor can be messaged, and enrolling this browser
                 // if it has no messaging device yet — none of which belongs on a profile.
                 onClick={() => void navigate(`/messages?to=${encodeURIComponent(actor.handle)}`)}
                 aria-label={`Send message to @${actor.handle}`}
               >
-                <MessageIcon size={16} />
-                <span>Message</span>
-              </button>
+                Message
+              </Button>
             ) : null}
             <FollowButton actorId={actor.id} />
           </div>
@@ -279,13 +281,14 @@ export function ProfileRoute(): JSX.Element {
               View full page →
             </Link>
             {session?.actor.id === actor.id ? (
-              <button
+              <Button
                 type="button"
-                className={styles['editWallBtn']}
+                variant="secondary"
+                size="sm"
                 onClick={() => setEditWallOpen(true)}
               >
                 + Edit Wall
-              </button>
+              </Button>
             ) : null}
           </div>
 

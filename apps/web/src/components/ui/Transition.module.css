@@ -1,0 +1,26 @@
+.transition {
+  opacity: 0;
+  transition:
+    opacity var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-out);
+}
+
+.entered {
+  opacity: 1;
+}
+
+.fade-slide-up {
+  transform: translateY(6px);
+}
+
+.fade-slide-up.entered {
+  transform: translateY(0);
+}
+
+.fade-scale {
+  transform: scale(0.97);
+}
+
+.fade-scale.entered {
+  transform: scale(1);
+}

@@ -45,14 +45,7 @@
 }
 
 .inviteOnly {
-  padding: 3rem 1.5rem;
-  text-align: center;
-  color: var(--fg-muted);
+  padding: var(--space-8) var(--space-4);
   max-width: 480px;
   margin: 0 auto;
-}
-
-.inviteOnly h2 {
-  color: var(--fg);
-  margin-bottom: 0.75rem;
 }

@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 import { CheckIcon, DownloadIcon, SparklesIcon } from '../../components/icons/Icons.js';
+import { Button } from '../../components/ui/Button.js';
 import { useInterfacePreferences } from '../../hooks/useInterfacePreferences.js';
 import {
   requestShakeToReportPermission,
@@ -187,13 +188,9 @@ export function AppearanceSettingsRoute(): JSX.Element {
               <p className={styles['pwaDesc']}>
                 Get native standalone window, offline caching, and faster load times.
               </p>
-              <button
-                type="button"
-                className={styles['pwaInstallBtn']}
-                onClick={() => void promptInstall()}
-              >
+              <Button type="button" variant="primary" onClick={() => void promptInstall()}>
                 Install Patches App
-              </button>
+              </Button>
             </div>
           ) : isIos ? (
             <div>
@@ -244,13 +241,13 @@ export function AppearanceSettingsRoute(): JSX.Element {
                     ? "Motion access was denied, so shaking your device won't open the report screen — that permission has to come from Safari, not from Patches."
                     : 'iOS requires a one-time tap before Patches can read motion, so shaking can open the report screen.'}
                 </p>
-                <button
+                <Button
                   type="button"
-                  className={styles['pwaInstallBtn']}
+                  variant="primary"
                   onClick={() => void requestShakeToReportPermission()}
                 >
                   {shakePermission === 'denied' ? 'Try again' : 'Enable shake to report'}
-                </button>
+                </Button>
                 <p className={styles['pwaDesc']}>
                   Either way, you can always <Link to="/report">report an issue</Link> from the
                   menu.

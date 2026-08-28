@@ -672,3 +672,24 @@ export function PlusIcon({ size = 20, strokeWidth = 2, ...props }: IconProps): J
     </svg>
   );
 }
+
+export function EyeDropperIcon({ size = 20, strokeWidth = 2, ...props }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="m2 22 1-4 9.6-9.6" />
+      <path d="M15.5 3.5a2.12 2.12 0 0 1 3 3L15 10l-3-3Z" />
+      <path d="m12.5 6.5 3 3" />
+    </svg>
+  );
+}
