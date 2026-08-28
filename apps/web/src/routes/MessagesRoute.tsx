@@ -1,3 +1,4 @@
+import type { Actor } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useState } from 'react';
@@ -5,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
+import { ActorTypeahead } from '../components/ActorTypeahead.js';
 import { securityModeLabel } from '../components/DmNotice.js';
 import { PlusIcon } from '../components/icons/Icons.js';
 import { requiredConversationDisclosure } from '@patches/domain';
@@ -14,17 +16,15 @@ import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
+import flowStyles from '../components/e2ee/messagesFlow.module.css';
 import styles from './MessagesRoute.module.css';
 
-const panelStyle = {
-  padding: '0.5rem 1rem',
-  color: 'var(--fg-muted)',
-  fontSize: '0.85rem',
-} as const;
-
-const buttonStyle = {
-  marginTop: '0.4rem',
-} as const;
+/** #298: new-conversation flow state — pick a recipient by handle/name, then write the
+ * opening message. Never an id prompt. */
+type ComposeState =
+  | { readonly phase: 'closed' }
+  | { readonly phase: 'pick' }
+  | { readonly phase: 'message'; readonly recipient: Actor };
 
 /**
  * List-level panel copy. Must hold regardless of any individual row's `security_mode` —
@@ -57,6 +57,9 @@ export function MessagesRoute(): JSX.Element {
   const e2eeStatus = useE2ee(session);
   const [enrolling, setEnrolling] = useState(false);
   const [needsAuthority, setNeedsAuthority] = useState(false);
+  const [compose, setCompose] = useState<ComposeState>({ phase: 'closed' });
+  const [composeBody, setComposeBody] = useState('');
+  const [sendingCompose, setSendingCompose] = useState(false);
   const navigate = useNavigate();
   const actorId = session?.actor.id;
   const deviceLinkVault = useE2eeVaultAccess(e2eeStatus);
@@ -106,16 +109,24 @@ export function MessagesRoute(): JSX.Element {
     await webE2ee().reloadEnrollment();
   }
 
-  async function handleNewMessage(): Promise<void> {
-    const recipient = window.prompt('Recipient actor id')?.trim();
-    if (recipient === undefined || recipient === '') return;
-    const body = window.prompt('First message')?.trim();
-    if (body === undefined || body === '') return;
+  function handleRecipientSelected(recipient: Actor): void {
+    setComposeBody('');
+    setCompose({ phase: 'message', recipient });
+  }
+
+  async function handleSendCompose(): Promise<void> {
+    if (compose.phase !== 'message') return;
+    const body = composeBody.trim();
+    if (body === '') return;
+    setSendingCompose(true);
     try {
-      const conversationId = await webE2ee().createConversation([recipient], body);
+      const conversationId = await webE2ee().createConversation([compose.recipient.id], body);
+      setCompose({ phase: 'closed' });
       void navigate(`/messages/${conversationId}`);
     } catch (error) {
       toast(error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed);
+    } finally {
+      setSendingCompose(false);
     }
   }
 
@@ -127,7 +138,7 @@ export function MessagesRoute(): JSX.Element {
           <button
             type="button"
             className={styles['newMsgBtn']}
-            onClick={() => void handleNewMessage()}
+            onClick={() => setCompose({ phase: 'pick' })}
             aria-label="New direct message"
           >
             <PlusIcon size={16} />
@@ -135,6 +146,19 @@ export function MessagesRoute(): JSX.Element {
           </button>
         ) : null}
       </div>
+
+      {compose.phase === 'closed' || actorId === undefined ? null : (
+        <ComposePanel
+          state={compose}
+          body={composeBody}
+          sending={sendingCompose}
+          viewerActorId={actorId}
+          onBodyChange={setComposeBody}
+          onRecipientSelected={handleRecipientSelected}
+          onSend={() => void handleSendCompose()}
+          onCancel={() => setCompose({ phase: 'closed' })}
+        />
+      )}
 
       {needsAuthority &&
       actorId !== undefined &&
@@ -147,7 +171,10 @@ export function MessagesRoute(): JSX.Element {
           onResolved={(resolution) => void handleNeedsAuthorityResolved(resolution)}
         />
       ) : needsAuthority ? (
-        <p role="status" style={panelStyle}>
+        <p
+          role="status"
+          className={`${flowStyles['card']} ${flowStyles['inline']} ${flowStyles['note']}`}
+        >
           Preparing…
         </p>
       ) : (
@@ -209,11 +236,11 @@ function ConversationList({
   return (
     <>
       {pollFailed ? (
-        <p role="alert" style={panelStyle}>
+        <p role="alert" className={flowStyles['note']} style={{ padding: '0 1rem' }}>
           {DM_LIST_POLL_FAILED_COPY} Showing the last known list.
         </p>
       ) : null}
-      <p role="note" style={panelStyle}>
+      <p role="note" className={flowStyles['note']} style={{ padding: '0 1rem' }}>
         {CONVERSATION_LIST_NEUTRAL_NOTE}
       </p>
       {conversations.map((conversation) => {
@@ -254,31 +281,36 @@ export function E2eePanel({
   if (status.kind === 'signed-out' || status.kind === 'loading') return null;
   if (status.kind === 'fault') {
     return (
-      <div role="alert" style={panelStyle}>
-        <p>{status.copy}</p>
-        <button type="button" onClick={onWipe} style={buttonStyle}>
+      <div role="alert" className={`${flowStyles['card']} ${flowStyles['inline']}`}>
+        <p className={flowStyles['alertText']}>{status.copy}</p>
+        <button
+          type="button"
+          className={`${flowStyles['optionButton']} ${flowStyles['danger']}`}
+          onClick={onWipe}
+        >
           Reset encrypted messages on this device
         </button>
       </div>
     );
   }
   if (status.kind === 'not-enrolled' || status.kind === 'refused') {
-    const refusal = status.kind === 'refused' ? <p>{status.copy}</p> : null;
+    const refusal =
+      status.kind === 'refused' ? <p className={flowStyles['note']}>{status.copy}</p> : null;
     return (
-      <div role="note" style={panelStyle}>
-        <p>
+      <div role="note" className={`${flowStyles['card']} ${flowStyles['inline']}`}>
+        <p className={flowStyles['explanation']}>
           {requiredConversationDisclosure('E2EE_V1')} {WEB_E2EE_COPY.notEnrolled}
         </p>
         {refusal}
+        {/* Not "enable encrypted messages": enrolling registers this device's keys and
+            nothing more — it does not make messaging work here (B-132). */}
         <button
           type="button"
+          className={`${flowStyles['optionButton']} ${flowStyles['primary']}`}
           onClick={onEnroll}
           disabled={enrolling}
-          style={buttonStyle}
           aria-label="Enroll this browser as a messaging device"
         >
-          {/* Not "enable encrypted messages": enrolling registers this device's keys and
-              nothing more — it does not make messaging work here (B-132). */}
           {enrolling ? 'Enrolling…' : 'Enroll this browser as a messaging device'}
         </button>
       </div>
@@ -286,14 +318,104 @@ export function E2eePanel({
   }
   if (status.kind === 'enrolling') {
     return (
-      <div role="note" style={panelStyle}>
+      <div
+        role="note"
+        className={`${flowStyles['card']} ${flowStyles['inline']} ${flowStyles['note']}`}
+      >
         <p>Enrolling this browser as a messaging device…</p>
       </div>
     );
   }
   return (
-    <div role="note" style={panelStyle}>
+    <div
+      role="note"
+      className={`${flowStyles['card']} ${flowStyles['inline']} ${flowStyles['note']}`}
+    >
       <p>{requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.</p>
+    </div>
+  );
+}
+
+/** New-conversation picker (#298/#300): pick a recipient by handle/name, then write the
+ * opening message — no id prompt, one shared card/button component set with the rest of
+ * the messages surface. */
+function ComposePanel({
+  state,
+  body,
+  sending,
+  viewerActorId,
+  onBodyChange,
+  onRecipientSelected,
+  onSend,
+  onCancel,
+}: {
+  state: Extract<ComposeState, { phase: 'pick' | 'message' }>;
+  body: string;
+  sending: boolean;
+  viewerActorId: string;
+  onBodyChange: (value: string) => void;
+  onRecipientSelected: (actor: Actor) => void;
+  onSend: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  if (state.phase === 'pick') {
+    return (
+      <div
+        className={`${flowStyles['card']} ${flowStyles['inline']}`}
+        role="group"
+        aria-label="New message"
+      >
+        <h2 className={flowStyles['title']}>New message</h2>
+        <p className={flowStyles['body']}>Who do you want to message</p>
+        <ActorTypeahead
+          viewerActorId={viewerActorId}
+          excludeActorIds={[viewerActorId]}
+          onSelect={onRecipientSelected}
+        />
+        <button
+          type="button"
+          className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`${flowStyles['card']} ${flowStyles['inline']}`}
+      role="group"
+      aria-label="New message"
+    >
+      <h2 className={flowStyles['title']}>Message @{state.recipient.handle}</h2>
+      <textarea
+        aria-label="Message body"
+        className={flowStyles['searchInput']}
+        value={body}
+        onChange={(event) => onBodyChange(event.target.value)}
+        rows={3}
+        placeholder="Write a message…"
+        autoFocus
+      />
+      <div className={flowStyles['optionStack']}>
+        <button
+          type="button"
+          className={`${flowStyles['optionButton']} ${flowStyles['primary']}`}
+          onClick={onSend}
+          disabled={sending || body.trim() === ''}
+        >
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+        <button
+          type="button"
+          className={`${flowStyles['optionButton']} ${flowStyles['tertiary']}`}
+          onClick={onCancel}
+          disabled={sending}
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

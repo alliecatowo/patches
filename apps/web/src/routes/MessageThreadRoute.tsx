@@ -197,7 +197,7 @@ export function MessageThreadRoute(): JSX.Element {
 
       {enrolled ? (
         <form
-          style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem' }}
+          className={styles['composer']}
           onSubmit={(event) => {
             event.preventDefault();
             void handleSend();
@@ -205,13 +205,17 @@ export function MessageThreadRoute(): JSX.Element {
         >
           <textarea
             aria-label="Message body"
+            className={styles['composerInput']}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={2}
-            style={{ flex: 1, resize: 'vertical' }}
             placeholder="Write a message…"
           />
-          <button type="submit" disabled={sending || draft.trim() === ''}>
+          <button
+            type="submit"
+            className={styles['sendBtn']}
+            disabled={sending || draft.trim() === ''}
+          >
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>
@@ -245,17 +249,12 @@ function MessageRow({ row }: { row: InboxRow }): JSX.Element {
   if (row.kind === 'message') {
     return (
       <div
-        style={{
-          padding: '0.5rem 1rem',
-          marginLeft: row.sentByViewer ? '20%' : '0',
-          marginRight: row.sentByViewer ? '0' : '20%',
-          background: row.sentByViewer ? 'var(--bg-raised, rgba(127,127,127,0.12))' : 'transparent',
-          whiteSpace: 'pre-wrap',
-          overflowWrap: 'anywhere',
-        }}
+        className={`${styles['bubble']} ${row.sentByViewer ? styles['mine'] : styles['theirs']}`}
       >
-        <strong>{row.senderLabel === 'you' ? 'you' : row.senderLabel}</strong>
-        <p style={{ margin: '0.15rem 0 0' }}>{row.body}</p>
+        <span className={styles['senderHandle']}>
+          {row.senderLabel === 'you' ? 'you' : row.senderLabel}
+        </span>
+        <p className={styles['bubbleBody']}>{row.body}</p>
       </div>
     );
   }

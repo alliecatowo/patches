@@ -81,7 +81,7 @@ export const RepostedContext: Story = {
           homeServer: 'other.example',
         }),
       ],
-      body: 'Reposted by a remote actor — the context row shows @nomad@other.example.',
+      body: 'Reposted by a remote account — the context row shows @nomad@other.example.',
     }),
   },
 };
