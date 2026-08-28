@@ -12,25 +12,14 @@
  *   - signing out does NOT wipe the vault — the vault is account-scoped storage, and
  *     wipe is an explicit, labeled destructive act.
  *
- * Conversation **creation** fails closed here, for two independent and documented
- * reasons (both also bind the TUI, which is why neither client wires a working create):
- *   1. B-124: establishing the first session needs peer prekey bundles in the
- *      crypto-native encoding X3DH verifies, which the node cannot serve (see
- *      `transports.ts`).
- *   2. The wire contract itself: `CreateE2eeConversation` mints the conversation id
- *      server-side *after* the client composes the initial message — but every
- *      envelope's AEAD associated data binds the conversation id the *recipient* will
- *      read off the wire (`packages/crypto`'s `encodeDeviceEnvelopeAssociatedData`
- *      requires it non-empty). A client cannot seal an initial envelope for an id it
- *      cannot know; inventing one would produce envelopes no recipient can ever open.
- *      This manager refuses to do that (fail closed) rather than shipping un-openable
- *      ciphertext.
+ * Conversation creation reserves a bare conversation (ADR 0035: no message on the
+ * reserve) via `CreateE2eeConversation`, then sends the first message through the same
+ * `send()` path as any later message — see `createConversation` below.
  */
 import { useSyncExternalStore } from 'react';
 
 import { api } from '../api/client.js';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY, webE2eeSessionSetupAvailable } from './availability.js';
 import type { InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
@@ -49,6 +38,7 @@ import {
   type EnrollOutcome,
 } from './enrollment.js';
 import {
+  bindConversationCreate,
   createWebE2eeTransports,
   createWebEnrollmentTransport,
   type E2eeApiSurface,
@@ -64,8 +54,7 @@ export const WEB_E2EE_COPY = {
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
   pollFailed: 'Could not fetch new encrypted messages.',
-  createUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  sessionUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+  createFailed: 'The conversation could not be created.',
   peerWarning: ENROLLMENT_PEER_WARNING_COPY,
 } as const;
 
@@ -251,11 +240,6 @@ class WebE2eeManager {
 
   async send(conversationId: string, body: string): Promise<void> {
     const runtime = this.requireRuntime();
-    if (!webE2eeSessionSetupAvailable()) {
-      // Refuse before composing anything: no session can be established, so this would
-      // fail at fanout every time (B-132). The honest answer lives here, not in the UI.
-      throw new WebE2eeUnavailableError(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
-    }
     try {
       await runtime.send(conversationId, body, crypto.randomUUID());
     } catch (error) {
@@ -275,23 +259,32 @@ class WebE2eeManager {
   }
 
   /**
-   * Creating an E2EE conversation from the browser fails closed today — see the module
-   * header for both blockers (B-124 prekey claims, and the conversation-id-in-AD gap in
-   * `CreateE2eeConversation` itself). Existing conversations send/receive normally.
+   * Reserves a new E2EE conversation (`CreateE2eeConversation`, ADR 0035 — the reserve
+   * itself carries no message) and immediately sends `firstMessageBody` into the id it
+   * returns through the ordinary `send()` path, so the reservation never becomes visible
+   * (ADR 0035 §5) without a real first message landing in the same call.
    */
-  createConversation(): Promise<never> {
-    // Not async: `requireRuntime`'s throw must surface as a rejection (callers await
-    // this), which a synchronous throw from a non-async function would bypass instead.
+  async createConversation(
+    recipientActorIds: readonly string[],
+    firstMessageBody: string,
+  ): Promise<{ readonly conversationId: string }> {
+    const identity = this.identity;
+    this.requireRuntime();
+    if (identity === undefined) throw new E2eeNotEnrolledError();
     try {
-      this.requireRuntime();
+      const reserved = await bindConversationCreate(this.api).createE2eeConversation({
+        clientRequestId: crypto.randomUUID(),
+        senderDeviceId: identity.deviceId,
+        recipientActorIds,
+      });
+      await this.send(reserved.conversationId, firstMessageBody);
+      return reserved;
     } catch (error) {
-      return Promise.reject(
-        error instanceof Error
-          ? error
-          : new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable),
-      );
+      if (error instanceof WebE2eeUnavailableError || error instanceof E2eeNotEnrolledError) {
+        throw error;
+      }
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.createFailed);
     }
-    return Promise.reject(new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable));
   }
 
   /** Explicit, labeled destructive reset (also the only exit from a sticky fault).

@@ -6,14 +6,15 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { DM_LIST_POLL_FAILED_COPY, MessagesRoute } from './MessagesRoute.js';
 
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
+const mockGetActorByHandle = vi.fn<(...args: unknown[]) => Promise<{ actor?: Actor }>>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockToast = vi.fn<(...args: unknown[]) => void>();
+const mockToastError = vi.fn<(...args: unknown[]) => void>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
 
 vi.mock('../api/client.js', () => ({
@@ -21,6 +22,10 @@ vi.mock('../api/client.js', () => ({
     messages: {
       listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
         mockListConversations(...args),
+    },
+    actors: {
+      getActorByHandle: (...args: unknown[]): Promise<{ actor?: Actor }> =>
+        mockGetActorByHandle(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -30,7 +35,9 @@ vi.mock('../hooks/useSession.js', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: (...args: unknown[]): void => mockToast(...args),
+  toast: Object.assign((...args: unknown[]): void => mockToast(...args), {
+    error: (...args: unknown[]): void => mockToastError(...args),
+  }),
 }));
 
 vi.mock('../e2ee/use-e2ee.js', () => ({
@@ -64,8 +71,10 @@ function renderMessages(): { queryClient: QueryClient } & ReturnType<typeof rend
 describe('MessagesRoute', () => {
   beforeEach(() => {
     mockListConversations.mockReset();
+    mockGetActorByHandle.mockReset();
     mockUseSession.mockReset();
     mockToast.mockReset();
+    mockToastError.mockReset();
     mockUseE2ee.mockReset();
     mockUseE2ee.mockReturnValue({ kind: 'enrolled' });
     mockUseSession.mockReturnValue({
@@ -92,28 +101,21 @@ describe('MessagesRoute', () => {
     expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
   });
 
-  it('disables "New Message" while no session can be established (B-132)', async () => {
+  it('opens a minimal recipient/message composer from "New Message" once enrolled', async () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
     await screen.findByText('No conversations yet.');
 
     const newMessage = screen.getByLabelText('New direct message');
-    expect(newMessage).toBeDisabled();
+    expect(newMessage).toBeEnabled();
     fireEvent.click(newMessage);
-    // A disabled control must not pretend to have tried.
-    expect(mockToast).not.toHaveBeenCalled();
+
+    expect(screen.getByLabelText('Recipient handle')).toBeInTheDocument();
+    expect(screen.getByLabelText('First message')).toBeInTheDocument();
   });
 
-  it('states plainly on the enrolled panel that messaging does not work here yet', async () => {
-    mockListConversations.mockResolvedValue({ conversations: [] });
-    renderMessages();
-    await screen.findByText('No conversations yet.');
-
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
-  });
-
-  it('offers enrollment without claiming it enables messaging', async () => {
+  it('offers enrollment for a device that is not yet enrolled', async () => {
     mockUseE2ee.mockReturnValue({ kind: 'not-enrolled' });
     mockListConversations.mockResolvedValue({ conversations: [] });
 
@@ -121,7 +123,6 @@ describe('MessagesRoute', () => {
     await screen.findByText('No conversations yet.');
 
     expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
   });
 
   it('polls the conversation list every WEB_DM_POLL_MS while mounted (ADR 0032, P19-021)', async () => {

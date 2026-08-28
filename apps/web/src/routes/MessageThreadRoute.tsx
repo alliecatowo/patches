@@ -6,10 +6,6 @@ import { useParams } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
 import { requiredConversationDisclosure } from '@patches/domain';
-import {
-  WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  webE2eeSessionSetupAvailable,
-} from '../e2ee/availability.js';
 import type { InboxRow } from '../e2ee/runtime.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
@@ -26,9 +22,8 @@ const POLL_INTERVAL_MS = 8_000;
  * device's mailbox (`webE2ee().poll`), and sends go through the sealed-envelope fanout
  * (`webE2ee().send`). Nothing plaintext ever touches the wire here.
  *
- * The composer is gated on session setup actually being possible (`availability.ts`,
- * B-132): while it is not, send is disabled and the fixed copy says so, instead of
- * offering a control whose every press fails.
+ * The composer is gated only on this device being enrolled — session setup itself now
+ * works from the browser (ADR 0033 §7).
  */
 export function MessageThreadRoute(): JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -62,7 +57,6 @@ export function MessageThreadRoute(): JSX.Element {
   const [sending, setSending] = useState(false);
 
   const enrolled = e2eeStatus.kind === 'enrolled';
-  const sessionSetupAvailable = webE2eeSessionSetupAvailable();
 
   useEffect(() => {
     if (!enrolled || conversationId === '') return;
@@ -95,7 +89,7 @@ export function MessageThreadRoute(): JSX.Element {
 
   async function handleSend(): Promise<void> {
     const body = draft.trim();
-    if (body === '' || sending || !sessionSetupAvailable) return;
+    if (body === '' || sending) return;
     setSending(true);
     try {
       await webE2ee().send(conversationId, body);
@@ -140,14 +134,6 @@ export function MessageThreadRoute(): JSX.Element {
           </p>
         </div>
       ) : null}
-      {sessionSetupAvailable ? null : (
-        <div
-          role="note"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
-        >
-          <p>{WEB_E2EE_SESSION_UNAVAILABLE_COPY}</p>
-        </div>
-      )}
       {e2eeStatus.kind === 'fault' ? (
         <div
           role="alert"
@@ -170,7 +156,6 @@ export function MessageThreadRoute(): JSX.Element {
         ) : null}
         {rows.length === 0 &&
         enrolled &&
-        sessionSetupAvailable &&
         !conversationQuery.isPending &&
         otherMembers.length > 0 ? (
           <div className={styles['emptyThread']}>
@@ -198,11 +183,10 @@ export function MessageThreadRoute(): JSX.Element {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={2}
-            disabled={!sessionSetupAvailable}
             style={{ flex: 1, resize: 'vertical' }}
-            placeholder={sessionSetupAvailable ? 'Write a message…' : 'Sending is unavailable'}
+            placeholder="Write a message…"
           />
-          <button type="submit" disabled={!sessionSetupAvailable || sending || draft.trim() === ''}>
+          <button type="submit" disabled={sending || draft.trim() === ''}>
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>

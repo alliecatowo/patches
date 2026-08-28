@@ -10,7 +10,6 @@ import { E2EE_PROTOCOL } from '@patches/crypto';
 import type { VerifiedCertifiedDevice, VerifiedRosterSnapshot } from '@patches/crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from './availability.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import { createWebE2eeManager, WEB_E2EE_COPY, WebE2eeUnavailableError } from './web-e2ee.js';
@@ -32,8 +31,8 @@ function freshActorId(): string {
  * A structurally valid `LocalDeviceIdentity` with placeholder (not cryptographically
  * meaningful) key material. `WebE2eeManager.bind`/`createWebE2eeTransports` only close
  * over the identity's shape — they never verify it — so this is enough to reach
- * `enroll`'s already-enrolled short-circuit and `send`'s availability guard, both of
- * which run before any real crypto or network call.
+ * `enroll`'s already-enrolled short-circuit and `send`/`createConversation`'s
+ * runtime-requiring entry point, before either reaches real crypto or a network call.
  */
 function stubIdentity(actorId: string): LocalDeviceIdentity {
   const key32 = (): Uint8Array => new Uint8Array(32);
@@ -273,22 +272,49 @@ describe('WebE2eeManager.enroll — guards', () => {
   });
 });
 
-describe('WebE2eeManager.send — refuses while session setup is unavailable (B-132)', () => {
+describe('WebE2eeManager.send', () => {
   it('refuses before enrollment, without ever constructing a runtime', async () => {
     const manager = createWebE2eeManager({ api: fakeApi });
     await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(E2eeNotEnrolledError);
   });
 
-  it('refuses once enrolled, with the fixed unavailable copy, never reaching the runtime', async () => {
+  it('surfaces a real send failure as the fixed sendFailed copy, not a stub availability guard', async () => {
     const manager = createWebE2eeManager({ api: fakeApi });
     const actor = { id: freshActorId() };
     await manager.setActor(actor);
     const vault = openedVaultOf(manager);
     manager['bind'](vault, stubIdentity(`${actor.id}-device-sender`));
 
+    // `fakeApi.e2ee` is `{}` (no RPC methods stubbed), so the runtime's transport call
+    // fails for real — session setup is no longer gated by a fixed-false flag.
     await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(WebE2eeUnavailableError);
-    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(
-      WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+    await expect(manager.send('conversation-1', 'hello')).rejects.toThrow(WEB_E2EE_COPY.sendFailed);
+  });
+});
+
+describe('WebE2eeManager.createConversation', () => {
+  it('refuses before enrollment, without ever reserving a conversation', async () => {
+    const manager = createWebE2eeManager({ api: fakeApi });
+    await expect(manager.createConversation(['actor-other'], 'hi')).rejects.toThrow(
+      E2eeNotEnrolledError,
+    );
+  });
+
+  it('surfaces a real reservation/send failure as the fixed createFailed copy', async () => {
+    const manager = createWebE2eeManager({ api: fakeApi });
+    const actor = { id: freshActorId() };
+    await manager.setActor(actor);
+    const vault = openedVaultOf(manager);
+    manager['bind'](vault, stubIdentity(`${actor.id}-device-creator`));
+
+    // `fakeApi.e2ee` is `{}`, so `CreateE2eeConversation` fails for real — this pins
+    // that `createConversation` actually calls through to the transport (ADR 0035
+    // reserve-then-send) rather than always rejecting a fixed-false availability check.
+    await expect(manager.createConversation(['actor-other'], 'hi')).rejects.toThrow(
+      WebE2eeUnavailableError,
+    );
+    await expect(manager.createConversation(['actor-other'], 'hi')).rejects.toThrow(
+      WEB_E2EE_COPY.createFailed,
     );
   });
 });

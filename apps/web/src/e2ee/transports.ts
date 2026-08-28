@@ -195,7 +195,7 @@ export function createWebE2eeTransports(
 }
 
 // ---------------------------------------------------------------------------
-// Conversation creation seam — see `web-e2ee.ts` for why creation fails closed
+// Conversation creation seam
 // ---------------------------------------------------------------------------
 
 /** Structural shape of `CreateE2eeConversationRequest` the manager composes. */
@@ -203,7 +203,6 @@ export interface CreateE2eeConversationInput {
   readonly clientRequestId: string;
   readonly senderDeviceId: string;
   readonly recipientActorIds: readonly string[];
-  readonly message: SendEnvelopesRequestLike['message'];
 }
 
 export interface E2eeConversationCreateTransport {
@@ -215,10 +214,9 @@ export function bindConversationCreate(api: E2eeApiSurface): E2eeConversationCre
     // ADR 0035: `CreateE2eeConversationRequest` no longer carries the first message —
     // the node reserves the conversation id, invisible until a real `SendEnvelopes`
     // lands into it, because the envelope AD binds a conversation id that used to not
-    // exist yet when the client sealed it. `input.message` stays part of this seam's
-    // input shape so a caller can seal its envelopes against the id this call returns
-    // and immediately follow up with `sendEnvelopes` — composing that two-step send is
-    // the caller's job, not this transport's.
+    // exist yet when the client sealed it. Composing that follow-up `SendEnvelopes`
+    // (via the ordinary `send()` path, now that this id exists) is the caller's job,
+    // not this transport's.
     async createE2eeConversation(input) {
       const response = await api.e2ee.createE2eeConversation({
         clientRequestId: input.clientRequestId,

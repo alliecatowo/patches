@@ -6,7 +6,6 @@ import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { MessageThreadRoute } from './MessageThreadRoute.js';
 
 const mockGetConversation =
@@ -67,7 +66,7 @@ function e2eeConversation(handle: string): Conversation {
 
 function noteText(): string {
   return screen
-    .getAllByRole('note')
+    .queryAllByRole('note')
     .map((node) => node.textContent ?? '')
     .join(' ');
 }
@@ -92,7 +91,7 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
     });
   });
 
-  it('disables the composer and explains why, with no retry promise', async () => {
+  it('enables the composer once enrolled — session setup works from the browser (ADR 0033 §7)', async () => {
     mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
 
     renderThread();
@@ -100,14 +99,12 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
     await waitFor(() => {
       expect(noteText()).toContain('End-to-end encrypted.');
     });
-    expect(noteText()).toContain(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
-    expect(screen.getByRole('textbox', { name: 'Message body' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Message body' })).toBeEnabled();
+    // Still disabled while the draft is empty, not because of an availability flag.
     expect(screen.getByRole('button', { name: /send/i })).toBeDisabled();
-    // The disabled state must not be sold as transient.
-    expect(noteText()).not.toContain('Try again');
   });
 
-  it('never claims decrypted history is merely empty while nothing can be read', async () => {
+  it('shows an honest empty state once loaded, enrolled, and no decrypted message has arrived yet', async () => {
     mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
 
     renderThread();
@@ -115,7 +112,7 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
     await waitFor(() => {
       expect(noteText()).toContain('End-to-end encrypted.');
     });
-    expect(screen.queryByText('No decrypted messages yet on this device.')).not.toBeInTheDocument();
+    expect(screen.getByText('No decrypted messages yet on this device.')).toBeInTheDocument();
   });
 
   it('asserts nothing about the mode while the conversation has not loaded yet', () => {
