@@ -3,8 +3,7 @@ import { describeError, isSignInRequired } from '@patches/client';
 import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type CSSProperties, type JSX } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { toast } from 'sonner';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { ActorList } from '../components/ActorList.js';
@@ -72,6 +71,7 @@ function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
 export function ProfileRoute(): JSX.Element {
   const { handle } = useParams<{ handle: string }>();
   const session = useSession();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
   const profileHandle =
@@ -207,11 +207,10 @@ export function ProfileRoute(): JSX.Element {
               <button
                 type="button"
                 className={styles['messageBtn']}
-                onClick={() =>
-                  toast(
-                    `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
-                  )
-                }
+                // #323: the one compose flow, reached by handle. `/messages` owns resolving
+                // it, probing whether this actor can be messaged, and enrolling this browser
+                // if it has no messaging device yet — none of which belongs on a profile.
+                onClick={() => void navigate(`/messages?to=${encodeURIComponent(actor.handle)}`)}
                 aria-label={`Send message to @${actor.handle}`}
               >
                 <MessageIcon size={16} />
