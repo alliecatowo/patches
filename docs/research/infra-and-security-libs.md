@@ -336,6 +336,30 @@ not use [the two lightest] with Argon2i." Source: [Password_Storage_Cheat_Sheet]
 
 Use `m=19456, t=2, p=1` (matches OWASP's baseline).
 
+**Raw KDF output (`hashRaw`), verified against `@node-rs/argon2@2.1.0`'s own
+`index.d.ts`, 2026-08-28.** For deriving a symmetric key (not a storable password hash),
+`hashRaw`/`hashRawSync` return the raw `Buffer` digest instead of a PHC-format string,
+and accept an explicit `salt: Uint8Array` in `Options` (no salt given otherwise means an
+internally-generated one you cannot recover for `hash`/`hashSync` — use `hashRaw` with
+your own persisted salt whenever the output must be re-derivable):
+
+```ts
+import { hashRaw, type Algorithm } from '@node-rs/argon2';
+const ARGON2ID = 2 as Algorithm; // same isolatedModules caveat as above
+const key: Buffer = await hashRaw(passphrase, {
+  algorithm: ARGON2ID,
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+  outputLen: 32, // Options.outputLen; default is already 32
+  salt, // Uint8Array — persist this alongside the derived-key's ciphertext, it is not secret
+});
+```
+
+Used by `apps/tui/src/e2ee/vault-key-providers.ts`'s `PassphraseVaultKeyProvider` (issue
+#212) to derive a key-encryption-key that wraps the vault's random wrapping key —
+`docs/architecture/e2ee.md`'s vault-tier section.
+
 ---
 
 ## 6. `jose` 6 — JWT (EdDSA/ES256)

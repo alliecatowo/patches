@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
@@ -126,6 +126,14 @@ export function MessageThreadRoute(): JSX.Element {
 
   return (
     <div className={styles['thread']}>
+      {otherMembers.length === 0 ? null : (
+        <p
+          role="note"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}
+        >
+          <Link to={`/messages/${conversationId}/safety`}>Verify safety number</Link>
+        </p>
+      )}
       {disclosedByConversation ? (
         <p
           role="note"
