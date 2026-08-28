@@ -443,3 +443,15 @@ Rules of thumb:
 4. **Rebuild `dist/` of touched workspace packages before trusting a downstream typecheck or the
    pre-commit eslint** — lint-staged failing with "type that cannot be resolved" is stale `dist/`,
    not a real error.
+
+## 2026-08-28 — setState updaters must be pure; acknowledge-on-read sources lose data silently
+
+- A React `setState` updater that dedupes through an external ref (`seenIds`) is impure: React may
+  invoke it twice and keep the second result, which then omits rows the first call marked seen.
+  Combined with `pollMailbox` (acknowledge-on-drain), the dropped DMs were unrecoverable. Fixed in
+  #331 by caching drained rows in `WebE2eeManager.poll` and serializing drains. Rule: never mutate
+  outside state inside an updater; dedupe from state itself.
+- The lab harness (`mise run lab`) is single-instance machine-wide; `lab:status` reports `down`
+  from a worktree that doesn't own it. Reuse the running lab instead of killing it.
+- Testing Library's 1 s `waitFor` default flakes on the loaded CI runner; `asyncUtilTimeout: 5000`
+  in `apps/web/src/test/setup.ts` (#328) only affects tests that would otherwise fail.
