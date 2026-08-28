@@ -796,7 +796,7 @@ export function App({
         const currentVersion = policyResponse.policy?.privacyNoticeVersion ?? 0;
         if (currentVersion > acknowledgedVersion) {
           setToast({
-            message: 'This node’s privacy notice changed — press :privacy to review it.',
+            message: 'This server’s privacy notice changed — press :privacy to review it.',
             kind: 'info',
           });
         }

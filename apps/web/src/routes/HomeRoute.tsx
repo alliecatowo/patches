@@ -49,9 +49,9 @@ export function HomeRoute(): JSX.Element {
   if (publicReadClosed) {
     return (
       <div className={styles['inviteOnly']}>
-        <h2>This node is invite-only</h2>
+        <h2>This server is invite-only</h2>
         <p>
-          The person who runs this node has closed reading to signed-out visitors. Sign in if you
+          The person who runs this server has closed reading to signed-out visitors. Sign in if you
           already have an account, or create one with an invite code if someone here has sent you
           one.
         </p>
@@ -88,7 +88,7 @@ export function HomeRoute(): JSX.Element {
         ) : null}
       </div>
       {tab === 'local' && showLocalTab ? (
-        <p className={styles['tabExplainer']}>Every public post on this node, newest first.</p>
+        <p className={styles['tabExplainer']}>Every public post on this server, newest first.</p>
       ) : null}
       {tab === 'home' && session ? (
         <PostTimeline
@@ -100,7 +100,7 @@ export function HomeRoute(): JSX.Element {
         <PostTimeline
           queryKey={['feed', 'local']}
           fetchPage={(cursor) => api.feeds.listLocalFeed({ cursor, limit: 30 })}
-          emptyMessage="No posts on this node yet."
+          emptyMessage="No posts on this server yet."
         />
       ) : null}
     </div>

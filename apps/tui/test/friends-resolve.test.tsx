@@ -139,7 +139,7 @@ describe('Resolve a remote actor by acct (B-028)', () => {
     await flush();
     press(KEY.enter);
 
-    await expectFrame(lastFrame, 'This node has federation disabled.');
+    await expectFrame(lastFrame, 'This server does not connect to other servers.');
     unmount();
   });
 

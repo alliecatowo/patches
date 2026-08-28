@@ -142,10 +142,10 @@ export function RegisterRoute(): JSX.Element {
         )}
         <div className={styles['field']}>
           <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-            {policy?.privacyNoticeSummary || 'This node has not published a privacy notice.'}
+            {policy?.privacyNoticeSummary || 'This server has not published a privacy notice.'}
           </p>
           <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-            Direct messages on this node are <strong>server-visible</strong>, not end-to-end
+            Direct messages on this server are <strong>server-visible</strong>, not end-to-end
             encrypted — operators can read them.
           </p>
           {policy?.privacyNoticeUrl ? (
