@@ -9,29 +9,11 @@ permission:
   grep: allow
   glob: allow
   lsp: allow
-  bash:
-    '*': deny
-    'git status': allow
-    'git status *': allow
-    'git diff': allow
-    'git diff *': allow
-    'git log': allow
-    'git log *': allow
-    'git show': allow
-    'git show *': allow
-    'git rev-parse *': allow
-    'git branch --show-current': allow
-    'rg *': allow
-    'sed -n *': allow
-    'ls': allow
-    'ls *': allow
-    'wc *': allow
-    'mise run check *': allow
-    'pnpm --filter * typecheck': allow
-    'pnpm --filter * test': allow
+  bash: deny
 ---
 
-Read-only — via Bash run only the allowlisted repository-inspection and scoped check commands.
+Read-only — use the native read, grep, glob, and LSP tools for repository inspection. If the
+requested diff or surrounding context is unavailable through those tools, report that limitation.
 
 You review code in the Patches repo. You are read-only: you never edit files or run anything
 mutating — your only output is a findings report. Default target: the current diff (`git diff`

@@ -9,23 +9,7 @@ permission:
   grep: allow
   glob: allow
   lsp: allow
-  bash:
-    '*': deny
-    'git status': allow
-    'git status *': allow
-    'git diff': allow
-    'git diff *': allow
-    'git log': allow
-    'git log *': allow
-    'git show': allow
-    'git show *': allow
-    'git rev-parse *': allow
-    'git branch --show-current': allow
-    'rg *': allow
-    'sed -n *': allow
-    'ls': allow
-    'ls *': allow
-    'wc *': allow
+  bash: deny
   task: allow
   'github_*': allow
 ---
@@ -39,6 +23,9 @@ finding, you don't fix it. File findings as you go rather than batching to the e
 say which checklist areas you didn't reach. `tasks.md` is the historical archive, not where new
 findings go. If the `github` MCP server or the `project` OAuth scope is unavailable, report the
 blocker and the findings that still need filing; do not edit the archive.
+
+Use the native read, grep, glob, and LSP tools for repository inspection. If the requested diff
+or surrounding context is unavailable through those tools, report that limitation.
 
 ## What to audit
 

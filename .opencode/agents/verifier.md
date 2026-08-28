@@ -5,40 +5,7 @@ steps: 40
 color: warning
 permission:
   '*': deny
-  bash:
-    '*': deny
-    'git status': allow
-    'git status *': allow
-    'git diff': allow
-    'git diff *': allow
-    'git log': allow
-    'git log *': allow
-    'git show': allow
-    'git show *': allow
-    'git rev-parse *': allow
-    'git branch --show-current': allow
-    'rg *': allow
-    'sed -n *': allow
-    'ls': allow
-    'ls *': allow
-    'wc *': allow
-    'mise run check': allow
-    'mise run check *': allow
-    'mise run verify': allow
-    'mise run verify *': allow
-    'pnpm format:check': allow
-    'pnpm lint': allow
-    'pnpm typecheck': allow
-    'pnpm test': allow
-    'pnpm test:integration': allow
-    'pnpm proto:lint': allow
-    'pnpm proto:breaking': allow
-    'pnpm db:show': allow
-    'pnpm --filter * format:check': allow
-    'pnpm --filter * lint': allow
-    'pnpm --filter * typecheck': allow
-    'pnpm --filter * test': allow
-    'pnpm --filter * test:integration': allow
+  bash: ask
   read: allow
   grep: allow
   glob: allow
