@@ -1,5 +1,5 @@
 import { describeError } from '@patches/client';
-import { PostVisibility, QuotePolicy } from '@patches/proto/es';
+import { PostVisibility, QuotePolicy, type Post } from '@patches/proto/es';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -15,6 +15,10 @@ import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ThreadRoute.module.css';
 
 const MAX_MEDIA = 4;
+/** Bounded ancestor walk (spec §24: "do not load an arbitrarily large thread in one
+ * request") — a handful of `GetPost` hops up `inReplyToId`, never a full root walk.
+ * Mirrors `apps/tui/src/screens/ThreadScreen.tsx`'s `MAX_ANCESTORS`. */
+const MAX_ANCESTORS = 8;
 
 /** `/p/:id` — the focused root post, an inline quick-reply composer with a sticky
  * "reply to @handle" header, and the chronologically-ordered reply list (one visual
@@ -26,6 +30,7 @@ export function ThreadRoute(): JSX.Element {
   const queryClient = useQueryClient();
   const onError = useErrorToast();
 
+  const [ancestorsExpanded, setAncestorsExpanded] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [uploads, setUploads] = useState<MediaUploadHandle[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +62,30 @@ export function ThreadRoute(): JSX.Element {
     getNextPageParam: (lastPage) => (lastPage.page?.hasMore ? lastPage.page.nextCursor : undefined),
     enabled: postId !== '',
   });
+
+  const rootParentId = postQuery.data?.post?.inReplyToId ?? '';
+
+  // Ancestor chain — context for a reply-to-a-reply, bounded the same way the TUI's
+  // `ThreadScreen` bounds it: a handful of `GetPost` hops up `inReplyToId`, never an
+  // unbounded walk to the thread's true root (spec §24).
+  const ancestorsQuery = useQuery({
+    queryKey: ['post', postId, 'ancestors', rootParentId],
+    queryFn: async () => {
+      const ancestors: Post[] = [];
+      let cursor = rootParentId;
+      while (cursor !== '' && ancestors.length < MAX_ANCESTORS) {
+        const response = await api.posts.getPost({ id: cursor });
+        if (!response.post) break;
+        ancestors.unshift(response.post);
+        cursor = response.post.inReplyToId;
+      }
+      return ancestors;
+    },
+    enabled: rootParentId !== '',
+  });
+  const ancestors = ancestorsQuery.data ?? [];
+  const hiddenAncestorCount = ancestorsExpanded || ancestors.length <= 1 ? 0 : ancestors.length - 1;
+  const visibleAncestors = hiddenAncestorCount > 0 ? ancestors.slice(-1) : ancestors;
 
   const nodeInfoQuery = useQuery({
     queryKey: ['node-info'],
@@ -169,6 +198,36 @@ export function ThreadRoute(): JSX.Element {
 
   return (
     <div>
+      {/* Ancestor chain — collapsed to just the immediate parent by default so a deep
+          thread doesn't bury the focused post (spec §24, matches ThreadScreen's `a`). */}
+      {ancestors.length > 0 ? (
+        <section className={styles['ancestors']} aria-label="Earlier in this thread">
+          {hiddenAncestorCount > 0 ? (
+            <button
+              type="button"
+              className={styles['ancestorsToggle']}
+              onClick={() => setAncestorsExpanded(true)}
+            >
+              Show {hiddenAncestorCount} earlier {hiddenAncestorCount === 1 ? 'post' : 'posts'}
+            </button>
+          ) : null}
+          {ancestorsExpanded && ancestors.length > 1 ? (
+            <button
+              type="button"
+              className={styles['ancestorsToggle']}
+              onClick={() => setAncestorsExpanded(false)}
+            >
+              Collapse
+            </button>
+          ) : null}
+          {visibleAncestors.map((ancestor) => (
+            <div key={ancestor.id} className={styles['ancestorLink']}>
+              <PostCard post={ancestor} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       {/* Root post — the thread's focus: highlighted, permalink-anchorable, and the
           target of the composer's sticky "reply to" header. */}
       <div className={styles['root']} id={rootPost.id}>
