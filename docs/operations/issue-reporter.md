@@ -127,6 +127,20 @@ explanation and a link to `/report` — never a control that looks live but sile
 nothing. Browsers without the gesture gate (Android, desktop) keep working exactly as
 before, with no new prompt and no new UI.
 
+If shake is missed, blocked by iOS's own system prompts, or simply not discovered, the
+web nav's More menu (`apps/web/src/routes/RootLayout.tsx`) also has a plain "Report a
+problem" link to `/report` that works regardless of gesture-permission state or platform
+(#299). The shake hook itself blurs `document.activeElement` before navigating on a
+detected shake, so a mid-edit shake on iOS doesn't leave Safari's "Undo Typing" system
+prompt fighting the report sheet for the screen (#299).
+
+`apps/mobile` (React Native) has no shake-to-report entry point yet. **Status: planned**
+— `docs/research/expo-react-native.md` §7 records the sensor-dependency decision (#234):
+no third-party library, Expo's own `expo-sensors` `DeviceMotion` module (the RN-native
+analogue of the DOM `DeviceMotionEvent` this web hook uses), reusing the same
+threshold-detection math and `packages/domain/src/diagnostics.ts` bundle shape as web.
+The gesture wiring itself is a separate follow-up.
+
 **Status: implemented, unverified on a physical iPhone** — this repo's environment has
 no iOS device; the permission-gating logic is covered by jsdom unit tests
 (`apps/web/src/hooks/useShakeToReport.test.tsx`,

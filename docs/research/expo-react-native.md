@@ -287,3 +287,35 @@ sibling agent **write a "not viable yet" note / defer passkey login on mobile** 
 the button now; if the product still wants this, it needs its own spike task (dev-client build +
 AASA hosting + a runtime compatibility check against the real server RPCs) before implementation,
 not a research-note-only green light.
+
+## 7. Shake-to-report sensor dependency decision (#234)
+
+**Context:** `apps/web`'s `useShakeToReport` (`apps/web/src/hooks/useShakeToReport.ts`) already
+made and documented this same "no third-party library" call for the browser — see
+`docs/research/shake-js.md`'s "Decision: do not swap" — using the DOM `DeviceMotionEvent` global
+directly with a hand-rolled ~25-line threshold check, rather than the archived, untyped `shake.js`
+package. `apps/mobile` has no shake entry point yet and no RN sensor dependency in
+`apps/mobile/package.json`.
+
+**Decision:** apply the same "no third-party library" reasoning to `apps/mobile`. React Native has
+no DOM, so there is no `DeviceMotionEvent` global to reach for directly — the RN-native equivalent
+is Expo's own **`expo-sensors`** package's `DeviceMotion` module, which is a first-party Expo SDK
+package (same install/versioning story as `expo-secure-store`, `expo-crypto` etc. already in
+`apps/mobile/package.json` — installed via `pnpm --filter @patches/mobile exec expo install
+expo-sensors` per §5 above), not an unmaintained third-party dependency like the web's rejected
+`shake.js` or the RN-specific `react-native-shake` package. This keeps the same shape as web: reuse
+the existing threshold-detection math from `apps/web/src/hooks/useShakeToReport.ts`
+(`shakeMagnitudeForTest`), ported to consume `expo-sensors`' acceleration readings instead of a
+`devicemotion` DOM event, and gate on `DeviceMotion.requestPermissionsAsync()` before subscribing —
+the RN-native analogue of the DOM `DeviceMotionEvent.requestPermission()` gesture gate the web hook
+already implements for iOS 13+.
+
+**Inferred / unverified — flag for a researcher pass before implementation:** the `expo-sensors`
+`DeviceMotion.requestPermissionsAsync()` API name/shape above is from training-data familiarity with
+the Expo SDK, not re-verified against `docs.expo.dev/versions/latest/sdk/devicemotion/` in this
+pass (no live fetch performed for this note). Confirm the exact method name, update frequency
+(`DeviceMotion.setUpdateInterval`), and Expo Go support before wiring the actual shake gesture and
+issue-report entry point required by #234's acceptance checklist — that implementation (wiring
+`packages/domain/src/diagnostics.ts`'s `DiagnosticsBundle`, redaction parity with web, and RN test
+coverage) is intentionally **out of scope for this decision-only pass** and remains open follow-up
+work.

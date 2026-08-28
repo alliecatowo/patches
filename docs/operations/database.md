@@ -9,6 +9,25 @@
 - **Local:** Docker Compose PostgreSQL (`infra/compose/docker-compose.yml`, see `docs/operations/local-development.md`).
 - **Cloud dev branches:** Ephemeral Neon branches via `mise run neon:dev:*` (see `docs/operations/neon-environments.md`).
 
+### Three-tier ergonomics status (#156)
+
+| Tier                        | Purpose                                                  | Status                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local Compose               | Everyday development and the integration suite           | **Status: implemented.** `mise run compose -- up -d` → `pnpm db:migrate` → `pnpm dev`; see `docs/operations/local-development.md`. The four `db:*` CLI commands are verified against it (see "Local commands" below).                                                                                                                                                         |
+| Ephemeral Neon dev branches | Cloud-faithful test branches, created/destroyed per task | **Status: helpers implemented and locally tested (27 assertions); provider setup incomplete.** `mise run neon:dev:{create,status,migrate,test,reset,destroy}` are implemented and guarded, but no real anonymized dev mirror has ever been created against a live Neon project (`NEON_DEV_MIRROR_BRANCH` is unset in this repo) — see `docs/operations/neon-environments.md`. |
+| Production                  | Live node                                                | **Status: implemented, unprotected.** Neon PostgreSQL is live and serving traffic (see `docs/operations/deployment.md`), but Neon's branch-protection API returned a plan-limit HTTP 422 when attempted, so the production branch has no provider-level protection today — only the helper's own name/ID checks stop these scripts from targeting it.                         |
+
+**Gap closing this issue tracks:** creating a real anonymized dev mirror (masking review
+required before any data copy — see the leakage-check list in
+`docs/operations/neon-environments.md`) and resolving the Neon plan limit that blocks
+branch protection (a plan upgrade or an equivalent provider-side control) are both
+provider-account actions this environment has no credentials for — `neon auth` requires an
+interactive browser OAuth flow (confirmed by running it here: it times out waiting for a
+browser callback, with no non-interactive `NEON_API_KEY` configured). Both remain
+**Status: planned** until performed by someone with Neon console/account access; the
+local → mirror → production path is not yet operational end-to-end, only the local tier
+and the mirror-tooling's own tests are.
+
 ## ORM and access pattern
 
 TypeORM 1.x, Data Mapper / repository style — see

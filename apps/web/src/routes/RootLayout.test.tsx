@@ -95,6 +95,7 @@ describe('RootLayout', () => {
 
     const more = within(openMore());
     expect(more.getByRole('link', { name: 'Mod log' })).toHaveAttribute('href', '/moderation/log');
+    expect(more.getByRole('link', { name: 'Report a problem' })).toHaveAttribute('href', '/report');
     expect(more.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
     expect(more.getByRole('link', { name: 'Register' })).toHaveAttribute('href', '/register');
     expect(mockGetUnreadCount).not.toHaveBeenCalled();
@@ -115,6 +116,7 @@ describe('RootLayout', () => {
       ['Settings', '/settings/profile'],
       ['Appeals', '/appeals'],
       ['Mod log', '/moderation/log'],
+      ['Report a problem', '/report'],
     ] as const;
 
     for (const [name, href] of destinations) {

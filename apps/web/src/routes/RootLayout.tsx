@@ -215,6 +215,16 @@ export function RootLayout(): JSX.Element {
             >
               Mod log
             </NavLink>
+            {/* Explicit fallback for shake-to-report (#299): shake can be missed, blocked by
+                iOS's own "Undo Typing" prompt, or simply not discovered — this entry works
+                regardless of gesture-permission state or platform. */}
+            <NavLink
+              to="/report"
+              className={NAV_LINK_CLASS}
+              onClick={() => setProfileMenuOpen(false)}
+            >
+              Report a problem
+            </NavLink>
             {session ? (
               <>
                 <NavLink
