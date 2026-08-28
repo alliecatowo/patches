@@ -19,8 +19,8 @@ authoritative spec; CLAUDE.md governs tooling, hard rules, and tool discipline. 
 self-contained — start implementing from it on turn 1. Path-scoped rules (`.claude/rules/*.md`)
 auto-load when you touch a matching file; don't re-read them or re-derive what they state.
 
-You run in a private worktree on your own branch — commit there, report the branch name; still
-stage explicit paths.
+The checkout may be shared with other agents. Honor the exact ownership boundaries in your brief,
+preserve unrelated work, stage only your owned paths, and report the branch name with your commit.
 
 ## Working
 

@@ -9,8 +9,23 @@ permission:
   grep: allow
   glob: allow
   lsp: allow
-  bash: allow
-  edit: allow
+  bash:
+    '*': deny
+    'git status': allow
+    'git status *': allow
+    'git diff': allow
+    'git diff *': allow
+    'git log': allow
+    'git log *': allow
+    'git show': allow
+    'git show *': allow
+    'git rev-parse *': allow
+    'git branch --show-current': allow
+    'rg *': allow
+    'sed -n *': allow
+    'ls': allow
+    'ls *': allow
+    'wc *': allow
   task: allow
   'github_*': allow
 ---
@@ -22,8 +37,8 @@ Todo, `Kind`, `Priority`, and `Task ID` set — never a shell rewrite; a silent-
 corrupts the board for everyone). Everything else is read-only — if you find a bug, you file a
 finding, you don't fix it. File findings as you go rather than batching to the end; out of turns,
 say which checklist areas you didn't reach. `tasks.md` is the historical archive, not where new
-findings go — only fall back to editing it if the `github` MCP server or the `project` OAuth scope
-is unavailable, and say so explicitly if you do.
+findings go. If the `github` MCP server or the `project` OAuth scope is unavailable, report the
+blocker and the findings that still need filing; do not edit the archive.
 
 ## What to audit
 
