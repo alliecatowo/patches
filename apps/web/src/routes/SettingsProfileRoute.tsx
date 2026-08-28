@@ -5,6 +5,7 @@ import { useState, type ChangeEvent, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 import { setActorSession } from '../api/session.js';
+import { ImageUploadField } from '../components/ImageUploadField.js';
 import { useSession } from '../hooks/useSession.js';
 import styles from './AuthForm.module.css';
 
@@ -15,7 +16,8 @@ interface FormState {
   websiteUrl: string;
   nameColor: string;
   glyph: string;
-  profileBannerUrl: string;
+  avatarMediaId: string;
+  bannerMediaId: string;
   profileFrame: ProfileFrame;
   nameTagStyle: NameTagStyle;
   accentColor: string;
@@ -50,7 +52,8 @@ export function SettingsProfileRoute(): JSX.Element {
       websiteUrl: actor.websiteUrl,
       nameColor: actor.nameplate?.nameColor ?? '',
       glyph: actor.nameplate?.glyph ?? '',
-      profileBannerUrl: actor.profileBannerUrl,
+      avatarMediaId: actor.avatar?.mediaId ?? '',
+      bannerMediaId: actor.banner?.mediaId ?? '',
       profileFrame:
         actor.profileFrame === ProfileFrame.UNSPECIFIED ? ProfileFrame.NONE : actor.profileFrame,
       nameTagStyle:
@@ -74,7 +77,8 @@ export function SettingsProfileRoute(): JSX.Element {
             'location_text',
             'website_url',
             'nameplate',
-            'profile_banner_url',
+            'avatar_media_id',
+            'banner_media_id',
             'profile_frame',
             'name_tag_style',
             'accent_color',
@@ -88,7 +92,9 @@ export function SettingsProfileRoute(): JSX.Element {
           statusLine: '',
           profileBorder: '',
         },
-        profileBannerUrl: form.profileBannerUrl,
+        avatarMediaId: form.avatarMediaId,
+        bannerMediaId: form.bannerMediaId,
+        profileBannerUrl: '',
         profileFrame: form.profileFrame,
         nameTagStyle: form.nameTagStyle,
         accentColor: form.accentColor,
@@ -162,12 +168,25 @@ export function SettingsProfileRoute(): JSX.Element {
           <input id="settings-glyph" value={form.glyph} onChange={set('glyph')} />
         </div>
         <div className={styles['field']}>
-          <label htmlFor="settings-banner">Profile banner image URL (https, optional)</label>
-          <input
-            id="settings-banner"
-            value={form.profileBannerUrl}
-            onChange={set('profileBannerUrl')}
-            placeholder="https://…"
+          <ImageUploadField
+            aspect={1}
+            shape="avatar"
+            label="Avatar"
+            currentMediaId={form.avatarMediaId}
+            onChange={(mediaId) =>
+              setForm((current) => (current ? { ...current, avatarMediaId: mediaId } : current))
+            }
+          />
+        </div>
+        <div className={styles['field']}>
+          <ImageUploadField
+            aspect={3}
+            shape="banner"
+            label="Banner"
+            currentMediaId={form.bannerMediaId}
+            onChange={(mediaId) =>
+              setForm((current) => (current ? { ...current, bannerMediaId: mediaId } : current))
+            }
           />
         </div>
         <div className={styles['field']}>
