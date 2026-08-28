@@ -181,12 +181,12 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'
        AND indexname IN ('idx_e2ee_mailbox_envelopes_acknowledged_at_id',
                          'idx_e2ee_one_time_prekeys_consumed_at_id',
-                         'idx_e2ee_signed_prekeys_retired_at_id')`,
+                         'idx_e2ee_signed_prekeys_id_retired_at')`,
     );
     expect(indexes.map((index) => index.indexname).sort()).toEqual([
       'idx_e2ee_mailbox_envelopes_acknowledged_at_id',
       'idx_e2ee_one_time_prekeys_consumed_at_id',
-      'idx_e2ee_signed_prekeys_retired_at_id',
+      'idx_e2ee_signed_prekeys_id_retired_at',
     ]);
     for (const index of indexes) expect(index.indexdef).toMatch(/WHERE .*IS NOT NULL/);
     const constraints = await dataSource.query<
