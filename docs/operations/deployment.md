@@ -295,7 +295,7 @@ node apps/tui/dist/cli.js ping
       Machine per process group so far, confirmed via `flyctl scale show --app patches-social`
       2026-08-27: `server` and `worker` each at count 1, no scaling configured. An earlier
       `infra/fly/fly.toml` had an invalid `[services.scaling]` block that `flyctl config
-  validate` silently accepted but never applied — removed rather than fixed, since the
+validate` silently accepted but never applied — removed rather than fixed, since the
       correct per-service knobs (`auto_stop_machines`/`auto_start_machines`/
       `min_machines_running`, `docs/research/fly-io.md`) haven't been tuned against real
       traffic yet either).
