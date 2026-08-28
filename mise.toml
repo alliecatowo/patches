@@ -247,6 +247,24 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/n
 description = "Ensure an unchanged stable-key JSON world; declaration drift fails closed"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js world-ensure \"$@\""
 
+[tasks."screenshots:web"]
+description = "Regenerate docs/media/web/*.png (README): kills stray :4173/:8088/:50058, starts the lab harness, runs apps/web/e2e/readme-screenshots.spec.ts — see scripts/screenshots/regenerate-web.sh"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/screenshots/regenerate-web.sh"
+
+[tasks."screenshots:tui"]
+description = "Regenerate docs/media/tui/frames.md (README) from the committed TUI golden-frame fixtures — see scripts/screenshots/regenerate-tui.sh"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/screenshots/regenerate-tui.sh"
+
+[tasks.screenshots]
+description = "Regenerate all README media: TUI golden frames, then web PWA screenshots (needs the lab harness; see screenshots:web)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+mise run screenshots:tui
+mise run screenshots:web
+"""
+
 [tasks."docker:build"]
 description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"
 run = """
