@@ -17,7 +17,6 @@ import {
 import {
   AlertTriangleIcon,
   BookmarkIcon,
-  CopyIcon,
   EditIcon,
   HeartIcon,
   HistoryIcon,
@@ -313,10 +312,6 @@ function PostCardImpl({ post, focused = false }: PostCardProps): JSX.Element {
             </button>
             {moreMenuOpen ? (
               <div className={styles['moreDropdown']} onClick={() => setMoreMenuOpen(false)}>
-                <button type="button" onClick={() => void handleShare()}>
-                  <CopyIcon size={14} />
-                  <span>Copy post link</span>
-                </button>
                 {isOwn ? (
                   <>
                     <button type="button" onClick={() => void navigate(`/compose?edit=${post.id}`)}>

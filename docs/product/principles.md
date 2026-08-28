@@ -39,9 +39,14 @@ The numbered principles below are the working detail behind these.
 Use these terms consistently across code, docs, and product copy:
 
 - **Node** — a Patches deployment, authoritative for its own local actors. Prefer "node" over
-  "instance" or "server" in product language. `patches.social` is the **reference node**.
+  "instance" or "server" in code, docs, and internal product language. `patches.social` is the
+  **reference node**. **Exception: in copy an end user reads in a client** (web/TUI strings,
+  errors, empty states), say "server" instead — "node" is federation jargon nobody outside the
+  project recognizes, and #162 requires plain language there. The distinction is audience, not
+  meaning: same concept, "node" for people building Patches, "server" for people using it.
 - **Actor** — a social identity, local or remote. Addressed `@handle@domain`; a handle is
-  unique within a node only.
+  unique within a node only. In user-facing copy this is a "person," "account," or the
+  specific handle — never the bare word "actor."
 - **User** — a local authenticated account. Every User has an Actor; not every Actor has a
   User (remote actors won't).
 - **Credential** — a way to prove you are a user (password, SSH key, GitHub). **Not an
