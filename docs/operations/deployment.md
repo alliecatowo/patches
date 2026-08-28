@@ -618,6 +618,19 @@ respectively (checked 2026-08-25); the workflow itself has not yet completed a r
 CI-triggered deploy from this environment (no way to push to `main` and wait for it
 here).
 
+**Depot-accelerated builds (issue #262, 2026-08-28):** the deploy step passes
+`--depot=auto --depot-scope=org` explicitly to `flyctl deploy` — `docs/research/fly-io.md`
+§10 confirms this is flyctl's own default as of v0.4.92 (`flyctl deploy --help`), made
+explicit so a future flyctl default change can't silently drop it. Fly runs the Depot
+builder itself; no separate Depot account, token, or CI step is needed. Combined with the
+BuildKit pnpm-store cache mounts already in `infra/docker/Dockerfile` and the runner-side
+pnpm store cache in `.github/actions/setup/action.yml`, repeat deploys of this monorepo
+image should reuse both the CI-runner pnpm store and Depot's own layer cache. **Status:
+verified via `flyctl deploy --help` output only** — no live `flyctl deploy` was run from
+this environment (would deploy to the real `patches-social` production app, out of scope
+for this change); measure the actual before/after deploy time on the next real production
+deploy.
+
 ## Smoke tests
 
 `.github/workflows/deploy.yml`'s final step curls `https://patches-social.fly.dev/healthz`
