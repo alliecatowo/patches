@@ -84,9 +84,15 @@ export function sanitizeText(value: string, options: SanitizeTextOptions = {}): 
 }
 
 /** UTF-8 byte length, for fields whose limit is specified in KiB rather than characters
- * (§171's per-block 8 KiB text bound, the 64 KiB document bound). */
+ * (§171's per-block 8 KiB text bound, the 64 KiB document bound). `TextEncoder` (not
+ * `Buffer.byteLength`) on purpose — `packages/domain` is imported by the browser bundle
+ * (`apps/web`) as well as Node (`apps/server`, `apps/tui`), and `Buffer` is not a browser
+ * global: every write-time Page/block validation that reached this function threw
+ * `ReferenceError: Buffer is not defined` client-side, which `decodePageDocument`'s
+ * catch-all silently turned into "page couldn't be displayed"/"no wall content" (B-216).
+ * `TextEncoder` is a standard global in both environments. */
 export function utf8ByteLength(value: string): number {
-  return Buffer.byteLength(value, 'utf8');
+  return new TextEncoder().encode(value).length;
 }
 
 /**
