@@ -215,8 +215,10 @@ export class ActorService {
   }
 
   /** Handle-prefix + display-name match (spec §112), bounded and keyset-paginated on the
-   * actor's own `(created_at DESC, id DESC)` — newest matching actors first. Postgres trigram/
-   * full-text search is future work; a plain `LIKE`/`ILIKE` is what v0 ships. */
+   * actor's own `(created_at DESC, id DESC)` — newest matching actors first. The `LIKE`/
+   * `ILIKE` predicates below are index-backed by `pg_trgm` GIN indexes on
+   * `handle_normalized`/`display_name` (`AddActorsTrigramSearchIndexes`), not a sequential
+   * scan — see that migration for why plain btree can't serve either predicate here. */
   async searchActors(queryRaw: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
     const query = parseInput(searchQuerySchema, queryRaw);
     const cursor = decodeCursor(cursorRaw);
