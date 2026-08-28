@@ -217,6 +217,21 @@ const transporter = nodemailer.createTransport({
 });
 ```
 
+Mailpit HTTP API (confirmed live 2026-08-28 against a running `axllent/mailpit:latest`
+container, v1.30.7 — not from an official written spec page, but from the running server's own
+responses, which is why every field name/shape below is exact rather than paraphrased):
+
+- `GET /api/v1/info` → `{"Version":...,"Messages":<count>,"Unread":<count>,...}`.
+- `GET /api/v1/messages?limit=N` and `GET /api/v1/search?query=to:<address>&limit=N` both
+  return `{"total":N,"messages":[{"ID":"...","From":{"Name":"","Address":"..."},
+"To":[{"Name":"","Address":"..."}],"Subject":"...","Created":"<ISO8601>",
+"Snippet":"..."}]}` — same summary shape either way, most-recent first. `query=to:<addr>` is
+  Mailpit's own server-side search syntax; it is not a Node client-side filter.
+- `GET /api/v1/message/{ID}` returns one full message: the same summary fields plus `"Text"`
+  (plain body) and `"HTML"`.
+- `DELETE /api/v1/messages` with `{"IDs":[]}` deletes every message (used only to reset local
+  scratch state during this research, never called by application/harness code).
+
 **EmailProvider adapter:**
 
 ```ts

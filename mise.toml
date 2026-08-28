@@ -239,6 +239,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/n
 description = "Stop only server and worker processes recorded by the isolated local harness"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down"
 
+[tasks."lab:down-any"]
+description = "Stop whichever worktree's harness lab currently holds :50058/:8088, regardless of this worktree's own (possibly empty) state"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down --any"
+
+[tasks."lab:mailpit"]
+description = "Read verification-code email from the shared Mailpit instance; subcommand is mailpit-list/mailpit-latest/mailpit-get"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js \"$@\""
+
 [tasks."lab:register"]
 description = "Create a disposable local account through direct gRPC; pass password only with --password-stdin"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js register \"$@\""
