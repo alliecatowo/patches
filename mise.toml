@@ -211,6 +211,22 @@ description = "All tests including integration (needs the compose stack)"
 # are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
 run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && scripts/bounded.sh pnpm test && scripts/bounded.sh pnpm test:integration"
 
+[tasks.bench]
+description = "DB-only benchmark harness (#205): `mise run bench -- setup|feed|worker|pool|all`. Needs DATABASE_URL pointed at a scratch database (never production) — `mise run compose -- up -d` then `export DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test`. See docs/operations/performance.md."
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT/packages/bench"
+case "${1:-all}" in
+  setup) pnpm setup ;;
+  feed) pnpm bench:feed ;;
+  worker) pnpm bench:worker ;;
+  pool) pnpm bench:pool ;;
+  all) pnpm setup && pnpm bench:feed && pnpm bench:worker && pnpm bench:pool ;;
+  *) echo "usage: mise run bench -- setup|feed|worker|pool|all" >&2; exit 1 ;;
+esac
+"""
+
 [tasks.down]
 description = "Stop the compose stack"
 run = "cd \"$MISE_PROJECT_ROOT\" && mise run compose -- down"
