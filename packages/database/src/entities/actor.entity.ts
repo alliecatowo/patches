@@ -93,8 +93,9 @@ export class Actor {
   @JoinColumn({ name: 'avatar_media_id' })
   declare avatarMedia: Media | null;
 
-  /** Direct-to-R2 uploaded banner (spec §29–32), same shape/ownership rules as `avatarMediaId`
-   * — replaces `profileBannerUrl` for new writes; that column stays for existing rows. */
+  /** Direct-to-R2 uploaded banner (spec §29–32), same shape/ownership rules as `avatarMediaId`.
+   * The only banner column — the URL-text `profileBannerUrl` predecessor was dropped before
+   * release (owner rule 2026-08-28: no v0.0.1+ legacy paths). */
   @Column({ type: 'uuid', nullable: true })
   declare bannerMediaId: string | null;
 
@@ -169,13 +170,13 @@ export class Actor {
   declare nameplate: Record<string, unknown> | null;
 
   /**
-   * The four rapid-personalization columns (owner request 2026-08-25) — real columns, not
-   * more keys in the `nameplate` jsonb: a banner URL alone may be 2,048 chars, which cannot
-   * coexist with §173's 2 KiB serialized-jsonb budget for the nameplate. All purely
+   * The rapid-personalization columns (owner request 2026-08-25) — real columns, not more
+   * keys in the `nameplate` jsonb (§173's 2 KiB serialized-jsonb budget). All purely
    * cosmetic (§184.3); null = unset, which every client must render as "no customization".
+   *
+   * `profileBannerUrl` (the URL-text banner column) was dropped 2026-08-28 (owner rule: no
+   * v0.0.1+ legacy paths) — `bannerMediaId` above is the only banner column now.
    */
-  @Column({ type: 'text', nullable: true })
-  declare profileBannerUrl: string | null;
 
   /** Wire enum name of `ProfileFrame` without the prefix (`'BORDER'`), or null. */
   @Column({ type: 'varchar', length: 31, nullable: true })

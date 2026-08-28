@@ -360,7 +360,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           websiteUrl: '',
           nameplate: undefined,
           flair: { document, updatedAt: undefined },
-          profileBannerUrl: '',
           profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
           nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
           accentColor: '',

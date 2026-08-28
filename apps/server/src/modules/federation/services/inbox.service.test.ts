@@ -76,7 +76,6 @@ function fakeSender(publicKeyPem: string, overrides: Partial<Actor> = {}): Actor
     movedToUri: null,
     alsoKnownAs: null,
     nameplate: null,
-    profileBannerUrl: null,
     profileFrame: null,
     nameTagStyle: null,
     accentColor: null,

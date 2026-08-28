@@ -102,7 +102,6 @@ describe('Resolve a remote actor by acct (B-028)', () => {
       nameplate: undefined,
       flair: undefined,
       pinnedPostIds: [],
-      profileBannerUrl: '',
       profileFrame: PROFILE_FRAME.UNSPECIFIED,
       nameTagStyle: NAME_TAG_STYLE.UNSPECIFIED,
       accentColor: '',

@@ -20,7 +20,6 @@ function actor(overrides: Partial<Actor> = {}): Actor {
     flair: undefined,
     pinnedPostIds: [],
     homeServer: '',
-    profileBannerUrl: '',
     profileFrame: 0,
     nameTagStyle: 0,
     accentColor: '',

@@ -29,6 +29,8 @@
 import { useSyncExternalStore } from 'react';
 
 import { api } from '../api/client.js';
+import { connectCodeName } from '../lib/connect-error.js';
+import { logger } from '../lib/log.js';
 
 import type { InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
@@ -126,6 +128,11 @@ class WebE2eeManager {
   private identityEvents = new Map<string, PeerIdentityEvent>();
   /** Cached snapshot so `useSyncExternalStore` sees a stable reference between events. */
   private identityEventsSnapshot: readonly PeerIdentityEvent[] = [];
+  /** Ids, counts and transport status codes only — never a body, a handle, or key
+   * material (§183.1, §194); `log.ts` does not redact its input. */
+  readonly #log = logger('web-e2ee');
+  /** Conversation id -> every row drained for it in this session. See `poll()`. */
+  private readonly drained = new Map<string, InboxRow[]>();
 
   constructor(options: WebE2eeManagerOptions = {}) {
     this.api = options.api ?? api;
@@ -167,6 +174,7 @@ class WebE2eeManager {
     this.actorId = undefined;
     this.identityEvents = new Map();
     this.identityEventsSnapshot = [];
+    this.drained.clear();
   }
 
   /** Called by the session layer on sign-in/sign-out/actor switch. */
@@ -301,10 +309,36 @@ class WebE2eeManager {
     }
   }
 
+  /**
+   * Drains this device's mailbox for one conversation and returns everything drained for it
+   * so far in this session.
+   *
+   * A drain acknowledges each envelope as soon as its receive state commits (ADR 0020 §4),
+   * so the node will never redeliver it — the rows a drain returns are the only copy. A
+   * caller that throws them away therefore destroys messages, and a React effect throws away
+   * exactly that: an in-flight poll whose component unmounted or whose dependencies changed
+   * mid-drain has nowhere to put its result (`MessageThreadRoute`'s `cancelled` guard, and
+   * React's deliberately double-invoked effects, both hit this).
+   *
+   * The cache is what makes this method safe to call from a component that can vanish
+   * mid-call: the next poll re-reports the same rows and the caller dedupes by row id. It is
+   * in-memory and session-scoped on purpose — durable history belongs to the vault, not
+   * here — and is cleared with the account in `release()`.
+   *
+   * Queued behind `enqueue` so two concurrent drains (two effect runs racing) cannot
+   * interleave over one mailbox and split a conversation's messages between two results.
+   */
   async poll(conversationId: string): Promise<readonly InboxRow[]> {
-    const runtime = this.requireRuntime();
-    const result = await runtime.pollMailbox({ conversationId });
-    return result.rows;
+    return this.enqueue(async () => {
+      const runtime = this.requireRuntime();
+      const result = await runtime.pollMailbox({ conversationId });
+      const drained = this.drained.get(conversationId) ?? [];
+      if (result.rows.length > 0) {
+        drained.push(...result.rows);
+        this.drained.set(conversationId, drained);
+      }
+      return [...drained];
+    });
   }
 
   /**
@@ -325,10 +359,19 @@ class WebE2eeManager {
         recipientActorIds,
       });
       conversationId = reserved.conversationId;
-    } catch {
+    } catch (error) {
       // Content-free by rule (spec §194): the reservation either happened or it did not,
-      // and the recipient-availability failures are deliberately indistinguishable (§62).
-      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.createFailed);
+      // and the recipient-availability failures stay deliberately indistinguishable (§62) —
+      // the node answers all of them with one uniform `not_found`, and naming that one code
+      // discloses nothing it did not already publish. What it does buy is that a refusal is
+      // never again a blind failure with no thread to pull (issue #320). Ids only: never the
+      // body, never the recipients' handles.
+      const code = connectCodeName(error);
+      this.#log.error('createE2eeConversation refused', {
+        code,
+        recipientCount: recipientActorIds.length,
+      });
+      throw new WebE2eeUnavailableError(`${WEB_E2EE_COPY.createFailed} (${code})`);
     }
     try {
       await runtime.send(conversationId, body, crypto.randomUUID());
@@ -336,6 +379,19 @@ class WebE2eeManager {
       if (error instanceof E2eeNotEnrolledError) throw error;
       throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
     }
+    // A device is not in its own fanout, so nothing will ever redeliver this message to the
+    // person who just wrote it. Without this echo the caller lands on a thread that says "no
+    // decrypted messages yet on this device" about the message they are watching being sent
+    // — the same local-echo `MessageThreadRoute` adds for every subsequent send.
+    this.drained.set(conversationId, [
+      {
+        kind: 'message',
+        id: `local-${crypto.randomUUID()}`,
+        senderLabel: 'you',
+        body,
+        sentByViewer: true,
+      },
+    ]);
     return conversationId;
   }
 

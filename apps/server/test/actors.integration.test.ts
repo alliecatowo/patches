@@ -122,10 +122,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       return { paths } as unknown as UpdateProfileRequest['updateMask'];
     }
 
-    /** The four rapid-personalization fields at their "unset" values — every fixture that
+    /** The rapid-personalization fields at their "unset" values — every fixture that
      * does not exercise them still must satisfy the (all-required) request type. */
     const noPersonalization = {
-      profileBannerUrl: '',
       profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
       nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
       accentColor: '',
@@ -252,7 +251,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       });
     });
 
-    describe('UpdateProfile — rapid personalization (banner/frame/tag/accent)', () => {
+    describe('UpdateProfile — rapid personalization (frame/tag/accent)', () => {
       it('writes and clears each field through its own mask path', async () => {
         await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
           actors.updateProfile.bind(actors),
@@ -263,18 +262,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: '',
             nameplate: undefined,
             flair: undefined,
-            profileBannerUrl: 'https://cdn.example.com/banner.png',
             profileFrame: ProfileFrame.PROFILE_FRAME_GRADIENT,
             nameTagStyle: NameTagStyle.NAME_TAG_STYLE_PILLED,
             accentColor: '#10B981',
             avatarMediaId: '',
             bannerMediaId: '',
-            updateMask: fieldMask([
-              'profile_banner_url',
-              'profile_frame',
-              'name_tag_style',
-              'accent_color',
-            ]),
+            updateMask: fieldMask(['profile_frame', 'name_tag_style', 'accent_color']),
           },
           { accessToken: alice.accessToken },
         );
@@ -283,12 +276,11 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           actors.getActor.bind(actors),
           { id: alice.actorId },
         );
-        expect(response.actor?.profileBannerUrl).toBe('https://cdn.example.com/banner.png');
         expect(response.actor?.profileFrame).toBe(ProfileFrame.PROFILE_FRAME_GRADIENT);
         expect(response.actor?.nameTagStyle).toBe(NameTagStyle.NAME_TAG_STYLE_PILLED);
         expect(response.actor?.accentColor).toBe('#10B981');
 
-        // Clearing: empty string nulls a URL/colour, an explicit NONE clears an enum —
+        // Clearing: empty string nulls a colour, an explicit NONE clears an enum —
         // UNSPECIFIED is not a storable value (the write below would be INVALID_ARGUMENT).
         await callUnary<UpdateProfileRequest, UpdateProfileResponse>(
           actors.updateProfile.bind(actors),
@@ -299,18 +291,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             websiteUrl: '',
             nameplate: undefined,
             flair: undefined,
-            profileBannerUrl: '',
             profileFrame: ProfileFrame.PROFILE_FRAME_NONE,
             nameTagStyle: NameTagStyle.NAME_TAG_STYLE_NONE,
             accentColor: '',
             avatarMediaId: '',
             bannerMediaId: '',
-            updateMask: fieldMask([
-              'profile_banner_url',
-              'profile_frame',
-              'name_tag_style',
-              'accent_color',
-            ]),
+            updateMask: fieldMask(['profile_frame', 'name_tag_style', 'accent_color']),
           },
           { accessToken: alice.accessToken },
         );
@@ -321,7 +307,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         );
         // An explicit NONE clears *to NONE* (distinguishable from never-set UNSPECIFIED on
         // the wire, though every client must render both identically — no frame).
-        expect(cleared.actor?.profileBannerUrl).toBe('');
         expect(cleared.actor?.profileFrame).toBe(ProfileFrame.PROFILE_FRAME_NONE);
         expect(cleared.actor?.nameTagStyle).toBe(NameTagStyle.NAME_TAG_STYLE_NONE);
         expect(cleared.actor?.accentColor).toBe('');
@@ -443,11 +428,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
     describe('UpdateProfile — rapid personalization rejections', () => {
       it.each([
-        [
-          'a non-http(s) banner URL',
-          { profileBannerUrl: 'ftp://example.com/x.png' },
-          'profile_banner_url',
-        ],
         ['a non-hex accent colour', { accentColor: 'green' }, 'accent_color'],
         ['a 7-digit hex-ish accent colour', { accentColor: '#1234567' }, 'accent_color'],
         [

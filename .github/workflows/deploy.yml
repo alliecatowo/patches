@@ -133,9 +133,20 @@ jobs:
           PY
 
       - name: Deploy to Fly (server + worker, one image)
+        # `--depot=auto` is flyctl's own default (verified via `flyctl deploy --help`,
+        # v0.4.92+ — docs/research/fly-io.md §10) — set explicitly so a future flyctl
+        # release changing that default can't silently drop Depot-accelerated builds
+        # here. Depot needs no separate account/token/CI step for this path: Fly runs
+        # the Depot builder itself. `--depot-scope=org` (also the default) shares the
+        # build cache across every deploy of this org's apps, which is what speeds up
+        # repeat deploys of the same monorepo image (issue #262) — no extra
+        # actions/cache step needed beyond the pnpm-store cache mounts already in
+        # infra/docker/Dockerfile and the runner-side pnpm store cache in
+        # .github/actions/setup/action.yml.
         if: vars.FLY_DEPLOY_ENABLED == 'true' && vars.AUTH_CODE_ENVELOPE_ROLLOUT_COMPLETE == 'true'
         run: |
           flyctl deploy --config infra/fly/fly.toml --remote-only \
+            --depot=auto --depot-scope=org \
             --build-arg PATCHES_BUILD_SHA="${DEPLOY_SHA}"
 
       - name: Skip notice (deploy disabled)

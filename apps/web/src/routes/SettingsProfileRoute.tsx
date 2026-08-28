@@ -94,7 +94,6 @@ export function SettingsProfileRoute(): JSX.Element {
         },
         avatarMediaId: form.avatarMediaId,
         bannerMediaId: form.bannerMediaId,
-        profileBannerUrl: '',
         profileFrame: form.profileFrame,
         nameTagStyle: form.nameTagStyle,
         accentColor: form.accentColor,

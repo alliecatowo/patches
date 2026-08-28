@@ -50,7 +50,6 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
             updatedAt: dateToTimestamp(profile.flair.updatedAt),
           },
     pinnedPostIds: [...profile.pinnedPostIds],
-    profileBannerUrl: profile.profileBannerUrl ?? '',
     profileFrame:
       profile.profileFrame === null
         ? ProfileFrame.PROFILE_FRAME_UNSPECIFIED

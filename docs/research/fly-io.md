@@ -373,6 +373,113 @@ turn out to be needed later (relevant to the `release_command` scoping question 
 
 ---
 
+## 10. Depot builder integration (yes, it's real, and it's now the default)
+
+**Verified 2026-08-28** against Fly's own current docs (`fly.io/docs/flyctl/deploy/`,
+`fly.io/docs/reference/builders/`) plus Depot's own official integration docs
+(`depot.dev/docs/container-builds/integrations/fly`) and the Fly community announcement thread
+for the beta. This directly answers the three questions posed for issue #262.
+
+### 10.1 Does `flyctl deploy` have a documented Depot flag? Yes — and it now defaults to on.
+
+Documented on `fly.io/docs/flyctl/deploy/` (flag reference for `fly deploy`):
+
+- **`--depot`** — type: string w/ optional value, **default `"auto"`**. Description (verbatim):
+  "Deploy using depot to build the image."
+- **`--depot-scope`** — type: string, **default `"org"`**. Description (verbatim): "The scope of
+  the Depot builder's cache to use (org or app)." Values are `org` (share the build cache across
+  every app in the Fly organization) or `app` (scope the cache to just this app).
+
+Because the default is `"auto"` (not `"false"`), **a plain `flyctl deploy --remote-only` on a
+recent flyctl already routes through Fly's Depot-backed remote builder by default** — this repo's
+existing `deploy.yml` (`flyctl deploy --remote-only ...`) is very likely already getting
+Depot-accelerated builds without any workflow change, _if_ the installed flyctl version supports
+it. This is the single most important finding for issue #262: **there is probably nothing to add
+to the CI workflow for the Depot part** — the leverage is confirming/pinning the flyctl version
+and, if desired, tuning `--depot-scope`.
+
+**To fall back to the pre-Depot legacy remote builder** (e.g. if Depot is degraded — a real,
+documented failure mode, see 10.4): `fly deploy --depot=false`.
+
+**Minimum flyctl version** (Depot secondary source — Fly community thread, not Fly's own
+versioned changelog, so flagged accordingly): `flyctl` **v0.2.102+** for the beta `--depot` flag
+to exist at all. Since it's since become the default (`"auto"`), any flyctl new enough to default
+to Depot is new enough to have the flag. **Action for implementation**: run `flyctl version` in
+the CI runner (after `superfly/flyctl-actions/setup-flyctl@master` in §9) and confirm it isn't
+pinned below that; `setup-flyctl@master` tracks latest by default so this should already be fine,
+but wasn't independently reverified in this pass — flag for verification at implementation time.
+
+There is also a machine-level equivalent, **`--build-depot`** on `fly machine run` (Depot's docs;
+not indepedently confirmed on a Fly-owned page in this pass) — irrelevant to this repo's
+`flyctl deploy`-based CI flow, noted for completeness only.
+
+### 10.2 Setup needed in CI: effectively none — no Depot account/token required for this path
+
+Depot's own integration docs are explicit (`depot.dev/docs/container-builds/integrations/fly`):
+using the `--depot` flag on `flyctl deploy` "you will not need to connect a Depot account" —
+Fly runs a Depot-backed builder pool inside Fly's own infrastructure and flyctl talks to it
+directly. A Fly team member statement quoted in the community beta thread
+(`community.fly.io/t/depot-remote-builder-support-in-flyctl-is-now-in-beta/21087`, secondary/
+community source, flagged): "No customer-identifying data is sent to Depot. Your Docker build
+context is sent through their proxy running on Fly, to builders in their Fly organization." So:
+
+- **No `DEPOT_TOKEN` / `DEPOT_PROJECT_ID` secret needed** for this path — confirmed absent from
+  both the official Depot Fly-integration page and Fly's own `fly deploy` flag docs.
+- **No new CI step** — the existing `flyctl deploy --remote-only` step (§9) already invokes the
+  Depot-backed builder by default (`--depot=auto`); nothing else in `deploy.yml` needs to change
+  to get the acceleration.
+- The _separate_ Depot-account path (`depot build -t registry.fly.io/<app>:<tag> --push .` via
+  the standalone Depot CLI, then `flyctl deploy --image registry.fly.io/<app>:<tag>`) **does**
+  require a real Depot account/project (`depot init`) and is a different, opt-in integration for
+  people who want their own Depot project/dashboard/caching quota rather than Fly's shared
+  Depot-in-Fly builder pool. **Not needed for this repo** — the zero-account `--depot=auto` path
+  already covers the "speed up the build" goal in issue #262 with no new secrets and no new
+  workflow step, which is the simpler, lower-blast-radius option and is what should be used
+  unless a later requirement calls for isolated per-app Depot caching/quota accounting.
+
+### 10.3 Cache scope: `--depot-scope=org` vs `app` — recommendation for this repo
+
+Default is `org`-scoped cache (shared across every app in the Fly org). **Inferred**: for this
+repo, where `patches-social` is (per `docs/operations/deployment.md`) effectively the only
+deployed app in the org, `org` vs `app` scope makes no practical difference today, so the default
+(no explicit `--depot-scope` flag needed) is fine. If a second unrelated app is ever deployed to
+the same Fly org and its Dockerfile/pnpm layers diverge significantly, revisit
+`--depot-scope=app` to avoid cache cross-pollution — not a concern to act on now.
+
+### 10.4 Known caveats (secondary source, flagged) — keep the escape hatch
+
+The Fly community beta thread reports real operational issues worth keeping in mind for
+`deploy.yml`, though none rise to "don't use it": "Waiting for depot builder..." stalls with
+retries, and occasional gRPC connection failures to the builder reported by some users during
+the beta period. Since `--depot=false` is a documented, one-flag fallback to the legacy remote
+builder (10.1), **recommendation**: if `deploy.yml` ever needs a manual escape hatch for a flaky
+Depot builder, it's a workflow_dispatch input or a one-line flag change, not a code change —
+worth a one-line comment in `deploy.yml` pointing at this note, not more.
+
+### 10.5 Answering the original three questions directly
+
+1. **Yes**, documented: `fly deploy --depot[=auto|true|false]` and `--depot-scope=org|app`
+   (`fly.io/docs/flyctl/deploy/`).
+2. Effectively **no new CI setup** for the recommended path — it's on by default via the existing
+   `--remote-only` deploy step; no secrets, no new step, no `--image`/`--local-only` split needed.
+   (Only the separate opt-in `depot build --push` + `flyctl deploy --image ...` path needs a
+   Depot account, and this repo doesn't need that path.)
+3. N/A — there **is** an official, documented Fly+Depot integration (this supersedes the
+   plausible-but-wrong assumption in the task brief that Depot might be an unrelated generic
+   product with no Fly tie-in). The fallback mechanisms from official-Fly-only tooling
+   (`--local-only` + prebuilt `--image` push to `registry.fly.io`) remain documented and valid as
+   a _further_ fallback below even the legacy remote builder, but aren't the first lever to pull
+   here — `--depot` (already effectively active) is.
+
+### Discrepancy with the task brief
+
+The task brief's hypothesis in point 3 — that Depot might be an unrelated product with no
+official Fly tie-in — is **not correct**: Fly and Depot have an official, current partnership,
+and Depot is Fly's **default** remote-builder backend as of this verification date. This isn't a
+discrepancy with the spec, just a correction of a plausible-but-unverified assumption in the
+task framing — exactly the kind of thing this note exists to catch before an agent builds a
+custom `depot build` CI step that duplicates behavior flyctl already provides for free.
+
 ## Sources
 
 - fly.io/docs/reference/configuration/ — `[processes]`, `[[services]]`, `[[services.ports]]`,
@@ -392,11 +499,25 @@ turn out to be needed later (relevant to the `release_command` scoping question 
 - github.com/superfly/flyctl-actions — README, `setup-flyctl` action, `FLY_API_TOKEN` usage
 - (flagged secondary, §8 only) community.fly.io threads on non-root `USER` + stdout/stderr
   pipe ownership — not authoritative, verify against a real deploy
+- fly.io/docs/flyctl/deploy/ — `--depot` (default `auto`), `--depot-scope` (default `org`),
+  `--remote-only`/`--local-only`/`--image` flag docs (§10)
+- fly.io/docs/reference/builders/ — Dockerfile/Buildpacks/Image builder types (checked for
+  Depot content; none found there — Depot is documented on the `fly deploy` flag reference
+  instead, not this overview page) (§10)
+- depot.dev/docs/container-builds/integrations/fly — `--depot` flag, `depot build --push` +
+  `flyctl deploy --image` alternative path, no-Depot-account-needed statement for `--depot` (§10)
+- (flagged secondary, §10 only) community.fly.io/t/depot-remote-builder-support-in-flyctl-is-now-in-beta/21087 —
+  min flyctl version (v0.2.102) for the beta flag, Fly-team data-flow statement, reported
+  stalls/gRPC connection issues during beta
 
 ## Suggested follow-up (not filed by this note — researcher scope is `docs/research/**` only)
 
 - **ADR needed:** the live database is Neon even though `INITIAL_VISION.md` and ADR 0003 name
   Fly Managed Postgres. `docs/research/neon-branching.md` records this provider discrepancy.
+- **Task (issue #262):** confirm the CI runner's `flyctl` version is new enough for `--depot`
+  to default to `auto` (§10.1), then verify one real `deploy.yml` run actually used the Depot
+  builder (flyctl output says so) rather than assuming acceleration is already active; no new
+  secret or workflow step is expected to be needed.
 - **Task:** the app and `infra/fly/fly.toml` have been exercised manually, but the GitHub
   Actions path is still gated. Create a short-lived app-scoped deploy token, configure the
   production environment secret/protection rules, enable the deployment variable, run one

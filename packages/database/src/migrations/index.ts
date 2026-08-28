@@ -47,6 +47,7 @@ import { ReserveE2eeConversationSchema1787792202409 } from './1787792202409-Rese
 import { Adr0033IdentityTranscriptCleanBreak1787800000000 } from './1787800000000-Adr0033IdentityTranscriptCleanBreak.js';
 import { E2eeRequireIdentityRootTranscript1787880585000 } from './1787880585000-E2eeRequireIdentityRootTranscript.js';
 import { ActorBannerMedia1787912351805 } from './1787912351805-ActorBannerMedia.js';
+import { DropLegacyProfileBannerUrl1787913902978 } from './1787913902978-DropLegacyProfileBannerUrl.js';
 import { SchemaDriftFixes1787920000000 } from './1787920000000-SchemaDriftFixes.js';
 
 /**
@@ -111,5 +112,6 @@ export const ALL_MIGRATIONS = [
   ConversationMembersActorIndex1787881533240,
   AddActorsTrigramSearchIndexes1787881940013,
   ActorBannerMedia1787912351805,
+  DropLegacyProfileBannerUrl1787913902978,
   SchemaDriftFixes1787920000000,
 ];

@@ -230,7 +230,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
                 profileBorder: '',
               },
               flair: undefined,
-              profileBannerUrl: '',
               profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
               nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
               accentColor: '',

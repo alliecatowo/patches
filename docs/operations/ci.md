@@ -305,10 +305,83 @@ pins the 5.9.x line).
 The lefthook `pre-push` hook (`lefthook.yml`) does **not** run plain `pnpm verify`/`pnpm
 test` — it runs a `--affected`-scoped, concurrency-bounded, `--continue=dependencies-
 successful` turbo invocation instead (documented in full in
-`docs/operations/local-development.md`'s "Git hooks" section). That divergence is
-deliberate and scoped to the local hook only: `ci.yml`'s `build-test` job still runs the
-full, unscoped `pnpm build && pnpm test` (and `quality` still runs the full
-`pnpm format:check && pnpm lint && pnpm typecheck`) against every package on every PR, and
-`ci-ok` remains the single required status check for `main`. Local pre-push exists to catch
-problems before a push, not to replace CI as the actual gate — narrowing its scope to move
-faster/more reliably on a shared dev box is safe precisely because CI's scope didn't change.
+`docs/operations/local-development.md`'s "Git hooks" section). Local pre-push exists to
+catch problems before a push, not to replace CI as the actual gate.
+
+**Update (#193, 2026-08-28):** `ci.yml` itself is now also affected-workspace-scoped on
+pull requests — see "Affected-workspace scheduling" below — so this is no longer a
+divergence unique to the local hook. `ci-ok` remains the single required status check for
+`main`, and a push to `main` (or a PR carrying the `full-ci` label) still runs the full,
+unscoped gate against every package, same as before.
+
+## Affected-workspace scheduling (#193)
+
+`ci.yml`'s `plan` job decides, once per run, whether `quality`'s typecheck step and
+`build-test`'s build/test steps are scoped to `--filter='...[origin/main]'` (the
+workspaces changed since `origin/main`, plus everything that transitively depends on
+them — turbo's own dependency graph decides "dependents", not a hand-maintained list) or
+run unscoped:
+
+- **Full (unscoped) on:** a push to `main`, `workflow_dispatch`, a PR carrying the
+  `full-ci` label, or whenever `origin/main`'s merge-base can't be resolved (a safe
+  fallback for shallow/detached-checkout edge cases — uncertainty always widens the gate,
+  never narrows it).
+- **Scoped on:** every other pull request event.
+
+`@patches/web` is always unioned into `build-test`'s build filter (`--filter='...[origin/
+main]' --filter='@patches/web...'`) even when scoped, because the bundle-size and
+dist-cleanliness checks in that same job unconditionally need its `dist/` to exist —
+turbo unions multiple `--filter` flags (OR), so this costs one extra workspace build in
+scoped mode rather than narrowing anything. `proto`, `actionlint`, and `integration` stay
+unscoped in every mode: proto/actionlint are cheap and repo-wide by nature, and
+`integration`'s Postgres/migration checks are inherently cross-cutting (its own `pnpm
+build` step already replays `build-test`'s turbo cache via `cache-scope`, so scoping it
+would save little). `eslint`/`prettier` (`quality`'s `pnpm lint`/`pnpm format:check`
+steps) also stay full-repo in every mode — neither has native git-diff-aware filtering
+wired up here, and both are cheap relative to typecheck/test.
+
+`ci-ok` needs the `plan` job directly, and since `quality`/`build-test` both `needs: plan`
+already, a `plan` failure cascades to a `skipped` result on those jobs — which `ci-ok`'s
+existing failure/cancelled/skipped check already treats as a required-job failure. No
+change to `ci-ok`'s own logic was needed: no GitHub Actions job is ever literally skipped
+by the scoping itself (every job still runs; only the turbo task selection inside it
+narrows), so "skipped affected jobs count as success" was moot in this design.
+
+`build-test`'s `pnpm exec turbo run test` steps also pass `-- --reporter=github-actions`
+(forwarded through to each matched workspace's underlying `vitest run` script), turning
+test failures into inline GitHub Actions annotations at the failing assertion instead of
+only a scrollback dump.
+
+**Wall-clock/compute measurement:** not yet recorded from a real CI run at merge time —
+GitHub Actions billing/run history wasn't reachable from this environment. Compare a
+representative single-workspace PR's `build-test`/`quality` job durations before and
+after this change lands to fill in a before/after number.
+
+## `@patches/worker` test determinism under concurrent load (#144)
+
+`@patches/worker`'s vitest suite has no arbitrary `setTimeout`/`sleep` waits — every
+timing-derived assertion (`apps/worker/src/jobs/handlers/clean-expired-uploads.handler.test.ts`,
+`apps/worker/src/jobs/handlers/rotate-e2ee-franking-key.handler.test.ts`) computes expected
+values from `Date.now()` deltas at call time rather than racing a real clock, and
+`apps/worker/src/jobs/outbox-circuit-breaker.test.ts` passes an explicit fixed `t0` into every
+assertion instead of reading the wall clock at all. Reproduced clean: `pnpm --filter
+@patches/worker test` passed 16/16 files, 64/64 tests, three consecutive standalone runs
+(2026-08-28).
+
+The flake #144 describes (verify failing under 8 concurrent agent worktrees, but 3/3 passing
+standalone) was resource contention, not a worker logic bug, and both of its root causes were
+already fixed by prior work, not by this change:
+
+- `scripts/bounded.sh` (#302, see `docs/agents/HARNESS.md`) now throttles every heavy
+  command — including `mise run check`/`verify`/`test` — through flock-based slots with a
+  CPU/memory cgroup and a bounded `VITEST_MAX_WORKERS` (default 2), so concurrent
+  worktrees no longer starve each other's vitest pools.
+- `apps/worker/vitest.config.mts`'s `testTimeout: 20_000` (landed under B-178, see that
+  file's own comment) already accounts for `main.test.ts`'s real dynamic-import work
+  exceeding vitest's 5s default under CPU contention from sibling packages' build/test
+  processes — a generous fixed timeout rather than a synchronization primitive, since
+  nothing about that assertion is actually racing a clock.
+
+No further worker test changes were needed for this issue; it's tracked here as the
+confirmation record since #144 predates both fixes and was never explicitly closed against
+them.

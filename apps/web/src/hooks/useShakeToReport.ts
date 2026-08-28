@@ -157,6 +157,15 @@ export function useShakeToReport(enabled = true, threshold = 18): void {
         if (peaks >= 3 && now - lastFire > 4000) {
           lastFire = now;
           peaks = 0;
+          // iOS Safari shows its own "Undo Typing" system prompt over whatever is
+          // focused when navigation happens mid-edit (#299) — blur first so the sheet
+          // that follows isn't fighting a native dialog for the screen.
+          if (
+            document.activeElement instanceof HTMLElement &&
+            document.activeElement !== document.body
+          ) {
+            document.activeElement.blur();
+          }
           void navigate('/report');
         }
       }
