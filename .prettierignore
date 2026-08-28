@@ -16,3 +16,6 @@ LICENSE
 .claude/skills/gh-stack/SKILL.md
 .agents/skills/gh-stack/SKILL.md
 .codex/
+# Runtime state written by the lab harness (`mise run lab`); git-ignored, but Prettier
+# still walks it and fails `--check` on the manifest it writes.
+infra/lab/.run/

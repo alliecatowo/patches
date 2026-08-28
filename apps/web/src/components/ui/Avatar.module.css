@@ -1,0 +1,84 @@
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  user-select: none;
+  /* A hairline ring keeps a light avatar from bleeding into a light surface without
+     implying a border/frame the actor did not choose. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Initials fallback. The hue is derived from the name so the same person is the same colour
+   everywhere, while lightness/saturation stay fixed so contrast against the white glyph is
+   the same for every hue — a per-actor hue must not become a per-actor contrast bug. */
+.initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    160deg,
+    hsl(var(--avatar-hue) 52% 46%),
+    hsl(calc(var(--avatar-hue) + 24) 48% 36%)
+  );
+  color: #fff;
+  font-weight: var(--weight-bold);
+  font-size: var(--avatar-initials-size);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.xs {
+  --avatar-size: var(--avatar-xs);
+  --avatar-initials-size: var(--text-2xs);
+}
+
+.sm {
+  --avatar-size: var(--avatar-sm);
+  --avatar-initials-size: var(--text-xs);
+}
+
+.md {
+  --avatar-size: var(--avatar-md);
+  --avatar-initials-size: var(--text-sm);
+}
+
+.lg {
+  --avatar-size: var(--avatar-lg);
+  --avatar-initials-size: var(--text-md);
+}
+
+.xl {
+  --avatar-size: var(--avatar-xl);
+  --avatar-initials-size: var(--text-xl);
+}
+
+/* A cluster of overlapping avatars — the empty-state illustration and group threads. */
+.cluster {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cluster > * + * {
+  margin-left: calc(var(--space-3) * -1);
+}
+
+.cluster > * {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent),
+    0 0 0 3px var(--surface);
+}

@@ -1,0 +1,108 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4);
+  gap: var(--space-3);
+}
+
+.input {
+  width: 100%;
+  min-height: var(--control-height-md);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note {
+  margin: 0;
+  padding: var(--space-2) var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+.rowActive {
+  background: var(--accent-soft);
+}
+
+.row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
+}
+
+.names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handle {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boostedTag {
+  flex-shrink: 0;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}

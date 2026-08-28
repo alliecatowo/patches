@@ -117,7 +117,7 @@ describe('MessagesRoute', () => {
 
     renderMessages();
 
-    expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No conversations yet — start one.')).toBeInTheDocument();
   });
 
   it('offers "New Message" as a live control now that sessions can be established', async () => {
@@ -127,7 +127,7 @@ describe('MessagesRoute', () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     expect(screen.getByLabelText('New direct message')).toBeEnabled();
   });
@@ -135,7 +135,7 @@ describe('MessagesRoute', () => {
   it('no longer tells an enrolled user that messaging does not work here', async () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     expect(screen.queryByText(/does not work in the web client/i)).toBeNull();
     expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
@@ -149,7 +149,7 @@ describe('MessagesRoute', () => {
     const windowPrompt = vi.spyOn(window, 'prompt');
 
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     fireEvent.click(screen.getByLabelText('New direct message'));
     expect(await screen.findByLabelText('Search by handle or name')).toBeInTheDocument();
@@ -158,7 +158,7 @@ describe('MessagesRoute', () => {
     fireEvent.change(screen.getByLabelText('Search by handle or name'), {
       target: { value: 'vio' },
     });
-    fireEvent.click(await screen.findByRole('option', { name: /@violet/ }));
+    fireEvent.mouseDown(await screen.findByRole('option', { name: /@violet/ }));
 
     expect(await screen.findByLabelText('Message body')).toBeInTheDocument();
     expect(screen.getByText('Message @violet')).toBeInTheDocument();
@@ -169,7 +169,7 @@ describe('MessagesRoute', () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
     expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
@@ -208,19 +208,19 @@ describe('MessagesRoute', () => {
         await screen.findByText(DM_LIST_POLL_FAILED_COPY, { exact: false }),
       ).toBeInTheDocument();
       expect(screen.getByText('@violet')).toBeInTheDocument();
-      expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
+      expect(screen.queryByText('No conversations yet — start one.')).not.toBeInTheDocument();
     },
   );
 
   it('an empty list under a failed poll is worded as a failure, not as "no conversations yet"', async () => {
     mockListConversations.mockResolvedValueOnce({ conversations: [] });
     const { queryClient } = renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     mockListConversations.mockRejectedValueOnce(new Error('network down'));
     await queryClient.refetchQueries({ queryKey: ['conversations'] });
 
     expect(await screen.findByText(DM_LIST_POLL_FAILED_COPY)).toBeInTheDocument();
-    expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No conversations yet — start one.')).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,84 @@
+/**
+ * An inline panel: a bounded region of a surface, not a floating dialog. It has no fixed
+ * viewport position and no backdrop — the messaging flows that used to drop a card over the
+ * layout render one of these inside the pane they belong to (#336).
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 26rem;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-1);
+}
+
+.centered {
+  margin: auto;
+}
+
+.alert {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger-soft);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel {
+    animation: uiPanelIn var(--motion-slow) var(--ease-out) both;
+  }
+}
+
+@keyframes uiPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

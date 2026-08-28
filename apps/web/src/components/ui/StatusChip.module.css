@@ -1,0 +1,60 @@
+/**
+ * A slim inline status strip — never a card. Its whole purpose (#336) is to state a standing
+ * condition inside a header without becoming a block that pushes the surface around.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: var(--space-1);
+}
+
+.neutral {
+  background: var(--surface-sunken);
+  border-color: var(--line-subtle);
+  color: var(--text-secondary);
+}
+
+.accent {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent-ink);
+}
+
+.positive {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  color: var(--ok);
+}
+
+.warning {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+
+.danger {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
