@@ -1291,12 +1291,14 @@ submits (ADR 0020 §9), never written by ordinary message delivery.
 | `e2ee_identity_roots`          | An actor's long-lived Ed25519 messaging-root public key, versioned by `generation`; at most one active (non-rotated) per actor.                                                                                                                                                                               |
 | `e2ee_device_identities`       | A root-certified per-device X25519/Ed25519 public key pair and certificate; at most one active (non-revoked) generation per `(actor_id, device_id)`.                                                                                                                                                          |
 | `e2ee_device_rosters`          | Monotonic, root-signed roster snapshots per actor, chained by `previous_digest`/`digest` (§2).                                                                                                                                                                                                                |
+| `e2ee_device_link_offers`      | A short-lived offer relayed by `BeginDeviceLink` (ADR 0037 §1): the new device's public material, held ≤ 10 minutes until the authority device signs it via `EnrollDevice` or it expires. Never a device — never appears in a roster, fanout, or prekey inventory.                                            |
 | `e2ee_signed_prekeys`          | Public signed prekeys, rotated every 7 days; at most one active (non-retired) per device.                                                                                                                                                                                                                     |
 | `e2ee_one_time_prekey_key_ids` | Immutable per-device issued one-time-prekey IDs. The `(device_identity_id, key_id)` ledger survives public-row retention cleanup and is the anti-reuse fence; it cascades only with device-identity purge.                                                                                                    |
 | `e2ee_one_time_prekeys`        | Public one-time X3DH prekeys. Every row has a composite foreign key to the issued-ID ledger; consumed rows may be swept only after the ledger records consumption.                                                                                                                                            |
 | `e2ee_logical_messages`        | Node-visible metadata for one logical fanout — franking commitment/tag, digests, epoch — never a body (§8).                                                                                                                                                                                                   |
 | `e2ee_mailbox_envelopes`       | One opaque per-recipient-device ciphertext payload per logical message. Retention sweeps only durably acknowledged rows older than the protocol `MAXLATENCY`; unacknowledged rows are never expiry candidates.                                                                                                |
 | `e2ee_group_control_events`    | One device-signed, digest-chained membership transition (`ADDED`/`REMOVED`) per `E2EE_V1` conversation; unique `(conversation_id, epoch)`, `epoch >= 2` — epoch 1 is creation and has no event row. No FK on `subject_actor_id`: "who was in the group when" is evidence that survives account deletion (§7). |
+| `e2ee_node_franking_keys`      | This node's own symmetric franking keys (ADR 0020 §9, §12.7), one row per rotation era; appended only, never updated/deleted, so a tag issued under an older era stays verifiable forever (ADR 0020 §12.7).                                                                                                   |
 | `e2ee_report_evidence`         | Consent/audit metadata for a report that discloses E2EE plaintext (§9): who consented, when, and verification status.                                                                                                                                                                                         |
 | `e2ee_report_evidence_items`   | Up to 11 (position 0–10) explicitly reporter-disclosed plaintext messages plus their franking opening/transcript — see above.                                                                                                                                                                                 |
 
@@ -1443,6 +1445,152 @@ Account deletion with a grace period, and account data export (§197.3, §197.4)
 
 One `READY` archive is kept at a time and expires after 7 days (§204) — enforced by the export
 job replacing the previous ready row, not by a database constraint.
+
+---
+
+## `federation_keys` (Phase 8, §109)
+
+**Status: implemented** — `packages/database/src/entities/federation-key.entity.ts`.
+
+A local actor's own RSA-2048 keypair for HTTP Signatures. One row per local actor, created
+lazily the first time that actor needs to sign an outgoing federation request or publish an
+actor document with a `publicKey` (`KeyService.getOrCreateKeyPair`).
+
+| Column                   | Type          | Nullable | Notes                                                                          |
+| ------------------------ | ------------- | -------- | ------------------------------------------------------------------------------ |
+| `actor_id`               | `uuid`        | no       | PK; FK → `actors.id` (`ON DELETE CASCADE`), unique                             |
+| `public_key_pem`         | `text`        | no       | SPKI PEM, embedded verbatim into the actor document's `publicKey.publicKeyPem` |
+| `private_key_ciphertext` | `bytea`       | no       | AES-256-GCM ciphertext of the PKCS#8 private key PEM (B-026)                   |
+| `private_key_iv`         | `bytea`       | no       | 96-bit GCM nonce, unique per row                                               |
+| `private_key_tag`        | `bytea`       | no       | GCM authentication tag                                                         |
+| `created_at`             | `timestamptz` | no       |                                                                                |
+
+The private key is encrypted under `FEDERATION_KEY_ENCRYPTION_KEY`
+(`packages/database/src/crypto/federation-key-cipher.ts`); no plaintext private key is ever
+persisted. There was never a deployed row with an older plain `private_key_pem` column
+(Stage F1 is pre-launch), so the shape was set directly rather than expand/contract across two
+migrations.
+
+---
+
+## `inbox_activities` (Phase 8, P8-006, §110)
+
+**Status: implemented** — `packages/database/src/entities/inbox-activity.entity.ts`.
+
+Inbox activity dedupe: ActivityPub activities are re-delivered (retries, shared-inbox fan-out
+landing twice), and an activity's own `id` URI is the only thing every activity is guaranteed
+to carry, so it is the primary key here rather than a surrogate one (§110's "duplicate
+delivery is safe"). `FederationInboxService` inserts a row (or rejects on conflict) _before_
+doing any side-effecting work for an incoming activity.
+
+| Column          | Type          | Nullable | Notes                                                                                      |
+| --------------- | ------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `id`            | `text`        | no       | PK; the activity's own `id` URI, capped by ingestion size limits before it is ever written |
+| `activity_type` | `text`        | no       | AS2 `type` (`Follow`, `Create`, ...) — operator visibility only                            |
+| `actor_uri`     | `text`        | no       | the remote actor URI that sent this activity (AS2 `actor`)                                 |
+| `received_at`   | `timestamptz` | no       | default `now()`                                                                            |
+
+**Indexes**: `inbox_activities(received_at)`.
+
+No sweep job removes old rows yet — retention is unbounded pending a documented cleanup policy
+(not found in `apps/worker/src/jobs/handlers`).
+
+---
+
+## `quote_authorizations` (FEP-044f, ADR 0028, Amendment B §180.2)
+
+**Status: schema only** — `packages/database/src/entities/quote-authorization.entity.ts`.
+No inbox/outbox code writes it yet (P18-003+); the table exists so the migration lands ahead
+of the feature.
+
+FEP-044f quote-authorization evidence as a lifecycle row rather than a boolean on the quoting
+post — revocation is real (a Mastodon-style `Delete` of the stamp), so an authorization must be
+able to die without the quote post dying with it.
+
+| Column             | Type          | Nullable | Notes                                                                                                      |
+| ------------------ | ------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `id`               | `uuid`        | no       | PK                                                                                                         |
+| `quoted_post_id`   | `uuid`        | no       | FK → `posts.id` (`ON DELETE CASCADE`); the post being quoted (stamp's `interactionTarget`)                 |
+| `quoting_post_id`  | `uuid`        | yes      | FK → `posts.id` (`ON DELETE CASCADE`); null until the quote post has a local row                           |
+| `quoter_actor_id`  | `uuid`        | no       | FK → `actors.id` (`ON DELETE CASCADE`); the quote post's author, known before any quote-post row exists    |
+| `remote_stamp_uri` | `text`        | yes      | the remote `QuoteAuthorization` document URI; null when evidence carries no stamp yet                      |
+| `claimed_policy`   | `text`        | no       | CHECK ∈ `QUOTE_POLICIES` — the policy the evidence claims was in force at issue time (evidence, not truth) |
+| `state`            | `text`        | no       | CHECK ∈ `QUOTE_AUTHORIZATION_STATES`                                                                       |
+| `verified_at`      | `timestamptz` | yes      | set when the stamp was dereferenced and validated (or the author accepted); null while `PENDING`           |
+| `revoked_at`       | `timestamptz` | yes      | set when approval was withdrawn; null while `PENDING`/`VERIFIED`/`REJECTED`                                |
+| `created_at`       | `timestamptz` | no       |                                                                                                            |
+| `updated_at`       | `timestamptz` | no       |                                                                                                            |
+
+**Constraints**: `UNIQUE (quoting_post_id, quoted_post_id)` wherever `quoting_post_id` is set.
+`CHECK (quoting_post_id IS NULL OR quoting_post_id <> quoted_post_id)` — FEP-044f auto-approves
+self-quotes (same `attributedTo`), so those never need a row.
+
+**Indexes**: `quote_authorizations(quoting_post_id, quoted_post_id)` UNIQUE;
+`quote_authorizations(quoted_post_id, state)` (revocation fan-out from the quoted side).
+
+A `REVOKED`/`REJECTED` row is kept, not deleted, so the display rule "still rendered, just not
+as endorsed" (§193) has evidence to point at.
+
+---
+
+## `rate_limit_buckets` (B-103, §102)
+
+**Status: implemented** — `packages/database/src/entities/rate-limit-bucket.entity.ts`,
+`packages/database/src/repositories/rate-limit-bucket.ts`.
+
+DB-backed global rate limiting, keyed by a string identifier (e.g. `register:192.0.2.1`,
+`login:user@example.com`). Tracks cost within a time window; the composite of `key` +
+`window_start` uniquely identifies a bucket, and a single key can have multiple buckets over
+time as windows expire. `rpc-budget.ts` uses this to enforce per-RPC budgets atomically via
+`UPDATE ... SET cost = cost + $1`.
+
+| Column         | Type          | Nullable | Notes                       |
+| -------------- | ------------- | -------- | --------------------------- |
+| `key`          | `text`        | no       | PK                          |
+| `cost`         | `int`         | no       | default 0                   |
+| `window_start` | `timestamptz` | no       | part of the bucket identity |
+| `window_end`   | `timestamptz` | no       | window boundary             |
+| `updated_at`   | `timestamptz` | no       |                             |
+
+**Indexes**: `rate_limit_buckets(window_end)`.
+
+**Retention**: `rateLimitBucketRepo.deleteExpired` removes rows where `window_end < now`, but
+as of this writing no scheduled job in `apps/worker/src/jobs` calls it — unlike
+`clean-expired-tokens.handler.ts`'s sweep of `refresh_tokens`/`ssh_login_challenges`, there is
+no periodic sweep wired up for this table yet. Table growth is bounded by the fixed-window
+key space in practice, but this is a gap, not a documented cleanup policy.
+
+---
+
+## `webauthn_challenges` (Phase 15 passkeys, ADR 0022, §165)
+
+**Status: implemented** — `packages/database/src/entities/webauthn-challenge.entity.ts`,
+`apps/server/src/modules/auth/passkey-challenge.service.ts`.
+
+A server-issued, single-use WebAuthn ceremony challenge. Mirrors `ssh_login_challenges`'
+single-use-via-conditional-`UPDATE` pattern, but stores the challenge value itself (already a
+base64url string, as `@simplewebauthn/server` produces it) rather than a raw nonce, because a
+`CompletePasskeyRegistration`/`CompletePasskeyLogin` call carries no server-chosen id of its
+own — only the credential response, whose `clientDataJSON` embeds the challenge it was signed
+over.
+
+| Column          | Type          | Nullable | Notes                                                                                                                                                  |
+| --------------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`            | `uuid`        | no       | PK                                                                                                                                                     |
+| `challenge`     | `text`        | no       | base64url, unique; exactly as embedded in the options JSON returned to the client                                                                      |
+| `purpose`       | `text`        | no       | CHECK ∈ `{REGISTRATION, LOGIN}`                                                                                                                        |
+| `bound_user_id` | `uuid`        | yes      | registration only: the authenticated user this challenge may be redeemed for; null for `LOGIN` (discoverable-credential login has no caller yet)       |
+| `expires_at`    | `timestamptz` | no       | TTL 5 minutes (`PASSKEY_CHALLENGE_TTL_MS`) — longer than `ssh_login_challenges`' 120s because a passkey ceremony waits on a human biometric/PIN prompt |
+| `consumed_at`   | `timestamptz` | yes      | single-use; consumed atomically                                                                                                                        |
+| `created_at`    | `timestamptz` | no       |                                                                                                                                                        |
+
+**Indexes**: `webauthn_challenges(challenge)` UNIQUE; `webauthn_challenges(expires_at)`.
+
+**Retention**: unlike `ssh_login_challenges`, no periodic sweep job in
+`apps/worker/src/jobs/handlers` deletes expired `webauthn_challenges` rows as of this writing —
+`clean-expired-tokens.handler.ts` covers `refresh_tokens` and `ssh_login_challenges` only. This
+is a documentation-vs-code gap the entity's own header comment ("expired rows are swept by a
+periodic job") does not reflect; treat that comment as aspirational until a handler exists.
 
 ---
 

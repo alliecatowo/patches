@@ -32,10 +32,9 @@ export function toProtoIdentityRoot(root: E2eeIdentityRootEntity): E2eeIdentityR
     publicKey: root.publicKey,
     // A peer client, not this node, is the verifier here (`GetIdentityRoot` is peer-facing) — it
     // has no other way to check the root's self-signature, so the stored transcript bytes must
-    // round-trip exactly. `?? Buffer.alloc(0)` only fires for rows published before these columns
-    // existed; ADR 0033 §5 wipes them in a separate, independently-sequenced migration (#251).
-    rootBytes: root.rootBytes ?? Buffer.alloc(0),
-    selfSignature: root.selfSignature ?? Buffer.alloc(0),
+    // round-trip exactly. Both columns are NOT NULL (issue #297) — every surviving row has one.
+    rootBytes: root.rootBytes,
+    selfSignature: root.selfSignature,
     previousRootSignature: root.previousRootSignature ?? Buffer.alloc(0),
     createdAt: dateToTimestamp(root.createdAt),
     rotatedAt: root.rotatedAt === null ? undefined : dateToTimestamp(root.rotatedAt),

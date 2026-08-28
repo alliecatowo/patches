@@ -3,6 +3,7 @@ import { useState, type JSX } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
+import { CosmeticText, Nameplate } from '../components/Nameplate.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { useDebouncedValue } from '../hooks/useDebouncedValue.js';
 import { toDate } from '../lib/format.js';
@@ -73,7 +74,12 @@ export function SearchRoute(): JSX.Element {
                 aria-hidden="true"
               />
               <span>
-                <strong>{actor.displayName || actor.handle}</strong> @{actor.handle}
+                <strong>
+                  <CosmeticText nameplate={actor.nameplate}>
+                    {actor.displayName || actor.handle}
+                  </CosmeticText>
+                </strong>{' '}
+                <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
               </span>
             </Link>
           ))}

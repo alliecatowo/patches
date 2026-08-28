@@ -48,17 +48,15 @@ export class E2eeIdentityRoot {
   @Column({ type: 'bytea' })
   declare publicKey: Buffer;
 
-  // Nullable rather than the ideally-required NOT NULL: rows published before this column
-  // existed have none, and ADR 0033 §5's row-wipe migration for this table is a separate,
-  // independently-sequenced change (issue #251). The publish path (`identity-root.service.ts`)
-  // always populates all three for every row it writes from here on; `toProtoIdentityRoot`
-  // falls back to empty bytes only for the pre-migration rows this covers.
-  @Column({ type: 'bytea', nullable: true })
-  declare rootBytes: Buffer | null;
+  // NOT NULL: transcript-less rows (published before this column existed) were purged by
+  // `E2eeRequireIdentityRootTranscript` (issue #297) — no legacy tolerance, every surviving row
+  // has a real transcript.
+  @Column({ type: 'bytea' })
+  declare rootBytes: Buffer;
 
   // Ed25519, 64 bytes: the new root signing its own transcript (proof of possession).
-  @Column({ type: 'bytea', nullable: true })
-  declare selfSignature: Buffer | null;
+  @Column({ type: 'bytea' })
+  declare selfSignature: Buffer;
 
   // Present only when the previous root signed the transition (a planned rotation).
   @Column({ type: 'bytea', nullable: true })
