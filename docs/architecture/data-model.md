@@ -472,7 +472,10 @@ nullable-safe — see the column note above; this is a schema-only fix, `AuthSer
 does not check it yet, see `tasks.md` A-021).
 
 **Indexes**: `actors(handle_normalized)` UNIQUE (§60); `actors(canonical_uri)` UNIQUE;
-`actors(handle_normalized, client_request_id)` UNIQUE (A-021).
+`actors(handle_normalized, client_request_id)` UNIQUE (A-021); GIN trigram (`gin_trgm_ops`)
+indexes on `handle_normalized` and `display_name` (`AddActorsTrigramSearchIndexes`) — back
+`ActorService.searchActors`'s prefix `LIKE`/leading-wildcard `ILIKE`, neither of which a plain
+btree can serve under this node's non-`C` collation (§112).
 
 **Handle rules** (§22): lowercase canonical form, ASCII, letters/digits/underscore,
 3–30 characters. No Unicode confusables in v0. Local handles render as `@alice`;
@@ -1073,7 +1076,14 @@ A post's membership in a tag.
 
 **Constraints**: composite PK `(post_id, tag_id)`.
 
-**Indexes** (§189): `post_tags(tag_id, created_at, post_id)` — backs `FeedService.ListTagFeed`.
+**Indexes** (§189): `post_tags(tag_id, created_at, post_id)` — backs `FeedService.listTagFeed`'s
+`tag_id = X` filter/join predicate (an index-only scan hands back every matching `post_id`
+without a heap fetch). It does **not** back `ListTagFeed`'s `ORDER BY` — that orders by the
+joined `posts.created_at DESC, posts.id DESC`, a different table's column, and one that can
+diverge from this table's own `created_at` after a retag (`TagExtractionService` deletes and
+re-inserts the row). `posts(created_at DESC, id DESC)` and this table's PK `(post_id, tag_id)`
+together give Postgres two index-backed plans depending on tag popularity — measured with
+`EXPLAIN (ANALYZE, BUFFERS)`, no separate index was needed for the `ORDER BY` itself.
 
 ---
 
@@ -1196,6 +1206,11 @@ A direct-message conversation (§183.4). Never federated, no media, no link prev
 | `muted`                | `boolean`     | no       | default `false`                                             |
 
 **Constraints**: composite PK `(conversation_id, actor_id)`.
+
+**Indexes**: `conversation_members(actor_id, left_at, conversation_id)`
+(`ConversationMembersActorIndex`) — `actor_id` is the composite PK's _second_ column, so it
+can't lead a lookup off the PK alone; this index backs `MessagesService.listConversations`'s
+`actor_id = X AND left_at IS NULL` scan.
 
 ---
 
@@ -1451,6 +1466,8 @@ job replacing the previous ready row, not by a database constraint.
 ```text
 actors(handle_normalized) UNIQUE
 actors(canonical_uri) UNIQUE
+actors(handle_normalized) USING GIN gin_trgm_ops -- AddActorsTrigramSearchIndexes; SearchActors' prefix match
+actors(display_name) USING GIN gin_trgm_ops -- AddActorsTrigramSearchIndexes; SearchActors' leading-wildcard ILIKE
 
 users(recovery_email_normalized) UNIQUE
 users(actor_id) UNIQUE
@@ -1508,6 +1525,13 @@ reports(subject_actor_id)
 reports(subject_post_id)
 
 media(owner_actor_id, created_at)
+
+post_tags(tag_id, created_at, post_id) -- filters ListTagFeed's `tag_id = X` join predicate;
+                                          does not back ListTagFeed's ORDER BY, see the
+                                          `post_tags` section above
+
+conversation_members(actor_id, left_at, conversation_id) -- ConversationMembersActorIndex;
+                                                              ListConversations' membership scan
 
 outbox_jobs(status, available_at, id)
 outbox_jobs(idempotency_key) UNIQUE

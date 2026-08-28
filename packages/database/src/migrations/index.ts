@@ -39,6 +39,8 @@ import { DropOrphanedLegacyMessageTrigger1787670000000 } from './1787670000000-D
 import { Phase13GroupMembership1787241965646 } from './1787241965646-Phase13GroupMembership.js';
 import { DropE2eeConversationMembershipEvents1787815392235 } from './1787815392235-DropE2eeConversationMembershipEvents.js';
 import { E2eeDeviceLinkOffers1787816106996 } from './1787816106996-E2eeDeviceLinkOffers.js';
+import { ConversationMembersActorIndex1787881533240 } from './1787881533240-ConversationMembersActorIndex.js';
+import { AddActorsTrigramSearchIndexes1787881940013 } from './1787881940013-AddActorsTrigramSearchIndexes.js';
 import { RemoveFilterScopeMessageRequests1787661000000 } from './1787661000000-RemoveFilterScopeMessageRequests.js';
 import { E2eeIdentityRootTranscript1787790938656 } from './1787790938656-E2eeIdentityRootTranscript.js';
 import { ReserveE2eeConversationSchema1787792202409 } from './1787792202409-ReserveE2eeConversationSchema.js';
@@ -102,4 +104,6 @@ export const ALL_MIGRATIONS = [
   Adr0033IdentityTranscriptCleanBreak1787800000000,
   DropE2eeConversationMembershipEvents1787815392235,
   E2eeDeviceLinkOffers1787816106996,
+  ConversationMembersActorIndex1787881533240,
+  AddActorsTrigramSearchIndexes1787881940013,
 ];
