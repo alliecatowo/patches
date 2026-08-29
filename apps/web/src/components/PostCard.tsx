@@ -37,6 +37,10 @@ import { RichBody } from './RichBody.js';
 export interface PostCardProps {
   post: Post;
   focused?: boolean;
+  /** When provided, the reply-count control becomes a reply-targeting action that
+   * calls this with the post (e.g. the thread's inline composer targeting that
+   * specific reply) instead of navigating to the post's own thread. */
+  onReply?: ((post: Post) => void) | undefined;
 }
 
 /**
@@ -49,7 +53,7 @@ export interface PostCardProps {
  * its output. `post` references are stable between renders (from react-query's cache) so
  * the default shallow prop comparison is sufficient — no custom comparator needed.
  */
-function PostCardImpl({ post, focused = false }: PostCardProps): JSX.Element {
+function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.Element {
   const session = useSession();
   const onError = useErrorToast();
   const navigate = useNavigate();
@@ -442,14 +446,26 @@ function PostCardImpl({ post, focused = false }: PostCardProps): JSX.Element {
         )}
 
         <div className={styles['actions']}>
-          <Link
-            to={`/p/${post.id}`}
-            className={styles['actionButton']}
-            aria-label={`View thread and replies (${counts?.replies ?? 0} replies)`}
-          >
-            <MessageSquareIcon size={17} />
-            <span>{formatCount(counts?.replies ?? 0)}</span>
-          </Link>
+          {onReply ? (
+            <button
+              type="button"
+              className={styles['actionButton']}
+              onClick={() => onReply(post)}
+              aria-label={`Reply to @${post.author?.handle ?? 'unknown'} (${counts?.replies ?? 0} replies)`}
+            >
+              <MessageSquareIcon size={17} />
+              <span>{formatCount(counts?.replies ?? 0)}</span>
+            </button>
+          ) : (
+            <Link
+              to={`/p/${post.id}`}
+              className={styles['actionButton']}
+              aria-label={`View thread and replies (${counts?.replies ?? 0} replies)`}
+            >
+              <MessageSquareIcon size={17} />
+              <span>{formatCount(counts?.replies ?? 0)}</span>
+            </Link>
+          )}
 
           <button
             type="button"
