@@ -118,6 +118,37 @@ describe('PageBlocksView (P45-004/005)', () => {
     expect(frame).toContain('› Second');
   });
 
+  it('renders grouped Links with a group heading, preserving document order', () => {
+    const blocks: RenderablePageBlock[] = [
+      {
+        type: 'Links',
+        links: [
+          { label: 'repo', href: 'https://git.test', group: 'Code' },
+          { label: 'docs', href: 'https://docs.test', group: 'Code' },
+          { label: 'blog', href: 'https://blog.test' },
+          { label: 'wells', href: 'https://wells.test', group: 'Elsewhere' },
+        ],
+      },
+    ];
+    // collectLinks never re-sorts or re-groups — document order is preserved exactly.
+    expect(collectLinks(blocks).map((link) => link.label)).toEqual([
+      'repo',
+      'docs',
+      'blog',
+      'wells',
+    ]);
+    const { lastFrame } = render(
+      <PageBlocksView blocks={blocks} context={context()} selectedLinkIndex={undefined} />,
+    );
+    const frame = lastFrame() ?? '';
+    // One heading per contiguous group, none for the flat entry.
+    expect(frame).toContain('Code');
+    expect(frame).toContain('Elsewhere');
+    expect(frame.indexOf('repo')).toBeGreaterThan(frame.indexOf('Code'));
+    expect(frame.indexOf('docs')).toBeGreaterThan(frame.indexOf('Code'));
+    expect(frame.indexOf('blog')).toBeGreaterThan(frame.indexOf('docs'));
+  });
+
   it('renders Image/Gallery as the fallback box outside a Kitty context', () => {
     const blocks: RenderablePageBlock[] = [
       { type: 'Image', mediaId: '11111111-1111-4111-8111-111111111111', alt: 'a photo' },

@@ -18,6 +18,29 @@
   margin: 0 0 0.5rem 0;
 }
 
+/* B-119: grouped link-tree-like collections — a group heading over its contiguous
+ * run, with the group's entries in one list. Presentation only; link order is never
+ * re-sorted (spec §46/Amendment B). */
+.linkGroup {
+  margin-bottom: 0.5rem;
+}
+
+.linkGroup:last-child {
+  margin-bottom: 0;
+}
+
+.linkGroupTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 0.25rem 0;
+}
+
+.linkGroupList {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
 .placeholder {
   color: var(--fg-muted);
 }
