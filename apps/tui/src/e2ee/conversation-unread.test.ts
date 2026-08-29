@@ -17,11 +17,12 @@ import { VaultCorruptionError } from './vault-errors.js';
 function memoryVault(): UnreadVaultAccess {
   const records = new Map<string, Uint8Array>();
   return {
-    async getOpaqueRecord(key: string): Promise<Uint8Array | undefined> {
-      return records.get(key);
+    getOpaqueRecord(key: string): Promise<Uint8Array | undefined> {
+      return Promise.resolve(records.get(key));
     },
-    async putOpaqueRecord(key: string, value: Uint8Array): Promise<void> {
+    putOpaqueRecord(key: string, value: Uint8Array): Promise<void> {
       records.set(key, value);
+      return Promise.resolve();
     },
   };
 }
