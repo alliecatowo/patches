@@ -37,7 +37,8 @@ import { mergeUnread } from '../e2ee/conversation-unread.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { E2eeNotEnrolledError, E2EE_QUARANTINED_MESSAGE_COPY } from '../e2ee/runtime.js';
-import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
+import type { E2eeControlEvent, InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
+import { E2EE_CONTROL_TYPING_TTL_MS } from '@patches/domain';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
@@ -98,6 +99,17 @@ export interface MessagesScreenApi {
   }>;
 }
 
+/**
+ * What one end-to-end mailbox drain yields for the open thread: renderable `rows` plus any
+ * B-093 ephemeral control events (typing edges, read receipts, edits, deletes) decoded out
+ * of the same sealed fanout. Controls are surfaced here so the screen can react to typing
+ * without ever persisting one as a message.
+ */
+export interface E2eeDrain {
+  readonly rows: readonly E2eeReceivedRow[];
+  readonly controls?: readonly E2eeControlEvent[];
+}
+
 export interface MessagesScreenProps {
   api: MessagesScreenApi;
   isActive: boolean;
@@ -152,7 +164,7 @@ export interface MessagesScreenProps {
    * history transfers). The callback owns decryption, durable receive-state commits,
    * and acknowledgement; the screen only renders what survived validation.
    */
-  receiveE2ee?: ((conversationId: string) => Promise<readonly E2eeReceivedRow[]>) | undefined;
+  receiveE2ee?: ((conversationId: string) => Promise<E2eeDrain>) | undefined;
   /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
   mailPollMs?: number | undefined;
   /**
@@ -508,6 +520,17 @@ export function MessagesScreen({
   >({ status: 'hidden' });
   // B-101 mailbox rows for the open end-to-end thread (deduped by envelope id).
   const [e2eeRows, setE2eeRows] = useState<readonly E2eeReceivedRow[]>([]);
+  // B-093 typing indicators for the open end-to-end thread: sender device id -> the live
+  // typing edge's sender actor id and expiry (epoch ms). A TYPING_STOP clears it; a
+  // TYPING_START with no stop expires on its own TTL so "typing…" never pins to the screen
+  // forever. Keyed by device id so two devices of the same peer render one line each.
+  const [typingEdges, setTypingEdges] = useState<
+    ReadonlyMap<string, { readonly senderActorId: string; readonly expiryMs: number }>
+  >(new Map());
+  // B-093: a render-safe clock, advanced on each mailbox drain tick so a typing edge's TTL
+  // expiry can be judged at render without calling Date/now (which is impure there). The
+  // value only matters once a drain has run; before that `typingEdges` is empty anyway.
+  const [drainTickMs, setDrainTickMs] = useState<number>(0);
   // P19-018: conversation ids marked read locally this session, so the list badge
   // clears without waiting for the next `ListConversations` poll tick to land. Never
   // removed once set, same as `NotificationsScreen`'s `readOverride` — a conversation
@@ -733,14 +756,44 @@ export function MessagesScreen({
     async function poll(): Promise<void> {
       if (cancelled) return;
       try {
-        const rows = await receiveE2ee?.(conversationId);
+        const drain = await receiveE2ee?.(conversationId);
         if (cancelled) return;
-        if (rows !== undefined && rows.length > 0) {
-          setE2eeRows((current) => {
-            const seen = new Set(current.map((row) => row.id));
-            const fresh = rows.filter((row) => !seen.has(row.id));
-            return fresh.length === 0 ? current : [...current, ...fresh];
-          });
+        if (drain !== undefined) {
+          const rows = drain.rows;
+          if (rows.length > 0) {
+            setE2eeRows((current) => {
+              const seen = new Set(current.map((row) => row.id));
+              const fresh = rows.filter((row) => !seen.has(row.id));
+              return fresh.length === 0 ? current : [...current, ...fresh];
+            });
+          }
+          // B-093 typing edges: a start arms the indicator with a TTL, a stop clears it
+          // immediately. Read receipts / edits / deletes are deliberately not acted on
+          // here — the screen only reacts to typing, and never overclaims read receipt
+          // or presence state (§194).
+          if (drain.controls !== undefined) {
+            const controls = drain.controls;
+            setTypingEdges((current) => {
+              let next: Map<string, { senderActorId: string; expiryMs: number }> | undefined;
+              for (const control of controls) {
+                if (control.type !== 'TYPING_START' && control.type !== 'TYPING_STOP') continue;
+                if (next === undefined) next = new Map(current);
+                const key = control.senderDeviceId;
+                if (control.type === 'TYPING_STOP') {
+                  next.delete(key);
+                } else {
+                  next.set(key, {
+                    senderActorId: control.senderActorId,
+                    expiryMs: Date.now() + E2EE_CONTROL_TYPING_TTL_MS,
+                  });
+                }
+              }
+              return next === undefined ? current : next;
+            });
+          }
+          // Advance the render-safe clock so typing-edge TTL expiry is judged against the
+          // time of this drain, not a render-time Date/now call.
+          setDrainTickMs(Date.now());
         }
         // A successful drain collapses the backoff straight back to the base interval.
         consecutiveFailures = 0;
@@ -833,6 +886,8 @@ export function MessagesScreen({
     setPendingMessages([]);
     setThreadError(undefined);
     setE2eeRows([]);
+    setTypingEdges(new Map());
+    setDrainTickMs(0);
     // Reopening re-baselines the security checks on purpose — acknowledging a change
     // interstitial is exactly this action (the copy says so), and it must not be
     // possible to acknowledge without the fetch that proves what is true now.
@@ -1153,6 +1208,18 @@ export function MessagesScreen({
               </Box>
             );
           })}
+          {/* B-093 typing edges, rendered live for the open thread and dropped the moment
+              their TTL passes (compared against the render-safe clock advanced each drain).
+              Deliberately the only control surfaced as UI: read receipts and presence are
+              never overclaimed (§194), and an edit/delete already landed as a row by the
+              time a later control arrives, so it has no separate affordance. */}
+          {[...typingEdges.entries()]
+            .filter(([, edge]) => edge.expiryMs > drainTickMs)
+            .map(([deviceId, edge]) => (
+              <Text key={deviceId} color={theme.muted}>
+                @{edge.senderActorId} is typing…
+              </Text>
+            ))}
           <Box marginTop={1}>
             <Text color={theme.accent}>Draft: </Text>
             <Text>{draft}</Text>

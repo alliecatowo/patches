@@ -152,6 +152,9 @@ export interface E2eeMailboxEnvelopeLike {
 
 const KIND_CHAT = 1;
 const KIND_HISTORY = 2;
+// B-093: an E2EE control envelope (typing/read-receipt/edit/delete) rides the same sealed
+// transport as a chat body, distinguished only by this kind byte once the envelope opens.
+const KIND_CONTROL = 3;
 const BUCKETS: readonly number[] = [512, 2_048, 8_192, 32_000];
 const HEADER_BYTES = 5;
 
@@ -182,12 +185,28 @@ export function encodeHistoryPlaintext(record: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * Wraps a canonical B-093 control envelope (the `envelopeBytes` a client built or decoded
+ * via `@patches/domain`) as a logical plaintext: same padding-bucket framing as a chat
+ * body, so a control commits and seals over the exact padded bytes every envelope ships.
+ */
+export function encodeControlPlaintext(envelopeBytes: Uint8Array): Uint8Array {
+  const total = bucketFor(envelopeBytes.length);
+  const out = new Uint8Array(total);
+  out[0] = KIND_CONTROL;
+  new DataView(out.buffer).setUint32(1, envelopeBytes.length, false);
+  out.set(envelopeBytes, HEADER_BYTES);
+  return out;
+}
+
 export interface DecodedPayload {
-  readonly kind: 'chat' | 'history';
+  readonly kind: 'chat' | 'history' | 'control';
   /** Chat bodies only: the true, unpadded UTF-8 body. */
   readonly body?: string | undefined;
   /** History records only: the canonical transfer record bytes. */
   readonly record?: Uint8Array | undefined;
+  /** Control envelopes only: the canonical unprefixed envelope bytes (B-093). */
+  readonly control?: Uint8Array | undefined;
 }
 
 export function decodePayload(inner: Uint8Array): DecodedPayload {
@@ -203,6 +222,13 @@ export function decodePayload(inner: Uint8Array): DecodedPayload {
   }
   if (kind === KIND_HISTORY) {
     return { kind: 'history', record: inner.slice(1) };
+  }
+  if (kind === KIND_CONTROL) {
+    if (inner.length < HEADER_BYTES) throw new Error('Truncated control payload.');
+    const length = new DataView(inner.buffer, inner.byteOffset, HEADER_BYTES).getUint32(1, false);
+    if (length > inner.length - HEADER_BYTES)
+      throw new Error('Control length exceeds its padding.');
+    return { kind: 'control', control: inner.slice(HEADER_BYTES, HEADER_BYTES + length) };
   }
   throw new Error('Unknown inner payload kind.');
 }
@@ -275,6 +301,35 @@ export interface PollResult {
   readonly rows: readonly InboxRow[];
   /** Fixed-copy failure description; polling continues on the next interval. */
   readonly error?: string | undefined;
+  /**
+   * B-093 controls decoded from this drain, in delivery order (not persisted as messages —
+   * see `inboundMessagesToRecords`, which keys rows only). Content-free on purpose: the
+   * event carries the control's metadata and created-at, never an edit body — a body's
+   * plaintext stays inside the envelope bytes and is surfaced only by a render path that
+   * can enforce the same bounds and TTL the codec rejects.
+   */
+  readonly controls?: readonly E2eeControlEvent[] | undefined;
+}
+
+/**
+ * A decoded B-093 control, delivered by a drain without being persisted as a message.
+ * `envelopeBytes`/`envelopeDigest` are the canonical bytes every consumer recomputes the
+ * same digest over (ADR 0020 §7); the surfaced fields are the control's own metadata.
+ */
+export interface E2eeControlEvent {
+  readonly conversationId: string;
+  readonly senderActorId: string;
+  readonly senderDeviceId: string;
+  /** The delivering envelope id — the stable dedupe key this control arrived on. */
+  readonly envelopeId: string;
+  readonly type: string;
+  readonly createdAtMs: number;
+  /** Read receipts only: the logical message ids being acknowledged as read. */
+  readonly messageIds?: readonly string[] | undefined;
+  /** Edit/delete only: the logical message the sender edited or tombstoned. */
+  readonly logicalMessageId?: string | undefined;
+  /** The exact canonical bytes the control rode in (a stable fingerprint, but content). */
+  readonly envelopeBytes: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
