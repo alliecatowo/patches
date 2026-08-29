@@ -20,9 +20,11 @@ Why these ceilings: Grok doubles at 200k, GPT-5.6 at 272k — the higher rate pr
 ## How `/goal` behaves
 
 1. `/goal <objective>` creates a goal via `@prevalentware/opencode-goal-plugin` (see `opencode.json` + `.opencode/opencode.json` / `tui.json`). Subsequent `/goal` without args reports status; `/goal pause|resume|clear|history|edit` manage it.
-2. Handler is `goal-driver` (`gpt-5.6-luna`). It reads `get_goal` + board (`projects_list`) + `roadmap.md` + spec checklists, infers `DISCOVERY / EXECUTION / AUDIT / REPLAN` from durable state, and delegates.
-3. If planning incomplete → fresh `architect` packet → durable artifacts (board items, ADRs, roadmap). Then execution resumes under driver — same `/goal` continues without re-paying for ideation.
-4. Execution: ≤4 concurrent workers with disjoint file sets, bounded packets (`.opencode/skills/packet`), concise handoffs (`.opencode/skills/handoff`), `mise run check <ws>` via `bounded.sh`. No 40-worktree thrash, no `git worktree add` by hand.
+2. Handler is `goal-driver` (`gpt-5.6-luna`). It reads `get_goal` + **board via `github` MCP** (`projects_list`/`projects_get` for GitHub issues preferred + drafts, `issue_read`/`search_issues` for issue bodies) + `roadmap.md` + spec checklists, infers `DISCOVERY / EXECUTION / AUDIT / REPLAN` from durable state, and delegates. `tasks.md` is archive/offline fallback only.
+3. If planning incomplete → fresh `architect` packet → durable artifacts (board issues/drafts + ADRs + roadmap). Then execution resumes under driver — same `/goal` continues without re-paying for ideation.
+4. Execution: ≤4 concurrent workers with disjoint file sets, bounded packets (`.opencode/skills/packet`), concise handoffs (`.opencode/skills/handoff`), `mise run check <ws>` via `bounded.sh`. No 40-worktree thrash, no `git worktree add` by hand. Board moves via `projects_write`/`issue_write` + `Fixes #N` merges (see `AGENTS.md:29`).
+
+MCPs available to every agent: `github` (remote, `projects`+`issues` toolsets, needs `GITHUB_PAT`) and `mise` (stdio, `mise mcp`) — both declared in `opencode.json:4` + `.opencode/opencode.json:6` so they're repo-portable, plus any repo-level `.mcp.json` entries. Add a new MCP by adding a 5-line entry there; don't scatter per-agent configs.
 
 ## Packet / handoff
 

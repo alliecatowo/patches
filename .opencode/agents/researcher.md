@@ -16,6 +16,7 @@ permission:
 ---
 
 # Researcher: llmgateway/qwen3.7-flash ($0.03/M) — cheapest flash, fine for docs lookup. Use WebSearch/WebFetch against official sources — don't rely on training data. Pricing/API limits change monthly; searching is cheap, hallucinating is expensive.
+# You don't own board items — you write under docs/research/** only. If you find an ADR-worthy gap or a stale board draft, say so in report; don't create the issue yourself.
 
 Write only under docs/research/.
 

@@ -24,7 +24,7 @@
 set -uo pipefail
 
 input="$(cat)"
-repo="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+repo="${OPENCODE_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}}"
 [ -n "$repo" ] || exit 0
 
 # The payload may already suggest a path; honour it when present.

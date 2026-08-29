@@ -1,6 +1,6 @@
 # Model routing — route by remaining ambiguity, not size
 
-All inference via DevPass `llmgateway/*` or `opencode/*-free`; no Anthropic. Use `WebSearch/WebFetch` against official docs before guessing — pricing and cliffs change monthly. See `docs/agents/HETEROGENEOUS.md` for the full ladder + pricing table and `opencode.json` for effective context ceilings.
+All inference via DevPass `llmgateway/*` or `opencode/*-free`; no Anthropic. Use `WebSearch/WebFetch` against official docs before guessing — pricing and cliffs change monthly. Tasks live as **GitHub issues + drafts** on `alliecatowo/projects/5` (see `AGENTS.md:29`); MCP `github` (`projects_*` + `issue_*`) and `mise` are the two MCPs every agent has (`opencode.json:4`). See `docs/agents/HETEROGENEOUS.md` for the full ladder + pricing table and `opencode.json` for effective context ceilings.
 
 | Remaining ambiguity                                                     | Model (OpenCode agent)                                                                             | Effective limit                                   | Guard                                                                    |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------ |

@@ -26,23 +26,13 @@ Add the expanded items to the Project board via `/task add` with Phase set to th
 
 ## 3. Route models
 
-Use `docs/agents/MODEL_ROUTING.md`. Default: `implementer` (sonnet) for the work itself, `researcher` (sonnet) first if the task touches unverified tech, `verifier` (haiku) between waves, `reviewer` (opus) before merge, `docs-writer` (sonnet) to close out. Escalate to `architect` (opus) if a task turns out to need a design decision instead of just implementation.
+Use `docs/agents/MODEL_ROUTING.md` + `HETEROGENEOUS.md`. Default: `worker` (`deepseek-v4-flash` 140k) for the work itself, `researcher` (`qwen3.7-flash` 120k + WebSearch) first if unverified tech, `verifier` (`gpt-5.6-luna` 90k) between waves, `senior-worker`/`reviewer` (`gpt-5.6-terra` 220k) before merge, `docs-writer` (`qwen3.7-flash`) to close out. Escalate to `architect` (`grok-4-6` 180k) only if semantic/planning problem.
 
-## 4. Fan out implementers in parallel
+## 4. Fan out workers in parallel (≤4 concurrent, see `HETEROGENEOUS.md`)
 
-One `Agent` call per task, all in a single message so they run concurrently. Each brief must include:
+One `Task` (subagent) per packet via `.opencode/skills/packet/SKILL.md`, all in one message. Each packet: Task ID + acceptance, scope files (disjoint, ≤4 workers total), forbidden paths, constraints, prior findings, `mise run check <ws>` (scoped via `bounded.sh` — never full `verify` for leaf), commit rules (`git add <explicit>` + `Fixes #<n>`), handoff shape (`.opencode/skills/handoff/SKILL.md` ≤20 lines). Workers inspect repo themselves; don't paste full history. No `git worktree add` by hand — work in main checkout with disjoint paths; isolation is opt-in only when file sets truly conflict.
 
-- **Task ID** and the exact acceptance criteria (copy from the board item/roadmap, don't paraphrase loosely)
-- **Read list**: which `docs/research/*.md` and `.claude/rules/*.md` apply
-- **Allowed paths**: the exact disjoint file set — be explicit that other agents own everything else, and that `git add -A` is forbidden
-- **Verification**: `pnpm verify` (or scoped) must pass before it reports done
-- **Commit rules**: Conventional Commits, only its own paths staged, PR references the issue it closes (`Fixes #<n>`) so Status moves automatically
-- **Report format**: task ID, files touched, verification result, deviations, follow-ups, learnings (matches `implementer`'s own report format — just reinforce it)
-
-Only fan out tasks that are genuinely independent in this wave; sequence dependent ones into a later message after the first wave reports back.
-
-Implementers commit on their own worktree branches and report the branch name; the orchestrator
-merges the wave's branches into the feature branch, then runs one `verifier` pass.
+Sequence dependent waves into a later message. `goal-driver` consumes handoffs and decides retry (`triage` skill) before next wave.
 
 ## 5. After each wave
 

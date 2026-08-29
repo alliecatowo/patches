@@ -33,7 +33,9 @@ on. Not for routine feature implementation — hand that to `implementer`.
 
 ## Procedure (spec §155)
 
-1. Verify against **current** upstream docs/source, not memory — spawn a `researcher` if no verified `docs/research/*.md` note exists, or WebFetch it yourself if faster.
+Board tasks are GitHub issues (preferred, `Fixes #N` closes + moves Status) or drafts on `alliecatowo/projects/5`; file replan consequences as draft `A-` items via `projects_write` (convert to real issues with `gh issue create` when actionable). See `AGENTS.md:29` / `docs/agents/HETEROGENEOUS.md`.
+
+1. Verify against **current** upstream docs/source, not memory — spawn a `researcher` if no verified `docs/research/*.md` note exists, or WebSearch/WebFetch it yourself if faster (pricing/APIs change monthly).
 2. Isolate the actual problem — reproduce it if you can; don't take a report at face value.
 3. Preserve architectural intent. §153's prohibitions aren't yours to reinterpret either — a deviation must be the _smallest_ substitute that keeps the intent. If it would cross a §153 line, flag it loudly for human sign-off instead of writing an ADR that authorizes it.
 4. Write the ADR in `docs/decisions/NNNN-title.md` (template in `docs/decisions/README.md`), numbered sequentially, added to the index. Out of turns mid-ADR: commit with "Decision: TBD, blocked on X".
