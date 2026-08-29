@@ -423,7 +423,10 @@ order. `AsciiArt` is centred and never wrapped (clipped with a `…` row, contro
 sub-pages; `Tab` moves between pinned → blocks → guestbook regions; `s` opens a one-line sign
 box; `e` (owner) opens the structured block editor (`B-023`) — a list of blocks with `J`/`K` to
 reorder, `Enter` to edit fields, `a` add, `x` remove, `Ctrl+S` save with the server's validation
-error shown inline against the offending block. Plain mode: no borders, `Top 8` becomes a
+error shown inline against the offending block. A `Links` block's entries are edited in place —
+`Tab`/`↑↓` move across (entry × label/URL/group) slots, `J`/`K` reorder entries, `N` adds, `X`
+deletes (`B-119`); its optional `group` heading makes it a link-tree-like collection. Plain
+mode: no borders, `Top 8` becomes a
 `- @handle` list, still one `Tab` ring.
 
 ### 5.6 Notifications drawer (`N`, 140 columns → 104 content + 36 drawer)
