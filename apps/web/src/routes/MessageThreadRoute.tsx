@@ -6,7 +6,9 @@ import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
 import { requiredConversationDisclosure } from '@patches/domain';
 import type { InboxRow } from '../e2ee/runtime.js';
+import { mergeUnread } from '../e2ee/conversation-unread.js';
 import { useE2ee } from '../e2ee/use-e2ee.js';
+import { useLocalUnreadCounts } from '../e2ee/use-local-unread.js';
 import {
   webE2ee,
   usePeerIdentityEvents,
@@ -74,6 +76,29 @@ export function MessageThreadRoute(): JSX.Element {
   const [sending, setSending] = useState(false);
 
   const enrolled = e2eeStatus.kind === 'enrolled';
+  const localUnread = useLocalUnreadCounts(
+    conversationsQuery.data?.conversations.map((c) => c.id) ?? [],
+    enrolled,
+  );
+
+  // #383: opening a thread marks it read on this device AND on the node (server-managed
+  // `unreadCount`). The local clear is durable in the vault, so a locally-read thread stays
+  // read across a reload even if the server's count lags. Fires once per open; a failed
+  // server call must never resurface unread.
+  useEffect(() => {
+    if (!enrolled || conversationId === '' || otherMembers.length === 0) return;
+    // Best-effort local clear: without an open device vault (not really enrolled) there is
+    // nothing to clear, and a failed write must never surface as an error here.
+    void webE2ee()
+      .clearLocalUnread(conversationId)
+      .catch(() => {
+        // no vault to clear — moot
+      });
+    void api.messages.markConversationRead({ conversationId, throughMessageId: '' }).catch(() => {
+      // Best-effort sync with the node — the durable local clear is already authoritative
+      // for this device, so a failed RPC does not resurrect unread.
+    });
+  }, [enrolled, conversationId, otherMembers.length]);
 
   useEffect(() => {
     if (!enrolled || conversationId === '') return;
@@ -88,7 +113,9 @@ export function MessageThreadRoute(): JSX.Element {
     const poll = async (): Promise<void> => {
       if (cancelled) return;
       try {
-        const fresh = await webE2ee().poll(conversationId);
+        // reading:true — this is the open thread; what drains here is being read live and
+        // must not count toward the durable unread (#383).
+        const fresh = await webE2ee().poll(conversationId, { reading: true });
         if (cancelled) return;
         // Dedupe against the rows this updater is actually given, never against a ref.
         // A `setState` updater must be pure: React may call it more than once for a single
@@ -179,6 +206,7 @@ export function MessageThreadRoute(): JSX.Element {
           pollFailed={conversationsQuery.isError}
           activeConversationId={conversationId}
           canCompose={enrolled}
+          localUnread={localUnread}
           onNewMessage={() => void navigate('/messages')}
         />
       }
@@ -242,7 +270,13 @@ export function MessageThreadRoute(): JSX.Element {
               }
             />
           ) : (
-            <MessageList rows={rows} initialUnreadCount={conversation?.unreadCount ?? 0} />
+            <MessageList
+              rows={rows}
+              initialUnreadCount={mergeUnread(
+                conversation?.unreadCount ?? 0,
+                localUnread.get(conversationId),
+              )}
+            />
           )}
 
           {enrolled ? (

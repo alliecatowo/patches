@@ -9,6 +9,7 @@ import { api } from '../api/client.js';
 import { requiredConversationDisclosure } from '@patches/domain';
 import { useSession } from '../hooks/useSession.js';
 import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
+import { useLocalUnreadCounts } from '../e2ee/use-local-unread.js';
 import { webE2ee, WEB_E2EE_COPY, WebE2eeUnavailableError } from '../e2ee/web-e2ee.js';
 import { NeedsAuthorityFlow } from '../components/e2ee/NeedsAuthorityFlow.js';
 import { ComposeIcon } from '../components/icons/Icons.js';
@@ -138,6 +139,10 @@ export function MessagesRoute(): JSX.Element {
   }
 
   const enrolled = e2eeStatus.kind === 'enrolled';
+  const localUnread = useLocalUnreadCounts(
+    query.data?.conversations.map((c) => c.id) ?? [],
+    enrolled,
+  );
   const showNeedsAuthority = needsAuthority && actorId !== undefined;
   // Stacked layouts show one pane at a time. When this browser has no device keys the only
   // thing worth showing is the detail pane's `E2eePanel`: it owns the enrol/refused/fault
@@ -175,6 +180,7 @@ export function MessagesRoute(): JSX.Element {
           isPending={query.isPending}
           pollFailed={query.isError}
           canCompose={enrolled}
+          localUnread={localUnread}
           onNewMessage={() => setCompose({ phase: 'pick' })}
         />
       }

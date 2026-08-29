@@ -40,6 +40,7 @@ import {
   loadInboundMessages,
   recordInboundMessages,
 } from './inbound-messages.js';
+import { clearUnread, loadUnread, setUnread } from './conversation-unread.js';
 import {
   loadOwnMessages,
   mergeOwnMessages,
@@ -364,10 +365,20 @@ class WebE2eeManager {
    * (quarantine/undisplayable) so a vanished caller loses nothing even for those; it is
    * cleared with the account in `release()`. Durable history lives in the vault, not here.
    *
+   * Unread (#383): when `reading` is false (a drain for a conversation the user is not
+   * looking at right now), the count of newly drained received messages is added to the
+   * conversation's durable unread store, so "messages received since I last looked"
+   * survives a reload. The open thread drains with `reading` true — those messages are
+   * being read live and are not counted. The default keeps the historic call sites (which
+   * only ever drain the open thread) behaving as "reading".
+   *
    * Queued behind `enqueue` so two concurrent drains (two effect runs racing) cannot
    * interleave over one mailbox and split a conversation's messages between two results.
    */
-  async poll(conversationId: string): Promise<readonly InboxRow[]> {
+  async poll(
+    conversationId: string,
+    opts?: { readonly reading?: boolean },
+  ): Promise<readonly InboxRow[]> {
     return this.enqueue(async () => {
       const runtime = this.requireRuntime();
       const vault = this.requireVault();
@@ -378,6 +389,15 @@ class WebE2eeManager {
         // received message from disappearing (issue #352).
         const inbound = inboundMessagesToRecords(result.rows);
         if (inbound.length > 0) {
+          if (opts?.reading === false) {
+            // Messages drained for a conversation the viewer is not currently reading are
+            // unread on this device; the durable count is what survives a reload (#383).
+            const before = await loadInboundMessages(vault, conversationId);
+            const known = new Set(before.map((record) => record.id));
+            const fresh = inbound.filter((record) => !known.has(record.id)).length;
+            const prior = (await loadUnread(vault, conversationId)) ?? 0;
+            if (fresh > 0) await setUnread(vault, conversationId, prior + fresh);
+          }
           await recordInboundMessages(vault, conversationId, inbound);
         }
         const nonMessage = result.rows.filter((row) => row.kind !== 'message');
@@ -396,6 +416,32 @@ class WebE2eeManager {
       if (cached.length === 0) return merged;
       const seen = new Set(merged.map((row) => row.id));
       return [...merged, ...cached.filter((row) => !seen.has(row.id))];
+    });
+  }
+
+  /**
+   * This device's durable unread count for `conversationId` (issue #383): `undefined` when
+   * this device has not yet set a read point here, in which case the caller falls back to
+   * the server-managed `unreadCount`. Requires an open vault.
+   */
+  async getUnreadCount(conversationId: string): Promise<number | undefined> {
+    return this.enqueue(async () => {
+      if (this.vault === undefined) throw new E2eeNotEnrolledError();
+      return loadUnread(this.vault, conversationId);
+    });
+  }
+
+  /**
+   * Clears this device's durable unread for `conversationId` — the "marked read" side of
+   * issue #383. The `0` is written to the vault, so a locally-read conversation stays read
+   * across a reload even if the server's count lags; the caller is expected to issue the
+   * node's own `markConversationRead` RPC alongside, but a failed server call must never be
+   * mistaken for "still unread" here.
+   */
+  async clearLocalUnread(conversationId: string): Promise<void> {
+    await this.enqueue(async () => {
+      const vault = this.requireVault();
+      await clearUnread(vault, conversationId);
     });
   }
 
