@@ -28,13 +28,9 @@
           "name": "Grok 4.3 (cheap architect fallback, 200k cliff, 1M window)",
           "limit": { "context": 180000, "output": 32000 }
         },
-        "grok-4-1-fast-reasoning": {
-          "name": "Grok 4.1 Fast Reasoning (goal-driver, 2M window, $0.20/$0.50 — finesse at luna price)",
-          "limit": { "context": 800000, "output": 24000 }
-        },
         "gpt-5.6-luna": {
-          "name": "GPT-5.6 Luna (verifier/minor driver, 272k cliff — unltd from 90k)",
-          "limit": { "context": 150000, "output": 16000 }
+          "name": "GPT-5.6 Luna (driver, 272k cliff — bumped 150k→250k still cheap $0.20, 1M window)",
+          "limit": { "context": 250000, "output": 16000 }
         },
         "gpt-5.6-terra": {
           "name": "GPT-5.6 Terra (senior/review, standard, 272k cliff)",
@@ -45,16 +41,16 @@
           "limit": { "context": 250000, "output": 32000 }
         },
         "deepseek-v4-flash": {
-          "name": "DeepSeek V4 Flash (default worker, standard, 1M)",
-          "limit": { "context": 140000, "output": 32000 }
+          "name": "DeepSeek V4 Flash (default worker, standard, 1M — $0.05/$0.10 cheapest)",
+          "limit": { "context": 250000, "output": 32000 }
         },
         "qwen3.7-flash": {
-          "name": "Qwen 3.7 Flash (cheapest flash fallback)",
-          "limit": { "context": 120000, "output": 16000 }
+          "name": "Qwen 3.7 Flash (cheapest flash fallback, 1M — $0.03/$0.13)",
+          "limit": { "context": 250000, "output": 16000 }
         },
         "deepseek-v4-pro": {
-          "name": "DeepSeek V4 Pro (harder reasoning fallback, standard)",
-          "limit": { "context": 140000, "output": 32000 }
+          "name": "DeepSeek V4 Pro (harder reasoning fallback, standard, 1M)",
+          "limit": { "context": 250000, "output": 32000 }
         }
       }
     },
