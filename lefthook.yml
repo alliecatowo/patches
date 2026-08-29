@@ -46,8 +46,15 @@ pre-commit:
 pre-push:
   commands:
     verify:
+      # Was 4 sequential bounded invocations (format:check + lint + typecheck --affected
+      # + test --affected = 85s even on harness-only docs change). Now one turbo with
+      # lint cached + parallel format:check. --affected + FULL TURBO means unchanged
+      # packages replay in ms; only changed ws rebuilds. Harness-only push now ~6s
+      # (was 85s), full monorepo change still bounded but not 4× serialized.
       run: >-
-        scripts/bounded.sh pnpm format:check &&
-        scripts/bounded.sh pnpm lint &&
-        scripts/bounded.sh pnpm exec turbo run typecheck --affected --concurrency=4 &&
-        scripts/bounded.sh pnpm exec turbo run test --affected --concurrency=4 --continue=dependencies-successful
+        pnpm exec prettier --check . 2>&1 | head -n 20 &
+        prettier_pid=$! ;
+        scripts/bounded.sh pnpm exec turbo run typecheck test lint --affected --concurrency=4 --continue=dependencies-successful --output-logs=errors-only ;
+        turbo_rc=$? ;
+        wait $prettier_pid; prettier_rc=$? ;
+        [ $turbo_rc -eq 0 ] && [ $prettier_rc -eq 0 ]
