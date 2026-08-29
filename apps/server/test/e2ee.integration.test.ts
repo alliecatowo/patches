@@ -1,6 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import { generateSigningKeyPair, sha256Hash, sign } from '@patches/crypto';
+import {
+  generateSigningKeyPair,
+  sha256Hash,
+  sign,
+  signMessagingRoot,
+  verifyMessagingRoot,
+  verifyPreKeyBundle,
+  verifyRosterSnapshot,
+} from '@patches/crypto';
 import {
   Conversation as ConversationEntity,
   ConversationMember as ConversationMemberEntity,
@@ -510,6 +518,143 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           { verifier: e2eeSignatureVerifier },
         ),
       ).not.toThrow();
+    });
+
+    it('a second actor can verify the served root → roster → prekey-bundle chain end to end (issue #251)', async () => {
+      // The peer whose chain we verify, and the second actor playing the verifying client.
+      // The claimant only ever sees the bytes the peer-facing RPCs (`GetIdentityRoot`,
+      // `GetDeviceRoster`, `ClaimPrekeyBundles`) hand back — the canonical proof that the
+      // identity-root transcript is the root of the chain (ADR 0033 §3).
+      const peer = await newActor();
+      const claimant = await newActor();
+
+      // Publish the peer's messaging root with a *canonical* encoded transcript (what a real
+      // client, not a convenient ad-hoc byte string, signs over) so the peer's
+      // `verifyMessagingRoot` — unlike the node's opaque `verifyIdentityRoot` — can decode it.
+      // The transcript's `createdAtMs` is a moment in the past so it is already valid when the
+      // (later) roster and prekey bundle it anchors are verified.
+      const rootCreatedAtMs = Date.now() - 1_000;
+      const signedRoot = signMessagingRoot(peer.rootPrivateKey, {
+        actorId: peer.actorId,
+        generation: 1,
+        publicKey: peer.rootPublicKey,
+        createdAtMs: rootCreatedAtMs,
+      });
+      await identityRoots.publishIdentityRoot(peer.actorId, {
+        identityRoot: {
+          ...signedIdentityRoot(peer),
+          rootBytes: Buffer.from(signedRoot.rootBytes),
+          selfSignature: Buffer.from(signedRoot.selfSignature),
+        },
+        roster: undefined,
+      });
+
+      // Enroll the peer's first device (certificate + roster + signed prekey + one-time
+      // prekeys, one atomic publish) — yields the chain the claimant will verify.
+      const device = newDevice();
+      const now = new Date();
+      const enrolledCertificate = signedCertificate(peer, device, now);
+      const enrolledRoster = signedRoster(
+        peer,
+        1n,
+        ZERO_32,
+        [
+          {
+            deviceId: device.deviceId,
+            certificateDigest: enrolledCertificate.certificateDigest,
+            active: true,
+          },
+        ],
+        now,
+      );
+      const enrolledBundle = signedPrekeyBundle(
+        peer,
+        device,
+        enrolledCertificate.certificateDigest,
+        1n,
+        now,
+      );
+      await deviceRosters.enrollDevice(peer.actorId, {
+        certificate: enrolledCertificate,
+        roster: enrolledRoster,
+        signedPrekey: enrolledBundle.signedPrekey,
+        oneTimePrekeys: oneTimePrekeys(1, 1),
+        prekeyBundleBytes: enrolledBundle.prekeyBundleBytes,
+        prekeyBundleSignature: enrolledBundle.prekeyBundleSignature,
+      } as never);
+
+      // Verification time — later than every artifact's creation time above, so the whole
+      // chain is already in its validity window when the second actor checks it.
+      const nowMs = Date.now();
+
+      const { identityRoot } = await identityRoots.getIdentityRoot({ actorId: peer.actorId });
+      expect(identityRoot).toBeDefined();
+      const root = verifyMessagingRoot({
+        rootBytes: new Uint8Array(identityRoot?.rootBytes ?? []),
+        selfSignature: new Uint8Array(identityRoot?.selfSignature ?? []),
+        nowMs,
+      });
+      // Fail-closed: the branded root is the only way into the chain, so tampered served bytes
+      // must throw (ADR 0033 §3; the verifier never accepts unchecked material).
+      const tampered = Buffer.from(identityRoot?.rootBytes ?? []);
+      const lastByte = tampered[tampered.length - 1] ?? 0;
+      tampered[tampered.length - 1] = lastByte ^ 0xff;
+      expect(() =>
+        verifyMessagingRoot({
+          rootBytes: new Uint8Array(tampered),
+          selfSignature: new Uint8Array(identityRoot?.selfSignature ?? []),
+          nowMs,
+        }),
+      ).toThrow();
+
+      // 2. Roster: served roster bytes + the served device certificate, the certificate bound
+      // to the very root verified above.
+      const { roster, certificates } = await deviceRosters.getDeviceRoster({
+        actorId: peer.actorId,
+      });
+      expect(roster).toBeDefined();
+      expect(certificates).toHaveLength(1);
+      const verifiedRoster = verifyRosterSnapshot({
+        rosterBytes: new Uint8Array(roster?.rosterBytes ?? []),
+        rootSignature: new Uint8Array(roster?.rootSignature ?? []),
+        root,
+        certificates: certificates.map((c) => ({
+          certificateBytes: new Uint8Array(c.certificateBytes),
+          rootSignature: new Uint8Array(c.rootSignature),
+        })),
+        nowMs,
+      });
+
+      // 3. Prekey bundle: claimed by the *second* actor straight off the wire and verified
+      // against the roster and the certificate carried inside the bundle itself.
+      const { bundles } = await prekeys.claimPrekeyBundles(claimant.actorId, {
+        conversationId: '',
+        actorIds: [peer.actorId],
+        deviceIds: [],
+      });
+      expect(bundles).toHaveLength(1);
+      const bundle = bundles[0];
+      const certificate = bundle?.deviceCertificate;
+      expect(certificate).toBeDefined();
+      expect(bundle?.signedPrekey).toBeDefined();
+      const verifiedBundle = verifyPreKeyBundle({
+        bundleBytes: new Uint8Array(bundle?.bundleBytes ?? []),
+        deviceSignature: new Uint8Array(bundle?.deviceSignature ?? []),
+        certificateBytes: new Uint8Array(certificate?.certificateBytes ?? []),
+        certificateRootSignature: new Uint8Array(certificate?.rootSignature ?? []),
+        oneTimePreKey:
+          bundle?.oneTimePrekey === undefined || bundle.oneTimePrekeyExhausted
+            ? undefined
+            : {
+                id: Number(bundle.oneTimePrekey.keyId),
+                publicKey: new Uint8Array(bundle.oneTimePrekey.publicKey),
+              },
+        roster: verifiedRoster,
+        nowMs,
+      });
+      // The claimed bundle binds to the peer's verified device, not a convenience id the node
+      // happened to echo back.
+      expect(verifiedBundle.deviceId).toBe(device.deviceId);
     });
 
     it('rejects EnrollDevice when the certificate does not match its signed transcript', async () => {
