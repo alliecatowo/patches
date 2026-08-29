@@ -111,6 +111,25 @@ discovered pid, command-line-verified the same way `stopRecordedProcess` verifie
 processes, if that state can't be read. Never assume a bare `down`/`status` from a fresh
 worktree means "nothing is running" — check for `held-by-other-worktree` first.
 
+## Multi-node and federation labs
+
+`mise run lab -- --nodes N` provisions `N` isolated nodes (each with its own database
+`patches_harness_lab_<i>`, its own ephemeral Ed25519 keys, and disjoint ports: gRPC
+`50100+i`, HTTP `8091+i` — deliberately clear of the single-node `:50058`/`:8088` and the
+legacy `fed-lab.sh` `:50061`/`:50062`/`:8081`/`:8082`). `mise run lab -- --federation`
+provisions exactly two federating nodes (`a.localhost`/`b.localhost`) with
+`FEDERATION_ENABLED=true`, `FEDERATION_STANCE=allowlist`, and a shared
+`FEDERATION_KEY_ENCRYPTION_KEY` (base64, 32 bytes). State is a version-2
+`HarnessMultiState` (`mode: 'multi' | 'federation'`, `nodes[]`); the single-node
+version-1 shape is unchanged. `status`/`down`/`logs`/`reset` handle both shapes, and the
+direct gRPC actions accept `--node <index>` to target a specific node (default node 0).
+
+`mise run lab:reset` is an idempotent, **lab-only** reset: it stops this lab's recorded
+processes, clears its state, and drops every harness database it created. It refuses to
+drop any database whose name fails the harness allow-list (`patches_harness_lab` or
+`patches_harness_lab_<n>`), so it can never touch a non-harness database. If the ports are
+held by another worktree with no local state, it reports that owner instead of guessing.
+
 For recovery testing only, `world-ensure --fail-after N` fails immediately after atomically
 journaling mutation `N`; rerun the identical declaration without the flag to prove resume. The
 journal is written before the first RPC and after every successful mutation, so a partial failure

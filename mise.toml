@@ -226,8 +226,8 @@ description = "Stop the federation lab started by `mise run fed:lab` (kills the 
 run = "cd \"$MISE_PROJECT_ROOT\" && infra/lab/fed-lab.sh down"
 
 [tasks.lab]
-description = "Build and start the isolated one-node local browser/agent harness (server :50058, HTTP :8088, database patches_harness_lab)"
-run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build && node packages/harness/dist/cli.js up"
+description = "Build and start the isolated local browser/agent harness (single node: server :50058, HTTP :8088, database patches_harness_lab); pass -- --nodes N for N isolated nodes or --federation for two federating nodes"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build && node packages/harness/dist/cli.js up \"$@\""
 
 [tasks."lab:status"]
 description = "Print JSON status for the isolated one-node local browser/agent harness"
@@ -244,6 +244,10 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/n
 [tasks."lab:down-any"]
 description = "Stop whichever worktree's harness lab currently holds :50058/:8088, regardless of this worktree's own (possibly empty) state"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down --any"
+
+[tasks."lab:reset"]
+description = "Idempotent, lab-only reset: stop this lab, clear its state, and drop every harness database it created (refuses any non-harness database name)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js reset"
 
 [tasks."lab:mailpit"]
 description = "Read verification-code email from the shared Mailpit instance; subcommand is mailpit-list/mailpit-latest/mailpit-get"

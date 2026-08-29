@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_DATABASE_NAME,
+  DEFAULT_GRPC_PORT,
+  DEFAULT_HTTP_PORT,
+  MULTI_GRPC_BASE_PORT,
+  MULTI_HTTP_BASE_PORT,
   allowlistedRuntimeEnvironment,
+  allocateNodePorts,
   assertLinuxHarness,
   atomicPersistLeaf,
   canonicalRepoRoot,
@@ -14,23 +19,31 @@ import {
   databaseUrl,
   findForeignHarnessOwner,
   findPortOwnerPid,
+  generateFederationKeyEncryptionKey,
   harnessProcessEnvironment,
   inspectForeignProcess,
   inspectRecordedProcess,
   isHarnessDatabaseName,
   isSafeHarnessRunDirectory,
+  nodeDatabaseName,
+  nodeDatabaseUrl,
+  nodeDomain,
   openAppendOnlyLog,
   parsePortOwnerPid,
   pathsFor,
   prepareRunDirectory,
   readState,
+  stateDatabaseNames,
+  stateProcessEntries,
   stopForeignProcess,
   stopRecordedProcess,
   stopAllRecordedProcesses,
   waitForProcessSurvival,
   writeState,
+  type HarnessMultiState,
   type HarnessState,
   type NamedHarnessProcess,
+  type SingleNodeState,
 } from './lab.js';
 
 const temporaryRoots: string[] = [];
@@ -80,12 +93,18 @@ afterEach(async () => {
 describe('harness lab safety boundaries', () => {
   const root = '/work/patches';
 
-  it('accepts exactly the dedicated local database name', () => {
+  it('accepts exactly the dedicated local database names (single + per-node)', () => {
     expect(isHarnessDatabaseName(DEFAULT_DATABASE_NAME)).toBe(true);
+    expect(isHarnessDatabaseName('patches_harness_lab_0')).toBe(true);
+    expect(isHarnessDatabaseName('patches_harness_lab_12')).toBe(true);
     expect(isHarnessDatabaseName('patches')).toBe(false);
     expect(isHarnessDatabaseName('patches_harness_lab_copy')).toBe(false);
+    expect(isHarnessDatabaseName('patches_harness_lab_')).toBe(false);
+    expect(isHarnessDatabaseName('patches_harness_lab_0x')).toBe(false);
     expect(databaseUrl()).toContain(`/${DEFAULT_DATABASE_NAME}`);
+    expect(databaseUrl('patches_harness_lab_3')).toContain('/patches_harness_lab_3');
     expect(() => databaseUrl('patches')).toThrow('refusing non-harness database name');
+    expect(() => databaseUrl('patches_harness_lab_')).toThrow('refusing non-harness database name');
   });
 
   it('pins runtime state to the repo-local harness directory', () => {
@@ -152,7 +171,7 @@ describe('harness lab safety boundaries', () => {
 
   it('attempts every process cleanup and rejects before state can be cleared', async () => {
     const attempted: string[] = [];
-    const stop = vi.fn((entry: { name: 'server' | 'worker' }) => {
+    const stop = vi.fn((entry: { name: string }) => {
       attempted.push(entry.name);
       return Promise.resolve(entry.name === 'worker');
     });
@@ -385,5 +404,90 @@ describe('cross-worktree port ownership', () => {
       delay: () => Promise.resolve(),
     });
     expect(refused).toBe(false);
+  });
+});
+
+describe('multi-node lab helpers', () => {
+  it('allocates isolated, disjoint ports per node', () => {
+    const a = allocateNodePorts(0);
+    const b = allocateNodePorts(1);
+    expect(a.grpcPort).toBe(MULTI_GRPC_BASE_PORT);
+    expect(a.httpPort).toBe(MULTI_HTTP_BASE_PORT);
+    expect(b.grpcPort).toBe(MULTI_GRPC_BASE_PORT + 1);
+    expect(b.httpPort).toBe(MULTI_HTTP_BASE_PORT + 1);
+    // Disjoint from the single-node harness and the legacy fed-lab ranges.
+    expect(a.grpcPort).not.toBe(DEFAULT_GRPC_PORT);
+    expect(a.httpPort).not.toBe(DEFAULT_HTTP_PORT);
+    expect(() => allocateNodePorts(-1)).toThrow('invalid multi-node index');
+  });
+
+  it('names per-node databases and URLs through the harness allow-list', () => {
+    expect(nodeDatabaseName(0)).toBe('patches_harness_lab_0');
+    expect(nodeDatabaseName(3)).toBe('patches_harness_lab_3');
+    expect(nodeDatabaseUrl(1)).toContain('/patches_harness_lab_1');
+    expect(() => nodeDatabaseName(-1)).toThrow('invalid multi-node index');
+  });
+
+  it('derives federation node domains as a.localhost, b.localhost, …', () => {
+    expect(nodeDomain(0, 'federation')).toBe('a.localhost');
+    expect(nodeDomain(1, 'federation')).toBe('b.localhost');
+    expect(nodeDomain(0, 'multi')).toBe('harness.localhost');
+  });
+
+  it('generates a federation key-encryption key that decodes to exactly 32 bytes', () => {
+    const key = generateFederationKeyEncryptionKey();
+    expect(Buffer.from(key, 'base64')).toHaveLength(32);
+  });
+
+  it('enumerates every owned process and database across both state shapes', () => {
+    const single: SingleNodeState = {
+      version: 1,
+      runId: 'r1',
+      databaseName: DEFAULT_DATABASE_NAME,
+      databaseUrl: databaseUrl(),
+      httpPort: DEFAULT_HTTP_PORT,
+      grpcPort: DEFAULT_GRPC_PORT,
+      server: { pid: 10, startedAt: 'now' },
+      worker: { pid: 11, startedAt: 'now' },
+    };
+    expect(stateProcessEntries(single).map((e) => e.name)).toEqual(['worker', 'server']);
+    expect(stateDatabaseNames(single)).toEqual([DEFAULT_DATABASE_NAME]);
+
+    const multi: HarnessMultiState = {
+      version: 2,
+      runId: 'r2',
+      mode: 'federation',
+      nodeCount: 2,
+      federationKey: generateFederationKeyEncryptionKey(),
+      nodes: [
+        {
+          id: 'node-0',
+          nodeDomain: 'a.localhost',
+          databaseName: nodeDatabaseName(0),
+          databaseUrl: nodeDatabaseUrl(0),
+          httpPort: MULTI_HTTP_BASE_PORT,
+          grpcPort: MULTI_GRPC_BASE_PORT,
+          server: { pid: 20, startedAt: 'now' },
+          worker: { pid: 21, startedAt: 'now' },
+        },
+        {
+          id: 'node-1',
+          nodeDomain: 'b.localhost',
+          databaseName: nodeDatabaseName(1),
+          databaseUrl: nodeDatabaseUrl(1),
+          httpPort: MULTI_HTTP_BASE_PORT + 1,
+          grpcPort: MULTI_GRPC_BASE_PORT + 1,
+          server: { pid: 30, startedAt: 'now' },
+          worker: { pid: 31, startedAt: 'now' },
+        },
+      ],
+    };
+    expect(stateProcessEntries(multi).map((e) => e.name)).toEqual([
+      'node-0:worker',
+      'node-0:server',
+      'node-1:worker',
+      'node-1:server',
+    ]);
+    expect(stateDatabaseNames(multi)).toEqual(['patches_harness_lab_0', 'patches_harness_lab_1']);
   });
 });
