@@ -427,17 +427,21 @@ The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol compositi
   second stdin consumer needs its own design pass rather than a rushed addition. The provider and
   factory option are complete and tested; only that call site remains.
 
-**The one open blocker is session bootstrap against a peer.** Identity material exists in two
-transcript families that sign the same facts under different encodings: the _crypto-native_ family
-(`packages/crypto/src/identity.ts`, which `initiateX3dh`/`respondX3dh` re-verify) and the
-_node-canonical_ family (`apps/server/src/modules/e2ee/e2ee.codec.ts`, mirrored for clients in
-`apps/tui/src/e2ee/node-transcripts.ts`), which is the only one the node stores and serves. Device
-enrollment mints both, but publishes only the node-canonical one, so a client can fully authenticate
-a peer's published chain and still not construct the crypto-native `PreKeyBundle`/`SignedDeviceRoster`
-X3DH demands — that would need the peer's root signature over the crypto-native encoding, which no
-other party can mint. `claimPrekeyBundles` and peer `loadPeerRoster` therefore **fail closed** with
-fixed copy rather than half-verifying (ADR 0020 §14.2). Unifying the two families onto the
-node-canonical transcript is the remaining work; it changes reviewed crypto and so needs its own ADR.
+**Session bootstrap against a peer is closed by ADR 0033.** There is one identity transcript
+family, owned and both encoded/decoded by `@patches/crypto` (`identity.ts`,
+`identity-transcript.ts`) — the same encoder the node's `e2ee.codec.ts` adapts and signs and
+serves. The old per-client duplicate encoders (`apps/tui/src/e2ee/node-transcripts.ts` and
+`apps/web/src/e2ee/node-transcripts.ts`) are deleted; a single keypair mints one family, so an
+enrolled device's published proof is exactly the shape `initiateX3dh`/`respondX3dh` re-verify.
+`claimPrekeyBundles` and peer `loadPeerRoster` are therefore real RPC + verification chains
+(`GetIdentityRoot` → `verifyMessagingRoot` → `GetDeviceRoster` → `verifyRosterSnapshot` →
+`ClaimPrekeyBundles` → `verifyPreKeyBundle`) in both clients, with the fail-closed
+`E2eeSetupUnavailableError` stub and its fixed copy removed. The unified transcripts are pinned
+by the cross-client vector `packages/crypto/src/vectors/identity-transcripts.json`, replayed by
+`packages/crypto`'s `vectors.test.ts` and the server's proto/`Date` adapter and `EnrollDevice`
+suites. ADR 0033 §7's definition of done — two enrolled devices establishing a session through the
+real RPCs and exchanging a decrypting message with franking intact — is covered by the server's
+two-device integration suite.
 
 ## 10. Federation is a non-goal here
 
