@@ -3,6 +3,7 @@ import { MigrationExecutor } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import { createDataSource } from '../src/data-source.js';
 import { AppMeta } from '../src/entities/app-meta.entity.js';
+import { ALL_MIGRATIONS } from '../src/migrations/index.js';
 
 // Never point tests at the dev DB (docs/agents/PACKAGE_CONVENTIONS.md, INITIAL_VISION.md
 // §119) — this file only ever talks to TEST_DATABASE_URL, and skips cleanly if that isn't
@@ -68,10 +69,30 @@ describe.skipIf(!testDatabaseUrl)('AppMeta + migrations (integration, real Postg
     expect(found.value).toEqual({ id: 'test-instance' });
   });
 
-  it('round-trips the issued-prekey ledger migration and leaves no pending migration', async () => {
-    await dataSource.undoLastMigration();
-    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(1);
-    await dataSource.runMigrations();
-    expect(await new MigrationExecutor(dataSource).getPendingMigrations()).toHaveLength(0);
+  it('refuses to undo the ADR 0033 migration (irreversible by design), reversing anything after it first', async () => {
+    // Located BY NAME, not position — this migration doesn't have to stay the chain tip (#270
+    // appended `DropE2eeConversationMembershipEvents…` after it), only irreversible.
+    const IRREVERSIBLE_MIGRATION_NAME = 'Adr0033IdentityTranscriptCleanBreak1787800000000';
+    const irreversibleIndex = ALL_MIGRATIONS.findIndex(
+      (m) => m.name === IRREVERSIBLE_MIGRATION_NAME,
+    );
+    if (irreversibleIndex === -1) {
+      throw new Error(
+        `${IRREVERSIBLE_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+      );
+    }
+    const executor = new MigrationExecutor(dataSource);
+    // Undo everything appended after the irreversible migration first, so it becomes the tip.
+    for (let i = ALL_MIGRATIONS.length - 1 - irreversibleIndex; i > 0; i--) {
+      await dataSource.undoLastMigration();
+    }
+    // Its `down()` throws on purpose — its `up()` deletes rows signed under a retired identity
+    // transcript encoding, and there is nothing to restore them to. TypeORM rolls the attempted
+    // undo back in its own transaction, so the migrations table is untouched and the schema
+    // stays fully migrated (relative to what's been undone above) either way.
+    await expect(dataSource.undoLastMigration()).rejects.toThrow(/irreversible by design/);
+    expect(await executor.getPendingMigrations()).toHaveLength(
+      ALL_MIGRATIONS.length - 1 - irreversibleIndex,
+    );
   });
 });

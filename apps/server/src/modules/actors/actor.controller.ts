@@ -85,10 +85,11 @@ export class ActorController implements ActorServiceController {
       // service's vocabulary is the prefix-free storable name, so strip it here at the
       // transport boundary. UNSPECIFIED strips to 'UNSPECIFIED', which the service schema
       // rejects — a caller must pick an explicit value.
-      profileBannerUrl: request.profileBannerUrl,
       profileFrame: wireEnumName(request.profileFrame, 'PROFILE_FRAME_'),
       nameTagStyle: wireEnumName(request.nameTagStyle, 'NAME_TAG_STYLE_'),
       accentColor: request.accentColor,
+      avatarMediaId: request.avatarMediaId,
+      bannerMediaId: request.bannerMediaId,
       updateMask: fieldMaskPaths(request.updateMask),
     });
     return { actor: toProtoActor(profile) };

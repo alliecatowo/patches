@@ -1,0 +1,306 @@
+/**
+ * The messaging flows that need a decision: enrollment, the needs-authority chooser, the
+ * rotate confirmation, device linking, and the new-conversation picker (ADR 0037 §1-2, #300).
+ *
+ * #336: these are *inline panels inside the pane they belong to*, not cards dropped over the
+ * layout — same geometry and tokens as `components/ui/Panel`, so the whole messaging surface
+ * reads as one component set. Class names are unchanged on purpose: the copy and behaviour of
+ * these flows are fixed by ADR 0037 and must not move while their appearance does.
+ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 26rem;
+  margin: auto;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    animation: messagesFlowIn var(--motion-slow) var(--ease-out) both;
+  }
+}
+
+@keyframes messagesFlowIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* The three outcomes as a ranked stack: one full-width control per decision, each with its
+   consequence directly under it. A row of three equal buttons would imply they are
+   interchangeable, and one of them replaces the account's messaging identity. */
+.optionStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.optionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-lg);
+  width: 100%;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.optionButton:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.optionButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.optionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: var(--elevation-1);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.secondary {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--line);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--accent);
+}
+
+.tertiary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.tertiary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.danger {
+  background: var(--danger);
+  color: var(--text-on-accent);
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+}
+
+.optionDesc {
+  margin: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+
+.alertText {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.instruction {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* The SAS is the one thing on screen that has to be read aloud digit by digit. */
+.sasCode {
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.1em;
+  text-align: center;
+  word-spacing: 0.2em;
+  color: var(--text-primary);
+}
+
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: deviceLinkSpin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@keyframes deviceLinkSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* `.inline` is the non-modal placement: a panel that sits in the flow of a route rather than
+   centring itself in a pane. */
+.inline {
+  margin: 0 0 var(--space-4);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.explanation {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* New-conversation picker (#298). */
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.resultRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+.resultRow:hover,
+.resultRow:focus-visible {
+  background: var(--accent-soft);
+}
+
+.resultRow:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
+}
+
+.resultHandle {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+}
+
+.resultName {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}

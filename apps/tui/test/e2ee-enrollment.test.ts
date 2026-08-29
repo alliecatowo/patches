@@ -1,31 +1,23 @@
 /**
- * B-107 — device enrollment: material generation (both transcript families), the
- * encrypted-vault record, the idempotent orchestration, and the shell transport
- * adapters. Server RPC behavior itself is covered by `apps/server`'s integration
- * suite; these tests pin the CLIENT half against `@patches/crypto`'s strict verifiers
- * and the node-canonical transcript layouts in `src/e2ee/node-transcripts.ts`.
+ * B-107 — device enrollment: material generation over the ONE canonical identity
+ * transcript family (ADR 0033), the encrypted-vault record, the idempotent
+ * orchestration, and the shell transport adapters. Server RPC behavior itself is
+ * covered by `apps/server`'s integration suite; these tests pin the CLIENT half
+ * against `@patches/crypto`'s strict verifiers.
  */
 import { create } from '@bufbuild/protobuf';
 import { GetE2eeCapabilityResponseSchema } from '@patches/proto/es';
-import {
-  sha256Hash,
-  verifyPreKeyBundle,
-  verifyRosterSnapshot,
-  verifyStrict,
-} from '@patches/crypto';
+import { sha256Hash, signingKeyPairFromPrivate, verifyStrict } from '@patches/crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  decodeCertificateTranscript,
-  decodeRosterTranscript,
-} from '../src/e2ee/node-transcripts.js';
 import { selfPrekeyBundle } from '../src/e2ee/local-identity.js';
 import type { FanoutPlan } from '../src/e2ee/runtime.js';
-import { E2eeSetupUnavailableError, sessionIdFor } from '../src/e2ee/runtime.js';
+import { sessionIdFor } from '../src/e2ee/runtime.js';
 import {
   ENROLLMENT_PEER_WARNING_COPY,
   ENROLLMENT_RECORD_KEY,
   ENROLLMENT_REFUSAL_COPY,
+  NEEDS_AUTHORITY_COPY,
   decodeStoredEnrollment,
   encodeStoredEnrollment,
   enrollRequestFromRecord,
@@ -59,80 +51,88 @@ const E2EE_CAPABILITY_STATE = {
 // Material generation
 // ---------------------------------------------------------------------------
 
-describe('generateEnrollment (B-107)', () => {
+describe('generateEnrollment (B-107, ADR 0033)', () => {
   const generated = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW });
 
-  it('produces a crypto-native identity that passes strict local verification', () => {
+  it('produces an identity whose material passed strict verification at mint time', () => {
     const { identity } = generated.record;
-    // Roster: root-signed, sequence 1, chaining from the zero digest.
-    verifyRosterSnapshot(identity.ownRoster, NOW + 60_000);
-    expect(identity.ownRoster.roster.sequence).toBe(1);
-    expect(identity.ownRoster.roster.previousDigest).toHaveLength(32);
+    // `selfDevice`/`ownRoster` are branded `Verified*` values — they cannot exist
+    // without having already been checked by `verifyCertifiedDevice`/
+    // `verifyRosterSnapshot` (ADR 0033 §3), so their mere presence is the assertion.
+    expect(identity.ownRoster.sequence).toBe(1);
+    expect(identity.ownRoster.previousDigest).toHaveLength(32);
     // Certificate binds BOTH device public keys to actor + device id.
-    expect(identity.selfDevice.certificate.userId).toBe(ACTOR_ID);
-    expect(identity.selfDevice.certificate.signingPublicKey).toEqual(
-      identity.keys.signing.publicKey,
-    );
-    expect(identity.selfDevice.certificate.agreementPublicKey).toEqual(
-      identity.keys.agreement.publicKey,
-    );
-    // The signed prekey verifies as peers will verify it during X3DH.
-    verifyPreKeyBundle(selfPrekeyBundle(identity), identity.ownRoster, NOW + 60_000);
+    expect(identity.selfDevice.actorId).toBe(ACTOR_ID);
+    expect(identity.selfDevice.signingPublicKey).toEqual(identity.keys.signing.publicKey);
+    expect(identity.selfDevice.agreementPublicKey).toEqual(identity.keys.agreement.publicKey);
+    // The signed prekey bundle re-verifies exactly as a peer's claim would.
+    const bundle = selfPrekeyBundle(identity, undefined, NOW + 60_000);
+    expect(bundle.deviceId).toBe(identity.deviceId);
     // One-time prekeys at the inventory target with unique ids.
     expect(identity.oneTimePreKeys.length).toBe(100);
     expect(new Set(identity.oneTimePreKeys.map((prekey) => prekey.id)).size).toBe(100);
   });
 
-  it('signs the node-canonical certificate transcript with the same root key', () => {
-    const { wire, identity, rootPublic } = generated.record;
-    const decoded = decodeCertificateTranscript(wire.certificateBytes);
-    expect(decoded.actorId).toBe(ACTOR_ID);
-    expect(decoded.deviceId).toBe(identity.deviceId);
-    expect(decoded.rootGeneration).toBe(1);
-    expect(decoded.certificateVersion).toBe(1);
-    expect(decoded.signingPublicKey).toEqual(identity.keys.signing.publicKey);
-    expect(decoded.agreementPublicKey).toEqual(identity.keys.agreement.publicKey);
-    expect(decoded.supportedProtocolVersions).toEqual(['patches-e2ee-v1']);
-    expect(sha256Hash(wire.certificateBytes)).toHaveLength(32);
-    expect(verifyStrict(rootPublic, wire.certificateBytes, wire.certificateRootSignature)).toBe(
-      true,
+  it('signs the certificate transcript with the account root key', () => {
+    const { identity } = generated.record;
+    expect(
+      verifyStrict(
+        identity.ownRoster.root.publicKey,
+        identity.selfDevice.certificateBytes,
+        identity.selfDevice.rootSignature,
+      ),
+    ).toBe(true);
+    expect(identity.selfDevice.supportedProtocolVersions).toEqual(['patches-e2ee-v1']);
+    expect(sha256Hash(identity.selfDevice.certificateBytes)).toEqual(
+      identity.selfDevice.certificateDigest,
     );
   });
 
-  it('signs a node-canonical roster whose digest matches its transcript', () => {
-    const { wire, identity, rootPublic } = generated.record;
-    const decoded = decodeRosterTranscript(wire.rosterBytes);
-    expect(decoded.actorId).toBe(ACTOR_ID);
-    expect(decoded.sequence).toBe(1n);
-    expect(decoded.rootGeneration).toBe(1);
-    expect(decoded.previousDigest).toEqual(new Uint8Array(32));
-    expect(decoded.entries).toHaveLength(1);
-    const entry = decoded.entries[0];
+  it('signs a roster whose digest matches its transcript', () => {
+    const { identity } = generated.record;
+    expect(identity.ownRoster.entries).toHaveLength(1);
+    const entry = identity.ownRoster.entries[0];
     expect(entry?.deviceId).toBe(identity.deviceId);
     expect(entry?.active).toBe(true);
-    expect(sha256Hash(wire.rosterBytes)).toEqual(wire.rosterDigestValue);
-    expect(verifyStrict(rootPublic, wire.rosterBytes, wire.rosterRootSignature)).toBe(true);
+    expect(sha256Hash(identity.ownRoster.rosterBytes)).toEqual(identity.ownRoster.rosterDigest);
+    expect(
+      verifyStrict(
+        identity.ownRoster.root.publicKey,
+        identity.ownRoster.rosterBytes,
+        identity.ownRoster.rootSignature,
+      ),
+    ).toBe(true);
   });
 
-  it('signs the node prekey bundle transcript with the device signing key', () => {
-    const { wire, identity } = generated.record;
+  it('signs the prekey bundle transcript with the device signing key', () => {
+    const { identity } = generated.record;
     // The bundle signature EnrollDevice carries (`signed_prekey.signature` AND
     // `prekey_bundle_signature`) verifies over the canonical transcript bytes under
     // this DEVICE's signing key.
     expect(
-      verifyStrict(identity.keys.signing.publicKey, wire.bundleBytes, wire.bundleSignature),
+      verifyStrict(
+        identity.keys.signing.publicKey,
+        identity.ownBundle.bundleBytes,
+        identity.ownBundle.deviceSignature,
+      ),
     ).toBe(true);
     // The request's two signatures are exactly those bytes.
-    expect(generated.enrollRequest.prekeyBundleBytes).toEqual(wire.bundleBytes);
-    expect(generated.enrollRequest.prekeyBundleSignature).toEqual(wire.bundleSignature);
-    expect(generated.enrollRequest.signedPrekey?.signature).toEqual(wire.bundleSignature);
+    expect(generated.enrollRequest.prekeyBundleBytes).toEqual(identity.ownBundle.bundleBytes);
+    expect(generated.enrollRequest.prekeyBundleSignature).toEqual(
+      identity.ownBundle.deviceSignature,
+    );
+    expect(generated.enrollRequest.signedPrekey?.signature).toEqual(
+      identity.ownBundle.deviceSignature,
+    );
   });
 
   it('builds an EnrollDeviceRequest carrying certificate + roster + prekeys', () => {
     const request = generated.enrollRequest;
     expect(request.certificate?.actorId).toBe(ACTOR_ID);
     expect(request.certificate?.deviceId).toBe(generated.record.identity.deviceId);
-    expect(request.certificate?.certificateBytes).toEqual(generated.record.wire.certificateBytes);
+    expect(request.certificate?.certificateBytes).toEqual(
+      generated.record.identity.selfDevice.certificateBytes,
+    );
     expect(request.roster?.sequence).toBe(1n);
     expect(request.roster?.entries).toHaveLength(1);
     expect(request.oneTimePrekeys.map((prekey) => prekey.keyId)).toEqual(
@@ -146,16 +146,21 @@ describe('generateEnrollment (B-107)', () => {
     expect(bootstrapRequest).toBeDefined();
     expect(bootstrapRequest?.identityRoot?.generation ?? -1).toBe(1);
 
+    const bootstrapRootPrivate = generated.record.rootPrivate;
+    if (bootstrapRootPrivate === undefined)
+      throw new Error('bootstrap record must hold a root private key');
     const linked = generateEnrollment({
       actorId: ACTOR_ID,
       nowMs: NOW,
-      root: { privateKey: generated.record.rootPrivate, publicKey: generated.record.rootPublic },
+      root: {
+        privateKey: bootstrapRootPrivate,
+        publicKey: generated.record.rootPublic,
+        createdAtMs: generated.record.identity.ownRoster.root.createdAtMs,
+      },
     });
     expect(linked.publishRootRequest).toBeUndefined();
     // Same authority → same safety-number input.
-    expect(linked.record.identity.ownRoster.roster.rootPublicKey).toEqual(
-      generated.record.rootPublic,
-    );
+    expect(linked.record.identity.ownRoster.rootPublicKey).toEqual(generated.record.rootPublic);
   });
 });
 
@@ -166,7 +171,7 @@ describe('generateEnrollment (B-107)', () => {
 describe('enrollment record codec', () => {
   it('round-trips through the encrypted vault record form', () => {
     const generated = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW });
-    const decoded = decodeStoredEnrollment(encodeStoredEnrollment(generated.record));
+    const decoded = decodeStoredEnrollment(encodeStoredEnrollment(generated.record), NOW + 60_000);
 
     expect(decoded.submitted).toBe(false);
     expect(decoded.createdRoot).toBe(true);
@@ -174,15 +179,13 @@ describe('enrollment record codec', () => {
     expect(decoded.identity.keys.signing.privateKey).toEqual(
       generated.record.identity.keys.signing.privateKey,
     );
-    expect(decoded.wire.certificateBytes).toEqual(generated.record.wire.certificateBytes);
-    expect(decoded.wire.rosterSequence).toBe(1n);
-    // The restored identity still passes strict verification.
-    verifyRosterSnapshot(decoded.identity.ownRoster, NOW + 60_000);
-    verifyPreKeyBundle(
-      selfPrekeyBundle(decoded.identity),
-      decoded.identity.ownRoster,
-      NOW + 60_000,
+    expect(decoded.identity.selfDevice.certificateBytes).toEqual(
+      generated.record.identity.selfDevice.certificateBytes,
     );
+    expect(decoded.identity.ownRoster.sequence).toBe(1);
+    // The restored identity still passes strict verification (decode re-runs it).
+    const bundle = selfPrekeyBundle(decoded.identity, undefined, NOW + 60_000);
+    expect(bundle.deviceId).toBe(decoded.identity.deviceId);
   });
 
   it('rebuilds an EnrollDeviceRequest from the stored record without regenerating keys', () => {
@@ -207,7 +210,7 @@ describe('enrollment record codec', () => {
     await vault.open();
     const generated = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW });
     await saveStoredEnrollment(vault, generated.record);
-    const loaded = await loadStoredEnrollment(vault);
+    const loaded = await loadStoredEnrollment(vault, NOW + 60_000);
     expect(loaded?.identity.deviceId).toBe(generated.record.identity.deviceId);
     // The reserved key must never collide with a real session id (`sessionIdFor`
     // composes UUID conversation ids, which cannot start with NUL).
@@ -222,9 +225,14 @@ describe('enrollment record codec', () => {
 
 describe('publishRootRequestFromRecord', () => {
   it('has no bootstrap root to republish for a record that did not create one', () => {
+    const fixedRoot = signingKeyPairFromPrivate(new Uint8Array(32).fill(1));
     const { record } = generateEnrollment({
       actorId: ACTOR_ID,
-      root: { privateKey: new Uint8Array(32).fill(1), publicKey: new Uint8Array(32).fill(2) },
+      root: {
+        privateKey: fixedRoot.privateKey,
+        publicKey: fixedRoot.publicKey,
+        createdAtMs: NOW - 60_000,
+      },
       nowMs: NOW,
     });
     expect(record.createdRoot).toBe(false);
@@ -308,6 +316,29 @@ function fakeTransport(
       }
       return {};
     },
+    getDeviceRoster() {
+      return Promise.resolve({ roster: undefined, certificates: [] });
+    },
+    beginDeviceLink() {
+      return Promise.reject(new Error('fake transport: BeginDeviceLink not wired for this suite'));
+    },
+    listPendingDeviceLinks() {
+      return Promise.resolve({ offers: [] } as never);
+    },
+    cancelDeviceLink() {
+      return Promise.resolve({});
+    },
+    revokeDevice() {
+      return Promise.reject(new Error('fake transport: RevokeDevice not wired for this suite'));
+    },
+    getPrekeyInventory() {
+      return Promise.reject(
+        new Error('fake transport: GetPrekeyInventory not wired for this suite'),
+      );
+    },
+    uploadPrekeys() {
+      return Promise.reject(new Error('fake transport: UploadPrekeys not wired for this suite'));
+    },
   };
   return { transport, spy: state };
 }
@@ -344,7 +375,7 @@ describe('enrollThisDevice orchestration', () => {
     // The record was durable before EnrollDevice ran.
     expect(spy.vaultAtEnrollCall[0]).toBeDefined();
 
-    const stored = await loadStoredEnrollment(vault);
+    const stored = await loadStoredEnrollment(vault, NOW);
     expect(stored?.submitted).toBe(true);
   });
 
@@ -367,7 +398,7 @@ describe('enrollThisDevice orchestration', () => {
     expect(outcome.status).toBe('already-enrolled');
     if (outcome.status === 'already-enrolled') {
       expect(outcome.identity.deviceId).toBe(
-        (await loadStoredEnrollment(vault))?.identity.deviceId,
+        (await loadStoredEnrollment(vault, NOW))?.identity.deviceId,
       );
     }
     expect(second.spy.capabilityCalls).toBe(0);
@@ -384,7 +415,7 @@ describe('enrollThisDevice orchestration', () => {
     if (outcome.status !== 'refused') return;
     expect(outcome.reason).toBe('capability-off');
     expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.capabilityOff);
-    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+    expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
     expect(spy.identityRootCalls).toBe(0);
   });
 
@@ -412,11 +443,18 @@ describe('enrollThisDevice orchestration', () => {
       getIdentityRoot: () => Promise.resolve(undefined),
       publishIdentityRoot: () => Promise.resolve({}),
       enrollDevice: () => Promise.resolve({}),
+      getDeviceRoster: () => Promise.resolve({ roster: undefined, certificates: [] }),
+      beginDeviceLink: () => Promise.reject(new Error('not wired for this suite')),
+      listPendingDeviceLinks: () => Promise.resolve({ offers: [] } as never),
+      cancelDeviceLink: () => Promise.resolve({}),
+      revokeDevice: () => Promise.reject(new Error('not wired for this suite')),
+      getPrekeyInventory: () => Promise.reject(new Error('not wired for this suite')),
+      uploadPrekeys: () => Promise.reject(new Error('not wired for this suite')),
     };
     await expect(
       enrollThisDevice({ actorId: ACTOR_ID, transport: failingProbe, vault }),
     ).rejects.toThrow('down');
-    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+    expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
   });
 
   it('does NOT mint or persist anything when the identity-root lookup fails', async () => {
@@ -429,7 +467,7 @@ describe('enrollThisDevice orchestration', () => {
     );
     // The point of the hardening: a failed request is not an answer. Nothing was minted,
     // nothing persisted, and no fresh account root was published.
-    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+    expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
     expect(spy.publishCalls).toHaveLength(0);
     expect(spy.enrollCalls).toHaveLength(0);
 
@@ -457,11 +495,11 @@ describe('enrollThisDevice orchestration', () => {
     const vault = freshVault();
     const { transport, spy } = fakeTransport(vault, { remoteRoot: true });
     const outcome = await enrollThisDevice({ actorId: ACTOR_ID, transport, vault });
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
-    expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.remoteRoot);
-    expect(await loadStoredEnrollment(vault)).toBeUndefined();
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
+    expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
+    expect(await loadStoredEnrollment(vault, NOW)).toBeUndefined();
     expect(spy.publishCalls).toHaveLength(0);
   });
 
@@ -477,7 +515,7 @@ describe('enrollThisDevice orchestration', () => {
       }),
     ).rejects.toThrow('transport unavailable');
     // The record exists but is not yet submitted.
-    const partial = await loadStoredEnrollment(vault);
+    const partial = await loadStoredEnrollment(vault, NOW);
     expect(partial?.submitted).toBe(false);
 
     // The first attempt's root DID land, so the node now serves it back.
@@ -509,7 +547,7 @@ describe('enrollThisDevice orchestration', () => {
         nowMs: () => NOW,
       }),
     ).rejects.toThrow('transport unavailable');
-    const partial = await loadStoredEnrollment(vault);
+    const partial = await loadStoredEnrollment(vault, NOW);
     expect(partial?.submitted).toBe(false);
     if (partial === undefined) return;
 
@@ -554,14 +592,14 @@ describe('enrollThisDevice orchestration', () => {
       nowMs: () => NOW + 5_000,
     });
 
-    expect(outcome.status).toBe('refused');
-    if (outcome.status !== 'refused') return;
-    expect(outcome.reason).toBe('remote-root');
-    expect(outcome.copy).toBe(ENROLLMENT_REFUSAL_COPY.remoteRoot);
+    expect(outcome.status).toBe('needs-authority');
+    if (outcome.status !== 'needs-authority') return;
+    expect(outcome.options).toEqual(['link', 'rotate', 'cancel']);
+    expect(outcome.copy).toBe(NEEDS_AUTHORITY_COPY.summary);
     // Never adopted: no device enrolled under an authority key this machine does not hold.
     expect(retry.spy.enrollCalls).toHaveLength(0);
     expect(retry.spy.publishCalls).toHaveLength(0);
-    expect((await loadStoredEnrollment(vault))?.submitted).toBe(false);
+    expect((await loadStoredEnrollment(vault, NOW))?.submitted).toBe(false);
   });
 });
 
@@ -570,6 +608,78 @@ describe('enrollThisDevice orchestration', () => {
 // ---------------------------------------------------------------------------
 
 const identityFixture = generateEnrollment({ actorId: ACTOR_ID, nowMs: NOW }).record.identity;
+const PEER_ACTOR_ID = 'actor-2';
+// Minted against the REAL clock (not the fixed `NOW` fixture): `createE2eeTransports`'s
+// `claimPrekeyBundles`/`loadPeerRoster` verify a fetched peer identity against
+// `Date.now()`, not an injectable test clock, so this certificate's validity window
+// must actually cover the moment the test runs.
+const peerIdentityFixture = generateEnrollment({
+  actorId: PEER_ACTOR_ID,
+  nowMs: Date.now(),
+}).record.identity;
+
+/** Maps a locally-verified identity back into the wire shapes the node would serve for
+ * it — the inverse of `buildEnrollRequest` — so a fake transport can hand the transport
+ * adapter real, verifiable bytes instead of stubbing the verification away. */
+function wireIdentityRoot(identity: typeof identityFixture): { identityRoot: unknown } {
+  const root = identity.ownRoster.root;
+  return {
+    identityRoot: {
+      actorId: root.actorId,
+      generation: root.generation,
+      publicKey: root.publicKey,
+      rootBytes: root.rootBytes,
+      selfSignature: root.selfSignature,
+      previousRootSignature: new Uint8Array(0),
+    },
+  };
+}
+
+function wireDeviceRoster(identity: typeof identityFixture): unknown {
+  const roster = identity.ownRoster;
+  const device = identity.selfDevice;
+  return {
+    roster: {
+      actorId: roster.actorId,
+      sequence: BigInt(roster.sequence),
+      rootGeneration: roster.rootGeneration,
+      previousDigest: roster.previousDigest,
+      digest: roster.rosterDigest,
+      rosterBytes: roster.rosterBytes,
+      rootSignature: roster.rootSignature,
+      entries: roster.entries.map((entry) => ({
+        deviceId: entry.deviceId,
+        certificateDigest: entry.certificateDigest,
+        active: entry.active,
+      })),
+    },
+    certificates: [
+      { certificateBytes: device.certificateBytes, rootSignature: device.rootSignature },
+    ],
+  };
+}
+
+function wireClaimResponse(identity: typeof identityFixture): unknown {
+  const device = identity.selfDevice;
+  return {
+    bundles: [
+      {
+        actorId: identity.actorId,
+        deviceId: identity.deviceId,
+        deviceCertificate: {
+          certificateBytes: device.certificateBytes,
+          rootSignature: device.rootSignature,
+        },
+        signedPrekey: { keyId: BigInt(identity.signedPreKey.id) },
+        oneTimePrekey: undefined,
+        oneTimePrekeyExhausted: true,
+        bundleBytes: identity.ownBundle.bundleBytes,
+        deviceSignature: identity.ownBundle.deviceSignature,
+      },
+    ],
+    rosters: [],
+  };
+}
 
 function fakeApiSurface(overrides: Partial<E2eeApiSurface> = {}): E2eeApiSurface {
   const base = {
@@ -584,7 +694,9 @@ function fakeApiSurface(overrides: Partial<E2eeApiSurface> = {}): E2eeApiSurface
     getIdentityRoot: vi.fn(() => Promise.resolve({} as never)),
     publishIdentityRoot: vi.fn(() => Promise.resolve({})),
     enrollDevice: vi.fn(() => Promise.resolve({})),
+    getDeviceRoster: vi.fn(() => Promise.resolve({} as never)),
     getE2eeConversationState: vi.fn(() => Promise.resolve({} as never)),
+    claimPrekeyBundles: vi.fn(() => Promise.resolve({} as never)),
     sendEnvelopes: vi.fn(() => Promise.resolve({})),
     listMailboxEnvelopes: vi.fn(() => Promise.resolve({} as never)),
     acknowledgeEnvelopes: vi.fn(() => Promise.resolve({})),
@@ -611,6 +723,7 @@ describe('createE2eeTransports adapter', () => {
       api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const plan: FanoutPlan = await transports.loadFanoutPlan('conv-1');
     expect(plan.conversationId).toBe('conv-1');
@@ -622,28 +735,45 @@ describe('createE2eeTransports adapter', () => {
     ]);
   });
 
-  it('fails prekey claims closed without consuming inventory', async () => {
+  it('claims and verifies a real peer prekey bundle (ADR 0033)', async () => {
+    const api = fakeApiSurface({
+      getIdentityRoot: vi.fn(() => Promise.resolve(wireIdentityRoot(peerIdentityFixture) as never)),
+      getDeviceRoster: vi.fn(() => Promise.resolve(wireDeviceRoster(peerIdentityFixture) as never)),
+      claimPrekeyBundles: vi.fn(() =>
+        Promise.resolve(wireClaimResponse(peerIdentityFixture) as never),
+      ),
+    });
     const transports = createE2eeTransports({
-      api: fakeApiSurface(),
+      api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
-    await expect(
-      transports.claimPrekeyBundles({ conversationId: 'c', actorIds: ['x'] }),
-    ).rejects.toBeInstanceOf(E2eeSetupUnavailableError);
+    const claimed = await transports.claimPrekeyBundles({
+      conversationId: 'c',
+      actorIds: [PEER_ACTOR_ID],
+    });
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.actorId).toBe(PEER_ACTOR_ID);
+    expect(claimed[0]?.deviceId).toBe(peerIdentityFixture.deviceId);
+    expect(claimed[0]?.bundle.deviceId).toBe(peerIdentityFixture.deviceId);
   });
 
-  it('serves its own crypto-native roster locally, refusing other actors', async () => {
+  it('serves its own roster locally and verifies a real peer roster over the wire', async () => {
+    const api = fakeApiSurface({
+      getIdentityRoot: vi.fn(() => Promise.resolve(wireIdentityRoot(peerIdentityFixture) as never)),
+      getDeviceRoster: vi.fn(() => Promise.resolve(wireDeviceRoster(peerIdentityFixture) as never)),
+    });
     const transports = createE2eeTransports({
-      api: fakeApiSurface(),
+      api,
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const own = await transports.loadPeerRoster(ACTOR_ID);
-    expect(own.roster.devices[0]?.certificate.deviceId).toBe(identityFixture.deviceId);
-    await expect(transports.loadPeerRoster('actor-2')).rejects.toBeInstanceOf(
-      E2eeSetupUnavailableError,
-    );
+    expect(own.devices[0]?.deviceId).toBe(identityFixture.deviceId);
+    const peer = await transports.loadPeerRoster(PEER_ACTOR_ID);
+    expect(peer.devices[0]?.deviceId).toBe(peerIdentityFixture.deviceId);
   });
 
   it('drains the mailbox for THIS device and acknowledges through the api', async () => {
@@ -677,6 +807,7 @@ describe('createE2eeTransports adapter', () => {
       } as unknown as Partial<E2eeApiSurface>),
       accessToken: () => Promise.resolve('token-1'),
       identity: identityFixture,
+      pinVault: memoryPinVault(),
     });
     const page = await transports.listMailboxPage('');
     expect(page.nextCursor).toBe('cursor-next');
@@ -717,7 +848,20 @@ describe('createEnrollmentTransport adapter', () => {
 
 import { createVaultE2eeSender } from '../src/app/e2ee-send.js';
 import type { E2eeTransports } from '../src/app/e2ee-send.js';
-import type { RatchetSessionVault } from '../src/e2ee/ratchet-vault.js';
+import type { RatchetSessionVault, PeerPinVaultAccess } from '../src/e2ee/ratchet-vault.js';
+
+/** In-memory opaque-record store: the REAL `loadPeerIdentityPin`/`savePeerIdentityPin`
+ * run over it, so transport tests exercise the actual pin codec, not a double. */
+function memoryPinVault(): PeerPinVaultAccess {
+  const records = new Map<string, Uint8Array>();
+  return {
+    getOpaqueRecord: (key: string) => Promise.resolve(records.get(key)?.slice()),
+    putOpaqueRecord: (key: string, value: Uint8Array) => {
+      records.set(key, value.slice());
+      return Promise.resolve();
+    },
+  };
+}
 
 function stubTransports(): E2eeTransports {
   return {

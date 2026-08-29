@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useShakeToReport } from '../hooks/useShakeToReport.js';
 
-import { useRef, useState, type JSX } from 'react';
+import { useMemo, useRef, useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { api, signOut } from '../api/client.js';
@@ -59,6 +59,18 @@ export function RootLayout(): JSX.Element {
     '/': () => void navigate('/search'),
     '?': () => (helpRef.current?.open ? helpRef.current.close() : helpRef.current?.showModal()),
   });
+
+  // P301: RootLayout re-renders on every unread-badge poll tick (WEB_UNREAD_BADGE_POLL_MS,
+  // 30s) and every `profileMenuOpen` toggle — neither has anything to do with the matched
+  // route. `<Outlet />` created fresh in JSX on every RootLayout render would re-invoke the
+  // current route's component on each of those unrelated re-renders (e.g. re-rendering a
+  // whole PostTimeline's PostCards, or a Settings form, every 30s while idle). Memoizing the
+  // element so its reference is stable makes React bail out of re-rendering that subtree on
+  // an unrelated RootLayout re-render — real navigation still updates it because
+  // `react-router`'s route-match context change propagates to `Outlet`'s consumer regardless
+  // of this parent-level bailout (React always walks memoized subtrees to reach context
+  // consumers, so this cannot go stale on navigation).
+  const outlet = useMemo(() => <Outlet />, []);
 
   return (
     <div className={styles['shell']}>
@@ -203,6 +215,16 @@ export function RootLayout(): JSX.Element {
             >
               Mod log
             </NavLink>
+            {/* Explicit fallback for shake-to-report (#299): shake can be missed, blocked by
+                iOS's own "Undo Typing" prompt, or simply not discovered — this entry works
+                regardless of gesture-permission state or platform. */}
+            <NavLink
+              to="/report"
+              className={NAV_LINK_CLASS}
+              onClick={() => setProfileMenuOpen(false)}
+            >
+              Report a problem
+            </NavLink>
             {session ? (
               <>
                 <NavLink
@@ -281,7 +303,7 @@ export function RootLayout(): JSX.Element {
 
       <main className={styles['main']}>
         <PrivacyNoticeBanner />
-        <Outlet />
+        {outlet}
       </main>
 
       <footer className={styles['footer']}>

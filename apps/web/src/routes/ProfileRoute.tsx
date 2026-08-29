@@ -3,14 +3,14 @@ import { describeError, isSignInRequired } from '@patches/client';
 import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type CSSProperties, type JSX } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { toast } from 'sonner';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { ActorList } from '../components/ActorList.js';
 import { EditWallDialog } from '../components/EditWallDialog.js';
 import { FollowButton } from '../components/FollowButton.js';
 import { MessageIcon } from '../components/icons/Icons.js';
+import { MediaImage } from '../components/MediaImage.js';
 import { ModerationActions } from '../components/ModerationActions.js';
 import { Nameplate } from '../components/Nameplate.js';
 import { PageBlocks } from '../components/PageBlocks.js';
@@ -39,21 +39,6 @@ function frameData(actor: { profileFrame: ProfileFrame }): string {
   }
 }
 
-/** §104 client-side scheme allowlist for a URL about to reach a real DOM sink (`<img src>`).
- * The server already rejects a non-http(s) `profile_banner_url` at write time
- * (`profileBannerUrlSchema`), but B-136c wants the same check at the render boundary too —
- * a value from an older/misbehaving federated node, a direct DB edit, or a future write path
- * that forgets the server-side check must not get a second, silent chance to reach `src` with
- * a `data:`/`javascript:` payload. `URL` throws on a relative/unparseable string, which this
- * treats the same as an unsafe scheme (a bannerless profile, never a bare-relative `<img>`). */
-function isSafeImageUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
   switch (actor.nameTagStyle) {
     case NameTagStyle.BADGE:
@@ -71,6 +56,7 @@ function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
 export function ProfileRoute(): JSX.Element {
   const { handle } = useParams<{ handle: string }>();
   const session = useSession();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
   const profileHandle =
@@ -156,11 +142,8 @@ export function ProfileRoute(): JSX.Element {
   // Rapid personalization (B-130): accent colour becomes a CSS custom property the profile
   // chrome can consume (`var(--profile-accent, var(--accent))` in the module CSS) — absent
   // when unset, so every consumer falls back to the site default with no special case.
-  // `?.`/truthiness (not `!== ''`) so a partial/mock actor missing the fields entirely
+  // `?.`/truthiness (not `!== ''`) so a partial/mock actor missing the field entirely
   // degrades the same way as an explicit empty string.
-  const rawProfileBannerUrl = actor.profileBannerUrl?.trim() ?? '';
-  const profileBannerUrl =
-    rawProfileBannerUrl !== '' && isSafeImageUrl(rawProfileBannerUrl) ? rawProfileBannerUrl : '';
   const accentColor = actor.accentColor?.trim() ?? '';
   const profileStyle = (
     accentColor === '' ? {} : { '--profile-accent': accentColor }
@@ -168,38 +151,37 @@ export function ProfileRoute(): JSX.Element {
 
   return (
     <div style={profileStyle}>
-      {profileBannerUrl !== '' ? (
-        <img
-          className={styles['banner']}
-          src={profileBannerUrl}
-          alt=""
-          aria-hidden="true"
-          onError={(event) => {
-            // A dead banner URL degrades to "no banner" (zero height) rather than a broken
-            // image glyph at the top of the profile (§184.3: cosmetics never break the page).
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-      ) : null}
+      {
+        // Direct-to-R2 uploaded banner (#324) — resolved client-side via
+        // `MediaImage`/`GetMediaDownload`, never a server-inlined URL (no v0.0.1+ legacy
+        // paths, owner rule 2026-08-28: the URL-text banner field was dropped entirely).
+        actor.banner?.mediaId ? (
+          <MediaImage mediaId={actor.banner.mediaId} altText="" className={styles['banner']} />
+        ) : null
+      }
       <div className={styles['header']} data-frame={frameData(actor)}>
         <div className={styles['topRow']}>
-          {actor.avatar?.url ? (
-            <img className={styles['avatar']} src={actor.avatar.url} alt="" aria-hidden="true" />
-          ) : (
-            <div className={styles['avatarPlaceholder']}>
-              {actor.handle.slice(0, 1).toUpperCase()}
-            </div>
-          )}
+          {
+            // Banner overlaps the avatar's bottom edge (#324) — handled purely in CSS
+            // (`.avatar`'s negative top margin in ProfileRoute.module.css), same DOM shape
+            // for both the uploaded and placeholder states.
+            actor.avatar?.mediaId ? (
+              <MediaImage mediaId={actor.avatar.mediaId} altText="" className={styles['avatar']} />
+            ) : (
+              <div className={styles['avatarPlaceholder']}>
+                {actor.handle.slice(0, 1).toUpperCase()}
+              </div>
+            )
+          }
           <div className={styles['actionButtonGroup']}>
             {session && session.actor.id !== actor.id ? (
               <button
                 type="button"
                 className={styles['messageBtn']}
-                onClick={() =>
-                  toast(
-                    `Message @${actor.handle} from the terminal client — this web view has no encryption keys to start a conversation.`,
-                  )
-                }
+                // #323: the one compose flow, reached by handle. `/messages` owns resolving
+                // it, probing whether this actor can be messaged, and enrolling this browser
+                // if it has no messaging device yet — none of which belongs on a profile.
+                onClick={() => void navigate(`/messages?to=${encodeURIComponent(actor.handle)}`)}
                 aria-label={`Send message to @${actor.handle}`}
               >
                 <MessageIcon size={16} />

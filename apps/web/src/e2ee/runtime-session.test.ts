@@ -14,36 +14,40 @@
  *   - responder-side session establishment from an inbound initial envelope (`:340-356`).
  *
  * Identities are built with the same primitives `enrollment.ts` uses in production
- * (`certifyDevice`, `signDeviceRoster`, `createSignedPreKey`), so sessions here run the
- * real X3DH/Double Ratchet code, not a stand-in.
+ * (`signDeviceCertificate`, `signDeviceRoster`, `signPreKeyBundle`), so sessions here run
+ * the real X3DH/Double Ratchet code, not a stand-in.
  */
 import 'fake-indexeddb/auto';
 
 import {
-  certifyDevice,
   commitFranking,
   createFrankingOpeningKey,
-  createSignedPreKey,
   generateKeyAgreementKeyPair,
   generateSigningKeyPair,
-  rosterDigest,
   sealDeviceEnvelope,
+  signDeviceCertificate,
   signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  verifyCertifiedDevice,
+  verifyMessagingRoot,
+  verifyRosterSnapshot,
   E2EE_PROTOCOL,
-  E2EE_VERSION,
   KEY_BYTES,
-  type CertifiedDevice,
-  type DeviceCertificate,
 } from '@patches/crypto';
 import { E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 import { describe, expect, it } from 'vitest';
 
+import { ENROLLMENT_RECORD_KEY, enrollThisDevice, loadStoredEnrollment } from './enrollment.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { selfPrekeyBundle } from './local-identity.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
 import {
   encodeChatPlaintext,
   sessionIdFor,
+  E2EE_QUARANTINE_LIMIT_COPY,
+  E2EE_RECEIVE_UNAVAILABLE_COPY,
+  MAX_QUARANTINED_PER_DRAIN,
   type ClaimedPeerBundle,
   type E2eeMailboxEnvelopeLike,
   type E2eeMailboxTransport,
@@ -52,6 +56,13 @@ import {
   type SendEnvelopesRequestLike,
 } from './runtime.js';
 import { establishInitiatorSession, withInitialFraming } from './session-setup.js';
+import {
+  createFakeE2eeNode,
+  fakeMessagingMailboxTransport,
+  fakeMessagingSendTransport,
+  fakeTransport,
+  registerMessagingDevice,
+} from './test-support.js';
 import { createRatchetSessionVault, type RatchetSessionVault } from './vault.js';
 
 const NOW = 1_700_000_000_000;
@@ -72,36 +83,82 @@ function buildIdentity(actorId: string, deviceId: string): LocalDeviceIdentity {
   const rootKeys = generateSigningKeyPair();
   const signing = generateSigningKeyPair();
   const agreement = generateKeyAgreementKeyPair();
-  const certificate: DeviceCertificate = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
+  const createdAtMs = NOW;
+  const expiresAtMs = NOW + 30 * 24 * 60 * 60 * 1_000;
+
+  const signedRoot = signMessagingRoot(rootKeys.privateKey, {
+    actorId,
+    generation: 1,
+    publicKey: rootKeys.publicKey,
+    createdAtMs,
+  });
+  const root = verifyMessagingRoot({
+    rootBytes: signedRoot.rootBytes,
+    selfSignature: signedRoot.selfSignature,
+    nowMs: NOW,
+  });
+
+  const signedCertificate = signDeviceCertificate(rootKeys.privateKey, {
+    actorId,
     deviceId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeys.publicKey,
+    certificateVersion: 1,
     signingPublicKey: signing.publicKey,
     agreementPublicKey: agreement.publicKey,
-    generation: 1,
-    createdAtMs: NOW,
-    expiresAtMs: NOW + 30 * 24 * 60 * 60 * 1_000,
-  };
-  const selfDevice: CertifiedDevice = certifyDevice(rootKeys.privateKey, certificate);
-  const ownRoster = signDeviceRoster(rootKeys.privateKey, {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs,
+  });
+  const selfDevice = verifyCertifiedDevice({
+    certificateBytes: signedCertificate.certificateBytes,
+    rootSignature: signedCertificate.rootSignature,
+    root,
+    nowMs: NOW,
+  });
+
+  const signedRoster = signDeviceRoster(rootKeys.privateKey, {
+    actorId,
+    rootGeneration: 1,
     rootPublicKey: rootKeys.publicKey,
     sequence: 1,
     previousDigest: new Uint8Array(KEY_BYTES),
-    devices: [selfDevice],
-    createdAtMs: NOW,
+    createdAtMs,
+    entries: [
+      {
+        deviceId,
+        certificateDigest: signedCertificate.certificateDigest,
+        active: true,
+        addedAtMs: createdAtMs,
+      },
+    ],
   });
-  const ownDigest = rosterDigest(ownRoster.roster);
+  const ownRoster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
+    root,
+    certificates: [
+      {
+        certificateBytes: signedCertificate.certificateBytes,
+        rootSignature: signedCertificate.rootSignature,
+      },
+    ],
+    nowMs: NOW,
+  });
+
+  const signedPreKeyId = 1;
   const signedPreKeyPair = generateKeyAgreementKeyPair();
-  const signedPreKeyStatement = createSignedPreKey(signing.privateKey, selfDevice, ownDigest, {
-    id: 1,
-    publicKey: signedPreKeyPair.publicKey,
-    createdAtMs: NOW,
-    expiresAtMs: NOW + 7 * 24 * 60 * 60 * 1_000,
+  const signedPreKeyExpiresAtMs = NOW + 7 * 24 * 60 * 60 * 1_000;
+  const signedBundle = signPreKeyBundle(signing.privateKey, {
+    actorId,
+    deviceId,
+    certificateDigest: signedCertificate.certificateDigest,
+    signedPrekeyId: signedPreKeyId,
+    signedPrekeyPublicKey: signedPreKeyPair.publicKey,
+    createdAtMs,
+    expiresAtMs: signedPreKeyExpiresAtMs,
   });
+
   return {
     actorId,
     deviceId,
@@ -109,21 +166,29 @@ function buildIdentity(actorId: string, deviceId: string): LocalDeviceIdentity {
     selfDevice,
     ownRoster,
     signedPreKey: {
-      id: signedPreKeyStatement.id,
+      id: signedPreKeyId,
       keyPair: signedPreKeyPair,
-      createdAtMs: signedPreKeyStatement.createdAtMs,
-      expiresAtMs: signedPreKeyStatement.expiresAtMs,
-      signature: signedPreKeyStatement.signature,
+      createdAtMs,
+      expiresAtMs: signedPreKeyExpiresAtMs,
+    },
+    ownBundle: {
+      bundleBytes: signedBundle.bundleBytes,
+      deviceSignature: signedBundle.deviceSignature,
     },
     oneTimePreKeys: [{ id: 1, keyPair: generateKeyAgreementKeyPair() }],
   };
 }
 
 function claimedBundle(identity: LocalDeviceIdentity): ClaimedPeerBundle {
+  const oneTime = identity.oneTimePreKeys[0];
   return {
     actorId: identity.actorId,
     deviceId: identity.deviceId,
-    bundle: selfPrekeyBundle(identity),
+    bundle: selfPrekeyBundle(
+      identity,
+      oneTime === undefined ? undefined : { id: oneTime.id, publicKey: oneTime.keyPair.publicKey },
+      NOW,
+    ),
     roster: identity.ownRoster,
   };
 }
@@ -203,24 +268,39 @@ function queueMailbox(
   return { transport, state };
 }
 
-/** Seals a real initial (X3DH-carrying) envelope from `sender` to `recipient`. */
+/** Seals a real initial (X3DH-carrying) envelope from `sender` to `recipient`. Binds one fixed
+ * `oneTimePreKeys[0]` bundle from `recipient` regardless of what a fake node's own claim
+ * bookkeeping currently offers — callers reconstructing a "reused claim" pass the recipient
+ * snapshot captured BEFORE consumption. `nowMs`/`conversationId` default to this file's shared
+ * fixtures, but a caller enrolling under its own clock (issue #153's tests) must pass its own. */
 function sealInitialEnvelope(params: {
   readonly sender: LocalDeviceIdentity;
   readonly recipient: LocalDeviceIdentity;
   readonly body: string;
   readonly envelopeId: string;
+  readonly conversationId?: string;
+  readonly nowMs?: number;
 }): E2eeMailboxEnvelopeLike {
+  const nowMs = params.nowMs ?? NOW;
+  const conversationId = params.conversationId ?? CONVERSATION_ID;
+  const recipientOneTime = params.recipient.oneTimePreKeys[0];
   const established = establishInitiatorSession({
     identity: params.sender,
-    peerBundle: selfPrekeyBundle(params.recipient),
+    peerBundle: selfPrekeyBundle(
+      params.recipient,
+      recipientOneTime === undefined
+        ? undefined
+        : { id: recipientOneTime.id, publicKey: recipientOneTime.keyPair.publicKey },
+      nowMs,
+    ),
     peerRoster: params.recipient.ownRoster,
-    nowMs: NOW,
+    nowMs,
   });
   const plaintext = encodeChatPlaintext(params.body);
   const openingKey = createFrankingOpeningKey();
   const context = {
     frankingProfile: E2EE_FRANKING_PROFILE_V1,
-    conversationId: CONVERSATION_ID,
+    conversationId,
     membershipEpoch: 1,
     senderActorId: params.sender.actorId,
     senderDeviceId: params.sender.deviceId,
@@ -240,7 +320,7 @@ function sealInitialEnvelope(params: {
   return {
     envelopeId: params.envelopeId,
     logicalMessageId: params.envelopeId,
-    conversationId: CONVERSATION_ID,
+    conversationId,
     membershipEpoch: 1n,
     senderActorId: params.sender.actorId,
     senderDeviceId: params.sender.deviceId,
@@ -356,9 +436,16 @@ describe('E2eeSessionRuntime.send — staged-commit recovery on transport failur
     const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
 
     const first = await createRatchetSessionVault({ account });
+    const peerOneTime = peer.oneTimePreKeys[0];
     const established = establishInitiatorSession({
       identity: self,
-      peerBundle: selfPrekeyBundle(peer),
+      peerBundle: selfPrekeyBundle(
+        peer,
+        peerOneTime === undefined
+          ? undefined
+          : { id: peerOneTime.id, publicKey: peerOneTime.keyPair.publicKey },
+        NOW,
+      ),
       peerRoster: peer.ownRoster,
       nowMs: NOW,
     });
@@ -558,5 +645,412 @@ describe('E2eeSessionRuntime.pollMailbox', () => {
     // Fixed, content-free copy — never the underlying transport error.
     expect(result.error).toBe('Could not fetch new encrypted messages.');
     vault.close();
+  });
+
+  it('quarantines a structurally invalid envelope (issue #260) and keeps draining past it', async () => {
+    const self = buildIdentity('erin5', 'dev-e5');
+    const peer = buildIdentity('frank5', 'dev-f5');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    // A membership epoch above the accepted u32 range fails `epochToNumber`'s contract check
+    // before any ratchet step runs — deterministic and envelope-caused.
+    const malformed: E2eeMailboxEnvelopeLike = { ...envelope, membershipEpoch: 0x1_0000_0000n };
+    const mailbox = queueMailbox([[malformed]], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.error).toBeUndefined();
+    expect(result.rows).toEqual([{ kind: 'quarantined', id: 'env-1', reason: 'malformed' }]);
+    // Quarantined envelopes are still acknowledged so the mailbox keeps draining.
+    expect(mailbox.state.acked).toEqual(['env-1']);
+    vault.close();
+  });
+
+  it('fail-stops without acknowledging on a local vault fault, never quarantining a decryptable envelope', async () => {
+    const self = buildIdentity('erin6', 'dev-e6');
+    const peer = buildIdentity('frank6', 'dev-f6');
+    const vault = await openVault();
+    const envelope = sealInitialEnvelope({
+      sender: peer,
+      recipient: self,
+      body: 'hi',
+      envelopeId: 'env-1',
+    });
+    const acked: string[] = [];
+    const runtime = new E2eeSessionRuntime({
+      vault: {
+        ...vault,
+        getSession: () => Promise.reject(new Error('vault I/O exploded')),
+      },
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: {
+        listMailboxPage: () => Promise.resolve({ envelopes: [envelope], nextCursor: '' }),
+        acknowledge: (ids) => {
+          acked.push(...ids);
+          return Promise.resolve(undefined);
+        },
+        loadPeerRoster: () => Promise.resolve(peer.ownRoster),
+      },
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    // A fault local to this device (not the envelope) fail-stops unacknowledged, so the same
+    // envelope can redeliver and open once the fault clears — never quarantined.
+    expect(result.rows).toEqual([]);
+    expect(result.error).toBe(E2EE_RECEIVE_UNAVAILABLE_COPY);
+    expect(acked).toEqual([]);
+    vault.close();
+  });
+
+  it('bounds one drain to MAX_QUARANTINED_PER_DRAIN quarantined envelopes, leaving the rest queued', async () => {
+    const self = buildIdentity('erin7', 'dev-e7');
+    const peer = buildIdentity('frank7', 'dev-f7');
+    const vault = await openVault();
+    const envelopes: E2eeMailboxEnvelopeLike[] = [];
+    for (let index = 0; index < MAX_QUARANTINED_PER_DRAIN + 1; index += 1) {
+      const sealed = sealInitialEnvelope({
+        sender: peer,
+        recipient: self,
+        body: 'hi',
+        envelopeId: `env-${String(index)}`,
+      });
+      envelopes.push({ ...sealed, membershipEpoch: 0x1_0000_0000n });
+    }
+    const mailbox = queueMailbox([envelopes], new Map([[peer.actorId, peer]]));
+    const runtime = new E2eeSessionRuntime({
+      vault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const result = await runtime.pollMailbox();
+
+    expect(result.rows).toHaveLength(MAX_QUARANTINED_PER_DRAIN);
+    expect(mailbox.state.acked).toHaveLength(MAX_QUARANTINED_PER_DRAIN);
+    expect(result.error).toBe(E2EE_QUARANTINE_LIMIT_COPY);
+    vault.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// One-time prekey consumption (issue #153, ADR 0020 §5)
+// ---------------------------------------------------------------------------
+
+/** Wraps a vault to record the ORDER `applyUpdate` (session commit) and `putOpaqueRecord`
+ * (enrollment record, including the consumed-prekey removal) calls land in, without changing
+ * their behavior — every other method passes straight through. */
+function withPersistenceOrderSpy(vault: RatchetSessionVault): {
+  readonly vault: RatchetSessionVault;
+  readonly order: string[];
+} {
+  const order: string[] = [];
+  const spied: RatchetSessionVault = {
+    open: () => vault.open(),
+    listSessions: () => vault.listSessions(),
+    getSession: (sessionId) => vault.getSession(sessionId),
+    stageSend: (sessionId, next) => vault.stageSend(sessionId, next),
+    confirmSend: (sessionId, successor) => vault.confirmSend(sessionId, successor),
+    applyUpdate: (sessionId, next) => {
+      order.push(`applyUpdate:${sessionId}`);
+      return vault.applyUpdate(sessionId, next);
+    },
+    deleteSession: (sessionId) => vault.deleteSession(sessionId),
+    getOpaqueRecord: (key) => vault.getOpaqueRecord(key),
+    putOpaqueRecord: (key, value) => {
+      order.push(`putOpaqueRecord:${key}`);
+      return vault.putOpaqueRecord(key, value);
+    },
+    wipe: () => vault.wipe(),
+    close: () => vault.close(),
+  };
+  return { vault: spied, order };
+}
+
+describe('E2eeSessionRuntime — one-time prekey consumption on responder establishment (issue #153)', () => {
+  it('removes the consumed one-time prekey from the stored enrollment record, and rejects a second initial message that reuses it', async () => {
+    const nowMs = Date.UTC(2026, 0, 1);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+    const alice = 'alice-153a';
+    const bob = 'bob-153a';
+    const convFirst = 'conv-153a-1';
+    const convSecond = 'conv-153a-2';
+
+    const transportA = fakeTransport({ actorId: alice, node });
+    const vaultA = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('a-153a') },
+    });
+    await enrollThisDevice({ actorId: alice, transport: transportA, vault: vaultA, nowMs: now });
+    const storedA = await loadStoredEnrollment(vaultA, nowMs);
+    if (storedA === undefined) throw new Error('test setup: A must be enrolled');
+    registerMessagingDevice(node, storedA.identity);
+
+    const transportB = fakeTransport({ actorId: bob, node });
+    const vaultB = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('b-153a') },
+    });
+    await enrollThisDevice({ actorId: bob, transport: transportB, vault: vaultB, nowMs: now });
+    const storedB = await loadStoredEnrollment(vaultB, nowMs);
+    if (storedB === undefined) throw new Error('test setup: B must be enrolled');
+    registerMessagingDevice(node, storedB.identity);
+    const claimedId = storedB.identity.oneTimePreKeys[0]?.id;
+    if (claimedId === undefined) throw new Error('test setup: B must hold a one-time prekey');
+
+    const runtimeA = new E2eeSessionRuntime({
+      vault: vaultA,
+      identity: storedA.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: alice,
+        deviceId: storedA.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+    const runtimeB = new E2eeSessionRuntime({
+      vault: vaultB,
+      identity: storedB.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: bob,
+        deviceId: storedB.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedB.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+
+    await runtimeA.send(convFirst, 'first handshake', 'req-1');
+    const firstPoll = await runtimeB.pollMailbox({ conversationId: convFirst });
+    expect(firstPoll.error).toBeUndefined();
+    expect(firstPoll.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'first handshake' }),
+    ]);
+
+    const afterFirst = await loadStoredEnrollment(vaultB, nowMs);
+    expect(afterFirst?.identity.oneTimePreKeys.some((prekey) => prekey.id === claimedId)).toBe(
+      false,
+    );
+
+    // Seals a SECOND initial envelope directly against `storedB.identity` — the pristine,
+    // pre-consumption snapshot captured above — to model a claim that reused the already-spent
+    // bundle (a stale relay, or two initiators racing the same claim) independently of whatever
+    // the fake node's own claim bookkeeping would do. Delivered under a different conversation
+    // id so it hits the `storedState === undefined` responder-establishment path, not a
+    // redelivery of the first session.
+    const replay = sealInitialEnvelope({
+      sender: storedA.identity,
+      recipient: storedB.identity,
+      body: 'replays the spent prekey',
+      envelopeId: 'env-153a-replay',
+      conversationId: convSecond,
+      nowMs,
+    });
+    const bDeviceId = storedB.identity.deviceId;
+    node.mailboxesByDevice.set(bDeviceId, [
+      ...(node.mailboxesByDevice.get(bDeviceId) ?? []),
+      replay,
+    ]);
+    const secondPoll = await runtimeB.pollMailbox({ conversationId: convSecond });
+
+    // Issue #260: a reused one-time prekey is a structural/contract violation caught before
+    // any ratchet step (`establishResponderSession` throws `E2eeContractError`) — deterministic
+    // and envelope-caused, so it is quarantined (content-free, acknowledged) rather than
+    // fail-stopping the whole mailbox behind it.
+    expect(secondPoll.rows).toEqual([
+      { kind: 'quarantined', id: 'env-153a-replay', reason: 'malformed' },
+    ]);
+    expect(secondPoll.error).toBeUndefined();
+    const secondSessionId = sessionIdFor(convSecond, alice, storedA.identity.deviceId);
+    expect(await vaultB.getSession(secondSessionId)).toBeUndefined();
+
+    vaultA.close();
+    vaultB.close();
+  });
+
+  it('leaves the one-time prekey inventory untouched when the initiator falls back to a handshake with no one-time prekey', async () => {
+    const nowMs = Date.UTC(2026, 0, 2);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+    const alice = 'alice-153b';
+    const bob = 'bob-153b';
+    const conv = 'conv-153b';
+
+    const transportA = fakeTransport({ actorId: alice, node });
+    const vaultA = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('a-153b') },
+    });
+    await enrollThisDevice({ actorId: alice, transport: transportA, vault: vaultA, nowMs: now });
+    const storedA = await loadStoredEnrollment(vaultA, nowMs);
+    if (storedA === undefined) throw new Error('test setup: A must be enrolled');
+    registerMessagingDevice(node, storedA.identity);
+
+    const transportB = fakeTransport({ actorId: bob, node });
+    const vaultB = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('b-153b') },
+    });
+    await enrollThisDevice({ actorId: bob, transport: transportB, vault: vaultB, nowMs: now });
+    const storedB = await loadStoredEnrollment(vaultB, nowMs);
+    if (storedB === undefined) throw new Error('test setup: B must be enrolled');
+    // Registers a snapshot with B's one-time prekeys stripped out — models a node that had
+    // none left to hand an initiator. B's OWN vault still holds its full, untouched batch,
+    // which is exactly what this test checks stays that way.
+    registerMessagingDevice(node, { ...storedB.identity, oneTimePreKeys: [] });
+    const beforeIds = storedB.identity.oneTimePreKeys.map((prekey) => prekey.id).sort();
+    expect(beforeIds.length).toBeGreaterThan(0);
+
+    const runtimeA = new E2eeSessionRuntime({
+      vault: vaultA,
+      identity: storedA.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: alice,
+        deviceId: storedA.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+    const runtimeB = new E2eeSessionRuntime({
+      vault: vaultB,
+      identity: storedB.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: bob,
+        deviceId: storedB.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedB.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+
+    await runtimeA.send(conv, 'no prekey available', 'req-1');
+    const polled = await runtimeB.pollMailbox({ conversationId: conv });
+
+    expect(polled.error).toBeUndefined();
+    expect(polled.rows).toEqual([
+      expect.objectContaining({ kind: 'message', body: 'no prekey available' }),
+    ]);
+
+    const afterPoll = await loadStoredEnrollment(vaultB, nowMs);
+    const afterIds = (afterPoll?.identity.oneTimePreKeys ?? []).map((prekey) => prekey.id).sort();
+    expect(afterIds).toEqual(beforeIds);
+
+    vaultA.close();
+    vaultB.close();
+  });
+
+  it('persists the responder session BEFORE removing the consumed prekey from the enrollment record', async () => {
+    const nowMs = Date.UTC(2026, 0, 3);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+    const alice = 'alice-153c';
+    const bob = 'bob-153c';
+    const conv = 'conv-153c';
+
+    const transportA = fakeTransport({ actorId: alice, node });
+    const vaultA = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('a-153c') },
+    });
+    await enrollThisDevice({ actorId: alice, transport: transportA, vault: vaultA, nowMs: now });
+    const storedA = await loadStoredEnrollment(vaultA, nowMs);
+    if (storedA === undefined) throw new Error('test setup: A must be enrolled');
+    registerMessagingDevice(node, storedA.identity);
+
+    const transportB = fakeTransport({ actorId: bob, node });
+    const vaultB = await createRatchetSessionVault({
+      account: { origin: 'https://node.example', actorId: freshId('b-153c') },
+    });
+    await enrollThisDevice({ actorId: bob, transport: transportB, vault: vaultB, nowMs: now });
+    const storedB = await loadStoredEnrollment(vaultB, nowMs);
+    if (storedB === undefined) throw new Error('test setup: B must be enrolled');
+    registerMessagingDevice(node, storedB.identity);
+
+    const { vault: spiedVaultB, order } = withPersistenceOrderSpy(vaultB);
+    const runtimeA = new E2eeSessionRuntime({
+      vault: vaultA,
+      identity: storedA.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: alice,
+        deviceId: storedA.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+    const runtimeB = new E2eeSessionRuntime({
+      vault: spiedVaultB,
+      identity: storedB.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: bob,
+        deviceId: storedB.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedB.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+
+    await runtimeA.send(conv, 'order check', 'req-1');
+    const polled = await runtimeB.pollMailbox({ conversationId: conv });
+    expect(polled.error).toBeUndefined();
+
+    const sessionId = sessionIdFor(conv, alice, storedA.identity.deviceId);
+    const applyIndex = order.indexOf(`applyUpdate:${sessionId}`);
+    const enrollmentIndex = order.indexOf(`putOpaqueRecord:${ENROLLMENT_RECORD_KEY}`);
+    expect(applyIndex).toBeGreaterThanOrEqual(0);
+    expect(enrollmentIndex).toBeGreaterThan(applyIndex);
+
+    vaultA.close();
+    vaultB.close();
   });
 });

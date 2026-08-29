@@ -9,6 +9,7 @@ import {
   CommunityMember,
   Credential,
   E2eeDeviceIdentity,
+  E2eeDeviceLinkOffer,
   E2eeDeviceRoster,
   E2eeGroupControlEvent,
   E2eeIdentityRoot,
@@ -53,7 +54,8 @@ import { type JobContext, type JobHandler } from '../job-handler.js';
  * and are out of this task's scope (owned by the filters/labels module).
  *
  * Also purges the account's E2EE material (audit P1; ADR 0020 §10): identity roots, device
- * identities/certificates, rosters, signed and one-time prekeys, mailbox envelopes addressed
+ * identities/certificates, pending device-link offers, rosters, signed and one-time prekeys,
+ * mailbox envelopes addressed
  * to the account's devices, logical messages the account sent, and group-control events its
  * devices signed. `e2ee_report_evidence*` is deliberately exempt: reporter-disclosed abuse
  * evidence outlives accounts (ADR 0020), with its own access controls.
@@ -249,6 +251,10 @@ export class PurgeAccountHandler implements JobHandler {
       await manager.getRepository(E2eeSignedPrekey).delete({ deviceIdentityId: In(deviceIds) });
     }
     await manager.getRepository(E2eeDeviceIdentity).delete({ actorId });
+    // Pending device-link offers (ADR 0037 §1) carry the new device's public keys and
+    // device-signed prekeys; nothing else references them, and the actor is tombstoned rather
+    // than deleted, so the FK cascade never fires.
+    await manager.getRepository(E2eeDeviceLinkOffer).delete({ actorId });
     await manager.getRepository(E2eeDeviceRoster).delete({ actorId });
     await manager.getRepository(E2eeIdentityRoot).delete({ actorId });
 

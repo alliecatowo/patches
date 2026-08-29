@@ -204,10 +204,12 @@ freshness SLA it commits to, and the measured triggers that would reopen it.
 body": a reporter explicitly selects and submits plaintext as evidence, retained for the
 lifetime of the report and no longer. DMs are not federated in v0 (ADR 0020 §13, unchanged).
 
-DMs are **terminal-client-only in v0**: web and mobile have no crypto runtime and cannot start
-or read a conversation. The web profile "Message" button (`apps/web/src/components/DmNotice.tsx`)
-toasts an honest refusal rather than degrading into a broken or misleading affordance; mobile
-has no DM surface at all.
+DMs work in both the terminal and web clients: both hold a crypto runtime and can start, read,
+and send into a conversation (ADR 0033/0035). `apps/web/src/components/DmNotice.tsx` maps a
+conversation's wire `security_mode` to its short label; the actual enroll/compose/send flow
+lives in `apps/web/src/routes/MessagesRoute.tsx` and `MessageThreadRoute.tsx`. New-conversation
+recipient selection is a handle/display-name search (`ActorTypeahead`), never a raw actor id —
+followers/following surface first on an empty query. Mobile has no DM surface at all.
 
 **Retention honesty (B-061)**: `DM_RETENTION_DAYS` defaults to and publishes `0` (indefinite retention), matching the actual operational behavior where no server-side background deletion job exists. Nonzero configuration is rejected at startup until a verified deletion worker job is implemented.
 

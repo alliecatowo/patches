@@ -59,8 +59,12 @@ peer (per minute):
 | write  | `60`      | `120`    | `RPC_WRITE_BUDGET_PER_ACTOR_PER_MIN`, `RPC_WRITE_BUDGET_PER_PEER_PER_MIN`   |
 | search | `20`      | `40`     | `RPC_SEARCH_BUDGET_PER_ACTOR_PER_MIN`, `RPC_SEARCH_BUDGET_PER_PEER_PER_MIN` |
 
-`search` is its own class because `PostService.SearchPosts` runs an `ILIKE` scan — the single
-most expensive read the node serves — so it gets a far tighter budget than ordinary reads.
+`search` is its own class because both `PostService.SearchPosts` (`tsvector` full-text,
+`AddPostsFts`) and `ActorService.searchActors` (`pg_trgm` GIN, `AddActorsTrigramSearchIndexes`)
+are still the most expensive reads the node serves relative to an ordinary keyset feed page —
+each scans/probes a GIN index over the whole matching set rather than a narrow btree range —
+so `search` gets a far tighter budget than ordinary reads even though neither is a sequential
+scan anymore.
 
 Two more limits sit alongside them:
 

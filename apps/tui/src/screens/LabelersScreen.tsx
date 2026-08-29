@@ -27,7 +27,7 @@ const ACTION_CYCLE: readonly LabelAction[] = [
 ];
 
 function ownerLabel(labeler: Labeler): string {
-  if (labeler.isNodeLabeler) return 'this node';
+  if (labeler.isNodeLabeler) return 'this server';
   if (present(labeler.actor)) return `@${sanitizeForTerminal(labeler.actor.handle)}`;
   if (present(labeler.community)) return `+${sanitizeForTerminal(labeler.community.name)}`;
   return 'unknown';
@@ -111,7 +111,7 @@ export function LabelersScreen({
     if (entry === undefined) return;
     if (entry.mandatory) {
       setNotice(
-        `${sanitizeForTerminal(entry.value)} is mandatory on this node — cannot be changed.`,
+        `${sanitizeForTerminal(entry.value)} is mandatory on this server — cannot be changed.`,
       );
       return;
     }

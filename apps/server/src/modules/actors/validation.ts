@@ -111,15 +111,6 @@ export const nameplateInputSchema = z.object({
 });
 export type NameplateInput = z.infer<typeof nameplateInputSchema>;
 
-/** Rapid personalization (owner request 2026-08-25). Same 2,048-char budget as
- * `website_url`; http(s)-only comes from `safeUrlSchema` (§104). An empty string (field
- * cleared) is allowed through by the caller, not this schema. */
-export const PROFILE_BANNER_URL_MAX_LENGTH = WEBSITE_URL_MAX_LENGTH;
-export const profileBannerUrlSchema = safeUrlSchema(
-  PROFILE_BANNER_URL_MAX_LENGTH,
-  'profile banner URL',
-);
-
 /** `#RRGGBB` only — no named colours, no alpha, no gradients (the nameplate's own
  * `name_color` stays the gradient-capable field). */
 export const accentColorSchema = z

@@ -15,9 +15,46 @@ pre-commit:
       # Same cache mise run check uses — without it every commit cold-starts the
       # type-aware TS program (~30s+ on this repo); with it, repeat commits lint in ~2s.
       run: pnpm exec eslint {staged_files} --cache --cache-location node_modules/.cache/eslint/
+    typecheck:
+      glob: '*.{ts,tsx,mts,cts}'
+      # #302: `tsc --noEmit` for only the workspace(s) a staged file belongs to (incremental,
+      # see tsconfig.base.json's tsBuildInfoFile), not the whole repo — routed through
+      # scripts/bounded.sh, same as every other heavy task, so it's safe under concurrent
+      # worktree commits.
+      run: scripts/precommit-typecheck.sh {staged_files}
 
 # Pushes are the test gate; commits stay cheap.
+#
+# Scoped to `--affected` (packages changed vs `origin/main`, plus their dependents), not the
+# full monorepo `pnpm verify` (B-178/B-127, 2026-08-26): this box regularly runs several agent
+# worktrees' full verifies concurrently, and turbo's default `--continue=never` cancels every
+# other in-flight test task the instant one fails, printing a misleading "[ELIFECYCLE] Test
+# failed" for packages that were merely killed mid-run, not actually broken (reproduced via
+# `turbo run test --force`: an injected failure in @patches/worker alone made @patches/server
+# and @patches/tui's test tasks print the same ELIFECYCLE line). `--continue=dependencies-
+# successful` lets every task finish and report its own real result; `--concurrency` bounds how
+# many packages' test/typecheck tasks run at once so their vitest worker pools don't oversub-
+# scribe the box on top of each other (each vitest project also caps itself at `maxWorkers:
+# '50%'`, see the individual vitest.config.ts/.mts files). `--affected` is the speed lever: CI
+# (.github/workflows/ci.yml, unrelated to this file) still runs the full, unscoped
+# `pnpm build && pnpm test` on every PR and is the actual required gate for `main` — this hook
+# only has to catch problems before a slow, occasionally-contended CI run does, not replace it.
+# See docs/operations/local-development.md "Git hooks" and docs/operations/ci.md.
+# #302: every command below routes through scripts/bounded.sh, the same global throttle
+# `mise run check`/`verify` use, so a pre-push run never stacks unbounded on top of concurrent
+# worktree checks.
 pre-push:
   commands:
     verify:
-      run: pnpm verify
+      # Was 4 sequential bounded invocations (format:check + lint + typecheck --affected
+      # + test --affected = 85s even on harness-only docs change). Now one turbo with
+      # lint cached + parallel format:check. --affected + FULL TURBO means unchanged
+      # packages replay in ms; only changed ws rebuilds. Harness-only push now ~6s
+      # (was 85s), full monorepo change still bounded but not 4× serialized.
+      run: >-
+        pnpm exec prettier --check . 2>&1 | head -n 20 &
+        prettier_pid=$! ;
+        scripts/bounded.sh pnpm exec turbo run typecheck test lint --affected --concurrency=4 --continue=dependencies-successful --output-logs=errors-only ;
+        turbo_rc=$? ;
+        wait $prettier_pid; prettier_rc=$? ;
+        [ $turbo_rc -eq 0 ] && [ $prettier_rc -eq 0 ]

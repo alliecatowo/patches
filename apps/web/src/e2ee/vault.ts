@@ -42,10 +42,14 @@
  */
 
 import {
+  ByteReader,
+  ByteWriter,
   decodeRatchetState,
   disposeRatchetState,
   encodeRatchetState,
+  KEY_BYTES,
   randomBytes,
+  SIGNATURE_BYTES,
   zeroize,
   type DoubleRatchetState,
 } from '@patches/crypto';
@@ -701,6 +705,176 @@ export class TypedRatchetVault implements RatchetSessionVault {
   close(): void {
     this.store.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Peer identity pin store (security findings C1/C2, ADR 0033 §2/§3): TOFU-pins a
+// peer's messaging root and last-observed roster sequence so the node can never serve
+// a genuinely root-signed but stale/rolled-back roster (a revoked device would look
+// active again), nor substitute a brand-new self-signed root without a countersigned
+// rotation proof. Stored under one reserved opaque record (mirrors `enrollment.ts`'s
+// `ENROLLMENT_RECORD_KEY` — the leading NUL cannot occur in a real session id).
+// ---------------------------------------------------------------------------
+
+/** SHA-256 digest length (`identityTranscriptDigest`'s output) — numerically equal to
+ * `KEY_BYTES` but named separately since the two are unrelated facts. */
+const DIGEST_BYTES = KEY_BYTES;
+const PEER_PIN_RECORD_VERSION = 1;
+
+/** One peer's pinned identity. `rootBytes`/`selfSignature` (not just the public key)
+ * are stored because proving a later rotation requires re-deriving a real
+ * `VerifiedMessagingRoot` for the previously pinned root via `verifyMessagingRoot` —
+ * `@patches/crypto`'s branded `Verified*` values cannot be constructed from a bare
+ * public key (ADR 0033 §3: no caller-supplied decoding). */
+export interface PeerIdentityPin {
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
+  readonly rosterSequence: number;
+  readonly rosterDigest: Uint8Array;
+}
+
+/** The reserved vault record key peer pins are stored under. */
+export const PEER_PIN_RECORD_KEY = '\0patches-e2ee-peer-pins';
+
+/** The slice of the vault this store needs — satisfied structurally by
+ * `RatchetSessionVault` (and by a minimal test double). */
+export interface PeerPinVaultAccess {
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
+}
+
+function encodePeerPins(pins: ReadonlyMap<string, PeerIdentityPin>): Uint8Array {
+  const writer = new ByteWriter().u8(PEER_PIN_RECORD_VERSION).u32(pins.size);
+  for (const [actorId, pin] of pins) {
+    writer
+      .string(actorId)
+      .bytes(pin.rootBytes)
+      .fixed(pin.selfSignature, SIGNATURE_BYTES)
+      .u64(pin.rosterSequence)
+      .fixed(pin.rosterDigest, DIGEST_BYTES);
+  }
+  return writer.finish();
+}
+
+function decodePeerPins(bytes: Uint8Array): Map<string, PeerIdentityPin> {
+  const reader = new ByteReader(bytes);
+  if (reader.u8() !== PEER_PIN_RECORD_VERSION) {
+    throw new VaultCorruptionError();
+  }
+  const count = reader.u32();
+  const pins = new Map<string, PeerIdentityPin>();
+  for (let index = 0; index < count; index += 1) {
+    const actorId = reader.string();
+    const rootBytes = reader.bytes();
+    const selfSignature = reader.fixed(SIGNATURE_BYTES);
+    const rosterSequence = reader.u64();
+    const rosterDigest = reader.fixed(DIGEST_BYTES);
+    pins.set(actorId, { rootBytes, selfSignature, rosterSequence, rosterDigest });
+  }
+  reader.end();
+  return pins;
+}
+
+async function loadAllPeerPins(vault: PeerPinVaultAccess): Promise<Map<string, PeerIdentityPin>> {
+  const bytes = await vault.getOpaqueRecord(PEER_PIN_RECORD_KEY);
+  if (bytes === undefined) return new Map();
+  try {
+    return decodePeerPins(bytes);
+  } catch {
+    // A corrupted pin record must never be silently treated as "no pins" — that would
+    // discard every rollback/rotation check it exists to enforce. Fail closed.
+    throw new VaultCorruptionError();
+  }
+}
+
+/** Reads one peer's pinned identity, or `undefined` on first contact (TOFU). */
+export async function loadPeerIdentityPin(
+  vault: PeerPinVaultAccess,
+  actorId: string,
+): Promise<PeerIdentityPin | undefined> {
+  const pins = await loadAllPeerPins(vault);
+  return pins.get(actorId);
+}
+
+/** Pins (or re-pins, on a proven rotation) one peer's identity. */
+export async function savePeerIdentityPin(
+  vault: PeerPinVaultAccess,
+  actorId: string,
+  pin: PeerIdentityPin,
+): Promise<void> {
+  const pins = await loadAllPeerPins(vault);
+  pins.set(actorId, pin);
+  await vault.putOpaqueRecord(PEER_PIN_RECORD_KEY, encodePeerPins(pins));
+}
+
+// ---------------------------------------------------------------------------
+// Safety-number verification state (issue #168): session-independent, per-peer "I
+// compared this number out-of-band" mark. Session-scoped in the TUI (`v` in
+// `SafetyNumberScreen`); the vault gives the web client somewhere durable to keep it
+// across reloads instead, since a browser tab has no equivalent of a running process's
+// in-memory session. Stores a boolean only — never the number itself, which is always
+// recomputed from verified chain material (never trusted from storage).
+// ---------------------------------------------------------------------------
+
+const SAFETY_NUMBER_RECORD_VERSION = 1;
+
+/** The reserved vault record key safety-number verification marks are stored under. */
+export const SAFETY_NUMBER_RECORD_KEY = '\0patches-e2ee-safety-number-verified';
+
+/** The slice of the vault this store needs — same shape as `PeerPinVaultAccess`. */
+export interface SafetyNumberVaultAccess {
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
+}
+
+function encodeVerifiedActorIds(actorIds: ReadonlySet<string>): Uint8Array {
+  const writer = new ByteWriter().u8(SAFETY_NUMBER_RECORD_VERSION).u32(actorIds.size);
+  for (const actorId of actorIds) writer.string(actorId);
+  return writer.finish();
+}
+
+function decodeVerifiedActorIds(bytes: Uint8Array): Set<string> {
+  const reader = new ByteReader(bytes);
+  if (reader.u8() !== SAFETY_NUMBER_RECORD_VERSION) {
+    throw new VaultCorruptionError();
+  }
+  const count = reader.u32();
+  const actorIds = new Set<string>();
+  for (let index = 0; index < count; index += 1) actorIds.add(reader.string());
+  reader.end();
+  return actorIds;
+}
+
+async function loadVerifiedActorIds(vault: SafetyNumberVaultAccess): Promise<Set<string>> {
+  const bytes = await vault.getOpaqueRecord(SAFETY_NUMBER_RECORD_KEY);
+  if (bytes === undefined) return new Set();
+  try {
+    return decodeVerifiedActorIds(bytes);
+  } catch {
+    // A corrupted mark set must never be silently read back as "nothing verified" or
+    // "everything verified" — either would misstate what the user actually confirmed.
+    throw new VaultCorruptionError();
+  }
+}
+
+/** True only if this peer's safety number was previously marked verified. */
+export async function isSafetyNumberVerified(
+  vault: SafetyNumberVaultAccess,
+  actorId: string,
+): Promise<boolean> {
+  return (await loadVerifiedActorIds(vault)).has(actorId);
+}
+
+/** Marks (or unmarks) a peer's safety number as compared out-of-band. */
+export async function setSafetyNumberVerified(
+  vault: SafetyNumberVaultAccess,
+  actorId: string,
+  verified: boolean,
+): Promise<void> {
+  const actorIds = await loadVerifiedActorIds(vault);
+  if (verified) actorIds.add(actorId);
+  else actorIds.delete(actorId);
+  await vault.putOpaqueRecord(SAFETY_NUMBER_RECORD_KEY, encodeVerifiedActorIds(actorIds));
 }
 
 export async function createRatchetSessionVault(

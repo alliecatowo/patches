@@ -146,9 +146,12 @@ describe('ProfileScreen follow-request awareness (§197.5)', () => {
 
 describe('ProfileScreen rapid personalization (B-130)', () => {
   function renderScreen(theActor: Actor): { lastFrame: () => string | undefined } {
+    // `useActor` always refetches and replaces `knownActor` once `getActor` resolves
+    // (see its doc comment) — the mock must resolve to the same actor under test, or the
+    // frame flips to `buildApi()`'s bare default fixture the instant that promise settles.
     return render(
       <ProfileScreen
-        api={buildApi()}
+        api={buildApi({ getActor: vi.fn().mockResolvedValue({ actor: theActor }) })}
         actorId={theActor.id}
         knownActor={theActor}
         isActive
@@ -157,11 +160,10 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
     );
   }
 
-  it('renders the banner placeholder, frame border, name tag glyph, and nameplate-styled display name', async () => {
+  it('renders the frame border, name tag glyph, and nameplate-styled display name', async () => {
     const { lastFrame } = renderScreen(
       actor({
         displayName: 'Bob',
-        profileBannerUrl: 'https://cdn.example.com/banner.png',
         profileFrame: PROFILE_FRAME.GRADIENT,
         nameTagStyle: NAME_TAG_STYLE.BADGE,
         accentColor: '#10B981',
@@ -176,9 +178,10 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
         },
       }),
     );
-    await vi.waitFor(() => expect(lastFrame()).toContain('cdn.example.com'));
+    // ANSI codes reset mid-token around the glyph/name, so the raw frame can't be
+    // substring-matched directly — strip colour codes before every check here.
+    await vi.waitFor(() => expect(stripSgr(lastFrame() ?? '')).toContain('✿ Bob ◆'));
     const frame = stripSgr(lastFrame() ?? '');
-    expect(frame).toContain('banner: cdn.example.com');
     // Name tag suffix glyph rides after the nameplate-styled display name.
     expect(frame).toContain('✿ Bob ◆');
     // A frame renders as an Ink box border ('bold' style for GRADIENT → ┏ corner).
@@ -189,7 +192,6 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
     const { lastFrame } = renderScreen(actor({ displayName: 'Bob' }));
     await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));
     const frame = stripSgr(lastFrame() ?? '');
-    expect(frame).not.toContain('banner:');
     expect(frame).not.toContain('◆');
     expect(frame).not.toContain('┌');
   });
@@ -202,7 +204,6 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
           actorId="actor-2"
           knownActor={actor({
             displayName: 'Bob',
-            profileBannerUrl: 'https://cdn.example.com/banner.png',
             profileFrame: PROFILE_FRAME.GLOW,
             nameTagStyle: NAME_TAG_STYLE.RIBBON,
             accentColor: '#10B981',
@@ -214,7 +215,6 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
     );
     await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));
     const frame = stripSgr(lastFrame() ?? '');
-    expect(frame).not.toContain('banner:');
     expect(frame).not.toContain('»');
     expect(frame).not.toContain('┌');
     // The name itself still renders — decoration stripped, content intact.

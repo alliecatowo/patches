@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { type AuthGrpcClient, type RegisterRequest, type RegisterResponse } from '@patches/proto';
+import { mintInvite } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
 
 import { callUnary } from './test-server.js';
@@ -8,29 +9,9 @@ import { callUnary } from './test-server.js';
 /**
  * Shared fixtures for the posts/actors/feeds integration suites — every one of them needs at
  * least one authenticated local actor.
- *
- * `mintInvite` mirrors `test/auth.integration.test.ts`'s private helper of the same name
- * rather than importing it: that file is outside this task's owned file set, and the helper
- * is three lines of raw SQL, not logic worth coupling two test files over.
  */
 
-function sha256Hex(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-/** Mints a usable invite code and stores only its hash, exactly as `patches-admin` would. */
-export async function mintInvite(
-  dataSource: DataSource,
-  createdByUserId: string,
-  maxUses = 1,
-): Promise<string> {
-  const code = `invite-${randomUUID()}`;
-  await dataSource.query(
-    'INSERT INTO invites (code_hash, created_by_user_id, max_uses, uses) VALUES ($1, $2, $3, 0)',
-    [sha256Hex(code), createdByUserId, maxUses],
-  );
-  return code;
-}
+export { mintInvite };
 
 export interface TestActor {
   actorId: string;
@@ -61,7 +42,7 @@ export async function registerTestActor(
     displayName: overrides.displayName ?? 'Integration Test Actor',
     email: overrides.email ?? `${handle}@example.test`,
     password: overrides.password ?? 'a-perfectly-fine-password',
-    inviteCode: overrides.inviteCode ?? (await mintInvite(dataSource, inviterUserId)),
+    inviteCode: overrides.inviteCode ?? (await mintInvite(dataSource.manager, inviterUserId)),
     clientRequestId: overrides.clientRequestId ?? randomUUID(),
     sshPublicKey: overrides.sshPublicKey ?? '',
     privacyNoticeVersionAcknowledged: overrides.privacyNoticeVersionAcknowledged ?? 0,

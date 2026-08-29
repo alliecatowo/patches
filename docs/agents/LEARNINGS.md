@@ -414,3 +414,52 @@ implemented before anyone started work on them:
 4. **Duplicate ticket numbers happen when agents file concurrently** — two agents both claimed
    `B-124` in one wave. The orchestrator merging their branches has to reconcile; prefer keeping
    whichever number is already cited from committed docs or code.
+
+## 2026-08-27 — Literal NUL bytes in source are a silent security hazard; a "second implementation" of a protocol is a landmine
+
+**Learning:** Four files carried literal `\0` bytes as domain separators / reserved-key
+prefixes. Every edit path that touched them silently stripped or replaced the byte; the web
+port of `chain.ts` had already been _committed_ with `' '` in place of NUL, turning a
+decoded-view-vs-transcript equality check into one with an injectable separator. `git diff
+--stat` renders such files as `Bin`, so the change is invisible in review, and no test failed.
+Separately, a full parallel group-membership protocol (`membership.ts` + its own table) landed
+under the same ticket as the real one, cited an unrelated ADR, and defined no canonical encoder —
+exactly the length-prefix/domain-separation defect class the audits look for — while being
+exported from `@patches/domain`'s public index and fully tested.
+
+**Action taken:** all NUL sites use the `'\0'` escape (#264); the dead protocol and its table
+were deleted with a migration (#270); the audit command lives in the project memory.
+
+Rules of thumb:
+
+1. **Never store a control byte literally in source.** Write `'\0'`. Audit with
+   `git grep -Il '' | while read f; do n=$(git show HEAD:$f | tr -dc '\000' | wc -c); [ "$n" -gt 0 ] && echo "$n $f"; done`.
+2. **Two agents on one ticket can both "finish" it.** Before accepting a wave, grep the domain
+   package's public index for two exports that do the same job; the one no server/client path
+   calls is the dead one, and dead protocol code is worse than none.
+3. **A subagent that hits `maxTurns` has committed nothing** unless the brief said "commit green
+   slices early" — and even then, check `git log` in its worktree before resuming it. Resuming with
+   a five-line "commit what's green, cut X from scope" message recovered three such runs today.
+4. **Rebuild `dist/` of touched workspace packages before trusting a downstream typecheck or the
+   pre-commit eslint** — lint-staged failing with "type that cannot be resolved" is stale `dist/`,
+   not a real error.
+
+## 2026-08-28 — setState updaters must be pure; acknowledge-on-read sources lose data silently
+
+- A React `setState` updater that dedupes through an external ref (`seenIds`) is impure: React may
+  invoke it twice and keep the second result, which then omits rows the first call marked seen.
+  Combined with `pollMailbox` (acknowledge-on-drain), the dropped DMs were unrecoverable. Fixed in
+  #331 by caching drained rows in `WebE2eeManager.poll` and serializing drains. Rule: never mutate
+  outside state inside an updater; dedupe from state itself.
+- The lab harness (`mise run lab`) is single-instance machine-wide; `lab:status` reports `down`
+  from a worktree that doesn't own it. Reuse the running lab instead of killing it.
+- Testing Library's 1 s `waitFor` default flakes on the loaded CI runner; `asyncUtilTimeout: 5000`
+  in `apps/web/src/test/setup.ts` (#328) only affects tests that would otherwise fail.
+
+## 2026-08-28 — `mise run lab` state is per-worktree, ports and DB are global
+
+- Harness state (`infra/lab/.run/harness`) lives in the worktree that ran `up`, but :50058/:8088
+  and `patches_harness_lab` are machine-global. A second worktree's `up` reports "degraded" while
+  the first's server keeps the port; `down` from any other tree stops nothing. Rule: before `up`,
+  `ss -ltnp 'sport = :50058'` and run `down` from the owning worktree (or kill that pid).
+  Recorded from #343; a `lab:down --any` that resolves the owner by port is a small follow-up.

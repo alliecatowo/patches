@@ -9,7 +9,7 @@ Terminal-native, chronological, open-source social network. TypeScript monorepo:
 Versions come from `mise.toml` (`mise install`): Node 24 LTS, pnpm 11, buf, TypeScript 5.9 (not 7, ADR 0009).
 
 - **pnpm only** — never `npm install`/`yarn`. Add deps via CLI (`pnpm add <pkg> --filter <workspace>`), never by hand-editing versions. Concurrent installs need `flock /tmp/patches-pnpm.lock`.
-- `mise run check <workspace>` — typecheck + tests + format for one package, under the pinned Node. Use it instead of hand-rolled `&&` chains. `mise run verify` is the full gate.
+- `mise run check <workspace>` — typecheck + tests + lint + format for one package, under the pinned Node. Use it instead of hand-rolled `&&` chains; it's throttled (`scripts/bounded.sh`, see `docs/agents/HARNESS.md`) so concurrent worktrees never overload the box. `mise run verify` is the full gate — CI's job, not a local habit.
 - Containers: podman here, not docker — `mise run compose -- <args>`.
 - Protobuf: `pnpm proto:gen`, `pnpm proto:lint`, `pnpm proto:breaking`. DB: `pnpm db:migrate`, `pnpm db:generate --name=<Name>`.
 
@@ -29,7 +29,8 @@ protobuf request → controller (transport adapter) → application service → 
 2. The GitHub Project ("Patches", https://github.com/users/alliecatowo/projects/5, a user-level Project v2 owned by `alliecatowo`, project number 5) is the live board, not `tasks.md`. Items are a mix of real GitHub issues on `alliecatowo/patches` (preferred — an issue can be closed by a PR, auto-moves Status to Done, and supports labels/comments) and draft items not yet promoted, with fields Status (Todo | Blocked | In Progress | Done), Phase, Priority (P0–P3), Kind, Task ID (the `P<phase>-<nnn>`/`H-<nnn>`/`B-<nnn>`/`A-<nnn>`/`O-<nnn>`/`S-<nnn>`/`MCP-<nnn>` convention), Blocked by, and Order. Access it via the `github` MCP server: `projects_list`/`projects_get` to read, `projects_write` (`add_project_item`, `update_project_item`, batch `update_project_items`, `create_project_status_update`) to write, `issue_write` to create/update issues. Pick work from it, move `Status` as you finish or block on it (set `Status=Blocked` and list prerequisite Task IDs in `Blocked by`), file anything you discover mid-task as a new draft item (Status Todo, Kind + Priority set) rather than appending to `tasks.md`, and convert a draft to an issue (`gh issue create --repo alliecatowo/patches` + add to board, or `convertProjectV2DraftIssueItemToIssue`) when work is about to start on it or a PR will close it. `tasks.md` remains in the repo as the historical archive of completed work and as the offline fallback when the MCP server or the `project` OAuth scope is unavailable — don't tick items off in it. Reference the issue a PR closes with `Fixes #<n>` so Status moves automatically.
 3. Read `docs/research/<tech>.md` before using a risky API; if the note is missing or wrong, fix it.
 4. Every change leaves the repo green (`mise run verify`).
-5. Update docs in the same change as the code; never document a command you haven't run. Record non-obvious learnings via `/retro`.
+5. Update docs in the same change as the code. Never document a command you haven't run.
+6. Record non-obvious learnings via `/retro`.
 
 ## Tool use
 
@@ -41,11 +42,20 @@ protobuf request → controller (transport adapter) → application service → 
 
 ## Delegation
 
-- The frontier root is the orchestrator and acceptance gate: turn explicit work into bounded tasks, delegate implementation rather than editing product or harness files itself when a worker can safely own it, review results, and integrate. It must not invent or automatically claim tasks; the GitHub Project board, the user, and the spec define work.
-- Assign exact owned and forbidden paths. Parallel work needs disjoint ownership; every brief says the checkout is shared and agents must preserve unrelated edits. Briefs are self-contained, short state packets (goal, constraints, paths, acceptance checks), and model overrides use a non-full-history fork whenever possible. Workers may delegate an independent mechanical subtask to a cheaper model, not a second coordinator.
-- Pick a role before a model: `explorer`/`researcher` investigate, `worker`/`implementer` write owned paths, `verifier` runs checks, `reviewer` is read-only, and `architect` decides expensive-to-reverse questions. Use the cheapest adequate Codex model: Luna for high-volume/mechanical work and narrow diagnostics; Terra for normal implementation, tests, docs, and routine review; Sol only for architecture, crypto/security, hard debugging, or high-risk final review. Tailored roles keep their configured effort.
-- An independent reviewer must have strictly stronger effective capability than the implementer: e.g. low/medium Terra work → high Terra review; high Terra or risky cross-cutting work → Sol review. Do not use Sol implementation where independent stronger review is required. A verifier reports the relevant checks; implementation remains accountable for fixing failures.
-- See `docs/agents/MODEL_ROUTING.md` for the routing table and `docs/agents/HARNESS.md` for the cross-client contract. If the same approach fails twice, change the approach or escalate; never weaken hard rules, silently broaden scope, or create a chain of coordinators.
+The frontier main session is the orchestrator and acceptance gate: it turns explicit work into bounded tasks, delegates product/harness edits when a worker can safely own them, reviews results, and integrates. It must not invent or automatically claim tasks; the GitHub Project board, the user, and the spec define work. Parallel workers get exact owned and forbidden paths and preserve unrelated work.
+
+All inference via DevPass (`llmgateway/*` or `opencode/*-free`); no Anthropic models. Use `WebSearch/WebFetch` against official docs before guessing — pricing and API surfaces change monthly. See `docs/agents/HETEROGENEOUS.md` for the full ladder and `docs/agents/MODEL_ROUTING.md` for ambiguity-based routing.
+
+Primary runtime is OpenCode (`goal-driver` is cheap `llmgateway/gpt-5.6-luna` 90k; see `docs/agents/HETEROGENEOUS.md`). Claude Code remains compat but routes through `llmgateway`.
+
+| Work shape                              | Model (OpenCode)                                                                   | Guard                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Mechanical check / narrow diagnostic    | `opencode/muse-spark-1.2-free` or `llmgateway/qwen3.7-flash` 120k                  | Exact paths + stop condition                     |
+| Bounded implementation / tests / docs   | `llmgateway/deepseek-v4-flash` 140k (fallback `opencode/*-free` → `qwen3.7-flash`) | Disjoint ownership, `mise run check <ws>` scoped |
+| Integration / retry / review            | `llmgateway/gpt-5.6-terra` 220k                                                    | Stronger than implementer; no `sol` by default   |
+| Architecture / replan / milestone audit | `llmgateway/grok-4-6` 180k (fallback `grok-4-3` 180k, `grok-4-1-fast` 160k)        | Fresh session, concise packet, ADR if needed     |
+
+Exceptional premium (`llmgateway/gpt-5.6-sol`, `kimi-k3`, `claude-*`) requires explicit `escalate: sol` — it's 20x Luna and burns weekly fair-use (see `HETEROGENEOUS.md` pricing). Ladder: `deepseek → free → terra → grok`; env failures (DB/port/flock/inode) retry cheap, don't escalate. Packets via `.opencode/skills/packet`, handoffs via `.opencode/skills/handoff`. After two identical failures change approach. Never weaken hard rules.
 
 ## Repository map
 

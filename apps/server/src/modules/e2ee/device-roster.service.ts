@@ -28,7 +28,9 @@ import {
 import { DataSource, IsNull, MoreThan, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { deleteDeviceLinkOffer } from './device-link.service.js';
 import { e2eeDigest, e2eeSignatureVerifier } from './e2ee-crypto.adapter.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import {
   assertBytesEqual,
   encodeCertificateTranscript,
@@ -57,9 +59,16 @@ const DEVICE_ID_PATTERN = /^[0-9a-f-]{8,64}$/i;
  */
 @Injectable()
 export class E2eeDeviceRosterService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rateLimits: E2eeRateLimitService,
+  ) {}
 
-  enrollDevice(actorId: string, request: EnrollDeviceRequest): Promise<EnrollDeviceResponse> {
+  async enrollDevice(
+    actorId: string,
+    request: EnrollDeviceRequest,
+    peer: string | undefined = undefined,
+  ): Promise<EnrollDeviceResponse> {
     const certProto = request.certificate;
     const rosterProto = request.roster;
     const signedPrekeyProto = request.signedPrekey;
@@ -73,13 +82,17 @@ export class E2eeDeviceRosterService {
       throw AppError.validation('Device id must be a UUID-shaped identifier.');
     }
 
+    // Before the transaction (issue #269), matching `sendEnvelopes`'s ordering: a budgeted-out
+    // caller learns that without the roster-chain machinery running.
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
+
     return this.dataSource.transaction(async (manager) => {
-      const root = await loadActiveRoot(manager, actorId);
+      const root = await loadActiveRoot(manager, actorId, { lock: true });
       const rootView = toIdentityRootView(root);
 
       const certView = buildCertificateView(certProto);
       assertBytesEqual(
-        encodeCertificateTranscript(certView),
+        encodeCertificateTranscript({ ...certView, rootPublicKey: rootView.publicKey }),
         certView.certificateBytes,
         'Device certificate fields do not match the signed certificate transcript.',
       );
@@ -101,25 +114,11 @@ export class E2eeDeviceRosterService {
       });
       if (existing !== null) throw AppError.validation('This device is already enrolled.');
 
-      const { row: rosterRow, entries } = await appendRoster(
-        manager,
-        actorId,
-        rosterProto,
-        rootView,
-      );
       const certificateDigest = e2eeDigest(certView.certificateBytes);
-      const matching = entries.find((entry) => entry.deviceId === certView.deviceId);
-      if (matching === undefined || !matching.active) {
-        throw AppError.validation(
-          'The published roster does not list the enrolled device as active.',
-        );
-      }
-      assertBytesEqual(
-        matching.certificateDigest,
-        certificateDigest,
-        'The roster entry for this device does not match its certificate digest.',
-      );
 
+      // Saved before `appendRoster` (same transaction) so its own device-identity check
+      // (`appendRoster` in `roster-chain.ts`, issue #268) sees this device as already certified
+      // rather than needing a special-cased exception for the device being enrolled.
       const deviceRow = await manager.getRepository(E2eeDeviceIdentityEntity).save(
         manager.getRepository(E2eeDeviceIdentityEntity).create({
           actorId,
@@ -134,6 +133,27 @@ export class E2eeDeviceRosterService {
           expiresAt: certView.expiresAt,
           revokedAt: null,
         }),
+      );
+
+      // Not a device link is not an error here — ordinary bootstrap enrollment simply has no
+      // matching offer row (ADR 0037 §1 step 3).
+      await deleteDeviceLinkOffer(manager, actorId, certView.deviceId);
+      const { row: rosterRow, entries } = await appendRoster(
+        manager,
+        actorId,
+        rosterProto,
+        rootView,
+      );
+      const matching = entries.find((entry) => entry.deviceId === certView.deviceId);
+      if (matching === undefined || !matching.active) {
+        throw AppError.validation(
+          'The published roster does not list the enrolled device as active.',
+        );
+      }
+      assertBytesEqual(
+        matching.certificateDigest,
+        certificateDigest,
+        'The roster entry for this device does not match its certificate digest.',
       );
 
       await verifyAndSaveSignedPrekey(
@@ -154,13 +174,19 @@ export class E2eeDeviceRosterService {
     });
   }
 
-  revokeDevice(actorId: string, request: RevokeDeviceRequest): Promise<RevokeDeviceResponse> {
+  async revokeDevice(
+    actorId: string,
+    request: RevokeDeviceRequest,
+    peer: string | undefined = undefined,
+  ): Promise<RevokeDeviceResponse> {
     const rosterProto = request.roster;
     if (rosterProto === undefined) throw AppError.validation('The next signed roster is required.');
     if (request.deviceId.length === 0) throw AppError.validation('A device id is required.');
 
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
+
     return this.dataSource.transaction(async (manager) => {
-      const root = await loadActiveRoot(manager, actorId);
+      const root = await loadActiveRoot(manager, actorId, { lock: true });
       const device = await manager.getRepository(E2eeDeviceIdentityEntity).findOne({
         where: { actorId, deviceId: request.deviceId, revokedAt: IsNull() },
       });
@@ -197,14 +223,16 @@ export class E2eeDeviceRosterService {
     });
   }
 
-  publishDeviceRoster(
+  async publishDeviceRoster(
     actorId: string,
     request: PublishDeviceRosterRequest,
+    peer: string | undefined = undefined,
   ): Promise<PublishDeviceRosterResponse> {
     const rosterProto = request.roster;
     if (rosterProto === undefined) throw AppError.validation('A signed roster is required.');
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
     return this.dataSource.transaction(async (manager) => {
-      const root = await loadActiveRoot(manager, actorId);
+      const root = await loadActiveRoot(manager, actorId, { lock: true });
       const { row, entries } = await appendRoster(
         manager,
         actorId,
@@ -304,14 +332,6 @@ function verifyAndSaveSignedPrekey(
 
   const transcript = encodePrekeyBundleTranscript({
     certificateDigest,
-    agreementPublicKey: certView.agreementPublicKey,
-    // Pinned to the empty string, matching `prekey.service.ts`'s `rotateSignedPrekey`/
-    // `buildBundle` exactly: a device's advertised protocol versions are not a persisted
-    // column (see `e2ee.codec.ts`'s top-of-file comment), so a later `UploadPrekeys` rotation
-    // or `ClaimPrekeyBundles` re-derivation could never reconstruct whatever value was signed
-    // here at enroll time. Every signer/verifier in this module must agree on one fixed
-    // placeholder rather than three call sites guessing independently.
-    protocolVersion: '',
     actorId: certView.actorId,
     deviceId: certView.deviceId,
     signedPrekeyId: keyId,

@@ -106,10 +106,11 @@ export function toProtoActor(actor: ActorSummary): Actor {
     flair: undefined,
     pinnedPostIds: [],
     homeServer: actor.homeServer ?? '',
-    profileBannerUrl: '',
     profileFrame: ProfileFrame.PROFILE_FRAME_UNSPECIFIED,
     nameTagStyle: NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED,
     accentColor: '',
+    // Same "not loaded" reasoning as `avatar` above — this DTO carries no media ids.
+    banner: undefined,
   };
 }
 

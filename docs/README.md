@@ -13,6 +13,10 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/overview.md`](./architecture/overview.md)
   - [`architecture/data-model.md`](./architecture/data-model.md)
   - [`architecture/api.md`](./architecture/api.md)
+  - [`architecture/api-versioning.md`](./architecture/api-versioning.md) — what `patches.v1`
+    guarantees, how a `v2` would coexist, version discovery (issue #203, ADR 0038)
+  - [`architecture/rollouts.md`](./architecture/rollouts.md) — reversible capability gates:
+    which of the three mechanisms to use and how to roll one back (issue #202)
   - [`architecture/social.md`](./architecture/social.md)
   - [`architecture/auth.md`](./architecture/auth.md)
   - [`architecture/pages.md`](./architecture/pages.md)
@@ -23,6 +27,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/tui.md`](./architecture/tui.md) — what's built
   - [`architecture/tui-interaction-model.md`](./architecture/tui-interaction-model.md) — what
     the TUI's frame/navigation/layout is becoming, and why (target design, ADR 0018)
+  - [`architecture/realtime.md`](./architecture/realtime.md) — every surface that updates live,
+    its actual mechanism/interval with file:line, and where it never refreshes (issue #207)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
   [`decisions/README.md`](./decisions/README.md) for the index and template.
@@ -39,6 +45,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
+  - [`operations/performance.md`](./operations/performance.md) — benchmark harness, latency
+    budget regression gate, and load/capacity suite (#199/#200/#205), every number measured
   - [`operations/session-management-audit.md`](./operations/session-management-audit.md) — H-022
     audit confirming the TUI/`@patches/client` session-manager split is intentional (ADR 0023),
     not accidental duplication
@@ -49,12 +57,18 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`product/tui-design-vision.md`](./product/tui-design-vision.md) — the TUI's design vision (layout, themes, flows)
   - [`product/moderation.md`](./product/moderation.md) — community guidelines, enforcement, appeals, decentralized moderation
   - [`product/privacy.md`](./product/privacy.md) — the draft privacy notice
+  - [`product/identity-chrome.md`](./product/identity-chrome.md) — nameplate rendering rules, kept identical web ↔ TUI
+  - [`product/ux-audit-2026-08.md`](./product/ux-audit-2026-08.md) — density & action-ownership audit findings
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
-- **`agents/`** — guidance for AI implementation agents working in this repository:
-  `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`,
-  `CONTEXT_ECONOMY.md`.
+- **`agents/`** — guidance for AI implementation agents: `HARNESS.md`, `HETEROGENEOUS.md` (model ladder + pricing), `MODEL_ROUTING.md`, `LEARNINGS.md`, `PACKAGE_CONVENTIONS.md`, `CONTEXT_ECONOMY.md`, `HANDOFF-e2ee-web.md`.
+- **`media/`** — README screenshots and recordings. `media/web/*.png` (desktop/mobile web PWA
+  captures) and `media/tui/frames.md` (TUI golden-frame text captures) are generated, not
+  hand-made — see `../scripts/screenshots/` and the README's "Regenerating this media"
+  section (`mise run screenshots`). The top-level `hero.gif`/`home.png`/etc. are VHS-scripted
+  TUI captures against the live node (`mise run demos`, `infra/demos/`), predating the
+  golden-frame script.
 
 ## Where to start
 

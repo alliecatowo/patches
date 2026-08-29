@@ -58,10 +58,10 @@ export default defineConfig([
           ],
           // apps/web/tsconfig.json already includes vite.config.ts/vitest.config.ts
           // itself (same pattern as apps/tui), so it doesn't need an entry here.
-          // Default cap is 8; the explicitly listed package configs above contribute 20
+          // Default cap is 8; the explicitly listed package configs above contribute 21
           // matching files. The root Vitest config is linted below without falling back to
           // a default project, so this intentionally remains a tight fixed bound.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 21,
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -124,11 +124,25 @@ export default defineConfig([
     },
   },
   {
-    // Vite/React 19 web client — runs in the browser, not Node.
+    // Vite/React 19 web client — runs in the browser, not Node. B-141: route logging through
+    // `apps/web/src/lib/log.ts` instead of scattered `console.*` calls.
     files: ['apps/web/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat.recommended],
     languageOptions: {
       globals: { ...globals.browser },
+    },
+    rules: {
+      'no-console': 'error',
+    },
+  },
+  {
+    // B-141: `log.ts` is the wrapper `no-console` above funnels every other call site through.
+    // `diagnosticsReporter.ts` doesn't log via console — it captures/restores the real
+    // `console.error` to feed the issue-reporter breadcrumb ring — so it needs the same
+    // console access without being a logging call site itself.
+    files: ['apps/web/src/lib/log.ts', 'apps/web/src/lib/diagnosticsReporter.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
   {

@@ -1,10 +1,10 @@
 import { ByteWriter, bytesEqual, concatBytes } from './codec.js';
 import { AuthenticationError, PreKeyError } from './errors.js';
 import {
-  encodeCertifiedDevice,
-  rosterDigest,
-  verifyPreKeyBundle,
-  verifyRosterSnapshot,
+  rosterHasActiveCertificate,
+  type VerifiedCertifiedDevice,
+  type VerifiedPreKeyBundle,
+  type VerifiedRosterSnapshot,
 } from './identity.js';
 import {
   generateKeyAgreementKeyPair,
@@ -19,12 +19,11 @@ import {
   E2EE_PROTOCOL,
   E2EE_VERSION,
   KEY_BYTES,
-  type CertifiedDevice,
+  SIGNATURE_BYTES,
   type DevicePrivateKeys,
+  type HandshakeCertifiedDevice,
   type KeyPair,
-  type PreKeyBundle,
   type PrivatePreKey,
-  type SignedDeviceRoster,
   type X3dhHandshake,
   type X3dhSecrets,
 } from './types.js';
@@ -36,6 +35,10 @@ const X25519_F = new Uint8Array(KEY_BYTES).fill(0xff);
 const ZERO_SALT = new Uint8Array(KEY_BYTES);
 
 type UnsignedHandshake = Omit<X3dhHandshake, 'initiatorSignature'>;
+
+function writeCertifiedDevice(writer: ByteWriter, device: HandshakeCertifiedDevice): ByteWriter {
+  return writer.bytes(device.certificateBytes).fixed(device.rootSignature, SIGNATURE_BYTES);
+}
 
 function encodeUnsignedHandshake(handshake: UnsignedHandshake): Uint8Array {
   const hasOneTimePreKey =
@@ -50,13 +53,14 @@ function encodeUnsignedHandshake(handshake: UnsignedHandshake): Uint8Array {
     .string(TRANSCRIPT_CONTEXT)
     .string(handshake.protocol)
     .u8(handshake.version)
-    .string(handshake.algorithm)
-    .bytes(encodeCertifiedDevice(handshake.initiator))
-    .bytes(encodeCertifiedDevice(handshake.responder))
+    .string(handshake.algorithm);
+  writeCertifiedDevice(writer, handshake.initiator);
+  writeCertifiedDevice(writer, handshake.responder);
+  writer
     .fixed(handshake.initiatorRosterDigest, KEY_BYTES)
     .fixed(handshake.responderRosterDigest, KEY_BYTES)
     .fixed(handshake.ephemeralPublicKey, KEY_BYTES)
-    .u32(handshake.signedPreKeyId)
+    .u64(handshake.signedPreKeyId)
     .fixed(handshake.signedPreKeyPublicKey, KEY_BYTES)
     .u8(hasOneTimePreKey ? 1 : 0);
   // The presence flag above already distinguishes "no one-time prekey" from "one present"; a
@@ -66,7 +70,7 @@ function encodeUnsignedHandshake(handshake: UnsignedHandshake): Uint8Array {
   if (hasOneTimePreKey && handshake.oneTimePreKeyPublicKey !== undefined) {
     writer.fixed(handshake.oneTimePreKeyPublicKey, KEY_BYTES);
   }
-  return writer.u32(hasOneTimePreKey ? (handshake.oneTimePreKeyId ?? 0) : 0).finish();
+  return writer.u64(hasOneTimePreKey ? (handshake.oneTimePreKeyId ?? 0) : 0).finish();
 }
 
 function splitSecrets(material: Uint8Array): X3dhSecrets {
@@ -96,28 +100,70 @@ function deriveSecrets(
   return secrets;
 }
 
-function assertDeviceKeysMatch(keys: DevicePrivateKeys, device: CertifiedDevice): void {
+function assertDeviceKeysMatch(keys: DevicePrivateKeys, device: VerifiedCertifiedDevice): void {
   if (
-    !bytesEqual(keys.signing.publicKey, device.certificate.signingPublicKey) ||
-    !bytesEqual(keys.agreement.publicKey, device.certificate.agreementPublicKey)
+    !bytesEqual(keys.signing.publicKey, device.signingPublicKey) ||
+    !bytesEqual(keys.agreement.publicKey, device.agreementPublicKey)
   ) {
     throw new AuthenticationError();
   }
 }
 
-function rosterContains(roster: SignedDeviceRoster, device: CertifiedDevice): boolean {
-  const encoded = encodeCertifiedDevice(device);
-  return roster.roster.devices.some((candidate) =>
-    bytesEqual(encoded, encodeCertifiedDevice(candidate)),
+/**
+ * Branding is a type-level property, so it is backed by a runtime one: a `Verified*` value proves
+ * its signatures were checked over the bytes it carries, but not that it is still within its
+ * validity window at *this* `nowMs`, nor that two separately verified objects belong together.
+ */
+function assertCurrentlyValid(nowMs: number, createdAtMs: number, expiresAtMs: number): void {
+  if (nowMs < createdAtMs || nowMs >= expiresAtMs) throw new AuthenticationError();
+}
+
+function assertActiveMember(
+  roster: VerifiedRosterSnapshot,
+  device: VerifiedCertifiedDevice,
+  nowMs: number,
+): void {
+  if (
+    device.actorId !== roster.actorId ||
+    !bytesEqual(device.rootPublicKey, roster.rootPublicKey) ||
+    !rosterHasActiveCertificate(roster, device.certificateDigest) ||
+    nowMs < roster.createdAtMs
+  ) {
+    throw new AuthenticationError();
+  }
+  assertCurrentlyValid(nowMs, device.createdAtMs, device.expiresAtMs);
+}
+
+function assertBundleMatchesRoster(
+  bundle: VerifiedPreKeyBundle,
+  roster: VerifiedRosterSnapshot,
+  nowMs: number,
+): void {
+  if (!bytesEqual(bundle.rosterDigest, roster.rosterDigest)) throw new AuthenticationError();
+  assertActiveMember(roster, bundle.device, nowMs);
+  assertCurrentlyValid(nowMs, bundle.createdAtMs, bundle.expiresAtMs);
+}
+
+function handshakeDevice(device: VerifiedCertifiedDevice): HandshakeCertifiedDevice {
+  return { certificateBytes: device.certificateBytes, rootSignature: device.rootSignature };
+}
+
+function sameHandshakeDevice(
+  left: HandshakeCertifiedDevice,
+  right: HandshakeCertifiedDevice,
+): boolean {
+  return (
+    bytesEqual(left.certificateBytes, right.certificateBytes) &&
+    bytesEqual(left.rootSignature, right.rootSignature)
   );
 }
 
 export interface InitiateX3dhInput {
   readonly initiatorKeys: DevicePrivateKeys;
-  readonly initiatorDevice: CertifiedDevice;
-  readonly initiatorRoster: SignedDeviceRoster;
-  readonly responderBundle: PreKeyBundle;
-  readonly responderRoster: SignedDeviceRoster;
+  readonly initiatorDevice: VerifiedCertifiedDevice;
+  readonly initiatorRoster: VerifiedRosterSnapshot;
+  readonly responderBundle: VerifiedPreKeyBundle;
+  readonly responderRoster: VerifiedRosterSnapshot;
   readonly nowMs: number;
   /** Test-vector hook. Production callers omit this. */
   readonly ephemeralKey?: KeyPair;
@@ -132,25 +178,24 @@ export interface InitiateX3dhResult {
 }
 
 export function initiateX3dh(input: InitiateX3dhInput): InitiateX3dhResult {
-  verifyRosterSnapshot(input.initiatorRoster, input.nowMs);
-  verifyPreKeyBundle(input.responderBundle, input.responderRoster, input.nowMs);
   assertDeviceKeysMatch(input.initiatorKeys, input.initiatorDevice);
-  if (!rosterContains(input.initiatorRoster, input.initiatorDevice)) {
-    throw new AuthenticationError();
-  }
+  assertActiveMember(input.initiatorRoster, input.initiatorDevice, input.nowMs);
+  assertBundleMatchesRoster(input.responderBundle, input.responderRoster, input.nowMs);
   const ephemeral = input.ephemeralKey ?? generateKeyAgreementKeyPair();
   const bundle = input.responderBundle;
   const unsigned: UnsignedHandshake = {
     protocol: E2EE_PROTOCOL,
     version: E2EE_VERSION,
     algorithm: E2EE_ALGORITHM,
-    initiator: input.initiatorDevice,
-    responder: bundle.certifiedDevice,
-    initiatorRosterDigest: rosterDigest(input.initiatorRoster.roster),
-    responderRosterDigest: bundle.rosterDigest,
+    initiator: handshakeDevice(input.initiatorDevice),
+    responder: handshakeDevice(bundle.device),
+    // The roster digests both sides bind are the ones each verifier computed itself over the
+    // served roster bytes, never a node-supplied convenience field (ADR 0033 §2).
+    initiatorRosterDigest: input.initiatorRoster.rosterDigest,
+    responderRosterDigest: input.responderRoster.rosterDigest,
     ephemeralPublicKey: ephemeral.publicKey,
-    signedPreKeyId: bundle.signedPreKey.id,
-    signedPreKeyPublicKey: bundle.signedPreKey.publicKey,
+    signedPreKeyId: bundle.signedPrekeyId,
+    signedPreKeyPublicKey: bundle.signedPrekeyPublicKey,
     ...(bundle.oneTimePreKey === undefined
       ? {}
       : {
@@ -163,12 +208,9 @@ export function initiateX3dh(input: InitiateX3dhInput): InitiateX3dhResult {
     ...unsigned,
     initiatorSignature: sign(input.initiatorKeys.signing.privateKey, transcript),
   };
-  const dh1 = keyAgreement(input.initiatorKeys.agreement.privateKey, bundle.signedPreKey.publicKey);
-  const dh2 = keyAgreement(
-    ephemeral.privateKey,
-    bundle.certifiedDevice.certificate.agreementPublicKey,
-  );
-  const dh3 = keyAgreement(ephemeral.privateKey, bundle.signedPreKey.publicKey);
+  const dh1 = keyAgreement(input.initiatorKeys.agreement.privateKey, bundle.signedPrekeyPublicKey);
+  const dh2 = keyAgreement(ephemeral.privateKey, bundle.device.agreementPublicKey);
+  const dh3 = keyAgreement(ephemeral.privateKey, bundle.signedPrekeyPublicKey);
   const dh4 =
     bundle.oneTimePreKey === undefined
       ? undefined
@@ -183,13 +225,22 @@ export function initiateX3dh(input: InitiateX3dhInput): InitiateX3dhResult {
 
 export interface RespondX3dhInput {
   readonly responderKeys: DevicePrivateKeys;
-  readonly responderBundle: PreKeyBundle;
-  readonly responderRoster: SignedDeviceRoster;
-  readonly initiatorRoster: SignedDeviceRoster;
+  readonly responderBundle: VerifiedPreKeyBundle;
+  readonly responderRoster: VerifiedRosterSnapshot;
+  readonly initiatorRoster: VerifiedRosterSnapshot;
   readonly signedPreKey: PrivatePreKey;
   readonly oneTimePreKey?: PrivatePreKey;
   readonly handshake: X3dhHandshake;
   readonly nowMs: number;
+  /**
+   * Clock used ONLY for the responder's own bundle validity window. A responder answering an
+   * initial message sealed against a signed prekey it has since rotated out (ADR 0020 §5: the
+   * previous private key is retained for the 30-day mailbox window) presents that retained
+   * bundle, whose original 7-day window is long past. Backdating this one check is what lets
+   * the handshake finish; everything about the *initiator* (certificate lifetime, roster
+   * membership, revocation) is still judged at `nowMs`, never at a past instant.
+   */
+  readonly responderBundleNowMs?: number;
 }
 
 export interface RespondX3dhResult {
@@ -219,28 +270,37 @@ export function disposeX3dhSecrets(secrets: X3dhSecrets, initiatorEphemeral?: Ke
 }
 
 export function respondX3dh(input: RespondX3dhInput): RespondX3dhResult {
-  verifyRosterSnapshot(input.initiatorRoster, input.nowMs);
-  verifyPreKeyBundle(input.responderBundle, input.responderRoster, input.nowMs);
-  assertDeviceKeysMatch(input.responderKeys, input.responderBundle.certifiedDevice);
+  assertDeviceKeysMatch(input.responderKeys, input.responderBundle.device);
+  assertBundleMatchesRoster(
+    input.responderBundle,
+    input.responderRoster,
+    input.responderBundleNowMs ?? input.nowMs,
+  );
   const handshake = input.handshake;
+  const bundle = input.responderBundle;
   if (
     handshake.protocol !== E2EE_PROTOCOL ||
     handshake.version !== E2EE_VERSION ||
     handshake.algorithm !== E2EE_ALGORITHM ||
-    !bytesEqual(handshake.initiatorRosterDigest, rosterDigest(input.initiatorRoster.roster)) ||
-    !bytesEqual(handshake.responderRosterDigest, input.responderBundle.rosterDigest) ||
-    !bytesEqual(
-      encodeCertifiedDevice(handshake.responder),
-      encodeCertifiedDevice(input.responderBundle.certifiedDevice),
-    ) ||
-    handshake.signedPreKeyId !== input.responderBundle.signedPreKey.id ||
-    !bytesEqual(handshake.signedPreKeyPublicKey, input.responderBundle.signedPreKey.publicKey) ||
+    !bytesEqual(handshake.initiatorRosterDigest, input.initiatorRoster.rosterDigest) ||
+    !bytesEqual(handshake.responderRosterDigest, input.responderRoster.rosterDigest) ||
+    !sameHandshakeDevice(handshake.responder, handshakeDevice(bundle.device)) ||
+    handshake.signedPreKeyId !== bundle.signedPrekeyId ||
+    !bytesEqual(handshake.signedPreKeyPublicKey, bundle.signedPrekeyPublicKey) ||
     !bytesEqual(handshake.signedPreKeyPublicKey, input.signedPreKey.keyPair.publicKey) ||
-    handshake.signedPreKeyId !== input.signedPreKey.id ||
-    !rosterContains(input.initiatorRoster, handshake.initiator)
+    handshake.signedPreKeyId !== input.signedPreKey.id
   ) {
     throw new AuthenticationError();
   }
+  // The initiator's certificate is only trusted because it is one of the certificates the
+  // initiator's roster snapshot was verified against — a `Verified*` value cannot exist without
+  // its signature having been checked, so no signature is re-verified here.
+  const initiator = input.initiatorRoster.devices.find((candidate) =>
+    sameHandshakeDevice(handshakeDevice(candidate), handshake.initiator),
+  );
+  if (initiator === undefined) throw new AuthenticationError();
+  assertActiveMember(input.initiatorRoster, initiator, input.nowMs);
+
   const unsigned: UnsignedHandshake = {
     protocol: handshake.protocol,
     version: handshake.version,
@@ -260,36 +320,23 @@ export function respondX3dh(input: RespondX3dhInput): RespondX3dhResult {
         }),
   };
   const transcript = encodeUnsignedHandshake(unsigned);
-  if (
-    !verifyStrict(
-      handshake.initiator.certificate.signingPublicKey,
-      transcript,
-      handshake.initiatorSignature,
-    )
-  ) {
+  if (!verifyStrict(initiator.signingPublicKey, transcript, handshake.initiatorSignature)) {
     throw new AuthenticationError();
   }
   if (
     (handshake.oneTimePreKeyId === undefined) !== (input.oneTimePreKey === undefined) ||
-    (handshake.oneTimePreKeyId === undefined) !==
-      (input.responderBundle.oneTimePreKey === undefined) ||
+    (handshake.oneTimePreKeyId === undefined) !== (bundle.oneTimePreKey === undefined) ||
     (input.oneTimePreKey !== undefined &&
       (handshake.oneTimePreKeyId !== input.oneTimePreKey.id ||
         handshake.oneTimePreKeyPublicKey === undefined ||
         !bytesEqual(handshake.oneTimePreKeyPublicKey, input.oneTimePreKey.keyPair.publicKey) ||
-        input.responderBundle.oneTimePreKey === undefined ||
-        handshake.oneTimePreKeyId !== input.responderBundle.oneTimePreKey.id ||
-        !bytesEqual(
-          handshake.oneTimePreKeyPublicKey,
-          input.responderBundle.oneTimePreKey.publicKey,
-        )))
+        bundle.oneTimePreKey === undefined ||
+        handshake.oneTimePreKeyId !== bundle.oneTimePreKey.id ||
+        !bytesEqual(handshake.oneTimePreKeyPublicKey, bundle.oneTimePreKey.publicKey)))
   ) {
     throw new PreKeyError('One-time prekey was absent, mismatched, or already consumed.');
   }
-  const dh1 = keyAgreement(
-    input.signedPreKey.keyPair.privateKey,
-    handshake.initiator.certificate.agreementPublicKey,
-  );
+  const dh1 = keyAgreement(input.signedPreKey.keyPair.privateKey, initiator.agreementPublicKey);
   const dh2 = keyAgreement(input.responderKeys.agreement.privateKey, handshake.ephemeralPublicKey);
   const dh3 = keyAgreement(input.signedPreKey.keyPair.privateKey, handshake.ephemeralPublicKey);
   const dh4 =

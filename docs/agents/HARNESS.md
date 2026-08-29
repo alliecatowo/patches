@@ -1,5 +1,61 @@
 # Agent harness contract
 
+## Package boundaries
+
+Four packages divide harness-adjacent work; none of the others do its job:
+
+- **`@patches/testkit`** = network-free **rows**. `withTransactionRollback` + fixture factories
+  (`createTestUser`, `mintInvite`, `createTestPasswordCredential`, …) insert directly via
+  TypeORM inside a transaction the test rolls back. No process spawning, no gRPC, no outbox
+  claiming — it never competes with a real worker for a job row. Product code (`apps/*`,
+  `packages/database`, `packages/domain`, …) never imports it; it is test-only.
+- **`@patches/harness`** = **processes + RPCs**. `patches-harness` (`mise run lab`) owns
+  building and spawning a disposable local server+worker, proving process ownership via
+  `/proc` before touching anything, and driving that live process through `@patches/client`
+  gRPC calls (`register`/`login`/`post`/`follow`/`notifications`/`world-ensure`) and now
+  Mailpit HTTP retrieval (below). It is a CLI, not a library product code links against.
+- **`apps/admin`** = **audited operator verbs**. A plain TypeScript CLI (no NestJS) that talks
+  to Postgres directly for real operational actions (invite management, moderation) — every
+  verb is meant to be run against a real environment and is logged/audited accordingly, unlike
+  the harness's disposable throwaway lab.
+- **MCP (`.codex/config.toml`'s isolated Playwright server, § below)** = **delivery**. It gives
+  an agent a headless browser to _observe_ the running system (screenshots, accessibility
+  snapshots); it has no fixture-creation or process-lifecycle powers of its own — it drives
+  whatever `lab`/`world-ensure` already stood up.
+
+A task that seeds DB rows belongs in `testkit`; a task that needs a live process or an RPC
+response belongs in `harness`; a task that acts on a real deployment belongs in `admin`; a task
+that needs pixels/DOM belongs behind the Playwright MCP entry.
+
+## Resource-bounded verification (#302)
+
+Up to ~8 agent worktrees can run `mise run check`/`verify`/`build` and vitest/tsc concurrently on
+one box, which has crashed both the workstation and the Claude Code process. Every heavy task
+routes through `scripts/bounded.sh <command> [args...]` — `mise run check`, `mise run verify`,
+`mise run test`, and the lefthook pre-commit/pre-push hooks all use it already. Workers never need
+to think about contention:
+
+- **Use `mise run check <workspace>` for scoped work; never run the full `mise run verify`/`pnpm
+verify` locally.** CI (`.github/workflows/ci.yml`) is still the full, unscoped gate — that's
+  what `verify` is for; a worktree doing scoped implementation work should not replay it.
+- **Never background a check to dodge contention** (`&`, `nohup`, a detached shell) — the
+  throttle already queues bounded work safely; backgrounding just adds an unbounded process
+  outside the slot system.
+- `scripts/bounded.sh` acquires one of `PATCHES_CHECK_SLOTS` flock-based slots (default
+  `max(2, nproc/4)`, so 4 on a 16-core box), runs the command `nice -n 10 ionice -c2 -n7`, and —
+  when `systemd-run --user` is available — inside a cgroup scope with `MemoryMax`
+  (`PATCHES_CHECK_MEM`, default `3G`) and `CPUWeight=50`. If every slot is busy it waits on the
+  last slot (bounded by `PATCHES_CHECK_WAIT_TIMEOUT`, default 600s) and logs that it's waiting,
+  rather than queuing unboundedly or silently hanging.
+- `VITEST_MAX_WORKERS` (default 2) and `NODE_OPTIONS=--max-old-space-size=2048` are exported by
+  the wrapper and honored by every `vitest.config.*`'s `maxWorkers`; override either per-invocation
+  if a task genuinely needs more headroom.
+- Tiers get heavier moving up: pre-commit is staged-file prettier/eslint plus `tsc --noEmit` for
+  only the touched workspace(s) (`scripts/precommit-typecheck.sh`); `mise run check <ws>` is that
+  workspace only, incremental (`tsconfig.base.json`'s `${configDir}` `tsBuildInfoFile`) and
+  turbo-cached; pre-push is `--affected` workspaces vs `origin/main`; PR CI stays the full gate.
+  See `docs/operations/local-development.md` "Git hooks" and `docs/operations/ci.md`.
+
 ## Direct action surface
 
 `mise run lab:action -- <verb> ...` drives the isolated lab through `@patches/client/grpc` and
@@ -14,9 +70,46 @@ return their deterministic `clientRequestId` where applicable.
 `mise run lab:world:ensure -- --file world.json` accepts credential-free, stable-key
 `{ users, follows?, posts? }` JSON. Credentials are derived from a protected, non-emitted lab seed.
 An identical declaration can be run twice; changes and removals fail closed because this slice does
-not yet implement authoritative inverse cleanup. It intentionally does not manage communities,
-DMs, Mailpit, or log inspection; notification actions exclude DM notifications and bounded waits
-observe unread counts only.
+not yet implement authoritative inverse cleanup. It intentionally does not manage communities or
+DMs; notification actions exclude DM notifications and bounded waits observe unread counts only.
+
+## Mailpit message retrieval
+
+`mise run lab` routes the lab server/worker at `EMAIL_PROVIDER=smtp`,
+`SMTP_HOST=127.0.0.1`/`SMTP_PORT=1025` — the same shared, machine-wide Mailpit container
+`mise run compose` starts (`infra/compose/docker-compose.yml`'s `mailpit` service; `up` now
+brings it up alongside `postgres`) — so verification-code/password-reset emails a harness run
+sends are retrievable, not just dropped to `console`.
+
+`mailpit-list [--address <email>] [--limit N]`, `mailpit-latest --address <email>`, and
+`mailpit-get --id <id>` (all accept `--origin` to override the default
+`http://127.0.0.1:8025`) read that instance's REST API
+(`packages/harness/src/mailpit.ts`; response shapes verified live, see
+`docs/research/infra-and-security-libs.md` §3). Same discipline as `lab:logs`: the target must
+be a loopback `http://127.0.0.1:<port>` origin, list/get output is allowlisted-field JSON
+(`id`/`from`/`to`/`subject`/`created`/`snippet`, plus bounded `text` for `mailpit-get` — HTML is
+never returned), and an address filter uses Mailpit's own `to:<address>` server-side search
+rather than a client-side substring match that could leak the wrong recipient's code. DM
+notification observation still waits on B-098 and is unaffected — Mailpit only ever carries
+transactional auth-code email in this system, never DM bodies.
+
+## Cross-worktree lab ownership
+
+`mise run lab` state (`infra/lab/.run/harness/state.json`) is per-worktree, but the ports it
+binds (`:50058` gRPC, `:8088` HTTP) and the Postgres database it seeds are machine-global — a
+second worktree's `up` fails or reports `degraded` against a lab a _different_ worktree started,
+and that worktree's own `status`/`down` could only ever see its own empty state file
+(`docs/agents/LEARNINGS.md` 2026-08-28).
+
+`status` now resolves the actual pid (and, if `/proc/<pid>/cwd` is readable, the owning
+worktree root) bound to the gRPC port before falling back to `down`, and reports
+`{"status":"held-by-other-worktree","pid":N,"root":"..."}` instead of a misleading `"down"`.
+`down --any` (`mise run lab:down-any`) finds that same owner and stops it regardless of which
+worktree ran `up` — preferring the owning worktree's own `state.json` (so both server _and_
+worker stop cleanly and that worktree's state is cleared), and falling back to stopping just the
+discovered pid, command-line-verified the same way `stopRecordedProcess` verifies its own
+processes, if that state can't be read. Never assume a bare `down`/`status` from a fresh
+worktree means "nothing is running" — check for `held-by-other-worktree` first.
 
 For recovery testing only, `world-ensure --fail-after N` fails immediately after atomically
 journaling mutation `N`; rerun the identical declaration without the flag to prove resume. The
@@ -33,6 +126,10 @@ allowlisted operational fields after string scrubbing. Non-JSON lines and arbitr
 are omitted. Each file is read backward with a hard 256 KiB/1,000-line pre-parse cap and an
 explicit `logs.truncated` record; request IDs must be canonical UUIDs and trace IDs exact 32-digit
 hex. Raw following is disabled until a streaming implementation can enforce the same boundary.
+
+### Heterogeneous model harness (OpenCode primary, DevPass only)
+
+See `docs/agents/HETEROGENEOUS.md` for the full ladder, pricing cliffs, and `/goal` driver. The durable principle: **smart models remove ambiguity; cheap models execute explicit work; durable board/spec state carries understanding forward.** OpenCode is primary runtime (`goal-driver` = `gpt-5.6-luna` 90k, workers = `deepseek-v4-flash` 140k, senior = `terra` 220k, architect = `grok-4-6` 180k, all via `opencode.json` ceilings). Free `opencode/*-free` models are first fallbacks to exhaust zero-cost capacity. Packets (`.opencode/skills/packet`) ≤15 lines, handoffs (`.opencode/skills/handoff`) ≤20 lines, ≤4 concurrent workers with disjoint paths. `guard-bash.sh` blocks Anthropic models, `git worktree add` by hand, and >6 worktrees (inode/cache guard). All `WebSearch/WebFetch` use is encouraged — pricing and API surfaces change monthly, don't guess.
 
 This repository supports Codex, Claude, and other clients through the same contract:
 
@@ -69,3 +166,49 @@ do not add a storage-state file, browser extension, CDP endpoint, or unrestricte
 this project default. Its bounded diagnostic output is ignored at `.codex/playwright-output/`.
 
 To upgrade deliberately, check the [official Playwright MCP release metadata](https://github.com/microsoft/playwright-mcp/blob/main/server.json), replace the exact version in `.codex/config.toml`, restart Codex, verify the handshake, and run the relevant harness/browser checks. Do not substitute an unpinned `latest` version.
+
+## Acceptance transcript
+
+Status: `world apply`/`login`/`post`/`notification observation`/`Mailpit`/`teardown` below are
+**implemented** and were actually run (2026-08-28, against a live lab another worktree already
+had running — `mise run lab` state is per-worktree but the process is machine-global, see
+"Cross-worktree lab ownership" above, so this reused it via `PATCHES_HARNESS_ROOT` rather than
+starting a second one). Browser visual proof is **planned**: it needs the Playwright MCP driving
+a real page against the lab's `webUrl`, which is a manual/interactive step this transcript
+couldn't run non-interactively — not yet automated into a scripted harness action.
+
+```
+$ node packages/harness/dist/cli.js status
+{"status":"running","processes":{"server":"owned-running","worker":"owned-running"},"runId":"1efca3b2...","httpOrigin":"http://127.0.0.1:8088","grpcTarget":"127.0.0.1:50058","database":"patches_harness_lab", ...}
+
+$ node packages/harness/dist/cli.js world-ensure --file world.json   # one user + one post, stable keys
+{"users":1,"follows":0,"posts":[{"id":"3f742bb7-...","clientRequestId":"02a3f937-...","requestId":"2feff455-..."}],"requestIds":[...],"sessionsRevoked":true}
+
+$ node packages/harness/dist/cli.js register --handle transcripth191 --email transcripth191@harness.local --password-stdin <<<'a-perfectly-fine-password'
+{"actorId":"355c0945-...","handle":"transcripth191","requestId":"7c05d614-...","email":"transcripth191@harness.local","webUrl":"http://127.0.0.1:8088","cleanupRequestId":"73bae5fc-..."}
+
+$ node packages/harness/dist/cli.js login --handle transcripth191 --password-stdin <<<'a-perfectly-fine-password'
+{"actorId":"355c0945-...","handle":"transcripth191","requestId":"8137e55c-...","cleanupRequestId":"12d0b616-..."}
+
+$ node packages/harness/dist/cli.js post --handle transcripth191 --password-stdin --body 'hello from the acceptance transcript' <<<'a-perfectly-fine-password'
+{"id":"d1a61bff-...","clientRequestId":"26380959-...","requestId":"0423e86a-...","authRequestId":"e390db03-...","cleanupRequestId":"1f99740f-..."}
+
+$ node packages/harness/dist/cli.js notifications --handle transcripth191 --password-stdin <<<'a-perfectly-fine-password'
+{"unread":0,"requestIds":["7d50c62a-..."],"notifications":[],"authRequestId":"9acbb540-...","cleanupRequestId":"c0060563-..."}
+
+$ node packages/harness/dist/cli.js mailpit-latest --address transcripth191@harness.local
+null
+```
+
+The `mailpit-latest` call above genuinely returned `null`: this lab's default `Register` path
+(`PASSWORD_AUTH=optional`, no invite requirement) doesn't send a verification email, so nothing
+had landed for that address — `mailpit-list --limit 3` against the same shared Mailpit does show
+messages from an unrelated live-test run in the same session, confirming the retrieval path
+itself works end-to-end (`packages/harness/src/mailpit.test.ts`'s live-gated suite sends a real
+message over SMTP and reads it back the same way).
+
+Teardown: `mise run lab:down` stops only processes this worktree's own `state.json` recorded;
+`mise run lab:down-any` (exercised via its unit tests and a live `status` proving the pid/root
+resolution above — not run destructively against another agent's active lab in this transcript,
+deliberately) stops whichever worktree's lab currently holds the ports. `status` is safe to run
+at any time and never mutates anything.

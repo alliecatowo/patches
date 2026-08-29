@@ -16,8 +16,7 @@ import { type JobContext, type JobHandler } from '../job-handler.js';
  * ADR — chosen as a reasonable balance between limiting a single compromised key's exposure
  * window and the operational cost of `e2ee_node_franking_keys` rows accumulating forever (they
  * are appended, never deleted — `E2eeLogicalMessage.frankingKeyEra` pins every accepted message
- * to the era that signed it, permanently). Revisit under the P13-016 independent security review
- * before `E2EE_APPROVED_FRANKING_PROFILES` is ever populated.
+ * to the era that signed it, permanently).
  */
 export const FRANKING_KEY_ROTATION_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 

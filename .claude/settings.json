@@ -2,7 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "worktree": { "baseRef": "head" },
   "env": {
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "180000",
+    "ANTHROPIC_BASE_URL": "https://api.llmgateway.io/v1",
+    "CLAUDE_CODE_DISABLE_ANTHROPIC": "1"
   },
   "permissions": {
     "allow": [

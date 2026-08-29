@@ -1,0 +1,124 @@
+/**
+ * Design tokens (#336). One source of truth for type scale, 8pt spacing, radii, elevation,
+ * colour roles, motion and control metrics; every `components/ui` primitive and the messaging
+ * surface consume these and nothing else.
+ *
+ * Everything here is *derived* from the per-theme primitives in `index.css`
+ * (`--bg`, `--fg`, `--accent`, `--border`, `--radius`, `--shadow-*`) rather than hard-coded,
+ * so all seven themes — including `mono` (radius 0) and `hacker` (radius 2) — stay correct
+ * without a per-theme override list that would drift the moment a theme is added.
+ * Custom properties resolve at use time, so this file may load before the theme selectors.
+ */
+
+:root {
+  /* ---- Type scale (1.185 minor-third-ish, tuned for 15px body) ---- */
+  --text-2xs: 0.6875rem; /* 11px — dense meta */
+  --text-xs: 0.75rem; /* 12px — timestamps, chips */
+  --text-sm: 0.8125rem; /* 13px — secondary copy */
+  --text-base: 0.9375rem; /* 15px — body, bubbles */
+  --text-md: 1rem; /* 16px — row titles */
+  --text-lg: 1.125rem; /* 18px — pane titles */
+  --text-xl: 1.375rem; /* 22px — empty-state titles */
+  --text-2xl: 1.75rem; /* 28px — the safety code */
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-wide: 0.04em;
+
+  /* ---- Spacing: 8pt grid with 4px half-steps ---- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Radii, derived so `mono`/`hacker` keep their sharper geometry ---- */
+  --radius-xs: calc(var(--radius) * 0.5);
+  --radius-sm: calc(var(--radius) * 0.75);
+  --radius-md: var(--radius);
+  --radius-xl: calc(var(--radius-lg) * 1.5);
+  --radius-2xl: calc(var(--radius-lg) * 2);
+
+  /* ---- Elevation ---- */
+  --elevation-0: none;
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow-md);
+  --elevation-3: var(--shadow-lg);
+
+  /* ---- Colour roles ---- */
+  --surface: var(--bg);
+  --surface-raised: var(--bg-raised);
+  --surface-sunken: var(--bg-subtle);
+  --surface-overlay: color-mix(in srgb, var(--bg) 88%, transparent);
+
+  --text-primary: var(--fg);
+  --text-secondary: var(--fg-muted);
+  --text-tertiary: color-mix(in srgb, var(--fg-muted) 72%, var(--bg));
+  --text-on-accent: var(--accent-fg);
+
+  --line: var(--border);
+  --line-subtle: var(--border-subtle);
+
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 22%, var(--bg));
+  --accent-ink: color-mix(in srgb, var(--accent) 78%, var(--fg));
+
+  --ok-soft: color-mix(in srgb, var(--ok) 14%, var(--bg));
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, var(--bg));
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, var(--bg));
+
+  /* Chat bubbles: the outgoing bubble is the one place accent is used as a large fill,
+     so it has to keep its own contrast pair rather than borrow a surface role. */
+  --bubble-in-bg: var(--bg-raised);
+  --bubble-in-fg: var(--fg);
+  --bubble-in-line: var(--border-subtle);
+  --bubble-out-bg: var(--accent);
+  --bubble-out-fg: var(--accent-fg);
+
+  /* ---- Focus ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--accent);
+
+  /* ---- Avatars ---- */
+  --avatar-xs: 24px;
+  --avatar-sm: 32px;
+  --avatar-md: 40px;
+  --avatar-lg: 56px;
+  --avatar-xl: 88px;
+
+  /* ---- Controls ---- */
+  --control-height-sm: 32px;
+  --control-height-md: 40px;
+  --control-height-lg: 48px;
+
+  /* ---- Motion ---- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* One switch disables every token-driven transition and animation. Components still declare
+   their own `prefers-reduced-motion` block for keyframes they own, but nothing that uses the
+   duration tokens has to repeat itself. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+  }
+}

@@ -81,7 +81,7 @@ async function registerFreshActor(node: FederationTestNode, label: string) {
   });
   return registerTestActor(node.auth, node.dataSource, inviter.id, {
     handle: `${label}${testSuffix()}`,
-    inviteCode: await mintInvite(node.dataSource, inviter.id),
+    inviteCode: await mintInvite(node.dataSource.manager, inviter.id),
   });
 }
 
@@ -181,11 +181,11 @@ describe.skipIf(primaryUrl === undefined || primaryUrl.length === 0)(
 
       const alice = await registerTestActor(nodeA.auth, nodeA.dataSource, inviterA.id, {
         handle: 'alice',
-        inviteCode: await mintInvite(nodeA.dataSource, inviterA.id),
+        inviteCode: await mintInvite(nodeA.dataSource.manager, inviterA.id),
       });
       const bob = await registerTestActor(nodeB.auth, nodeB.dataSource, inviterB.id, {
         handle: 'bob',
-        inviteCode: await mintInvite(nodeB.dataSource, inviterB.id),
+        inviteCode: await mintInvite(nodeB.dataSource.manager, inviterB.id),
       });
 
       const hostB = new URL(nodeB.publicOrigin).host;

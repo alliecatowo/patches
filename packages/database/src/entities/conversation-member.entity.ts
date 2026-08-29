@@ -1,4 +1,12 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from 'typeorm';
 import { Actor } from './actor.entity.js';
 import { Conversation } from './conversation.entity.js';
 
@@ -8,6 +16,11 @@ import { Conversation } from './conversation.entity.js';
  * lets `LeaveConversation` stay idempotent without losing `lastReadMessageId`.
  */
 @Entity({ name: 'conversation_members' })
+// `MessagesService.listConversations` (spec §183.4/§190) filters `actor_id = X AND left_at IS
+// NULL` — `actorId` is the *second* PK column, so it can't lead a lookup off the PK's own
+// index. `conversationId` trails here purely so a covering index scan can also supply
+// `member.conversation` without a heap fetch; it isn't part of the filter predicate.
+@Index(['actorId', 'leftAt', 'conversationId'])
 export class ConversationMember {
   @PrimaryColumn({ type: 'uuid' })
   declare conversationId: string;

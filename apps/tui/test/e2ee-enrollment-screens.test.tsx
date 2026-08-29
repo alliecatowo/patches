@@ -12,6 +12,7 @@ import { makeActor } from '../src/test/wire-fixtures.js';
 import { DevicesScreen } from '../src/screens/DevicesScreen.js';
 import { AccountsScreen } from '../src/screens/AccountsScreen.js';
 import { ENROLLMENT_PEER_WARNING_COPY } from '../src/e2ee/enrollment.js';
+import { DeviceLinkError } from '../src/e2ee/device-link.js';
 import type { PatchesApi } from '../src/api/client.js';
 
 const KEY = { enter: '\r' } as const;
@@ -229,5 +230,146 @@ describe('AccountsScreen enrollment entry point (B-107)', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(stripSgr(lastFrame() ?? '')).not.toContain('Enroll THIS computer');
     expect(onEnrollE2ee).not.toHaveBeenCalled();
+  });
+});
+
+describe('ADR 0037 needs-authority hand-off', () => {
+  it('DevicesScreen hands off to the link/rotate chooser instead of rendering a dead end', async () => {
+    const api = devicesApi();
+    const onEnrollE2ee = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        copy: 'This account already has a messaging identity published from another device.',
+        needsAuthority: true,
+      }),
+    );
+    const onNeedsAuthority = vi.fn();
+    const { lastFrame, stdin } = render(
+      <DevicesScreen
+        api={api}
+        session={session}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token-1')}
+        e2eeCapabilityState={5}
+        onEnrollE2ee={onEnrollE2ee}
+        onNeedsAuthority={onNeedsAuthority}
+        onBack={() => {}}
+      />,
+    );
+    await waitForFrame(lastFrame, 'device-aaa');
+    stdin.write('e');
+    await waitForFrame(lastFrame, 'Enroll THIS computer');
+    stdin.write('y');
+    await vi.waitFor(() => expect(onNeedsAuthority).toHaveBeenCalledTimes(1));
+    expect(stripSgr(lastFrame() ?? '')).not.toContain('does not hold its authority key');
+  });
+
+  it('AccountsScreen hands off to the link/rotate chooser too', async () => {
+    const api = accountsApi();
+    const onEnrollE2ee = vi.fn(() =>
+      Promise.resolve({ ok: false, copy: 'needs authority', needsAuthority: true }),
+    );
+    const onNeedsAuthority = vi.fn();
+    const { lastFrame, stdin } = render(
+      <AccountsScreen
+        api={api}
+        env={{}}
+        session={session}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token-1')}
+        e2eeCapabilityState={4}
+        onOpenDevices={() => {}}
+        onEnrollE2ee={onEnrollE2ee}
+        onNeedsAuthority={onNeedsAuthority}
+        onLogout={() => {}}
+        onResendVerification={() => {}}
+        onBack={() => {}}
+      />,
+    );
+    await waitForFrame(lastFrame, 'not enrolled for encrypted messages yet');
+    stdin.write('e');
+    await waitForFrame(lastFrame, 'Enroll THIS computer');
+    stdin.write(KEY.enter);
+    await vi.waitFor(() => expect(onNeedsAuthority).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('DevicesScreen pending link requests (ADR 0037 §1 step 2)', () => {
+  const pendingLink = {
+    linkId: 'link-1',
+    deviceId: 'device-bbb-new',
+    sas: '0001-0002-0003-0004-0005',
+    expiresAtMs: Date.now() + 5 * 60_000,
+  };
+
+  it('approves a link once the SAS is confirmed to match', async () => {
+    const api = devicesApi();
+    const onApproveLink = vi.fn(() => Promise.resolve(undefined));
+    const onListPendingLinks = vi.fn(() => Promise.resolve([pendingLink]));
+    const { lastFrame, stdin } = render(
+      <DevicesScreen
+        api={api}
+        session={session}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token-1')}
+        e2eeCapabilityState={5}
+        onListPendingLinks={onListPendingLinks}
+        onApproveLink={onApproveLink}
+        onDiscardLink={() => Promise.resolve(undefined)}
+        onBack={() => {}}
+      />,
+    );
+    await waitForFrame(lastFrame, '0001-0002-0003-0004-0005');
+    stdin.write('a');
+    await waitForFrame(lastFrame, 'Does the code on the other device match?');
+    stdin.write('y');
+    await vi.waitFor(() => expect(onApproveLink).toHaveBeenCalledWith('link-1'));
+    await waitForFrame(lastFrame, 'Linked device device-bbb-new');
+  });
+
+  it('discards a mismatched link and never approves it', async () => {
+    const api = devicesApi();
+    const onApproveLink = vi.fn(() => Promise.resolve(undefined));
+    const onDiscardLink = vi.fn(() => Promise.resolve(undefined));
+    const onListPendingLinks = vi.fn(() => Promise.resolve([pendingLink]));
+    const { lastFrame, stdin } = render(
+      <DevicesScreen
+        api={api}
+        session={session}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token-1')}
+        e2eeCapabilityState={5}
+        onListPendingLinks={onListPendingLinks}
+        onApproveLink={onApproveLink}
+        onDiscardLink={onDiscardLink}
+        onBack={() => {}}
+      />,
+    );
+    await waitForFrame(lastFrame, '0001-0002-0003-0004-0005');
+    stdin.write('a');
+    await waitForFrame(lastFrame, 'Does the code on the other device match?');
+    stdin.write('n');
+    await vi.waitFor(() => expect(onDiscardLink).toHaveBeenCalledWith('link-1'));
+    await waitForFrame(lastFrame, 'Nothing was approved');
+    expect(onApproveLink).not.toHaveBeenCalled();
+  });
+
+  it('renders the not-authority copy when this device holds no root key', async () => {
+    const api = devicesApi();
+    const onListPendingLinks = vi.fn(() => Promise.reject(new DeviceLinkError('not-authority')));
+    const { lastFrame } = render(
+      <DevicesScreen
+        api={api}
+        session={session}
+        isActive
+        ensureAccessToken={() => Promise.resolve('token-1')}
+        e2eeCapabilityState={5}
+        onListPendingLinks={onListPendingLinks}
+        onApproveLink={() => Promise.resolve(undefined)}
+        onDiscardLink={() => Promise.resolve(undefined)}
+        onBack={() => {}}
+      />,
+    );
+    await waitForFrame(lastFrame, 'cannot approve links');
   });
 });

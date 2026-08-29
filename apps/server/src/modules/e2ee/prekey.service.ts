@@ -29,6 +29,7 @@ import { DataSource, In, IsNull, type EntityManager } from 'typeorm';
 import { AppError } from '../../common/errors/app-error.js';
 import { saveOneTimePrekeys } from './device-roster.service.js';
 import { e2eeDigest, e2eeSignatureVerifier } from './e2ee-crypto.adapter.js';
+import { E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import {
   assertBytesEqual,
   encodePrekeyBundleTranscript,
@@ -66,10 +67,19 @@ interface ClaimedOneTimePrekey {
  */
 @Injectable()
 export class E2eePrekeyService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rateLimits: E2eeRateLimitService,
+  ) {}
 
-  uploadPrekeys(actorId: string, request: UploadPrekeysRequest): Promise<UploadPrekeysResponse> {
+  async uploadPrekeys(
+    actorId: string,
+    request: UploadPrekeysRequest,
+    peer: string | undefined = undefined,
+  ): Promise<UploadPrekeysResponse> {
     if (request.deviceId.length === 0) throw AppError.validation('A device id is required.');
+
+    await this.rateLimits.consumeIdentityWrite(actorId, peer);
 
     return this.dataSource.transaction(async (manager) => {
       const device = await manager.getRepository(E2eeDeviceIdentityEntity).findOne({
@@ -144,11 +154,6 @@ export class E2eePrekeyService {
     const certificateDigest = e2eeDigest(toBytes(device.certificateBytes));
     const transcript = encodePrekeyBundleTranscript({
       certificateDigest,
-      agreementPublicKey: toBytes(device.agreementPublicKey),
-      // Pinned to the empty string: the certificate's own advertised protocol versions are not
-      // persisted per-device (see `e2ee.codec.ts`'s top-of-file comment), so `EnrollDevice` and
-      // every later `UploadPrekeys` rotation both sign against this same fixed placeholder.
-      protocolVersion: '',
       actorId,
       deviceId: device.deviceId,
       signedPrekeyId: nextKeyId,
@@ -406,8 +411,6 @@ function buildBundle(
   const certificateDigest = e2eeDigest(toBytes(device.certificateBytes));
   const bundleBytes = encodePrekeyBundleTranscript({
     certificateDigest,
-    agreementPublicKey: toBytes(device.agreementPublicKey),
-    protocolVersion: '',
     actorId: targetActorId,
     deviceId: device.deviceId,
     signedPrekeyId: BigInt(signedPrekey.keyId),

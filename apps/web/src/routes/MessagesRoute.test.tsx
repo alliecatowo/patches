@@ -6,21 +6,36 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { DM_LIST_POLL_FAILED_COPY, MessagesRoute } from './MessagesRoute.js';
 
 const mockListConversations =
   vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
+const mockListFollowing = vi.fn<(...args: unknown[]) => Promise<{ actors: Actor[] }>>();
+const mockSearchActors = vi.fn<(...args: unknown[]) => Promise<{ actors: Actor[] }>>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockToast = vi.fn<(...args: unknown[]) => void>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
+const mockUseE2eeVaultAccess = vi.fn<
+  () => {
+    vault: undefined;
+    actorId: undefined;
+    transport: undefined;
+    ready: boolean;
+    error: boolean;
+  }
+>();
 
 vi.mock('../api/client.js', () => ({
   api: {
     messages: {
       listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
         mockListConversations(...args),
+    },
+    actors: {
+      listFollowing: (...args: unknown[]): Promise<{ actors: Actor[] }> =>
+        mockListFollowing(...args),
+      searchActors: (...args: unknown[]): Promise<{ actors: Actor[] }> => mockSearchActors(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -35,6 +50,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('../e2ee/use-e2ee.js', () => ({
   useE2ee: () => mockUseE2ee(),
+  useE2eeVaultAccess: () => mockUseE2eeVaultAccess(),
 }));
 
 function conversation(id: string, handle: string): Conversation {
@@ -64,10 +80,22 @@ function renderMessages(): { queryClient: QueryClient } & ReturnType<typeof rend
 describe('MessagesRoute', () => {
   beforeEach(() => {
     mockListConversations.mockReset();
+    mockListFollowing.mockReset();
+    mockListFollowing.mockResolvedValue({ actors: [] });
+    mockSearchActors.mockReset();
+    mockSearchActors.mockResolvedValue({ actors: [] });
     mockUseSession.mockReset();
     mockToast.mockReset();
     mockUseE2ee.mockReset();
     mockUseE2ee.mockReturnValue({ kind: 'enrolled' });
+    mockUseE2eeVaultAccess.mockReset();
+    mockUseE2eeVaultAccess.mockReturnValue({
+      vault: undefined,
+      actorId: undefined,
+      transport: undefined,
+      ready: false,
+      error: false,
+    });
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-me', handle: 'allie' } as unknown as Actor,
     });
@@ -89,28 +117,51 @@ describe('MessagesRoute', () => {
 
     renderMessages();
 
-    expect(await screen.findByText('No conversations yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No conversations yet — start one.')).toBeInTheDocument();
   });
 
-  it('disables "New Message" while no session can be established (B-132)', async () => {
+  it('offers "New Message" as a live control now that sessions can be established', async () => {
+    // Was disabled under B-132 because no browser could establish a session. ADR 0033
+    // removed that condition, so the control has to actually work rather than sit greyed
+    // out behind copy explaining why it never will.
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
-    const newMessage = screen.getByLabelText('New direct message');
-    expect(newMessage).toBeDisabled();
-    fireEvent.click(newMessage);
-    // A disabled control must not pretend to have tried.
-    expect(mockToast).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('New direct message')).toBeEnabled();
   });
 
-  it('states plainly on the enrolled panel that messaging does not work here yet', async () => {
+  it('no longer tells an enrolled user that messaging does not work here', async () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(/does not work in the web client/i)).toBeNull();
+    expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
+  });
+
+  it('opens a handle/name typeahead for a new conversation instead of an id prompt (#298)', async () => {
+    mockListConversations.mockResolvedValue({ conversations: [] });
+    mockSearchActors.mockResolvedValue({
+      actors: [{ id: 'actor-violet', handle: 'violet', displayName: 'Violet' } as unknown as Actor],
+    });
+    const windowPrompt = vi.spyOn(window, 'prompt');
+
+    renderMessages();
+    await screen.findByText('No conversations yet — start one.');
+
+    fireEvent.click(screen.getByLabelText('New direct message'));
+    expect(await screen.findByLabelText('Search by handle or name')).toBeInTheDocument();
+    expect(windowPrompt).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Search by handle or name'), {
+      target: { value: 'vio' },
+    });
+    fireEvent.mouseDown(await screen.findByRole('option', { name: /@violet/ }));
+
+    expect(await screen.findByLabelText('Message body')).toBeInTheDocument();
+    expect(screen.getByText('Message @violet')).toBeInTheDocument();
   });
 
   it('offers enrollment without claiming it enables messaging', async () => {
@@ -118,10 +169,10 @@ describe('MessagesRoute', () => {
     mockListConversations.mockResolvedValue({ conversations: [] });
 
     renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     expect(screen.getByLabelText('Enroll this browser as a messaging device')).toBeInTheDocument();
-    expect(screen.getByText(WEB_E2EE_SESSION_UNAVAILABLE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(/Use the terminal client/i)).toBeNull();
   });
 
   it('polls the conversation list every WEB_DM_POLL_MS while mounted (ADR 0032, P19-021)', async () => {
@@ -157,19 +208,19 @@ describe('MessagesRoute', () => {
         await screen.findByText(DM_LIST_POLL_FAILED_COPY, { exact: false }),
       ).toBeInTheDocument();
       expect(screen.getByText('@violet')).toBeInTheDocument();
-      expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
+      expect(screen.queryByText('No conversations yet — start one.')).not.toBeInTheDocument();
     },
   );
 
   it('an empty list under a failed poll is worded as a failure, not as "no conversations yet"', async () => {
     mockListConversations.mockResolvedValueOnce({ conversations: [] });
     const { queryClient } = renderMessages();
-    await screen.findByText('No conversations yet.');
+    await screen.findByText('No conversations yet — start one.');
 
     mockListConversations.mockRejectedValueOnce(new Error('network down'));
     await queryClient.refetchQueries({ queryKey: ['conversations'] });
 
     expect(await screen.findByText(DM_LIST_POLL_FAILED_COPY)).toBeInTheDocument();
-    expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No conversations yet — start one.')).not.toBeInTheDocument();
   });
 });

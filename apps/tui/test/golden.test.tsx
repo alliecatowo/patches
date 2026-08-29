@@ -6,9 +6,8 @@ import { NOTIFICATION_TYPE } from '../src/api/wire/enums.js';
 import stringWidth from 'string-width';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { stripSgr } from './ansi.js';
 import { createFakeApi, type FakeApiHandle } from './fake-api.js';
-import { expectFrame as harnessExpectFrame, flush, KEY } from './harness.js';
+import { expectFrame as harnessExpectFrame, flush, KEY, waitForStableFrame } from './harness.js';
 import { renderAppInWindow, type WindowAppResult } from './window.js';
 
 /**
@@ -108,6 +107,19 @@ function seedWorld(): FakeApiHandle {
 interface Scenario {
   name: string;
   reach: (app: WindowAppResult) => Promise<void>;
+  /** Text that must still be on screen once the frame is considered settled — the
+   * same marker `reach` itself waited on, re-checked below alongside the unread
+   * badge (issue #284). `reach` resolving only proves the marker was on screen at
+   * *some* instant; e.g. `compose`'s reach is satisfied the moment the quick-post
+   * overlay (a `modals.push`, not a screen change — `screenKey` never moves off
+   * `home`) paints "New Post", but the underlying `screen` stays `'home'` the whole
+   * time, so waiting on the unread badge alone can be satisfied by the Home
+   * background repainting *without* the overlay ever being back on screen — which is
+   * exactly how a stale `Home`-only frame got captured and committed as this
+   * scenario's golden fixture. Requiring both conditions in one `waitForFrame`
+   * predicate means the loop only stops once the scenario's own content and the
+   * badge are true in the *same* frame. */
+  settleText: string;
 }
 
 const SCENARIOS: readonly Scenario[] = [
@@ -118,6 +130,7 @@ const SCENARIOS: readonly Scenario[] = [
       await pressGo(app, 'l');
       await expectFrame(app, 'Golden frame fixture post');
     },
+    settleText: 'Golden frame fixture post',
   },
   {
     name: 'thread-split',
@@ -132,6 +145,7 @@ const SCENARIOS: readonly Scenario[] = [
       app.press(KEY.enter);
       await expectFrame(app, 'A reply from bob');
     },
+    settleText: 'A reply from bob',
   },
   {
     name: 'compose',
@@ -140,8 +154,9 @@ const SCENARIOS: readonly Scenario[] = [
       app.press('c');
       await expectFrame(app, 'New Post');
       app.press('Golden frame compose draft.');
-      await flush();
+      await expectFrame(app, 'Golden frame compose draft.');
     },
+    settleText: 'Golden frame compose draft.',
   },
   {
     name: 'notifications-drawer',
@@ -150,6 +165,7 @@ const SCENARIOS: readonly Scenario[] = [
       await pressGo(app, 'n');
       await expectFrame(app, 'Notifications');
     },
+    settleText: 'Notifications',
   },
   {
     name: 'page',
@@ -158,6 +174,7 @@ const SCENARIOS: readonly Scenario[] = [
       await pressGo(app, 'v');
       await expectFrame(app, 'golden fixture page');
     },
+    settleText: 'golden fixture page',
   },
 ];
 
@@ -178,7 +195,29 @@ describe('Golden frames (P12-123)', () => {
         const app = renderAppInWindow(size.columns, size.rows, { fake });
         try {
           await scenario.reach(app);
-          const frame = stripSgr(app.lastFrame() ?? '');
+          // `useUnreadCount` (apps/tui/src/hooks/useUnreadCount.ts) refetches on every
+          // screenKey change, including the final one each scenario lands on — every
+          // committed fixture bakes in the seeded '✉ 1' badge, so the frame is only
+          // deterministic once that fetch has settled. A scenario's own `reach` may
+          // resolve (e.g. static 'New Post' copy rendering) before that unrelated
+          // promise chain does, especially the `compose` scenario whose steps don't
+          // otherwise wait on real elapsed time. Waiting for the badge *alone* isn't
+          // enough (issue #284 recurrence): the badge can already be true on whatever
+          // was on screen before `reach` even ran (e.g. `compose`'s quick-post overlay
+          // is a modal over the still-mounted `home` screen, so the badge settling is
+          // unrelated to the overlay's own lifecycle), so a frame satisfying the badge
+          // predicate is not guaranteed to be the frame `reach` actually produced.
+          // Require the scenario's own settle marker in the *same* frame as the badge,
+          // and hold across two consecutive polls (`waitForStableFrame`) — a screen
+          // mid-transition (e.g. a full-takeover compose layout settling into its
+          // final centred overlay once `ContentSizeProvider`'s measurement effect
+          // commits) can satisfy both conditions for exactly one poll before Ink
+          // repaints again, and `lastFrame()` read right after a bare `waitForFrame`
+          // can already have moved on.
+          const frame = await waitForStableFrame(
+            app.lastFrame,
+            (text) => text.includes('✉ 1') && text.includes(scenario.settleText),
+          );
           const lines = frame.split('\n');
 
           expect(

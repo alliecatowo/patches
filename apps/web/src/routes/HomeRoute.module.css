@@ -56,3 +56,97 @@
   color: var(--fg);
   margin-bottom: 0.75rem;
 }
+
+.viewsBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.viewChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.3rem 0.15rem 0.15rem;
+}
+
+.viewChipButton {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.viewChipButton.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.viewChipAction {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.3rem;
+  line-height: 1;
+}
+
+.viewChipAction:hover {
+  color: var(--fg);
+}
+
+.renameForm {
+  display: inline-flex;
+}
+
+.renameInput {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.createForm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.createForm input,
+.createForm select {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.addViewButton {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.addViewButton:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+.viewPanel {
+  width: 100%;
+}

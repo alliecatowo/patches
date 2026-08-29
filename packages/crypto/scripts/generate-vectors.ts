@@ -1,15 +1,49 @@
 /**
  * One-off generator for `src/vectors/*.json`. Not part of the build or the verify pipeline —
  * regenerate deliberately (`pnpm exec tsx packages/crypto/scripts/generate-vectors.ts` from the
- * repo root) whenever a protocol change intentionally alters the wire bytes, and re-review the
- * diff. `src/vectors.test.ts` replays the checked-in JSON on every `pnpm test` run to catch
- * unintentional drift.
+ * repo root) whenever a protocol change intentionally alters the wire bytes, then run
+ * `pnpm exec prettier --write packages/crypto/src/vectors` (the JSON is checked in formatted) and
+ * re-review the diff. `src/vectors.test.ts` replays the checked-in JSON on every `pnpm test` run
+ * to catch unintentional drift.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { toHex } from '../src/codec.js';
+import { ByteWriter, concatBytes, toHex } from '../src/codec.js';
+import {
+  deviceLinkSas,
+  signDeviceLinkOffer,
+  verifyDeviceLinkOffer,
+  type DeviceLinkOfferFields,
+} from '../src/device-link.js';
+import {
+  E2EE_IDENTITY_TRANSCRIPT_DOMAIN,
+  E2EE_IDENTITY_TRANSCRIPT_TAGS,
+  E2EE_IDENTITY_TRANSCRIPT_VERSION,
+  type DeviceCertificateTranscript,
+  type DeviceRosterTranscript,
+  type MessagingRootTranscript,
+  type PreKeyBundleTranscript,
+} from '../src/identity-transcript.js';
+import {
+  identityTranscriptDigest,
+  signDeviceCertificate,
+  signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  verifyPreKeyBundle,
+} from '../src/identity.js';
+import { keyAgreementKeyPairFromPrivate, signingKeyPairFromPrivate } from '../src/primitives.js';
+import {
+  decodeSetupBlock,
+  encodeInitialFraming,
+  encodeSetupBlock,
+  splitInitialHeader,
+} from '../src/setup-block.js';
+import { bundleFixture, fixtureBytes, userFixture, FIXTURE_NOW } from '../src/testing/fixtures.js';
+import { E2EE_PROTOCOL } from '../src/types.js';
+import { initiateX3dh } from '../src/x3dh.js';
 import {
   decodeRatchetState,
   encodeRatchetState,
@@ -40,6 +74,216 @@ const encoder = new TextEncoder();
 
 function writeJson(name: string, value: unknown): void {
   writeFileSync(join(vectorsDir, name), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+/**
+ * ADR 0033 §6: the one canonical identity transcript family, for one deterministic seed, plus a
+ * table of hex inputs any conforming decoder must reject. Private keys are included because they
+ * are synthetic fixture scalars and a second implementation needs them to reproduce the
+ * signatures, not only the bytes.
+ */
+function generateIdentityTranscriptsVector(): void {
+  const seed = 404;
+  const rootKeyPair = signingKeyPairFromPrivate(fixtureBytes(seed));
+  const deviceSigning = signingKeyPairFromPrivate(fixtureBytes(seed + 1));
+  const deviceAgreement = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 2));
+  const signedPrekey = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 3));
+  const createdAtMs = 1_700_000_000_000;
+
+  const rootFields: MessagingRootTranscript = {
+    actorId: 'actor-vector',
+    generation: 1,
+    publicKey: rootKeyPair.publicKey,
+    createdAtMs,
+  };
+  const root = signMessagingRoot(rootKeyPair.privateKey, rootFields);
+
+  const certificateFields: DeviceCertificateTranscript = {
+    actorId: rootFields.actorId,
+    deviceId: 'device-vector-a',
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
+    certificateVersion: 1,
+    signingPublicKey: deviceSigning.publicKey,
+    agreementPublicKey: deviceAgreement.publicKey,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs: createdAtMs + 86_400_000,
+  };
+  const certificate = signDeviceCertificate(rootKeyPair.privateKey, certificateFields);
+
+  const rosterFields: DeviceRosterTranscript = {
+    actorId: rootFields.actorId,
+    rootGeneration: 1,
+    rootPublicKey: rootKeyPair.publicKey,
+    sequence: 1,
+    previousDigest: new Uint8Array(32),
+    createdAtMs,
+    entries: [
+      {
+        deviceId: certificateFields.deviceId,
+        certificateDigest: certificate.certificateDigest,
+        active: true,
+        addedAtMs: createdAtMs,
+      },
+      {
+        deviceId: 'device-vector-b',
+        certificateDigest: sha256Hash(encoder.encode('vector-revoked-device-certificate')),
+        active: false,
+        addedAtMs: createdAtMs,
+        revokedAtMs: createdAtMs + 1_000,
+      },
+    ],
+  };
+  const roster = signDeviceRoster(rootKeyPair.privateKey, rosterFields);
+
+  const bundleFields: PreKeyBundleTranscript = {
+    actorId: rootFields.actorId,
+    deviceId: certificateFields.deviceId,
+    certificateDigest: certificate.certificateDigest,
+    signedPrekeyId: 2 ** 33 + 7,
+    signedPrekeyPublicKey: signedPrekey.publicKey,
+    createdAtMs,
+    expiresAtMs: createdAtMs + 604_800_000,
+  };
+  const bundle = signPreKeyBundle(deviceSigning.privateKey, bundleFields);
+
+  const domainByteLength = encoder.encode(E2EE_IDENTITY_TRANSCRIPT_DOMAIN).length;
+  const versionOffset = 4 + domainByteLength;
+  const tagOffset = versionOffset + 1;
+  const mutated = (offset: number, value: number): Uint8Array => {
+    const copy = roster.rosterBytes.slice();
+    copy[offset] = value;
+    return copy;
+  };
+  const descendingEntries = ((): Uint8Array => {
+    const writer = new ByteWriter()
+      .string(E2EE_IDENTITY_TRANSCRIPT_DOMAIN)
+      .u8(E2EE_IDENTITY_TRANSCRIPT_VERSION)
+      .u8(E2EE_IDENTITY_TRANSCRIPT_TAGS.deviceRoster)
+      .string(rosterFields.actorId)
+      .u32(rosterFields.rootGeneration)
+      .fixed(rosterFields.rootPublicKey, 32)
+      .u64(rosterFields.sequence)
+      .fixed(rosterFields.previousDigest, 32)
+      .u64(rosterFields.createdAtMs)
+      .u32(2);
+    for (const deviceId of ['device-vector-b', 'device-vector-a']) {
+      writer
+        .string(deviceId)
+        .fixed(certificate.certificateDigest, 32)
+        .u8(1)
+        .u64(createdAtMs)
+        .u8(0)
+        .u64(0);
+    }
+    return writer.finish();
+  })();
+  const trailing = new Uint8Array(roster.rosterBytes.length + 1);
+  trailing.set(roster.rosterBytes, 0);
+
+  writeJson('identity-transcripts.json', {
+    description:
+      'The one canonical E2EE identity transcript family (ADR 0033 §2) for a single fixed seed: ' +
+      'messaging root (T1), device certificate (T2), device roster (T3), and prekey bundle (T4), ' +
+      'each with its exact transcript bytes, SHA-256 digest, and signature — plus hex inputs a ' +
+      'conforming decoder must reject. Replayed by src/vectors.test.ts.',
+    seed,
+    keys: {
+      rootPrivateKeyHex: toHex(rootKeyPair.privateKey),
+      rootPublicKeyHex: toHex(rootKeyPair.publicKey),
+      deviceSigningPrivateKeyHex: toHex(deviceSigning.privateKey),
+      deviceSigningPublicKeyHex: toHex(deviceSigning.publicKey),
+      deviceAgreementPublicKeyHex: toHex(deviceAgreement.publicKey),
+      signedPrekeyPublicKeyHex: toHex(signedPrekey.publicKey),
+    },
+    messagingRoot: {
+      fields: {
+        actorId: rootFields.actorId,
+        generation: rootFields.generation,
+        publicKeyHex: toHex(rootFields.publicKey),
+        createdAtMs: rootFields.createdAtMs,
+      },
+      transcriptHex: toHex(root.rootBytes),
+      digestHex: toHex(identityTranscriptDigest(root.rootBytes)),
+      selfSignatureHex: toHex(root.selfSignature),
+    },
+    deviceCertificate: {
+      fields: {
+        actorId: certificateFields.actorId,
+        deviceId: certificateFields.deviceId,
+        rootGeneration: certificateFields.rootGeneration,
+        rootPublicKeyHex: toHex(certificateFields.rootPublicKey),
+        certificateVersion: certificateFields.certificateVersion,
+        signingPublicKeyHex: toHex(certificateFields.signingPublicKey),
+        agreementPublicKeyHex: toHex(certificateFields.agreementPublicKey),
+        supportedProtocolVersions: certificateFields.supportedProtocolVersions,
+        createdAtMs: certificateFields.createdAtMs,
+        expiresAtMs: certificateFields.expiresAtMs,
+      },
+      transcriptHex: toHex(certificate.certificateBytes),
+      digestHex: toHex(certificate.certificateDigest),
+      rootSignatureHex: toHex(certificate.rootSignature),
+    },
+    deviceRoster: {
+      fields: {
+        actorId: rosterFields.actorId,
+        rootGeneration: rosterFields.rootGeneration,
+        rootPublicKeyHex: toHex(rosterFields.rootPublicKey),
+        sequence: rosterFields.sequence,
+        previousDigestHex: toHex(rosterFields.previousDigest),
+        createdAtMs: rosterFields.createdAtMs,
+        entries: rosterFields.entries.map((entry) => ({
+          deviceId: entry.deviceId,
+          certificateDigestHex: toHex(entry.certificateDigest),
+          active: entry.active,
+          addedAtMs: entry.addedAtMs,
+          revokedAtMs: entry.revokedAtMs ?? null,
+        })),
+      },
+      transcriptHex: toHex(roster.rosterBytes),
+      digestHex: toHex(roster.rosterDigest),
+      rootSignatureHex: toHex(roster.rootSignature),
+    },
+    preKeyBundle: {
+      fields: {
+        actorId: bundleFields.actorId,
+        deviceId: bundleFields.deviceId,
+        certificateDigestHex: toHex(bundleFields.certificateDigest),
+        signedPrekeyId: bundleFields.signedPrekeyId,
+        signedPrekeyPublicKeyHex: toHex(bundleFields.signedPrekeyPublicKey),
+        createdAtMs: bundleFields.createdAtMs,
+        expiresAtMs: bundleFields.expiresAtMs,
+      },
+      transcriptHex: toHex(bundle.bundleBytes),
+      digestHex: toHex(identityTranscriptDigest(bundle.bundleBytes)),
+      deviceSignatureHex: toHex(bundle.deviceSignature),
+    },
+    rejected: [
+      {
+        name: 'wrong tag',
+        transcript: 'deviceRoster',
+        inputHex: toHex(mutated(tagOffset, E2EE_IDENTITY_TRANSCRIPT_TAGS.preKeyBundle)),
+      },
+      {
+        name: 'wrong version',
+        transcript: 'deviceRoster',
+        inputHex: toHex(mutated(versionOffset, 2)),
+      },
+      {
+        name: 'wrong domain',
+        transcript: 'deviceRoster',
+        // Last byte of 'patches-e2ee/identity-v1' -> '2'; same length, so only the domain differs.
+        inputHex: toHex(mutated(4 + domainByteLength - 1, 0x32)),
+      },
+      {
+        name: 'non-ascending entries',
+        transcript: 'deviceRoster',
+        inputHex: toHex(descendingEntries),
+      },
+      { name: 'trailing bytes', transcript: 'deviceRoster', inputHex: toHex(trailing) },
+    ],
+  });
 }
 
 function generateX3dhVector(): void {
@@ -239,10 +483,278 @@ function generateDeviceEnvelopeVector(): void {
   });
 }
 
+/**
+ * ADR 0037 §1: a fixed device-link offer, its device signature, the SAS derived from its bytes,
+ * and hex inputs a conforming decoder/verifier must reject.
+ */
+function generateDeviceLinkVector(): void {
+  const seed = 606;
+  const deviceSigning = signingKeyPairFromPrivate(fixtureBytes(seed));
+  const deviceAgreement = keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 1));
+  const createdAtMs = 1_700_000_000_000;
+  const expiresAtMs = createdAtMs + 600_000;
+
+  const offerFields: DeviceLinkOfferFields = {
+    actorId: 'actor-vector',
+    deviceId: 'device-vector-link',
+    signingPublicKey: deviceSigning.publicKey,
+    agreementPublicKey: deviceAgreement.publicKey,
+    supportedProtocolVersions: [E2EE_PROTOCOL],
+    createdAtMs,
+    expiresAtMs,
+  };
+  const signed = signDeviceLinkOffer(deviceSigning.privateKey, offerFields);
+  // Verified here only to prove the fixture round-trips before it is committed; the recorded
+  // vector itself is replayed from the raw bytes by `src/vectors.test.ts`.
+  verifyDeviceLinkOffer({
+    offerBytes: signed.offerBytes,
+    deviceSignature: signed.deviceSignature,
+    nowMs: createdAtMs + 1_000,
+  });
+  const sas = deviceLinkSas(signed.offerBytes, offerFields.actorId);
+
+  const domainByteLength = encoder.encode('patches-e2ee-v1/device-link-offer').length;
+  const versionOffset = 4 + domainByteLength;
+  const tamperedSignature = signed.deviceSignature.slice();
+  tamperedSignature[0] = (tamperedSignature[0] ?? 0) ^ 0xff;
+  const trailing = new Uint8Array(signed.offerBytes.length + 1);
+  trailing.set(signed.offerBytes, 0);
+  const wrongVersion = signed.offerBytes.slice();
+  wrongVersion[versionOffset] = 2;
+
+  writeJson('device-link.json', {
+    description:
+      'ADR 0037 §1 device-link offer transcript for a single fixed seed: the offer fields, ' +
+      'transcript bytes, device signature, and derived SAS — plus hex/signature inputs a ' +
+      'conforming verifier must reject. Replayed by src/vectors.test.ts.',
+    seed,
+    keys: {
+      deviceSigningPrivateKeyHex: toHex(deviceSigning.privateKey),
+      deviceSigningPublicKeyHex: toHex(deviceSigning.publicKey),
+      deviceAgreementPublicKeyHex: toHex(deviceAgreement.publicKey),
+    },
+    offer: {
+      fields: {
+        actorId: offerFields.actorId,
+        deviceId: offerFields.deviceId,
+        signingPublicKeyHex: toHex(offerFields.signingPublicKey),
+        agreementPublicKeyHex: toHex(offerFields.agreementPublicKey),
+        supportedProtocolVersions: offerFields.supportedProtocolVersions,
+        createdAtMs: offerFields.createdAtMs,
+        expiresAtMs: offerFields.expiresAtMs,
+      },
+      transcriptHex: toHex(signed.offerBytes),
+      deviceSignatureHex: toHex(signed.deviceSignature),
+      verifiedAtMs: createdAtMs + 1_000,
+    },
+    sas: {
+      actorId: offerFields.actorId,
+      value: sas,
+    },
+    rejected: [
+      {
+        name: 'tampered signature',
+        offerHex: toHex(signed.offerBytes),
+        signatureHex: toHex(tamperedSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+      {
+        name: 'expired offer',
+        offerHex: toHex(signed.offerBytes),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: expiresAtMs,
+      },
+      {
+        name: 'trailing bytes',
+        offerHex: toHex(trailing),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+      {
+        name: 'wrong version',
+        offerHex: toHex(wrongVersion),
+        signatureHex: toHex(signed.deviceSignature),
+        nowMs: createdAtMs + 1_000,
+      },
+    ],
+  });
+}
+
+/**
+ * ADR 0034 Stage 0(a) / issue #155: the initial-envelope setup-block framing is the only thing in
+ * the duplicated client E2EE runtime that two *clients* must agree on byte-for-byte with no server
+ * in the middle. One encode with a one-time prekey, one without, plus hex inputs a conforming
+ * decoder must reject (wrong magic, wrong version, trailing bytes, truncated framing).
+ */
+function generateSetupBlockVector(): void {
+  const seed = 505;
+  const alice = userFixture('alice-setup', seed);
+  const bob = userFixture('bob-setup', seed + 10);
+  const identity = { actorId: alice.device.actorId, deviceId: alice.device.deviceId };
+
+  // Encode WITH a one-time prekey.
+  const bundleWithOtp = bundleFixture(bob, seed + 20);
+  const initiatedWithOtp = initiateX3dh({
+    initiatorKeys: alice.keys,
+    initiatorDevice: alice.device,
+    initiatorRoster: alice.roster,
+    responderBundle: bundleWithOtp.bundle,
+    responderRoster: bob.roster,
+    nowMs: FIXTURE_NOW,
+    ephemeralKey: keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 30)),
+  });
+  const setupBlockWithOtp = encodeSetupBlock(identity, initiatedWithOtp.handshake);
+  const framedWithOtp = encodeInitialFraming(setupBlockWithOtp);
+  const ratchetHeaderWithOtp = encoder.encode('vector-ratchet-header-with-otp');
+  const envelopeWithOtp = concatBytes(framedWithOtp, ratchetHeaderWithOtp);
+
+  // Encode WITHOUT a one-time prekey.
+  const signedPreKeyNoOtp = {
+    id: 2 ** 33 + 11,
+    keyPair: keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 40)),
+  };
+  const signedBundleNoOtp = signPreKeyBundle(bob.keys.signing.privateKey, {
+    actorId: bob.device.actorId,
+    deviceId: bob.device.deviceId,
+    certificateDigest: bob.device.certificateDigest,
+    signedPrekeyId: signedPreKeyNoOtp.id,
+    signedPrekeyPublicKey: signedPreKeyNoOtp.keyPair.publicKey,
+    createdAtMs: 1,
+    expiresAtMs: 20_000,
+  });
+  const bundleNoOtp = verifyPreKeyBundle({
+    bundleBytes: signedBundleNoOtp.bundleBytes,
+    deviceSignature: signedBundleNoOtp.deviceSignature,
+    certificateBytes: bob.device.certificateBytes,
+    certificateRootSignature: bob.device.rootSignature,
+    roster: bob.roster,
+    nowMs: FIXTURE_NOW,
+  });
+  const initiatedNoOtp = initiateX3dh({
+    initiatorKeys: alice.keys,
+    initiatorDevice: alice.device,
+    initiatorRoster: alice.roster,
+    responderBundle: bundleNoOtp,
+    responderRoster: bob.roster,
+    nowMs: FIXTURE_NOW,
+    ephemeralKey: keyAgreementKeyPairFromPrivate(fixtureBytes(seed + 50)),
+  });
+  const setupBlockNoOtp = encodeSetupBlock(identity, initiatedNoOtp.handshake);
+  const framedNoOtp = encodeInitialFraming(setupBlockNoOtp);
+  const ratchetHeaderNoOtp = encoder.encode('vector-ratchet-header-no-otp');
+  const envelopeNoOtp = concatBytes(framedNoOtp, ratchetHeaderNoOtp);
+
+  // Self-check before writing: both encodes must round-trip through decode/split.
+  const decodedWithOtp = decodeSetupBlock(setupBlockWithOtp);
+  if (decodedWithOtp.senderActorId !== identity.actorId) {
+    throw new Error('Setup-block vector (with OTP) did not round-trip its sender identity.');
+  }
+  const splitWithOtp = splitInitialHeader(envelopeWithOtp);
+  if (toHex(splitWithOtp.ratchetHeader) !== toHex(ratchetHeaderWithOtp)) {
+    throw new Error('Setup-block vector (with OTP) did not round-trip its ratchet header.');
+  }
+  const splitNoOtp = splitInitialHeader(envelopeNoOtp);
+  if (toHex(splitNoOtp.ratchetHeader) !== toHex(ratchetHeaderNoOtp)) {
+    throw new Error('Setup-block vector (without OTP) did not round-trip its ratchet header.');
+  }
+
+  // Decoder-must-reject cases.
+  const wrongMagic = envelopeWithOtp.slice();
+  wrongMagic[0] = (wrongMagic[0] ?? 0) ^ 0xff;
+
+  const wrongVersion = setupBlockWithOtp.slice();
+  wrongVersion[0] = 2;
+
+  const trailingSetupBlock = new Uint8Array(setupBlockWithOtp.length + 1);
+  trailingSetupBlock.set(setupBlockWithOtp, 0);
+
+  // Cut past the whole ratchet header and ten bytes into the setup block itself, so the length
+  // prefix claims more setup-block bytes than remain (`ratchetHeaderWithOtp.length` alone would
+  // only shorten the trailing ratchet header, which `splitInitialHeader` never length-checks).
+  const truncatedEnvelope = envelopeWithOtp.slice(
+    0,
+    envelopeWithOtp.length - ratchetHeaderWithOtp.length - 10,
+  );
+
+  writeJson('setup-block.json', {
+    description:
+      'ADR 0034 Stage 0(a) / issue #155: the initial-envelope setup-block framing (SETUP_MAGIC ' +
+      '"PESH", SETUP_VERSION 1, then the exact writer call sequence) two clients must agree on ' +
+      'byte-for-byte with no server in the middle. One encode with a one-time prekey, one ' +
+      'without, each wrapped in the four-byte-magic/length-prefixed initial framing around a ' +
+      'placeholder ratchet header, plus hex inputs a conforming decoder must reject. Replayed by ' +
+      'src/vectors.test.ts and both apps/tui and apps/web session-setup suites.',
+    seed,
+    identity,
+    withOneTimePreKey: {
+      handshake: {
+        initiatorRosterDigestHex: toHex(initiatedWithOtp.handshake.initiatorRosterDigest),
+        responderRosterDigestHex: toHex(initiatedWithOtp.handshake.responderRosterDigest),
+        ephemeralPublicKeyHex: toHex(initiatedWithOtp.handshake.ephemeralPublicKey),
+        signedPreKeyId: initiatedWithOtp.handshake.signedPreKeyId,
+        signedPreKeyPublicKeyHex: toHex(initiatedWithOtp.handshake.signedPreKeyPublicKey),
+        oneTimePreKeyId: initiatedWithOtp.handshake.oneTimePreKeyId ?? null,
+        oneTimePreKeyPublicKeyHex:
+          initiatedWithOtp.handshake.oneTimePreKeyPublicKey === undefined
+            ? null
+            : toHex(initiatedWithOtp.handshake.oneTimePreKeyPublicKey),
+        initiatorSignatureHex: toHex(initiatedWithOtp.handshake.initiatorSignature),
+      },
+      setupBlockHex: toHex(setupBlockWithOtp),
+      ratchetHeaderHex: toHex(ratchetHeaderWithOtp),
+      envelopeHeaderHex: toHex(envelopeWithOtp),
+    },
+    withoutOneTimePreKey: {
+      handshake: {
+        initiatorRosterDigestHex: toHex(initiatedNoOtp.handshake.initiatorRosterDigest),
+        responderRosterDigestHex: toHex(initiatedNoOtp.handshake.responderRosterDigest),
+        ephemeralPublicKeyHex: toHex(initiatedNoOtp.handshake.ephemeralPublicKey),
+        signedPreKeyId: initiatedNoOtp.handshake.signedPreKeyId,
+        signedPreKeyPublicKeyHex: toHex(initiatedNoOtp.handshake.signedPreKeyPublicKey),
+        oneTimePreKeyId: initiatedNoOtp.handshake.oneTimePreKeyId ?? null,
+        oneTimePreKeyPublicKeyHex:
+          initiatedNoOtp.handshake.oneTimePreKeyPublicKey === undefined
+            ? null
+            : toHex(initiatedNoOtp.handshake.oneTimePreKeyPublicKey),
+        initiatorSignatureHex: toHex(initiatedNoOtp.handshake.initiatorSignature),
+      },
+      setupBlockHex: toHex(setupBlockNoOtp),
+      ratchetHeaderHex: toHex(ratchetHeaderNoOtp),
+      envelopeHeaderHex: toHex(envelopeNoOtp),
+    },
+    rejected: [
+      {
+        name: 'wrong magic',
+        decoder: 'splitInitialHeader',
+        inputHex: toHex(wrongMagic),
+      },
+      {
+        name: 'wrong version',
+        decoder: 'decodeSetupBlock',
+        inputHex: toHex(wrongVersion),
+      },
+      {
+        name: 'trailing bytes',
+        decoder: 'decodeSetupBlock',
+        inputHex: toHex(trailingSetupBlock),
+      },
+      {
+        name: 'truncated framing',
+        decoder: 'splitInitialHeader',
+        inputHex: toHex(truncatedEnvelope),
+      },
+    ],
+  });
+}
+
+generateIdentityTranscriptsVector();
 generateX3dhVector();
 generateDoubleRatchetVector();
 generateFrankingVector();
 generateDeviceEnvelopeVector();
+generateDeviceLinkVector();
+generateSetupBlockVector();
 process.stdout.write(
-  'Wrote src/vectors/{x3dh-handshake,double-ratchet-session,franking,device-envelope}.json\n',
+  'Wrote src/vectors/{identity-transcripts,x3dh-handshake,double-ratchet-session,franking,' +
+    'device-envelope,device-link,setup-block}.json\n',
 );

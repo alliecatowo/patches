@@ -1,85 +1,107 @@
 /**
- * Device enrollment (B-107, ADR 0020 §2–§3): turns this installation into a real,
- * locally-held messaging device so the B-101 runtime stops running identity-less.
+ * Device enrollment (B-107, ADR 0020 §2–§3, ADR 0033): turns this device into a real,
+ * locally-held messaging device.
  *
  * The flow, in order — every step fails closed, never a half-trusted state:
  *
  *   1. Preflight against `GetE2eeCapability` (rollout state + protocol versions). A
  *      first device bootstraps the account root here (`PublishIdentityRoot`, generation
- *      1); an account that already publishes a root this machine does not hold is
+ *      1); an account that already publishes a root this device does not hold is
  *      refused honestly — adopting or linking an existing authority key is recovery
  *      work, not enrollment (ADR 0020 §2: ordinary devices never receive the root
  *      private key; the root lives in this vault per the recovery design).
- *   2. Generate this device's Ed25519 signing + X25519 agreement keypairs, then sign
- *      BOTH transcript families from the same keys: the crypto-native encodings
- *      `@patches/crypto`'s X3DH verifies locally (`LocalDeviceIdentity`), and the
- *      node-canonical transcripts the node stores and serves (`node-transcripts.ts`).
- *      Two encoders, one key set — the split is documented in the server codec's
- *      header; hoisting it into `@patches/domain` is the tracked follow-up that would
- *      remove it (packages are read-only in this change).
+ *   2. Generate this device's Ed25519 signing + X25519 agreement keypairs locally
+ *      (`@noble/curves` — no OS keychain material anywhere in this path), then mint the
+ *      ONE canonical identity transcript family (ADR 0033 §1) from those keys via
+ *      `@patches/crypto`'s `sign*` functions, and immediately re-verify every minted
+ *      value through the matching `verify*` — even this device's own material never
+ *      skips the check a peer's would have to pass (ADR 0033 §3).
  *   3. Persist EVERYTHING through the encrypted vault BEFORE any bytes reach the node
  *      (ADR 0020 §4's commit-before-network rule, applied to identity): the node must
  *      never hold keys this device could lose to a crash. A stored record whose
- *      submission never completed resumes verbatim on the next attempt.
+ *      submission never completed resumes verbatim on the next attempt, and reloading
+ *      it re-runs the same verifiers rather than trusting the disk (ADR 0033 §3).
  *   4. Call `EnrollDevice` with certificate + signed roster + signed prekey bundle +
- *      one-time prekeys. Success flips the runtime's `enrolled()` true via the shell,
- *      and every peer's next roster check sees the bump — which is why the screens
- *      surface ADR 0020 §3's visible-security-event warning alongside the result.
+ *      one-time prekeys, over Connect through `@patches/client`. The wire bytes ARE the
+ *      `@patches/crypto` transcript bytes — the node verifies with the same decoder.
  *
  * Hard rules carried over from the runtime (ADR 0020 §4 / spec §194): no key material
  * or transcript bytes ever reach an error message or log line; user-facing copy is fixed.
  */
 import { create } from '@bufbuild/protobuf';
 import {
+  E2eeDeviceRosterSchema,
   E2eeIdentityRootSchema,
   EnrollDeviceRequestSchema,
   PublishIdentityRootRequestSchema,
 } from '@patches/proto/es';
 import {
-  sha256Hash,
-  sign,
+  signDeviceCertificate,
   signDeviceRoster,
+  signMessagingRoot,
+  signPreKeyBundle,
+  sortRosterEntries,
+  verifyCertifiedDevice,
+  verifyMessagingRoot,
+  verifyRosterSnapshot,
   zeroize,
   ByteReader,
   ByteWriter,
-  E2EE_PROTOCOL,
-  E2EE_VERSION,
   KEY_BYTES,
-  certifyDevice,
-  createSignedPreKey,
+  SIGNATURE_BYTES,
   generateKeyAgreementKeyPair,
   generateSigningKeyPair,
   randomBytes,
-  rosterDigest,
-  type CertifiedDevice,
-  type DeviceCertificate,
-  type DeviceRoster,
+  type DeviceRosterEntryTranscript,
   type KeyPair,
+  type VerifiedRosterSnapshot,
 } from '@patches/crypto';
-import { E2EE_ONE_TIME_PREKEY_TARGET, E2EE_PROTOCOL_V1 } from '@patches/domain';
-
-import { fromDate } from '../api/wire/time.js';
+import {
+  E2EE_DEVICE_CERTIFICATE_VERSION,
+  E2EE_ONE_TIME_PREKEY_TARGET,
+  E2EE_PROTOCOL_V1,
+} from '@patches/domain';
 import { E2EE_DEVICE_STATUS } from '../api/wire/enums.js';
 import type {
   EnrollDeviceRequest,
+  E2eeDeviceCertificate,
+  E2eeDeviceRoster,
   E2eeIdentityRoot,
+  E2eeOneTimePrekey,
+  E2eeServiceBeginDeviceLinkRequest,
+  E2eeServiceBeginDeviceLinkResponse,
+  E2eeServiceListPendingDeviceLinksResponse,
+  E2eeSignedPrekey,
+  GetPrekeyInventoryResponse,
   PublishIdentityRootRequest,
-} from '../api/wire/types.js';
-import type { LocalDeviceIdentity } from './local-identity.js';
+  RevokeDeviceRequest,
+  UploadPrekeysRequest,
+  UploadPrekeysResponse,
+} from '@patches/proto/es';
+
+import { fromDate, toDate } from '../api/wire/time.js';
+import type {
+  LocalDeviceIdentity,
+  LocalOneTimePreKey,
+  LocalPreviousSignedPreKey,
+  LocalSignedPreKeyBundle,
+} from './local-identity.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
-import {
-  encodeCertificateTranscript,
-  encodePrekeyBundleTranscript,
-  encodeRosterTranscript,
-} from './node-transcripts.js';
 
 /** Certificate validity window (ADR 0020 §2 leaves the cadence to clients; 30 days keeps
- * renewal a routine, root-signed roster bump rather than an identity event). */
-const CERTIFICATE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1_000;
+ * renewal a routine, root-signed roster bump rather than an identity event). Exported for
+ * `device-link.ts` (ADR 0037 §1): the offering device must predict the same
+ * `certificateExpiresAtMs` the authority will later use, so the certificate digest baked into
+ * its prekey bundle matches byte-for-byte. */
+export const CERTIFICATE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1_000;
 /** Signed-prekey rotation window (ADR 0020 §5: seven days). */
 const SIGNED_PREKEY_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
-/** One-time prekeys created at enrollment; `UploadPrekeys` replenishes later (B-107 left). */
+/** One-time prekeys created at enrollment; `UploadPrekeys` replenishes later. */
 const INITIAL_ONE_TIME_PREKEY_COUNT = E2EE_ONE_TIME_PREKEY_TARGET;
+/** ADR 0020 §2: enrollment always mints the account's first root generation. */
+const ROOT_GENERATION = 1;
+/** ADR 0020 §2: enrollment always mints roster sequence 1. */
+const ROSTER_SEQUENCE = 1;
 
 // ---------------------------------------------------------------------------
 // User copy — fixed strings only (no key material can ever parameterize these)
@@ -88,21 +110,37 @@ const INITIAL_ONE_TIME_PREKEY_COUNT = E2EE_ONE_TIME_PREKEY_TARGET;
 export const ENROLLMENT_REFUSAL_COPY = {
   capabilityOff:
     'This node has not enabled end-to-end encrypted messaging, so no device can be enrolled here.',
-  remoteRoot:
-    'This account already has a messaging identity published from another device, and this ' +
-    'computer does not hold its authority key. Linking an existing identity is not available ' +
-    'yet — enroll from the device that set it up.',
 } as const;
+
+/**
+ * ADR 0037 §2: when enrollment finds a published root this device does not hold, a refusal
+ * is no longer the only answer — the client offers exactly three fixed-copy outcomes. `cancel`
+ * leaves the account exactly as `enrollThisDevice` found it; no fourth option deletes anything.
+ */
+export const NEEDS_AUTHORITY_COPY = {
+  summary:
+    'This account already has a messaging identity published from another device, and this ' +
+    'device does not hold its authority key.',
+  link: 'Link this device — approve from a device that already has your messaging identity.',
+  rotate:
+    'Start a new messaging identity: everyone you message will be warned, and history on ' +
+    'lost devices is not recoverable.',
+  cancel: 'Cancel.',
+} as const;
+
+/** Fixed choice set ADR 0037 §2 allows when a remote root is unreachable from this device. */
+export const NEEDS_AUTHORITY_OPTIONS = ['link', 'rotate', 'cancel'] as const;
+export type NeedsAuthorityOption = (typeof NEEDS_AUTHORITY_OPTIONS)[number];
 
 /** ADR 0020 §3: adding a certified device is a visible security event for peers — shown
  * on the enrollment result, not buried in help. */
 export const ENROLLMENT_PEER_WARNING_COPY =
   'Your enrolled-device list changed. People you chat with will see a new-device security ' +
   'notice on their next check; your safety number with them does not change. If you did not ' +
-  'just approve this on purpose, revoke the device now (:devices).';
+  'just approve this on purpose, revoke the device now.';
 
 // ---------------------------------------------------------------------------
-// Enrollment transport seam — implemented by the shell over `PatchesApi`
+// Enrollment transport seam — implemented by the app shell over `@patches/client`
 // ---------------------------------------------------------------------------
 
 /** Structural capability view the flow needs (mirrors `GetE2eeCapabilityResponse`). */
@@ -111,34 +149,58 @@ export interface EnrollmentCapability {
   readonly supportedProtocolVersions: readonly string[];
 }
 
+/** Structural view of `GetDeviceRosterResponse` the linking/rotation flows need. */
+export interface EnrollmentDeviceRoster {
+  readonly roster: E2eeDeviceRoster | undefined;
+  readonly certificates: readonly E2eeDeviceCertificate[];
+}
+
 export interface EnrollmentTransport {
   getCapability(): Promise<EnrollmentCapability | undefined>;
   /** The account's current published root, or `undefined` when there is none yet. */
   getIdentityRoot(actorId: string): Promise<E2eeIdentityRoot | undefined>;
   publishIdentityRoot(request: PublishIdentityRootRequest): Promise<unknown>;
   enrollDevice(request: EnrollDeviceRequest): Promise<unknown>;
+  /** The caller's own current device roster + certificates (ADR 0037 §1/§2). */
+  getDeviceRoster(actorId: string): Promise<EnrollmentDeviceRoster>;
+  /** Posts a new device's link offer (ADR 0037 §1). */
+  beginDeviceLink(
+    request: E2eeServiceBeginDeviceLinkRequest,
+  ): Promise<E2eeServiceBeginDeviceLinkResponse>;
+  /** The caller's own pending link offers (ADR 0037 §1). */
+  listPendingDeviceLinks(): Promise<E2eeServiceListPendingDeviceLinksResponse>;
+  /** Discards a pending offer (ADR 0037 §1, §3.4). */
+  cancelDeviceLink(linkId: string): Promise<unknown>;
+  /** Marks one device inactive on a root-signed roster S+1 the caller already built
+   * (issue #277 comment — authority-only; the node checks the signature, not who calls). */
+  revokeDevice(request: RevokeDeviceRequest): Promise<unknown>;
+  /** This device's own remaining one-time-prekey count and signed-prekey age (ADR 0020 §5,
+   * issue #278) — read by `prekey-maintenance.ts` on every maintenance attempt. */
+  getPrekeyInventory(deviceId: string): Promise<GetPrekeyInventoryResponse>;
+  /** Tops up one-time prekeys and/or rotates the signed prekey (ADR 0020 §5, issue #278). */
+  uploadPrekeys(request: UploadPrekeysRequest): Promise<UploadPrekeysResponse>;
 }
 
 // ---------------------------------------------------------------------------
 // Stored record — everything needed to resume, re-submit, and run the runtime
 // ---------------------------------------------------------------------------
 
-/** Reserved vault record key. The leading `\u0000` cannot occur in a real session id
+/** Reserved vault record key. The leading NUL cannot occur in a real session id
  * (`sessionIdFor` composes UUID conversation ids), so the runtime can never collide. */
-export const ENROLLMENT_RECORD_KEY = '\u0000patches-e2ee-enrollment';
+export const ENROLLMENT_RECORD_KEY = '\0patches-e2ee-enrollment';
 
-/** Node-canonical material submitted to `EnrollDevice` (kept for verbatim resubmission). */
-export interface SubmittedWireMaterial {
-  readonly certificateBytes: Uint8Array;
-  readonly certificateRootSignature: Uint8Array;
-  readonly rosterSequence: bigint;
-  readonly rosterBytes: Uint8Array;
-  readonly rosterDigestValue: Uint8Array;
-  readonly rosterRootSignature: Uint8Array;
-  readonly addedAtMs: number;
-  readonly signedPrekeyId: number;
-  readonly bundleBytes: Uint8Array;
-  readonly bundleSignature: Uint8Array;
+/**
+ * A one-time/signed-prekey batch this device minted and persisted but has not yet confirmed
+ * the node accepted (ADR 0020 §5, issue #278's crash-safety contract): staged strictly BEFORE
+ * `UploadPrekeys` is called, and cleared strictly AFTER it resolves. A process that dies in
+ * between resumes by re-sending exactly this batch — never minting a second one, which would
+ * collide with the node's immutable per-device issued-id ledger.
+ */
+export interface PendingPrekeyUpload {
+  /** Empty when this batch is a rotation-only upload. */
+  readonly oneTimePrekeyIds: readonly number[];
+  /** `undefined` when this batch is a replenish-only upload. */
+  readonly signedPreKeyId: number | undefined;
 }
 
 export interface StoredEnrollment {
@@ -146,11 +208,26 @@ export interface StoredEnrollment {
   readonly submitted: boolean;
   /** True when this device bootstrapped the account root (`PublishIdentityRoot` gen 1). */
   readonly createdRoot: boolean;
-  readonly rootPrivate: Uint8Array;
+  /**
+   * Absent for an ordinary linked device (ADR 0037 §1): linking never copies the root key,
+   * so a linked device's record has nothing here to hold. Present for the bootstrap device
+   * and for an authority that later imports a recovery archive (#272).
+   */
+  readonly rootPrivate: Uint8Array | undefined;
   readonly rootPublic: Uint8Array;
-  readonly rootGeneration: number;
   readonly identity: LocalDeviceIdentity;
-  readonly wire: SubmittedWireMaterial;
+  /**
+   * Next id `prekey-maintenance.ts` mints a locally-generated one-time prekey under (ADR 0020
+   * §5, issue #278) — monotonic for the life of this device, independent of which currently-held
+   * `identity.oneTimePreKeys` entries the node has already consumed or this device has since
+   * forgotten, so an id the node's immutable per-device ledger already saw is never reissued.
+   */
+  readonly nextOneTimePrekeyId: number;
+  /** Signed prekeys retired by rotation, retained until their mailbox-latency window elapses
+   * (ADR 0020 §5, issue #278) — see `LocalPreviousSignedPreKey`. */
+  readonly previousSignedPreKeys: readonly LocalPreviousSignedPreKey[];
+  /** See {@link PendingPrekeyUpload}. `undefined` when no upload is outstanding. */
+  readonly pendingPrekeyUpload: PendingPrekeyUpload | undefined;
 }
 
 function writeKey(writer: ByteWriter, key: KeyPair): void {
@@ -161,173 +238,280 @@ function readKey(reader: ByteReader): KeyPair {
   return { privateKey: reader.fixed(KEY_BYTES), publicKey: reader.fixed(KEY_BYTES) };
 }
 
-function writeBytes(writer: ByteWriter, value: Uint8Array): void {
-  // `ByteWriter#bytes` writes a u32 length prefix; `readLengthPrefixed` mirrors it.
-  writer.bytes(value);
-}
-
-function readLengthPrefixed(reader: ByteReader): Uint8Array {
-  return reader.bytes();
-}
-
-function u64ToBigEndian(value: bigint): Uint8Array {
-  if (value < 0n || value > 0xffff_ffff_ffff_ffffn) throw new Error('u64 out of range.');
-  const out = new Uint8Array(8);
-  new DataView(out.buffer).setBigUint64(0, value, false);
-  return out;
-}
-
-function u64FromBigEndian(bytes: Uint8Array): bigint {
-  return new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, false);
-}
+/**
+ * Serializes the raw signed material a `StoredEnrollment` rests on: private keys plus
+ * every `*Bytes`/`*Signature` pair the matching `verify*` needs to reconstruct the
+ * branded `Verified*` values on load. Nothing here is trusted on decode without
+ * re-running those verifiers (ADR 0033 §3) — a corrupted or tampered record fails
+ * closed rather than resurrecting an unverified identity.
+ */
+/** Current codec version.
+ *
+ * v1 -> v2: let `rootPrivate` be absent (ADR 0037 §1: an ordinary linked device never holds the
+ * root key) — `decodeStoredEnrollment` still reads a version-1 record, which always carried a
+ * present `rootPrivate`.
+ *
+ * v2 -> v3: append every OTHER active roster entry's certificate (ADR 0037 §1: once a second
+ * device is linked, `identity.ownRoster` has more than one active entry, and
+ * `verifyRosterSnapshot` on reload needs a certificate for each of them — v1/v2 only ever
+ * round-tripped this device's own certificate, which was sufficient while a roster could only
+ * ever have exactly one active entry). `identity.ownRoster.devices` already holds every active
+ * entry's verified certificate (it is what `verifyRosterSnapshot` itself built), so encoding
+ * just serializes the ones that are not this device's own (already written above).
+ *
+ * v3 -> v4 (issue #278, ADR 0020 §5): append `nextOneTimePrekeyId`, retained
+ * `previousSignedPreKeys`, and an outstanding `pendingPrekeyUpload` — everything
+ * `prekey-maintenance.ts` needs to replenish/rotate crash-safely. v1–v3 records predate prekey
+ * maintenance entirely: `nextOneTimePrekeyId` defaults to one past the highest id already held
+ * (never lower — that would risk reissuing an id the node's ledger has already seen),
+ * `previousSignedPreKeys` defaults to empty, and no upload can be outstanding.
+ */
+const STORED_ENROLLMENT_VERSION = 4;
 
 export function encodeStoredEnrollment(record: StoredEnrollment): Uint8Array {
-  const certificate = record.identity.selfDevice.certificate;
+  const identity = record.identity;
+  const root = identity.ownRoster.root;
   const writer = new ByteWriter()
-    .u8(1)
+    .u8(STORED_ENROLLMENT_VERSION)
     .u8(record.submitted ? 1 : 0)
     .u8(record.createdRoot ? 1 : 0)
-    .fixed(record.rootPrivate, KEY_BYTES)
-    .fixed(record.rootPublic, KEY_BYTES)
-    .u32(record.rootGeneration)
-    .string(record.identity.actorId)
-    .string(record.identity.deviceId);
-  writeKey(writer, record.identity.keys.signing);
-  writeKey(writer, record.identity.keys.agreement);
-  writer.u32(certificate.generation);
-  writer.u64(certificate.createdAtMs).u64(certificate.expiresAtMs);
-  writeBytes(writer, record.identity.selfDevice.rootSignature);
-  writeBytes(writer, record.identity.ownRoster.rootSignature);
-  writer.u64(record.identity.ownRoster.roster.createdAtMs);
-  writer.u32(record.identity.signedPreKey.id);
-  writeKey(writer, record.identity.signedPreKey.keyPair);
-  writer
-    .u64(record.identity.signedPreKey.createdAtMs)
-    .u64(record.identity.signedPreKey.expiresAtMs);
-  writeBytes(writer, record.identity.signedPreKey.signature);
-  writer.u32(record.identity.oneTimePreKeys.length);
-  for (const prekey of record.identity.oneTimePreKeys) {
+    .u8(record.rootPrivate === undefined ? 0 : 1);
+  if (record.rootPrivate !== undefined) writer.fixed(record.rootPrivate, KEY_BYTES);
+  writer.fixed(record.rootPublic, KEY_BYTES);
+  writer.bytes(root.rootBytes).fixed(root.selfSignature, SIGNATURE_BYTES);
+  writeKey(writer, identity.keys.signing);
+  writeKey(writer, identity.keys.agreement);
+  writer.bytes(identity.selfDevice.certificateBytes);
+  writer.fixed(identity.selfDevice.rootSignature, SIGNATURE_BYTES);
+  writer.bytes(identity.ownRoster.rosterBytes);
+  writer.fixed(identity.ownRoster.rootSignature, SIGNATURE_BYTES);
+  writer.u32(identity.signedPreKey.id);
+  writeKey(writer, identity.signedPreKey.keyPair);
+  writer.u64(identity.signedPreKey.createdAtMs).u64(identity.signedPreKey.expiresAtMs);
+  writer.bytes(identity.ownBundle.bundleBytes);
+  writer.fixed(identity.ownBundle.deviceSignature, SIGNATURE_BYTES);
+  writer.u32(identity.oneTimePreKeys.length);
+  for (const prekey of identity.oneTimePreKeys) {
     writer.u32(prekey.id);
     writeKey(writer, prekey.keyPair);
   }
-  writeBytes(writer, record.wire.certificateBytes);
-  writeBytes(writer, record.wire.certificateRootSignature);
-  writeBytes(writer, u64ToBigEndian(record.wire.rosterSequence));
-  writeBytes(writer, record.wire.rosterBytes);
-  writeBytes(writer, record.wire.rosterDigestValue);
-  writeBytes(writer, record.wire.rosterRootSignature);
-  writer.u64(record.wire.addedAtMs);
-  writer.u32(record.wire.signedPrekeyId);
-  writeBytes(writer, record.wire.bundleBytes);
-  writeBytes(writer, record.wire.bundleSignature);
+  const otherDevices = identity.ownRoster.devices.filter(
+    (device) => device.deviceId !== identity.deviceId,
+  );
+  writer.u32(otherDevices.length);
+  for (const device of otherDevices) {
+    writer.bytes(device.certificateBytes);
+    writer.fixed(device.rootSignature, SIGNATURE_BYTES);
+  }
+  writer.u32(record.nextOneTimePrekeyId);
+  writer.u32(record.previousSignedPreKeys.length);
+  for (const previous of record.previousSignedPreKeys) {
+    writer.u32(previous.id);
+    writeKey(writer, previous.keyPair);
+    writer.u64(previous.createdAtMs).u64(previous.expiresAtMs);
+    writer.bytes(previous.bundleBytes);
+    writer.fixed(previous.deviceSignature, SIGNATURE_BYTES);
+    writer.u64(previous.retiredAtMs);
+  }
+  const pendingUpload = record.pendingPrekeyUpload;
+  writer.u8(pendingUpload === undefined ? 0 : 1);
+  if (pendingUpload !== undefined) {
+    writer.u32(pendingUpload.oneTimePrekeyIds.length);
+    for (const id of pendingUpload.oneTimePrekeyIds) writer.u32(id);
+    writer.u8(pendingUpload.signedPreKeyId === undefined ? 0 : 1);
+    if (pendingUpload.signedPreKeyId !== undefined) writer.u32(pendingUpload.signedPreKeyId);
+  }
   return writer.finish();
 }
 
-export function decodeStoredEnrollment(bytes: Uint8Array): StoredEnrollment {
+/** Reconstructs a `StoredEnrollment`, re-verifying every transcript against `nowMs`
+ * exactly as a peer receiving this device's published material would (ADR 0033 §3). */
+export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): StoredEnrollment {
   const reader = new ByteReader(bytes);
   const version = reader.u8();
-  if (version !== 1) throw new Error('Unsupported enrollment record version.');
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) {
+    throw new Error('Unsupported enrollment record version.');
+  }
   const submitted = reader.u8() === 1;
   const createdRoot = reader.u8() === 1;
-  const rootPrivate = reader.fixed(KEY_BYTES);
+  // v1 always carried a present rootPrivate (32 bytes, no presence byte); v2 adds the byte
+  // so an ordinary linked device (ADR 0037 §1) can omit it entirely.
+  const rootPrivate = version === 1 || reader.u8() === 1 ? reader.fixed(KEY_BYTES) : undefined;
   const rootPublic = reader.fixed(KEY_BYTES);
-  const rootGeneration = reader.u32();
-  const actorId = reader.string();
-  const deviceId = reader.string();
+  const rootBytes = reader.bytes();
+  const rootSelfSignature = reader.fixed(SIGNATURE_BYTES);
   const signing = readKey(reader);
   const agreement = readKey(reader);
-  const generation = reader.u32();
-  const createdAtMs = reader.u64();
-  const expiresAtMs = reader.u64();
-  const selfRootSignature = readLengthPrefixed(reader);
-  const ownRosterRootSignature = readLengthPrefixed(reader);
-  const rosterCreatedAtMs = reader.u64();
-
-  // Enrollment always creates sequence 1 with only this device listed; later rosters
-  // belong to rotation/revocation flows, not to this record's shape.
-  const cryptoCertificate: DeviceCertificate = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
-    deviceId,
-    signingPublicKey: signing.publicKey,
-    agreementPublicKey: agreement.publicKey,
-    generation,
-    createdAtMs,
-    expiresAtMs,
-  };
-  const selfDevice: CertifiedDevice = {
-    certificate: cryptoCertificate,
-    rootSignature: selfRootSignature,
-  };
-  const ownRosterObject: DeviceRoster = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: actorId,
-    rootPublicKey: rootPublic,
-    sequence: 1,
-    previousDigest: new Uint8Array(KEY_BYTES),
-    devices: [selfDevice],
-    createdAtMs: rosterCreatedAtMs,
-  };
-
+  const certificateBytes = reader.bytes();
+  const certificateRootSignature = reader.fixed(SIGNATURE_BYTES);
+  const rosterBytes = reader.bytes();
+  const rosterRootSignature = reader.fixed(SIGNATURE_BYTES);
   const signedPreKeyId = reader.u32();
   const signedPreKeyPair = readKey(reader);
   const signedPreKeyCreatedAtMs = reader.u64();
   const signedPreKeyExpiresAtMs = reader.u64();
-  const signedPreKeySignature = readLengthPrefixed(reader);
+  const bundleBytes = reader.bytes();
+  const bundleSignature = reader.fixed(SIGNATURE_BYTES);
   const oneTimeCount = reader.u32();
-  const oneTimePreKeys: { id: number; keyPair: KeyPair }[] = [];
+  const oneTimePreKeys: LocalOneTimePreKey[] = [];
   for (let index = 0; index < oneTimeCount; index += 1) {
     const id = reader.u32();
     oneTimePreKeys.push({ id, keyPair: readKey(reader) });
   }
-  const wire: SubmittedWireMaterial = {
-    certificateBytes: readLengthPrefixed(reader),
-    certificateRootSignature: readLengthPrefixed(reader),
-    rosterSequence: u64FromBigEndian(readLengthPrefixed(reader)),
-    rosterBytes: readLengthPrefixed(reader),
-    rosterDigestValue: readLengthPrefixed(reader),
-    rosterRootSignature: readLengthPrefixed(reader),
-    addedAtMs: reader.u64(),
-    signedPrekeyId: reader.u32(),
-    bundleBytes: readLengthPrefixed(reader),
-    bundleSignature: readLengthPrefixed(reader),
-  };
+  // v1/v2 records predate multi-device rosters (ADR 0037 §1) and carry no other device's
+  // certificate — this device's own is always sufficient for them, since their roster could
+  // only ever have exactly one active entry.
+  const otherCertificates: { certificateBytes: Uint8Array; rootSignature: Uint8Array }[] = [];
+  if (version === 3 || version === 4) {
+    const otherCount = reader.u32();
+    for (let index = 0; index < otherCount; index += 1) {
+      otherCertificates.push({
+        certificateBytes: reader.bytes(),
+        rootSignature: reader.fixed(SIGNATURE_BYTES),
+      });
+    }
+  }
+  let nextOneTimePrekeyId = oneTimePreKeys.reduce((max, prekey) => Math.max(max, prekey.id), 0) + 1;
+  const previousSignedPreKeys: LocalPreviousSignedPreKey[] = [];
+  let pendingPrekeyUpload: PendingPrekeyUpload | undefined;
+  if (version === 4) {
+    nextOneTimePrekeyId = reader.u32();
+    const previousCount = reader.u32();
+    for (let index = 0; index < previousCount; index += 1) {
+      const id = reader.u32();
+      const keyPair = readKey(reader);
+      const createdAtMs = reader.u64();
+      const expiresAtMs = reader.u64();
+      const prevBundleBytes = reader.bytes();
+      const prevDeviceSignature = reader.fixed(SIGNATURE_BYTES);
+      const retiredAtMs = reader.u64();
+      previousSignedPreKeys.push({
+        id,
+        keyPair,
+        createdAtMs,
+        expiresAtMs,
+        bundleBytes: prevBundleBytes,
+        deviceSignature: prevDeviceSignature,
+        retiredAtMs,
+      });
+    }
+    if (reader.u8() === 1) {
+      const idCount = reader.u32();
+      const oneTimePrekeyIds: number[] = [];
+      for (let index = 0; index < idCount; index += 1) oneTimePrekeyIds.push(reader.u32());
+      const signedPreKeyId = reader.u8() === 1 ? reader.u32() : undefined;
+      pendingPrekeyUpload = { oneTimePrekeyIds, signedPreKeyId };
+    }
+  }
   reader.end();
+
+  const root = verifyMessagingRoot({ rootBytes, selfSignature: rootSelfSignature, nowMs });
+  const selfDevice = verifyCertifiedDevice({
+    certificateBytes,
+    rootSignature: certificateRootSignature,
+    root,
+    nowMs,
+  });
+  const ownRoster = verifyRosterSnapshot({
+    rosterBytes,
+    rootSignature: rosterRootSignature,
+    root,
+    certificates: [
+      { certificateBytes, rootSignature: certificateRootSignature },
+      ...otherCertificates,
+    ],
+    nowMs,
+  });
+
+  const identity: LocalDeviceIdentity = {
+    actorId: selfDevice.actorId,
+    deviceId: selfDevice.deviceId,
+    keys: { signing, agreement },
+    selfDevice,
+    ownRoster,
+    signedPreKey: {
+      id: signedPreKeyId,
+      keyPair: signedPreKeyPair,
+      createdAtMs: signedPreKeyCreatedAtMs,
+      expiresAtMs: signedPreKeyExpiresAtMs,
+    },
+    ownBundle: { bundleBytes, deviceSignature: bundleSignature },
+    oneTimePreKeys,
+  };
   return {
     submitted,
     createdRoot,
     rootPrivate,
     rootPublic,
-    rootGeneration,
-    identity: {
-      actorId,
-      deviceId,
-      keys: { signing, agreement },
-      selfDevice,
-      ownRoster: { roster: ownRosterObject, rootSignature: ownRosterRootSignature },
-      signedPreKey: {
-        id: signedPreKeyId,
-        keyPair: signedPreKeyPair,
-        createdAtMs: signedPreKeyCreatedAtMs,
-        expiresAtMs: signedPreKeyExpiresAtMs,
-        signature: signedPreKeySignature,
-      },
-      oneTimePreKeys,
-    },
-    wire,
+    identity,
+    nextOneTimePrekeyId,
+    previousSignedPreKeys,
+    pendingPrekeyUpload,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Material generation (pure aside from randomness; injectable clock for tests)
+// Material generation (deterministic aside from randomness; injectable clock for tests)
 // ---------------------------------------------------------------------------
 
 export interface GenerateEnrollmentInput {
   readonly actorId: string;
-  /** Present when resuming around an existing authority; absent on first-device bootstrap. */
-  readonly root?: { readonly privateKey: Uint8Array; readonly publicKey: Uint8Array };
+  /**
+   * Present when resuming (linking) around an existing authority; absent on first-device
+   * bootstrap. `createdAtMs` and `generation` must be the ALREADY-PUBLISHED root's own
+   * values — required to reconstruct the exact `VerifiedMessagingRoot`
+   * `signDeviceCertificate`'s caller must hold (ADR 0033 §3: no verifier accepts a
+   * caller-supplied decoding; Ed25519 signing is deterministic, so re-signing the same
+   * fields with the same key reproduces the same published root bytes rather than
+   * minting a new one).
+   */
+  readonly root?: {
+    readonly privateKey: Uint8Array;
+    readonly publicKey: Uint8Array;
+    readonly createdAtMs: number;
+    /** Defaults to 1 (an account's first root generation) for callers that only ever
+     * reconstruct that root — e.g. re-minting a peer's identity from its own already
+     * self-signed material in a test. A linking caller passes the real generation. */
+    readonly generation?: number;
+    /** The account's most recently published roster, or `undefined` if this authority
+     * has never published one — the new device becomes sequence 1. Every existing entry
+     * (active or revoked) is carried forward verbatim; linking must never drop a device
+     * from the roster (spec §14.4). */
+    readonly currentRoster?: VerifiedRosterSnapshot | undefined;
+    /** Certificates for every entry `currentRoster` lists, so the rebuilt roster can be
+     * re-verified locally — the linking device holds none of its peers' certificates.
+     * The caller obtains these from `GetDeviceRoster`. Omit/empty when `currentRoster`
+     * is `undefined`. */
+    readonly certificates?: readonly {
+      readonly certificateBytes: Uint8Array;
+      readonly rootSignature: Uint8Array;
+    }[];
+  };
+  /**
+   * ADR 0037 §1: the authority-side device-link approval path. When present, the caller
+   * (an authority device that holds `root` above but NOT the new device's private keys)
+   * supplies the new device's already-generated PUBLIC material and its already
+   * device-signed prekey bundle verbatim — `generateEnrollment` signs only the
+   * certificate and roster (it holds the root key) and never re-signs, and never could
+   * re-sign, anything requiring the new device's signing key. `certificateCreatedAtMs`/
+   * `certificateExpiresAtMs` MUST equal the values the offering device used to compute
+   * the `certificateDigest` baked into `prekeyBundleBytes` (see `device-link.ts`'s
+   * `beginDeviceLinkOffer`) — the authority reconstructs a byte-identical certificate
+   * transcript rather than minting a new one, so the passed-through bundle signature
+   * stays valid without the authority ever touching the device's signing key.
+   */
+  readonly deviceMaterial?: {
+    readonly deviceId: string;
+    readonly signingPublicKey: Uint8Array;
+    readonly agreementPublicKey: Uint8Array;
+    readonly supportedProtocolVersions: readonly string[];
+    readonly certificateCreatedAtMs: number;
+    readonly certificateExpiresAtMs: number;
+    readonly signedPrekey: E2eeSignedPrekey;
+    readonly oneTimePrekeys: readonly E2eeOneTimePrekey[];
+    readonly prekeyBundleBytes: Uint8Array;
+    readonly prekeyBundleSignature: Uint8Array;
+  };
   readonly nowMs: number;
 }
 
@@ -337,9 +521,10 @@ export interface GeneratedEnrollment {
   readonly enrollRequest: EnrollDeviceRequest;
 }
 
-function randomDeviceId(): string {
+export function randomDeviceId(): string {
   // UUID-shaped per the node's DEVICE_ID_PATTERN (`[0-9a-f-]{8,64}`); random per ADR
-  // 0020 §2 ("not derived from hardware, an account id, or a key").
+  // 0020 §2 ("not derived from hardware, an account id, or a key"). `randomBytes` is
+  // `@noble/ciphers/utils`' browser-safe source (`crypto.getRandomValues`).
   const hex: string[] = [];
   for (const byte of randomBytes(16)) hex.push(byte.toString(16).padStart(2, '0'));
   const raw = hex.join('');
@@ -347,106 +532,208 @@ function randomDeviceId(): string {
 }
 
 /**
- * Builds one complete enrollment: keypairs, both transcript families' signatures, the
- * prekey inventory, and the two wire requests. Every produced claim is re-verified by
- * the tests against `@patches/crypto`'s strict verifiers and the node-canonical decoders.
+ * Everything a device generates for itself before it holds any signature: signing +
+ * agreement keypairs, device id, and an initial signed-prekey/one-time-prekey inventory.
+ * Shared by `generateEnrollment` (bootstrap/authority-side certificate issuance) and
+ * `device-link.ts`'s `beginDeviceLinkOffer` (ADR 0037 §1's new-device offer), so the two
+ * paths mint identically-shaped material instead of drifting apart.
+ */
+export interface DeviceKeyMaterial {
+  readonly deviceId: string;
+  readonly signing: KeyPair;
+  readonly agreement: KeyPair;
+  readonly supportedProtocolVersions: readonly string[];
+  /** This device's own local clock reading (ms since epoch), floored 1s into the past —
+   * shared as the base for every timestamp below so they stay internally consistent. */
+  readonly createdAtMs: number;
+  readonly signedPreKeyId: number;
+  readonly signedPreKeyPair: KeyPair;
+  readonly signedPreKeyExpiresAtMs: number;
+  readonly oneTimePreKeys: readonly LocalOneTimePreKey[];
+}
+
+export function generateDeviceKeyMaterial(nowMs: number): DeviceKeyMaterial {
+  const createdAtMs = Math.max(0, nowMs - 1000);
+  return {
+    deviceId: randomDeviceId(),
+    signing: generateSigningKeyPair(),
+    agreement: generateKeyAgreementKeyPair(),
+    supportedProtocolVersions: [E2EE_PROTOCOL_V1],
+    createdAtMs,
+    signedPreKeyId: 1,
+    signedPreKeyPair: generateKeyAgreementKeyPair(),
+    signedPreKeyExpiresAtMs: createdAtMs + SIGNED_PREKEY_LIFETIME_MS,
+    oneTimePreKeys: Array.from({ length: INITIAL_ONE_TIME_PREKEY_COUNT }, (_, index) => ({
+      id: index + 1,
+      keyPair: generateKeyAgreementKeyPair(),
+    })),
+  };
+}
+
+/** A public-only placeholder `KeyPair` for material this device never holds the private
+ * half of (ADR 0037 §1's authority-side approval path) — never persisted or signed with. */
+function publicOnlyKeyPair(publicKey: Uint8Array): KeyPair {
+  return { privateKey: new Uint8Array(0), publicKey };
+}
+
+/**
+ * Builds one complete enrollment: keypairs, the ONE canonical transcript family's
+ * signatures (ADR 0033 §1), the prekey inventory, and the two wire requests. Every
+ * minted value is immediately re-verified through `@patches/crypto`'s strict verifiers
+ * (ADR 0033 §3) — there is no separate, unverified in-memory shape.
  */
 export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnrollment {
   const bootstrap = input.root === undefined;
-  const rootKeys =
-    input.root ??
-    (() => {
-      const generated = generateSigningKeyPair();
-      return { privateKey: generated.privateKey, publicKey: generated.publicKey };
-    })();
+  const nowMs = input.nowMs;
+  const deviceMaterial = input.deviceMaterial;
+  // Bootstrap/link (this device holds its own keys): mint fresh material via the shared
+  // helper. Authority-side approval (`deviceMaterial` present): every key below is the
+  // OFFERING device's public material — this device never generated it and never will
+  // hold its private half (ADR 0037 §1).
+  const generated = deviceMaterial === undefined ? generateDeviceKeyMaterial(nowMs) : undefined;
+  const createdAtMs =
+    deviceMaterial?.certificateCreatedAtMs ?? (generated as DeviceKeyMaterial).createdAtMs;
+  const expiresAtMs =
+    deviceMaterial?.certificateExpiresAtMs ?? createdAtMs + CERTIFICATE_LIFETIME_MS;
 
-  const signing = generateSigningKeyPair();
-  const agreement = generateKeyAgreementKeyPair();
-  const deviceId = randomDeviceId();
-  const createdAtMs = Math.max(0, input.nowMs - 1000);
-  const expiresAtMs = createdAtMs + CERTIFICATE_LIFETIME_MS;
-
-  // --- crypto-native family (what X3DH verifies locally) ---------------------
-  const cryptoCertificate: DeviceCertificate = {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: input.actorId,
-    deviceId,
-    signingPublicKey: signing.publicKey,
-    agreementPublicKey: agreement.publicKey,
-    generation: 1,
+  const rootKeys = input.root ?? {
+    ...generateSigningKeyPair(),
     createdAtMs,
-    expiresAtMs,
   };
-  const selfDevice = certifyDevice(rootKeys.privateKey, cryptoCertificate);
-  const ownRoster = signDeviceRoster(rootKeys.privateKey, {
-    protocol: E2EE_PROTOCOL,
-    version: E2EE_VERSION,
-    userId: input.actorId,
-    rootPublicKey: rootKeys.publicKey,
-    sequence: 1,
-    previousDigest: new Uint8Array(KEY_BYTES),
-    devices: [selfDevice],
-    createdAtMs,
+  const rootGeneration = input.root?.generation ?? ROOT_GENERATION;
+  const signedRoot = signMessagingRoot(rootKeys.privateKey, {
+    actorId: input.actorId,
+    generation: rootGeneration,
+    publicKey: rootKeys.publicKey,
+    createdAtMs: rootKeys.createdAtMs,
   });
-  const ownDigest = rosterDigest(ownRoster.roster);
+  const root = verifyMessagingRoot({
+    rootBytes: signedRoot.rootBytes,
+    selfSignature: signedRoot.selfSignature,
+    nowMs,
+  });
 
-  // --- node-canonical family (what the node stores, serves, and verifies) ----
-  const supportedVersions = [E2EE_PROTOCOL_V1];
-  const certificateBytes = encodeCertificateTranscript({
+  const signing =
+    deviceMaterial === undefined
+      ? (generated as DeviceKeyMaterial).signing
+      : publicOnlyKeyPair(deviceMaterial.signingPublicKey);
+  const agreement =
+    deviceMaterial === undefined
+      ? (generated as DeviceKeyMaterial).agreement
+      : publicOnlyKeyPair(deviceMaterial.agreementPublicKey);
+  const deviceId = deviceMaterial?.deviceId ?? (generated as DeviceKeyMaterial).deviceId;
+  const supportedVersions =
+    deviceMaterial?.supportedProtocolVersions ??
+    (generated as DeviceKeyMaterial).supportedProtocolVersions;
+
+  const signedCertificate = signDeviceCertificate(rootKeys.privateKey, {
     actorId: input.actorId,
     deviceId,
-    rootGeneration: 1,
-    certificateVersion: 1,
+    rootGeneration,
+    rootPublicKey: rootKeys.publicKey,
+    certificateVersion: E2EE_DEVICE_CERTIFICATE_VERSION,
     signingPublicKey: signing.publicKey,
     agreementPublicKey: agreement.publicKey,
-    supportedProtocolVersions: supportedVersions,
+    supportedProtocolVersions: [...supportedVersions],
     createdAtMs,
     expiresAtMs,
   });
-  const certificateRootSignature = sign(rootKeys.privateKey, certificateBytes);
-  const certificateDigest = sha256Hash(certificateBytes);
+  const selfDevice = verifyCertifiedDevice({
+    certificateBytes: signedCertificate.certificateBytes,
+    rootSignature: signedCertificate.rootSignature,
+    root,
+    nowMs,
+  });
 
   const addedAtMs = createdAtMs;
-  const rosterBytes = encodeRosterTranscript({
-    actorId: input.actorId,
-    sequence: 1n,
-    rootGeneration: 1,
-    previousDigest: new Uint8Array(KEY_BYTES),
-    entries: [{ deviceId, certificateDigest, active: true, addedAtMs }],
-  });
-  const rosterRootSignature = sign(rootKeys.privateKey, rosterBytes);
-  const rosterDigestValue = sha256Hash(rosterBytes);
-
-  // Signed prekey: one X25519 pair, TWO statements — the crypto-native statement for
-  // local bundle verification, the node-canonical statement for the wire. Both are made
-  // by the device signing key over their respective canonical encodings.
-  const signedPreKeyId = 1;
-  const signedPreKeyPair = generateKeyAgreementKeyPair();
-  const signedPreKeyExpiresAtMs = createdAtMs + SIGNED_PREKEY_LIFETIME_MS;
-  const cryptoSignedPreKey = createSignedPreKey(signing.privateKey, selfDevice, ownDigest, {
-    id: signedPreKeyId,
-    publicKey: signedPreKeyPair.publicKey,
-    createdAtMs,
-    expiresAtMs: signedPreKeyExpiresAtMs,
-  });
-  const bundleBytes = encodePrekeyBundleTranscript({
-    certificateDigest,
-    agreementPublicKey: agreement.publicKey,
-    protocolVersion: '',
-    actorId: input.actorId,
+  // Non-bootstrap: carry every existing entry forward verbatim (§14.4 — linking must
+  // never drop a device) and chain onto the account's current roster. Bootstrap has no
+  // prior roster, so this collapses to the original sequence-1/genesis-digest values.
+  const currentRoster = input.root?.currentRoster;
+  const sequence = currentRoster !== undefined ? currentRoster.sequence + 1 : ROSTER_SEQUENCE;
+  const previousDigest =
+    currentRoster !== undefined ? currentRoster.rosterDigest : new Uint8Array(KEY_BYTES);
+  const carriedEntries: DeviceRosterEntryTranscript[] =
+    currentRoster === undefined
+      ? []
+      : currentRoster.entries.map((entry) => ({
+          deviceId: entry.deviceId,
+          certificateDigest: entry.certificateDigest,
+          active: entry.active,
+          addedAtMs: entry.addedAtMs,
+          ...(entry.revokedAtMs === undefined ? {} : { revokedAtMs: entry.revokedAtMs }),
+        }));
+  const newEntry: DeviceRosterEntryTranscript = {
     deviceId,
-    signedPrekeyId: signedPreKeyId,
-    signedPrekeyPublicKey: signedPreKeyPair.publicKey,
-    signedPrekeyCreatedAtMs: createdAtMs,
-    signedPrekeyExpiresAtMs: signedPreKeyExpiresAtMs,
+    certificateDigest: signedCertificate.certificateDigest,
+    active: true,
+    addedAtMs,
+  };
+  const signedRoster = signDeviceRoster(rootKeys.privateKey, {
+    actorId: input.actorId,
+    rootGeneration,
+    rootPublicKey: rootKeys.publicKey,
+    sequence,
+    previousDigest,
+    createdAtMs,
+    entries: sortRosterEntries([...carriedEntries, newEntry]),
   });
-  const bundleSignature = sign(signing.privateKey, bundleBytes);
+  const ownRoster = verifyRosterSnapshot({
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
+    root,
+    certificates: [
+      ...(input.root?.certificates ?? []),
+      {
+        certificateBytes: signedCertificate.certificateBytes,
+        rootSignature: signedCertificate.rootSignature,
+      },
+    ],
+    nowMs,
+  });
 
-  const oneTimePreKeys = Array.from({ length: INITIAL_ONE_TIME_PREKEY_COUNT }, (_, index) => ({
-    id: index + 1,
-    keyPair: generateKeyAgreementKeyPair(),
-  }));
+  let signedPreKeyId: number;
+  let signedPreKeyPair: KeyPair;
+  let signedPreKeyExpiresAtMs: number;
+  let oneTimePreKeys: LocalOneTimePreKey[];
+  let ownBundle: LocalSignedPreKeyBundle;
+  if (deviceMaterial === undefined) {
+    const own = generated as DeviceKeyMaterial;
+    signedPreKeyId = own.signedPreKeyId;
+    signedPreKeyPair = own.signedPreKeyPair;
+    signedPreKeyExpiresAtMs = own.signedPreKeyExpiresAtMs;
+    oneTimePreKeys = own.oneTimePreKeys.slice();
+    const signedBundle = signPreKeyBundle(signing.privateKey, {
+      actorId: input.actorId,
+      deviceId,
+      certificateDigest: signedCertificate.certificateDigest,
+      signedPrekeyId: signedPreKeyId,
+      signedPrekeyPublicKey: signedPreKeyPair.publicKey,
+      createdAtMs,
+      expiresAtMs: signedPreKeyExpiresAtMs,
+    });
+    ownBundle = {
+      bundleBytes: signedBundle.bundleBytes,
+      deviceSignature: signedBundle.deviceSignature,
+    };
+  } else {
+    // Authority-side approval (ADR 0037 §1): the prekey bundle was already device-signed
+    // by the offering device against the certificate digest it predicted for exactly
+    // these `certificateCreatedAtMs`/`certificateExpiresAtMs` values — passed through
+    // verbatim, never re-signed (this device does not hold the signing key that could).
+    const signedPrekey = deviceMaterial.signedPrekey;
+    signedPreKeyId = Number(signedPrekey.keyId);
+    signedPreKeyPair = publicOnlyKeyPair(signedPrekey.publicKey);
+    signedPreKeyExpiresAtMs = toDate(signedPrekey.expiresAt)?.getTime() ?? expiresAtMs;
+    oneTimePreKeys = deviceMaterial.oneTimePrekeys.map((prekey) => ({
+      id: Number(prekey.keyId),
+      keyPair: publicOnlyKeyPair(prekey.publicKey),
+    }));
+    ownBundle = {
+      bundleBytes: deviceMaterial.prekeyBundleBytes,
+      deviceSignature: deviceMaterial.prekeyBundleSignature,
+    };
+  }
 
   const identity: LocalDeviceIdentity = {
     actorId: input.actorId,
@@ -455,150 +742,129 @@ export function generateEnrollment(input: GenerateEnrollmentInput): GeneratedEnr
     selfDevice,
     ownRoster,
     signedPreKey: {
-      id: cryptoSignedPreKey.id,
+      id: signedPreKeyId,
       keyPair: signedPreKeyPair,
-      createdAtMs: cryptoSignedPreKey.createdAtMs,
-      expiresAtMs: cryptoSignedPreKey.expiresAtMs,
-      signature: cryptoSignedPreKey.signature,
+      createdAtMs,
+      expiresAtMs: signedPreKeyExpiresAtMs,
     },
+    ownBundle,
     oneTimePreKeys,
   };
 
   const publishRootRequest: PublishIdentityRootRequest | undefined = bootstrap
     ? create(PublishIdentityRootRequestSchema, {
-        identityRoot: buildBootstrapIdentityRoot({
-          actorId: input.actorId,
-          privateKey: rootKeys.privateKey,
-          publicKey: rootKeys.publicKey,
-          createdAtMs,
-        }),
+        identityRoot: buildIdentityRootWire(root),
       })
     : undefined;
-
-  const enrollRequest: EnrollDeviceRequest = create(EnrollDeviceRequestSchema, {
-    certificate: {
-      actorId: input.actorId,
-      deviceId,
-      rootGeneration: 1,
-      certificateVersion: 1,
-      signingPublicKey: signing.publicKey,
-      agreementPublicKey: agreement.publicKey,
-      supportedProtocolVersions: supportedVersions,
-      createdAt: fromDate(new Date(createdAtMs)),
-      expiresAt: fromDate(new Date(expiresAtMs)),
-      certificateBytes,
-      rootSignature: certificateRootSignature,
-      certificateDigest,
-      status: E2EE_DEVICE_STATUS.ACTIVE,
-    },
-    roster: {
-      actorId: input.actorId,
-      sequence: 1n,
-      rootGeneration: 1,
-      previousDigest: new Uint8Array(KEY_BYTES),
-      digest: rosterDigestValue,
-      rosterBytes,
-      rootSignature: rosterRootSignature,
-      entries: [
-        {
-          deviceId,
-          certificateDigest,
-          active: true,
-          addedAt: fromDate(new Date(addedAtMs)),
-        },
-      ],
-      createdAt: fromDate(new Date(createdAtMs)),
-    },
-    signedPrekey: {
-      keyId: BigInt(signedPreKeyId),
-      publicKey: signedPreKeyPair.publicKey,
-      signature: bundleSignature,
-      createdAt: fromDate(new Date(createdAtMs)),
-      expiresAt: fromDate(new Date(signedPreKeyExpiresAtMs)),
-    },
-    oneTimePrekeys: oneTimePreKeys.map((prekey) => ({
-      keyId: BigInt(prekey.id),
-      publicKey: prekey.keyPair.publicKey,
-    })),
-    prekeyBundleBytes: bundleBytes,
-    prekeyBundleSignature: bundleSignature,
-  });
 
   const record: StoredEnrollment = {
     submitted: false,
     createdRoot: bootstrap,
     rootPrivate: rootKeys.privateKey,
     rootPublic: rootKeys.publicKey,
-    rootGeneration: 1,
     identity,
-    wire: {
-      certificateBytes,
-      certificateRootSignature,
-      rosterSequence: 1n,
-      rosterBytes,
-      rosterDigestValue,
-      rosterRootSignature,
-      addedAtMs,
-      signedPrekeyId: signedPreKeyId,
-      bundleBytes,
-      bundleSignature,
-    },
+    // Issue #278: this device's own next locally-minted one-time-prekey id continues past
+    // every id enrollment just minted — never restarts at 1 on a later replenishment.
+    nextOneTimePrekeyId: oneTimePreKeys.reduce((max, prekey) => Math.max(max, prekey.id), 0) + 1,
+    previousSignedPreKeys: [],
+    pendingPrekeyUpload: undefined,
   };
-  return { record, publishRootRequest, enrollRequest };
+
+  return { record, publishRootRequest, enrollRequest: buildEnrollRequest(identity) };
+}
+
+/** Exported for `device-link.ts`'s `rotateMessagingRoot` (ADR 0037 §2), which publishes a
+ * self-signed root the same way bootstrap does — there is no second wire encoding to keep in
+ * sync. */
+export function buildIdentityRootWire(root: {
+  readonly actorId: string;
+  readonly generation: number;
+  readonly publicKey: Uint8Array;
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
+  readonly createdAtMs: number;
+  readonly previousRootSignature?: Uint8Array | undefined;
+}): E2eeIdentityRoot {
+  return create(E2eeIdentityRootSchema, {
+    actorId: root.actorId,
+    generation: root.generation,
+    publicKey: root.publicKey,
+    rootBytes: root.rootBytes,
+    selfSignature: root.selfSignature,
+    previousRootSignature: root.previousRootSignature ?? new Uint8Array(0),
+    createdAt: fromDate(new Date(root.createdAtMs)),
+  });
+}
+
+/** Builds the wire `E2eeDeviceRoster` an already-verified `VerifiedRosterSnapshot` produces.
+ * Exported for `device-link.ts`'s `rotateMessagingRoot` (ADR 0037 §2), which publishes the
+ * roster S+1 it signs directly via `PublishIdentityRoot` rather than through `EnrollDevice` —
+ * one encoding, two callers, per `buildIdentityRootWire`'s rationale above. */
+export function buildRosterWire(roster: VerifiedRosterSnapshot): E2eeDeviceRoster {
+  return create(E2eeDeviceRosterSchema, {
+    actorId: roster.actorId,
+    sequence: BigInt(roster.sequence),
+    rootGeneration: roster.rootGeneration,
+    previousDigest: roster.previousDigest,
+    digest: roster.rosterDigest,
+    rosterBytes: roster.rosterBytes,
+    rootSignature: roster.rootSignature,
+    entries: roster.entries.map((entry) => ({
+      deviceId: entry.deviceId,
+      certificateDigest: entry.certificateDigest,
+      active: entry.active,
+      addedAt: fromDate(new Date(entry.addedAtMs)),
+      ...(entry.revokedAtMs === undefined
+        ? {}
+        : { revokedAt: fromDate(new Date(entry.revokedAtMs)) }),
+    })),
+    createdAt: fromDate(new Date(roster.createdAtMs)),
+  });
+}
+
+/** Builds the `EnrollDeviceRequest` an identity's ALREADY-VERIFIED material produces.
+ * The wire bytes are exactly the `@patches/crypto` transcript bytes (ADR 0033): there is
+ * no second, node-canonical encoding to maintain in parallel. */
+function buildEnrollRequest(identity: LocalDeviceIdentity): EnrollDeviceRequest {
+  const certificate = identity.selfDevice;
+  const roster = identity.ownRoster;
+  return create(EnrollDeviceRequestSchema, {
+    certificate: {
+      actorId: certificate.actorId,
+      deviceId: certificate.deviceId,
+      rootGeneration: certificate.rootGeneration,
+      certificateVersion: certificate.certificateVersion,
+      signingPublicKey: certificate.signingPublicKey,
+      agreementPublicKey: certificate.agreementPublicKey,
+      supportedProtocolVersions: [...certificate.supportedProtocolVersions],
+      createdAt: fromDate(new Date(certificate.createdAtMs)),
+      expiresAt: fromDate(new Date(certificate.expiresAtMs)),
+      certificateBytes: certificate.certificateBytes,
+      rootSignature: certificate.rootSignature,
+      certificateDigest: certificate.certificateDigest,
+      status: E2EE_DEVICE_STATUS.ACTIVE,
+    },
+    roster: buildRosterWire(roster),
+    signedPrekey: {
+      keyId: BigInt(identity.signedPreKey.id),
+      publicKey: identity.signedPreKey.keyPair.publicKey,
+      signature: identity.ownBundle.deviceSignature,
+      createdAt: fromDate(new Date(identity.signedPreKey.createdAtMs)),
+      expiresAt: fromDate(new Date(identity.signedPreKey.expiresAtMs)),
+    },
+    oneTimePrekeys: identity.oneTimePreKeys.map((prekey) => ({
+      keyId: BigInt(prekey.id),
+      publicKey: prekey.keyPair.publicKey,
+    })),
+    prekeyBundleBytes: identity.ownBundle.bundleBytes,
+    prekeyBundleSignature: identity.ownBundle.deviceSignature,
+  });
 }
 
 /** Rebuilds the exact `EnrollDeviceRequest` a stored (not-yet-accepted) record produced,
  * so a crash between persist and accept resumes byte-identical material. */
 export function enrollRequestFromRecord(record: StoredEnrollment): EnrollDeviceRequest {
-  const certificate = record.identity.selfDevice.certificate;
-  return create(EnrollDeviceRequestSchema, {
-    certificate: {
-      actorId: record.identity.actorId,
-      deviceId: record.identity.deviceId,
-      rootGeneration: 1,
-      certificateVersion: 1,
-      signingPublicKey: certificate.signingPublicKey,
-      agreementPublicKey: certificate.agreementPublicKey,
-      supportedProtocolVersions: [E2EE_PROTOCOL_V1],
-      createdAt: fromDate(new Date(certificate.createdAtMs)),
-      expiresAt: fromDate(new Date(certificate.expiresAtMs)),
-      certificateBytes: record.wire.certificateBytes,
-      rootSignature: record.wire.certificateRootSignature,
-      certificateDigest: sha256Hash(record.wire.certificateBytes),
-      status: E2EE_DEVICE_STATUS.ACTIVE,
-    },
-    roster: {
-      actorId: record.identity.actorId,
-      sequence: record.wire.rosterSequence,
-      rootGeneration: 1,
-      previousDigest: new Uint8Array(KEY_BYTES),
-      digest: record.wire.rosterDigestValue,
-      rosterBytes: record.wire.rosterBytes,
-      rootSignature: record.wire.rosterRootSignature,
-      entries: [
-        {
-          deviceId: record.identity.deviceId,
-          certificateDigest: sha256Hash(record.wire.certificateBytes),
-          active: true,
-          addedAt: fromDate(new Date(record.wire.addedAtMs)),
-        },
-      ],
-      createdAt: fromDate(new Date(certificate.createdAtMs)),
-    },
-    signedPrekey: {
-      keyId: BigInt(record.wire.signedPrekeyId),
-      publicKey: record.identity.signedPreKey.keyPair.publicKey,
-      signature: record.wire.bundleSignature,
-      createdAt: fromDate(new Date(record.identity.signedPreKey.createdAtMs)),
-      expiresAt: fromDate(new Date(record.identity.signedPreKey.expiresAtMs)),
-    },
-    oneTimePrekeys: record.identity.oneTimePreKeys.map((prekey) => ({
-      keyId: BigInt(prekey.id),
-      publicKey: prekey.keyPair.publicKey,
-    })),
-    prekeyBundleBytes: record.wire.bundleBytes,
-    prekeyBundleSignature: record.wire.bundleSignature,
-  });
+  return buildEnrollRequest(record.identity);
 }
 
 /**
@@ -612,32 +878,7 @@ export function publishRootRequestFromRecord(
 ): PublishIdentityRootRequest | undefined {
   if (!record.createdRoot) return undefined;
   return create(PublishIdentityRootRequestSchema, {
-    identityRoot: buildBootstrapIdentityRoot({
-      actorId: record.identity.actorId,
-      privateKey: record.rootPrivate,
-      publicKey: record.rootPublic,
-      createdAtMs: record.identity.selfDevice.certificate.createdAtMs,
-    }),
-  });
-}
-
-function buildBootstrapIdentityRoot(input: {
-  readonly actorId: string;
-  readonly privateKey: Uint8Array;
-  readonly publicKey: Uint8Array;
-  readonly createdAtMs: number;
-}): E2eeIdentityRoot {
-  // The root transcript is opaque to the node beyond its self-signature; keep it
-  // minimal, deterministic, and free of anything secret.
-  const rootBytes = new TextEncoder().encode(`patches-e2ee-v1/root\u0000${input.actorId}\u00001`);
-  return create(E2eeIdentityRootSchema, {
-    actorId: input.actorId,
-    generation: 1,
-    publicKey: input.publicKey,
-    rootBytes,
-    selfSignature: sign(input.privateKey, rootBytes),
-    previousRootSignature: new Uint8Array(0),
-    createdAt: fromDate(new Date(input.createdAtMs)),
+    identityRoot: buildIdentityRootWire(record.identity.ownRoster.root),
   });
 }
 
@@ -654,15 +895,16 @@ export async function saveStoredEnrollment(
 
 export async function loadStoredEnrollment(
   vault: RatchetSessionVault,
+  nowMs: number,
 ): Promise<StoredEnrollment | undefined> {
   const bytes = await vault.getOpaqueRecord(ENROLLMENT_RECORD_KEY);
   if (bytes === undefined) return undefined;
   try {
-    return decodeStoredEnrollment(bytes);
+    return decodeStoredEnrollment(bytes, nowMs);
   } catch {
-    // An undecodable identity record cannot be trusted for enrollment purposes; treat
-    // it as absent rather than half-trusting it. Session records remain governed by the
-    // ratchet store's own corruption handling.
+    // An undecodable (or no-longer-valid) identity record cannot be trusted for
+    // enrollment purposes; treat it as absent rather than half-trusting it. Session
+    // records remain governed by the ratchet store's own corruption handling.
     return undefined;
   }
 }
@@ -682,9 +924,18 @@ export type EnrollOutcome =
     }
   | { readonly status: 'already-enrolled'; readonly identity: LocalDeviceIdentity }
   | {
+      /** Capability-off only (ADR 0037 §2 moved the remote-root case to `needs-authority`,
+       * which is a choice, not a dead end). */
       readonly status: 'refused';
-      readonly reason: 'capability-off' | 'remote-root';
+      readonly reason: 'capability-off';
       readonly copy: string;
+    }
+  | {
+      /** ADR 0037 §2: a published root exists that this device cannot reach. Not a dead
+       * end — the caller offers exactly `options`, with fixed copy for each. */
+      readonly status: 'needs-authority';
+      readonly copy: string;
+      readonly options: typeof NEEDS_AUTHORITY_OPTIONS;
     };
 
 export interface EnrollThisDeviceInput {
@@ -710,16 +961,16 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
  * untouched — the caller renders fixed copy, and the next attempt re-submits identical
  * material instead of minting orphan keys.
  *
- * A failed preflight is never read as an answer. `getCapability`/`getIdentityRoot`
- * returning `undefined` means the node *said* so — the transport adapter maps only
- * `NOT_FOUND` to absence — while every other failure throws through here, so no identity
- * root is minted, let alone published, on the strength of a request that never completed.
- * The remote check runs on EVERY attempt, resumes included: a record persisted before an
- * earlier failure must still be reconciled against whatever the account publishes now.
+ * B-131: a failed preflight is never read as an answer. `GetIdentityRoot` returning
+ * `undefined` means the node said there is no root (the transport maps only `NOT_FOUND`
+ * to absence); a network failure throws through here, so no identity root is minted, let
+ * alone persisted, on the strength of a request that never completed. The remote check
+ * runs on EVERY attempt, resumes included — a record persisted before an earlier failure
+ * must still be reconciled against whatever the account publishes now.
  */
 export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<EnrollOutcome> {
   const nowMs = input.nowMs ?? Date.now;
-  const existing = await loadStoredEnrollment(input.vault);
+  const existing = await loadStoredEnrollment(input.vault, nowMs());
   if (existing !== undefined && existing.submitted) {
     return { status: 'already-enrolled', identity: existing.identity };
   }
@@ -744,7 +995,11 @@ export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<En
   let record = existing;
   if (record === undefined) {
     if (publishedRoot !== undefined) {
-      return { status: 'refused', reason: 'remote-root', copy: ENROLLMENT_REFUSAL_COPY.remoteRoot };
+      return {
+        status: 'needs-authority',
+        copy: NEEDS_AUTHORITY_COPY.summary,
+        options: NEEDS_AUTHORITY_OPTIONS,
+      };
     }
     const generated = generateEnrollment({ actorId: input.actorId, nowMs: nowMs() });
     // Durable BEFORE any network call, but strictly AFTER the remote check answered
@@ -762,8 +1017,12 @@ export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<En
     if (republish !== undefined) await input.transport.publishIdentityRoot(republish);
   } else if (!sameBytes(publishedRoot.publicKey, record.rootPublic)) {
     // Another device published an authority key while this record sat unsubmitted; this
-    // installation cannot enroll under it (ADR 0020 §2 — linking is recovery work).
-    return { status: 'refused', reason: 'remote-root', copy: ENROLLMENT_REFUSAL_COPY.remoteRoot };
+    // browser cannot enroll under it (ADR 0020 §2 — linking is recovery work).
+    return {
+      status: 'needs-authority',
+      copy: NEEDS_AUTHORITY_COPY.summary,
+      options: NEEDS_AUTHORITY_OPTIONS,
+    };
   }
 
   await input.transport.enrollDevice(enrollRequestFromRecord(record));
@@ -774,7 +1033,7 @@ export async function enrollThisDevice(input: EnrollThisDeviceInput): Promise<En
     status: 'enrolled',
     identity: submittedRecord.identity,
     createdRoot: submittedRecord.createdRoot,
-    rosterSequence: submittedRecord.wire.rosterSequence,
+    rosterSequence: BigInt(submittedRecord.identity.ownRoster.sequence),
   };
 }
 
@@ -787,5 +1046,5 @@ function isCapabilityUsable(state: number): boolean {
 
 /** Best-effort hygiene only (ADR 0020 §4): drop the in-memory copy of a loaded record. */
 export function disposeStoredEnrollment(record: StoredEnrollment): void {
-  zeroize(record.rootPrivate);
+  if (record.rootPrivate !== undefined) zeroize(record.rootPrivate);
 }

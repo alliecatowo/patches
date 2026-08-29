@@ -371,6 +371,13 @@ export class User {
 - Soft delete: `@DeleteDateColumn` + `.softRemove()`/`.restore()`; `find()` excludes soft-deleted rows by default — pass `withDeleted: true` to include them.
 - `@Unique(['organizationId', 'email'])` for semantic composite uniqueness vs a bare `@Index` for lookup speed only.
 - pg `bigint`/`int8` → JS `string`: unchanged default driver behavior (avoids silent precision loss); no 1.x change found.
+- `dataSource.query()` on an `UPDATE`/`DELETE ... RETURNING` resolves to the raw pg driver
+  `[rows, rowCount]` tuple, not a bare rows array — confirmed empirically against a real 1.x
+  `PostgresDriver` on 2026-08-28 (`packages/bench/worker-bench.ts` had `if (rows.length === 0)
+break` silently always false, since a 2-element tuple's `.length` is always `2`, causing an
+  infinite reclaim loop with 0 real completions — see #205's fix). A plain `SELECT` via
+  `query()` still resolves to a bare rows array; destructure (`const [rows] = await
+dataSource.query(...)`) only for a DML statement with `RETURNING`.
 
 ## Sources
 

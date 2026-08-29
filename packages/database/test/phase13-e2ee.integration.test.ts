@@ -18,6 +18,45 @@ if (ledgerIndex === -1) {
   throw new Error(`${LEDGER_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`);
 }
 
+// Same "locate BY NAME" reasoning as the ledger migration above: this row-deleting migration
+// (ADR 0033 §5) must stay excluded from this file's scoped chain regardless of what lands
+// after it in `ALL_MIGRATIONS` — a positional `-1` (the actual chain tip) silently stopped
+// excluding it the moment `DropE2eeConversationMembershipEvents…` was appended (#270).
+const IRREVERSIBLE_TIP_MIGRATION_NAME = 'Adr0033IdentityTranscriptCleanBreak1787800000000';
+const irreversibleTipIndex = ALL_MIGRATIONS.findIndex(
+  (m) => m.name === IRREVERSIBLE_TIP_MIGRATION_NAME,
+);
+if (irreversibleTipIndex === -1) {
+  throw new Error(
+    `${IRREVERSIBLE_TIP_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+  );
+}
+
+// Excluded by name, same reasoning as the irreversible tip above: this file's pre-ledger fixture
+// (see `beforeAll`) inserts an `e2ee_identity_roots` row with no `root_bytes`/`self_signature`
+// (those columns don't exist yet at the pre-ledger schema point this fixture targets), which is
+// exactly the transcript-less shape `E2eeRequireIdentityRootTranscript…` purges (issue #297). This
+// file only tests the ledger's dependency-safe FK/index backfill, not identity-root transcript
+// enforcement — that migration's own behavior is exercised directly by "enforces key lengths and
+// one active root/device/signed-prekey per identity" below, which inserts a fully-populated root.
+const TRANSCRIPT_REQUIRED_MIGRATION_NAME = 'E2eeRequireIdentityRootTranscript1787880585000';
+const transcriptRequiredIndex = ALL_MIGRATIONS.findIndex(
+  (m) => m.name === TRANSCRIPT_REQUIRED_MIGRATION_NAME,
+);
+if (transcriptRequiredIndex === -1) {
+  throw new Error(
+    `${TRANSCRIPT_REQUIRED_MIGRATION_NAME} not found in ALL_MIGRATIONS — update this test`,
+  );
+}
+
+// Everything from the ledger onward except the two row-purging migrations above — not a single
+// two-way split, since both exclusions must independently survive future migrations landing
+// after either of them in `ALL_MIGRATIONS` (see each comment above).
+const EXCLUDED_INDEXES = new Set([irreversibleTipIndex, transcriptRequiredIndex]);
+const scopedMigrations = ALL_MIGRATIONS.filter(
+  (_, index) => index >= ledgerIndex && !EXCLUDED_INDEXES.has(index),
+);
+
 if (!testDatabaseUrl) {
   console.warn(
     '[packages/database] Skipping Phase 13 E2EE schema tests: TEST_DATABASE_URL is not set.',
@@ -45,6 +84,9 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `INSERT INTO actors (id, handle, handle_normalized, is_local) VALUES ($1, $2, $2, true)`,
       [actorId, `preledger_${randomUUID().slice(0, 8)}`],
     );
+    // Pre-ledger schema predates the `root_bytes`/`self_signature` columns entirely (added by
+    // `E2eeIdentityRootTranscript…`, which runs later in `scopedMigrations` below) — this insert
+    // must stay column-minimal to match the schema at this point in the chain.
     await dataSource.query(
       `INSERT INTO e2ee_identity_roots (id, actor_id, generation, public_key) VALUES ($1, $2, 1, $3)`,
       [rootId, actorId, Buffer.alloc(32, 1)],
@@ -73,13 +115,24 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     // target migration rather than mutating an already-initialized source.
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
-    // The ledger and everything appended after it, in order — the final state must be
-    // fully migrated ("no pending migration" assertion below).
-    dataSource.setOptions({ migrations: ALL_MIGRATIONS.slice(ledgerIndex) });
+    // The ledger and everything appended after it, in order, minus the irreversible migration
+    // — the final state must be fully migrated ("no pending migration" assertion below).
+    // `Adr0033IdentityTranscriptCleanBreak…` (ADR 0033 §5) deletes every row in these same
+    // E2EE tables regardless of encoding, which would erase this file's own pre-ledger fixture
+    // before the assertions below ever see it. That migration is orthogonal to what this file
+    // tests (the ledger's dependency-safe FK/index backfill) and is exercised in full elsewhere
+    // (`app-meta.integration.test.ts`, `phase1-schema.integration.test.ts`, both of which run
+    // the complete, unscoped `ALL_MIGRATIONS` chain via `createDataSource`).
+    dataSource.setOptions({ migrations: scopedMigrations });
     await dataSource.initialize();
     await dataSource.runMigrations();
     await dataSource.destroy();
     dataSource = createDataSource({ url: testDatabaseUrl! });
+    // Same scoped chain as above, not the default full `ALL_MIGRATIONS` — every `it` below
+    // (including the undo/redo round trip) must stay within `scopedMigrations`, or
+    // `runMigrations()`/`undoLastMigration()` would reach the excluded irreversible migration
+    // and wipe this file's fixture out from under it.
+    dataSource.setOptions({ migrations: scopedMigrations });
     await dataSource.initialize();
   });
 
@@ -92,8 +145,8 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'e2ee_%' ORDER BY table_name`,
     );
     expect(rows.map((row) => row.table_name)).toEqual([
-      'e2ee_conversation_membership_events',
       'e2ee_device_identities',
+      'e2ee_device_link_offers',
       'e2ee_device_rosters',
       'e2ee_group_control_events',
       'e2ee_identity_roots',
@@ -128,12 +181,12 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
       `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'
        AND indexname IN ('idx_e2ee_mailbox_envelopes_acknowledged_at_id',
                          'idx_e2ee_one_time_prekeys_consumed_at_id',
-                         'idx_e2ee_signed_prekeys_retired_at_id')`,
+                         'idx_e2ee_signed_prekeys_id_retired_at')`,
     );
     expect(indexes.map((index) => index.indexname).sort()).toEqual([
       'idx_e2ee_mailbox_envelopes_acknowledged_at_id',
       'idx_e2ee_one_time_prekeys_consumed_at_id',
-      'idx_e2ee_signed_prekeys_retired_at_id',
+      'idx_e2ee_signed_prekeys_id_retired_at',
     ]);
     for (const index of indexes) expect(index.indexdef).toMatch(/WHERE .*IS NOT NULL/);
     const constraints = await dataSource.query<
@@ -166,8 +219,10 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
 
   it('round-trips the issued-ID ledger migration in dependency-safe order', async () => {
     // Undo from the ledger onward (migrations after the ledger pop first), so the
-    // DB ends at the pre-ledger schema — exactly what the assertions below expect.
-    for (let i = ALL_MIGRATIONS.length - ledgerIndex; i > 0; i--) {
+    // DB ends at the pre-ledger schema — exactly what the assertions below expect. This
+    // dataSource's configured chain is `scopedMigrations` (see the comment in `beforeAll`),
+    // so the undo count matches that scoped chain's length.
+    for (let i = scopedMigrations.length; i > 0; i--) {
       await dataSource.undoLastMigration();
     }
 
@@ -234,19 +289,19 @@ describe.skipIf(!testDatabaseUrl)('Phase 13 E2EE schema (integration, real Postg
     );
     const rootId = randomUUID();
     await dataSource.query(
-      `INSERT INTO "e2ee_identity_roots" ("id", "actor_id", "generation", "public_key") VALUES ($1, $2, 1, $3)`,
-      [rootId, actorId, Buffer.alloc(32, 1)],
+      `INSERT INTO "e2ee_identity_roots" ("id", "actor_id", "generation", "public_key", "root_bytes", "self_signature") VALUES ($1, $2, 1, $3, $4, $5)`,
+      [rootId, actorId, Buffer.alloc(32, 1), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
     );
     await expect(
       dataSource.query(
-        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key") VALUES ($1, 2, $2)`,
-        [actorId, Buffer.alloc(32, 2)],
+        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "root_bytes", "self_signature") VALUES ($1, 2, $2, $3, $4)`,
+        [actorId, Buffer.alloc(32, 2), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
       ),
     ).rejects.toThrow(/idx_e2ee_identity_roots_actor_id"/);
     await expect(
       dataSource.query(
-        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "rotated_at") VALUES ($1, 2, $2, now())`,
-        [actorId, Buffer.alloc(31, 2)],
+        `INSERT INTO "e2ee_identity_roots" ("actor_id", "generation", "public_key", "root_bytes", "self_signature", "rotated_at") VALUES ($1, 2, $2, $3, $4, now())`,
+        [actorId, Buffer.alloc(31, 2), Buffer.alloc(16, 7), Buffer.alloc(64, 8)],
       ),
     ).rejects.toThrow(/chk_e2ee_identity_roots_key_length/);
 

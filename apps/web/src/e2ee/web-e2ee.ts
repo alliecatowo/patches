@@ -29,10 +29,23 @@
 import { useSyncExternalStore } from 'react';
 
 import { api } from '../api/client.js';
+import { connectCodeName } from '../lib/connect-error.js';
+import { logger } from '../lib/log.js';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY, webE2eeSessionSetupAvailable } from './availability.js';
-import type { InboxRow } from './runtime.js';
+import type { InboxMessageRow, InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
+import {
+  inboundMessageRow,
+  inboundMessagesToRecords,
+  loadInboundMessages,
+  recordInboundMessages,
+} from './inbound-messages.js';
+import {
+  loadOwnMessages,
+  mergeOwnMessages,
+  ownMessageRow,
+  recordOwnMessage,
+} from './own-messages.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
 import type { LocalDeviceIdentity } from './local-identity.js';
 import {
@@ -47,11 +60,14 @@ import {
   enrollThisDevice,
   loadStoredEnrollment,
   type EnrollOutcome,
+  type EnrollmentTransport,
 } from './enrollment.js';
 import {
+  bindConversationCreate,
   createWebE2eeTransports,
   createWebEnrollmentTransport,
   type E2eeApiSurface,
+  type PeerIdentityEvent,
 } from './transports.js';
 
 /** Fixed, content-free copy for every state and failure (ADR 0020 §4 / spec §194). */
@@ -64,8 +80,7 @@ export const WEB_E2EE_COPY = {
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
   pollFailed: 'Could not fetch new encrypted messages.',
-  createUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
-  sessionUnavailable: WEB_E2EE_SESSION_UNAVAILABLE_COPY,
+  createFailed: 'The conversation could not be started.',
   peerWarning: ENROLLMENT_PEER_WARNING_COPY,
 } as const;
 
@@ -116,6 +131,20 @@ class WebE2eeManager {
   private setActorSeq = 0;
   private readonly api: E2eeApiSurface;
   private readonly nowMs: (() => number) | undefined;
+  /**
+   * Peer-identity events from the transports (C2's verification surface): `first-seen`
+   * for TOFU contact, `rotated` for a countersignature-verified rotation. One entry per
+   * (actor, kind), latest wins — this is a disclosure list, not a log. Cleared with the
+   * account on `setActor`.
+   */
+  private identityEvents = new Map<string, PeerIdentityEvent>();
+  /** Cached snapshot so `useSyncExternalStore` sees a stable reference between events. */
+  private identityEventsSnapshot: readonly PeerIdentityEvent[] = [];
+  /** Ids, counts and transport status codes only — never a body, a handle, or key
+   * material (§183.1, §194); `log.ts` does not redact its input. */
+  readonly #log = logger('web-e2ee');
+  /** Conversation id -> every row drained for it in this session. See `poll()`. */
+  private readonly drained = new Map<string, InboxRow[]>();
 
   constructor(options: WebE2eeManagerOptions = {}) {
     this.api = options.api ?? api;
@@ -124,6 +153,17 @@ class WebE2eeManager {
 
   getStatus(): WebE2eeStatus {
     return this.status;
+  }
+
+  /** Identity-pinning disclosures for the thread screen (C2). */
+  getIdentityEvents(): readonly PeerIdentityEvent[] {
+    return this.identityEventsSnapshot;
+  }
+
+  private noteIdentityEvent(event: PeerIdentityEvent): void {
+    this.identityEvents.set(`${event.kind}:${event.actorId}`, event);
+    this.identityEventsSnapshot = [...this.identityEvents.values()];
+    for (const listener of this.listeners) listener();
   }
 
   subscribe(listener: Listener): () => void {
@@ -144,10 +184,22 @@ class WebE2eeManager {
     this.identity = undefined;
     this.runtime = undefined;
     this.actorId = undefined;
+    this.identityEvents = new Map();
+    this.identityEventsSnapshot = [];
+    this.drained.clear();
   }
 
   /** Called by the session layer on sign-in/sign-out/actor switch. */
   async setActor(actor: { readonly id: string } | null): Promise<void> {
+    if (actor !== null && actor.id === this.lastActorId && this.vault !== undefined) {
+      // Already the bound actor with an open vault (ADR 0020 §4: one connection at a
+      // time) — a second consumer binding to the actor this manager already holds open
+      // (e.g. a settings route mounted alongside the messages route) must not tear down
+      // and reopen a live connection just to reach the same state. `reloadEnrollment()`
+      // is the seam for picking up a write another flow made to the stored record; this
+      // is a no-op join, not a refresh.
+      return;
+    }
     const seq = (this.setActorSeq += 1);
     if (actor === null) {
       this.release();
@@ -169,7 +221,7 @@ class WebE2eeManager {
         vault.close();
         return;
       }
-      const stored = await loadStoredEnrollment(vault);
+      const stored = await loadStoredEnrollment(vault, Date.now());
       if (seq !== this.setActorSeq) {
         vault.close();
         return;
@@ -181,6 +233,7 @@ class WebE2eeManager {
         this.setStatus({ kind: 'not-enrolled' });
         return;
       }
+      this.actorId = actor.id;
       this.bind(vault, stored.identity);
       // `bind` only needs `stored.identity` going forward; the account root private key
       // this load pulled off disk has no further use in this manager and must not sit in
@@ -201,7 +254,12 @@ class WebE2eeManager {
   }
 
   private bind(vault: RatchetSessionVault, identity: LocalDeviceIdentity): void {
-    const transports = createWebE2eeTransports({ api: this.api, identity });
+    const transports = createWebE2eeTransports({
+      api: this.api,
+      identity,
+      pinVault: vault,
+      onPeerIdentityEvent: (event) => this.noteIdentityEvent(event),
+    });
     this.vault = vault;
     this.identity = identity;
     this.runtime = new E2eeSessionRuntime({
@@ -233,7 +291,7 @@ class WebE2eeManager {
         vault: this.vault,
         ...(this.nowMs === undefined ? {} : { nowMs: this.nowMs }),
       });
-      if (outcome.status === 'refused') {
+      if (outcome.status === 'refused' || outcome.status === 'needs-authority') {
         this.setStatus({ kind: 'refused', copy: outcome.copy });
         return outcome;
       }
@@ -249,16 +307,35 @@ class WebE2eeManager {
     }
   }
 
-  async send(conversationId: string, body: string): Promise<void> {
+  /**
+   * Seals `body` to the conversation's fanout and durably records it locally, returning
+   * the row the thread should render for it.
+   *
+   * The local record is the point (issue #332): this device is never in its own fanout,
+   * so no envelope will ever redeliver the message to the person who wrote it. Without
+   * the vault row the sender's half of the thread is in-memory echo that a reload erases.
+   */
+  async send(conversationId: string, body: string): Promise<InboxMessageRow> {
     const runtime = this.requireRuntime();
-    if (!webE2eeSessionSetupAvailable()) {
-      // Refuse before composing anything: no session can be established, so this would
-      // fail at fanout every time (B-132). The honest answer lives here, not in the UI.
-      throw new WebE2eeUnavailableError(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
-    }
+    const vault = this.requireVault();
+    const clientMessageId = crypto.randomUUID();
+    const sentAtMs = (this.nowMs ?? Date.now)();
     try {
-      await runtime.send(conversationId, body, crypto.randomUUID());
+      await runtime.send(conversationId, body, clientMessageId);
     } catch (error) {
+      // A failed send is exactly when losing the viewer's own text hurts most, so record
+      // it as undelivered. Best-effort: a vault that cannot be written must not mask the
+      // send error the caller has to see.
+      try {
+        await recordOwnMessage(vault, conversationId, {
+          clientMessageId,
+          body,
+          sentAtMs,
+          deliveryState: 'failed',
+        });
+      } catch {
+        // Ids only would still be noise here; the send error below is the actionable one.
+      }
       if (error instanceof WebE2eeUnavailableError || error instanceof E2eeNotEnrolledError) {
         throw error;
       }
@@ -266,32 +343,112 @@ class WebE2eeManager {
       // has already handled state recovery internally (audit P1-1).
       throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
     }
-  }
-
-  async poll(conversationId: string): Promise<readonly InboxRow[]> {
-    const runtime = this.requireRuntime();
-    const result = await runtime.pollMailbox({ conversationId });
-    return result.rows;
+    const record = { clientMessageId, body, sentAtMs, deliveryState: 'sent' } as const;
+    await recordOwnMessage(vault, conversationId, record);
+    return ownMessageRow(record);
   }
 
   /**
-   * Creating an E2EE conversation from the browser fails closed today — see the module
-   * header for both blockers (B-124 prekey claims, and the conversation-id-in-AD gap in
-   * `CreateE2eeConversation` itself). Existing conversations send/receive normally.
+   * Drains this device's mailbox for one conversation and returns everything drained for it
+   * so far in this session.
+   *
+   * A drain acknowledges each envelope as soon as its receive state commits (ADR 0020 §4),
+   * so the node will never redeliver it — the rows a drain returns are the only copy. The
+   * received `message` rows are therefore durably stored in the vault as they drain
+   * (`inbound-messages.ts`, issue #352), so a caller that throws away a result (an in-flight
+   * poll whose component unmounted, or one of React's deliberately double-invoked effects)
+   * loses nothing: the next poll re-reads them from the vault and the caller dedupes by row
+   * id. That persistence is also what makes the received half of a thread survive a reload.
+   *
+   * A small in-memory cache keeps only the session-scoped non-message rows
+   * (quarantine/undisplayable) so a vanished caller loses nothing even for those; it is
+   * cleared with the account in `release()`. Durable history lives in the vault, not here.
+   *
+   * Queued behind `enqueue` so two concurrent drains (two effect runs racing) cannot
+   * interleave over one mailbox and split a conversation's messages between two results.
    */
-  createConversation(): Promise<never> {
-    // Not async: `requireRuntime`'s throw must surface as a rejection (callers await
-    // this), which a synchronous throw from a non-async function would bypass instead.
+  async poll(conversationId: string): Promise<readonly InboxRow[]> {
+    return this.enqueue(async () => {
+      const runtime = this.requireRuntime();
+      const vault = this.requireVault();
+      const result = await runtime.pollMailbox({ conversationId });
+      if (result.rows.length > 0) {
+        // Durable copy of what this device received: the drain has already acknowledged
+        // these envelopes, so persisting before they can be dropped is what stops a
+        // received message from disappearing (issue #352).
+        const inbound = inboundMessagesToRecords(result.rows);
+        if (inbound.length > 0) {
+          await recordInboundMessages(vault, conversationId, inbound);
+        }
+        const nonMessage = result.rows.filter((row) => row.kind !== 'message');
+        if (nonMessage.length > 0) {
+          const drained = this.drained.get(conversationId) ?? [];
+          drained.push(...nonMessage);
+          this.drained.set(conversationId, drained);
+        }
+      }
+      // Reconstruct the thread from durable vault history: own messages first, then
+      // received messages in drain order, then any session-scoped non-message rows.
+      const own = await loadOwnMessages(vault, conversationId);
+      const inboundRecords = await loadInboundMessages(vault, conversationId);
+      const merged = mergeOwnMessages(own, inboundRecords.map(inboundMessageRow));
+      const cached = this.drained.get(conversationId) ?? [];
+      if (cached.length === 0) return merged;
+      const seen = new Set(merged.map((row) => row.id));
+      return [...merged, ...cached.filter((row) => !seen.has(row.id))];
+    });
+  }
+
+  /**
+   * Reserves a conversation with `recipientActorIds` and sends `body` into it as the
+   * first message (ADR 0035). Two RPCs on purpose: the envelope's AEAD associated data
+   * binds the conversation id, so the id has to exist before anything can be sealed for
+   * it. Returns the new conversation id.
+   */
+  async createConversation(recipientActorIds: readonly string[], body: string): Promise<string> {
+    const runtime = this.requireRuntime();
+    const identity = this.identity;
+    if (identity === undefined) throw new E2eeNotEnrolledError();
+    let conversationId: string;
     try {
-      this.requireRuntime();
+      const reserved = await bindConversationCreate(this.api).createE2eeConversation({
+        clientRequestId: crypto.randomUUID(),
+        senderDeviceId: identity.deviceId,
+        recipientActorIds,
+      });
+      conversationId = reserved.conversationId;
     } catch (error) {
-      return Promise.reject(
-        error instanceof Error
-          ? error
-          : new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable),
-      );
+      // Content-free by rule (spec §194): the reservation either happened or it did not,
+      // and the recipient-availability failures stay deliberately indistinguishable (§62) —
+      // the node answers all of them with one uniform `not_found`, and naming that one code
+      // discloses nothing it did not already publish. What it does buy is that a refusal is
+      // never again a blind failure with no thread to pull (issue #320). Ids only: never the
+      // body, never the recipients' handles.
+      const code = connectCodeName(error);
+      this.#log.error('createE2eeConversation refused', {
+        code,
+        recipientCount: recipientActorIds.length,
+      });
+      throw new WebE2eeUnavailableError(`${WEB_E2EE_COPY.createFailed} (${code})`);
     }
-    return Promise.reject(new WebE2eeUnavailableError(WEB_E2EE_COPY.createUnavailable));
+    const clientMessageId = crypto.randomUUID();
+    const sentAtMs = (this.nowMs ?? Date.now)();
+    try {
+      await runtime.send(conversationId, body, clientMessageId);
+    } catch (error) {
+      if (error instanceof E2eeNotEnrolledError) throw error;
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.sendFailed);
+    }
+    // A device is not in its own fanout, so nothing will ever redeliver this message to the
+    // person who just wrote it. The vault row is the durable copy that survives a reload;
+    // `poll()` merges it back into the thread on every subsequent load (issue #332).
+    await recordOwnMessage(this.requireVault(), conversationId, {
+      clientMessageId,
+      body,
+      sentAtMs,
+      deliveryState: 'sent',
+    });
+    return conversationId;
   }
 
   /** Explicit, labeled destructive reset (also the only exit from a sticky fault).
@@ -323,6 +480,80 @@ class WebE2eeManager {
     this.setStatus({ kind: 'not-enrolled' });
   }
 
+  /** FIFO queue backing `withVault`/`reloadEnrollment`: two callers reading or writing
+   * the stored enrollment record (a `withVault` caller and this manager's own
+   * `reloadEnrollment`) never interleave on the vault's one open connection.
+   * `send`/`poll` don't need this — they only exercise the ratchet session runtime,
+   * never the stored enrollment record. */
+  private operationChain: Promise<unknown> = Promise.resolve();
+
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.operationChain.then(fn, fn);
+    this.operationChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /**
+   * The narrow public seam settings/device-link UI needs (issue #279): hands `fn` this
+   * manager's OWN open vault/actor/enrollment-transport instead of opening a second
+   * IndexedDB connection to the same account (ADR 0020 §4 — one connection at a time),
+   * and queues `fn` behind any other `withVault`/`reloadEnrollment` call so two callers
+   * never read or write the stored enrollment record at once. Rejects with
+   * `WebE2eeUnavailableError` if this browser has no open vault for a signed-in actor
+   * right now (signed-out/loading/fault).
+   */
+  async withVault<T>(
+    fn: (ctx: {
+      readonly vault: RatchetSessionVault;
+      readonly actorId: string;
+      readonly transport: EnrollmentTransport;
+    }) => Promise<T>,
+  ): Promise<T> {
+    return this.enqueue(async () => {
+      if (this.vault === undefined || this.actorId === undefined) {
+        throw new WebE2eeUnavailableError(WEB_E2EE_COPY.notEnrolled);
+      }
+      return fn({
+        vault: this.vault,
+        actorId: this.actorId,
+        transport: createWebEnrollmentTransport({ api: this.api }),
+      });
+    });
+  }
+
+  /**
+   * Re-reads the stored enrollment record after an external `withVault` caller (link,
+   * rotate, or recovery-archive import) wrote a new one. Replaces the old
+   * `setActor(null)`/`setActor({id})` round trip, which also transiently dropped
+   * `identity`/`runtime` and reported `loading`/`not-enrolled` to every other consumer of
+   * this manager for no reason other than forcing a reread. A no-op if this manager has
+   * no open vault right now. Queued behind any in-flight `withVault` call so it never
+   * reads a half-written record.
+   */
+  async reloadEnrollment(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.vault === undefined || this.actorId === undefined) return;
+      const stored = await loadStoredEnrollment(this.vault, Date.now());
+      if (stored === undefined || !stored.submitted) {
+        this.setStatus({ kind: 'not-enrolled' });
+        return;
+      }
+      this.bind(this.vault, stored.identity);
+      disposeStoredEnrollment(stored);
+      this.setStatus({ kind: 'enrolled' });
+    });
+  }
+
+  /** The open vault behind the bound runtime. Separate from `requireRuntime` only so the
+   * own-message store can be reached without going through the ratchet session. */
+  private requireVault(): RatchetSessionVault {
+    if (this.vault === undefined || this.runtime === undefined) throw new E2eeNotEnrolledError();
+    return this.vault;
+  }
+
   private requireRuntime(): E2eeSessionRuntime {
     if (this.runtime === undefined || this.identity === undefined) {
       throw new E2eeNotEnrolledError();
@@ -352,5 +583,15 @@ export function useWebE2eeStatus(): WebE2eeStatus {
     (listener) => manager.subscribe(listener),
     () => manager.getStatus(),
     () => manager.getStatus(),
+  );
+}
+
+/** React binding for the identity-pinning disclosures (C2): re-renders on each event. */
+export function usePeerIdentityEvents(): readonly PeerIdentityEvent[] {
+  const manager = webE2ee();
+  return useSyncExternalStore(
+    (listener) => manager.subscribe(listener),
+    () => manager.getIdentityEvents(),
+    () => manager.getIdentityEvents(),
   );
 }

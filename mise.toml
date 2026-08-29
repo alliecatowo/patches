@@ -177,11 +177,11 @@ description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
 
 [tasks.verify]
-description = "format + lint + typecheck + unit tests (the pre-commit gate)"
-run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
+description = "format + lint + typecheck + unit tests (the full gate — PR CI runs this; prefer `mise run check <workspace>` locally, see #302)"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/bounded.sh pnpm verify"
 
 [tasks.check]
-description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains."
+description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains. Routed through `scripts/bounded.sh` (#302): bounded CPU/memory/IO, safe to run from several worktrees at once — never run the full `verify` locally instead."
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -190,22 +190,29 @@ name="${1:?usage: mise run check <workspace>   e.g. tui, web, server, @patches/t
 case "$name" in @patches/*) pkg="$name" ;; *) pkg="@patches/$name" ;; esac
 dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(execSync("pnpm ls -r --depth -1 --json",{encoding:"utf8"}));const m=l.find(p=>p.name===process.argv[1]);if(!m){console.error("unknown workspace: "+process.argv[1]);process.exit(1)}process.stdout.write(m.path)' "$pkg")"
   echo "→ $pkg  ($dir)"
-  # typecheck+test in one turbo invocation: dependency-ordered, parallel, and cached —
-  # an unchanged workspace replays in ~0s instead of re-running vitest every time.
-  pnpm exec turbo run typecheck test --filter="$pkg" --output-logs=errors-only
-# eslint was missing here until 2026-08-20, so agents kept reporting a workspace green
-# and then tripping lefthook's eslint at commit time (import-type, no-misused-promises,
-# no-empty-object-type). The pre-commit hook must never be the first place lint runs.
-pnpm exec eslint "$dir" --cache --cache-location node_modules/.cache/eslint/
-pnpm exec prettier --check "$dir"
-echo "✓ $pkg is green"
+  start=$(date +%s)
+  # Turbo handles typecheck+test+lint together: dependency-ordered, parallel, content-hashed
+  # and cached (turbo.json:lint). An unchanged workspace replays FULL TURBO (~15ms) instead
+  # of re-running vitest/eslint. Prettier runs in parallel — the whole check is ~5s cold,
+  # ~2s warm (vs 6-7s sequential before). Single bounded slot only; no wait queue when
+  # only one agent runs (bounded.sh uses nproc/4=4 slots, error-only logs).
+  scripts/bounded.sh pnpm exec turbo run typecheck test lint --filter="$pkg" --output-logs=errors-only &
+  turbo_pid=$!
+  pnpm exec prettier --check "$dir" 2>&1 | sed -n '1,20p' &
+  prettier_pid=$!
+  wait $turbo_pid; turbo_rc=$?
+  wait $prettier_pid; prettier_rc=$?
+  if [ $turbo_rc -ne 0 ]; then exit $turbo_rc; fi
+  if [ $prettier_rc -ne 0 ]; then exit $prettier_rc; fi
+elapsed=$(( $(date +%s) - start ))
+echo "ok $pkg ${elapsed}s"
 """
 
 [tasks.test]
 description = "All tests including integration (needs the compose stack)"
 # `pnpm test` is now `turbo run test` (unit tests only, cached); the integration projects
 # are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
-run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && pnpm test && pnpm test:integration"
+run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && scripts/bounded.sh pnpm test && scripts/bounded.sh pnpm test:integration"
 
 [tasks.down]
 description = "Stop the compose stack"
@@ -235,6 +242,14 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/n
 description = "Stop only server and worker processes recorded by the isolated local harness"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down"
 
+[tasks."lab:down-any"]
+description = "Stop whichever worktree's harness lab currently holds :50058/:8088, regardless of this worktree's own (possibly empty) state"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js down --any"
+
+[tasks."lab:mailpit"]
+description = "Read verification-code email from the shared Mailpit instance; subcommand is mailpit-list/mailpit-latest/mailpit-get"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js \"$@\""
+
 [tasks."lab:register"]
 description = "Create a disposable local account through direct gRPC; pass password only with --password-stdin"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js register \"$@\""
@@ -246,6 +261,24 @@ run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/n
 [tasks."lab:world:ensure"]
 description = "Ensure an unchanged stable-key JSON world; declaration drift fails closed"
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/harness build >/dev/null && node packages/harness/dist/cli.js world-ensure \"$@\""
+
+[tasks."screenshots:web"]
+description = "Regenerate docs/media/web/*.png (README): kills stray :4173/:8088/:50058, starts the lab harness, runs apps/web/e2e/readme-screenshots.spec.ts — see scripts/screenshots/regenerate-web.sh"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/screenshots/regenerate-web.sh"
+
+[tasks."screenshots:tui"]
+description = "Regenerate docs/media/tui/frames.md (README) from the committed TUI golden-frame fixtures — see scripts/screenshots/regenerate-tui.sh"
+run = "cd \"$MISE_PROJECT_ROOT\" && scripts/screenshots/regenerate-tui.sh"
+
+[tasks.screenshots]
+description = "Regenerate all README media: TUI golden frames, then web PWA screenshots (needs the lab harness; see screenshots:web)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+mise run screenshots:tui
+mise run screenshots:web
+"""
 
 [tasks."docker:build"]
 description = "Build the production image locally (podman, falling back to docker) — see infra/docker/Dockerfile"

@@ -2,7 +2,14 @@
 export const CONVERSATION_SECURITY_MODES = ['LEGACY_SERVER_VISIBLE', 'E2EE_V1'] as const;
 export type ConversationSecurityMode = (typeof CONVERSATION_SECURITY_MODES)[number];
 
-/** Operator rollout state. Only post-review states may be used outside isolated test nodes. */
+/**
+ * Operator rollout state. Owner override (2026-08-26, ADR 0036 Amendment, see the ADR's
+ * top-of-file note): E2EE is an always-on feature, so a node only ever reports `DISABLED` or
+ * `ENABLED` in practice. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` remain defined so their
+ * protobuf enum numbers are never reused (spec §153) and so a future unreviewed protocol change
+ * (a v2 franking profile, a v2 transcript family) has an honest state to run in, but nothing in
+ * this codebase produces them anymore.
+ */
 export const E2EE_CAPABILITY_STATES = [
   'DISABLED',
   'ISOLATED_TEST_ONLY',
@@ -11,14 +18,6 @@ export const E2EE_CAPABILITY_STATES = [
   'ENABLED',
 ] as const;
 export type E2eeCapabilityState = (typeof E2EE_CAPABILITY_STATES)[number];
-
-/**
- * ADR 0027: any client surface in the `ISOLATED_TEST_ONLY` capability state must show this
- * persistently at conversation creation and reading. One string so every client renders the
- * same warning rather than each hand-writing its own approximation.
- */
-export const E2EE_UNREVIEWED_DEV_MODE_WARNING =
-  'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.' as const;
 
 export const E2EE_PROTOCOL_V1 = 'patches-e2ee-v1' as const;
 export const E2EE_GROUP_MAX_MEMBERS = 8;
@@ -40,7 +39,6 @@ export class E2eeContractError extends Error {
 export interface E2eeModeNegotiation {
   readonly requestedMode: ConversationSecurityMode;
   readonly capabilityState: E2eeCapabilityState;
-  readonly isolatedTestNode: boolean;
   readonly participantProtocols: readonly (typeof E2EE_PROTOCOL_V1 | null)[];
 }
 
@@ -56,14 +54,16 @@ export function assertImmutableConversationMode(
 /**
  * Enforce capability negotiation without an E2EE-to-plaintext fallback. A caller may retry only
  * after capabilities/devices change, or deliberately create a separate legacy conversation.
+ *
+ * Owner override (2026-08-26, ADR 0036 Amendment): E2EE is always-on, so
+ * `E2eeCapabilityService` only ever produces `DISABLED` or `ENABLED` (see the doc comment on
+ * {@link E2EE_CAPABILITY_STATES}). This only checks `ENABLED` — `ISOLATED_TEST_ONLY` and
+ * `EXPERIMENTAL_CANARY` are unreachable rollout states kept solely so their protobuf enum
+ * numbers are never reused.
  */
 export function assertConversationModeNegotiation(input: E2eeModeNegotiation): void {
   if (input.requestedMode === 'LEGACY_SERVER_VISIBLE') return;
-  const allowed =
-    input.capabilityState === 'EXPERIMENTAL_CANARY' ||
-    input.capabilityState === 'ENABLED' ||
-    (input.isolatedTestNode && input.capabilityState === 'ISOLATED_TEST_ONLY');
-  if (!allowed) {
+  if (input.capabilityState !== 'ENABLED') {
     throw new E2eeContractError('E2EE_V1 is not enabled on this node.');
   }
   if (
@@ -106,33 +106,13 @@ export const E2EE_DEVICE_CERTIFICATE_VERSION = 1;
 /**
  * Identifier of the v1 message-franking construction (ADR 0020 §9).
  *
- * The *name* is fixed so evidence carries a versioned profile from the first byte written. The
- * construction behind it is **not approved**: ADR 0020 §9 defers the exact committing-AE choice
- * to independent cryptographic review, and §12.7 makes that review a hard ship gate. See
- * {@link E2EE_APPROVED_FRANKING_PROFILES}.
+ * The *name* is fixed so evidence carries a versioned profile from the first byte written.
+ * This IS the shipped profile — owner directive 2026-08-26 (ADR 0036 Amendment 2): there is
+ * no approval list and no per-node override; a node either runs this construction or is on
+ * an older build. A *second* profile (a v2 construction) still requires an ADR — not a
+ * feature-branch edit — and would reintroduce an approval list there, not here.
  */
 export const E2EE_FRANKING_PROFILE_V1 = 'patches-franking-v1' as const;
-
-/**
- * Franking profiles that have passed ADR 0020 §12.7's independent cryptographic review.
- *
- * Deliberately **empty**. This is the mechanical form of the ship gate: no profile can be
- * enabled for a production conversation until a reviewed construction is added here, and adding
- * one requires amending ADR 0020 — not editing a constant in a feature branch.
- */
-export const E2EE_APPROVED_FRANKING_PROFILES: readonly string[] = Object.freeze([]);
-
-/**
- * Gate for enabling `E2EE_V1` outside an isolated test node. Throws while the franking
- * construction is unreviewed, which is the state ADR 0020 records today.
- */
-export function assertFrankingProfileApproved(profile: string): void {
-  if (!E2EE_APPROVED_FRANKING_PROFILES.includes(profile)) {
-    throw new E2eeContractError(
-      `Franking profile "${profile}" has not passed ADR 0020 §12.7 independent review.`,
-    );
-  }
-}
 
 /**
  * Per-device capability check (ADR 0020 §1.2, §11). One device that does not implement the

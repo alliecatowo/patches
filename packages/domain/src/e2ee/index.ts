@@ -8,19 +8,17 @@
  * validators — a rule enforced in one place is a rule; a rule re-derived in three clients is
  * three chances to get it wrong.
  *
- * Nothing here is wired up. `E2eeService` is schema-only and `GetE2eeCapability` reports
- * `DISABLED` on the reference node until ADR 0020 §12's ship gates — including independent
- * cryptographic review of the franking construction — are complete.
+ * Nothing here is wired up — this package defines the contract; `apps/server`'s E2eeModule
+ * implements it over these validators. E2EE ships always-on (ADR 0036 Amendment 2): the
+ * v1 franking construction is the shipped profile, and a v2 would arrive through an ADR.
  */
 
 export {
   assertConversationModeNegotiation,
   assertDeviceSupportsProtocol,
   assertE2eeGroupBounds,
-  assertFrankingProfileApproved,
   assertImmutableConversationMode,
   CONVERSATION_SECURITY_MODES,
-  E2EE_APPROVED_FRANKING_PROFILES,
   E2EE_CAPABILITY_STATES,
   E2EE_DEVICE_CERTIFICATE_VERSION,
   E2EE_FRANKING_PROFILE_V1,
@@ -34,7 +32,6 @@ export {
   E2EE_PROTOCOL_V1,
   E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
   E2EE_SIGNED_PREKEY_ROTATION_MS,
-  E2EE_UNREVIEWED_DEV_MODE_WARNING,
   E2eeContractError,
   mayDescribeAsEndToEndEncrypted,
   requiredConversationDisclosure,
@@ -126,16 +123,6 @@ export type {
   E2eeReadReceiptControl,
   E2eeTypingControl,
 } from './control.js';
-
-export {
-  assertGroupMembershipBounds,
-  assertMembershipChain,
-  assertMembershipEventShape,
-  assertMembershipSucceeds,
-  membershipGenesisPreviousDigest,
-  verifyMembershipEventSignature,
-} from './membership.js';
-export type { E2eeMembershipAction, E2eeMembershipEventView } from './membership.js';
 
 export {
   assertCiphertextDigestsMatchCiphertexts,

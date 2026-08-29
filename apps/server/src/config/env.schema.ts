@@ -78,23 +78,6 @@ const envObjectSchema = z.object({
    */
   GRPC_REFLECTION: booleanish().default(false),
   /**
-   * ADR 0027's explicit owner-authorized exception for disposable E2EE testing. It is never a
-   * substitute for independent cryptographic review; NODE_ENV controls runtime behavior, not
-   * whether this node is authorized to exercise the isolated-test capability.
-   */
-  E2EE_UNREVIEWED_DEV_MODE: booleanish().default(false),
-  // Owner-approved franking profiles (P13-016 resolution). Empty = fail-closed.
-  E2EE_APPROVED_FRANKING_PROFILES: z.string().default(''),
-  /**
-   * B-108 / P13-014 — the final EXPERIMENTAL_CANARY → ENABLED flip (ADR 0020 §11's rollout
-   * ladder, `E2EE_CAPABILITY_STATE_ENABLED`). Disclosure only: canary and enabled accept the
-   * exact same send traffic, so this changes what `GetE2eeCapability` reports, not the fanout
-   * approval gate. It can never upgrade a node past its review position — without an approved
-   * franking profile the node still reports `ISOLATED_TEST_ONLY`/`DISABLED`. Default false;
-   * flip to true only after `infra/scripts/e2ee-lab.sh` (the B-108 interop lab) is green.
-   */
-  E2EE_V1_ENABLED: booleanish().default(false),
-  /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
    * proxy that always sets/overwrites those headers (Fly's edge does); off by default so a
@@ -393,6 +376,29 @@ const envObjectSchema = z.object({
    * excludes them without a separate allow-list entry.
    */
   PUBLIC_READ: booleanish().default(true),
+
+  /**
+   * Feature flags / remote config (spec §184.3, issue #142): comma-separated `name=true`/
+   * `name=false` overrides against `@patches/domain`'s `FEATURE_FLAG_DEFINITIONS`, published
+   * via `NodeService.GetNodeInfo`'s `feature_flags`. An override for a name that isn't declared
+   * in `FEATURE_FLAG_DEFINITIONS` is ignored (`evaluateFeatureFlags`) rather than rejected at
+   * boot — an operator downgrading before a flag ships stays bootable. Default empty: every
+   * flag serves its own `defaultEnabled`.
+   */
+  FEATURE_FLAGS: z
+    .string()
+    .default('')
+    .transform((value) => {
+      const overrides = new Map<string, boolean>();
+      for (const entry of value.split(',')) {
+        const trimmed = entry.trim();
+        if (trimmed.length === 0) continue;
+        const [name, rawValue] = trimmed.split('=');
+        if (name === undefined || rawValue === undefined || name.trim().length === 0) continue;
+        overrides.set(name.trim(), rawValue.trim().toLowerCase() === 'true');
+      }
+      return overrides;
+    }),
 
   /**
    * P15-002: whether this node accepts the PASSWORD credential at all, published to clients via

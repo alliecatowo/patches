@@ -53,6 +53,7 @@ function fakeConfig(overrides: Record<string, unknown> = {}): AppConfigService {
     LABEL_VOCABULARY: [],
     FEDERATION_ENABLED: false,
     PUBLIC_READ: true,
+    FEATURE_FLAGS: new Map<string, boolean>(),
   };
   const values = { ...defaults, ...overrides };
   const stub = { get: (key: string) => values[key] } as unknown as ConfigService<Env, true>;
@@ -117,6 +118,17 @@ describe('NodeService.getNodeInfo (owner decision 2026-08-19, PUBLIC_READ)', () 
       fakeDataSource([]),
     );
     expect(closed.getNodeInfo().publicRead).toBe(false);
+  });
+
+  it('publishes an empty feature_flags list until a flag is declared (spec §184.3, issue #142)', () => {
+    const service = new NodeService(
+      fakeConfig({ FEATURE_FLAGS: new Map([['not_declared', true]]) }),
+      FIXED_VERSION,
+      fakeDataSource([]),
+    );
+    // `FEATURE_FLAG_DEFINITIONS` is empty in v0 — an override for an undeclared name is
+    // ignored, matching `evaluateFeatureFlags`'s contract (`@patches/domain`).
+    expect(service.getNodeInfo().featureFlags).toEqual([]);
   });
 
   it('publishes indefinite DM retention until a deletion sweep exists', async () => {

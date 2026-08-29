@@ -208,16 +208,15 @@ set (media/email disabled until dashboard-only credentials are fetched — `task
 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`,
 `RESEND_API_KEY`.
 
-Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production E2EE_UNREVIEWED_DEV_MODE=true LOG_LEVEL=log
+Non-secret env, from `infra/fly/fly.toml`'s `[env]`: `NODE_ENV=production LOG_LEVEL=log
 GRPC_HOST=0.0.0.0 GRPC_PORT=50051 HTTP_PORT=8080 PUBLIC_ORIGIN=https://patches-social.fly.dev
 NODE_DOMAIN=patches-social.fly.dev INVITE_ONLY=true FEDERATION_ENABLED=false
 EMAIL_PROVIDER=console EMAIL_FROM=noreply@patches-social.fly.dev`.
 
-**ADR 0027 disposable-node E2EE opt-in** — this owner-authorized no-user node deliberately sets
-`E2EE_UNREVIEWED_DEV_MODE=true`. This permits only the isolated-test `patches-franking-v1` path;
-it does not add a globally approved profile or describe the protocol as reviewed or secure.
-`NODE_ENV=production` remains required for normal runtime behavior and is not a deployment trust
-classification. Remove the flag before the node handles non-disposable data or real users.
+**E2EE is always-on** (ADR 0036 Amendments, 2026-08-26 owner override) — there is no dev-mode
+flag, approval list, or narrowing env var. The v1 franking profile is the shipped construction,
+so `GetE2eeCapability` reports `ENABLED` as soon as the node has a franking signing key for its
+current era (`e2ee_node_franking_keys`).
 
 **A-052 (spec §197.6) operator-transparency env** — also set in `infra/fly/fly.toml`'s
 `[env]`, published unauthenticated via `NodeService.GetNodePolicy`: `PRIVACY_NOTICE_SUMMARY`
@@ -293,7 +292,13 @@ node apps/tui/dist/cli.js ping
 - [x] Neon switch (production `DATABASE_URL` migrated off Fly Postgres 2026-08-18, A-041 —
       see "Production database" above).
 - [ ] Autoscaling / `[[vm]]` sizing tuned for real traffic (**planned** — default single
-      Machine per process group so far).
+      Machine per process group so far, confirmed via `flyctl scale show --app patches-social`
+      2026-08-27: `server` and `worker` each at count 1, no scaling configured. An earlier
+      `infra/fly/fly.toml` had an invalid `[services.scaling]` block that `flyctl config
+validate` silently accepted but never applied — removed rather than fixed, since the
+      correct per-service knobs (`auto_stop_machines`/`auto_start_machines`/
+      `min_machines_running`, `docs/research/fly-io.md`) haven't been tuned against real
+      traffic yet either).
 - [ ] Log drain wired up (**planned** — `fly logs`/dashboard live-tail only today).
 
 ## Process groups (`infra/fly/fly.toml`)
@@ -549,6 +554,17 @@ infrastructure:
   fits the project's minimal-infrastructure bias (spec §153's no-unnecessary-managed-service
   posture, applied here by extension). Revisit if log-based alerting proves insufficient
   once there's real production traffic.
+- `packages/observability`'s `initializeTelemetry` (used for OTel tracing, a separate concern
+  from this error-monitoring decision) has no Sentry-specific code path — it only reads the
+  generic `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` env vars. An operator who
+  wants traces routed to Sentry's OTLP ingestion (currently an open-beta Sentry feature, not
+  GA) sets those two vars to Sentry's documented values themselves — see
+  `docs/research/sentry-otlp.md` (verified 2026-08-27) for the exact endpoint shape
+  (`https://o<orgId>.ingest.sentry.io/api/<projectId>/integration/otlp/v1/traces`) and auth
+  header (`x-sentry-auth: sentry sentry_key=<public-key>`, not a bearer token). An earlier
+  revision of `instrumentation.ts` hardcoded a wrong endpoint/header pair behind a `sentryDsn`
+  option; that branch was removed rather than fixed, since the generic OTLP path already
+  covers this and Sentry's beta API shape may still change.
 - Nothing here has been exercised against a live Fly log drain — there is no deployed node
   in this environment to point a drain at. The application-side structured logging itself
   is implemented and covered by existing server/worker tests; only the drain/alerting setup
@@ -601,6 +617,19 @@ the repo's own secrets, never a fork's. `actionlint` and `python3 -c
 respectively (checked 2026-08-25); the workflow itself has not yet completed a real
 CI-triggered deploy from this environment (no way to push to `main` and wait for it
 here).
+
+**Depot-accelerated builds (issue #262, 2026-08-28):** the deploy step passes
+`--depot=auto --depot-scope=org` explicitly to `flyctl deploy` — `docs/research/fly-io.md`
+§10 confirms this is flyctl's own default as of v0.4.92 (`flyctl deploy --help`), made
+explicit so a future flyctl default change can't silently drop it. Fly runs the Depot
+builder itself; no separate Depot account, token, or CI step is needed. Combined with the
+BuildKit pnpm-store cache mounts already in `infra/docker/Dockerfile` and the runner-side
+pnpm store cache in `.github/actions/setup/action.yml`, repeat deploys of this monorepo
+image should reuse both the CI-runner pnpm store and Depot's own layer cache. **Status:
+verified via `flyctl deploy --help` output only** — no live `flyctl deploy` was run from
+this environment (would deploy to the real `patches-social` production app, out of scope
+for this change); measure the actual before/after deploy time on the next real production
+deploy.
 
 ## Smoke tests
 

@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
+import { verify as argon2Verify } from '@node-rs/argon2';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Actor, Credential, Post, User } from '@patches/database';
+import { Actor, Credential, Invite, Post, User } from '@patches/database';
 import type { DataSource } from 'typeorm';
 import { createTestDataSource } from '../src/create-test-data-source.js';
 import { withTransactionRollback } from '../src/with-transaction-rollback.js';
@@ -7,8 +9,10 @@ import {
   createTestActor,
   createTestCredential,
   createTestInvite,
+  createTestPasswordCredential,
   createTestPost,
   createTestUser,
+  mintInvite,
 } from '../src/factories/index.js';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -61,6 +65,39 @@ describe.skipIf(!testDatabaseUrl)('fixture factories (integration, real Postgres
       expect(stored.secretHash).toMatch(/^\$argon2id\$fake\$/);
       expect(stored.identifier).toBeNull();
       expect(stored.revokedAt).toBeNull();
+    });
+  });
+
+  it('createTestPasswordCredential() writes a hash a real Login could verify', async () => {
+    await withTransactionRollback(dataSource, async (manager) => {
+      const { user } = await createTestUser(manager);
+      const { credential, password } = await createTestPasswordCredential(manager, {
+        userId: user.id,
+      });
+
+      const stored = await manager.getRepository(Credential).findOneByOrFail({ id: credential.id });
+      // Unlike createTestCredential()'s placeholder, this must be a real, parseable Argon2id
+      // hash: PasswordHasher.verify() throws on `$argon2id$fake$...` and treats that as "no
+      // match", so a fixture using the fake hash could never pass a real Login RPC.
+      expect(stored.secretHash).toMatch(/^\$argon2id\$/);
+      await expect(argon2Verify(stored.secretHash ?? '', password)).resolves.toBe(true);
+      await expect(argon2Verify(stored.secretHash ?? '', 'the-wrong-password')).resolves.toBe(
+        false,
+      );
+    });
+  });
+
+  it('mintInvite() stores a hash of the code it returns, exactly as Register expects', async () => {
+    await withTransactionRollback(dataSource, async (manager) => {
+      const { user } = await createTestUser(manager);
+      const code = await mintInvite(manager, user.id, { maxUses: 3 });
+
+      const stored = await manager
+        .getRepository(Invite)
+        .findOneByOrFail({ createdByUserId: user.id });
+      expect(stored.codeHash).toBe(createHash('sha256').update(code, 'utf8').digest('hex'));
+      expect(stored.maxUses).toBe(3);
+      expect(stored.uses).toBe(0);
     });
   });
 

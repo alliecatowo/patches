@@ -21,6 +21,21 @@ export enum RegistrationMode {
 }
 
 /**
+ * Feature flags / remote config (spec §184.3, issue #142) — a hand-rolled, node-served flag map
+ * fed from server env, not an external SaaS or a self-hosted flag server (see the 2026-08-26
+ * research note on issue #142 and `docs/architecture/rollouts.md`). `kind` is mandatory and
+ * restricted to the two values below by design: a flag may gate a cosmetic or a gradual rollout,
+ * never a function (§184.3's "capabilities never gate function" applies to a flag exactly as it
+ * does to a capability). Clients cache this list with a TTL rather than re-fetching per render.
+ */
+export enum FeatureFlagKind {
+  FEATURE_FLAG_KIND_UNSPECIFIED = 'FEATURE_FLAG_KIND_UNSPECIFIED',
+  FEATURE_FLAG_KIND_COSMETIC = 'FEATURE_FLAG_KIND_COSMETIC',
+  FEATURE_FLAG_KIND_ROLLOUT = 'FEATURE_FLAG_KIND_ROLLOUT',
+  UNRECOGNIZED = 'UNRECOGNIZED',
+}
+
+/**
  * disabled: no federation at all. allowlist: only explicitly-approved domains. open-with-
  * blocklist: federates with any domain except those on `domain_policies` (spec §197.6).
  */
@@ -107,6 +122,12 @@ export interface SocialCapabilities {
   dmRetentionDays: number;
 }
 
+export interface FeatureFlag {
+  name: string;
+  enabled: boolean;
+  kind: FeatureFlagKind;
+}
+
 export interface GetNodeInfoRequest {}
 
 export interface GetNodeInfoResponse {
@@ -137,6 +158,11 @@ export interface GetNodeInfoResponse {
    * authenticated session (`UNAUTHENTICATED`/`SIGN_IN_REQUIRED`).
    */
   publicRead: boolean;
+  /**
+   * This node's declared feature flags (spec §184.3, issue #142). Clients must tolerate unknown
+   * entries and cache this list with a TTL, not per-render.
+   */
+  featureFlags: FeatureFlag[];
 }
 
 /**

@@ -10,5 +10,17 @@ export default defineProject({
     environment: 'node',
     globals: false,
     include: ['src/**/*.test.ts'],
+    // #302: overridable so scripts/bounded.sh can cap worker pools under concurrent agent load.
+    maxWorkers: process.env.VITEST_MAX_WORKERS ? Number(process.env.VITEST_MAX_WORKERS) : '50%',
+    // B-178: main.test.ts dynamically imports the whole ESM app graph (real transform/compile
+    // work, not a fixed timer) to assert dotenv loads before AppModule evaluates. Under the CPU
+    // contention this repo's shared dev boxes see with several agent worktrees building/testing
+    // concurrently, that import alone can exceed vitest's 5s default test timeout even though
+    // nothing about the assertion is flaky — reproduced locally via `turbo run test --force`
+    // (all 31 workspaces at once, no concurrency bound) failing this exact test with vitest's own
+    // "if this is a long-running test, pass a timeout" hint. A generous fixed timeout is the
+    // right fix here (not fileParallelism/maxWorkers, which bound *this* project's own footprint,
+    // not contention from sibling packages' processes).
+    testTimeout: 20_000,
   },
 });

@@ -6,11 +6,12 @@ import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { WEB_E2EE_SESSION_UNAVAILABLE_COPY } from '../e2ee/availability.js';
 import { MessageThreadRoute } from './MessageThreadRoute.js';
 
 const mockGetConversation =
   vi.fn<(...args: unknown[]) => Promise<{ conversation?: Conversation }>>();
+const mockListConversations =
+  vi.fn<(...args: unknown[]) => Promise<{ conversations: Conversation[] }>>();
 const mockToastError = vi.fn<(...args: unknown[]) => void>();
 const mockUseSession = vi.fn<() => unknown>();
 const mockUseE2ee = vi.fn<() => { kind: string }>();
@@ -20,6 +21,8 @@ vi.mock('../api/client.js', () => ({
     messages: {
       getConversation: (...args: unknown[]): Promise<{ conversation?: Conversation }> =>
         mockGetConversation(...args),
+      listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
+        mockListConversations(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -75,6 +78,8 @@ function noteText(): string {
 describe('MessageThreadRoute (B-132: the composer never promises what it cannot do)', () => {
   beforeEach(() => {
     mockGetConversation.mockReset();
+    mockListConversations.mockReset();
+    mockListConversations.mockResolvedValue({ conversations: [] });
     mockToastError.mockReset();
     mockUseSession.mockReset();
     mockUseE2ee.mockReset();
@@ -100,14 +105,18 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
     await waitFor(() => {
       expect(noteText()).toContain('End-to-end encrypted.');
     });
-    expect(noteText()).toContain(WEB_E2EE_SESSION_UNAVAILABLE_COPY);
-    expect(screen.getByRole('textbox', { name: 'Message body' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /send/i })).toBeDisabled();
-    // The disabled state must not be sold as transient.
-    expect(noteText()).not.toContain('Try again');
+    // ADR 0033/0035: the composer is live, and the old "use the terminal client" copy —
+    // which was false even when it shipped, since the TUI was blocked by the same gap —
+    // must be gone rather than reworded.
+    expect(noteText()).not.toContain('does not work in the web client');
+    expect(noteText()).not.toContain('Use the terminal client');
+    expect(screen.getByRole('textbox', { name: 'Message body' })).toBeEnabled();
   });
 
-  it('never claims decrypted history is merely empty while nothing can be read', async () => {
+  it('may now say the decrypted history is empty, because it can actually be read', async () => {
+    // Under B-132 this string was forbidden: nothing could be decrypted, so "no messages
+    // yet" would have been a lie dressed as an empty state. Sessions establish now, so an
+    // empty thread really is empty and saying so is honest.
     mockGetConversation.mockResolvedValue({ conversation: e2eeConversation('bob') });
 
     renderThread();
@@ -115,7 +124,7 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
     await waitFor(() => {
       expect(noteText()).toContain('End-to-end encrypted.');
     });
-    expect(screen.queryByText('No decrypted messages yet on this device.')).not.toBeInTheDocument();
+    expect(screen.getByText('No decrypted messages yet on this device.')).toBeInTheDocument();
   });
 
   it('asserts nothing about the mode while the conversation has not loaded yet', () => {
@@ -124,7 +133,7 @@ describe('MessageThreadRoute (B-132: the composer never promises what it cannot 
 
     renderThread();
 
-    expect(noteText()).not.toContain('End-to-end encrypted.');
+    expect(screen.queryByText(/End-to-end encrypted\./)).toBeNull();
   });
 
   it('tells an un-enrolled browser what enrolling does, and does not overclaim', async () => {

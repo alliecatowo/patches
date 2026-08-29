@@ -585,6 +585,77 @@ export interface RevokeDeviceResponse {
   deletedOneTimePrekeyCount: number;
 }
 
+/**
+ * A new device's offer to be linked into an existing actor's roster, signed by the new device's
+ * own key but never by the root (ADR 0037 §1). One more member of the ADR 0033 transcript
+ * family: `offer_bytes` is the only authoritative content, encoded by `@patches/crypto` with the
+ * same length-prefixed, domain-separated layout as the identity transcripts. The node never
+ * decodes `offer_bytes` on the authority's behalf — every field below is a convenience view the
+ * authority device must re-verify against `offer_bytes` itself before it trusts anything,
+ * including the SAS it displays.
+ */
+export interface E2eeDeviceLinkOffer {
+  /** Node-minted, random, unique per offer. Opaque; never derived from actor or device ids. */
+  linkId: string;
+  actorId: string;
+  deviceId: string;
+  /**
+   * The canonical transcript `device_signature` covers: domain, version, actor id, device id,
+   * signing and agreement public keys, supported protocol versions, created-at and expires-at.
+   */
+  offerBytes: Buffer;
+  /**
+   * Ed25519 signature by the new device's own signing key over `offer_bytes`, strict RFC 8032.
+   * Proves the new device holds the private key it is offering — nothing more. It is never a
+   * substitute for root certification, which only `EnrollDevice` grants.
+   */
+  deviceSignature: Buffer;
+  signedPrekey: E2eeSignedPrekey | undefined;
+  /** Initial inventory, up to `E2eeCapability.one_time_prekey_target`. */
+  oneTimePrekeys: E2eeOneTimePrekey[];
+  /**
+   * Canonical transcript and device signature covering the prekey bundle, passed through
+   * verbatim to `EnrollDevice` once the authority signs. The node never revalidates it here.
+   */
+  prekeyBundleBytes: Buffer;
+  prekeyBundleSignature: Buffer;
+  createdAt: Timestamp | undefined;
+  /**
+   * Always `created_at` + 10 minutes (ADR 0037 §1). An expired offer is deleted, never served,
+   * and never silently retried.
+   */
+  expiresAt: Timestamp | undefined;
+}
+
+/**
+ * Invariant: `offer.link_id`, `offer.created_at`, and `offer.expires_at` are ignored on input —
+ * the node mints all three. A caller that sets them is not granted them back.
+ */
+export interface E2eeServiceBeginDeviceLinkRequest {
+  offer: E2eeDeviceLinkOffer | undefined;
+}
+
+export interface E2eeServiceBeginDeviceLinkResponse {
+  linkId: string;
+  expiresAt: Timestamp | undefined;
+}
+
+export interface E2eeServiceListPendingDeviceLinksRequest {}
+
+/**
+ * Invariant: only the calling actor's own pending offers, in no particular authenticated order —
+ * the authority device re-verifies and re-derives the SAS for each before displaying it.
+ */
+export interface E2eeServiceListPendingDeviceLinksResponse {
+  offers: E2eeDeviceLinkOffer[];
+}
+
+export interface E2eeServiceCancelDeviceLinkRequest {
+  linkId: string;
+}
+
+export interface E2eeServiceCancelDeviceLinkResponse {}
+
 export interface PublishDeviceRosterRequest {
   roster: E2eeDeviceRoster | undefined;
 }
@@ -835,6 +906,14 @@ export interface ListMailboxEnvelopesRequest {
   /** Opaque keyset cursor over `(received_at, id)` ascending. Never an offset (spec §153). */
   cursor: string;
   limit: number;
+  /**
+   * P19-XXX (issue #152): optional server-side filter to one conversation. Unset (empty
+   * string) preserves the prior whole-mailbox behavior. When set, only that conversation's
+   * envelopes are matched *and paged* — the node no longer walks and skips every other
+   * conversation's queued mail on every poll of an open thread, which previously left those
+   * envelopes permanently unacknowledged and re-listed on every 5 s cycle.
+   */
+  conversationId?: string | undefined;
 }
 
 export interface ListMailboxEnvelopesResponse {
@@ -997,6 +1076,40 @@ export interface E2eeServiceClient {
    */
 
   revokeDevice(request: RevokeDeviceRequest, metadata?: Metadata): Observable<RevokeDeviceResponse>;
+
+  /**
+   * A new device (`N`) posts its link offer: a device-signed transcript naming its keys and
+   * prekey bundle, none of it root-signed (ADR 0037 §1). The node stores it for at most 10
+   * minutes, keyed by a random `link_id`, at most 3 pending offers per actor, and never decodes
+   * it on the authority device's behalf — `ListPendingDeviceLinks` returns the same opaque
+   * `offer_bytes` the authority re-verifies for itself.
+   */
+
+  beginDeviceLink(
+    request: E2eeServiceBeginDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<E2eeServiceBeginDeviceLinkResponse>;
+
+  /**
+   * The caller's own pending link offers, for the authority device to review, decode, and
+   * re-verify before it computes and displays the SAS (ADR 0037 §1). Never another actor's
+   * offers — a pending offer is not a device and never appears in a roster.
+   */
+
+  listPendingDeviceLinks(
+    request: E2eeServiceListPendingDeviceLinksRequest,
+    metadata?: Metadata,
+  ): Observable<E2eeServiceListPendingDeviceLinksResponse>;
+
+  /**
+   * Discards a pending offer before it is consumed by `EnrollDevice` or expires on its own
+   * (ADR 0037 §1, §3.4). An offer is never reused once cancelled, consumed, or expired.
+   */
+
+  cancelDeviceLink(
+    request: E2eeServiceCancelDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<E2eeServiceCancelDeviceLinkResponse>;
 
   /**
    * Appends the next roster to the caller's append-only roster log. Rejected unless it is
@@ -1243,6 +1356,49 @@ export interface E2eeServiceController {
   ): Promise<RevokeDeviceResponse> | Observable<RevokeDeviceResponse> | RevokeDeviceResponse;
 
   /**
+   * A new device (`N`) posts its link offer: a device-signed transcript naming its keys and
+   * prekey bundle, none of it root-signed (ADR 0037 §1). The node stores it for at most 10
+   * minutes, keyed by a random `link_id`, at most 3 pending offers per actor, and never decodes
+   * it on the authority device's behalf — `ListPendingDeviceLinks` returns the same opaque
+   * `offer_bytes` the authority re-verifies for itself.
+   */
+
+  beginDeviceLink(
+    request: E2eeServiceBeginDeviceLinkRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<E2eeServiceBeginDeviceLinkResponse>
+    | Observable<E2eeServiceBeginDeviceLinkResponse>
+    | E2eeServiceBeginDeviceLinkResponse;
+
+  /**
+   * The caller's own pending link offers, for the authority device to review, decode, and
+   * re-verify before it computes and displays the SAS (ADR 0037 §1). Never another actor's
+   * offers — a pending offer is not a device and never appears in a roster.
+   */
+
+  listPendingDeviceLinks(
+    request: E2eeServiceListPendingDeviceLinksRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<E2eeServiceListPendingDeviceLinksResponse>
+    | Observable<E2eeServiceListPendingDeviceLinksResponse>
+    | E2eeServiceListPendingDeviceLinksResponse;
+
+  /**
+   * Discards a pending offer before it is consumed by `EnrollDevice` or expires on its own
+   * (ADR 0037 §1, §3.4). An offer is never reused once cancelled, consumed, or expired.
+   */
+
+  cancelDeviceLink(
+    request: E2eeServiceCancelDeviceLinkRequest,
+    metadata?: Metadata,
+  ):
+    | Promise<E2eeServiceCancelDeviceLinkResponse>
+    | Observable<E2eeServiceCancelDeviceLinkResponse>
+    | E2eeServiceCancelDeviceLinkResponse;
+
+  /**
    * Appends the next roster to the caller's append-only roster log. Rejected unless it is
    * exactly `current.sequence + 1` and chains to the current digest.
    */
@@ -1441,6 +1597,9 @@ export function E2eeServiceControllerMethods() {
       'getIdentityRoot',
       'enrollDevice',
       'revokeDevice',
+      'beginDeviceLink',
+      'listPendingDeviceLinks',
+      'cancelDeviceLink',
       'publishDeviceRoster',
       'getDeviceRoster',
       'listDeviceRosters',

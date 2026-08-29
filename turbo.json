@@ -10,15 +10,23 @@
     },
     "build": {
       "dependsOn": ["^build", "gen"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "outputLogs": "errors-only"
     },
     "typecheck": {
       "dependsOn": ["^build", "gen"],
-      "outputs": []
+      "outputs": [],
+      "outputLogs": "errors-only"
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [],
+      "outputLogs": "errors-only"
+    },
+    "lint": {
+      "outputs": [],
+      "outputLogs": "errors-only",
+      "inputs": ["**/*.{ts,tsx,mts,cts,js,mjs,cjs}", ".eslintrc.*", "eslint.config.*"]
     },
     "dev": {
       "dependsOn": ["^build"],

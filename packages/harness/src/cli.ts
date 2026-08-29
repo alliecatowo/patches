@@ -31,11 +31,13 @@ import {
   type WorldManifest,
 } from './world-state.js';
 import { readBoundedLogTail, writeSafeLogOutput, type BoundedLogSource } from './log-redaction.js';
+import { getMailpitMessage, latestMailpitMessage, listMailpitMessages } from './mailpit.js';
 
 import {
   DEFAULT_DATABASE_NAME,
   DEFAULT_GRPC_PORT,
   DEFAULT_HTTP_PORT,
+  MAILPIT_HTTP_ORIGIN,
   allowlistedRuntimeEnvironment,
   atomicPersistLeaf,
   assertLinuxHarness,
@@ -43,6 +45,7 @@ import {
   clearState,
   cleanupProcessesAndState,
   databaseUrl,
+  findForeignHarnessOwner,
   harnessProcessEnvironment,
   inspectRecordedProcess,
   newRunId,
@@ -50,6 +53,7 @@ import {
   pathsFor,
   prepareRunDirectory,
   readState,
+  stopForeignProcess,
   stopRecordedProcess,
   waitForProcessSurvival,
   type HarnessProcess,
@@ -74,6 +78,9 @@ const COMMANDS = new Set([
   'notifications',
   'wait-unread',
   'world-ensure',
+  'mailpit-list',
+  'mailpit-latest',
+  'mailpit-get',
 ]);
 
 interface CommandResult {
@@ -97,15 +104,19 @@ async function repoRoot(): Promise<string> {
 
 function usage(): string {
   return [
-    'Usage: patches-harness <up|status|logs|down|register|login|logout|post|delete-post|follow|unfollow|notifications|wait-unread|world-ensure> [options]',
+    'Usage: patches-harness <up|status|logs|down|register|login|logout|post|delete-post|follow|unfollow|notifications|wait-unread|world-ensure|mailpit-list|mailpit-latest|mailpit-get> [options]',
     '',
     'up       build and start one disposable local server + worker lab',
-    'status   print JSON state for the local lab',
+    "status   print JSON state for the local lab; reports another worktree's lab if this",
+    '         one is idle but the port is held',
     'logs     print a bounded, redacted JSON snapshot; --request-id and --limit are optional',
-    'down     stop only processes recorded by this lab',
+    'down     stop only processes recorded by this lab; --any finds and stops whichever',
+    '         worktree currently holds the harness ports instead',
     'register/login/logout/post/delete-post/follow/unfollow use direct local gRPC actions',
     'auth actions require --password-stdin; notifications/wait-unread observe non-DM notifications',
     'world-ensure reapplies an unchanged stable-key world and refuses declarative drift',
+    'mailpit-list/mailpit-latest/mailpit-get read verification-code email from the shared',
+    '  Mailpit instance (`mise run compose`); --address filters, --id selects one message',
     '',
     'Lifecycle commands currently require Linux because process ownership is proven via /proc.',
   ].join('\n');
@@ -246,7 +257,7 @@ async function up(root: string): Promise<void> {
   await requireCommand('pnpm', ['--filter', '@patches/server', 'build'], root);
   await requireCommand('pnpm', ['--filter', '@patches/worker', 'build'], root);
   await requireCommand('pnpm', ['--filter', '@patches/tui', 'build'], root);
-  await requireCommand('mise', ['run', 'compose', '--', 'up', '-d', 'postgres'], root);
+  await requireCommand('mise', ['run', 'compose', '--', 'up', '-d', 'postgres', 'mailpit'], root);
   const databaseExists = await command(
     'mise',
     [
@@ -371,7 +382,16 @@ async function status(root: string): Promise<void> {
   const paths = pathsFor(root);
   const state = await readState(paths);
   if (state === undefined) {
-    print({ status: 'down' });
+    const foreign = await findForeignHarnessOwner();
+    if (foreign === undefined) {
+      print({ status: 'down' });
+      return;
+    }
+    print({
+      status: 'held-by-other-worktree',
+      pid: foreign.pid,
+      root: foreign.root,
+    });
     return;
   }
   const serverStatus = await inspectRecordedProcess(
@@ -422,7 +442,11 @@ async function logs(root: string, args: readonly string[]): Promise<void> {
   });
 }
 
-async function down(root: string): Promise<void> {
+async function down(root: string, args: readonly string[]): Promise<void> {
+  if (args.includes('--any')) {
+    await downAny();
+    return;
+  }
   const paths = pathsFor(root);
   const state = await readState(paths);
   if (state === undefined) {
@@ -435,6 +459,41 @@ async function down(root: string): Promise<void> {
     () => clearState(paths),
   );
   print({ status: 'down', stopped });
+}
+
+/**
+ * Stops whichever worktree currently holds the harness gRPC port, regardless of this
+ * worktree's own (possibly empty) `state.json` — the per-worktree-state/global-port mismatch
+ * from `docs/agents/LEARNINGS.md` 2026-08-28. Prefers the owning worktree's own recorded
+ * state (stops server *and* worker, cleanly clears its state file); falls back to stopping
+ * only the discovered process if that state can't be read.
+ */
+async function downAny(): Promise<void> {
+  const owner = await findForeignHarnessOwner();
+  if (owner === undefined) {
+    print({ status: 'down', stopped: [] });
+    return;
+  }
+  if (owner.root !== undefined) {
+    const foreignPaths = pathsFor(owner.root);
+    const state = await readState(foreignPaths);
+    if (state !== undefined) {
+      const stopped = await cleanupProcessesAndState(
+        processEntries(state),
+        (entry) => stopRecordedProcess(entry.process, entry.expectedScript, state.runId),
+        () => clearState(foreignPaths),
+      );
+      print({ status: 'down', stopped, root: owner.root });
+      return;
+    }
+  }
+  const stopped = await stopForeignProcess(owner.pid, 'apps/server/dist/main.js');
+  print({
+    status: 'down',
+    stopped: stopped ? ['server'] : [],
+    pid: owner.pid,
+    root: owner.root,
+  });
 }
 
 function flag(args: readonly string[], name: string): string | undefined {
@@ -639,6 +698,24 @@ async function action(root: string, subcommand: string, args: readonly string[])
   }
 }
 
+async function mailpitCommand(subcommand: string, args: readonly string[]): Promise<void> {
+  const origin = flag(args, '--origin') ?? MAILPIT_HTTP_ORIGIN;
+  if (subcommand === 'mailpit-list') {
+    const address = flag(args, '--address');
+    const limitFlag = flag(args, '--limit');
+    print(
+      await listMailpitMessages(origin, {
+        ...(address === undefined ? {} : { address }),
+        ...(limitFlag === undefined ? {} : { limit: Number(limitFlag) }),
+      }),
+    );
+  } else if (subcommand === 'mailpit-latest') {
+    print((await latestMailpitMessage(origin, required(args, '--address'))) ?? null);
+  } else if (subcommand === 'mailpit-get') {
+    print(await getMailpitMessage(origin, required(args, '--id')));
+  }
+}
+
 async function main(): Promise<void> {
   const [subcommand = 'status', ...args] = process.argv.slice(2);
   if (subcommand === '--help' || subcommand === '-h') {
@@ -651,8 +728,9 @@ async function main(): Promise<void> {
   if (subcommand === 'up') await up(root);
   else if (subcommand === 'status') await status(root);
   else if (subcommand === 'logs') await logs(root, args);
-  else if (subcommand === 'down') await down(root);
+  else if (subcommand === 'down') await down(root, args);
   else if (subcommand === 'register') await register(root, args);
+  else if (subcommand.startsWith('mailpit-')) await mailpitCommand(subcommand, args);
   else await action(root, subcommand, args);
 }
 

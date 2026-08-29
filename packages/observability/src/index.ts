@@ -10,6 +10,9 @@ export {
   e2eeRetentionRunsTotal,
   e2eeEnvelopeListAgeSeconds,
   readRpcPollTotal,
+  webVitalsCls,
+  webVitalsInpMs,
+  webVitalsLcpMs,
   type MetricsRegistry,
   registerCustomMetrics,
 } from './metrics.js';

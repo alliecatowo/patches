@@ -30,7 +30,6 @@ import {
 import { E2eeGroupService } from '../src/modules/e2ee/group-control.service.js';
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
-import { E2eeRuntimeApprovalPolicy } from '../src/modules/e2ee/e2ee-runtime-approval-policy.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
@@ -46,9 +45,6 @@ const testFrankingKeyRing: NodeFrankingKeyRing = {
   knownEras: () => [TEST_FRANKING_ERA],
   currentEra: () => TEST_FRANKING_ERA,
 };
-
-/** ADR 0027 test seam: this does not change the frozen production approval list. */
-const unreviewedTestPolicy = new E2eeRuntimeApprovalPolicy(true);
 
 interface TestEnvelope {
   recipientActorId: string;
@@ -91,9 +87,11 @@ function buildLogicalMessage(
     commitment?: Buffer;
     commitmentOverride?: Buffer;
     epoch?: bigint;
+    profile?: string;
   } = {},
 ) {
   const commitment = options.commitment ?? Buffer.from(sha256Hash(randomBytes(16)));
+  const profile = options.profile ?? E2EE_FRANKING_PROFILE_V1;
   const view = envelopes.map((envelope) => ({
     recipientActorId: envelope.recipientActorId,
     recipientDeviceId: envelope.recipientDeviceId,
@@ -112,10 +110,41 @@ function buildLogicalMessage(
   return {
     membershipEpoch: (options.epoch ?? 1n).toString(),
     frankingCommitment: options.commitmentOverride ?? commitment,
-    frankingProfile: E2EE_FRANKING_PROFILE_V1,
+    frankingProfile: profile,
     fanoutDigest: Buffer.from(fanoutDigest),
     deviceEnvelopes: [...envelopes],
   };
+}
+
+/**
+ * ADR 0035: `CreateE2eeConversation` reserves a conversation (no message); the first message is
+ * an ordinary `SendEnvelopes` into the id it returns. Every former one-shot
+ * `createE2eeConversation({ ..., message })` call site becomes this two-step sequence — the
+ * merged result still carries `conversationId` plus every `SendEnvelopesResponse` field
+ * (`logicalMessageId`, `frankingTag`, `acceptedAt`, `fanoutDigest`,
+ * `acceptedRecipientDeviceIds`), so existing assertions against a `created.<field>` shape keep
+ * working unchanged.
+ */
+async function reserveAndSend(
+  conversations: E2eeConversationService,
+  senderActorId: string,
+  recipientActorIds: readonly string[],
+  senderDeviceId: string,
+  message: ReturnType<typeof buildLogicalMessage>,
+  clientRequestId: string = randomUUID(),
+) {
+  const reserved = await conversations.createE2eeConversation(senderActorId, {
+    clientRequestId: randomUUID(),
+    recipientActorIds: [...recipientActorIds],
+    senderDeviceId,
+  });
+  const sent = await conversations.sendEnvelopes(senderActorId, {
+    conversationId: reserved.conversationId,
+    clientRequestId,
+    senderDeviceId,
+    message,
+  });
+  return { ...sent, conversationId: reserved.conversationId };
 }
 
 /** Builds a correctly-signed `E2eeGroupControlEvent` proto: canonical transcript from
@@ -231,6 +260,7 @@ function signedCertificate(actor: TestActorKeys, device: DeviceKeys, now: Date) 
       actorId: actor.actorId,
       deviceId: device.deviceId,
       rootGeneration: 1,
+      rootPublicKey: actor.rootPublicKey,
       certificateVersion: 1,
       signingPublicKey: device.signingPublicKey,
       agreementPublicKey: device.agreementPublicKey,
@@ -270,7 +300,9 @@ function signedRoster(
       actorId: actor.actorId,
       sequence,
       rootGeneration: 1,
+      rootPublicKey: actor.rootPublicKey,
       previousDigest,
+      createdAt: now,
       entries: entries.map((entry) => ({ ...entry, addedAt: now, revokedAt: undefined })),
     }),
   );
@@ -290,7 +322,7 @@ function signedRoster(
       addedAt: ts(now),
       revokedAt: undefined,
     })),
-    createdAt: undefined,
+    createdAt: ts(now),
   };
 }
 
@@ -306,8 +338,6 @@ function signedPrekeyBundle(
   const publicKey = generateSigningKeyPair().publicKey; // stand-in X25519 public key
   const transcript = encodePrekeyBundleTranscript({
     certificateDigest,
-    agreementPublicKey: device.agreementPublicKey,
-    protocolVersion: '',
     actorId: actor.actorId,
     deviceId: device.deviceId,
     signedPrekeyId: keyId,
@@ -348,13 +378,21 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
     beforeAll(async () => {
       dataSource = await createServerTestDataSource();
-      identityRoots = new E2eeIdentityRootService(dataSource);
-      deviceRosters = new E2eeDeviceRosterService(dataSource);
-      prekeys = new E2eePrekeyService(dataSource);
+      identityRoots = new E2eeIdentityRootService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      deviceRosters = new E2eeDeviceRosterService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
+      prekeys = new E2eePrekeyService(
+        dataSource,
+        new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
+      );
       conversations = new E2eeConversationService(
         dataSource,
         testFrankingKeyRing,
-        unreviewedTestPolicy,
         // No-op budgets: this suite exercises fanout/protocol behavior, not §188 windows
         // (covered by e2ee-rate-limit.service.test.ts), and would blow through them.
         new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
@@ -713,7 +751,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           certificateDigest: certificate.certificateDigest,
           active: true,
         },
-      ];
+        // The new device is appended, not inserted in order — the ADR 0033 §2 roster
+        // transcript requires entries strictly ascending by `deviceId` UTF-8 bytes (JS's
+        // default string sort matches, since device ids are ASCII UUIDs), so a real client
+        // sorts before signing and this test fixture must too.
+      ].sort((left, right) =>
+        left.deviceId < right.deviceId ? -1 : left.deviceId > right.deviceId ? 1 : 0,
+      );
       const roster = signedRoster(
         actor,
         BigInt(currentRoster.roster?.sequence ?? '0') + 1n,
@@ -755,45 +799,46 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     }
 
     describe('SendEnvelopes/CreateE2eeConversation fanout (ADR 0020 §7, P13-007)', () => {
-      it('keeps the default runtime policy fail-closed before persisting an E2EE conversation', async () => {
+      it('rejects an unknown franking profile fail-closed before accepting an E2EE message', async () => {
         const sender = await newActor();
         const recipient = await newActor();
         const { device: senderDevice } = await enrollFirstDevice(sender, 0);
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
-        const defaultPolicyConversations = new E2eeConversationService(
-          dataSource,
-          testFrankingKeyRing,
-          new E2eeRuntimeApprovalPolicy(false),
-          new E2eeRateLimitService({ increment: () => Promise.resolve(0) } as never),
-          new NotificationsService(dataSource),
-        );
-        const conversationCountBefore = await dataSource
-          .getRepository(ConversationEntity)
-          .countBy({ createdByActorId: sender.actorId });
+        // The profile is a fixed construction (ADR 0036 Amendment 2) — no operator override
+        // exists, so the accept path's only failure mode is a client naming anything else.
+        // ADR 0035: reservation carries no message, so it is unaffected — the profile gate is
+        // inside `acceptE2eeLogicalMessage`, which only runs on `SendEnvelopes`.
+        const reserved = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice.deviceId,
+        });
         const membershipCountBefore = await dataSource
           .getRepository(ConversationMemberEntity)
           .countBy({ actorId: sender.actorId });
 
         await expect(
-          defaultPolicyConversations.createE2eeConversation(sender.actorId, {
+          conversations.sendEnvelopes(sender.actorId, {
+            conversationId: reserved.conversationId,
             clientRequestId: randomUUID(),
-            recipientActorIds: [recipient.actorId],
             senderDeviceId: senderDevice.deviceId,
-            message: buildLogicalMessage([
-              buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-            ]),
+            message: buildLogicalMessage(
+              [buildEnvelope(recipient.actorId, recipientDevice.deviceId)],
+              { profile: 'some-other-profile' },
+            ),
           }),
-        ).rejects.toThrow('independent review');
+        ).rejects.toThrow('Unknown franking profile');
 
-        await expect(
-          dataSource
-            .getRepository(ConversationEntity)
-            .countBy({ createdByActorId: sender.actorId }),
-        ).resolves.toBe(conversationCountBefore);
+        // The rejected send left no trace: membership is unchanged (the reservation's own
+        // members, no more), and the conversation stays unmessaged/invisible (ADR 0035 §5).
         await expect(
           dataSource.getRepository(ConversationMemberEntity).countBy({ actorId: sender.actorId }),
         ).resolves.toBe(membershipCountBefore);
+        const stillReserved = await dataSource
+          .getRepository(ConversationEntity)
+          .findOneByOrFail({ id: reserved.conversationId });
+        expect(stillReserved.lastMessageAt).toBeNull();
 
         const mailbox = await conversations.listMailboxEnvelopes(recipient.actorId, {
           deviceId: recipientDevice.deviceId,
@@ -851,12 +896,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const envelope = buildEnvelope(recipient.actorId, recipientDevice.deviceId);
-        const response = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([envelope]),
-        });
+        const response = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([envelope]),
+        );
 
         expect(response.conversationId.length).toBeGreaterThan(0);
         expect(response.frankingTag?.tag.length).toBe(32);
@@ -890,12 +936,14 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const message = buildLogicalMessage([
           buildEnvelope(recipient.actorId, recipientDevice.deviceId),
         ]);
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId,
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
           message,
-        });
+          clientRequestId,
+        );
 
         // A resend: same conversation, same client_request_id, same message — exactly what a
         // client retrying after a dropped response would send.
@@ -926,14 +974,14 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const clientRequestId = randomUUID();
-        const created = await conversations.createE2eeConversation(sender.actorId, {
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([buildEnvelope(recipient.actorId, recipientDevice.deviceId)]),
           clientRequestId,
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([
-            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-          ]),
-        });
+        );
 
         // Shape (§187): sender actor id + conversation id ONLY — never a body, preview,
         // or any envelope metadata. There is nothing else on the row to check because
@@ -1018,10 +1066,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
         const envelope = buildEnvelope(recipient.actorId, recipientDevice.deviceId);
+        const reserved = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice.deviceId,
+        });
         await expect(
-          conversations.createE2eeConversation(sender.actorId, {
+          conversations.sendEnvelopes(sender.actorId, {
+            conversationId: reserved.conversationId,
             clientRequestId: randomUUID(),
-            recipientActorIds: [recipient.actorId],
             senderDeviceId: senderDevice.deviceId,
             // The digest covers one commitment; the send declares another. A sender that wants a
             // free-floating commitment it never has to honour has to produce this shape.
@@ -1049,10 +1102,15 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           ...buildEnvelope(recipient.actorId, recipientDevice.deviceId),
           openingCiphertext: randomBytes(32),
         };
+        const reserved = await conversations.createE2eeConversation(sender.actorId, {
+          clientRequestId: randomUUID(),
+          recipientActorIds: [recipient.actorId],
+          senderDeviceId: senderDevice.deviceId,
+        });
         await expect(
-          conversations.createE2eeConversation(sender.actorId, {
+          conversations.sendEnvelopes(sender.actorId, {
+            conversationId: reserved.conversationId,
             clientRequestId: randomUUID(),
-            recipientActorIds: [recipient.actorId],
             senderDeviceId: senderDevice.deviceId,
             message: buildLogicalMessage([envelope]),
           }),
@@ -1066,12 +1124,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const { device: firstDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([buildEnvelope(recipient.actorId, firstDevice.deviceId)]),
-        });
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([buildEnvelope(recipient.actorId, firstDevice.deviceId)]),
+        );
 
         // A second device becomes active for the recipient — enrolled *after* a hypothetical
         // sender read the roster used above.
@@ -1117,16 +1176,17 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         await allowDirectMessaging(sender.actorId, recipient.actorId);
         const recipientDevice2 = await enrollAdditionalDevice(recipient);
 
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice1.deviceId,
-          message: buildLogicalMessage([
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice1.deviceId,
+          buildLogicalMessage([
             buildEnvelope(recipient.actorId, recipientDevice1.deviceId),
             buildEnvelope(recipient.actorId, recipientDevice2.deviceId),
             buildEnvelope(sender.actorId, senderDevice2.deviceId),
           ]),
-        });
+        );
 
         // Both of the recipient's active devices get their own session's copy.
         for (const deviceId of [recipientDevice1.deviceId, recipientDevice2.deviceId]) {
@@ -1165,14 +1225,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([
-            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-          ]),
-        });
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([buildEnvelope(recipient.actorId, recipientDevice.deviceId)]),
+        );
 
         // Revoke commits fully before the next send starts — no overlap, so this is the
         // deterministic half of the race (the concurrent half is exercised below).
@@ -1197,14 +1256,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([
-            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-          ]),
-        });
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([buildEnvelope(recipient.actorId, recipientDevice.deviceId)]),
+        );
 
         const sendClientRequestId = randomUUID();
         const [sendOutcome, revokeOutcome] = await Promise.allSettled([
@@ -1267,14 +1325,13 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         const { device: recipientDevice } = await enrollFirstDevice(recipient, 0);
         await allowDirectMessaging(sender.actorId, recipient.actorId);
 
-        const created = await conversations.createE2eeConversation(sender.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: [recipient.actorId],
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage([
-            buildEnvelope(recipient.actorId, recipientDevice.deviceId),
-          ]),
-        });
+        const created = await reserveAndSend(
+          conversations,
+          sender.actorId,
+          [recipient.actorId],
+          senderDevice.deviceId,
+          buildLogicalMessage([buildEnvelope(recipient.actorId, recipientDevice.deviceId)]),
+        );
         const second = await conversations.sendEnvelopes(sender.actorId, {
           conversationId: created.conversationId,
           clientRequestId: randomUUID(),
@@ -1327,16 +1384,17 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         }
         const [sender, ...recipients] = actors;
         const senderDevice = devices[0] as DeviceKeys;
-        const created = await conversations.createE2eeConversation(sender!.actorId, {
-          clientRequestId: randomUUID(),
-          recipientActorIds: recipients.map((actor) => actor.actorId),
-          senderDeviceId: senderDevice.deviceId,
-          message: buildLogicalMessage(
+        const created = await reserveAndSend(
+          conversations,
+          sender!.actorId,
+          recipients.map((actor) => actor.actorId),
+          senderDevice.deviceId,
+          buildLogicalMessage(
             devices
               .slice(1)
               .map((device, index) => buildEnvelope(recipients[index]!.actorId, device.deviceId)),
           ),
-        });
+        );
         return { actors, devices, sender: sender!, senderDevice, recipients, created };
       }
 
@@ -1400,7 +1458,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
               (_, index) => `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`,
             ),
             senderDeviceId: eight.senderDevice.deviceId,
-            message: buildLogicalMessage([]),
           }),
         ).rejects.toThrow(/at most 8 members/);
 

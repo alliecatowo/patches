@@ -20,7 +20,9 @@ const NAME_TAG_STYLE_TO_PROTO: Readonly<Record<NameTagStyleValue, NameTagStyle>>
 });
 
 /** Application DTO → protobuf message (spec §128), field-by-field — see `auth.mapper.ts`'s
- * comment on why never a spread. `avatar` is unset: no `MediaService` yet. */
+ * comment on why never a spread. `avatar`/`banner` carry only `media_id`: `url` stays empty,
+ * resolved client-side via `MediaService.GetMediaDownload` (`MediaImage`), same as post
+ * attachments — the server never inlines a presigned URL into a profile read. */
 export function toProtoActor(profile: ActorProfile): ProtoActor {
   return {
     id: profile.id,
@@ -29,7 +31,8 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
     bio: profile.bio ?? '',
     locationText: profile.locationText ?? '',
     websiteUrl: profile.websiteUrl ?? '',
-    avatar: undefined,
+    avatar:
+      profile.avatarMediaId === null ? undefined : { mediaId: profile.avatarMediaId, url: '' },
     isLocal: profile.isLocal,
     homeServer: profile.homeServer ?? '',
     joinedAt: dateToTimestamp(profile.joinedAt),
@@ -47,7 +50,6 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
             updatedAt: dateToTimestamp(profile.flair.updatedAt),
           },
     pinnedPostIds: [...profile.pinnedPostIds],
-    profileBannerUrl: profile.profileBannerUrl ?? '',
     profileFrame:
       profile.profileFrame === null
         ? ProfileFrame.PROFILE_FRAME_UNSPECIFIED
@@ -57,6 +59,8 @@ export function toProtoActor(profile: ActorProfile): ProtoActor {
         ? NameTagStyle.NAME_TAG_STYLE_UNSPECIFIED
         : NAME_TAG_STYLE_TO_PROTO[profile.nameTagStyle],
     accentColor: profile.accentColor ?? '',
+    banner:
+      profile.bannerMediaId === null ? undefined : { mediaId: profile.bannerMediaId, url: '' },
   };
 }
 

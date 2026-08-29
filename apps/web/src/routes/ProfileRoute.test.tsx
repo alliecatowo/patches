@@ -10,12 +10,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mockGetActorByHandle = vi.fn();
 const mockGetPage = vi.fn();
 const mockUpdatePage = vi.fn();
+const mockGetMediaDownload = vi.fn();
 const mockUseSession = vi.fn<() => { actor: { id: string } } | null>();
 
 vi.mock('../api/client.js', () => ({
   api: {
     actors: { getActorByHandle: mockGetActorByHandle },
     pages: { getPage: mockGetPage, updatePage: mockUpdatePage },
+    media: { getMediaDownload: mockGetMediaDownload },
   } as unknown as PatchesApi,
 }));
 
@@ -52,6 +54,7 @@ describe('ProfileRoute', () => {
     mockGetActorByHandle.mockReset();
     mockGetPage.mockReset();
     mockUpdatePage.mockReset();
+    mockGetMediaDownload.mockReset();
     mockUseSession.mockReset();
   });
 
@@ -75,7 +78,7 @@ describe('ProfileRoute', () => {
     expect(document.querySelector('img')).toBeNull();
   });
 
-  it('renders rapid personalization: banner, frame, and name tag (B-130)', async () => {
+  it('renders rapid personalization: frame and name tag (B-130)', async () => {
     mockGetActorByHandle.mockResolvedValue({
       actor: {
         id: 'actor-1',
@@ -84,7 +87,6 @@ describe('ProfileRoute', () => {
         bio: '',
         locationText: '',
         websiteUrl: '',
-        profileBannerUrl: 'https://cdn.example.com/banner.png',
         profileFrame: ProfileFrame.GLOW,
         nameTagStyle: NameTagStyle.PILLED,
         accentColor: '#10B981',
@@ -94,14 +96,12 @@ describe('ProfileRoute', () => {
     renderProfile();
 
     expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
-    const banner = document.querySelector('img[src="https://cdn.example.com/banner.png"]');
-    expect(banner).not.toBeNull();
     // Frame and name tag are data attributes on the existing structure — decoration only.
     expect(document.querySelector('[data-frame]')?.getAttribute('data-frame')).toBe('glow');
     expect(document.querySelector('[data-name-tag]')?.getAttribute('data-name-tag')).toBe('pilled');
   });
 
-  it('refuses to render a non-https profileBannerUrl (B-136c)', async () => {
+  it('renders an uploaded avatar/banner via MediaService.GetMediaDownload (#324)', async () => {
     mockGetActorByHandle.mockResolvedValue({
       actor: {
         id: 'actor-1',
@@ -110,14 +110,25 @@ describe('ProfileRoute', () => {
         bio: '',
         locationText: '',
         websiteUrl: '',
-        profileBannerUrl: 'data:image/png;base64,AAAA',
+        avatar: { mediaId: 'avatar-media-1', url: '' },
+        banner: { mediaId: 'banner-media-1', url: '' },
       } as Actor,
     });
+    mockGetMediaDownload.mockImplementation(({ mediaId }: { mediaId: string }) =>
+      Promise.resolve({ downloadUrl: `https://r2.example.com/${mediaId}` }),
+    );
 
     renderProfile();
 
     expect(await screen.findByRole('heading', { name: 'Allie' })).toBeInTheDocument();
-    expect(document.querySelector('img')).toBeNull();
+    await waitFor(() => {
+      expect(
+        document.querySelector('img[src="https://r2.example.com/avatar-media-1"]'),
+      ).not.toBeNull();
+      expect(
+        document.querySelector('img[src="https://r2.example.com/banner-media-1"]'),
+      ).not.toBeNull();
+    });
   });
 
   it('uses account-not-found copy only for a genuine NOT_FOUND response', async () => {

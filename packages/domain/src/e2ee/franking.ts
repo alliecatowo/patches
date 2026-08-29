@@ -208,10 +208,10 @@ export interface E2eeEvidenceVerification {
  * violations, not evidence quality.
  *
  * `acceptedProfiles` and `knownKeyEras` describe the franking key material this node actually
- * holds. They are not a way around the ship gate: which profiles a node may *operate* is decided
- * by `assertFrankingProfileApproved` (`./modes.ts`) when the capability is enabled (ADR 0020 §12.7). By
- * the time evidence arrives, the only question left is whether this node can check it — and a
- * profile or era it cannot check makes the evidence unverifiable, never discarded.
+ * holds. There is no operator profile selection to get around (ADR 0036 Amendment 2: the v1
+ * construction is the shipped profile). By the time evidence arrives, the only question left is
+ * whether this node can check it — and a profile or era it cannot check makes the evidence
+ * unverifiable, never discarded.
  */
 export function verifyReportEvidence(
   input: {

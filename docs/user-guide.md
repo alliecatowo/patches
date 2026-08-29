@@ -248,21 +248,24 @@ to browse followers and following.
 
 ### Direct messages
 
-DMs are terminal-client-only in v0 — web and mobile have no crypto runtime, so they cannot
-start or read a conversation (the web profile's "Message" button explains this rather than
-pretending to work). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
-server-readable mode this client used to support is retired and can no longer exist. `Ctrl+D`
-toggles a direct-message drawer beside the timeline on wide terminals (the dedicated
-full-screen `g d` isn't wired into the shell yet). The first line is always the same
+Both the terminal client and the web client hold a crypto runtime and can start, read, and send
+into a conversation (ADR 0033 unified the identity transcripts and ADR 0035 made conversation
+creation a reserve). Every conversation is end-to-end encrypted (`E2EE_V1`); the plaintext,
+server-readable mode this client used to support is retired and can no longer exist. In the
+terminal, `Ctrl+D` toggles a direct-message drawer beside the timeline on wide terminals (the
+dedicated full-screen `g d` isn't wired into the shell yet); on the web, `/messages` and
+`/messages/:id` are the list and thread routes. Starting a new conversation is a handle/display-name
+search — never a raw id — that surfaces the people you already follow first when the query is
+empty and falls back to node-wide search once you type; a conversation still requires a mutual
+follow, so there is no message-request flow to fall back on. The first line is always the same
 disclosure — **"End-to-end encrypted. This node cannot read these messages, but it can see
 who you message and when."** — because that's true of every conversation; the second clause
 is the honest part of the claim and is never dropped. Nothing in this client ever calls a DM
-"encrypted," "secure," or "private" outside that fixed sentence. Starting a new conversation
-requires a mutual follow — there is no message-request flow to fall back on. Sending is
-optimistic: your message appears immediately, marked as sending; if it fails to actually send,
-the draft comes back into the compose field instead of silently vanishing, so you can just try
-again. Node policy honestly reports `0` (indefinite retention, B-061); any future automatic
-message deletion will be displayed on this screen when configured.
+"encrypted," "secure," or "private" outside that fixed sentence. Sending is optimistic: your
+message appears immediately, marked as sending; if it fails to actually send, the draft comes
+back into the compose field instead of silently vanishing, so you can just try again. Node
+policy honestly reports `0` (indefinite retention, B-061); any future automatic message
+deletion will be displayed on this screen when configured.
 
 Production E2EE is not yet a reviewed capability (independent review pending, ADR 0020 §12,
 P13-014) — the default node keeps DMs switched off entirely (there is no plaintext fallback to
@@ -272,6 +275,47 @@ create or read one of those conversations must persistently show **“Unreviewed
 E2EE — for testing only; do not use for sensitive conversations.”** Treat its data as
 disposable. That warning is not an external-review or security claim, and it does not replace
 the conversation's routing-metadata disclosure.
+
+### Device linking and identity recovery
+
+Because DMs are end-to-end encrypted, a second device needs to either be linked by a device
+that already holds the account's messaging identity, or — if no such device is reachable — used
+to mint a brand-new identity. Both are headless CLI commands (ADR 0037), so they work over
+plain stdout with no images or Kitty dependency:
+
+```bash
+patches e2ee link                    # run on the NEW device
+patches e2ee approve-link [<link-id>]  # run on a device that already holds the identity
+patches e2ee rotate-root             # last resort: no device holds the identity anymore
+patches e2ee export-recovery [--out <path>]
+patches e2ee import-recovery <path>
+```
+
+- `patches e2ee link` starts a link offer for the current device and prints a five-group,
+  four-digit short authentication string (SAS), e.g. `0412-3399-0007-4021-1888`. Compare it
+  against the same code shown by `patches e2ee approve-link` on a device that already has the
+  account's messaging identity, then approve it there. This command polls until the offer is
+  approved, expires (10 minutes), or you press Ctrl-C.
+- `patches e2ee approve-link [<link-id>]` lists this account's pending link requests (or just
+  one, if a link id is given), shows each one's SAS, and asks `Does the code on the other device
+match? [y/N]` before approving — a mismatch is discarded, never retried silently. Only a
+  device that holds the account's messaging-root key (the authority device) can run this;
+  running it non-interactively without a terminal refuses rather than guessing.
+- `patches e2ee rotate-root` is the recovery path for when no device holds the account's
+  messaging identity anymore. It mints a brand-new identity generation after an explicit `y`
+  confirmation — every contact you message afterward sees a hard identity-change warning, and
+  message history on any device other than this one is not recoverable, so this is not something
+  to run casually.
+- `patches e2ee export-recovery [--out <path>]` (default `./patches-recovery-archive.pvearc`)
+  seals this device's messaging-root key and current device roster into a recovery archive under
+  a freshly generated recovery code, printed exactly once — write down the code and store the
+  archive file somewhere separate from it. `patches e2ee import-recovery <path>` opens that
+  archive, prompts for the recovery code (not echoed), and prepares this device to become a
+  messaging authority again; it does not finish enrollment by itself, so open the TUI's
+  Accounts → Devices screen afterward to enroll the device.
+
+None of these commands ever print a private key, offer, or signature — only the SAS, device ids,
+and fixed status copy.
 
 ### Blocking, muting, and reporting
 

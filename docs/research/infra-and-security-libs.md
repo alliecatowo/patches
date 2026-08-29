@@ -217,6 +217,21 @@ const transporter = nodemailer.createTransport({
 });
 ```
 
+Mailpit HTTP API (confirmed live 2026-08-28 against a running `axllent/mailpit:latest`
+container, v1.30.7 — not from an official written spec page, but from the running server's own
+responses, which is why every field name/shape below is exact rather than paraphrased):
+
+- `GET /api/v1/info` → `{"Version":...,"Messages":<count>,"Unread":<count>,...}`.
+- `GET /api/v1/messages?limit=N` and `GET /api/v1/search?query=to:<address>&limit=N` both
+  return `{"total":N,"messages":[{"ID":"...","From":{"Name":"","Address":"..."},
+"To":[{"Name":"","Address":"..."}],"Subject":"...","Created":"<ISO8601>",
+"Snippet":"..."}]}` — same summary shape either way, most-recent first. `query=to:<addr>` is
+  Mailpit's own server-side search syntax; it is not a Node client-side filter.
+- `GET /api/v1/message/{ID}` returns one full message: the same summary fields plus `"Text"`
+  (plain body) and `"HTML"`.
+- `DELETE /api/v1/messages` with `{"IDs":[]}` deletes every message (used only to reset local
+  scratch state during this research, never called by application/harness code).
+
 **EmailProvider adapter:**
 
 ```ts
@@ -302,6 +317,20 @@ await hash(password, {
 await verify(hashed, password);
 ```
 
+**Caveat (verified against `apps/server/src/modules/auth/password-hasher.service.ts`,
+2026-08-27):** the sample above reads `Algorithm.Argon2id` as an _enum member value_, but
+`Algorithm` is declared as an ambient `const enum` in `@node-rs/argon2`'s `.d.ts`. This repo
+enables `isolatedModules` (required by SWC, which the build uses), and `isolatedModules`
+forbids reading a member off a `const enum` — the sample above fails to build here. The
+working pattern is a `type`-only import of `Algorithm` plus a literal cast:
+
+```ts
+import { hash, verify, type Algorithm } from '@node-rs/argon2';
+const ARGON2ID = 2 as Algorithm; // Algorithm.Argon2id's value; see caveat above
+await hash(password, { algorithm: ARGON2ID, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+await verify(hashed, password);
+```
+
 ```ts
 // argon2 (ranisalt) — default is already argon2id, but library default is m=65536,t=3,p=4
 import * as argon2 from 'argon2';
@@ -321,6 +350,30 @@ parallelism." Equal-strength alternatives: `m=47104 (46 MiB),t=1,p=1` /
 not use [the two lightest] with Argon2i." Source: [Password_Storage_Cheat_Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 
 Use `m=19456, t=2, p=1` (matches OWASP's baseline).
+
+**Raw KDF output (`hashRaw`), verified against `@node-rs/argon2@2.1.0`'s own
+`index.d.ts`, 2026-08-28.** For deriving a symmetric key (not a storable password hash),
+`hashRaw`/`hashRawSync` return the raw `Buffer` digest instead of a PHC-format string,
+and accept an explicit `salt: Uint8Array` in `Options` (no salt given otherwise means an
+internally-generated one you cannot recover for `hash`/`hashSync` — use `hashRaw` with
+your own persisted salt whenever the output must be re-derivable):
+
+```ts
+import { hashRaw, type Algorithm } from '@node-rs/argon2';
+const ARGON2ID = 2 as Algorithm; // same isolatedModules caveat as above
+const key: Buffer = await hashRaw(passphrase, {
+  algorithm: ARGON2ID,
+  memoryCost: 19456,
+  timeCost: 2,
+  parallelism: 1,
+  outputLen: 32, // Options.outputLen; default is already 32
+  salt, // Uint8Array — persist this alongside the derived-key's ciphertext, it is not secret
+});
+```
+
+Used by `apps/tui/src/e2ee/vault-key-providers.ts`'s `PassphraseVaultKeyProvider` (issue
+#212) to derive a key-encryption-key that wraps the vault's random wrapping key —
+`docs/architecture/e2ee.md`'s vault-tier section.
 
 ---
 

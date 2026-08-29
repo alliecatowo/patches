@@ -110,24 +110,48 @@ repo, the equivalent one-time manual step is: open the repo's Settings → Pages
 ## CI
 
 `.github/workflows/site.yml` (Cloudflare Pages) builds the site on every successful `CI` run
-on `main` (via `workflow_run`, same pattern as `deploy.yml`), plus `workflow_dispatch` for
-manual runs. The actual `wrangler pages deploy` step is gated behind `vars.SITE_DEPLOY_ENABLED`
-— unset today, so the workflow builds (and reports green) on every `main` push but does not
-deploy from CI yet. To turn it on: set the `SITE_DEPLOY_ENABLED` repository/environment
-variable to `true`, add a narrowly scoped `CLOUDFLARE_API_TOKEN` secret, and set the non-secret
-`CLOUDFLARE_ACCOUNT_ID` variable. Until then, Cloudflare deploys are manual
-(`pnpm site:deploy`). `.github/workflows/site-gh-pages.yml` (GitHub Pages) has no such gate —
-it deploys unconditionally on every qualifying `main` push, since `actions/deploy-pages` needs
-no external secrets.
+on `main` (via `workflow_run`, same pattern as `web.yml`), plus `workflow_dispatch` for manual
+runs. The actual `wrangler pages deploy` step is gated behind `vars.SITE_DEPLOY_ENABLED`.
+
+**The deploy step is enabled** (`SITE_DEPLOY_ENABLED=true` set at both repo and `production`
+environment scope, 2026-08-26 — the job declares `environment: production`, so an environment
+variable shadows the repo-level one of the same name; both must agree, same rule as
+`docs/operations/web.md`). Until it was flipped, the workflow built (and reported green) on
+every `main` push while the one step that publishes was silently skipped — the exact defect
+`docs/operations/web.md` documents as B-198, filed here as #140. A `Report deploy gate` step
+now writes an explicit "Site deploy SKIPPED" block to the run summary whenever the gate is
+off, so a no-op can't read as a success, and `Verify deployed site matches this commit`
+(B-203, below) fails the job if `wrangler pages deploy` succeeded but the live page didn't
+actually change.
+
+**Status: planned** — the gate flip and the `Report deploy gate`/`workflow_dispatch` additions
+above have not yet been exercised by a real `main`-triggered run from this session (no push to
+`main` was made here); the next qualifying CI run on `main` is the first real test that the
+deploy and `verify:deploy` steps behave as written. Re-run manually with
+`gh workflow run site.yml --ref main` to re-publish without waiting for a commit, once
+confirming the deploy went out (`patches-site.pages.dev`'s footer short-sha matches `main`'s).
+
+Required settings, same shape as `docs/operations/web.md`'s table:
+
+| Setting                 | Scope                           | Value              |
+| ----------------------- | ------------------------------- | ------------------ |
+| `SITE_DEPLOY_ENABLED`   | repo var + `production` env var | `true`             |
+| `CLOUDFLARE_ACCOUNT_ID` | repo var + `production` env var | the account ID     |
+| `CLOUDFLARE_API_TOKEN`  | repo secret                     | scoped Pages token |
+
+`.github/workflows/site-gh-pages.yml` (GitHub Pages) has no such gate — it deploys
+unconditionally on every qualifying `main` push, since `actions/deploy-pages` needs no
+external secrets.
 
 ## Known gaps
 
 - No custom domain configured on either host (`patches-site.pages.dev` /
   `alliecatowo.github.io/patches/` only).
-- Cloudflare's CI deploy path (`vars.SITE_DEPLOY_ENABLED`) has never been exercised — every
-  Cloudflare deploy so far was done by hand with `wrangler`, same caveat as
-  `docs/operations/deployment.md`'s Fly deploy workflow. GitHub Pages' deploy path _is_
-  CI-driven from day one (there is no manual `wrangler`-equivalent for it), but has only been
-  exercised via `workflow_dispatch`/the one-time `gh api pages` enable call in this session, not
-  yet a real `main` push.
+- Cloudflare's CI deploy path (`vars.SITE_DEPLOY_ENABLED`) is now enabled but **Status:
+  planned** until a real `main`-triggered `Site` run is observed to actually publish and pass
+  `verify:deploy` — every Cloudflare deploy so far was done by hand with `wrangler`, same
+  caveat as `docs/operations/deployment.md`'s Fly deploy workflow. GitHub Pages' deploy path
+  _is_ CI-driven from day one (there is no manual `wrangler`-equivalent for it), but has only
+  been exercised via `workflow_dispatch`/the one-time `gh api pages` enable call in this
+  session, not yet a real `main` push.
 - `site/public/media/*` are placeholders/absent until P9-002 lands real recordings.

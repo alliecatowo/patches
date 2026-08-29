@@ -10,7 +10,12 @@
  * Every function fails closed by throwing `E2eeContractError`; callers render a warning,
  * they never fall back to "probably fine".
  */
-import { sha256Hash, verifyStrict } from '@patches/crypto';
+import {
+  decodeDeviceCertificateTranscript,
+  decodeDeviceRosterTranscript,
+  sha256Hash,
+  verifyStrict,
+} from '@patches/crypto';
 import {
   assertDeviceUsableForSend,
   assertRosterShape,
@@ -34,10 +39,81 @@ import type {
   E2eeDeviceRoster,
   E2eeIdentityRoot,
 } from '../api/wire/types.js';
-import {
-  wireCertificateMatchesTranscript,
-  wireRosterMatchesTranscript,
-} from './node-transcripts.js';
+
+/**
+ * True when every decoded convenience field of the served certificate agrees with what
+ * its own signed transcript says, decoded with `@patches/crypto`'s ONE canonical
+ * identity-transcript codec (ADR 0033 §1 — the node and every client share this decoder,
+ * so there is nothing left to reconcile between two encodings), including the exact root
+ * key the transcript names (ADR 0033 §2). Any disagreement — or any malformed transcript
+ * — is a failed match, never an exception leaking into trust decisions.
+ */
+function wireCertificateMatchesTranscript(
+  certificate: E2eeDeviceCertificate,
+  rootPublicKey: Bytes,
+): boolean {
+  if (certificate.certificateBytes.length === 0) return false;
+  let decoded: ReturnType<typeof decodeDeviceCertificateTranscript>;
+  try {
+    decoded = decodeDeviceCertificateTranscript(certificate.certificateBytes);
+  } catch {
+    return false;
+  }
+  if (!bytesEqual(sha256Hash(certificate.certificateBytes), certificate.certificateDigest)) {
+    return false;
+  }
+  if (
+    !bytesEqual(decoded.rootPublicKey, rootPublicKey) ||
+    !bytesEqual(decoded.signingPublicKey, certificate.signingPublicKey) ||
+    !bytesEqual(decoded.agreementPublicKey, certificate.agreementPublicKey) ||
+    decoded.rootGeneration !== certificate.rootGeneration ||
+    decoded.certificateVersion !== certificate.certificateVersion ||
+    decoded.actorId !== certificate.actorId ||
+    decoded.deviceId !== certificate.deviceId ||
+    decoded.createdAtMs !== (toDate(certificate.createdAt)?.getTime() ?? -1) ||
+    decoded.expiresAtMs !== (toDate(certificate.expiresAt)?.getTime() ?? -1)
+  ) {
+    return false;
+  }
+  return (
+    decoded.supportedProtocolVersions.join('\0') ===
+    certificate.supportedProtocolVersions.join('\0')
+  );
+}
+
+/** Same rule as {@link wireCertificateMatchesTranscript}, for the roster transcript. */
+function wireRosterMatchesTranscript(roster: E2eeDeviceRoster, rootPublicKey: Bytes): boolean {
+  if (roster.rosterBytes.length === 0) return false;
+  let decoded: ReturnType<typeof decodeDeviceRosterTranscript>;
+  try {
+    decoded = decodeDeviceRosterTranscript(roster.rosterBytes);
+  } catch {
+    return false;
+  }
+  if (
+    !bytesEqual(sha256Hash(roster.rosterBytes), roster.digest) ||
+    !bytesEqual(decoded.rootPublicKey, rootPublicKey) ||
+    decoded.actorId !== roster.actorId ||
+    BigInt(decoded.sequence) !== roster.sequence ||
+    decoded.rootGeneration !== roster.rootGeneration ||
+    !bytesEqual(decoded.previousDigest, roster.previousDigest) ||
+    decoded.createdAtMs !== (toDate(roster.createdAt)?.getTime() ?? -1) ||
+    decoded.entries.length !== roster.entries.length
+  ) {
+    return false;
+  }
+  return decoded.entries.every((entry, index) => {
+    const wireEntry = roster.entries[index];
+    if (wireEntry === undefined) return false;
+    return (
+      entry.deviceId === wireEntry.deviceId &&
+      bytesEqual(entry.certificateDigest, wireEntry.certificateDigest) &&
+      entry.active === wireEntry.active &&
+      entry.addedAtMs === (toDate(wireEntry.addedAt)?.getTime() ?? Number.NaN) &&
+      entry.revokedAtMs === toDate(wireEntry.revokedAt)?.getTime()
+    );
+  });
+}
 
 /**
  * The domain contract's injected Ed25519 seam, backed by `@patches/crypto`'s strict
@@ -157,7 +233,7 @@ export function verifyActorChain(input: {
   const root = identityRootFromWire(input.rootWire);
   verifyIdentityRoot(root, { verifier: strictVerifier });
 
-  if (!wireRosterMatchesTranscript(input.rosterWire)) {
+  if (!wireRosterMatchesTranscript(input.rosterWire, root.publicKey)) {
     throw new E2eeContractError('Served device roster disagrees with its signed transcript.');
   }
   const roster = rosterViewFromWire(input.rosterWire);
@@ -181,7 +257,7 @@ export function verifyActorChain(input: {
         'Served certificate names a different device than its roster entry.',
       );
     }
-    if (!wireCertificateMatchesTranscript(wireCert)) {
+    if (!wireCertificateMatchesTranscript(wireCert, root.publicKey)) {
       throw new E2eeContractError(
         'Served device certificate disagrees with its signed transcript.',
       );

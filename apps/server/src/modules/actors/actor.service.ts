@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, ActorFlair, Follow, PinnedPost, Post } from '@patches/database';
+import { Actor, ActorFlair, Follow, Media, PinnedPost, Post } from '@patches/database';
 import { In, IsNull, type DataSource, type EntityManager } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
@@ -25,7 +25,6 @@ import {
   nameTagStyleSchema,
   parseActorFlairDocument,
   parseInput,
-  profileBannerUrlSchema,
   profileFrameSchema,
   searchQuerySchema,
   uuidInputSchema,
@@ -45,10 +44,12 @@ export interface UpdateProfileInput {
   websiteUrl?: string;
   nameplate?: NameplateInput;
   flairDocument?: string;
-  profileBannerUrl?: string | undefined;
   profileFrame?: string | undefined;
   nameTagStyle?: string | undefined;
   accentColor?: string | undefined;
+  /** Direct-to-R2 media ids (#324) — empty string clears the image. */
+  avatarMediaId?: string | undefined;
+  bannerMediaId?: string | undefined;
   /** Proto field names (snake_case), e.g. `["display_name", "bio"]`; only these are applied. */
   updateMask: readonly string[];
 }
@@ -140,10 +141,11 @@ export class ActorService {
         | 'locationText'
         | 'websiteUrl'
         | 'nameplate'
-        | 'profileBannerUrl'
         | 'profileFrame'
         | 'nameTagStyle'
         | 'accentColor'
+        | 'avatarMediaId'
+        | 'bannerMediaId'
       >
     > = {};
 
@@ -163,13 +165,9 @@ export class ActorService {
       const raw = (input.websiteUrl ?? '').trim();
       patch.websiteUrl = raw.length === 0 ? null : parseInput(websiteUrlSchema, raw);
     }
-    // Rapid personalization (owner request 2026-08-25): four purely-cosmetic fields, same
-    // field-mask semantics as above — empty string clears a URL/colour to `null`; the enum
+    // Rapid personalization (owner request 2026-08-25): purely-cosmetic fields, same
+    // field-mask semantics as above — empty string clears a colour to `null`; the enum
     // schemas reject UNSPECIFIED so a caller clears those with an explicit NONE.
-    if (paths.has('profile_banner_url')) {
-      const raw = (input.profileBannerUrl ?? '').trim();
-      patch.profileBannerUrl = raw.length === 0 ? null : parseInput(profileBannerUrlSchema, raw);
-    }
     if (paths.has('accent_color')) {
       const raw = (input.accentColor ?? '').trim();
       patch.accentColor = raw.length === 0 ? null : parseInput(accentColorSchema, raw);
@@ -195,6 +193,25 @@ export class ActorService {
       const actor = await actors.findOne({ where: { id: input.actorId } });
       if (actor === null || actor.deletedAt !== null) throw actorNotFound();
 
+      // Direct-to-R2 uploads (#324) — same ownership/readiness check `PostService.
+      // attachableMedia` uses for post attachments: a `media_id` the caller doesn't own, or
+      // that hasn't finished the worker's `PROCESS_MEDIA` pipeline, is rejected rather than
+      // silently accepted.
+      if (paths.has('avatar_media_id')) {
+        patch.avatarMediaId = await this.ownedReadyMediaId(
+          manager,
+          input.actorId,
+          input.avatarMediaId ?? '',
+        );
+      }
+      if (paths.has('banner_media_id')) {
+        patch.bannerMediaId = await this.ownedReadyMediaId(
+          manager,
+          input.actorId,
+          input.bannerMediaId ?? '',
+        );
+      }
+
       if (parsedNameplate !== undefined) {
         patch.nameplate = buildNameplateRecord(parsedNameplate, actor.nameplate);
       }
@@ -215,8 +232,10 @@ export class ActorService {
   }
 
   /** Handle-prefix + display-name match (spec §112), bounded and keyset-paginated on the
-   * actor's own `(created_at DESC, id DESC)` — newest matching actors first. Postgres trigram/
-   * full-text search is future work; a plain `LIKE`/`ILIKE` is what v0 ships. */
+   * actor's own `(created_at DESC, id DESC)` — newest matching actors first. The `LIKE`/
+   * `ILIKE` predicates below are index-backed by `pg_trgm` GIN indexes on
+   * `handle_normalized`/`display_name` (`AddActorsTrigramSearchIndexes`), not a sequential
+   * scan — see that migration for why plain btree can't serve either predicate here. */
   async searchActors(queryRaw: string, cursorRaw: string, limit: number): Promise<ActorListPage> {
     const query = parseInput(searchQuerySchema, queryRaw);
     const cursor = decodeCursor(cursorRaw);
@@ -311,6 +330,29 @@ export class ActorService {
       id: row.id,
     }));
     return { actors, nextCursor, hasMore };
+  }
+
+  /** Validates an `UpdateProfile` avatar/banner `media_id` (#324): empty clears the field
+   * (returns `null`); otherwise the media must belong to `actorId`, not be soft-deleted, and
+   * have reached `READY` — same rule `PostService.attachableMedia` applies to post
+   * attachments, so an avatar/banner can never point at someone else's upload or a still-
+   * processing one. */
+  private async ownedReadyMediaId(
+    manager: EntityManager,
+    actorId: string,
+    mediaIdRaw: string,
+  ): Promise<string | null> {
+    const raw = mediaIdRaw.trim();
+    if (raw.length === 0) return null;
+    const mediaId = parseInput(uuidInputSchema, raw);
+    const media = await manager.getRepository(Media).findOne({ where: { id: mediaId } });
+    if (media === null || media.ownerActorId !== actorId || media.deletedAt !== null) {
+      throw AppError.validation(`Media "${mediaId}" does not exist or does not belong to you.`);
+    }
+    if (media.state !== 'READY') {
+      throw AppError.validation(`Media "${mediaId}" has not finished processing yet.`);
+    }
+    return media.id;
   }
 
   // ---------------------------------------------------------------- internals

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Actor, Credential, Invite, User } from '@patches/database';
 import type { CredentialType } from '@patches/database';
 import type { EntityManager } from 'typeorm';
@@ -144,4 +144,33 @@ export async function createTestInvite(
       note: options.note ?? null,
     }),
   );
+}
+
+export interface MintInviteOptions {
+  maxUses?: number;
+  expiresAt?: Date | null;
+}
+
+/**
+ * Mints a usable invite **code** and stores only its hash, exactly as `patches-admin` and
+ * `AuthService.register` do (`apps/server/src/modules/auth/token.service.ts`'s
+ * `hashRefreshToken` — SHA-256 hex of the plaintext value, reimplemented here rather than
+ * imported since product code must not be a test dependency, spec §128–129). Unlike
+ * {@link createTestInvite} (which takes an already-hashed `codeHash` for tests that only
+ * assert on the `invites` row), this returns the plaintext code a client would submit over
+ * the `Register` RPC's `inviteCode` field.
+ */
+export async function mintInvite(
+  manager: EntityManager,
+  createdByUserId: string,
+  options: MintInviteOptions = {},
+): Promise<string> {
+  const code = `invite-${randomUUID()}`;
+  await createTestInvite(manager, {
+    createdByUserId,
+    codeHash: createHash('sha256').update(code, 'utf8').digest('hex'),
+    maxUses: options.maxUses ?? 1,
+    expiresAt: options.expiresAt ?? null,
+  });
+  return code;
 }

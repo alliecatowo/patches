@@ -3,7 +3,7 @@ import type { Actor } from '@patches/proto/es';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppSession } from '../api/session.js';
@@ -33,17 +33,31 @@ vi.mock('../hooks/useSession.js', () => ({
 
 const { RootLayout } = await import('./RootLayout.js');
 
-function renderLayout(): ReturnType<typeof render> {
+function renderLayout(
+  routeContent: ReactElement = <p>Route content</p>,
+): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // `createMemoryRouter`/`RouterProvider` (matching `router.tsx`'s real object-route
+  // shape, see `LazyRouteBoundary.test.tsx`) — a plain `<Routes><Route path="*" .../>`
+  // splat child of an exact `path="/"` parent does not reliably render under this
+  // react-router version, and the "closes More" test below navigates to `/register`,
+  // so both the index (`/`) and a catch-all path need a matched child.
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: <RootLayout />,
+        children: [
+          { index: true, element: routeContent },
+          { path: '*', element: routeContent },
+        ],
+      },
+    ],
+    { initialEntries: ['/'] },
+  );
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <Routes>
-          <Route path="/" element={<RootLayout />}>
-            <Route path="*" element={<p>Route content</p>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
   return render(tree);
@@ -81,6 +95,7 @@ describe('RootLayout', () => {
 
     const more = within(openMore());
     expect(more.getByRole('link', { name: 'Mod log' })).toHaveAttribute('href', '/moderation/log');
+    expect(more.getByRole('link', { name: 'Report a problem' })).toHaveAttribute('href', '/report');
     expect(more.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
     expect(more.getByRole('link', { name: 'Register' })).toHaveAttribute('href', '/register');
     expect(mockGetUnreadCount).not.toHaveBeenCalled();
@@ -101,6 +116,7 @@ describe('RootLayout', () => {
       ['Settings', '/settings/profile'],
       ['Appeals', '/appeals'],
       ['Mod log', '/moderation/log'],
+      ['Report a problem', '/report'],
     ] as const;
 
     for (const [name, href] of destinations) {
@@ -138,5 +154,27 @@ describe('RootLayout', () => {
   it('does not mount a persistent reporter chip — reporting lives in the fan-out and /report (B-112 follow-up)', () => {
     renderLayout();
     expect(screen.queryByRole('button', { name: 'Report an issue' })).toBeNull();
+  });
+
+  // P301: RootLayout state unrelated to routing (the "More" menu toggle here stands in
+  // for the unread-badge poll tick, both just flip RootLayout's own state) must not
+  // re-render the matched route's element — see the `useMemo`-wrapped `<Outlet />` in
+  // RootLayout.tsx. Without it every visible list row on the current route would
+  // re-render on every 30s poll tick while idle.
+  it('does not re-render the matched route element when only RootLayout-local state changes', () => {
+    mockUseSession.mockReturnValue(null);
+    let renderCount = 0;
+    function RouteContent(): ReactElement {
+      renderCount += 1;
+      return <p>Route content</p>;
+    }
+    renderLayout(<RouteContent />);
+    expect(screen.getByText('Route content')).toBeInTheDocument();
+    expect(renderCount).toBe(1);
+
+    openMore();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+
+    expect(renderCount).toBe(1);
   });
 });

@@ -5,6 +5,8 @@ import {
   generateSigningKeyPair,
   sha256Hash,
   sign,
+  signDeviceCertificate,
+  signDeviceRoster,
   signingKeyPairFromPrivate,
 } from '@patches/crypto';
 import {
@@ -22,10 +24,6 @@ import type {
   E2eeGroupControlEvent,
   E2eeIdentityRoot,
 } from '../src/api/wire/types.js';
-import {
-  encodeCertificateTranscript,
-  encodeRosterTranscript,
-} from '../src/e2ee/node-transcripts.js';
 import {
   identityRootFromWire,
   strictVerifier,
@@ -62,10 +60,11 @@ function buildChain(actorId: string, deviceId: string, rootSeedText: string): Ch
   const rootPair = signingKeyPairFromPrivate(seed32(rootSeedText));
   const deviceSigning = generateSigningKeyPair();
   const deviceAgreement = generateKeyAgreementKeyPair();
-  const certificateBytes = encodeCertificateTranscript({
+  const signedCertificate = signDeviceCertificate(rootPair.privateKey, {
     actorId,
     deviceId,
     rootGeneration: 1,
+    rootPublicKey: rootPair.publicKey,
     certificateVersion: E2EE_DEVICE_CERTIFICATE_VERSION,
     signingPublicKey: deviceSigning.publicKey,
     agreementPublicKey: deviceAgreement.publicKey,
@@ -73,7 +72,7 @@ function buildChain(actorId: string, deviceId: string, rootSeedText: string): Ch
     createdAtMs: CREATED.getTime(),
     expiresAtMs: EXPIRES.getTime(),
   });
-  const certificateDigest = sha256Hash(certificateBytes);
+  const certificateDigest = signedCertificate.certificateDigest;
   const certificatesWire: E2eeDeviceCertificate[] = [
     {
       $typeName: 'patches.v1.E2eeDeviceCertificate',
@@ -86,17 +85,19 @@ function buildChain(actorId: string, deviceId: string, rootSeedText: string): Ch
       supportedProtocolVersions: ['patches-e2ee-v1'],
       createdAt: fromDate(CREATED),
       expiresAt: fromDate(EXPIRES),
-      certificateBytes,
-      rootSignature: sign(rootPair.privateKey, certificateBytes),
+      certificateBytes: signedCertificate.certificateBytes,
+      rootSignature: signedCertificate.rootSignature,
       certificateDigest,
       status: E2EE_DEVICE_STATUS.ACTIVE,
     },
   ];
-  const rosterBytes = encodeRosterTranscript({
+  const signedRoster = signDeviceRoster(rootPair.privateKey, {
     actorId,
-    sequence: 1n,
     rootGeneration: 1,
+    rootPublicKey: rootPair.publicKey,
+    sequence: 1,
     previousDigest: new Uint8Array(32),
+    createdAtMs: CREATED.getTime(),
     entries: [
       {
         deviceId,
@@ -112,9 +113,9 @@ function buildChain(actorId: string, deviceId: string, rootSeedText: string): Ch
     sequence: 1n,
     rootGeneration: 1,
     previousDigest: new Uint8Array(32),
-    digest: sha256Hash(rosterBytes),
-    rosterBytes,
-    rootSignature: sign(rootPair.privateKey, rosterBytes),
+    digest: signedRoster.rosterDigest,
+    rosterBytes: signedRoster.rosterBytes,
+    rootSignature: signedRoster.rootSignature,
     entries: [
       {
         $typeName: 'patches.v1.E2eeRosterEntry',

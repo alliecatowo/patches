@@ -1,4 +1,5 @@
 import {
+  E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeDeviceRoster as E2eeDeviceRosterEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
 } from '@patches/database';
@@ -25,13 +26,24 @@ import {
   toBytes,
 } from './e2ee.codec.js';
 
-/** Loads the actor's current (non-rotated) messaging identity root, or throws. */
+/**
+ * Loads the actor's current (non-rotated) messaging identity root, or throws.
+ *
+ * `lock: true` takes a `pessimistic_write` row lock (`SELECT ... FOR UPDATE`) on the returned
+ * row. Every transaction that goes on to call `appendRoster` for this actor must pass it: two
+ * concurrent roster-writing calls (`EnrollDevice`/`RevokeDevice`/`PublishDeviceRoster`/root
+ * rotation) both reading the same "current roster" before either commits used to surface only as
+ * an unmapped Postgres `23505` on the loser's insert; the lock serialises them onto the same
+ * append point instead (issue #267).
+ */
 export async function loadActiveRoot(
   manager: EntityManager,
   actorId: string,
+  options?: { readonly lock?: boolean },
 ): Promise<E2eeIdentityRootEntity> {
   const root = await manager.getRepository(E2eeIdentityRootEntity).findOne({
     where: { actorId, rotatedAt: IsNull() },
+    ...(options?.lock === true ? { lock: { mode: 'pessimistic_write' as const } } : {}),
   });
   if (root === null) {
     throw new AppError(
@@ -131,6 +143,7 @@ export async function appendRoster(
   }
   const entries = rosterProto.entries.map(toRosterEntryView);
   const sequence = BigInt(rosterProto.sequence);
+  const createdAt = requireTimestamp(rosterProto.createdAt, 'Roster createdAt');
   const nextView: E2eeDeviceRosterView = {
     actorId,
     sequence,
@@ -140,19 +153,23 @@ export async function appendRoster(
     rosterBytes: toBytes(rosterProto.rosterBytes),
     rootSignature: toBytes(rosterProto.rootSignature),
     entries,
-    createdAt: new Date(),
+    createdAt,
   };
 
-  // `entries`/`sequence`/`previousDigest` are a decoded convenience view alongside the
-  // authoritative `rosterBytes` (proto doc comment on `E2eeDeviceRoster`) — nothing in
+  // `entries`/`sequence`/`previousDigest`/`createdAt` are a decoded convenience view alongside
+  // the authoritative `rosterBytes` (proto doc comment on `E2eeDeviceRoster`) — nothing in
   // `@patches/domain` checks that the two agree, so this node does, the same way
-  // `verifyDeviceCertificate`'s `decodedMatchesTranscript` does for certificates.
+  // `verifyDeviceCertificate`'s `decodedMatchesTranscript` does for certificates. `rootPublicKey`
+  // is bound into the roster transcript (ADR 0033 §2), so it comes from the verified root, not
+  // the request — a request cannot forge which root a roster names.
   assertBytesEqual(
     encodeRosterTranscript({
       actorId,
       sequence,
       rootGeneration: nextView.rootGeneration,
+      rootPublicKey: root.publicKey,
       previousDigest: nextView.previousDigest,
+      createdAt,
       entries,
     }),
     nextView.rosterBytes,
@@ -181,6 +198,29 @@ export async function appendRoster(
     );
   }
 
+  // Every entry not already in the previous roster must name a device this node actually holds
+  // a certificate for, matching by digest — otherwise an actor can publish a roster naming
+  // phantom devices with no certificate or prekeys (issue #268). `enrollDevice` now saves its
+  // device row before calling `appendRoster` (same transaction), so the device being enrolled is
+  // already visible here; no exception is needed for it.
+  const previousDeviceIds = new Set((previousView?.entries ?? []).map((entry) => entry.deviceId));
+  const newEntries = entries.filter((entry) => !previousDeviceIds.has(entry.deviceId));
+  if (newEntries.length > 0) {
+    const deviceRepo = manager.getRepository(E2eeDeviceIdentityEntity);
+    for (const entry of newEntries) {
+      const device = await deviceRepo.findOne({
+        where: { actorId, deviceId: entry.deviceId, revokedAt: IsNull() },
+      });
+      if (device === null) {
+        throw AppError.validation('Roster names a device this node has no certificate for.');
+      }
+      const certificateDigest = e2eeDigest(toBytes(device.certificateBytes));
+      if (!bytesEqual(certificateDigest, entry.certificateDigest)) {
+        throw AppError.validation('Roster names a device this node has no certificate for.');
+      }
+    }
+  }
+
   const row = manager.getRepository(E2eeDeviceRosterEntity).create({
     actorId,
     sequence: sequence.toString(),
@@ -188,7 +228,33 @@ export async function appendRoster(
     digest: Buffer.from(nextView.digest),
     rosterBytes: Buffer.from(nextView.rosterBytes),
     rootSignature: Buffer.from(nextView.rootSignature),
+    // The client-signed value bound into `rosterBytes` (ADR 0033 §2), not an ORM-assigned insert
+    // time — the served `E2eeDeviceRoster.created_at` must agree with what the signature covers.
+    createdAt,
   });
-  const saved = await manager.getRepository(E2eeDeviceRosterEntity).save(row);
-  return { row: saved, entries };
+  try {
+    const saved = await manager.getRepository(E2eeDeviceRosterEntity).save(row);
+    return { row: saved, entries };
+  } catch (error) {
+    // Belt-and-braces: the `loadActiveRoot(..., { lock: true })` row lock every caller now takes
+    // should make this unreachable, but a raw, unmapped Postgres `23505` on the loser of a race
+    // must never surface as a generic 500 (issue #267).
+    if (isRosterSequenceConflict(error)) {
+      throw new AppError(
+        'E2EE_ROSTER_CONFLICT',
+        'Another roster was published for this actor at the same sequence.',
+      );
+    }
+    throw error;
+  }
+}
+
+function isRosterSequenceConflict(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const postgres = error as { code?: unknown; constraint?: unknown };
+  return (
+    postgres.code === '23505' &&
+    (postgres.constraint === 'idx_e2ee_device_rosters_actor_id_sequence' ||
+      postgres.constraint === 'idx_e2ee_device_rosters_digest')
+  );
 }

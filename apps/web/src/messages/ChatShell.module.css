@@ -1,0 +1,104 @@
+/**
+ * The chat app shell (#321, redesigned #336): a single header strip spanning both panes, the
+ * conversation list on the left and the thread on the right. Below tablet width the two panes
+ * stack and the router — not the viewport — decides which one is current, via
+ * `data-mobile-pane`.
+ */
+.shell {
+  display: grid;
+  grid-template-columns: minmax(272px, 340px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'header header'
+    'list detail';
+  height: 100vh;
+  max-height: 100vh;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line-subtle);
+  background: var(--surface);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+}
+
+/* The E2EE state is a strip beside the title, never a card above the layout (#336 review 1). */
+.status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.listPane {
+  grid-area: list;
+  min-height: 0;
+  border-right: 1px solid var(--line-subtle);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.detailPane {
+  grid-area: detail;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+@media (max-width: 768px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'header'
+      'list';
+    /* The app frame already spends 52px + notch on its top bar and reserves the bottom tab
+       bar as padding on `.main`; the shell takes exactly what is left so the page itself
+       never scrolls behind a sticky composer. */
+    height: calc(100dvh - 52px - var(--sat) - max(5rem, calc(4rem + var(--sab))));
+  }
+
+  .shell[data-mobile-pane='detail'] {
+    grid-template-areas: 'detail';
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .shell[data-mobile-pane='list'] .detailPane {
+    display: none;
+  }
+
+  .shell[data-mobile-pane='detail'] .header,
+  .shell[data-mobile-pane='detail'] .listPane {
+    display: none;
+  }
+
+  .listPane {
+    border-right: none;
+  }
+}

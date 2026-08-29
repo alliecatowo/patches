@@ -1,6 +1,6 @@
 import { FilterAction, type Post } from '@patches/proto/es';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { memo, useState, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -17,7 +17,6 @@ import {
 import {
   AlertTriangleIcon,
   BookmarkIcon,
-  CopyIcon,
   EditIcon,
   HeartIcon,
   HistoryIcon,
@@ -43,8 +42,14 @@ export interface PostCardProps {
 /**
  * One post in a timeline or thread with rich icons, micro-interactions,
  * Web Share API support, and full-screen image lightbox.
+ *
+ * P301: wrapped in `memo` — `PostTimeline` re-renders on every focus-index change (j/k
+ * nav), 30s "new posts" poll tick, and page fetch; without this every visible `PostCard`
+ * re-rendered on each of those even though only its own `post`/`focused` props determine
+ * its output. `post` references are stable between renders (from react-query's cache) so
+ * the default shallow prop comparison is sufficient — no custom comparator needed.
  */
-export function PostCard({ post, focused = false }: PostCardProps): JSX.Element {
+function PostCardImpl({ post, focused = false }: PostCardProps): JSX.Element {
   const session = useSession();
   const onError = useErrorToast();
   const navigate = useNavigate();
@@ -307,10 +312,6 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
             </button>
             {moreMenuOpen ? (
               <div className={styles['moreDropdown']} onClick={() => setMoreMenuOpen(false)}>
-                <button type="button" onClick={() => void handleShare()}>
-                  <CopyIcon size={14} />
-                  <span>Copy post link</span>
-                </button>
                 {isOwn ? (
                   <>
                     <button type="button" onClick={() => void navigate(`/compose?edit=${post.id}`)}>
@@ -530,3 +531,5 @@ export function PostCard({ post, focused = false }: PostCardProps): JSX.Element 
     </article>
   );
 }
+
+export const PostCard = memo(PostCardImpl);

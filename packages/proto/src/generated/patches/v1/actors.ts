@@ -146,18 +146,20 @@ export interface Actor {
    * this node's own domain; a local actor's node is only ever the caller's own (`Session.node`).
    */
   homeServer: string;
-  /**
-   * Profile banner image URL (http/https only, max 2,048 chars — same rule as
-   * `website_url`, spec §58/§104). Empty means no banner, and a client must reserve no
-   * space for it then (§184.3 degradation).
-   */
-  profileBannerUrl: string;
   /** Profile-level frame effect. UNSPECIFIED/NONE render plain. */
   profileFrame: ProfileFrame;
   /** How the actor's name tag renders. UNSPECIFIED/NONE render plain. */
   nameTagStyle: NameTagStyle;
   /** Profile accent colour, `#RRGGBB`. Empty means the client default. */
   accentColor: string;
+  /**
+   * Direct-to-R2 uploaded banner (spec §29–32, §54, `MediaService`) — the only banner field
+   * (no v0.0.1+ legacy paths, owner rule 2026-08-28); see `UpdateProfileRequest.banner_media_id`.
+   * `media_id` empty means "no uploaded banner"; `url` is empty until resolved via
+   * `MediaService.GetMediaDownload` (clients resolve it themselves, same as `avatar`/post
+   * attachments — the server never inlines a presigned URL here).
+   */
+  banner: MediaRef | undefined;
 }
 
 export interface GetActorRequest {
@@ -196,16 +198,18 @@ export interface UpdateProfileRequest {
   nameplate: Nameplate | undefined;
   /** Applied when `"flair"` is in `update_mask` (spec §189, §190). */
   flair: ActorFlair | undefined;
-  /**
-   * The four rapid-personalization fields (owner request 2026-08-25) — each applied when
-   * its own snake_case name is in `update_mask`. `profile_banner_url` must be http(s) and
-   * ≤ 2,048 chars (empty clears it); `accent_color` must be `#RRGGBB` (empty clears it);
-   * the enum fields reject UNSPECIFIED (pick NONE to clear).
-   */
-  profileBannerUrl: string;
   profileFrame: ProfileFrame;
   nameTagStyle: NameTagStyle;
   accentColor: string;
+  /**
+   * Direct-to-R2 media uploads (spec §29–32, §54): the `media_id` from a completed
+   * `MediaService.BeginMediaUpload`/`FinalizeMediaUpload` round-trip. Applied when the
+   * matching snake_case name is in `update_mask`; empty clears the image. The server
+   * rejects a `media_id` that doesn't belong to the caller or hasn't reached `READY`
+   * (same ownership/readiness check `PostService` uses for post attachments).
+   */
+  avatarMediaId: string;
+  bannerMediaId: string;
 }
 
 export interface UpdateProfileResponse {

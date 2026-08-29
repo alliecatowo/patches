@@ -2,8 +2,11 @@
 
 Verified 2026-08-18 against the IETF RFCs at rfc-editor.org (RFC 4251, RFC 4253, RFC 5656,
 RFC 8332, RFC 8410, RFC 8709) and the Node.js official docs at nodejs.org/api/crypto.html
-(current stable, Node 22/24). Implementation this note documents:
-`apps/server/src/modules/auth/ssh/{openssh.ts,wire.ts,der.ts,challenge-blob.ts}`.
+(current stable, Node 22/24). Implementation this note documents (paths verified 2026-08-27): the OpenSSH signature/key-blob
+parsing and verification lives in `apps/server/src/modules/auth/ssh/{openssh.ts,der.ts}`; the
+generic SSH wire-format reader and challenge-blob encoding moved to
+`packages/domain/src/ssh/{wire.ts,challenge-blob.ts}` (`SshReader`/`SshWireError` and the
+challenge-blob helpers are shared with other consumers, not server-only).
 
 ## 1. Decision
 

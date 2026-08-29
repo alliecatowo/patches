@@ -21,7 +21,7 @@ import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError } from '../api/errors.js';
 import type { CredentialStore } from '../auth/credential-store.js';
 import { SessionManager, type ActiveSession } from '../auth/session.js';
-import { wipeE2eeState } from '../e2ee/ratchet-vault.js';
+import { wipeE2eeState, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
 import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { verifyActorChain } from '../e2ee/chain.js';
 import { verifyGroupControlEvents } from '../e2ee/group-control.js';
@@ -50,6 +50,7 @@ import { AppealsScreen } from '../screens/AppealsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
 import { DevicesScreen } from '../screens/DevicesScreen.js';
+import { LinkThisDeviceScreen } from '../screens/LinkThisDeviceScreen.js';
 import { SafetyNumberScreen } from '../screens/SafetyNumberScreen.js';
 import { EditProfileScreen } from '../screens/EditProfileScreen.js';
 import { FilterListsScreen } from '../screens/FilterListsScreen.js';
@@ -86,6 +87,7 @@ import {
   type ImagePolicy,
   type PreferenceStore,
 } from '../preferences/store.js';
+import { FileSavedViewsStore, type SavedViewsStore } from '../views/saved-views-store.js';
 import { BUILT_IN_THEMES, getBuiltInTheme } from '../theme/themes/registry.js';
 import { resolveTheme } from '../theme/themes/resolution.js';
 import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js';
@@ -146,6 +148,9 @@ export interface AppProps {
   pageDraftStore?: PageDraftStore;
   /** Overridden in tests — a real `FilePreferenceStore` writes to the user's XDG config dir. */
   preferenceStore?: PreferenceStore;
+  /** #192: overridden in tests — a real `FileSavedViewsStore` writes to the user's XDG
+   * config dir. */
+  savedViewsStore?: SavedViewsStore;
   /** `patches visit @handle[/slug]` (P45-006) — opens straight to that actor's
    * Patches Page, one level above the timeline so `Esc` still lands somewhere. */
   initialPageTarget?: { handle: string; slug: string } | undefined;
@@ -212,6 +217,7 @@ export function App({
   initialPageTarget,
   mediaCache,
   preferenceStore,
+  savedViewsStore,
   openMediaOptions,
   pageEditorOptions,
   pageDraftStore,
@@ -351,6 +357,9 @@ export function App({
   const activeTheme: ThemeDefinition = getBuiltInTheme(themeName) ?? BUILT_IN_THEMES.patches;
   const [preferences] = useState<PreferenceStore>(
     () => preferenceStore ?? new FilePreferenceStore(),
+  );
+  const [savedViews] = useState<SavedViewsStore>(
+    () => savedViewsStore ?? new FileSavedViewsStore(),
   );
   /** What `Esc` on the preferences screen restores (P12-112). */
   const revertPreferences = useRef<
@@ -559,11 +568,12 @@ export function App({
         // B-107: once an identity exists (restored or freshly enrolled), this builds
         // its authenticated transports. Kept here — not inside e2ee-send — so the
         // vault layer stays transport-free.
-        buildTransports: (identity: LocalDeviceIdentity) =>
+        buildTransports: (identity: LocalDeviceIdentity, vault: RatchetSessionVault) =>
           createE2eeTransports({
             api,
             accessToken: ensureAccessToken,
             identity,
+            pinVault: vault,
           }),
       });
       e2eeSenderRef.current = { key, sender: created };
@@ -602,6 +612,9 @@ export function App({
     readonly ok: boolean;
     readonly copy: string;
     readonly peerWarning?: string | undefined;
+    /** ADR 0037 §2: a published root exists this device cannot reach — the caller
+     * navigates to `LinkThisDeviceScreen` instead of rendering `copy` as a dead end. */
+    readonly needsAuthority?: boolean;
   }> {
     if (session === undefined) return { ok: false, copy: 'You are not signed in.' };
     const sender = e2eeSenderFor(session);
@@ -624,6 +637,9 @@ export function App({
         setE2eeEnrolledDeviceId(outcome.identity.deviceId);
         return { ok: true, copy: 'This device is already enrolled for encrypted messages.' };
       }
+      if (outcome.status === 'needs-authority') {
+        return { ok: false, copy: outcome.copy, needsAuthority: true };
+      }
       return { ok: false, copy: outcome.copy };
     } catch (error) {
       return { ok: false, copy: describeGrpcError(error, api.target).title };
@@ -632,11 +648,101 @@ export function App({
       setE2eeVaultFault(sender.fault());
     }
   }
-  async function sendViaVault(conversationId: string, body: string): Promise<void> {
-    if (session === undefined) return;
+  /** ADR 0037 §1 step 1 — `LinkThisDeviceScreen`'s "link" choice. */
+  async function beginDeviceLinkForCurrentAccount(): Promise<{
+    readonly linkId: string;
+    readonly sas: string;
+    readonly expiresAtMs: number;
+  }> {
+    if (session === undefined) throw new Error('You are not signed in.');
     const sender = e2eeSenderFor(session);
     try {
-      await sender.send(conversationId, body);
+      return await sender.beginLink({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §1 step 4 — one poll of `LinkThisDeviceScreen`'s waiting state. */
+  async function pollDeviceLinkForCurrentAccount(): Promise<'pending' | 'enrolled' | 'expired'> {
+    if (session === undefined) return 'expired';
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.pollLink({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.deviceId !== undefined) setE2eeEnrolledDeviceId(outcome.deviceId);
+      return outcome.result;
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §2 — `LinkThisDeviceScreen`'s "rotate" choice, always an unverified reset
+   * here (this build has no recovery-archive import wired into the chooser yet, #272). */
+  async function rotateMessagingRootForCurrentAccount(): Promise<{
+    readonly generation: number;
+    readonly planned: boolean;
+  }> {
+    if (session === undefined) throw new Error('You are not signed in.');
+    const sender = e2eeSenderFor(session);
+    try {
+      const outcome = await sender.rotateRoot({
+        actorId: actorIdFor(session),
+        transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+      });
+      if (outcome.deviceId !== undefined) setE2eeEnrolledDeviceId(outcome.deviceId);
+      return outcome.result;
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** ADR 0037 §1 step 2 — DevicesScreen's "Pending link requests" section. */
+  async function listPendingDeviceLinksForCurrentAccount(): Promise<
+    readonly {
+      readonly linkId: string;
+      readonly deviceId: string;
+      readonly sas: string;
+      readonly expiresAtMs: number;
+    }[]
+  > {
+    if (session === undefined) return [];
+    const sender = e2eeSenderFor(session);
+    return sender.listPendingLinks({
+      actorId: actorIdFor(session),
+      transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+    });
+  }
+  /** ADR 0037 §1 step 3 — approves a pending link after the viewer confirms the SAS. */
+  async function approveDeviceLinkForCurrentAccount(linkId: string): Promise<void> {
+    if (session === undefined) return;
+    const sender = e2eeSenderFor(session);
+    await sender.approveLink({
+      actorId: actorIdFor(session),
+      linkId,
+      transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+    });
+  }
+  /** ADR 0037 §1 step 2: "the node showed this device different keys" — a mismatched
+   * SAS is discarded, never retried silently. Cancelling needs no root key, only the
+   * relay RPC, so this bypasses the vault-backed sender entirely. */
+  async function discardDeviceLinkForCurrentAccount(linkId: string): Promise<void> {
+    await createEnrollmentTransport({ api, accessToken: ensureAccessToken }).cancelDeviceLink(
+      linkId,
+    );
+  }
+  /** Resolves the row for the just-sent message (issue #332): a device is not in its own
+   * fanout, so this stored row is the only copy the thread will ever get. */
+  async function sendViaVault(
+    conversationId: string,
+    body: string,
+  ): Promise<E2eeReceivedRow | undefined> {
+    if (session === undefined) return undefined;
+    const sender = e2eeSenderFor(session);
+    try {
+      return await sender.send(conversationId, body);
     } finally {
       setE2eeVaultFault(sender.fault());
     }
@@ -703,7 +809,7 @@ export function App({
         const currentVersion = policyResponse.policy?.privacyNoticeVersion ?? 0;
         if (currentVersion > acknowledgedVersion) {
           setToast({
-            message: 'This node’s privacy notice changed — press :privacy to review it.',
+            message: 'This server’s privacy notice changed — press :privacy to review it.',
             kind: 'info',
           });
         }
@@ -2156,6 +2262,21 @@ export function App({
             thisDeviceId={e2eeEnrolledDeviceId}
             e2eeCapabilityState={e2eeCapabilityState}
             onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
+            onNeedsAuthority={() => navigate({ screen: 'linkThisDevice' })}
+            onListPendingLinks={() => listPendingDeviceLinksForCurrentAccount()}
+            onApproveLink={(linkId) => approveDeviceLinkForCurrentAccount(linkId)}
+            onDiscardLink={(linkId) => discardDeviceLinkForCurrentAccount(linkId)}
+            onBack={back}
+          />
+        );
+      case 'linkThisDevice':
+        return session === undefined ? null : (
+          <LinkThisDeviceScreen
+            isActive={active}
+            onBeginLink={() => beginDeviceLinkForCurrentAccount()}
+            onPollLink={() => pollDeviceLinkForCurrentAccount()}
+            onRotateRoot={() => rotateMessagingRootForCurrentAccount()}
+            onDone={() => back()}
             onBack={back}
           />
         );
@@ -2231,6 +2352,10 @@ export function App({
             ensureAccessToken={ensureAccessToken}
             actions={rowActions}
             refreshKey={feedNonce}
+            savedViews={{
+              store: savedViews,
+              key: { nodeOrigin: api.target, actorId: session.userId },
+            }}
           />
         );
       case 'search':
@@ -2429,6 +2554,7 @@ export function App({
             e2eeEnrolledDeviceId={e2eeEnrolledDeviceId}
             onOpenDevices={() => navigate({ screen: 'devices' })}
             onEnrollE2ee={() => enrollE2eeForCurrentAccount()}
+            onNeedsAuthority={() => navigate({ screen: 'linkThisDevice' })}
             onLogout={() => void logout()}
             onResendVerification={() => void resendVerificationEmail()}
             onBack={back}
@@ -2468,6 +2594,7 @@ export function App({
         return session === undefined ? null : (
           <ComposeScreen
             api={api}
+            viewerActorId={session.userId}
             draft={draft}
             onChange={updateDraft}
             onCancel={back}
@@ -2481,6 +2608,7 @@ export function App({
         return session === undefined ? null : (
           <ComposeScreen
             api={api}
+            viewerActorId={session.userId}
             mode="edit"
             postId={target.postId}
             draft={draft}
@@ -2556,6 +2684,7 @@ export function App({
     ) : overlayEntry.id === 'quick-post' && session !== undefined ? (
       <ComposeScreen
         api={api}
+        viewerActorId={session.userId}
         compact
         rows={Math.min(QUICK_POST_ROWS, regionRows)}
         columns={Math.min(QUICK_POST_COLUMNS, Math.max(20, contentColumns - 8))}

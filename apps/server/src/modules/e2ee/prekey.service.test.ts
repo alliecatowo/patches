@@ -12,7 +12,15 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DataSource, EntityManager } from 'typeorm';
 
 import { encodeCertificateTranscript } from './e2ee.codec.js';
+import { type E2eeRateLimitService } from './e2ee-rate-limit.service.js';
 import { E2eePrekeyService } from './prekey.service.js';
+
+// None of these tests exercise the identity-write rate limiter (issue #269) — they assert on
+// storage/claim behavior — so a no-op stand-in keeps `uploadPrekeys`/`claimPrekeyBundles`
+// callable without a real `DbRateLimitStore`.
+const noopRateLimits = {
+  consumeIdentityWrite: vi.fn().mockResolvedValue(undefined),
+} as unknown as E2eeRateLimitService;
 
 vi.mock('./roster-chain.js', () => ({
   // `claimPrekeyBundles` only needs the current row and its decoded entries.
@@ -46,6 +54,7 @@ function certificateBytes(): Buffer {
       actorId: 'target',
       deviceId: 'device-1',
       rootGeneration: 2,
+      rootPublicKey: new Uint8Array(32).fill(9),
       certificateVersion: 1,
       signingPublicKey: new Uint8Array(32).fill(1),
       agreementPublicKey: new Uint8Array(32).fill(2),
@@ -100,9 +109,12 @@ describe('UploadPrekeys inventory-capacity rejection (audit P2)', () => {
       },
     } as unknown as EntityManager;
 
-    return new E2eePrekeyService({
-      transaction: (body: (m: EntityManager) => Promise<unknown>) => body(manager),
-    } as unknown as DataSource).uploadPrekeys('actor', {
+    return new E2eePrekeyService(
+      {
+        transaction: (body: (m: EntityManager) => Promise<unknown>) => body(manager),
+      } as unknown as DataSource,
+      noopRateLimits,
+    ).uploadPrekeys('actor', {
       deviceId: 'device-1',
       signedPrekey: undefined,
       prekeyBundleBytes: Buffer.alloc(0),
@@ -208,21 +220,24 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
 
   it('runs entirely inside one claiming transaction', async () => {
     const { dataSource, transactionUsed, queryMock } = setup({ targetDeletedAt: null });
-    await new E2eePrekeyService(dataSource as DataSource).claimPrekeyBundles('caller', {
-      conversationId: '',
-      actorIds: ['target'],
-      deviceIds: [],
-    });
+    await new E2eePrekeyService(dataSource as DataSource, noopRateLimits).claimPrekeyBundles(
+      'caller',
+      {
+        conversationId: '',
+        actorIds: ['target'],
+        deviceIds: [],
+      },
+    );
     expect(transactionUsed()).toBe(true);
     expect(queryMock).toHaveBeenCalled();
   });
 
   it('never serves a deleted actor’s bundles between deletion and purge', async () => {
     const { dataSource, queryMock } = setup({ targetDeletedAt: new Date() });
-    const response = await new E2eePrekeyService(dataSource as DataSource).claimPrekeyBundles(
-      'caller',
-      { conversationId: '', actorIds: ['target'], deviceIds: [] },
-    );
+    const response = await new E2eePrekeyService(
+      dataSource as DataSource,
+      noopRateLimits,
+    ).claimPrekeyBundles('caller', { conversationId: '', actorIds: ['target'], deviceIds: [] });
     expect(response.bundles).toEqual([]);
     expect(response.rosters).toEqual([]);
     // The drain/consume SQL must never have run for a deleted actor.
@@ -231,11 +246,14 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
 
   it('checks the per-device drain budget through the transactional manager before consuming', async () => {
     const { dataSource, queryMock } = setup({ targetDeletedAt: null });
-    await new E2eePrekeyService(dataSource as DataSource).claimPrekeyBundles('caller', {
-      conversationId: '',
-      actorIds: ['target'],
-      deviceIds: [],
-    });
+    await new E2eePrekeyService(dataSource as DataSource, noopRateLimits).claimPrekeyBundles(
+      'caller',
+      {
+        conversationId: '',
+        actorIds: ['target'],
+        deviceIds: [],
+      },
+    );
     const sqls = queryMock.mock.calls.map((call: unknown[]) => String(call[0]));
     expect(sqls.some((sql) => sql.includes('count(*)'))).toBe(true);
     expect(sqls.some((sql) => sql.includes('FOR UPDATE SKIP LOCKED'))).toBe(true);

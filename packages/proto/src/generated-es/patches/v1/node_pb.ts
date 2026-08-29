@@ -16,7 +16,7 @@ import type { Message } from '@bufbuild/protobuf';
 export const file_patches_v1_node: GenFile =
   /*@__PURE__*/
   fileDesc(
-    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi/wQKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0SHQoVbWF4X2ZpbHRlcnNfcGVyX2FjdG9yGAkgASgNEiMKG21heF9maWx0ZXJfdGVybXNfcGVyX2ZpbHRlchgKIAEoDRIsCiRtYXhfZmlsdGVyX2xpc3RzX3B1Ymxpc2hlZF9wZXJfYWN0b3IYCyABKA0SHwoXbWF4X2ZpbHRlcl9saXN0X2VudHJpZXMYDCABKA0SJQodbWF4X2ZpbHRlcl9saXN0X3N1YnNjcmlwdGlvbnMYDSABKA0SKwojbWF4X2ZpbHRlcl9saXN0X2V4Y2VwdGlvbnNfcGVyX2xpc3QYDiABKA0SKwojbWF4X2xhYmVsZXJfc3Vic2NyaXB0aW9uc19wZXJfYWN0b3IYDyABKA0SJAocbWF4X2xhYmVsX3ZvY2FidWxhcnlfZW50cmllcxgQIAEoDRIiChptYXhfYXBwZWFsX3N0YXRlbWVudF9jaGFycxgRIAEoDRIpCiFhY2NvdW50X2V4cG9ydF9tYXhfcmVhZHlfYXJjaGl2ZXMYEiABKA0imAEKElNvY2lhbENhcGFiaWxpdGllcxIdChVsaWtlX2dseXBoX2FsbG93X2xpc3QYASADKAkSFgoObWF4X3Bvc3RfY2hhcnMYAiABKA0SHAoUY2FuX2NyZWF0ZV9jb21tdW5pdHkYAyABKAgSEgoKZG1fZW5hYmxlZBgEIAEoCBIZChFkbV9yZXRlbnRpb25fZGF5cxgFIAEoDSIUChJHZXROb2RlSW5mb1JlcXVlc3QiiAIKE0dldE5vZGVJbmZvUmVzcG9uc2USDgoGZG9tYWluGAEgASgJEhgKEHNvZnR3YXJlX3ZlcnNpb24YAiABKAkSNwoRcmVnaXN0cmF0aW9uX21vZGUYAyABKA4yHC5wYXRjaGVzLnYxLlJlZ2lzdHJhdGlvbk1vZGUSJgoGbGltaXRzGAQgASgLMhYucGF0Y2hlcy52MS5Ob2RlTGltaXRzEhQKDGNhcGFiaWxpdGllcxgFIAMoCRI7ChNzb2NpYWxfY2FwYWJpbGl0aWVzGAYgASgLMh4ucGF0Y2hlcy52MS5Tb2NpYWxDYXBhYmlsaXRpZXMSEwoLcHVibGljX3JlYWQYByABKAgikgEKEURvbWFpblBvbGljeUVudHJ5Eg4KBmRvbWFpbhgBIAEoCRIuCgZhY3Rpb24YAiABKA4yHi5wYXRjaGVzLnYxLkRvbWFpblBvbGljeUFjdGlvbhI9Cg9yZWFzb25fY2F0ZWdvcnkYAyABKA4yJC5wYXRjaGVzLnYxLk1vZGVyYXRpb25SZWFzb25DYXRlZ29yeSLEAQoQUmV0ZW50aW9uV2luZG93cxIZChFkbV9yZXRlbnRpb25fZGF5cxgBIAEoDRIoCiBldmlkZW5jZV9zbmFwc2hvdF9yZXRlbnRpb25fZGF5cxgCIAEoDRIoCiB1cGxvYWRlZF9vcmlnaW5hbF9yZXRlbnRpb25fZGF5cxgDIAEoDRIaChJsb2dfcmV0ZW50aW9uX2RheXMYBCABKA0SJQodZXhwb3J0X2FyY2hpdmVfcmV0ZW50aW9uX2RheXMYBSABKA0iiwQKCk5vZGVQb2xpY3kSHgoWcHJpdmFjeV9ub3RpY2Vfc3VtbWFyeRgBIAEoCRIeChZwcml2YWN5X25vdGljZV92ZXJzaW9uGAIgASgNEhoKEnByaXZhY3lfbm90aWNlX3VybBgDIAEoCRIRCgl0ZXJtc191cmwYBCABKAkSGQoRbW9kZXJhdG9yX2NvbnRhY3QYBSABKAkSGwoTYXBwZWFsX2luc3RydWN0aW9ucxgGIAEoCRI3ChFmZWRlcmF0aW9uX3N0YW5jZRgHIAEoDjIcLnBhdGNoZXMudjEuRmVkZXJhdGlvblN0YW5jZRI2Cg9kb21haW5fcG9saWNpZXMYCCADKAsyHS5wYXRjaGVzLnYxLkRvbWFpblBvbGljeUVudHJ5EhUKDWRhdGFfbG9jYXRpb24YCSABKAkSLwoJcmV0ZW50aW9uGAogASgLMhwucGF0Y2hlcy52MS5SZXRlbnRpb25XaW5kb3dzEhkKEW9wZXJhdG9yX2lkZW50aXR5GAsgASgJEjoKEGxhYmVsX3ZvY2FidWxhcnkYDCADKAsyIC5wYXRjaGVzLnYxLkxhYmVsVm9jYWJ1bGFyeUVudHJ5EioKImFjY291bnRfZGVsZXRpb25fZ3JhY2VfcGVyaW9kX2RheXMYDSABKA0SGgoSYXBwZWFsX3dpbmRvd19kYXlzGA4gASgNIhYKFEdldE5vZGVQb2xpY3lSZXF1ZXN0Ij8KFUdldE5vZGVQb2xpY3lSZXNwb25zZRImCgZwb2xpY3kYASABKAsyFi5wYXRjaGVzLnYxLk5vZGVQb2xpY3kqdAoQUmVnaXN0cmF0aW9uTW9kZRIhCh1SRUdJU1RSQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFlJFR0lTVFJBVElPTl9NT0RFX09QRU4QARIhCh1SRUdJU1RSQVRJT05fTU9ERV9JTlZJVEVfT05MWRACKqEBChBGZWRlcmF0aW9uU3RhbmNlEiEKHUZFREVSQVRJT05fU1RBTkNFX1VOU1BFQ0lGSUVEEAASHgoaRkVERVJBVElPTl9TVEFOQ0VfRElTQUJMRUQQARIfChtGRURFUkFUSU9OX1NUQU5DRV9BTExPV0xJU1QQAhIpCiVGRURFUkFUSU9OX1NUQU5DRV9PUEVOX1dJVEhfQkxPQ0tMSVNUEAMqWgoSRG9tYWluUG9saWN5QWN0aW9uEiQKIERPTUFJTl9QT0xJQ1lfQUNUSU9OX1VOU1BFQ0lGSUVEEAASHgoaRE9NQUlOX1BPTElDWV9BQ1RJT05fQkxPQ0sQATKzAQoLTm9kZVNlcnZpY2USTgoLR2V0Tm9kZUluZm8SHi5wYXRjaGVzLnYxLkdldE5vZGVJbmZvUmVxdWVzdBofLnBhdGNoZXMudjEuR2V0Tm9kZUluZm9SZXNwb25zZRJUCg1HZXROb2RlUG9saWN5EiAucGF0Y2hlcy52MS5HZXROb2RlUG9saWN5UmVxdWVzdBohLnBhdGNoZXMudjEuR2V0Tm9kZVBvbGljeVJlc3BvbnNlYgZwcm90bzM',
+    'ChVwYXRjaGVzL3YxL25vZGUucHJvdG8SCnBhdGNoZXMudjEi/wQKCk5vZGVMaW1pdHMSGwoTcG9zdF9ib2R5X21heF9jaGFycxgBIAEoDRIVCg1iaW9fbWF4X2NoYXJzGAIgASgNEh4KFmRpc3BsYXlfbmFtZV9tYXhfY2hhcnMYAyABKA0SGAoQaGFuZGxlX21heF9jaGFycxgEIAEoDRIfChdsb2NhdGlvbl90ZXh0X21heF9jaGFycxgFIAEoDRIdChV3ZWJzaXRlX3VybF9tYXhfY2hhcnMYBiABKA0SGgoSYWx0X3RleHRfbWF4X2NoYXJzGAcgASgNEh4KFnNlYXJjaF9xdWVyeV9tYXhfY2hhcnMYCCABKA0SHQoVbWF4X2ZpbHRlcnNfcGVyX2FjdG9yGAkgASgNEiMKG21heF9maWx0ZXJfdGVybXNfcGVyX2ZpbHRlchgKIAEoDRIsCiRtYXhfZmlsdGVyX2xpc3RzX3B1Ymxpc2hlZF9wZXJfYWN0b3IYCyABKA0SHwoXbWF4X2ZpbHRlcl9saXN0X2VudHJpZXMYDCABKA0SJQodbWF4X2ZpbHRlcl9saXN0X3N1YnNjcmlwdGlvbnMYDSABKA0SKwojbWF4X2ZpbHRlcl9saXN0X2V4Y2VwdGlvbnNfcGVyX2xpc3QYDiABKA0SKwojbWF4X2xhYmVsZXJfc3Vic2NyaXB0aW9uc19wZXJfYWN0b3IYDyABKA0SJAocbWF4X2xhYmVsX3ZvY2FidWxhcnlfZW50cmllcxgQIAEoDRIiChptYXhfYXBwZWFsX3N0YXRlbWVudF9jaGFycxgRIAEoDRIpCiFhY2NvdW50X2V4cG9ydF9tYXhfcmVhZHlfYXJjaGl2ZXMYEiABKA0imAEKElNvY2lhbENhcGFiaWxpdGllcxIdChVsaWtlX2dseXBoX2FsbG93X2xpc3QYASADKAkSFgoObWF4X3Bvc3RfY2hhcnMYAiABKA0SHAoUY2FuX2NyZWF0ZV9jb21tdW5pdHkYAyABKAgSEgoKZG1fZW5hYmxlZBgEIAEoCBIZChFkbV9yZXRlbnRpb25fZGF5cxgFIAEoDSJXCgtGZWF0dXJlRmxhZxIMCgRuYW1lGAEgASgJEg8KB2VuYWJsZWQYAiABKAgSKQoEa2luZBgDIAEoDjIbLnBhdGNoZXMudjEuRmVhdHVyZUZsYWdLaW5kIhQKEkdldE5vZGVJbmZvUmVxdWVzdCK4AgoTR2V0Tm9kZUluZm9SZXNwb25zZRIOCgZkb21haW4YASABKAkSGAoQc29mdHdhcmVfdmVyc2lvbhgCIAEoCRI3ChFyZWdpc3RyYXRpb25fbW9kZRgDIAEoDjIcLnBhdGNoZXMudjEuUmVnaXN0cmF0aW9uTW9kZRImCgZsaW1pdHMYBCABKAsyFi5wYXRjaGVzLnYxLk5vZGVMaW1pdHMSFAoMY2FwYWJpbGl0aWVzGAUgAygJEjsKE3NvY2lhbF9jYXBhYmlsaXRpZXMYBiABKAsyHi5wYXRjaGVzLnYxLlNvY2lhbENhcGFiaWxpdGllcxITCgtwdWJsaWNfcmVhZBgHIAEoCBIuCg1mZWF0dXJlX2ZsYWdzGAggAygLMhcucGF0Y2hlcy52MS5GZWF0dXJlRmxhZyKSAQoRRG9tYWluUG9saWN5RW50cnkSDgoGZG9tYWluGAEgASgJEi4KBmFjdGlvbhgCIAEoDjIeLnBhdGNoZXMudjEuRG9tYWluUG9saWN5QWN0aW9uEj0KD3JlYXNvbl9jYXRlZ29yeRgDIAEoDjIkLnBhdGNoZXMudjEuTW9kZXJhdGlvblJlYXNvbkNhdGVnb3J5IsQBChBSZXRlbnRpb25XaW5kb3dzEhkKEWRtX3JldGVudGlvbl9kYXlzGAEgASgNEigKIGV2aWRlbmNlX3NuYXBzaG90X3JldGVudGlvbl9kYXlzGAIgASgNEigKIHVwbG9hZGVkX29yaWdpbmFsX3JldGVudGlvbl9kYXlzGAMgASgNEhoKEmxvZ19yZXRlbnRpb25fZGF5cxgEIAEoDRIlCh1leHBvcnRfYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgFIAEoDSKLBAoKTm9kZVBvbGljeRIeChZwcml2YWN5X25vdGljZV9zdW1tYXJ5GAEgASgJEh4KFnByaXZhY3lfbm90aWNlX3ZlcnNpb24YAiABKA0SGgoScHJpdmFjeV9ub3RpY2VfdXJsGAMgASgJEhEKCXRlcm1zX3VybBgEIAEoCRIZChFtb2RlcmF0b3JfY29udGFjdBgFIAEoCRIbChNhcHBlYWxfaW5zdHJ1Y3Rpb25zGAYgASgJEjcKEWZlZGVyYXRpb25fc3RhbmNlGAcgASgOMhwucGF0Y2hlcy52MS5GZWRlcmF0aW9uU3RhbmNlEjYKD2RvbWFpbl9wb2xpY2llcxgIIAMoCzIdLnBhdGNoZXMudjEuRG9tYWluUG9saWN5RW50cnkSFQoNZGF0YV9sb2NhdGlvbhgJIAEoCRIvCglyZXRlbnRpb24YCiABKAsyHC5wYXRjaGVzLnYxLlJldGVudGlvbldpbmRvd3MSGQoRb3BlcmF0b3JfaWRlbnRpdHkYCyABKAkSOgoQbGFiZWxfdm9jYWJ1bGFyeRgMIAMoCzIgLnBhdGNoZXMudjEuTGFiZWxWb2NhYnVsYXJ5RW50cnkSKgoiYWNjb3VudF9kZWxldGlvbl9ncmFjZV9wZXJpb2RfZGF5cxgNIAEoDRIaChJhcHBlYWxfd2luZG93X2RheXMYDiABKA0iFgoUR2V0Tm9kZVBvbGljeVJlcXVlc3QiPwoVR2V0Tm9kZVBvbGljeVJlc3BvbnNlEiYKBnBvbGljeRgBIAEoCzIWLnBhdGNoZXMudjEuTm9kZVBvbGljeSp0ChBSZWdpc3RyYXRpb25Nb2RlEiEKHVJFR0lTVFJBVElPTl9NT0RFX1VOU1BFQ0lGSUVEEAASGgoWUkVHSVNUUkFUSU9OX01PREVfT1BFThABEiEKHVJFR0lTVFJBVElPTl9NT0RFX0lOVklURV9PTkxZEAIqcwoPRmVhdHVyZUZsYWdLaW5kEiEKHUZFQVRVUkVfRkxBR19LSU5EX1VOU1BFQ0lGSUVEEAASHgoaRkVBVFVSRV9GTEFHX0tJTkRfQ09TTUVUSUMQARIdChlGRUFUVVJFX0ZMQUdfS0lORF9ST0xMT1VUEAIqoQEKEEZlZGVyYXRpb25TdGFuY2USIQodRkVERVJBVElPTl9TVEFOQ0VfVU5TUEVDSUZJRUQQABIeChpGRURFUkFUSU9OX1NUQU5DRV9ESVNBQkxFRBABEh8KG0ZFREVSQVRJT05fU1RBTkNFX0FMTE9XTElTVBACEikKJUZFREVSQVRJT05fU1RBTkNFX09QRU5fV0lUSF9CTE9DS0xJU1QQAypaChJEb21haW5Qb2xpY3lBY3Rpb24SJAogRE9NQUlOX1BPTElDWV9BQ1RJT05fVU5TUEVDSUZJRUQQABIeChpET01BSU5fUE9MSUNZX0FDVElPTl9CTE9DSxABMrMBCgtOb2RlU2VydmljZRJOCgtHZXROb2RlSW5mbxIeLnBhdGNoZXMudjEuR2V0Tm9kZUluZm9SZXF1ZXN0Gh8ucGF0Y2hlcy52MS5HZXROb2RlSW5mb1Jlc3BvbnNlElQKDUdldE5vZGVQb2xpY3kSIC5wYXRjaGVzLnYxLkdldE5vZGVQb2xpY3lSZXF1ZXN0GiEucGF0Y2hlcy52MS5HZXROb2RlUG9saWN5UmVzcG9uc2ViBnByb3RvMw',
     [file_patches_v1_labels, file_patches_v1_moderation],
   );
 
@@ -192,6 +192,34 @@ export const SocialCapabilitiesSchema: GenMessage<SocialCapabilities> =
   messageDesc(file_patches_v1_node, 1);
 
 /**
+ * @generated from message patches.v1.FeatureFlag
+ */
+export type FeatureFlag = Message<'patches.v1.FeatureFlag'> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool enabled = 2;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: patches.v1.FeatureFlagKind kind = 3;
+   */
+  kind: FeatureFlagKind;
+};
+
+/**
+ * Describes the message patches.v1.FeatureFlag.
+ * Use `create(FeatureFlagSchema)` to create a new message.
+ */
+export const FeatureFlagSchema: GenMessage<FeatureFlag> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_node, 2);
+
+/**
  * @generated from message patches.v1.GetNodeInfoRequest
  */
 export type GetNodeInfoRequest = Message<'patches.v1.GetNodeInfoRequest'> & {};
@@ -202,7 +230,7 @@ export type GetNodeInfoRequest = Message<'patches.v1.GetNodeInfoRequest'> & {};
  */
 export const GetNodeInfoRequestSchema: GenMessage<GetNodeInfoRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 2);
+  messageDesc(file_patches_v1_node, 3);
 
 /**
  * @generated from message patches.v1.GetNodeInfoResponse
@@ -261,6 +289,14 @@ export type GetNodeInfoResponse = Message<'patches.v1.GetNodeInfoResponse'> & {
    * @generated from field: bool public_read = 7;
    */
   publicRead: boolean;
+
+  /**
+   * This node's declared feature flags (spec §184.3, issue #142). Clients must tolerate unknown
+   * entries and cache this list with a TTL, not per-render.
+   *
+   * @generated from field: repeated patches.v1.FeatureFlag feature_flags = 8;
+   */
+  featureFlags: FeatureFlag[];
 };
 
 /**
@@ -269,7 +305,7 @@ export type GetNodeInfoResponse = Message<'patches.v1.GetNodeInfoResponse'> & {
  */
 export const GetNodeInfoResponseSchema: GenMessage<GetNodeInfoResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 3);
+  messageDesc(file_patches_v1_node, 4);
 
 /**
  * One entry of the node's public federation domain policy (spec §201.5). `reason_category` is
@@ -301,7 +337,7 @@ export type DomainPolicyEntry = Message<'patches.v1.DomainPolicyEntry'> & {
  */
 export const DomainPolicyEntrySchema: GenMessage<DomainPolicyEntry> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 4);
+  messageDesc(file_patches_v1_node, 5);
 
 /**
  * Retention windows this node enforces (spec §197.6, §204). Zero means "no retention limit is
@@ -342,7 +378,7 @@ export type RetentionWindows = Message<'patches.v1.RetentionWindows'> & {
  */
 export const RetentionWindowsSchema: GenMessage<RetentionWindows> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 5);
+  messageDesc(file_patches_v1_node, 6);
 
 /**
  * Operator transparency document (spec §197.6). Every field is operator-supplied text or an
@@ -443,7 +479,7 @@ export type NodePolicy = Message<'patches.v1.NodePolicy'> & {
  */
 export const NodePolicySchema: GenMessage<NodePolicy> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 6);
+  messageDesc(file_patches_v1_node, 7);
 
 /**
  * @generated from message patches.v1.GetNodePolicyRequest
@@ -456,7 +492,7 @@ export type GetNodePolicyRequest = Message<'patches.v1.GetNodePolicyRequest'> & 
  */
 export const GetNodePolicyRequestSchema: GenMessage<GetNodePolicyRequest> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 7);
+  messageDesc(file_patches_v1_node, 8);
 
 /**
  * @generated from message patches.v1.GetNodePolicyResponse
@@ -477,7 +513,7 @@ export type GetNodePolicyResponse = Message<'patches.v1.GetNodePolicyResponse'> 
  */
 export const GetNodePolicyResponseSchema: GenMessage<GetNodePolicyResponse> =
   /*@__PURE__*/
-  messageDesc(file_patches_v1_node, 8);
+  messageDesc(file_patches_v1_node, 9);
 
 /**
  * @generated from enum patches.v1.RegistrationMode
@@ -505,6 +541,40 @@ export enum RegistrationMode {
 export const RegistrationModeSchema: GenEnum<RegistrationMode> =
   /*@__PURE__*/
   enumDesc(file_patches_v1_node, 0);
+
+/**
+ * Feature flags / remote config (spec §184.3, issue #142) — a hand-rolled, node-served flag map
+ * fed from server env, not an external SaaS or a self-hosted flag server (see the 2026-08-26
+ * research note on issue #142 and `docs/architecture/rollouts.md`). `kind` is mandatory and
+ * restricted to the two values below by design: a flag may gate a cosmetic or a gradual rollout,
+ * never a function (§184.3's "capabilities never gate function" applies to a flag exactly as it
+ * does to a capability). Clients cache this list with a TTL rather than re-fetching per render.
+ *
+ * @generated from enum patches.v1.FeatureFlagKind
+ */
+export enum FeatureFlagKind {
+  /**
+   * @generated from enum value: FEATURE_FLAG_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: FEATURE_FLAG_KIND_COSMETIC = 1;
+   */
+  COSMETIC = 1,
+
+  /**
+   * @generated from enum value: FEATURE_FLAG_KIND_ROLLOUT = 2;
+   */
+  ROLLOUT = 2,
+}
+
+/**
+ * Describes the enum patches.v1.FeatureFlagKind.
+ */
+export const FeatureFlagKindSchema: GenEnum<FeatureFlagKind> =
+  /*@__PURE__*/
+  enumDesc(file_patches_v1_node, 1);
 
 /**
  * disabled: no federation at all. allowlist: only explicitly-approved domains. open-with-
@@ -539,7 +609,7 @@ export enum FederationStance {
  */
 export const FederationStanceSchema: GenEnum<FederationStance> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_node, 1);
+  enumDesc(file_patches_v1_node, 2);
 
 /**
  * v1 ships exactly one action (spec §201.5); kept as an enum rather than a bare bool for
@@ -564,7 +634,7 @@ export enum DomainPolicyAction {
  */
 export const DomainPolicyActionSchema: GenEnum<DomainPolicyAction> =
   /*@__PURE__*/
-  enumDesc(file_patches_v1_node, 2);
+  enumDesc(file_patches_v1_node, 3);
 
 /**
  * Node discovery (spec §163, §168, §174) — always unauthenticated. A client calls

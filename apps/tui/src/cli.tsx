@@ -15,6 +15,7 @@ import { parseArgs, USAGE } from './cli/args.js';
 import { openCredentialStore } from './cli/auth-shared.js';
 import { runCommunity } from './cli/community.js';
 import { runDm } from './cli/dm.js';
+import { runE2ee } from './cli/e2ee-recovery.js';
 import { runFilter } from './cli/filter.js';
 import { createNodeIo } from './cli/io.js';
 import { runKeys } from './cli/keys.js';
@@ -123,6 +124,7 @@ async function main(): Promise<number> {
     return runLabelers(rest, { io, env: process.env, target, insecure });
   if (args.command === 'appeal') return runAppeal(rest, { io, env: process.env, target, insecure });
   if (args.command === 'modlog') return runModlog(rest, { io, target, insecure });
+  if (args.command === 'e2ee') return runE2ee(rest, { io, env: process.env, target, insecure });
 
   return runTui(args);
 }

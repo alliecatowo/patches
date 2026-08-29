@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+    # `labeled` so adding `full-ci` to an already-open PR (without a new push) triggers a
+    # fresh, unscoped run — otherwise the label would only take effect on the next push.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
   # `ci-ok` is a required status check on `main`. Event delivery for `pull_request`/`push`
@@ -29,17 +32,80 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # #193: decides whether this run is scoped to affected workspaces (turbo's
+  # `...[origin/main]` filter — the changed workspaces plus everything that depends on
+  # them) or a full, unscoped run. Full on: a push to `main` (nothing meaningful to diff
+  # against — every workspace on `main` must be provably green), `workflow_dispatch`, a
+  # PR carrying the `full-ci` label, or whenever the affected set can't be determined
+  # (no `origin/main` merge-base reachable — e.g. a shallow/detached checkout edge case)
+  # so uncertainty always falls back to the safe, full gate rather than silently
+  # under-testing. `quality`'s typecheck step and `build-test`'s build/test steps consume
+  # `outputs.turbo-filter` directly; `proto`, `actionlint`, and `integration` stay
+  # unscoped (proto/actionlint are cheap and repo-wide by nature; `integration`'s DB
+  # schema/migration checks are inherently cross-cutting, and its own `build` step already
+  # replays build-test's turbo cache via `cache-scope`, so scoping it would save little).
+  plan:
+    name: plan (affected-workspace scope)
+    runs-on: ubuntu-latest
+    outputs:
+      full-ci: ${{ steps.decide.outputs.full-ci }}
+      turbo-filter: ${{ steps.decide.outputs.turbo-filter }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: '0'
+      - id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_FULL_CI_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: |
+          full=false
+          reason=""
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            full=true
+            reason="event is $EVENT_NAME, not pull_request"
+          elif [ "$HAS_FULL_CI_LABEL" = "true" ]; then
+            full=true
+            reason="PR carries the full-ci label"
+          elif ! git fetch origin main --quiet || ! git merge-base origin/main HEAD >/dev/null 2>&1; then
+            full=true
+            reason="could not resolve a merge-base with origin/main — falling back to full CI"
+          fi
+          if [ "$full" = "true" ]; then
+            echo "full-ci=true" >> "$GITHUB_OUTPUT"
+            echo "turbo-filter=" >> "$GITHUB_OUTPUT"
+            echo "Full CI run: ${reason:-push/dispatch}"
+          else
+            echo "full-ci=false" >> "$GITHUB_OUTPUT"
+            # Literal turbo filter syntax written into a double-quoted string for
+            # $GITHUB_OUTPUT, not a shell glob range: shellcheck's SC2102 heuristic
+            # misfires on the `...[...]` substring even though nothing here is ever
+            # shell-expanded.
+            # shellcheck disable=SC2102
+            echo "turbo-filter=--filter='...[origin/main]'" >> "$GITHUB_OUTPUT"
+            echo "Affected-workspace run: scoping to changed workspaces + dependents vs origin/main"
+          fi
+
   quality:
     name: quality (format, lint, typecheck)
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       # actions/checkout must run before a local composite action (`./...`) can be
       # resolved — it doesn't exist on the runner until the repo is checked out.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: '0'
       - uses: ./.github/actions/setup
+      - if: needs.plan.outputs.full-ci != 'true'
+        run: git fetch origin main --quiet
       - run: pnpm format:check
+      # eslint/prettier have no native git-diff-aware filtering here, and both are cheap
+      # relative to typecheck/test — kept full-repo in both modes. typecheck is turbo-native
+      # and is the expensive part of this job, so it's the one that's actually scoped.
       - run: pnpm lint
-      - run: pnpm typecheck
+      - name: Typecheck (affected workspaces + dependents, or full on main/full-ci)
+        run: pnpm exec turbo run typecheck ${{ needs.plan.outputs.turbo-filter }} --output-logs=errors-only
 
   proto:
     name: proto (buf + generated code freshness)
@@ -74,26 +140,55 @@ jobs:
 
   build-test:
     name: build-test (build + unit tests)
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: '0'
       - uses: ./.github/actions/setup
-      - run: pnpm build
+      - if: needs.plan.outputs.full-ci != 'true'
+        run: git fetch origin main --quiet
 
-      # B-176: `pnpm build` (turbo) already builds @patches/web as one of its packages, so
-      # these gate the exact dist a merge to main would later publish — at PR time instead
-      # of only in web.yml's post-merge deploy job, where a budget-busting or dev-mode PR
-      # was previously only caught after landing on main. VITE_PATCHES_API_BASE isn't set
-      # here (this job never deploys), which doesn't affect either check: bundle:check only
-      # measures chunk sizes, and dist:check's markers (jsxDEV, absolute build paths) are a
-      # property of build mode, not the API base.
+      # #193: affected-workspace scoping (see the `plan` job above). `@patches/web` is
+      # always unioned into the filter even in affected mode — never scoped out — because
+      # the bundle/dist checks right below unconditionally need its `dist/` to exist;
+      # turbo unions multiple `--filter` flags (OR, not AND), so this costs one extra
+      # workspace build in affected mode, not a narrower one.
+      - name: Build (affected workspaces + dependents, or full on main/full-ci)
+        run: |
+          if [ "${{ needs.plan.outputs.full-ci }}" = "true" ]; then
+            pnpm exec turbo run build --output-logs=errors-only
+          else
+            pnpm exec turbo run build --filter='...[origin/main]' --filter='@patches/web...' --output-logs=errors-only
+          fi
+
+      # B-176: the build step above already builds @patches/web (always, in both scoped
+      # and full mode — see its comment), so these gate the exact dist a merge to main
+      # would later publish — at PR time instead of only in web.yml's post-merge deploy
+      # job, where a budget-busting or dev-mode PR was previously only caught after
+      # landing on main. VITE_PATCHES_API_BASE isn't set here (this job never deploys),
+      # which doesn't affect either check: bundle:check only measures chunk sizes, and
+      # dist:check's markers (jsxDEV, absolute build paths) are a property of build mode,
+      # not the API base.
       - name: Check web bundle size budget
         run: pnpm --filter @patches/web run bundle:check
 
       - name: Check web dist is a clean production build
         run: pnpm --filter @patches/web run dist:check
 
-      - run: pnpm test
+      # `--reporter=github-actions` (vitest 4, verified in package.json's pinned version)
+      # turns test failures into inline GitHub Actions annotations at the failing
+      # assertion's file:line, instead of only a scrollback dump — #193's "concise
+      # machine-readable diagnostics" ask. Passed after `--` so turbo forwards it through
+      # to every matched workspace's underlying `vitest run` script unchanged.
+      - name: Test (affected workspaces + dependents, or full on main/full-ci)
+        run: |
+          if [ "${{ needs.plan.outputs.full-ci }}" = "true" ]; then
+            pnpm exec turbo run test --output-logs=errors-only -- --reporter=github-actions
+          else
+            pnpm exec turbo run test --filter='...[origin/main]' --output-logs=errors-only -- --reporter=github-actions
+          fi
 
       # Coverage floor for the security-critical package. Runs vitest directly —
       # outside turbo — so it executes on every push rather than being replayed
@@ -199,10 +294,31 @@ jobs:
       - name: Assert no pending migrations (second run must be a no-op)
         run: pnpm db:migrate
 
+      # The revert gate proves the last migration's `down()` works. One sanctioned
+      # exception: a migration may declare itself IRREVERSIBLE BY DESIGN (ADR 0033 §5's
+      # clean break — the deleted rows were signed under an encoding nothing can produce
+      # anymore, so there is nothing to restore them to). Such a migration's `down()`
+      # throws with the literal marker "irreversible by design"; that exact failure (and
+      # only that failure — any other revert error still fails this job) satisfies the
+      # gate. Nothing was reverted in that case, so the re-apply step below is skipped.
       - name: Revert last migration (prove down works)
-        run: pnpm db:revert
+        id: revert
+        run: |
+          set +e
+          output=$(pnpm db:revert 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -ne 0 ]; then
+            if echo "$output" | grep -q "irreversible by design"; then
+              echo "deliberately_irreversible=true" >> "$GITHUB_OUTPUT"
+            else
+              exit 1
+            fi
+          fi
 
       - name: Re-apply migration (prove up works again)
+        if: steps.revert.outputs.deliberately_irreversible != 'true'
         run: pnpm db:migrate
 
       - run: pnpm test:integration
@@ -225,7 +341,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [quality, proto, build-test, integration, actionlint]
+    needs: [plan, quality, proto, build-test, integration, actionlint]
     runs-on: ubuntu-latest
     steps:
       - name: Require all jobs to have succeeded

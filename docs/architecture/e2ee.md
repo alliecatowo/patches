@@ -1,15 +1,16 @@
 # End-to-end encrypted direct messages
 
-**Status: protocol core, wire/domain contract, and node implementation complete; independent review
-pending; production capability `DISABLED`.**
+**Status: always-on feature.** [ADR 0036's Amendments](../decisions/0036-shipping-e2ee-conditions-capability-states-and-copy.md)
+(2026-08-26, owner override) supersede the staged-rollout plan below: the reference node is
+pre-alpha, invite-only, with no real conversations, so `GetE2eeCapability` reports `ENABLED`
+whenever the node has a signing key for its current franking-key era — `DISABLED` otherwise.
+There is no approval list, no env narrowing, and no "unreviewed dev mode" flag anymore
+(Amendment 2): the v1 franking profile ships by existing, and a v2 still requires an ADR.
 
-[ADR 0020](../decisions/0020-e2ee-direct-messages.md) is binding. This document records the
-boundary and the contract — it is still not a claim that E2EE is available. Every `E2eeService`
-RPC (`packages/proto/proto/patches/v1/e2ee.proto`) has a real `apps/server` implementation
-exercised by integration tests, but the node keeps the capability fail-closed: with the reviewed
-franking-profile list empty, sends are refused unless ADR 0027's explicit
-`E2EE_UNREVIEWED_DEV_MODE=true` test mode is set on isolated, owner-authorized infrastructure, and
-the rollout state stays `DISABLED`.
+[ADR 0020](../decisions/0020-e2ee-direct-messages.md) is still binding for the protocol contract
+this document records — the sections below describing the review-gated rollout ladder are
+historical/superseded (see the ADR 0036 amendment) but the wire/domain contract, franking, and
+standing disclosures they document remain accurate.
 
 Where to look:
 
@@ -59,6 +60,9 @@ Three signed objects, each verified by the client rather than asserted by the no
 1. **Messaging identity root** — a long-lived Ed25519 key, separate from every login credential,
    whose public key is the stable input to the actor's safety number. It self-signs its own
    transcript (proof of possession); a rotation may additionally be signed by the previous root.
+   Transcript-less roots (published by a pre-transcript web build) were purged on 2026-08-28 and
+   `e2ee_identity_roots.root_bytes`/`self_signature` are now `NOT NULL` — no legacy tolerance
+   (issue #297).
 2. **Device certificate** — the root's signature over a canonical transcript binding actor id,
    device id, the device's Ed25519 **signing** key, its X25519 **agreement** key, validity window,
    protocol capabilities, and version. This binding is the fix for the spike's critical finding
@@ -87,6 +91,19 @@ sequenceDiagram
     P->>P: verify every link locally
     P->>P: identity change? pause sends, require re-verification
 ```
+
+Server-side, every roster-writing transaction (`EnrollDevice`, `RevokeDevice`,
+`PublishDeviceRoster`, and the rotation branch of `PublishIdentityRoot`) takes a `pessimistic_write`
+lock on the actor's active identity-root row before appending, so two concurrent writers serialise
+onto the same append point instead of racing to insert the same next sequence — the loser now sees
+`E2EE_ROSTER_CONFLICT`, not an unmapped Postgres `23505` (issue #267). The node also refuses to
+append a roster naming a device it holds no certificate for: every entry not already present in the
+previous roster must match an unrevoked `E2eeDeviceIdentity` row by certificate digest, closing off
+a phantom-device roster that would otherwise pass chain verification but serve peers a device with
+no certificate or prekeys (issue #268). `EnrollDevice`, `RevokeDevice`, `PublishDeviceRoster`,
+`PublishIdentityRoot`, and `UploadPrekeys` are now rate-limited per actor and per peer (20/hour,
+`E2eeRateLimitService.consumeIdentityWrite`) — previously unbounded write paths whose signature
+verification and roster growth cost is otherwise free to spam (issue #269).
 
 A malicious node can still refuse to serve a roster or serve a stale one. It cannot forge one, and
 a client that verifies forward from its last known sequence detects a rollback or a split view.
@@ -132,6 +149,22 @@ One-time prekey exhaustion is a normal, signalled state, not a failure: the node
 counts to the owning device only (another actor's count is an availability oracle), the device
 replenishes below the threshold, and a claim against an exhausted inventory falls back to the signed
 prekey with reduced forward secrecy for that first message, exactly as X3DH describes.
+
+### A device is not in its own fanout, so it keeps its own sent messages
+
+A sender never addresses an envelope to itself, so the node holds nothing that could redeliver an
+outgoing message to the person who wrote it. Both clients therefore write each outgoing message —
+plaintext body, client message id, local send time, and whether delivery succeeded — into the same
+authenticated vault that holds ratchet state, in one reserved opaque record per conversation
+(`apps/web/src/e2ee/own-messages.ts` and its TUI twin `apps/tui/src/e2ee/own-messages.ts`; ADR 0020
+§4 already names plaintext-history material as vault-resident). Loading a thread merges those rows
+ahead of what the mailbox drain returned: own rows are ordered by the local clock, and received rows
+keep delivery order, because ADR 0020 §8 deliberately keeps send time out of node-visible metadata,
+so there is no shared clock to interleave against. A failed send is stored too, marked undelivered
+rather than discarded. Retention is the newest 500 per conversation, the record is erased by a vault
+wipe with everything else, and it never leaves the device: multi-device sync of own messages stays
+out of scope (ADR 0020 §7), so a second device shows only the peer's half of a thread it did not
+write.
 
 Mailbox reads are keyset-paginated on `(received_at, envelope_id)` ascending, strictly after the
 cursor. There is no offset, no page number, and no `sort`/`order` parameter anywhere in the schema —
@@ -250,10 +283,11 @@ Rules the implementation must keep, all enforced in `packages/domain/src/e2ee/fr
   is the required sentence: reporter-selected context is not the whole context, and the tag is not
   proof to anyone outside this node.
 
-`E2EE_APPROVED_FRANKING_PROFILES` in `packages/domain/src/e2ee/modes.ts` is deliberately **empty**.
-It is ADR 0020 §12.7's independent-review gate in mechanical form: no profile can be operated in
-production until a reviewed construction is added to that list, and adding one requires amending the
-ADR rather than editing a constant in a feature branch.
+The franking profile is a fixed construction, not node configuration (ADR 0036 Amendment 2):
+`E2EE_FRANKING_PROFILE_V1` in `packages/domain/src/e2ee/modes.ts` is the shipped profile, there
+is no approval list to be on, and the fanout core rejects any other profile string before dedup
+or any database write. Adding a _second_ profile still requires amending an ADR rather than
+editing code in a feature branch.
 
 ## 6. What clients must say
 
@@ -278,29 +312,26 @@ Additional client obligations: pause sends and require re-verification on any id
 surface safety numbers; never present a franking tag as third-party proof; and state plainly that
 revocation cannot retract what a device already holds and is never a remote wipe.
 
-## 7. Rollout states
+## 7. Capability states
+
+**Superseded by ADR 0036's Amendment (2026-08-26 owner override).** `GetE2eeCapability` now
+reports only two states in practice:
 
 ```mermaid
 stateDiagram-v2
     [*] --> DISABLED
-    DISABLED --> ISOLATED_TEST_ONLY: isolated test node only
-    ISOLATED_TEST_ONLY --> EXTERNAL_REVIEW_PENDING: implementation complete
-    EXTERNAL_REVIEW_PENDING --> EXPERIMENTAL_CANARY: independent review passed
-    EXPERIMENTAL_CANARY --> ENABLED: canary complete
-    note right of EXTERNAL_REVIEW_PENDING
-        Still not a product.
-        No automatic downgrade
-        from any state.
-    end note
+    DISABLED --> ENABLED: signing key present for the current franking-key era
+    ENABLED --> DISABLED: signing key rotated out with no successor
 ```
 
-The production capability is `DISABLED`. `ISOLATED_TEST_ONLY` is valid only on an explicitly
-isolated test node. `EXPERIMENTAL_CANARY` and `ENABLED` are post-review states and must not be
-selected until ADR 0020 §12's automated gates and P13-014's independent review and remediation are
-complete. Enabling the capability never downgrades an existing conversation, and disabling it never
-converts one. Since ADR 0030/B-095 there is no plaintext fallback: a node with the capability
-`DISABLED` offers no DM function at all rather than falling back to a server-visible mode —
-production DMs stay dark until the ship-gates above pass (ADR 0030 §"Application 1").
+`ENABLED` iff the node has a franking profile it's allowed to use (see §5) and a signing key for
+its current era; `DISABLED` otherwise. `ISOLATED_TEST_ONLY` and `EXPERIMENTAL_CANARY` remain
+defined in the proto enum (never reuse a field/enum number, spec §153) but nothing produces them
+— they are reserved for an honest home for a future unreviewed protocol change (a v2 franking
+profile, a v2 transcript family), not for this node's day-to-day operation. Enabling the
+capability never downgrades an existing conversation, and disabling it never converts one. Since
+ADR 0030/B-095 there is no plaintext fallback: a node with capability `DISABLED` offers no DM
+function at all rather than falling back to a server-visible mode.
 
 ## 8. Cryptographic boundary
 
@@ -318,6 +349,11 @@ which accepts non-canonical encodings and small-order points. The implementation
 primitives; that is not an audit of Patches' composition. JavaScript cannot guarantee constant-time
 execution or complete zeroization, so wiping is best-effort. Cross-client vectors and independent
 security review and remediation remain hard ship gates.
+
+`apps/server/test/e2ee-prekey-claim-race.integration.test.ts` drives `ClaimPrekeyBundles`'
+`FOR UPDATE SKIP LOCKED` claim path with genuinely concurrent claimants against real Postgres,
+proving no one-time prekey is ever handed to two callers and that the per-device drain budget
+holds even while prekeys remain unconsumed (issue #273c).
 
 ## 9. Client runtime status (B-101)
 
@@ -338,14 +374,58 @@ The TUI's half of the protocol lives in `apps/tui/src/e2ee/` (protocol compositi
   state, and only then acknowledges. `openDeviceEnvelope` is the only source of plaintext in the
   client, so franking verification is structural rather than a policy a caller could skip. A failure
   renders a neutral placeholder and is still acknowledged: never shown, never silent.
+- **Receive-fault classification and quarantine (issue #260).** `pollMailbox` splits every failure
+  while processing one envelope into two causes rather than fail-stopping on all of them equally. A
+  fault local to this device (vault I/O, the stored enrollment record, or a mailbox round trip)
+  raises `E2eeReceiveUnavailableError` and stops the drain without acknowledging: the same envelope
+  may open perfectly once the local fault clears, so skipping it would be a silent drop. An envelope
+  this device can never open — a structural/contract violation caught before any ratchet step (a bad
+  membership epoch, an initial header naming prekeys or a device this side never had), or a
+  session/ratchet decryption that fails deterministically — is instead quarantined: a content-free
+  note (envelope id, conversation id, a closed-vocabulary reason of `malformed` or `undecryptable`,
+  and a timestamp — never ciphertext, key material, or any fragment of a body) is recorded locally,
+  the envelope is acknowledged so the mailbox keeps draining past it, and a `quarantined` row with
+  the fixed copy "A message could not be decrypted on this device and was skipped." renders in that
+  conversation's thread in both clients. One drain quarantines at most `MAX_QUARANTINED_PER_DRAIN`
+  (16) envelopes; past that it stops with its own fixed copy rather than grinding through an
+  unbounded flood of bad — possibly injected — envelopes in a single pass. If the quarantine note
+  itself cannot be recorded, the drain fail-stops on that envelope unacknowledged rather than
+  skipping it with no local trace that anything was skipped.
 - **Verification on read.** `chain.ts` re-verifies every served identity root, roster, and active
   device certificate against the authoritative `*_bytes` with strict RFC 8032 semantics, and
   `group-control.ts` verifies the membership transcript against those rosters.
 - **History transfer** is parsed and rendered as labelled re-delivered provenance and never re-enters
   any session state.
 - **Vault lifecycle.** Wipe routes through the live store, drops the cached instance, unbinds the
-  enrolled identity, and clears the sticky fault; both the vault file and the guarded key file sweep
-  their own crash-orphaned temporaries on open.
+  enrolled identity, and clears the sticky fault; the vault file and both persistent key-provider
+  tiers below sweep their own crash-orphaned temporaries on open.
+- **Vault wrapping-key tiers (`apps/tui/src/e2ee/vault-key-providers.ts`, `createVaultKeyProvider`,
+  spec §37, issue #212).** Three tiers, most to least preferred, none silently weaker than the last:
+  1. **OS keyring** (`KeyringVaultKeyProvider`, via `@napi-rs/keyring`) — the default whenever a
+     keyring is reachable.
+  2. **Passphrase-KDF** (`PassphraseVaultKeyProvider`, explicit opt-in) — when no keyring exists,
+     derives a key-encryption-key from a user-supplied passphrase with Argon2id
+     (`m=19456 KiB, t=2, p=1`, matching the OWASP baseline `apps/server`'s password hasher already
+     uses — `docs/research/infra-and-security-libs.md` §5) and uses it to AEAD-wrap
+     (XChaCha20-Poly1305) a randomly generated wrapping key. Only the wrapped record and a random
+     salt/nonce are ever written to disk; the passphrase and the raw wrapping key are not. Changing
+     the passphrase (`changePassphrase`) re-wraps the same key under a new salt/KEK without
+     touching the vault it protects. A wrong passphrase fails AEAD verification and is treated
+     identically to a corrupted record — `VaultCorruptionError`, never a silent fresh key.
+  3. **Guarded plaintext file** (`GuardedFileVaultKeyProvider`, explicit opt-in via
+     `--allow-insecure-credential-file` / `PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1`) — the raw
+     wrapping key in a 0600 file beside the vault, weaker than either tier above and says so on
+     every construction.
+
+  If neither fallback is opted into, `createVaultKeyProvider` falls through to
+  `EphemeralVaultKeyProvider`: a key persists only for that process's lifetime, so a keyring-less
+  box never silently stores secrets it wasn't told to. `createVaultKeyProvider` selects the
+  passphrase tier over the guarded file when both are supplied — it is the strictly stronger of the
+  two persistent fallbacks. **Follow-up:** the interactive prompt that supplies
+  `PassphraseVaultKeyProvider`'s `getPassphrase` callback at vault open/create is not yet wired into
+  the running app's boot flow (`apps/tui/src/app/App.tsx`) — Ink owns raw-mode stdin there, and a
+  second stdin consumer needs its own design pass rather than a rushed addition. The provider and
+  factory option are complete and tested; only that call site remains.
 
 **The one open blocker is session bootstrap against a peer.** Identity material exists in two
 transcript families that sign the same facts under different encodings: the _crypto-native_ family
@@ -366,3 +446,32 @@ delivery path may cross `FederationGateway` or ActivityPub, even when public fed
 for other content. Federated key discovery, cross-node envelopes, and remote moderation evidence are
 out of scope and need separate owner sign-off, a threat model spanning independently operated nodes,
 and a new ADR. See [`federation.md`](./federation.md).
+
+**Ship gate:** `apps/server/src/modules/e2ee/federation-isolation.test.ts` checks this
+statically (no e2ee/federation source file imports the other side, or `@patches/crypto` from the
+federation side) and at runtime (`FEDERATION_GATEWAY` is unresolvable from `E2eeController`'s DI
+graph, and a force-registered spy under that token is never called by `getE2EeCapability` or
+`sendEnvelopes`).
+
+## Ship-gate status (2026-08-27)
+
+Reconciliation of ADR 0020 §12's 11 ship gates against what actually exists in the repo today.
+Statuses are not softened for anything below.
+
+| Gate                                            | Status   | Evidence (file paths / test names)                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Double Ratchet vectors                       | DONE     | `packages/crypto/src/double-ratchet.test.ts`, `packages/crypto/src/double-ratchet.property.test.ts`, `packages/crypto/src/vectors.test.ts`, `packages/crypto/src/device-envelope.test.ts`                                                                                                                                                                                                                                                                            |
+| 2. Certs/rosters/safety numbers/identity-change | PARTIAL  | Domain + roster-chain tests exist; roster append is now row-locked and requires certified devices (#267/#268) — `apps/server/src/modules/e2ee/roster-chain.test.ts`, `apps/server/src/modules/e2ee/device-roster.service.test.ts`. No adversarial-server test suite for the safety-number screen.                                                                                                                                                                    |
+| 3. Prekey atomicity/concurrency                 | DONE     | `apps/server/test/e2ee-prekey-claim-race.integration.test.ts` (40 concurrent claimants, no double hand-out)                                                                                                                                                                                                                                                                                                                                                          |
+| 4. Vault crash/rollback                         | PARTIAL  | TUI `apps/tui/src/e2ee/vault-store.test.ts` covers crash windows, rollback, corruption, and the single-owner lock. Web vault tests do not cover the same matrix.                                                                                                                                                                                                                                                                                                     |
+| 5. Sesame fanout / two-device interop           | DONE     | Own-device fanout (`apps/server/src/modules/e2ee/e2ee-fanout.ts`). `apps/tui/src/e2ee/two-device-interop.test.ts` and `apps/web/src/e2ee/two-device-interop.test.ts` (#273a): link end to end (SAS, roster convergence, rollback rejection), then a real post-link send is delivered to the linked device after `refreshOwnRoster` re-signs the sender's bundle (#277). Simultaneous initiation / DoS bounds remain covered only by unit tests in `packages/crypto`. |
+| 6. No-plaintext assertions                      | DONE     | `apps/server/test/e2ee-privacy-scan.integration.test.ts`; DB trigger `trg_conversations_immutable_security_mode` (`packages/database/src/migrations/1787134230745-Phase13E2ee.ts`) makes `conversations.security_mode` immutable after creation.                                                                                                                                                                                                                     |
+| 7. Franking independent review                  | NOT DONE | ADR 0036 substituted an internal adversarial audit; no third party has reviewed the construction.                                                                                                                                                                                                                                                                                                                                                                    |
+| 8. Backup/recovery/rotation/revocation          | DONE     | Recovery archive export/import (`apps/tui/src/cli/e2ee-recovery.ts`, `apps/tui/src/e2ee/recovery-restore.e2e.test.ts`, web `RecoveryArchivePanel`); device linking, root rotation, and authority-side revoke per ADR 0037 (`apps/{tui,web}/src/e2ee/device-link.ts` + tests, `patches e2ee link                                                                                                                                                                      | approve-link | rotate-root`, web `DevicesRoute`); prekey replenishment/rotation (`prekey-maintenance.ts`, #278). Irrecoverable-loss copy is fixed in `NEEDS_AUTHORITY_COPY`; remote wipe is never offered. |
+| 9. Threat model + independent security audit    | NOT DONE | Policy-waived by ADR 0036; nothing external exists.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 10. Legacy/E2EE separation                      | DONE     | Separation is enforced (see gate 6). `PURGE_ACCOUNT` deletes every E2EE row for the actor — `apps/worker/src/jobs/handlers/purge-account.handler.ts` (identity roots, devices, link offers, rosters, prekeys, envelopes, sent logical messages, signed group-control events; report evidence deliberately retained) with `purge-account.handler.test.ts`.                                                                                                            |
+| 11. Federation isolation                        | DONE     | `apps/server/src/modules/e2ee/federation-isolation.test.ts`                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+**Stage status (ADR 0020 §11):** stages 1–5 done (stage 5 closed by #265, #266, #272, #273, #277, #278 on 2026-08-27);
+stage 6 policy-substituted per ADR 0036; stage 7 not live — E2EE conversations are opt-in via
+`CreateE2eeConversation`, not the default.

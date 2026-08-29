@@ -1,0 +1,13 @@
+{
+  "plugin": [
+    [
+      "@prevalentware/opencode-goal-plugin",
+      {
+        "auto_continue": true,
+        "defer_while_tasks_active": true,
+        "max_auto_turns": 25,
+        "min_continue_interval_seconds": 3
+      }
+    ]
+  ]
+}

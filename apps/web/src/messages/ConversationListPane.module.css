@@ -1,0 +1,80 @@
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+}
+
+/* The list-level disclosure (§183.1). A caption above the rows, not a card: it must always
+   be present, and it must never look like the most important thing in the pane. */
+.disclosure {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+}
+
+.disclosureIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+
+.alert {
+  margin: var(--space-3) var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+/* Skeleton rows rather than the word "Loading…": the list's shape is knowable before its
+   contents are, and a shifting layout on first paint is what made the pane read as unbuilt. */
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.skeletonAvatar {
+  width: var(--avatar-md);
+  height: var(--avatar-md);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.skeletonLines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonLine {
+  height: 9px;
+  border-radius: var(--radius-full);
+}
+
+.skeletonLineShort {
+  width: 45%;
+}
+
+.skeletonLineLong {
+  width: 78%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonAvatar,
+  .skeletonLine {
+    animation: none;
+    background: var(--surface-raised);
+  }
+}

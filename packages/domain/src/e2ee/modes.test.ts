@@ -9,7 +9,6 @@ import {
   E2EE_PROTOCOL_V1,
   E2EE_REPORT_MAX_SURROUNDING_MESSAGES,
   E2EE_SIGNED_PREKEY_ROTATION_MS,
-  E2EE_UNREVIEWED_DEV_MODE_WARNING,
 } from './modes.js';
 
 describe('E2EE domain contract', () => {
@@ -28,26 +27,32 @@ describe('E2EE domain contract', () => {
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
         capabilityState: 'EXTERNAL_REVIEW_PENDING',
-        isolatedTestNode: false,
+        participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
+      }),
+    ).toThrow('not enabled');
+    // The unreachable-in-practice rollout states (ADR 0036 Amendment) also gate closed, not
+    // open — only `ENABLED` is honoured.
+    expect(() =>
+      assertConversationModeNegotiation({
+        requestedMode: 'E2EE_V1',
+        capabilityState: 'EXPERIMENTAL_CANARY',
         participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
       }),
     ).toThrow('not enabled');
     expect(() =>
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
-        capabilityState: 'EXPERIMENTAL_CANARY',
-        isolatedTestNode: false,
+        capabilityState: 'ENABLED',
         participantProtocols: [E2EE_PROTOCOL_V1, null],
       }),
     ).toThrow('Every participant');
   });
 
-  it('permits E2EE only on isolated test nodes or post-review rollout states', () => {
+  it('permits E2EE once the node capability is enabled', () => {
     expect(() =>
       assertConversationModeNegotiation({
         requestedMode: 'E2EE_V1',
-        capabilityState: 'ISOLATED_TEST_ONLY',
-        isolatedTestNode: true,
+        capabilityState: 'ENABLED',
         participantProtocols: [E2EE_PROTOCOL_V1, E2EE_PROTOCOL_V1],
       }),
     ).not.toThrow();
@@ -61,11 +66,5 @@ describe('E2EE domain contract', () => {
     expect(() => assertE2eeGroupBounds(8, 64)).not.toThrow();
     expect(() => assertE2eeGroupBounds(9, 64)).toThrow('membership');
     expect(() => assertE2eeGroupBounds(8, 65)).toThrow('fanout');
-  });
-
-  it('pins the ADR 0027 unreviewed-dev-mode warning byte-for-byte', () => {
-    expect(E2EE_UNREVIEWED_DEV_MODE_WARNING).toBe(
-      'Unreviewed development E2EE — for testing only; do not use for sensitive conversations.',
-    );
   });
 });

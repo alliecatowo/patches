@@ -187,6 +187,14 @@ export const router = createBrowserRouter([
               })),
             errorElement: <LazyRouteBoundary />,
           },
+          {
+            path: 'devices',
+            lazy: () =>
+              import('./routes/settings/DevicesRoute.js').then((m) => ({
+                Component: m.DevicesRoute,
+              })),
+            errorElement: <LazyRouteBoundary />,
+          },
         ],
       },
       {
@@ -228,6 +236,18 @@ export const router = createBrowserRouter([
             Component: () => (
               <ProtectedRoute>
                 <m.MessageThreadRoute />
+              </ProtectedRoute>
+            ),
+          })),
+        errorElement: <LazyRouteBoundary />,
+      },
+      {
+        path: 'messages/:id/safety',
+        lazy: () =>
+          import('./routes/MessageSafetyRoute.js').then((m) => ({
+            Component: () => (
+              <ProtectedRoute>
+                <m.MessageSafetyRoute />
               </ProtectedRoute>
             ),
           })),

@@ -58,7 +58,6 @@ describe('validateEnv', () => {
       PUBLIC_ORIGIN: 'http://localhost:3000',
       INVITE_ONLY: true,
       GRPC_REFLECTION: false,
-      E2EE_UNREVIEWED_DEV_MODE: false,
     });
     expect(env.DATABASE_URL).toBeUndefined();
   });
@@ -115,18 +114,6 @@ describe('validateEnv', () => {
       ...JWT_KEYS,
     });
     expect(env.DATABASE_URL).toBe('postgres://patches:patches@127.0.0.1:5432/patches');
-  });
-
-  it('permits the explicit unreviewed E2EE switch with production runtime settings', () => {
-    expect(validateEnv({ E2EE_UNREVIEWED_DEV_MODE: 'true' }).E2EE_UNREVIEWED_DEV_MODE).toBe(true);
-    expect(
-      validateEnv({
-        NODE_ENV: 'production',
-        DATABASE_URL: 'postgres://patches:patches@127.0.0.1:5432/patches',
-        E2EE_UNREVIEWED_DEV_MODE: 'true',
-        ...JWT_KEYS,
-      }).E2EE_UNREVIEWED_DEV_MODE,
-    ).toBe(true);
   });
 
   it('requires the JWT signing keys in production', () => {
@@ -202,6 +189,19 @@ describe('validateEnv', () => {
     expect(validateEnv({})).toMatchObject({ PUBLIC_READ: true });
     expect(validateEnv({ PUBLIC_READ: 'false' })).toMatchObject({ PUBLIC_READ: false });
     expect(validateEnv({ PUBLIC_READ: '0' })).toMatchObject({ PUBLIC_READ: false });
+  });
+
+  it('defaults FEATURE_FLAGS to no overrides and parses name=bool pairs (spec §184.3, issue #142)', () => {
+    expect(validateEnv({})).toMatchObject({ FEATURE_FLAGS: new Map() });
+    expect(
+      validateEnv({ FEATURE_FLAGS: 'new_theme=true, broken=notabool, =true, no_value=' }),
+    ).toMatchObject({
+      FEATURE_FLAGS: new Map([
+        ['new_theme', true],
+        ['broken', false],
+        ['no_value', false],
+      ]),
+    });
   });
 
   it('defaults PASSWORD_AUTH to optional and accepts off/required overrides (P15-002)', () => {

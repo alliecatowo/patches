@@ -206,6 +206,7 @@ export {
 
 export type {
   DomainPolicyEntry,
+  FeatureFlag,
   GetNodeInfoRequest,
   GetNodeInfoResponse,
   GetNodePolicyRequest,
@@ -220,6 +221,7 @@ export type {
 export {
   DomainPolicyAction,
   FederationStance,
+  FeatureFlagKind,
   NODE_SERVICE_NAME,
   NodeServiceControllerMethods,
   RegistrationMode,
@@ -419,6 +421,7 @@ export type {
   E2eeConversationMemberState,
   E2eeDeviceCertificate,
   E2eeDeviceEnvelope,
+  E2eeDeviceLinkOffer,
   E2eeDeviceRoster,
   E2eeFrankingTag,
   E2eeGroupControlEvent,
@@ -429,8 +432,14 @@ export type {
   E2eePrekeyBundle,
   E2eeReportEvidenceItem,
   E2eeRosterEntry,
+  E2eeServiceBeginDeviceLinkRequest,
+  E2eeServiceBeginDeviceLinkResponse,
+  E2eeServiceCancelDeviceLinkRequest,
+  E2eeServiceCancelDeviceLinkResponse,
   E2eeServiceClient,
   E2eeServiceController,
+  E2eeServiceListPendingDeviceLinksRequest,
+  E2eeServiceListPendingDeviceLinksResponse,
   E2eeSignedPrekey,
   EnrollDeviceRequest,
   EnrollDeviceResponse,

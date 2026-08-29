@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  AccountDeletionRequest,
+  Actor,
   AdminAuditLog,
   Appeal,
   DomainBlock,
@@ -25,6 +27,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { requirePositional } from '../src/cli/arg-parser.js';
 import { hashInviteCode } from '../src/cli/crypto.js';
 import { runAppealCommand } from '../src/commands/appeal.js';
+import { runAuditLogCommand } from '../src/commands/audit-log.js';
 import { runDomainCommand } from '../src/commands/domain.js';
 import { runInviteCommand } from '../src/commands/invite.js';
 import { runJobsCommand } from '../src/commands/jobs.js';
@@ -246,6 +249,237 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
         // Default reason category when `--reason-category` is omitted.
         expect(banEntry?.reasonCategory).toBe('OTHER');
         expect(banEntry?.subjectDomain).toBeNull();
+      });
+    });
+
+    describe('user cancel-deletion / deletion-status (#171)', () => {
+      async function pendingDeletionRequest(
+        actorId: string,
+        overrides: Partial<Pick<AccountDeletionRequest, 'cancelledAt' | 'purgedAt'>> = {},
+      ): Promise<AccountDeletionRequest> {
+        const now = new Date();
+        const purgeAfter = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        return dataSource.getRepository(AccountDeletionRequest).save(
+          dataSource.getRepository(AccountDeletionRequest).create({
+            actorId,
+            requestedAt: now,
+            purgeAfter,
+            cancelledAt: overrides.cancelledAt ?? null,
+            purgedAt: overrides.purgedAt ?? null,
+          }),
+        );
+      }
+
+      it('cancels a pending deletion, removes the queued purge job, and audits actor + admin ids', async () => {
+        const { user: operator, actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd1`,
+        });
+        const { user: target, actor } = await createTestUser(dataSource.manager, {
+          handle: `cancel${Date.now()}a`,
+        });
+        await pendingDeletionRequest(actor.id);
+        const job = await dataSource.getRepository(OutboxJob).save(
+          dataSource.getRepository(OutboxJob).create({
+            type: 'PURGE_ACCOUNT',
+            payload: { actorId: actor.id },
+            status: 'PENDING',
+          }),
+        );
+        // A job for an unrelated actor must survive the `payload->>'actorId'` filter untouched.
+        const { actor: otherActor } = await createTestUser(dataSource.manager, {
+          handle: `other${Date.now()}`,
+        });
+        const otherJob = await dataSource.getRepository(OutboxJob).save(
+          dataSource.getRepository(OutboxJob).create({
+            type: 'PURGE_ACCOUNT',
+            payload: { actorId: otherActor.id },
+            status: 'PENDING',
+          }),
+        );
+
+        const ctx = await context(operatorActor.handle);
+        const s = silence();
+        await runUserCommand(
+          'cancel-deletion',
+          { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+          ctx,
+        );
+        s.restore();
+
+        const request = await dataSource
+          .getRepository(AccountDeletionRequest)
+          .findOneByOrFail({ actorId: actor.id });
+        expect(request.cancelledAt).not.toBeNull();
+        expect(request.purgedAt).toBeNull();
+
+        const remainingJob = await dataSource.getRepository(OutboxJob).findOneBy({ id: job.id });
+        expect(remainingJob).toBeNull();
+        const untouchedJob = await dataSource
+          .getRepository(OutboxJob)
+          .findOneByOrFail({ id: otherJob.id });
+        expect(untouchedJob.status).toBe('PENDING');
+
+        const audit = await latestAuditLog('USER', target.id);
+        expect(audit.action).toBe('user.cancel-deletion');
+        expect(audit.adminUserId).toBe(operator.id);
+        expect(audit.subjectId).toBe(target.id);
+      });
+
+      it('restores users.status/actors.deletedAt when the account was already soft-deleted by `user delete`', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd2`,
+        });
+        const { user: target, actor } = await createTestUser(dataSource.manager, {
+          handle: `cancel${Date.now()}b`,
+        });
+        const ctx = await context(operatorActor.handle);
+
+        const s1 = silence();
+        await runUserCommand(
+          'delete',
+          { positionals: ['user', 'delete', actor.handle], options: {} },
+          ctx,
+        );
+        s1.restore();
+        const deleted = await dataSource.getRepository(User).findOneByOrFail({ id: target.id });
+        expect(deleted.status).toBe('DELETED');
+
+        const s2 = silence();
+        await runUserCommand(
+          'cancel-deletion',
+          { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+          ctx,
+        );
+        s2.restore();
+
+        const restoredUser = await dataSource
+          .getRepository(User)
+          .findOneByOrFail({ id: target.id });
+        expect(restoredUser.status).toBe('ACTIVE');
+        expect(restoredUser.deletedAt).toBeNull();
+
+        const restoredActor = await dataSource
+          .getRepository(Actor)
+          .findOneByOrFail({ id: actor.id });
+        expect(restoredActor.deletedAt).toBeNull();
+      });
+
+      it('refuses when there is no pending deletion, and writes no audit entry', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd3`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `nopending${Date.now()}`,
+        });
+        const ctx = await context(operatorActor.handle);
+        const auditCountBefore = await dataSource.getRepository(AdminAuditLog).count();
+
+        await expect(
+          runUserCommand(
+            'cancel-deletion',
+            { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+            ctx,
+          ),
+        ).rejects.toThrow(/no pending account deletion to cancel/);
+
+        const auditCountAfter = await dataSource.getRepository(AdminAuditLog).count();
+        expect(auditCountAfter).toBe(auditCountBefore);
+      });
+
+      it('refuses when the pending deletion has already been purged', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd4`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `purged${Date.now()}`,
+        });
+        await pendingDeletionRequest(actor.id, { purgedAt: new Date() });
+        const ctx = await context(operatorActor.handle);
+
+        await expect(
+          runUserCommand(
+            'cancel-deletion',
+            { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+            ctx,
+          ),
+        ).rejects.toThrow(/no pending account deletion to cancel/);
+      });
+
+      it('refuses a double-cancel of an already-cancelled deletion', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd5`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `doublecancel${Date.now()}`,
+        });
+        await pendingDeletionRequest(actor.id, { cancelledAt: new Date() });
+        const ctx = await context(operatorActor.handle);
+
+        await expect(
+          runUserCommand(
+            'cancel-deletion',
+            { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+            ctx,
+          ),
+        ).rejects.toThrow(/no pending account deletion to cancel/);
+      });
+
+      it('is refused without an identified operator (no audit attribution possible)', async () => {
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `noop${Date.now()}`,
+        });
+        await pendingDeletionRequest(actor.id);
+        const ctx = await context(undefined);
+
+        await expect(
+          runUserCommand(
+            'cancel-deletion',
+            { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+            ctx,
+          ),
+        ).rejects.toThrow(/No operator identified/);
+
+        const request = await dataSource
+          .getRepository(AccountDeletionRequest)
+          .findOneByOrFail({ actorId: actor.id });
+        expect(request.cancelledAt).toBeNull();
+      });
+
+      it('deletion-status reports pending state before cancellation and cleared state after', async () => {
+        const { actor: operatorActor } = await createTestUser(dataSource.manager, {
+          handle: `op${Date.now()}cd6`,
+        });
+        const { actor } = await createTestUser(dataSource.manager, {
+          handle: `status${Date.now()}`,
+        });
+        await pendingDeletionRequest(actor.id);
+        const ctx = await context(operatorActor.handle);
+
+        const before = captureStdout();
+        await runUserCommand(
+          'deletion-status',
+          { positionals: ['user', 'deletion-status', actor.handle], options: { json: 'true' } },
+          ctx,
+        );
+        before.restore();
+        expect(JSON.parse(before.text())).toMatchObject({ pending: true });
+
+        const s = silence();
+        await runUserCommand(
+          'cancel-deletion',
+          { positionals: ['user', 'cancel-deletion', actor.handle], options: {} },
+          ctx,
+        );
+        s.restore();
+
+        const after = captureStdout();
+        await runUserCommand(
+          'deletion-status',
+          { positionals: ['user', 'deletion-status', actor.handle], options: { json: 'true' } },
+          ctx,
+        );
+        after.restore();
+        expect(JSON.parse(after.text())).toMatchObject({ pending: false });
       });
     });
 
@@ -878,6 +1112,128 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
             ctx,
           ),
         ).rejects.toThrow(/--outcome must be one of/);
+      });
+    });
+
+    describe('audit-log list (spec §158, #172)', () => {
+      it('filters by --admin/--actor/--since, honors --limit, orders newest first, and prints only time/admin/action/target/reason', async () => {
+        const { user: adminA } = await createTestUser(dataSource.manager, {
+          handle: `auditadmina${Date.now()}`,
+        });
+        const { user: adminB } = await createTestUser(dataSource.manager, {
+          handle: `auditadminb${Date.now()}`,
+        });
+        const { user: subject } = await createTestUser(dataSource.manager, {
+          handle: `auditsubject${Date.now()}`,
+        });
+
+        await appendAdminAuditLog(dataSource.manager, {
+          adminUserId: adminA.id,
+          action: 'user.suspend',
+          subjectType: 'USER',
+          subjectId: subject.id,
+          metadata: { reason: 'first strike' },
+        });
+
+        const since = new Date();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // No `metadata` at all — exercises the "no reason to give" blank case.
+        await appendAdminAuditLog(dataSource.manager, {
+          adminUserId: adminB.id,
+          action: 'user.unsuspend',
+          subjectType: 'USER',
+          subjectId: subject.id,
+        });
+
+        const ctx = await context(undefined);
+
+        const jsonCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          { positionals: ['audit-log', 'list'], options: { actor: subject.id, json: true } },
+          ctx,
+        );
+        jsonCapture.restore();
+        const rows = JSON.parse(jsonCapture.text()) as Array<Record<string, unknown>>;
+        expect(rows.length).toBeGreaterThanOrEqual(2);
+        expect(Object.keys(rows[0] ?? {}).sort()).toEqual(
+          ['time', 'admin', 'action', 'target', 'reason'].sort(),
+        );
+        expect(rows[0]?.action).toBe('user.unsuspend');
+        expect(rows[0]?.reason).toBe('');
+        expect(rows[0]?.admin).toBe(adminB.id);
+        expect(rows[1]?.action).toBe('user.suspend');
+        expect(rows[1]?.reason).toBe('first strike');
+        expect(rows[1]?.target).toBe(`USER:${subject.id}`);
+
+        const adminCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { admin: adminA.id, actor: subject.id, json: true },
+          },
+          ctx,
+        );
+        adminCapture.restore();
+        const adminRows = JSON.parse(adminCapture.text()) as Array<Record<string, unknown>>;
+        expect(adminRows).toHaveLength(1);
+        expect(adminRows[0]?.action).toBe('user.suspend');
+
+        const sinceCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: subject.id, since: since.toISOString(), json: true },
+          },
+          ctx,
+        );
+        sinceCapture.restore();
+        const sinceRows = JSON.parse(sinceCapture.text()) as Array<Record<string, unknown>>;
+        expect(sinceRows).toHaveLength(1);
+        expect(sinceRows[0]?.action).toBe('user.unsuspend');
+
+        const limitCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: subject.id, limit: '1', json: true },
+          },
+          ctx,
+        );
+        limitCapture.restore();
+        const limitRows = JSON.parse(limitCapture.text()) as Array<Record<string, unknown>>;
+        expect(limitRows).toHaveLength(1);
+        expect(limitRows[0]?.action).toBe('user.unsuspend');
+
+        // The table renderer's header has exactly the documented columns, in order.
+        const tableCapture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          { positionals: ['audit-log', 'list'], options: { actor: subject.id, limit: '1' } },
+          ctx,
+        );
+        tableCapture.restore();
+        const header = tableCapture.text().split('\n')[0] ?? '';
+        expect(header.split(/\s{2,}/)).toEqual(['time', 'admin', 'action', 'target', 'reason']);
+      });
+
+      it('prints "(none)" for a filter that matches nothing', async () => {
+        const ctx = await context(undefined);
+        const capture = captureStdout();
+        await runAuditLogCommand(
+          'list',
+          {
+            positionals: ['audit-log', 'list'],
+            options: { actor: '00000000-0000-0000-0000-000000000000' },
+          },
+          ctx,
+        );
+        capture.restore();
+        expect(capture.text()).toBe('(none)\n');
       });
     });
 

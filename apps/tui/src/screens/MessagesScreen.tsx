@@ -2,16 +2,11 @@ import { randomUUID } from 'node:crypto';
 
 import { ConnectError } from '@connectrpc/connect';
 import {
-  E2EE_UNREVIEWED_DEV_MODE_WARNING,
   mayDescribeAsEndToEndEncrypted,
   requiredConversationDisclosure,
   type ConversationSecurityMode as DomainConversationSecurityMode,
 } from '@patches/domain';
-import {
-  CONVERSATION_SECURITY_MODE,
-  E2EE_CAPABILITY_STATE,
-  E2EE_GROUP_CHANGE_KIND,
-} from '../api/wire/enums.js';
+import { CONVERSATION_SECURITY_MODE, E2EE_GROUP_CHANGE_KIND } from '../api/wire/enums.js';
 import type {
   Conversation,
   GetConversationRequest,
@@ -38,22 +33,11 @@ import {
 import { present } from '../api/present.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
-import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import { E2eeNotEnrolledError, E2EE_QUARANTINED_MESSAGE_COPY } from '../e2ee/runtime.js';
 import type { InboxRow as E2eeReceivedRow } from '../e2ee/runtime.js';
 import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
 import type { GlyphSetName } from '../theme/themes/types.js';
-
-/**
- * ADR 0027: when the node's capability RPC reports `ISOLATED_TEST_ONLY`, every surface
- * that lets you create or read one of these conversations shows this, persistently. It
- * is a development-mode statement, never an external-review claim.
- *
- * Re-exported rather than declared: the string itself lives in `@patches/domain` so the
- * web client renders the same bytes instead of a second literal that has to agree with
- * this one by coincidence (#249).
- */
-export const UNREVIEWED_DEV_E2EE_WARNING = E2EE_UNREVIEWED_DEV_MODE_WARNING;
 
 /** The vault-fault banners (P13-010): lost history is stated as lost, never as empty. */
 export const VAULT_FAULT_COPY = {
@@ -141,9 +125,9 @@ export interface MessagesScreenProps {
    */
   verifiedPeers?: ReadonlySet<string> | undefined;
   /**
-   * This node's `GetE2eeCapability` state. Drives ADR 0027's persistent development-mode
-   * warning; omitted when the shell has not fetched capability yet, which renders nothing
-   * rather than guessing (same honesty rule as `dmRetentionDays`).
+   * This node's `GetE2eeCapability` state (ENABLED/DISABLED since ADR 0036's owner override —
+   * E2EE is no longer a staged rollout). Accepted for the shell's own use (e.g. `App.tsx`'s
+   * `e2eeAdvertised`); this screen no longer renders anything from it directly.
    */
   e2eeCapabilityState?: number | undefined;
   /**
@@ -151,7 +135,8 @@ export interface MessagesScreenProps {
    * shell's vault-backed stage → send → confirm pipeline. Absent means this shell has no
    * such pipeline, and composing shows why instead of silently using the plaintext RPC.
    */
-  sendE2ee?: ((conversationId: string, body: string) => Promise<void>) | undefined;
+  sendE2ee?:
+    ((conversationId: string, body: string) => Promise<E2eeReceivedRow | undefined>) | undefined;
   /** Set once the account's local vault failed to open — history is inaccessible, and
    * the screen says exactly that rather than rendering an empty-but-fine list. */
   e2eeVaultFault?: 'corrupt' | 'rollback' | undefined;
@@ -335,7 +320,7 @@ function useKeysetList<T>(
 }
 
 function actorLabel(actor: { handle: string; displayName: string } | null | undefined): string {
-  if (!present(actor)) return 'unknown actor';
+  if (!present(actor)) return 'unknown account';
   const handle = sanitizeForTerminal(actor.handle);
   const displayName = sanitizeForTerminal(actor.displayName);
   return displayName === '' ? `@${handle}` : `${displayName} (@${handle})`;
@@ -476,7 +461,6 @@ export function MessagesScreen({
   dmRetentionDays,
   onOpenSafetyNumber,
   verifiedPeers,
-  e2eeCapabilityState,
   sendE2ee,
   e2eeVaultFault,
   securityPollMs = TUI_THREAD_SECURITY_POLL_MS,
@@ -841,8 +825,17 @@ export function MessagesScreen({
     setDraft('');
     setPendingMessages((current) => [...current, { id: clientRequestId, body }]);
     try {
-      await sendE2ee(conversationId, body);
+      const sentRow = await sendE2ee(conversationId, body);
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
+      // A device is never in its own fanout (issue #332), so no mailbox drain will ever
+      // return this message: the row the send pipeline stored in the vault is the only
+      // copy. Dropping the pending row without adopting it would make the viewer's own
+      // text vanish the instant the send succeeded.
+      if (sentRow !== undefined) {
+        setE2eeRows((current) =>
+          current.some((row) => row.id === sentRow.id) ? current : [...current, sentRow],
+        );
+      }
     } catch (error) {
       setPendingMessages((current) => current.filter((message) => message.id !== clientRequestId));
       setDraft(body);
@@ -950,15 +943,9 @@ export function MessagesScreen({
       : undefined;
 
   const peerVerified = peerId !== undefined && (verifiedPeers?.has(peerId) ?? false);
-  const unreviewedDevWarning = e2eeCapabilityState === E2EE_CAPABILITY_STATE.ISOLATED_TEST_ONLY;
 
   return (
     <Box flexDirection="column">
-      {unreviewedDevWarning ? (
-        <Text color={theme.warn} bold>
-          {UNREVIEWED_DEV_E2EE_WARNING}
-        </Text>
-      ) : null}
       {e2eeVaultFault === undefined ? null : (
         <Box flexDirection="column">
           <Text color={theme.error} wrap="wrap">
@@ -1042,9 +1029,6 @@ export function MessagesScreen({
               ⚠ {ROSTER_CHANGED_COPY}
             </Text>
           ) : null}
-          {unreviewedDevWarning && threadIsE2ee ? (
-            <Text color={theme.warn}>{UNREVIEWED_DEV_E2EE_WARNING}</Text>
-          ) : null}
           {threadError === undefined ? null : (
             <Text color={theme.error}>{threadError} Enter retries with the same text.</Text>
           )}
@@ -1060,6 +1044,9 @@ export function MessagesScreen({
                 <Text key={row.id}>
                   <Text color={theme.muted}>{sanitizeForTerminal(row.senderLabel)}: </Text>
                   {sanitizeForTerminal(row.body)}
+                  {row.deliveryFailed === true ? (
+                    <Text color={theme.error}> · not delivered</Text>
+                  ) : null}
                 </Text>
               );
             }
@@ -1074,6 +1061,13 @@ export function MessagesScreen({
               return (
                 <Text key={row.id} color={theme.muted} wrap="wrap">
                   A delivered message could not be displayed.
+                </Text>
+              );
+            }
+            if (row.kind === 'quarantined') {
+              return (
+                <Text key={row.id} color={theme.muted} wrap="wrap">
+                  {E2EE_QUARANTINED_MESSAGE_COPY}
                 </Text>
               );
             }

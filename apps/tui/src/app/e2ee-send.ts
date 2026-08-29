@@ -22,8 +22,20 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { E2eeMailboxTransport, E2eeSendTransport } from '../e2ee/runtime.js';
+import type { E2eeMailboxTransport, E2eeSendTransport, InboxMessageRow } from '../e2ee/runtime.js';
 import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
+import {
+  inboundMessageRow,
+  inboundMessagesToRecords,
+  loadInboundMessages,
+  recordInboundMessages,
+} from '../e2ee/inbound-messages.js';
+import {
+  loadOwnMessages,
+  mergeOwnMessages,
+  ownMessageRow,
+  recordOwnMessage,
+} from '../e2ee/own-messages.js';
 import { E2eeSessionRuntime } from '../e2ee/runtime-session.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { createRatchetSessionVault, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
@@ -35,6 +47,18 @@ import {
   type EnrollOutcome,
   type EnrollmentTransport,
 } from '../e2ee/enrollment.js';
+import {
+  approveLinkOffer,
+  beginDeviceLinkOffer,
+  listLinkOffers,
+  pollLinkedEnrollment,
+  rotateMessagingRoot,
+  type ApproveLinkOfferResult,
+  type BeginDeviceLinkOfferResult,
+  type PendingLinkOfferSummary,
+  type PollLinkedEnrollmentResult,
+  type RotateMessagingRootResult,
+} from '../e2ee/device-link.js';
 
 /** Sticky, content-free vault faults surfaced verbatim as inaccessible-history states. */
 export type E2eeVaultFault = 'corrupt' | 'rollback';
@@ -77,8 +101,13 @@ export interface CreateVaultE2eeSenderOptions {
    * B-107: builds the authenticated transports once an enrolled identity is known —
    * either restored from this vault at startup or produced by `enroll()`. Without it a
    * restored identity stays dormant (the pre-enrollment behavior), never half-bound.
+   * Receives the open vault: the transports enforce peer-identity pinning (C1/C2)
+   * through it, so a builder cannot forget to hand it over.
    */
-  readonly buildTransports?: (identity: LocalDeviceIdentity) => E2eeTransports;
+  readonly buildTransports?: (
+    identity: LocalDeviceIdentity,
+    vault: RatchetSessionVault,
+  ) => E2eeTransports;
 }
 
 export interface EnrollThroughVaultInput {
@@ -88,16 +117,51 @@ export interface EnrollThroughVaultInput {
   readonly transport: EnrollmentTransport;
 }
 
+/** ADR 0037 §2: present only when this device holds the CURRENTLY served root's private
+ * key locally (an imported recovery archive) — see `rotateMessagingRoot`'s own doc. */
+export interface RotatePreviousRoot {
+  readonly privateKey: Uint8Array;
+  readonly publicKey: Uint8Array;
+}
+
+export interface RotateRootThroughVaultInput extends EnrollThroughVaultInput {
+  readonly previousRoot?: RotatePreviousRoot;
+}
+
+export interface ApproveLinkOfferThroughVaultInput extends EnrollThroughVaultInput {
+  readonly linkId: string;
+}
+
+/** A link/rotation result paired with the device id this sender is now bound to, when
+ * the operation newly bound one — `undefined` when nothing changed (e.g. still pending). */
+export interface LinkPollOutcome {
+  readonly result: PollLinkedEnrollmentResult;
+  readonly deviceId?: string;
+}
+
+export interface RotateRootOutcome {
+  readonly result: RotateMessagingRootResult;
+  readonly deviceId?: string;
+}
+
 export interface VaultE2eeSender {
   /** The sticky fault from opening, if any — rendered as an explicit
    * inaccessible-history banner until the viewer explicitly wipes and resets. */
   fault(): E2eeVaultFault | undefined;
   /** Whether an enrolled messaging identity is bound (gates send and mailbox polling). */
   enrolled(): boolean;
-  send(conversationId: string, body: string): Promise<void>;
+  /**
+   * Sends `body` and durably records it as this device's own message (issue #332),
+   * resolving the row the thread should render for it. A failed send is recorded too,
+   * marked undelivered, so the viewer's text survives the failure.
+   */
+  send(conversationId: string, body: string): Promise<InboxMessageRow>;
   /**
    * Drains this account's encrypted mailbox (optionally only `conversationId`'s
-   * envelopes) and returns render-ready rows. Requires an enrolled identity.
+   * envelopes) and returns render-ready rows. A conversation-scoped drain durably stores
+   * the received message rows it produces (`inbound-messages.ts`, issue #352) and merges
+   * them with this device's stored own messages, so both halves of a thread survive a
+   * restart — no fanout ever redelivers either side. Requires an enrolled identity.
    */
   pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult>;
   /**
@@ -112,6 +176,19 @@ export interface VaultE2eeSender {
    * identity. Idempotent: an already-submitted enrollment short-circuits.
    */
   enroll(input: EnrollThroughVaultInput): Promise<EnrollOutcome>;
+  /** ADR 0037 §1 step 1: posts this device's link offer through this sender's OWN vault
+   * (the offer material must survive a crash the same way enrollment material does). */
+  beginLink(input: EnrollThroughVaultInput): Promise<BeginDeviceLinkOfferResult>;
+  /** ADR 0037 §1 step 4: polls for the authority's approval. On `'enrolled'`, binds the
+   * newly-certified identity exactly as `enroll()` does. */
+  pollLink(input: EnrollThroughVaultInput): Promise<LinkPollOutcome>;
+  /** ADR 0037 §2: mints and publishes the next root generation, then binds the result. */
+  rotateRoot(input: RotateRootThroughVaultInput): Promise<RotateRootOutcome>;
+  /** ADR 0037 §1 step 2: this account's pending link offers, authority-only. */
+  listPendingLinks(input: EnrollThroughVaultInput): Promise<readonly PendingLinkOfferSummary[]>;
+  /** ADR 0037 §1 step 3: signs and relays the new device's certificate after the caller
+   * has already confirmed the SAS out of band. */
+  approveLink(input: ApproveLinkOfferThroughVaultInput): Promise<ApproveLinkOfferResult>;
   /** Destroys local E2EE state through the live store and forgets this instance. */
   wipe(): Promise<void>;
   close(): void;
@@ -185,9 +262,12 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
     if (binding !== undefined) return binding.identity;
     if (options.buildTransports === undefined) return undefined;
     const store = await ensureOpen();
-    const record = await loadStoredEnrollment(store);
+    const record = await loadStoredEnrollment(store, (options.nowMs ?? Date.now)());
     if (record?.submitted !== true) return undefined;
-    binding = { identity: record.identity, transports: options.buildTransports(record.identity) };
+    binding = {
+      identity: record.identity,
+      transports: options.buildTransports(record.identity, store),
+    };
     runtime = undefined;
     return binding.identity;
   }
@@ -216,18 +296,120 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       }
       return outcome;
     },
-    async send(conversationId, body): Promise<void> {
+    async beginLink(input): Promise<BeginDeviceLinkOfferResult> {
+      const store = await ensureOpen();
+      return beginDeviceLinkOffer({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+    },
+    async pollLink(input): Promise<LinkPollOutcome> {
+      const store = await ensureOpen();
+      const result = await pollLinkedEnrollment({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+      if (result !== 'enrolled') return { result };
+      const identity = await bindSubmitted();
+      return { result, ...(identity === undefined ? {} : { deviceId: identity.deviceId }) };
+    },
+    async rotateRoot(input): Promise<RotateRootOutcome> {
+      const store = await ensureOpen();
+      const result = await rotateMessagingRoot({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+        ...(input.previousRoot === undefined ? {} : { previousRoot: input.previousRoot }),
+      });
+      const identity = await bindSubmitted();
+      return { result, ...(identity === undefined ? {} : { deviceId: identity.deviceId }) };
+    },
+    async listPendingLinks(input): Promise<readonly PendingLinkOfferSummary[]> {
+      const store = await ensureOpen();
+      return listLinkOffers({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+    },
+    async approveLink(input): Promise<ApproveLinkOfferResult> {
+      const store = await ensureOpen();
+      return approveLinkOffer({
+        actorId: input.actorId,
+        linkId: input.linkId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+    },
+    async send(conversationId, body): Promise<InboxMessageRow> {
       const active = await ensureRuntime();
+      const store = await ensureOpen();
+      const clientMessageId = randomUUID();
+      const sentAtMs = (options.nowMs ?? Date.now)();
       try {
-        await active.send(conversationId, body, randomUUID());
+        await active.send(conversationId, body, clientMessageId);
       } catch (error) {
         noteFault(error);
+        // A device is not in its own fanout (issue #332): if this is not written the
+        // viewer's own text is gone, and a failed send is exactly when losing it hurts
+        // most. Best-effort — a vault that cannot be written must not mask the send
+        // error that the caller has to see.
+        try {
+          await recordOwnMessage(store, conversationId, {
+            clientMessageId,
+            body,
+            sentAtMs,
+            deliveryState: 'failed',
+          });
+        } catch (writeError) {
+          noteFault(writeError);
+        }
         throw error;
       }
+      const record = {
+        clientMessageId,
+        body,
+        sentAtMs,
+        deliveryState: 'sent',
+      } as const;
+      await recordOwnMessage(store, conversationId, record);
+      return ownMessageRow(record);
     },
     async pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult> {
       const active = await ensureRuntime();
-      return active.pollMailbox({ ...(conversationId === undefined ? {} : { conversationId }) });
+      const result = await active.pollMailbox({
+        ...(conversationId === undefined ? {} : { conversationId }),
+      });
+      if (conversationId === undefined) return result;
+      const store = await ensureOpen();
+      const own = await loadOwnMessages(store, conversationId);
+      // Durable copy of what this device received: the drain has already acknowledged
+      // these envelopes, so persisting before they can be dropped is what stops a
+      // received message from disappearing, and a thread that reopens after a restart
+      // re-reads it from the vault (issue #352).
+      if (result.rows.length > 0) {
+        const inbound = inboundMessagesToRecords(result.rows);
+        if (inbound.length > 0) await recordInboundMessages(store, conversationId, inbound);
+      }
+      const inboundRecords = await loadInboundMessages(store, conversationId);
+      const all = [...inboundRecords.map(inboundMessageRow), ...result.rows];
+      const seen = new Set<string>();
+      const drained = all.filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+      // Own messages are per-conversation, so they merge only into a thread-scoped
+      // drain — an account-wide drain has no single conversation to attribute them to.
+      if (own.length === 0 && drained.length === 0) return result;
+      return { ...result, rows: mergeOwnMessages(own, drained) };
     },
     async wipe(): Promise<void> {
       // Route the wipe through the LIVE store (audit P1-2): the same object that holds

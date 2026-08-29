@@ -1,7 +1,11 @@
 import {
+  ByteReader,
+  ByteWriter,
   decodeRatchetState,
   disposeRatchetState,
   encodeRatchetState,
+  KEY_BYTES,
+  SIGNATURE_BYTES,
   type DoubleRatchetState,
 } from '@patches/crypto';
 
@@ -11,6 +15,7 @@ import {
   deleteVaultKeyringEntry,
   vaultDatabaseFilePath,
   vaultKeyFilePath,
+  vaultPassphraseFilePath,
   type KeyringModuleLike,
 } from './vault-key-providers.js';
 import type { NO_KEYRING } from './vault-key-providers.js';
@@ -120,6 +125,108 @@ export class TypedRatchetVault implements RatchetSessionVault {
 }
 
 // ---------------------------------------------------------------------------
+// Peer identity pin store (security findings C1/C2, ADR 0033 §2/§3): TOFU-pins a
+// peer's messaging root and last-observed roster sequence so the node can never serve
+// a genuinely root-signed but stale/rolled-back roster (a revoked device would look
+// active again), nor substitute a brand-new self-signed root without a countersigned
+// rotation proof. Stored under one reserved opaque record, mirroring the web client's
+// vault (ADR 0034 Stage 1: the two copies must stay in lockstep) and the pattern
+// `enrollment.ts` already uses for `ENROLLMENT_RECORD_KEY` (a leading NUL cannot occur
+// in a real session id).
+// ---------------------------------------------------------------------------
+
+/** SHA-256 digest length (`identityTranscriptDigest`'s output) — numerically equal to
+ * `KEY_BYTES` but named separately since the two are unrelated facts. */
+const DIGEST_BYTES = KEY_BYTES;
+const PEER_PIN_RECORD_VERSION = 1;
+
+/** One peer's pinned identity. `rootBytes`/`selfSignature` (not just the public key)
+ * are stored because proving a later rotation requires re-deriving a real
+ * `VerifiedMessagingRoot` for the previously pinned root via `verifyMessagingRoot` —
+ * `@patches/crypto`'s branded `Verified*` values cannot be constructed from a bare
+ * public key (ADR 0033 §3: no caller-supplied decoding). */
+export interface PeerIdentityPin {
+  readonly rootBytes: Uint8Array;
+  readonly selfSignature: Uint8Array;
+  readonly rosterSequence: number;
+  readonly rosterDigest: Uint8Array;
+}
+
+/** The reserved vault record key peer pins are stored under. */
+export const PEER_PIN_RECORD_KEY = '\0patches-e2ee-peer-pins';
+
+/** The slice of the vault this store needs — satisfied structurally by
+ * `RatchetSessionVault` (and by a minimal test double). */
+export interface PeerPinVaultAccess {
+  getOpaqueRecord(key: string): Promise<Uint8Array | undefined>;
+  putOpaqueRecord(key: string, value: Uint8Array): Promise<void>;
+}
+
+function encodePeerPins(pins: ReadonlyMap<string, PeerIdentityPin>): Uint8Array {
+  const writer = new ByteWriter().u8(PEER_PIN_RECORD_VERSION).u32(pins.size);
+  for (const [actorId, pin] of pins) {
+    writer
+      .string(actorId)
+      .bytes(pin.rootBytes)
+      .fixed(pin.selfSignature, SIGNATURE_BYTES)
+      .u64(pin.rosterSequence)
+      .fixed(pin.rosterDigest, DIGEST_BYTES);
+  }
+  return writer.finish();
+}
+
+function decodePeerPins(bytes: Uint8Array): Map<string, PeerIdentityPin> {
+  const reader = new ByteReader(bytes);
+  if (reader.u8() !== PEER_PIN_RECORD_VERSION) {
+    throw new VaultCorruptionError();
+  }
+  const count = reader.u32();
+  const pins = new Map<string, PeerIdentityPin>();
+  for (let index = 0; index < count; index += 1) {
+    const actorId = reader.string();
+    const rootBytes = reader.bytes();
+    const selfSignature = reader.fixed(SIGNATURE_BYTES);
+    const rosterSequence = reader.u64();
+    const rosterDigest = reader.fixed(DIGEST_BYTES);
+    pins.set(actorId, { rootBytes, selfSignature, rosterSequence, rosterDigest });
+  }
+  reader.end();
+  return pins;
+}
+
+async function loadAllPeerPins(vault: PeerPinVaultAccess): Promise<Map<string, PeerIdentityPin>> {
+  const bytes = await vault.getOpaqueRecord(PEER_PIN_RECORD_KEY);
+  if (bytes === undefined) return new Map();
+  try {
+    return decodePeerPins(bytes);
+  } catch {
+    // A corrupted pin record must never be silently treated as "no pins" — that would
+    // discard every rollback/rotation check it exists to enforce. Fail closed.
+    throw new VaultCorruptionError();
+  }
+}
+
+/** Reads one peer's pinned identity, or `undefined` on first contact (TOFU). */
+export async function loadPeerIdentityPin(
+  vault: PeerPinVaultAccess,
+  actorId: string,
+): Promise<PeerIdentityPin | undefined> {
+  const pins = await loadAllPeerPins(vault);
+  return pins.get(actorId);
+}
+
+/** Pins (or re-pins, on a proven rotation) one peer's identity. */
+export async function savePeerIdentityPin(
+  vault: PeerPinVaultAccess,
+  actorId: string,
+  pin: PeerIdentityPin,
+): Promise<void> {
+  const pins = await loadAllPeerPins(vault);
+  pins.set(actorId, pin);
+  await vault.putOpaqueRecord(PEER_PIN_RECORD_KEY, encodePeerPins(pins));
+}
+
+// ---------------------------------------------------------------------------
 // Factory — same tiering as the credential store (spec §37, ADR 0020 §4)
 // ---------------------------------------------------------------------------
 
@@ -131,12 +238,19 @@ export interface CreateRatchetSessionVaultOptions {
   readonly keyring?: KeyringModuleLike | typeof NO_KEYRING | undefined;
   readonly keyFilePath?: string;
   readonly warn?: (message: string) => void;
+  /** Opts into the passphrase-KDF fallback tier (issue #212) instead of the guarded
+   * plaintext-file tier when no OS keyring is available. */
+  readonly passphrase?: {
+    readonly getPassphrase: () => Promise<string>;
+    readonly path?: string;
+  };
 }
 
 /**
- * OS keyring → real encrypted file vault; explicitly opted-in guarded key file → real
- * file vault with a loud warning; otherwise an in-memory vault that persists nothing,
- * so the default on a keyring-less box never silently stores secrets.
+ * OS keyring → real encrypted file vault; explicitly opted-in passphrase-KDF tier or
+ * guarded key file → real file vault (loud warning either way); otherwise an in-memory
+ * vault that persists nothing, so the default on a keyring-less box never silently
+ * stores secrets.
  */
 export async function createRatchetSessionVault(
   options: CreateRatchetSessionVaultOptions,
@@ -148,6 +262,7 @@ export async function createRatchetSessionVault(
     ...(options.keyFilePath === undefined ? {} : { keyFilePath: options.keyFilePath }),
     ...(options.fileOperations === undefined ? {} : { fileOperations: options.fileOperations }),
     ...(options.warn === undefined ? {} : { warn: options.warn }),
+    ...(options.passphrase === undefined ? {} : { passphrase: options.passphrase }),
   });
   if (!keyProvider.persistent) {
     return new TypedRatchetVault(new MemoryVaultStore());
@@ -172,28 +287,33 @@ export interface WipeE2eeStateOptions {
   readonly account: VaultAccount;
   readonly vaultPath?: string;
   readonly keyFilePath?: string;
+  readonly passphraseFilePath?: string;
   readonly fileOperations?: VaultFileOperations;
   readonly keyring?: KeyringModuleLike | typeof NO_KEYRING | undefined;
 }
 
 /**
  * Destroys one account's local E2EE state without needing the wrapping key: the vault
- * database, any temp/lock files, the guarded key file if present, the keyring
- * entry (wrapping key + generation anchor), and the guarded-key provider's own torn temp
- * writes beside the key file (audit P2-1: `GuardedFileVaultKeyProvider` commits its key
- * record through a `${path}.{pid}.{uuid}.tmp` sibling, so a wipe that removed only the
- * vault-side temps could still leave wrapping-key material on disk). Idempotent —
- * wiping an absent state is a no-op, and logout/device-revocation flows should call this
- * on every path.
+ * database, any temp/lock files, the guarded key file if present, the passphrase-tier
+ * wrapped-key file if present, the keyring entry (wrapping key + generation anchor), and
+ * both file tiers' own torn temp writes beside their key files (audit P2-1:
+ * `GuardedFileVaultKeyProvider` commits its key record through a
+ * `${path}.{pid}.{uuid}.tmp` sibling, so a wipe that removed only the vault-side temps
+ * could still leave wrapping-key material on disk — the same applies to
+ * `PassphraseVaultKeyProvider`'s wrapped record). Idempotent — wiping an absent state is
+ * a no-op, and logout/device-revocation flows should call this on every path.
  */
 export async function wipeE2eeState(options: WipeE2eeStateOptions): Promise<void> {
   const operations = options.fileOperations ?? defaultVaultFileOperations();
   const vaultPath = options.vaultPath ?? vaultDatabaseFilePath(options.account);
   const keyFilePath = options.keyFilePath ?? vaultKeyFilePath(options.account);
+  const passphraseFilePath = options.passphraseFilePath ?? vaultPassphraseFilePath(options.account);
   await sweepTempSiblings(operations, vaultPath);
   await operations.rm(vaultPath, { force: true });
   await sweepTempSiblings(operations, keyFilePath);
   await operations.rm(keyFilePath, { force: true });
+  await sweepTempSiblings(operations, passphraseFilePath);
+  await operations.rm(passphraseFilePath, { force: true });
   await deleteVaultKeyringEntry(options.account, options.keyring);
 }
 

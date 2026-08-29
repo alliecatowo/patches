@@ -191,6 +191,7 @@ export type {
 export type { FollowState } from './generated/patches/v1/social_graph.js';
 export type {
   DomainPolicyEntry,
+  FeatureFlag,
   GetNodeInfoRequest,
   GetNodeInfoResponse,
   GetNodePolicyRequest,
@@ -205,6 +206,7 @@ export type {
 export type {
   DomainPolicyAction,
   FederationStance,
+  FeatureFlagKind,
   RegistrationMode,
 } from './generated/patches/v1/node.js';
 export type {

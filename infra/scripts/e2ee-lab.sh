@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 #
-# E2EE interop lab (B-108 acceptance, P13-014): boots one real Patches node (server + worker
-# OS processes against the compose Postgres stack — same shape as `infra/lab/fed-lab.sh`,
-# single node) with the post-canary env the operator flips in production:
-#
-#   E2EE_APPROVED_FRANKING_PROFILES=patches-franking-v1   (canary, already the prod shape)
-#   E2EE_V1_ENABLED=true                                  (B-108's final gate → state ENABLED)
-#
-# then runs the automated acceptance walk:
+# E2EE interop lab (originally B-108 acceptance, P13-014): boots one real Patches node
+# (server + worker OS processes against the compose Postgres stack — same shape as
+# `infra/lab/fed-lab.sh`, single node) and runs the automated acceptance walk:
 #
 #   1. Two accounts registered via curl (Connect-JSON Register over the HTTP edge).
 #   2. GetE2eeCapability (session-scoped, via curl) must report
-#      E2EE_CAPABILITY_STATE_ENABLED — proves the E2EE_V1_ENABLED env wiring end to end.
+#      E2EE_CAPABILITY_STATE_ENABLED — E2EE is an always-on feature (ADR 0036 Amendment,
+#      2026-08-26 owner override), so a node with a signing key reports ENABLED with no
+#      special env flip needed.
 #   3. `patches-admin user show` (the admin CLI, spec §65) verifies both accounts exist
 #      and are ACTIVE. Note: there is deliberately no "verify email" admin command —
 #      registration never requires an email (spec §165), so this is account verification.
@@ -32,25 +29,6 @@
 #   infra/scripts/e2ee-lab.sh up      leave the node running (drive it with the TUI:
 #                                     node apps/tui/dist/cli.js --insecure --server 127.0.0.1:50063)
 #   infra/scripts/e2ee-lab.sh down    stop the lab node (leaves the patches_e2ee_lab DB)
-#
-# PROD ROLLOUT — flipping E2EE_V1_ENABLED=true on production once this lab is green:
-#   The flag is non-secret rollout state, so it belongs with the other `[env]` runtime
-#   config in `infra/fly/fly.toml` (app "patches"):
-#
-#     1. Run this lab:            infra/scripts/e2ee-lab.sh run
-#     2. Confirm prod canary env: `fly ssh console`/`fly config show` — E2EE_APPROVED_
-#        FRANKING_PROFILES must already contain patches-franking-v1 (the canary shape;
-#        without an approved profile the flag is inert and the node stays at ISOLATED_
-#        TEST_ONLY/DISABLED — it can never upgrade an unreviewed node).
-#     3. Add to infra/fly/fly.toml [env]:   E2EE_V1_ENABLED = "true"
-#        (or, without a code change:        fly secrets set E2EE_V1_ENABLED=true --app patches)
-#     4. Deploy:  flyctl deploy --config infra/fly/fly.toml --remote-only --ha=false
-#        (a `fly secrets set` restarts the machines on its own).
-#     5. Verify:  curl -s https://patches.fly.dev/patches.v1.E2eeService/GetE2eeCapability \
-#                     -H 'content-type: application/json' -d '{}'
-#        must answer "state":"E2EE_CAPABILITY_STATE_ENABLED".
-#     6. Rollback = remove the env var and redeploy; existing E2EE conversations are never
-#        downgraded or converted (ADR 0020 §11) — disabling only stops NEW E2EE conversations.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -133,13 +111,11 @@ cmd_up() {
   jwt_public="$(printf '%s\n' "$keys" | sed -n 's/^JWT_PUBLIC_KEY=//p')"
   AUTH_CODE_KEYS="$(node -e "process.stdout.write(JSON.stringify({lab:require('crypto').randomBytes(32).toString('base64')}))")"
 
-  echo "==> Starting server (E2EE canary env + E2EE_V1_ENABLED=true)"
+  echo "==> Starting server (E2EE is always-on; no rollout flags to set)"
   NODE_ENV=development \
     DATABASE_URL="$DB_URL" \
     NODE_DOMAIN=e2ee-lab.localhost \
     PUBLIC_ORIGIN="$HTTP_ORIGIN" \
-    E2EE_APPROVED_FRANKING_PROFILES=patches-franking-v1 \
-    E2EE_V1_ENABLED=true \
     HTTP_PORT="$HTTP_PORT" \
     GRPC_HOST=127.0.0.1 \
     GRPC_PORT="$GRPC_PORT" \

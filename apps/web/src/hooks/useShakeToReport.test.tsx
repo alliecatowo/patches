@@ -105,6 +105,55 @@ describe('useShakeToReport permission gating', () => {
   });
 });
 
+describe('useShakeToReport blurs the active element before navigating (#299)', () => {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'DeviceMotionEvent');
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    setShakeReportPermission('unknown');
+    vi.stubGlobal('DeviceMotionEvent', class {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (originalDescriptor !== undefined) {
+      Object.defineProperty(window, 'DeviceMotionEvent', originalDescriptor);
+    }
+    window.localStorage.clear();
+    setShakeReportPermission('unknown');
+  });
+
+  function fireShake(): void {
+    for (let i = 0; i < 3; i += 1) {
+      window.dispatchEvent(
+        Object.assign(new Event('devicemotion'), {
+          accelerationIncludingGravity: { x: 30, y: 0, z: 0 },
+        }),
+      );
+    }
+  }
+
+  it('blurs a focused input so iOS Undo Typing has nothing to sit on top of', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    const blurSpy = vi.spyOn(input, 'blur');
+
+    renderHook(() => useShakeToReport(), { wrapper });
+    fireShake();
+
+    expect(blurSpy).toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('is a no-op when nothing is focused', () => {
+    document.body.focus();
+    renderHook(() => useShakeToReport(), { wrapper });
+    expect(() => fireShake()).not.toThrow();
+  });
+});
+
 describe('shakeToReportRequiresGesturePermission', () => {
   const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'DeviceMotionEvent');
 

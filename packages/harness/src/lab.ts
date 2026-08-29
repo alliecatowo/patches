@@ -1,11 +1,26 @@
 import { randomBytes } from 'node:crypto';
-import { access, lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import {
+  access,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  unlink,
+} from 'node:fs/promises';
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync } from 'node:fs';
 import { basename, dirname, relative, resolve, sep } from 'node:path';
 
 export const DEFAULT_DATABASE_NAME = 'patches_harness_lab';
 export const DEFAULT_HTTP_PORT = 8088;
 export const DEFAULT_GRPC_PORT = 50058;
+/** Mailpit is a single machine-wide `mise run compose` service, not per-worktree lab state. */
+export const MAILPIT_HTTP_ORIGIN = 'http://127.0.0.1:8025';
+export const MAILPIT_SMTP_PORT = 1025;
 
 export interface HarnessProcess {
   readonly pid: number;
@@ -88,12 +103,15 @@ export function harnessProcessEnvironment(
     FEDERATION_ENABLED: 'false',
     FEDERATION_STANCE: 'disabled',
     CAN_CREATE_COMMUNITY: 'false',
-    E2EE_UNREVIEWED_DEV_MODE: 'false',
     OIDC_PROVIDERS: '[]',
     OTEL_ENABLED: 'false',
     METRICS_ENABLED: 'false',
-    EMAIL_PROVIDER: 'console',
+    // Routed at Mailpit (`infra/compose/docker-compose.yml`) rather than `console` so
+    // `mailpit-*` harness actions can retrieve real verification-code emails end-to-end.
+    EMAIL_PROVIDER: 'smtp',
     EMAIL_FROM: 'Patches Harness <noreply@harness.local>',
+    SMTP_HOST: '127.0.0.1',
+    SMTP_PORT: String(MAILPIT_SMTP_PORT),
     // Object storage has no enable flag. A loopback-only endpoint plus deliberately empty
     // credentials/bucket makes the lazy storage provider fail closed before any request.
     R2_ENDPOINT: 'http://127.0.0.1:1',
@@ -571,4 +589,107 @@ function isHarnessState(value: unknown): value is HarnessState {
     'worker' in value &&
     isHarnessProcess(value.worker)
   );
+}
+
+export interface PortOwnerDependencies {
+  readonly run: (port: number) => Promise<string>;
+  readonly readCwd: (pid: number) => Promise<string | undefined>;
+}
+
+const REAL_PORT_OWNER: PortOwnerDependencies = {
+  run: async (port) => {
+    const child = spawn('ss', ['-H', '-tlnp', `sport = :${String(port)}`], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    const output = child.stdout;
+    if (output !== null) output.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
+    await once(child, 'close');
+    return stdout;
+  },
+  readCwd: async (pid) => {
+    try {
+      return await readlink(`/proc/${String(pid)}/cwd`);
+    } catch {
+      // Ownership is genuinely unknown (process gone, no /proc access) — callers treat an
+      // undefined root as "found a pid, but can't say which worktree started it".
+      return undefined;
+    }
+  },
+};
+
+/** Parses `ss -H -tlnp` output for the listening process's pid; `undefined` if nothing owns the port. */
+export function parsePortOwnerPid(ssOutput: string): number | undefined {
+  const match = /pid=(\d+)/u.exec(ssOutput);
+  if (match?.[1] === undefined) return undefined;
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) && pid > 1 ? pid : undefined;
+}
+
+export async function findPortOwnerPid(
+  port: number,
+  dependencies: PortOwnerDependencies = REAL_PORT_OWNER,
+): Promise<number | undefined> {
+  return parsePortOwnerPid(await dependencies.run(port));
+}
+
+export interface ForeignHarnessOwner {
+  readonly pid: number;
+  /** `undefined` when the pid is known but its cwd (and so its owning worktree) could not be read. */
+  readonly root: string | undefined;
+}
+
+/**
+ * Resolves the pid — and, if provable via `/proc/<pid>/cwd`, the owning worktree root —
+ * currently bound to a harness port, regardless of which worktree's (or no) `state.json`
+ * recorded it. `mise run lab` state is per-worktree but :50058/:8088 are machine-global
+ * (`docs/agents/LEARNINGS.md` 2026-08-28), so `status`/`down --any` need this to see past the
+ * current worktree's own lab state.
+ */
+export async function findForeignHarnessOwner(
+  dependencies: PortOwnerDependencies = REAL_PORT_OWNER,
+  port: number = DEFAULT_GRPC_PORT,
+): Promise<ForeignHarnessOwner | undefined> {
+  const pid = await findPortOwnerPid(port, dependencies);
+  if (pid === undefined) return undefined;
+  return { pid, root: await dependencies.readCwd(pid) };
+}
+
+/** Same ownership proof as `inspectRecordedProcess`, minus the run-id nonce this worktree never recorded. */
+export async function inspectForeignProcess(
+  pid: number,
+  expectedScript: string,
+  dependencies: ProcessInspectionDependencies = REAL_PROCESS_INSPECTION,
+): Promise<ProcessOwnership> {
+  try {
+    dependencies.probe(pid);
+  } catch (error) {
+    if (isNoSuchProcess(error)) return 'stopped';
+    throw error;
+  }
+  try {
+    const commandLine = await dependencies.readProcFile(`/proc/${String(pid)}/cmdline`);
+    return commandLine.includes(expectedScript) && commandLine.includes('node')
+      ? 'owned-running'
+      : 'unowned';
+  } catch {
+    return 'unowned';
+  }
+}
+
+/**
+ * Stops a harness process this worktree's `state.json` never recorded, verifying by command
+ * line (not run-id, which is unavailable here) before ever signaling — the same fail-closed
+ * shape as `stopRecordedProcess`, reused via a synthetic run id that `inspectForeignProcess`
+ * ignores.
+ */
+export async function stopForeignProcess(
+  pid: number,
+  expectedScript: string,
+  dependencies: ProcessStopDependencies = {
+    ...REAL_PROCESS_STOP,
+    inspect: (processInfo, script) => inspectForeignProcess(processInfo.pid, script),
+  },
+): Promise<boolean> {
+  return stopRecordedProcess({ pid, startedAt: '' }, expectedScript, '', dependencies);
 }

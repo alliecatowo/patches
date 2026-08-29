@@ -37,9 +37,18 @@ import { RemoveLegacyServerVisibleDms1787660000000 } from './1787660000000-Remov
 import { ActorPersonalization1787669032825 } from './1787669032825-ActorPersonalization.js';
 import { DropOrphanedLegacyMessageTrigger1787670000000 } from './1787670000000-DropOrphanedLegacyMessageTrigger.js';
 import { Phase13GroupMembership1787241965646 } from './1787241965646-Phase13GroupMembership.js';
+import { DropE2eeConversationMembershipEvents1787815392235 } from './1787815392235-DropE2eeConversationMembershipEvents.js';
+import { E2eeDeviceLinkOffers1787816106996 } from './1787816106996-E2eeDeviceLinkOffers.js';
+import { ConversationMembersActorIndex1787881533240 } from './1787881533240-ConversationMembersActorIndex.js';
+import { AddActorsTrigramSearchIndexes1787881940013 } from './1787881940013-AddActorsTrigramSearchIndexes.js';
 import { RemoveFilterScopeMessageRequests1787661000000 } from './1787661000000-RemoveFilterScopeMessageRequests.js';
 import { E2eeIdentityRootTranscript1787790938656 } from './1787790938656-E2eeIdentityRootTranscript.js';
 import { ReserveE2eeConversationSchema1787792202409 } from './1787792202409-ReserveE2eeConversationSchema.js';
+import { Adr0033IdentityTranscriptCleanBreak1787800000000 } from './1787800000000-Adr0033IdentityTranscriptCleanBreak.js';
+import { E2eeRequireIdentityRootTranscript1787880585000 } from './1787880585000-E2eeRequireIdentityRootTranscript.js';
+import { ActorBannerMedia1787912351805 } from './1787912351805-ActorBannerMedia.js';
+import { DropLegacyProfileBannerUrl1787913902978 } from './1787913902978-DropLegacyProfileBannerUrl.js';
+import { SchemaDriftFixes1787920000000 } from './1787920000000-SchemaDriftFixes.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -96,4 +105,13 @@ export const ALL_MIGRATIONS = [
   RemoveFilterScopeMessageRequests1787661000000,
   E2eeIdentityRootTranscript1787790938656,
   ReserveE2eeConversationSchema1787792202409,
+  Adr0033IdentityTranscriptCleanBreak1787800000000,
+  DropE2eeConversationMembershipEvents1787815392235,
+  E2eeDeviceLinkOffers1787816106996,
+  E2eeRequireIdentityRootTranscript1787880585000,
+  ConversationMembersActorIndex1787881533240,
+  AddActorsTrigramSearchIndexes1787881940013,
+  ActorBannerMedia1787912351805,
+  DropLegacyProfileBannerUrl1787913902978,
+  SchemaDriftFixes1787920000000,
 ];
