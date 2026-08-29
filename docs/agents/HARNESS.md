@@ -141,8 +141,7 @@ This repository supports Codex, Claude, and other clients through the same contr
   Do not keep an implementation worker alive only to preserve context.
 - Review is independent and stronger than implementation; verification is a separate evidence
   step when the blast radius warrants it. Neither review nor verification silently changes code.
-- Work originates in an explicit user request, the [GitHub Project board](https://github.com/users/alliecatowo/projects/5), or the authoritative spec. Agents may
-  report a discovered follow-up, but do not create work by guessing.
+- Work originates in an explicit user request, the [GitHub Project board](https://github.com/users/alliecatowo/projects/5), or the authoritative spec. Agents may file a concrete, evidence-backed follow-up they discover mid-task as a real GitHub issue on `alliecatowo/patches`, add it to Project #5, and report the URL in their handoff (scope/evidence/acceptance/blocked-by Task IDs/labels) — but do not create work by guessing. A follow-up is concrete when it names the actual scope and evidence from the task; keep it one issue per follow-up, never edit board items outside the ones you filed, and never put secrets into an issue.
 - The hard rules in `AGENTS.md`/`CLAUDE.md` and `INITIAL_VISION.md` apply to every client and
   delegation level. A harness improvement cannot weaken them; a genuine conflict needs the ADR
   process and human sign-off.

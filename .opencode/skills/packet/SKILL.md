@@ -18,12 +18,13 @@ Acceptance: <how to know it's done — tests, RPC, doc, screenshot>
 Constraints: <hard rules that apply — layering, no offset pagination, etc>
 Prior findings: <1-2 lines from previous attempts, or "none">
 Validation: `mise run check <ws>` (scoped, via bounded.sh — turbo+lint cached, ~2s warm) — never full verify for leaf; one `turbo lint` handles eslint
-Handoff: return concise ≤20-line report (status/summary/files/tests/blocker class/confidence/next)
+Handoff: return concise ≤20-line report (status/summary/files/tests/blocker class/confidence/next + Follow-ups: <issue URLs>)
 Model: <llmgateway/deepseek-v4-flash (reasoning: medium-low) | gpt-5.6-terra (medium-high, only on blocker=capability) | grok-4-6 (high)> (see MODEL_ROUTING)
 ```
 
 Rules:
 
+- **Workers may and should file follow-ups they discover** (see `handoff/SKILL.md`): `gh issue create --repo alliecatowo/patches` + add to Project #5, body with scope/evidence/acceptance/blocked-by Task IDs/labels, then report the URL in the handoff. One issue per follow-up; never touch board items outside the ones you filed.
 - One packet per worker. Disjoint file sets — two workers never share a file.
 - Max 6 concurrent workers prefer 2-3 wider bundled phase-slice PRs (same spec file, ≤25 lines) over 4 narrow — one PR bundles multiple B-nnn when scope overlaps <20% (fixes PR sprawl).
 - Use `WebSearch/WebFetch` in the packet only if the worker will need it — don't preload docs the worker can fetch itself.

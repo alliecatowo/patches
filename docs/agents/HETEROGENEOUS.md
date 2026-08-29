@@ -30,7 +30,8 @@ MCPs available to every agent: `github` (remote, `projects`+`issues` toolsets, n
 ## Packet / handoff
 
 - **Packet** (`driver → worker`, ≤15 lines): task ID, objective, scope files, forbidden paths, acceptance, constraints, prior findings, validation, handoff shape, model. See `.opencode/skills/packet/SKILL.md`. No parent transcript copy.
-- **Handoff** (`worker → driver`, ≤20 lines): status, summary, files, tests, findings, unresolved, blocker class (none/env/capability/semantic), confidence, next action. See `.opencode/skills/handoff/SKILL.md`.
+- **Handoff** (`worker → driver`, ≤20 lines): status, summary, files, tests, findings, follow-ups (issue URLs), unresolved, blocker class (none/env/capability/semantic), confidence, next action. See `.opencode/skills/handoff/SKILL.md`.
+- **Follow-up filing:** a worker files every concrete follow-up it discovers as a real GitHub issue (`gh issue create --repo alliecatowo/patches`), adds it to Project #5, and reports the URL in its handoff; scope/evidence/acceptance/blocked-by Task IDs/labels live in the issue body. Least privilege and secret safety still apply — no secrets in issues, one issue per follow-up, no edits to board items the worker didn't file. Driver confirms each filed issue's board Status and enqueues it.
 
 ## Escalation ladder
 
