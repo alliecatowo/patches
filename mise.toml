@@ -198,7 +198,7 @@ dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(exec
   # only one agent runs (bounded.sh uses nproc/4=4 slots, error-only logs).
   scripts/bounded.sh pnpm exec turbo run typecheck test lint --filter="$pkg" --output-logs=errors-only &
   turbo_pid=$!
-  pnpm exec prettier --check "$dir" 2>&1 | sed -n '1,20p' &
+  pnpm exec prettier --check --cache --cache-location node_modules/.cache/prettier/.prettiercache "$dir" 2>&1 | sed -n '1,20p' &
   prettier_pid=$!
   wait $turbo_pid; turbo_rc=$?
   wait $prettier_pid; prettier_rc=$?

@@ -52,9 +52,10 @@ pre-push:
       # packages replay in ms; only changed ws rebuilds. Harness-only push now ~6s
       # (was 85s), full monorepo change still bounded but not 4× serialized.
       run: >-
-        pnpm exec prettier --check . 2>&1 | head -n 20 &
-        prettier_pid=$! ;
-        scripts/bounded.sh pnpm exec turbo run typecheck test lint --affected --concurrency=4 --continue=dependencies-successful --output-logs=errors-only ;
-        turbo_rc=$? ;
-        wait $prettier_pid; prettier_rc=$? ;
+        changed="$(git diff --name-only origin/main --diff-filter=ACMRTUXB 2>/dev/null | grep -E "\.(ts|tsx|mts|cts|js|mjs|cjs|json|md|yml|yaml|css)$" || true)";
+        if [ -n "$changed" ]; then echo "$changed" | tr " " "\n" | xargs pnpm exec prettier --check --cache --cache-location node_modules/.cache/prettier/.prettiercache 2>&1 | head -n 20 & else sleep 0.01 & fi;
+        prettier_pid=$!;
+        scripts/bounded.sh pnpm exec turbo run typecheck test lint --affected --concurrency=4 --continue=dependencies-successful --output-logs=errors-only;
+        turbo_rc=$?;
+        wait $prettier_pid; prettier_rc=$?;
         [ $turbo_rc -eq 0 ] && [ $prettier_rc -eq 0 ]
