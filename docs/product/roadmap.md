@@ -5,7 +5,7 @@ Source of truth: `INITIAL_VISION.md` §§134–160, as amended by **§176 (Amend
 checklists in one place so status can be tracked without re-reading the full spec. Update the
 status line at the top of each phase as work lands — don't let this drift into fiction.
 
-**As of 2026-08-22: Phases 0–8 are implemented (see `tasks.md`); Phase 7 is deployed and the flagship node `patches-social.fly.dev` is live with Neon Postgres, production R2 media storage, and Resend email delivery. Phase 17 scale/capacity budgets (S-001/S-002) and security/retention updates (B-058–B-061) are implemented. The repository is ahead of the live web build and its next gated deployment remains B-063.**
+**As of 2026-08-29: Phases 0–8 are implemented (see `tasks.md`); Phase 7 is deployed and the flagship node `patches-social.fly.dev` is live with Neon Postgres, production R2 media storage, and Resend email delivery. Phase 17 scale/capacity budgets (S-001/S-002) and security/retention updates (B-058–B-061) are implemented. Since the previous snapshot, board Phases 11–16 and 18 have landed (social depth, web client + PWA, E2EE protocol, TUI interaction model, privacy/filters/decentralized moderation, passwordless auth, and federating social depth — statuses below), and board Phases 19–21 are in progress. The next gated deployment to production remains B-063 (Todo on the project board): shipping the pending web/security fixes and verifying the live build.**
 
 **As of this revision:** board Phase 11 — social depth (Amendment B, spec §178–§195: reposts
 and quotes, tags, communities, DMs with honest indefinite retention, flair/pins/walls, quiet feed, edit history, and followers/following screens in TUI and Web) — is **implemented**
@@ -328,6 +328,61 @@ more ways in without weakening the credential-is-not-identity split.
   OIDC-device-flow provider, and TUI/web credential-manager parity. See `tasks.md` for the
   current task list.
 
+### Board Phase 16 — live bugs from owner testing 2026-08-19
+
+**Status: implemented.** The owner-facing live-bug wave from 2026-08-19: B-040 (central auth-
+token attach for TUI reads), B-041 (web BigInt session-serialization), B-042/B-043 (TUI
+navigation + command-palette overlay), B-044 (web closed-node/local-tab clarity), B-045 (web
+theme support + appearance settings), B-046/B-048 (TUI pane focus and `Ctrl+W h`/`Ctrl+W l`),
+B-047 (TUI theme + linear mode). Every task landed with its file citations; see `tasks.md`
+Phase 16.
+
+### Board Phase 17 — scale, concurrency and harness
+
+**Status: in progress.** Capacity planning and abuse protection are done: S-001 (`docs/
+operations/capacity.md`, measured load-test plan) and S-002 (request-cost budgets, outbox
+circuit-break, load-shedding) are implemented, as are the harness-efficiency work H-010
+(`docs/agents/CONTEXT_ECONOMY.md`) and H-012 (mise MCP support). Open: the harness-foundation
+items H-011 (nested-delegation experiment), H-013 (testkit primitives), H-014 (`packages/
+harness` CLI) and H-015 — see `tasks.md` Phase 17.
+
+### Board Phase 18 — federating social depth (ADR 0028)
+
+**Status: implemented (local lab).** Reposts → tags → quotes federate over ActivityPub
+(`Announce`/`Undo`, `Hashtag` arrays, FEP-044f + legacy fallbacks) per ADR 0028 and
+`docs/architecture/federation.md` §7.6; Communities stay local and DMs/E2EE never cross the
+seam (§195.2/§194). Every P18-001…011 task is landed, including the deterministic-Announce-id
+reposts, remote-object fetch, inbound quote authorization, the two-node lab round trips, and
+the P18-011 fed-tag ordering fix (4/4 integration examples passing). Public federation remains
+gated on the readiness checklist above.
+
+### Board Phase 19 — observability, measurement & scale hardening
+
+**Status: in progress.** The instrumentation foundation, measurement gate and structural
+hardening are substantially landed (Phase 19 tasks, `tasks.md`). Still open and explicitly
+measurement-gated: the benchmark baselines themselves (P19-007) plus the scale-path ports ADR
+0029 defers to them (`JobQueue` P19-013, read-through `Cache` P19-014, hybrid feed
+materialization P19-015), a DM-poll cost reduction (P19-019), and migration-hardening harnesses
+(P19-024/025).
+
+### Board Phase 20 — live bugs from owner testing 2026-08-26 (web PWA)
+
+**Status: implemented for the reported bug wave; production delivery behind B-063.** The iOS
+PWA live-bug wave (B-148…B-156: nav-style preference, report-issue undo/attach/send/route
+regressions, SW-update diagnosis, Pages-preview teardown, `vite-plugin-pwa` swap) is landed, and
+the follow-ups B-204 (Pages-preview teardown reliability) and B-205 (the `patches-site` CD gate
+never being enabled — same defect as B-198, different site) are Done on the project board. The
+web client is capable; shipping the pending web/security fixes to production and verifying the
+live build is tracked by B-063 (Todo).
+
+### Board Phase 21 — web DX / robustness backlog (owner triage 2026-08-26)
+
+**Status: in progress.** The web-DX/robustness backlog is partially landed (e.g. B-155 sonner
+toast swap); the remainder is the queue named in `tasks.md` Phase 21 (PWA plugin, RQ devtools,
+cross-tab session, upload retry, diagnostics persistence, route error boundaries, web vitals,
+bundle-analyzer CI) and the media-upload multipart work for >100 MB files (B-160, Blocked on
+B-159's abort plumbing).
+
 ---
 
 ## Post-v0.0 roadmap (§176)
@@ -547,27 +602,27 @@ And administrators can:
 
 Do not publicly enable federation until:
 
-- [ ] stable canonical domain selected,
-- [ ] WebFinger works,
-- [ ] actors serialize correctly,
-- [ ] ActivityStreams objects validate,
-- [ ] inbox works,
-- [ ] outbox works,
-- [ ] Follow works,
-- [ ] Accept works,
-- [ ] Create works,
-- [ ] Delete works,
-- [ ] Update semantics decided,
-- [ ] deliveries are durable,
-- [ ] duplicate delivery is safe,
-- [ ] retries are bounded,
-- [ ] signatures verified,
-- [ ] SSRF defenses exist,
-- [ ] remote response sizes bounded,
-- [ ] remote request timeouts exist,
-- [ ] domain blocking exists,
-- [ ] remote delete/tombstones work,
-- [ ] moderator can block a remote server,
-- [ ] federation telemetry exists,
-- [ ] two Patches servers interoperate,
-- [ ] at least one mainstream Fediverse implementation interoperates.
+- [ ] stable canonical domain selected, _(no deployed node has a fixed canonical domain yet: `patches-social.fly.dev` is provisional and the intended `patches.social` remains planned — `docs/operations/deployment.md`; the MVP deployment checklist's `production domain configured` box is also still open)_
+- [x] WebFinger works, _(local lab, P8-001 — `apps/server/src/modules/federation/http/webfinger.controller.ts` + `services/webfinger.service.ts`)_
+- [x] actors serialize correctly, _(local lab, P8-001 — `activitystreams/documents.ts` + `services/actor-document.service.ts`; covered by `activitystreams/documents.test.ts`)_
+- [ ] ActivityStreams objects validate, _(no formal AS2/JSON-LD schema validation — shape-checked only, e.g. `id`/`type`/`actor` presence; `services/inbox.service.ts` + `security/bounded-json.ts`)_
+- [x] inbox works, _(local lab, P8-002 — `http/inbox.controller.ts` + `services/inbox.service.ts`)_
+- [x] outbox works, _(local lab, P8-002; real keyset `OrderedCollectionPage` pagination as of B-027 — `services/outbox-collection.service.ts`)_
+- [x] Follow works, _(local lab, P8-002; two-node round trip — `federation-two-node.integration.test.ts`)_
+- [x] Accept works, _(local lab, P8-002; two-node round trip)_
+- [x] Create works, _(local lab, P8-002; two-node round trip)_
+- [x] Delete works, _(local lab, P8-002; two-node round trip)_
+- [x] Update semantics decided, _(A-035 — `services/inbox.service.ts` `handleUpdate`: `Update(Note)` by the post's own author edits body/stamps `editedAt`, `Update(Person)` refreshes the actor; unit-covered in `inbox.service.test.ts`)_
+- [x] deliveries are durable, _(P8-004 — `FEDERATION_DELIVER` outbox jobs written atomically via `DeliveryService.enqueue` into `outbox_jobs`)_
+- [x] duplicate delivery is safe, _(P8-004/P8-006 — `inbox_activities` inbound dedup by activity id + delivery idempotency key)_
+- [x] retries are bounded, _(P8-004 — 12 attempts, exponential backoff, then `DEAD`; `apps/worker/.../handlers/federation-deliver.handler.ts` through `JobRunner`)_
+- [x] signatures verified, _(P8-005 — draft-cavage-http-signatures-12; `signatures/http-signature.ts`)_
+- [x] SSRF defenses exist, _(P8-006 — `security/safe-fetch.ts` + `security/ip-guard.ts`; `apps/server/src/common/validation/url.ts`)_
+- [x] remote response sizes bounded, _(P8-006 — `safeFetch` byte cap, `MAX_INBOUND_BODY_BYTES` = 1 MiB)_
+- [x] remote request timeouts exist, _(P8-006 — `safeFetch` 10 s timeout, `SAFE_FETCH_TIMEOUT_MS`)_
+- [x] domain blocking exists, _(B-027 — `services/domain-block.service.ts` enforced on inbound in `InboxService`; outbound filtered at enqueue in `DeliveryService` and re-checked at delivery time)_
+- [x] remote delete/tombstones work, _(local lab, same as `Delete` above — `services/inbox.service.ts` ingests remote `Delete` to a tombstone)_
+- [x] moderator can block a remote server, _(B-027 — `patches-admin domain block|unblock|list`; `apps/admin/src/commands/domain.ts`)_
+- [x] federation telemetry exists, _(A-036 — `federation-metrics.service.ts`: `GET /federation/metrics` (loopback-only) + periodic structured log; mirrored on `apps/worker` per B-030)_
+- [x] two Patches servers interoperate, _(P8-008 — `apps/server/test/federation-two-node.integration.test.ts`, two full HTTP-Signature-signed OS-process nodes; 4 examples passing against compose Postgres as of P18-011 — runs only when `TEST_DATABASE_URL` is set, else it skips with a clear message)_
+- [ ] at least one mainstream Fediverse implementation interoperates, _(F2 scope — not started; scheduled for v0.3/Phase 10, `docs/product/roadmap.md` release table)_
