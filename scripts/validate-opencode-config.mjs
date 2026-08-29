@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Static validation of the repo-scoped OpenCode LSP config.
+ * Static validation of the repo-scoped OpenCode config.
  *
  * Verifies that `opencode.json` enables the TypeScript language server for the
- * extensions the monorepo compiles. This is a cheap structural gate that CI and
- * agents can run without starting an LSP process; the companion
+ * extensions the monorepo compiles, and that the goal plugin
+ * (`@prevalentware/opencode-goal-plugin`) is declared in the root project config
+ * (not a non-documented `.opencode/opencode.json`). This is a cheap structural
+ * gate that CI and agents can run without starting an LSP process; the companion
  * `scripts/smoke-opencode-lsp.mjs` proves the server actually answers a
  * definition query.
  *
@@ -57,6 +59,30 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
+// The goal plugin must live in the root project config so it loads in every
+// session. `.opencode/opencode.json` is not a documented config location, so a
+// plugin declared only there is fragile.
+const GOAL_PLUGIN = '@prevalentware/opencode-goal-plugin';
+const pluginErrors = [];
+if (!Array.isArray(config.plugin) || config.plugin.length === 0) {
+  pluginErrors.push('"plugin" must be a non-empty array');
+} else {
+  const goal = config.plugin.find((entry) => Array.isArray(entry) && entry[0] === GOAL_PLUGIN);
+  if (!goal) {
+    pluginErrors.push(`plugin entry for ${GOAL_PLUGIN} is missing`);
+  } else if (goal[1] == null || typeof goal[1] !== 'object') {
+    pluginErrors.push(`${GOAL_PLUGIN} options object is missing`);
+  } else if (goal[1].auto_continue !== true) {
+    pluginErrors.push(`${GOAL_PLUGIN} auto_continue must be true`);
+  }
+}
+if (pluginErrors.length > 0) {
+  console.error('FAIL OpenCode goal plugin config invalid:');
+  for (const e of pluginErrors) console.error(`  - ${e}`);
+  process.exit(1);
+}
+
 console.log(
   `OK OpenCode TypeScript LSP enabled for: ${config.lsp.typescript.extensions.join(', ')}`,
 );
+console.log(`OK OpenCode goal plugin present: ${GOAL_PLUGIN}`);

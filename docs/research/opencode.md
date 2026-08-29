@@ -15,8 +15,10 @@ current official documentation.
   compatibility). Config sources are merged rather than replaced.
   [Official config documentation](https://opencode.ai/docs/config/)
 - OpenCode 1.18.23 source also explicitly loads `opencode.json` and
-  `opencode.jsonc` from discovered `.opencode` directories, so this checkout's
-  `.opencode/opencode.json` location is supported by the installed version.
+  `opencode.jsonc` from discovered `.opencode` directories, but that is not a
+  documented config location — the `.opencode` directory is for `agents/`,
+  `commands/`, `plugins/` subdirectories. Project config belongs in the root
+  `opencode.json`.
   [OpenCode 1.18.23 config loader](https://github.com/anomalyco/opencode/blob/v1.18.23/packages/opencode/src/config/config.ts)
 - The published schema is the exact authority for JSON keys. Its current
   top-level keys include singular `permission`, `model`, `small_model`,
@@ -29,11 +31,12 @@ current official documentation.
   says config-time changes require quitting and restarting OpenCode.
   [Official OpenCode customization guide](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/plugin/skill/customize-opencode.md)
 
-The `.opencode/opencode.json` currently in this checkout is therefore not an
-OpenCode-shaped configuration despite its `$schema`: `worktree`, `env`,
-`permissions`, and Claude-style `hooks` must be removed or translated. OpenCode
-hooks are implemented with a plugin; the Claude `PreToolUse`, `SessionStart`,
-and `WorktreeCreate` object is not an OpenCode config key.
+The `.opencode/opencode.json` that once lived in this checkout was removed: its
+MCP entries were already duplicated in the root `opencode.json`, and the goal
+plugin (`@prevalentware/opencode-goal-plugin`) now lives in the root
+`opencode.json` too, so the non-documented file is gone entirely. OpenCode hooks
+are implemented with a plugin; the Claude `PreToolUse`, `SessionStart`, and
+`WorktreeCreate` object is not an OpenCode config key.
 
 ### Markdown agent frontmatter
 
@@ -197,7 +200,7 @@ claims:
 
 - **Inferred:** the missing model picker/list in Patches is a consequence of
   fatal project-config loading, not an empty model catalog. Repairing all agent
-  frontmatter and the Claude-shaped `.opencode/opencode.json` should restore it.
+  frontmatter and the removed `.opencode/opencode.json` should restore it.
 - **Inferred:** the UI's “no git” state is likewise stale or incomplete startup
   state caused by the same fatal config error. OpenCode's own project database
   currently classifies this checkout as Git, so deleting or reinitializing
@@ -227,7 +230,8 @@ No ADR is needed to repair configuration syntax. A harness task should:
    `color`, and `permission`;
 2. omit bare model shorthands or replace them only with connected,
    provider-qualified IDs;
-3. replace `.opencode/opencode.json` with schema-valid OpenCode keys; and
+3. keep the goal plugin and MCPs in the root `opencode.json` (the documented
+   project config) rather than a non-documented `.opencode/opencode.json`; and
 4. decide separately whether the three Claude hook scripts should be ported to
    a real OpenCode plugin or removed as unimplemented configuration.
 
