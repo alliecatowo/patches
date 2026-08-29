@@ -227,7 +227,7 @@ export function isHarnessDatabaseName(name: unknown): name is HarnessDatabaseNam
   );
 }
 
-export type HarnessDatabaseName = string;
+export type HarnessDatabaseName = string & { readonly __harnessDatabase: unique symbol };
 
 /** Reject traversal and broad directories before creating, deleting, or reading state. */
 export function isSafeHarnessRunDirectory(root: string, candidate: string): boolean {
