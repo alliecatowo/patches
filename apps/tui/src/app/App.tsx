@@ -87,6 +87,7 @@ import {
   type ImagePolicy,
   type PreferenceStore,
 } from '../preferences/store.js';
+import { FileSavedViewsStore, type SavedViewsStore } from '../views/saved-views-store.js';
 import { BUILT_IN_THEMES, getBuiltInTheme } from '../theme/themes/registry.js';
 import { resolveTheme } from '../theme/themes/resolution.js';
 import type { BuiltInThemeName, ThemeDefinition } from '../theme/themes/types.js';
@@ -147,6 +148,9 @@ export interface AppProps {
   pageDraftStore?: PageDraftStore;
   /** Overridden in tests — a real `FilePreferenceStore` writes to the user's XDG config dir. */
   preferenceStore?: PreferenceStore;
+  /** #192: overridden in tests — a real `FileSavedViewsStore` writes to the user's XDG
+   * config dir. */
+  savedViewsStore?: SavedViewsStore;
   /** `patches visit @handle[/slug]` (P45-006) — opens straight to that actor's
    * Patches Page, one level above the timeline so `Esc` still lands somewhere. */
   initialPageTarget?: { handle: string; slug: string } | undefined;
@@ -213,6 +217,7 @@ export function App({
   initialPageTarget,
   mediaCache,
   preferenceStore,
+  savedViewsStore,
   openMediaOptions,
   pageEditorOptions,
   pageDraftStore,
@@ -352,6 +357,9 @@ export function App({
   const activeTheme: ThemeDefinition = getBuiltInTheme(themeName) ?? BUILT_IN_THEMES.patches;
   const [preferences] = useState<PreferenceStore>(
     () => preferenceStore ?? new FilePreferenceStore(),
+  );
+  const [savedViews] = useState<SavedViewsStore>(
+    () => savedViewsStore ?? new FileSavedViewsStore(),
   );
   /** What `Esc` on the preferences screen restores (P12-112). */
   const revertPreferences = useRef<
@@ -2344,6 +2352,10 @@ export function App({
             ensureAccessToken={ensureAccessToken}
             actions={rowActions}
             refreshKey={feedNonce}
+            savedViews={{
+              store: savedViews,
+              key: { nodeOrigin: api.target, actorId: session.userId },
+            }}
           />
         );
       case 'search':
