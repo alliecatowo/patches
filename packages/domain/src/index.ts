@@ -57,6 +57,23 @@ export {
 export { containsUnsafeBytes, sanitizeText, utf8ByteLength } from './sanitize.js';
 export type { SanitizeTextOptions } from './sanitize.js';
 
+// Identity cosmetic packs (B-117 / #241) — the shared, capability-aware catalog both the web
+// and TUI collate against, so per-client cosmetic decisions stop drifting apart.
+export {
+  DEFAULT_COSMETIC_CAPS,
+  avatarFrameToken,
+  deterministicIdentityArt,
+  nameTagToken,
+  popEmphasis,
+} from './cosmetics.js';
+export type {
+  CosmeticsNameTag,
+  CosmeticsProfileFrame,
+  CosmeticColorDepth,
+  IdentityCosmeticCaps,
+  IdentityArtMotif,
+} from './cosmetics.js';
+
 // Beta issue reporter diagnostics bundle (B-112/B-113): one schema + one redaction
 // transform, shared verbatim by the TUI and web clients.
 export {
