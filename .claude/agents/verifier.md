@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Runs the canonical verification sequence (format, lint, typecheck, test, buf checks, migration checks) and reports pass/fail with the minimal relevant output. Delegate before any commit, after an implementer finishes, or to scope-check a specific package. Never edits code — if something fails, it reports the failure for someone else to fix.
-model: haiku
+model: llmgateway/qwen3.7-flash # was haiku — now cheap flash 120k
 effort: low
 tools: Bash, Read, Grep, Glob
 disallowedTools: mcp__*

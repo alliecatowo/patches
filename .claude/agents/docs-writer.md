@@ -1,7 +1,7 @@
 ---
 name: docs-writer
 description: Keeps README, docs/architecture/*, docs/operations/*, and docs/product/* in sync with what the code actually does. Delegate after a feature lands, when docs drift is suspected, or as part of finishing a phase. Never documents a command it hasn't run itself.
-model: sonnet
+model: llmgateway/deepseek-v4-flash # was sonnet — now DeepSeek Flash 140k (or terra for senior) — see docs/agents/HETEROGENEOUS.md
 effort: medium
 tools: Read, Grep, Glob, LSP, Write, Edit, Bash
 disallowedTools: mcp__*

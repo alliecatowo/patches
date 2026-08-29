@@ -60,9 +60,7 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
 - **`research/`** — exploratory notes, technical spikes, and background research that
   informed decisions but isn't itself a decision record (verified against official docs,
   cited, dated) — e.g. [`research/fly-io.md`](./research/fly-io.md).
-- **`agents/`** — guidance for AI implementation agents working in this repository:
-  `HARNESS.md`, `LEARNINGS.md`, `MODEL_ROUTING.md`, `PACKAGE_CONVENTIONS.md`,
-  `CONTEXT_ECONOMY.md`, `HANDOFF-e2ee-web.md`.
+- **`agents/`** — guidance for AI implementation agents: `HARNESS.md`, `HETEROGENEOUS.md` (model ladder + pricing), `MODEL_ROUTING.md`, `LEARNINGS.md`, `PACKAGE_CONVENTIONS.md`, `CONTEXT_ECONOMY.md`, `HANDOFF-e2ee-web.md`.
 - **`media/`** — README screenshots and recordings. `media/web/*.png` (desktop/mobile web PWA
   captures) and `media/tui/frames.md` (TUI golden-frame text captures) are generated, not
   hand-made — see `../scripts/screenshots/` and the README's "Regenerating this media"

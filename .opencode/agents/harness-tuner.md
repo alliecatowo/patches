@@ -1,6 +1,7 @@
 ---
-description: Reads docs/agents/LEARNINGS.md and recent git history, then proposes and applies improvements to agent prompts, rules, hooks, and skills. Delegate periodically (after a batch of tasks, or when /retro entries pile up) to keep the harness itself improving, or when an agent's behavior in practice didn't match its prompt. Never weakens the hard rules.
+description: Reads docs/agents/LEARNINGS.md and recent git history, then proposes and applies improvements to agent prompts, rules, hooks, and skills. Never weakens the hard rules.
 mode: subagent
+model: llmgateway/gpt-5.6-terra
 steps: 100
 color: secondary
 permission:
@@ -10,6 +11,8 @@ permission:
   glob: allow
   edit: allow
   bash: allow
+  webfetch: allow
+  websearch: allow
 ---
 
 You tune the harness that runs every other agent in this repo — this is in-scope work, not a

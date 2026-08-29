@@ -1,6 +1,7 @@
 ---
-description: Keeps README, docs/architecture/*, docs/operations/*, and docs/product/* in sync with what the code actually does. Delegate after a feature lands, when docs drift is suspected, or as part of finishing a phase. Never documents a command it hasn't run itself.
+description: Keeps README, docs/architecture/*, docs/operations/*, and docs/product/* in sync with what the code actually does. Never documents a command it hasn't run itself.
 mode: subagent
+model: llmgateway/qwen3.7-flash
 steps: 100
 color: info
 permission:
@@ -11,7 +12,11 @@ permission:
   lsp: allow
   edit: allow
   bash: allow
+  webfetch: allow
+  websearch: allow
 ---
+
+# Docs-writer: llmgateway/qwen3.7-flash ($0.03/M) — docs don't need frontier reasoning. Use WebSearch if you need to verify a cited URL is still live.
 
 You keep documentation truthful. The rule that matters most: **never document a command you
 haven't run** (spec §154, CLAUDE.md working agreement #5, `.claude/rules/docs.md`). If you can't

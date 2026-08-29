@@ -44,7 +44,18 @@ protobuf request → controller (transport adapter) → application service → 
 
 The frontier main session is the orchestrator and acceptance gate: it turns explicit work into bounded tasks, delegates product/harness edits when a worker can safely own them, reviews results, and integrates. It must not invent or automatically claim tasks; the GitHub Project board, the user, and the spec define work. Parallel workers get exact owned and forbidden paths and preserve unrelated work.
 
-Use the cheapest adequate available capability class, not a presumed model name: Haiku-equivalent for mechanical checks and narrow diagnostics; Sonnet-equivalent for normal implementation, tests, docs, and research; Opus-equivalent for architecture, security/crypto, hard debugging, and high-risk final review. A worker may delegate an independent mechanical subtask downward, not create a second coordinator. Briefs are short and self-contained (goal, constraints, paths, acceptance checks); use reduced/non-full context for workers when the runtime supports it. An independent reviewer must be strictly stronger than the implementer; verifier runs the relevant checks, while the implementer fixes failures. After two equivalent failures, change approach or escalate. See `docs/agents/MODEL_ROUTING.md` and `docs/agents/HARNESS.md`; never weaken hard rules or expand scope silently.
+All inference via DevPass (`llmgateway/*` or `opencode/*-free`); no Anthropic models. Use `WebSearch/WebFetch` against official docs before guessing — pricing and API surfaces change monthly. See `docs/agents/HETEROGENEOUS.md` for the full ladder and `docs/agents/MODEL_ROUTING.md` for ambiguity-based routing.
+
+Primary runtime is OpenCode (`goal-driver` is cheap `llmgateway/gpt-5.6-luna` 90k; see `docs/agents/HETEROGENEOUS.md`). Claude Code remains compat but routes through `llmgateway`.
+
+| Work shape                              | Model (OpenCode)                                                                   | Guard                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Mechanical check / narrow diagnostic    | `opencode/muse-spark-1.2-free` or `llmgateway/qwen3.7-flash` 120k                  | Exact paths + stop condition                     |
+| Bounded implementation / tests / docs   | `llmgateway/deepseek-v4-flash` 140k (fallback `opencode/*-free` → `qwen3.7-flash`) | Disjoint ownership, `mise run check <ws>` scoped |
+| Integration / retry / review            | `llmgateway/gpt-5.6-terra` 220k                                                    | Stronger than implementer; no `sol` by default   |
+| Architecture / replan / milestone audit | `llmgateway/grok-4-6` 180k (fallback `grok-4-3` 180k, `grok-4-1-fast` 160k)        | Fresh session, concise packet, ADR if needed     |
+
+Exceptional premium (`llmgateway/gpt-5.6-sol`, `kimi-k3`, `claude-*`) requires explicit `escalate: sol` — it's 20x Luna and burns weekly fair-use (see `HETEROGENEOUS.md` pricing). Ladder: `deepseek → free → terra → grok`; env failures (DB/port/flock/inode) retry cheap, don't escalate. Packets via `.opencode/skills/packet`, handoffs via `.opencode/skills/handoff`. After two identical failures change approach. Never weaken hard rules.
 
 ## Repository map
 

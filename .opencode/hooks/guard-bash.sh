@@ -36,4 +36,24 @@ fi
 if printf '%s' "$cmd" | grep -Eq "${at_cmd_pos}git[[:space:]]+(clean[[:space:]]+.*-[a-z]*f|add[[:space:]]+(-A\b|--all\b|\.([[:space:]]|\$)))"; then
   block "no 'git add -A/.' or 'git clean -f' — stage only the explicit paths you were assigned."
 fi
+# No Anthropic inference — all models must be llmgateway/* or opencode/*-free. Blocks direct Anthropic API use and llmgateway/claude-* selection (premium + would burn fair-use).
+if printf '%s' "$cmd" | grep -Eq 'ANTHROPIC_API_KEY|anthropic/|claude-(opus|sonnet|haiku|fable)'; then
+  block "Anthropic inference is prohibited — use llmgateway/* or opencode/*-free only (see docs/agents/HETEROGENEOUS.md). llmgateway/claude-* is blocked by policy (premium + fair-use)."
+fi
+# Worktree explosion guard — don't create worktrees by hand; the WorktreeCreate hook owns them. Prevents the 40-worktree thrash that kills TURBO_CACHE_DIR + inodes.
+if printf '%s' "$cmd" | grep -Eq "${at_cmd_pos}git[[:space:]]+worktree[[:space:]]+add\b"; then
+  block "don't run 'git worktree add' by hand — isolation worktrees are created by the WorktreeCreate hook only. Use disjoint file sets in the main checkout."
+fi
+# Prevent heavy local verification outside bounded.sh — use mise run check <ws>, not full verify/build, to respect bounded.sh throttling.
+if printf '%s' "$cmd" | grep -Eq '(^|[;&|[:space:]])(pnpm[[:space:]]+verify|pnpm[[:space:]]+build|turbo[[:space:]]+run[[:space:]]+build)\b' && ! printf '%s' "$cmd" | grep -Eq 'mise[[:space:]]+run[[:space:]]+check|bounded\.sh'; then
+  # warn, don't block — CI needs it, but nudge workers toward scoped checks
+  echo "NOTE: prefer 'mise run check <ws>' (bounded, scoped, turbo-cached) over 'pnpm verify/build' locally — see docs/agents/HARNESS.md" >&2
+fi
+# Cap concurrent worktrees — if >6 already exist, block new isolation to protect inodes/cache (LEARNINGS.md 2026-08-20: 11 worktrees hit 100% inodes).
+if printf '%s' "$cmd" | grep -Eq 'WorktreeCreate|isolation.*worktree' 2>/dev/null; then
+  count="$(git -C "${OPENCODE_PROJECT_DIR:-$(pwd)}" worktree list 2>/dev/null | wc -l || echo 0)"
+  if [ "$count" -gt 6 ]; then
+    block "too many worktrees ($count > 6) — collect merged ones first: .opencode/scripts/worktree-collect.sh clean or git worktree prune. Prevents inode/cache thrash."
+  fi
+fi
 exit 0

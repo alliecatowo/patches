@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# SessionStart: surface the task archive so every session starts oriented. The live board is the
-# GitHub Project (https://github.com/users/alliecatowo/projects/5) — query it via the `github` MCP
-# server (projects_list/projects_get); this hook stays offline/instant so it only reads the archive.
+# SessionStart: surface the task archive + heterogeneous routing so every session starts oriented.
 set -uo pipefail
 root="${OPENCODE_PROJECT_DIR:-$(pwd)}"
 echo "Live board: https://github.com/users/alliecatowo/projects/5 (query via github MCP projects_list/projects_get)"
+echo "Heterogeneous harness: docs/agents/HETEROGENEOUS.md — goal-driver (luna 90k) → worker (deepseek 140k) → senior (terra 220k) → architect (grok 180k). Use WebSearch/WebFetch against official docs before guessing (pricing/API limits change monthly)."
+echo "Packet→Handoff: .opencode/skills/packet/SKILL.md + .opencode/skills/handoff/SKILL.md — keep contexts small, fan out ≤4 workers with disjoint paths."
 if [ -f "$root/tasks.md" ]; then
   open="$(grep -c '^- \[ \]' "$root/tasks.md" 2>/dev/null || echo 0)"
   done_="$(grep -c '^- \[x\]' "$root/tasks.md" 2>/dev/null || echo 0)"

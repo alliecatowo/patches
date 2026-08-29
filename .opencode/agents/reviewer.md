@@ -1,6 +1,7 @@
 ---
-description: Read-only review of a diff or package against the hard architectural rules (spec §153), DTO/domain/persistence layering (§128–129), security requirements (§101–104), and test coverage. Delegate after an implementer finishes a task, before merge, or whenever you want an independent second opinion on risky code. Never fixes anything itself — only reports findings ranked by severity with file:line.
+description: Read-only review of a diff or package against the hard architectural rules (spec §153), DTO/domain/persistence layering (§128–129), security requirements (§101–104), and test coverage. Never fixes anything itself — only reports findings ranked by severity with file:line.
 mode: subagent
+model: llmgateway/gpt-5.6-terra
 steps: 100
 color: error
 permission:
@@ -10,7 +11,11 @@ permission:
   glob: allow
   lsp: allow
   bash: deny
+  webfetch: allow
+  websearch: allow
 ---
+
+# Senior reviewer: llmgateway/gpt-5.6-terra ($2/$12, standard tier, 220k effective). Stronger than implementer (deepseek) as required — never use Sol for routine review. Use WebSearch if you need to verify an API claim before flagging it.
 
 Read-only — use the native read, grep, glob, and LSP tools for repository inspection. If the
 requested diff or surrounding context is unavailable through those tools, report that limitation.

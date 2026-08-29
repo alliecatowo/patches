@@ -127,6 +127,10 @@ are omitted. Each file is read backward with a hard 256 KiB/1,000-line pre-parse
 explicit `logs.truncated` record; request IDs must be canonical UUIDs and trace IDs exact 32-digit
 hex. Raw following is disabled until a streaming implementation can enforce the same boundary.
 
+### Heterogeneous model harness (OpenCode primary, DevPass only)
+
+See `docs/agents/HETEROGENEOUS.md` for the full ladder, pricing cliffs, and `/goal` driver. The durable principle: **smart models remove ambiguity; cheap models execute explicit work; durable board/spec state carries understanding forward.** OpenCode is primary runtime (`goal-driver` = `gpt-5.6-luna` 90k, workers = `deepseek-v4-flash` 140k, senior = `terra` 220k, architect = `grok-4-6` 180k, all via `opencode.json` ceilings). Free `opencode/*-free` models are first fallbacks to exhaust zero-cost capacity. Packets (`.opencode/skills/packet`) ≤15 lines, handoffs (`.opencode/skills/handoff`) ≤20 lines, ≤4 concurrent workers with disjoint paths. `guard-bash.sh` blocks Anthropic models, `git worktree add` by hand, and >6 worktrees (inode/cache guard). All `WebSearch/WebFetch` use is encouraged — pricing and API surfaces change monthly, don't guess.
+
 This repository supports Codex, Claude, and other clients through the same contract:
 
 - The root/main agent orchestrates and gates acceptance. It delegates safely separable

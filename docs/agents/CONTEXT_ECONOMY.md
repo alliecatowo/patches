@@ -44,10 +44,12 @@ Subagent workers: 196k mean context over 18,676 requests; the worst 5 individual
 
 ## Enforced by configuration
 
-- **`maxTurns`** on every `.claude/agents/*.md`: 100 (`verifier` 40) — a runaway backstop, not a target; each agent's body states what a handoff at the cap must contain.
-- **`disallowedTools: mcp__*`** on every agent — none use MCP; keeps the tool-schema preamble from growing as MCP servers are added later.
-- **`CLAUDE_CODE_AUTO_COMPACT_WINDOW=500000`** in `.claude/settings.json`'s `env` block.
-- **`LSP`** on read-heavy agents (`implementer`, `reviewer`, `architect`, `spec-auditor`, `docs-writer`) — symbolic lookups return tens of tokens instead of a `Grep` hit list plus a whole-file `Read`.
+- **`opencode.json` `provider.llmgateway.models[].limit.context`**: deterministic ceilings — `grok-4-6`/`grok-4-3` 180k (200k cliff doubles whole request), `gpt-5.6-luna` 90k, `gpt-5.6-terra` 220k (272k cliff), `deepseek-v4-flash` 140k, `qwen3.7-flash` 120k, free `opencode/*-free` 120-140k. If `limit` is unset or 0, `overflow.ts` never compacts — that's the bug `oh-my-openagent#4184` documents. These ceilings are the fork/compact trigger, not just hints.
+- **`maxTurns`** on every agent: 100 (`verifier` 40) — runaway backstop, not target; `goal-driver` 150 for the long-lived driver.
+- **`disallowedTools: mcp__*`** on every agent that doesn't need it — keeps tool-schema preamble small.
+- **`CLAUDE_CODE_AUTO_COMPACT_WINDOW=180000`** in `.claude/settings.json` (was 500k) + `goal-driver` 90k / `deepseek` 140k / `grok` 180k via `opencode.json` — stays below the 200k Grok and 272k GPT cliffs where pricing doubles for the whole request.
+- **`LSP`** on read-heavy agents — tens of tokens vs whole-file `Read`.
+- **Harness guards**: `max 4 concurrent workers` (see `HETEROGENEOUS.md`), `guard-bash.sh` blocks `git worktree add` by hand and `>6 worktrees` (inode/cache thrash, `LEARNINGS.md` 2026-08-20), `bounded.sh` throttles `check`/`build` across workers.
 
 ## Method (reproduce it)
 

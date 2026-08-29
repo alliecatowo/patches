@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Delegate for any concrete P<phase>-<nnn> or H-<nnn> task with clear acceptance criteria and a bounded set of files to touch. Give it the task ID, the exact paths it owns, and what NOT to touch, since other agents may be working concurrently.
-model: sonnet
+model: llmgateway/deepseek-v4-flash # was sonnet — now DeepSeek Flash 140k (or terra for senior) — see docs/agents/HETEROGENEOUS.md
 effort: medium
 maxThinkingTokens: 8192
 memory: project

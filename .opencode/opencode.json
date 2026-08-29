@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    [
+      "@prevalentware/opencode-goal-plugin",
+      {
+        "auto_continue": true,
+        "defer_while_tasks_active": true,
+        "max_auto_turns": 25,
+        "min_continue_interval_seconds": 3,
+        "default_token_budget": 200000,
+        "max_no_progress_turns": 2,
+        "no_progress_token_threshold": 50
+      }
+    ]
+  ]
+}

@@ -1,4 +1,66 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": [".opencode/rules/*.md"]
+  "instructions": [".opencode/rules/*.md"],
+  "provider": {
+    "llmgateway": {
+      "models": {
+        "grok-4-6": {
+          "name": "Grok 4.6 (architect/auditor, standard tier, 200k cliff)",
+          "limit": { "context": 180000, "output": 32000 }
+        },
+        "grok-4-3": {
+          "name": "Grok 4.3 (cheap architect fallback, 200k cliff, 1M window)",
+          "limit": { "context": 180000, "output": 32000 }
+        },
+        "grok-4-1-fast-reasoning": {
+          "name": "Grok 4.1 Fast Reasoning (ultra-cheap architect alternative, 2M)",
+          "limit": { "context": 160000, "output": 16000 }
+        },
+        "gpt-5.6-luna": {
+          "name": "GPT-5.6 Luna (goal-driver, standard, 272k cliff)",
+          "limit": { "context": 90000, "output": 16000 }
+        },
+        "gpt-5.6-terra": {
+          "name": "GPT-5.6 Terra (senior/review, standard, 272k cliff)",
+          "limit": { "context": 220000, "output": 32000 }
+        },
+        "gpt-5.6-sol": {
+          "name": "GPT-5.6 Sol (EXCEPTIONAL only, PREMIUM, 272k cliff)",
+          "limit": { "context": 250000, "output": 32000 }
+        },
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash (default worker, standard, 1M)",
+          "limit": { "context": 140000, "output": 32000 }
+        },
+        "qwen3.7-flash": {
+          "name": "Qwen 3.7 Flash (cheapest flash fallback)",
+          "limit": { "context": 120000, "output": 16000 }
+        },
+        "deepseek-v4-pro": {
+          "name": "DeepSeek V4 Pro (harder reasoning fallback, standard)",
+          "limit": { "context": 140000, "output": 32000 }
+        }
+      }
+    },
+    "opencode": {
+      "models": {
+        "muse-spark-1.2-contributor-free": {
+          "name": "Muse Spark 1.2 (FREE fallback worker)",
+          "limit": { "context": 120000, "output": 16000 }
+        },
+        "nemotron-3-ultra-free": {
+          "name": "Nemotron 3 Ultra (FREE fallback senior)",
+          "limit": { "context": 140000, "output": 16000 }
+        },
+        "nemotron-3.5-lightning-free": {
+          "name": "Nemotron 3.5 Lightning (FREE fast fallback)",
+          "limit": { "context": 120000, "output": 16000 }
+        },
+        "mimo-v2.5-free": {
+          "name": "Mimo V2.5 (FREE fallback)",
+          "limit": { "context": 120000, "output": 16000 }
+        }
+      }
+    }
+  }
 }

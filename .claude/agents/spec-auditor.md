@@ -1,7 +1,7 @@
 ---
 name: spec-auditor
 description: Audits the codebase against INITIAL_VISION.md and the roadmap acceptance checklists (§157–160), finds gaps and violations of the hard rules, and files precise findings as draft items (Status Todo) on the Patches GitHub Project board with A-<nnn> Task IDs, promoting to real issues only when an implementer is about to pick one up. Delegate at the end of a phase (before starting the next one), when asked to run /audit, or when something feels architecturally off and you want a systematic sweep rather than a spot check. Read-only except for filing project-board items.
-model: opus
+model: llmgateway/grok-4-6 # was opus (Anthropic) — now DevPass standard, 180k
 effort: high
 maxThinkingTokens: 8192
 tools: Read, Grep, Glob, LSP, Bash, Edit, Agent
