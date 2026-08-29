@@ -22,10 +22,10 @@
       {
         "auto_continue": true,
         "defer_while_tasks_active": true,
-        "max_auto_turns": 25,
-        "min_continue_interval_seconds": 3,
-        "default_token_budget": 200000,
-        "max_no_progress_turns": 2,
+        "max_auto_turns": 50,
+        "min_continue_interval_seconds": 5,
+        "default_token_budget": 500000,
+        "max_no_progress_turns": 4,
         "no_progress_token_threshold": 50
       }
     ]

@@ -29,12 +29,12 @@
           "limit": { "context": 180000, "output": 32000 }
         },
         "grok-4-1-fast-reasoning": {
-          "name": "Grok 4.1 Fast Reasoning (ultra-cheap architect alternative, 2M)",
-          "limit": { "context": 160000, "output": 16000 }
+          "name": "Grok 4.1 Fast Reasoning (goal-driver, 2M window, $0.20/$0.50 — finesse at luna price)",
+          "limit": { "context": 800000, "output": 24000 }
         },
         "gpt-5.6-luna": {
-          "name": "GPT-5.6 Luna (goal-driver, standard, 272k cliff)",
-          "limit": { "context": 90000, "output": 16000 }
+          "name": "GPT-5.6 Luna (verifier/minor driver, 272k cliff — unltd from 90k)",
+          "limit": { "context": 150000, "output": 16000 }
         },
         "gpt-5.6-terra": {
           "name": "GPT-5.6 Terra (senior/review, standard, 272k cliff)",

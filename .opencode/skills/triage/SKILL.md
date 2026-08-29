@@ -5,7 +5,7 @@ description: Classify a worker failure and decide retry vs escalate. Use in goal
 
 # Triage / escalation ladder
 
-Ladder: `deepseek-v4-flash` (leaf) → `opencode/*-free` (free retry) → `gpt-5.6-terra` (senior) → `grok-4-6`/`grok-4-3` (architect replan). `gpt-5.6-sol` only on explicit `escalate: sol` — it's PREMIUM and 20x Luna.
+Ladder: `deepseek-v4-flash` (leaf, 90% tokens) → `opencode/*-free` (free retry) → `gpt-5.6-terra` (senior, 10× deepseek — only on `capability`) → `grok-4-6`/`grok-4-3` (architect replan). `gpt-5.6-sol` only on explicit `escalate: sol` — it's PREMIUM and 20x Luna. See `execution-loop/SKILL.md` queue-first ordering.
 
 Classify first:
 
