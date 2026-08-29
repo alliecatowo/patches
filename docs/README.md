@@ -45,6 +45,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`operations/web.md`](./operations/web.md)
   - [`operations/federation.md`](./operations/federation.md)
   - [`operations/moderation.md`](./operations/moderation.md) — the `patches-admin` CLI
+  - [`operations/performance.md`](./operations/performance.md) — benchmark harness, latency
+    budget regression gate, and load/capacity suite (#199/#200/#205), every number measured
   - [`operations/session-management-audit.md`](./operations/session-management-audit.md) — H-022
     audit confirming the TUI/`@patches/client` session-manager split is intentional (ADR 0023),
     not accidental duplication

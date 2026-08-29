@@ -25,10 +25,14 @@ const CLAIM_QUERY = `
   RETURNING id
 `;
 
+// `outbox_jobs.id` is `bigint` (`OutboxJob`'s `@PrimaryGeneratedColumn('increment', { type:
+// 'bigint' })`), not a uuid — the `uuid[]` cast this previously used raised
+// "42883 operator does not exist" on every run (see #205's fix, discovered while getting a
+// real number for the first time).
 const COMPLETE_QUERY = `
   UPDATE outbox_jobs
   SET status = 'COMPLETED', completed_at = NOW(), locked_at = NULL, locked_by = NULL
-  WHERE id = ANY($1::uuid[])
+  WHERE id = ANY($1::bigint[])
 `;
 
 /** A type no real handler registers — the bench itself is the only claimer. */
@@ -61,7 +65,12 @@ async function workerLoop(databaseUrl: string, workerId: number): Promise<Worker
     const claimLatencies: number[] = [];
     for (;;) {
       const start = performance.now();
-      const rows = await ds.query<{ id: string }[]>(CLAIM_QUERY, [
+      // `dataSource.query()` on an `UPDATE ... RETURNING` returns the driver's raw
+      // `[rows, rowCount]` tuple (see `docs/research/typeorm-postgres.md` §"query() on
+      // UPDATE/DELETE RETURNING"), not just the rows array `ts-proto`-style helpers assume —
+      // destructuring is what makes `rows.length === 0` an accurate "nothing left to claim"
+      // check instead of always being `2`.
+      const [rows] = await ds.query<[{ id: string }[], number]>(CLAIM_QUERY, [
         `bench-worker-${String(workerId)}`,
         10,
       ]);
