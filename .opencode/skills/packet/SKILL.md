@@ -27,4 +27,5 @@ Rules:
 - One packet per worker. Disjoint file sets — two workers never share a file.
 - Max 4 concurrent workers (worktree + TURBO_CACHE_DIR + bounded.sh contention).
 - Use `WebSearch/WebFetch` in the packet only if the worker will need it — don't preload docs the worker can fetch itself.
-- Fallback chain is documented in `docs/agents/HETEROGENEOUS.md` — default is `deepseek-v4-flash`, fallback `opencode/muse-spark-1.2-contributor-free`, then `qwen3.7-flash`.
+- Ladder is cheap-first: `deepseek-v4-flash` → `opencode/*-free` → `gpt-5.6-terra` only on `handoff blocker=capability` (see `triage/SKILL.md`). Never start a leaf at `terra` — `terra $2/$12` is 10× `deepseek $0.22` for marginal finesse.
+- Triage before bodies: PR queue is `MERGE_NOW/NEEDS_REBASE/NEEDS_FIX/OBSOLETE` via `gh pr list --json`, not `gh pr view` per-PR.
