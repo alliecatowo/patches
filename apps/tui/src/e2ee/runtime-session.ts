@@ -30,8 +30,11 @@ import {
 } from '@patches/crypto';
 import {
   canonicalFanoutTranscript,
+  decodeControlEnvelope,
+  encodeControlEnvelope,
   E2eeContractError,
   E2EE_FRANKING_PROFILE_V1,
+  type E2eeControlEnvelope,
 } from '@patches/domain';
 
 import { E2EE_DEVICE_REVOKED_COPY, refreshOwnRoster } from './device-link.js';
@@ -54,12 +57,14 @@ import {
   createInMemoryQuarantineStore,
   decodePayload,
   encodeChatPlaintext,
+  encodeControlPlaintext,
   epochToNumber,
   sessionIdFor,
   E2eeReceiveUnavailableError,
   E2EE_QUARANTINE_LIMIT_COPY,
   E2EE_RECEIVE_UNAVAILABLE_COPY,
   MAX_QUARANTINED_PER_DRAIN,
+  type E2eeControlEvent,
   type E2eeMailboxEnvelopeLike,
   type E2eeMailboxTransport,
   type E2eeSendTransport,
@@ -212,6 +217,43 @@ export class E2eeSessionRuntime {
   // ------------------------------- send -----------------------------------
 
   async send(conversationId: string, body: string, clientRequestId: string): Promise<void> {
+    await this.fanoutPlaintext(conversationId, encodeChatPlaintext(body), clientRequestId);
+  }
+
+  /**
+   * Sends a B-093 control envelope (typing edge, read receipt, edit, or delete) to every
+   * active member device of `conversationId`, over the same sealed fanout as a chat body.
+   * The control is composed via `@patches/domain`'s canonical codec (bounds enforced there)
+   * and committed/sealed over the same padded plaintext framing as chat — so a peer opening
+   * the envelope recovers identical bytes and `decodePayload` yields `kind: 'control'`.
+   *
+   * `logicalMessageId` is the fanout's own logical id (the control's identity), and is what
+   * a READ_RECEIPT would later reference in `messageIds`.
+   */
+  async sendControl(
+    conversationId: string,
+    control: E2eeControlEnvelope,
+    logicalMessageId: string,
+  ): Promise<void> {
+    const built = encodeControlEnvelope(control, { digest: sha256Hash });
+    await this.fanoutPlaintext(
+      conversationId,
+      encodeControlPlaintext(built.envelopeBytes),
+      logicalMessageId,
+    );
+  }
+
+  /**
+   * The shared fanout core for both chat bodies and control envelopes: seals one
+   * envelope per active target device over the exact padded `plaintext` bytes, stages
+   * each session durably before the bytes leave, and confirms on success / recovers on
+   * failure (audit P1-1, P13-006). `plaintext` is already padded kind-framed bytes.
+   */
+  private async fanoutPlaintext(
+    conversationId: string,
+    plaintext: Uint8Array,
+    clientRequestId: string,
+  ): Promise<void> {
     await this.ensureFreshOwnRoster();
     await this.ensurePrekeysMaintained();
     if (this.deviceRevoked) {
@@ -226,7 +268,6 @@ export class E2eeSessionRuntime {
     const targets = plan.targets.filter(
       (target) => `${target.actorId}\u0000${target.deviceId}` !== selfKey,
     );
-    const plaintext = encodeChatPlaintext(body);
     const openingKey = createFrankingOpeningKey();
     const context = {
       frankingProfile: E2EE_FRANKING_PROFILE_V1,
@@ -401,6 +442,7 @@ export class E2eeSessionRuntime {
     await this.ensureFreshOwnRoster();
     const conversationFilter = filter?.conversationId;
     const rows: InboxRow[] = [];
+    const controls: E2eeControlEvent[] = [];
     const acknowledged: string[] = [];
     let cursor = '';
     let error: string | undefined;
@@ -424,8 +466,9 @@ export class E2eeSessionRuntime {
           continue;
         }
         try {
-          const row = await this.processEnvelope(envelope);
-          if (row !== undefined) rows.push(row);
+          const result = await this.processEnvelope(envelope);
+          if (result.row !== undefined) rows.push(result.row);
+          if (result.control !== undefined) controls.push(result.control);
           acknowledged.push(envelope.envelopeId);
         } catch (caught) {
           if (isReplayDuplicate(caught)) {
@@ -480,7 +523,11 @@ export class E2eeSessionRuntime {
         // the replay guard above turns that into a no-op rather than a duplicate row.
       }
     }
-    return { rows, ...(error === undefined ? {} : { error }) };
+    return {
+      rows,
+      ...(controls.length > 0 ? { controls } : {}),
+      ...(error === undefined ? {} : { error }),
+    };
   }
 
   /**
@@ -501,7 +548,9 @@ export class E2eeSessionRuntime {
     }
   }
 
-  private async processEnvelope(envelope: E2eeMailboxEnvelopeLike): Promise<InboxRow | undefined> {
+  private async processEnvelope(
+    envelope: E2eeMailboxEnvelopeLike,
+  ): Promise<{ row: InboxRow | undefined; control: E2eeControlEvent | undefined }> {
     const sentByViewer = envelope.senderActorId === this.identity.actorId;
     const senderLabel = sentByViewer ? 'you' : `@${envelope.senderActorId}`;
     if (
@@ -509,7 +558,7 @@ export class E2eeSessionRuntime {
       envelope.frankingTag?.profile === undefined ||
       envelope.frankingTag.profile === ''
     ) {
-      return { kind: 'undisplayable', id: envelope.envelopeId };
+      return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
     }
     const epoch = epochToNumber(envelope.membershipEpoch);
     const context = {
@@ -561,7 +610,7 @@ export class E2eeSessionRuntime {
     } else {
       if (storedState === undefined) {
         // No session yet and nothing to bootstrap from: never guess.
-        return { kind: 'undisplayable', id: envelope.envelopeId };
+        return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
       }
       state = storedState;
       message = { encryptedHeader: envelope.encryptedHeader, ciphertext: envelope.ciphertext };
@@ -586,7 +635,10 @@ export class E2eeSessionRuntime {
       // never rendered, never silent. Not committing the advanced state is safe: the
       // ratchet's skipped-key handling absorbs the consumed position on the next
       // delivery from this session.
-      return { kind: 'unverifiable', id: envelope.envelopeId, senderLabel };
+      return {
+        row: { kind: 'unverifiable', id: envelope.envelopeId, senderLabel },
+        control: undefined,
+      };
     }
 
     // Commit the receive-side advance BEFORE acknowledging (ADR 0020 §4).
@@ -605,15 +657,52 @@ export class E2eeSessionRuntime {
     try {
       payload = decodePayload(opened.output.plaintext);
     } catch {
-      return { kind: 'undisplayable', id: envelope.envelopeId };
+      return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
+    }
+    // B-093: a control envelope (typing edge, read receipt, edit, delete) is ephemeral set
+    // membership — it is decoded and surfaced through the drain's `controls` channel, and
+    // deliberately NOT added to `rows`, so `inboundMessagesToRecords` never persists one as
+    // a message. A control whose canonical bytes fail the codec's validation becomes an
+    // `undisplayable` row: the envelope is acknowledged and drained past, never rendered as
+    // a body it does not actually carry (spec §194).
+    if (payload.kind === 'control') {
+      const envelopeBytes = payload.control;
+      if (envelopeBytes === undefined) {
+        return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
+      }
+      let control: ReturnType<typeof decodeControlEnvelope>;
+      try {
+        control = decodeControlEnvelope(envelopeBytes);
+      } catch {
+        return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
+      }
+      return {
+        row: undefined,
+        control: {
+          conversationId: envelope.conversationId,
+          senderActorId: envelope.senderActorId,
+          senderDeviceId: envelope.senderDeviceId,
+          envelopeId: envelope.envelopeId,
+          type: control.type,
+          createdAtMs: control.createdAtMs,
+          ...(control.type === 'READ_RECEIPT' ? { messageIds: control.messageIds } : {}),
+          ...(control.type === 'EDIT' || control.type === 'DELETE'
+            ? { logicalMessageId: control.logicalMessageId }
+            : {}),
+          envelopeBytes,
+        },
+      };
     }
     if (payload.kind === 'chat') {
       return {
-        kind: 'message',
-        id: envelope.envelopeId,
-        senderLabel,
-        body: payload.body ?? '',
-        sentByViewer,
+        row: {
+          kind: 'message',
+          id: envelope.envelopeId,
+          senderLabel,
+          body: payload.body ?? '',
+          sentByViewer,
+        },
+        control: undefined,
       };
     }
     // History transfer: display-only provenance, parsed and labeled, never fed back
@@ -621,16 +710,19 @@ export class E2eeSessionRuntime {
     try {
       const transfer = parseHistoryTransfer(payload.record ?? new Uint8Array());
       return {
-        kind: 'history',
-        id: envelope.envelopeId,
-        fromLabel: `@${transfer.fromActorId}`,
-        entries: transfer.entries.map((entry) => ({
-          senderLabel: `@${entry.senderActorId}`,
-          body: new TextDecoder().decode(entry.plaintext),
-        })),
+        row: {
+          kind: 'history',
+          id: envelope.envelopeId,
+          fromLabel: `@${transfer.fromActorId}`,
+          entries: transfer.entries.map((entry) => ({
+            senderLabel: `@${entry.senderActorId}`,
+            body: new TextDecoder().decode(entry.plaintext),
+          })),
+        },
+        control: undefined,
       };
     } catch {
-      return { kind: 'undisplayable', id: envelope.envelopeId };
+      return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
     }
   }
 
