@@ -225,6 +225,56 @@ describe('parsePageStrict', () => {
     });
   });
 
+  describe('Links group headings (B-119 — link-tree-like collections)', () => {
+    function linksDoc(links: unknown): unknown {
+      return minimalDoc({
+        pages: [{ slug: 'index', title: 'x', blocks: [{ type: 'Links', links }] }],
+      });
+    }
+
+    it('accepts a group heading (optional, grouped + flat entries mixed)', () => {
+      const doc = parsePageStrict(
+        linksDoc([
+          { label: 'dev', href: 'https://git.example', group: 'Code' },
+          { label: 'flat', href: 'https://flat.example' },
+        ]),
+      );
+      const links = doc.pages[0]?.blocks[0];
+      expect(links).toMatchObject({ type: 'Links' });
+      if (links?.type !== 'Links') throw new Error('expected a Links block');
+      expect(links.links[0]).toMatchObject({ label: 'dev', group: 'Code' });
+      expect(links.links[1]).toMatchObject({ label: 'flat' });
+      expect(links.links[1]?.group).toBeUndefined();
+    });
+
+    it('normalizes a blank group to absent (no stray empty heading)', () => {
+      const doc = parsePageStrict(
+        linksDoc([{ label: 'x', href: 'https://x.example', group: '  ' }]),
+      );
+      const links = doc.pages[0]?.blocks[0];
+      if (links?.type !== 'Links') throw new Error('expected a Links block');
+      expect(links.links[0]).toMatchObject({ label: 'x', href: 'https://x.example' });
+      expect(links.links[0]?.group).toBeUndefined();
+    });
+
+    it('strips escape sequences and trims a group heading', () => {
+      const doc = parsePageStrict(
+        linksDoc([{ label: 'x', href: 'https://x.example', group: `  ${ESC}[31mCode${ESC}[0m  ` }]),
+      );
+      const links = doc.pages[0]?.blocks[0];
+      if (links?.type !== 'Links') throw new Error('expected a Links block');
+      expect(links.links[0]?.group).toBe('Code');
+    });
+
+    it('rejects an over-length group heading', () => {
+      expect(() =>
+        parsePageStrict(
+          linksDoc([{ label: 'x', href: 'https://x.example', group: 'g'.repeat(201) }]),
+        ),
+      ).toThrow(PageValidationError);
+    });
+  });
+
   describe('Image/Gallery media references (spec §172 — Patches media only, never remote URLs)', () => {
     it('rejects a non-uuid mediaId (e.g. a remote URL smuggled into the field)', () => {
       expect(() =>

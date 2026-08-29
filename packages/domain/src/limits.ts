@@ -27,6 +27,10 @@ export const PAGE_SLUG_MAX_CHARS = 64;
 export const PAGE_TITLE_MAX_CHARS = 200;
 export const PAGE_LINK_LABEL_MAX_CHARS = 200;
 export const PAGE_LINK_HREF_MAX_CHARS = 2048;
+/** A `Links` entry's optional group heading label (B-119) — bounded like a label so a
+ * blank/oversized group can't smuggle a rendering payload or an escape-sequence vector
+ * past the schema. */
+export const PAGE_LINK_GROUP_MAX_CHARS = 200;
 export const PAGE_MAX_LINKS_PER_BLOCK = 40;
 export const PAGE_MAX_TOP_EIGHT = 8;
 export const PAGE_MAX_GALLERY_ITEMS = 20;
