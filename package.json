@@ -32,6 +32,8 @@
     "db:generate": "pnpm --filter @patches/database migration:generate",
     "db:show": "pnpm --filter @patches/database migration:show",
     "keys:generate": "node apps/server/scripts/generate-keys.mjs",
+    "opencode:config:validate": "node scripts/validate-opencode-config.mjs",
+    "opencode:lsp:smoke": "node scripts/smoke-opencode-lsp.mjs",
     "server": "pnpm --filter @patches/server start:dev",
     "tui": "pnpm --filter @patches/tui start",
     "clean": "turbo run clean && rm -rf node_modules/.cache",
