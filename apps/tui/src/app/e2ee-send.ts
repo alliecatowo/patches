@@ -25,6 +25,12 @@ import { randomUUID } from 'node:crypto';
 import type { E2eeMailboxTransport, E2eeSendTransport, InboxMessageRow } from '../e2ee/runtime.js';
 import { E2eeNotEnrolledError } from '../e2ee/runtime.js';
 import {
+  inboundMessageRow,
+  inboundMessagesToRecords,
+  loadInboundMessages,
+  recordInboundMessages,
+} from '../e2ee/inbound-messages.js';
+import {
   loadOwnMessages,
   mergeOwnMessages,
   ownMessageRow,
@@ -152,9 +158,10 @@ export interface VaultE2eeSender {
   send(conversationId: string, body: string): Promise<InboxMessageRow>;
   /**
    * Drains this account's encrypted mailbox (optionally only `conversationId`'s
-   * envelopes) and returns render-ready rows. A conversation-scoped drain also merges
-   * this device's stored own messages, which no fanout will ever redeliver. Requires an
-   * enrolled identity.
+   * envelopes) and returns render-ready rows. A conversation-scoped drain durably stores
+   * the received message rows it produces (`inbound-messages.ts`, issue #352) and merges
+   * them with this device's stored own messages, so both halves of a thread survive a
+   * restart — no fanout ever redelivers either side. Requires an enrolled identity.
    */
   pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult>;
   /**
@@ -381,11 +388,28 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
         ...(conversationId === undefined ? {} : { conversationId }),
       });
       if (conversationId === undefined) return result;
+      const store = await ensureOpen();
+      const own = await loadOwnMessages(store, conversationId);
+      // Durable copy of what this device received: the drain has already acknowledged
+      // these envelopes, so persisting before they can be dropped is what stops a
+      // received message from disappearing, and a thread that reopens after a restart
+      // re-reads it from the vault (issue #352).
+      if (result.rows.length > 0) {
+        const inbound = inboundMessagesToRecords(result.rows);
+        if (inbound.length > 0) await recordInboundMessages(store, conversationId, inbound);
+      }
+      const inboundRecords = await loadInboundMessages(store, conversationId);
+      const all = [...inboundRecords.map(inboundMessageRow), ...result.rows];
+      const seen = new Set<string>();
+      const drained = all.filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
       // Own messages are per-conversation, so they merge only into a thread-scoped
       // drain — an account-wide drain has no single conversation to attribute them to.
-      const own = await loadOwnMessages(await ensureOpen(), conversationId);
-      if (own.length === 0) return result;
-      return { ...result, rows: mergeOwnMessages(own, result.rows) };
+      if (own.length === 0 && drained.length === 0) return result;
+      return { ...result, rows: mergeOwnMessages(own, drained) };
     },
     async wipe(): Promise<void> {
       // Route the wipe through the LIVE store (audit P1-2): the same object that holds

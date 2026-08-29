@@ -115,6 +115,13 @@ test('two enrolled accounts exchange a first message in both directions', async 
   await expect(bob.page.getByText(firstMessage)).toBeVisible({ timeout: 60_000 });
   await saveJourneyScreenshot(bob.page, testInfo, 'b-received');
 
+  // Issue #352: the received half used to be in-memory only (the mailbox acknowledges each
+  // drain), so a reload emptied Bob's thread of the message Alice sent. It now comes back out
+  // of this browser's vault, exactly like the sender's half does (#332).
+  await bob.page.reload();
+  await expect(bob.page.getByText(firstMessage)).toBeVisible({ timeout: 30_000 });
+  await saveJourneyScreenshot(bob.page, testInfo, 'b-received-after-reload');
+
   const reply = 'reply from the other browser';
   await bob.page.getByRole('textbox', { name: 'Message body' }).fill(reply);
   await bob.page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -123,6 +130,12 @@ test('two enrolled accounts exchange a first message in both directions', async 
   // --- Alice sees the reply. ---
   await expect(alice.page.getByText(reply)).toBeVisible({ timeout: 60_000 });
   await saveJourneyScreenshot(alice.page, testInfo, 'a-received-reply');
+
+  // Issue #352 (received side, other direction): Alice's copy of the reply must also survive
+  // a reload out of her vault.
+  await alice.page.reload();
+  await expect(alice.page.getByText(reply)).toBeVisible({ timeout: 30_000 });
+  await saveJourneyScreenshot(alice.page, testInfo, 'a-received-reply-after-reload');
 
   await bob.close();
   await alice.close();
