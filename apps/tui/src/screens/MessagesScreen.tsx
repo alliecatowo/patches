@@ -26,7 +26,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContentSize } from '../app/layout.js';
 import { movementTarget } from '../app/list-movement.js';
 import {
+  nextPollDelayMs,
   TUI_CONVERSATION_LIST_POLL_MS,
+  TUI_POLL_BACKOFF_MAX_MS,
   TUI_THREAD_MAIL_POLL_MS,
   TUI_THREAD_SECURITY_POLL_MS,
 } from '../app/poll-intervals.js';
@@ -678,26 +680,43 @@ export function MessagesScreen({
   useEffect(() => {
     if (!e2eeThreadOpen || conversationId === '' || receiveE2ee === undefined) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // P19-027 / issue #384: bounded backoff on consecutive transient drain failures so a
+    // sustained outage does not hammer `ListMailboxEnvelopes` at the fixed cadence. A
+    // success resets the count, collapsing the gap straight back to the base interval.
+    let consecutiveFailures = 0;
     async function poll(): Promise<void> {
       if (cancelled) return;
       try {
         const rows = await receiveE2ee?.(conversationId);
-        if (cancelled || rows === undefined || rows.length === 0) return;
-        setE2eeRows((current) => {
-          const seen = new Set(current.map((row) => row.id));
-          const fresh = rows.filter((row) => !seen.has(row.id));
-          return fresh.length === 0 ? current : [...current, ...fresh];
-        });
+        if (cancelled) return;
+        if (rows !== undefined && rows.length > 0) {
+          setE2eeRows((current) => {
+            const seen = new Set(current.map((row) => row.id));
+            const fresh = rows.filter((row) => !seen.has(row.id));
+            return fresh.length === 0 ? current : [...current, ...fresh];
+          });
+        }
+        // A successful drain collapses the backoff straight back to the base interval.
+        consecutiveFailures = 0;
       } catch {
         // Transient poll failures are invisible beyond the next tick's retry; nothing
-        // about a failed poll may be mistaken for "no messages".
+        // about a failed poll may be mistaken for "no messages". Each failure widens the
+        // gap up to the capped ceiling (P19-027 / issue #384).
+        consecutiveFailures += 1;
       }
+      if (cancelled) return;
+      const delay = nextPollDelayMs(
+        consecutiveFailures,
+        Math.max(250, mailPollMs),
+        TUI_POLL_BACKOFF_MAX_MS,
+      );
+      timer = setTimeout(() => void poll(), delay);
     }
     void poll();
-    const timer = setInterval(() => void poll(), Math.max(250, mailPollMs));
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer !== undefined) clearTimeout(timer);
     };
     // `refreshToken` (`Ctrl+R`, P19-016) restarts this effect: an immediate drain plus a
     // fresh interval, on top of the normal `mailPollMs` cadence rather than instead of it.

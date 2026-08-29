@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  nextPollDelayMs,
   TUI_CONVERSATION_LIST_POLL_MS,
+  TUI_POLL_BACKOFF_MAX_MS,
   TUI_THREAD_MAIL_POLL_MS,
   TUI_THREAD_SECURITY_POLL_MS,
   TUI_UNREAD_BADGE_POLL_MS,
@@ -28,5 +30,22 @@ describe('TUI poll intervals match ADR 0032', () => {
 
   it('in-thread peer security re-check: 30s while a thread is open', () => {
     expect(TUI_THREAD_SECURITY_POLL_MS).toBe(30_000);
+  });
+});
+
+describe('nextPollDelayMs (P19-027: bounded backoff on transient DM-poll errors)', () => {
+  const base = 5_000;
+
+  it('stays at the base interval while healthy', () => {
+    expect(nextPollDelayMs(0, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(base);
+  });
+
+  it('doubles per consecutive failure, clamped at the max', () => {
+    expect(nextPollDelayMs(1, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(10_000);
+    expect(nextPollDelayMs(2, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(20_000);
+    expect(nextPollDelayMs(3, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(40_000);
+    // base * 2^4 = 80s, clamped back down to the 60s ceiling.
+    expect(nextPollDelayMs(4, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(TUI_POLL_BACKOFF_MAX_MS);
+    expect(nextPollDelayMs(10, base, TUI_POLL_BACKOFF_MAX_MS)).toBe(TUI_POLL_BACKOFF_MAX_MS);
   });
 });

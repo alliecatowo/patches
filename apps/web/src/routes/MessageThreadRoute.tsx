@@ -26,7 +26,7 @@ import { useConversationsQuery } from '../messages/useConversationsQuery.js';
 import styles from '../messages/ThreadPane.module.css';
 import { E2eeStatusChip } from '../messages/E2eeStatusChip.js';
 import { useQuery } from '@tanstack/react-query';
-import { WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
+import { nextPollDelayMs, POLL_BACKOFF_MAX_MS, WEB_DM_POLL_MS } from '../lib/poll-intervals.js';
 import { toast } from 'sonner';
 
 const POLL_INTERVAL_MS = 8_000;
@@ -78,7 +78,15 @@ export function MessageThreadRoute(): JSX.Element {
   useEffect(() => {
     if (!enrolled || conversationId === '') return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // P19-027 / issue #384: bounded backoff on consecutive transient poll failures so a
+    // sustained outage does not hammer the drain at the fixed 8s cadence. A success resets
+    // the count, collapsing the gap straight back to the base interval. Drained envelopes
+    // are persisted to the vault (issue #352) before this callback sees them, so backing
+    // off loses nothing: the next poll re-reads them from the vault.
+    let consecutiveFailures = 0;
     const poll = async (): Promise<void> => {
+      if (cancelled) return;
       try {
         const fresh = await webE2ee().poll(conversationId);
         if (cancelled) return;
@@ -99,15 +107,21 @@ export function MessageThreadRoute(): JSX.Element {
           return merged;
         });
         setNotice(null);
+        // A successful poll collapses the backoff straight back to the base interval.
+        consecutiveFailures = 0;
       } catch {
         if (!cancelled) setNotice(WEB_E2EE_COPY.pollFailed);
+        // Each transient failure widens the gap up to the capped ceiling (P19-027 / #384).
+        consecutiveFailures += 1;
       }
+      if (cancelled) return;
+      const delay = nextPollDelayMs(consecutiveFailures, POLL_INTERVAL_MS, POLL_BACKOFF_MAX_MS);
+      timer = setTimeout(() => void poll(), delay);
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer !== undefined) clearTimeout(timer);
     };
   }, [enrolled, conversationId]);
 
