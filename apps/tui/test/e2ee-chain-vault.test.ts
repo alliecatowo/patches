@@ -41,8 +41,9 @@ import { MemoryVaultFs, testLocalIdentity } from '../src/e2ee/test-support.js';
 import { NO_KEYRING } from '../src/e2ee/vault-key-providers.js';
 
 // ---------------------------------------------------------------------------
-// Wire-shaped fixtures built with the node's own transcript encoders, so chain
-// verification is pinned to what a real node signs (see node-transcripts.ts).
+// Wire-shaped fixtures built with `@patches/crypto`'s one identity-transcript
+// codec — the same encoder the node signs and serves (ADR 0033), so chain
+// verification is pinned to exactly the transcripts a real node produces.
 // ---------------------------------------------------------------------------
 
 const CREATED = new Date('2026-08-01T00:00:00Z');
