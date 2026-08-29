@@ -35,6 +35,12 @@ import { logger } from '../lib/log.js';
 import type { InboxMessageRow, InboxRow } from './runtime.js';
 import { E2eeNotEnrolledError } from './runtime.js';
 import {
+  inboundMessageRow,
+  inboundMessagesToRecords,
+  loadInboundMessages,
+  recordInboundMessages,
+} from './inbound-messages.js';
+import {
   loadOwnMessages,
   mergeOwnMessages,
   ownMessageRow,
@@ -347,16 +353,16 @@ class WebE2eeManager {
    * so far in this session.
    *
    * A drain acknowledges each envelope as soon as its receive state commits (ADR 0020 §4),
-   * so the node will never redeliver it — the rows a drain returns are the only copy. A
-   * caller that throws them away therefore destroys messages, and a React effect throws away
-   * exactly that: an in-flight poll whose component unmounted or whose dependencies changed
-   * mid-drain has nowhere to put its result (`MessageThreadRoute`'s `cancelled` guard, and
-   * React's deliberately double-invoked effects, both hit this).
+   * so the node will never redeliver it — the rows a drain returns are the only copy. The
+   * received `message` rows are therefore durably stored in the vault as they drain
+   * (`inbound-messages.ts`, issue #352), so a caller that throws away a result (an in-flight
+   * poll whose component unmounted, or one of React's deliberately double-invoked effects)
+   * loses nothing: the next poll re-reads them from the vault and the caller dedupes by row
+   * id. That persistence is also what makes the received half of a thread survive a reload.
    *
-   * The cache is what makes this method safe to call from a component that can vanish
-   * mid-call: the next poll re-reports the same rows and the caller dedupes by row id. It is
-   * in-memory and session-scoped on purpose — durable history belongs to the vault, not
-   * here — and is cleared with the account in `release()`.
+   * A small in-memory cache keeps only the session-scoped non-message rows
+   * (quarantine/undisplayable) so a vanished caller loses nothing even for those; it is
+   * cleared with the account in `release()`. Durable history lives in the vault, not here.
    *
    * Queued behind `enqueue` so two concurrent drains (two effect runs racing) cannot
    * interleave over one mailbox and split a conversation's messages between two results.
@@ -366,17 +372,30 @@ class WebE2eeManager {
       const runtime = this.requireRuntime();
       const vault = this.requireVault();
       const result = await runtime.pollMailbox({ conversationId });
-      const drained = this.drained.get(conversationId) ?? [];
       if (result.rows.length > 0) {
-        drained.push(...result.rows);
-        this.drained.set(conversationId, drained);
+        // Durable copy of what this device received: the drain has already acknowledged
+        // these envelopes, so persisting before they can be dropped is what stops a
+        // received message from disappearing (issue #352).
+        const inbound = inboundMessagesToRecords(result.rows);
+        if (inbound.length > 0) {
+          await recordInboundMessages(vault, conversationId, inbound);
+        }
+        const nonMessage = result.rows.filter((row) => row.kind !== 'message');
+        if (nonMessage.length > 0) {
+          const drained = this.drained.get(conversationId) ?? [];
+          drained.push(...nonMessage);
+          this.drained.set(conversationId, drained);
+        }
       }
-      // The vault's own-message rows are the only copy of what this device sent, and a
-      // fresh page load starts with an empty drain cache — merging here is what makes a
-      // sender's half of the thread survive a reload (issue #332).
+      // Reconstruct the thread from durable vault history: own messages first, then
+      // received messages in drain order, then any session-scoped non-message rows.
       const own = await loadOwnMessages(vault, conversationId);
-      if (own.length === 0) return [...drained];
-      return mergeOwnMessages(own, drained);
+      const inboundRecords = await loadInboundMessages(vault, conversationId);
+      const merged = mergeOwnMessages(own, inboundRecords.map(inboundMessageRow));
+      const cached = this.drained.get(conversationId) ?? [];
+      if (cached.length === 0) return merged;
+      const seen = new Set(merged.map((row) => row.id));
+      return [...merged, ...cached.filter((row) => !seen.has(row.id))];
     });
   }
 
