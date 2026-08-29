@@ -188,6 +188,17 @@ describe('ProfileScreen rapid personalization (B-130)', () => {
     expect(frame).toContain('┏');
   });
 
+  it('applies the deterministic identity-accent + restrained pop (B-117)', async () => {
+    // No `accentColor` and no name-tag/frame cosmetics — the shared pack gives the profile
+    // a handle-derived accent (so nothing falls back to the theme accent) and a restrained
+    // pop dot after the name, both stripped under plain mode.
+    const { lastFrame } = renderScreen(actor({ displayName: 'Bob' }));
+    await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));
+    const frame = stripSgr(lastFrame() ?? '');
+    // Pop is a single accent dot on the same name line (no extra row); name still intact.
+    expect(frame).toContain('Bob ·');
+  });
+
   it('degrades to a plain profile with no cosmetics set (§184.3)', async () => {
     const { lastFrame } = renderScreen(actor({ displayName: 'Bob' }));
     await vi.waitFor(() => expect(lastFrame()).toContain('Bob'));

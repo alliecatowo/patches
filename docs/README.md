@@ -29,6 +29,8 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
     the TUI's frame/navigation/layout is becoming, and why (target design, ADR 0018)
   - [`architecture/realtime.md`](./architecture/realtime.md) — every surface that updates live,
     its actual mechanism/interval with file:line, and where it never refreshes (issue #207)
+  - [`architecture/identity-cosmetics.md`](./architecture/identity-cosmetics.md) — the shared,
+    capability-aware identity cosmetic catalog (frames/name-tags/pop/deterministic art, B-117)
 - **`decisions/`** — Architecture Decision Records (ADRs). Numbered, immutable-once-accepted
   records of consequential technical decisions and why they were made. Start at
   [`decisions/README.md`](./decisions/README.md) for the index and template.

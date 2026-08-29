@@ -1,4 +1,5 @@
 .header {
+  position: relative; /* anchor for the decorative `data-pop` overlay */
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -136,10 +137,17 @@
 }
 
 .avatarPlaceholder {
+  position: relative;
   width: 76px;
   height: 76px;
   border-radius: var(--radius-full);
-  background: var(--accent);
+  /* Deterministic identity art (B-117): `--identity-accent` is set inline from the handle
+     when no uploaded avatar exists; falls back to the site accent otherwise. */
+  background: linear-gradient(
+    135deg,
+    var(--identity-accent, var(--accent)),
+    color-mix(in srgb, var(--identity-accent, var(--accent)) 55%, black)
+  );
   color: var(--accent-fg);
   display: flex;
   align-items: center;
@@ -148,6 +156,51 @@
   font-size: 2rem;
   border: 2px solid var(--border);
   box-shadow: var(--shadow-sm);
+}
+
+/* Decorative handle-derived motif (B-117): small mark near the tile's corner, never
+   conveying function (decorative content only, hidden from assistive tech). */
+.avatarPlaceholder > span {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.9;
+  color: color-mix(in srgb, var(--accent-fg) 70%, transparent);
+}
+
+/* Restrained "pop" on the profile header (B-117): a subtle animated glow driven by
+   `data-pop`, which the pack only emits when the user hasn't requested reduced motion
+   (web) and the terminal/plain mode permits it (TUI). The CSS guard is defence-in-depth
+   for any caller that hard-codes `data-pop`. */
+.header[data-pop='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    color-mix(in srgb, var(--profile-accent, var(--accent)) 18%, transparent),
+    transparent 70%
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .header[data-pop='true']::after {
+    animation: identity-pop 2.6s ease-in-out infinite;
+  }
+}
+
+@keyframes identity-pop {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .displayName {

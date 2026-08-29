@@ -101,6 +101,76 @@ describe('ProfileRoute', () => {
     expect(document.querySelector('[data-name-tag]')?.getAttribute('data-name-tag')).toBe('pilled');
   });
 
+  it('renders deterministic identity art on a placeholder avatar (B-117)', async () => {
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+      } as Actor,
+    });
+
+    renderProfile();
+
+    await screen.findByRole('heading', { name: 'Allie' });
+
+    // The avatar placeholder (no uploaded avatar) — CSS modules hash its class, so query by
+    // the inline `--identity-accent` custom property the deterministic-art logic sets.
+    const placeholder = document.querySelector<HTMLElement>('[style*="--identity-accent"]');
+    expect(placeholder).not.toBeNull();
+    // Deterministic, handle-derived accent + a closed allow-listed motif — decoration only.
+    expect(placeholder?.style.getPropertyValue('--identity-accent')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(placeholder?.querySelector('span[aria-hidden="true"]')).not.toBeNull();
+    // A cap-less profile still gets the restrained pop by default (motion allowed).
+    expect(document.querySelector('[data-pop]')?.getAttribute('data-pop')).toBe('true');
+  });
+
+  it('drops the pop emphasis when the user prefers reduced motion (B-117)', async () => {
+    const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    mockGetActorByHandle.mockResolvedValue({
+      actor: {
+        id: 'actor-1',
+        handle: 'allie',
+        displayName: 'Allie',
+        bio: '',
+        locationText: '',
+        websiteUrl: '',
+        profileFrame: ProfileFrame.GLOW,
+      } as Actor,
+    });
+
+    renderProfile();
+
+    await screen.findByRole('heading', { name: 'Allie' });
+
+    // Reduced motion only disables the animated pop, never the (static) frame.
+    expect(document.querySelector('[data-pop]')).toBeNull();
+    expect(document.querySelector('[data-frame]')?.getAttribute('data-frame')).toBe('glow');
+
+    if (originalMatchMedia === undefined) {
+      Reflect.deleteProperty(window, 'matchMedia');
+    } else {
+      Object.defineProperty(window, 'matchMedia', originalMatchMedia);
+    }
+  });
+
   it('renders an uploaded avatar/banner via MediaService.GetMediaDownload (#324)', async () => {
     mockGetActorByHandle.mockResolvedValue({
       actor: {
