@@ -26,7 +26,9 @@ Rules:
 
 - **Workers may and should file follow-ups they discover** (see `handoff/SKILL.md`): `gh issue create --repo alliecatowo/patches` + add to Project #5, body with scope/evidence/acceptance/blocked-by Task IDs/labels, then report the URL in the handoff. One issue per follow-up; never touch board items outside the ones you filed.
 - One packet per worker. Disjoint file sets — two workers never share a file.
-- Max 6 concurrent workers prefer 2-3 wider bundled phase-slice PRs (same spec file, ≤25 lines) over 4 narrow — one PR bundles multiple B-nnn when scope overlaps <20% (fixes PR sprawl).
+- The driver may dispatch up to 40 concurrent workers when file ownership is disjoint. Prefer 2-4
+  squad-capable workers for broad phase slices; a squad worker may fan out up to four leaf agents at
+  the next tier. Never overlap a file set, and never use concurrency to bypass review or validation.
 - Use `WebSearch/WebFetch` in the packet only if the worker will need it — don't preload docs the worker can fetch itself.
-- Ladder is cheap-first: `deepseek-v4-flash` → `opencode/*-free` → `gpt-5.6-terra` only on `handoff blocker=capability` (see `triage/SKILL.md`). Never start a leaf at `terra` — `terra $2/$12` is 10× `deepseek $0.22` for marginal finesse.
+- Ladder is free-first: `opencode/*-free` → `llmgateway/deepseek-v4-flash` → `llmgateway/qwen3.7-flash` → `deepseek-v4-pro` → `gpt-5.6-terra` → `grok-4-6`. Never start routine work at Terra or Grok.
 - Triage before bodies: PR queue is `MERGE_NOW/NEEDS_REBASE/NEEDS_FIX/OBSOLETE` via `gh pr list --json`, not `gh pr view` per-PR.

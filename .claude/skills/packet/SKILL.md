@@ -26,6 +26,7 @@ Rules:
 
 - **Workers may and should file follow-ups they discover** (see `handoff/SKILL.md`): `gh issue create --repo alliecatowo/patches` + add to Project #5, body with scope/evidence/acceptance/blocked-by Task IDs/labels, then report the URL in the handoff. One issue per follow-up; never touch board items outside the ones you filed.
 - One packet per worker. Disjoint file sets — two workers never share a file.
-- Max 4 concurrent workers (worktree + TURBO_CACHE_DIR + bounded.sh contention).
+- Up to 40 top-level workers may run when file ownership is disjoint. A squad worker may fan out
+  up to four leaves at depth 2; bounded checks remain required and overlapping paths are forbidden.
 - Use `WebSearch/WebFetch` in the packet only if the worker will need it — don't preload docs the worker can fetch itself.
 - Fallback chain is documented in `docs/agents/HETEROGENEOUS.md` — default is `deepseek-v4-flash`, fallback `opencode/muse-spark-1.2-contributor-free`, then `qwen3.7-flash`.
