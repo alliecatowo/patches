@@ -1,0 +1,21 @@
+{
+  "users": [
+    { "key": "wk-demo-allie", "handle": "wk-demo-allie", "email": "wk-demo-allie@example.invalid" },
+    { "key": "wk-demo-maya", "handle": "wk-demo-maya", "email": "wk-demo-maya@example.invalid" }
+  ],
+  "follows": [
+    { "key": "wk-demo-maya-follows-allie", "from": "wk-demo-maya", "to": "wk-demo-allie" }
+  ],
+  "posts": [
+    {
+      "key": "wk-demo-greeting",
+      "author": "wk-demo-allie",
+      "body": "Smoke marker: welcome to the Patches local demo."
+    },
+    {
+      "key": "wk-demo-reply",
+      "author": "wk-demo-maya",
+      "body": "Hello from a second harness account."
+    }
+  ]
+}

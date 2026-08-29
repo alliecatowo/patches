@@ -72,6 +72,12 @@ return their deterministic `clientRequestId` where applicable.
 An identical declaration can be run twice; changes and removals fail closed because this slice does
 not yet implement authoritative inverse cleanup. It intentionally does not manage communities or
 DMs; notification actions exclude DM notifications and bounded waits observe unread counts only.
+`infra/lab/worlds/demo.json` is the committed two-user demo world (a follower + two posts) in this
+format, usable for local demos and as the reference shape for further H-015 worlds.
+
+A unit-tested browser-smoke plan lives in `packages/harness/src/browser.ts` (H-018#189): it decides
+the loopback origin to drive, the disposable `wk-smoke-*` account, and the compose-to-assert-to-
+screenshot steps. Driving that plan through Playwright against a live lab remains planned.
 
 ## Mailpit message retrieval
 
