@@ -1,16 +1,16 @@
  patches › Local › Thread · ● patches.test:50051 · @alice · ✉ 1
 
  > Local                                                             │  Thread
- Local                                                               │Thread
-                                                                     │
- 1/2 · — end of the timeline —                                       │1/2 · — end of the timeline —
- @bob · 2 minutes ago                                                │@alice · 5 minutes ago
-   A reply from bob, seeded for the thread golden frame.             │  Golden frame fixture post from alice.
- ♡ 0 · 0 replies                                                     │♡ 0 · 1 reply
-                                                                     │
- @alice · 5 minutes ago                                              │  @bob · 2 minutes ago
-   Golden frame fixture post from alice.                             │    A reply from bob, seeded for the thread golden frame.
- ♡ 0 · 1 reply                                                       │  ♡ 0 · 0 replies
+ Local                                                               │1/2 · — end of the timeline —
+                                                                     │@alice · 5 minutes ago
+ 1/2 · — end of the timeline —                                       │  Golden frame fixture post from alice.
+ @bob · 2 minutes ago                                                │♡ 0 · 1 reply
+   A reply from bob, seeded for the thread golden frame.             │
+ ♡ 0 · 0 replies                                                     │── replies ──
+                                                                     │  ↳ @bob · 2 minutes ago
+ @alice · 5 minutes ago                                              │      A reply from bob, seeded for the thread golden frame.
+   Golden frame fixture post from alice.                             │    ♡ 0 · 0 replies
+ ♡ 0 · 1 reply                                                       │
                                                                      │
                                                                      │
                                                                      │

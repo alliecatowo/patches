@@ -59,9 +59,35 @@ describe('Thread screen (P4-004)', () => {
     await flush();
     press(KEY.enter);
 
-    const frame = await expectFrame(lastFrame, 'Thread');
+    // The `── replies ──` divider only renders once the thread has settled with its
+    // replies loaded — a stronger navigation marker than the status-bar breadcrumb,
+    // which is present before the thread content arrives.
+    const frame = await expectFrame(lastFrame, '── replies ──');
     expect(frame).toContain('Alice root post');
     expect(frame).toContain('Bob reply');
+    unmount();
+  });
+
+  it('renders the thread hierarchy: no redundant title, a `── replies ──` divider and a `↳` depth glyph on replies', async () => {
+    const fake = createFakeApi();
+    const alice = fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const bob = fake.addUser({ handle: 'bob', password: 'x', displayName: '', bio: '' });
+    const root = fake.addPost(alice.id, 'Alice root post');
+    fake.addPost(bob.id, 'Bob reply', new Date(), root.id);
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+
+    await pressGo(press, 'l');
+    press('j');
+    await flush();
+    press(KEY.enter);
+
+    const frame = await expectFrame(lastFrame, '── replies ──');
+    // The redundant `Thread` title is gone (F6) — the breadcrumb in the status bar
+    // is the only remaining occurrence, so assert the divider and glyph instead.
+    expect(frame).toContain('── replies ──');
+    expect(frame).toContain('↳ @bob');
     unmount();
   });
 
@@ -91,7 +117,7 @@ describe('Thread screen (P4-004)', () => {
     // 2026-08-18). Bob's root post and the new reply are both in the one list.
     frame = await waitForFrame(
       lastFrame,
-      (f) => f.includes('Thread') && f.includes('Alice reply text'),
+      (f) => f.includes('── replies ──') && f.includes('Alice reply text'),
     );
     expect(frame).toContain('Bob root post');
     unmount();
@@ -121,7 +147,7 @@ describe('Thread screen (P4-004)', () => {
     // 'Root post' (and every other post here) is already visible in the local
     // feed row list, so wait on the 'Thread' screen header instead, which only
     // renders once the navigation has actually happened.
-    let frame = await expectFrame(lastFrame, 'Thread');
+    let frame = await expectFrame(lastFrame, '── replies ──');
     expect(frame).toContain('Root post');
     expect(frame).toContain('Bob reply');
     expect(frame).not.toContain('Carol nested reply');
@@ -182,7 +208,10 @@ describe('Thread navigation (owner feedback 2026-08-18)', () => {
     press('j');
     await flush(60);
     press(KEY.enter);
-    await waitForFrame(lastFrame, (f) => f.includes('Thread') && f.includes('Alice root post'));
+    await waitForFrame(
+      lastFrame,
+      (f) => f.includes('── replies ──') && f.includes('Alice root post'),
+    );
     await flush(60);
 
     // Move down into the reply, then back up with the arrow key — the parent is

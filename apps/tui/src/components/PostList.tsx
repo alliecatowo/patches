@@ -75,6 +75,12 @@ export interface PostListProps extends PostRowActions {
   /** Per-row indent level (0 = flush left), e.g. the thread screen indenting
    * replies one step deeper than the focused post it lists alongside them. */
   rowIndent?: ((post: Post) => number) | undefined;
+  /** Per-row glyph prefix (e.g. a thread's `↳` depth marker), rendered dim before
+   * each row's own content. */
+  rowGlyph?: ((post: Post) => string) | undefined;
+  /** A dim labelled rule rendered above the item at `beforeIndex` (e.g. a thread's
+   * `── replies ──` divider before the first reply). */
+  sectionRule?: { label: string; beforeIndex: number } | undefined;
   /** How many posts a `R` refresh just brought in that weren't there before —
    * renders the `↑ N new` marker above the list. `0` renders nothing. */
   newCount?: number;
@@ -106,6 +112,8 @@ export function PostList({
   onTogglePin,
   jump,
   rowIndent,
+  rowGlyph,
+  sectionRule,
   decorate,
   newCount = 0,
   chromeRows = 2,
@@ -182,6 +190,8 @@ export function PostList({
         isActive={isActive}
         jump={jump}
         indentOf={(post) => rowIndent?.(post) ?? 0}
+        rowGlyph={rowGlyph}
+        sectionRule={sectionRule}
         positionSuffix={hasMore ? ` · ${loadMoreKeyHint} for more` : ' · — end of the timeline —'}
         positionPrefix={
           newCount > 0 ? (

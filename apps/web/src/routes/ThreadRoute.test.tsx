@@ -183,6 +183,85 @@ describe('ThreadRoute', () => {
     });
   });
 
+  it('targets a specific reply: composer header, preview, and inReplyToId (issue #154)', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    mockCreatePost.mockResolvedValue({ post: { id: 'reply-1' } });
+    const reply = {
+      ...mockPost,
+      id: 'reply-9',
+      body: 'A nested reply',
+      author: {
+        ...mockPost.author,
+        id: 'actor-3',
+        handle: 'carol',
+        displayName: 'Carol',
+      } as unknown as Actor,
+    } as unknown as Post;
+    mockListReplies.mockResolvedValue({
+      posts: [reply],
+      page: { hasMore: false, nextCursor: '' },
+    });
+
+    renderThread();
+    expect(await screen.findByText('A nested reply')).toBeInTheDocument();
+
+    // Default: composer targets the root post.
+    expect(screen.getByText('Replying to @allie')).toBeInTheDocument();
+
+    // Click the reply action on the nested reply — it becomes the target.
+    fireEvent.click(screen.getByRole('button', { name: /Reply to @carol/ }));
+    expect(screen.getByText('Replying to @carol')).toBeInTheDocument();
+    expect(screen.getByText(/Reply target/)).toBeInTheDocument();
+    expect(screen.getByText(/@carol: A nested reply/)).toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText('Post your reply…');
+    fireEvent.change(textarea, { target: { value: 'Replying to carol' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+
+    await waitFor(() => {
+      expect(mockCreatePost).toHaveBeenCalledWith(
+        expect.objectContaining({ body: 'Replying to carol', inReplyToId: 'reply-9' }),
+      );
+    });
+
+    // Target clears after a successful post — back to the root post.
+    await waitFor(() => expect(screen.queryByText(/Reply target/)).not.toBeInTheDocument());
+    expect(screen.getByText('Replying to @allie')).toBeInTheDocument();
+  });
+
+  it('cancels a reply target back to the root post (issue #154)', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    const reply = {
+      ...mockPost,
+      id: 'reply-9',
+      body: 'A nested reply',
+      author: {
+        ...mockPost.author,
+        id: 'actor-3',
+        handle: 'carol',
+        displayName: 'Carol',
+      } as unknown as Actor,
+    } as unknown as Post;
+    mockListReplies.mockResolvedValue({
+      posts: [reply],
+      page: { hasMore: false, nextCursor: '' },
+    });
+
+    renderThread();
+    expect(await screen.findByText('A nested reply')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Reply to @carol/ }));
+    expect(screen.getByText('Replying to @carol')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to the root post instead' }));
+    expect(screen.getByText('Replying to @allie')).toBeInTheDocument();
+    expect(screen.queryByText(/Reply target/)).not.toBeInTheDocument();
+  });
+
   it('blocks submitting while an attachment upload is still in flight, then attaches it', async () => {
     mockUseSession.mockReturnValue({
       actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,

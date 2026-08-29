@@ -9,7 +9,9 @@ import { describeGrpcError, type FriendlyError } from '../api/errors.js';
 import { Loading } from '../components/Loading.js';
 import { PostList, type PostRowActions } from '../components/PostList.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
+import { glyph } from '../theme/glyphs.js';
 import { theme } from '../theme/index.js';
+import type { GlyphSetName } from '../theme/themes/types.js';
 
 export interface ThreadScreenProps {
   api: PatchesApi;
@@ -24,6 +26,9 @@ export interface ThreadScreenProps {
    * identity so the focused post and its replies are re-read (a reply you just
    * sent has to appear without leaving and re-entering the thread). */
   refreshKey?: number;
+  /** The active glyph set, threaded from `App` so the thread's `↳` depth marker
+   * follows the viewer's chosen set (unicode/nerd/ascii). */
+  glyphSet: GlyphSetName;
 }
 
 /** Bounded ancestor walk (spec §24: "do not load an arbitrarily large thread in one
@@ -61,6 +66,7 @@ export function ThreadScreen({
   actions,
   ensureAccessToken,
   refreshKey = 0,
+  glyphSet,
 }: ThreadScreenProps): ReactElement {
   const [focus, setFocus] = useState<{ postId: string; state: FocusState } | undefined>();
   const focusState: FocusState = (focus?.postId === postId ? focus.state : undefined) ?? {
@@ -209,9 +215,20 @@ export function ThreadScreen({
     return hasAncestors ? 2 : 1;
   };
 
+  // Replies get the `↳` depth marker; the ancestor chain and the focused post stay
+  // flush (the indent already carries the hierarchy — a glyph on every row would
+  // just be noise). The section rule marks where the focused post ends and the
+  // replies begin, so it only renders when there is at least one reply.
+  const glyphFor = (row: Post): string => {
+    if (row.id === post.id) return '';
+    if (visibleAncestors.some((ancestor) => ancestor.id === row.id)) return '';
+    return glyph('reply', glyphSet);
+  };
+  const sectionRule =
+    replies.length > 0 ? { label: 'replies', beforeIndex: visibleAncestors.length + 1 } : undefined;
+
   return (
     <Box flexDirection="column">
-      <Text color={theme.accent}>Thread</Text>
       {hiddenAncestorCount > 0 ? (
         <Text color={theme.muted}>
           ↑ {hiddenAncestorCount} earlier {hiddenAncestorCount === 1 ? 'post' : 'posts'} in this
@@ -226,27 +243,25 @@ export function ThreadScreen({
           <Text color={theme.error}>{error.title}</Text>
         </Box>
       )}
-      <Box marginTop={1}>
-        <PostList
-          posts={rows}
-          loading={loading || loadingMore || refreshing}
-          hasMore={hasMore}
-          emptyMessage="No replies yet."
-          loadMoreKeyHint="n / space"
-          isActive={isActive}
-          rowIndent={indentFor}
-          chromeRows={
-            hiddenAncestorCount > 0 || (ancestorsExpanded && ancestors.length > 1) ? 3 : 2
-          }
-          {...actions}
-          onOpenPost={(row) => {
-            // Re-opening the row already in focus would just push a duplicate
-            // navigation frame — a no-op is friendlier than a redundant one.
-            // `Enter` on any ancestor or reply re-roots the thread there.
-            if (row.id !== post.id) actions.onOpenPost?.(row);
-          }}
-        />
-      </Box>
+      <PostList
+        posts={rows}
+        loading={loading || loadingMore || refreshing}
+        hasMore={hasMore}
+        emptyMessage="No replies yet."
+        loadMoreKeyHint="n / space"
+        isActive={isActive}
+        rowIndent={indentFor}
+        rowGlyph={glyphFor}
+        sectionRule={sectionRule}
+        chromeRows={hiddenAncestorCount > 0 || (ancestorsExpanded && ancestors.length > 1) ? 1 : 0}
+        {...actions}
+        onOpenPost={(row) => {
+          // Re-opening the row already in focus would just push a duplicate
+          // navigation frame — a no-op is friendlier than a redundant one.
+          // `Enter` on any ancestor or reply re-roots the thread there.
+          if (row.id !== post.id) actions.onOpenPost?.(row);
+        }}
+      />
     </Box>
   );
 }

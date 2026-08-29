@@ -33,6 +33,10 @@ export function ThreadRoute(): JSX.Element {
   const [ancestorsExpanded, setAncestorsExpanded] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [uploads, setUploads] = useState<MediaUploadHandle[]>([]);
+  // The post the inline composer is currently replying to. `undefined` means the
+  // thread's root post (the default); set to a specific reply when the viewer clicks
+  // that reply's reply action — reply targeting (issue #154).
+  const [replyTarget, setReplyTarget] = useState<Post | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // In-flight uploads' abort switches, keyed by the same `File` identity `uploads`
   // entries are matched on. Not reactive state on purpose — aborting doesn't itself
@@ -155,7 +159,7 @@ export function ThreadRoute(): JSX.Element {
         body: replyBody.trim(),
         linkUrl: '',
         visibility: PostVisibility.PUBLIC,
-        inReplyToId: postId,
+        inReplyToId: replyTarget?.id ?? postId,
         mediaIds,
         contentWarning: '',
         quotedPostId: '',
@@ -166,6 +170,7 @@ export function ThreadRoute(): JSX.Element {
     onSuccess: async () => {
       setReplyBody('');
       setUploads([]);
+      setReplyTarget(undefined);
       toast('Reply posted');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['post', postId, 'replies'] }),
@@ -195,6 +200,10 @@ export function ThreadRoute(): JSX.Element {
 
   if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
   if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
+
+  // The post the inline composer is replying to — the root post by default, or a
+  // specific reply once the viewer targets one (issue #154 reply targeting).
+  const replyTo = replyTarget ?? rootPost;
 
   return (
     <div>
@@ -231,7 +240,7 @@ export function ThreadRoute(): JSX.Element {
       {/* Root post — the thread's focus: highlighted, permalink-anchorable, and the
           target of the composer's sticky "reply to" header. */}
       <div className={styles['root']} id={rootPost.id}>
-        <PostCard post={rootPost} focused />
+        <PostCard post={rootPost} focused onReply={(post) => setReplyTarget(post)} />
       </div>
 
       {/* Inline Reply Composer */}
@@ -247,8 +256,25 @@ export function ThreadRoute(): JSX.Element {
 
           <form className={styles['replyForm']} onSubmit={handleReplySubmit}>
             <div className={styles['replyHeader']}>
-              Replying to @{rootPost.author?.handle ?? 'unknown'}
+              Replying to @{replyTo.author?.handle ?? 'unknown'}
             </div>
+
+            {replyTarget && replyTarget.id !== rootPost.id ? (
+              <div className={styles['replyTarget']}>
+                <span className={styles['replyTargetLabel']}>Reply target</span>
+                <span className={styles['replyTargetBody']}>
+                  @{replyTarget.author?.handle ?? 'unknown'}: {replyTarget.body}
+                </span>
+                <button
+                  type="button"
+                  className={styles['replyTargetCancel']}
+                  onClick={() => setReplyTarget(undefined)}
+                  aria-label="Reply to the root post instead"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
 
             <textarea
               className={styles['replyTextarea']}
@@ -358,7 +384,7 @@ export function ThreadRoute(): JSX.Element {
         ) : null}
         {replies.map((reply) => (
           <div id={reply.id} key={reply.id} className={styles['replyAnchor']}>
-            <PostCard post={reply} />
+            <PostCard post={reply} onReply={(post) => setReplyTarget(post)} />
           </div>
         ))}
 

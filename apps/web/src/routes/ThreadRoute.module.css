@@ -97,6 +97,54 @@
   }
 }
 
+/* Reply targeting (issue #154): a compact strip naming the specific reply the
+   composer is about to reply to, with a one-click way back to the root post. */
+.replyTarget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  font-size: 0.8rem;
+  min-width: 0;
+}
+
+.replyTargetLabel {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.replyTargetBody {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+
+.replyTargetCancel {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius);
+}
+
+.replyTargetCancel:hover {
+  color: var(--fg);
+  background: var(--bg);
+}
+
 .replyTextarea {
   width: 100%;
   min-height: 72px;
