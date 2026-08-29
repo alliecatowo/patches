@@ -1,6 +1,7 @@
 import { Box, Text, useInput, type Key } from 'ink';
 import { useEffect, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
+import stringWidth from 'string-width';
 
 import { movementTarget, type ListJump } from '../app/list-movement.js';
 import { theme } from '../theme/index.js';
@@ -45,6 +46,20 @@ export interface VirtualListProps<T> {
   onKey?: ((input: string, key: Key, item: T | undefined, index: number) => boolean) | undefined;
   /** Per-row indent level (0 = flush left), e.g. a thread indenting replies. */
   indentOf?: ((item: T, index: number) => number) | undefined;
+  /**
+   * Per-row glyph prefix (e.g. a thread's `↳` depth marker), rendered dim before the
+   * row's own content. Reserves its own width from `width` per row, same invariant as
+   * {@link showScrollThumb} — a glyph that draws columns the measurement didn't reserve
+   * would let a body wrap differently than it was measured.
+   */
+  rowGlyph?: ((item: T, index: number) => string) | undefined;
+  /**
+   * A dim labelled rule rendered above the item at `beforeIndex` (e.g. a thread's
+   * `── replies ──` divider before the first reply). The rule is part of that row's
+   * own budget: it adds one measured row to `heights[beforeIndex]`, so the viewport
+   * never lets it overflow the frame.
+   */
+  sectionRule?: { label: string; beforeIndex: number } | undefined;
   /** Shown instead of the list when `items` is empty. */
   empty?: ReactNode;
   /** Rendered at the end of the `n/total ↑ above ↓ below` line. */
@@ -102,6 +117,8 @@ export function VirtualList<T>({
   onViewportChange,
   onKey,
   indentOf,
+  rowGlyph,
+  sectionRule,
   empty,
   positionSuffix,
   positionPrefix,
@@ -133,9 +150,28 @@ export function VirtualList<T>({
   const thumbEnabled = showScrollThumb === true && !plain;
   const indexWidth = indexed === true ? `[${String(items.length)}]`.length + 1 : 0;
   const rowWidth = Math.max(1, width - (thumbEnabled ? 1 : 0) - indexWidth);
+  const glyphOf = (item: T, index: number): string => rowGlyph?.(item, index) ?? '';
+  const glyphWidthOf = (item: T, index: number): number => {
+    const g = glyphOf(item, index);
+    return g === '' ? 0 : stringWidth(g) + 1;
+  };
   const heights = items.map((item, index) =>
-    measure(item, Math.max(1, rowWidth - (indentOf?.(item, index) ?? 0) * 2), index),
+    measure(
+      item,
+      Math.max(1, rowWidth - (indentOf?.(item, index) ?? 0) * 2 - glyphWidthOf(item, index)),
+      index,
+    ),
   );
+  // The section rule is part of the row it precedes — one extra measured row so the
+  // viewport never lets it overflow the frame (the same invariant as the row itself).
+  if (
+    sectionRule !== undefined &&
+    sectionRule.beforeIndex >= 0 &&
+    sectionRule.beforeIndex < heights.length
+  ) {
+    const ruleIndex = sectionRule.beforeIndex;
+    heights[ruleIndex] = (heights[ruleIndex] ?? 0) + 1;
+  }
   const rowBudget = Math.max(1, budget);
   const topIndex = resolveTopIndex(selection.top, selected, heights, rowBudget);
   const viewport = computeViewport(topIndex, heights, rowBudget);
@@ -203,16 +239,24 @@ export function VirtualList<T>({
           {visible.map((item, offset) => {
             const index = viewport.start + offset;
             const indent = (indentOf?.(item, index) ?? 0) * 2;
+            const glyphText = glyphOf(item, index);
+            const glyphWidth = glyphWidthOf(item, index);
             return (
-              <Box key={keyOf(item, index)} flexShrink={0} flexDirection="row" marginLeft={indent}>
-                {indexed === true ? (
-                  <Text color={theme.muted}>{`[${String(index + 1)}]`.padEnd(indexWidth)}</Text>
+              <Box key={keyOf(item, index)} flexShrink={0} flexDirection="column">
+                {sectionRule !== undefined && index === sectionRule.beforeIndex ? (
+                  <Text color={theme.muted}>── {sectionRule.label} ──</Text>
                 ) : null}
-                {renderItem(item, {
-                  index,
-                  selected: isActive && index === selected,
-                  width: Math.max(1, rowWidth - indent),
-                })}
+                <Box flexDirection="row" marginLeft={indent}>
+                  {indexed === true ? (
+                    <Text color={theme.muted}>{`[${String(index + 1)}]`.padEnd(indexWidth)}</Text>
+                  ) : null}
+                  {glyphText !== '' ? <Text color={theme.muted}>{glyphText} </Text> : null}
+                  {renderItem(item, {
+                    index,
+                    selected: isActive && index === selected,
+                    width: Math.max(1, rowWidth - indent - glyphWidth),
+                  })}
+                </Box>
               </Box>
             );
           })}

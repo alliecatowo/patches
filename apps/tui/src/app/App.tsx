@@ -2496,6 +2496,7 @@ export function App({
             actions={rowActions}
             ensureAccessToken={session === undefined ? undefined : ensureAccessToken}
             refreshKey={feedNonce}
+            glyphSet={glyphSet}
           />
         );
       case 'tagFeed':
