@@ -762,7 +762,35 @@ export function App({
     (conversationId: string): Promise<readonly E2eeReceivedRow[]> => {
       const sender = session === undefined ? undefined : e2eeSenderFor(session);
       if (sender === undefined || !sender.enrolled()) return Promise.resolve([]);
-      return sender.pollMailbox(conversationId).then((result) => result.rows);
+      // The open thread is being read live — never count its drain toward durable unread.
+      return sender.pollMailbox(conversationId, { reading: true }).then((result) => result.rows);
+    },
+    [session, e2eeSenderFor],
+  );
+  /**
+   * #383: this device's durable per-conversation unread, read back from the vault.
+   * Resolves `undefined` when there is no enrolled identity, which the screen treats
+   * as "use the server's count as-is". Stable identity so the MessagesScreen reload
+   * effect doesn't re-run on every render.
+   */
+  const conversationUnreadFn = useCallback(
+    (conversationId: string): Promise<number | undefined> => {
+      const sender = session === undefined ? undefined : e2eeSenderFor(session);
+      return sender === undefined
+        ? Promise.resolve(undefined)
+        : sender.conversationUnread(conversationId);
+    },
+    [session, e2eeSenderFor],
+  );
+  /**
+   * #383: companion durable clear for when the viewer opens/reads a thread on this
+   * device. Best-effort; a vault fault never trips the mark-read path.
+   */
+  const clearConversationUnreadFn = useCallback(
+    (conversationId: string): void => {
+      const sender = session === undefined ? undefined : e2eeSenderFor(session);
+      if (sender === undefined) return;
+      void sender.clearConversationUnread(conversationId);
     },
     [session, e2eeSenderFor],
   );
@@ -2493,6 +2521,8 @@ export function App({
             verifiedPeers={verifiedPeers}
             e2eeCapabilityState={e2eeCapabilityState}
             sendE2ee={sendViaVault}
+            conversationUnread={conversationUnreadFn}
+            clearConversationUnread={clearConversationUnreadFn}
             receiveE2ee={receiveE2eeRows}
             e2eeVaultFault={e2eeVaultFault}
             onBack={back}
@@ -2889,6 +2919,8 @@ export function App({
                                   verifiedPeers={verifiedPeers}
                                   e2eeCapabilityState={e2eeCapabilityState}
                                   sendE2ee={sendViaVault}
+                                  conversationUnread={conversationUnreadFn}
+                                  clearConversationUnread={clearConversationUnreadFn}
                                   receiveE2ee={receiveE2eeRows}
                                   e2eeVaultFault={e2eeVaultFault}
                                   // The screen owns backing out of its own thread/requests

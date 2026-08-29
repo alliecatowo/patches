@@ -30,6 +30,7 @@ import {
   loadInboundMessages,
   recordInboundMessages,
 } from '../e2ee/inbound-messages.js';
+import { clearUnread, loadUnread, setUnread } from '../e2ee/conversation-unread.js';
 import {
   loadOwnMessages,
   mergeOwnMessages,
@@ -162,8 +163,26 @@ export interface VaultE2eeSender {
    * the received message rows it produces (`inbound-messages.ts`, issue #352) and merges
    * them with this device's stored own messages, so both halves of a thread survive a
    * restart — no fanout ever redelivers either side. Requires an enrolled identity.
+   *
+   * When `reading` is false (a drain for a conversation the user is not looking at right
+   * now), the count of newly drained received messages is added to the conversation's
+   * durable unread store, so "messages received since I last looked" survives a reload
+   * (issue #383). The open thread drains with `reading` true — those messages are being
+   * read live and are not counted. The default keeps call sites that only ever drain the
+   * open thread behaving as "reading".
    */
-  pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult>;
+  pollMailbox(
+    conversationId?: string,
+    opts?: { readonly reading?: boolean },
+  ): Promise<E2eeSessionRuntimePollResult>;
+  /** This device's durable unread count for `conversationId` (issue #383); `undefined`
+   * when this device has not yet set a read point here, in which case the caller falls
+   * back to the server-managed `unreadCount`. Requires an open vault. */
+  conversationUnread(conversationId: string): Promise<number | undefined>;
+  /** Clears this device's durable unread for `conversationId` — the "marked read" side
+   * of issue #383. The `0` is written to the vault, so a locally-read conversation stays
+   * read across a reload even if the node's count lags. */
+  clearConversationUnread(conversationId: string): Promise<void>;
   /**
    * B-107: restores a previously submitted enrollment from this vault and binds it
    * (and its transports) to the runtime. Resolves the bound identity, or `undefined`
@@ -382,7 +401,10 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       await recordOwnMessage(store, conversationId, record);
       return ownMessageRow(record);
     },
-    async pollMailbox(conversationId?: string): Promise<E2eeSessionRuntimePollResult> {
+    async pollMailbox(
+      conversationId?: string,
+      opts?: { readonly reading?: boolean },
+    ): Promise<E2eeSessionRuntimePollResult> {
       const active = await ensureRuntime();
       const result = await active.pollMailbox({
         ...(conversationId === undefined ? {} : { conversationId }),
@@ -396,7 +418,19 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       // re-reads it from the vault (issue #352).
       if (result.rows.length > 0) {
         const inbound = inboundMessagesToRecords(result.rows);
-        if (inbound.length > 0) await recordInboundMessages(store, conversationId, inbound);
+        if (inbound.length > 0) {
+          if (opts?.reading === false) {
+            // Messages drained for a conversation the viewer is not currently reading are
+            // unread on this device; the durable count is what survives a reload (#383).
+            const known = new Set(
+              (await loadInboundMessages(store, conversationId)).map((r) => r.id),
+            );
+            const fresh = inbound.filter((record) => !known.has(record.id)).length;
+            const prior = (await loadUnread(store, conversationId)) ?? 0;
+            if (fresh > 0) await setUnread(store, conversationId, prior + fresh);
+          }
+          await recordInboundMessages(store, conversationId, inbound);
+        }
       }
       const inboundRecords = await loadInboundMessages(store, conversationId);
       const all = [...inboundRecords.map(inboundMessageRow), ...result.rows];
@@ -410,6 +444,12 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       // drain — an account-wide drain has no single conversation to attribute them to.
       if (own.length === 0 && drained.length === 0) return result;
       return { ...result, rows: mergeOwnMessages(own, drained) };
+    },
+    async conversationUnread(conversationId: string): Promise<number | undefined> {
+      return loadUnread(await ensureOpen(), conversationId);
+    },
+    async clearConversationUnread(conversationId: string): Promise<void> {
+      await clearUnread(await ensureOpen(), conversationId);
     },
     async wipe(): Promise<void> {
       // Route the wipe through the LIVE store (audit P1-2): the same object that holds

@@ -33,6 +33,7 @@ import {
   TUI_THREAD_SECURITY_POLL_MS,
 } from '../app/poll-intervals.js';
 import { present } from '../api/present.js';
+import { mergeUnread } from '../e2ee/conversation-unread.js';
 import { Loading } from '../components/Loading.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { E2eeNotEnrolledError, E2EE_QUARANTINED_MESSAGE_COPY } from '../e2ee/runtime.js';
@@ -154,6 +155,17 @@ export interface MessagesScreenProps {
   receiveE2ee?: ((conversationId: string) => Promise<readonly E2eeReceivedRow[]>) | undefined;
   /** How often an open end-to-end thread polls its mailbox. Tests pass a small value. */
   mailPollMs?: number | undefined;
+  /**
+   * #383: this device's durable per-conversation unread count, read back from the vault.
+   * Absent means this shell has no vault-backed sender, so the server's `unreadCount` is
+   * used as the badge as-is. A locally-read conversation reports `0` even if the server's
+   * count lags, which is what lets a read thread stay read across a reload.
+   */
+  conversationUnread?: ((conversationId: string) => Promise<number | undefined>) | undefined;
+  /** #383: marks a conversation read through on THIS device (vault) — companion to the
+   * server-side `markConversationRead`, so a locally-read thread stays read across a
+   * reload even if the node's count lags. Absent without a vault-backed sender. */
+  clearConversationUnread?: ((conversationId: string) => void) | undefined;
   /**
    * P19-017: how often the conversation list refreshes while it is open and this
    * screen is the active one (ADR 0032 §1). Tests pass a small value; the default is
@@ -467,6 +479,8 @@ export function MessagesScreen({
   e2eeVaultFault,
   securityPollMs = TUI_THREAD_SECURITY_POLL_MS,
   receiveE2ee,
+  conversationUnread,
+  clearConversationUnread,
   mailPollMs = TUI_THREAD_MAIL_POLL_MS,
   conversationListPollMs = TUI_CONVERSATION_LIST_POLL_MS,
   onReadStateChanged,
@@ -511,6 +525,9 @@ export function MessagesScreen({
   useEffect(() => {
     if (conversationId === '') return;
     const target = conversationId;
+    // #383: durable local read — the vault clear must not depend on the server RPC, and
+    // a failed one must never resurface unread locally.
+    clearConversationUnread?.(target);
     let cancelled = false;
     api
       .markConversationRead({ conversationId: target, throughMessageId: '' })
@@ -529,7 +546,7 @@ export function MessagesScreen({
     return () => {
       cancelled = true;
     };
-  }, [api, conversationId, onReadStateChanged]);
+  }, [api, conversationId, onReadStateChanged, clearConversationUnread]);
 
   const fetchConversations = useCallback(
     (cursor: string): Promise<Page<Conversation>> =>
@@ -550,6 +567,34 @@ export function MessagesScreen({
     'Could not load conversations.',
     conversationListRefreshTick + (refreshToken ?? 0),
   );
+
+  // #383: this device's durable per-conversation unread, merged against the server count
+  // for the badge. Rebuilt whenever the visible list or the bound vault loader changes;
+  // no vault-backed sender means `conversationUnread` is undefined and the map stays
+  // empty (server count used as-is).
+  const [localUnreadMap, setLocalUnreadMap] = useState<ReadonlyMap<string, number>>(new Map());
+  useEffect(() => {
+    if (conversationUnread === undefined) return;
+    let cancelled = false;
+    void (async () => {
+      const entries = new Map<string, number>();
+      for (const conversation of conversations.items) {
+        if (cancelled) return;
+        try {
+          const count = await conversationUnread(conversation.id);
+          if (count !== undefined) entries.set(conversation.id, count);
+        } catch {
+          // A failed/absent vault is not a statement about unread — the server count for
+          // that conversation is used as-is.
+        }
+      }
+      if (cancelled) return;
+      setLocalUnreadMap(entries);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationUnread, conversations.items]);
 
   // P19-017 / ADR 0032: the conversation list refreshes on `conversationListPollMs`
   // while it is the visible, focused list — not while a thread or the transcript
@@ -997,7 +1042,9 @@ export function MessagesScreen({
             <Text color={theme.muted}>No conversations yet.</Text>
           ) : null}
           {conversations.items.map((conversation, index) => {
-            const unreadCount = readOverrideIds.has(conversation.id) ? 0 : conversation.unreadCount;
+            const unreadCount = readOverrideIds.has(conversation.id)
+              ? 0
+              : mergeUnread(conversation.unreadCount, localUnreadMap.get(conversation.id));
             return (
               <Text
                 key={conversation.id}
