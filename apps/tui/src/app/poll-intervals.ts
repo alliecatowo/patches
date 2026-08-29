@@ -24,3 +24,30 @@ export const TUI_THREAD_MAIL_POLL_MS = 5_000;
 
 /** Peer identity/roster re-check while an end-to-end thread is open (ADR 0032's fact 5). */
 export const TUI_THREAD_SECURITY_POLL_MS = 30_000;
+
+/**
+ * Ceiling for the in-thread mailbox-drain backoff on consecutive transient errors
+ * (P19-027, issue #384). When the drain keeps failing we stop hammering
+ * `ListMailboxEnvelopes` at the fixed 5s cadence and double the gap up to this cap, then
+ * hold there until a drain succeeds and resets back to the base interval. 60s is ADR 0032's
+ * list/badge freshness tier: a failed drain cannot leave the thread stale for longer than
+ * the healthiest surface's promise.
+ */
+export const TUI_POLL_BACKOFF_MAX_MS = 60_000;
+
+/**
+ * Pure backoff step for a poll loop (P19-027, issue #384): given `consecutiveFailures` since
+ * the last success, return the delay before the next poll. `0`/healthy stays at `baseMs`;
+ * each failure doubles the gap, clamped at `maxMs`. Callers keep the count in the effect
+ * closure and reset it to `0` when a poll succeeds, so one success collapses the delay back
+ * to `baseMs` immediately.
+ */
+export function nextPollDelayMs(
+  consecutiveFailures: number,
+  baseMs: number,
+  maxMs: number,
+): number {
+  if (consecutiveFailures <= 0) return baseMs;
+  const exponential = baseMs * 2 ** consecutiveFailures;
+  return Math.min(exponential, maxMs);
+}
