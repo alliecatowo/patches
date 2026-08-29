@@ -134,3 +134,37 @@ describe('session expiry', () => {
     expect(await sessionManager.getAccessToken()).toBeUndefined();
   });
 });
+
+describe('logoutCurrentSession', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.resetModules();
+  });
+
+  it('sends the refresh token to Logout and clears it locally', async () => {
+    const { headers } = (() => {
+      const headers: Headers[] = [];
+      global.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        headers.push(new Headers(init?.headers));
+        return Promise.resolve(
+          new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      });
+      return { headers };
+    })();
+    const { logoutCurrentSession, sessionManager } = await import('./client.js');
+    await sessionManager.setSession({
+      accessToken: 'access-logout',
+      refreshToken: 'refresh-logout',
+    });
+
+    await logoutCurrentSession();
+
+    expect(headers).toHaveLength(1);
+    expect(headers[0]?.get('authorization')).toBe('Bearer access-logout');
+    expect(await sessionManager.getAccessToken()).toBeUndefined();
+  });
+});

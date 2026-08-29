@@ -109,8 +109,8 @@ export function PrivacySettingsRoute(): JSX.Element {
               </p>
             ) : null}
             <p style={{ color: 'var(--fg-muted)' }}>
-              Direct messages on this node are <strong>server-visible</strong>, not end-to-end
-              encrypted — operators can read them.
+              Direct messages are <strong>end-to-end encrypted</strong>. This node cannot read them,
+              but it can see who you message and when.
             </p>
             {prefs !== undefined && prefs.privacyNoticeVersion < policy.privacyNoticeVersion ? (
               <button

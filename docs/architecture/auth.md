@@ -15,6 +15,30 @@ challenge/response login, GitHub OAuth device-flow login, recovery-code generati
 the auth surface and bootstrap (first-user) registration. Where a flow depends on an external
 protocol, the citation and verification date are given inline.
 
+### Web authentication surface
+
+**Status: implemented.** The web client exposes password registration with the required
+privacy-notice acknowledgement, password and recovery-code sign-in, passkey sign-in, configured
+GitHub/OIDC/device-link sign-in, and the sign-in-method manager (passkey enrollment, linked
+providers, credential revocation, and one-time recovery codes). It also exposes:
+
+- `/verify-email` for an authenticated session to submit or resend its verification code. Resend
+  deliberately has no email field: the caller's bearer session identifies the account, preserving
+  the no-enumeration contract.
+- `/reset-password` with the protocol's intentionally uniform request acknowledgement, then a
+  separate code/new-password step. Codes and passwords are never placed in URLs or browser
+  storage by this route.
+- **Settings → Session security** for `LogoutAllSessions`, including a clear explanation that the
+  protocol has no device/session-listing RPC and the action revokes this browser too.
+- ordinary sign-out calls `Logout` with the locally held opaque refresh token before local cleanup;
+  if that request cannot complete, local credentials are still discarded. Refresh failure or
+  detected reuse clears the browser session and returns the viewer to sign-in.
+
+SSH enrollment and SSH-agent signing remain terminal-only: a browser must never ask for, import,
+or transmit an SSH private key. Closed-node and `PASSWORD_AUTH=off` states hide password fields;
+the web registration screen points to the TUI's SSH-first registration path rather than offering a
+request the server will reject.
+
 ## 1. The core split
 
 A **credential** is a way to prove you are a user. It is not who you are.

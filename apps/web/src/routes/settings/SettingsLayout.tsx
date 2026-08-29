@@ -37,6 +37,9 @@ export function SettingsLayout(): JSX.Element {
         <NavLink to="/settings/credentials" className={LINK_CLASS}>
           Sign-in methods
         </NavLink>
+        <NavLink to="/settings/session-security" className={LINK_CLASS}>
+          Session security
+        </NavLink>
         <NavLink to="/settings/devices" className={LINK_CLASS}>
           Devices &amp; recovery
         </NavLink>

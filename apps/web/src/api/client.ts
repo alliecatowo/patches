@@ -60,6 +60,19 @@ export async function signOut(): Promise<void> {
 }
 
 /**
+ * Revokes this browser's refresh-token session where possible, then always forgets its
+ * local copy. A network failure must not leave an apparently signed-in browser behind.
+ */
+export async function logoutCurrentSession(): Promise<void> {
+  const refreshToken = (await credentialStore.load())?.refreshToken;
+  try {
+    if (refreshToken !== undefined) await api.auth.logout({ refreshToken });
+  } finally {
+    await signOut();
+  }
+}
+
+/**
  * B-161: a session-expiry sign-out (failed refresh, see `authInterceptor` below) happens
  * outside any component — there's no `navigate()` to call — and leaves whatever route was
  * on screen rendering as if still signed in until the user next interacts with it. A
