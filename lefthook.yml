@@ -18,9 +18,7 @@ pre-commit:
     typecheck:
       glob: '*.{ts,tsx,mts,cts}'
       # #302: `tsc --noEmit` for only the workspace(s) a staged file belongs to (incremental,
-      # see tsconfig.base.json's tsBuildInfoFile), not the whole repo — routed through
-      # scripts/bounded.sh, same as every other heavy task, so it's safe under concurrent
-      # worktree commits.
+      # see tsconfig.base.json's tsBuildInfoFile), not the whole repo — unbounded (no bounded.sh).
       run: scripts/precommit-typecheck.sh {staged_files}
 
 # Pushes are the test gate; commits stay cheap.
@@ -32,30 +30,25 @@ pre-commit:
 # failed" for packages that were merely killed mid-run, not actually broken (reproduced via
 # `turbo run test --force`: an injected failure in @patches/worker alone made @patches/server
 # and @patches/tui's test tasks print the same ELIFECYCLE line). `--continue=dependencies-
-# successful` lets every task finish and report its own real result; `--concurrency` bounds how
-# many packages' test/typecheck tasks run at once so their vitest worker pools don't oversub-
-# scribe the box on top of each other (each vitest project also caps itself at `maxWorkers:
-# '50%'`, see the individual vitest.config.ts/.mts files). `--affected` is the speed lever: CI
-# (.github/workflows/ci.yml, unrelated to this file) still runs the full, unscoped
+# successful` lets every task finish and report its own real result. `--affected` is the speed
+# lever: CI (.github/workflows/ci.yml, unrelated to this file) still runs the full, unscoped
 # `pnpm build && pnpm test` on every PR and is the actual required gate for `main` — this hook
 # only has to catch problems before a slow, occasionally-contended CI run does, not replace it.
 # See docs/operations/local-development.md "Git hooks" and docs/operations/ci.md.
-# #302: every command below routes through scripts/bounded.sh, the same global throttle
-# `mise run check`/`verify` use, so a pre-push run never stacks unbounded on top of concurrent
-# worktree checks.
+# Unbounded — turbo decides parallelism (no bounded.sh, no --concurrency cap).
 pre-push:
   commands:
     verify:
       # Was 4 sequential bounded invocations (format:check + lint + typecheck --affected
       # + test --affected = 85s even on harness-only docs change). Now one turbo with
       # lint cached + parallel format:check. --affected + FULL TURBO means unchanged
-      # packages replay in ms; only changed ws rebuilds. Harness-only push now ~6s
-      # (was 85s), full monorepo change still bounded but not 4× serialized.
+      # packages replay in ms; only changed ws rebuilds. Harness-only push now ~1s
+      # (was 85s). Unbounded turbo parallelism (no bounded.sh).
       run: >-
         changed="$(git diff --name-only origin/main --diff-filter=ACMRTUXB 2>/dev/null | grep -E "\.(ts|tsx|mts|cts|js|mjs|cjs|json|md|yml|yaml|css)$" || true)";
         if [ -n "$changed" ]; then echo "$changed" | tr " " "\n" | xargs pnpm exec prettier --check --cache --cache-location node_modules/.cache/prettier/.prettiercache 2>&1 | head -n 20 & else sleep 0.01 & fi;
         prettier_pid=$!;
-        scripts/bounded.sh pnpm exec turbo run typecheck test lint --affected --concurrency=4 --continue=dependencies-successful --output-logs=errors-only;
+        pnpm exec turbo run typecheck test lint --affected --continue=dependencies-successful --output-logs=errors-only;
         turbo_rc=$?;
         wait $prettier_pid; prettier_rc=$?;
         [ $turbo_rc -eq 0 ] && [ $prettier_rc -eq 0 ]

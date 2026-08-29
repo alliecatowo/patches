@@ -30,5 +30,5 @@ fi
 
 for dir in "${workspaces[@]}"; do
   echo "→ typecheck $dir"
-  scripts/bounded.sh pnpm exec tsc --noEmit -p "$dir"
+  pnpm exec tsc --noEmit -p "$dir"
 done

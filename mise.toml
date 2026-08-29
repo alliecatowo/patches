@@ -177,11 +177,11 @@ description = "Kitty graphics spike — run inside kitty or Ghostty (j/k move, R
 run = "cd \"$MISE_PROJECT_ROOT\" && pnpm --filter @patches/terminal-media spike"
 
 [tasks.verify]
-description = "format + lint + typecheck + unit tests (the full gate — PR CI runs this; prefer `mise run check <workspace>` locally, see #302)"
-run = "cd \"$MISE_PROJECT_ROOT\" && scripts/bounded.sh pnpm verify"
+description = "format + lint + typecheck + unit tests (the full gate — PR CI runs this; prefer `mise run check <workspace>` locally)"
+run = "cd \"$MISE_PROJECT_ROOT\" && pnpm verify"
 
 [tasks.check]
-description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains. Routed through `scripts/bounded.sh` (#302): bounded CPU/memory/IO, safe to run from several worktrees at once — never run the full `verify` locally instead."
+description = "Scoped check for one workspace: typecheck + tests + lint + format. `mise run check tui` (or `web`, `server`, `@patches/tui`). This is THE command to use while working — it runs under the pinned Node, so no `zsh -i`, no `mise exec`, no hand-rolled `&&` chains. Unbounded — turbo decides parallelism (no bounded.sh throttling)."
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -194,9 +194,8 @@ dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(exec
   # Turbo handles typecheck+test+lint together: dependency-ordered, parallel, content-hashed
   # and cached (turbo.json:lint). An unchanged workspace replays FULL TURBO (~15ms) instead
   # of re-running vitest/eslint. Prettier runs in parallel — the whole check is ~5s cold,
-  # ~2s warm (vs 6-7s sequential before). Single bounded slot only; no wait queue when
-  # only one agent runs (bounded.sh uses nproc/4=4 slots, error-only logs).
-  scripts/bounded.sh pnpm exec turbo run typecheck test lint --filter="$pkg" --output-logs=errors-only &
+  # ~2s warm (vs 6-7s sequential before). Unbounded turbo parallelism (no bounded.sh).
+  pnpm exec turbo run typecheck test lint --filter="$pkg" --output-logs=errors-only &
   turbo_pid=$!
   pnpm exec prettier --check --cache --cache-location node_modules/.cache/prettier/.prettiercache "$dir" 2>&1 | sed -n '1,20p' &
   prettier_pid=$!
@@ -212,7 +211,7 @@ echo "ok $pkg ${elapsed}s"
 description = "All tests including integration (needs the compose stack)"
 # `pnpm test` is now `turbo run test` (unit tests only, cached); the integration projects
 # are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
-run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && scripts/bounded.sh pnpm test && scripts/bounded.sh pnpm test:integration"
+run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && pnpm test && pnpm test:integration"
 
 [tasks.down]
 description = "Stop the compose stack"
