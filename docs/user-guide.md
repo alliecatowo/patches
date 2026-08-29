@@ -516,6 +516,11 @@ honest DM disclosure, and no-algorithm product rules as the TUI:
   and named themes with live swatch preview cards.
 - **Mobile & PWA**: Mobile web safe-area insets (`env(safe-area-inset-*)`) and progressive web app (PWA)
   installation support are built in.
+- **Switch accounts**: The account menu (avatar in the header) remembers every account you've
+  signed into locally for this node, lists them under **Switch account**, and lets you jump
+  between them without re-entering credentials — or pick **Add account** to sign into another.
+  Accounts are stored per node, matching the TUI's per-node credential isolation; removing a
+  saved account discards its locally stored tokens.
 
 ## Troubleshooting
 

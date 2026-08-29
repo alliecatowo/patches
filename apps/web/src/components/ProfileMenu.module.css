@@ -205,3 +205,77 @@
 .signOutItem:hover {
   background: rgba(248, 81, 73, 0.1);
 }
+
+.accountsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.accountsLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  padding: 0.25rem 0.25rem 0.35rem;
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.accountButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: var(--radius);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 0.9rem;
+  text-align: left;
+  min-width: 0;
+}
+
+.accountButton:hover {
+  background: var(--bg-raised);
+}
+
+.accountName {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountHandle {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountRemove {
+  flex-shrink: 0;
+  padding: 0.45rem;
+  border-radius: var(--radius);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--fg-muted);
+  line-height: 0;
+}
+
+.accountRemove:hover {
+  background: rgba(248, 81, 73, 0.1);
+  color: var(--danger, #f85149);
+}
