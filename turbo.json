@@ -23,6 +23,11 @@
       "outputs": [],
       "outputLogs": "errors-only"
     },
+    "lint": {
+      "outputs": [],
+      "outputLogs": "errors-only",
+      "inputs": ["**/*.{ts,tsx,mts,cts,js,mjs,cjs}", ".eslintrc.*", "eslint.config.*"]
+    },
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,

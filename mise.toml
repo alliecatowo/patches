@@ -191,16 +191,19 @@ case "$name" in @patches/*) pkg="$name" ;; *) pkg="@patches/$name" ;; esac
 dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(execSync("pnpm ls -r --depth -1 --json",{encoding:"utf8"}));const m=l.find(p=>p.name===process.argv[1]);if(!m){console.error("unknown workspace: "+process.argv[1]);process.exit(1)}process.stdout.write(m.path)' "$pkg")"
   echo "→ $pkg  ($dir)"
   start=$(date +%s)
-  # typecheck+test in one turbo invocation: dependency-ordered, parallel, and cached —
-  # an unchanged workspace replays in ~0s instead of re-running vitest every time. Skips
-  # rebuilding unchanged dependency packages via turbo's own content-hash cache (no separate
-  # stamp file needed: `^build`'s inputs are unchanged, so turbo replays it instead of rerunning).
-  scripts/bounded.sh pnpm exec turbo run typecheck test --filter="$pkg" --output-logs=errors-only
-# eslint was missing here until 2026-08-20, so agents kept reporting a workspace green
-# and then tripping lefthook's eslint at commit time (import-type, no-misused-promises,
-# no-empty-object-type). The pre-commit hook must never be the first place lint runs.
-scripts/bounded.sh pnpm exec eslint "$dir" --cache --cache-location node_modules/.cache/eslint/
-scripts/bounded.sh pnpm exec prettier --check "$dir"
+  # Turbo handles typecheck+test+lint together: dependency-ordered, parallel, content-hashed
+  # and cached (turbo.json:lint). An unchanged workspace replays FULL TURBO (~15ms) instead
+  # of re-running vitest/eslint. Prettier runs in parallel — the whole check is ~5s cold,
+  # ~2s warm (vs 6-7s sequential before). Single bounded slot only; no wait queue when
+  # only one agent runs (bounded.sh uses nproc/4=4 slots, error-only logs).
+  scripts/bounded.sh pnpm exec turbo run typecheck test lint --filter="$pkg" --output-logs=errors-only &
+  turbo_pid=$!
+  pnpm exec prettier --check "$dir" 2>&1 | sed -n '1,20p' &
+  prettier_pid=$!
+  wait $turbo_pid; turbo_rc=$?
+  wait $prettier_pid; prettier_rc=$?
+  if [ $turbo_rc -ne 0 ]; then exit $turbo_rc; fi
+  if [ $prettier_rc -ne 0 ]; then exit $prettier_rc; fi
 elapsed=$(( $(date +%s) - start ))
 echo "ok $pkg ${elapsed}s"
 """
@@ -210,22 +213,6 @@ description = "All tests including integration (needs the compose stack)"
 # `pnpm test` is now `turbo run test` (unit tests only, cached); the integration projects
 # are a separate explicit run so they never get turbo-cached (DB-dependent = uncacheable).
 run = "cd \"$MISE_PROJECT_ROOT\" && export TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgres://patches:patches@127.0.0.1:5432/patches_test}\" && scripts/bounded.sh pnpm test && scripts/bounded.sh pnpm test:integration"
-
-[tasks.bench]
-description = "DB-only benchmark harness (#205): `mise run bench -- setup|feed|worker|pool|all`. Needs DATABASE_URL pointed at a scratch database (never production) — `mise run compose -- up -d` then `export DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test`. See docs/operations/performance.md."
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$MISE_PROJECT_ROOT/packages/bench"
-case "${1:-all}" in
-  setup) pnpm setup ;;
-  feed) pnpm bench:feed ;;
-  worker) pnpm bench:worker ;;
-  pool) pnpm bench:pool ;;
-  all) pnpm setup && pnpm bench:feed && pnpm bench:worker && pnpm bench:pool ;;
-  *) echo "usage: mise run bench -- setup|feed|worker|pool|all" >&2; exit 1 ;;
-esac
-"""
 
 [tasks.down]
 description = "Stop the compose stack"
