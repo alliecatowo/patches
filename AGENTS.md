@@ -48,14 +48,15 @@ All inference via DevPass (`llmgateway/*` or `opencode/*-free`); no Anthropic mo
 
 Primary runtime is OpenCode (`goal-driver` is cheap `llmgateway/gpt-5.6-luna` 90k; see `docs/agents/HETEROGENEOUS.md`). Claude Code remains compat but routes through `llmgateway`.
 
-| Work shape                              | Model (OpenCode)                                                                   | Guard                                            |
-| --------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Mechanical check / narrow diagnostic    | `opencode/muse-spark-1.2-free` or `llmgateway/qwen3.7-flash` 120k                  | Exact paths + stop condition                     |
-| Bounded implementation / tests / docs   | `llmgateway/deepseek-v4-flash` 140k (fallback `opencode/*-free` → `qwen3.7-flash`) | Disjoint ownership, `mise run check <ws>` scoped |
-| Integration / retry / review            | `llmgateway/gpt-5.6-terra` 220k                                                    | Stronger than implementer; no `sol` by default   |
-| Architecture / replan / milestone audit | `llmgateway/grok-4-6` 180k (fallback `grok-4-3` 180k, `grok-4-1-fast` 160k)        | Fresh session, concise packet, ADR if needed     |
+| Work shape                              | Model (OpenCode)                                                                       | Guard                                            |
+| --------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Mechanical check / narrow diagnostic    | `opencode/muse-spark-1.2-free` or `llmgateway/qwen3.7-flash` 120k                      | Exact paths + stop condition                     |
+| Bounded implementation / tests / docs   | `llmgateway/deepseek-v4-flash` 140k (fallback `opencode/*-free` → `qwen3.7-flash`)     | Disjoint ownership, `mise run check <ws>` scoped |
+| Mid retry (capability, bounded)         | `llmgateway/deepseek-v4-pro` 140k (fallback `nemotron-3-ultra-free` → `qwen3.7-flash`) | Cheap escalation before terra                    |
+| Integration / retry / review            | `llmgateway/gpt-5.6-terra` 220k                                                        | Stronger than mid; no `sol` by default           |
+| Architecture / replan / milestone audit | `llmgateway/grok-4-6` 180k (fallback `grok-4-3` 180k, `grok-4-1-fast` 160k)            | Fresh session, concise packet, ADR if needed     |
 
-Exceptional premium (`llmgateway/gpt-5.6-sol`, `kimi-k3`, `claude-*`) requires explicit `escalate: sol` — it's 20x Luna and burns weekly fair-use (see `HETEROGENEOUS.md` pricing). Ladder: `deepseek → free → terra → grok`; env failures (DB/port/flock/inode) retry cheap, don't escalate. Packets via `.opencode/skills/packet`, handoffs via `.opencode/skills/handoff`. After two identical failures change approach. Never weaken hard rules.
+Exceptional premium (`llmgateway/gpt-5.6-sol`, `kimi-k3`, `claude-*`) requires explicit `escalate: sol` — it's 20x Luna and burns weekly fair-use (see `HETEROGENEOUS.md` pricing). Ladder: `deepseek → free → pro/qwen (mid) → terra → grok`; env failures (DB/port/flock/inode) retry cheap, don't escalate. Packets via `.opencode/skills/packet`, handoffs via `.opencode/skills/handoff`. After two identical failures change approach. Never weaken hard rules.
 
 ## Repository map
 
