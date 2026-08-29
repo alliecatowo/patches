@@ -247,14 +247,13 @@ describe('parsePageStrict', () => {
       expect(links.links[1]?.group).toBeUndefined();
     });
 
-    it('normalizes a blank group to absent (no stray empty heading)', () => {
+    it('trims a blank group to empty — renderers treat it as "no heading"', () => {
       const doc = parsePageStrict(
         linksDoc([{ label: 'x', href: 'https://x.example', group: '  ' }]),
       );
       const links = doc.pages[0]?.blocks[0];
       if (links?.type !== 'Links') throw new Error('expected a Links block');
-      expect(links.links[0]).toMatchObject({ label: 'x', href: 'https://x.example' });
-      expect(links.links[0]?.group).toBeUndefined();
+      expect(links.links[0]).toMatchObject({ label: 'x', href: 'https://x.example', group: '' });
     });
 
     it('strips escape sequences and trims a group heading', () => {

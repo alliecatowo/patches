@@ -108,13 +108,10 @@ const linksBlockSchema = z
             href: linkHrefSchema,
             /** Optional group heading — a link-tree-like collection groups its entries
              * under labelled headings (B-119). Absent for an ungrouped entry (old
-             * documents parse unchanged); renderers show a group heading when present
-             * and a plain list entry when absent. Empty-after-sanitize (`''`) is
-             * normalized to absent so a blank group field never renders a stray
-             * heading. */
-            group: shortText(PAGE_LINK_GROUP_MAX_CHARS)
-              .optional()
-              .transform((value) => (value === '' ? undefined : value)),
+             * documents parse unchanged); renderers treat an absent *or blank* group as
+             * "no heading" (`shortText` already trims/sanitizes), so a blank group never
+             * renders a stray heading. */
+            group: shortText(PAGE_LINK_GROUP_MAX_CHARS).optional(),
           })
           .strict(),
       )
