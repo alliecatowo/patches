@@ -49,6 +49,15 @@ if printf '%s' "$cmd" | grep -Eq '(^|[;&|[:space:]])(pnpm[[:space:]]+verify|pnpm
   # warn, don't block — CI needs it, but nudge workers toward scoped checks
   echo "NOTE: prefer 'mise run check <ws>' (bounded, scoped, turbo-cached) over 'pnpm verify/build' locally — see docs/agents/HARNESS.md" >&2
 fi
+# #368: formatting/lint is auto-fixed (nit) at commit, not denied — warn, never block, on the
+# check-only forms so an agent reaches for the auto-fixing variant (`--write`/`--fix`) or just
+# commits and lets pre-push/CI do the real gating, instead of escaping with `--no-verify`.
+if printf '%s' "$cmd" | grep -Eq 'prettier[[:space:]]+(--check|--list-different)'; then
+  echo "NOTE: 'prettier --check' only reports; pre-commit auto-fixes with 'prettier --write' (nit, #368). Commit/push gates run the real check." >&2
+fi
+if printf '%s' "$cmd" | grep -Eq 'eslint[[:space:]]' && ! printf '%s' "$cmd" | grep -Eq -- '--fix'; then
+  echo "NOTE: bare 'eslint' only reports; pre-commit auto-fixes with 'eslint --fix' (nit, #368). Remaining issues gate at pre-push/CI." >&2
+fi
 # Cap concurrent worktrees — if >6 already exist, block new isolation to protect inodes/cache (LEARNINGS.md 2026-08-20: 11 worktrees hit 100% inodes).
 if printf '%s' "$cmd" | grep -Eq 'WorktreeCreate|isolation.*worktree' 2>/dev/null; then
   count="$(git -C "${OPENCODE_PROJECT_DIR:-$(pwd)}" worktree list 2>/dev/null | wc -l || echo 0)"

@@ -1,6 +1,12 @@
 # Lefthook (mise-managed, see docs/research/monorepo-toolchain.md). Deliberately narrow — staged-file
 # prettier + eslint only, not a full `pnpm verify` (B-008): a full-verify pre-commit hook would be slow
 # enough that people reach for `--no-verify`, defeating the point. `pnpm verify`/`/verify` is the gate.
+# #368: format and lint are **nit auto-fix, not deny** — both commands auto-fix what they can
+# (`--write` / `--fix`) and `stage_fixed` re-stages the result, so a commit on a sloppy file
+# proceeds instead of blocking on `prettier --check`/lint exit-2. Remaining (unfixable) lint is
+# reported as a nit; real lint/type/build errors still gate at pre-push (`turbo run lint
+# --affected`) and CI (`mise run verify`). Typecheck below stays a hard deny — it's a correctness
+# gate, not cosmetic.
 # Not auto-installed by `pnpm install` — run `mise run setup`/`mise run hooks:install` to opt in; this
 # is a shared checkout other agents also commit into, so gating every commit is an explicit human choice.
 pre-commit:
@@ -14,7 +20,12 @@ pre-commit:
       glob: '*.{ts,tsx,mts,cts,js,mjs,cjs}'
       # Same cache mise run check uses — without it every commit cold-starts the
       # type-aware TS program (~30s+ on this repo); with it, repeat commits lint in ~2s.
-      run: pnpm exec eslint {staged_files} --cache --cache-location node_modules/.cache/eslint/
+      # `--fix` auto-corrects what it can; the `|| ... :` swallow makes anything left over a
+      # nit (reported) rather than a deny — pre-push (`turbo run lint`) and CI still catch it.
+      run: >-
+        pnpm exec eslint {staged_files} --fix --cache --cache-location node_modules/.cache/eslint/
+        || { echo "nit: eslint auto-fixed what it could; any remaining issues gate at pre-push/CI (#368)."; :; }
+      stage_fixed: true
     typecheck:
       glob: '*.{ts,tsx,mts,cts}'
       # #302: `tsc --noEmit` for only the workspace(s) a staged file belongs to (incremental,
