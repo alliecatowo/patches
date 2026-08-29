@@ -1,3 +1,12 @@
+import {
+  avatarFrameToken,
+  deterministicIdentityArt,
+  nameTagToken,
+  popEmphasis,
+  type CosmeticsNameTag,
+  type CosmeticsProfileFrame,
+  type IdentityCosmeticCaps,
+} from '@patches/domain';
 import { present } from '../api/present.js';
 import { FOLLOW_STATE, NAME_TAG_STYLE, PROFILE_FRAME } from '../api/wire/enums.js';
 import type { Actor, Relationship } from '../api/wire/types.js';
@@ -13,6 +22,7 @@ import { PostList, type PostRowActions } from '../components/PostList.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
 import { useActor } from '../hooks/useActor.js';
 import { usePaginatedPosts, type PostPage } from '../hooks/usePaginatedPosts.js';
+import { terminalColorDepth } from '../theme/color-depth.js';
 import { theme } from '../theme/index.js';
 import { usePlainMode } from '../theme/plain-mode.js';
 
@@ -71,6 +81,35 @@ function nameTagGlyph(style: NAME_TAG_STYLE): string {
       return '◌';
     default:
       return '';
+  }
+}
+
+/** `PROFILE_FRAME` wire enum → the domain cosmetic-pack frame token (B-117). Anything
+ * unrecognized/unset degrades to `'none'` so the shared selector sees the same input web does. */
+function profileFrameToToken(frame: PROFILE_FRAME): CosmeticsProfileFrame {
+  switch (frame) {
+    case PROFILE_FRAME.BORDER:
+      return 'border';
+    case PROFILE_FRAME.GLOW:
+      return 'glow';
+    case PROFILE_FRAME.GRADIENT:
+      return 'gradient';
+    default:
+      return 'none';
+  }
+}
+
+/** `NAME_TAG_STYLE` wire enum → the domain cosmetic-pack name-tag token (B-117). */
+function nameTagToToken(style: NAME_TAG_STYLE): CosmeticsNameTag {
+  switch (style) {
+    case NAME_TAG_STYLE.BADGE:
+      return 'badge';
+    case NAME_TAG_STYLE.RIBBON:
+      return 'ribbon';
+    case NAME_TAG_STYLE.PILLED:
+      return 'pilled';
+    default:
+      return 'none';
   }
 }
 
@@ -393,19 +432,38 @@ export function ProfileScreen({
   const hasAvatarFrame = !plain && present(actor.nameplate) && actor.nameplate.avatarFrame !== '';
   const hasProfileBorder =
     !plain && present(actor.nameplate) && actor.nameplate.profileBorder !== '';
+  const cosmeticCaps: IdentityCosmeticCaps = {
+    plain,
+    highContrast: false,
+    reducedMotion: false,
+    colorDepth: terminalColorDepth(),
+  };
+  // B-117: the *same* shared domain selectors web uses now decide the TUI's frame/name-tag
+  // degradation (plain, no-colour, high-contrast), so the two clients agree on what a given
+  // capability set permits. `pop` is the restrained, plain/motion-aware terminal emphasis.
+  const frameEnabled =
+    avatarFrameToken(profileFrameToToken(actor.profileFrame), cosmeticCaps) !== 'none';
+  const tagEnabled = nameTagToken(nameTagToToken(actor.nameTagStyle), cosmeticCaps) !== 'none';
+  const pop = popEmphasis(cosmeticCaps);
   // B-130 rapid personalization — all purely cosmetic (§184.3), all degraded: no frame →
-  // the plain profile box (or the older free-text border), no accent → the theme default.
-  // A hex passed straight to Ink's `color` is downsampled by chalk to the terminal's
-  // actual colour depth (truecolor → 256 → 16), same as a nameplate colour. The TUI does
-  // not render the R2 `banner` image at all (text-only client).
-  const accent = !plain && actor.accentColor !== '' ? actor.accentColor : undefined;
-  const frameBorder = !plain ? frameBorderStyle(actor.profileFrame) : undefined;
+  // the plain profile box (or the older free-text border), no accent → a deterministic,
+  // handle-derived accent (B-117) so the frame/border/badge never fall back to the theme
+  // accent. A hex passed straight to Ink's `color` is downsampled by chalk to the
+  // terminal's actual colour depth, same as a nameplate colour. The TUI does not render
+  // the R2 `banner` image at all (text-only client).
+  const accent =
+    !plain && actor.accentColor !== ''
+      ? actor.accentColor
+      : !plain
+        ? deterministicIdentityArt(actor.handle).accent
+        : undefined;
+  const frameBorder = frameEnabled ? frameBorderStyle(actor.profileFrame) : undefined;
   const borderStyle =
     frameBorder ??
     (hasProfileBorder && present(actor.nameplate)
       ? borderStyleFor(actor.nameplate.profileBorder)
       : undefined);
-  const tagGlyph = !plain ? nameTagGlyph(actor.nameTagStyle) : '';
+  const tagGlyph = tagEnabled ? nameTagGlyph(actor.nameTagStyle) : '';
   const displayName =
     actor.displayName === '' ? `@${actor.handle}` : sanitizeForTerminal(actor.displayName);
 
@@ -432,6 +490,9 @@ export function ProfileScreen({
           />
           {hasAvatarFrame ? ' ›' : ''}
           {tagGlyph === '' ? '' : ` ${tagGlyph}`}
+          {/* B-117 restrained terminal "pop": a single accent dot, no row cost — never
+              rendered under plain/reduced-motion/no-colour (popEmphasis guards). */}
+          {pop ? ' ·' : ''}
         </Text>
         <Nameplate handle={actor.handle} nameplate={actor.nameplate ?? undefined} />
         {!plain && present(actor.nameplate) && actor.nameplate.statusLine !== '' ? (

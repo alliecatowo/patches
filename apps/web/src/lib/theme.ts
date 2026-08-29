@@ -219,3 +219,23 @@ export function subscribeSystemColorScheme(listener: Listener): () => void {
   media.addEventListener('change', handler);
   return () => media.removeEventListener('change', handler);
 }
+
+/** True when the OS/user asked the site to minimize motion (`prefers-reduced-motion: reduce`,
+ * or the boolean media query form). Consumed by the identity-cosmetic-packs layer (B-117) so a
+ * "pop" or pulsing frame never animates for a user who asked for less motion. */
+export function getSystemPrefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** Live subscription to the reduced-motion preference — pairs with
+ * `getSystemPrefersReducedMotion` for a `useSyncExternalStore` binding. */
+export function subscribeSystemPrefersReducedMotion(listener: Listener): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => {};
+  }
+  const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const handler = (): void => listener();
+  media.addEventListener('change', handler);
+  return () => media.removeEventListener('change', handler);
+}

@@ -1,5 +1,13 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describeError, isSignInRequired } from '@patches/client';
+import {
+  avatarFrameToken,
+  deterministicIdentityArt,
+  nameTagToken,
+  popEmphasis,
+  type CosmeticsNameTag,
+  type CosmeticsProfileFrame,
+} from '@patches/domain';
 import { NameTagStyle, ProfileFrame } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type CSSProperties, type JSX } from 'react';
@@ -17,6 +25,7 @@ import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
+import { useIdentityCosmeticCaps } from '../hooks/useIdentityCosmeticCaps.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
 import { NotFoundRoute } from './NotFoundRoute.js';
@@ -24,10 +33,10 @@ import styles from './ProfileRoute.module.css';
 
 type Tab = 'posts' | 'wall' | 'followers' | 'following';
 
-/** The frame enum as a `data-frame` value the CSS can select on (`'none'` for unset/NONE —
- * §184.3 degradation: anything the client cannot render is plain). */
-function frameData(actor: { profileFrame: ProfileFrame }): string {
-  switch (actor.profileFrame) {
+/** Wire `ProfileFrame` enum → the domain cosmetic-pack frame token (B-117). Anything
+ * unrecognized/unset degrades to `'none'` (a frame is decoration; §184.3). */
+function profileFrameToToken(frame: ProfileFrame): CosmeticsProfileFrame {
+  switch (frame) {
     case ProfileFrame.BORDER:
       return 'border';
     case ProfileFrame.GLOW:
@@ -39,8 +48,9 @@ function frameData(actor: { profileFrame: ProfileFrame }): string {
   }
 }
 
-function nameTagData(actor: { nameTagStyle: NameTagStyle }): string {
-  switch (actor.nameTagStyle) {
+/** Wire `NameTagStyle` enum → the domain cosmetic-pack name-tag token (B-117). */
+function nameTagToToken(style: NameTagStyle): CosmeticsNameTag {
+  switch (style) {
     case NameTagStyle.BADGE:
       return 'badge';
     case NameTagStyle.RIBBON:
@@ -59,6 +69,7 @@ export function ProfileRoute(): JSX.Element {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('posts');
   const [editWallOpen, setEditWallOpen] = useState(false);
+  const cosmeticCaps = useIdentityCosmeticCaps();
   const profileHandle =
     handle !== undefined && handle.startsWith('@') && handle.length > 1 && handle[1] !== '@'
       ? handle.slice(1)
@@ -149,6 +160,16 @@ export function ProfileRoute(): JSX.Element {
     accentColor === '' ? {} : { '--profile-accent': accentColor }
   ) as CSSProperties & Record<`--${string}`, string>;
 
+  // B-117 identity cosmetic packs: the *same* shared domain selectors the TUI collates
+  // against, now with live capability degradation (reduced-motion on the web). Frame and
+  // name-tag still degrade to plain `data-frame`/`data-name-tag` values; `pop` is the
+  // restrained, motion-aware emphasis on the header; `identityArt` is the deterministic,
+  // handle-derived accent + motif for a placeholder avatar.
+  const frameToken = avatarFrameToken(profileFrameToToken(actor.profileFrame), cosmeticCaps);
+  const nameTagTokenValue = nameTagToken(nameTagToToken(actor.nameTagStyle), cosmeticCaps);
+  const pop = popEmphasis(cosmeticCaps);
+  const identityArt = deterministicIdentityArt(actor.handle);
+
   return (
     <div style={profileStyle}>
       {
@@ -159,7 +180,7 @@ export function ProfileRoute(): JSX.Element {
           <MediaImage mediaId={actor.banner.mediaId} altText="" className={styles['banner']} />
         ) : null
       }
-      <div className={styles['header']} data-frame={frameData(actor)}>
+      <div className={styles['header']} data-frame={frameToken} data-pop={pop ? 'true' : undefined}>
         <div className={styles['topRow']}>
           {
             // Banner overlaps the avatar's bottom edge (#324) — handled purely in CSS
@@ -168,7 +189,14 @@ export function ProfileRoute(): JSX.Element {
             actor.avatar?.mediaId ? (
               <MediaImage mediaId={actor.avatar.mediaId} altText="" className={styles['avatar']} />
             ) : (
-              <div className={styles['avatarPlaceholder']}>
+              <div
+                className={styles['avatarPlaceholder']}
+                style={
+                  { '--identity-accent': identityArt.accent } as CSSProperties &
+                    Record<`--${string}`, string>
+                }
+              >
+                <span aria-hidden="true">{identityArt.motif}</span>
                 {actor.handle.slice(0, 1).toUpperCase()}
               </div>
             )
@@ -192,7 +220,7 @@ export function ProfileRoute(): JSX.Element {
           </div>
         </div>
         <ModerationActions actorId={actor.id} />
-        <div className={styles['nameTagRow']} data-name-tag={nameTagData(actor)}>
+        <div className={styles['nameTagRow']} data-name-tag={nameTagTokenValue}>
           <h1 className={styles['displayName']}>{actor.displayName || actor.handle}</h1>
           <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
         </div>
