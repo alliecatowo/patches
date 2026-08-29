@@ -7,10 +7,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { stripSgr } from './ansi.js';
 import { E2eeNotEnrolledError } from '../src/e2ee/runtime.js';
-import type { InboxRow as E2eeReceivedRow } from '../src/e2ee/runtime.js';
+import type { E2eeControlEvent, InboxRow as E2eeReceivedRow } from '../src/e2ee/runtime.js';
 import {
   MessagesScreen,
   unverifiableMessageCopy,
+  type E2eeDrain,
   type MessagesScreenApi,
 } from '../src/screens/MessagesScreen.js';
 import { makeConversation, makeConversationMember, makeActor } from '../src/test/wire-fixtures.js';
@@ -70,8 +71,8 @@ describe('MessagesScreen end-to-end seams (B-101)', () => {
       body: 'hello from the vault',
       sentByViewer: false,
     };
-    const receiveE2ee = vi.fn<(conversationId: string) => Promise<readonly E2eeReceivedRow[]>>();
-    receiveE2ee.mockResolvedValue([row]);
+    const receiveE2ee = vi.fn<(conversationId: string) => Promise<E2eeDrain>>();
+    receiveE2ee.mockResolvedValue({ rows: [row] });
 
     const { lastFrame, stdin } = render(
       <MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} mailPollMs={50} />,
@@ -95,8 +96,8 @@ describe('MessagesScreen end-to-end seams (B-101)', () => {
     const rows: E2eeReceivedRow[] = [
       { kind: 'unverifiable', id: 'env-bad', senderLabel: '@actor-peer' },
     ];
-    const receiveE2ee = vi.fn<(conversationId: string) => Promise<readonly E2eeReceivedRow[]>>();
-    receiveE2ee.mockResolvedValue(rows);
+    const receiveE2ee = vi.fn<(conversationId: string) => Promise<E2eeDrain>>();
+    receiveE2ee.mockResolvedValue({ rows });
 
     const { lastFrame, stdin } = render(
       <MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} />,
@@ -119,8 +120,8 @@ describe('MessagesScreen end-to-end seams (B-101)', () => {
         entries: [{ senderLabel: '@actor-peer', body: 'an older message' }],
       },
     ];
-    const receiveE2ee = vi.fn<(conversationId: string) => Promise<readonly E2eeReceivedRow[]>>();
-    receiveE2ee.mockResolvedValue(rows);
+    const receiveE2ee = vi.fn<(conversationId: string) => Promise<E2eeDrain>>();
+    receiveE2ee.mockResolvedValue({ rows });
 
     const { lastFrame, stdin } = render(
       <MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} />,
@@ -181,5 +182,52 @@ describe('MessagesScreen end-to-end seams (B-101)', () => {
 
     await waitForFrame(lastFrame, 'needs an enrolled device');
     expect(stripSgr(lastFrame() ?? '')).toContain('Your draft is kept');
+  });
+
+  it('surfaces a B-093 typing edge as "is typing…" and clears it on the stop', async () => {
+    const conv = e2eeConversation('conv-typing');
+    const api = fakeApi(conv);
+    const queuedControls: E2eeControlEvent[][] = [
+      [
+        {
+          conversationId: conv.id,
+          senderActorId: 'actor-peer',
+          senderDeviceId: 'peer-dev-1',
+          envelopeId: 'env-typing-1',
+          type: 'TYPING_START',
+          createdAtMs: Date.now(),
+          envelopeBytes: new Uint8Array([1]),
+        },
+      ],
+      [
+        {
+          conversationId: conv.id,
+          senderActorId: 'actor-peer',
+          senderDeviceId: 'peer-dev-1',
+          envelopeId: 'env-typing-2',
+          type: 'TYPING_STOP',
+          createdAtMs: Date.now(),
+          envelopeBytes: new Uint8Array([2]),
+        },
+      ],
+    ];
+    const receiveE2ee = vi.fn<(conversationId: string) => Promise<E2eeDrain>>(() =>
+      Promise.resolve({ rows: [], controls: queuedControls.shift() ?? [] }),
+    );
+
+    const { lastFrame, stdin } = render(
+      <MessagesScreen api={api} isActive receiveE2ee={receiveE2ee} mailPollMs={30} />,
+    );
+    await waitForFrame(lastFrame, '[E2EE]');
+    stdin.write(KEY.enter);
+    await waitForFrame(lastFrame, '@actor-peer is typing…');
+
+    // The next drain delivers the stop edge, which must clear the indicator rather than
+    // waiting for the 3s TTL — "typing…" must not pin to the screen after the peer stops.
+    const deadline = Date.now() + 2_000;
+    while (stripSgr(lastFrame() ?? '').includes('is typing…')) {
+      if (Date.now() >= deadline) throw new Error('typing indicator never cleared');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
   });
 });

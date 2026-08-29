@@ -62,7 +62,11 @@ import { PostHistoryScreen } from '../screens/PostHistoryScreen.js';
 import { LocalScreen } from '../screens/LocalScreen.js';
 import { HomeScreen } from '../screens/HomeScreen.js';
 import { LoginScreen } from '../screens/LoginScreen.js';
-import { MessagesScreen, type MessagesScreenApi } from '../screens/MessagesScreen.js';
+import {
+  MessagesScreen,
+  type E2eeDrain,
+  type MessagesScreenApi,
+} from '../screens/MessagesScreen.js';
 import { ModerationLogScreen } from '../screens/ModerationLogScreen.js';
 import { NotificationsScreen } from '../screens/NotificationsScreen.js';
 import { PageScreen, type PageScreenProps } from '../screens/PageScreen.js';
@@ -759,11 +763,14 @@ export function App({
    * client does not have — and never touches the network on that path.
    */
   const receiveE2eeRows = useCallback(
-    (conversationId: string): Promise<readonly E2eeReceivedRow[]> => {
+    (conversationId: string): Promise<E2eeDrain> => {
       const sender = session === undefined ? undefined : e2eeSenderFor(session);
-      if (sender === undefined || !sender.enrolled()) return Promise.resolve([]);
+      if (sender === undefined || !sender.enrolled()) return Promise.resolve({ rows: [] });
       // The open thread is being read live — never count its drain toward durable unread.
-      return sender.pollMailbox(conversationId, { reading: true }).then((result) => result.rows);
+      return sender.pollMailbox(conversationId, { reading: true }).then((result) => ({
+        rows: result.rows,
+        ...(result.controls !== undefined ? { controls: result.controls } : {}),
+      }));
     },
     [session, e2eeSenderFor],
   );
