@@ -1,15 +1,19 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { logoutCurrentSession } from '../api/client.js';
+import { logoutCurrentSession, removeAccount, switchToAccount } from '../api/client.js';
+import { useAccounts } from '../hooks/useAccounts.js';
 import { useSession } from '../hooks/useSession.js';
 import {
   BookmarkIcon,
   LogOutIcon,
   MessageIcon,
+  PlusIcon,
   ScaleIcon,
   SettingsIcon,
   ShieldIcon,
+  TrashIcon,
   UserIcon,
 } from './icons/Icons.js';
 import styles from './ProfileMenu.module.css';
@@ -21,7 +25,9 @@ export interface ProfileMenuProps {
 
 export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element | null {
   const session = useSession();
+  const accounts = useAccounts();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -45,6 +51,26 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
     onClose();
     void logoutCurrentSession().then(() => navigate('/'));
   };
+
+  const handleSwitchTo = (userId: string): void => {
+    onClose();
+    // Route + session reset for the new actor: `switchToAccount` swaps the active credential
+    // slot, but most feed/notification query keys aren't actor-scoped, so without clearing
+    // the React Query cache the new account briefly renders the previous one's cached server
+    // data. `clear()` drops every cached query; the home navigation below then refetches as
+    // the freshly-active actor. (Mutable prefs like the E2EE message vault already partition
+    // per actor id and re-initialise on their own.)
+    queryClient.clear();
+    void switchToAccount(userId).then(() => navigate('/'));
+  };
+
+  const handleRemoveAccount = (userId: string): void => {
+    void removeAccount(userId);
+  };
+
+  /** Saved accounts other than the one currently signed in (already excludes the active). */
+  const otherAccounts =
+    session === null ? [] : accounts.filter((account) => account.userId !== session.actor.id);
 
   return (
     <div
@@ -100,6 +126,44 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
         <div className={styles['menuList']}>
           {session ? (
             <>
+              {otherAccounts.length > 0 ? (
+                <>
+                  <div className={styles['accountsSection']}>
+                    <span className={styles['accountsLabel']}>Switch account</span>
+                    {otherAccounts.map((account) => (
+                      <div key={account.userId} className={styles['accountRow']}>
+                        <button
+                          type="button"
+                          className={styles['accountButton']}
+                          onClick={() => handleSwitchTo(account.userId)}
+                          aria-label={`Switch to @${account.handle}`}
+                        >
+                          <UserIcon size={18} />
+                          <span className={styles['accountName']}>
+                            {account.displayName || account.handle}
+                          </span>
+                          <span className={styles['accountHandle']}>@{account.handle}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={styles['accountRemove']}
+                          onClick={() => handleRemoveAccount(account.userId)}
+                          aria-label={`Remove saved account @${account.handle}`}
+                        >
+                          <TrashIcon size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles['divider']} />
+                </>
+              ) : null}
+
+              <Link to="/login" className={styles['menuItem']} onClick={onClose}>
+                <PlusIcon size={18} />
+                <span>Add account</span>
+              </Link>
+
               <Link
                 to={`/@${session.actor.handle}`}
                 className={styles['menuItem']}

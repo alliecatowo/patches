@@ -4,6 +4,7 @@ import { createPatchesApi, SessionManager } from '@patches/client';
 import { AuthService, type Session } from '@patches/proto/es';
 import { toast } from 'sonner';
 
+import { getAccount, removeAccount as removeSavedAccount, saveAccount } from './accounts.js';
 import { LocalStorageCredentialStore } from './credentialStore.js';
 import { clearActorSession, setActorSession } from './session.js';
 
@@ -42,14 +43,28 @@ export const sessionManager = new SessionManager({
 });
 
 /** Persists a `Session` proto (from `Login`/`Register`) into both the token store and the
- * actor snapshot the UI renders from. */
+ * actor snapshot the UI renders from, and remembers the account in the local multi-account
+ * registry (`accounts.ts`) so it can be switched back to later (#345). */
 export async function establishSession(session: Session): Promise<void> {
   if (!session.actor) return;
-  await sessionManager.setSession({
-    accessToken: session.accessToken,
-    refreshToken: session.refreshToken,
-  });
+  const tokens = { accessToken: session.accessToken, refreshToken: session.refreshToken };
+  await sessionManager.setSession(tokens);
   setActorSession(session.actor);
+  saveAccount(session.actor, tokens);
+}
+
+/**
+ * Switches the active session to a previously saved account without a re-login (#345).
+ * The saved account's tokens are rehydrated into the single active slot `sessionManager`
+ * holds, and the UI actor snapshot is replaced. No network call — the account was already
+ * logged in once and its session was persisted by the registry.
+ */
+export async function switchToAccount(userId: string): Promise<boolean> {
+  const account = getAccount(userId);
+  if (account === undefined) return false;
+  await sessionManager.setSession(account.tokens);
+  setActorSession(account.actor);
+  return true;
 }
 
 /** Signs out locally. Does not call the server — callers issue the `Logout` RPC
@@ -57,6 +72,11 @@ export async function establishSession(session: Session): Promise<void> {
 export async function signOut(): Promise<void> {
   await sessionManager.clear();
   clearActorSession();
+}
+
+/** Discards a saved account's locally stored tokens and profile metadata (#345). */
+export function removeAccount(userId: string): void {
+  removeSavedAccount(userId);
 }
 
 /**
