@@ -17,4 +17,8 @@ actual="$(node --version 2>/dev/null | sed 's/^v//')"
 if [ -n "$pinned" ] && [ -n "$actual" ] && [ "$pinned" != "$actual" ]; then
   echo "WARNING: bare 'node' is $actual but mise.toml pins $pinned. Run commands as 'mise exec -- <cmd>'."
 fi
+# Pre-commit auto-fixes formatting/lint (nit, #368): 'prettier --write' + 'eslint --fix' run on
+# staged files and re-stage the result, so a commit on a sloppy file proceeds. Type safety still
+# blocks (tsc --noEmit); real lint/type/build errors gate at pre-push and CI (mise run verify).
+echo "Pre-commit hook auto-fixes format/lint (nit, not deny, #368); typecheck still blocks."
 exit 0

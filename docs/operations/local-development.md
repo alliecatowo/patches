@@ -118,6 +118,14 @@ staged `.ts`/`.tsx`/`.mts`/`.cts` file belongs to (`scripts/precommit-typecheck.
 is still deliberately narrower than `pnpm verify` (no build/test), so it stays fast enough
 that nobody reaches for `git commit --no-verify` out of impatience.
 
+Since #368, formatting and lint in the pre-commit hook are **nit auto-fix, not deny**:
+Prettier runs `--write` and ESLint runs `--fix`, both with `stage_fixed: true`, so a commit
+on a sloppy file auto-corrects and re-stages instead of blocking on `prettier --check` /
+lint exit-2. Anything remaining (unfixable lint) is reported as a nit; the `typecheck`
+command above stays a hard deny. Real lint/type/build errors are still gated at **pre-push**
+(`turbo run lint --affected` below) and **CI** (`mise run verify`, `docs/operations/ci.md`),
+so the earlier auto-fix just keeps cheap commits frictionless — it never weakens the gate.
+
 The **pre-push** hook is the test gate, and (B-178/B-127, 2026-08-26) it deliberately runs
 a _scoped_ equivalent of `pnpm verify`, not `pnpm verify` itself:
 
