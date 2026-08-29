@@ -150,6 +150,13 @@ per node) instead of a vitest run, so a human can drive them with the TUI or `gr
 `mise run fed:lab:down` stops it (kills the PIDs `fed-lab.sh` recorded in
 `infra/lab/.run/*.pid`; never `pkill -f`).
 
+The harness also provisions a two-node federation lab directly: `mise run lab -- --federation`
+(`packages/harness`, `docs/agents/HARNESS.md` "Multi-node and federation labs") starts two
+federating nodes (`a.localhost`/`b.localhost`, gRPC `:50100`/`:50101`, HTTP `:8091`/`:8092`)
+with `FEDERATION_ENABLED=true` and a shared `FEDERATION_KEY_ENCRYPTION_KEY`, and `mise run
+lab:reset` tears them down idempotently. `fed-lab.sh` remains the human-driven fallback until
+the harness federation proof is green end-to-end.
+
 It builds `@patches/server`/`@patches/worker`/`@patches/tui` once, brings up the compose
 Postgres stack (`mise run compose -- up -d postgres`), creates+migrates two dedicated
 databases (`patches_lab_a`, `patches_lab_b` — same "one database per node" reasoning as the

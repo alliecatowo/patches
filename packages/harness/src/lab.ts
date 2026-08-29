@@ -22,12 +22,23 @@ export const DEFAULT_GRPC_PORT = 50058;
 export const MAILPIT_HTTP_ORIGIN = 'http://127.0.0.1:8025';
 export const MAILPIT_SMTP_PORT = 1025;
 
+/**
+ * Multi-node lab port ranges (`up --nodes N` / `up --federation`). Deliberately disjoint from
+ * the single-node harness (:50058/:8088) and the legacy `fed-lab.sh` (:50061/:50062/:8081/:8082)
+ * so an agent can hold either kind of lab without colliding on a port. Node `i` (0-based) gets
+ * grpc `MULTI_GRPC_BASE_PORT + i` and http `MULTI_HTTP_BASE_PORT + i`.
+ */
+export const MULTI_GRPC_BASE_PORT = 50100;
+export const MULTI_HTTP_BASE_PORT = 8091;
+/** Per-node database suffix template; node `i` uses `patches_harness_lab_<i>`. */
+export const NODE_DATABASE_NAME_TEMPLATE = 'patches_harness_lab_';
+
 export interface HarnessProcess {
   readonly pid: number;
   readonly startedAt: string;
 }
 
-export interface HarnessState {
+export interface SingleNodeState {
   readonly version: 1;
   readonly runId: string;
   readonly databaseName: typeof DEFAULT_DATABASE_NAME;
@@ -37,6 +48,30 @@ export interface HarnessState {
   readonly server: HarnessProcess;
   readonly worker: HarnessProcess;
 }
+
+/** One isolated node instance within a multi-node/federation run (`up --nodes N`). */
+export interface HarnessNodeState {
+  readonly id: string;
+  readonly nodeDomain: string;
+  readonly databaseName: string;
+  readonly databaseUrl: string;
+  readonly httpPort: number;
+  readonly grpcPort: number;
+  readonly server: HarnessProcess;
+  readonly worker: HarnessProcess;
+}
+
+export interface HarnessMultiState {
+  readonly version: 2;
+  readonly runId: string;
+  readonly mode: 'multi' | 'federation';
+  readonly nodeCount: number;
+  /** Shared federation key-encryption key (base64, 32 bytes) — present iff `mode === 'federation'`. */
+  readonly federationKey?: string;
+  readonly nodes: readonly HarnessNodeState[];
+}
+
+export type HarnessState = SingleNodeState | HarnessMultiState;
 
 export interface HarnessSecrets {
   readonly JWT_PRIVATE_KEY: string;
@@ -78,9 +113,16 @@ export function allowlistedRuntimeEnvironment(source: NodeJS.ProcessEnv): NodeJS
 }
 
 /** Complete, closed environment for the server and worker child processes. */
+export interface HarnessProcessEnvironmentState {
+  readonly runId: string;
+  readonly databaseUrl: string;
+  readonly httpPort: number;
+  readonly grpcPort: number;
+}
+
 export function harnessProcessEnvironment(
   source: NodeJS.ProcessEnv,
-  state: Pick<HarnessState, 'runId' | 'databaseUrl' | 'httpPort' | 'grpcPort'>,
+  state: HarnessProcessEnvironmentState,
   secrets: HarnessSecrets,
 ): NodeJS.ProcessEnv {
   return {
@@ -173,10 +215,19 @@ export function pathsFor(root: string): LabPaths {
   };
 }
 
-/** The harness may only ever create or migrate this local disposable database. */
-export function isHarnessDatabaseName(name: unknown): name is typeof DEFAULT_DATABASE_NAME {
-  return name === DEFAULT_DATABASE_NAME;
+/**
+ * The harness may only ever create or migrate its dedicated disposable databases: the single
+ * `patches_harness_lab` and the per-node `patches_harness_lab_<n>` names used by multi-node
+ * runs. Anything else is refused, so a reset can never drop a non-harness database.
+ */
+export function isHarnessDatabaseName(name: unknown): name is HarnessDatabaseName {
+  return (
+    typeof name === 'string' &&
+    (name === DEFAULT_DATABASE_NAME || /^patches_harness_lab_\d+$/u.test(name))
+  );
 }
+
+export type HarnessDatabaseName = string & { readonly __harnessDatabase: unique symbol };
 
 /** Reject traversal and broad directories before creating, deleting, or reading state. */
 export function isSafeHarnessRunDirectory(root: string, candidate: string): boolean {
@@ -189,14 +240,89 @@ export function isSafeHarnessRunDirectory(root: string, candidate: string): bool
 }
 
 export function databaseUrl(databaseName = DEFAULT_DATABASE_NAME): string {
-  if (!isHarnessDatabaseName(databaseName)) {
-    throw new Error(`refusing non-harness database name: ${databaseName}`);
+  const candidate = databaseName;
+  if (!isHarnessDatabaseName(candidate)) {
+    throw new Error(`refusing non-harness database name: ${candidate}`);
   }
-  return `postgres://patches:patches@127.0.0.1:5432/${databaseName}`;
+  return `postgres://patches:patches@127.0.0.1:5432/${candidate}`;
 }
 
 export function newRunId(): string {
   return randomBytes(16).toString('hex');
+}
+
+/** Database name for multi-node node `index` (0-based); validates against the harness allow-list. */
+export function nodeDatabaseName(index: number): string {
+  if (!Number.isSafeInteger(index) || index < 0)
+    throw new Error(`invalid multi-node index: ${String(index)}`);
+  return `${NODE_DATABASE_NAME_TEMPLATE}${String(index)}`;
+}
+
+export function nodeDatabaseUrl(index: number): string {
+  return databaseUrl(nodeDatabaseName(index));
+}
+
+export function nodeId(index: number): string {
+  return `node-${String(index)}`;
+}
+
+/** Per-node `NODE_DOMAIN` for federation runs; `a.localhost`, `b.localhost`, … (single letter). */
+export function nodeDomain(index: number, mode: 'multi' | 'federation'): string {
+  if (mode !== 'federation') return 'harness.localhost';
+  const letter = String.fromCharCode('a'.charCodeAt(0) + index);
+  return `${letter}.localhost`;
+}
+
+/** Isolated, deterministic ports for node `index`, disjoint from the single-node/fed-lab ranges. */
+export function allocateNodePorts(index: number): {
+  readonly grpcPort: number;
+  readonly httpPort: number;
+  readonly nodeDomain: string;
+} {
+  if (!Number.isSafeInteger(index) || index < 0) throw new Error('invalid multi-node index');
+  return {
+    grpcPort: MULTI_GRPC_BASE_PORT + index,
+    httpPort: MULTI_HTTP_BASE_PORT + index,
+    nodeDomain: nodeDomain(index, 'multi'),
+  };
+}
+
+/**
+ * Shared federation key-encryption key for a federation run: base64-encoded 32 bytes, exactly
+ * what `apps/server`'s `FEDERATION_KEY_ENCRYPTION_KEY` schema requires (32 base64-decoded bytes).
+ */
+export function generateFederationKeyEncryptionKey(): string {
+  return randomBytes(32).toString('base64');
+}
+
+/** Every process a run owns that must be proven stopped before its state can be cleared. */
+export function stateProcessEntries(state: HarnessState): readonly NamedHarnessProcess[] {
+  if (state.version === 1) {
+    return [
+      { name: 'worker', process: state.worker, expectedScript: 'apps/worker/dist/main.js' },
+      { name: 'server', process: state.server, expectedScript: 'apps/server/dist/main.js' },
+    ];
+  }
+  const entries: NamedHarnessProcess[] = [];
+  for (const node of state.nodes) {
+    entries.push({
+      name: `${node.id}:worker`,
+      process: node.worker,
+      expectedScript: 'apps/worker/dist/main.js',
+    });
+    entries.push({
+      name: `${node.id}:server`,
+      process: node.server,
+      expectedScript: 'apps/server/dist/main.js',
+    });
+  }
+  return entries;
+}
+
+/** All database names owned by a run (single-node returns just its one DB). */
+export function stateDatabaseNames(state: HarnessState): readonly string[] {
+  if (state.version === 1) return [state.databaseName];
+  return state.nodes.map((node) => node.databaseName);
 }
 
 export async function prepareRunDirectory(paths: LabPaths): Promise<void> {
@@ -386,7 +512,7 @@ export async function assertRuntimePathHasNoSymlinks(paths: LabPaths): Promise<v
 }
 
 export interface NamedHarnessProcess {
-  readonly name: 'server' | 'worker';
+  readonly name: string;
   readonly process: HarnessProcess;
   readonly expectedScript: string;
 }
@@ -568,7 +694,32 @@ function isHarnessProcess(value: unknown): value is HarnessProcess {
   );
 }
 
-function isHarnessState(value: unknown): value is HarnessState {
+function isHarnessNodeState(value: unknown): value is HarnessNodeState {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    /^node-\d+$/u.test(value.id) &&
+    'nodeDomain' in value &&
+    typeof value.nodeDomain === 'string' &&
+    value.nodeDomain.length > 0 &&
+    'databaseName' in value &&
+    isHarnessDatabaseName(value.databaseName) &&
+    'databaseUrl' in value &&
+    value.databaseUrl === databaseUrl(value.databaseName) &&
+    'httpPort' in value &&
+    typeof value.httpPort === 'number' &&
+    'grpcPort' in value &&
+    typeof value.grpcPort === 'number' &&
+    'server' in value &&
+    isHarnessProcess(value.server) &&
+    'worker' in value &&
+    isHarnessProcess(value.worker)
+  );
+}
+
+function isSingleNodeState(value: unknown): value is SingleNodeState {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -577,7 +728,7 @@ function isHarnessState(value: unknown): value is HarnessState {
     'runId' in value &&
     typeof value.runId === 'string' &&
     'databaseName' in value &&
-    isHarnessDatabaseName(value.databaseName) &&
+    value.databaseName === DEFAULT_DATABASE_NAME &&
     'databaseUrl' in value &&
     value.databaseUrl === databaseUrl(value.databaseName) &&
     'httpPort' in value &&
@@ -589,6 +740,40 @@ function isHarnessState(value: unknown): value is HarnessState {
     'worker' in value &&
     isHarnessProcess(value.worker)
   );
+}
+
+function isHarnessMultiState(value: unknown): value is HarnessMultiState {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('version' in value) ||
+    value.version !== 2 ||
+    !('runId' in value) ||
+    typeof value.runId !== 'string' ||
+    !('mode' in value) ||
+    (value.mode !== 'multi' && value.mode !== 'federation') ||
+    !('nodeCount' in value) ||
+    typeof value.nodeCount !== 'number' ||
+    !Number.isSafeInteger(value.nodeCount) ||
+    value.nodeCount < 1 ||
+    !('nodes' in value) ||
+    !Array.isArray(value.nodes) ||
+    value.nodes.length !== value.nodeCount
+  ) {
+    return false;
+  }
+  for (const node of value.nodes) {
+    if (!isHarnessNodeState(node)) return false;
+  }
+  if (value.mode === 'federation') {
+    if (!('federationKey' in value) || typeof value.federationKey !== 'string') return false;
+    if (Buffer.from(value.federationKey, 'base64').length !== 32) return false;
+  }
+  return true;
+}
+
+function isHarnessState(value: unknown): value is HarnessState {
+  return isSingleNodeState(value) || isHarnessMultiState(value);
 }
 
 export interface PortOwnerDependencies {

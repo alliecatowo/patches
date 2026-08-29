@@ -39,6 +39,7 @@ import {
   DEFAULT_HTTP_PORT,
   MAILPIT_HTTP_ORIGIN,
   allowlistedRuntimeEnvironment,
+  allocateNodePorts,
   atomicPersistLeaf,
   assertLinuxHarness,
   canonicalRepoRoot,
@@ -46,21 +47,31 @@ import {
   cleanupProcessesAndState,
   databaseUrl,
   findForeignHarnessOwner,
+  generateFederationKeyEncryptionKey,
   harnessProcessEnvironment,
   inspectRecordedProcess,
+  isHarnessDatabaseName,
   newRunId,
+  nodeDatabaseName,
+  nodeDatabaseUrl,
+  nodeDomain,
+  nodeId,
   openAppendOnlyLog,
   pathsFor,
   prepareRunDirectory,
   readState,
+  stateDatabaseNames,
+  stateProcessEntries,
   stopForeignProcess,
   stopRecordedProcess,
   waitForProcessSurvival,
+  writeState,
+  type HarnessMultiState,
+  type HarnessNodeState,
   type HarnessProcess,
   type HarnessSecrets,
   type HarnessState,
   type NamedHarnessProcess,
-  writeState,
 } from './lab.js';
 
 const COMMANDS = new Set([
@@ -68,6 +79,7 @@ const COMMANDS = new Set([
   'status',
   'logs',
   'down',
+  'reset',
   'register',
   'login',
   'logout',
@@ -104,15 +116,20 @@ async function repoRoot(): Promise<string> {
 
 function usage(): string {
   return [
-    'Usage: patches-harness <up|status|logs|down|register|login|logout|post|delete-post|follow|unfollow|notifications|wait-unread|world-ensure|mailpit-list|mailpit-latest|mailpit-get> [options]',
+    'Usage: patches-harness <up|status|logs|down|reset|register|login|logout|post|delete-post|follow|unfollow|notifications|wait-unread|world-ensure|mailpit-list|mailpit-latest|mailpit-get> [options]',
     '',
-    'up       build and start one disposable local server + worker lab',
+    'up       build and start one disposable local server + worker lab; --nodes N provisions',
+    '         N isolated nodes (each own DB/ports/ephemeral keys); --federation provisions two',
+    '         federating nodes with FEDERATION_ENABLED=true and a shared federation key',
     "status   print JSON state for the local lab; reports another worktree's lab if this",
     '         one is idle but the port is held',
     'logs     print a bounded, redacted JSON snapshot; --request-id and --limit are optional',
     'down     stop only processes recorded by this lab; --any finds and stops whichever',
     '         worktree currently holds the harness ports instead',
+    'reset    idempotent, lab-only: stop this lab, clear its state, and drop every harness',
+    '         database it created (refuses any non-harness database name)',
     'register/login/logout/post/delete-post/follow/unfollow use direct local gRPC actions',
+    '  against node selected by --node <index> (default: the single-node lab)',
     'auth actions require --password-stdin; notifications/wait-unread observe non-DM notifications',
     'world-ensure reapplies an unchanged stable-key world and refuses declarative drift',
     'mailpit-list/mailpit-latest/mailpit-get read verification-code email from the shared',
@@ -225,16 +242,34 @@ function toHarnessProcess(child: ChildProcess): HarnessProcess {
 }
 
 function processEntries(state: HarnessState): readonly NamedHarnessProcess[] {
-  return [
-    { name: 'worker', process: state.worker, expectedScript: 'apps/worker/dist/main.js' },
-    { name: 'server', process: state.server, expectedScript: 'apps/server/dist/main.js' },
-  ];
+  return stateProcessEntries(state);
 }
 
-async function up(root: string): Promise<void> {
+async function up(root: string, args: readonly string[]): Promise<void> {
+  const nodesFlag = flag(args, 'nodes');
+  const federation = hasFlag(args, 'federation');
+  if (federation) {
+    if (nodesFlag !== undefined)
+      throw new Error('--federation provisions exactly two nodes; drop --nodes');
+    await upMultiNode(root, 2, 'federation');
+    return;
+  }
+  if (nodesFlag === undefined) {
+    await upSingleNode(root);
+    return;
+  }
+  const count = Number(nodesFlag);
+  if (!Number.isSafeInteger(count) || count < 2)
+    throw new Error('--nodes requires an integer >= 2');
+  await upMultiNode(root, count, 'multi');
+}
+
+async function upSingleNode(root: string): Promise<void> {
   const paths = pathsFor(root);
   const previous = await readState(paths);
   if (previous !== undefined) {
+    if (previous.version === 2)
+      throw new Error('a multi-node lab is running; run `mise run lab:down` first');
     const serverStatus = await inspectRecordedProcess(
       previous.server,
       'apps/server/dist/main.js',
@@ -378,6 +413,305 @@ async function up(root: string): Promise<void> {
   });
 }
 
+interface UpMultiDeps {
+  readonly build: (root: string) => Promise<void>;
+  readonly ensurePostgres: (root: string) => Promise<void>;
+  readonly migrateDatabase: (root: string, name: string) => Promise<void>;
+}
+
+const upMultiDeps: UpMultiDeps = {
+  async build(root) {
+    await requireCommand('pnpm', ['--filter', '@patches/server', 'build'], root);
+    await requireCommand('pnpm', ['--filter', '@patches/worker', 'build'], root);
+    await requireCommand('pnpm', ['--filter', '@patches/tui', 'build'], root);
+  },
+  async ensurePostgres(root) {
+    await requireCommand('mise', ['run', 'compose', '--', 'up', '-d', 'postgres'], root);
+  },
+  async migrateDatabase(root, name) {
+    await requireCommand('pnpm', ['db:migrate'], root, {
+      ...allowlistedRuntimeEnvironment(process.env),
+      DATABASE_URL: databaseUrl(name),
+      DATABASE_SSL: 'false',
+    });
+  },
+};
+
+async function createDatabaseIfMissing(root: string, name: string): Promise<void> {
+  const checked = await command(
+    'mise',
+    [
+      'run',
+      'compose',
+      '--',
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      'patches',
+      '-d',
+      'patches',
+      '-tAc',
+      `SELECT 1 FROM pg_database WHERE datname = '${name}'`,
+    ],
+    root,
+  );
+  if (checked.code !== 0) throw new Error(`could not inspect harness database:\n${checked.stderr}`);
+  if (checked.stdout.trim() !== '1') {
+    await requireCommand(
+      'mise',
+      [
+        'run',
+        'compose',
+        '--',
+        'exec',
+        '-T',
+        'postgres',
+        'psql',
+        '-U',
+        'patches',
+        '-d',
+        'patches',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        `CREATE DATABASE ${name} OWNER patches`,
+      ],
+      root,
+    );
+  }
+}
+
+async function startNodeProcesses(
+  root: string,
+  paths: ReturnType<typeof pathsFor>,
+  environment: NodeJS.ProcessEnv,
+  node: Pick<HarnessNodeState, 'id' | 'grpcPort' | 'httpPort'>,
+  runId: string,
+): Promise<HarnessNodeState> {
+  const server = startProcess(
+    'apps/server/dist/main.js',
+    root,
+    environment,
+    `${paths.logDirectory}/${node.id}.server.log`,
+  );
+  let worker: ChildProcess | undefined;
+  try {
+    await waitForReady(`http://127.0.0.1:${String(node.httpPort)}`, server);
+    worker = startProcess(
+      'apps/worker/dist/main.js',
+      root,
+      environment,
+      `${paths.logDirectory}/${node.id}.worker.log`,
+    );
+    await waitForProcessSurvival(worker);
+    return {
+      id: node.id,
+      nodeDomain: String(environment.NODE_DOMAIN),
+      databaseName: nodeDatabaseName(Number(node.id.replace('node-', ''))),
+      databaseUrl: nodeDatabaseUrl(Number(node.id.replace('node-', ''))),
+      httpPort: node.httpPort,
+      grpcPort: node.grpcPort,
+      server: toHarnessProcess(server),
+      worker: toHarnessProcess(worker),
+    };
+  } catch (error) {
+    const rollbackEntries: NamedHarnessProcess[] = [
+      {
+        name: `${node.id}:server`,
+        process: toHarnessProcess(server),
+        expectedScript: 'apps/server/dist/main.js',
+      },
+    ];
+    if (worker !== undefined) {
+      rollbackEntries.unshift({
+        name: `${node.id}:worker`,
+        process: toHarnessProcess(worker),
+        expectedScript: 'apps/worker/dist/main.js',
+      });
+    }
+    try {
+      await cleanupProcessesAndState(
+        rollbackEntries,
+        (entry) => stopRecordedProcess(entry.process, entry.expectedScript, runId),
+        () => Promise.resolve(),
+      );
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `${node.id} startup failed and rollback is incomplete`,
+        { cause: cleanupError },
+      );
+    }
+    throw error;
+  }
+}
+
+async function upMultiNode(
+  root: string,
+  nodeCount: number,
+  mode: HarnessMultiState['mode'],
+): Promise<void> {
+  const paths = pathsFor(root);
+  const previous = await readState(paths);
+  if (previous !== undefined) {
+    for (const entry of processEntries(previous)) {
+      if (
+        (await inspectRecordedProcess(entry.process, entry.expectedScript, previous.runId)) ===
+        'owned-running'
+      )
+        throw new Error('harness lab is already running; run `mise run lab:down` first');
+    }
+    await clearState(paths);
+  }
+  await prepareRunDirectory(paths);
+  await chmod(paths.runDirectory, 0o700);
+  await upMultiDeps.build(root);
+  await upMultiDeps.ensurePostgres(root);
+
+  const runId = newRunId();
+  const federationKey = mode === 'federation' ? generateFederationKeyEncryptionKey() : undefined;
+  const started: HarnessNodeState[] = [];
+  try {
+    for (let index = 0; index < nodeCount; index += 1) {
+      const dbName = nodeDatabaseName(index);
+      await createDatabaseIfMissing(root, dbName);
+      await upMultiDeps.migrateDatabase(root, dbName);
+    }
+    for (let index = 0; index < nodeCount; index += 1) {
+      const { grpcPort, httpPort } = allocateNodePorts(index);
+      const domain = nodeDomain(index, mode);
+      const nodeIdLabel = nodeId(index);
+      const base = { runId, databaseUrl: nodeDatabaseUrl(index), httpPort, grpcPort };
+      const environment: NodeJS.ProcessEnv = {
+        ...harnessProcessEnvironment(process.env, base, generatedKeys()),
+        NODE_DOMAIN: domain,
+        FEDERATION_ENABLED: mode === 'federation' ? 'true' : 'false',
+        FEDERATION_STANCE: mode === 'federation' ? 'allowlist' : 'disabled',
+      };
+      if (federationKey !== undefined) environment.FEDERATION_KEY_ENCRYPTION_KEY = federationKey;
+      started.push(
+        await startNodeProcesses(
+          root,
+          paths,
+          environment,
+          {
+            id: nodeIdLabel,
+            grpcPort,
+            httpPort,
+          },
+          runId,
+        ),
+      );
+    }
+    const multiState: HarnessMultiState = {
+      version: 2,
+      runId,
+      mode,
+      nodeCount,
+      ...(federationKey !== undefined ? { federationKey } : {}),
+      nodes: started,
+    };
+    await writeState(paths, multiState);
+  } catch (error) {
+    const recorded: NamedHarnessProcess[] = [];
+    for (const node of started) {
+      recorded.push({
+        name: `${node.id}:server`,
+        process: node.server,
+        expectedScript: 'apps/server/dist/main.js',
+      });
+      recorded.push({
+        name: `${node.id}:worker`,
+        process: node.worker,
+        expectedScript: 'apps/worker/dist/main.js',
+      });
+    }
+    try {
+      await cleanupProcessesAndState(
+        recorded,
+        (entry) => stopRecordedProcess(entry.process, entry.expectedScript, runId),
+        () => clearState(paths),
+      );
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'multi-node startup failed and rollback is incomplete',
+        { cause: cleanupError },
+      );
+    }
+    throw error;
+  }
+  print({
+    status: 'ready',
+    mode,
+    nodeCount,
+    runId,
+    nodes: started.map((node) => ({
+      id: node.id,
+      nodeDomain: node.nodeDomain,
+      grpcTarget: `127.0.0.1:${String(node.grpcPort)}`,
+      httpOrigin: `http://127.0.0.1:${String(node.httpPort)}`,
+      database: node.databaseName,
+    })),
+    logs: paths.logDirectory,
+  });
+}
+
+async function reset(root: string): Promise<void> {
+  const paths = pathsFor(root);
+  const state = await readState(paths);
+  if (state === undefined) {
+    const foreign = await findForeignHarnessOwner();
+    if (foreign === undefined) {
+      print({ status: 'already-clean', detail: 'no harness state or held port in this worktree' });
+      return;
+    }
+    throw new Error(
+      `harness lab is held by another worktree (pid=${String(foreign.pid)}, root=${foreign.root ?? 'unknown'}); run \`mise run lab:down\` from it`,
+    );
+  }
+  await cleanupProcessesAndState(
+    processEntries(state),
+    (entry) => stopRecordedProcess(entry.process, entry.expectedScript, state.runId),
+    () => clearState(paths),
+  );
+  let dropped = 0;
+  for (const name of stateDatabaseNames(state)) {
+    const dbName = name;
+    if (!isHarnessDatabaseName(dbName))
+      throw new Error(`refusing to drop non-harness database: ${dbName}`);
+    const droppedResult = await command(
+      'mise',
+      [
+        'run',
+        'compose',
+        '--',
+        'exec',
+        '-T',
+        'postgres',
+        'psql',
+        '-U',
+        'patches',
+        '-d',
+        'patches',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`,
+      ],
+      root,
+    );
+    if (droppedResult.code === 0) dropped += 1;
+  }
+  print({
+    status: 'reset',
+    stoppedProcesses: processEntries(state).length,
+    droppedDatabases: dropped,
+  });
+}
+
 async function status(root: string): Promise<void> {
   const paths = pathsFor(root);
   const state = await readState(paths);
@@ -394,30 +728,69 @@ async function status(root: string): Promise<void> {
     });
     return;
   }
-  const serverStatus = await inspectRecordedProcess(
-    state.server,
-    'apps/server/dist/main.js',
-    state.runId,
-  );
-  const workerStatus = await inspectRecordedProcess(
-    state.worker,
-    'apps/worker/dist/main.js',
-    state.runId,
-  );
+  if (state.version === 1) {
+    const serverStatus = await inspectRecordedProcess(
+      state.server,
+      'apps/server/dist/main.js',
+      state.runId,
+    );
+    const workerStatus = await inspectRecordedProcess(
+      state.worker,
+      'apps/worker/dist/main.js',
+      state.runId,
+    );
+    print({
+      status:
+        serverStatus === 'owned-running' && workerStatus === 'owned-running'
+          ? 'running'
+          : serverStatus === 'unowned' || workerStatus === 'unowned'
+            ? 'unowned'
+            : 'degraded',
+      processes: { server: serverStatus, worker: workerStatus },
+      runId: state.runId,
+      httpOrigin: `http://127.0.0.1:${String(state.httpPort)}`,
+      grpcTarget: `127.0.0.1:${String(state.grpcPort)}`,
+      database: state.databaseName,
+      serverPid: state.server.pid,
+      workerPid: state.worker.pid,
+      logs: paths.logDirectory,
+    });
+    return;
+  }
+  const nodeStatuses = [];
+  for (const node of state.nodes) {
+    const serverStatus = await inspectRecordedProcess(
+      node.server,
+      'apps/server/dist/main.js',
+      state.runId,
+    );
+    const workerStatus = await inspectRecordedProcess(
+      node.worker,
+      'apps/worker/dist/main.js',
+      state.runId,
+    );
+    nodeStatuses.push({
+      id: node.id,
+      status:
+        serverStatus === 'owned-running' && workerStatus === 'owned-running'
+          ? 'running'
+          : serverStatus === 'unowned' || workerStatus === 'unowned'
+            ? 'unowned'
+            : 'degraded',
+      grpcTarget: `127.0.0.1:${String(node.grpcPort)}`,
+      httpOrigin: `http://127.0.0.1:${String(node.httpPort)}`,
+      database: node.databaseName,
+    });
+  }
+  const allRunning =
+    state.nodes.length > 0 && nodeStatuses.every((node) => node.status === 'running');
+  const anyUnowned = nodeStatuses.some((node) => node.status === 'unowned');
   print({
-    status:
-      serverStatus === 'owned-running' && workerStatus === 'owned-running'
-        ? 'running'
-        : serverStatus === 'unowned' || workerStatus === 'unowned'
-          ? 'unowned'
-          : 'degraded',
-    processes: { server: serverStatus, worker: workerStatus },
+    status: allRunning ? 'running' : anyUnowned ? 'unowned' : 'degraded',
+    mode: state.mode,
+    nodeCount: state.nodeCount,
     runId: state.runId,
-    httpOrigin: `http://127.0.0.1:${String(state.httpPort)}`,
-    grpcTarget: `127.0.0.1:${String(state.grpcPort)}`,
-    database: state.databaseName,
-    serverPid: state.server.pid,
-    workerPid: state.worker.pid,
+    nodes: nodeStatuses,
     logs: paths.logDirectory,
   });
 }
@@ -427,7 +800,12 @@ async function logs(root: string, args: readonly string[]): Promise<void> {
   if (args.includes('--follow'))
     throw new Error('safe follow mode is not implemented; use bounded log snapshots');
   const sources: BoundedLogSource[] = [];
-  for (const service of ['server', 'worker']) {
+  const state = await readState(paths);
+  const logNames: string[] =
+    state !== undefined && state.version === 2
+      ? state.nodes.flatMap((node) => [`${node.id}.server`, `${node.id}.worker`])
+      : ['server', 'worker'];
+  for (const service of logNames) {
     try {
       const source = await readBoundedLogTail(`${paths.logDirectory}/${service}.log`);
       sources.push({ ...source, service });
@@ -504,31 +882,67 @@ function flag(args: readonly string[], name: string): string | undefined {
   return value;
 }
 
+function hasFlag(args: readonly string[], name: string): boolean {
+  return args.includes(name);
+}
+
 async function register(root: string, args: readonly string[]): Promise<void> {
-  const state = await runningState(root);
+  const target = await runningState(root, args);
   const handle = flag(args, '--handle') ?? `agent${newRunId().slice(0, 10)}`;
   const password = await passwordFromStdin(args);
   const email = flag(args, '--email') ?? `${handle}@harness.local`;
-  const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+  const api = createHarnessApi(`127.0.0.1:${String(target.grpcPort)}`).api;
   const result = await registerRpc(api, { handle, email, password, clientRequestId: randomUUID() });
   const cleanup = await logoutAll(api, result.session);
   print({
     ...result.result,
     email,
-    webUrl: `http://127.0.0.1:${String(state.httpPort)}`,
+    webUrl: `http://127.0.0.1:${String(target.httpPort)}`,
     cleanupRequestId: cleanup.requestId,
   });
 }
 
-async function runningState(root: string): Promise<HarnessState> {
+interface HarnessTarget {
+  readonly grpcPort: number;
+  readonly httpPort: number;
+  readonly nodeDomain: string;
+}
+
+function targetForNode(state: HarnessState, nodeIndex: number): HarnessTarget {
+  if (state.version === 1) {
+    if (nodeIndex !== 0) throw new Error('--node is only valid for a multi-node lab');
+    return { grpcPort: state.grpcPort, httpPort: state.httpPort, nodeDomain: 'harness.localhost' };
+  }
+  if (!Number.isSafeInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= state.nodeCount)
+    throw new Error(`--node must be an integer in 0..${String(state.nodeCount - 1)}`);
+  const node = state.nodes[nodeIndex];
+  if (node === undefined)
+    throw new Error(`--node must be an integer in 0..${String(state.nodeCount - 1)}`);
+  return { grpcPort: node.grpcPort, httpPort: node.httpPort, nodeDomain: node.nodeDomain };
+}
+
+async function runningState(root: string, args: readonly string[]): Promise<HarnessTarget> {
   const state = await readState(pathsFor(root));
   if (state === undefined) throw new Error('harness lab is not running; run `mise run lab` first');
+  const nodeIndex = Number(flag(args, '--node') ?? '0');
+  const target = targetForNode(state, nodeIndex);
+  if (state.version === 1) {
+    const [server, worker] = await Promise.all([
+      inspectRecordedProcess(state.server, 'apps/server/dist/main.js', state.runId),
+      inspectRecordedProcess(state.worker, 'apps/worker/dist/main.js', state.runId),
+    ]);
+    assertActionProcessStatuses(server, worker);
+    return target;
+  }
+  const node = state.nodes[nodeIndex];
+  if (node === undefined)
+    throw new Error(`--node must be an integer in 0..${String(state.nodeCount - 1)}`);
   const [server, worker] = await Promise.all([
-    inspectRecordedProcess(state.server, 'apps/server/dist/main.js', state.runId),
-    inspectRecordedProcess(state.worker, 'apps/worker/dist/main.js', state.runId),
+    inspectRecordedProcess(node.server, 'apps/server/dist/main.js', state.runId),
+    inspectRecordedProcess(node.worker, 'apps/worker/dist/main.js', state.runId),
   ]);
   assertActionProcessStatuses(server, worker);
-  return state;
+  return target;
 }
 
 function required(args: readonly string[], name: string): string {
@@ -570,8 +984,8 @@ async function authenticatedAction(
     session: Awaited<ReturnType<typeof login>>['session'],
   ) => Promise<unknown>,
 ): Promise<void> {
-  const state = await runningState(root);
-  const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+  const target = await runningState(root, args);
+  const api = createHarnessApi(`127.0.0.1:${String(target.grpcPort)}`).api;
   const signedIn = await login(api, {
     emailOrHandle: required(args, '--handle'),
     password: await passwordFromStdin(args),
@@ -606,7 +1020,7 @@ async function worldSeed(root: string): Promise<Buffer> {
 
 async function ensureDeclaredWorld(
   root: string,
-  state: HarnessState,
+  target: HarnessTarget,
   args: readonly string[],
 ): Promise<void> {
   const world = await readWorld(required(args, '--file'));
@@ -629,7 +1043,7 @@ async function ensureDeclaredWorld(
     await atomicPersistLeaf(manifestPath, `${JSON.stringify(journal)}\n`, newRunId());
   const seed = await worldSeed(root);
   const result = await ensureWorld(
-    createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api,
+    createHarnessApi(`127.0.0.1:${String(target.grpcPort)}`).api,
     world,
     (key) => `${createHmac('sha256', seed).update(key).digest('base64url')}!aA9`,
     async (key) => {
@@ -648,8 +1062,8 @@ async function ensureDeclaredWorld(
 
 async function action(root: string, subcommand: string, args: readonly string[]): Promise<void> {
   if (subcommand === 'login') {
-    const state = await runningState(root);
-    const api = createHarnessApi(`127.0.0.1:${String(state.grpcPort)}`).api;
+    const target = await runningState(root, args);
+    const api = createHarnessApi(`127.0.0.1:${String(target.grpcPort)}`).api;
     const signedIn = await login(api, {
       emailOrHandle: required(args, '--handle'),
       password: await passwordFromStdin(args),
@@ -693,8 +1107,8 @@ async function action(root: string, subcommand: string, args: readonly string[])
       ),
     );
   else if (subcommand === 'world-ensure') {
-    const state = await runningState(root);
-    await ensureDeclaredWorld(root, state, args);
+    const target = await runningState(root, args);
+    await ensureDeclaredWorld(root, target, args);
   }
 }
 
@@ -725,10 +1139,11 @@ async function main(): Promise<void> {
   if (!COMMANDS.has(subcommand)) fail(`${usage()}\n\n${unknownCommandFailure()}`);
   assertLinuxHarness();
   const root = await repoRoot();
-  if (subcommand === 'up') await up(root);
+  if (subcommand === 'up') await up(root, args);
   else if (subcommand === 'status') await status(root);
   else if (subcommand === 'logs') await logs(root, args);
   else if (subcommand === 'down') await down(root, args);
+  else if (subcommand === 'reset') await reset(root);
   else if (subcommand === 'register') await register(root, args);
   else if (subcommand.startsWith('mailpit-')) await mailpitCommand(subcommand, args);
   else await action(root, subcommand, args);
