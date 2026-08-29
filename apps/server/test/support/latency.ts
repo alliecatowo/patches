@@ -33,14 +33,20 @@ export function latencyReport(samples: number[]): LatencyReport {
 }
 
 export function printLatencyReport(label: string, report: LatencyReport): void {
-  console.log(`\n=== ${label} ===`);
-  console.log(`Samples: ${String(report.samples)}`);
-  console.log(`Min:     ${report.minMs.toFixed(2)} ms`);
-  console.log(`Avg:     ${report.avgMs.toFixed(2)} ms`);
-  console.log(`P50:     ${report.p50Ms.toFixed(2)} ms`);
-  console.log(`P95:     ${report.p95Ms.toFixed(2)} ms`);
-  console.log(`P99:     ${report.p99Ms.toFixed(2)} ms`);
-  console.log(`Max:     ${report.maxMs.toFixed(2)} ms`);
+  process.stdout.write(
+    [
+      '',
+      `=== ${label} ===`,
+      `Samples: ${String(report.samples)}`,
+      `Min:     ${report.minMs.toFixed(2)} ms`,
+      `Avg:     ${report.avgMs.toFixed(2)} ms`,
+      `P50:     ${report.p50Ms.toFixed(2)} ms`,
+      `P95:     ${report.p95Ms.toFixed(2)} ms`,
+      `P99:     ${report.p99Ms.toFixed(2)} ms`,
+      `Max:     ${report.maxMs.toFixed(2)} ms`,
+      '',
+    ].join('\n'),
+  );
 }
 
 /** Times one async call and returns its latency in ms alongside the result. */

@@ -58,10 +58,10 @@ export default defineConfig([
           ],
           // apps/web/tsconfig.json already includes vite.config.ts/vitest.config.ts
           // itself (same pattern as apps/tui), so it doesn't need an entry here.
-          // Default cap is 8; the explicitly listed package configs above contribute 20
+          // Default cap is 8; the explicitly listed package configs above contribute 21
           // matching files. The root Vitest config is linted below without falling back to
           // a default project, so this intentionally remains a tight fixed bound.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 21,
         },
         tsconfigRootDir: import.meta.dirname,
       },
