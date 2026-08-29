@@ -1,5 +1,5 @@
 ---
-description: Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Default cheap leaf worker via DeepSeek Flash. Give it the Task ID, exact owned/forbidden paths, and acceptance criteria.
+description: Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves every touched workspace passing `mise run check <workspace>`. Default cheap leaf worker via DeepSeek Flash. Give it the Task ID, exact owned/forbidden paths, and acceptance criteria.
 mode: subagent
 model: llmgateway/deepseek-v4-flash
 steps: 100
@@ -42,7 +42,7 @@ preserve unrelated work, stage only your owned paths, and report the branch name
 
 ## Finishing
 
-- Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. Spawn `verifier` for a full-gate run when your change crosses package boundaries; spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
+- Verify with `mise run check <workspace>` for every touched workspace (and a directly affected consumer when the brief changes a shared contract); fix failures yourself — never hand back red. Do not run or request a full `verify` unless the brief explicitly asks for a milestone/full-gate check; CI owns the unscoped gate. Spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
 - Commit as soon as one coherent slice is green, and keep going. Stage only your assigned paths (never `git add -A`), Conventional Commits scoped to the package. If your task ID is a real GitHub issue, reference it in the PR (`Fixes #<n>`) so Status moves to Done automatically on merge. Update affected docs in the same change; you can't reach the GitHub Project board yourself (`mcp__*` is disallowed), so report the task ID (and issue number, if any) as done and let the orchestrator set its Status if it wasn't a `Fixes #N` issue.
 - Can't finish: commit what's green and report done / left / paths you own / next concrete step — a partial, honest handoff beats grinding on.
 

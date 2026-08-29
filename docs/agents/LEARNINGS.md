@@ -462,4 +462,5 @@ Rules of thumb:
   and `patches_harness_lab` are machine-global. A second worktree's `up` reports "degraded" while
   the first's server keeps the port; `down` from any other tree stops nothing. Rule: before `up`,
   `ss -ltnp 'sport = :50058'` and run `down` from the owning worktree (or kill that pid).
-  Recorded from #343; a `lab:down --any` that resolves the owner by port is a small follow-up.
+  **Action taken:** `lab:status` now reports the owning worktree and `mise run lab:down-any`
+  resolves and stops it; see `docs/agents/HARNESS.md` “Cross-worktree lab ownership”.

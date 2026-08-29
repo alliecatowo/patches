@@ -37,7 +37,7 @@ Sequence dependent waves into a later message. `goal-driver` consumes handoffs a
 ## 5. After each wave
 
 1. `reviewer` on the diff (or the touched packages) — read its findings, decide blockers vs. follow-ups.
-2. `verifier` for a full (not just scoped) `pnpm verify` pass once all of a wave's implementers report done.
+2. `verifier` for scoped checks of the wave's touched workspaces and any required proto/database checks. Reserve `mise run verify` for an explicitly requested milestone/full-gate check; CI remains the unscoped gate.
 3. `docs-writer` to sync docs for what landed.
 
 ## 6. End of phase

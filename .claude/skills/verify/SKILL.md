@@ -1,13 +1,16 @@
 ---
 name: verify
-description: Canonical check sequence (format, lint, typecheck, test, proto checks, migration check) with a scoped variant, and how to interpret/fix common failures. Use for /verify [package]. Must be run before every commit.
+description: Canonical scoped verification with explicit full-gate, proto, and migration variants. Use for /verify <package> or /verify full; run the relevant scoped check before committing.
 invocation: user
 allowedTools: Bash, Read, Grep
 ---
 
 # /verify $ARGUMENTS
 
-If `$ARGUMENTS` is empty, run the full repo sequence. If it's a package name (e.g. `@patches/server`, `server`, `database`), scope every step with `pnpm --filter <workspace>` where the script supports it.
+If `$ARGUMENTS` is a package name (e.g. `@patches/server`, `server`, `database`), run its scoped
+check. If it is `full`, run the full sequence. With no argument, inspect the changed paths and run
+the scoped check for each touched workspace; ask for a scope when no changed workspace is clear.
+Never silently choose a full gate — CI owns it except for an explicitly requested milestone check.
 
 ## Full sequence
 
@@ -21,7 +24,10 @@ pnpm proto:breaking   # only if packages/proto changed
 pnpm db:show          # only if a Postgres instance is reachable (see below) and packages/database changed
 ```
 
-`pnpm verify` = `format:check && lint && typecheck && test` in one shot — use it as the fast default; run the proto/db steps separately when relevant. `pnpm test` is `turbo run test`: per-package unit tests, cached — an unchanged package replays instead of re-running. Integration suites are NOT part of it (they're DB-dependent and uncacheable); run them via `mise run test` or `pnpm test:integration`.
+`mise run verify` runs the full gate through the resource throttle; use it only when `full` was
+requested. `pnpm test` is `turbo run test`: per-package unit tests, cached — an unchanged package
+replays instead of re-running. Integration suites are NOT part of it (they're DB-dependent and
+uncacheable); run them via `mise run test` or `pnpm test:integration` when required.
 
 ## Scoped variant — use this while working
 
