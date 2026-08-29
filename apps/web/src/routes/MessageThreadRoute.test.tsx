@@ -23,6 +23,7 @@ vi.mock('../api/client.js', () => ({
         mockGetConversation(...args),
       listConversations: (...args: unknown[]): Promise<{ conversations: Conversation[] }> =>
         mockListConversations(...args),
+      markConversationRead: (..._args: unknown[]): Promise<void> => Promise.resolve(),
     },
   } as unknown as PatchesApi,
 }));

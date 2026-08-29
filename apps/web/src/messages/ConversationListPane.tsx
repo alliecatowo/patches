@@ -12,6 +12,8 @@ import {
   UnreadDot,
 } from '../components/ui/index.js';
 import { formatRelativeTime } from '../lib/format.js';
+import { mergeUnread } from '../e2ee/conversation-unread.js';
+import type { LocalUnreadMap } from '../e2ee/use-local-unread.js';
 import styles from './ConversationListPane.module.css';
 
 type ConversationsResult = Awaited<ReturnType<typeof api.messages.listConversations>>;
@@ -40,6 +42,9 @@ export interface ConversationListPaneProps {
   readonly activeConversationId?: string;
   readonly canCompose: boolean;
   readonly onNewMessage: () => void;
+  /** This device's durable per-conversation unread (issue #383), merged against the
+   * server's `unreadCount` per row; a missing key falls back to the server count. */
+  readonly localUnread?: LocalUnreadMap | undefined;
 }
 
 /**
@@ -57,6 +62,7 @@ export function ConversationListPane({
   activeConversationId,
   canCompose,
   onNewMessage,
+  localUnread,
 }: ConversationListPaneProps): JSX.Element {
   if (isPending && conversations === undefined && !pollFailed) {
     return <ConversationListSkeleton />;
@@ -105,7 +111,13 @@ export function ConversationListPane({
         {conversations.map((conversation) => {
           const other = conversation.members.find((m) => m.actor?.id !== viewerActorId)?.actor;
           const modeLabel = securityModeLabel(conversation.securityMode);
-          const unread = conversation.unreadCount > 0;
+          // #383: this browser's durable unread (a locally-read thread stays read across a
+          // reload) merges against the server's count; a missing local key defers to it.
+          const unreadCount = mergeUnread(
+            conversation.unreadCount,
+            localUnread?.get(conversation.id),
+          );
+          const unread = unreadCount > 0;
           const handle = other?.handle ?? 'conversation';
           const name = other?.displayName ?? '';
           return (
@@ -118,7 +130,7 @@ export function ConversationListPane({
               title={`@${handle}`}
               meta={formatRelativeTime(conversation.lastMessageAt)}
               subtitle={modeLabel ?? 'Conversation'}
-              trailing={unread ? <UnreadDot count={conversation.unreadCount} /> : undefined}
+              trailing={unread ? <UnreadDot count={unreadCount} /> : undefined}
             />
           );
         })}

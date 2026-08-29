@@ -436,4 +436,75 @@ describe('MessagesScreen', () => {
     expect(dmFreshnessCopy('list', TUI_CONVERSATION_LIST_POLL_MS)).not.toMatch(forbidden);
     expect(dmFreshnessCopy('thread', TUI_THREAD_MAIL_POLL_MS)).not.toMatch(forbidden);
   });
+
+  it('merges durable vault unread into the badge over a stale server count (issue #383)', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    // Server thinks the conversation is read (unreadCount 0), but this device has
+    // durable local unread of 3 — messages received in the vault while elsewhere.
+    // The vault record is authoritative once present, so the badge shows the local
+    // count, which is exactly what survives a reload.
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [existing] }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
+    const conversationUnread = vi.fn().mockResolvedValue(3);
+    const clearConversationUnread = vi.fn();
+
+    const { lastFrame, stdin } = render(
+      <MessagesScreen
+        api={api}
+        isActive
+        conversationUnread={conversationUnread}
+        clearConversationUnread={clearConversationUnread}
+      />,
+    );
+    // The badge reflects the durable local count, not the server's 0.
+    const list = await waitForFrame(lastFrame, '3 unread');
+    expect(list).toContain('@alice');
+
+    // Opening the thread clears the durable local unread through the vault — it must
+    // not depend on the (separately-issued) server RPC, and never resurface locally.
+    stdin.write(KEY.enter);
+    await waitForFrame(lastFrame, '[E2EE]');
+    expect(clearConversationUnread).toHaveBeenCalledWith('conversation-1');
+  });
+
+  it('a locally-read conversation stays read (badge clear) even when the server count lags (issue #383)', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, {
+        conversations: [{ ...existing, unreadCount: 3 }],
+      }),
+    );
+    api.getConversation.mockResolvedValue(
+      create(GetConversationResponseSchema, { conversation: existing }),
+    );
+    // This device read the thread through: durable 0 in the vault. The server's
+    // `unreadCount` still says 3, but a locally-read thread must stay read across a
+    // reload — the local record is authoritative.
+    const conversationUnread = vi.fn().mockResolvedValue(0);
+    const clearConversationUnread = vi.fn();
+
+    const { lastFrame } = render(
+      <MessagesScreen
+        api={api}
+        isActive
+        conversationUnread={conversationUnread}
+        clearConversationUnread={clearConversationUnread}
+      />,
+    );
+    await waitForFrame(lastFrame, '@alice');
+    // Give the async vault load a chance to resolve and commit, then the badge must
+    // be gone even though the server still counts 3 unread.
+    await waitForCondition(
+      () => conversationUnread.mock.calls.length > 0,
+      'local unread read from the vault',
+    );
+    await flush();
+    expect(stripSgr(lastFrame() ?? '')).not.toContain('unread');
+  });
 });
