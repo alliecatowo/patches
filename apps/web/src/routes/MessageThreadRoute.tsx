@@ -13,6 +13,8 @@ import {
   WEB_E2EE_COPY,
   WebE2eeUnavailableError,
 } from '../e2ee/web-e2ee.js';
+import { PEER_IDENTITY_CHANGED_COPY, PEER_ROSTER_CHANGED_COPY } from '../e2ee/peer-security.js';
+import { usePeerSecurityWatch } from '../messages/usePeerSecurityWatch.js';
 import { useSession } from '../hooks/useSession.js';
 import { ComposeIcon } from '../components/icons/Icons.js';
 import { Button, EmptyState, SelectConversationIllustration } from '../components/ui/index.js';
@@ -66,6 +68,8 @@ export function MessageThreadRoute(): JSX.Element {
   const memberIdentityEvents = identityEvents.filter((event) =>
     otherMembers.some((member) => member.actor?.id === event.actorId),
   );
+  const peerActorId = otherMembers[0]?.actor?.id;
+  const peerSecurityStatus = usePeerSecurityWatch(conversationId, peerActorId);
 
   const [rows, setRows] = useState<readonly InboxRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -126,6 +130,19 @@ export function MessageThreadRoute(): JSX.Element {
   }, [enrolled, conversationId]);
 
   async function handleSend(body: string): Promise<void> {
+    // A-072: refuse (not warn) on peer identity/roster change since this thread opened, mirroring
+    // the TUI. Consuming a persisted draft is never a send — the refusal must not touch the draft.
+    if (
+      peerSecurityStatus.status === 'identityChanged' ||
+      peerSecurityStatus.status === 'rosterChanged'
+    ) {
+      toast.error(
+        peerSecurityStatus.status === 'identityChanged'
+          ? PEER_IDENTITY_CHANGED_COPY
+          : PEER_ROSTER_CHANGED_COPY,
+      );
+      return;
+    }
     setSending(true);
     setLastDraft(body);
     try {
@@ -204,6 +221,16 @@ export function MessageThreadRoute(): JSX.Element {
                 : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
             </ThreadNotice>
           ))}
+
+          {peerSecurityStatus.status === 'identityChanged' ? (
+            <ThreadNotice tone="alert" role="alert">
+              {PEER_IDENTITY_CHANGED_COPY}
+            </ThreadNotice>
+          ) : peerSecurityStatus.status === 'rosterChanged' ? (
+            <ThreadNotice tone="warning" role="alert">
+              {PEER_ROSTER_CHANGED_COPY}
+            </ThreadNotice>
+          ) : null}
 
           {e2eeStatus.kind === 'not-enrolled' || e2eeStatus.kind === 'refused' ? (
             <ThreadNotice tone="warning">
