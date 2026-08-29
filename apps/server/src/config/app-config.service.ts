@@ -213,6 +213,28 @@ export class AppConfigService {
     return this.get('WEB_ORIGINS');
   }
 
+  /** Whether the modern POST-only `/mcp` endpoint is served (MCP-01, issue #220; default off).
+   * When false, `McpHttpModule` is never registered at all — see `app.module.ts`. */
+  get mcpEnabled(): boolean {
+    return this.get('MCP_ENABLED');
+  }
+
+  /** Hostname allow-list (no scheme or port) for the `/mcp` endpoint's Origin and Host guards.
+   * Non-empty whenever `mcpEnabled` — enforced by `envSchema`'s `superRefine`. */
+  get mcpOrigins(): readonly string[] {
+    return this.get('MCP_ORIGINS');
+  }
+
+  /** Cap on a single `/mcp` request body, bytes. */
+  get mcpMaxBodyBytes(): number {
+    return this.get('MCP_MAX_BODY_BYTES');
+  }
+
+  /** Deadline for a single `/mcp` request (body read plus MCP exchange), ms. */
+  get mcpRequestTimeoutMs(): number {
+    return this.get('MCP_REQUEST_TIMEOUT_MS');
+  }
+
   /** Undefined only when federation is disabled — `envSchema`'s `superRefine` requires this
    * when `FEDERATION_ENABLED=true`, so `KeyService` can assume it's set whenever it runs. */
   get federationKeyEncryptionKey(): string | undefined {

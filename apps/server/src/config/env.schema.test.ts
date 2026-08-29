@@ -387,4 +387,32 @@ describe('validateEnv', () => {
       expect(env.OIDC_PROVIDERS.map((p) => p.id)).toEqual(['gitlab', 'codeberg']);
     });
   });
+  describe('MCP-01 endpoint env (issue #220)', () => {
+    it('defaults to disabled with an empty origin allow-list and 1 MiB body budget', () => {
+      const env = validateEnv({});
+      expect(env.MCP_ENABLED).toBe(false);
+      expect(env.MCP_ORIGINS).toEqual([]);
+      expect(env.MCP_MAX_BODY_BYTES).toBe(1024 * 1024);
+      expect(env.MCP_REQUEST_TIMEOUT_MS).toBe(15_000);
+    });
+
+    it('parses MCP_ORIGINS as a trimmed comma-separated list of hostnames', () => {
+      const env = validateEnv({ MCP_ORIGINS: ' patches.social , localhost ' });
+      expect(env.MCP_ORIGINS).toEqual(['patches.social', 'localhost']);
+    });
+
+    it('requires at least one MCP_ORIGINS entry when MCP_ENABLED=true', () => {
+      expect(() => validateEnv({ MCP_ENABLED: 'true' })).toThrow(ConfigError);
+      expect(() =>
+        validateEnv({ MCP_ENABLED: 'true', MCP_ORIGINS: 'patches.social' }),
+      ).not.toThrow();
+    });
+
+    it('coerces MCP_MAX_BODY_BYTES and MCP_REQUEST_TIMEOUT_MS as positive numbers', () => {
+      const env = validateEnv({ MCP_MAX_BODY_BYTES: '2048', MCP_REQUEST_TIMEOUT_MS: '1000' });
+      expect(env.MCP_MAX_BODY_BYTES).toBe(2048);
+      expect(env.MCP_REQUEST_TIMEOUT_MS).toBe(1000);
+      expect(() => validateEnv({ MCP_MAX_BODY_BYTES: '0' })).toThrow(ConfigError);
+    });
+  });
 });

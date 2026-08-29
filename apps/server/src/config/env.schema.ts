@@ -494,6 +494,45 @@ const envObjectSchema = z.object({
    * external clients to one peer address (A-039). Default false for backward compatibility
    * and because the in-memory store is simpler for single-replica nodes. */
   RATE_LIMIT_GLOBAL: booleanish().default(false),
+
+  /**
+   * MCP-01 (issue #220): whether the modern POST-only `/mcp` endpoint is served at all on the
+   * always-on HTTP listener (ADR 0016, `main.ts`). **Default off** — the same
+   * `FEDERATION_ENABLED` reasoning (spec §108 Stage F1, §176's "a self-hosted node ships with
+   * the network surface off unless an operator opts in"): when false, `McpHttpModule` is never
+   * registered at all — absent from the DI graph, not merely unrouted (ADR 0016 §4,
+   * `app.module.ts`). See `docs/architecture/mcp.md`.
+   */
+  MCP_ENABLED: booleanish().default(false),
+  /**
+   * MCP-01 (issue #220): the hostname allow-list for the two mandatory browser-side HTTP guards
+   * the `/mcp` endpoint runs on every request — Origin validation (CSRF, spec §21) and Host
+   * header validation (DNS rebinding). Comma-separated **hostnames without scheme or port**
+   * (e.g. `patches.social,localhost`), matched port-agnostically by the
+   * `@modelcontextprotocol/node` validators. Requests with **no** Origin header pass (non-browser
+   * MCP clients don't send one); a present Origin whose hostname is absent here is rejected 403.
+   * Required (non-empty) whenever `MCP_ENABLED=true` — enforced in the `superRefine` below — so an
+   * operator can't turn the endpoint on and skip its only browser-side CSRF defense.
+   */
+  MCP_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  /** MCP-01: cap on a single `/mcp` request body, bytes (spec §21's bounded-input baseline — a
+   * JSON-RPC batch that exhausts memory is exactly the unbounded-input class §176 forbids). */
+  MCP_MAX_BODY_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1024 * 1024),
+  /** MCP-01: deadline for a single `/mcp` request — body read plus MCP exchange — after which the
+   * response is aborted (spec §176's "timeout baseline"; the SDK has no deadline of its own). */
+  MCP_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
 });
 
 export const envSchema = envObjectSchema
@@ -503,6 +542,14 @@ export const envSchema = envObjectSchema
         code: 'custom',
         path: ['AUTH_CODE_DELIVERY_ACTIVE_KEY_ID'],
         message: 'must identify a key present in AUTH_CODE_DELIVERY_KEYS',
+      });
+    }
+
+    if (value.MCP_ENABLED && value.MCP_ORIGINS.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MCP_ORIGINS'],
+        message: 'MCP_ORIGINS must list at least one allowed origin hostname when MCP_ENABLED=true',
       });
     }
 
