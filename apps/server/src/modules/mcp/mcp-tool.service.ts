@@ -1,6 +1,6 @@
 import type { AuthInfo, McpServer } from '@modelcontextprotocol/server';
 
-import { AppConfigService } from '../../config/app-config.service.js';
+import type { AppConfigService } from '../../config/app-config.service.js';
 
 export interface ServerInfoDto {
   /** Human-readable instance name (mirrors `INSTANCE_NAME`). */
@@ -54,7 +54,7 @@ export class McpToolService {
           instanceName: this.config.instanceName,
           protocol: 'mcp-2026' as const,
         };
-        return { content: [{ type: 'text', text: JSON.stringify(dto) }] };
+        return Promise.resolve({ content: [{ type: 'text', text: JSON.stringify(dto) }] });
       },
     );
   }

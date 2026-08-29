@@ -8,7 +8,6 @@ import {
   toNodeHandler,
   type NodeIncomingMessageLike,
   type NodeMcpRequestHandler,
-  type NodeServerResponseLike,
 } from '@modelcontextprotocol/node';
 
 import { AppConfigService } from '../../config/app-config.service.js';
@@ -63,6 +62,7 @@ interface CollectedBody {
 export class McpHttpController {
   private readonly handler: NodeMcpRequestHandler;
   private readonly logger = new Logger(McpHttpController.name);
+  private readonly reportSdkError = (error: Error): void => this.reportError(error);
 
   constructor(
     private readonly config: AppConfigService,
@@ -80,7 +80,7 @@ export class McpHttpController {
       },
       { legacy: 'reject' },
     );
-    this.handler = toNodeHandler(mcpHandler, { onerror: this.reportError });
+    this.handler = toNodeHandler(mcpHandler, { onerror: this.reportSdkError });
   }
 
   @Post()
@@ -115,11 +115,7 @@ export class McpHttpController {
     if (collected === undefined) return; // a body-budget/timeout error was already written
 
     await this.withTimeout(
-      this.handler(
-        req as unknown as NodeIncomingMessageLike,
-        res as unknown as NodeServerResponseLike,
-        collected.parsed,
-      ),
+      this.handler(req as unknown as NodeIncomingMessageLike, res, collected.parsed),
       res,
       deadline,
     );

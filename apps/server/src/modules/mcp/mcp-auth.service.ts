@@ -39,7 +39,7 @@ export class McpAuthService {
    * @throws MCP-01 future: once #217 picks an issuer, an unverifiable asserted credential is
    *   rejected here rather than falling back to the unauthenticated tool set.
    */
-  async resolveAuth(_request: IncomingMessage): Promise<AuthInfo | undefined> {
-    return undefined;
+  resolveAuth(_request: IncomingMessage): Promise<AuthInfo | undefined> {
+    return Promise.resolve(undefined);
   }
 }
