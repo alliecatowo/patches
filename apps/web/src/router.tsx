@@ -48,6 +48,26 @@ export const router = createBrowserRouter([
         errorElement: <LazyRouteBoundary />,
       },
       {
+        path: 'reset-password',
+        lazy: () =>
+          import('./routes/PasswordResetRoute.js').then((m) => ({
+            Component: m.PasswordResetRoute,
+          })),
+        errorElement: <LazyRouteBoundary />,
+      },
+      {
+        path: 'verify-email',
+        lazy: () =>
+          import('./routes/VerifyEmailRoute.js').then((m) => ({
+            Component: () => (
+              <ProtectedRoute>
+                <m.VerifyEmailRoute />
+              </ProtectedRoute>
+            ),
+          })),
+        errorElement: <LazyRouteBoundary />,
+      },
+      {
         path: 'search',
         lazy: () => import('./routes/SearchRoute.js').then((m) => ({ Component: m.SearchRoute })),
         errorElement: <LazyRouteBoundary />,
@@ -184,6 +204,14 @@ export const router = createBrowserRouter([
             lazy: () =>
               import('./routes/settings/CredentialsRoute.js').then((m) => ({
                 Component: m.CredentialsRoute,
+              })),
+            errorElement: <LazyRouteBoundary />,
+          },
+          {
+            path: 'session-security',
+            lazy: () =>
+              import('./routes/settings/SessionSecurityRoute.js').then((m) => ({
+                Component: m.SessionSecurityRoute,
               })),
             errorElement: <LazyRouteBoundary />,
           },

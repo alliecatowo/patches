@@ -6,11 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSession } from '../api/session.js';
 import { ProfileMenu } from './ProfileMenu.js';
 
-const mockSignOut = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockLogoutCurrentSession = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockUseSession = vi.fn<() => AppSession | null>();
 
 vi.mock('../api/client.js', () => ({
-  signOut: (): Promise<void> => mockSignOut(),
+  logoutCurrentSession: (): Promise<void> => mockLogoutCurrentSession(),
 }));
 
 vi.mock('../hooks/useSession.js', () => ({
@@ -19,7 +19,7 @@ vi.mock('../hooks/useSession.js', () => ({
 
 describe('ProfileMenu', () => {
   beforeEach(() => {
-    mockSignOut.mockClear();
+    mockLogoutCurrentSession.mockClear();
     mockUseSession.mockReset();
   });
 
@@ -80,7 +80,7 @@ describe('ProfileMenu', () => {
     const signOutBtn = screen.getByRole('button', { name: 'Sign out' });
     fireEvent.click(signOutBtn);
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockLogoutCurrentSession).toHaveBeenCalledTimes(1);
   });
 
   it('closes when pressing Escape', () => {

@@ -1,7 +1,7 @@
 import { useEffect, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { signOut } from '../api/client.js';
+import { logoutCurrentSession } from '../api/client.js';
 import { useSession } from '../hooks/useSession.js';
 import {
   BookmarkIcon,
@@ -43,7 +43,7 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
 
   const handleSignOut = (): void => {
     onClose();
-    void signOut().then(() => navigate('/'));
+    void logoutCurrentSession().then(() => navigate('/'));
   };
 
   return (

@@ -4,7 +4,7 @@ import { useShakeToReport } from '../hooks/useShakeToReport.js';
 import { useMemo, useRef, useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 
-import { api, signOut } from '../api/client.js';
+import { api, logoutCurrentSession } from '../api/client.js';
 import { HeaderBar } from '../components/HeaderBar.js';
 import {
   BellIcon,
@@ -267,7 +267,7 @@ export function RootLayout(): JSX.Element {
                   className={styles['navLink']}
                   onClick={() => {
                     setProfileMenuOpen(false);
-                    void signOut().then(() => navigate('/'));
+                    void logoutCurrentSession().then(() => navigate('/'));
                   }}
                 >
                   Sign out

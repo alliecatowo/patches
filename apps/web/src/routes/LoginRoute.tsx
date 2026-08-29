@@ -134,6 +134,11 @@ export function LoginRoute(): JSX.Element {
       <p className={styles['switchLink']}>
         No account? <Link to="/register">Register with an invite code</Link>
       </p>
+      {!passwordAuthOff ? (
+        <p className={styles['switchLink']}>
+          <Link to="/reset-password">Forgot your password?</Link>
+        </p>
+      ) : null}
     </div>
   );
 }

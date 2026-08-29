@@ -145,8 +145,8 @@ export function RegisterRoute(): JSX.Element {
             {policy?.privacyNoticeSummary || 'This server has not published a privacy notice.'}
           </p>
           <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-            Direct messages on this server are <strong>server-visible</strong>, not end-to-end
-            encrypted — operators can read them.
+            Direct messages are <strong>end-to-end encrypted</strong>. This node cannot read them,
+            but it can see who you message and when.
           </p>
           {policy?.privacyNoticeUrl ? (
             <p>
