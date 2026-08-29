@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -26,6 +27,7 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
   const session = useSession();
   const accounts = useAccounts();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -52,6 +54,13 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
 
   const handleSwitchTo = (userId: string): void => {
     onClose();
+    // Route + session reset for the new actor: `switchToAccount` swaps the active credential
+    // slot, but most feed/notification query keys aren't actor-scoped, so without clearing
+    // the React Query cache the new account briefly renders the previous one's cached server
+    // data. `clear()` drops every cached query; the home navigation below then refetches as
+    // the freshly-active actor. (Mutable prefs like the E2EE message vault already partition
+    // per actor id and re-initialise on their own.)
+    queryClient.clear();
     void switchToAccount(userId).then(() => navigate('/'));
   };
 
