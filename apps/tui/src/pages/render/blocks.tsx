@@ -44,7 +44,9 @@ export interface LinkTarget {
 
 /** Flattens every `Links` block's entries into one ordered list — `PageScreen` owns
  * `j`/`k`/`Enter` selection across the whole sub-page, not per-block, since a page can
- * have several `Links` blocks and there is only one keyboard. */
+ * have several `Links` blocks and there is only one keyboard. Document order is
+ * preserved exactly (never re-sorted/grouped here — grouping is purely a render-time
+ * presentation concern, §46/Amendment B). */
 export function collectLinks(blocks: readonly RenderablePageBlock[]): LinkTarget[] {
   const links: LinkTarget[] = [];
   for (const block of blocks) {
@@ -328,11 +330,26 @@ function LinksBlockView({
     <Box flexDirection="column" marginBottom={1}>
       {block.links.map((link, index) => {
         const selected = selectedLinkIndex === startIndex + index;
+        // A group heading renders whenever the entry's group differs from the previous
+        // entry's — the first entry of a (possibly multi-block-flattened-run) group
+        // carries the heading. Consecutive entries with the same non-empty group share
+        // one heading; a blank/undefined group never emits one (schema-normalized, and
+        // also handled here for lenient-parsed documents).
+        const prev = block.links[index - 1];
+        const groupChanged =
+          (link.group ?? '') !== '' && (link.group ?? '') !== (prev?.group ?? '');
         return (
-          <Text key={index} {...(selected ? { color: theme.accent } : {})} bold={selected}>
-            {selected ? '› ' : '  '}
-            {sanitizeForTerminal(link.label === '' ? link.href : link.label)}
-          </Text>
+          <Fragment key={index}>
+            {groupChanged ? (
+              <Text color={theme.muted} bold>
+                {sanitizeForTerminal(link.group ?? '')}
+              </Text>
+            ) : null}
+            <Text {...(selected ? { color: theme.accent } : {})} bold={selected}>
+              {selected ? '› ' : '  '}
+              {sanitizeForTerminal(link.label === '' ? link.href : link.label)}
+            </Text>
+          </Fragment>
         );
       })}
     </Box>

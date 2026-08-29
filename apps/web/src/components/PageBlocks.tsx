@@ -134,35 +134,56 @@ function LinksBlock({
 }: {
   block: Extract<RenderablePageBlock, { type: 'Links' }>;
 }): JSX.Element {
+  // Group contiguous entries by their optional `group` heading (B-119): same non-empty
+  // group → share one heading; a blank/absent group renders as a plain entry outside any
+  // heading. Presentation only — the underlying `links` array order is preserved exactly.
+  const groups: { group: string | undefined; links: typeof block.links }[] = [];
+  for (const link of block.links) {
+    const group = link.group ? sanitizeText(link.group) : undefined;
+    const current = groups[groups.length - 1];
+    if (current !== undefined && current.group === group) {
+      current.links.push(link);
+    } else {
+      groups.push({ group, links: [link] });
+    }
+  }
+
   return (
-    <ul>
-      {block.links.map((link) => {
-        const label = sanitizeText(link.label);
-        const href = safePageHref(link.href);
-        if (href === null) {
-          return (
-            <li key={link.href}>
-              <span className={styles['rejectedLink']}>{label || link.href}</span>{' '}
-              <span className={styles['rejectedLinkNote']}>
-                (link removed — not an http(s) URL)
-              </span>
-            </li>
-          );
-        }
-        return (
-          <li key={link.href}>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer ugc"
-              className={styles['linkAnchor']}
-            >
-              {label || href}
-            </a>
-          </li>
-        );
-      })}
-    </ul>
+    <div>
+      {groups.map(({ group, links }) => (
+        <div key={group ?? '__ungrouped__'} className={styles['linkGroup']}>
+          {group && group !== '' ? <h3 className={styles['linkGroupTitle']}>{group}</h3> : null}
+          <ul className={styles['linkGroupList']}>
+            {links.map((link) => {
+              const label = sanitizeText(link.label);
+              const href = safePageHref(link.href);
+              if (href === null) {
+                return (
+                  <li key={link.href}>
+                    <span className={styles['rejectedLink']}>{label || link.href}</span>{' '}
+                    <span className={styles['rejectedLinkNote']}>
+                      (link removed — not an http(s) URL)
+                    </span>
+                  </li>
+                );
+              }
+              return (
+                <li key={link.href}>
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer ugc"
+                    className={styles['linkAnchor']}
+                  >
+                    {label || href}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -10,7 +10,9 @@ storage (§3), `PageService` (§4, `apps/server/src/modules/pages/`), the Ink re
 (`apps/tui/src/pages/render/`), `patches visit`, and nameplate rendering (P45-004..007) are
 all implemented and tested. `B-023`'s structured block-by-block page editor (the TUI editor
 was originally `$EDITOR`-on-raw-JSON only) and `B-024`'s `Friends` block data source (a bulk
-"list mutual follows" RPC) have since landed too — see §6.
+"list mutual follows" RPC) have since landed too — see §6. `B-119` made `Links` a rich,
+link-tree-like collection in the same release: an optional per-entry **group** heading
+(schema §2, rendering §6, structured editor §6).
 
 Pages are the personal-web pillar (§175, pillar 3). They are not a profile decoration — the
 profile is what you see _next to a name_; a Page is what you _visit_. Inline identity
@@ -61,22 +63,22 @@ server stores, validates, versions, and serves.
 
 ### Blocks (v1 vocabulary)
 
-| Block        | Renders                                    | Phase |
-| ------------ | ------------------------------------------ | ----- |
-| `Text`       | plain text paragraph                       | 4.5   |
-| `Markdown`   | safe Markdown subset, no raw HTML          | 4.5   |
-| `Links`      | labeled link list, URLs validated per §104 | 4.5   |
-| `Posts`      | the actor's recent posts, chronological    | 4.5   |
-| `TopEight`   | a chosen handful of actors                 | 4.5   |
-| `Friends`    | mutuals / follow list excerpt              | 4.5   |
-| `Guestbook`  | recent guestbook entries + sign action     | 4.5   |
-| `Badges`     | server-attested badges only (§173)         | 4.5   |
-| `AsciiArt`   | fixed-width art, control chars stripped    | 4.5   |
-| `Spacer`     | vertical space                             | 4.5   |
-| `Hero`       | title/subtitle banner                      | 4.5   |
-| `Image`      | one Patches media item                     | **5** |
-| `Gallery`    | several Patches media items                | **5** |
-| `NowPlaying` | a text status line                         | later |
+| Block        | Renders                                                                                    | Phase |
+| ------------ | ------------------------------------------------------------------------------------------ | ----- |
+| `Text`       | plain text paragraph                                                                       | 4.5   |
+| `Markdown`   | safe Markdown subset, no raw HTML                                                          | 4.5   |
+| `Links`      | labeled link list with optional per-entry `group` heading (B-119); URLs validated per §104 | 4.5   |
+| `Posts`      | the actor's recent posts, chronological                                                    | 4.5   |
+| `TopEight`   | a chosen handful of actors                                                                 | 4.5   |
+| `Friends`    | mutuals / follow list excerpt                                                              | 4.5   |
+| `Guestbook`  | recent guestbook entries + sign action                                                     | 4.5   |
+| `Badges`     | server-attested badges only (§173)                                                         | 4.5   |
+| `AsciiArt`   | fixed-width art, control chars stripped                                                    | 4.5   |
+| `Spacer`     | vertical space                                                                             | 4.5   |
+| `Hero`       | title/subtitle banner                                                                      | 4.5   |
+| `Image`      | one Patches media item                                                                     | **5** |
+| `Gallery`    | several Patches media items                                                                | **5** |
+| `NowPlaying` | a text status line                                                                         | later |
 
 `Image` and `Gallery` are defined in the schema at Phase 4.5 but render as a **placeholder**
 until the Phase 5 media pipeline exists (§176). The schema may lead the pipeline; the
@@ -223,7 +225,8 @@ keeps the previous document on screen, shows the error, and persists the unsaved
 draft file (`apps/tui/src/pages/draft-store.ts`, same `XDG_DATA_HOME` pattern as a compose
 draft) so pressing `e` again resumes from exactly what was typed rather than losing it. The
 **structured** block-by-block editor P45-006 also scoped ("add/remove/reorder … OR as raw
-JSON") is deferred — `B-023`.
+JSON"), **`B-023`**, is implemented: `E` opens it and every block's fields — including a
+`Links` block's entries and their labels/URLs/groups — are editable in form (`B-119`).
 
 Nameplates (P45-007): every place an actor's name renders in the Pages surface —
 `TopEight`, `Guestbook` entries — goes through the shared `Nameplate` component, same as

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   PAGE_LINK_HREF_MAX_CHARS,
+  PAGE_LINK_GROUP_MAX_CHARS,
   PAGE_LINK_LABEL_MAX_CHARS,
   PAGE_MAX_BLOCK_TEXT_BYTES,
   PAGE_MAX_GALLERY_ITEMS,
@@ -105,6 +106,12 @@ const linksBlockSchema = z
           .object({
             label: shortText(PAGE_LINK_LABEL_MAX_CHARS),
             href: linkHrefSchema,
+            /** Optional group heading — a link-tree-like collection groups its entries
+             * under labelled headings (B-119). Absent for an ungrouped entry (old
+             * documents parse unchanged); renderers treat an absent *or blank* group as
+             * "no heading" (`shortText` already trims/sanitizes), so a blank group never
+             * renders a stray heading. */
+            group: shortText(PAGE_LINK_GROUP_MAX_CHARS).optional(),
           })
           .strict(),
       )

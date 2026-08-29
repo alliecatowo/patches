@@ -119,6 +119,28 @@ describe('PageBlocks', () => {
     expect(screen.getByText(/link removed/)).toBeInTheDocument();
   });
 
+  it('renders grouped Links with one heading per contiguous group (B-119)', () => {
+    renderBlocks([
+      {
+        type: 'Links',
+        links: [
+          { label: 'repo', href: 'https://git.test', group: 'Code' },
+          { label: 'docs', href: 'https://docs.test', group: 'Code' },
+          { label: 'blog', href: 'https://blog.test' },
+          { label: 'wells', href: 'https://wells.test', group: 'Elsewhere' },
+        ],
+      },
+    ]);
+
+    // One heading per contiguous run; the flat entry sits outside any group.
+    expect(screen.getByRole('heading', { level: 3, name: 'Code' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Elsewhere' })).toBeInTheDocument();
+    expect(screen.queryAllByRole('heading', { level: 3, name: 'Code' })).toHaveLength(1);
+    expect(screen.getAllByRole('link')).toHaveLength(4);
+    expect(screen.getByRole('link', { name: 'repo' })).toHaveAttribute('href', 'https://git.test');
+    expect(screen.getByRole('link', { name: 'blog' })).toHaveAttribute('href', 'https://blog.test');
+  });
+
   it('renders a Posts block through the owner chronological feed', () => {
     mockListActorPosts.mockResolvedValue({ posts: [], page: { hasMore: false, nextCursor: '' } });
     renderBlocks([{ type: 'Posts', limit: 7 }]);

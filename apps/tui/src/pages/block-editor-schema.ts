@@ -1,6 +1,8 @@
 import {
   BLOCK_TYPES,
+  PAGE_LINK_GROUP_MAX_CHARS,
   PAGE_MAX_GALLERY_ITEMS,
+  PAGE_MAX_LINKS_PER_BLOCK,
   PAGE_MAX_TOP_EIGHT,
   PAGE_SHORT_TEXT_MAX_CHARS,
   type PageBlock,
@@ -22,7 +24,8 @@ import {
  * `PageScreen`'s `$EDITOR` round trip already has), not per keystroke here.
  */
 
-export type BlockFieldKind = 'string' | 'multiline' | 'number' | 'stringArray' | 'enum';
+export type BlockFieldKind =
+  'string' | 'multiline' | 'number' | 'stringArray' | 'enum' | 'linkList';
 
 export interface BlockFieldSpec {
   key: string;
@@ -40,6 +43,10 @@ export interface BlockFieldSpec {
   maxItems?: number;
   /** For `'enum'` — `Enter`/`→`/`←` cycle through these. */
   enumValues?: readonly string[];
+  /** For `'linkList'` — the object shape of each entry in the list (i.e. the `Links`
+   * block's `{label, href, group}` entries, B-119). Each reads as its own text field
+   * on the selected entry. */
+  entryFields?: readonly BlockFieldSpec[];
 }
 
 export interface BlockTypeSpec {
@@ -114,11 +121,27 @@ export const BLOCK_TYPE_SPECS: readonly BlockTypeSpec[] = [
   {
     type: 'Links',
     label: 'Links',
-    fields: [],
-    formNote:
-      "This block's link list isn't editable in this form yet — press Esc, then e, " +
-      'to edit it as raw JSON in $EDITOR.',
-    createDefault: () => ({ type: 'Links', links: [] }),
+    fields: [
+      {
+        key: 'links',
+        label: 'Links',
+        kind: 'linkList',
+        optional: false,
+        maxItems: PAGE_MAX_LINKS_PER_BLOCK,
+        entryFields: [
+          { key: 'label', label: 'Label', kind: 'string', optional: false },
+          { key: 'href', label: 'URL', kind: 'string', optional: false },
+          {
+            key: 'group',
+            label: 'Group',
+            kind: 'string',
+            optional: true,
+            maxChars: PAGE_LINK_GROUP_MAX_CHARS,
+          },
+        ],
+      },
+    ],
+    createDefault: () => ({ type: 'Links', links: [{ label: '', href: '' }] }),
     summarize: (raw) => {
       const links = Array.isArray(raw.links) ? raw.links : [];
       return `${String(links.length)} link${links.length === 1 ? '' : 's'}`;
@@ -264,7 +287,9 @@ export function getBlockTypeSpec(type: string): BlockTypeSpec | undefined {
 }
 
 /** The form's current text for one field, read from a possibly-partial/invalid raw
- * block value. */
+ * block value. A `'linkList'` field has no single scalar text (its entries are edited
+ * through `readLinkList`/the screen's dedicated sub-editor), so it reads as `''` — this
+ * accessor is only ever called for scalar/multiline/number/stringArray/enum fields. */
 export function fieldValueToText(spec: BlockFieldSpec, raw: Record<string, unknown>): string {
   switch (spec.kind) {
     case 'string':
@@ -278,6 +303,8 @@ export function fieldValueToText(spec: BlockFieldSpec, raw: Record<string, unkno
       return readStringArray(raw, spec.key).join(', ');
     case 'enum':
       return readString(raw, spec.key) || (spec.enumValues?.[0] ?? '');
+    case 'linkList':
+      return '';
   }
 }
 
@@ -323,6 +350,11 @@ export function applyFieldText(
       if (trimmed === '' && spec.optional) delete next[spec.key];
       else next[spec.key] = text;
       return next;
+    // A `'linkList'` field is committed with `applyLinkListEntries`, never through the
+    // scalar text path — this branch exists for exhaustive type coverage only (the
+    // screen never calls `applyFieldText` on a linkList field; a hit here would be a bug).
+    case 'linkList':
+      return raw;
   }
 }
 
@@ -334,4 +366,70 @@ export function cycleEnumValue(spec: BlockFieldSpec, current: string, delta: num
   const index = values.indexOf(current);
   const next = ((index === -1 ? 0 : index) + delta + values.length) % values.length;
   return values[next] ?? current;
+}
+
+// ---------------------------------------------------------------------------------------
+// `'linkList'` field editing (B-119): a `Links` block is a list of `{label, href, group}`
+// entries, which doesn't fit the scalar/stringArray field model the other block types use.
+// The pure readers/committers below let `PageBlocksEditorScreen` build and commit that
+// array without touching React — the same "edits always derive the next value, never
+// mutate in place" convention as `applyFieldText`.
+// ---------------------------------------------------------------------------------------
+
+/** One working `Links` entry in the editor. `group` is kept as `''` when blank so the
+ * input shows an empty field; `commitLinkList` drops the key when it stays blank (a
+ * blank group must never render a stray heading, and the schema rejects nothing here —
+ * validation happens once, on `Ctrl+S`). */
+export interface LinkListEntry {
+  label: string;
+  href: string;
+  group: string;
+}
+
+function readEntryText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** Best-effort read of a `linkList` field's array of entry objects into editable
+ * `LinkListEntry` values — tolerant of entries that don't fully validate yet (this is
+ * the editor's draft view, same spirit as the screen's `parseDocumentForEditing`). */
+export function readLinkList(raw: Record<string, unknown>, key: string): LinkListEntry[] {
+  const list = raw[key];
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => {
+    const entry =
+      typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {};
+    return {
+      label: readEntryText(entry.label),
+      href: readEntryText(entry.href),
+      group: readEntryText(entry.group),
+    };
+  });
+}
+
+/** Commits a working `LinkListEntry[]` back into `raw` (returning a new object) — each
+ * entry becomes `{label, href}` with `group` added only when non-blank, so a cleared
+ * group disappears from the saved document. */
+export function applyLinkListEntries(
+  raw: Record<string, unknown>,
+  key: string,
+  entries: readonly LinkListEntry[],
+  maxItems: number | undefined,
+): Record<string, unknown> {
+  const next = { ...raw };
+  const kept = entries.slice(0, maxItems ?? entries.length).map((entry) => {
+    const obj: Record<string, string> = {
+      label: entry.label,
+      href: entry.href,
+    };
+    if (entry.group.trim() !== '') obj.group = entry.group;
+    return obj;
+  });
+  next[key] = kept;
+  return next;
+}
+
+/** A fresh blank entry for `a` (add) in the linkList editor. */
+export function blankLinkListEntry(): LinkListEntry {
+  return { label: '', href: '', group: '' };
 }
